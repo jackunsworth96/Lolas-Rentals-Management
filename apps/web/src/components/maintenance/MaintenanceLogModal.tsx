@@ -160,6 +160,10 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
         startImmediately,
         downtimeStart: downtimeStart || null,
         notes: opsNotes.trim() || null,
+        partsReplaced: parts.length > 0 ? parts : null,
+        partsCost: totalPartsCost,
+        laborCost: Number(laborCost) || 0,
+        paidFrom: paidFrom || null,
       },
       { onSuccess: () => onClose() },
     );
@@ -264,6 +268,73 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
             <textarea value={opsNotes} onChange={(e) => setOpsNotes(e.target.value)} rows={2}
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           </label>
+
+          <fieldset className="rounded-lg border border-gray-200 p-3">
+            <legend className="px-1 text-sm font-medium text-gray-700">Parts Replaced</legend>
+            {partOptions.length > 0 && (
+              <div className="mb-3 flex flex-wrap gap-2">
+                {partOptions.map((pt) => {
+                  const active = parts.some((p) => p.name === pt.name);
+                  return (
+                    <button key={pt.id} type="button" onClick={() => togglePart(pt.name)}
+                      className={`rounded-full border px-3 py-1 text-xs transition-colors ${active ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'}`}>
+                      {pt.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <div className="mb-3 flex gap-2">
+              <input type="text" value={customPartName} onChange={(e) => setCustomPartName(e.target.value)}
+                placeholder="Add custom part" className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm"
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomPart(); } }} />
+              <button type="button" onClick={addCustomPart}
+                className="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50">Add</button>
+            </div>
+            {parts.length > 0 && (
+              <div className="space-y-2">
+                {parts.map((p) => (
+                  <div key={p.name} className="flex items-center gap-2">
+                    <span className="flex-1 text-sm">{p.name} {p.isCustom && <span className="text-xs text-gray-400">(custom)</span>}</span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-gray-500">₱</span>
+                      <input type="number" min={0} step="0.01" value={p.cost || ''} onChange={(e) => updatePartCost(p.name, Number(e.target.value) || 0)}
+                        className="w-24 rounded border border-gray-300 px-2 py-1 text-sm text-right" placeholder="0.00" />
+                    </div>
+                    <button type="button" onClick={() => removePart(p.name)} className="text-red-400 hover:text-red-600">
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </div>
+                ))}
+                <div className="flex justify-between border-t pt-1 text-sm">
+                  <span className="text-gray-500">Parts subtotal</span>
+                  <span className="font-medium">{formatCurrency(totalPartsCost)}</span>
+                </div>
+              </div>
+            )}
+          </fieldset>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <label className="block">
+              <span className="text-sm font-medium text-gray-700">Labour cost</span>
+              <input type="number" min={0} step="0.01" value={laborCost} onChange={(e) => setLaborCost(e.target.value)}
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            </label>
+            <div>
+              <span className="text-sm font-medium text-gray-700">Total cost</span>
+              <div className="mt-1 flex h-[38px] items-center rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm font-semibold">
+                {formatCurrency(totalCost)}
+              </div>
+            </div>
+            <label className="block">
+              <span className="text-sm font-medium text-gray-700">Paid from</span>
+              <select value={paidFrom} onChange={(e) => setPaidFrom(e.target.value)}
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <option value="">Default (store cash account)</option>
+                {accList.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </label>
+          </div>
 
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={startImmediately} onChange={(e) => setStartImmediately(e.target.checked)}

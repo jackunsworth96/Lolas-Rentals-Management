@@ -12,6 +12,12 @@ export const LogMaintenanceRequestSchema = z.object({
   startImmediately: z.boolean().default(false),
   downtimeStart: z.string().nullable().default(null),
   notes: z.string().nullable().default(null),
+  partsReplaced: z.unknown().nullable().optional(),
+  partsCost: z.number().nonnegative().default(0),
+  laborCost: z.number().nonnegative().default(0),
+  paidFrom: z.string().nullable().optional(),
+  expenseAccountId: z.string().nullable().optional(),
+  cashAccountId: z.string().nullable().optional(),
 });
 
 export type LogMaintenanceRequest = z.infer<typeof LogMaintenanceRequestSchema>;
