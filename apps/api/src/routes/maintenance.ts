@@ -1,0 +1,90 @@
+import { Router } from 'express';
+import { authenticate } from '../middleware/authenticate.js';
+import { requirePermission } from '../middleware/authorize.js';
+import { validateBody, validateQuery } from '../middleware/validate.js';
+import {
+  Permission,
+  LogMaintenanceRequestSchema,
+  SaveMaintenanceRequestSchema,
+  CompleteMaintenanceRequestSchema,
+  MaintenanceQuerySchema,
+} from '@lolas/shared';
+
+const router = Router();
+router.use(authenticate);
+
+router.get('/', requirePermission(Permission.ViewMaintenance), validateQuery(MaintenanceQuerySchema), async (req, res, next) => {
+  try {
+    const { storeId, status, vehicleId } = req.query as Record<string, string>;
+    if (vehicleId) {
+      const records = await req.app.locals.deps.maintenanceRepo.findByVehicle(vehicleId);
+      res.json({ success: true, data: records });
+      return;
+    }
+    const records = await req.app.locals.deps.maintenanceRepo.findByStore(storeId, { status });
+    res.json({ success: true, data: records });
+  } catch (err) { next(err); }
+});
+
+router.get('/:id', requirePermission(Permission.ViewMaintenance), async (req, res, next) => {
+  try {
+    const record = await req.app.locals.deps.maintenanceRepo.findById(req.params.id);
+    if (!record) { res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Maintenance record not found' } }); return; }
+    res.json({ success: true, data: record });
+  } catch (err) { next(err); }
+});
+
+router.post('/', requirePermission(Permission.ViewMaintenance), validateBody(LogMaintenanceRequestSchema), async (req, res, next) => {
+  try {
+    const { logMaintenance } = await import('../use-cases/maintenance/log-maintenance.js');
+    const result = await logMaintenance(req.body, {
+      maintenance: req.app.locals.deps.maintenanceRepo,
+      fleet: req.app.locals.deps.fleetRepo,
+    });
+    res.status(201).json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+router.put('/:id', requirePermission(Permission.ViewMaintenance), validateBody(SaveMaintenanceRequestSchema), async (req, res, next) => {
+  try {
+    const { saveMaintenance } = await import('../use-cases/maintenance/save-maintenance.js');
+    const result = await saveMaintenance(req.params.id, req.body, {
+      maintenance: req.app.locals.deps.maintenanceRepo,
+      fleet: req.app.locals.deps.fleetRepo,
+    });
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+router.delete('/:id', requirePermission(Permission.ViewMaintenance), async (req, res, next) => {
+  try {
+    const record = await req.app.locals.deps.maintenanceRepo.findById(req.params.id);
+    if (!record) { res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Maintenance record not found' } }); return; }
+    const { deleteMaintenanceExpenseRpc } = await import('../adapters/supabase/maintenance-expense-rpc.js');
+    await deleteMaintenanceExpenseRpc(req.params.id);
+    if (record.status === 'In Progress') {
+      const vehicle = await req.app.locals.deps.fleetRepo.findById(record.assetId);
+      if (vehicle && vehicle.canAutoUpdateStatus()) {
+        await req.app.locals.deps.fleetRepo.updateStatus(vehicle.id, 'Available');
+      }
+    }
+    await req.app.locals.deps.maintenanceRepo.deleteById(req.params.id);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+router.post('/:id/complete', requirePermission(Permission.ViewMaintenance), validateBody(CompleteMaintenanceRequestSchema), async (req, res, next) => {
+  try {
+    const { completeMaintenance } = await import('../use-cases/maintenance/complete-maintenance.js');
+    const result = await completeMaintenance(
+      { ...req.body, maintenanceId: req.params.id },
+      {
+        maintenance: req.app.locals.deps.maintenanceRepo,
+        fleet: req.app.locals.deps.fleetRepo,
+      },
+    );
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+export { router as maintenanceRoutes };

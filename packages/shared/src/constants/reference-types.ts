@@ -1,0 +1,26 @@
+export const ReferenceType = {
+  Rental: 'rental',
+  Deposit: 'deposit',
+  Addon: 'addon',
+  Transfer: 'transfer',
+  Maintenance: 'maintenance',
+  Payroll: 'payroll',
+  Expense: 'expense',
+  CashDeposit: 'cash_deposit',
+  CardSettlement: 'card_settlement',
+  PeriodEnd: 'period_end',
+  Adjustment: 'adjustment',
+  Depreciation: 'depreciation',
+  VehiclePurchase: 'vehicle_purchase',
+  VehicleSale: 'vehicle_sale',
+  Refund: 'refund',
+  MiscSale: 'misc_sale',
+  OrderTips: 'order_tips',
+  OrderCharity: 'order_charity',
+  CharityPayout: 'charity_payout',
+  PawCardCharity: 'paw_card_charity',
+  FloatSplit: 'float-split',
+} as const;
+
+export type ReferenceTypeValue =
+  (typeof ReferenceType)[keyof typeof ReferenceType];

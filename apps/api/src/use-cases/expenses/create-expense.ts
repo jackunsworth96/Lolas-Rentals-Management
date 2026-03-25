@@ -1,0 +1,77 @@
+import {
+  type ExpenseRepository,
+  type AccountingPort,
+  type Expense,
+  type JournalLeg,
+  Money,
+  DomainError,
+} from '@lolas/domain';
+import { randomUUID } from 'node:crypto';
+
+export interface CreateExpenseInput {
+  storeId: string;
+  date: string;
+  category: string;
+  description: string;
+  amount: number;
+  paidFrom: string | null;
+  vehicleId: string | null;
+  employeeId: string | null;
+  expenseAccountId: string;
+  cashAccountId: string;
+}
+
+export interface CreateExpenseResult {
+  expense: Expense;
+}
+
+export async function createExpense(
+  input: CreateExpenseInput,
+  deps: { expenses: ExpenseRepository; accounting: AccountingPort },
+): Promise<CreateExpenseResult> {
+  if (input.amount <= 0) {
+    throw new DomainError('Expense amount must be positive');
+  }
+
+  const expense: Expense = {
+    id: randomUUID(),
+    storeId: input.storeId,
+    date: input.date,
+    category: input.category,
+    description: input.description,
+    amount: input.amount,
+    paidFrom: input.paidFrom,
+    vehicleId: input.vehicleId,
+    employeeId: input.employeeId,
+    accountId: input.expenseAccountId,
+    createdAt: new Date(),
+  };
+
+  await deps.expenses.save(expense);
+
+  const amount = Money.php(input.amount);
+  const legs: JournalLeg[] = [
+    {
+      entryId: randomUUID(),
+      accountId: input.expenseAccountId,
+      debit: amount,
+      credit: Money.zero(),
+      description: `${input.category}: ${input.description}`,
+      referenceType: 'expense',
+      referenceId: expense.id,
+    },
+    {
+      entryId: randomUUID(),
+      accountId: input.cashAccountId,
+      debit: Money.zero(),
+      credit: amount,
+      description: `${input.category}: ${input.description}`,
+      referenceType: 'expense',
+      referenceId: expense.id,
+    },
+  ];
+
+  await deps.accounting.createTransaction(legs, input.storeId);
+
+  return { expense };
+}

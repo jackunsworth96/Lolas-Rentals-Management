@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "module": "ESNext",
+    "target": "ES2022",
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["__tests__", "dist"],
+  "references": [
+    { "path": "../../packages/domain" },
+    { "path": "../../packages/shared" }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "name": "lolas-backoffice",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npx concurrently -n domain,shared,api,web -c blue,magenta,green,cyan \"npm run dev -w packages/domain\" \"npm run dev -w packages/shared\" \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
+    "dev:api": "npm run dev -w apps/api",
+    "dev:web": "npm run dev -w apps/web",
+    "dev:domain": "npm run dev -w packages/domain",
+    "dev:shared": "npm run dev -w packages/shared",
+    "seed": "npm run seed -w apps/api",
+    "migrate:sheets": "npm run migrate:sheets -w apps/api",
+    "build": "npm run build -w packages/domain && npm run build -w packages/shared && npm run build -w apps/api && npm run build -w apps/web",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint . --ext .ts,.tsx"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

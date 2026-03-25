@@ -1,0 +1,31 @@
+export const Permission = {
+  ViewInbox: 'can_view_inbox',
+  ViewActive: 'can_view_active',
+  ViewCompleted: 'can_view_completed',
+  ViewFleet: 'can_view_fleet',
+  ViewMaintenance: 'can_view_maintenance',
+  ViewTransfers: 'can_view_transfers',
+  ViewCardSettlements: 'can_view_cardsettlements',
+  ViewExpenses: 'can_view_expenses',
+  ViewTimesheets: 'can_view_timesheets',
+  SubmitTimesheets: 'can_submit_timesheets',
+  ViewTodo: 'can_view_todo',
+  ViewLostOpportunity: 'can_view_lostopportunity',
+  ViewCashup: 'can_view_cashup',
+  EditOrders: 'can_edit_orders',
+  EditFleet: 'can_edit_fleet',
+  ViewUIErrors: 'can_view_uierrors',
+  ViewMiscSales: 'can_view_miscsales',
+  ApproveTimesheets: 'can_approve_timesheets',
+  EditAccounts: 'can_edit_accounts',
+  ViewPayroll: 'can_view_payroll',
+  ViewAccounts: 'can_view_accounts',
+  ViewFleetBookValue: 'can_view_fleet_book_value',
+  OverrideCashup: 'can_override_cashup',
+  ManageTodo: 'can_manage_todo',
+  EditSettings: 'can_edit_settings',
+} as const;
+
+export type PermissionType = (typeof Permission)[keyof typeof Permission];
+
+export const ALL_PERMISSIONS = Object.values(Permission);

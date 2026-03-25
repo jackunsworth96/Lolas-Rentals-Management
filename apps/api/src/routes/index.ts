@@ -1,0 +1,46 @@
+import { Router } from 'express';
+import { authRoutes } from './auth.js';
+import { orderRoutes } from './orders.js';
+import { fleetRoutes } from './fleet.js';
+import { accountingRoutes } from './accounting.js';
+import { transferRoutes } from './transfers.js';
+import { hrRoutes } from './hr.js';
+import { payrollRoutes } from './payroll.js';
+import { cashupRoutes } from './cashup.js';
+import { expenseRoutes } from './expenses.js';
+import { todoRoutes } from './todo.js';
+import { maintenanceRoutes } from './maintenance.js';
+import { configRoutes } from './config.js';
+import { pawCardRoutes } from './paw-card.js';
+import { miscSalesRoutes } from './misc-sales.js';
+import { merchandiseRoutes } from './merchandise.js';
+import { cardSettlementRoutes } from './card-settlements.js';
+import { ordersRawRoutes } from './orders-raw.js';
+import { publicTransferRoutes } from './public-transfers.js';
+import { uiErrorsRoutes } from './ui-errors.js';
+import { lostOpportunityRoutes } from './lost-opportunity.js';
+
+const routes = Router();
+
+routes.use('/auth', authRoutes);
+routes.use('/orders-raw', ordersRawRoutes);
+routes.use('/orders', orderRoutes);
+routes.use('/fleet', fleetRoutes);
+routes.use('/accounting', accountingRoutes);
+routes.use('/transfers', transferRoutes);
+routes.use('/hr', hrRoutes);
+routes.use('/payroll', payrollRoutes);
+routes.use('/cashup', cashupRoutes);
+routes.use('/expenses', expenseRoutes);
+routes.use('/todo', todoRoutes);
+routes.use('/maintenance', maintenanceRoutes);
+routes.use('/config', configRoutes);
+routes.use('/paw-card', pawCardRoutes);
+routes.use('/misc-sales', miscSalesRoutes);
+routes.use('/merchandise', merchandiseRoutes);
+routes.use('/card-settlements', cardSettlementRoutes);
+routes.use('/public', publicTransferRoutes);
+routes.use('/ui-errors', uiErrorsRoutes);
+routes.use('/lost-opportunities', lostOpportunityRoutes);
+
+export { routes };
