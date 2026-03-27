@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { validateBody } from '../middleware/validate.js';
 import { LoginRequestSchema } from '@lolas/shared';
-import { hashPin, verifyPin } from '../adapters/auth/password.js';
+import { verifyPin } from '../adapters/auth/password.js';
 import { generateToken, type TokenPayload } from '../adapters/auth/jwt.js';
 import { supabase } from '../adapters/supabase/client.js';
+import { logSupabaseError } from '../lib/supabase-log.js';
 
 const router = Router();
 
@@ -15,18 +16,25 @@ function escapeForILikeExact(value: string): string {
 router.post('/login', validateBody(LoginRequestSchema), async (req, res, next) => {
   try {
     const { username, pin } = req.body;
+    const usernameNorm = String(username).trim();
 
-    const { data: user, error } = await supabase
+    const { data: user, error: userErr } = await supabase
       .from('users')
       .select('id, username, pin_hash, employee_id, role_id, is_active')
-      .ilike('username', escapeForILikeExact(username))
+      .ilike('username', escapeForILikeExact(usernameNorm))
       .limit(1)
       .maybeSingle();
 
-    if (error || !user) {
-      if (process.env.NODE_ENV !== 'production' && error) {
-        console.error('[auth/login] Supabase user lookup failed:', error.message);
-      }
+    if (userErr) {
+      logSupabaseError('auth/login user lookup', userErr);
+      res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Invalid credentials' } });
+      return;
+    }
+
+    if (!user) {
+      console.error('[auth/login] No user row for username (after trim/ilike exact match)', {
+        usernameLen: usernameNorm.length,
+      });
       res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Invalid credentials' } });
       return;
     }
@@ -36,25 +44,44 @@ router.post('/login', validateBody(LoginRequestSchema), async (req, res, next) =
       return;
     }
 
-    const valid = await verifyPin(String(pin), user.pin_hash);
-    if (!valid) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.error('[auth/login] PIN verification failed for user:', username);
-      }
+    if (user.pin_hash == null || user.pin_hash === '') {
+      console.error('[auth/login] User has empty pin_hash — cannot verify PIN', { userId: user.id });
       res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Invalid credentials' } });
       return;
     }
 
-    const { data: permissions } = await supabase
+    const valid = await verifyPin(String(pin), String(user.pin_hash));
+    if (!valid) {
+      console.error('[auth/login] PIN verification failed (bcrypt mismatch or wrong PIN)', {
+        userId: user.id,
+        username: user.username,
+      });
+      res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Invalid credentials' } });
+      return;
+    }
+
+    const { data: permissions, error: permErr } = await supabase
       .from('role_permissions')
       .select('permission')
       .eq('role_id', user.role_id);
+    if (permErr) {
+      logSupabaseError('auth/login role_permissions', permErr);
+    }
 
-    const { data: employee } = await supabase
+    const { data: employee, error: empErr } = await supabase
       .from('employees')
       .select('store_id')
       .eq('id', user.employee_id)
-      .single();
+      .maybeSingle();
+    if (empErr) {
+      logSupabaseError('auth/login employees lookup', empErr);
+    }
+    if (!employee) {
+      console.error('[auth/login] No employee row for users.employee_id', {
+        userId: user.id,
+        employeeId: user.employee_id,
+      });
+    }
 
     const payload: TokenPayload = {
       userId: user.id,
