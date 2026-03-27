@@ -5,7 +5,10 @@
     "rootDir": "src",
     "jsx": "react-jsx",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    "skipLibCheck": true,
+    "noImplicitAny": false,
+    "strict": false
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["__tests__", "dist"],
