@@ -6,6 +6,7 @@ import {
   Money,
   DomainError,
   Period,
+  type Timesheet,
 } from '@lolas/domain';
 import { randomUUID } from 'node:crypto';
 import {
@@ -138,7 +139,7 @@ export async function runPayroll(
     .map((p) => p.employeeId);
 
   if (approvedIds.length > 0) {
-    const allTimesheets = [];
+    const allTimesheets: Timesheet[] = [];
     for (const empId of approvedIds) {
       const empTs = await deps.timesheets.findByEmployee(empId, period);
       allTimesheets.push(...empTs);
