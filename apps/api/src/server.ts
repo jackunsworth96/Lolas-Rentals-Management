@@ -36,16 +36,19 @@ import { createLeaveBalanceAdapter } from './adapters/supabase/leave-balance-ada
 import { createPayrollAdapter } from './adapters/supabase/payroll-adapter.js';
 import { createPawCardAdapter } from './adapters/supabase/paw-card-adapter.js';
 
-const LOCAL_DEV_ORIGINS = [
+const DEFAULT_CORS_ORIGINS = [
+  'https://lolas-rentals-management-web.vercel.app',
   'http://localhost:3000',
-  'http://localhost:3001',
   'http://localhost:3002',
   'http://localhost:3003',
 ] as const;
 
 function buildCorsAllowedOrigins(): string[] {
-  const prod = process.env.ALLOWED_ORIGIN?.trim();
-  return prod ? [...LOCAL_DEV_ORIGINS, prod] : [...LOCAL_DEV_ORIGINS];
+  const fromEnv = process.env.ALLOWED_ORIGIN?.trim();
+  const extra = fromEnv
+    ? fromEnv.split(',').map((s) => s.trim()).filter(Boolean)
+    : [];
+  return [...new Set([...DEFAULT_CORS_ORIGINS, ...extra])];
 }
 
 const CORS_ALLOWED_ORIGINS = buildCorsAllowedOrigins();
