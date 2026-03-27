@@ -2,8 +2,10 @@
   "name": "lolas-backoffice",
   "private": true,
   "workspaces": [
-    "packages/*",
-    "apps/*"
+    "packages/domain",
+    "packages/shared",
+    "apps/api",
+    "apps/web"
   ],
   "scripts": {
     "dev": "npx concurrently -n domain,shared,api,web -c blue,magenta,green,cyan \"npm run dev -w packages/domain\" \"npm run dev -w packages/shared\" \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
