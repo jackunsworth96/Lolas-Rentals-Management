@@ -17,6 +17,10 @@ interface ApiResponse<T> {
   error?: { code: string; message: string; details?: unknown };
 }
 
+function isAuthLoginPath(path: string): boolean {
+  return path === '/auth/login' || path.startsWith('/auth/login?');
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -38,6 +42,15 @@ async function request<T>(
   });
 
   if (response.status === 401) {
+    if (isAuthLoginPath(path)) {
+      let json: ApiResponse<T>;
+      try {
+        json = await response.json();
+      } catch {
+        throw new Error('Invalid credentials');
+      }
+      throw new Error(json.error?.message ?? 'Invalid credentials');
+    }
     useAuthStore.getState().logout();
     throw new Error('Session expired');
   }
