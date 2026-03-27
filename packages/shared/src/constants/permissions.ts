@@ -23,6 +23,7 @@ export const Permission = {
   ViewFleetBookValue: 'can_view_fleet_book_value',
   OverrideCashup: 'can_override_cashup',
   ManageTodo: 'can_manage_todo',
+  ManageEmployees: 'can_manage_employees',
   EditSettings: 'can_edit_settings',
 } as const;
 

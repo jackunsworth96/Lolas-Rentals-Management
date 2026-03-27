@@ -32,6 +32,9 @@ import { createCardSettlementRepo } from './adapters/supabase/card-settlement-re
 import { createMiscSaleRepo } from './adapters/supabase/misc-sale-repo.js';
 import { createMerchandiseRepo } from './adapters/supabase/merchandise-repo.js';
 import { createPaymentRoutingRepo } from './adapters/supabase/payment-routing-repo.js';
+import { createLeaveBalanceAdapter } from './adapters/supabase/leave-balance-adapter.js';
+import { createPayrollAdapter } from './adapters/supabase/payroll-adapter.js';
+import { createPawCardAdapter } from './adapters/supabase/paw-card-adapter.js';
 
 const app = express();
 
@@ -58,9 +61,9 @@ app.locals.deps = {
   miscSaleRepo: createMiscSaleRepo(),
   merchandiseRepo: createMerchandiseRepo(),
   paymentRoutingRepo: createPaymentRoutingRepo(),
-  leaveBalancePort: null as any,
-  payrollPort: null as any,
-  pawCardPort: null as any,
+  leaveBalancePort: createLeaveBalanceAdapter(),
+  payrollPort: createPayrollAdapter(),
+  pawCardPort: createPawCardAdapter(),
 };
 
 app.get('/health', (_req, res) => {

@@ -104,7 +104,7 @@ export function PaymentRoutingTab() {
     () =>
       allAccounts.filter((a) => {
         const sid = a.storeId ?? a.store_id ?? null;
-        return sid === selectedStoreId;
+        return sid === selectedStoreId || sid === 'company';
       }),
     [allAccounts, selectedStoreId],
   );

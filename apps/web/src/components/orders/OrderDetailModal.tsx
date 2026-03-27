@@ -45,6 +45,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
   const [settleDepositAccountId, setSettleDepositAccountId] = useState('');
   const [settleReceivableAccountId, setSettleReceivableAccountId] = useState('');
   const [settleRefundAccountId, setSettleRefundAccountId] = useState('');
+  const [settleRefundMethodId, setSettleRefundMethodId] = useState('');
   const [settleFinalMethodId, setSettleFinalMethodId] = useState('');
   const [settleFinalAccountId, setSettleFinalAccountId] = useState('');
   const [settleFinalRef, setSettleFinalRef] = useState('');
@@ -84,9 +85,12 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
   const isActive = order && String(order.status?.value ?? order.status) === 'active';
   const canAct = isActive && !readOnly;
 
-  // ── Store-filtered accounts ──
+  // ── Store-filtered accounts (include company-wide accounts) ──
   const storeAccounts = useMemo(
-    () => (accounts ?? []).filter((a) => String(a.storeId ?? a.store_id ?? '') === storeId),
+    () => (accounts ?? []).filter((a) => {
+      const sid = String(a.storeId ?? a.store_id ?? '');
+      return sid === storeId || sid === 'company';
+    }),
     [accounts, storeId],
   );
 
@@ -152,16 +156,6 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
   useEffect(() => {
     if (paymentAccountOptions.length === 1 && !paymentAccountId) setPaymentAccountId(String(paymentAccountOptions[0].id));
   }, [paymentAccountOptions, paymentAccountId]);
-  useEffect(() => {
-    if (depositLiabilityOptions.length === 1 && !settleDepositAccountId) setSettleDepositAccountId(String(depositLiabilityOptions[0].id));
-  }, [depositLiabilityOptions, settleDepositAccountId]);
-  useEffect(() => {
-    if (receivableOptions.length > 0 && !settleReceivableAccountId) {
-      const recv = receivableOptions.find((a) => String(a.name ?? '').toLowerCase().includes('receivable'));
-      if (recv) setSettleReceivableAccountId(String(recv.id));
-    }
-  }, [receivableOptions, settleReceivableAccountId]);
-
   // ── Routing auto-fill ──
   const routedCollectAcct = routing.getReceivedInto(storeId, paymentMethodId);
   const routedSettleFinalAcct = routing.getReceivedInto(storeId, settleFinalMethodId);
@@ -173,8 +167,20 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
     storeAccounts as Array<{ id: string; name: string; accountType?: string; account_type?: string; storeId?: string | null; store_id?: string | null }>,
     storeId,
   );
-  const routedRefundAcct = routing.getCashAccount(storeId);
+  const settleRefundPM = settleRefundMethodId ? pmLookup.get(settleRefundMethodId) : null;
+  const routedRefundResolved = settleRefundMethodId
+    ? routing.resolveReceivedIntoForStore(storeId, settleRefundMethodId, settleRefundPM?.name ?? null)
+    : null;
+  const effectiveRefundAccountId = routedRefundResolved ?? (settleRefundAccountId.trim() !== '' ? settleRefundAccountId : '');
   const routedAddonAcct = routing.getReceivedInto(storeId, addonPaymentMethodId);
+
+  const refundPaymentMethods = useMemo(
+    () => activePaymentMethods.filter((m) => {
+      const s = Number(m.surchargePercent ?? m.surcharge_percent ?? 0);
+      return s === 0;
+    }),
+    [activePaymentMethods],
+  );
 
   useEffect(() => {
     if (routedCollectAcct && !paymentAccountId) setPaymentAccountId(routedCollectAcct);
@@ -183,14 +189,32 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
     if (routedSettleFinalAcct && !settleFinalAccountId) setSettleFinalAccountId(routedSettleFinalAcct);
   }, [routedSettleFinalAcct, settleFinalAccountId]);
   useEffect(() => {
-    if (routedDepositLiability && !settleDepositAccountId) setSettleDepositAccountId(routedDepositLiability);
-  }, [routedDepositLiability, settleDepositAccountId]);
+    if (settleDepositAccountId) return;
+    if (routedDepositLiability) {
+      setSettleDepositAccountId(routedDepositLiability);
+      return;
+    }
+    if (depositLiabilityOptions.length > 0) {
+      setSettleDepositAccountId(String(depositLiabilityOptions[0].id));
+    }
+  }, [routedDepositLiability, depositLiabilityOptions, settleDepositAccountId]);
+
   useEffect(() => {
-    if (routedReceivable && !settleReceivableAccountId) setSettleReceivableAccountId(routedReceivable);
-  }, [routedReceivable, settleReceivableAccountId]);
-  useEffect(() => {
-    if (routedRefundAcct && !settleRefundAccountId) setSettleRefundAccountId(routedRefundAcct);
-  }, [routedRefundAcct, settleRefundAccountId]);
+    if (settleReceivableAccountId) return;
+    if (routedReceivable) {
+      setSettleReceivableAccountId(routedReceivable);
+      return;
+    }
+    const recv = receivableOptions.find((a) => String(a.name ?? '').toLowerCase().includes('receivable'));
+    if (recv) {
+      setSettleReceivableAccountId(String(recv.id));
+      return;
+    }
+    if (defaultReceivableId) {
+      setSettleReceivableAccountId(defaultReceivableId);
+    }
+  }, [routedReceivable, receivableOptions, defaultReceivableId, settleReceivableAccountId]);
+
   useEffect(() => {
     if (routedAddonAcct && !addonAccountId) setAddonAccountId(routedAddonAcct);
   }, [routedAddonAcct, addonAccountId]);
@@ -317,13 +341,67 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
   const settleFinalSurcharge = settleFinalPM ? Number(settleFinalPM.surchargePercent ?? settleFinalPM.surcharge_percent ?? 0) : 0;
   const isSettleFinalCard = settleFinalSurcharge > 0;
 
+  useEffect(() => {
+    if (!import.meta.env.DEV || !open || !order || orderLoading) return;
+    const ordTotal = enrichedData?.finalTotal ?? moneyAmount(order.finalTotal);
+    const ordPaid = enrichedData?.totalPaid ?? (payments as Array<{ amount: number }>).reduce((s, p) => s + (p.amount ?? 0), 0);
+    const bal = ordTotal - ordPaid;
+    const secDep = enrichedData?.securityDeposit ?? moneyAmount(order.securityDeposit);
+    const depositApplied = Math.min(secDep, Math.max(0, bal));
+    const depositRefund = Math.max(0, secDep - Math.max(0, bal));
+    const remainingAfterDeposit = Math.max(0, bal - depositApplied);
+    const refundReady = depositRefund <= 0 || (!!settleRefundMethodId && !!effectiveRefundAccountId.trim());
+    const finalPayReady = remainingAfterDeposit <= 0 || (!!settleFinalMethodId && (isSettleFinalCard || !!settleFinalAccountId));
+    const settleReady = !!settleDepositAccountId && !!settleReceivableAccountId && refundReady && finalPayReady;
+    const buttonDisabled = settleOrder.isPending || !settleReady;
+    console.log('[OrderDetailModal Settle button]', {
+      buttonDisabled,
+      settleOrder_isPending: settleOrder.isPending,
+      settleReady,
+      settleDepositAccountId: settleDepositAccountId || '(empty)',
+      settleReceivableAccountId: settleReceivableAccountId || '(empty)',
+      refundReady,
+      finalPayReady,
+      depositRefund,
+      remainingAfterDeposit,
+      balance: bal,
+      securityDeposit: secDep,
+      settleRefundMethodId: settleRefundMethodId || '(empty)',
+      effectiveRefundAccountId: effectiveRefundAccountId || '(empty)',
+      routedRefundResolved: routedRefundResolved ?? '(null)',
+      settleFinalMethodId: settleFinalMethodId || '(empty)',
+      settleFinalAccountId: settleFinalAccountId || '(empty)',
+      isSettleFinalCard,
+      routedSettleFinalAcct: routedSettleFinalAcct ?? '(null)',
+    });
+  }, [
+    open,
+    order,
+    orderLoading,
+    enrichedData,
+    payments,
+    settleOrder.isPending,
+    settleDepositAccountId,
+    settleReceivableAccountId,
+    settleRefundMethodId,
+    effectiveRefundAccountId,
+    routedRefundResolved,
+    settleFinalMethodId,
+    settleFinalAccountId,
+    isSettleFinalCard,
+    routedSettleFinalAcct,
+  ]);
+
   const handleSettle = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!settlementDate || !settleDepositAccountId || !settleReceivableAccountId || !settleRefundAccountId) return;
+    if (!settlementDate || !settleDepositAccountId || !settleReceivableAccountId) return;
 
     const depositApplied = Math.min(securityDeposit, Math.max(0, balance));
+    const depositRefund = Math.max(0, securityDeposit - Math.max(0, balance));
     const remainingAfterDeposit = Math.max(0, balance - depositApplied);
     const needsFinalPayment = remainingAfterDeposit > 0;
+
+    if (depositRefund > 0 && !effectiveRefundAccountId.trim()) return;
 
     if (needsFinalPayment && !settleFinalMethodId) return;
     if (needsFinalPayment && !isSettleFinalCard && !settleFinalAccountId) return;
@@ -334,7 +412,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
         settlementDate,
         depositLiabilityAccountId: settleDepositAccountId,
         receivableAccountId: settleReceivableAccountId,
-        refundAccountId: settleRefundAccountId,
+        refundAccountId: depositRefund > 0 ? effectiveRefundAccountId : settleRefundAccountId,
         finalPaymentMethodId: needsFinalPayment ? settleFinalMethodId : null,
         finalPaymentAccountId: needsFinalPayment && !isSettleFinalCard ? settleFinalAccountId : null,
         finalPaymentAmount: needsFinalPayment ? remainingAfterDeposit : undefined,
@@ -533,25 +611,10 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                       <span className="text-sm text-gray-600">Method</span>
                       <select value={paymentMethodId} onChange={(e) => { setPaymentMethodId(e.target.value); setPaymentAccountId(''); setSettlementRef(''); }} required
                         className="mt-1 block w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                        <option value="">Select</option>
-                        {activePaymentMethods.map((pm) => (
-                          <option key={pm.id} value={pm.id}>{pm.name}</option>
-                        ))}
+                        <option value="">Select method</option>
+                        {activePaymentMethods.map((pm) => <option key={pm.id} value={pm.id}>{pm.name}</option>)}
                       </select>
                     </label>
-                    {paymentMethodId && !isCardPayment && !routedCollectAcct && (
-                      <label className="block">
-                        <span className="text-sm text-gray-600">Payment Account</span>
-                        <select value={paymentAccountId} onChange={(e) => setPaymentAccountId(e.target.value)} required
-                          className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                          <option value="">Select account</option>
-                          {paymentAccountOptions.map((a) => (
-                            <option key={String(a.id)} value={String(a.id)}>{String(a.name)}</option>
-                          ))}
-                        </select>
-                        <p className="mt-1 text-xs text-amber-600">No routing rule configured — select manually</p>
-                      </label>
-                    )}
                     {paymentMethodId && isCardPayment && (
                       <label className="block">
                         <span className="text-sm text-gray-600">Card Reference #</span>
@@ -560,14 +623,22 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                           className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
                       </label>
                     )}
+                    {paymentMethodId && !isCardPayment && !routedCollectAcct && (
+                      <label className="block">
+                        <span className="text-sm text-gray-600">Account</span>
+                        <select value={paymentAccountId} onChange={(e) => setPaymentAccountId(e.target.value)} required
+                          className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                          <option value="">Select</option>
+                          {paymentAccountOptions.map((a) => <option key={String(a.id)} value={String(a.id)}>{String(a.name)}</option>)}
+                        </select>
+                        <p className="mt-1 text-xs text-amber-600">No routing rule — select manually</p>
+                      </label>
+                    )}
                     <button type="submit" disabled={collectPaymentMut.isPending}
                       className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
                       {collectPaymentMut.isPending ? 'Saving...' : 'Record Payment'}
                     </button>
                   </div>
-                  {isCardPayment && (
-                    <p className="text-xs text-amber-600">Card payment — routes to Card Settlements for reconciliation</p>
-                  )}
                   {collectPaymentMut.error && <p className="text-sm text-red-600">{(collectPaymentMut.error as Error).message}</p>}
                 </form>
               </section>
@@ -613,82 +684,77 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
               <section>
                 <h3 className="mb-3 font-medium text-gray-900">Settle Order</h3>
 
-                {/* Settlement breakdown */}
                 {(() => {
                   const depositApplied = Math.min(securityDeposit, Math.max(0, balance));
                   const depositRefund = Math.max(0, securityDeposit - Math.max(0, balance));
                   const remainingAfterDeposit = Math.max(0, balance - depositApplied);
-                  const isFullyPaid = remainingAfterDeposit <= 0;
+                  const isFullyPaid = remainingAfterDeposit <= 0 && depositRefund <= 0;
+
+                  const refundReady = depositRefund <= 0 || (!!settleRefundMethodId && !!effectiveRefundAccountId.trim());
+                  const finalPayReady = remainingAfterDeposit <= 0 || (!!settleFinalMethodId && (isSettleFinalCard || !!settleFinalAccountId));
+                  const settleReady = !!settleDepositAccountId && !!settleReceivableAccountId && refundReady && finalPayReady;
 
                   return (
-                    <div className="mb-4 space-y-3">
+                    <div className="space-y-4">
+                      {/* Settlement summary */}
                       <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 text-sm">
-                        <div className="flex justify-between px-4 py-2">
-                          <span className="text-gray-600">Order total</span>
-                          <span>{formatCurrency(total)}</span>
+                        <div className="flex justify-between px-4 py-2.5">
+                          <span className="text-gray-600">Order Total</span>
+                          <span className="font-medium">{formatCurrency(total)}</span>
                         </div>
-                        <div className="flex justify-between px-4 py-2">
-                          <span className="text-gray-600">Payments received</span>
-                          <span className="text-green-600">−{formatCurrency(totalPaid)}</span>
+                        <div className="flex justify-between px-4 py-2.5">
+                          <span className="text-gray-600">Total Paid</span>
+                          <span className="font-medium text-green-600">{formatCurrency(totalPaid)}</span>
                         </div>
-                        <div className="flex justify-between px-4 py-2 font-medium">
-                          <span>Balance before deposit</span>
-                          <span className={balance > 0 ? 'text-red-600' : 'text-green-600'}>{formatCurrency(balance)}</span>
+                        <div className="flex justify-between px-4 py-2.5">
+                          <span className="font-medium text-gray-900">Balance Due</span>
+                          <span className={`font-bold ${balance > 0 ? 'text-red-600' : 'text-green-600'}`}>{formatCurrency(Math.max(0, balance))}</span>
                         </div>
                         {securityDeposit > 0 && (
-                          <>
-                            <div className="flex justify-between px-4 py-2">
-                              <span className="text-gray-600">Security deposit held</span>
-                              <span>{formatCurrency(securityDeposit)}</span>
-                            </div>
-                            {depositApplied > 0 && (
-                              <div className="flex justify-between px-4 py-2">
-                                <span className="text-gray-600">Deposit applied to balance</span>
-                                <span className="text-green-600">−{formatCurrency(depositApplied)}</span>
-                              </div>
-                            )}
-                            {depositRefund > 0 && (
-                              <div className="flex justify-between px-4 py-2 text-amber-700">
-                                <span className="font-medium">Deposit refund to customer</span>
-                                <span className="font-medium">{formatCurrency(depositRefund)}</span>
-                              </div>
-                            )}
-                          </>
+                          <div className="flex justify-between px-4 py-2.5">
+                            <span className="text-gray-600">Security Deposit Held</span>
+                            <span className="font-medium">{formatCurrency(securityDeposit)}</span>
+                          </div>
                         )}
-                        <div className={`flex justify-between px-4 py-2 font-semibold ${remainingAfterDeposit > 0 ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-                          <span>{remainingAfterDeposit > 0 ? 'Final payment required' : 'Fully settled'}</span>
-                          <span>{remainingAfterDeposit > 0 ? formatCurrency(remainingAfterDeposit) : formatCurrency(0)}</span>
-                        </div>
+                        {depositRefund > 0 && (
+                          <div className="flex justify-between px-4 py-2.5 bg-amber-50">
+                            <span className="font-medium text-amber-800">Deposit to Refund</span>
+                            <span className="font-bold text-amber-800">{formatCurrency(depositRefund)}</span>
+                          </div>
+                        )}
                       </div>
 
-                      {/* Final payment fields (only if balance remains) */}
+                      {/* Fully settled — green message */}
+                      {isFullyPaid && (
+                        <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-center">
+                          <p className="text-sm font-medium text-green-800">Order is fully settled — no payment or refund needed</p>
+                        </div>
+                      )}
+
+                      {/* Final payment section */}
                       {remainingAfterDeposit > 0 && (
-                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-3">
-                          <div className="text-sm font-medium text-amber-900">
-                            Final payment of {formatCurrency(remainingAfterDeposit)} required to settle
-                          </div>
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
+                          <p className="text-sm font-medium text-amber-900">
+                            Final payment of {formatCurrency(remainingAfterDeposit)} required
+                          </p>
                           <div className="flex flex-wrap items-end gap-3">
                             <label className="block">
                               <span className="text-xs font-medium text-amber-800">Payment Method</span>
                               <select value={settleFinalMethodId} onChange={(e) => { setSettleFinalMethodId(e.target.value); setSettleFinalAccountId(''); setSettleFinalRef(''); }} required
-                                className="mt-1 block w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm">
-                                <option value="">Select</option>
-                                {activePaymentMethods.map((pm) => (
-                                  <option key={pm.id} value={pm.id}>{pm.name}</option>
-                                ))}
+                                className="mt-1 block w-44 rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                                <option value="">Select method</option>
+                                {activePaymentMethods.map((pm) => <option key={pm.id} value={pm.id}>{pm.name}</option>)}
                               </select>
                             </label>
                             {settleFinalMethodId && !isSettleFinalCard && !routedSettleFinalAcct && (
                               <label className="block">
-                                <span className="text-xs font-medium text-amber-800">Payment Account</span>
+                                <span className="text-xs font-medium text-amber-800">Account</span>
                                 <select value={settleFinalAccountId} onChange={(e) => setSettleFinalAccountId(e.target.value)} required
                                   className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm">
                                   <option value="">Select</option>
-                                  {paymentAccountOptions.map((a) => (
-                                    <option key={String(a.id)} value={String(a.id)}>{String(a.name)}</option>
-                                  ))}
+                                  {paymentAccountOptions.map((a) => <option key={String(a.id)} value={String(a.id)}>{String(a.name)}</option>)}
                                 </select>
-                                <p className="mt-1 text-xs text-amber-600">No routing rule configured — select manually</p>
+                                <p className="mt-1 text-xs text-amber-600">No routing rule — select manually</p>
                               </label>
                             )}
                             {settleFinalMethodId && isSettleFinalCard && (
@@ -700,63 +766,48 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                               </label>
                             )}
                           </div>
-                          {isSettleFinalCard && (
-                            <p className="text-xs text-amber-600">Card payment — routes to Card Settlements for reconciliation</p>
+                        </div>
+                      )}
+
+                      {/* Deposit refund section */}
+                      {depositRefund > 0 && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
+                          <p className="text-sm font-medium text-amber-900">
+                            Refund {formatCurrency(depositRefund)} deposit to customer
+                          </p>
+                          <label className="block">
+                            <span className="text-xs font-medium text-amber-800">How are you returning the deposit?</span>
+                            <select
+                              value={settleRefundMethodId}
+                              onChange={(e) => { setSettleRefundMethodId(e.target.value); setSettleRefundAccountId(''); }}
+                              required
+                              className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            >
+                              <option value="">Select method</option>
+                              {refundPaymentMethods.map((pm) => <option key={pm.id} value={pm.id}>{pm.name}</option>)}
+                            </select>
+                          </label>
+                          {settleRefundMethodId && !routedRefundResolved && (
+                            <label className="block">
+                              <span className="text-xs font-medium text-amber-800">Refund Account</span>
+                              <select value={settleRefundAccountId} onChange={(e) => setSettleRefundAccountId(e.target.value)} required
+                                className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                                <option value="">Select</option>
+                                {refundAccountOptions.map((a) => <option key={String(a.id)} value={String(a.id)}>{String(a.name)}</option>)}
+                              </select>
+                              <p className="mt-1 text-xs text-amber-600">No routing rule — select manually</p>
+                            </label>
                           )}
                         </div>
                       )}
 
-                      {/* Account selectors */}
-                      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                        <label className="block">
-                          <span className="text-xs font-medium text-gray-600">Settlement date</span>
-                          <input type="date" value={settlementDate} onChange={(e) => setSettlementDate(e.target.value)} required
-                            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                        </label>
-                        {!routedDepositLiability && (
-                        <label className="block">
-                          <span className="text-xs font-medium text-gray-600">Deposit liability</span>
-                          <select value={settleDepositAccountId} onChange={(e) => setSettleDepositAccountId(e.target.value)} required
-                            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                            <option value="">Select</option>
-                            {depositLiabilityOptions.map((a) => (
-                              <option key={String(a.id)} value={String(a.id)}>{String(a.name)}</option>
-                            ))}
-                          </select>
-                        </label>
-                        )}
-                        {!routedReceivable && (
-                        <label className="block">
-                          <span className="text-xs font-medium text-gray-600">Receivable account</span>
-                          <select value={settleReceivableAccountId} onChange={(e) => setSettleReceivableAccountId(e.target.value)} required
-                            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                            <option value="">Select</option>
-                            {receivableOptions.map((a) => (
-                              <option key={String(a.id)} value={String(a.id)}>{String(a.name)}</option>
-                            ))}
-                          </select>
-                        </label>
-                        )}
-                        {!routedRefundAcct && (
-                        <label className="block">
-                          <span className="text-xs font-medium text-gray-600">Refund account</span>
-                          <select value={settleRefundAccountId} onChange={(e) => setSettleRefundAccountId(e.target.value)} required
-                            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                            <option value="">Select</option>
-                            {refundAccountOptions.map((a) => (
-                              <option key={String(a.id)} value={String(a.id)}>{String(a.name)}</option>
-                            ))}
-                          </select>
-                        </label>
-                        )}
-                      </div>
-
+                      {/* Settle button */}
                       <form onSubmit={handleSettle}>
                         <button type="submit"
-                          disabled={settleOrder.isPending || !settleDepositAccountId || !settleReceivableAccountId || !settleRefundAccountId || (remainingAfterDeposit > 0 && (!settleFinalMethodId || (!isSettleFinalCard && !settleFinalAccountId)))}
+                          disabled={settleOrder.isPending || !settleReady}
                           className="w-full rounded-lg bg-green-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
                         >
-                          {settleOrder.isPending ? 'Settling...' : isFullyPaid ? 'Settle Order' : `Settle Order — Collect ${formatCurrency(remainingAfterDeposit)}`}
+                          {settleOrder.isPending ? 'Settling...' : remainingAfterDeposit > 0 ? `Settle Order — Collect ${formatCurrency(remainingAfterDeposit)}` : 'Settle Order'}
                         </button>
                       </form>
                       {settleOrder.error && <p className="text-sm text-red-600">{(settleOrder.error as Error).message}</p>}
@@ -1073,31 +1124,27 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                     <span className="text-xs font-medium text-blue-800">Payment Method</span>
                     <select value={addonPaymentMethodId} onChange={(e) => { setAddonPaymentMethodId(e.target.value); setAddonAccountId(''); setAddonSettlementRef(''); }} required
                       className="mt-1 block w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm">
-                      <option value="">Select</option>
-                      {activePaymentMethods.map((pm) => (
-                        <option key={pm.id} value={pm.id}>{pm.name}</option>
-                      ))}
+                      <option value="">Select method</option>
+                      {activePaymentMethods.map((pm) => <option key={pm.id} value={pm.id}>{pm.name}</option>)}
                     </select>
                   </label>
-                  {addonPaymentMethodId && !isAddonCardPayment && !routedAddonAcct && (
-                    <label className="block">
-                      <span className="text-xs font-medium text-blue-800">Payment Account</span>
-                      <select value={addonAccountId} onChange={(e) => setAddonAccountId(e.target.value)} required
-                        className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm">
-                        <option value="">Select</option>
-                        {paymentAccountOptions.map((a) => (
-                          <option key={String(a.id)} value={String(a.id)}>{String(a.name)}</option>
-                        ))}
-                      </select>
-                      <p className="mt-1 text-xs text-amber-600">No routing rule configured — select manually</p>
-                    </label>
-                  )}
                   {addonPaymentMethodId && isAddonCardPayment && (
                     <label className="block">
                       <span className="text-xs font-medium text-blue-800">Card Reference #</span>
                       <input type="text" value={addonSettlementRef} onChange={(e) => setAddonSettlementRef(e.target.value)}
                         placeholder="Terminal receipt #"
                         className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                    </label>
+                  )}
+                  {addonPaymentMethodId && !isAddonCardPayment && !routedAddonAcct && (
+                    <label className="block">
+                      <span className="text-xs font-medium text-blue-800">Account</span>
+                      <select value={addonAccountId} onChange={(e) => setAddonAccountId(e.target.value)} required
+                        className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                        <option value="">Select</option>
+                        {paymentAccountOptions.map((a) => <option key={String(a.id)} value={String(a.id)}>{String(a.name)}</option>)}
+                      </select>
+                      <p className="mt-1 text-xs text-amber-600">No routing rule — select manually</p>
                     </label>
                   )}
                 </div>
@@ -1120,9 +1167,6 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                   Cancel
                 </button>
               </div>
-              {isAddonCardPayment && (
-                <p className="text-xs text-amber-600">Card payment — routes to Card Settlements for reconciliation</p>
-              )}
               {modifyAddonsMut.error && <p className="text-sm text-red-600">{(modifyAddonsMut.error as Error).message}</p>}
             </div>
           )}

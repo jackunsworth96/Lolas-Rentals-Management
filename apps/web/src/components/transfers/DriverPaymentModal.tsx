@@ -17,7 +17,7 @@ export function DriverPaymentModal({ open, onClose, transfer, storeId }: Props) 
 
   const accList = accounts as Array<{ id: string; name: string; accountType?: string; storeId?: string | null }>;
   const storeAccounts = useMemo(
-    () => accList.filter((a) => !a.storeId || a.storeId === storeId),
+    () => accList.filter((a) => !a.storeId || a.storeId === storeId || a.storeId === 'company'),
     [accList, storeId],
   );
   const expenseAccounts = storeAccounts.filter((a) => (a.accountType ?? '').toLowerCase() === 'expense');

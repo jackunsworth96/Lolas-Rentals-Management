@@ -9,6 +9,12 @@ interface EmployeeRow {
   full_name: string;
   role: string | null;
   status: string;
+  birthday: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_number: string | null;
+  start_date: string | null;
+  probation_end_date: string | null;
+  rate_type: string | null;
   basic_rate: number;
   overtime_rate: number;
   nine_pm_bonus_rate: number;
@@ -24,6 +30,10 @@ interface EmployeeRow {
   holiday_used: number;
   sick_allowance: number;
   sick_used: number;
+  sss_no: string | null;
+  philhealth_no: string | null;
+  pagibig_no: string | null;
+  tin: string | null;
   sss_deduction_amt: number;
   philhealth_deduction_amt: number;
   pagibig_deduction_amt: number;
@@ -38,6 +48,12 @@ function rowToEmployee(row: EmployeeRow): Employee {
     fullName: row.full_name,
     role: row.role,
     status: row.status,
+    birthday: row.birthday ?? null,
+    emergencyContactName: row.emergency_contact_name ?? null,
+    emergencyContactNumber: row.emergency_contact_number ?? null,
+    startDate: row.start_date ?? null,
+    probationEndDate: row.probation_end_date ?? null,
+    rateType: row.rate_type ?? null,
     basicRate: row.basic_rate ?? 0,
     overtimeRate: row.overtime_rate ?? 0,
     ninePmBonusRate: row.nine_pm_bonus_rate ?? 0,
@@ -49,6 +65,10 @@ function rowToEmployee(row: EmployeeRow): Employee {
     availableBalance: row.available_balance ?? 0,
     thirteenthMonthAccrued: row.thirteenth_month_accrued ?? 0,
     currentCashAdvance: row.current_cash_advance ?? 0,
+    sssNo: row.sss_no ?? null,
+    philhealthNo: row.philhealth_no ?? null,
+    pagibigNo: row.pagibig_no ?? null,
+    tin: row.tin ?? null,
     holidayAllowance: row.holiday_allowance ?? 0,
     holidayUsed: row.holiday_used ?? 0,
     sickAllowance: row.sick_allowance ?? 0,
@@ -68,6 +88,12 @@ function employeeToRow(employee: Employee): Record<string, unknown> {
     full_name: employee.fullName,
     role: employee.role,
     status: employee.status,
+    birthday: employee.birthday,
+    emergency_contact_name: employee.emergencyContactName,
+    emergency_contact_number: employee.emergencyContactNumber,
+    start_date: employee.startDate,
+    probation_end_date: employee.probationEndDate,
+    rate_type: employee.rateType,
     basic_rate: employee.basicRate,
     overtime_rate: employee.overtimeRate,
     nine_pm_bonus_rate: employee.ninePmBonusRate,
@@ -79,6 +105,10 @@ function employeeToRow(employee: Employee): Record<string, unknown> {
     available_balance: employee.availableBalance,
     thirteenth_month_accrued: employee.thirteenthMonthAccrued,
     current_cash_advance: employee.currentCashAdvance,
+    sss_no: employee.sssNo,
+    philhealth_no: employee.philhealthNo,
+    pagibig_no: employee.pagibigNo,
+    tin: employee.tin,
     holiday_allowance: employee.holidayAllowance,
     holiday_used: employee.holidayUsed,
     sick_allowance: employee.sickAllowance,
@@ -91,6 +121,17 @@ function employeeToRow(employee: Employee): Record<string, unknown> {
 }
 
 export class SupabaseEmployeeRepository implements EmployeeRepository {
+  async findAll(): Promise<Employee[]> {
+    const sb = getSupabaseClient();
+    const { data, error } = await sb
+      .from('employees')
+      .select('*')
+      .order('full_name');
+
+    if (error) throw new Error(`findAll failed: ${error.message}`);
+    return (data as EmployeeRow[]).map(rowToEmployee);
+  }
+
   async findById(id: string): Promise<Employee | null> {
     const sb = getSupabaseClient();
     const { data, error } = await sb

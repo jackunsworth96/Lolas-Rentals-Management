@@ -147,7 +147,7 @@ export interface ConfigRepository {
   getChartOfAccounts(): Promise<Account[]>;
   getPawCardEstablishments(): Promise<Establishment[]>;
   getMaintenanceWorkTypes(): Promise<WorkType[]>;
-  getLeaveConfig(): Promise<LeaveConfig | null>;
+  getLeaveConfigByStore(storeId: string): Promise<LeaveConfig | null>;
   getRoles(): Promise<Role[]>;
   getRolePermissions(roleId: string): Promise<string[]>;
   getUsers(): Promise<AppUser[]>;

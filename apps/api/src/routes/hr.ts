@@ -8,8 +8,12 @@ import {
   ApproveTimesheetsRequestSchema,
   SubmitLeaveRequestSchema,
   TimesheetQuerySchema,
+  CreateEmployeeRequestSchema,
+  UpdateEmployeeRequestSchema,
 } from '@lolas/shared';
+import { Employee as EmployeeEntity } from '@lolas/domain';
 import { z } from 'zod';
+import { randomUUID } from 'node:crypto';
 
 const router = Router();
 router.use(authenticate);
@@ -74,8 +78,171 @@ router.get('/employees', requirePermission(Permission.ViewTimesheets), async (re
     const storeId = req.query.storeId as string;
     const employees = storeId
       ? await req.app.locals.deps.employeeRepo.findByStore(storeId)
-      : await req.app.locals.deps.employeeRepo.findActive(req.user!.storeIds[0]);
+      : await req.app.locals.deps.employeeRepo.findAll();
     res.json({ success: true, data: employees });
+  } catch (err) { next(err); }
+});
+
+router.get('/employees/:id', requirePermission(Permission.ViewTimesheets), async (req, res, next) => {
+  try {
+    const employee = await req.app.locals.deps.employeeRepo.findById(req.params.id);
+    if (!employee) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Employee not found' } });
+      return;
+    }
+    res.json({ success: true, data: employee });
+  } catch (err) { next(err); }
+});
+
+router.post('/employees', requirePermission(Permission.ManageEmployees), validateBody(CreateEmployeeRequestSchema), async (req, res, next) => {
+  try {
+    const body = req.body;
+    const now = new Date();
+    const employee = EmployeeEntity.create({
+      id: randomUUID(),
+      storeId: body.storeId,
+      fullName: body.fullName,
+      role: body.role ?? null,
+      status: body.status ?? 'Active',
+      birthday: body.birthday ?? null,
+      emergencyContactName: body.emergencyContactName ?? null,
+      emergencyContactNumber: body.emergencyContactNumber ?? null,
+      startDate: body.startDate ?? null,
+      probationEndDate: body.probationEndDate ?? null,
+      rateType: body.rateType ?? null,
+      basicRate: body.basicRate ?? 0,
+      overtimeRate: body.overtimeRate ?? 0,
+      ninePmBonusRate: body.ninePmBonusRate ?? 0,
+      commissionRate: body.commissionRate ?? 0,
+      paidAs: body.paidAs ?? null,
+      monthlyBikeAllowance: body.monthlyBikeAllowance ?? 0,
+      bikeAllowanceUsed: 0,
+      bikeAllowanceAccrued: 0,
+      availableBalance: 0,
+      thirteenthMonthAccrued: 0,
+      currentCashAdvance: 0,
+      holidayAllowance: body.holidayAllowance ?? 0,
+      holidayUsed: 0,
+      sickAllowance: body.sickAllowance ?? 0,
+      sickUsed: 0,
+      sssNo: body.sssNo ?? null,
+      philhealthNo: body.philhealthNo ?? null,
+      pagibigNo: body.pagibigNo ?? null,
+      tin: body.tin ?? null,
+      sssDeductionAmt: body.sssDeductionAmt ?? 0,
+      philhealthDeductionAmt: body.philhealthDeductionAmt ?? 0,
+      pagibigDeductionAmt: body.pagibigDeductionAmt ?? 0,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await req.app.locals.deps.employeeRepo.save(employee);
+    res.status(201).json({ success: true, data: employee });
+  } catch (err) { next(err); }
+});
+
+router.put('/employees/:id', requirePermission(Permission.ManageEmployees), validateBody(UpdateEmployeeRequestSchema), async (req, res, next) => {
+  try {
+    const existing = await req.app.locals.deps.employeeRepo.findById(req.params.id);
+    if (!existing) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Employee not found' } });
+      return;
+    }
+
+    const body = req.body;
+    const updated = EmployeeEntity.create({
+      id: existing.id,
+      storeId: body.storeId ?? existing.storeId,
+      fullName: body.fullName ?? existing.fullName,
+      role: body.role !== undefined ? body.role : existing.role,
+      status: body.status ?? existing.status,
+      birthday: body.birthday !== undefined ? body.birthday : existing.birthday,
+      emergencyContactName: body.emergencyContactName !== undefined ? body.emergencyContactName : existing.emergencyContactName,
+      emergencyContactNumber: body.emergencyContactNumber !== undefined ? body.emergencyContactNumber : existing.emergencyContactNumber,
+      startDate: body.startDate !== undefined ? body.startDate : existing.startDate,
+      probationEndDate: body.probationEndDate !== undefined ? body.probationEndDate : existing.probationEndDate,
+      rateType: body.rateType !== undefined ? body.rateType : existing.rateType,
+      basicRate: body.basicRate ?? existing.basicRate,
+      overtimeRate: body.overtimeRate ?? existing.overtimeRate,
+      ninePmBonusRate: body.ninePmBonusRate ?? existing.ninePmBonusRate,
+      commissionRate: body.commissionRate ?? existing.commissionRate,
+      paidAs: body.paidAs !== undefined ? body.paidAs : existing.paidAs,
+      monthlyBikeAllowance: body.monthlyBikeAllowance ?? existing.monthlyBikeAllowance,
+      bikeAllowanceUsed: existing.bikeAllowanceUsed,
+      bikeAllowanceAccrued: existing.bikeAllowanceAccrued,
+      availableBalance: existing.availableBalance,
+      thirteenthMonthAccrued: existing.thirteenthMonthAccrued,
+      currentCashAdvance: existing.currentCashAdvance,
+      holidayAllowance: body.holidayAllowance ?? existing.holidayAllowance,
+      holidayUsed: existing.holidayUsed,
+      sickAllowance: body.sickAllowance ?? existing.sickAllowance,
+      sickUsed: existing.sickUsed,
+      sssNo: body.sssNo !== undefined ? body.sssNo : existing.sssNo,
+      philhealthNo: body.philhealthNo !== undefined ? body.philhealthNo : existing.philhealthNo,
+      pagibigNo: body.pagibigNo !== undefined ? body.pagibigNo : existing.pagibigNo,
+      tin: body.tin !== undefined ? body.tin : existing.tin,
+      sssDeductionAmt: body.sssDeductionAmt ?? existing.sssDeductionAmt,
+      philhealthDeductionAmt: body.philhealthDeductionAmt ?? existing.philhealthDeductionAmt,
+      pagibigDeductionAmt: body.pagibigDeductionAmt ?? existing.pagibigDeductionAmt,
+      createdAt: existing.createdAt,
+      updatedAt: new Date(),
+    });
+
+    await req.app.locals.deps.employeeRepo.save(updated);
+    res.json({ success: true, data: updated });
+  } catch (err) { next(err); }
+});
+
+router.delete('/employees/:id', requirePermission(Permission.ManageEmployees), async (req, res, next) => {
+  try {
+    const existing = await req.app.locals.deps.employeeRepo.findById(req.params.id);
+    if (!existing) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Employee not found' } });
+      return;
+    }
+
+    const deactivated = EmployeeEntity.create({
+      ...({
+        id: existing.id,
+        storeId: existing.storeId,
+        fullName: existing.fullName,
+        role: existing.role,
+        status: 'Inactive',
+        birthday: existing.birthday,
+        emergencyContactName: existing.emergencyContactName,
+        emergencyContactNumber: existing.emergencyContactNumber,
+        startDate: existing.startDate,
+        probationEndDate: existing.probationEndDate,
+        rateType: existing.rateType,
+        basicRate: existing.basicRate,
+        overtimeRate: existing.overtimeRate,
+        ninePmBonusRate: existing.ninePmBonusRate,
+        commissionRate: existing.commissionRate,
+        paidAs: existing.paidAs,
+        monthlyBikeAllowance: existing.monthlyBikeAllowance,
+        bikeAllowanceUsed: existing.bikeAllowanceUsed,
+        bikeAllowanceAccrued: existing.bikeAllowanceAccrued,
+        availableBalance: existing.availableBalance,
+        thirteenthMonthAccrued: existing.thirteenthMonthAccrued,
+        currentCashAdvance: existing.currentCashAdvance,
+        holidayAllowance: existing.holidayAllowance,
+        holidayUsed: existing.holidayUsed,
+        sickAllowance: existing.sickAllowance,
+        sickUsed: existing.sickUsed,
+        sssNo: existing.sssNo,
+        philhealthNo: existing.philhealthNo,
+        pagibigNo: existing.pagibigNo,
+        tin: existing.tin,
+        sssDeductionAmt: existing.sssDeductionAmt,
+        philhealthDeductionAmt: existing.philhealthDeductionAmt,
+        pagibigDeductionAmt: existing.pagibigDeductionAmt,
+        createdAt: existing.createdAt,
+        updatedAt: new Date(),
+      }),
+    });
+
+    await req.app.locals.deps.employeeRepo.save(deactivated);
+    res.json({ success: true, data: { id: existing.id, status: 'Inactive' } });
   } catch (err) { next(err); }
 });
 

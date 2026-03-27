@@ -32,7 +32,7 @@ router.get('/', perm, validateQuery(MiscSaleQuerySchema), async (req, res, next)
       sb
         .from('chart_of_accounts')
         .select('id, name, account_type')
-        .eq('store_id', storeId),
+        .in('store_id', [storeId, 'company']),
       sb
         .from('employees')
         .select('id, full_name')

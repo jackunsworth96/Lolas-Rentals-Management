@@ -100,10 +100,11 @@ export async function getMaintenanceWorkTypes(
   return deps.config.getMaintenanceWorkTypes();
 }
 
-export async function getLeaveConfig(
+export async function getLeaveConfigByStore(
+  storeId: string,
   deps: ConfigDeps,
-): Promise<LeaveConfig> {
-  return deps.config.getLeaveConfig();
+): Promise<LeaveConfig | null> {
+  return deps.config.getLeaveConfigByStore(storeId);
 }
 
 export async function getRoles(deps: ConfigDeps): Promise<Role[]> {

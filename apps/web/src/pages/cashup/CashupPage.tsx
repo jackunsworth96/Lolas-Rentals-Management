@@ -159,12 +159,11 @@ export default function CashupPage() {
   const [transferFromAcct, setTransferFromAcct] = useState('');
   const [transferToAcct, setTransferToAcct] = useState('');
 
-  // Filter accounts for this store
   const storeAccounts = useMemo(
     () =>
       allAccounts.filter((a) => {
         const sid = a.storeId ?? a.store_id ?? null;
-        return sid === storeId;
+        return sid === storeId || sid === 'company';
       }),
     [allAccounts, storeId],
   );
@@ -186,7 +185,7 @@ export default function CashupPage() {
       allAccounts.filter((a) => {
         const sid = a.storeId ?? a.store_id ?? null;
         const typ = a.accountType ?? a.account_type;
-        return sid && otherStoreIds.includes(sid) && typ === 'Asset';
+        return sid && (otherStoreIds.includes(sid) || sid === 'company') && typ === 'Asset';
       }),
     [allAccounts, otherStoreIds],
   );

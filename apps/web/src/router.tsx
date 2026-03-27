@@ -16,6 +16,7 @@ const AccountsPage = lazy(() => import('./pages/accounting/AccountsPage.js'));
 const AccountDetailPage = lazy(() => import('./pages/accounting/AccountDetailPage.js'));
 const CardSettlementsPage = lazy(() => import('./pages/card-settlements/CardSettlementsPage.js'));
 const CashupPage = lazy(() => import('./pages/cashup/CashupPage.js'));
+const EmployeesPage = lazy(() => import('./pages/hr/EmployeesPage.js'));
 const TimesheetsPage = lazy(() => import('./pages/hr/TimesheetsPage.js'));
 const PayrollPage = lazy(() => import('./pages/hr/PayrollPage.js'));
 const ExpensesPage = lazy(() => import('./pages/expenses/ExpensesPage.js'));
@@ -24,10 +25,7 @@ const MiscSalesPage = lazy(() => import('./pages/misc-sales/MiscSalesPage.js'));
 const MerchandisePage = lazy(() => import('./pages/merchandise/MerchandisePage.js'));
 const LostOpportunityPage = lazy(() => import('./pages/lost-opportunity/LostOpportunityPage.js'));
 const SettingsPage = lazy(() => import('./pages/settings/SettingsPage.js'));
-const PawCardHero = lazy(() => import('./pages/paw-card/PawCardHero.js'));
-const PawCardLogForm = lazy(() => import('./pages/paw-card/PawCardLogForm.js'));
-const PawCardConfirm = lazy(() => import('./pages/paw-card/PawCardConfirm.js'));
-const PawCardSubmissions = lazy(() => import('./pages/paw-card/PawCardSubmissions.js'));
+const PawCardPage = lazy(() => import('./pages/paw-card/PawCardPage.js'));
 const UIErrorsPage = lazy(() => import('./pages/ui-errors/UIErrorsPage.js'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -48,10 +46,7 @@ export function AppRouter() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/book-transfer/:token" element={<PublicBookingPage />} />
-        <Route path="/paw-card" element={<PawCardHero />} />
-        <Route path="/paw-card/log" element={<PawCardLogForm />} />
-        <Route path="/paw-card/confirm" element={<PawCardConfirm />} />
-        <Route path="/paw-card/submissions" element={<PawCardSubmissions />} />
+        <Route path="/paw-card" element={<PawCardPage />} />
 
         <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
           <Route index element={<Navigate to="/orders/inbox" replace />} />
@@ -66,6 +61,7 @@ export function AppRouter() {
           <Route path="accounts/:id" element={<AccountDetailPage />} />
           <Route path="card-settlements" element={<CardSettlementsPage />} />
           <Route path="cashup" element={<CashupPage />} />
+          <Route path="hr/employees" element={<EmployeesPage />} />
           <Route path="hr/timesheets" element={<TimesheetsPage />} />
           <Route path="hr/payroll" element={<PayrollPage />} />
           <Route path="expenses" element={<ExpensesPage />} />

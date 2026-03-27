@@ -306,14 +306,15 @@ export class SupabaseAccountingRepository implements AccountingPort {
   ): Promise<BalanceSummary[]> {
     const sb = getSupabaseClient();
 
+    const acctStoreIds = [...new Set([...storeIds, 'company'])];
     let acctQuery = sb
       .from('chart_of_accounts')
       .select('id, name, account_type, store_id')
       .eq('is_active', true);
-    if (storeIds.length === 1) {
-      acctQuery = acctQuery.eq('store_id', storeIds[0]);
-    } else if (storeIds.length > 1) {
-      acctQuery = acctQuery.in('store_id', storeIds);
+    if (acctStoreIds.length === 1) {
+      acctQuery = acctQuery.eq('store_id', acctStoreIds[0]);
+    } else {
+      acctQuery = acctQuery.in('store_id', acctStoreIds);
     }
     const { data: allAccounts, error: acctErr } = await acctQuery;
     if (acctErr) throw new Error(`calculateBalancesByDateRange accounts: ${acctErr.message}`);
@@ -343,13 +344,14 @@ export class SupabaseAccountingRepository implements AccountingPort {
     const byType = new Map<string, AccountBalance[]>();
     for (const t of typeOrder) byType.set(t, []);
 
-    for (const acct of (allAccounts ?? []) as { id: string; name: string; account_type: string }[]) {
+    for (const acct of (allAccounts ?? []) as { id: string; name: string; account_type: string; store_id: string | null }[]) {
       const totals = totalsMap.get(acct.id) ?? { debit: 0, credit: 0 };
       const list = byType.get(acct.account_type) ?? [];
       list.push({
         accountId: acct.id,
         accountName: acct.name,
         accountType: acct.account_type,
+        storeId: acct.store_id,
         debitTotal: totals.debit,
         creditTotal: totals.credit,
         balance: totals.debit - totals.credit,

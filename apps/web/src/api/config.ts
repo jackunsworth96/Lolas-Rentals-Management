@@ -1,10 +1,20 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './client.js';
+import { COMPANY_STORE_ID } from '@lolas/shared';
 
 // ── Query hooks ──
 
-export function useStores() {
-  return useQuery({ queryKey: ['config', 'stores'], queryFn: () => api.get('/config/stores') });
+export function useStores(opts?: { includeCompany?: boolean }) {
+  const includeCompany = !!opts?.includeCompany;
+  return useQuery({
+    queryKey: ['config', 'stores', includeCompany ? 'with-company' : 'operational'],
+    queryFn: async () => {
+      const rows = await api.get<Array<{ id: string; name: string }>>('/config/stores');
+      if (!Array.isArray(rows)) return [];
+      if (includeCompany) return rows;
+      return rows.filter((s) => s.id !== COMPANY_STORE_ID);
+    },
+  });
 }
 export function useAddons(storeId: string) {
   return useQuery({ queryKey: ['config', 'addons', storeId], queryFn: () => api.get(`/config/addons?storeId=${storeId}`), enabled: !!storeId });
@@ -42,8 +52,12 @@ export function usePawCardEstablishments() {
 export function useDayTypes() {
   return useQuery({ queryKey: ['config', 'day-types'], queryFn: () => api.get('/config/day-types') });
 }
-export function useLeaveConfig() {
-  return useQuery({ queryKey: ['config', 'leave-config'], queryFn: () => api.get('/config/leave-config') });
+export function useLeaveConfig(storeId: string | undefined) {
+  return useQuery({
+    queryKey: ['config', 'leave-config', storeId],
+    queryFn: () => api.get(`/config/leave-config?storeId=${encodeURIComponent(storeId!)}`),
+    enabled: !!storeId,
+  });
 }
 export function useRoles() {
   return useQuery({ queryKey: ['config', 'roles'], queryFn: () => api.get('/config/roles') });

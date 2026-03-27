@@ -23,6 +23,7 @@ export interface PawCardEntry {
   visitDate: string;
   submittedBy: string;
   storeId: string;
+  receiptUrl: string | null;
   createdAt: Date;
 }
 
@@ -33,6 +34,8 @@ export interface PawCardSubmission {
   visitDate: string;
   submittedBy: string;
   storeId: string;
+  receiptUrl?: string;
+  numberOfPeople?: number;
 }
 
 export interface CompanyImpact {
@@ -43,6 +46,18 @@ export interface CompanyImpact {
   uniqueCustomers: number;
 }
 
+export interface LeaderboardEntry {
+  rank: number;
+  name: string;
+  totalSaved: number;
+  isCurrentUser: boolean;
+}
+
+export interface LeaderboardResult {
+  top: LeaderboardEntry[];
+  myPosition: LeaderboardEntry | null;
+}
+
 export interface PawCardPort {
   lookupCustomer(query: string): Promise<PawCardCustomer[]>;
   getEstablishments(storeId: string): Promise<Array<{ id: string; name: string; category: string }>>;
@@ -50,4 +65,6 @@ export interface PawCardPort {
   submitEntry(entry: PawCardSubmission): Promise<PawCardEntry>;
   getCompanyImpact(establishmentId: string): Promise<CompanyImpact>;
   getMySubmissions(employeeId: string): Promise<PawCardEntry[]>;
+  getLeaderboard(email?: string): Promise<LeaderboardResult>;
+  registerCustomer(data: { name: string; email: string; mobile?: string; orderId?: string }): Promise<PawCardCustomer>;
 }

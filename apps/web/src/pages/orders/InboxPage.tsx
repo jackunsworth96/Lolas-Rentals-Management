@@ -7,11 +7,7 @@ import { BookingModal } from '../../components/orders/BookingModal.js';
 import { formatDateTime } from '../../utils/date.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { extractPickupDate } from '../../utils/raw-order-payload.js';
-
-const STORE_SOURCE_MAP: Record<string, string> = {
-  'store-lolas': 'lolas',
-  'store-bass': 'bass',
-};
+import { resolveSourceFromStore } from '@lolas/shared';
 
 type DateFilter = 'all' | 'today' | 'tomorrow';
 
@@ -69,7 +65,7 @@ export default function InboxPage() {
   const [storeFilter, setStoreFilter] = useState<string>('');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
 
-  const apiStore = storeFilter ? (STORE_SOURCE_MAP[storeFilter] ?? storeFilter) : undefined;
+  const apiStore = storeFilter ? resolveSourceFromStore(storeFilter) : undefined;
   const { data: rawOrders, isLoading, error } = useOrdersRaw(apiStore);
   const { data: stores } = useStores() as { data: Array<{ id: string; name: string }> | undefined };
 

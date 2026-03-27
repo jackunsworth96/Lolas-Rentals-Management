@@ -36,7 +36,7 @@ router.get(
           sb
             .from('chart_of_accounts')
             .select('id, name, account_type')
-            .eq('store_id', storeId),
+            .in('store_id', [storeId, 'company']),
           sb
             .from('fleet')
             .select('id, plate_number, vehicle_name')

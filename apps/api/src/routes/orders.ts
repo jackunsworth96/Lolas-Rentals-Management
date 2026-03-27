@@ -34,7 +34,11 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
       .eq('store_id', storeId)
       .order('order_date', { ascending: false });
 
-    if (status) query = query.eq('status', status);
+    if (status) {
+      const statuses = status.split(',').map((s) => s.trim()).filter(Boolean);
+      if (statuses.length === 1) query = query.eq('status', statuses[0]);
+      else if (statuses.length > 1) query = query.in('status', statuses);
+    }
 
     const { data: orders, error } = await query;
     if (error) throw new Error(`enriched orders query failed: ${error.message}`);
@@ -243,7 +247,16 @@ router.post('/:id/activate', requirePermission(Permission.EditOrders), validateB
     pickupFee: z.number(), dropoffFee: z.number(), rentalRate: z.number(),
     helmetNumbers: z.string().nullable(), discount: z.number(), opsNotes: z.string().nullable(),
   })).min(1),
-  addons: z.array(z.any()).optional(),
+  addons: z.array(z.object({
+    id: z.string().optional(),
+    orderId: z.string().optional(),
+    addonName: z.string().min(1),
+    addonPrice: z.number().min(0),
+    addonType: z.enum(['per_day', 'one_time']),
+    quantity: z.number().min(1),
+    totalAmount: z.number().min(0),
+    mutualExclusivityGroup: z.string().nullable().optional(),
+  })).optional(),
   receivableAccountId: z.string(), incomeAccountId: z.string(),
 })), async (req, res, next) => {
   try {

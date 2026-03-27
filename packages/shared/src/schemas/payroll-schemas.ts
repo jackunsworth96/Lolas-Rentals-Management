@@ -19,6 +19,7 @@ export const RunPayrollRequestSchema = z.object({
   workingDaysInMonth: z.number().int().positive(),
   payrollExpenseAccountId: z.string(),
   cashAccountId: z.string(),
+  storeExpenseAccounts: z.record(z.string(), z.string()).optional(),
 });
 
 export type RunPayrollRequest = z.infer<typeof RunPayrollRequestSchema>;

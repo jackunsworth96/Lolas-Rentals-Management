@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
-import { Permission } from '@lolas/shared';
+import { Permission, resolveStoreFromSource } from '@lolas/shared';
 import { supabase } from '../adapters/supabase/client.js';
 import { processRawOrder, type ProcessRawOrderDeps } from '../use-cases/orders/process-raw-order.js';
 
@@ -206,7 +206,7 @@ router.post('/:id/collect-payment', requirePermission(Permission.EditOrders), as
       return;
     }
 
-    const storeId = rawOrder.source === 'bass' ? 'store-bass' : 'store-lolas';
+    const storeId = resolveStoreFromSource(rawOrder.source);
     const { paymentRepo, cardSettlementRepo } = req.app.locals.deps;
     const txDate = new Date().toISOString().slice(0, 10);
     const paymentId = crypto.randomUUID();

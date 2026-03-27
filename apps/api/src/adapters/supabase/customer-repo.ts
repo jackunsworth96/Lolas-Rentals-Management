@@ -30,7 +30,7 @@ function customerToRow(customer: Customer): Record<string, unknown> {
     id: customer.id,
     store_id: customer.storeId,
     name: customer.name,
-    email: customer.email,
+    email: customer.email?.toLowerCase() ?? null,
     mobile: customer.mobile,
     total_spent: customer.totalSpent,
     notes: customer.notes,

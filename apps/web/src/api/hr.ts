@@ -24,15 +24,34 @@ export interface EmployeeRow {
   fullName: string;
   role: string | null;
   status: string;
+  birthday: string | null;
+  emergencyContactName: string | null;
+  emergencyContactNumber: string | null;
+  startDate: string | null;
+  probationEndDate: string | null;
+  rateType: string | null;
   basicRate: number;
   overtimeRate: number;
   ninePmBonusRate: number;
   commissionRate: number;
   paidAs: string | null;
+  monthlyBikeAllowance: number;
+  bikeAllowanceUsed: number;
+  bikeAllowanceAccrued: number;
+  availableBalance: number;
+  thirteenthMonthAccrued: number;
+  currentCashAdvance: number;
   holidayAllowance: number;
   holidayUsed: number;
   sickAllowance: number;
   sickUsed: number;
+  sssNo: string | null;
+  philhealthNo: string | null;
+  pagibigNo: string | null;
+  tin: string | null;
+  sssDeductionAmt: number;
+  philhealthDeductionAmt: number;
+  pagibigDeductionAmt: number;
 }
 
 export function useTimesheets(storeId: string, periodStart: string, periodEnd: string) {
@@ -81,5 +100,54 @@ export function useEmployees(storeId: string) {
     queryKey: ['employees', storeId],
     queryFn: () => api.get(`/hr/employees?storeId=${storeId}`),
     enabled: !!storeId,
+  });
+}
+
+export function useAllEmployees() {
+  return useQuery<EmployeeRow[]>({
+    queryKey: ['employees', 'all'],
+    queryFn: () => api.get('/hr/employees'),
+  });
+}
+
+export function useEmployee(id: string) {
+  return useQuery<EmployeeRow>({
+    queryKey: ['employees', 'detail', id],
+    queryFn: () => api.get(`/hr/employees/${id}`),
+    enabled: !!id,
+  });
+}
+
+export function useCreateEmployee() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Record<string, unknown>) => api.post<EmployeeRow>('/hr/employees', body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['employees'] });
+      qc.invalidateQueries({ queryKey: ['config', 'employees'] });
+    },
+  });
+}
+
+export function useSaveEmployee() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: Record<string, unknown> & { id: string }) =>
+      api.put<EmployeeRow>(`/hr/employees/${id}`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['employees'] });
+      qc.invalidateQueries({ queryKey: ['config', 'employees'] });
+    },
+  });
+}
+
+export function useDeactivateEmployee() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/hr/employees/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['employees'] });
+      qc.invalidateQueries({ queryKey: ['config', 'employees'] });
+    },
   });
 }

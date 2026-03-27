@@ -62,8 +62,39 @@ async function selectWhereActive<T>(table: string, column: string, value: string
   return (data ?? []).map((r) => snakeToCamel(r) as T);
 }
 
+function rowFromCamel(obj: object): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(camelToSnake(obj) as Record<string, unknown>).filter(([, v]) => v !== undefined),
+  );
+}
+
+/** Natural / text primary keys — caller always supplies id (e.g. payment_methods, chart_of_accounts). */
 async function upsertRow(table: string, obj: object): Promise<void> {
-  const { error } = await sb().from(table).upsert(camelToSnake(obj));
+  const row = rowFromCamel(obj);
+  const { error } = await sb().from(table).upsert(row);
+  if (error) throw new Error(`Failed to save to ${table}: ${error.message}`);
+}
+
+/**
+ * Serial integer PK: without a positive numeric id, INSERT a new row.
+ * Blind `.upsert()` on these tables can otherwise target the same PK row and overwrite the only list item.
+ */
+async function upsertRowSerialPk(table: string, obj: object): Promise<void> {
+  const row = rowFromCamel(obj);
+  const id = row.id;
+  const insertNew =
+    id === undefined ||
+    id === null ||
+    id === '' ||
+    id === 0 ||
+    (typeof id === 'number' && (!Number.isFinite(id) || id < 1));
+  if (insertNew) {
+    delete row.id;
+    const { error } = await sb().from(table).insert(row);
+    if (error) throw new Error(`Failed to insert into ${table}: ${error.message}`);
+    return;
+  }
+  const { error } = await sb().from(table).upsert(row);
   if (error) throw new Error(`Failed to save to ${table}: ${error.message}`);
 }
 
@@ -137,11 +168,23 @@ export function createConfigRepo(): ConfigRepository {
     getTransferRoutes: (storeId) => selectWhereActive<TransferRoute>('transfer_routes', 'store_id', storeId),
     getDayTypes: () => selectAll<DayType>('day_types'),
     getChartOfAccounts: () => selectAllActive<Account>('chart_of_accounts'),
-    getPawCardEstablishments: () => selectAllActive<Establishment>('paw_card_establishments'),
+    async getPawCardEstablishments() {
+      const { data, error } = await sb()
+        .from('paw_card_establishments')
+        .select('*')
+        .eq('is_active', true)
+        .order('name', { ascending: true });
+      if (error) throw new Error(`Failed to fetch paw_card_establishments: ${error.message}`);
+      return (data ?? []).map((r) => snakeToCamel(r) as Establishment);
+    },
     getMaintenanceWorkTypes: () => selectAllActive<WorkType>('maintenance_work_types'),
 
-    async getLeaveConfig() {
-      const { data, error } = await sb().from('leave_config').select('*').limit(1).maybeSingle();
+    async getLeaveConfigByStore(storeId: string) {
+      const { data, error } = await sb()
+        .from('leave_config')
+        .select('*')
+        .eq('store_id', storeId)
+        .maybeSingle();
       if (error) throw new Error(`Failed to fetch leave config: ${error.message}`);
       return data ? (snakeToCamel(data) as LeaveConfig) : null;
     },
@@ -169,23 +212,23 @@ export function createConfigRepo(): ConfigRepository {
     // ── Writes ──
     saveStore: (store) => upsertRow('stores', store),
     deleteStore: (id) => softDelete('stores', id),
-    saveAddon: (addon) => upsertRow('addons', addon),
+    saveAddon: (addon) => upsertRowSerialPk('addons', addon),
     deleteAddon: (id) => softDelete('addons', id),
-    saveLocation: (location) => upsertRow('locations', location),
+    saveLocation: (location) => upsertRowSerialPk('locations', location),
     deleteLocation: (id) => softDelete('locations', id),
     savePaymentMethod: (pm) => upsertRow('payment_methods', pm),
     deletePaymentMethod: (id) => softDelete('payment_methods', id),
     saveVehicleModel: (model) => upsertRow('vehicle_models', model),
     deleteVehicleModel: (id) => softDelete('vehicle_models', id),
-    saveModelPricing: (pricing) => upsertRow('vehicle_model_pricing', pricing),
+    saveModelPricing: (pricing) => upsertRowSerialPk('vehicle_model_pricing', pricing),
     deleteModelPricing: (id) => hardDelete('vehicle_model_pricing', id),
     saveFleetStatus: (status) => upsertRow('fleet_statuses', status),
     deleteFleetStatus: (id) => hardDelete('fleet_statuses', id),
-    saveExpenseCategory: (cat) => upsertRow('expense_categories', cat),
+    saveExpenseCategory: (cat) => upsertRowSerialPk('expense_categories', cat),
     deleteExpenseCategory: (id) => softDelete('expense_categories', id),
-    saveTaskCategory: (cat) => upsertRow('task_categories', cat),
+    saveTaskCategory: (cat) => upsertRowSerialPk('task_categories', cat),
     deleteTaskCategory: (id) => softDelete('task_categories', id),
-    saveTransferRoute: (route) => upsertRow('transfer_routes', route),
+    saveTransferRoute: (route) => upsertRowSerialPk('transfer_routes', route),
     deleteTransferRoute: (id) => softDelete('transfer_routes', id),
     saveDayType: (dt) => upsertRow('day_types', dt),
     deleteDayType: (id) => hardDelete('day_types', id),
@@ -194,11 +237,16 @@ export function createConfigRepo(): ConfigRepository {
       return upsertRow('chart_of_accounts', normalized);
     },
     deleteAccount: (id) => softDelete('chart_of_accounts', id),
-    saveEstablishment: (est) => upsertRow('paw_card_establishments', est),
+    saveEstablishment: (est) => upsertRowSerialPk('paw_card_establishments', est),
     deleteEstablishment: (id) => softDelete('paw_card_establishments', id),
-    saveWorkType: (wt) => upsertRow('maintenance_work_types', wt),
+    saveWorkType: (wt) => upsertRowSerialPk('maintenance_work_types', wt),
     deleteWorkType: (id) => softDelete('maintenance_work_types', id),
-    saveLeaveConfig: (config) => upsertRow('leave_config', config),
+    async saveLeaveConfig(config) {
+      const row = rowFromCamel(config);
+      delete row.id;
+      const { error } = await sb().from('leave_config').upsert(row, { onConflict: 'store_id' });
+      if (error) throw new Error(`Failed to save leave config: ${error.message}`);
+    },
     saveRole: (role) => upsertRow('roles', role),
     deleteRole: (id) => hardDelete('roles', id),
 

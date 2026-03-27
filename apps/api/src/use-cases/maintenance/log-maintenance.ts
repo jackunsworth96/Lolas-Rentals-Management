@@ -85,7 +85,7 @@ export async function logMaintenance(
     record.startWork();
   }
 
-  if (vehicle.canAutoUpdateStatus()) {
+  if (input.startImmediately && vehicle.canAutoUpdateStatus()) {
     await deps.fleet.updateStatus(vehicle.id, 'Under Maintenance');
   }
 

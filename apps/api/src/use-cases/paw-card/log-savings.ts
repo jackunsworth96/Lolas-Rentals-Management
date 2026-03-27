@@ -12,6 +12,8 @@ export interface LogSavingsInput {
   visitDate: string;
   submittedBy: string;
   storeId: string;
+  receiptUrl?: string;
+  numberOfPeople?: number;
 }
 
 export async function logSavings(
@@ -29,6 +31,8 @@ export async function logSavings(
     visitDate: input.visitDate,
     submittedBy: input.submittedBy,
     storeId: input.storeId,
+    receiptUrl: input.receiptUrl,
+    numberOfPeople: input.numberOfPeople,
   };
 
   return deps.pawCard.submitEntry(submission);

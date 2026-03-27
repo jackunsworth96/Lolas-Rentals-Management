@@ -12,6 +12,7 @@ import { useAddons, useLocations, useChartOfAccounts, useStorePricing, useFleetS
 import { useProcessRawOrder, useCollectPayment, type RawOrder, type ProcessRawOrderPayload } from '../../api/orders-raw.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { usePaymentRouting } from '../../hooks/use-payment-routing.js';
+import { resolveStoreFromSource } from '@lolas/shared';
 
 // ── AM/PM datetime helpers ──
 
@@ -134,7 +135,7 @@ function extractPayloadAddonNames(payload: Record<string, unknown>): Set<string>
 }
 
 function storeIdFromSource(source: string): string {
-  return source === 'bass' ? 'store-bass' : 'store-lolas';
+  return resolveStoreFromSource(source);
 }
 
 function calcDays(pickup: string, dropoff: string): number {
@@ -299,7 +300,10 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
   const availableVehicles = vehicleFilterFallback ? (fleet ?? []) : filteredByStatus;
 
   const storeAccounts = useMemo(
-    () => (accounts ?? []).filter((a) => String(a.storeId ?? a.store_id ?? '') === storeId),
+    () => (accounts ?? []).filter((a) => {
+      const sid = String(a.storeId ?? a.store_id ?? '');
+      return sid === storeId || sid === 'company';
+    }),
     [accounts, storeId],
   );
 

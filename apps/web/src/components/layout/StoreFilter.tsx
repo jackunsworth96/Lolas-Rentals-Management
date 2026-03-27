@@ -2,9 +2,11 @@ import { useStores } from '../../api/config.js';
 import { useUIStore } from '../../stores/ui-store.js';
 
 export function StoreFilter() {
-  const { data: stores } = useStores() as { data: Array<{ id: string; name: string }> | undefined };
+  const { data: stores } = useStores();
   const selectedStoreId = useUIStore((s) => s.selectedStoreId);
   const setSelectedStore = useUIStore((s) => s.setSelectedStore);
+
+  const list = Array.isArray(stores) ? stores : [];
 
   return (
     <select
@@ -13,7 +15,7 @@ export function StoreFilter() {
       className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
     >
       <option value="">All Stores</option>
-      {(stores ?? []).map((store) => (
+      {list.map((store) => (
         <option key={store.id} value={store.id}>{store.name}</option>
       ))}
     </select>

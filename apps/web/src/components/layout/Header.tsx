@@ -16,7 +16,7 @@ export function Header() {
         <StoreFilter />
       </div>
       <div className="flex items-center gap-4">
-        <span className="text-sm text-gray-600">{user?.employeeId}</span>
+        <span className="text-sm text-gray-600">{user?.username ?? user?.employeeId}</span>
         <button onClick={logout} className="rounded-lg px-3 py-1.5 text-sm text-red-600 hover:bg-red-50">
           Log out
         </button>

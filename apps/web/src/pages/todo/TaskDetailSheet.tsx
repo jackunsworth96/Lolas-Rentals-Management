@@ -8,10 +8,12 @@ import {
   useVerifyTask,
   useRejectTask,
   useEscalateTask,
+  useUpdateTask,
 } from '../../api/todo.js';
 import { useState } from 'react';
 import { CommentThread } from './CommentThread.js';
 import { EventTimeline } from './EventTimeline.js';
+import { useConfigEmployees, useTaskCategories } from '../../api/config.js';
 
 const STATUS_COLOR = {
   Created: 'gray',
@@ -46,11 +48,17 @@ export function TaskDetailSheet({ taskId, employeeId, isManager, onClose }: Task
   const reject = useRejectTask();
   const escalate = useEscalateTask();
 
+  const updateTask = useUpdateTask();
+  const { data: employees = [] } = useConfigEmployees();
+  const { data: categories = [] } = useTaskCategories();
+
   const [activeTab, setActiveTab] = useState<SheetTab>('details');
   const [rejectReason, setRejectReason] = useState('');
   const [escalateReason, setEscalateReason] = useState('');
   const [showReject, setShowReject] = useState(false);
   const [showEscalate, setShowEscalate] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState<Record<string, string>>({});
 
   if (isLoading) {
     return (
@@ -134,7 +142,7 @@ export function TaskDetailSheet({ taskId, employeeId, isManager, onClose }: Task
 
         {/* Tab content — scrolls inside fixed-height shell */}
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        {activeTab === 'details' && (
+        {activeTab === 'details' && !editing && (
           <div className="space-y-5">
             {task.description && (
               <p className="text-sm text-gray-600 whitespace-pre-wrap">{task.description}</p>
@@ -156,6 +164,27 @@ export function TaskDetailSheet({ taskId, employeeId, isManager, onClose }: Task
                 />
               )}
             </dl>
+
+            {(isManager || isAssignee) && task.status !== 'Closed' && (
+              <Button
+                size="sm"
+                variant="secondary"
+                className="w-full"
+                onClick={() => {
+                  setEditForm({
+                    title: task.title,
+                    description: task.description ?? '',
+                    assignedTo: task.assignedTo,
+                    categoryId: task.categoryId != null ? String(task.categoryId) : '',
+                    priority: task.priority,
+                    dueDate: task.dueDate ?? '',
+                  });
+                  setEditing(true);
+                }}
+              >
+                Edit Task
+              </Button>
+            )}
 
             {/* Staff actions */}
             {isAssignee && task.status !== 'Closed' && (
@@ -248,6 +277,101 @@ export function TaskDetailSheet({ taskId, employeeId, isManager, onClose }: Task
                 confirmLabel="Confirm Rejection"
               />
             )}
+          </div>
+        )}
+
+        {activeTab === 'details' && editing && (
+          <div className="space-y-4">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Title</label>
+              <input
+                value={editForm.title ?? ''}
+                onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Description</label>
+              <textarea
+                rows={3}
+                value={editForm.description ?? ''}
+                onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Assigned To</label>
+                <select
+                  value={editForm.assignedTo ?? ''}
+                  onChange={(e) => setEditForm((f) => ({ ...f, assignedTo: e.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value="">—</option>
+                  {(employees as Array<{ id: string; fullName?: string; full_name?: string }>).map((emp) => (
+                    <option key={emp.id} value={emp.id}>{emp.fullName ?? emp.full_name ?? emp.id}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Category</label>
+                <select
+                  value={editForm.categoryId ?? ''}
+                  onChange={(e) => setEditForm((f) => ({ ...f, categoryId: e.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value="">—</option>
+                  {(categories as Array<{ id: number; name: string }>).map((cat) => (
+                    <option key={cat.id} value={String(cat.id)}>{cat.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Priority</label>
+                <select
+                  value={editForm.priority ?? 'Medium'}
+                  onChange={(e) => setEditForm((f) => ({ ...f, priority: e.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  {['Low', 'Medium', 'High', 'Urgent'].map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Due Date</label>
+                <input
+                  type="date"
+                  value={editForm.dueDate ?? ''}
+                  onChange={(e) => setEditForm((f) => ({ ...f, dueDate: e.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+            {updateTask.isError && (
+              <p className="text-sm text-red-600">Failed to update task.</p>
+            )}
+            <div className="flex gap-2 pt-1">
+              <Button
+                className="flex-1"
+                loading={updateTask.isPending}
+                onClick={() => {
+                  updateTask.mutate(
+                    {
+                      id: task.id,
+                      title: editForm.title?.trim() || undefined,
+                      description: editForm.description?.trim() || null,
+                      assignedTo: editForm.assignedTo || undefined,
+                      categoryId: editForm.categoryId ? Number(editForm.categoryId) : null,
+                      priority: editForm.priority || undefined,
+                      dueDate: editForm.dueDate || null,
+                    },
+                    { onSuccess: () => setEditing(false) },
+                  );
+                }}
+              >
+                Save Changes
+              </Button>
+              <Button variant="secondary" onClick={() => setEditing(false)}>Cancel</Button>
+            </div>
           </div>
         )}
 

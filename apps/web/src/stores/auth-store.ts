@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 interface AuthUser {
   userId: string;
+  username: string;
   employeeId: string;
   roleId: string;
   storeIds: string[];

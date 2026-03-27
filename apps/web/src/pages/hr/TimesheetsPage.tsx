@@ -58,6 +58,7 @@ const STATUS_COLORS: Record<string, 'yellow' | 'blue' | 'green'> = {
 interface EntryRow {
   employeeId: string;
   employeeName: string;
+  workedAtStoreId: string;
   timeIn: string;
   timeOut: string;
   ninePmReturns: number;
@@ -82,6 +83,10 @@ export default function TimesheetsPage() {
   const activeEmployees = useMemo(
     () => (employees ?? []).filter((e: EmployeeRow) => e.status === 'Active'),
     [employees],
+  );
+  const storeLookup = useMemo(
+    () => new Map(storeList.map((s) => [s.id, s.name])),
+    [storeList],
   );
 
   const submitMutation = useSubmitTimesheet();
@@ -112,6 +117,7 @@ export default function TimesheetsPage() {
     setEntryRows((prev) => [...prev, {
       employeeId: empId,
       employeeName: emp.fullName,
+      workedAtStoreId: emp.storeId ?? storeId,
       timeIn: '',
       timeOut: '',
       ninePmReturns: 0,
@@ -154,7 +160,7 @@ export default function TimesheetsPage() {
         ninePmReturnsCount: r.ninePmReturns,
         dailyNotes: r.notes || null,
         silInflation: 0,
-        storeId,
+        storeId: r.workedAtStoreId,
       };
     });
 
@@ -358,6 +364,7 @@ export default function TimesheetsPage() {
                   <thead>
                     <tr className="border-b border-gray-200 bg-gray-50 text-left">
                       <th className="px-3 py-2 font-medium text-gray-600">Employee</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">Worked At</th>
                       {!isLeaveDayType && (
                         <>
                           <th className="px-3 py-2 font-medium text-gray-600">Time In</th>
@@ -381,6 +388,17 @@ export default function TimesheetsPage() {
                           <td className="px-3 py-2">
                             <span className="font-medium text-gray-900">{row.employeeName}</span>
                             {isDuplicate && <span className="ml-2 text-xs text-red-600 font-medium">Duplicate entry exists</span>}
+                          </td>
+                          <td className="px-3 py-2">
+                            <select
+                              value={row.workedAtStoreId}
+                              onChange={(e) => updateRow(idx, { workedAtStoreId: e.target.value })}
+                              className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                            >
+                              {storeList.map((s) => (
+                                <option key={s.id} value={s.id}>{s.name}</option>
+                              ))}
+                            </select>
                           </td>
                           {!isLeaveDayType && (
                             <>
@@ -491,6 +509,7 @@ export default function TimesheetsPage() {
                     </th>
                     <th className="px-3 py-2 font-medium text-gray-600">Date</th>
                     <th className="px-3 py-2 font-medium text-gray-600">Employee</th>
+                    <th className="px-3 py-2 font-medium text-gray-600">Worked At</th>
                     <th className="px-3 py-2 font-medium text-gray-600">Day Type</th>
                     <th className="px-3 py-2 font-medium text-gray-600">Time In</th>
                     <th className="px-3 py-2 font-medium text-gray-600">Time Out</th>
@@ -516,6 +535,7 @@ export default function TimesheetsPage() {
                       </td>
                       <td className="px-3 py-2 tabular-nums text-gray-700">{t.date}</td>
                       <td className="px-3 py-2 font-medium text-gray-900">{t.name || t.employeeId}</td>
+                      <td className="px-3 py-2 text-gray-600">{storeLookup.get(t.storeId) ?? t.storeId}</td>
                       <td className="px-3 py-2 text-gray-700">{t.dayType}</td>
                       <td className="px-3 py-2 tabular-nums text-gray-600">{formatTime24(t.timeIn) || '—'}</td>
                       <td className="px-3 py-2 tabular-nums text-gray-600">{formatTime24(t.timeOut) || '—'}</td>

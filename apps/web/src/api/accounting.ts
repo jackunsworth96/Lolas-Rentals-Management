@@ -13,6 +13,7 @@ export interface AccountBalanceItem {
   accountId: string;
   accountName: string;
   accountType: string;
+  storeId?: string | null;
   debitTotal: number;
   creditTotal: number;
   balance: number;

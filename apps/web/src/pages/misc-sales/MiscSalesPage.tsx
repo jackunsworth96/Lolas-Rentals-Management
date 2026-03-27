@@ -101,7 +101,7 @@ export default function MiscSalesPage() {
   const storeAccounts = useMemo(
     () => allAccounts.filter((a) => {
       const sid = a.storeId ?? a.store_id ?? null;
-      return sid === storeId;
+      return sid === storeId || sid === 'company';
     }),
     [allAccounts, storeId],
   );

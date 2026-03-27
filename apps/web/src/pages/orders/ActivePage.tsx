@@ -37,7 +37,7 @@ function formatReturnDate(dt: string | null): string {
 
 export default function ActivePage() {
   const storeId = useUIStore((s) => s.selectedStoreId) ?? '';
-  const { data: orders, isLoading } = useEnrichedOrders(storeId, 'active') as {
+  const { data: orders, isLoading } = useEnrichedOrders(storeId, 'active,confirmed') as {
     data: EnrichedOrder[] | undefined;
     isLoading: boolean;
   };
@@ -117,7 +117,11 @@ export default function ActivePage() {
     {
       key: 'status',
       header: 'Status',
-      render: () => <Badge color="blue">Active</Badge>,
+      render: (r: EnrichedOrder) => (
+        <Badge color={r.status === 'confirmed' ? 'green' : 'blue'}>
+          {r.status === 'confirmed' ? 'Confirmed' : 'Active'}
+        </Badge>
+      ),
     },
   ];
 

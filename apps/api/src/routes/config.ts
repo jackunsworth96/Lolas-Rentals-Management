@@ -284,8 +284,12 @@ router.delete('/maintenance-work-types/:id', edit, async (req, res, next) => {
 });
 
 // ── Leave Config ──
-router.get('/leave-config', async (req, res, next) => {
-  try { res.json({ success: true, data: await req.app.locals.deps.configRepo.getLeaveConfig() }); } catch (e) { next(e); }
+router.get('/leave-config', validateQuery(z.object({ storeId: z.string().min(1) })), async (req, res, next) => {
+  try {
+    const { storeId } = req.query as { storeId: string };
+    const data = await req.app.locals.deps.configRepo.getLeaveConfigByStore(storeId);
+    res.json({ success: true, data });
+  } catch (e) { next(e); }
 });
 router.put('/leave-config', edit, validateBody(z.object({
   storeId: z.string(), resetMonth: z.number().int().min(1).max(12), resetDay: z.number().int().min(1).max(31),

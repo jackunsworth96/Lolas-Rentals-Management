@@ -23,6 +23,7 @@ export interface RunPayrollInput {
   payrollExpenseAccountId: string;
   cashAccountId: string;
   approvedBy: string;
+  storeExpenseAccounts?: Record<string, string>;
 }
 
 export interface RunPayrollDeps extends CalculatePayslipDeps {
@@ -34,6 +35,7 @@ export interface RunPayrollResult {
   totalNetPay: number;
   totalGrossPay: number;
   employeeCount: number;
+  storeAllocations: Record<string, number>;
 }
 
 export async function runPayroll(
@@ -46,6 +48,7 @@ export async function runPayroll(
   }
 
   const payslips: PayslipBreakdown[] = [];
+  const storeAllocations: Record<string, number> = {};
 
   for (const employee of employees) {
     const payslipInput: CalculatePayslipInput = {
@@ -59,20 +62,56 @@ export async function runPayroll(
 
     const payslip = await calculatePayslip(payslipInput, deps);
     payslips.push(payslip);
+
+    if (payslip.netPay <= 0) continue;
+
+    const empTimesheets = await deps.timesheets.findByEmployee(
+      employee.id,
+      new Date(input.periodStart),
+      new Date(input.periodEnd),
+    );
+
+    if (empTimesheets.length === 0) {
+      storeAllocations[input.storeId] = (storeAllocations[input.storeId] ?? 0) + payslip.netPay;
+      continue;
+    }
+
+    const daysByStore: Record<string, number> = {};
+    for (const ts of empTimesheets) {
+      daysByStore[ts.storeId] = (daysByStore[ts.storeId] ?? 0) + 1;
+    }
+
+    const totalDays = empTimesheets.length;
+    let allocated = 0;
+    const storeIds = Object.keys(daysByStore);
+
+    for (let i = 0; i < storeIds.length; i++) {
+      const sid = storeIds[i];
+      const isLast = i === storeIds.length - 1;
+      const share = isLast
+        ? Math.round((payslip.netPay - allocated) * 100) / 100
+        : Math.round((payslip.netPay * daysByStore[sid] / totalDays) * 100) / 100;
+      storeAllocations[sid] = (storeAllocations[sid] ?? 0) + share;
+      allocated += share;
+    }
   }
 
   const totalNetPay = payslips.reduce((sum, p) => sum + p.netPay, 0);
   const totalGrossPay = payslips.reduce((sum, p) => sum + p.grossPay, 0);
 
-  if (totalNetPay > 0) {
-    const amount = Money.php(totalNetPay);
+  const expenseMap = input.storeExpenseAccounts ?? {};
+  const desc = `Payroll ${input.periodStart} to ${input.periodEnd}`;
+
+  for (const [sid, amount] of Object.entries(storeAllocations)) {
+    if (amount <= 0) continue;
+    const expenseAcct = expenseMap[sid] ?? input.payrollExpenseAccountId;
     const legs: JournalLeg[] = [
       {
         entryId: randomUUID(),
-        accountId: input.payrollExpenseAccountId,
-        debit: amount,
+        accountId: expenseAcct,
+        debit: Money.php(amount),
         credit: Money.zero(),
-        description: `Payroll ${input.periodStart} to ${input.periodEnd}`,
+        description: desc,
         referenceType: 'payroll',
         referenceId: null,
       },
@@ -80,14 +119,14 @@ export async function runPayroll(
         entryId: randomUUID(),
         accountId: input.cashAccountId,
         debit: Money.zero(),
-        credit: amount,
-        description: `Payroll ${input.periodStart} to ${input.periodEnd}`,
+        credit: Money.php(amount),
+        description: desc,
         referenceType: 'payroll',
         referenceId: null,
       },
     ];
 
-    await deps.accounting.createTransaction(legs, input.storeId);
+    await deps.accounting.createTransaction(legs, sid);
   }
 
   const approvedIds = payslips
@@ -95,14 +134,16 @@ export async function runPayroll(
     .map((p) => p.employeeId);
 
   if (approvedIds.length > 0) {
-    const timesheets = await deps.timesheets.findByPeriod(
-      input.storeId,
-      new Date(input.periodStart),
-      new Date(input.periodEnd),
-    );
-    const approvedTimesheetIds = timesheets
-      .filter((t) => approvedIds.includes(t.employeeId))
-      .map((t) => t.id);
+    const allTimesheets = [];
+    for (const empId of approvedIds) {
+      const empTs = await deps.timesheets.findByEmployee(
+        empId,
+        new Date(input.periodStart),
+        new Date(input.periodEnd),
+      );
+      allTimesheets.push(...empTs);
+    }
+    const approvedTimesheetIds = allTimesheets.map((t) => t.id);
 
     if (approvedTimesheetIds.length > 0) {
       await deps.timesheets.bulkUpdateStatus(approvedTimesheetIds, 'Paid');
@@ -114,5 +155,6 @@ export async function runPayroll(
     totalNetPay: Math.round(totalNetPay * 100) / 100,
     totalGrossPay: Math.round(totalGrossPay * 100) / 100,
     employeeCount: payslips.length,
+    storeAllocations,
   };
 }

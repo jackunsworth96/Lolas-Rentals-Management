@@ -9,7 +9,7 @@ const ALL_PERMISSIONS = [
   'can_view_expenses', 'can_view_timesheets', 'can_submit_timesheets',
   'can_view_todo', 'can_manage_todo', 'can_view_lostopportunity', 'can_view_cashup',
   'can_edit_orders', 'can_edit_fleet', 'can_view_uierrors', 'can_view_miscsales',
-  'can_approve_timesheets', 'can_edit_accounts', 'can_view_payroll',
+  'can_approve_timesheets', 'can_manage_employees', 'can_edit_accounts', 'can_view_payroll',
   'can_view_accounts', 'can_view_fleet_book_value', 'can_override_cashup',
   'can_edit_settings',
 ];
