@@ -8,7 +8,8 @@ import { z } from 'zod';
 const router = Router();
 router.use(authenticate);
 
-function vehicleToDto(v: { id: string; name: string; storeId: string; modelId: string | null; plateNumber: string | null; gpsId: string | null; status: string; currentMileage: number; orcrExpiryDate: string | null; surfRack: boolean; [k: string]: unknown }) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function vehicleToDto(v: any) {
   return {
     id: v.id,
     name: v.name,
@@ -50,7 +51,8 @@ router.get('/', requirePermission(Permission.ViewFleet), validateQuery(z.object(
     const vehicles = !storeId || storeId === 'all'
       ? await req.app.locals.deps.fleetRepo.findAll()
       : await req.app.locals.deps.fleetRepo.findByStore(storeId);
-    const dtos = vehicles.map((v) => vehicleToDto(v));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const dtos = vehicles.map((v: any) => vehicleToDto(v));
     res.json({ success: true, data: dtos });
   } catch (err) { next(err); }
 });

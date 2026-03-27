@@ -1,5 +1,5 @@
 import type { SheetSyncPort, SyncResult } from '@lolas/domain';
-import { readSheet, writeSheet } from './sheets-client.js';
+import { writeSheet } from './sheets-client.js';
 import { supabase } from '../supabase/client.js';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_SPREADSHEET_ID ?? '';
@@ -20,40 +20,60 @@ const TABLE_SHEET_MAP: Record<string, string> = {
 };
 
 export class GoogleSheetsSyncService implements SheetSyncPort {
-  async syncTable(tableName: string, rows: Record<string, unknown>[]): Promise<SyncResult> {
-    const sheetName = TABLE_SHEET_MAP[tableName];
-    if (!sheetName) return { tableName, synced: 0, errors: [`No sheet mapping for ${tableName}`] };
+  async syncTable(table: string): Promise<SyncResult> {
+    const sheetName = TABLE_SHEET_MAP[table];
+    if (!sheetName) {
+      return {
+        table,
+        rowsSynced: 0,
+        errors: [`No sheet mapping for ${table}`],
+        syncedAt: new Date(),
+      };
+    }
 
-    if (rows.length === 0) return { tableName, synced: 0, errors: [] };
+    const { data: rows, error: fetchError } = await supabase.from(table).select('*');
+    if (fetchError) {
+      return {
+        table,
+        rowsSynced: 0,
+        errors: [fetchError.message],
+        syncedAt: new Date(),
+      };
+    }
 
-    const headers = Object.keys(rows[0]);
-    const values = [headers, ...rows.map((row) => headers.map((h) => String(row[h] ?? '')))];
+    const rowList = (rows ?? []) as Record<string, unknown>[];
+    if (rowList.length === 0) {
+      return { table, rowsSynced: 0, errors: [], syncedAt: new Date() };
+    }
+
+    const headers = Object.keys(rowList[0]);
+    const values = [headers, ...rowList.map((row) => headers.map((h) => String(row[h] ?? '')))];
 
     try {
       await writeSheet(SPREADSHEET_ID, `${sheetName}!A1`, values);
-      return { tableName, synced: rows.length, errors: [] };
+      return { table, rowsSynced: rowList.length, errors: [], syncedAt: new Date() };
     } catch (err) {
-      return { tableName, synced: 0, errors: [(err as Error).message] };
+      return {
+        table,
+        rowsSynced: 0,
+        errors: [(err as Error).message],
+        syncedAt: new Date(),
+      };
     }
   }
 
   async syncAll(): Promise<SyncResult[]> {
     const results: SyncResult[] = [];
 
-    for (const [tableName, sheetName] of Object.entries(TABLE_SHEET_MAP)) {
-      const { data: rows, error } = await supabase.from(tableName).select('*');
-      if (error) {
-        results.push({ tableName, synced: 0, errors: [error.message] });
-        continue;
-      }
-      const result = await this.syncTable(tableName, rows ?? []);
+    for (const tableName of Object.keys(TABLE_SHEET_MAP)) {
+      const result = await this.syncTable(tableName);
       results.push(result);
     }
 
     return results;
   }
 
-  async getLastSyncTime(): Promise<Date | null> {
+  async getLastSyncTime(table: string): Promise<Date | null> {
     return null;
   }
 }

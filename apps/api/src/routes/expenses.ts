@@ -136,7 +136,7 @@ router.put(
         '../use-cases/expenses/update-expense.js'
       );
       const result = await updateExpense(
-        { expenseId: req.params.id, ...req.body },
+        { expenseId: req.params.id as string, ...req.body },
         {
           expenses: req.app.locals.deps.expenseRepo,
           accounting: req.app.locals.deps.accountingPort,
@@ -159,7 +159,7 @@ router.delete(
         '../use-cases/expenses/delete-expense.js'
       );
       await deleteExpense(
-        { expenseId: req.params.id },
+        { expenseId: req.params.id as string },
         {
           expenses: req.app.locals.deps.expenseRepo,
           accounting: req.app.locals.deps.accountingPort,

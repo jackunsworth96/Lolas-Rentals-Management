@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Router } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
@@ -26,7 +26,7 @@ type Row = {
   created_at: string;
 };
 
-router.get('/', perm, validateQuery(UiErrorListQuerySchema), async (req, res, next) => {
+router.get('/', perm, validateQuery(UiErrorListQuerySchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const parsed = UiErrorListQuerySchema.safeParse(req.query);
     const status = parsed.success ? (parsed.data.status ?? 'all') : 'all';
@@ -71,7 +71,7 @@ router.get('/', perm, validateQuery(UiErrorListQuerySchema), async (req, res, ne
   }
 });
 
-router.post('/', perm, validateBody(CreateUiErrorRequestSchema), async (req, res, next) => {
+router.post('/', perm, validateBody(CreateUiErrorRequestSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const body = req.body as {
       page: string;
@@ -116,7 +116,7 @@ router.post('/', perm, validateBody(CreateUiErrorRequestSchema), async (req, res
   }
 });
 
-router.put('/:id', perm, validateBody(UpdateUiErrorRequestSchema), async (req, res, next) => {
+router.put('/:id', perm, validateBody(UpdateUiErrorRequestSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const body = req.body as { fixed: boolean };
     const sb = getSupabaseClient();

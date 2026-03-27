@@ -93,7 +93,7 @@ router.put('/:id', perm, validateBody(UpdateMiscSaleRequestSchema), async (req, 
   try {
     const { updateSale } = await import('../use-cases/misc-sales/update-sale.js');
     const result = await updateSale(
-      { saleId: req.params.id, ...req.body },
+      { saleId: req.params.id as string, ...req.body },
       {
         miscSales: req.app.locals.deps.miscSaleRepo,
         accounting: req.app.locals.deps.accountingPort,
@@ -107,7 +107,7 @@ router.delete('/:id', perm, async (req, res, next) => {
   try {
     const { deleteSale } = await import('../use-cases/misc-sales/delete-sale.js');
     await deleteSale(
-      { saleId: req.params.id },
+      { saleId: req.params.id as string },
       {
         miscSales: req.app.locals.deps.miscSaleRepo,
         accounting: req.app.locals.deps.accountingPort,

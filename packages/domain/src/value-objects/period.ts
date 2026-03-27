@@ -8,6 +8,10 @@ export class Period {
     Object.freeze(this);
   }
 
+  static from(start: Date, end: Date): Period {
+    return new Period(start, end);
+  }
+
   static firstHalf(year: number, month: number): Period {
     const start = new Date(year, month - 1, 1);
     const end = new Date(year, month - 1, 15, 23, 59, 59, 999);

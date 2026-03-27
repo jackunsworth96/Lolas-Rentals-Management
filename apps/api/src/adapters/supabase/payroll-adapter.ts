@@ -7,7 +7,13 @@ import type {
   PayslipBreakdown,
   PayPeriod,
 } from '@lolas/domain';
+import type { Period } from '@lolas/domain';
 import { getSupabaseClient } from './client.js';
+
+function dateStr(d: Date | string): string {
+  if (typeof d === 'string') return d;
+  return d.toISOString().slice(0, 10);
+}
 
 /**
  * Supabase implementation of PayrollPort.
@@ -30,17 +36,19 @@ export class SupabasePayrollAdapter implements PayrollPort {
 
   async aggregateTips(
     storeId: string,
-    period: { start: string; end: string },
+    period: Period,
   ): Promise<TipsSummary> {
     const sb = getSupabaseClient();
+    const start = dateStr(period.start);
+    const end = dateStr(period.end);
 
     const { data, error } = await sb
       .from('order_payments')
       .select('amount')
       .eq('store_id', storeId)
       .eq('payment_type', 'tip')
-      .gte('date', period.start)
-      .lte('date', period.end);
+      .gte('date', start)
+      .lte('date', end);
 
     if (error) throw new Error(`aggregateTips failed: ${error.message}`);
 
@@ -62,7 +70,7 @@ export class SupabasePayrollAdapter implements PayrollPort {
 
     return {
       storeId,
-      period: `${period.start}_${period.end}`,
+      period: `${start}_${end}`,
       totalTips,
       employeeCount,
       perEmployeeShare: employeeCount > 0 ? Math.round((totalTips / employeeCount) * 100) / 100 : 0,
@@ -71,16 +79,18 @@ export class SupabasePayrollAdapter implements PayrollPort {
 
   async aggregatePOMCommission(
     employeeId: string,
-    period: { start: string; end: string },
+    period: Period,
   ): Promise<CommissionSummary> {
     const sb = getSupabaseClient();
+    const start = dateStr(period.start);
+    const end = dateStr(period.end);
 
     const { data, error } = await sb
       .from('order_addons')
       .select('price')
       .ilike('addon_name', '%peace of mind%')
-      .gte('created_at', period.start)
-      .lte('created_at', period.end);
+      .gte('created_at', start)
+      .lte('created_at', end);
 
     if (error) throw new Error(`aggregatePOMCommission failed: ${error.message}`);
 
@@ -99,7 +109,7 @@ export class SupabasePayrollAdapter implements PayrollPort {
 
     return {
       employeeId,
-      period: `${period.start}_${period.end}`,
+      period: `${start}_${end}`,
       totalOrderValue,
       commissionRate,
       commissionAmount: Math.round(totalOrderValue * commissionRate * 100) / 100,
@@ -108,17 +118,19 @@ export class SupabasePayrollAdapter implements PayrollPort {
 
   async findBonuses(
     employeeId: string,
-    period: { start: string; end: string },
+    period: Period,
   ): Promise<BonusRecord[]> {
     const sb = getSupabaseClient();
+    const start = dateStr(period.start);
+    const end = dateStr(period.end);
 
     const { data, error } = await sb
       .from('expenses')
       .select('id, employee_id, amount, description, date')
       .eq('employee_id', employeeId)
       .ilike('category', '%bonus%')
-      .gte('date', period.start)
-      .lte('date', period.end);
+      .gte('date', start)
+      .lte('date', end);
 
     if (error) throw new Error(`findBonuses failed: ${error.message}`);
 

@@ -120,7 +120,7 @@ export function createConfigRepo(): ConfigRepository {
         .eq('is_active', true)
         .maybeSingle();
       if (error) throw new Error(`Failed to look up store by token: ${error.message}`);
-      return data ? (snakeToCamel(data) as Store) : null;
+      return data ? (snakeToCamel(data) as unknown as Store) : null;
     },
     async getAddons(storeId: string) {
       const { data, error } = await sb()
@@ -129,7 +129,7 @@ export function createConfigRepo(): ConfigRepository {
         .eq('is_active', true)
         .or(`store_id.eq.${storeId},store_id.is.null`);
       if (error) throw new Error(`Failed to fetch addons: ${error.message}`);
-      return (data ?? []).map((r) => snakeToCamel(r) as Addon);
+      return (data ?? []).map((r) => snakeToCamel(r) as unknown as Addon);
     },
     async getLocations(storeId: string) {
       const { data, error } = await sb()
@@ -138,7 +138,7 @@ export function createConfigRepo(): ConfigRepository {
         .eq('is_active', true)
         .or(`store_id.eq.${storeId},store_id.is.null`);
       if (error) throw new Error(`Failed to fetch locations: ${error.message}`);
-      return (data ?? []).map((r) => snakeToCamel(r) as Location);
+      return (data ?? []).map((r) => snakeToCamel(r) as unknown as Location);
     },
     getPaymentMethods: () => selectAllActive<PaymentMethod>('payment_methods'),
     getVehicleModels: () => selectAllActive<VehicleModel>('vehicle_models'),
@@ -150,7 +150,7 @@ export function createConfigRepo(): ConfigRepository {
         .eq('model_id', modelId)
         .eq('store_id', storeId);
       if (error) throw new Error(`Failed to fetch model pricing: ${error.message}`);
-      return (data ?? []).map((r) => snakeToCamel(r) as ModelPricing);
+      return (data ?? []).map((r) => snakeToCamel(r) as unknown as ModelPricing);
     },
 
     async getStorePricing(storeId) {
@@ -159,7 +159,7 @@ export function createConfigRepo(): ConfigRepository {
         .select('*')
         .eq('store_id', storeId);
       if (error) throw new Error(`Failed to fetch store pricing: ${error.message}`);
-      return (data ?? []).map((r) => snakeToCamel(r) as ModelPricing);
+      return (data ?? []).map((r) => snakeToCamel(r) as unknown as ModelPricing);
     },
 
     getFleetStatuses: () => selectAll<FleetStatus>('fleet_statuses'),
@@ -175,7 +175,7 @@ export function createConfigRepo(): ConfigRepository {
         .eq('is_active', true)
         .order('name', { ascending: true });
       if (error) throw new Error(`Failed to fetch paw_card_establishments: ${error.message}`);
-      return (data ?? []).map((r) => snakeToCamel(r) as Establishment);
+      return (data ?? []).map((r) => snakeToCamel(r) as unknown as Establishment);
     },
     getMaintenanceWorkTypes: () => selectAllActive<WorkType>('maintenance_work_types'),
 
@@ -186,7 +186,7 @@ export function createConfigRepo(): ConfigRepository {
         .eq('store_id', storeId)
         .maybeSingle();
       if (error) throw new Error(`Failed to fetch leave config: ${error.message}`);
-      return data ? (snakeToCamel(data) as LeaveConfig) : null;
+      return data ? (snakeToCamel(data) as unknown as LeaveConfig) : null;
     },
 
     getRoles: () => selectAll<Role>('roles'),
@@ -206,7 +206,7 @@ export function createConfigRepo(): ConfigRepository {
         .select('id, username, employee_id, role_id, is_active')
         .eq('is_active', true);
       if (error) throw new Error(`Failed to fetch users: ${error.message}`);
-      return (data ?? []).map((r) => snakeToCamel(r) as AppUser);
+      return (data ?? []).map((r) => snakeToCamel(r) as unknown as AppUser);
     },
 
     // ── Writes ──

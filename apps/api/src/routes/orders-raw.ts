@@ -36,7 +36,7 @@ router.get('/:id', requirePermission(Permission.ViewInbox), async (req, res, nex
     const { data, error } = await supabase
       .from('orders_raw')
       .select('*')
-      .eq('id', req.params.id)
+      .eq('id', req.params.id as string)
       .single();
 
     if (error) {
@@ -125,7 +125,7 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
 
     const body = parsed.data;
     const result = await processRawOrder(deps, {
-      rawOrderId: req.params.id,
+      rawOrderId: req.params.id as string,
       storeId: body.storeId,
       employeeId: req.user!.employeeId,
       customer: body.customer,
@@ -198,7 +198,7 @@ router.post('/:id/collect-payment', requirePermission(Permission.EditOrders), as
     const { data: rawOrder, error: findErr } = await supabase
       .from('orders_raw')
       .select('id, source, status')
-      .eq('id', req.params.id)
+      .eq('id', req.params.id as string)
       .single();
 
     if (findErr || !rawOrder) {
@@ -215,7 +215,7 @@ router.post('/:id/collect-payment', requirePermission(Permission.EditOrders), as
       id: paymentId,
       storeId,
       orderId: null,
-      rawOrderId: req.params.id,
+      rawOrderId: req.params.id as string,
       orderItemId: null,
       orderAddonId: null,
       paymentType: 'pre-activation',

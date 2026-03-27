@@ -28,7 +28,7 @@ router.get('/', requirePermission(Permission.ViewMaintenance), validateQuery(Mai
 
 router.get('/:id', requirePermission(Permission.ViewMaintenance), async (req, res, next) => {
   try {
-    const record = await req.app.locals.deps.maintenanceRepo.findById(req.params.id);
+    const record = await req.app.locals.deps.maintenanceRepo.findById(req.params.id as string);
     if (!record) { res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Maintenance record not found' } }); return; }
     res.json({ success: true, data: record });
   } catch (err) { next(err); }
@@ -48,7 +48,7 @@ router.post('/', requirePermission(Permission.ViewMaintenance), validateBody(Log
 router.put('/:id', requirePermission(Permission.ViewMaintenance), validateBody(SaveMaintenanceRequestSchema), async (req, res, next) => {
   try {
     const { saveMaintenance } = await import('../use-cases/maintenance/save-maintenance.js');
-    const result = await saveMaintenance(req.params.id, req.body, {
+    const result = await saveMaintenance(req.params.id as string, req.body, {
       maintenance: req.app.locals.deps.maintenanceRepo,
       fleet: req.app.locals.deps.fleetRepo,
     });
@@ -58,17 +58,17 @@ router.put('/:id', requirePermission(Permission.ViewMaintenance), validateBody(S
 
 router.delete('/:id', requirePermission(Permission.ViewMaintenance), async (req, res, next) => {
   try {
-    const record = await req.app.locals.deps.maintenanceRepo.findById(req.params.id);
+    const record = await req.app.locals.deps.maintenanceRepo.findById(req.params.id as string);
     if (!record) { res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Maintenance record not found' } }); return; }
     const { deleteMaintenanceExpenseRpc } = await import('../adapters/supabase/maintenance-expense-rpc.js');
-    await deleteMaintenanceExpenseRpc(req.params.id);
+    await deleteMaintenanceExpenseRpc(req.params.id as string);
     if (record.status === 'In Progress') {
       const vehicle = await req.app.locals.deps.fleetRepo.findById(record.assetId);
       if (vehicle && vehicle.canAutoUpdateStatus()) {
         await req.app.locals.deps.fleetRepo.updateStatus(vehicle.id, 'Available');
       }
     }
-    await req.app.locals.deps.maintenanceRepo.deleteById(req.params.id);
+    await req.app.locals.deps.maintenanceRepo.deleteById(req.params.id as string);
     res.json({ success: true });
   } catch (err) { next(err); }
 });
@@ -77,7 +77,7 @@ router.post('/:id/complete', requirePermission(Permission.ViewMaintenance), vali
   try {
     const { completeMaintenance } = await import('../use-cases/maintenance/complete-maintenance.js');
     const result = await completeMaintenance(
-      { ...req.body, maintenanceId: req.params.id },
+      { ...req.body, maintenanceId: req.params.id as string },
       {
         maintenance: req.app.locals.deps.maintenanceRepo,
         fleet: req.app.locals.deps.fleetRepo,

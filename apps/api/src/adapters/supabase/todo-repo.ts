@@ -119,7 +119,8 @@ async function enrichTaskRows(
 }
 
 function applyTaskFilters(
-  query: ReturnType<ReturnType<typeof getSupabaseClient>['from']>['select'],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  query: any,
   filters?: TodoFilters,
 ) {
   if (!filters) return query;

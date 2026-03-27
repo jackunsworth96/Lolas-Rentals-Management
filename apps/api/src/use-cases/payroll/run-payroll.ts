@@ -5,6 +5,7 @@ import {
   type JournalLeg,
   Money,
   DomainError,
+  Period,
 } from '@lolas/domain';
 import { randomUUID } from 'node:crypto';
 import {
@@ -49,6 +50,10 @@ export async function runPayroll(
 
   const payslips: PayslipBreakdown[] = [];
   const storeAllocations: Record<string, number> = {};
+  const period = Period.from(
+    new Date(input.periodStart),
+    new Date(input.periodEnd),
+  );
 
   for (const employee of employees) {
     const payslipInput: CalculatePayslipInput = {
@@ -67,8 +72,7 @@ export async function runPayroll(
 
     const empTimesheets = await deps.timesheets.findByEmployee(
       employee.id,
-      new Date(input.periodStart),
-      new Date(input.periodEnd),
+      period,
     );
 
     if (empTimesheets.length === 0) {
@@ -136,11 +140,7 @@ export async function runPayroll(
   if (approvedIds.length > 0) {
     const allTimesheets = [];
     for (const empId of approvedIds) {
-      const empTs = await deps.timesheets.findByEmployee(
-        empId,
-        new Date(input.periodStart),
-        new Date(input.periodEnd),
-      );
+      const empTs = await deps.timesheets.findByEmployee(empId, period);
       allTimesheets.push(...empTs);
     }
     const approvedTimesheetIds = allTimesheets.map((t) => t.id);

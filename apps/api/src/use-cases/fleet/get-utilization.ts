@@ -78,17 +78,28 @@ export async function getFleetUtilization(
   const vehicleMap = new Map(rentableVehicles.map((v) => [v.id, v]));
 
   // Order items in period: completed or active orders
-  let orderItems: unknown[] = [];
+  interface OrderItemRow {
+    id: string;
+    vehicle_id: string;
+    order_id: string;
+    rental_days_count: number;
+    rental_rate: number;
+    pickup_fee: number;
+    dropoff_fee: number;
+    discount: number;
+  }
+
+  let orderItems: OrderItemRow[] = [];
   if (vehicleIds.length > 0) {
     const { data, error: oiErr } = await sb
       .from('order_items')
       .select('id, vehicle_id, order_id, rental_days_count, rental_rate, pickup_fee, dropoff_fee, discount')
       .in('vehicle_id', vehicleIds);
     if (oiErr) throw new Error(`Order items query failed: ${oiErr.message}`);
-    orderItems = data ?? [];
+    orderItems = (data ?? []) as OrderItemRow[];
   }
 
-  const orderIds = [...new Set(orderItems.map((r: { order_id: string }) => r.order_id))];
+  const orderIds = [...new Set(orderItems.map((r) => r.order_id))];
   let completedOrActiveOrderIds = new Set<string>();
   if (orderIds.length > 0) {
     const { data: ordersData, error: ordErr } = await sb
@@ -101,8 +112,7 @@ export async function getFleetUtilization(
   }
 
   const rentalByVehicle: Record<string, { rentalDays: number; revenue: number }> = {};
-  for (const item of orderItems) {
-    const oi = item as { vehicle_id: string; order_id: string; rental_days_count: number; rental_rate: number; pickup_fee: number; dropoff_fee: number; discount: number };
+  for (const oi of orderItems) {
     if (!oi.vehicle_id || !completedOrActiveOrderIds.has(oi.order_id)) continue;
     const days = Number(oi.rental_days_count ?? 0);
     const revenue =

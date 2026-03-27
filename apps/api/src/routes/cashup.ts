@@ -460,7 +460,7 @@ router.post(
         {
           entryId: crypto.randomUUID(),
           accountId: bankAccountId,
-          debit: Money.of(amount),
+          debit: Money.php(amount),
           credit: Money.zero(),
           description,
           referenceType: 'cash_deposit',
@@ -470,7 +470,7 @@ router.post(
           entryId: crypto.randomUUID(),
           accountId: cashAccountId,
           debit: Money.zero(),
-          credit: Money.of(amount),
+          credit: Money.php(amount),
           description,
           referenceType: 'cash_deposit',
           referenceId: depositId,

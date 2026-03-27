@@ -5,8 +5,8 @@ import {
   type PayslipBreakdown,
   calculatePayroll,
   DomainError,
+  Period,
 } from '@lolas/domain';
-import type { Period } from '@lolas/domain';
 
 export interface CalculatePayslipInput {
   employeeId: string;
@@ -32,10 +32,14 @@ export async function calculatePayslip(
     throw new DomainError(`Employee ${input.employeeId} not found`);
   }
 
-  const timesheets = await deps.timesheets.findByEmployee(
-    input.employeeId,
+  const period = Period.from(
     new Date(input.periodStart),
     new Date(input.periodEnd),
+  );
+
+  const timesheets = await deps.timesheets.findByEmployee(
+    input.employeeId,
+    period,
   );
 
   const daysWorked = timesheets.length;
@@ -45,11 +49,6 @@ export async function calculatePayslip(
     0,
   );
   const silInflation = timesheets.reduce((sum, t) => sum + t.silInflation, 0);
-
-  const period: Period = {
-    start: input.periodStart,
-    end: input.periodEnd,
-  } as Period;
 
   const [tipsSummary, commissionSummary, bonuses, cashAdvances] =
     await Promise.all([

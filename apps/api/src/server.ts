@@ -8,7 +8,7 @@ const apiDir = resolve(__dirname, '..');
 const monorepoRoot = resolve(__dirname, '../..');
 [monorepoRoot, apiDir, process.cwd()].forEach((dir) => config({ path: resolve(dir, '.env') }));
 
-import express from 'express';
+import express, { type Request, type Response } from 'express';
 import cors from 'cors';
 import { routes } from './routes/index.js';
 import { errorHandler } from './middleware/error-handler.js';
@@ -36,9 +36,34 @@ import { createLeaveBalanceAdapter } from './adapters/supabase/leave-balance-ada
 import { createPayrollAdapter } from './adapters/supabase/payroll-adapter.js';
 import { createPawCardAdapter } from './adapters/supabase/paw-card-adapter.js';
 
+const LOCAL_DEV_ORIGINS = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:3002',
+  'http://localhost:3003',
+] as const;
+
+function buildCorsAllowedOrigins(): string[] {
+  const prod = process.env.ALLOWED_ORIGIN?.trim();
+  return prod ? [...LOCAL_DEV_ORIGINS, prod] : [...LOCAL_DEV_ORIGINS];
+}
+
+const CORS_ALLOWED_ORIGINS = buildCorsAllowedOrigins();
+
 const app = express();
 
-app.use(cors());
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || CORS_ALLOWED_ORIGINS.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(null, false);
+    },
+    credentials: true,
+  }),
+);
 app.use(express.json());
 
 app.locals.deps = {
@@ -66,13 +91,12 @@ app.locals.deps = {
   pawCardPort: createPawCardAdapter(),
 };
 
-app.get('/health', (_req, res) => {
+app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok' });
 });
 
 app.use('/api', routes);
-// Return JSON 404 for unmatched /api routes (e.g. wrong path or method)
-app.use('/api', (req, res) => {
+app.use('/api', (req: Request, res: Response) => {
   res.status(404).json({
     success: false,
     error: { code: 'NOT_FOUND', message: 'Not found', path: req.originalUrl },
