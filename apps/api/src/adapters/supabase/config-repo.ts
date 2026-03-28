@@ -143,6 +143,18 @@ export function createConfigRepo(): ConfigRepository {
     getPaymentMethods: () => selectAllActive<PaymentMethod>('payment_methods'),
     getVehicleModels: () => selectAllActive<VehicleModel>('vehicle_models'),
 
+    async getVehicleModelById(id: string): Promise<VehicleModel | null> {
+      const { data, error } = await sb()
+        .from('vehicle_models')
+        .select('*')
+        .eq('id', id)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (error) throw new Error(`Failed to fetch vehicle model: ${error.message}`);
+      if (!data) return null;
+      return snakeToCamel(data) as unknown as VehicleModel;
+    },
+
     async getModelPricing(modelId, storeId) {
       const { data, error } = await sb()
         .from('vehicle_model_pricing')

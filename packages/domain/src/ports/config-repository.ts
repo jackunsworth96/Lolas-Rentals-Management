@@ -40,6 +40,8 @@ export interface VehicleModel {
   id: string;
   name: string;
   isActive: boolean;
+  /** Refundable security deposit (PHP); not included in rental grand total */
+  securityDeposit?: number;
 }
 
 export interface ModelPricing {
@@ -137,6 +139,7 @@ export interface ConfigRepository {
   getLocations(storeId: string): Promise<Location[]>;
   getPaymentMethods(): Promise<PaymentMethod[]>;
   getVehicleModels(): Promise<VehicleModel[]>;
+  getVehicleModelById(id: string): Promise<VehicleModel | null>;
   getModelPricing(modelId: string, storeId: string): Promise<ModelPricing[]>;
   getStorePricing(storeId: string): Promise<ModelPricing[]>;
   getFleetStatuses(): Promise<FleetStatus[]>;

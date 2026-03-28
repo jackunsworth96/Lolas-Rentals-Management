@@ -9,6 +9,31 @@ import {
 
 export type LeaderboardPeriod = 'month' | 'all';
 
+/** Rental orders linked to customers whose email matches the signed-in user. */
+export async function fetchRentalOrdersForEmail(sb: SupabaseClient, email: string) {
+  const e = normalizeEmail(email);
+  if (!e) return [];
+
+  const { data: custRows, error: cErr } = await sb
+    .from('customers')
+    .select('id')
+    .ilike('email', e)
+    .limit(10);
+  if (cErr) throw cErr;
+
+  const customerIds = [...new Set((custRows ?? []).map((c: { id: string }) => c.id).filter(Boolean))];
+  if (customerIds.length === 0) return [];
+
+  const { data: orders, error: oErr } = await sb
+    .from('orders')
+    .select('id, order_date, status')
+    .in('customer_id', customerIds)
+    .order('order_date', { ascending: false })
+    .limit(30);
+  if (oErr) throw oErr;
+  return (orders ?? []) as { id: string; order_date: string; status: string }[];
+}
+
 export async function fetchEstablishments(sb: SupabaseClient) {
   const { data, error } = await sb
     .from('paw_card_establishments')

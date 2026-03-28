@@ -61,6 +61,10 @@ function toLocalDateStr(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+function isDirect(r: RawOrder): boolean {
+  return r.booking_channel === 'direct';
+}
+
 export default function InboxPage() {
   const [storeFilter, setStoreFilter] = useState<string>('');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
@@ -84,7 +88,10 @@ export default function InboxPage() {
 
     const target = dateFilter === 'today' ? todayStr : tomorrowStr;
     return all.filter((order) => {
-      const pickupDate = extractPickupDate(order.payload);
+      if (isDirect(order)) {
+        return order.pickup_datetime ? order.pickup_datetime.slice(0, 10) === target : false;
+      }
+      const pickupDate = extractPickupDate(order.payload ?? {});
       return pickupDate === target;
     });
   }, [rawOrders, dateFilter, todayStr, tomorrowStr]);
@@ -107,7 +114,12 @@ export default function InboxPage() {
       header: 'Store',
       render: (r: RawOrder) => {
         const s = sourceLabel(r.source);
-        return <Badge color={s.color}>{s.text}</Badge>;
+        return (
+          <div className="flex items-center gap-1.5">
+            <Badge color={s.color}>{s.text}</Badge>
+            {isDirect(r) && <Badge color="green">Direct</Badge>}
+          </div>
+        );
       },
     },
     {
@@ -115,8 +127,12 @@ export default function InboxPage() {
       header: 'Customer',
       render: (r: RawOrder) => (
         <div>
-          <div className="font-medium text-gray-900">{extractCustomerName(r.payload)}</div>
-          <div className="text-sm text-gray-500">{extractEmail(r.payload)}</div>
+          <div className="font-medium text-gray-900">
+            {isDirect(r) ? (r.customer_name ?? '—') : extractCustomerName(r.payload ?? {})}
+          </div>
+          <div className="text-sm text-gray-500">
+            {isDirect(r) ? (r.customer_email ?? '—') : extractEmail(r.payload ?? {})}
+          </div>
         </div>
       ),
     },
@@ -124,27 +140,38 @@ export default function InboxPage() {
       key: 'pickup',
       header: 'Pickup',
       render: (r: RawOrder) => {
-        const d = extractPickupDate(r.payload);
+        if (isDirect(r)) {
+          return (
+            <span className="text-sm text-gray-600">
+              {r.pickup_datetime ? r.pickup_datetime.slice(0, 10) : '—'}
+            </span>
+          );
+        }
+        const d = extractPickupDate(r.payload ?? {});
         return <span className="text-sm text-gray-600">{d ?? '—'}</span>;
       },
     },
     {
       key: 'items',
       header: 'Items',
-      render: (r: RawOrder) => extractItemCount(r.payload) || '—',
+      render: (r: RawOrder) => isDirect(r) ? 1 : (extractItemCount(r.payload ?? {}) || '—'),
     },
     {
       key: 'total',
       header: 'Web Quote',
       render: (r: RawOrder) => {
-        const total = extractTotal(r.payload);
+        if (isDirect(r)) return '—';
+        const total = extractTotal(r.payload ?? {});
         return total > 0 ? formatCurrency(total) : '—';
       },
     },
     {
       key: 'order_number',
-      header: 'WC Order #',
-      render: (r: RawOrder) => extractField(r.payload, 'number', 'id', 'order_key'),
+      header: 'Order Ref',
+      render: (r: RawOrder) =>
+        isDirect(r)
+          ? (r.order_reference ?? '—')
+          : extractField(r.payload ?? {}, 'number', 'id', 'order_key'),
     },
     {
       key: 'status',

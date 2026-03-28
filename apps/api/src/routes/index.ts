@@ -19,6 +19,7 @@ import { ordersRawRoutes } from './orders-raw.js';
 import { publicTransferRoutes } from './public-transfers.js';
 import { uiErrorsRoutes } from './ui-errors.js';
 import { lostOpportunityRoutes } from './lost-opportunity.js';
+import { publicBookingRoutes } from './public-booking.js';
 
 const routes = Router();
 
@@ -42,5 +43,6 @@ routes.use('/card-settlements', cardSettlementRoutes);
 routes.use('/public', publicTransferRoutes);
 routes.use('/ui-errors', uiErrorsRoutes);
 routes.use('/lost-opportunities', lostOpportunityRoutes);
+routes.use('/public/booking', publicBookingRoutes);
 
 export { routes };

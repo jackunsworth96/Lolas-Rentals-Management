@@ -74,7 +74,7 @@ export default function ActivePage() {
   const columns = [
     {
       key: 'wooOrderId',
-      header: 'WC #',
+      header: 'Order Ref',
       render: (r: EnrichedOrder) => r.wooOrderId ?? r.id.slice(0, 8),
     },
     {

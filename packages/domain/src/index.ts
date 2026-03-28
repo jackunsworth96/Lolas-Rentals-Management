@@ -51,3 +51,4 @@ export * from './ports/merchandise-repository.js';
 export * from './ports/payment-routing-repository.js';
 export * from './ports/review-repository.js';
 export * from './ports/directory-repository.js';
+export * from './ports/booking-port.js';

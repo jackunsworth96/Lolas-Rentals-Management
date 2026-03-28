@@ -196,12 +196,15 @@ export class SupabasePawCardAdapter implements PawCardPort {
     const numberOfPeople =
       typeof n === 'number' && Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
 
+    const pawRef = `PAW-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(Math.floor(1000 + Math.random() * 9000))}`;
+
     const { data, error } = await sb
       .from('paw_card_entries')
       .insert({
         full_name: displayName,
         email,
         order_id: orderId,
+        paw_reference: pawRef,
         establishment: establishmentLabel,
         amount_saved: entry.discountAmount,
         date_of_visit: entry.visitDate,

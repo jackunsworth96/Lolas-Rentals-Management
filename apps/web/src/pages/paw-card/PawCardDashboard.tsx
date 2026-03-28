@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { Session, SupabaseClient } from '@supabase/supabase-js';
 import { formatCurrency } from '../../utils/currency.js';
 import discountCard from '../../assets/Discount Card.svg';
-import pawPrint from '../../assets/Lola a Paw Print.svg';
+import pawPrint from '../../assets/Paw Print.svg';
 import lolaFace from '../../assets/Lola Face Icon.svg';
 import handOnHeart from '../../assets/Hand on Heart.svg';
 import {

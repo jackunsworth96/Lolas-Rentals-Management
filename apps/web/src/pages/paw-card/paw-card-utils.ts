@@ -33,6 +33,7 @@ export type SavingsRow = {
   id: number;
   created_at: string;
   order_id: string | null;
+  paw_reference?: string | null;
   full_name: string;
   email: string | null;
   establishment: string;

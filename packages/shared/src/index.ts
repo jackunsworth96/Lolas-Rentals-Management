@@ -6,6 +6,7 @@ export * from './constants/permissions.js';
 export * from './types/api-types.js';
 export * from './schemas/auth-schemas.js';
 export * from './schemas/order-schemas.js';
+export * from './schemas/orders-raw-schemas.js';
 export * from './schemas/fleet-schemas.js';
 export * from './schemas/accounting-schemas.js';
 export * from './schemas/config-schemas.js';

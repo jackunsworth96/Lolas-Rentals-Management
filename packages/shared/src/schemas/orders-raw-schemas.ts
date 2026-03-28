@@ -1,0 +1,110 @@
+import { z } from 'zod';
+
+export const BookingChannel = {
+  WooCommerce: 'woocommerce',
+  Direct: 'direct',
+} as const;
+
+export type BookingChannelType =
+  (typeof BookingChannel)[keyof typeof BookingChannel];
+
+export const OrdersRawStatusSchema = z.enum([
+  'unprocessed',
+  'processed',
+  'skipped',
+]);
+
+export type OrdersRawStatus = z.infer<typeof OrdersRawStatusSchema>;
+
+/**
+ * Matches the `orders_raw` Supabase table after migration 035.
+ * Every field that is nullable in the DB is nullable here.
+ */
+export interface OrdersRawRow {
+  id: string;
+  source: string;
+  booking_channel: BookingChannelType;
+  payload: Record<string, unknown> | null;
+  status: OrdersRawStatus;
+  created_at: string;
+
+  customer_name: string | null;
+  customer_email: string | null;
+  customer_mobile: string | null;
+  vehicle_model_id: string | null;
+  pickup_datetime: string | null;
+  dropoff_datetime: string | null;
+  pickup_location_id: number | null;
+  dropoff_location_id: number | null;
+  store_id: string | null;
+  order_reference: string | null;
+  addon_ids: number[] | null;
+}
+
+/**
+ * Zod schema for creating a direct booking in `orders_raw`.
+ * Source (lolas | bass) and booking_channel='direct' are set server-side.
+ */
+export const DirectBookingRequestSchema = z.object({
+  customerName: z.string().min(1),
+  customerEmail: z.string().email(),
+  customerMobile: z.string().min(1),
+  vehicleModelId: z.string().min(1),
+  pickupDatetime: z.string().min(1),
+  dropoffDatetime: z.string().min(1),
+  pickupLocationId: z.number().int().positive(),
+  dropoffLocationId: z.number().int().positive(),
+  storeId: z.string().min(1),
+  addonIds: z.array(z.number().int().positive()).optional(),
+});
+
+export type DirectBookingRequest = z.infer<typeof DirectBookingRequestSchema>;
+
+/**
+ * Matches the `booking_holds` Supabase table (migration 036).
+ */
+export interface BookingHold {
+  id: string;
+  vehicle_model_id: string;
+  store_id: string;
+  pickup_datetime: string;
+  dropoff_datetime: string;
+  session_token: string;
+  expires_at: string;
+  created_at: string;
+}
+
+/**
+ * Payload for creating a `booking_holds` row (`id` and `created_at` are DB defaults).
+ */
+export const CreateHoldSchema = z.object({
+  vehicleModelId: z.string().min(1),
+  storeId: z.string().min(1),
+  pickupDatetime: z.string().min(1),
+  dropoffDatetime: z.string().min(1),
+  sessionToken: z.string().min(1),
+  expiresAt: z.string().min(1),
+});
+
+export type CreateHold = z.infer<typeof CreateHoldSchema>;
+
+export interface QuoteAddonLine {
+  id: number;
+  name: string;
+  type: 'per_day' | 'one_time';
+  unitPrice: number;
+  total: number;
+}
+
+export interface QuoteBreakdown {
+  rentalDays: number;
+  dailyRate: number;
+  rentalSubtotal: number;
+  pickupFee: number;
+  dropoffFee: number;
+  addons: QuoteAddonLine[];
+  addonsTotal: number;
+  /** Refundable security deposit (e.g. cash/card hold at pickup); not included in grandTotal */
+  securityDeposit: number;
+  grandTotal: number;
+}

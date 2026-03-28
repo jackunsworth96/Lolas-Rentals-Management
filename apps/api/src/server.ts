@@ -35,6 +35,7 @@ import { createPaymentRoutingRepo } from './adapters/supabase/payment-routing-re
 import { createLeaveBalanceAdapter } from './adapters/supabase/leave-balance-adapter.js';
 import { createPayrollAdapter } from './adapters/supabase/payroll-adapter.js';
 import { createPawCardAdapter } from './adapters/supabase/paw-card-adapter.js';
+import { createBookingAdapter } from './adapters/supabase/booking-adapter.js';
 
 const DEFAULT_CORS_ORIGINS = [
   'https://lolas-rentals-management-web.vercel.app',
@@ -92,6 +93,7 @@ app.locals.deps = {
   leaveBalancePort: createLeaveBalanceAdapter(),
   payrollPort: createPayrollAdapter(),
   pawCardPort: createPawCardAdapter(),
+  bookingPort: createBookingAdapter(),
 };
 
 app.get('/health', (_req: Request, res: Response) => {

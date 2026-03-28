@@ -1,13 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './client.js';
+import type { OrdersRawRow } from '@lolas/shared';
 
-export interface RawOrder {
-  id: string;
-  source: string;
-  payload: Record<string, unknown>;
-  status: string;
-  created_at: string;
-}
+export type RawOrder = OrdersRawRow;
 
 export function useOrdersRaw(store?: string, status?: string) {
   const params = new URLSearchParams();

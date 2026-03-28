@@ -1,0 +1,104 @@
+import type { BookingPort, DirectBookingResult } from '@lolas/domain';
+import type { DirectBookingRequest } from '@lolas/shared';
+
+export interface SubmitDirectBookingInput extends DirectBookingRequest {
+  sessionToken: string;
+}
+
+export interface SubmitDirectBookingDeps {
+  bookingPort: BookingPort;
+}
+
+function generateOrderReference(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  const hex = Math.floor(Math.random() * 0xffff)
+    .toString(16)
+    .toUpperCase()
+    .padStart(4, '0');
+  return `LR-${y}${m}${d}-${hex}`;
+}
+
+const MAX_REF_RETRIES = 5;
+
+async function uniqueOrderReference(bookingPort: BookingPort): Promise<string> {
+  for (let i = 0; i < MAX_REF_RETRIES; i++) {
+    const ref = generateOrderReference();
+    const unique = await bookingPort.isOrderReferenceUnique(ref);
+    if (unique) return ref;
+  }
+  throw new Error('Failed to generate a unique order reference after multiple attempts');
+}
+
+function httpError(message: string, statusCode: number): Error {
+  const err = new Error(message);
+  (err as Error & { statusCode: number }).statusCode = statusCode;
+  return err;
+}
+
+export async function submitDirectBooking(
+  deps: SubmitDirectBookingDeps,
+  input: SubmitDirectBookingInput,
+): Promise<DirectBookingResult> {
+  const { bookingPort } = deps;
+
+  // 1. Verify an active, non-expired hold exists for this session + model + dates
+  const hold = await bookingPort.findActiveHold(
+    input.sessionToken,
+    input.vehicleModelId,
+    input.pickupDatetime,
+    input.dropoffDatetime,
+  );
+
+  if (!hold) {
+    throw httpError(
+      'No active hold found for this session and vehicle. Your hold may have expired — please restart your booking.',
+      409,
+    );
+  }
+
+  // 2. Re-run availability as a final race-condition guard
+  const available = await bookingPort.checkAvailability({
+    storeId: input.storeId,
+    pickupDatetime: input.pickupDatetime,
+    dropoffDatetime: input.dropoffDatetime,
+  });
+
+  const match = available.find((m) => m.modelId === input.vehicleModelId);
+  if (!match || match.availableCount < 1) {
+    throw httpError(
+      'This vehicle model is no longer available for the selected dates. Please choose different dates or another vehicle.',
+      409,
+    );
+  }
+
+  // 3. Generate a unique order reference
+  const orderReference = await uniqueOrderReference(bookingPort);
+
+  // 4. Insert into orders_raw
+  const result = await bookingPort.insertDirectBooking({
+    source: 'lolas',
+    customerName: input.customerName,
+    customerEmail: input.customerEmail,
+    customerMobile: input.customerMobile,
+    vehicleModelId: input.vehicleModelId,
+    pickupDatetime: input.pickupDatetime,
+    dropoffDatetime: input.dropoffDatetime,
+    pickupLocationId: input.pickupLocationId,
+    dropoffLocationId: input.dropoffLocationId,
+    storeId: input.storeId,
+    orderReference,
+    addonIds: input.addonIds && input.addonIds.length > 0 ? input.addonIds : null,
+  });
+
+  // 5. Clean up the hold (best-effort; booking is already persisted)
+  try {
+    await bookingPort.deleteHoldBySessionAndModel(input.sessionToken, input.vehicleModelId);
+  } catch {
+    // Hold cleanup is non-critical; it will expire naturally
+  }
+
+  return result;
+}

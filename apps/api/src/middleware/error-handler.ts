@@ -31,6 +31,15 @@ export function errorHandler(
     return;
   }
 
+  const statusCode = (err as Error & { statusCode?: number }).statusCode;
+  if (typeof statusCode === 'number' && statusCode >= 400 && statusCode < 600) {
+    res.status(statusCode).json({
+      success: false,
+      error: { code: 'REQUEST_FAILED', message: err.message },
+    });
+    return;
+  }
+
   console.error('Unhandled error:', err);
 
   res.status(500).json({

@@ -26,6 +26,7 @@ const MerchandisePage = lazy(() => import('./pages/merchandise/MerchandisePage.j
 const LostOpportunityPage = lazy(() => import('./pages/lost-opportunity/LostOpportunityPage.js'));
 const SettingsPage = lazy(() => import('./pages/settings/SettingsPage.js'));
 const PawCardPage = lazy(() => import('./pages/paw-card/PawCardPage.js'));
+const BrowseBookPage = lazy(() => import('./pages/booking/BrowseBookPage.js'));
 const UIErrorsPage = lazy(() => import('./pages/ui-errors/UIErrorsPage.js'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -47,6 +48,8 @@ export function AppRouter() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/book-transfer/:token" element={<PublicBookingPage />} />
         <Route path="/paw-card" element={<PawCardPage />} />
+        <Route path="/browse-book" element={<BrowseBookPage />} />
+        <Route path="/basket" element={<BrowseBookPage />} />
 
         <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
           <Route index element={<Navigate to="/orders/inbox" replace />} />

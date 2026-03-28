@@ -565,7 +565,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
           <dl className="grid grid-cols-2 gap-4 text-sm">
             {wooOrderId && (
               <div>
-                <dt className="text-gray-500">WC Order #</dt>
+                <dt className="text-gray-500">Order Ref</dt>
                 <dd className="font-medium">{wooOrderId}</dd>
               </div>
             )}

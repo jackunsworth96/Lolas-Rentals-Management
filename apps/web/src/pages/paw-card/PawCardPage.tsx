@@ -6,12 +6,12 @@ import { PawCardLoginPanel } from './PawCardLoginPanel.js';
 import { PawCardSavingsForm } from './PawCardSavingsForm.js';
 import { PawCardDashboard } from './PawCardDashboard.js';
 
-import logo from '../../assets/Logo.svg';
+import logo from '../../assets/Lolas Original Logo.svg';
 import discountCard from '../../assets/Discount Card.svg';
 import flowerLeft from '../../assets/Flower Left.svg';
 import flowerRight from '../../assets/Flower Right.svg';
 import handOnHeart from '../../assets/Hand on Heart.svg';
-import pawPrint from '../../assets/Lola a Paw Print.svg';
+import pawPrint from '../../assets/Paw Print.svg';
 import cloud from '../../assets/Cloud.svg';
 
 function usePawCardFonts() {

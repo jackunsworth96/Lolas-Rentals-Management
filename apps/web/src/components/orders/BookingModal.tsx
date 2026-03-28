@@ -7,6 +7,7 @@ import {
   extractPickupLocation,
   extractDropoffLocation,
   normalizeLocationName,
+  toDatetimeLocal,
 } from '../../utils/raw-order-payload.js';
 import { useAddons, useLocations, useChartOfAccounts, useStorePricing, useFleetStatuses, usePaymentMethods } from '../../api/config.js';
 import { useProcessRawOrder, useCollectPayment, type RawOrder, type ProcessRawOrderPayload } from '../../api/orders-raw.js';
@@ -184,9 +185,22 @@ function emptyVehicleRow(): VehicleRow {
 
 export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
   const storeId = storeIdFromSource(rawOrder.source);
-  const billing = useMemo(() => extractBilling(rawOrder.payload), [rawOrder.payload]);
-  const lineItems = useMemo(() => extractLineItems(rawOrder.payload), [rawOrder.payload]);
-  const webQuote = Number(rawOrder.payload.total ?? rawOrder.payload.order_total ?? 0) || 0;
+  const isDirect = rawOrder.booking_channel === 'direct';
+  const payload = rawOrder.payload ?? {};
+
+  const billing = useMemo(() => {
+    if (isDirect) {
+      return {
+        name: rawOrder.customer_name ?? '',
+        email: rawOrder.customer_email ?? '',
+        phone: rawOrder.customer_mobile ?? '',
+      };
+    }
+    return extractBilling(payload);
+  }, [isDirect, rawOrder.customer_name, rawOrder.customer_email, rawOrder.customer_mobile, payload]);
+
+  const lineItems = useMemo(() => (isDirect ? [] : extractLineItems(payload)), [isDirect, payload]);
+  const webQuote = isDirect ? 0 : (Number(payload.total ?? payload.order_total ?? 0) || 0);
 
   const [step, setStep] = useState<Step>('review');
   const [customer, setCustomer] = useState<CustomerData>(billing);
@@ -239,42 +253,68 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
     setPreActivationRef('');
     setPreActivationAmount('');
 
-    const { pickup, dropoff } = rawOrder?.payload
-      ? extractPickupDropoffFromPayload(rawOrder.payload)
-      : { pickup: '', dropoff: '' };
+    let pickup = '';
+    let dropoff = '';
+    let pickupLocName = '';
+    let dropoffLocName = '';
+    let locPickupFee = 0;
+    let locDropoffFee = 0;
+
+    if (isDirect) {
+      pickup = toDatetimeLocal(rawOrder.pickup_datetime);
+      dropoff = toDatetimeLocal(rawOrder.dropoff_datetime);
+      setPayloadPickupLoc('');
+      setPayloadDropoffLoc('');
+      if (locations && locations.length > 0) {
+        const pLoc = locations.find((l) => Number(l.id) === rawOrder.pickup_location_id);
+        const dLoc = locations.find((l) => Number(l.id) === rawOrder.dropoff_location_id);
+        pickupLocName = pLoc ? String(pLoc.name) : '';
+        dropoffLocName = dLoc ? String(dLoc.name) : '';
+        locPickupFee = pLoc ? Number(pLoc.deliveryCost ?? 0) : 0;
+        locDropoffFee = dLoc ? Number(dLoc.collectionCost ?? 0) : 0;
+      }
+    } else {
+      const extracted = rawOrder.payload
+        ? extractPickupDropoffFromPayload(rawOrder.payload)
+        : { pickup: '', dropoff: '' };
+      pickup = extracted.pickup;
+      dropoff = extracted.dropoff;
+
+      const rawPickupLoc = rawOrder.payload ? extractPickupLocation(rawOrder.payload) : null;
+      const rawDropoffLoc = rawOrder.payload ? extractDropoffLocation(rawOrder.payload) : null;
+      setPayloadPickupLoc(rawPickupLoc ? normalizeLocationName(rawPickupLoc) : '');
+      setPayloadDropoffLoc(rawDropoffLoc ? normalizeLocationName(rawDropoffLoc) : '');
+
+      const matchLocation = (raw: string | null): string => {
+        if (!raw || !locations || locations.length === 0) return '';
+        const normalized = normalizeLocationName(raw).toLowerCase();
+        const exact = locations.find((l) => String(l.name ?? '').toLowerCase() === normalized);
+        if (exact) return String(exact.name);
+        const partial = locations.find((l) => normalized.includes(String(l.name ?? '').toLowerCase()) || String(l.name ?? '').toLowerCase().includes(normalized));
+        return partial ? String(partial.name) : '';
+      };
+
+      pickupLocName = matchLocation(rawPickupLoc);
+      dropoffLocName = matchLocation(rawDropoffLoc);
+      locPickupFee = pickupLocName && locations
+        ? Number(locations.find((l) => String(l.name) === pickupLocName)?.deliveryCost ?? 0)
+        : 0;
+      locDropoffFee = dropoffLocName && locations
+        ? Number(locations.find((l) => String(l.name) === dropoffLocName)?.collectionCost ?? 0)
+        : 0;
+    }
+
     const days = calcDays(pickup, dropoff);
-
-    const rawPickupLoc = rawOrder?.payload ? extractPickupLocation(rawOrder.payload) : null;
-    const rawDropoffLoc = rawOrder?.payload ? extractDropoffLocation(rawOrder.payload) : null;
-    setPayloadPickupLoc(rawPickupLoc ? normalizeLocationName(rawPickupLoc) : '');
-    setPayloadDropoffLoc(rawDropoffLoc ? normalizeLocationName(rawDropoffLoc) : '');
-    const matchLocation = (raw: string | null): string => {
-      if (!raw || !locations || locations.length === 0) return '';
-      const normalized = normalizeLocationName(raw).toLowerCase();
-      const exact = locations.find((l) => String(l.name ?? '').toLowerCase() === normalized);
-      if (exact) return String(exact.name);
-      const partial = locations.find((l) => normalized.includes(String(l.name ?? '').toLowerCase()) || String(l.name ?? '').toLowerCase().includes(normalized));
-      return partial ? String(partial.name) : '';
-    };
-
-    const pickupLoc = matchLocation(rawPickupLoc);
-    const dropoffLoc = matchLocation(rawDropoffLoc);
-    const pickupFee = pickupLoc && locations
-      ? Number(locations.find((l) => String(l.name) === pickupLoc)?.deliveryCost ?? 0)
-      : 0;
-    const dropoffFee = dropoffLoc && locations
-      ? Number(locations.find((l) => String(l.name) === dropoffLoc)?.collectionCost ?? 0)
-      : 0;
 
     setVehicles([{
       ...emptyVehicleRow(),
       pickupDatetime: pickup,
       dropoffDatetime: dropoff,
       rentalDaysCount: days || 1,
-      pickupLocation: pickupLoc,
-      dropoffLocation: dropoffLoc,
-      pickupFee,
-      dropoffFee,
+      pickupLocation: pickupLocName,
+      dropoffLocation: dropoffLocName,
+      pickupFee: locPickupFee,
+      dropoffFee: locDropoffFee,
     }]);
   }, [open, rawOrder?.id, locations]);
 
@@ -438,13 +478,16 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
   function initAddons() {
     if (selectedAddons.length > 0) return;
     const totalDays = vehicles.reduce((max, v) => Math.max(max, v.rentalDaysCount || 1), 1);
-    const payloadAddonNames = extractPayloadAddonNames(rawOrder.payload);
+    const directAddonIds = isDirect ? new Set(rawOrder.addon_ids ?? []) : null;
+    const payloadAddonNames = isDirect ? new Set<string>() : extractPayloadAddonNames(payload);
     setSelectedAddons(
       (storeAddons ?? []).map((a) => {
         const adType = (a.addonType ?? a.type ?? 'one_time') as string;
         const price = adType === 'per_day' ? Number(a.pricePerDay ?? a.price ?? 0) : Number(a.priceOneTime ?? a.price ?? 0);
         const addonNameLower = (a.name as string).trim().toLowerCase();
-        const preSelected = payloadAddonNames.has(addonNameLower);
+        const preSelected = directAddonIds
+          ? directAddonIds.has(Number(a.id))
+          : payloadAddonNames.has(addonNameLower);
         return {
           addonName: a.name as string,
           addonPrice: price,
@@ -561,8 +604,8 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
           mutualExclusivityGroup: a.mutualExclusivityGroup,
         })),
       securityDeposit: Number(securityDeposit) || 0,
-      webQuoteRaw: webQuote || null,
-      webNotes: (rawOrder.payload.customer_note as string) ?? null,
+      webQuoteRaw: isDirect ? null : (webQuote || null),
+      webNotes: isDirect ? null : ((payload.customer_note as string) ?? null),
       receivableAccountId: (receivableAccount?.id as string) ?? '',
       incomeAccountId: (incomeAccount?.id as string) ?? '',
       paymentMethodId: paymentMethodId || null,
@@ -726,36 +769,81 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
                       </Badge>
                     </dd>
                   </div>
-                  <div className="flex justify-between">
-                    <dt className="text-gray-500">WC Order #</dt>
-                    <dd className="font-medium">{String(rawOrder.payload.number ?? rawOrder.payload.id ?? '—')}</dd>
-                  </div>
-                  <div className="flex justify-between">
-                    <dt className="text-gray-500">Web Quote</dt>
-                    <dd className="font-medium">{webQuote > 0 ? formatCurrency(webQuote) : '—'}</dd>
-                  </div>
-                  {rawOrder.payload.customer_note && (
-                    <div>
-                      <dt className="text-gray-500">Customer Notes</dt>
-                      <dd className="mt-1 rounded bg-yellow-50 p-2 text-gray-700">{String(rawOrder.payload.customer_note)}</dd>
-                    </div>
+                  {isDirect ? (
+                    <>
+                      <div className="flex justify-between">
+                        <dt className="text-gray-500">Order Ref</dt>
+                        <dd className="font-medium">{rawOrder.order_reference ?? '—'}</dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-gray-500">Channel</dt>
+                        <dd><Badge color="green">Direct</Badge></dd>
+                      </div>
+                      {rawOrder.vehicle_model_id && (
+                        <div className="flex justify-between">
+                          <dt className="text-gray-500">Vehicle Model</dt>
+                          <dd className="font-medium">{rawOrder.vehicle_model_id}</dd>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex justify-between">
+                        <dt className="text-gray-500">WC Order #</dt>
+                        <dd className="font-medium">{String(payload.number ?? payload.id ?? '—')}</dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-gray-500">Web Quote</dt>
+                        <dd className="font-medium">{webQuote > 0 ? formatCurrency(webQuote) : '—'}</dd>
+                      </div>
+                      {payload.customer_note && (
+                        <div>
+                          <dt className="text-gray-500">Customer Notes</dt>
+                          <dd className="mt-1 rounded bg-yellow-50 p-2 text-gray-700">{String(payload.customer_note)}</dd>
+                        </div>
+                      )}
+                    </>
                   )}
                 </dl>
               </div>
 
               <div className="rounded-lg border border-gray-200 p-4">
-                <h3 className="mb-3 font-medium text-gray-900">WooCommerce Line Items</h3>
-                {lineItems.length === 0 ? (
-                  <p className="text-sm text-gray-500">No line items</p>
+                {isDirect ? (
+                  <>
+                    <h3 className="mb-3 font-medium text-gray-900">Direct Booking Summary</h3>
+                    <dl className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <dt className="text-gray-500">Pickup</dt>
+                        <dd className="font-medium">{rawOrder.pickup_datetime ? toDatetimeLocal(rawOrder.pickup_datetime).replace('T', ' ') : '—'}</dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-gray-500">Dropoff</dt>
+                        <dd className="font-medium">{rawOrder.dropoff_datetime ? toDatetimeLocal(rawOrder.dropoff_datetime).replace('T', ' ') : '—'}</dd>
+                      </div>
+                      {rawOrder.addon_ids && rawOrder.addon_ids.length > 0 && (
+                        <div className="flex justify-between">
+                          <dt className="text-gray-500">Add-ons selected</dt>
+                          <dd className="font-medium">{rawOrder.addon_ids.length}</dd>
+                        </div>
+                      )}
+                    </dl>
+                  </>
                 ) : (
-                  <ul className="space-y-2 text-sm">
-                    {lineItems.map((item, i) => (
-                      <li key={i} className="flex justify-between rounded bg-gray-50 px-3 py-2">
-                        <span>{String(item.name ?? 'Item')} x{String(item.quantity ?? 1)}</span>
-                        <span className="font-medium">{formatCurrency(Number(item.total ?? 0))}</span>
-                      </li>
-                    ))}
-                  </ul>
+                  <>
+                    <h3 className="mb-3 font-medium text-gray-900">WooCommerce Line Items</h3>
+                    {lineItems.length === 0 ? (
+                      <p className="text-sm text-gray-500">No line items</p>
+                    ) : (
+                      <ul className="space-y-2 text-sm">
+                        {lineItems.map((item, i) => (
+                          <li key={i} className="flex justify-between rounded bg-gray-50 px-3 py-2">
+                            <span>{String(item.name ?? 'Item')} x{String(item.quantity ?? 1)}</span>
+                            <span className="font-medium">{formatCurrency(Number(item.total ?? 0))}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -1282,28 +1370,30 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
                 </label>
               </div>
 
-              <div className="rounded-lg border border-gray-200 p-4">
-                <h3 className="text-sm font-medium text-gray-700">Web Quote Comparison</h3>
-                <div className="mt-2 flex items-center gap-4 text-sm">
-                  <div>
-                    <span className="text-gray-500">Website:</span>{' '}
-                    <span className="font-medium">{webQuote > 0 ? formatCurrency(webQuote) : '—'}</span>
+              {!isDirect && (
+                <div className="rounded-lg border border-gray-200 p-4">
+                  <h3 className="text-sm font-medium text-gray-700">Web Quote Comparison</h3>
+                  <div className="mt-2 flex items-center gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-500">Website:</span>{' '}
+                      <span className="font-medium">{webQuote > 0 ? formatCurrency(webQuote) : '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Actual:</span>{' '}
+                      <span className="font-bold">{formatCurrency(finalTotal)}</span>
+                    </div>
+                    {webQuote > 0 && (
+                      <Badge color={finalTotal > webQuote ? 'red' : finalTotal < webQuote ? 'green' : 'gray'}>
+                        {finalTotal > webQuote
+                          ? `+${formatCurrency(finalTotal - webQuote)}`
+                          : finalTotal < webQuote
+                            ? `-${formatCurrency(webQuote - finalTotal)}`
+                            : 'Match'}
+                      </Badge>
+                    )}
                   </div>
-                  <div>
-                    <span className="text-gray-500">Actual:</span>{' '}
-                    <span className="font-bold">{formatCurrency(finalTotal)}</span>
-                  </div>
-                  {webQuote > 0 && (
-                    <Badge color={finalTotal > webQuote ? 'red' : finalTotal < webQuote ? 'green' : 'gray'}>
-                      {finalTotal > webQuote
-                        ? `+${formatCurrency(finalTotal - webQuote)}`
-                        : finalTotal < webQuote
-                          ? `-${formatCurrency(webQuote - finalTotal)}`
-                          : 'Match'}
-                    </Badge>
-                  )}
                 </div>
-              </div>
+              )}
             </div>
 
             {!receivableAccount && !incomeAccount && (

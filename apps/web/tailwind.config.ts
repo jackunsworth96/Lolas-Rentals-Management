@@ -17,6 +17,19 @@ export default {
           800: '#864024',
           900: '#6d3620',
         },
+        'teal-brand': '#1A7A6E',
+        'gold-brand': '#F5B731',
+        'sand-brand': '#E8DFD0',
+        'cream-brand': '#FAF6F0',
+        'charcoal-brand': '#3D3D3D',
+      },
+      fontFamily: {
+        headline: ['Epilogue', 'sans-serif'],
+        body: ['Plus Jakarta Sans', 'sans-serif'],
+      },
+      borderRadius: {
+        '4xl': '2rem',
+        '5xl': '3rem',
       },
       keyframes: {
         'slide-up': {

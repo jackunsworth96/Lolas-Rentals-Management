@@ -111,11 +111,13 @@ router.get('/vehicle-models', async (req, res, next) => {
 });
 router.post('/vehicle-models', edit, validateBody(z.object({
   id: z.string().min(1), name: z.string().min(1), isActive: z.boolean().optional(),
+  securityDeposit: z.number().nonnegative().optional(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveVehicleModel(req.body); res.json({ success: true }); } catch (e) { next(e); }
 });
 router.put('/vehicle-models/:id', edit, validateBody(z.object({
   name: z.string().min(1), isActive: z.boolean().optional(),
+  securityDeposit: z.number().nonnegative().optional(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveVehicleModel({ id: req.params.id, ...req.body }); res.json({ success: true }); } catch (e) { next(e); }
 });
