@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { api } from '../../api/client.js';
-import { useBookingStore, type BasketItem } from '../../stores/bookingStore.js';
+import { useBookingStore } from '../../stores/bookingStore.js';
+import { PrimaryCtaButton } from '../public/PrimaryCtaButton.js';
 import hondaBeatImg from '../../assets/Honda Beat Image.png';
 import tukTukImg from '../../assets/TukTuk Image.png';
 
 const MODEL_IMAGES: Record<string, string> = {
   'honda-beat': hondaBeatImg,
   'honda beat': hondaBeatImg,
-  'tuktuk': tukTukImg,
+  tuktuk: tukTukImg,
   'tuk-tuk': tukTukImg,
   'tuk tuk': tukTukImg,
 };
@@ -20,12 +21,23 @@ function resolveImage(modelName: string): string | null {
   return null;
 }
 
+function formatSlotTime(iso: string): string {
+  const d = new Date(iso);
+  let h = d.getHours();
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  if (h > 12) h -= 12;
+  if (h === 0) h = 12;
+  return `${h}:${m} ${ampm}`;
+}
+
 interface VehicleCardProps {
   modelId: string;
   modelName: string;
   availableCount: number;
   dailyRate: number | null;
   securityDeposit: number | null;
+  nextAvailablePickup?: string;
   onToast: (msg: string, type: 'success' | 'error') => void;
 }
 
@@ -35,21 +47,31 @@ export function VehicleCard({
   availableCount,
   dailyRate,
   securityDeposit,
+  nextAvailablePickup,
   onToast,
 }: VehicleCardProps) {
   const [loading, setLoading] = useState(false);
+  const [pressDown, setPressDown] = useState(false);
   const basket = useBookingStore((s) => s.basket);
   const addToBasket = useBookingStore((s) => s.addToBasket);
+  const setDates = useBookingStore((s) => s.setDates);
+  const triggerSearch = useBookingStore((s) => s.triggerSearch);
   const sessionToken = useBookingStore((s) => s.sessionToken);
   const storeId = useBookingStore((s) => s.storeId);
   const pickupDatetime = useBookingStore((s) => s.pickupDatetime);
   const dropoffDatetime = useBookingStore((s) => s.dropoffDatetime);
+
+  const isUnavailable = availableCount === 0 && !!nextAvailablePickup;
 
   const inBasket = basket.some((b) => b.vehicleModelId === modelId);
   const imgSrc = resolveImage(modelName);
 
   async function handleAddToBasket() {
     if (inBasket || loading) return;
+    setPressDown(true);
+    await new Promise((r) => setTimeout(r, 100));
+    setPressDown(false);
+    await new Promise((r) => setTimeout(r, 100));
     setLoading(true);
     try {
       const result = await api.post<{ holdId: string; sessionToken: string; expiresAt: string }>(
@@ -61,6 +83,7 @@ export function VehicleCard({
         vehicleModelId: modelId,
         modelName,
         dailyRate: dailyRate ?? 0,
+        securityDeposit: securityDeposit ?? 0,
         expiresAt: result.expiresAt,
       });
       onToast(`${modelName} added to your basket`, 'success');
@@ -76,8 +99,20 @@ export function VehicleCard({
     }
   }
 
+  const scaleClass = pressDown ? 'scale-95' : 'scale-100';
+
+  function handleNextAvailable() {
+    if (!nextAvailablePickup) return;
+    const pickup = new Date(nextAvailablePickup);
+    const rentalMs = new Date(dropoffDatetime).getTime() - new Date(pickupDatetime).getTime();
+    const newDropoff = new Date(pickup.getTime() + Math.max(rentalMs, 86400000));
+    setDates(pickup.toISOString(), newDropoff.toISOString());
+    triggerSearch();
+    onToast('Dates updated to next available slot', 'success');
+  }
+
   return (
-    <div className="overflow-hidden rounded-4xl border border-sand-brand/50 bg-cream-brand shadow-sm group">
+    <div className={`group overflow-hidden rounded-4xl border border-sand-brand/50 bg-cream-brand shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl${isUnavailable ? ' opacity-70' : ''}`}>
       <div className="relative h-64 overflow-hidden">
         {imgSrc ? (
           <img
@@ -91,8 +126,8 @@ export function VehicleCard({
           </div>
         )}
         <div className="absolute left-4 top-4 flex gap-2">
-          <span className="rounded-full bg-[#D1E7E4] px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-teal-brand">
-            {availableCount} available
+          <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${isUnavailable ? 'bg-charcoal-brand/10 text-charcoal-brand/60' : 'bg-[#D1E7E4] text-teal-brand'}`}>
+            {isUnavailable ? 'Unavailable' : `${availableCount} available`}
           </span>
         </div>
       </div>
@@ -118,23 +153,28 @@ export function VehicleCard({
           </p>
         )}
 
-        <button
-          onClick={handleAddToBasket}
-          disabled={loading || inBasket}
-          className={`flex w-full items-center justify-center gap-2 rounded-3xl py-4 font-black transition-all ${
-            inBasket
-              ? 'bg-teal-brand text-white'
-              : 'bg-sand-brand text-teal-brand hover:bg-teal-brand hover:text-white'
-          } disabled:opacity-70`}
-        >
-          {loading ? (
-            'Holding…'
-          ) : inBasket ? (
-            <>In Basket ✓</>
-          ) : (
-            <>🛒 Add to Basket</>
-          )}
-        </button>
+        {isUnavailable ? (
+          <button
+            type="button"
+            onClick={handleNextAvailable}
+            className="flex w-full items-center justify-center gap-2 rounded-3xl border-2 border-teal-brand bg-transparent py-4 font-black text-teal-brand transition-all duration-300 hover:bg-teal-brand/10"
+          >
+            Next available: {formatSlotTime(nextAvailablePickup!)}
+          </button>
+        ) : inBasket ? (
+          <div className="flex w-full items-center justify-center gap-2 rounded-3xl bg-teal-brand py-4 font-black text-white transition-all duration-300 ease-in-out">
+            In Basket ✓
+          </div>
+        ) : (
+          <PrimaryCtaButton
+            type="button"
+            onClick={handleAddToBasket}
+            disabled={loading}
+            className={`flex w-full items-center justify-center gap-2 py-4 font-black transition-transform duration-150 ease-out ${scaleClass}`}
+          >
+            {loading ? 'Holding…' : '🛒 Add to Basket'}
+          </PrimaryCtaButton>
+        )}
       </div>
     </div>
   );

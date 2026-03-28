@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Extend My Rental | Lola's Rentals</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Epilogue:wght@400;500;600;700;800;900&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#1A7A6E", // Teal
+              "secondary": "#F5B731", // Gold
+              "surface": "#E8DFD0", // Sand
+              "on-surface": "#3D3D3D", // Charcoal
+              "surface-container": "#FAF6F0", // Cream
+              "outline": "#3D3D3D",
+              "background": "#E8DFD0"
+            },
+            fontFamily: {
+              "headline": ["Epilogue", "sans-serif"],
+              "body": ["Epilogue", "sans-serif"],
+              "label": ["Epilogue", "sans-serif"]
+            },
+            borderRadius: {
+              "DEFAULT": "1.5rem",
+              "lg": "2.5rem",
+              "xl": "3.5rem",
+              "full": "9999px"
+            },
+          },
+        },
+      }
+    </script>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+      }
+      body {
+        min-height: 100dvh;
+        background: linear-gradient(180deg, #E8DFD0 0%, #FAF6F0 100%);
+      }
+      .card-shadow {
+        box-shadow: 0 10px 30px -5px rgba(26, 122, 110, 0.1);
+      }
+      .input-field {
+        background-color: #E8DFD0;
+        border: none;
+        border-radius: 9999px;
+        padding: 1rem 1.5rem;
+        color: #3D3D3D;
+        font-weight: 500;
+      }
+      .input-field::placeholder {
+        color: #3D3D3D;
+        opacity: 0.5;
+      }
+      .btn-primary {
+        background-color: #1A7A6E;
+        color: white;
+        border-radius: 9999px;
+        font-weight: 800;
+        padding: 1.25rem 2rem;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+      }
+      .btn-primary:hover {
+        opacity: 0.9;
+        transform: scale(1.02);
+      }
+    </style>
+</head>
+<body class="bg-surface font-body text-on-surface">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-[#FAF6F0]/90 backdrop-blur-xl flex justify-between items-center px-6 h-16">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary cursor-pointer">menu</span>
+<img alt="Lola's Rentals Logo" class="h-8 w-auto" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD0_0trMTaUyqcb3EwKlMf4UA6-8MPOVpweVU4U6ebCfRD_FWhju-KU5UwjbXXvK-nxqtw7Y60e5MGViwOCQ3vVxCzJf8vg5TftKsgOjZ9xrRsw3OqprerRhOIL6U50Moae04lSVFGKbysPfJsAjd97GvwSeUuENqzGfEwK49msDoBS_fYZk_KVvvjXSF9OkPLziMZ94TskYYXpehwXt1rMJUy6XZuRD8qE3N2iHIa0GpO8lLVkVWRsguXWkCIYIzK8sQU1Ck27umoY"/>
+</div>
+<div class="hidden md:flex items-center gap-8 font-semibold text-[14px]">
+<a class="text-on-surface hover:text-primary transition-colors" href="#">Explore</a>
+<a class="text-on-surface hover:text-primary transition-colors" href="#">Basket</a>
+<a class="text-primary" href="#">My Rentals</a>
+<a class="text-on-surface hover:text-primary transition-colors" href="#">Profile</a>
+</div>
+<div class="flex items-center">
+<div class="w-10 h-10 rounded-full border-2 border-primary/20 overflow-hidden">
+<img alt="Profile" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA51hqLO2BEP8-jZs04FLAPFj0uzRBAX8xdL_1aAtd-i14E5VpMQGA_9x2XLVKc8PgVXJndN4_4Kbchj6QXofnqmRvQMeJlsGmNPiDilJrfcTYVDVI0z1_IAbO4t1rf2op9JaB8xJ67UdS79Fu7Gzn_xg4HRS0-wlr_iLqFJZ0pBUlCL2PMoZ9lEvCH0LvVFf36KNv_ZGEfhvug8P_t3n5VgCjCkz3kmyWubwR3UT7XoKF5KtCs1mq00DScHLAIiV04abfqGFHplxmo"/>
+</div>
+</div>
+</header>
+<!-- Decorative Elements -->
+<img class="fixed left-0 top-1/2 -translate-y-1/2 w-32 md:w-56 z-0 pointer-events-none object-left" src="https://lh3.googleusercontent.com/aida/ADBb0ujvtIY7ZhoXinyor3UrZufgtHE7JthiBAK1DQ5A8IgXQzR90pBTcR5KuWZ5kjVAxRwbRputaxAcyfZ_l4ARKG8e0zUyl1-CAueNrR3_Xcq-8vva37BD_70Ya5ouT1JxYigQOzTzGUlEQAS0kUIR6QtJZiG4UmmOhN1xs8-YuiPmqu_wJBTDbwVTCoqMPEnW2ew1WOJ2Hqv99EicUxc4BqHWDClzq-mpn-Vfkg41Quy8xt4VebnBGrLCh5h4W1JS-VujLvx-3uLMHXY"/>
+<img class="fixed right-0 top-1/4 w-28 md:w-48 z-0 pointer-events-none object-right" src="https://lh3.googleusercontent.com/aida/ADBb0ujFmNHiuVxvRJ9yGVHOnEEXjRolFbCgRgq-ku_BuqCcwKWapW_v4GlxaG6zQZHifOeN_yifirFEdvtR22XMBJht8H2WR3qI6OovaGbctjJXRsqa8WtIy1zh9ZVrW7z_U7buwG4shJz8CZtT-IDd0Zv3R6CYBNM0M1jFobVsAEHFcshuHn084lqjljNZN-UHFMbKtEyQJhTR2jqI05WnE3l0cqJvmzQwgIkiR07h8eMqXJys6e6UWTw9VCcuFfLBpvPfQa33E1hk7Fg"/>
+<main class="pt-24 pb-32 px-4 max-w-xl mx-auto relative z-10">
+<!-- Header Section -->
+<div class="mb-10 text-center">
+<h1 class="font-headline font-black text-4xl md:text-5xl text-primary leading-tight mb-4">Extend Your Island Time</h1>
+<p class="text-on-surface font-medium opacity-70 px-4">Not ready to leave yet? We understand. Use the form below to find your rental and choose a new return date.</p>
+</div>
+<div class="space-y-6">
+<!-- Identification Section -->
+<section class="bg-surface-container rounded-lg p-8 card-shadow">
+<h2 class="font-headline font-black text-2xl text-primary mb-8 flex items-center gap-3">
+<span class="material-symbols-outlined font-bold">search</span>
+                Find Your Booking
+            </h2>
+<div class="space-y-6">
+<div class="space-y-2">
+<label class="text-sm font-bold text-primary ml-2">Email Address</label>
+<input class="w-full input-field focus:ring-2 focus:ring-primary outline-none transition-all" placeholder="aloha@island.com" type="email"/>
+</div>
+<div class="space-y-2">
+<label class="text-sm font-bold text-primary ml-2">Order Reference</label>
+<input class="w-full input-field focus:ring-2 focus:ring-primary outline-none transition-all" placeholder="LR-882-90" type="text"/>
+</div>
+<button class="w-full btn-primary text-lg">Locate Rental</button>
+</div>
+</section>
+<!-- Section Divider -->
+<div class="flex justify-center py-4">
+<img alt="divider" class="w-16 h-16 opacity-10" src="https://lh3.googleusercontent.com/aida/ADBb0uj4lWGVFCFD3N1r-sDGVyv3n7aU9W9Bgl7sej_5HoW4peKPu-8g8ABfqkxNuvl-TLsocCsjmWlm_DnTHzpEMegmWPKQaRgxJrf9sZracjmWS55C-MWpQSK7sWm7Os58oqLiH1ybNYu_syHlV6yb6bj1tXZeHFcAfzE6Yn3DY2L5nkY5XB8qKP6hWs8StquBEu81yJipURCdZIjgd2pX-KejqZIxZRB6EMo0-0LQclbFp0csOzeB_g1HGH1757AYRfH91KcphgDw6f0"/>
+</div>
+<!-- Active Rental Summary -->
+<section class="bg-surface-container rounded-lg p-6 card-shadow border-4 border-secondary/20">
+<div class="space-y-6">
+<div class="aspect-video rounded-xl overflow-hidden bg-surface">
+<img alt="Honda Beat" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC_LNmykbJ1pr34tNaJCpSU072dmSNxXlYgySDh6cJ6E3HgJszMX3A7P0X6v-AfQKGU-qz2yu0j0LLFiRLQfoRc3gpiHXS8OkasEis7ZNNT4a5WfZToBnAduVynyTdJJvi5ZZh_cYfrFudJcs9m4hwQm22ifgCD4XSzO4cMDq21c-JwaJGxQ1XaF_VEfiVUjxEF6ROlB2YQAgVU8fbqUTZbBcfbvnkKEBNt-rEYCFuQpLaV92Vh_VS2GtS6gZS89MY-TBrJ6iRWOL0j"/>
+</div>
+<div class="space-y-4 px-2">
+<div>
+<span class="bg-secondary text-on-surface text-[11px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest">Active Rental</span>
+<h3 class="font-headline font-black text-3xl text-on-surface mt-3">Honda Beat 110cc</h3>
+<p class="text-on-surface opacity-70 flex items-center gap-1 font-semibold mt-1">
+<span class="material-symbols-outlined text-sm">location_on</span>
+                            General Luna, Siargao
+                        </p>
+</div>
+<div class="grid grid-cols-2 gap-4 pt-6 border-t-2 border-surface">
+<div class="space-y-1">
+<p class="text-[10px] uppercase font-black text-primary tracking-widest opacity-60">Current Return</p>
+<p class="font-black text-xl text-primary italic">Oct 24, 2023</p>
+</div>
+<div class="space-y-1 text-right">
+<p class="text-[10px] uppercase font-black text-primary tracking-widest opacity-60">Status</p>
+<p class="font-black text-xl text-secondary">In Use</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Date Extension Picker -->
+<section class="bg-surface-container rounded-lg p-8 card-shadow">
+<h2 class="font-headline font-black text-2xl text-primary mb-8 flex items-center gap-3">
+<span class="material-symbols-outlined font-bold">calendar_month</span>
+                Select New Return Date
+            </h2>
+<div class="bg-white/50 rounded-lg p-6">
+<div class="flex justify-between items-center mb-6">
+<p class="font-black text-lg text-on-surface">October 2023</p>
+<div class="flex gap-4">
+<button class="p-2 hover:bg-surface rounded-full transition-colors"><span class="material-symbols-outlined">chevron_left</span></button>
+<button class="p-2 hover:bg-surface rounded-full transition-colors"><span class="material-symbols-outlined">chevron_right</span></button>
+</div>
+</div>
+<div class="grid grid-cols-7 gap-1 text-center mb-4">
+<span class="text-[11px] font-black text-primary opacity-40">S</span>
+<span class="text-[11px] font-black text-primary opacity-40">M</span>
+<span class="text-[11px] font-black text-primary opacity-40">T</span>
+<span class="text-[11px] font-black text-primary opacity-40">W</span>
+<span class="text-[11px] font-black text-primary opacity-40">T</span>
+<span class="text-[11px] font-black text-primary opacity-40">F</span>
+<span class="text-[11px] font-black text-primary opacity-40">S</span>
+</div>
+<div class="grid grid-cols-7 gap-1">
+<div class="h-10 flex items-center justify-center text-on-surface/20 font-bold">22</div>
+<div class="h-10 flex items-center justify-center text-on-surface/20 font-bold">23</div>
+<div class="h-10 flex items-center justify-center text-primary font-black bg-primary/10 rounded-full">24</div>
+<div class="h-10 flex items-center justify-center font-bold">25</div>
+<div class="h-10 flex items-center justify-center font-bold">26</div>
+<div class="h-10 flex items-center justify-center bg-secondary text-on-surface font-black rounded-full relative">27
+                        <div class="absolute bottom-1 w-1 h-1 bg-on-surface rounded-full"></div>
+</div>
+<div class="h-10 flex items-center justify-center font-bold">28</div>
+<div class="h-10 flex items-center justify-center font-bold">29</div>
+<div class="h-10 flex items-center justify-center font-bold">30</div>
+<div class="h-10 flex items-center justify-center font-bold">31</div>
+</div>
+</div>
+<p class="mt-6 text-sm font-bold text-primary italic text-center">New Return: Friday, October 27th (3 Additional Days)</p>
+</section>
+<!-- Charges Summary -->
+<section class="bg-surface-container rounded-lg p-8 card-shadow overflow-hidden relative">
+<div class="absolute right-0 top-0 w-32 h-32 opacity-5 translate-x-8 -translate-y-8">
+<img alt="decoration" class="w-full h-full" src="https://lh3.googleusercontent.com/aida/ADBb0uj4lWGVFCFD3N1r-sDGVyv3n7aU9W9Bgl7sej_5HoW4peKPu-8g8ABfqkxNuvl-TLsocCsjmWlm_DnTHzpEMegmWPKQaRgxJrf9sZracjmWS55C-MWpQSK7sWm7Os58oqLiH1ybNYu_syHlV6yb6bj1tXZeHFcAfzE6Yn3DY2L5nkY5XB8qKP6hWs8StquBEu81yJipURCdZIjgd2pX-KejqZIxZRB6EMo0-0LQclbFp0csOzeB_g1HGH1757AYRfH91KcphgDw6f0"/>
+</div>
+<h2 class="font-headline font-black text-2xl text-primary mb-8">Summary of Charges</h2>
+<div class="space-y-5">
+<div class="flex justify-between items-center">
+<span class="font-bold opacity-70">Original Cost (5 Days)</span>
+<span class="font-black">₱2,500.00</span>
+</div>
+<div class="flex justify-between items-center text-primary">
+<span class="font-bold">Extension (3 Extra Days)</span>
+<span class="font-black">₱1,500.00</span>
+</div>
+<div class="flex justify-between items-center pb-6 border-b-2 border-surface">
+<span class="font-bold opacity-70">Service Fee</span>
+<span class="font-black">₱150.00</span>
+</div>
+<div class="pt-2">
+<div class="flex justify-between items-end">
+<div class="space-y-1">
+<p class="text-[10px] uppercase font-black text-primary tracking-widest">Updated Total</p>
+<p class="text-4xl font-black text-primary">₱4,150.00</p>
+</div>
+<div class="text-right space-y-1">
+<p class="text-[11px] font-bold opacity-70">Balance Due Now</p>
+<p class="text-2xl font-black text-secondary">₱1,650.00</p>
+</div>
+</div>
+</div>
+</div>
+<div class="mt-10 space-y-4">
+<button class="w-full btn-primary text-xl py-6 shadow-xl">
+                    Confirm Extension
+                    <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">pets</span>
+</button>
+<button class="w-full text-on-surface/60 font-black py-2 hover:text-on-surface transition-colors">
+                    Cancel Changes
+                </button>
+</div>
+<div class="mt-8 bg-surface rounded-lg p-4 flex gap-4">
+<span class="material-symbols-outlined text-secondary font-black">info</span>
+<p class="text-xs font-bold text-on-surface/70 leading-relaxed">
+                    By confirming, you agree to the updated rental terms. The additional ₱1,650.00 will be charged to your card ending in **42.
+                </p>
+</div>
+</section>
+</div>
+</main>
+<!-- BottomNavBar (Mobile Only) -->
+<nav class="md:hidden fixed bottom-4 left-4 right-4 h-20 bg-[#FAF6F0] rounded-full flex justify-around items-center z-50 card-shadow border border-primary/5">
+<a class="flex flex-col items-center justify-center text-on-surface/50 px-4" href="#">
+<span class="material-symbols-outlined text-2xl">search</span>
+<span class="text-[10px] font-black uppercase tracking-tighter mt-1">Explore</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface/50 px-4" href="#">
+<span class="material-symbols-outlined text-2xl">shopping_basket</span>
+<span class="text-[10px] font-black uppercase tracking-tighter mt-1">Basket</span>
+</a>
+<a class="flex flex-col items-center justify-center text-primary bg-primary/10 h-16 w-16 rounded-full" href="#">
+<span class="material-symbols-outlined text-2xl" style="font-variation-settings: 'FILL' 1;">calendar_today</span>
+<span class="text-[10px] font-black uppercase tracking-tighter mt-0.5">Rentals</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface/50 px-4" href="#">
+<span class="material-symbols-outlined text-2xl">person</span>
+<span class="text-[10px] font-black uppercase tracking-tighter mt-1">Profile</span>
+</a>
+</nav>
+</body></html>

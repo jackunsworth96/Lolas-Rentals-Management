@@ -27,6 +27,13 @@ const LostOpportunityPage = lazy(() => import('./pages/lost-opportunity/LostOppo
 const SettingsPage = lazy(() => import('./pages/settings/SettingsPage.js'));
 const PawCardPage = lazy(() => import('./pages/paw-card/PawCardPage.js'));
 const BrowseBookPage = lazy(() => import('./pages/booking/BrowseBookPage.js'));
+const BasketPage = lazy(() => import('./pages/basket/BasketPage.js'));
+const ConfirmationPage = lazy(() => import('./pages/confirmation/ConfirmationPage.js'));
+const ExtendPage = lazy(() => import('./pages/extend/ExtendPage.js'));
+const HomePage = lazy(() => import('./pages/home/HomePage.js'));
+const RepairsPage = lazy(() => import('./pages/repairs/RepairsPage.js'));
+const AboutPage = lazy(() => import('./pages/about/AboutPage.js'));
+const PrivacyPage = lazy(() => import('./pages/privacy/PrivacyPage.js'));
 const UIErrorsPage = lazy(() => import('./pages/ui-errors/UIErrorsPage.js'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -49,10 +56,16 @@ export function AppRouter() {
         <Route path="/book-transfer/:token" element={<PublicBookingPage />} />
         <Route path="/paw-card" element={<PawCardPage />} />
         <Route path="/browse-book" element={<BrowseBookPage />} />
-        <Route path="/basket" element={<BrowseBookPage />} />
+        <Route path="/basket" element={<BasketPage />} />
+        <Route path="/confirmation" element={<ConfirmationPage />} />
+        <Route path="/extend" element={<ExtendPage />} />
+        <Route path="/" element={<HomePage />} />
+        <Route path="/repairs" element={<RepairsPage />} />
+        <Route path="/about" element={<AboutPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
 
         <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-          <Route index element={<Navigate to="/orders/inbox" replace />} />
+          <Route path="/dashboard" element={<Navigate to="/orders/inbox" replace />} />
           <Route path="orders/inbox" element={<InboxPage />} />
           <Route path="orders/active" element={<ActivePage />} />
           <Route path="orders/completed" element={<CompletedPage />} />

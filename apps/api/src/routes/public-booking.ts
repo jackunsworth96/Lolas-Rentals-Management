@@ -186,6 +186,22 @@ router.post('/submit', validateBody(SubmitBookingBodySchema), async (req, res, n
   }
 });
 
+// ── Addons (public) ──
+
+const AddonsQuerySchema = z.object({
+  storeId: z.string().min(1),
+});
+
+router.get('/addons', validateQuery(AddonsQuerySchema), async (req, res, next) => {
+  try {
+    const { storeId } = req.query as { storeId: string };
+    const addons = await req.app.locals.deps.configRepo.getAddons(storeId);
+    res.json({ success: true, data: addons });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── Locations (public) ──
 
 const LocationsQuerySchema = z.object({

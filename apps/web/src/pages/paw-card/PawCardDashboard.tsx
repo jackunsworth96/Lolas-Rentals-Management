@@ -1,13 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { Session, SupabaseClient } from '@supabase/supabase-js';
 import { formatCurrency } from '../../utils/currency.js';
+import { api } from '../../api/client.js';
 import discountCard from '../../assets/Discount Card.svg';
 import pawPrint from '../../assets/Paw Print.svg';
 import lolaFace from '../../assets/Lola Face Icon.svg';
 import handOnHeart from '../../assets/Hand on Heart.svg';
 import {
-  fetchSavingsRows,
   sumAmountSaved,
   rowsForUser,
   aggregateLeaderboard,
@@ -15,28 +14,34 @@ import {
 } from './paw-card-queries.js';
 import { normalizeEmail } from './paw-card-utils.js';
 import type { SavingsRow } from './paw-card-utils.js';
+import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 
 type Props = {
-  supabase: SupabaseClient;
-  session: Session;
+  accessEmail: string;
   displayFullName: string;
 };
 
-export function PawCardDashboard({ supabase, session, displayFullName }: Props) {
-  const email = session.user.email ?? '';
+export function PawCardDashboard({ accessEmail, displayFullName }: Props) {
+  const email = accessEmail;
   const userKey = normalizeEmail(email);
 
   const [leaderboardPeriod, setLeaderboardPeriod] = useState<LeaderboardPeriod>('month');
 
   const dashQuery = useQuery({
     queryKey: ['paw-card', 'dashboard', 'all-rows', userKey],
-    queryFn: () => fetchSavingsRows(supabase, 'all'),
+    queryFn: () => {
+      const q = new URLSearchParams({ email, period: 'all' });
+      return api.get<SavingsRow[]>(`/public/paw-card/entries?${q}`);
+    },
     enabled: !!email,
   });
 
   const lbQuery = useQuery({
-    queryKey: ['paw-card', 'leaderboard', leaderboardPeriod],
-    queryFn: () => fetchSavingsRows(supabase, leaderboardPeriod),
+    queryKey: ['paw-card', 'leaderboard', leaderboardPeriod, userKey],
+    queryFn: () => {
+      const q = new URLSearchParams({ email, period: leaderboardPeriod });
+      return api.get<SavingsRow[]>(`/public/paw-card/entries?${q}`);
+    },
     enabled: !!email,
   });
 
@@ -66,8 +71,18 @@ export function PawCardDashboard({ supabase, session, displayFullName }: Props) 
   const top = ranked.slice(0, 10);
 
   const dashLoading = dashQuery.isLoading;
-  const dashErr = dashQuery.error instanceof Error ? dashQuery.message : dashQuery.error ? 'Could not load your stats.' : '';
-  const lbErr = lbQuery.error instanceof Error ? lbQuery.message : lbQuery.error ? 'Could not load leaderboard.' : '';
+  const dashErr =
+    dashQuery.error instanceof Error
+      ? dashQuery.error.message
+      : dashQuery.error
+        ? 'Could not load your stats.'
+        : '';
+  const lbErr =
+    lbQuery.error instanceof Error
+      ? lbQuery.error.message
+      : lbQuery.error
+        ? 'Could not load leaderboard.'
+        : '';
 
   return (
     <section className="px-6 py-12" style={{ background: 'rgba(246,237,221,0.4)' }}>
@@ -82,9 +97,16 @@ export function PawCardDashboard({ supabase, session, displayFullName }: Props) 
         {dashErr && <p className="text-sm text-red-600 mb-4">{dashErr}</p>}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white p-8 rounded-2xl shadow-lg flex flex-col justify-between">
+          <div
+            className={`flex flex-col justify-between rounded-2xl bg-white p-8 shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${!dashLoading ? 'animate-card-enter' : ''}`}
+            style={
+              !dashLoading
+                ? { animationDelay: '0ms' }
+                : undefined
+            }
+          >
             <div>
-              <img src={discountCard} alt="" className="w-8 h-8 mb-2" />
+              <img src={discountCard} alt="" className="w-8 h-8 mb-2 bg-transparent" />
               <h4 className="text-xs font-bold uppercase tracking-wider" style={{ color: '#3e4946' }}>My Total Savings</h4>
             </div>
             <p className="text-4xl font-black mt-2" style={{ fontFamily: 'Epilogue, sans-serif', color: '#1A7A6E' }}>
@@ -95,9 +117,15 @@ export function PawCardDashboard({ supabase, session, displayFullName }: Props) 
             </p>
           </div>
 
-          <div className="p-8 rounded-2xl shadow-lg flex flex-col justify-between text-white relative overflow-hidden" style={{ background: '#1A7A6E' }}>
+          <div
+            className={`relative flex flex-col justify-between overflow-hidden rounded-2xl p-8 text-white shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${!dashLoading ? 'animate-card-enter' : ''}`}
+            style={{
+              background: '#1A7A6E',
+              ...(!dashLoading ? { animationDelay: '100ms' } : {}),
+            }}
+          >
             <div className="relative z-10">
-              <img src={pawPrint} alt="" className="w-8 h-8 mb-2 brightness-0 invert" />
+              <img src={pawPrint} alt="" className="w-8 h-8 mb-2 brightness-0 invert bg-transparent" />
               <h4 className="text-xs font-bold uppercase tracking-wider opacity-80">Lola&apos;s Matched Donation</h4>
             </div>
             <div className="relative z-10">
@@ -108,12 +136,19 @@ export function PawCardDashboard({ supabase, session, displayFullName }: Props) 
                 Every peso you save, Lola&apos;s donates the same to Be Pawsitive NGO.
               </p>
             </div>
-            <img src={lolaFace} alt="" className="absolute -bottom-4 -right-4 w-28 h-28 opacity-15 pointer-events-none z-0" />
+            <img src={lolaFace} alt="" className="absolute -bottom-4 -right-4 w-28 h-28 opacity-15 pointer-events-none z-0 bg-transparent" />
           </div>
 
-          <div className="p-8 rounded-2xl shadow-lg md:row-span-2 flex flex-col" style={{ background: '#F5B731', color: '#271900' }}>
+          <div
+            className={`flex flex-col rounded-2xl p-8 shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md md:row-span-2 ${!dashLoading ? 'animate-card-enter' : ''}`}
+            style={{
+              background: '#F5B731',
+              color: '#271900',
+              ...(!dashLoading ? { animationDelay: '200ms' } : {}),
+            }}
+          >
             <div className="mb-auto">
-              <img src={handOnHeart} alt="" className="w-8 h-8 mb-2" />
+              <img src={handOnHeart} alt="" className="w-8 h-8 mb-2 bg-transparent" />
               <h4 className="text-xs font-bold uppercase tracking-wider">Community Total</h4>
               <p className="text-4xl font-black mt-2" style={{ fontFamily: 'Epilogue, sans-serif' }}>
                 {dashLoading ? '…' : formatCurrency(communityTotal)}
@@ -152,23 +187,32 @@ export function PawCardDashboard({ supabase, session, displayFullName }: Props) 
             )}
           </div>
 
-          <div className="bg-white p-8 rounded-2xl shadow-lg md:col-span-3">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-4">
+          <FadeUpSection className="md:col-span-3">
+          <div className="rounded-2xl bg-white p-8 shadow-lg">
+            <div className="mb-4 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
               <h4 className="text-2xl font-bold" style={{ fontFamily: 'Epilogue, sans-serif' }}>Top Savers</h4>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={() => setLeaderboardPeriod('month')}
-                  className="px-4 py-2 rounded-full text-xs font-bold"
-                  style={leaderboardPeriod === 'month' ? { background: '#1A7A6E', color: '#fff' } : { background: '#eae1d2', color: '#1A7A6E' }}
+                  className="rounded-full px-4 py-2 text-xs font-bold transition-all duration-300 ease-in-out"
+                  style={
+                    leaderboardPeriod === 'month'
+                      ? { background: '#1A7A6E', color: '#fff' }
+                      : { background: '#eae1d2', color: '#1A7A6E' }
+                  }
                 >
                   This Month
                 </button>
                 <button
                   type="button"
                   onClick={() => setLeaderboardPeriod('all')}
-                  className="px-4 py-2 rounded-full text-xs font-bold"
-                  style={leaderboardPeriod === 'all' ? { background: '#1A7A6E', color: '#fff' } : { background: '#eae1d2', color: '#1A7A6E' }}
+                  className="rounded-full px-4 py-2 text-xs font-bold transition-all duration-300 ease-in-out"
+                  style={
+                    leaderboardPeriod === 'all'
+                      ? { background: '#1A7A6E', color: '#fff' }
+                      : { background: '#eae1d2', color: '#1A7A6E' }
+                  }
                 >
                   All Time
                 </button>
@@ -178,7 +222,10 @@ export function PawCardDashboard({ supabase, session, displayFullName }: Props) 
             {lbErr && <p className="text-sm text-red-600 mb-3">{lbErr}</p>}
 
             {myRank > 10 && myEntry && (
-              <div className="flex items-center justify-between p-3 rounded-lg mb-4 border-l-4" style={{ background: 'rgba(26,122,110,0.05)', borderColor: '#1A7A6E' }}>
+              <div
+                className="mb-4 flex items-center justify-between rounded-lg border-l-4 p-3 transition-colors duration-150 hover:bg-sand-brand/50"
+                style={{ background: 'rgba(26,122,110,0.05)', borderColor: '#1A7A6E' }}
+              >
                 <div className="flex items-center gap-4">
                   <span className="font-bold w-5 text-right" style={{ color: '#1A7A6E' }}>{myRank}</span>
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ background: '#1A7A6E' }}>
@@ -202,7 +249,7 @@ export function PawCardDashboard({ supabase, session, displayFullName }: Props) 
                   return (
                     <div
                       key={entry.key}
-                      className="flex items-center justify-between px-3 py-2.5 rounded-lg transition-colors"
+                      className="flex items-center justify-between rounded-lg px-3 py-2.5 transition-colors duration-150 hover:bg-sand-brand/50"
                       style={isMe ? { background: 'rgba(26,122,110,0.05)', borderLeft: '4px solid #1A7A6E' } : {}}
                     >
                       <div className="flex items-center gap-4">
@@ -236,6 +283,7 @@ export function PawCardDashboard({ supabase, session, displayFullName }: Props) 
               </p>
             )}
           </div>
+          </FadeUpSection>
         </div>
       </div>
     </section>

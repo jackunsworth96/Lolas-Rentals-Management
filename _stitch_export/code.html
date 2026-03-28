@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Epilogue:ital,wght@0,100..900;1,100..900&amp;family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "teal-brand": "#1A7A6E",
+              "gold-brand": "#F5B731",
+              "sand-brand": "#E8DFD0",
+              "cream-brand": "#FAF6F0",
+              "charcoal-brand": "#3D3D3D",
+              "on-secondary-fixed": "#271900",
+              "on-secondary-container": "#6f4f00",
+              "inverse-surface": "#343026",
+              "on-error": "#ffffff",
+              "error": "#ba1a1a",
+              "on-surface": "#3D3D3D",
+              "on-tertiary": "#ffffff",
+              "surface-container-high": "#E8DFD0",
+              "on-tertiary-fixed-variant": "#802a0e",
+              "on-primary-container": "#b0fff1",
+              "on-primary": "#ffffff",
+              "secondary-fixed-dim": "#F5B731",
+              "surface-variant": "#E8DFD0",
+              "inverse-primary": "#81d6c7",
+              "secondary-container": "#F5B731",
+              "on-error-container": "#93000a",
+              "secondary-fixed": "#ffdea6",
+              "tertiary-container": "#b24f30",
+              "on-secondary-fixed-variant": "#5e4200",
+              "tertiary": "#92381b",
+              "error-container": "#ffdad6",
+              "primary-container": "#1A7A6E",
+              "inverse-on-surface": "#FAF6F0",
+              "secondary": "#F5B731",
+              "primary-fixed": "#9df2e3",
+              "on-secondary": "#ffffff",
+              "background": "#FAF6F0",
+              "surface-container-lowest": "#ffffff",
+              "primary": "#1A7A6E",
+              "outline": "#6e7976",
+              "on-primary-fixed": "#00201c",
+              "surface-bright": "#FAF6F0",
+              "outline-variant": "#bdc9c5",
+              "tertiary-fixed": "#ffdbd1",
+              "on-surface-variant": "#3D3D3D",
+              "on-tertiary-fixed": "#3a0a00",
+              "on-primary-fixed-variant": "#005047",
+              "tertiary-fixed-dim": "#ffb59f",
+              "surface-tint": "#1A7A6E",
+              "surface": "#FAF6F0",
+              "surface-container": "#E8DFD0",
+              "primary-fixed-dim": "#81d6c7",
+              "on-tertiary-container": "#ffece7",
+              "surface-container-highest": "#E8DFD0",
+              "on-background": "#3D3D3D",
+              "surface-container-low": "#FAF6F0",
+              "surface-dim": "#E8DFD0"
+            },
+            fontFamily: {
+              "headline": ["Epilogue", "sans-serif"],
+              "body": ["Epilogue", "sans-serif"],
+              "label": ["Epilogue", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24
+        }
+        body {
+            min-height: max(884px, 100dvh);
+        }
+    </style>
+</head>
+<body class="bg-background font-body text-charcoal-brand selection:bg-gold-brand selection:text-charcoal-brand">
+<!-- Floral Decor Top -->
+<div class="fixed top-0 left-0 w-48 h-48 pointer-events-none z-0">
+<img alt="Flower Left" class="w-full h-full object-contain" src="https://lh3.googleusercontent.com/aida/ADBb0ujvtIY7ZhoXinyor3UrZufgtHE7JthiBAK1DQ5A8IgXQzR90pBTcR5KuWZ5kjVAxRwbRputaxAcyfZ_l4ARKG8e0zUyl1-CAueNrR3_Xcq-8vva37BD_70Ya5ouT1JxYigQOzTzGUlEQAS0kUIR6QtJZiG4UmmOhN1xs8-YuiPmqu_wJBTDbwVTCoqMPEnW2ew1WOJ2Hqv99EicUxc4BqHWDClzq-mpn-Vfkg41Quy8xt4VebnBGrLCh5h4W1JS-VujLvx-3uLMHXY"/>
+</div>
+<!-- Header / TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-teal-brand backdrop-blur-xl flex items-center justify-between px-6 py-4">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-white" data-icon="menu">menu</span>
+<span class="text-2xl font-black text-white italic font-headline tracking-tighter">Lola's Rentals</span>
+</div>
+<div class="hidden md:flex items-center gap-8">
+<a class="text-white/80 hover:bg-teal-brand/50 transition-colors font-label" href="#">Home</a>
+<a class="text-gold-brand font-bold hover:bg-teal-brand/50 transition-colors font-label" href="#">Reserve</a>
+<a class="text-white/80 hover:bg-teal-brand/50 transition-colors font-label" href="#">Paw Card</a>
+</div>
+<div class="w-10 h-10 rounded-full overflow-hidden border-2 border-white/20">
+<img alt="Avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC311FtfS-Cfsczr39n83MTZCvmL4kJVX0r-yV5yjUI3Kx-H9ee2f3576NBKxZ3Dce5fCcvfUBc6dV6dXr3S40NXrZGSAwjBTKRkLoL3Rl_hIKOxtD4IhKsj6nxP0G8lMOYjSri33VhFVxyNihMaWnOSetiXekFwlqDKTdsIIE1XsJ5K3L5tVcOOpmKjiSWXTvTuJtcHkq0WbisBBe86vsrip_-1Qdi-ZUJYoyHY9Gos-qQ2XphcAzqhJ47l0FNWMFrZM5aica688x2"/>
+</div>
+</header>
+<main class="relative pt-28 pb-32 px-4 md:px-8 max-w-7xl mx-auto min-h-screen">
+<!-- Search & Filter Bar -->
+<section class="relative z-10 mb-12">
+<div class="bg-sand-brand rounded-[2rem] p-6 md:p-8 shadow-sm">
+<div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+<!-- Store Selector -->
+<div class="space-y-2">
+<label class="text-xs font-bold uppercase tracking-widest text-teal-brand ml-1">Location</label>
+<div class="relative group">
+<select class="w-full bg-cream-brand border-none rounded-2xl px-4 py-3 appearance-none focus:ring-2 focus:ring-teal-brand transition-all text-charcoal-brand font-medium">
+<option>Lola's Rentals (General Luna)</option>
+<option>Bass Bikes (Cloud 9)</option>
+</select>
+<span class="material-symbols-outlined absolute right-3 top-3 pointer-events-none text-charcoal-brand/50">expand_more</span>
+</div>
+</div>
+<!-- Pickup Date -->
+<div class="space-y-2">
+<label class="text-xs font-bold uppercase tracking-widest text-teal-brand ml-1">Pickup Date</label>
+<div class="relative">
+<input class="w-full bg-cream-brand border-none rounded-2xl px-4 py-3 focus:ring-2 focus:ring-teal-brand transition-all text-charcoal-brand font-medium" type="text" value="Oct 24, 2024"/>
+<span class="material-symbols-outlined absolute right-3 top-3 text-charcoal-brand/50">calendar_today</span>
+</div>
+</div>
+<!-- Return Date -->
+<div class="space-y-2">
+<label class="text-xs font-bold uppercase tracking-widest text-teal-brand ml-1">Return Date</label>
+<div class="relative">
+<input class="w-full bg-cream-brand border-none rounded-2xl px-4 py-3 focus:ring-2 focus:ring-teal-brand transition-all text-charcoal-brand font-medium" type="text" value="Oct 27, 2024"/>
+<span class="material-symbols-outlined absolute right-3 top-3 text-charcoal-brand/50">calendar_today</span>
+</div>
+</div>
+<!-- CTA -->
+<div class="flex items-end">
+<button class="w-full bg-teal-brand text-white font-bold py-3.5 rounded-full shadow-md hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2">
+<span class="material-symbols-outlined" data-icon="search">search</span>
+                            Update Search
+                        </button>
+</div>
+</div>
+<!-- Vehicle Type Chips -->
+<div class="flex flex-wrap gap-3 mt-8 pt-6 border-t border-charcoal-brand/10">
+<button class="px-5 py-2 rounded-full bg-teal-brand text-white font-bold text-sm transition-all">All Rides</button>
+<button class="px-5 py-2 rounded-full bg-cream-brand text-charcoal-brand font-bold text-sm hover:bg-sand-brand transition-all">Automatic Scooters</button>
+<button class="px-5 py-2 rounded-full bg-cream-brand text-charcoal-brand font-bold text-sm hover:bg-sand-brand transition-all">Semi-Auto</button>
+<button class="px-5 py-2 rounded-full bg-cream-brand text-charcoal-brand font-bold text-sm hover:bg-sand-brand transition-all">Big Bikes</button>
+<button class="px-5 py-2 rounded-full bg-cream-brand text-charcoal-brand font-bold text-sm hover:bg-sand-brand transition-all">Bicycles</button>
+</div>
+</div>
+</section>
+<!-- Divider -->
+<div class="flex justify-center my-12">
+<img alt="divider" class="w-16 h-16 opacity-10" src="https://lh3.googleusercontent.com/aida/ADBb0uj4lWGVFCFD3N1r-sDGVyv3n7aU9W9Bgl7sej_5HoW4peKPu-8g8ABfqkxNuvl-TLsocCsjmWlm_DnTHzpEMegmWPKQaRgxJrf9sZracjmWS55C-MWpQSK7sWm7Os58oqLiH1ybNYu_syHlV6yb6bj1tXZeHFcAfzE6Yn3DY2L5nkY5XB8qKP6hWs8StquBEu81yJipURCdZIjgd2pX-KejqZIxZRB6EMo0-0LQclbFp0csOzeB_g1HGH1757AYRfH91KcphgDw6f0"/>
+</div>
+<!-- Vehicle Grid -->
+<section class="relative z-10">
+<div class="flex items-center justify-between mb-8">
+<h2 class="font-headline text-3xl font-black text-teal-brand tracking-tight">Available Fleet <span class="text-gold-brand">Siargao</span></h2>
+<div class="flex items-center gap-2 text-charcoal-brand/70 text-sm font-bold">
+<span class="material-symbols-outlined text-gold-brand" data-icon="sort">sort</span>
+                    Sort by: Recommended
+                </div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+<!-- Vehicle Card 1 -->
+<div class="bg-cream-brand rounded-[2rem] overflow-hidden shadow-sm border border-sand-brand/50 group">
+<div class="relative h-64 overflow-hidden">
+<img alt="Honda Click" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBWzE0rB0y8qJEcSqB6nSS6Ok-fgrT-IgfaOLAa9NgF69SwO0iLuZFuDvdPNK4HmnnwQIFE3G2Cwv3EnZr6vQE7I1X11c9i5hycydMlwpiGUBkSzKlXUJwYj9gEvCNMIG3c1oaKDZbEHxXzTviiQHQOEvrmBsdf2dOP2ibdO3w0bPqUHiuPJOTPNn8UIT8ZusM7VDNAVaaXw3AszB0HHbDqJ62U5qlnkdmlyYq6WamxFIOJowzeWt0fr2Gp5cRQVAyuuSIGaDszBXnm"/>
+<div class="absolute top-4 left-4 flex gap-2">
+<span class="bg-[#D1E7E4] text-teal-brand text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">Available</span>
+<span class="bg-[#FEF3D9] text-[#B8860B] text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]" data-icon="surfing">surfing</span> Surf Rack
+                            </span>
+</div>
+</div>
+<div class="p-6">
+<div class="flex justify-between items-start mb-2">
+<h3 class="font-headline text-xl font-black text-charcoal-brand">Honda Click 125i</h3>
+<div class="text-right">
+<p class="text-teal-brand font-black text-lg leading-tight">₱575<span class="text-xs text-charcoal-brand/60 font-bold">/day</span></p>
+</div>
+</div>
+<p class="text-charcoal-brand/80 text-sm mb-6 leading-relaxed">The island favorite. Easy to ride, fuel efficient, and perfect for narrow Siargao roads.</p>
+<button class="w-full bg-sand-brand text-teal-brand font-black py-4 rounded-3xl hover:bg-teal-brand hover:text-white transition-all flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-lg" data-icon="add_shopping_cart">add_shopping_cart</span>
+                            Add to Basket
+                        </button>
+</div>
+</div>
+<!-- Vehicle Card 2 -->
+<div class="bg-cream-brand rounded-[2rem] overflow-hidden shadow-sm border border-sand-brand/50 group">
+<div class="relative h-64 overflow-hidden">
+<img alt="Yamaha NMAX" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" src="https://lh3.googleusercontent.com/aida-public/AB6AXuApjcNkz9puoWqs5GIPWhk2NvTklQd1cSxNtm95nOwwxfQH5V0aNkGhpNOztUqak80uSJWMPlxH5B7lKZIQGlDsvMWMiPLQdg0xvBi1RnH5KXxI9p-HEEO00HhXlfDDexVKbfP5IXRryAEv9O-3O6lEKFhDE6oumFFwrH5aKm_wtGU6qNEtpZ3hGmWevOIgRG7s9Gha3uyuFkD3Lu258UgVOVf5OLe4gc5DKrABGfas7j1KJ7Lem5VGCnn2iALtPQIoFbikKYZQK6AP"/>
+<div class="absolute top-4 left-4 flex gap-2">
+<span class="bg-[#D1E7E4] text-teal-brand text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">Available</span>
+</div>
+</div>
+<div class="p-6">
+<div class="flex justify-between items-start mb-2">
+<h3 class="font-headline text-xl font-black text-charcoal-brand">Yamaha NMAX 155</h3>
+<div class="text-right">
+<p class="text-teal-brand font-black text-lg leading-tight">₱850<span class="text-xs text-charcoal-brand/60 font-bold">/day</span></p>
+</div>
+</div>
+<p class="text-charcoal-brand/80 text-sm mb-6 leading-relaxed">Premium comfort for long island cruises. Smooth suspension and ample under-seat storage.</p>
+<button class="w-full bg-sand-brand text-teal-brand font-black py-4 rounded-3xl hover:bg-teal-brand hover:text-white transition-all flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-lg" data-icon="add_shopping_cart">add_shopping_cart</span>
+                            Add to Basket
+                        </button>
+</div>
+</div>
+<!-- Vehicle Card 3 -->
+<div class="bg-cream-brand rounded-[2rem] overflow-hidden shadow-sm border border-sand-brand/50 group">
+<div class="relative h-64 overflow-hidden">
+<img alt="Island Adventurer" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCt2m64yJO_LneLwZVdyiT9vuMEnICl2Pv5jShXgLI11aMsIQVkC9AHa0fPAlfWCxJt8hBByGJWPDcFXjdniBJw73owLLnI-6dfr_mKQ__cyhsOBiwHiXOlMeo6lvSxNNfkEdt7i42RHhTKYDHUscxUks4-tCo-lbmHfKQ4yNP4lvshhErp6QnxFFVrC9jZeBvJkO_I95iwrNozSzuP879qXsfaK7gw69e6waA2ByArrpTa7NW_LnR9qxZBfSJYsJb6bTaDlQeVXDze"/>
+<div class="absolute top-4 left-4 flex gap-2">
+<span class="bg-[#D1E7E4] text-teal-brand text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">Available</span>
+<span class="bg-[#FEF3D9] text-[#B8860B] text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]" data-icon="surfing">surfing</span> Surf Rack
+                            </span>
+</div>
+</div>
+<div class="p-6">
+<div class="flex justify-between items-start mb-2">
+<h3 class="font-headline text-xl font-black text-charcoal-brand">Island Adventurer</h3>
+<div class="text-right">
+<p class="text-teal-brand font-black text-lg leading-tight">₱600<span class="text-xs text-charcoal-brand/60 font-bold">/day</span></p>
+</div>
+</div>
+<p class="text-charcoal-brand/80 text-sm mb-6 leading-relaxed">Modified with rugged tires and heavy-duty racks. Built for those exploring the north.</p>
+<button class="w-full bg-sand-brand text-teal-brand font-black py-4 rounded-3xl hover:bg-teal-brand hover:text-white transition-all flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-lg" data-icon="add_shopping_cart">add_shopping_cart</span>
+                            Add to Basket
+                        </button>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Floral Decor Bottom -->
+<div class="fixed bottom-0 right-0 w-64 h-64 pointer-events-none z-0">
+<img alt="Flower Right" class="w-full h-full object-contain" src="https://lh3.googleusercontent.com/aida/ADBb0ujFmNHiuVxvRJ9yGVHOnEEXjRolFbCgRgq-ku_BuqCcwKWapW_v4GlxaG6zQZHifOeN_yifirFEdvtR22XMBJht8H2WR3qI6OovaGbctjJXRsqa8WtIy1zh9ZVrW7z_U7buwG4shJz8CZtT-IDd0Zv3R6CYBNM0M1jFobVsAEHFcshuHn084lqjljNZN-UHFMbKtEyQJhTR2jqI05WnE3l0cqJvmzQwgIkiR07h8eMqXJys6e6UWTw9VCcuFfLBpvPfQa33E1hk7Fg"/>
+</div>
+<!-- Footer -->
+<footer class="w-full mt-20 bg-sand-brand">
+<div class="max-w-7xl mx-auto px-10 py-16 flex flex-col md:flex-row justify-between items-start gap-8">
+<div class="space-y-4 max-w-sm">
+<span class="font-headline font-black text-teal-brand text-2xl">Lola's Rentals</span>
+<p class="font-body text-charcoal-brand/70 leading-relaxed text-sm">
+                    © 2024 Lola's Rentals. Supporting Siargao Dog Rescue &amp; Local Reforestation.
+                </p>
+</div>
+<div class="grid grid-cols-2 gap-x-12 gap-y-4">
+<a class="text-charcoal-brand/60 hover:text-teal-brand hover:underline transition-all font-body text-sm font-bold" href="#">Island Safety</a>
+<a class="text-charcoal-brand/60 hover:text-teal-brand hover:underline transition-all font-body text-sm font-bold" href="#">Dog Rescue NGO</a>
+<a class="text-charcoal-brand/60 hover:text-teal-brand hover:underline transition-all font-body text-sm font-bold" href="#">Rentals FAQ</a>
+<a class="text-charcoal-brand/60 hover:text-teal-brand hover:underline transition-all font-body text-sm font-bold" href="#">Sustainability</a>
+</div>
+</div>
+</footer>
+<!-- Bottom Navigation (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full h-24 flex justify-around items-center px-4 pb-4 bg-cream-brand rounded-t-[3rem] z-50 shadow-[0_-10px_30px_rgba(0,0,0,0.05)]">
+<a class="flex flex-col items-center justify-center text-charcoal-brand/50 px-5 py-2 hover:opacity-80" href="#">
+<span class="material-symbols-outlined" data-icon="home">home</span>
+<span class="font-body text-xs font-black">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-[#D1E7E4] text-teal-brand rounded-3xl px-6 py-2 scale-110 duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="moped">moped</span>
+<span class="font-body text-xs font-black">Reserve</span>
+</a>
+<a class="flex flex-col items-center justify-center text-charcoal-brand/50 px-5 py-2 hover:opacity-80" href="#">
+<span class="material-symbols-outlined" data-icon="pets">pets</span>
+<span class="font-body text-xs font-black">Paw Card</span>
+</a>
+</nav>
+<!-- Floating Action Button -->
+<div class="fixed bottom-28 md:bottom-12 right-6 md:right-12 z-40">
+<button class="w-16 h-16 rounded-full bg-[#5D4037] shadow-xl flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-all">
+<span class="material-symbols-outlined text-3xl" style="font-variation-settings: 'FILL' 1;">support_agent</span>
+</button>
+</div>
+</body></html>

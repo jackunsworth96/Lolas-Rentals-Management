@@ -5,6 +5,7 @@ export interface BasketItem {
   vehicleModelId: string;
   modelName: string;
   dailyRate: number;
+  securityDeposit?: number;
   expiresAt: string;
 }
 
@@ -16,6 +17,7 @@ interface BookingState {
   dropoffLocationId: number | null;
   sessionToken: string;
   basket: BasketItem[];
+  searchTrigger: number;
 
   setDates: (pickup: string, dropoff: string) => void;
   setStore: (storeId: string) => void;
@@ -23,6 +25,7 @@ interface BookingState {
   addToBasket: (item: BasketItem) => void;
   removeFromBasket: (holdId: string) => void;
   clearBasket: () => void;
+  triggerSearch: () => void;
 }
 
 function getOrCreateSessionToken(): string {
@@ -42,6 +45,7 @@ export const useBookingStore = create<BookingState>((set) => ({
   dropoffLocationId: null,
   sessionToken: getOrCreateSessionToken(),
   basket: [],
+  searchTrigger: 0,
 
   setDates: (pickup, dropoff) =>
     set({ pickupDatetime: pickup, dropoffDatetime: dropoff }),
@@ -58,4 +62,6 @@ export const useBookingStore = create<BookingState>((set) => ({
     set((s) => ({ basket: s.basket.filter((b) => b.holdId !== holdId) })),
 
   clearBasket: () => set({ basket: [] }),
+
+  triggerSearch: () => set((s) => ({ searchTrigger: s.searchTrigger + 1 })),
 }));

@@ -2,6 +2,7 @@ export interface AvailableModel {
   modelId: string;
   modelName: string;
   availableCount: number;
+  nextAvailablePickup?: string;
 }
 
 export interface AvailabilityQuery {
@@ -43,6 +44,10 @@ export interface DirectBookingInsert {
   storeId: string;
   orderReference: string;
   addonIds: number[] | null;
+  transferType?: string | null;
+  flightNumber?: string | null;
+  flightArrivalTime?: string | null;
+  transferRoute?: string | null;
 }
 
 export interface DirectBookingResult {

@@ -1,28 +1,64 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import type { Session, SupabaseClient } from '@supabase/supabase-js';
-import {
-  generatePawOrderId,
-  SAVINGS_ENTRIES_WRITE_TABLE,
-} from './paw-card-utils.js';
-import { fetchEstablishments, fetchRentalOrdersForEmail } from './paw-card-queries.js';
+import { useAuthStore } from '../../stores/auth-store.js';
+import { api } from '../../api/client.js';
+import { PawCardReceiptArea } from './PawCardReceiptArea.js';
+import { PawCardSavingsDetailsFields } from './PawCardSavingsDetailsFields.js';
+import { PrimaryCtaButton } from '../../components/public/PrimaryCtaButton.js';
 
 type Est = { id: number; name: string };
 
 type Props = {
-  supabase: SupabaseClient;
-  session: Session;
+  accessEmail: string;
+  customerIdForSubmit: string;
   displayFullName: string;
   onLogged: () => void;
 };
+
+function apiBaseUrl(): string {
+  const raw = (import.meta.env.VITE_API_URL as string | undefined)?.trim() || '/api';
+  const base = raw.replace(/\/+$/, '');
+  if (base.startsWith('http')) {
+    return base.endsWith('/api') ? base : `${base}/api`;
+  }
+  return base || '/api';
+}
 
 function formatFetchError(err: unknown): string {
   if (err && typeof err === 'object' && 'message' in err && typeof (err as { message: string }).message === 'string') {
     return (err as { message: string }).message;
   }
-  return 'Could not load businesses. Refresh and try again.';
+  return 'Could not load data. Refresh and try again.';
 }
 
-export function PawCardSavingsForm({ supabase, session, displayFullName, onLogged }: Props) {
+async function uploadPawReceipt(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append('receipt', file);
+  const token = useAuthStore.getState().token;
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${apiBaseUrl()}/paw-card/upload-receipt`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+  let json: { success?: boolean; data?: { url?: string }; error?: { message?: string } };
+  try {
+    json = await res.json();
+  } catch {
+    throw new Error('Invalid response from server');
+  }
+  if (!res.ok || !json.success || !json.data?.url) {
+    throw new Error(json.error?.message ?? 'Upload failed');
+  }
+  return json.data.url;
+}
+
+export function PawCardSavingsForm({
+  accessEmail,
+  customerIdForSubmit,
+  displayFullName,
+  onLogged,
+}: Props) {
   const [establishments, setEstablishments] = useState<Est[]>([]);
   const [establishmentsError, setEstablishmentsError] = useState('');
   const [establishmentId, setEstablishmentId] = useState('');
@@ -32,11 +68,12 @@ export function PawCardSavingsForm({ supabase, session, displayFullName, onLogge
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
-  const [successInfo, setSuccessInfo] = useState<{ pawRef: string; rentalOrderId: string } | null>(null);
+  const [successInfo, setSuccessInfo] = useState<{ rentalOrderId: string } | null>(null);
   const [uploadError, setUploadError] = useState('');
   const [submitError, setSubmitError] = useState('');
   const [loadingEst, setLoadingEst] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitPressDown, setSubmitPressDown] = useState(false);
   const [rentalOrders, setRentalOrders] = useState<{ id: string; order_date: string; status: string }[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [ordersError, setOrdersError] = useState('');
@@ -52,9 +89,12 @@ export function PawCardSavingsForm({ supabase, session, displayFullName, onLogge
       setLoadingEst(true);
       setEstablishmentsError('');
       try {
-        await supabase.auth.getSession();
-        const list = await fetchEstablishments(supabase);
-        if (!cancelled) setEstablishments(list);
+        const raw = await api.get<Array<{ id: string; name: string }>>('/paw-card/establishments');
+        if (!cancelled) {
+          setEstablishments(
+            raw.map((e) => ({ id: Number(e.id), name: e.name })),
+          );
+        }
       } catch (err) {
         if (!cancelled) setEstablishmentsError(formatFetchError(err));
       } finally {
@@ -62,7 +102,7 @@ export function PawCardSavingsForm({ supabase, session, displayFullName, onLogge
       }
     })();
     return () => { cancelled = true; };
-  }, [supabase, session.user.id, session.access_token]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,9 +110,10 @@ export function PawCardSavingsForm({ supabase, session, displayFullName, onLogge
       setLoadingOrders(true);
       setOrdersError('');
       try {
-        await supabase.auth.getSession();
-        const em = session.user.email ?? '';
-        const list = await fetchRentalOrdersForEmail(supabase, em);
+        const q = new URLSearchParams({ email: accessEmail });
+        const list = await api.get<Array<{ id: string; order_date: string; status: string }>>(
+          `/public/paw-card/rental-orders?${q}`,
+        );
         if (!cancelled) setRentalOrders(list);
       } catch (err) {
         if (!cancelled) setOrdersError(formatFetchError(err));
@@ -81,7 +122,7 @@ export function PawCardSavingsForm({ supabase, session, displayFullName, onLogge
       }
     })();
     return () => { cancelled = true; };
-  }, [supabase, session.user.id, session.access_token, session.user.email]);
+  }, [accessEmail]);
 
   const handleFileChange = useCallback((file: File | null) => {
     setUploadError('');
@@ -109,12 +150,16 @@ export function PawCardSavingsForm({ supabase, session, displayFullName, onLogge
     setSubmitSuccess(false);
     setSubmitError('');
     setSuccessInfo(null);
+    setSubmitPressDown(true);
+    await new Promise((r) => setTimeout(r, 100));
+    setSubmitPressDown(false);
+    await new Promise((r) => setTimeout(r, 100));
     setIsSubmitting(true);
 
     try {
-      const email = session.user.email;
+      const email = accessEmail.trim().toLowerCase();
       if (!email) {
-        setSubmitError('Your account has no email. Please contact support.');
+        setSubmitError('Missing email. Please access your Paw Card again.');
         return;
       }
 
@@ -126,49 +171,30 @@ export function PawCardSavingsForm({ supabase, session, displayFullName, onLogge
 
       let receiptUrl: string | null = null;
       if (receiptFile) {
-        const ext = receiptFile.name.split('.').pop() ?? 'jpg';
-        const path = `${session.user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-        const { error: upErr } = await supabase.storage
-          .from('paw-card-receipts')
-          .upload(path, receiptFile, { contentType: receiptFile.type, upsert: false });
-        if (upErr) {
+        try {
+          receiptUrl = await uploadPawReceipt(receiptFile);
+        } catch {
           setUploadError('Receipt upload failed. Please try again.');
           return;
         }
-        const { data: pub } = supabase.storage.from('paw-card-receipts').getPublicUrl(path);
-        receiptUrl = pub.publicUrl;
       }
 
-      const pawRef = generatePawOrderId();
       const n = numPeople ? Number(numPeople) : null;
-      const numberOfPeople = typeof n === 'number' && Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+      const numberOfPeople = typeof n === 'number' && Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined;
 
-      const row = {
-        order_id: rentalOrderId,
-        paw_reference: pawRef,
-        full_name: displayFullName,
-        email: email.trim().toLowerCase(),
-        establishment: establishmentName || establishmentId,
-        date_of_visit: visitDate,
-        number_of_people: numberOfPeople,
-        amount_saved: Number(amount),
-        receipt_url: receiptUrl,
-      };
+      await api.post('/paw-card/submit', {
+        customerId: customerIdForSubmit,
+        email,
+        fullName: displayFullName,
+        orderId: rentalOrderId,
+        establishmentId,
+        discountAmount: Number(amount),
+        visitDate,
+        receiptUrl: receiptUrl ?? undefined,
+        numberOfPeople,
+      });
 
-      const { data: inserted, error: insErr } = await supabase
-        .from(SAVINGS_ENTRIES_WRITE_TABLE)
-        .insert(row)
-        .select('id, order_id, paw_reference')
-        .single();
-
-      if (insErr) {
-        setSubmitError(insErr.message || 'Could not save your entry. Please try again.');
-        return;
-      }
-
-      const outPaw = inserted?.paw_reference ? String(inserted.paw_reference) : pawRef;
-      const outOrder = inserted?.order_id ? String(inserted.order_id) : rentalOrderId;
-      setSuccessInfo({ pawRef: outPaw, rentalOrderId: outOrder });
+      setSuccessInfo({ rentalOrderId });
       setSubmitSuccess(true);
       setEstablishmentId('');
       setAmount('');
@@ -180,6 +206,8 @@ export function PawCardSavingsForm({ supabase, session, displayFullName, onLogge
       setReceiptPreview(null);
       setUploadError('');
       onLogged();
+    } catch (err: unknown) {
+      setSubmitError(err instanceof Error ? err.message : 'Could not save your entry. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -192,7 +220,7 @@ export function PawCardSavingsForm({ supabase, session, displayFullName, onLogge
           <span className="text-xl">✅</span>
           <div>
             <p className="font-bold text-sm" style={{ color: '#1A7A6E' }}>
-              Your saving has been logged! Reference: {successInfo.pawRef}
+              Your saving has been logged!
             </p>
             <p className="text-xs mt-1" style={{ color: '#3e4946' }}>Rental order: {successInfo.rentalOrderId}</p>
             <p className="text-xs" style={{ color: '#3e4946' }}>Lola&apos;s will match it as a donation.</p>
@@ -200,180 +228,54 @@ export function PawCardSavingsForm({ supabase, session, displayFullName, onLogge
         </div>
       )}
 
-      {loadingOrders && <p className="text-sm" style={{ color: '#6e7976' }}>Loading your orders…</p>}
-      {ordersError && <p className="text-sm text-red-600">{ordersError}</p>}
+      <PawCardSavingsDetailsFields
+        loadingOrders={loadingOrders}
+        ordersError={ordersError}
+        rentalOrders={rentalOrders}
+        selectedRentalOrderId={selectedRentalOrderId}
+        setSelectedRentalOrderId={setSelectedRentalOrderId}
+        manualOrderId={manualOrderId}
+        setManualOrderId={setManualOrderId}
+        loadingEst={loadingEst}
+        establishmentsError={establishmentsError}
+        establishments={establishments}
+        establishmentId={establishmentId}
+        setEstablishmentId={setEstablishmentId}
+        amount={amount}
+        setAmount={setAmount}
+        visitDate={visitDate}
+        setVisitDate={setVisitDate}
+        numPeople={numPeople}
+        setNumPeople={setNumPeople}
+      />
 
-      <div>
-        <label className="block text-sm font-semibold mb-1.5 ml-1">Rental order</label>
-        <select
-          value={selectedRentalOrderId}
-          onChange={(e) => {
-            setSelectedRentalOrderId(e.target.value);
-            if (e.target.value) setManualOrderId('');
-          }}
-          disabled={loadingOrders || !!ordersError}
-          className="w-full px-4 py-3 rounded-lg border-none focus:ring-2 mb-2"
-          style={{ background: '#fff', outlineColor: '#1A7A6E' }}
-        >
-          <option value="">{rentalOrders.length ? 'Select your rental order' : 'No orders found for your email — enter ID below'}</option>
-          {rentalOrders.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.id} — {o.order_date} ({o.status})
-            </option>
-          ))}
-        </select>
-        <input
-          type="text"
-          value={manualOrderId}
-          onChange={(e) => {
-            setManualOrderId(e.target.value);
-            if (e.target.value.trim()) setSelectedRentalOrderId('');
-          }}
-          placeholder="Or type your order ID (e.g. from your confirmation)"
-          className="w-full px-4 py-3 rounded-lg border-none focus:ring-2"
-          style={{ background: '#f0e7d8', outlineColor: '#1A7A6E' }}
-        />
-      </div>
+      <PawCardReceiptArea
+        galleryRef={galleryRef}
+        cameraRef={cameraRef}
+        receiptPreview={receiptPreview}
+        uploadError={uploadError}
+        onFileChange={handleFileChange}
+        onClearReceipt={() => {
+          setReceiptFile(null);
+          setReceiptPreview(null);
+          setUploadError('');
+        }}
+      />
 
-      {loadingEst && <p className="text-sm" style={{ color: '#6e7976' }}>Loading partners…</p>}
-      {establishmentsError && <p className="text-sm text-red-600">{establishmentsError}</p>}
-
-      <div>
-        <label className="block text-sm font-semibold mb-1.5 ml-1">Business Visited</label>
-        <select
-          required
-          value={establishmentId}
-          onChange={(e) => setEstablishmentId(e.target.value)}
-          disabled={loadingEst || !!establishmentsError}
-          className="w-full px-4 py-3 rounded-lg border-none focus:ring-2"
-          style={{ background: '#fff', outlineColor: '#1A7A6E' }}
-        >
-          <option value="">Select establishment</option>
-          {establishments.map((est) => (
-            <option key={est.id} value={String(est.id)}>{est.name}</option>
-          ))}
-        </select>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-semibold mb-1.5 ml-1">Amount Saved (₱)</label>
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            required
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="0.00"
-            className="w-full px-4 py-3 rounded-lg border-none focus:ring-2"
-            style={{ background: '#fff', outlineColor: '#1A7A6E' }}
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-semibold mb-1.5 ml-1">Date of Visit</label>
-          <input
-            type="date"
-            required
-            value={visitDate}
-            onChange={(e) => setVisitDate(e.target.value)}
-            className="w-full px-4 py-3 rounded-lg border-none focus:ring-2"
-            style={{ background: '#fff', outlineColor: '#1A7A6E' }}
-          />
-        </div>
-      </div>
-
-      <div>
-        <label className="block text-sm font-semibold mb-1.5 ml-1">Number of People</label>
-        <input
-          type="number"
-          min={1}
-          step={1}
-          value={numPeople}
-          onChange={(e) => setNumPeople(e.target.value)}
-          placeholder="1"
-          className="w-full px-4 py-3 rounded-lg border-none focus:ring-2"
-          style={{ background: '#fff', outlineColor: '#1A7A6E' }}
-        />
-      </div>
-
-      <div>
-        <label className="block text-sm font-semibold mb-1.5 ml-1">Receipt Photo</label>
-        <input
-          ref={galleryRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
-        />
-        <input
-          ref={cameraRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
-        />
-
-        <div className="flex flex-col gap-2 mb-2">
-          <button
-            type="button"
-            onClick={() => galleryRef.current?.click()}
-            className="w-full py-2.5 rounded-full text-sm font-bold text-white"
-            style={{ background: '#1A7A6E' }}
-          >
-            Upload from Gallery
-          </button>
-          <button
-            type="button"
-            onClick={() => cameraRef.current?.click()}
-            className="w-full py-2.5 rounded-full text-sm font-bold"
-            style={{ background: '#eae1d2', color: '#1A7A6E' }}
-          >
-            Take a Photo
-          </button>
-        </div>
-
-        {receiptPreview ? (
-          <div className="relative rounded-lg overflow-hidden border-2 border-dashed" style={{ borderColor: '#1A7A6E' }}>
-            <img src={receiptPreview} alt="Receipt preview" className="w-full h-40 object-cover" />
-            <button
-              type="button"
-              onClick={() => { setReceiptFile(null); setReceiptPreview(null); setUploadError(''); }}
-              className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center text-sm font-bold hover:bg-black/80"
-            >
-              ×
-            </button>
-          </div>
-        ) : (
-          <div
-            role="presentation"
-            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-            onDrop={(e) => { e.preventDefault(); e.stopPropagation(); handleFileChange(e.dataTransfer.files?.[0] ?? null); }}
-            className="w-full border-2 border-dashed rounded-lg p-4 text-center"
-            style={{ borderColor: '#bdc9c5' }}
-          >
-            <p className="text-xs" style={{ color: '#6e7976' }}>Or drag a photo here</p>
-          </div>
-        )}
-        {uploadError && <p className="text-xs text-red-600 mt-1">{uploadError}</p>}
-      </div>
-
-      <button
+      <PrimaryCtaButton
         type="submit"
         disabled={isSubmitting}
-        className="w-full py-4 rounded-full font-bold text-lg text-white shadow-lg transition-transform hover:scale-[1.02] disabled:opacity-50 flex items-center justify-center gap-2"
-        style={{ background: '#1A7A6E' }}
+        className={`flex w-full items-center justify-center gap-2 py-4 text-lg font-bold shadow-lg transition-transform duration-150 ease-out ${submitPressDown ? 'scale-95' : 'scale-100'}`}
       >
         {isSubmitting ? (
           <>
-            <span className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+            <span className="h-5 w-5 animate-spin rounded-full border-2 border-charcoal-brand border-t-transparent" />
             Submitting...
           </>
         ) : (
           'Log My Saving'
         )}
-      </button>
+      </PrimaryCtaButton>
 
       {submitError && <p className="text-sm text-center text-red-600">{submitError}</p>}
     </form>

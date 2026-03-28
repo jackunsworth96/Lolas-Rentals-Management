@@ -56,6 +56,10 @@ export const DirectBookingRequestSchema = z.object({
   dropoffLocationId: z.number().int().positive(),
   storeId: z.string().min(1),
   addonIds: z.array(z.number().int().positive()).optional(),
+  transferType: z.enum(['shared', 'private']).nullable().optional(),
+  flightNumber: z.string().optional(),
+  flightArrivalTime: z.string().optional(),
+  transferRoute: z.string().optional(),
 });
 
 export type DirectBookingRequest = z.infer<typeof DirectBookingRequestSchema>;

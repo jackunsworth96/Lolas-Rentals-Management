@@ -1,0 +1,85 @@
+import { useState } from 'react';
+import { PrimaryCtaButton } from '../public/PrimaryCtaButton.js';
+
+interface Props {
+  onFound: (order: Record<string, unknown>) => void;
+  onNotFound: () => void;
+  loading: boolean;
+  onSubmit: (email: string, orderReference: string) => void;
+  error: string | null;
+}
+
+export function BookingLookupForm({ loading, onSubmit, error }: Props) {
+  const [email, setEmail] = useState('');
+  const [orderRef, setOrderRef] = useState('');
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email.trim() || !orderRef.trim()) return;
+    onSubmit(email.trim(), orderRef.trim());
+  }
+
+  const inputClass =
+    'w-full rounded-full bg-sand-brand px-6 py-4 font-medium text-charcoal-brand outline-none transition-all duration-200 focus:scale-[1.01] focus:ring-2 focus:ring-teal-brand placeholder:text-charcoal-brand/40';
+
+  return (
+    <section className="rounded-4xl bg-cream-brand p-8 shadow-[0_10px_30px_-5px_rgba(26,122,110,0.1)]">
+      <h2 className="mb-8 flex items-center gap-3 font-headline text-2xl font-black text-teal-brand">
+        <span className="text-xl">🔍</span>
+        Find Your Booking
+      </h2>
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="space-y-2">
+          <label className="ml-2 text-sm font-bold text-teal-brand">Email Address</label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="aloha@island.com"
+            autoComplete="email"
+            required
+            className={inputClass}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label className="ml-2 text-sm font-bold text-teal-brand">Order Reference</label>
+          <input
+            type="text"
+            value={orderRef}
+            onChange={(e) => setOrderRef(e.target.value)}
+            placeholder="LR-20260328-A1B2"
+            required
+            className={inputClass}
+          />
+        </div>
+
+        {error && (
+          <div className="rounded-2xl bg-sand-brand px-5 py-4 text-sm font-bold text-charcoal-brand/70">
+            {error}{' '}
+            <a
+              href="https://wa.me/639171234567"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-black text-teal-brand underline"
+            >
+              WhatsApp us
+            </a>
+          </div>
+        )}
+
+        <PrimaryCtaButton
+          type="submit"
+          disabled={loading || !email.trim() || !orderRef.trim()}
+          className="flex w-full items-center justify-center gap-2 py-5 text-lg"
+        >
+          {loading ? (
+            <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-charcoal-brand border-t-transparent" />
+          ) : null}
+          {loading ? 'Searching…' : 'Locate Rental'}
+        </PrimaryCtaButton>
+      </form>
+    </section>
+  );
+}

@@ -20,6 +20,9 @@ import { publicTransferRoutes } from './public-transfers.js';
 import { uiErrorsRoutes } from './ui-errors.js';
 import { lostOpportunityRoutes } from './lost-opportunity.js';
 import { publicBookingRoutes } from './public-booking.js';
+import { publicPawCardRoutes } from './public-paw-card.js';
+import { publicExtendRoutes } from './public-extend.js';
+import { publicRepairsRoutes } from './public-repairs.js';
 
 const routes = Router();
 
@@ -44,5 +47,8 @@ routes.use('/public', publicTransferRoutes);
 routes.use('/ui-errors', uiErrorsRoutes);
 routes.use('/lost-opportunities', lostOpportunityRoutes);
 routes.use('/public/booking', publicBookingRoutes);
+routes.use('/public/paw-card', publicPawCardRoutes);
+routes.use('/public/extend', publicExtendRoutes);
+routes.use('/public/repairs', publicRepairsRoutes);
 
 export { routes };

@@ -91,6 +91,10 @@ export async function submitDirectBooking(
     storeId: input.storeId,
     orderReference,
     addonIds: input.addonIds && input.addonIds.length > 0 ? input.addonIds : null,
+    transferType: input.transferType ?? null,
+    flightNumber: input.flightNumber ?? null,
+    flightArrivalTime: input.flightArrivalTime ?? null,
+    transferRoute: input.transferRoute ?? null,
   });
 
   // 5. Clean up the hold (best-effort; booking is already persisted)

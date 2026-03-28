@@ -36,9 +36,34 @@ export default {
           '0%': { transform: 'translateY(100%)' },
           '100%': { transform: 'translateY(0)' },
         },
+        'page-fade-in': {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
+        'fade-up': {
+          '0%': { opacity: '0', transform: 'translateY(20px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        'toast-slide-up': {
+          '0%': { transform: 'translateY(100%)' },
+          '100%': { transform: 'translateY(0)' },
+        },
+        'card-enter': {
+          '0%': { opacity: '0', transform: 'translateY(20px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        'badge-pop': {
+          '0%, 100%': { transform: 'scale(1)' },
+          '50%': { transform: 'scale(1.25)' },
+        },
       },
       animation: {
         'slide-up': 'slide-up 0.25s ease-out',
+        'page-fade-in': 'page-fade-in 600ms ease-out both',
+        'fade-up': 'fade-up 500ms ease-out both',
+        'toast-slide-up': 'toast-slide-up 300ms ease-out forwards',
+        'card-enter': 'card-enter 500ms ease-out both',
+        'badge-pop': 'badge-pop 400ms ease-out',
       },
     },
   },

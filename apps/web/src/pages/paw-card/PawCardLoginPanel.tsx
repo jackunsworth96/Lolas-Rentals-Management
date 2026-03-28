@@ -1,68 +1,87 @@
 import { useState } from 'react';
-import type { Session, SupabaseClient } from '@supabase/supabase-js';
 import lolaFace from '../../assets/Lola Face Icon.svg';
+import { PrimaryCtaButton } from '../../components/public/PrimaryCtaButton.js';
+import { api } from '../../api/client.js';
 
-type Props = {
-  supabase: SupabaseClient;
-  session: Session | null;
-  onSignedOut: () => void;
+export type PawCardAccess = {
+  email: string;
+  customerId: string | null;
 };
 
-export function PawCardLoginPanel({ supabase, session, onSignedOut }: Props) {
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+type LookupResponse =
+  | { found: false }
+  | { found: true; customerId: string | null };
+
+const WHATSAPP_HREF = 'https://wa.me/639171234567';
+
+type Props = {
+  access: PawCardAccess | null;
+  onAccessGranted: (access: PawCardAccess) => void;
+  onSignOut: () => void;
+};
+
+export function PawCardLoginPanel({ access, onAccessGranted, onSignOut }: Props) {
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
+  const [notRecognised, setNotRecognised] = useState(false);
+  const [requestError, setRequestError] = useState('');
 
-  const displayName =
-    (session?.user.user_metadata?.full_name as string | undefined)?.trim() ||
-    session?.user.email?.split('@')[0] ||
-    'there';
+  const displayName = access?.email.split('@')[0] ?? 'there';
 
-  const handleSignOut = async () => {
-    setMessage('');
-    await supabase.auth.signOut();
-    onSignedOut();
+  const handleSignOut = () => {
+    setNotRecognised(false);
+    setRequestError('');
+    setEmail('');
+    onSignOut();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setMessage('');
+    setNotRecognised(false);
+    setRequestError('');
     setLoading(true);
     try {
-      if (mode === 'signup') {
-        const { error } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-          options: { data: { full_name: fullName.trim() } },
+      const data = await api.post<LookupResponse>('/public/paw-card/lookup', {
+        email: email.trim(),
+      });
+      if (data.found) {
+        onAccessGranted({
+          email: email.trim().toLowerCase(),
+          customerId: data.customerId,
         });
-        if (error) throw error;
-        setMessage('Check your email to confirm your account, then sign in.');
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
-        if (error) throw error;
+        setNotRecognised(true);
       }
-    } catch (err: unknown) {
-      setMessage(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+    } catch {
+      setRequestError('Something went wrong. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  if (session) {
+  if (access) {
     return (
       <div className="text-center">
-        <img src={lolaFace} alt="Lola" className="w-16 h-16 mx-auto mb-3 rounded-full border-4 border-amber-200/40 bg-white p-1 object-contain" />
-        <h3 className="text-2xl font-bold mb-1" style={{ fontFamily: 'Epilogue, sans-serif', color: '#1f1b12' }}>
+        <img
+          src={lolaFace}
+          alt="Lola"
+          className="mx-auto mb-3 h-16 w-16 rounded-full border-4 border-amber-200/40 bg-transparent p-1 object-contain"
+        />
+        <h3
+          className="mb-1 text-2xl font-bold"
+          style={{ fontFamily: 'Epilogue, sans-serif', color: '#1f1b12' }}
+        >
           Welcome, {displayName}!
         </h3>
-        <p className="text-sm mb-4" style={{ color: '#3e4946' }}>{session.user.email}</p>
-        <button type="button" onClick={handleSignOut} className="text-xs font-medium underline" style={{ color: '#6e7976' }}>
+        <p className="mb-4 text-sm" style={{ color: '#3e4946' }}>
+          {access.email}
+        </p>
+        <button
+          type="button"
+          onClick={handleSignOut}
+          className="text-xs font-medium underline transition-all duration-300 ease-in-out hover:opacity-80"
+          style={{ color: '#6e7976' }}
+        >
           Log out
         </button>
       </div>
@@ -71,81 +90,63 @@ export function PawCardLoginPanel({ supabase, session, onSignedOut }: Props) {
 
   return (
     <div className="text-center">
-      <img src={lolaFace} alt="Lola" className="w-16 h-16 mx-auto mb-3 rounded-full border-4 border-amber-200/40 bg-white p-1 object-contain" />
-      <h3 className="text-2xl font-bold mb-1" style={{ fontFamily: 'Epilogue, sans-serif', color: '#1f1b12' }}>Welcome</h3>
-      <p className="text-sm mb-6" style={{ color: '#3e4946' }}>Sign in with email to access your Paw Card</p>
-
-      <div className="flex gap-2 mb-4 justify-center">
-        <button
-          type="button"
-          onClick={() => { setMode('signin'); setMessage(''); }}
-          className="px-4 py-2 rounded-full text-xs font-bold"
-          style={mode === 'signin' ? { background: '#1A7A6E', color: '#fff' } : { background: '#eae1d2', color: '#1A7A6E' }}
-        >
-          Sign in
-        </button>
-        <button
-          type="button"
-          onClick={() => { setMode('signup'); setMessage(''); }}
-          className="px-4 py-2 rounded-full text-xs font-bold"
-          style={mode === 'signup' ? { background: '#1A7A6E', color: '#fff' } : { background: '#eae1d2', color: '#1A7A6E' }}
-        >
-          Create account
-        </button>
-      </div>
+      <img
+        src={lolaFace}
+        alt="Lola"
+        className="mx-auto mb-3 h-16 w-16 rounded-full border-4 border-amber-200/40 bg-transparent p-1 object-contain"
+      />
+      <h3
+        className="mb-1 text-2xl font-bold"
+        style={{ fontFamily: 'Epilogue, sans-serif', color: '#1f1b12' }}
+      >
+        Welcome
+      </h3>
+      <p className="mb-6 text-sm" style={{ color: '#3e4946' }}>
+        Enter the email you used when you rented with us to access your Paw Card
+      </p>
 
       <form onSubmit={handleSubmit} className="space-y-4 text-left">
-        {mode === 'signup' && (
-          <div>
-            <label className="block text-sm font-semibold mb-1.5 ml-1">Full Name</label>
-            <input
-              type="text"
-              required
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="Juan Dela Cruz"
-              className="w-full px-4 py-3 rounded-lg border-none focus:ring-2"
-              style={{ background: '#f0e7d8', outlineColor: '#1A7A6E' }}
-            />
-          </div>
-        )}
         <div>
-          <label className="block text-sm font-semibold mb-1.5 ml-1">Email</label>
+          <label className="mb-1.5 ml-1 block text-sm font-semibold">Email</label>
           <input
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="hello@siargao.com"
-            className="w-full px-4 py-3 rounded-lg border-none focus:ring-2 transition-all"
+            className="w-full rounded-lg border-none px-4 py-3 transition-all duration-200 focus:scale-[1.01] focus:ring-2"
             style={{ background: '#f0e7d8', outlineColor: '#1A7A6E' }}
           />
         </div>
-        <div>
-          <label className="block text-sm font-semibold mb-1.5 ml-1">Password</label>
-          <input
-            type="password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            minLength={6}
-            className="w-full px-4 py-3 rounded-lg border-none focus:ring-2"
-            style={{ background: '#f0e7d8', outlineColor: '#1A7A6E' }}
-          />
-        </div>
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full py-3.5 rounded-full font-bold text-white transition-transform hover:scale-[1.02] disabled:opacity-50"
-          style={{ background: '#1A7A6E' }}
-        >
-          {loading ? 'Please wait...' : mode === 'signup' ? 'Create My Paw Card' : 'Sign in'}
-        </button>
-        {message && (
-          <p className="text-sm text-center" style={{ color: message.includes('Check your email') ? '#1A7A6E' : '#b91c1c' }}>
-            {message}
-          </p>
+        <PrimaryCtaButton type="submit" disabled={loading} className="w-full py-3.5 font-bold">
+          {loading ? (
+            <span className="inline-flex items-center gap-2">
+              <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-charcoal-brand border-t-transparent" />
+              Checking…
+            </span>
+          ) : (
+            'Access My Paw Card'
+          )}
+        </PrimaryCtaButton>
+        {requestError && (
+          <p className="text-center text-sm text-red-600">{requestError}</p>
+        )}
+        {notRecognised && (
+          <div className="rounded-lg p-4 text-left text-sm leading-relaxed" style={{ background: 'rgba(245,183,49,0.12)', color: '#3e4946' }}>
+            <p className="mb-3">
+              We don&apos;t recognise that email. Only customers who have rented with us can access the Paw Card.
+              Questions? Message us on WhatsApp.
+            </p>
+            <a
+              href={WHATSAPP_HREF}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex font-bold underline transition-opacity duration-200 hover:opacity-80"
+              style={{ color: '#1A7A6E' }}
+            >
+              Message us on WhatsApp
+            </a>
+          </div>
         )}
       </form>
     </div>
