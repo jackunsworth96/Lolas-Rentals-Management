@@ -33,6 +33,38 @@ function pawCardLookupOrFilter(rawQuery: string): string {
   return `email.ilike.%${qLower}%,full_name.ilike.%${qLower}%,order_id.eq.${raw}`;
 }
 
+function looksLikeEmail(value: string): boolean {
+  return value.includes('@');
+}
+
+async function resolveEstablishmentName(
+  sb: ReturnType<typeof getSupabaseClient>,
+  establishmentId: string,
+): Promise<string> {
+  const idNum = Number(establishmentId);
+  if (!Number.isNaN(idNum) && establishmentId.trim() !== '') {
+    const { data, error } = await sb
+      .from('paw_card_establishments')
+      .select('name')
+      .eq('id', idNum)
+      .maybeSingle();
+    if (!error && data?.name) return data.name as string;
+  }
+  return establishmentId;
+}
+
+/** Match rows stored as either numeric id (legacy) or display name. */
+async function establishmentColumnValuesForFilter(
+  sb: ReturnType<typeof getSupabaseClient>,
+  establishmentId: string,
+): Promise<string[]> {
+  const out = new Set<string>();
+  out.add(establishmentId);
+  const name = await resolveEstablishmentName(sb, establishmentId);
+  if (name !== establishmentId) out.add(name);
+  return [...out];
+}
+
 export class SupabasePawCardAdapter implements PawCardPort {
   async lookupCustomer(query: string): Promise<PawCardCustomer[]> {
     const sb = getSupabaseClient();
@@ -92,6 +124,7 @@ export class SupabasePawCardAdapter implements PawCardPort {
       name: v.name,
       email: v.email,
       mobile: v.mobile,
+      orderId: null,
       totalVisits: v.visits,
       lifetimeSavings: v.saved,
     }));
@@ -143,14 +176,36 @@ export class SupabasePawCardAdapter implements PawCardPort {
 
   async submitEntry(entry: PawCardSubmission): Promise<PawCardEntry> {
     const sb = getSupabaseClient();
+    const emailRaw = entry.email?.trim();
+    const email =
+      emailRaw && emailRaw.length > 0
+        ? normalizeEmailForMatch(emailRaw)
+        : looksLikeEmail(entry.customerId)
+          ? normalizeEmailForMatch(entry.customerId)
+          : null;
+    const cid = entry.customerId.trim();
+    const fullNameInput = entry.fullName?.trim();
+    const displayName = fullNameInput
+      ? fullNameInput
+      : !looksLikeEmail(cid)
+        ? cid || 'Guest'
+        : (email?.split('@')[0] ?? 'Guest');
+    const orderId = entry.orderId?.trim() || null;
+    const establishmentLabel = await resolveEstablishmentName(sb, entry.establishmentId);
+    const n = entry.numberOfPeople;
+    const numberOfPeople =
+      typeof n === 'number' && Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+
     const { data, error } = await sb
       .from('paw_card_entries')
       .insert({
-        full_name: entry.customerId,
-        establishment: entry.establishmentId,
+        full_name: displayName,
+        email,
+        order_id: orderId,
+        establishment: establishmentLabel,
         amount_saved: entry.discountAmount,
         date_of_visit: entry.visitDate,
-        number_of_people: entry.numberOfPeople ?? null,
+        number_of_people: numberOfPeople,
         receipt_url: entry.receiptUrl ?? null,
       })
       .select()
@@ -162,7 +217,7 @@ export class SupabasePawCardAdapter implements PawCardPort {
       id: String(data.id),
       customerId: entry.customerId,
       establishmentId: entry.establishmentId,
-      establishmentName: data.establishment,
+      establishmentName: establishmentLabel,
       discountAmount: Number(data.amount_saved),
       visitDate: data.date_of_visit,
       submittedBy: entry.submittedBy,
@@ -177,7 +232,8 @@ export class SupabasePawCardAdapter implements PawCardPort {
     let query = sb.from('paw_card_entries').select('*');
 
     if (establishmentId !== 'all') {
-      query = query.eq('establishment', establishmentId);
+      const variants = await establishmentColumnValuesForFilter(sb, establishmentId);
+      query = query.in('establishment', variants);
     }
 
     const { data, error } = await query;
@@ -190,9 +246,14 @@ export class SupabasePawCardAdapter implements PawCardPort {
       0,
     );
 
+    const filteredLabel =
+      establishmentId === 'all'
+        ? 'All Establishments'
+        : (await resolveEstablishmentName(sb, establishmentId)) || (rows[0]?.establishment ?? establishmentId);
+
     return {
       establishmentId,
-      establishmentName: establishmentId === 'all' ? 'All Establishments' : (rows[0]?.establishment ?? establishmentId),
+      establishmentName: filteredLabel,
       totalEntries: rows.length,
       totalDiscountGiven: totalDiscount,
       uniqueCustomers: uniqueEmails.size,
@@ -290,6 +351,7 @@ export class SupabasePawCardAdapter implements PawCardPort {
         name: existing.name,
         email: existing.email ? normalizeEmailForMatch(existing.email) : existing.email,
         mobile: existing.mobile,
+        orderId: data.orderId?.trim() || null,
         totalVisits: savings.totalVisits,
         lifetimeSavings: savings.totalSaved,
       };
@@ -321,6 +383,7 @@ export class SupabasePawCardAdapter implements PawCardPort {
       name: data.name,
       email: emailNorm,
       mobile: data.mobile ?? null,
+      orderId: data.orderId?.trim() || null,
       totalVisits: 0,
       lifetimeSavings: 0,
     };

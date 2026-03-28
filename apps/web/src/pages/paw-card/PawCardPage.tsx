@@ -183,6 +183,9 @@ export default function PawCardPage() {
     try {
       await submitMutation.mutateAsync({
         customerId: customer.email ?? customer.name,
+        email: customer.email ?? undefined,
+        fullName: customer.name,
+        orderId: customer.orderId ?? undefined,
         establishmentId: establishment,
         discountAmount: Number(amount),
         visitDate,
@@ -432,7 +435,7 @@ export default function PawCardPage() {
 
                 <div>
                   <label className="block text-sm font-semibold mb-1.5 ml-1">Number of People</label>
-                  <input type="number" min="1" value={numPeople} onChange={e => setNumPeople(e.target.value)} placeholder="1"
+                  <input type="number" min="1" step={1} value={numPeople} onChange={e => setNumPeople(e.target.value)} placeholder="1"
                     className="w-full px-4 py-3 rounded-lg border-none focus:ring-2" style={{ background: '#fff', outlineColor: '#1A7A6E' }} />
                 </div>
 

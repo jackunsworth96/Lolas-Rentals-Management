@@ -14,6 +14,9 @@ export interface LogSavingsInput {
   storeId: string;
   receiptUrl?: string;
   numberOfPeople?: number;
+  email?: string | null;
+  fullName?: string | null;
+  orderId?: string | null;
 }
 
 export async function logSavings(
@@ -33,6 +36,9 @@ export async function logSavings(
     storeId: input.storeId,
     receiptUrl: input.receiptUrl,
     numberOfPeople: input.numberOfPeople,
+    email: input.email,
+    fullName: input.fullName,
+    orderId: input.orderId,
   };
 
   return deps.pawCard.submitEntry(submission);

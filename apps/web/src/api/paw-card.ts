@@ -8,6 +8,7 @@ export interface PawCardCustomer {
   name: string;
   email: string | null;
   mobile: string | null;
+  orderId?: string | null;
   totalVisits: number;
   lifetimeSavings: number;
 }

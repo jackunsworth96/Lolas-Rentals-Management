@@ -3,6 +3,8 @@ export interface PawCardCustomer {
   name: string;
   email: string | null;
   mobile: string | null;
+  /** Optional rental order id captured at registration (not stored on `customers` row). */
+  orderId?: string | null;
   totalVisits: number;
   lifetimeSavings: number;
 }
@@ -36,6 +38,9 @@ export interface PawCardSubmission {
   storeId: string;
   receiptUrl?: string;
   numberOfPeople?: number;
+  email?: string | null;
+  fullName?: string | null;
+  orderId?: string | null;
 }
 
 export interface CompanyImpact {

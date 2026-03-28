@@ -11,6 +11,9 @@ export type PawCardLookupQuery = z.infer<typeof PawCardLookupQuerySchema>;
 
 export const PawCardSubmitRequestSchema = z.object({
   customerId: z.string(),
+  email: z.string().email().optional(),
+  fullName: z.string().min(1).optional(),
+  orderId: z.string().optional(),
   establishmentId: z.string(),
   discountAmount: z.number().positive(),
   visitDate: z.string(),
