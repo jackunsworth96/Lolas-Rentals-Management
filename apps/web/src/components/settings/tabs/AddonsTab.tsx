@@ -1,4 +1,4 @@
-import { useAddons, useSaveAddon, useDeleteAddon, useStores } from '../../../api/config.js';
+import { useAddons, useSaveAddon, useDeleteAddon, useStores, useVehicleModels } from '../../../api/config.js';
 import { useUIStore } from '../../../stores/ui-store.js';
 import { ConfigSection, type FieldDef } from '../ConfigSection.js';
 
@@ -8,6 +8,7 @@ export function AddonsTab() {
   const { data, isLoading } = useAddons(storeId);
   const save = useSaveAddon();
   const del = useDeleteAddon();
+  const { data: vehicleModels } = useVehicleModels();
 
   const storesList = (stores ?? []) as Array<{ id: string; name: string }>;
   const storeIdToName = Object.fromEntries(storesList.map((s) => [s.id, s.name]));
@@ -16,12 +17,25 @@ export function AddonsTab() {
     ...storesList.map((s) => ({ value: s.id, label: s.name })),
   ];
 
+  const modelsList = (vehicleModels ?? []) as Array<{ id: string; name: string }>;
+  const modelIdToName = Object.fromEntries(modelsList.map((m) => [m.id, m.name]));
+  const modelOpts = modelsList.map((m) => ({ value: m.id, label: m.name }));
+
   const columns = [
     { key: 'name', header: 'Name' },
     { key: 'addonType', header: 'Type' },
     { key: 'pricePerDay', header: 'Price/day' },
     { key: 'priceOneTime', header: 'Price one-time' },
     { key: 'mutualExclusivityGroup', header: 'Exclusivity group' },
+    {
+      key: 'applicableModelIds',
+      header: 'Applies to',
+      render: (r: Record<string, unknown>) => {
+        const ids = r.applicableModelIds as string[] | null;
+        if (!ids || ids.length === 0) return 'All models';
+        return ids.map((id) => modelIdToName[id] ?? id).join(', ');
+      },
+    },
     {
       key: 'storeId',
       header: 'Store',
@@ -37,6 +51,7 @@ export function AddonsTab() {
     { key: 'pricePerDay', label: 'Price per day', type: 'number' },
     { key: 'priceOneTime', label: 'Price one-time', type: 'number' },
     { key: 'storeId', label: 'Store', type: 'select', options: storeOpts, default: storeId },
+    { key: 'applicableModelIds', label: 'Applicable Vehicle Models (leave blank for all)', type: 'multiselect', options: modelOpts },
     { key: 'mutualExclusivityGroup', label: 'Mutual exclusivity group', type: 'text', placeholder: 'e.g. peace_of_mind' },
     { key: 'isActive', label: 'Active', type: 'boolean' },
   ];
@@ -46,18 +61,24 @@ export function AddonsTab() {
     return {
       ...row,
       storeId: sid == null || sid === '' ? (storesList[0]?.id ?? '') : sid,
+      applicableModelIds: (row.applicableModelIds as string[] | null) ?? [],
     };
   }
 
   function handleSaveAddon(row: Record<string, unknown>) {
     const storeIdValue = row.storeId as string;
+    const modelIds = row.applicableModelIds as string[];
+    const payload = {
+      ...row,
+      applicableModelIds: modelIds.length > 0 ? modelIds : null,
+    };
 
     if (storeIdValue === '__all__') {
       for (const store of storesList) {
-        save.mutate({ ...row, storeId: store.id });
+        save.mutate({ ...payload, storeId: store.id });
       }
     } else {
-      save.mutate({ ...row, storeId: storeIdValue });
+      save.mutate({ ...payload, storeId: storeIdValue });
     }
   }
 

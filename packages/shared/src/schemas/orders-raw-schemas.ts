@@ -43,7 +43,8 @@ export interface OrdersRawRow {
   flight_number: string | null;
   flight_arrival_time: string | null;
   transfer_route: string | null;
-  web_quote_raw: number | null;
+  /** Customer-facing quote total stored on orders_raw (DB column: web_quote) */
+  web_quote: number | null;
 }
 
 /**

@@ -66,9 +66,13 @@ export default function BrowseBookPage() {
   });
 
   async function handleSearch() {
-    if (!storeId || !pickupDatetime || !dropoffDatetime) return;
+    const state = useBookingStore.getState();
+    const sid = state.storeId;
+    const pickup = state.pickupDatetime;
+    const dropoff = state.dropoffDatetime;
+    if (!sid || !pickup || !dropoff) return;
     setSearching(true);
-    setSearchParams({ storeId, pickup: pickupDatetime, dropoff: dropoffDatetime });
+    setSearchParams({ storeId: sid, pickup, dropoff });
     await refetchAvailability();
     setSearching(false);
   }

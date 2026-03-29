@@ -15,6 +15,20 @@ function formatSlotTime(iso: string): string {
   return `${h}:${m} ${ampm}`;
 }
 
+function toLocalDatetimeStr(d: Date): string {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+}
+
+function formatNextAvailableDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 interface VehicleCardProps {
   modelId: string;
   modelName: string;
@@ -88,11 +102,16 @@ export function VehicleCard({
   function handleNextAvailable() {
     if (!nextAvailablePickup) return;
     const pickup = new Date(nextAvailablePickup);
-    const rentalMs = new Date(dropoffDatetime).getTime() - new Date(pickupDatetime).getTime();
+    const currentPickup = new Date(pickupDatetime);
+    const currentDropoff = new Date(dropoffDatetime);
+    const rentalMs = currentDropoff.getTime() - currentPickup.getTime();
     const newDropoff = new Date(pickup.getTime() + Math.max(rentalMs, 86400000));
-    setDates(pickup.toISOString(), newDropoff.toISOString());
+
+    const pickupStr = toLocalDatetimeStr(pickup);
+    const dropoffStr = toLocalDatetimeStr(newDropoff);
+    setDates(pickupStr, dropoffStr);
     triggerSearch();
-    onToast('Dates updated to next available slot', 'success');
+    onToast(`Dates updated to ${formatNextAvailableDate(nextAvailablePickup)}`, 'success');
   }
 
   return (
@@ -141,9 +160,11 @@ export function VehicleCard({
           <button
             type="button"
             onClick={handleNextAvailable}
-            className="flex w-full items-center justify-center gap-2 rounded-3xl border-2 border-teal-brand bg-transparent py-4 font-black text-teal-brand transition-all duration-300 hover:bg-teal-brand/10"
+            className="flex w-full flex-col items-center justify-center gap-1 rounded-3xl border-2 border-teal-brand bg-transparent py-4 font-black text-teal-brand transition-all duration-300 hover:bg-teal-brand/10"
           >
-            Next available: {formatSlotTime(nextAvailablePickup!)}
+            <span className="text-xs font-bold text-charcoal-brand/60">Next available from</span>
+            <span>{formatNextAvailableDate(nextAvailablePickup!)} at {formatSlotTime(nextAvailablePickup!)}</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-teal-brand/70">Tap to use these dates</span>
           </button>
         ) : inBasket ? (
           <div className="flex w-full items-center justify-center gap-2 rounded-3xl bg-teal-brand py-4 font-black text-white transition-all duration-300 ease-in-out">

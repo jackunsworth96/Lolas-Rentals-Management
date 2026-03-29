@@ -37,10 +37,14 @@ function httpError(message: string, statusCode: number): Error {
   return err;
 }
 
+export interface SubmitDirectBookingResult extends DirectBookingResult {
+  serverQuote: number | null;
+}
+
 export async function submitDirectBooking(
   deps: SubmitDirectBookingDeps,
   input: SubmitDirectBookingInput,
-): Promise<DirectBookingResult> {
+): Promise<SubmitDirectBookingResult> {
   const { bookingPort } = deps;
 
   // 1. Verify an active, non-expired hold exists for this session + model + dates
@@ -125,5 +129,5 @@ export async function submitDirectBooking(
     // Hold cleanup is non-critical; it will expire naturally
   }
 
-  return result;
+  return { ...result, serverQuote: webQuoteRaw };
 }

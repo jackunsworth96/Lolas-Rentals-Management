@@ -25,6 +25,7 @@ interface BookingState {
   setLocations: (pickupId: number | null, dropoffId: number | null) => void;
   addToBasket: (item: BasketItem) => void;
   removeFromBasket: (holdId: string) => void;
+  updateBasketRate: (holdId: string, dailyRate: number, securityDeposit?: number) => void;
   clearBasket: () => void;
   triggerSearch: () => void;
 }
@@ -61,6 +62,15 @@ export const useBookingStore = create<BookingState>((set) => ({
 
   removeFromBasket: (holdId) =>
     set((s) => ({ basket: s.basket.filter((b) => b.holdId !== holdId) })),
+
+  updateBasketRate: (holdId, dailyRate, securityDeposit) =>
+    set((s) => ({
+      basket: s.basket.map((b) =>
+        b.holdId === holdId
+          ? { ...b, dailyRate, ...(securityDeposit !== undefined ? { securityDeposit } : {}) }
+          : b,
+      ),
+    })),
 
   clearBasket: () => set({ basket: [] }),
 

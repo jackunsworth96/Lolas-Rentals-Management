@@ -36,7 +36,7 @@ function extractEmail(payload: Record<string, unknown>): string {
 }
 
 function extractTotal(payload: Record<string, unknown>): number {
-  const raw = payload.total ?? payload.order_total ?? payload.web_quote_raw ?? 0;
+  const raw = payload.total ?? payload.order_total ?? payload.web_quote ?? 0;
   return Number(raw) || 0;
 }
 
@@ -161,7 +161,7 @@ export default function InboxPage() {
       header: 'Web Quote',
       render: (r: RawOrder) => {
         if (isDirect(r)) {
-          const q = Number(r.web_quote_raw ?? 0);
+          const q = Number(r.web_quote ?? 0);
           return q > 0 ? formatCurrency(q) : '—';
         }
         const total = extractTotal(r.payload ?? {});

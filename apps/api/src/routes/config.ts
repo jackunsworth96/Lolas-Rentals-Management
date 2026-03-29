@@ -49,18 +49,16 @@ router.delete('/stores/:id', edit, async (req, res, next) => {
 router.get('/addons', async (req, res, next) => {
   try { res.json({ success: true, data: await req.app.locals.deps.configRepo.getAddons(req.query.storeId as string) }); } catch (e) { next(e); }
 });
-router.post('/addons', edit, validateBody(z.object({
+const addonBodySchema = z.object({
   name: z.string().min(1), pricePerDay: z.number().nonnegative(), priceOneTime: z.number().nonnegative(),
   addonType: z.enum(['per_day', 'one_time']), storeId: z.string().nullable().optional(),
   mutualExclusivityGroup: z.string().nullable().optional(), isActive: z.boolean().optional(),
-})), async (req, res, next) => {
+  applicableModelIds: z.array(z.string()).nullable().optional(),
+});
+router.post('/addons', edit, validateBody(addonBodySchema), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveAddon(req.body); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.put('/addons/:id', edit, validateBody(z.object({
-  name: z.string().min(1), pricePerDay: z.number().nonnegative(), priceOneTime: z.number().nonnegative(),
-  addonType: z.enum(['per_day', 'one_time']), storeId: z.string().nullable().optional(),
-  mutualExclusivityGroup: z.string().nullable().optional(), isActive: z.boolean().optional(),
-})), async (req, res, next) => {
+router.put('/addons/:id', edit, validateBody(addonBodySchema), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveAddon({ id: Number(req.params.id), ...req.body }); res.json({ success: true }); } catch (e) { next(e); }
 });
 router.delete('/addons/:id', edit, async (req, res, next) => {

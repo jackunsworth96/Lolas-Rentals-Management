@@ -7,6 +7,7 @@ export interface Addon {
   storeId: string | null;
   mutualExclusivityGroup: string | null;
   isActive: boolean;
+  applicableModelIds: string[] | null;
 }
 
 export interface TransferDetails {
@@ -23,4 +24,10 @@ export interface RenterInfo {
   nationality: string;
 }
 
-export type PaymentMethod = 'card' | 'gcash' | 'cash';
+export type PaymentMethodId = string;
+
+export interface PaymentMethodOption {
+  id: string;
+  name: string;
+  surchargePercent: number;
+}

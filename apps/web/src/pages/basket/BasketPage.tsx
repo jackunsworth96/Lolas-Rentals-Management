@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
@@ -13,9 +13,15 @@ import { PrimaryCtaButton } from '../../components/public/PrimaryCtaButton.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { PawDivider } from '../../components/layout/PawDivider.js';
 import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
-import type { Addon, TransferDetails, RenterInfo, PaymentMethod } from '../../components/basket/basket-types.js';
+import type { Addon, TransferDetails, RenterInfo, PaymentMethodOption } from '../../components/basket/basket-types.js';
 
 import pawPrint from '../../assets/Paw Print.svg';
+
+interface QuoteResponse {
+  dailyRate: number;
+  securityDeposit: number;
+  grandTotal: number;
+}
 
 function rentalDaysFromDates(pickup: string, dropoff: string): number {
   if (!pickup || !dropoff) return 1;
@@ -40,8 +46,46 @@ export default function BasketPage() {
   const dropoffLocationId = useBookingStore((s) => s.dropoffLocationId);
   const sessionToken = useBookingStore((s) => s.sessionToken);
   const clearBasket = useBookingStore((s) => s.clearBasket);
+  const updateBasketRate = useBookingStore((s) => s.updateBasketRate);
 
   const rentalDays = rentalDaysFromDates(pickupDatetime, dropoffDatetime);
+
+  const [priceChanged, setPriceChanged] = useState(false);
+  const lastQuotedDatesRef = useRef({ pickup: '', dropoff: '' });
+
+  const refreshQuotes = useCallback(async () => {
+    if (!pickupDatetime || !dropoffDatetime || !pickupLocationId || !dropoffLocationId || basket.length === 0) return;
+    if (
+      lastQuotedDatesRef.current.pickup === pickupDatetime &&
+      lastQuotedDatesRef.current.dropoff === dropoffDatetime
+    ) return;
+
+    lastQuotedDatesRef.current = { pickup: pickupDatetime, dropoff: dropoffDatetime };
+    let changed = false;
+
+    for (const item of basket) {
+      try {
+        const params = new URLSearchParams({
+          storeId,
+          vehicleModelId: item.vehicleModelId,
+          pickupDatetime,
+          dropoffDatetime,
+          pickupLocationId: String(pickupLocationId),
+          dropoffLocationId: String(dropoffLocationId),
+        });
+        const quote = await api.get<QuoteResponse>(`/public/booking/quote?${params}`);
+        if (Math.abs(quote.dailyRate - item.dailyRate) > 0.01) {
+          updateBasketRate(item.holdId, quote.dailyRate, quote.securityDeposit);
+          changed = true;
+        }
+      } catch {
+        // Non-fatal: keep existing rate if quote fetch fails
+      }
+    }
+    setPriceChanged(changed);
+  }, [pickupDatetime, dropoffDatetime, pickupLocationId, dropoffLocationId, storeId, basket, updateBasketRate]);
+
+  useEffect(() => { refreshQuotes(); }, [refreshQuotes]);
 
   const [addons, setAddons] = useState<Addon[]>([]);
   const [addonsLoading, setAddonsLoading] = useState(true);
@@ -50,26 +94,44 @@ export default function BasketPage() {
   const [renter, setRenter] = useState<RenterInfo>({ fullName: '', email: '', phone: '', nationality: '' });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [transferErrors, setTransferErrors] = useState<Record<string, string>>({});
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('card');
+  const [paymentMethodId, setPaymentMethodId] = useState('cash');
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [submitting, setSubmitting] = useState(false);
   type LocFee = { id: number; deliveryCost: number; collectionCost: number };
   const [locations, setLocations] = useState<LocFee[]>([]);
   const pickupFee = locations.find((l) => l.id === pickupLocationId)?.deliveryCost ?? 0;
   const dropoffFee = locations.find((l) => l.id === dropoffLocationId)?.collectionCost ?? 0;
 
+  const selectedPm = paymentMethods.find((pm) => pm.id === paymentMethodId);
+  const surchargePercent = selectedPm?.surchargePercent ?? 0;
+
   const { toasts, pushToast } = useToast();
+
+  const basketModelIds = [...new Set(basket.map((b) => b.vehicleModelId))];
+  const singleModelId = basketModelIds.length === 1 ? basketModelIds[0] : null;
 
   useEffect(() => {
     if (!storeId) return;
     setAddonsLoading(true);
-    api.get<Addon[]>(`/public/booking/addons?storeId=${storeId}`)
+    const addonParams = new URLSearchParams({ storeId });
+    if (singleModelId) addonParams.set('vehicleModelId', singleModelId);
+    api.get<Addon[]>(`/public/booking/addons?${addonParams}`)
       .then((data) => setAddons(data))
       .catch(() => pushToast('Failed to load add-ons. Please refresh the page.', 'error'))
       .finally(() => setAddonsLoading(false));
     api.get<Array<{ id: number; deliveryCost: number; collectionCost: number }>>(`/public/booking/locations?storeId=${storeId}`)
       .then((data) => setLocations(data))
       .catch(() => pushToast('Failed to load delivery locations. Fees may be inaccurate.', 'error'));
-  }, [storeId]);
+    api.get<PaymentMethodOption[]>('/public/booking/payment-methods')
+      .then((data) => setPaymentMethods(data))
+      .catch(() => {
+        setPaymentMethods([
+          { id: 'cash', name: 'Cash on Arrival', surchargePercent: 0 },
+          { id: 'gcash', name: 'GCash', surchargePercent: 0 },
+          { id: 'card', name: 'Credit / Debit Card', surchargePercent: 0 },
+        ]);
+      });
+  }, [storeId, singleModelId]);
 
   const transferAddons = addons.filter((a) => a.name.toLowerCase().includes('transfer') || a.name.toLowerCase().includes('tuk'));
   const standardAddons = addons.filter((a) => !transferAddons.includes(a));
@@ -112,9 +174,10 @@ export default function BasketPage() {
       if (tAddon) allAddonIds.push(Number(tAddon.id));
     }
     const orderRefs: string[] = [];
+    let serverTotal = 0;
     try {
       for (const item of basket) {
-        const result = await api.post<{ id: string; orderReference: string }>(
+        const result = await api.post<{ id: string; orderReference: string; serverQuote: number | null }>(
           '/public/booking/submit',
           {
             sessionToken, vehicleModelId: item.vehicleModelId,
@@ -129,15 +192,19 @@ export default function BasketPage() {
           },
         );
         orderRefs.push(result.orderReference);
+        if (result.serverQuote != null) serverTotal += result.serverQuote;
       }
       const selAddons = addons.filter((a) => selectedAddonIds.has(Number(a.id)));
-      const addonsCost = selAddons.reduce((s, a) => s + (a.addonType === 'per_day' ? a.pricePerDay * rentalDays : a.priceOneTime), 0);
-      const tFee = transfer ? (transferAddons.find((a) => (transfer.transferType === 'shared' ? a.name.toLowerCase().includes('shared') : a.name.toLowerCase().includes('tuk')))?.priceOneTime ?? 0) : 0;
+      const clientTotal = basket.reduce((s, b) => s + b.dailyRate * rentalDays, 0)
+        + selAddons.reduce((s, a) => s + (a.addonType === 'per_day' ? a.pricePerDay * rentalDays : a.priceOneTime), 0)
+        + (transfer ? (transferAddons.find((a) => (transfer.transferType === 'shared' ? a.name.toLowerCase().includes('shared') : a.name.toLowerCase().includes('tuk')))?.priceOneTime ?? 0) : 0)
+        + pickupFee + dropoffFee;
+      const grandTotal = serverTotal > 0 ? serverTotal : clientTotal;
       clearBasket();
       const confirmState = {
         orderReferences: orderRefs, customerName: renter.fullName.trim(), customerEmail: renter.email.trim(),
         vehicleModelName: basket[0]?.modelName ?? '', pickupDatetime, dropoffDatetime, pickupLocationId, rentalDays,
-        grandTotal: basket.reduce((s, b) => s + b.dailyRate * rentalDays, 0) + addonsCost + tFee + pickupFee + dropoffFee,
+        grandTotal,
         depositAmount: basket.reduce((s, b) => s + (b.securityDeposit ?? 0), 0),
         addonNames: selAddons.map((a) => a.name), transferType: transfer?.transferType ?? null,
         flightNumber: transfer?.flightNumber ?? null, transferRoute: transfer?.transferRoute ?? null,
@@ -217,7 +284,10 @@ export default function BasketPage() {
             <OrderSummaryPanel
               basket={basket} rentalDays={rentalDays} selectedAddonIds={selectedAddonIds} addons={standardAddons}
               transfer={transfer} transferAddons={transferAddons} pickupFee={pickupFee} dropoffFee={dropoffFee}
-              paymentMethod={paymentMethod} onPaymentChange={setPaymentMethod} onPlaceOrder={handlePlaceOrder} submitting={submitting}
+              paymentMethodId={paymentMethodId} onPaymentChange={setPaymentMethodId}
+              paymentMethods={paymentMethods} surchargePercent={surchargePercent}
+              onPlaceOrder={handlePlaceOrder} submitting={submitting}
+              priceChanged={priceChanged}
             />
           </div>
         </div>

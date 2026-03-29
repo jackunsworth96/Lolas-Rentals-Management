@@ -17,6 +17,7 @@ export interface Addon {
   storeId: string | null;
   mutualExclusivityGroup: string | null;
   isActive: boolean;
+  applicableModelIds: string[] | null;
 }
 
 export interface Location {
@@ -34,6 +35,7 @@ export interface PaymentMethod {
   name: string;
   isDepositEligible: boolean;
   isActive: boolean;
+  surchargePercent: number;
 }
 
 export interface VehicleModel {

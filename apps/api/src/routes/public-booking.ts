@@ -175,7 +175,11 @@ router.post('/submit', validateBody(SubmitDirectBookingRequestSchema), async (re
 
     res.status(201).json({
       success: true,
-      data: { id: result.id, orderReference: result.orderReference },
+      data: {
+        id: result.id,
+        orderReference: result.orderReference,
+        serverQuote: result.serverQuote ?? null,
+      },
     });
   } catch (err) {
     next(err);
@@ -186,13 +190,20 @@ router.post('/submit', validateBody(SubmitDirectBookingRequestSchema), async (re
 
 const AddonsQuerySchema = z.object({
   storeId: z.string().min(1),
+  vehicleModelId: z.string().optional(),
 });
 
 router.get('/addons', validateQuery(AddonsQuerySchema), async (req, res, next) => {
   try {
-    const { storeId } = req.query as { storeId: string };
-    const addons = await req.app.locals.deps.configRepo.getAddons(storeId);
-    res.json({ success: true, data: addons });
+    const { storeId, vehicleModelId } = req.query as { storeId: string; vehicleModelId?: string };
+    const allAddons = await req.app.locals.deps.configRepo.getAddons(storeId);
+    const filtered = vehicleModelId
+      ? allAddons.filter((a: { applicableModelIds?: string[] | null }) => {
+          const ids = a.applicableModelIds;
+          return !ids || ids.length === 0 || ids.includes(vehicleModelId);
+        })
+      : allAddons;
+    res.json({ success: true, data: filtered });
   } catch (err) {
     next(err);
   }
@@ -209,6 +220,22 @@ router.get('/locations', validateQuery(LocationsQuerySchema), async (req, res, n
     const { storeId } = req.query as { storeId: string };
     const locations = await req.app.locals.deps.configRepo.getLocations(storeId);
     res.json({ success: true, data: locations });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Payment Methods (public — id, name, surcharge only) ──
+
+router.get('/payment-methods', async (req, res, next) => {
+  try {
+    const methods = await req.app.locals.deps.configRepo.getPaymentMethods();
+    const publicMethods = methods.map((m: { id: string; name: string; surchargePercent?: number }) => ({
+      id: m.id,
+      name: m.name,
+      surchargePercent: m.surchargePercent ?? 0,
+    }));
+    res.json({ success: true, data: publicMethods });
   } catch (err) {
     next(err);
   }

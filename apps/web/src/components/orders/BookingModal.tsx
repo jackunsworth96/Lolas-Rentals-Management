@@ -202,8 +202,8 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
 
   const lineItems = useMemo(() => (isDirect ? [] : extractLineItems(payload)), [isDirect, payload]);
   const webQuote = isDirect
-    ? (Number(rawOrder.web_quote_raw ?? 0) || 0)
-    : (Number(payload.total ?? payload.order_total ?? payload.web_quote_raw ?? 0) || 0);
+    ? (Number(rawOrder.web_quote ?? 0) || 0)
+    : (Number(payload.total ?? payload.order_total ?? payload.web_quote ?? 0) || 0);
 
   const [step, setStep] = useState<Step>('review');
   const [customer, setCustomer] = useState<CustomerData>(billing);
