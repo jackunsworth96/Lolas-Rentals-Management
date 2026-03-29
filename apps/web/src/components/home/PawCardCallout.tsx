@@ -14,7 +14,7 @@ export function PawCardCallout() {
             Join the Paw Card program. Log your savings at 70+ partner businesses and we match every peso as a donation to BePawsitive — Siargao's local animal welfare NGO.
           </p>
           <Link
-            to="/paw-card"
+            to="/book/paw-card"
             className="group inline-flex items-center gap-3 text-xl font-bold text-gold-brand transition-opacity hover:opacity-80"
           >
             Get Your Paw Card

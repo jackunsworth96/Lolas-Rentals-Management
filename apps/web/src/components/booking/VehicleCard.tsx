@@ -2,24 +2,8 @@ import { useState } from 'react';
 import { api } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
 import { PrimaryCtaButton } from '../public/PrimaryCtaButton.js';
-import hondaBeatImg from '../../assets/Honda Beat Image.png';
-import tukTukImg from '../../assets/TukTuk Image.png';
-
-const MODEL_IMAGES: Record<string, string> = {
-  'honda-beat': hondaBeatImg,
-  'honda beat': hondaBeatImg,
-  tuktuk: tukTukImg,
-  'tuk-tuk': tukTukImg,
-  'tuk tuk': tukTukImg,
-};
-
-function resolveImage(modelName: string): string | null {
-  const lower = modelName.toLowerCase();
-  for (const [key, src] of Object.entries(MODEL_IMAGES)) {
-    if (lower.includes(key)) return src;
-  }
-  return null;
-}
+import { resolveImage } from '../../utils/vehicle-images.js';
+import { formatCurrency } from '../../utils/currency.js';
 
 function formatSlotTime(iso: string): string {
   const d = new Date(iso);
@@ -113,12 +97,12 @@ export function VehicleCard({
 
   return (
     <div className={`group overflow-hidden rounded-4xl border border-sand-brand/50 bg-cream-brand shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl${isUnavailable ? ' opacity-70' : ''}`}>
-      <div className="relative h-64 overflow-hidden">
+      <div className="relative aspect-[4/3] w-full overflow-hidden">
         {imgSrc ? (
           <img
             src={imgSrc}
             alt={modelName}
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+            className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-sand-brand">
@@ -138,7 +122,7 @@ export function VehicleCard({
           <div className="text-right">
             {dailyRate != null ? (
               <p className="text-lg font-black leading-tight text-teal-brand">
-                ₱{dailyRate.toLocaleString()}
+                {formatCurrency(dailyRate)}
                 <span className="text-xs font-bold text-charcoal-brand/60">/day</span>
               </p>
             ) : (
@@ -149,7 +133,7 @@ export function VehicleCard({
 
         {securityDeposit != null && securityDeposit > 0 && (
           <p className="mb-4 text-xs font-bold text-charcoal-brand/60">
-            ₱{securityDeposit.toLocaleString()} refundable deposit
+            {formatCurrency(securityDeposit)} refundable deposit
           </p>
         )}
 

@@ -52,18 +52,24 @@ export function AppRouter() {
   return (
     <Suspense fallback={<Loading />}>
       <Routes>
+        {/* Root redirects to backoffice login */}
+        <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/book-transfer/:token" element={<PublicBookingPage />} />
-        <Route path="/paw-card" element={<PawCardPage />} />
-        <Route path="/browse-book" element={<BrowseBookPage />} />
-        <Route path="/basket" element={<BasketPage />} />
-        <Route path="/confirmation" element={<ConfirmationPage />} />
-        <Route path="/extend" element={<ExtendPage />} />
-        <Route path="/" element={<HomePage />} />
-        <Route path="/repairs" element={<RepairsPage />} />
-        <Route path="/about" element={<AboutPage />} />
-        <Route path="/privacy" element={<PrivacyPage />} />
 
+        {/* Customer-facing routes — all under /book */}
+        <Route path="/book" element={<HomePage />} />
+        <Route path="/book/reserve" element={<BrowseBookPage />} />
+        <Route path="/book/basket" element={<BasketPage />} />
+        <Route path="/book/confirmation" element={<ConfirmationPage />} />
+        <Route path="/book/confirmation/:reference" element={<ConfirmationPage />} />
+        <Route path="/book/extend" element={<ExtendPage />} />
+        <Route path="/book/paw-card" element={<PawCardPage />} />
+        <Route path="/book/repairs" element={<RepairsPage />} />
+        <Route path="/book/about" element={<AboutPage />} />
+        <Route path="/book/privacy" element={<PrivacyPage />} />
+        <Route path="/book/transfer/:token" element={<PublicBookingPage />} />
+
+        {/* Backoffice routes — protected */}
         <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
           <Route path="/dashboard" element={<Navigate to="/orders/inbox" replace />} />
           <Route path="orders/inbox" element={<InboxPage />} />

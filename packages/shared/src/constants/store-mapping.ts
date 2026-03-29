@@ -1,4 +1,5 @@
 export const COMPANY_STORE_ID = 'company';
+export const DEFAULT_STORE_ID = 'store-lolas';
 
 const SOURCE_TO_STORE: Record<string, string> = {
   bass: 'store-bass',
@@ -11,7 +12,7 @@ const STORE_TO_SOURCE: Record<string, string> = {
 };
 
 export function resolveStoreFromSource(source: string): string {
-  return SOURCE_TO_STORE[source] ?? 'store-lolas';
+  return SOURCE_TO_STORE[source] ?? DEFAULT_STORE_ID;
 }
 
 export function resolveSourceFromStore(storeId: string): string {

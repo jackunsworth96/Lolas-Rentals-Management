@@ -1,6 +1,7 @@
 import pawPrint from '../../assets/Paw Print.svg';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import { VehicleCard } from '../../components/booking/VehicleCard.js';
+import { WHATSAPP_URL } from '../../config/contact.js';
 
 interface AvailableModel {
   modelId: string;
@@ -66,7 +67,7 @@ export function BrowseBookVehicleSection({
               <p className="text-sm text-charcoal-brand/70">
                 Try adjusting your dates or{' '}
                 <a
-                  href="https://wa.me/639171234567"
+                  href={WHATSAPP_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="font-bold text-teal-brand underline"

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useBookingStore } from '../../stores/bookingStore.js';
 import { api } from '../../api/client.js';
@@ -17,7 +17,6 @@ interface SearchBarProps {
   searching: boolean;
 }
 
-// TODO: fetch pickup/dropoff time slots from backoffice settings API when available
 function generateTimeSlots(): { value: string; label: string }[] {
   const slots: { value: string; label: string }[] = [];
   const start = 9 * 60 + 15;
@@ -36,9 +35,45 @@ function generateTimeSlots(): { value: string; label: string }[] {
   return slots;
 }
 
-const TIME_SLOTS = generateTimeSlots();
+const ALL_TIME_SLOTS = generateTimeSlots();
 const DEFAULT_PICKUP_TIME = '09:15';
 const DEFAULT_DROPOFF_TIME = '16:45';
+
+function todayStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function nowTimeMinutes(): number {
+  const d = new Date();
+  return d.getHours() * 60 + d.getMinutes();
+}
+
+function timeToMinutes(t: string): number {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+
+function getAvailablePickupSlots(pickupDate: string): { value: string; label: string }[] {
+  if (!pickupDate || pickupDate > todayStr()) return ALL_TIME_SLOTS;
+  if (pickupDate < todayStr()) return ALL_TIME_SLOTS;
+  const now = nowTimeMinutes();
+  return ALL_TIME_SLOTS.filter((s) => timeToMinutes(s.value) > now);
+}
+
+function getAvailableDropoffSlots(
+  pickupDate: string,
+  pickupTime: string,
+  dropoffDate: string,
+): { value: string; label: string }[] {
+  if (!pickupDate || !dropoffDate) return ALL_TIME_SLOTS;
+  if (dropoffDate > pickupDate) return ALL_TIME_SLOTS;
+  if (dropoffDate === pickupDate) {
+    const pickupMins = timeToMinutes(pickupTime);
+    return ALL_TIME_SLOTS.filter((s) => timeToMinutes(s.value) > pickupMins);
+  }
+  return ALL_TIME_SLOTS;
+}
 
 const inputClass =
   'w-full rounded-2xl border-none bg-cream-brand px-4 py-3 font-medium text-charcoal-brand transition-all duration-200 focus:scale-[1.01] focus:ring-2 focus:ring-teal-brand';
@@ -67,11 +102,38 @@ export function SearchBar({ onSearch, searching }: SearchBarProps) {
   const dropoffDate = dropoffDatetime.slice(0, 10);
   const dropoffTime = dropoffDatetime.slice(11, 16) || DEFAULT_DROPOFF_TIME;
 
-  function updatePickup(date: string, time: string) {
-    setDates(date ? `${date}T${time || DEFAULT_PICKUP_TIME}` : '', dropoffDatetime);
+  const [dateError, setDateError] = useState('');
+
+  const availablePickupSlots = useMemo(() => getAvailablePickupSlots(pickupDate), [pickupDate]);
+  const availableDropoffSlots = useMemo(
+    () => getAvailableDropoffSlots(pickupDate, pickupTime, dropoffDate),
+    [pickupDate, pickupTime, dropoffDate],
+  );
+
+  function validateDates(pDate: string, pTime: string, dDate: string, dTime: string): boolean {
+    if (!pDate || !dDate) { setDateError(''); return true; }
+    const pickup = new Date(`${pDate}T${pTime}`);
+    const dropoff = new Date(`${dDate}T${dTime}`);
+    if (dropoff <= pickup) {
+      setDateError('Return must be after pickup');
+      return false;
+    }
+    setDateError('');
+    return true;
   }
+
+  function updatePickup(date: string, time: string) {
+    const newTime = time || DEFAULT_PICKUP_TIME;
+    const newPickup = date ? `${date}T${newTime}` : '';
+    setDates(newPickup, dropoffDatetime);
+    if (date) validateDates(date, newTime, dropoffDate, dropoffTime);
+  }
+
   function updateDropoff(date: string, time: string) {
-    setDates(pickupDatetime, date ? `${date}T${time || DEFAULT_DROPOFF_TIME}` : '');
+    const newTime = time || DEFAULT_DROPOFF_TIME;
+    const newDropoff = date ? `${date}T${newTime}` : '';
+    setDates(pickupDatetime, newDropoff);
+    if (date) validateDates(pickupDate, pickupTime, date, newTime);
   }
 
   const { data: locations } = useQuery<LocationRow[]>({
@@ -86,6 +148,12 @@ export function SearchBar({ onSearch, searching }: SearchBarProps) {
     return store ? store.id : locations[0].id;
   }, [locations]);
 
+  const storeLocationName = useMemo(() => {
+    if (!locations || locations.length === 0) return "Lola's Rentals";
+    const store = locations.find(isStoreLocation);
+    return store ? store.name : locations[0].name;
+  }, [locations]);
+
   useEffect(() => {
     if (storeLocationId != null && pickupLocationId == null) {
       setLocations(storeLocationId, storeLocationId);
@@ -97,17 +165,19 @@ export function SearchBar({ onSearch, searching }: SearchBarProps) {
   const pickupFee = pickupLoc ? Number(pickupLoc.deliveryCost) : 0;
   const dropoffFee = dropoffLoc ? Number(dropoffLoc.collectionCost) : 0;
 
-  const canSearch = !!storeId && !!pickupDatetime && !!dropoffDatetime;
+  const canSearch = !!storeId && !!pickupDatetime && !!dropoffDatetime && !dateError;
+
+  const minPickupDate = todayStr();
 
   return (
     <div className="rounded-4xl bg-sand-brand p-6 shadow-sm md:p-8">
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-        {/* Store — static label (single store) */}
+        {/* Store — driven from locations API */}
         <div className="space-y-2">
-          <label className="ml-1 text-xs font-bold uppercase tracking-widest text-teal-brand">Location</label>
+          <label className="ml-1 text-xs font-bold uppercase tracking-widest text-teal-brand">Store</label>
           <div className={`${inputClass} flex items-center gap-2`}>
             <span className="text-teal-brand">📍</span>
-            <span className="font-bold">Lola's Rentals (General Luna)</span>
+            <span className="font-bold">{storeLocationName}</span>
           </div>
         </div>
 
@@ -118,6 +188,7 @@ export function SearchBar({ onSearch, searching }: SearchBarProps) {
             <input
               type="date"
               value={pickupDate}
+              min={minPickupDate}
               onChange={(e) => updatePickup(e.target.value, pickupTime)}
               className={`${inputClass} flex-1`}
             />
@@ -127,7 +198,7 @@ export function SearchBar({ onSearch, searching }: SearchBarProps) {
                 onChange={(e) => updatePickup(pickupDate, e.target.value)}
                 className={`${inputClass} appearance-none pr-7`}
               >
-                {TIME_SLOTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                {availablePickupSlots.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
               </select>
               <span className="pointer-events-none absolute right-3 top-3 text-charcoal-brand/50">▾</span>
             </div>
@@ -141,21 +212,24 @@ export function SearchBar({ onSearch, searching }: SearchBarProps) {
             <input
               type="date"
               value={dropoffDate}
+              min={pickupDate || minPickupDate}
               onChange={(e) => updateDropoff(e.target.value, dropoffTime)}
-              min={pickupDate || undefined}
-              className={`${inputClass} flex-1`}
+              className={`${inputClass} flex-1 ${dateError ? 'ring-2 ring-red-400' : ''}`}
             />
             <div className="relative w-28 shrink-0">
               <select
                 value={dropoffTime}
                 onChange={(e) => updateDropoff(dropoffDate, e.target.value)}
-                className={`${inputClass} appearance-none pr-7`}
+                className={`${inputClass} appearance-none pr-7 ${dateError ? 'ring-2 ring-red-400' : ''}`}
               >
-                {TIME_SLOTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                {availableDropoffSlots.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
               </select>
               <span className="pointer-events-none absolute right-3 top-3 text-charcoal-brand/50">▾</span>
             </div>
           </div>
+          {dateError && (
+            <p className="ml-1 text-xs font-bold text-red-500">{dateError}</p>
+          )}
         </div>
       </div>
 

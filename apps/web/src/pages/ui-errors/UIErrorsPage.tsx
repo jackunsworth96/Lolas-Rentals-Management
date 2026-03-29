@@ -30,7 +30,7 @@ const REPORT_PAGE_OPTIONS: { value: string; label: string }[] = [
   { value: '/todo', label: 'To Do' },
   { value: '/misc-sales', label: 'Misc Sales' },
   { value: '/merchandise', label: 'Merchandise' },
-  { value: '/paw-card', label: 'Paw Card' },
+  { value: '/book/paw-card', label: 'Paw Card' },
   { value: '/merchandise', label: 'Merchandise' },
   { value: '/lost-opportunity', label: 'Lost Opportunity' },
   { value: '/settings', label: 'Settings' },

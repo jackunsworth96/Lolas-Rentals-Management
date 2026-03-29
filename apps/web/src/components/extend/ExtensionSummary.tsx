@@ -1,4 +1,5 @@
 import { PrimaryCtaButton } from '../public/PrimaryCtaButton.js';
+import { formatCurrency } from '../../utils/currency.js';
 
 interface Props {
   originalTotal: number;
@@ -29,13 +30,13 @@ export function ExtensionSummary({
       <div className="space-y-5">
         <div className="flex items-center justify-between">
           <span className="font-bold text-charcoal-brand/70">Original Cost ({originalDays} Day{originalDays !== 1 ? 's' : ''})</span>
-          <span className="font-black text-charcoal-brand">₱{originalTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+          <span className="font-black text-charcoal-brand">{formatCurrency(originalTotal)}</span>
         </div>
 
         <div className="flex items-center justify-between text-teal-brand">
           <span className="font-bold">Extension ({extensionDays} Extra Day{extensionDays !== 1 ? 's' : ''})</span>
           {extensionCost != null ? (
-            <span className="font-black">₱{extCost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+            <span className="font-black">{formatCurrency(extCost)}</span>
           ) : (
             <span className="inline-block h-4 w-16 animate-pulse rounded bg-sand-brand" />
           )}
@@ -48,13 +49,13 @@ export function ExtensionSummary({
             <div className="space-y-1">
               <p className="text-[10px] font-black uppercase tracking-widest text-teal-brand">Updated Total</p>
               <p className="text-4xl font-black text-teal-brand">
-                ₱{updatedTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                {formatCurrency(updatedTotal)}
               </p>
             </div>
             <div className="space-y-1 text-right">
               <p className="text-[11px] font-bold text-charcoal-brand/70">Balance Due</p>
               <p className="text-2xl font-black text-gold-brand">
-                ₱{extCost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                {formatCurrency(extCost)}
               </p>
             </div>
           </div>

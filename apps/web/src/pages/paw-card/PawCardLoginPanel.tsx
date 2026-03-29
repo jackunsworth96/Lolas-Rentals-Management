@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import lolaFace from '../../assets/Lola Face Icon.svg';
 import { PrimaryCtaButton } from '../../components/public/PrimaryCtaButton.js';
+import { WHATSAPP_URL } from '../../config/contact.js';
 import { api } from '../../api/client.js';
 
 export type PawCardAccess = {
@@ -12,7 +13,7 @@ type LookupResponse =
   | { found: false }
   | { found: true; customerId: string | null };
 
-const WHATSAPP_HREF = 'https://wa.me/639171234567';
+const WHATSAPP_HREF = WHATSAPP_URL;
 
 type Props = {
   access: PawCardAccess | null;

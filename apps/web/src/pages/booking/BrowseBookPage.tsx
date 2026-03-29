@@ -1,13 +1,15 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
+import { useToast } from '../../hooks/useToast.js';
 import { SearchBar } from '../../components/booking/SearchBar.js';
 import { HoldCountdown } from '../../components/booking/HoldCountdown.js';
 import { BrowseBookVehicleSection } from './BrowseBookVehicleSection.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
+import { WHATSAPP_URL } from '../../config/contact.js';
 
 interface AvailableModel {
   modelId: string;
@@ -20,8 +22,6 @@ interface QuoteData {
   dailyRate: number;
   securityDeposit: number;
 }
-
-interface Toast { msg: string; type: 'success' | 'error'; id: number }
 
 export default function BrowseBookPage() {
   const storeId = useBookingStore((s) => s.storeId);
@@ -38,12 +38,7 @@ export default function BrowseBookPage() {
     storeId: string; pickup: string; dropoff: string;
   } | null>(null);
 
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const pushToast = useCallback((msg: string, type: 'success' | 'error') => {
-    const id = Date.now();
-    setToasts((prev) => [...prev, { msg, type, id }]);
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3500);
-  }, []);
+  const { toasts, pushToast } = useToast();
 
   const prevBasketLen = useRef(basket.length);
   const [badgeBump, setBadgeBump] = useState(false);
@@ -81,6 +76,7 @@ export default function BrowseBookPage() {
   const [quotes, setQuotes] = useState<Record<string, QuoteData>>({});
   useEffect(() => {
     if (!availableModels || !searchParams || pickupLocationId == null || dropoffLocationId == null) return;
+    let cancelled = false;
     const load = async () => {
       const newQuotes: Record<string, QuoteData> = {};
       await Promise.all(
@@ -89,14 +85,17 @@ export default function BrowseBookPage() {
             const q = await api.get<QuoteData>(
               `/public/booking/quote?storeId=${searchParams.storeId}&vehicleModelId=${m.modelId}&pickupDatetime=${encodeURIComponent(searchParams.pickup)}&dropoffDatetime=${encodeURIComponent(searchParams.dropoff)}&pickupLocationId=${pickupLocationId}&dropoffLocationId=${dropoffLocationId}`,
             );
-            newQuotes[m.modelId] = q;
-          } catch { /* skip */ }
+            if (!cancelled) newQuotes[m.modelId] = q;
+          } catch {
+            if (!cancelled) pushToast(`Failed to load price for ${m.modelName}`, 'error');
+          }
         }),
       );
-      setQuotes(newQuotes);
+      if (!cancelled) setQuotes(newQuotes);
     };
     load();
-  }, [availableModels, searchParams, pickupLocationId, dropoffLocationId]);
+    return () => { cancelled = true; };
+  }, [availableModels, searchParams, pickupLocationId, dropoffLocationId, pushToast]);
 
   useEffect(() => {
     if (basket.length === 0) return;
@@ -110,7 +109,9 @@ export default function BrowseBookPage() {
             pushToast(`${item.modelName} hold expired`, 'error');
           }
         }
-      } catch { /* ignore */ }
+      } catch {
+        pushToast('Could not verify your holds — check your connection', 'error');
+      }
     }, 30_000);
     return () => clearInterval(interval);
   }, [basket, sessionToken, removeFromBasket, pushToast]);
@@ -154,10 +155,11 @@ export default function BrowseBookPage() {
 
       <div className="fixed bottom-28 right-6 z-40 md:bottom-12 md:right-12">
         <a
-          href="https://wa.me/639171234567"
+          href={WHATSAPP_URL}
           target="_blank"
           rel="noopener noreferrer"
           className="flex h-16 w-16 items-center justify-center rounded-full bg-[#25D366] text-3xl text-white shadow-xl transition-all duration-300 ease-in-out hover:scale-110 hover:brightness-110 active:scale-95"
+          aria-label="Chat with us on WhatsApp"
         >
           💬
         </a>

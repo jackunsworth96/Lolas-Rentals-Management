@@ -214,4 +214,114 @@ router.get('/locations', validateQuery(LocationsQuerySchema), async (req, res, n
   }
 });
 
+// ── Order Lookup (public) ──
+
+router.get('/order/:reference', async (req, res, next) => {
+  try {
+    const reference = req.params.reference;
+    const sb = req.app.locals.deps.bookingPort;
+    const configRepo = req.app.locals.deps.configRepo;
+
+    const { getSupabaseClient } = await import('../adapters/supabase/client.js');
+    const supabase = getSupabaseClient();
+
+    const { data: rows, error } = await supabase
+      .from('orders_raw')
+      .select('*')
+      .eq('order_reference', reference)
+      .eq('booking_channel', 'direct')
+      .limit(1);
+
+    if (error) throw new Error(`Order lookup failed: ${error.message}`);
+    if (!rows || rows.length === 0) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Booking not found' },
+      });
+      return;
+    }
+
+    const row = rows[0] as Record<string, unknown>;
+
+    const pickupDt = row.pickup_datetime as string;
+    const dropoffDt = row.dropoff_datetime as string;
+    const diffMs = new Date(dropoffDt).getTime() - new Date(pickupDt).getTime();
+    const rentalDays = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+
+    let vehicleModelName = '';
+    if (row.vehicle_model_id) {
+      const { data: vm } = await supabase
+        .from('vehicle_models')
+        .select('name')
+        .eq('id', row.vehicle_model_id as string)
+        .single();
+      if (vm) vehicleModelName = (vm as { name: string }).name;
+    }
+
+    let grandTotal = 0;
+    let depositAmount = 0;
+    try {
+      const storeId = row.store_id as string;
+      const modelId = row.vehicle_model_id as string;
+      const pickupLocId = row.pickup_location_id as number;
+      const dropoffLocId = row.dropoff_location_id as number;
+      const quote = await computeQuote(
+        { configRepo },
+        { storeId, vehicleModelId: modelId, pickupDatetime: pickupDt, dropoffDatetime: dropoffDt, pickupLocationId: pickupLocId, dropoffLocationId: dropoffLocId },
+      );
+      grandTotal = quote.grandTotal ?? 0;
+      depositAmount = quote.securityDeposit ?? 0;
+    } catch { /* quote may fail for edge cases */ }
+
+    const addonNames: string[] = [];
+    const addonIds = row.addon_ids as number[] | null;
+    if (addonIds && addonIds.length > 0) {
+      const { data: addons } = await supabase
+        .from('addons')
+        .select('name')
+        .in('id', addonIds);
+      if (addons) {
+        for (const a of addons as { name: string }[]) addonNames.push(a.name);
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        orderReferences: [row.order_reference as string],
+        customerName: row.customer_name as string,
+        customerEmail: row.customer_email as string,
+        vehicleModelName,
+        pickupDatetime: pickupDt,
+        dropoffDatetime: dropoffDt,
+        rentalDays,
+        grandTotal,
+        depositAmount,
+        addonNames,
+        transferType: row.transfer_type ?? null,
+        flightNumber: row.flight_number ?? null,
+        transferRoute: row.transfer_route ?? null,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Transfer Routes (public) ──
+
+const TransferRoutesQuerySchema = z.object({
+  storeId: z.string().min(1),
+});
+
+router.get('/transfer-routes', validateQuery(TransferRoutesQuerySchema), async (req, res, next) => {
+  try {
+    const { storeId } = req.query as { storeId: string };
+    const routes = await req.app.locals.deps.configRepo.getTransferRoutes(storeId);
+    res.json({ success: true, data: routes });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export { router as publicBookingRoutes };

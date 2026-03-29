@@ -24,7 +24,7 @@ export default function LoginPage() {
       const storeIds = result.user?.storeIds;
       if (storeIds?.length) setSelectedStore(storeIds[0]);
       else setSelectedStore('');
-      navigate('/', { replace: true });
+      navigate('/dashboard', { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {

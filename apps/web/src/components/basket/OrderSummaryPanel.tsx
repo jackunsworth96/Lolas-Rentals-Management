@@ -1,6 +1,7 @@
 import type { BasketItem } from '../../stores/bookingStore.js';
 import type { Addon, TransferDetails, PaymentMethod } from './basket-types.js';
 import { PrimaryCtaButton } from '../public/PrimaryCtaButton.js';
+import { formatCurrency } from '../../utils/currency.js';
 
 interface Props {
   basket: BasketItem[];
@@ -71,6 +72,10 @@ export function OrderSummaryPanel({
             Booking Summary
           </h2>
 
+          <div className="mb-4 rounded-2xl bg-sand-brand/60 px-4 py-3 text-center text-sm font-bold text-charcoal-brand/70">
+            Rental Duration: <span className="text-teal-brand">{rentalDays} Day{rentalDays !== 1 ? 's' : ''}</span>
+          </div>
+
           <div className="mb-8 space-y-5">
             <Row label={`Vehicle Subtotal (${rentalDays} Day${rentalDays !== 1 ? 's' : ''})`} amount={vehicleSubtotal} />
             {pickupFee > 0 && <Row label="Delivery Fee" amount={pickupFee} />}
@@ -85,7 +90,7 @@ export function OrderSummaryPanel({
           <div className="mb-8 flex items-center justify-between">
             <span className="font-headline text-xl font-bold text-charcoal-brand">Grand Total</span>
             <span className="font-headline text-4xl font-black text-teal-brand">
-              ₱{grandTotal.toLocaleString()}
+              {formatCurrency(grandTotal)}
             </span>
           </div>
 
@@ -120,7 +125,7 @@ export function OrderSummaryPanel({
                   value={opt.id}
                   checked={selected}
                   onChange={() => onPaymentChange(opt.id)}
-                  className="hidden"
+                  className="sr-only"
                 />
                 <span className="text-xl">{opt.icon}</span>
                 <span className={`flex-1 font-headline font-bold ${selected ? 'text-charcoal-brand' : 'text-charcoal-brand/60'}`}>
@@ -163,7 +168,7 @@ function Row({ label, amount, muted }: { label: string; amount: number; muted?: 
     <div className="flex items-center justify-between text-charcoal-brand/80">
       <span className="font-medium">{label}</span>
       <span className={`font-headline font-black ${muted ? 'text-charcoal-brand/50' : ''}`}>
-        ₱{amount.toLocaleString()}
+        {formatCurrency(amount)}
       </span>
     </div>
   );

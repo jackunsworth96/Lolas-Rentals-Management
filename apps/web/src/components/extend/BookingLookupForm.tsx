@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { PrimaryCtaButton } from '../public/PrimaryCtaButton.js';
+import { WHATSAPP_URL } from '../../config/contact.js';
 
 interface Props {
   onFound: (order: Record<string, unknown>) => void;
@@ -59,7 +60,7 @@ export function BookingLookupForm({ loading, onSubmit, error }: Props) {
           <div className="rounded-2xl bg-sand-brand px-5 py-4 text-sm font-bold text-charcoal-brand/70">
             {error}{' '}
             <a
-              href="https://wa.me/639171234567"
+              href={WHATSAPP_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="font-black text-teal-brand underline"

@@ -1,3 +1,5 @@
+import { formatCurrency } from '../../utils/currency.js';
+
 interface Props {
   vehicleModelName: string;
   pickupDatetime: string;
@@ -102,14 +104,14 @@ export function RentalSummaryCard({
           <div>
             <p className="mb-1 text-xs font-bold text-charcoal-brand/50">Grand Total</p>
             <p className="font-headline text-3xl font-black text-teal-brand">
-              ₱{grandTotal.toLocaleString()}
+              {formatCurrency(grandTotal)}
             </p>
           </div>
           {depositAmount > 0 && (
             <div className="text-right">
               <p className="mb-1 text-xs font-bold text-charcoal-brand/50">Refundable Deposit</p>
               <p className="font-headline text-lg font-black text-charcoal-brand/70">
-                ₱{depositAmount.toLocaleString()}
+                {formatCurrency(depositAmount)}
               </p>
             </div>
           )}

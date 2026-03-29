@@ -2,24 +2,8 @@ import { useState } from 'react';
 import { api } from '../../api/client.js';
 import { useBookingStore, type BasketItem } from '../../stores/bookingStore.js';
 import { HoldCountdown } from '../booking/HoldCountdown.js';
-import hondaBeatImg from '../../assets/Honda Beat Image.png';
-import tukTukImg from '../../assets/TukTuk Image.png';
-
-const MODEL_IMAGES: Record<string, string> = {
-  'honda-beat': hondaBeatImg,
-  'honda beat': hondaBeatImg,
-  tuktuk: tukTukImg,
-  'tuk-tuk': tukTukImg,
-  'tuk tuk': tukTukImg,
-};
-
-function resolveImage(modelName: string): string | null {
-  const lower = modelName.toLowerCase();
-  for (const [key, src] of Object.entries(MODEL_IMAGES)) {
-    if (lower.includes(key)) return src;
-  }
-  return null;
-}
+import { resolveImage } from '../../utils/vehicle-images.js';
+import { formatCurrency } from '../../utils/currency.js';
 
 interface Props {
   item: BasketItem;
@@ -73,10 +57,10 @@ export function BasketVehicleCard({ item, rentalDays, pickupLabel, dropoffLabel,
 
         <div className="flex items-baseline justify-between border-t border-charcoal-brand/5 pt-4">
           <p className="text-sm font-medium text-charcoal-brand/60">
-            ₱{item.dailyRate.toLocaleString()}/day
+            {formatCurrency(item.dailyRate)}/day
           </p>
           <p className="font-headline text-2xl font-black text-charcoal-brand">
-            ₱{subtotal.toLocaleString()}
+            {formatCurrency(subtotal)}
           </p>
         </div>
 
@@ -92,7 +76,7 @@ export function BasketVehicleCard({ item, rentalDays, pickupLabel, dropoffLabel,
             type="button"
             onClick={handleRemove}
             disabled={removing}
-            className="text-xs font-bold text-red-500 transition-opacity duration-200 hover:opacity-70 disabled:opacity-40"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center text-xs font-bold text-red-500 transition-opacity duration-200 hover:opacity-70 disabled:opacity-40"
           >
             {removing ? 'Removing…' : 'Remove'}
           </button>

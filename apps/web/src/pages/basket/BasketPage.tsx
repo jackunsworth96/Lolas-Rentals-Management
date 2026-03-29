@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
+import { useToast } from '../../hooks/useToast.js';
 import { BasketVehicleCard } from '../../components/basket/BasketVehicleCard.js';
 import { AddOnsSection } from '../../components/basket/AddOnsSection.js';
 import { TransferSection } from '../../components/basket/TransferSection.js';
@@ -19,15 +20,14 @@ import pawPrint from '../../assets/Paw Print.svg';
 function rentalDaysFromDates(pickup: string, dropoff: string): number {
   if (!pickup || !dropoff) return 1;
   const ms = new Date(dropoff).getTime() - new Date(pickup).getTime();
-  return Math.max(1, Math.ceil(ms / 86_400_000));
+  const hours = ms / (1000 * 60 * 60);
+  return Math.max(1, Math.ceil(hours / 24));
 }
 
 function formatDate(iso: string): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
-
-interface Toast { msg: string; type: 'success' | 'error'; id: number }
 
 export default function BasketPage() {
   const navigate = useNavigate();
@@ -57,23 +57,18 @@ export default function BasketPage() {
   const pickupFee = locations.find((l) => l.id === pickupLocationId)?.deliveryCost ?? 0;
   const dropoffFee = locations.find((l) => l.id === dropoffLocationId)?.collectionCost ?? 0;
 
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const pushToast = useCallback((msg: string, type: 'success' | 'error') => {
-    const id = Date.now();
-    setToasts((prev) => [...prev, { msg, type, id }]);
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3500);
-  }, []);
+  const { toasts, pushToast } = useToast();
 
   useEffect(() => {
     if (!storeId) return;
     setAddonsLoading(true);
     api.get<Addon[]>(`/public/booking/addons?storeId=${storeId}`)
       .then((data) => setAddons(data))
-      .catch(() => { /* silent */ })
+      .catch(() => pushToast('Failed to load add-ons. Please refresh the page.', 'error'))
       .finally(() => setAddonsLoading(false));
     api.get<Array<{ id: number; deliveryCost: number; collectionCost: number }>>(`/public/booking/locations?storeId=${storeId}`)
       .then((data) => setLocations(data))
-      .catch(() => { /* silent */ });
+      .catch(() => pushToast('Failed to load delivery locations. Fees may be inaccurate.', 'error'));
   }, [storeId]);
 
   const transferAddons = addons.filter((a) => a.name.toLowerCase().includes('transfer') || a.name.toLowerCase().includes('tuk'));
@@ -139,14 +134,15 @@ export default function BasketPage() {
       const addonsCost = selAddons.reduce((s, a) => s + (a.addonType === 'per_day' ? a.pricePerDay * rentalDays : a.priceOneTime), 0);
       const tFee = transfer ? (transferAddons.find((a) => (transfer.transferType === 'shared' ? a.name.toLowerCase().includes('shared') : a.name.toLowerCase().includes('tuk')))?.priceOneTime ?? 0) : 0;
       clearBasket();
-      navigate('/confirmation', { state: {
+      const confirmState = {
         orderReferences: orderRefs, customerName: renter.fullName.trim(), customerEmail: renter.email.trim(),
         vehicleModelName: basket[0]?.modelName ?? '', pickupDatetime, dropoffDatetime, pickupLocationId, rentalDays,
         grandTotal: basket.reduce((s, b) => s + b.dailyRate * rentalDays, 0) + addonsCost + tFee + pickupFee + dropoffFee,
         depositAmount: basket.reduce((s, b) => s + (b.securityDeposit ?? 0), 0),
         addonNames: selAddons.map((a) => a.name), transferType: transfer?.transferType ?? null,
         flightNumber: transfer?.flightNumber ?? null, transferRoute: transfer?.transferRoute ?? null,
-      }});
+      };
+      navigate(`/book/confirmation/${encodeURIComponent(orderRefs[0])}`, { state: confirmState });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Something went wrong';
       pushToast(msg, 'error');
@@ -162,7 +158,7 @@ export default function BasketPage() {
             <img src={pawPrint} alt="" className="mb-6 h-16 w-16 bg-transparent opacity-20 grayscale" />
             <h2 className="mb-2 text-center font-headline text-3xl font-black text-charcoal-brand">Your basket is empty</h2>
             <p className="mb-8 text-center text-charcoal-brand/60">Find your perfect ride and add it to your basket</p>
-            <PrimaryCtaButton type="button" onClick={() => navigate('/browse-book')} className="min-h-[44px] px-10 py-4 font-bold">
+            <PrimaryCtaButton type="button" onClick={() => navigate('/book/reserve')} className="min-h-[44px] px-10 py-4 font-bold">
               Browse Vehicles
             </PrimaryCtaButton>
           </div>

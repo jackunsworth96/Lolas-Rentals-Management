@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { DEFAULT_STORE_ID } from '@lolas/shared';
 
 export interface BasketItem {
   holdId: string;
@@ -38,7 +39,7 @@ function getOrCreateSessionToken(): string {
 }
 
 export const useBookingStore = create<BookingState>((set) => ({
-  storeId: 'store-lolas',
+  storeId: DEFAULT_STORE_ID,
   pickupDatetime: '',
   dropoffDatetime: '',
   pickupLocationId: null,

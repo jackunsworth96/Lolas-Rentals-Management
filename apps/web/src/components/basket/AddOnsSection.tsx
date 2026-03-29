@@ -1,4 +1,5 @@
 import type { Addon } from './basket-types.js';
+import { formatCurrency } from '../../utils/currency.js';
 
 interface Props {
   addons: Addon[];
@@ -37,11 +38,9 @@ function iconForAddon(name: string): string {
 
 function priceLabel(addon: Addon): string {
   if (addon.addonType === 'per_day') {
-    const p = addon.pricePerDay;
-    return p > 0 ? `₱${p.toLocaleString()}/day` : 'Free';
+    return addon.pricePerDay > 0 ? `${formatCurrency(addon.pricePerDay)}/day` : 'Free';
   }
-  const p = addon.priceOneTime;
-  return p > 0 ? `₱${p.toLocaleString()} one-time` : 'Included';
+  return addon.priceOneTime > 0 ? `${formatCurrency(addon.priceOneTime)} one-time` : 'Included';
 }
 
 export function AddOnsSection({ addons, loading, selectedIds, onToggle }: Props) {

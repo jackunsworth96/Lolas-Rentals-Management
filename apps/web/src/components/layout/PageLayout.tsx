@@ -33,18 +33,18 @@ export interface PageLayoutProps {
 }
 
 const NAV_LINKS = [
-  { to: '/', label: 'Home' },
-  { to: '/browse-book', label: 'Reserve' },
-  { to: '/paw-card', label: 'Paw Card' },
-  { to: '/repairs', label: 'Repairs' },
-  { to: '/about', label: 'About' },
+  { to: '/book', label: 'Home' },
+  { to: '/book/reserve', label: 'Reserve' },
+  { to: '/book/paw-card', label: 'Paw Card' },
+  { to: '/book/repairs', label: 'Repairs' },
+  { to: '/book/about', label: 'About' },
 ];
 
 const BOTTOM_NAV = [
-  { to: '/', icon: '🏠', label: 'Home' },
-  { to: '/browse-book', icon: '🏍️', label: 'Reserve' },
-  { to: '/paw-card', icon: '🐾', label: 'Paw Card' },
-  { to: '/repairs', icon: '🔧', label: 'Repairs' },
+  { to: '/book', icon: '🏠', label: 'Home' },
+  { to: '/book/reserve', icon: '🏍️', label: 'Reserve' },
+  { to: '/book/paw-card', icon: '🐾', label: 'Paw Card' },
+  { to: '/book/repairs', icon: '🔧', label: 'Repairs' },
 ];
 
 const linkBase = 'min-h-[44px] flex items-center transition-opacity duration-200 hover:opacity-80';
@@ -70,7 +70,7 @@ export function PageLayout({
 
   useEffect(() => setMenuOpen(false), [pathname]);
 
-  const isActive = (to: string) => (to === '/' ? pathname === '/' : pathname.startsWith(to));
+  const isActive = (to: string) => (to === '/book' ? pathname === '/book' : pathname.startsWith(to));
 
   return (
     <div
@@ -102,7 +102,7 @@ export function PageLayout({
           >
             ☰
           </button>
-          <Link to="/" onClick={() => setMenuOpen(false)}>
+          <Link to="/book" onClick={() => setMenuOpen(false)}>
             <img src={logo} alt="Lola's Rentals" className="h-8 w-auto brightness-0 invert" />
           </Link>
         </div>
@@ -117,7 +117,7 @@ export function PageLayout({
 
         {showBasketIcon ? (
           <Link
-            to="/basket"
+            to="/book/basket"
             className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border-2 border-white/20 text-white transition-all duration-300 hover:bg-white/10"
           >
             🛒
@@ -157,13 +157,13 @@ export function PageLayout({
                 Lola&apos;s Rentals
               </span>
               <p className="text-sm leading-relaxed text-charcoal-brand/60">
-                © 2025 Lola&apos;s Rentals &amp; Tours Inc. Supporting BePawsitive animal welfare on
+                © {new Date().getFullYear()} Lola&apos;s Rentals &amp; Tours Inc. Supporting BePawsitive animal welfare on
                 Siargao Island.
               </p>
             </div>
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-x-12 gap-y-4">
-                <Link to="/repairs" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
+                <Link to="/book/repairs" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
                   Island Safety
                 </Link>
                 <a href="https://bepawsitive.com" target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
@@ -172,7 +172,7 @@ export function PageLayout({
                 <a href="https://wa.me/639694443413" target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
                   Contact Us
                 </a>
-                <Link to="/privacy" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
+                <Link to="/book/privacy" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
                   Privacy
                 </Link>
               </div>

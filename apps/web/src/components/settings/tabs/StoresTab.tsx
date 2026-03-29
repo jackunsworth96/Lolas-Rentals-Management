@@ -39,7 +39,7 @@ function BookingLinkPanel({ stores }: { stores: StoreRow[] }) {
   const baseUrl = window.location.origin;
 
   function copyLink(token: string) {
-    navigator.clipboard.writeText(`${baseUrl}/book-transfer/${token}`);
+    navigator.clipboard.writeText(`${baseUrl}/book/transfer/${token}`);
     setCopied(token);
     setTimeout(() => setCopied(null), 2000);
   }
@@ -94,7 +94,7 @@ function BookingLinkPanel({ stores }: { stores: StoreRow[] }) {
                 <div className="flex items-center gap-2">
                   <input
                     readOnly
-                    value={`${baseUrl}/book-transfer/${store.bookingToken}`}
+                    value={`${baseUrl}/book/transfer/${store.bookingToken}`}
                     className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 select-all"
                     onFocus={(e) => e.target.select()}
                   />

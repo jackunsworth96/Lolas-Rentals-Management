@@ -142,7 +142,8 @@ function storeIdFromSource(source: string): string {
 function calcDays(pickup: string, dropoff: string): number {
   if (!pickup || !dropoff) return 1;
   const diff = new Date(dropoff).getTime() - new Date(pickup).getTime();
-  return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  const hours = diff / (1000 * 60 * 60);
+  return Math.max(1, Math.ceil(hours / 24));
 }
 
 interface PricingTier {

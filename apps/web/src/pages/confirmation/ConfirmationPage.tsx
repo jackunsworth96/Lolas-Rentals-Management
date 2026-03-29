@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { api } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
 import { RentalSummaryCard } from '../../components/confirmation/RentalSummaryCard.js';
 import { QuickTipsCard } from '../../components/confirmation/QuickTipsCard.js';
@@ -10,6 +11,7 @@ import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
 
 import lolaCartoon from '../../assets/Lola Face Cartoon.svg';
 import pawPrint from '../../assets/Paw Print.svg';
+import { WHATSAPP_URL } from '../../config/contact.js';
 
 interface ConfirmationState {
   orderReferences: string[];
@@ -28,15 +30,17 @@ interface ConfirmationState {
   transferRoute?: string | null;
 }
 
-const WHATSAPP_HREF = 'https://wa.me/639171234567';
-
 export default function ConfirmationPage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { reference } = useParams<{ reference?: string }>();
   const clearBasket = useBookingStore((s) => s.clearBasket);
 
-  const state = location.state as ConfirmationState | null;
+  const navState = location.state as ConfirmationState | null;
 
+  const [state, setState] = useState<ConfirmationState | null>(navState);
+  const [loading, setLoading] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
   const [copied, setCopied] = useState(false);
   const [pillVisible, setPillVisible] = useState(false);
 
@@ -46,9 +50,44 @@ export default function ConfirmationPage() {
     return () => clearTimeout(t);
   }, []);
 
-  if (!state || !state.orderReferences?.length) {
-    return <Navigate to="/browse-book" replace />;
+  useEffect(() => {
+    if (state) return;
+    if (!reference) { setFetchError(true); return; }
+
+    let cancelled = false;
+    setLoading(true);
+    api.get<ConfirmationState>(`/public/booking/order/${encodeURIComponent(reference)}`)
+      .then((data) => { if (!cancelled) setState(data); })
+      .catch(() => { if (!cancelled) setFetchError(true); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [state, reference]);
+
+  if (loading) {
+    return (
+      <PageLayout title="Loading... | Lola's Rentals">
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-teal-brand border-t-transparent" />
+        </div>
+      </PageLayout>
+    );
   }
+
+  if (fetchError || (!state && !reference)) {
+    return (
+      <PageLayout title="Booking Not Found | Lola's Rentals">
+        <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 text-center">
+          <h2 className="mb-4 font-headline text-3xl font-black text-charcoal-brand">Booking not found</h2>
+          <p className="mb-8 text-charcoal-brand/60">We could not find a booking with that reference. It may have been processed already.</p>
+          <PrimaryCtaButton type="button" onClick={() => navigate('/book/reserve')} className="px-10 py-4 font-bold">
+            Browse Vehicles
+          </PrimaryCtaButton>
+        </div>
+      </PageLayout>
+    );
+  }
+
+  if (!state) return null;
 
   const refDisplay = state.orderReferences.join(' · ');
 
@@ -99,6 +138,7 @@ export default function ConfirmationPage() {
                 onClick={handleCopy}
                 className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-sand-brand text-charcoal-brand/60 transition-all duration-200 hover:bg-sand-brand/80 active:scale-90"
                 title="Copy reference"
+                aria-label="Copy reference number"
               >
                 {copied ? '✓' : '📋'}
                 {copied && (
@@ -130,13 +170,13 @@ export default function ConfirmationPage() {
 
           <div className="flex w-full flex-col gap-4">
             <PrimaryCtaButton
-              type="button" onClick={() => navigate('/browse-book')}
+              type="button" onClick={() => navigate('/book/extend')}
               className="flex min-h-[44px] w-full items-center justify-center gap-3 py-5 font-headline text-lg font-black"
             >
               Extend My Rental →
             </PrimaryCtaButton>
             <button
-              type="button" onClick={() => navigate('/')}
+              type="button" onClick={() => navigate('/book')}
               className="min-h-[44px] w-full rounded-full bg-cream-brand font-headline text-lg font-black text-charcoal-brand shadow-md transition-all duration-300 hover:bg-sand-brand"
             >
               Back to Home
@@ -145,7 +185,7 @@ export default function ConfirmationPage() {
 
           <p className="mt-12 text-sm font-bold text-charcoal-brand/60">
             Need help?{' '}
-            <a href={WHATSAPP_HREF} target="_blank" rel="noopener noreferrer" className="text-teal-brand underline decoration-2 underline-offset-4 transition-opacity duration-200 hover:opacity-80">
+            <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="text-teal-brand underline decoration-2 underline-offset-4 transition-opacity duration-200 hover:opacity-80">
               Chat with Lola&apos;s Team
             </a>
           </p>

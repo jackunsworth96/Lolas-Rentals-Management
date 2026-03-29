@@ -1,11 +1,8 @@
+import { useState, useEffect } from 'react';
+import { api } from '../../api/client.js';
+import { useBookingStore } from '../../stores/bookingStore.js';
 import type { Addon, TransferDetails } from './basket-types.js';
-
-const TRANSFER_ROUTES = [
-  'Airport → General Luna',
-  'General Luna → Airport',
-  'Airport → Cloud 9',
-  'Cloud 9 → Airport',
-];
+import { formatCurrency } from '../../utils/currency.js';
 
 interface Props {
   transferAddons: Addon[];
@@ -15,6 +12,20 @@ interface Props {
 }
 
 export function TransferSection({ transferAddons, transfer, onTransferChange, errors }: Props) {
+  const storeId = useBookingStore((s) => s.storeId);
+  const [routes, setRoutes] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!storeId) return;
+    let cancelled = false;
+    api.get<Array<{ route: string }>>(`/public/booking/transfer-routes?storeId=${storeId}`)
+      .then((data) => {
+        if (!cancelled) setRoutes(data.map((r) => r.route));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [storeId]);
+
   if (transferAddons.length === 0) return null;
 
   const sharedAddon = transferAddons.find((a) =>
@@ -45,8 +56,8 @@ export function TransferSection({ transferAddons, transfer, onTransferChange, er
   function priceFor(addon: Addon | undefined): string {
     if (!addon) return '';
     return addon.addonType === 'per_day'
-      ? `₱${addon.pricePerDay.toLocaleString()}`
-      : `₱${addon.priceOneTime.toLocaleString()}`;
+      ? formatCurrency(addon.pricePerDay)
+      : formatCurrency(addon.priceOneTime);
   }
 
   return (
@@ -136,7 +147,7 @@ export function TransferSection({ transferAddons, transfer, onTransferChange, er
                 }`}
               >
                 <option value="">Select route…</option>
-                {TRANSFER_ROUTES.map((r) => (
+                {routes.map((r) => (
                   <option key={r} value={r}>{r}</option>
                 ))}
               </select>

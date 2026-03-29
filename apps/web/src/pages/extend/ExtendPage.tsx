@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api/client.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
@@ -11,7 +11,10 @@ import { ActiveRentalCard } from '../../components/extend/ActiveRentalCard.js';
 import { ExtendCalendar } from '../../components/extend/ExtendCalendar.js';
 import { ExtensionSummary } from '../../components/extend/ExtensionSummary.js';
 
+import { DEFAULT_STORE_ID } from '@lolas/shared';
 import lolaFace from '../../assets/Lola Face Cartoon.svg';
+import { WHATSAPP_URL } from '../../config/contact.js';
+import { formatCurrency } from '../../utils/currency.js';
 
 interface OrderData {
   orderReference: string;
@@ -41,19 +44,31 @@ export default function ExtendPage() {
   const [confirmedDropoff, setConfirmedDropoff] = useState('');
   const [confirmedBalance, setConfirmedBalance] = useState(0);
   const [lookupEmail, setLookupEmail] = useState('');
+  const defaultLocId = useRef<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get<Array<{ id: number }>>(`/public/booking/locations?storeId=${DEFAULT_STORE_ID}`)
+      .then((locs) => {
+        if (!cancelled && locs.length > 0) defaultLocId.current = locs[0].id;
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const handleLookup = useCallback(async (email: string, orderReference: string) => {
     setLookupLoading(true); setLookupError(null); setLookupEmail(email);
     try {
       const res = await api.post<{ found: boolean; order?: OrderData }>('/public/extend/lookup', { email, orderReference });
       if (res.found && res.order) { setOrder(res.order); setPageState('rental'); }
-      else setLookupError("We couldn't find that booking. Double-check your reference or");
-    } catch { setLookupError("Something went wrong. Please try again or"); }
+      else setLookupError("We couldn't find that booking. Double-check your reference or contact us on WhatsApp for help.");
+    } catch { setLookupError("Something went wrong. Please try again or contact us on WhatsApp for help."); }
     finally { setLookupLoading(false); }
   }, []);
 
   useEffect(() => {
     if (!order || !selectedDate) { setExtensionCost(null); return; }
+    const locId = defaultLocId.current ?? 1;
     const newDropoff = `${selectedDate}T${selectedTime}:00`;
     let cancelled = false;
     setQuoteLoading(true);
@@ -61,7 +76,7 @@ export default function ExtendPage() {
     (async () => {
       try {
         const q = await api.get<{ rentalSubtotal: number }>(
-          `/public/booking/quote?storeId=${order.storeId}&vehicleModelId=${order.vehicleModelId}&pickupDatetime=${encodeURIComponent(order.currentDropoffDatetime)}&dropoffDatetime=${encodeURIComponent(newDropoff)}&pickupLocationId=1&dropoffLocationId=1`,
+          `/public/booking/quote?storeId=${order.storeId}&vehicleModelId=${order.vehicleModelId}&pickupDatetime=${encodeURIComponent(order.currentDropoffDatetime)}&dropoffDatetime=${encodeURIComponent(newDropoff)}&pickupLocationId=${locId}&dropoffLocationId=${locId}`,
         );
         if (!cancelled) setExtensionCost(q.rentalSubtotal);
       } catch {
@@ -141,7 +156,10 @@ export default function ExtendPage() {
                   </FadeUpSection>
                 )}
                 {lookupError && (
-                  <div className="rounded-2xl bg-red-50 px-5 py-4 text-sm font-bold text-red-700">{lookupError}</div>
+                  <div className="rounded-2xl bg-red-50 px-5 py-4 text-sm font-bold text-red-700">
+                    {lookupError}{' '}
+                    <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="text-teal-brand underline">WhatsApp us</a>
+                  </div>
                 )}
               </>
             )}
@@ -171,16 +189,16 @@ function ConfirmedView({ dropoff, balance }: { dropoff: string; balance: number 
           {balance > 0 && (
             <div className="mt-6 border-t-2 border-sand-brand pt-6">
               <p className="text-[10px] font-black uppercase tracking-widest text-gold-brand/60">Balance Due</p>
-              <p className="mt-1 text-3xl font-black text-gold-brand">₱{balance.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p>
+              <p className="mt-1 text-3xl font-black text-gold-brand">{formatCurrency(balance)}</p>
               <p className="mt-1 text-xs font-bold text-charcoal-brand/50">Please settle at return</p>
             </div>
           )}
         </div>
         <div className="space-y-3">
-          <Link to="/browse-book">
+          <Link to="/book/reserve">
             <PrimaryCtaButton className="flex min-h-[44px] w-full items-center justify-center gap-2 py-5 text-lg">Back to Browse</PrimaryCtaButton>
           </Link>
-          <a href="https://wa.me/639171234567" target="_blank" rel="noopener noreferrer" className="block text-sm font-bold text-teal-brand underline transition-opacity hover:opacity-80">
+          <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="block text-sm font-bold text-teal-brand underline transition-opacity hover:opacity-80">
             Need help? Chat with Lola&apos;s Team
           </a>
         </div>
