@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { DirectBookingRequestSchema } from '@lolas/shared';
+import { SubmitDirectBookingRequestSchema, type SubmitDirectBookingInput } from '@lolas/shared';
 import { validateQuery, validateBody } from '../middleware/validate.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
 import { computeQuote } from '../use-cases/booking/compute-quote.js';
@@ -166,15 +166,11 @@ router.get('/hold/:sessionToken', async (req, res, next) => {
 
 // ── Submit ──
 
-const SubmitBookingBodySchema = DirectBookingRequestSchema.extend({
-  sessionToken: z.string().min(1),
-});
-
-router.post('/submit', validateBody(SubmitBookingBodySchema), async (req, res, next) => {
+router.post('/submit', validateBody(SubmitDirectBookingRequestSchema), async (req, res, next) => {
   try {
     const result = await submitDirectBooking(
       { bookingPort: req.app.locals.deps.bookingPort },
-      req.body as z.infer<typeof SubmitBookingBodySchema>,
+      req.body as SubmitDirectBookingInput,
     );
 
     res.status(201).json({

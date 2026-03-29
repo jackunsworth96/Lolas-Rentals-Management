@@ -5,3 +5,25 @@
 body {
   @apply bg-gray-50 text-gray-900 antialiased;
 }
+
+@keyframes float-slow {
+  0%, 100% { transform: translateX(0px) translateY(0px); }
+  25% { transform: translateX(20px) translateY(-12px); }
+  50% { transform: translateX(8px) translateY(-20px); }
+  75% { transform: translateX(-15px) translateY(-8px); }
+}
+@keyframes float-medium {
+  0%, 100% { transform: translateX(0px) translateY(0px); }
+  33% { transform: translateX(-25px) translateY(-15px); }
+  66% { transform: translateX(18px) translateY(-10px); }
+}
+@keyframes float-fast {
+  0%, 100% { transform: translateX(0px) translateY(0px); }
+  50% { transform: translateX(20px) translateY(-18px); }
+}
+@keyframes drive-along-road {
+  0%   { offset-distance: 0%; opacity: 0; }
+  4%   { opacity: 1; }
+  96%  { opacity: 1; }
+  100% { offset-distance: 100%; opacity: 0; }
+}

@@ -65,6 +65,15 @@ export const DirectBookingRequestSchema = z.object({
 export type DirectBookingRequest = z.infer<typeof DirectBookingRequestSchema>;
 
 /**
+ * Public POST /submit body: direct booking fields plus session token for hold verification.
+ */
+export const SubmitDirectBookingRequestSchema = DirectBookingRequestSchema.extend({
+  sessionToken: z.string().min(1),
+});
+
+export type SubmitDirectBookingInput = z.infer<typeof SubmitDirectBookingRequestSchema>;
+
+/**
  * Matches the `booking_holds` Supabase table (migration 036).
  */
 export interface BookingHold {

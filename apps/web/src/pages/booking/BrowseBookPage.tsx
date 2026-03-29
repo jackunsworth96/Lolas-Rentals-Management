@@ -6,27 +6,8 @@ import { useBookingStore } from '../../stores/bookingStore.js';
 import { SearchBar } from '../../components/booking/SearchBar.js';
 import { HoldCountdown } from '../../components/booking/HoldCountdown.js';
 import { BrowseBookVehicleSection } from './BrowseBookVehicleSection.js';
-import { FadeUpSection } from '../../components/public/FadeUpSection.js';
-
-import flowerLeft from '../../assets/Flower Left.svg';
-import flowerRight from '../../assets/Flower Right.svg';
-import logo from '../../assets/Lolas Original Logo.svg';
-
-function useBrowseBookFonts() {
-  useEffect(() => {
-    const id = 'browse-book-fonts';
-    if (document.getElementById(id)) return;
-    const link = document.createElement('link');
-    link.id = id;
-    link.rel = 'stylesheet';
-    link.href =
-      'https://fonts.googleapis.com/css2?family=Epilogue:wght@700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap';
-    document.head.appendChild(link);
-    return () => {
-      document.getElementById(id)?.remove();
-    };
-  }, []);
-}
+import { PageLayout } from '../../components/layout/PageLayout.js';
+import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
 
 interface AvailableModel {
   modelId: string;
@@ -42,10 +23,7 @@ interface QuoteData {
 
 interface Toast { msg: string; type: 'success' | 'error'; id: number }
 
-
 export default function BrowseBookPage() {
-  useBrowseBookFonts();
-
   const storeId = useBookingStore((s) => s.storeId);
   const pickupDatetime = useBookingStore((s) => s.pickupDatetime);
   const dropoffDatetime = useBookingStore((s) => s.dropoffDatetime);
@@ -79,7 +57,6 @@ export default function BrowseBookPage() {
     prevBasketLen.current = basket.length;
   }, [basket.length]);
 
-  // Availability query
   const {
     data: availableModels,
     isFetching: availFetching,
@@ -101,7 +78,6 @@ export default function BrowseBookPage() {
     setSearching(false);
   }
 
-  // Per-model quotes
   const [quotes, setQuotes] = useState<Record<string, QuoteData>>({});
   useEffect(() => {
     if (!availableModels || !searchParams || pickupLocationId == null || dropoffLocationId == null) return;
@@ -122,7 +98,6 @@ export default function BrowseBookPage() {
     load();
   }, [availableModels, searchParams, pickupLocationId, dropoffLocationId]);
 
-  // Server reconciliation every 30s
   useEffect(() => {
     if (basket.length === 0) return;
     const interval = setInterval(async () => {
@@ -144,55 +119,13 @@ export default function BrowseBookPage() {
   const isLoading = searching || availFetching;
 
   return (
-    <div
-      className="relative min-h-screen overflow-x-hidden font-body animate-page-fade-in"
-      style={{ background: '#FAF6F0' }}
-    >
-      {/* Floral decor */}
-      <img src={flowerLeft} alt="" className="pointer-events-none fixed left-0 top-0 z-0 h-48 w-48 object-contain" />
-      <img src={flowerRight} alt="" className="pointer-events-none fixed bottom-0 right-0 z-0 h-64 w-64 object-contain" />
-
-      {/* Header */}
-      <header className="fixed left-0 top-0 z-50 flex w-full items-center justify-between bg-teal-brand px-6 py-4 backdrop-blur-xl">
-        <div className="flex items-center gap-3">
-          <img src={logo} alt="Lola's Rentals" className="h-8 w-auto brightness-0 invert" />
-        </div>
-        <div className="hidden items-center gap-8 md:flex">
-          <Link
-            to="/browse-book"
-            className="font-bold text-gold-brand transition-opacity duration-200 hover:opacity-80"
-          >
-            Reserve
-          </Link>
-          <Link
-            to="/paw-card"
-            className="text-white/80 transition-opacity duration-200 hover:opacity-80 hover:text-white"
-          >
-            Paw Card
-          </Link>
-        </div>
-        <Link
-          to="/basket"
-          className="relative flex h-10 w-10 items-center justify-center rounded-full border-2 border-white/20 text-white transition-all duration-300 ease-in-out hover:bg-white/10"
-        >
-          🛒
-          {basket.length > 0 && (
-            <span
-              className={`absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-gold-brand text-[10px] font-black text-charcoal-brand ${badgeBump ? 'animate-badge-pop' : ''}`}
-            >
-              {basket.length}
-            </span>
-          )}
-        </Link>
-      </header>
-
-      <main className="relative mx-auto min-h-screen max-w-7xl px-4 pb-32 pt-28 md:px-8">
-        {/* Search Bar */}
+    <PageLayout title="Browse & Book | Lola's Rentals" showBasketIcon>
+      <div className="relative mx-auto max-w-7xl overflow-hidden pt-4 md:px-4">
+        <HeroFloatingClouds variant="functional" />
         <section className="relative z-10 mb-12">
           <SearchBar onSearch={handleSearch} searching={isLoading} />
         </section>
 
-        {/* Basket hold timers */}
         {basket.length > 0 && (
           <div className="relative z-10 mb-8 flex flex-wrap items-center gap-4 rounded-4xl bg-cream-brand p-4 shadow-sm">
             {basket.map((item) => (
@@ -217,55 +150,7 @@ export default function BrowseBookPage() {
           quotes={quotes}
           pushToast={pushToast}
         />
-      </main>
-
-      <FadeUpSection>
-      <footer className="w-full bg-sand-brand">
-        <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-8 px-10 py-16 md:flex-row">
-          <div className="max-w-sm space-y-4">
-            <span className="font-headline text-2xl font-black text-teal-brand">Lola's Rentals</span>
-            <p className="text-sm leading-relaxed text-charcoal-brand/70">
-              © {new Date().getFullYear()} Lola's Rentals. Supporting Siargao Dog Rescue &amp; Local Reforestation.
-            </p>
-          </div>
-          <div className="grid grid-cols-2 gap-x-12 gap-y-4">
-            <a href="#" className="text-sm font-bold text-charcoal-brand/60 transition-all duration-300 hover:text-teal-brand">
-              Island Safety
-            </a>
-            <a href="#" className="text-sm font-bold text-charcoal-brand/60 transition-all duration-300 hover:text-teal-brand">
-              Dog Rescue NGO
-            </a>
-            <a href="#" className="text-sm font-bold text-charcoal-brand/60 transition-all duration-300 hover:text-teal-brand">
-              Rentals FAQ
-            </a>
-            <a href="#" className="text-sm font-bold text-charcoal-brand/60 transition-all duration-300 hover:text-teal-brand">
-              Sustainability
-            </a>
-          </div>
-        </div>
-      </footer>
-      </FadeUpSection>
-
-      <nav className="fixed bottom-0 left-0 z-50 flex h-24 w-full items-center justify-around rounded-t-5xl bg-cream-brand px-4 pb-4 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] md:hidden">
-        <Link
-          to="/"
-          className="flex flex-col items-center gap-0.5 px-5 py-2 text-xs font-black text-charcoal-brand/50 transition-opacity duration-200 hover:opacity-80"
-        >
-          <span className="text-lg">🏠</span>Home
-        </Link>
-        <Link
-          to="/browse-book"
-          className="flex scale-110 flex-col items-center gap-0.5 rounded-3xl bg-[#D1E7E4] px-6 py-2 text-xs font-black text-teal-brand transition-opacity duration-200 hover:opacity-90"
-        >
-          <span className="text-lg">🏍️</span>Reserve
-        </Link>
-        <Link
-          to="/paw-card"
-          className="flex flex-col items-center gap-0.5 px-5 py-2 text-xs font-black text-charcoal-brand/50 transition-opacity duration-200 hover:opacity-80"
-        >
-          <span className="text-lg">🐾</span>Paw Card
-        </Link>
-      </nav>
+      </div>
 
       <div className="fixed bottom-28 right-6 z-40 md:bottom-12 md:right-12">
         <a
@@ -290,6 +175,6 @@ export default function BrowseBookPage() {
           </div>
         ))}
       </div>
-    </div>
+    </PageLayout>
   );
 }

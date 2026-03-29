@@ -1,9 +1,5 @@
 import type { BookingPort, DirectBookingResult } from '@lolas/domain';
-import type { DirectBookingRequest } from '@lolas/shared';
-
-export interface SubmitDirectBookingInput extends DirectBookingRequest {
-  sessionToken: string;
-}
+import type { SubmitDirectBookingInput } from '@lolas/shared';
 
 export interface SubmitDirectBookingDeps {
   bookingPort: BookingPort;

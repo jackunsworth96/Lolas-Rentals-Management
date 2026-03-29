@@ -56,6 +56,26 @@ export default {
           '0%, 100%': { transform: 'scale(1)' },
           '50%': { transform: 'scale(1.25)' },
         },
+        'float-slow': {
+          '0%, 100%': { transform: 'translateX(0px) translateY(0px)' },
+          '33%': { transform: 'translateX(15px) translateY(-8px)' },
+          '66%': { transform: 'translateX(-10px) translateY(5px)' },
+        },
+        'float-medium': {
+          '0%, 100%': { transform: 'translateX(0px) translateY(0px)' },
+          '50%': { transform: 'translateX(-20px) translateY(-12px)' },
+        },
+        'float-fast': {
+          '0%, 100%': { transform: 'translateX(0px) translateY(0px)' },
+          '50%': { transform: 'translateX(12px) translateY(-6px)' },
+        },
+      },
+      animationDuration: {
+        '8s': '8s',
+        '12s': '12s',
+        '14s': '14s',
+        '16s': '16s',
+        '20s': '20s',
       },
       animation: {
         'slide-up': 'slide-up 0.25s ease-out',
@@ -64,6 +84,11 @@ export default {
         'toast-slide-up': 'toast-slide-up 300ms ease-out forwards',
         'card-enter': 'card-enter 500ms ease-out both',
         'badge-pop': 'badge-pop 400ms ease-out',
+        'float-slow': 'float-slow 16s ease-in-out infinite',
+        'float-medium': 'float-medium 12s ease-in-out infinite',
+        'float-fast': 'float-fast 8s ease-in-out infinite',
+        'float-slow-delayed': 'float-slow 20s ease-in-out 4s infinite',
+        'float-medium-delayed': 'float-medium 14s ease-in-out 2s infinite',
       },
     },
   },
