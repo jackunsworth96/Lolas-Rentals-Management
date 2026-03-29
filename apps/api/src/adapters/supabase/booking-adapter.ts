@@ -255,6 +255,7 @@ export function createBookingAdapter(): BookingPort {
           flight_number: input.flightNumber ?? null,
           flight_arrival_time: input.flightArrivalTime ?? null,
           transfer_route: input.transferRoute ?? null,
+          web_quote_raw: input.webQuoteRaw ?? null,
         })
         .select('id, order_reference')
         .single();

@@ -52,8 +52,8 @@ export function AppRouter() {
   return (
     <Suspense fallback={<Loading />}>
       <Routes>
-        {/* Root redirects to backoffice login */}
-        <Route path="/" element={<Navigate to="/login" replace />} />
+        {/* Root redirects to customer homepage */}
+        <Route path="/" element={<Navigate to="/book" replace />} />
         <Route path="/login" element={<LoginPage />} />
 
         {/* Customer-facing routes — all under /book */}

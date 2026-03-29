@@ -1,8 +1,10 @@
-import type { BookingPort, DirectBookingResult } from '@lolas/domain';
+import type { BookingPort, DirectBookingResult, ConfigRepository } from '@lolas/domain';
 import type { SubmitDirectBookingInput } from '@lolas/shared';
+import { computeQuote } from './compute-quote.js';
 
 export interface SubmitDirectBookingDeps {
   bookingPort: BookingPort;
+  configRepo: ConfigRepository;
 }
 
 function generateOrderReference(): string {
@@ -70,10 +72,30 @@ export async function submitDirectBooking(
     );
   }
 
-  // 3. Generate a unique order reference
+  // 3. Compute quote so the total is persisted with the order
+  let webQuoteRaw: number | null = null;
+  try {
+    const quote = await computeQuote(
+      { configRepo: deps.configRepo },
+      {
+        storeId: input.storeId,
+        vehicleModelId: input.vehicleModelId,
+        pickupDatetime: input.pickupDatetime,
+        dropoffDatetime: input.dropoffDatetime,
+        pickupLocationId: input.pickupLocationId,
+        dropoffLocationId: input.dropoffLocationId,
+        addonIds: input.addonIds && input.addonIds.length > 0 ? input.addonIds : undefined,
+      },
+    );
+    webQuoteRaw = quote.grandTotal;
+  } catch {
+    // Non-fatal: booking still proceeds even if quote computation fails
+  }
+
+  // 4. Generate a unique order reference
   const orderReference = await uniqueOrderReference(bookingPort);
 
-  // 4. Insert into orders_raw
+  // 5. Insert into orders_raw
   const result = await bookingPort.insertDirectBooking({
     source: 'lolas',
     customerName: input.customerName,
@@ -91,9 +113,10 @@ export async function submitDirectBooking(
     flightNumber: input.flightNumber ?? null,
     flightArrivalTime: input.flightArrivalTime ?? null,
     transferRoute: input.transferRoute ?? null,
+    webQuoteRaw,
   });
 
-  // 5. Clean up the hold (best-effort; booking is already persisted)
+  // 6. Clean up the hold (best-effort; booking is already persisted)
   try {
     await bookingPort.deleteHoldBySessionAndModel(input.sessionToken, input.vehicleModelId);
   } catch {

@@ -48,6 +48,7 @@ export interface DirectBookingInsert {
   flightNumber?: string | null;
   flightArrivalTime?: string | null;
   transferRoute?: string | null;
+  webQuoteRaw?: number | null;
 }
 
 export interface DirectBookingResult {

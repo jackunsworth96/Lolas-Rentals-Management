@@ -169,7 +169,7 @@ router.get('/hold/:sessionToken', async (req, res, next) => {
 router.post('/submit', validateBody(SubmitDirectBookingRequestSchema), async (req, res, next) => {
   try {
     const result = await submitDirectBooking(
-      { bookingPort: req.app.locals.deps.bookingPort },
+      { bookingPort: req.app.locals.deps.bookingPort, configRepo: req.app.locals.deps.configRepo },
       req.body as SubmitDirectBookingInput,
     );
 
