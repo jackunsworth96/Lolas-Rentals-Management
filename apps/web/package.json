@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "npx vite",
+    "build:vercel": "npm --prefix ../.. run build:vercel",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",

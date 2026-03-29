@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm run build -w packages/domain && npm run build -w packages/shared && npm run build -w apps/web",
+  "buildCommand": "npm run build:vercel",
   "outputDirectory": "apps/web/dist",
   "installCommand": "npm install",
   "framework": null,
