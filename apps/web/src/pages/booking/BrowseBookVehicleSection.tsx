@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import pawPrint from '../../assets/Paw Print.svg';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import { VehicleCard } from '../../components/booking/VehicleCard.js';
@@ -23,6 +24,17 @@ type Props = {
   pushToast: (msg: string, type: 'success' | 'error') => void;
 };
 
+function formatNextDate(iso: string): string {
+  const d = new Date(iso);
+  const date = d.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' });
+  let h = d.getHours();
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  if (h > 12) h -= 12;
+  if (h === 0) h = 12;
+  return `${date} at ${h}:${m} ${ampm}`;
+}
+
 export function BrowseBookVehicleSection({
   isSearched,
   isLoading,
@@ -30,6 +42,11 @@ export function BrowseBookVehicleSection({
   quotes,
   pushToast,
 }: Props) {
+  const allUnavailable = useMemo(() => {
+    if (!availableModels || availableModels.length === 0) return false;
+    return availableModels.every((m) => m.availableCount === 0);
+  }, [availableModels]);
+
   if (!isSearched) return null;
 
   return (
@@ -76,27 +93,68 @@ export function BrowseBookVehicleSection({
                 </a>
                 .
               </p>
+              <p className="mt-4 text-sm text-charcoal-brand/70">
+                You could also check our sister store{' '}
+                <a
+                  href="https://www.bassbikes.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-bold text-teal-brand underline"
+                >
+                  Bass Bikes
+                </a>
+                {' '}for availability.
+              </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
-              {availableModels.map((m, index) => (
-                <div
-                  key={m.modelId}
-                  className="animate-card-enter"
-                  style={{ animationDelay: `${index * 100}ms` }}
-                >
-                  <VehicleCard
-                    modelId={m.modelId}
-                    modelName={m.modelName}
-                    availableCount={m.availableCount}
-                    dailyRate={quotes[m.modelId]?.dailyRate ?? null}
-                    securityDeposit={quotes[m.modelId]?.securityDeposit ?? null}
-                    nextAvailablePickup={m.nextAvailablePickup}
-                    onToast={pushToast}
-                  />
+            <>
+              {allUnavailable && (
+                <div className="mb-8 rounded-3xl border-2 border-gold-brand/30 bg-gold-brand/10 px-6 py-5 text-center">
+                  <p className="mb-2 font-headline text-lg font-bold text-charcoal-brand">
+                    All vehicles are booked for your selected dates
+                  </p>
+                  <div className="mb-3 space-y-1">
+                    {availableModels.filter((m) => m.nextAvailablePickup).map((m) => (
+                      <p key={m.modelId} className="text-sm text-charcoal-brand/80">
+                        The next available <span className="font-bold">{m.modelName}</span> is from{' '}
+                        <span className="font-bold text-teal-brand">{formatNextDate(m.nextAvailablePickup!)}</span>
+                      </p>
+                    ))}
+                  </div>
+                  <p className="text-sm text-charcoal-brand/70">
+                    You could also check our sister store{' '}
+                    <a
+                      href="https://www.bassbikes.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-bold text-teal-brand underline underline-offset-2"
+                    >
+                      Bass Bikes
+                    </a>
+                    {' '}for availability.
+                  </p>
                 </div>
-              ))}
-            </div>
+              )}
+              <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
+                {availableModels.map((m, index) => (
+                  <div
+                    key={m.modelId}
+                    className="animate-card-enter"
+                    style={{ animationDelay: `${index * 100}ms` }}
+                  >
+                    <VehicleCard
+                      modelId={m.modelId}
+                      modelName={m.modelName}
+                      availableCount={m.availableCount}
+                      dailyRate={quotes[m.modelId]?.dailyRate ?? null}
+                      securityDeposit={quotes[m.modelId]?.securityDeposit ?? null}
+                      nextAvailablePickup={m.nextAvailablePickup}
+                      onToast={pushToast}
+                    />
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </section>
       </FadeUpSection>

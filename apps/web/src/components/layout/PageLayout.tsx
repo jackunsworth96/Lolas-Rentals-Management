@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useBookingStore } from '../../stores/bookingStore.js';
 import { FadeUpSection } from '../public/FadeUpSection.js';
@@ -32,18 +32,22 @@ export interface PageLayoutProps {
   showBasketIcon?: boolean;
 }
 
-const NAV_LINKS = [
+const NAV_LINKS: Array<{ to: string; label: string }> = [
   { to: '/book', label: 'Home' },
   { to: '/book/reserve', label: 'Reserve' },
-  { to: '/book/paw-card', label: 'Paw Card' },
   { to: '/book/repairs', label: 'Repairs' },
   { to: '/book/about', label: 'About' },
+];
+
+const MY_RENTAL_ITEMS = [
+  { to: '/book/paw-card', label: 'Log Paw Card Savings' },
+  { to: '/book/extend', label: 'Extend My Rental' },
 ];
 
 const BOTTOM_NAV = [
   { to: '/book', icon: '🏠', label: 'Home' },
   { to: '/book/reserve', icon: '🏍️', label: 'Reserve' },
-  { to: '/book/paw-card', icon: '🐾', label: 'Paw Card' },
+  { to: '/book/extend', icon: '📋', label: 'My Rental' },
   { to: '/book/repairs', icon: '🔧', label: 'Repairs' },
 ];
 
@@ -63,14 +67,26 @@ export function PageLayout({
   const { pathname } = useLocation();
   const basketCount = useBookingStore((s) => s.basket.length);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [rentalOpen, setRentalOpen] = useState(false);
+  const rentalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (title) document.title = title;
   }, [title]);
 
-  useEffect(() => setMenuOpen(false), [pathname]);
+  useEffect(() => { setMenuOpen(false); setRentalOpen(false); }, [pathname]);
+
+  useEffect(() => {
+    if (!rentalOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (rentalRef.current && !rentalRef.current.contains(e.target as Node)) setRentalOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [rentalOpen]);
 
   const isActive = (to: string) => (to === '/book' ? pathname === '/book' : pathname.startsWith(to));
+  const isMyRentalActive = MY_RENTAL_ITEMS.some((item) => isActive(item.to));
 
   return (
     <div
@@ -113,6 +129,34 @@ export function PageLayout({
               {n.label}
             </Link>
           ))}
+          <div ref={rentalRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setRentalOpen((o) => !o)}
+              className={`${isMyRentalActive ? linkActive : linkInactive} gap-1`}
+            >
+              My Rental
+              <span className={`text-[10px] transition-transform duration-200 ${rentalOpen ? 'rotate-180' : ''}`}>▼</span>
+            </button>
+            {rentalOpen && (
+              <div className="absolute right-0 top-full mt-2 min-w-[200px] overflow-hidden rounded-xl bg-white shadow-xl">
+                {MY_RENTAL_ITEMS.map((item) => (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    className={`block px-5 py-3 text-sm font-semibold transition-colors ${
+                      isActive(item.to)
+                        ? 'bg-teal-brand/5 text-teal-brand'
+                        : 'text-charcoal-brand/80 hover:bg-cream-brand hover:text-teal-brand'
+                    }`}
+                    onClick={() => setRentalOpen(false)}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
         </nav>
 
         {showBasketIcon ? (
@@ -142,6 +186,19 @@ export function PageLayout({
               onClick={() => setMenuOpen(false)}
             >
               {n.label}
+            </Link>
+          ))}
+          <div className={`min-h-[44px] flex items-center py-2 font-bold ${isMyRentalActive ? 'text-gold-brand' : 'text-white'}`}>
+            My Rental
+          </div>
+          {MY_RENTAL_ITEMS.map((item) => (
+            <Link
+              key={item.to}
+              to={item.to}
+              className={`min-h-[44px] flex items-center py-1 pl-4 text-sm font-semibold ${isActive(item.to) ? 'text-gold-brand' : 'text-white/70'}`}
+              onClick={() => setMenuOpen(false)}
+            >
+              {item.label}
             </Link>
           ))}
         </div>

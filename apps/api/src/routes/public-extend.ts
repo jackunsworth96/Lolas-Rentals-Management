@@ -4,6 +4,9 @@ import { validateBody } from '../middleware/validate.js';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { computeQuote } from '../use-cases/booking/compute-quote.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
+import { resolveStoreAccounts } from '../adapters/supabase/maintenance-expense-rpc.js';
+import type { Payment, JournalLeg } from '@lolas/domain';
+import { Money } from '@lolas/domain';
 
 const router = Router();
 
@@ -203,18 +206,18 @@ router.post('/confirm', validateBody(ExtendConfirmRequestSchema), async (req, re
       return;
     }
 
-    // Check processed orders
+    // Check processed orders (active)
     const { data: custRows } = await sb.from('customers').select('id').ilike('email', trimmedEmail).limit(10);
     const custIds = (custRows ?? []).map((c: { id: string }) => c.id).filter(Boolean);
 
     if (custIds.length > 0) {
       const { data: orderRows } = await sb
-        .from('orders').select('id').in('customer_id', custIds).eq('status', 'active');
+        .from('orders').select('id, customer_id, store_id').in('customer_id', custIds).eq('status', 'active');
 
-      for (const ord of (orderRows ?? []) as Array<{ id: string }>) {
+      for (const ord of (orderRows ?? []) as Array<{ id: string; customer_id: string; store_id: string }>) {
         const { data: items } = await sb
           .from('order_items')
-          .select('id, vehicle_id, pickup_datetime, dropoff_datetime, store_id, order_reference, rental_days_count')
+          .select('id, vehicle_id, pickup_datetime, dropoff_datetime, store_id, order_reference, rental_days_count, rental_rate, pickup_fee, dropoff_fee, discount')
           .eq('order_id', ord.id).not('pickup_datetime', 'is', null);
 
         const item = (items ?? []).find((i: Record<string, unknown>) => (i as { order_reference: string }).order_reference === orderReference) as Record<string, unknown> | undefined;
@@ -244,7 +247,8 @@ router.post('/confirm', validateBody(ExtendConfirmRequestSchema), async (req, re
           }
         }
 
-        const locRows = await req.app.locals.deps.configRepo.getLocations(item.store_id as string);
+        const storeId = item.store_id as string;
+        const locRows = await req.app.locals.deps.configRepo.getLocations(storeId);
         const storeLoc = locRows.find((l: { deliveryCost: number; collectionCost: number }) =>
           Number(l.deliveryCost) === 0 && Number(l.collectionCost) === 0,
         );
@@ -253,7 +257,7 @@ router.post('/confirm', validateBody(ExtendConfirmRequestSchema), async (req, re
         let extensionCost = 0;
         if (modelId) {
           const quote = await computeQuote({ configRepo: req.app.locals.deps.configRepo }, {
-            storeId: item.store_id as string, vehicleModelId: modelId,
+            storeId, vehicleModelId: modelId,
             pickupDatetime: item.dropoff_datetime as string, dropoffDatetime: newDropoffDatetime,
             pickupLocationId: locId, dropoffLocationId: locId,
           });
@@ -261,15 +265,96 @@ router.post('/confirm', validateBody(ExtendConfirmRequestSchema), async (req, re
         }
 
         const pickup = new Date(item.pickup_datetime as string);
+        const oldDays = (item.rental_days_count as number) ?? Math.max(1, Math.ceil((currentDropoff.getTime() - pickup.getTime()) / 86400000));
         const newDays = Math.max(1, Math.ceil((newDropoff.getTime() - pickup.getTime()) / 86400000));
 
+        // 1. Update order item dates
         const { error: updErr } = await sb
           .from('order_items')
           .update({ dropoff_datetime: newDropoffDatetime, rental_days_count: newDays })
           .eq('id', item.id as string);
         if (updErr) throw new Error(`Failed to update order item: ${updErr.message}`);
 
-        res.json({ success: true, data: { success: true, newDropoffDatetime, extensionCost } });
+        // 2. Recalculate per-day add-on costs if day count changed
+        let addonDelta = 0;
+        if (oldDays !== newDays) {
+          const { data: addons } = await sb
+            .from('order_addons')
+            .select('id, addon_type, addon_price, quantity, total_amount')
+            .eq('order_id', ord.id);
+
+          for (const addon of (addons ?? []) as Array<Record<string, unknown>>) {
+            if ((addon.addon_type as string) === 'per_day') {
+              const oldTotal = Number(addon.total_amount ?? 0);
+              const newTotal = Number(addon.addon_price ?? 0) * Number(addon.quantity ?? 1) * newDays;
+              addonDelta += newTotal - oldTotal;
+              await sb.from('order_addons').update({ total_amount: newTotal }).eq('id', addon.id as string);
+            }
+          }
+        }
+
+        // 3. Update order final_total and balance_due
+        const totalDelta = extensionCost + addonDelta;
+        if (totalDelta > 0) {
+          const { orderRepo } = req.app.locals.deps;
+          const order = await orderRepo.findById(ord.id);
+          if (order) {
+            order.adjustTotal(Money.php(totalDelta));
+            await orderRepo.save(order);
+          }
+        }
+
+        // 4. Create extension payment record (pending — staff collects later)
+        if (extensionCost > 0) {
+          const { paymentRepo } = req.app.locals.deps;
+          const payment: Payment = {
+            id: crypto.randomUUID(),
+            storeId,
+            orderId: ord.id,
+            rawOrderId: null,
+            orderItemId: item.id as string,
+            orderAddonId: null,
+            paymentType: 'extension',
+            amount: extensionCost,
+            paymentMethodId: 'pending',
+            transactionDate: new Date().toISOString().slice(0, 10),
+            settlementStatus: 'pending',
+            settlementRef: `Extension: ${currentDropoff.toISOString().slice(0, 10)} → ${newDropoff.toISOString().slice(0, 10)}`,
+            customerId: ord.customer_id,
+            accountId: null,
+          };
+          await paymentRepo.save(payment);
+
+          // 5. Journal entry: debit receivable, credit rental income
+          const accounts = await resolveStoreAccounts(storeId);
+          if (accounts.receivableAccountId && accounts.incomeAccountId) {
+            const { accountingPort } = req.app.locals.deps;
+            const extAmount = Money.php(extensionCost);
+            const legs: JournalLeg[] = [
+              {
+                entryId: crypto.randomUUID(),
+                accountId: accounts.receivableAccountId,
+                debit: extAmount,
+                credit: Money.zero(),
+                description: `Extension: order ${ord.id} (${oldDays}→${newDays} days)`,
+                referenceType: 'extension',
+                referenceId: payment.id,
+              },
+              {
+                entryId: crypto.randomUUID(),
+                accountId: accounts.incomeAccountId,
+                debit: Money.zero(),
+                credit: extAmount,
+                description: `Extension rental income: order ${ord.id}`,
+                referenceType: 'extension',
+                referenceId: payment.id,
+              },
+            ];
+            await accountingPort.createTransaction(legs, storeId);
+          }
+        }
+
+        res.json({ success: true, data: { success: true, newDropoffDatetime, extensionCost, extensionDays: newDays - oldDays } });
         return;
       }
     }

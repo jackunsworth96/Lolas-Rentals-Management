@@ -9,7 +9,7 @@ import {
   normalizeLocationName,
   toDatetimeLocal,
 } from '../../utils/raw-order-payload.js';
-import { useAddons, useLocations, useChartOfAccounts, useStorePricing, useFleetStatuses, usePaymentMethods } from '../../api/config.js';
+import { useAddons, useLocations, useChartOfAccounts, useStorePricing, useFleetStatuses, usePaymentMethods, useVehicleModels } from '../../api/config.js';
 import { useProcessRawOrder, useCollectPayment, type RawOrder, type ProcessRawOrderPayload } from '../../api/orders-raw.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { usePaymentRouting } from '../../hooks/use-payment-routing.js';
@@ -201,7 +201,9 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
   }, [isDirect, rawOrder.customer_name, rawOrder.customer_email, rawOrder.customer_mobile, payload]);
 
   const lineItems = useMemo(() => (isDirect ? [] : extractLineItems(payload)), [isDirect, payload]);
-  const webQuote = isDirect ? 0 : (Number(payload.total ?? payload.order_total ?? 0) || 0);
+  const webQuote = isDirect
+    ? (Number(rawOrder.web_quote_raw ?? 0) || 0)
+    : (Number(payload.total ?? payload.order_total ?? payload.web_quote_raw ?? 0) || 0);
 
   const [step, setStep] = useState<Step>('review');
   const [customer, setCustomer] = useState<CustomerData>(billing);
@@ -223,6 +225,7 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
   const [preActivationRef, setPreActivationRef] = useState('');
   const [preActivationAmount, setPreActivationAmount] = useState<number | ''>('');
 
+  const { data: vehicleModels } = useVehicleModels() as { data: Array<{ id: string; name: string }> | undefined };
   const { data: fleet } = useFleet(storeId) as { data: Array<Record<string, unknown>> | undefined };
   const { data: storeAddons } = useAddons(storeId) as { data: Array<Record<string, unknown>> | undefined };
   const { data: locations } = useLocations(storeId) as { data: Array<Record<string, unknown>> | undefined };
@@ -230,6 +233,12 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
   const { data: storePricing } = useStorePricing(storeId) as { data: PricingTier[] | undefined };
   const { data: fleetStatuses } = useFleetStatuses() as { data: Array<{ id: string; name: string; isRentable?: boolean; is_rentable?: boolean }> | undefined };
   const { data: paymentMethods } = usePaymentMethods() as { data: Array<{ id: string; name: string; surchargePercent?: number; surcharge_percent?: number; isActive?: boolean; is_active?: boolean; isDepositEligible?: boolean; is_deposit_eligible?: boolean }> | undefined };
+
+  const directModelName = useMemo(() => {
+    if (!isDirect || !rawOrder.vehicle_model_id || !vehicleModels) return null;
+    const match = vehicleModels.find((m) => m.id === rawOrder.vehicle_model_id);
+    return match?.name ?? null;
+  }, [isDirect, rawOrder.vehicle_model_id, vehicleModels]);
 
   const processMutation = useProcessRawOrder();
   const collectMutation = useCollectPayment();
@@ -605,7 +614,7 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
           mutualExclusivityGroup: a.mutualExclusivityGroup,
         })),
       securityDeposit: Number(securityDeposit) || 0,
-      webQuoteRaw: isDirect ? null : (webQuote || null),
+      webQuoteRaw: webQuote || null,
       webNotes: isDirect ? null : ((payload.customer_note as string) ?? null),
       receivableAccountId: (receivableAccount?.id as string) ?? '',
       incomeAccountId: (incomeAccount?.id as string) ?? '',
@@ -783,7 +792,25 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
                       {rawOrder.vehicle_model_id && (
                         <div className="flex justify-between">
                           <dt className="text-gray-500">Vehicle Model</dt>
-                          <dd className="font-medium">{rawOrder.vehicle_model_id}</dd>
+                          <dd className="font-medium">{directModelName ?? rawOrder.vehicle_model_id}</dd>
+                        </div>
+                      )}
+                      {webQuote > 0 && (
+                        <div className="flex justify-between">
+                          <dt className="text-gray-500">Web Quote</dt>
+                          <dd className="font-medium">{formatCurrency(webQuote)}</dd>
+                        </div>
+                      )}
+                      {rawOrder.transfer_type && (
+                        <div className="flex justify-between">
+                          <dt className="text-gray-500">Transfer</dt>
+                          <dd className="font-medium capitalize">{rawOrder.transfer_type}{rawOrder.transfer_route ? ` — ${rawOrder.transfer_route}` : ''}</dd>
+                        </div>
+                      )}
+                      {rawOrder.flight_number && (
+                        <div className="flex justify-between">
+                          <dt className="text-gray-500">Flight</dt>
+                          <dd className="font-medium">{rawOrder.flight_number}</dd>
                         </div>
                       )}
                     </>
@@ -1371,27 +1398,25 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
                 </label>
               </div>
 
-              {!isDirect && (
+              {webQuote > 0 && (
                 <div className="rounded-lg border border-gray-200 p-4">
                   <h3 className="text-sm font-medium text-gray-700">Web Quote Comparison</h3>
                   <div className="mt-2 flex items-center gap-4 text-sm">
                     <div>
                       <span className="text-gray-500">Website:</span>{' '}
-                      <span className="font-medium">{webQuote > 0 ? formatCurrency(webQuote) : '—'}</span>
+                      <span className="font-medium">{formatCurrency(webQuote)}</span>
                     </div>
                     <div>
                       <span className="text-gray-500">Actual:</span>{' '}
                       <span className="font-bold">{formatCurrency(finalTotal)}</span>
                     </div>
-                    {webQuote > 0 && (
-                      <Badge color={finalTotal > webQuote ? 'red' : finalTotal < webQuote ? 'green' : 'gray'}>
-                        {finalTotal > webQuote
-                          ? `+${formatCurrency(finalTotal - webQuote)}`
-                          : finalTotal < webQuote
-                            ? `-${formatCurrency(webQuote - finalTotal)}`
-                            : 'Match'}
-                      </Badge>
-                    )}
+                    <Badge color={finalTotal > webQuote ? 'red' : finalTotal < webQuote ? 'green' : 'gray'}>
+                      {finalTotal > webQuote
+                        ? `+${formatCurrency(finalTotal - webQuote)}`
+                        : finalTotal < webQuote
+                          ? `-${formatCurrency(webQuote - finalTotal)}`
+                          : 'Match'}
+                    </Badge>
                   </div>
                 </div>
               )}

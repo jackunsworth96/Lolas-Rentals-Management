@@ -39,6 +39,11 @@ export interface OrdersRawRow {
   store_id: string | null;
   order_reference: string | null;
   addon_ids: number[] | null;
+  transfer_type: string | null;
+  flight_number: string | null;
+  flight_arrival_time: string | null;
+  transfer_route: string | null;
+  web_quote_raw: number | null;
 }
 
 /**

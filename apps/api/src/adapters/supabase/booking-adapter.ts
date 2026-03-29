@@ -40,29 +40,28 @@ export function createBookingAdapter(): BookingPort {
     async checkAvailability(query: AvailabilityQuery): Promise<AvailableModel[]> {
       const { storeId, pickupDatetime, dropoffDatetime } = query;
 
-      // 30-minute handover buffer — vehicle needs time between rentals for inspection and handover
-      // TODO: fetch handover buffer duration from backoffice settings when settings API is available. Currently hardcoded to 30 minutes.
       const BUFFER_MS = 30 * 60 * 1000;
-      // (dropoff_datetime + 30min) > pickupDatetime  ≡  dropoff_datetime > (pickupDatetime - 30min)
       const pickupBuffered = new Date(new Date(pickupDatetime).getTime() - BUFFER_MS).toISOString();
 
-      // 1. Rentable fleet statuses
-      const { data: statuses, error: statusErr } = await sb
-        .from('fleet_statuses').select('id').eq('is_rentable', true);
-      if (statusErr) throw new Error(`fleet_statuses query failed: ${statusErr.message}`);
-      const rentableIds = (statuses ?? []).map((s: { id: string }) => s.id);
-      if (rentableIds.length === 0) return [];
+      // Statuses that permanently prevent a vehicle from being rented
+      const NON_RENTABLE = ['Under Maintenance', 'Sold', 'Service Vehicle', 'Closed'];
 
-      // 2. Fleet rows
+      // Fleet rows — include all vehicles except hard non-rentable statuses.
+      // "Active" vehicles may be available for the requested dates if their
+      // current booking ends before pickup. The order_items overlap check
+      // handles that.
       const { data: fleet, error: fleetErr } = await sb
-        .from('fleet').select('id, model_id').eq('store_id', storeId)
-        .in('status', rentableIds).not('model_id', 'is', null);
+        .from('fleet').select('id, model_id, status').eq('store_id', storeId)
+        .not('model_id', 'is', null);
       if (fleetErr) throw new Error(`fleet query failed: ${fleetErr.message}`);
-      if (!fleet || fleet.length === 0) return [];
+      const rentableFleet = (fleet ?? []).filter(
+        (v: { status: string }) => !NON_RENTABLE.includes(v.status),
+      );
+      if (rentableFleet.length === 0) return [];
 
       const fleetByModel = new Map<string, Set<string>>();
       const vehicleToModel = new Map<string, string>();
-      for (const v of fleet as { id: string; model_id: string }[]) {
+      for (const v of rentableFleet as { id: string; model_id: string }[]) {
         if (!fleetByModel.has(v.model_id)) fleetByModel.set(v.model_id, new Set());
         fleetByModel.get(v.model_id)!.add(v.id);
         vehicleToModel.set(v.id, v.model_id);

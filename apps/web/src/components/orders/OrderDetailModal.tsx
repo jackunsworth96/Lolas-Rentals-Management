@@ -837,15 +837,29 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                 </tr>
               </thead>
               <tbody>
-                {(payments as Array<{ transactionDate: string; amount: number; paymentMethodId: string; paymentType?: string; settlementRef?: string | null }>).map((p, idx) => (
-                  <tr key={idx} className="border-b hover:bg-gray-50">
-                    <td className="py-2 pr-4">{formatDate(p.transactionDate)}</td>
-                    <td className="py-2 pr-4 capitalize">{p.paymentType ?? 'rental'}</td>
-                    <td className="py-2 pr-4 font-medium">{formatCurrency(p.amount)}</td>
-                    <td className="py-2 pr-4">{pmLookup.get(p.paymentMethodId)?.name ?? p.paymentMethodId}</td>
-                    <td className="py-2 text-gray-500">{p.settlementRef ?? '—'}</td>
-                  </tr>
-                ))}
+                {(payments as Array<{ transactionDate: string; amount: number; paymentMethodId: string; paymentType?: string; settlementStatus?: string | null; settlementRef?: string | null }>).map((p, idx) => {
+                  const isExt = p.paymentType === 'extension';
+                  return (
+                    <tr key={idx} className={`border-b hover:bg-gray-50 ${isExt ? 'bg-amber-50' : ''}`}>
+                      <td className="py-2 pr-4">{formatDate(p.transactionDate)}</td>
+                      <td className="py-2 pr-4">
+                        {isExt ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Extension</span>
+                            <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${p.settlementStatus === 'pending' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                              {p.settlementStatus === 'pending' ? 'Unpaid' : 'Paid'}
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="capitalize">{p.paymentType ?? 'rental'}</span>
+                        )}
+                      </td>
+                      <td className="py-2 pr-4 font-medium">{formatCurrency(p.amount)}</td>
+                      <td className="py-2 pr-4">{isExt && p.paymentMethodId === 'pending' ? '—' : (pmLookup.get(p.paymentMethodId)?.name ?? p.paymentMethodId)}</td>
+                      <td className="py-2 text-gray-500">{p.settlementRef ?? '—'}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
               <tfoot>
                 <tr className="border-t font-semibold">
@@ -1182,6 +1196,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
             <div className="relative ml-4 border-l-2 border-gray-200 pl-6 space-y-0">
               {(history ?? []).map((evt, idx) => {
                 const iconColor =
+                  evt.type === 'extension' ? 'bg-orange-500' :
                   evt.type === 'payment' ? 'bg-green-500' :
                   evt.type === 'swap' ? 'bg-amber-500' :
                   evt.type === 'addon' ? 'bg-purple-500' :

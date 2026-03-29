@@ -9,6 +9,7 @@ import { VehicleModal } from '../../components/fleet/VehicleModal.js';
 import { AddVehicleModal } from '../../components/fleet/AddVehicleModal.js';
 import { AssetManagementModal } from '../../components/fleet/AssetManagementModal.js';
 import { ServiceHistoryModal } from '../../components/fleet/ServiceHistoryModal.js';
+import { FleetCalendar } from '../../components/fleet/FleetCalendar.js';
 import { formatDate } from '../../utils/date.js';
 import type { VehicleSummary } from '../../types/api.js';
 
@@ -35,7 +36,7 @@ export default function FleetPage() {
   const defaultStoreId = useUIStore((s) => s.selectedStoreId) ?? '';
   const [fleetStoreFilter, setFleetStoreFilter] = useState<string>(defaultStoreId || 'all');
   const [search, setSearch] = useState('');
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'grid' | 'calendar'>('list');
   const [editVehicleId, setEditVehicleId] = useState<string | null>(null);
   const [addVehicleOpen, setAddVehicleOpen] = useState(false);
   const [assetVehicleId, setAssetVehicleId] = useState<string | null>(null);
@@ -166,6 +167,13 @@ export default function FleetPage() {
             >
               Grid
             </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('calendar')}
+              className={`rounded-md px-3 py-1.5 text-sm ${viewMode === 'calendar' ? 'bg-gray-200 font-medium' : 'text-gray-600'}`}
+            >
+              Calendar
+            </button>
           </div>
           <button
             type="button"
@@ -235,6 +243,10 @@ export default function FleetPage() {
       )}
       {filtered.length === 0 && viewMode === 'grid' && (
         <div className="py-12 text-center text-sm text-gray-500">No vehicles found</div>
+      )}
+
+      {viewMode === 'calendar' && (
+        <FleetCalendar storeId={storeIdForApi} />
       )}
 
       {editVehicleId && (

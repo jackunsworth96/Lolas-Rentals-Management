@@ -95,3 +95,32 @@ export async function getStoreDefaultCashAccount(storeId: string): Promise<strin
   if (error) throw new Error(`Failed to look up store defaults: ${error.message}`);
   return data?.default_cash_account_id as string | null ?? null;
 }
+
+export async function resolveStoreAccounts(storeId: string): Promise<{
+  receivableAccountId: string | null;
+  incomeAccountId: string | null;
+}> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from('chart_of_accounts')
+    .select('id, name, account_type')
+    .in('store_id', [storeId, 'company'])
+    .eq('is_active', true);
+  if (error) throw new Error(`Failed to look up accounts: ${error.message}`);
+
+  const accounts = (data ?? []) as Array<{ id: string; name: string; account_type: string }>;
+
+  const receivable = accounts.find(
+    (a) => a.account_type === 'Asset' && a.name.toLowerCase().includes('receivable'),
+  );
+  const income = accounts.find(
+    (a) => a.account_type === 'Income' && a.name.toLowerCase().includes('rental'),
+  ) ?? accounts.find(
+    (a) => a.account_type === 'Income',
+  );
+
+  return {
+    receivableAccountId: receivable?.id ?? null,
+    incomeAccountId: income?.id ?? null,
+  };
+}

@@ -101,6 +101,137 @@ router.get('/utilization', requirePermission(Permission.ViewFleet), validateQuer
   } catch (err) { next(err); }
 });
 
+router.get('/calendar', requirePermission(Permission.ViewFleet), validateQuery(z.object({
+  storeId: z.string().optional(),
+  from: z.string(),
+  to: z.string(),
+})), async (req, res, next) => {
+  try {
+    const { storeId, from, to } = req.query as { storeId?: string; from: string; to: string };
+    const { supabase } = await import('../adapters/supabase/client.js');
+    const sb = supabase;
+    const now = new Date();
+    const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+
+    // 1. Load fleet vehicles
+    let fleetQuery = sb.from('fleet').select('id, name, model_id, plate_number, store_id, status').order('name');
+    if (storeId && storeId !== 'all') fleetQuery = fleetQuery.eq('store_id', storeId);
+    const { data: fleetRows, error: fleetErr } = await fleetQuery;
+    if (fleetErr) throw new Error(`Fleet query failed: ${fleetErr.message}`);
+
+    // 2. Load stores + models for name resolution
+    const { data: storeRows } = await sb.from('stores').select('id, name');
+    const storeMap = new Map((storeRows ?? []).map((s: { id: string; name: string }) => [s.id, s.name]));
+    const { data: modelRows } = await sb.from('vehicle_models').select('id, name');
+    const modelMap = new Map((modelRows ?? []).map((m: { id: string; name: string }) => [m.id, m.name]));
+
+    // 3. Load order_items overlapping [from, to] joined to orders
+    const vehicleIds = (fleetRows ?? []).map((v: { id: string }) => v.id);
+    type OrderItemRow = {
+      id: string; order_id: string; vehicle_id: string; vehicle_name: string | null;
+      pickup_datetime: string; dropoff_datetime: string; order_reference: string | null;
+      orders: { status: string; customer_id: string } | null;
+    };
+    let itemRows: OrderItemRow[] = [];
+    if (vehicleIds.length > 0) {
+      const { data, error } = await sb
+        .from('order_items')
+        .select('id, order_id, vehicle_id, vehicle_name, pickup_datetime, dropoff_datetime, order_reference, orders!order_id(status, customer_id)')
+        .in('vehicle_id', vehicleIds)
+        .lte('pickup_datetime', `${to}T23:59:59`)
+        .gte('dropoff_datetime', `${from}T00:00:00`);
+      if (error) throw new Error(`Order items query failed: ${error.message}`);
+      itemRows = (data ?? []) as unknown as OrderItemRow[];
+    }
+
+    // Filter to relevant statuses
+    itemRows = itemRows.filter((i) => {
+      const s = (i.orders as { status: string } | null)?.status;
+      return s && !['cancelled', 'skipped'].includes(s);
+    });
+
+    // 4. Resolve customer names
+    const customerIds = [...new Set(itemRows.map((i) => (i.orders as { customer_id: string } | null)?.customer_id).filter(Boolean))] as string[];
+    const custMap = new Map<string, string>();
+    if (customerIds.length > 0) {
+      const { data: custRows } = await sb.from('customers').select('id, name').in('id', customerIds);
+      for (const c of (custRows ?? []) as Array<{ id: string; name: string }>) custMap.set(c.id, c.name);
+    }
+
+    // 5. Build vehicle rows with bookings
+    const itemsByVehicle = new Map<string, OrderItemRow[]>();
+    for (const item of itemRows) {
+      const list = itemsByVehicle.get(item.vehicle_id) ?? [];
+      list.push(item);
+      itemsByVehicle.set(item.vehicle_id, list);
+    }
+
+    const vehicles = (fleetRows ?? []).map((v: { id: string; name: string; model_id: string | null; plate_number: string | null; store_id: string; status: string }) => {
+      const vItems = itemsByVehicle.get(v.id) ?? [];
+      return {
+        vehicleId: v.id,
+        vehicleName: v.name,
+        modelName: modelMap.get(v.model_id ?? '') ?? '—',
+        plateNumber: v.plate_number,
+        storeId: v.store_id,
+        storeName: storeMap.get(v.store_id) ?? v.store_id,
+        status: v.status,
+        bookings: vItems.map((item) => {
+          const orderStatus = (item.orders as { status: string } | null)?.status ?? 'active';
+          const custId = (item.orders as { customer_id: string } | null)?.customer_id;
+          const dropoff = new Date(item.dropoff_datetime);
+          let calStatus: string;
+          if (orderStatus === 'active') {
+            if (dropoff.getTime() < now.getTime()) calStatus = 'overdue';
+            else if (dropoff.getTime() - now.getTime() <= TWO_HOURS_MS) calStatus = 'due-soon';
+            else calStatus = 'active';
+          } else if (orderStatus === 'completed') {
+            calStatus = 'completed';
+          } else {
+            calStatus = 'confirmed';
+          }
+          return {
+            orderId: item.order_id,
+            orderItemId: item.id,
+            orderReference: item.order_reference,
+            customerName: custId ? (custMap.get(custId) ?? '—') : '—',
+            pickupDatetime: item.pickup_datetime,
+            dropoffDatetime: item.dropoff_datetime,
+            status: calStatus,
+          };
+        }),
+      };
+    });
+
+    // 6. Load unassigned bookings from orders_raw
+    let rawQuery = sb
+      .from('orders_raw')
+      .select('id, order_reference, customer_name, vehicle_model_id, store_id, pickup_datetime, dropoff_datetime, status')
+      .in('status', ['unprocessed', 'processed'])
+      .lte('pickup_datetime', `${to}T23:59:59`)
+      .gte('dropoff_datetime', `${from}T00:00:00`);
+    if (storeId && storeId !== 'all') rawQuery = rawQuery.eq('store_id', storeId);
+    const { data: rawRows, error: rawErr } = await rawQuery;
+    if (rawErr) throw new Error(`orders_raw query failed: ${rawErr.message}`);
+
+    const unassignedBookings = (rawRows ?? []).map((r: Record<string, unknown>) => ({
+      rawOrderId: r.id as string,
+      orderReference: r.order_reference as string | null,
+      customerName: r.customer_name as string ?? '—',
+      vehicleModelName: modelMap.get(r.vehicle_model_id as string) ?? '—',
+      storeId: r.store_id as string,
+      pickupDatetime: r.pickup_datetime as string,
+      dropoffDatetime: r.dropoff_datetime as string,
+      status: 'unprocessed' as const,
+    }));
+
+    res.json({
+      success: true,
+      data: { vehicles, unassignedBookings, dateRange: { from, to } },
+    });
+  } catch (err) { next(err); }
+});
+
 router.post('/', requirePermission(Permission.EditFleet), validateBody(z.object({
   name: z.string().min(1),
   modelId: z.string().nullable().optional(),

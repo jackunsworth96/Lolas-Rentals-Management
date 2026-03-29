@@ -160,7 +160,10 @@ export default function InboxPage() {
       key: 'total',
       header: 'Web Quote',
       render: (r: RawOrder) => {
-        if (isDirect(r)) return '—';
+        if (isDirect(r)) {
+          const q = Number(r.web_quote_raw ?? 0);
+          return q > 0 ? formatCurrency(q) : '—';
+        }
         const total = extractTotal(r.payload ?? {});
         return total > 0 ? formatCurrency(total) : '—';
       },

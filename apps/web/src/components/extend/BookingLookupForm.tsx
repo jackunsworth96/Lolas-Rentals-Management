@@ -50,7 +50,7 @@ export function BookingLookupForm({ loading, onSubmit, error }: Props) {
             type="text"
             value={orderRef}
             onChange={(e) => setOrderRef(e.target.value)}
-            placeholder="LR-20260328-A1B2"
+            placeholder="LR-0329-A1B2"
             required
             className={inputClass}
           />

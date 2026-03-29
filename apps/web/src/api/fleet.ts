@@ -25,6 +25,17 @@ export function useCreateVehicle() {
   });
 }
 
+export function useFleetCalendar(params: { storeId?: string; from: string; to: string }) {
+  const search = new URLSearchParams();
+  if (params.storeId) search.set('storeId', params.storeId);
+  search.set('from', params.from);
+  search.set('to', params.to);
+  return useQuery({
+    queryKey: ['fleet', 'calendar', params],
+    queryFn: () => api.get(`/fleet/calendar?${search.toString()}`),
+  });
+}
+
 export function useFleetUtilization(params: { from?: string; to?: string; period?: string; storeId?: string }) {
   const search = new URLSearchParams();
   if (params.from) search.set('from', params.from);

@@ -1,5 +1,6 @@
 import type { BookingPort, DirectBookingResult, ConfigRepository } from '@lolas/domain';
 import type { SubmitDirectBookingInput } from '@lolas/shared';
+import { resolveSourceFromStore } from '@lolas/shared';
 import { computeQuote } from './compute-quote.js';
 
 export interface SubmitDirectBookingDeps {
@@ -7,23 +8,23 @@ export interface SubmitDirectBookingDeps {
   configRepo: ConfigRepository;
 }
 
-function generateOrderReference(): string {
+function generateOrderReference(source: string): string {
+  const prefix = source === 'bass' ? 'BB' : 'LR';
   const now = new Date();
-  const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, '0');
   const d = String(now.getDate()).padStart(2, '0');
   const hex = Math.floor(Math.random() * 0xffff)
     .toString(16)
     .toUpperCase()
     .padStart(4, '0');
-  return `LR-${y}${m}${d}-${hex}`;
+  return `${prefix}-${m}${d}-${hex}`;
 }
 
 const MAX_REF_RETRIES = 5;
 
-async function uniqueOrderReference(bookingPort: BookingPort): Promise<string> {
+async function uniqueOrderReference(bookingPort: BookingPort, source: string): Promise<string> {
   for (let i = 0; i < MAX_REF_RETRIES; i++) {
-    const ref = generateOrderReference();
+    const ref = generateOrderReference(source);
     const unique = await bookingPort.isOrderReferenceUnique(ref);
     if (unique) return ref;
   }
@@ -93,11 +94,12 @@ export async function submitDirectBooking(
   }
 
   // 4. Generate a unique order reference
-  const orderReference = await uniqueOrderReference(bookingPort);
+  const source = resolveSourceFromStore(input.storeId);
+  const orderReference = await uniqueOrderReference(bookingPort, source);
 
   // 5. Insert into orders_raw
   const result = await bookingPort.insertDirectBooking({
-    source: 'lolas',
+    source,
     customerName: input.customerName,
     customerEmail: input.customerEmail,
     customerMobile: input.customerMobile,

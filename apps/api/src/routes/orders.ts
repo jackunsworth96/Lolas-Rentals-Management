@@ -164,12 +164,18 @@ router.get('/:id/history', requirePermission(Permission.ViewInbox), async (req, 
     }
 
     for (const p of (paymentsRes.data ?? []) as Array<Record<string, unknown>>) {
+      const pType = p.payment_type as string;
+      const isExtension = pType === 'extension';
       events.push({
         timestamp: (p.created_at ?? p.transaction_date) as string,
-        type: 'payment',
-        description: `Payment received (${p.payment_type})`,
+        type: isExtension ? 'extension' : 'payment',
+        description: isExtension
+          ? `Rental extended (+${p.settlement_ref ?? ''})`
+          : `Payment received (${pType})`,
         amount: p.amount as number,
-        detail: p.settlement_ref ? `Ref: ${p.settlement_ref}` : undefined,
+        detail: isExtension
+          ? `${p.settlement_status === 'pending' ? 'Unpaid' : 'Paid'} — ${p.settlement_ref ?? ''}`
+          : (p.settlement_ref ? `Ref: ${p.settlement_ref}` : undefined),
       });
     }
 
