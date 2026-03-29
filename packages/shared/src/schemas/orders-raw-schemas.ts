@@ -42,10 +42,11 @@ export interface OrdersRawRow {
 }
 
 /**
- * Zod schema for creating a direct booking in `orders_raw`.
- * Source (lolas | bass) and booking_channel='direct' are set server-side.
+ * Public POST /submit body: direct booking fields plus session token for hold verification.
+ * Single object schema so `z.infer` exposes every field reliably (used by submit-direct-booking).
  */
-export const DirectBookingRequestSchema = z.object({
+export const SubmitDirectBookingRequestSchema = z.object({
+  sessionToken: z.string().min(1),
   customerName: z.string().min(1),
   customerEmail: z.string().email(),
   customerMobile: z.string().min(1),
@@ -62,16 +63,17 @@ export const DirectBookingRequestSchema = z.object({
   transferRoute: z.string().optional(),
 });
 
-export type DirectBookingRequest = z.infer<typeof DirectBookingRequestSchema>;
+export type SubmitDirectBookingInput = z.infer<typeof SubmitDirectBookingRequestSchema>;
 
 /**
- * Public POST /submit body: direct booking fields plus session token for hold verification.
+ * Zod schema for creating a direct booking in `orders_raw` (same as submit body minus session token).
+ * Source (lolas | bass) and booking_channel='direct' are set server-side.
  */
-export const SubmitDirectBookingRequestSchema = DirectBookingRequestSchema.extend({
-  sessionToken: z.string().min(1),
+export const DirectBookingRequestSchema = SubmitDirectBookingRequestSchema.omit({
+  sessionToken: true,
 });
 
-export type SubmitDirectBookingInput = z.infer<typeof SubmitDirectBookingRequestSchema>;
+export type DirectBookingRequest = z.infer<typeof DirectBookingRequestSchema>;
 
 /**
  * Matches the `booking_holds` Supabase table (migration 036).
