@@ -27,12 +27,21 @@ function rentalDaysFromDates(pickup: string, dropoff: string): number {
   if (!pickup || !dropoff) return 1;
   const ms = new Date(dropoff).getTime() - new Date(pickup).getTime();
   const hours = ms / (1000 * 60 * 60);
-  return Math.max(1, Math.ceil(hours / 24));
+  const days = hours / 24;
+  return Math.max(1, Math.round(days));
 }
 
 function formatDate(iso: string): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(iso).toLocaleString('en-PH', {
+    timeZone: 'Asia/Manila',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
 }
 
 export default function BasketPage() {
@@ -97,6 +106,7 @@ export default function BasketPage() {
   const [paymentMethodId, setPaymentMethodId] = useState('cash');
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [charityDonation, setCharityDonation] = useState(0);
   type LocFee = { id: number; deliveryCost: number; collectionCost: number };
   const [locations, setLocations] = useState<LocFee[]>([]);
   const pickupFee = locations.find((l) => l.id === pickupLocationId)?.deliveryCost ?? 0;
@@ -177,18 +187,22 @@ export default function BasketPage() {
     let serverTotal = 0;
     try {
       for (const item of basket) {
-        const result = await api.post<{ id: string; orderReference: string; serverQuote: number | null }>(
+        const result = await api.post<{ id: string; orderReference: string; serverQuote: number | null; charityDonation: number }>(
           '/public/booking/submit',
           {
             sessionToken, vehicleModelId: item.vehicleModelId,
             customerName: renter.fullName.trim(), customerEmail: renter.email.trim(),
-            customerMobile: renter.phone.trim(), pickupDatetime, dropoffDatetime,
+            customerMobile: renter.phone.trim(),
+            pickupDatetime: pickupDatetime,
+            dropoffDatetime: dropoffDatetime,
             pickupLocationId, dropoffLocationId, storeId,
             addonIds: allAddonIds.length > 0 ? allAddonIds : undefined,
             transferType: transfer?.transferType ?? null,
             flightNumber: transfer?.flightNumber || undefined,
             flightArrivalTime: transfer?.flightArrivalTime || undefined,
             transferRoute: transfer?.transferRoute || undefined,
+            charityDonation: charityDonation > 0 ? charityDonation : undefined,
+            webPaymentMethod: paymentMethodId || undefined,
           },
         );
         orderRefs.push(result.orderReference);
@@ -199,7 +213,11 @@ export default function BasketPage() {
         + selAddons.reduce((s, a) => s + (a.addonType === 'per_day' ? a.pricePerDay * rentalDays : a.priceOneTime), 0)
         + (transfer ? (transferAddons.find((a) => (transfer.transferType === 'shared' ? a.name.toLowerCase().includes('shared') : a.name.toLowerCase().includes('tuk')))?.priceOneTime ?? 0) : 0)
         + pickupFee + dropoffFee;
-      const grandTotal = serverTotal > 0 ? serverTotal : clientTotal;
+      const baseTotal = serverTotal > 0 ? serverTotal : clientTotal;
+      const surchargeAmount = surchargePercent > 0
+        ? Math.round(baseTotal * (surchargePercent / 100) * 100) / 100
+        : 0;
+      const grandTotal = baseTotal + surchargeAmount;
       clearBasket();
       const confirmState = {
         orderReferences: orderRefs, customerName: renter.fullName.trim(), customerEmail: renter.email.trim(),
@@ -208,6 +226,7 @@ export default function BasketPage() {
         depositAmount: basket.reduce((s, b) => s + (b.securityDeposit ?? 0), 0),
         addonNames: selAddons.map((a) => a.name), transferType: transfer?.transferType ?? null,
         flightNumber: transfer?.flightNumber ?? null, transferRoute: transfer?.transferRoute ?? null,
+        charityDonation,
       };
       navigate(`/book/confirmation/${encodeURIComponent(orderRefs[0])}`, { state: confirmState });
     } catch (err: unknown) {
@@ -288,6 +307,8 @@ export default function BasketPage() {
               paymentMethods={paymentMethods} surchargePercent={surchargePercent}
               onPlaceOrder={handlePlaceOrder} submitting={submitting}
               priceChanged={priceChanged}
+              charityDonation={charityDonation}
+              onCharityChange={setCharityDonation}
             />
           </div>
         </div>

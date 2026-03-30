@@ -65,6 +65,15 @@ function isDirect(r: RawOrder): boolean {
   return r.booking_channel === 'direct';
 }
 
+function formatManilaDatetime(dt: string): string {
+  return new Date(dt).toLocaleString('en-PH', {
+    timeZone: 'Asia/Manila',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
 export default function InboxPage() {
   const [storeFilter, setStoreFilter] = useState<string>('');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
@@ -143,7 +152,7 @@ export default function InboxPage() {
         if (isDirect(r)) {
           return (
             <span className="text-sm text-gray-600">
-              {r.pickup_datetime ? r.pickup_datetime.slice(0, 10) : '—'}
+              {r.pickup_datetime ? formatManilaDatetime(r.pickup_datetime) : '—'}
             </span>
           );
         }
@@ -160,10 +169,6 @@ export default function InboxPage() {
       key: 'total',
       header: 'Web Quote',
       render: (r: RawOrder) => {
-        if (isDirect(r)) {
-          const q = Number(r.web_quote ?? 0);
-          return q > 0 ? formatCurrency(q) : '—';
-        }
         const total = extractTotal(r.payload ?? {});
         return total > 0 ? formatCurrency(total) : '—';
       },

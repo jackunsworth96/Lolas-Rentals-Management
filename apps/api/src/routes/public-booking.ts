@@ -179,6 +179,7 @@ router.post('/submit', validateBody(SubmitDirectBookingRequestSchema), async (re
         id: result.id,
         orderReference: result.orderReference,
         serverQuote: result.serverQuote ?? null,
+        charityDonation: result.charityDonation,
       },
     });
   } catch (err) {
@@ -328,6 +329,7 @@ router.get('/order/:reference', async (req, res, next) => {
         transferType: row.transfer_type ?? null,
         flightNumber: row.flight_number ?? null,
         transferRoute: row.transfer_route ?? null,
+        charityDonation: Number(row.charity_donation ?? 0),
       },
     });
   } catch (err) {

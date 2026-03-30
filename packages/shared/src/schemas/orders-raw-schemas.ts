@@ -17,8 +17,8 @@ export const OrdersRawStatusSchema = z.enum([
 export type OrdersRawStatus = z.infer<typeof OrdersRawStatusSchema>;
 
 /**
- * Matches the `orders_raw` Supabase table after migration 035.
- * Every field that is nullable in the DB is nullable here.
+ * Matches the `orders_raw` Supabase table (migrations 011, 035, 038, 041, 042).
+ * Direct-booking quote totals are stored in `payload.web_quote` (jsonb), not a top-level column.
  */
 export interface OrdersRawRow {
   id: string;
@@ -43,8 +43,8 @@ export interface OrdersRawRow {
   flight_number: string | null;
   flight_arrival_time: string | null;
   transfer_route: string | null;
-  /** Customer-facing quote total stored on orders_raw (DB column: web_quote) */
-  web_quote: number | null;
+  charity_donation: number;
+  web_payment_method: string | null;
 }
 
 /**
@@ -67,6 +67,8 @@ export const SubmitDirectBookingRequestSchema = z.object({
   flightNumber: z.string().optional(),
   flightArrivalTime: z.string().optional(),
   transferRoute: z.string().optional(),
+  charityDonation: z.number().min(0).optional(),
+  webPaymentMethod: z.string().optional(),
 });
 
 export type SubmitDirectBookingInput = z.infer<typeof SubmitDirectBookingRequestSchema>;

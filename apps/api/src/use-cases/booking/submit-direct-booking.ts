@@ -39,6 +39,7 @@ function httpError(message: string, statusCode: number): Error {
 
 export interface SubmitDirectBookingResult extends DirectBookingResult {
   serverQuote: number | null;
+  charityDonation: number;
 }
 
 export async function submitDirectBooking(
@@ -97,6 +98,20 @@ export async function submitDirectBooking(
     // Non-fatal: booking still proceeds even if quote computation fails
   }
 
+  // 3b. Apply payment method surcharge to webQuoteRaw if applicable
+  if (webQuoteRaw !== null && input.webPaymentMethod) {
+    try {
+      const paymentMethods = await deps.configRepo.getPaymentMethods();
+      const pm = paymentMethods.find((m) => m.id === input.webPaymentMethod);
+      if (pm && pm.surchargePercent > 0) {
+        const surchargeAmount = Math.round(webQuoteRaw * (pm.surchargePercent / 100) * 100) / 100;
+        webQuoteRaw = webQuoteRaw + surchargeAmount;
+      }
+    } catch {
+      // Non-fatal: proceed with base quote if surcharge config cannot be fetched
+    }
+  }
+
   // 4. Generate a unique order reference
   const source = resolveSourceFromStore(input.storeId);
   const orderReference = await uniqueOrderReference(bookingPort, source);
@@ -120,6 +135,8 @@ export async function submitDirectBooking(
     flightArrivalTime: input.flightArrivalTime ?? null,
     transferRoute: input.transferRoute ?? null,
     webQuoteRaw,
+    charityDonation: input.charityDonation ?? 0,
+    webPaymentMethod: input.webPaymentMethod ?? null,
   });
 
   // 6. Clean up the hold (best-effort; booking is already persisted)
@@ -129,5 +146,5 @@ export async function submitDirectBooking(
     // Hold cleanup is non-critical; it will expire naturally
   }
 
-  return { ...result, serverQuote: webQuoteRaw };
+  return { ...result, serverQuote: webQuoteRaw, charityDonation: input.charityDonation ?? 0 };
 }

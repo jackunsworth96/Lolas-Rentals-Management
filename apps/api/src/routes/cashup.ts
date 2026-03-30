@@ -24,7 +24,7 @@ router.get(
       const { storeId, date } = req.query as { storeId: string; date: string };
       const sb = getSupabaseClient();
 
-      const [paymentsRes, expensesRes, depositsRes, transfersRes, miscSalesRes, reconRes, prevReconRes, storesRes] =
+      const [paymentsRes, expensesRes, depositsRes, transfersRes, miscSalesRes, reconRes, prevReconRes, storesRes, charityRes] =
         await Promise.all([
           sb
             .from('payments')
@@ -86,6 +86,15 @@ router.get(
             .maybeSingle(),
 
           sb.from('stores').select('id, name, default_float_amount'),
+
+          sb
+            .from('journal_entries')
+            .select('id, description, credit, date, created_at, reference_id')
+            .eq('store_id', storeId)
+            .eq('date', date)
+            .eq('reference_type', 'order_charity')
+            .gt('credit', 0)
+            .order('created_at', { ascending: true }),
         ]);
 
       if (paymentsRes.error)
@@ -102,12 +111,15 @@ router.get(
         throw new Error(`Reconciliation query failed: ${reconRes.error.message}`);
       if (prevReconRes.error)
         throw new Error(`Previous recon query failed: ${prevReconRes.error.message}`);
+      if (charityRes.error)
+        throw new Error(`Charity donations query failed: ${charityRes.error.message}`);
 
       const payments = (paymentsRes.data ?? []) as Record<string, unknown>[];
       const expenses = (expensesRes.data ?? []) as Record<string, unknown>[];
       const depositEntries = (depositsRes.data ?? []) as Record<string, unknown>[];
       const transferEntries = (transfersRes.data ?? []) as Record<string, unknown>[];
       const miscSales = (miscSalesRes.data ?? []) as Record<string, unknown>[];
+      const charityEntries = (charityRes.data ?? []) as Record<string, unknown>[];
       const allStores = ((storesRes.data ?? []) as { id: string; name: string; default_float_amount: number }[]);
       const currentStore = allStores.find((s) => s.id === storeId);
       const otherStores = allStores.filter((s) => s.id !== storeId);
@@ -320,6 +332,15 @@ router.get(
       const expectedCash =
         openingAmount + totalCashIn + interStoreIn - expenseTotal - depositTotal - interStoreOut;
 
+      const charityDonationRows = charityEntries.map((c) => ({
+        id: c.id,
+        description: c.description,
+        amount: Number(c.credit ?? 0),
+        orderId: c.reference_id,
+        createdAt: c.created_at,
+      }));
+      const charityDonationsTotal = charityDonationRows.reduce((s, r) => s + r.amount, 0);
+
       const recon = reconRes.data;
 
       res.json({
@@ -364,7 +385,9 @@ router.get(
             depositTotal,
             interStoreIn,
             interStoreOut,
+            charityDonationsTotal,
           },
+          charityDonations: charityDonationRows,
           expectedCash,
           stores: allStores.map((s) => ({
             id: s.id,

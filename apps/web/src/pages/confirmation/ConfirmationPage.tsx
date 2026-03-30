@@ -9,7 +9,7 @@ import { PrimaryCtaButton } from '../../components/public/PrimaryCtaButton.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
 
-import lolaCartoon from '../../assets/Lola Face Cartoon.svg';
+import lolaPhoto from '../../assets/Lola.png';
 import pawPrint from '../../assets/Paw Print.svg';
 import { WHATSAPP_URL } from '../../config/contact.js';
 
@@ -28,6 +28,7 @@ interface ConfirmationState {
   transferType?: 'shared' | 'private' | null;
   flightNumber?: string | null;
   transferRoute?: string | null;
+  charityDonation?: number;
 }
 
 export default function ConfirmationPage() {
@@ -112,7 +113,7 @@ export default function ConfirmationPage() {
               className="flex h-48 w-48 items-center justify-center overflow-hidden rounded-full bg-gold-brand p-2 shadow-2xl"
               style={{ animation: 'bounce 3s ease-in-out infinite' }}
             >
-              <img src={lolaCartoon} alt="Lola" className="h-full w-full bg-transparent object-contain" />
+              <img src={lolaPhoto} alt="Lola" className="h-full w-full bg-transparent object-contain" />
             </div>
             <div
               className={`absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-2xl bg-teal-brand px-8 py-3 font-headline text-lg font-bold text-white shadow-xl transition-all duration-500 ${
@@ -154,6 +155,19 @@ export default function ConfirmationPage() {
             <img src={pawPrint} alt="" className="h-10 bg-transparent opacity-20 grayscale" />
           </div>
 
+          {(state.charityDonation ?? 0) > 0 && (
+            <FadeUpSection>
+              <div className="mb-6 w-full rounded-[2rem] bg-teal-brand/10 px-6 py-5 text-center">
+                <p className="font-headline text-lg font-bold text-teal-brand">
+                  Thank you for your ₱{(state.charityDonation ?? 0).toLocaleString()} donation to BePawsitive 🐾
+                </p>
+                <p className="mt-1 text-sm text-charcoal-brand/60">
+                  You're helping animals on Siargao!
+                </p>
+              </div>
+            </FadeUpSection>
+          )}
+
           <FadeUpSection>
             <RentalSummaryCard
               vehicleModelName={state.vehicleModelName} pickupDatetime={state.pickupDatetime}
@@ -161,6 +175,7 @@ export default function ConfirmationPage() {
               depositAmount={state.depositAmount} customerEmail={state.customerEmail}
               addonNames={state.addonNames ?? []} transferType={state.transferType}
               flightNumber={state.flightNumber} transferRoute={state.transferRoute}
+              charityDonation={state.charityDonation}
             />
           </FadeUpSection>
 

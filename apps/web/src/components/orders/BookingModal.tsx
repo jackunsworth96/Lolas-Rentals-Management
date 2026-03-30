@@ -40,6 +40,15 @@ function combineFromParts(p: TimeParts): string {
   return `${p.date}T${String(h24).padStart(2, '0')}:${String(p.minutes).padStart(2, '0')}`;
 }
 
+function formatManilaDatetime(dt: string): string {
+  return new Date(dt).toLocaleString('en-PH', {
+    timeZone: 'Asia/Manila',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
 
 interface BookingModalProps {
   open: boolean;
@@ -201,9 +210,8 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
   }, [isDirect, rawOrder.customer_name, rawOrder.customer_email, rawOrder.customer_mobile, payload]);
 
   const lineItems = useMemo(() => (isDirect ? [] : extractLineItems(payload)), [isDirect, payload]);
-  const webQuote = isDirect
-    ? (Number(rawOrder.web_quote ?? 0) || 0)
-    : (Number(payload.total ?? payload.order_total ?? payload.web_quote ?? 0) || 0);
+  const webQuote =
+    Number(payload.total ?? payload.order_total ?? payload.web_quote ?? 0) || 0;
 
   const [step, setStep] = useState<Step>('review');
   const [customer, setCustomer] = useState<CustomerData>(billing);
@@ -801,6 +809,16 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
                           <dd className="font-medium">{formatCurrency(webQuote)}</dd>
                         </div>
                       )}
+                      {Number(rawOrder.charity_donation ?? 0) > 0 && (
+                        <div className="flex justify-between">
+                          <dt className="text-gray-500">Charity Donation</dt>
+                          <dd className="font-medium text-teal-700">{formatCurrency(Number(rawOrder.charity_donation))} — BePawsitive</dd>
+                        </div>
+                      )}
+                      <div className="flex justify-between">
+                        <dt className="text-gray-500">Payment Method</dt>
+                        <dd className="font-medium">{rawOrder.web_payment_method ?? 'Not specified'}</dd>
+                      </div>
                       {rawOrder.transfer_type && (
                         <div className="flex justify-between">
                           <dt className="text-gray-500">Transfer</dt>
@@ -842,11 +860,11 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
                     <dl className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <dt className="text-gray-500">Pickup</dt>
-                        <dd className="font-medium">{rawOrder.pickup_datetime ? toDatetimeLocal(rawOrder.pickup_datetime).replace('T', ' ') : '—'}</dd>
+                        <dd className="font-medium">{rawOrder.pickup_datetime ? formatManilaDatetime(rawOrder.pickup_datetime) : '—'}</dd>
                       </div>
                       <div className="flex justify-between">
                         <dt className="text-gray-500">Dropoff</dt>
-                        <dd className="font-medium">{rawOrder.dropoff_datetime ? toDatetimeLocal(rawOrder.dropoff_datetime).replace('T', ' ') : '—'}</dd>
+                        <dd className="font-medium">{rawOrder.dropoff_datetime ? formatManilaDatetime(rawOrder.dropoff_datetime) : '—'}</dd>
                       </div>
                       {rawOrder.addon_ids && rawOrder.addon_ids.length > 0 && (
                         <div className="flex justify-between">
@@ -1256,6 +1274,13 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
                   </div>
                 )}
 
+                {Number(rawOrder.charity_donation ?? 0) > 0 && (
+                  <div className="flex justify-between text-teal-700">
+                    <dt>Charity Donation — BePawsitive</dt>
+                    <dd className="font-medium">{formatCurrency(Number(rawOrder.charity_donation))}</dd>
+                  </div>
+                )}
+
                 <div className="flex justify-between border-t border-gray-900 pt-3 text-base">
                   <dt className="font-bold text-gray-900">Final Total</dt>
                   <dd className="font-bold text-gray-900">{formatCurrency(finalTotal)}</dd>
@@ -1266,6 +1291,14 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
             {/* Payment Methods */}
             <div className="grid grid-cols-2 gap-4">
               <div className="rounded-lg border border-gray-200 p-4">
+                {rawOrder.web_payment_method && (
+                  <p className="mb-2 text-xs text-gray-500">
+                    Customer selected:{' '}
+                    <span className="font-medium text-gray-700">
+                      {rawOrder.web_payment_method}
+                    </span>
+                  </p>
+                )}
                 <label className="block">
                   <span className="text-sm font-medium text-gray-700">Rental Payment Method</span>
                   <select

@@ -237,7 +237,8 @@ export function createBookingAdapter(): BookingPort {
         .insert({
           source: input.source,
           booking_channel: 'direct',
-          payload: null,
+          payload:
+            input.webQuoteRaw != null ? { web_quote: input.webQuoteRaw } : null,
           status: 'unprocessed',
           customer_name: input.customerName,
           customer_email: input.customerEmail,
@@ -254,7 +255,8 @@ export function createBookingAdapter(): BookingPort {
           flight_number: input.flightNumber ?? null,
           flight_arrival_time: input.flightArrivalTime ?? null,
           transfer_route: input.transferRoute ?? null,
-          web_quote: input.webQuoteRaw ?? null,
+          charity_donation: input.charityDonation ?? 0,
+          web_payment_method: input.webPaymentMethod ?? null,
         })
         .select('id, order_reference')
         .single();

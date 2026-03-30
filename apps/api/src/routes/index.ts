@@ -23,8 +23,13 @@ import { publicBookingRoutes } from './public-booking.js';
 import { publicPawCardRoutes } from './public-paw-card.js';
 import { publicExtendRoutes } from './public-extend.js';
 import { publicRepairsRoutes } from './public-repairs.js';
+import { loginLimiter, publicLimiter, apiLimiter } from '../middleware/rate-limit.js';
 
 const routes = Router();
+
+routes.use('/auth', loginLimiter);
+routes.use('/public', publicLimiter);
+routes.use(apiLimiter);
 
 routes.use('/auth', authRoutes);
 routes.use('/orders-raw', ordersRawRoutes);

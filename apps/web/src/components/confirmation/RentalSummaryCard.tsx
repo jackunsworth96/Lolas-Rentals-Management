@@ -12,6 +12,7 @@ interface Props {
   transferType?: 'shared' | 'private' | null;
   flightNumber?: string | null;
   transferRoute?: string | null;
+  charityDonation?: number;
 }
 
 function formatDatetime(iso: string): string {
@@ -34,6 +35,7 @@ export function RentalSummaryCard({
   transferType,
   flightNumber,
   transferRoute,
+  charityDonation = 0,
 }: Props) {
   return (
     <div className="w-full rounded-[2.5rem] bg-cream-brand p-8 text-left shadow-[0_20px_40px_rgba(0,0,0,0.08)]">
@@ -97,6 +99,13 @@ export function RentalSummaryCard({
             {transferRoute && (
               <p className="text-sm font-bold text-charcoal-brand">Route: {transferRoute}</p>
             )}
+          </div>
+        )}
+
+        {charityDonation > 0 && (
+          <div className="flex items-center justify-between rounded-2xl bg-teal-brand/5 px-4 py-3">
+            <span className="text-sm font-bold text-teal-brand">Donation to BePawsitive 🐾</span>
+            <span className="text-sm font-bold text-teal-brand">{formatCurrency(charityDonation)}</span>
           </div>
         )}
 

@@ -19,6 +19,8 @@ interface Props {
   onPlaceOrder: () => void;
   submitting: boolean;
   priceChanged?: boolean;
+  charityDonation?: number;
+  onCharityChange?: (amount: number) => void;
 }
 
 const PM_ICONS: Record<string, string> = {
@@ -48,6 +50,8 @@ export function OrderSummaryPanel({
   onPlaceOrder,
   submitting,
   priceChanged,
+  charityDonation = 0,
+  onCharityChange,
 }: Props) {
   const vehicleSubtotal = basket.reduce((sum, b) => sum + b.dailyRate * rentalDays, 0);
 
@@ -72,7 +76,7 @@ export function OrderSummaryPanel({
   const surchargeAmount = surchargePercent > 0
     ? Math.round(subtotalBeforeSurcharge * (surchargePercent / 100) * 100) / 100
     : 0;
-  const grandTotal = subtotalBeforeSurcharge + surchargeAmount;
+  const grandTotal = subtotalBeforeSurcharge + surchargeAmount + charityDonation;
 
   return (
     <div className="sticky top-24 space-y-8">
@@ -92,6 +96,33 @@ export function OrderSummaryPanel({
             Rental Duration: <span className="text-teal-brand">{rentalDays} Day{rentalDays !== 1 ? 's' : ''}</span>
           </div>
 
+          <div className="mb-6 rounded-2xl border border-teal-200 bg-teal-50 p-4">
+            <p className="mb-3 text-sm font-semibold text-teal-800">
+              🐾 Support BePawsitive — Siargao's street animal welfare charity
+            </p>
+            <p className="mb-3 text-xs leading-relaxed text-teal-700">
+              Add a small donation to help fund spay, neuter & vaccination
+              programmes for Siargao's street animals.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {[0, 50, 100, 200].map((amount) => (
+                <button
+                  key={amount}
+                  type="button"
+                  onClick={() => onCharityChange?.(amount)}
+                  className={[
+                    'rounded-full px-4 py-1.5 text-sm font-semibold transition-colors',
+                    charityDonation === amount
+                      ? 'bg-teal-600 text-white'
+                      : 'bg-white border border-teal-300 text-teal-700 hover:bg-teal-100',
+                  ].join(' ')}
+                >
+                  {amount === 0 ? 'No thanks' : `₱${amount}`}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="mb-8 space-y-5">
             <Row label={`Vehicle Subtotal (${rentalDays} Day${rentalDays !== 1 ? 's' : ''})`} amount={vehicleSubtotal} />
             {pickupFee > 0 && <Row label="Delivery Fee" amount={pickupFee} />}
@@ -101,6 +132,7 @@ export function OrderSummaryPanel({
             {surchargeAmount > 0 && (
               <Row label={`Card Surcharge (${surchargePercent}%)`} amount={surchargeAmount} />
             )}
+            {charityDonation > 0 && <Row label="Donation to BePawsitive 🐾" amount={charityDonation} />}
             {deposit > 0 && <Row label="Refundable Deposit" amount={deposit} muted />}
           </div>
 

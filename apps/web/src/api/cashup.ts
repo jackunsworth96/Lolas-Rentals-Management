@@ -12,6 +12,14 @@ export interface MiscSaleRow {
   createdAt: string;
 }
 
+export interface CharityDonationRow {
+  id: string;
+  description: string | null;
+  amount: number;
+  orderId: string | null;
+  createdAt: string;
+}
+
 export interface CashupSummary {
   openingFloat: {
     amount: number;
@@ -35,6 +43,7 @@ export interface CashupSummary {
     transfersIn: TransferRow[];
     transfersOut: TransferRow[];
   };
+  charityDonations: CharityDonationRow[];
   totals: {
     cashSalesTotal: number;
     cashDepositsHeldTotal: number;
@@ -52,6 +61,7 @@ export interface CashupSummary {
     depositTotal: number;
     interStoreIn: number;
     interStoreOut: number;
+    charityDonationsTotal: number;
   };
   expectedCash: number;
   stores: StoreInfo[];

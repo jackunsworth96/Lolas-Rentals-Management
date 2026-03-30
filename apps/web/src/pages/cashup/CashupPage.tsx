@@ -14,6 +14,7 @@ import {
   type DepositRow,
   type DepositsHeldGroup,
   type TransferRow,
+  type CharityDonationRow,
 } from '../../api/cashup.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { formatTime } from '../../utils/date.js';
@@ -580,6 +581,12 @@ export default function CashupPage() {
               expenses={summary.transactions.expenses}
               total={summary.totals.expenseTotal}
             />
+            {(summary.totals.charityDonationsTotal ?? 0) > 0 && (
+              <CharityDonationsSection
+                donations={summary.charityDonations ?? []}
+                total={summary.totals.charityDonationsTotal}
+              />
+            )}
           </div>
 
           {/* Denomination Counting + Expected vs Actual */}
@@ -1513,6 +1520,53 @@ function Row({
       <span className={`${bold ? 'font-bold' : 'font-medium'} ${colorCls}`}>
         {formatCurrency(value)}
       </span>
+    </div>
+  );
+}
+
+function CharityDonationsSection({
+  donations,
+  total,
+}: {
+  donations: CharityDonationRow[];
+  total: number;
+}) {
+  return (
+    <div className="rounded-lg border border-gray-200 border-l-4 border-l-teal-500 bg-white">
+      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span>🐾</span>
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Charity Donations — BePawsitive</h3>
+            <p className="text-[10px] text-gray-400">Payable to BePawsitive NGO</p>
+          </div>
+          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">
+            Info only
+          </span>
+        </div>
+        <span className="text-sm font-bold text-teal-700">{formatCurrency(total)}</span>
+      </div>
+      <div className="max-h-60 overflow-y-auto">
+        {donations.length === 0 ? (
+          <p className="px-4 py-3 text-sm text-gray-400">No donations today</p>
+        ) : (
+          donations.map((d) => (
+            <div key={d.id} className="flex items-center justify-between border-b border-gray-50 px-4 py-2 last:border-b-0">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-gray-800">
+                  {d.description ?? 'Charity donation'}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {d.createdAt && formatTime(d.createdAt)}
+                </p>
+              </div>
+              <span className="ml-3 whitespace-nowrap text-sm font-medium text-teal-700">
+                {formatCurrency(d.amount)}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }

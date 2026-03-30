@@ -160,6 +160,39 @@ export function SearchBar({ onSearch, searching }: SearchBarProps) {
     }
   }, [storeLocationId, pickupLocationId, setLocations]);
 
+  useEffect(() => {
+    if (!pickupDate) return;
+    const slots = getAvailablePickupSlots(pickupDate);
+
+    // Current pickupTime is valid — nothing to correct
+    if (slots.some((s) => s.value === pickupTime)) return;
+
+    let newPickupDate = pickupDate;
+    let newPickupTime: string;
+
+    if (slots.length > 0) {
+      // Today still has future slots — advance to first available
+      newPickupTime = slots[0].value;
+    } else {
+      // All today's slots are past — move to tomorrow at 09:15
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      newPickupDate = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+      newPickupTime = generateTimeSlots()[0].value;
+    }
+
+    // Re-validate dropoff time against the corrected pickup
+    let newDropoffDatetime = dropoffDatetime;
+    if (dropoffDate) {
+      const dropoffSlots = getAvailableDropoffSlots(newPickupDate, newPickupTime, dropoffDate);
+      if (dropoffSlots.length > 0 && !dropoffSlots.some((s) => s.value === dropoffTime)) {
+        newDropoffDatetime = `${dropoffDate}T${dropoffSlots[0].value}`;
+      }
+    }
+
+    setDates(`${newPickupDate}T${newPickupTime}`, newDropoffDatetime);
+  }, [pickupDate, pickupTime]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const pickupLoc = locations?.find((l) => l.id === pickupLocationId);
   const dropoffLoc = locations?.find((l) => l.id === dropoffLocationId);
   const pickupFee = pickupLoc ? Number(pickupLoc.deliveryCost) : 0;

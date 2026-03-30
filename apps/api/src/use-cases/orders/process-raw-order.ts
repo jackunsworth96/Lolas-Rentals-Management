@@ -133,7 +133,7 @@ export async function processRawOrder(
     depositMethodId: input.depositMethodId,
     bookingToken: null,
     tips: Money.zero(),
-    charityDonation: Money.zero(),
+    charityDonation: Money.php(Number(rawOrder.charity_donation ?? 0)),
     addons: input.addons.map((a) => ({
       addonName: a.addonName,
       addonPrice: a.addonPrice,
@@ -286,6 +286,31 @@ export async function processRawOrder(
       },
     ];
     await deps.accountingPort.createTransaction(depositLegs, input.storeId);
+  }
+
+  const charityAmount = Number(rawOrder.charity_donation ?? 0);
+  if (charityAmount > 0 && input.receivableAccountId) {
+    const charityLegs: JournalLeg[] = [
+      {
+        entryId: crypto.randomUUID(),
+        accountId: input.receivableAccountId,
+        debit: Money.php(charityAmount),
+        credit: Money.zero(),
+        description: `Order ${orderId} charity donation receivable (BePawsitive)`,
+        referenceType: 'order_charity',
+        referenceId: orderId,
+      },
+      {
+        entryId: crypto.randomUUID(),
+        accountId: 'CHARITY-PAYABLE',
+        debit: Money.zero(),
+        credit: Money.php(charityAmount),
+        description: `Order ${orderId} charity donation payable (BePawsitive)`,
+        referenceType: 'order_charity',
+        referenceId: orderId,
+      },
+    ];
+    await deps.accountingPort.createTransaction(charityLegs, input.storeId);
   }
 
   const allPayments = await deps.paymentRepo.findByOrderId(orderId);
