@@ -34,7 +34,7 @@ router.get('/:id', requirePermission(Permission.ViewMaintenance), async (req, re
   } catch (err) { next(err); }
 });
 
-router.post('/', requirePermission(Permission.ViewMaintenance), validateBody(LogMaintenanceRequestSchema), async (req, res, next) => {
+router.post('/', requirePermission(Permission.EditMaintenance), validateBody(LogMaintenanceRequestSchema), async (req, res, next) => {
   try {
     const { logMaintenance } = await import('../use-cases/maintenance/log-maintenance.js');
     const result = await logMaintenance(req.body, {
@@ -45,7 +45,7 @@ router.post('/', requirePermission(Permission.ViewMaintenance), validateBody(Log
   } catch (err) { next(err); }
 });
 
-router.put('/:id', requirePermission(Permission.ViewMaintenance), validateBody(SaveMaintenanceRequestSchema), async (req, res, next) => {
+router.put('/:id', requirePermission(Permission.EditMaintenance), validateBody(SaveMaintenanceRequestSchema), async (req, res, next) => {
   try {
     const { saveMaintenance } = await import('../use-cases/maintenance/save-maintenance.js');
     const result = await saveMaintenance(req.params.id as string, req.body, {
@@ -56,7 +56,7 @@ router.put('/:id', requirePermission(Permission.ViewMaintenance), validateBody(S
   } catch (err) { next(err); }
 });
 
-router.delete('/:id', requirePermission(Permission.ViewMaintenance), async (req, res, next) => {
+router.delete('/:id', requirePermission(Permission.EditMaintenance), async (req, res, next) => {
   try {
     const record = await req.app.locals.deps.maintenanceRepo.findById(req.params.id as string);
     if (!record) { res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Maintenance record not found' } }); return; }
@@ -73,7 +73,7 @@ router.delete('/:id', requirePermission(Permission.ViewMaintenance), async (req,
   } catch (err) { next(err); }
 });
 
-router.post('/:id/complete', requirePermission(Permission.ViewMaintenance), validateBody(CompleteMaintenanceRequestSchema), async (req, res, next) => {
+router.post('/:id/complete', requirePermission(Permission.EditMaintenance), validateBody(CompleteMaintenanceRequestSchema), async (req, res, next) => {
   try {
     const { completeMaintenance } = await import('../use-cases/maintenance/complete-maintenance.js');
     const result = await completeMaintenance(

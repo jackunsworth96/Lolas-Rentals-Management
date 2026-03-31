@@ -107,7 +107,7 @@ router.get(
 // ── POST / — create expense ──
 router.post(
   '/',
-  requirePermission(Permission.ViewExpenses),
+  requirePermission(Permission.EditExpenses),
   validateBody(CreateExpenseRequestSchema),
   async (req, res, next) => {
     try {
@@ -128,7 +128,7 @@ router.post(
 // ── PUT /:id — update expense ──
 router.put(
   '/:id',
-  requirePermission(Permission.ViewExpenses),
+  requirePermission(Permission.EditExpenses),
   validateBody(UpdateExpenseRequestSchema),
   async (req, res, next) => {
     try {
@@ -152,7 +152,7 @@ router.put(
 // ── DELETE /:id — delete expense and reverse journal entries ──
 router.delete(
   '/:id',
-  requirePermission(Permission.ViewExpenses),
+  requirePermission(Permission.EditExpenses),
   async (req, res, next) => {
     try {
       const { deleteExpense } = await import(

@@ -81,7 +81,7 @@ router.get('/', view, validateQuery(TodoQuerySchema), async (req: Request, res: 
   } catch (err) { next(err); }
 });
 
-router.post('/', view, validateBody(CreateTaskRequestSchema), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', manage, validateBody(CreateTaskRequestSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { createTask } = await import('../use-cases/todo/create-task.js');
     const result = await createTask(
@@ -105,7 +105,7 @@ router.get('/:id', view, async (req: Request, res: Response, next: NextFunction)
   } catch (err) { next(err); }
 });
 
-router.put('/:id', view, validateBody(UpdateTaskRequestSchema), async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:id', manage, validateBody(UpdateTaskRequestSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { updateTask } = await import('../use-cases/todo/update-task.js');
     const result = await updateTask(

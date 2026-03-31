@@ -29,7 +29,7 @@ router.get('/:id', requirePermission(Permission.ViewTransfers), async (req: Requ
   } catch (err) { next(err); }
 });
 
-router.post('/', requirePermission(Permission.ViewTransfers), validateBody(CreateTransferRequestSchema), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', requirePermission(Permission.EditTransfers), validateBody(CreateTransferRequestSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { createTransfer } = await import('../use-cases/transfers/create-transfer.js');
     const result = await createTransfer(req.body, { transfers: req.app.locals.deps.transferRepo });
@@ -37,7 +37,7 @@ router.post('/', requirePermission(Permission.ViewTransfers), validateBody(Creat
   } catch (err) { next(err); }
 });
 
-router.post('/payment', requirePermission(Permission.ViewTransfers), validateBody(RecordTransferPaymentRequestSchema), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/payment', requirePermission(Permission.EditTransfers), validateBody(RecordTransferPaymentRequestSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { recordTransferPayment } = await import('../use-cases/transfers/record-payment.js');
     const result = await recordTransferPayment(req.body, {
@@ -48,7 +48,7 @@ router.post('/payment', requirePermission(Permission.ViewTransfers), validateBod
   } catch (err) { next(err); }
 });
 
-router.post('/driver-payment', requirePermission(Permission.ViewTransfers), validateBody(RecordDriverPaymentRequestSchema), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/driver-payment', requirePermission(Permission.EditTransfers), validateBody(RecordDriverPaymentRequestSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { recordDriverPayment } = await import('../use-cases/transfers/record-driver-payment.js');
     const result = await recordDriverPayment(req.body, {
