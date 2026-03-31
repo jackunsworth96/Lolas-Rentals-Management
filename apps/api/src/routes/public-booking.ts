@@ -6,7 +6,7 @@ import { checkAvailability } from '../use-cases/booking/check-availability.js';
 import { computeQuote } from '../use-cases/booking/compute-quote.js';
 import { createHold } from '../use-cases/booking/create-hold.js';
 import { releaseHold } from '../use-cases/booking/release-hold.js';
-import { submitDirectBooking } from '../use-cases/booking/submit-direct-booking.js';
+import { submitDirectBooking, type SubmitDirectBookingResult } from '../use-cases/booking/submit-direct-booking.js';
 
 const router = Router();
 
@@ -168,7 +168,7 @@ router.get('/hold/:sessionToken', async (req, res, next) => {
 
 router.post('/submit', validateBody(SubmitDirectBookingRequestSchema), async (req, res, next) => {
   try {
-    const result = await submitDirectBooking(
+    const result: SubmitDirectBookingResult = await submitDirectBooking(
       { bookingPort: req.app.locals.deps.bookingPort, configRepo: req.app.locals.deps.configRepo },
       req.body as SubmitDirectBookingInput,
     );
