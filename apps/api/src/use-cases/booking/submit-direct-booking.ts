@@ -1,4 +1,4 @@
-import type { BookingPort, DirectBookingResult, ConfigRepository } from '@lolas/domain';
+import type { BookingPort, ConfigRepository } from '@lolas/domain';
 import type { SubmitDirectBookingInput } from '@lolas/shared';
 import { resolveSourceFromStore } from '@lolas/shared';
 import { computeQuote } from './compute-quote.js';
@@ -37,7 +37,9 @@ function httpError(message: string, statusCode: number): Error {
   return err;
 }
 
-export interface SubmitDirectBookingResult extends DirectBookingResult {
+export interface SubmitDirectBookingResult {
+  id: string;
+  orderReference: string;
   serverQuote: number | null;
   charityDonation: number;
 }
