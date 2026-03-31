@@ -4,6 +4,7 @@ import { useAuthStore } from '../../stores/auth-store.js';
 import { useUnseenTaskCount } from '../../api/todo.js';
 
 const NAV_ITEMS = [
+  { label: 'Dashboard', path: '/dashboard', perm: null },
   { label: 'Inbox', path: '/orders/inbox', perm: 'can_view_inbox' },
   { label: 'Active', path: '/orders/active', perm: 'can_view_active' },
   { label: 'Completed', path: '/orders/completed', perm: 'can_view_completed' },

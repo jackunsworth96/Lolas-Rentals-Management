@@ -35,6 +35,7 @@ const RepairsPage = lazy(() => import('./pages/repairs/RepairsPage.js'));
 const AboutPage = lazy(() => import('./pages/about/AboutPage.js'));
 const PrivacyPage = lazy(() => import('./pages/privacy/PrivacyPage.js'));
 const UIErrorsPage = lazy(() => import('./pages/ui-errors/UIErrorsPage.js'));
+const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage.js'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
@@ -71,7 +72,7 @@ export function AppRouter() {
 
         {/* Backoffice routes — protected */}
         <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-          <Route path="/dashboard" element={<Navigate to="/orders/inbox" replace />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="orders/inbox" element={<InboxPage />} />
           <Route path="orders/active" element={<ActivePage />} />
           <Route path="orders/completed" element={<CompletedPage />} />
