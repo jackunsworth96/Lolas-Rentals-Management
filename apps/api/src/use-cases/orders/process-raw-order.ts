@@ -173,7 +173,7 @@ export async function processRawOrder(
   const txnDate = new Date().toISOString().slice(0, 10);
   const rentalAmount = finalTotal + input.cardFeeSurcharge;
 
-  if (input.paymentMethodId && input.paymentAccountId && input.receivableAccountId) {
+  if (input.isCardPayment && input.paymentMethodId && input.receivableAccountId) {
     const rentalPayment: Payment = {
       id: crypto.randomUUID(),
       storeId: input.storeId,
@@ -185,36 +185,52 @@ export async function processRawOrder(
       amount: rentalAmount,
       paymentMethodId: input.paymentMethodId,
       transactionDate: txnDate,
-      settlementStatus: input.isCardPayment ? 'pending' : null,
+      settlementStatus: 'pending',
       settlementRef: input.settlementRef ?? null,
       customerId: customer.id,
-      accountId: input.isCardPayment ? null : input.paymentAccountId,
+      accountId: null,
     };
     await deps.paymentRepo.save(rentalPayment);
 
-    if (input.isCardPayment) {
-      const settlement: CardSettlement = {
-        id: crypto.randomUUID(),
-        storeId: input.storeId,
-        orderId,
-        customerId: customer.id,
-        paymentId: rentalPayment.id,
-        name: customer.name,
-        amount: rentalAmount,
-        refNumber: input.settlementRef ?? null,
-        transactionDate: txnDate,
-        forecastedDate: null,
-        isPaid: false,
-        dateSettled: null,
-        settlementRef: null,
-        netAmount: null,
-        feeExpense: null,
-        accountId: null,
-        batchNo: null,
-        createdAt: new Date(),
-      };
-      await deps.cardSettlementRepo.save(settlement);
-    }
+    const settlement: CardSettlement = {
+      id: crypto.randomUUID(),
+      storeId: input.storeId,
+      orderId,
+      customerId: customer.id,
+      paymentId: rentalPayment.id,
+      name: customer.name,
+      amount: rentalAmount,
+      refNumber: input.settlementRef ?? null,
+      transactionDate: txnDate,
+      forecastedDate: null,
+      isPaid: false,
+      dateSettled: null,
+      settlementRef: null,
+      netAmount: null,
+      feeExpense: null,
+      accountId: null,
+      batchNo: null,
+      createdAt: new Date(),
+    };
+    await deps.cardSettlementRepo.save(settlement);
+  } else if (!input.isCardPayment && input.paymentMethodId && input.paymentAccountId && input.receivableAccountId) {
+    const rentalPayment: Payment = {
+      id: crypto.randomUUID(),
+      storeId: input.storeId,
+      orderId,
+      rawOrderId: input.rawOrderId,
+      orderItemId: null,
+      orderAddonId: null,
+      paymentType: 'rental',
+      amount: rentalAmount,
+      paymentMethodId: input.paymentMethodId,
+      transactionDate: txnDate,
+      settlementStatus: null,
+      settlementRef: input.settlementRef ?? null,
+      customerId: customer.id,
+      accountId: input.paymentAccountId,
+    };
+    await deps.paymentRepo.save(rentalPayment);
 
     const legs: JournalLeg[] = [
       {
