@@ -1,8 +1,8 @@
 import {
   type ExpenseRepository,
-  type AccountingPort,
   type Expense,
   type JournalLeg,
+  JournalTransaction,
   Money,
   DomainError,
 } from '@lolas/domain';
@@ -27,7 +27,7 @@ export interface CreateExpenseResult {
 
 export async function createExpense(
   input: CreateExpenseInput,
-  deps: { expenses: ExpenseRepository; accounting: AccountingPort },
+  deps: { expenses: ExpenseRepository },
 ): Promise<CreateExpenseResult> {
   if (input.amount <= 0) {
     throw new DomainError('Expense amount must be positive');
@@ -46,8 +46,6 @@ export async function createExpense(
     accountId: input.expenseAccountId,
     createdAt: new Date(),
   };
-
-  await deps.expenses.save(expense);
 
   const amount = Money.php(input.amount);
   const legs: JournalLeg[] = [
@@ -71,7 +69,20 @@ export async function createExpense(
     },
   ];
 
-  await deps.accounting.createTransaction(legs, input.storeId);
+  const now = new Date();
+  const date = now.toISOString().slice(0, 10);
+  const period = date.slice(0, 7);
+
+  const transaction = JournalTransaction.create({
+    transactionId: randomUUID(),
+    period,
+    date,
+    storeId: input.storeId,
+    legs,
+    createdBy: null,
+  });
+
+  await deps.expenses.createWithJournal(expense, transaction, null);
 
   return { expense };
 }

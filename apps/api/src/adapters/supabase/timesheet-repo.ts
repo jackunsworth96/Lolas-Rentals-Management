@@ -89,5 +89,15 @@ export function createTimesheetRepo(): TimesheetRepository {
         .in('id', ids);
       if (error) throw new Error(`Failed to bulk update timesheet status: ${error.message}`);
     },
+
+    async runPayrollAtomic(transactions, timesheetIds, status) {
+      const { error } = await sb.rpc('run_payroll_atomic', {
+        p_transactions:  transactions,
+        p_timesheet_ids: timesheetIds,
+        p_status:        status,
+      });
+
+      if (error) throw new Error(`run_payroll_atomic RPC failed: ${error.message}`);
+    },
   };
 }

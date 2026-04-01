@@ -32,7 +32,6 @@ router.post('/run', requirePermission(Permission.ViewPayroll), validateBody(RunP
         employees: req.app.locals.deps.employeeRepo,
         timesheets: req.app.locals.deps.timesheetRepo,
         payroll: req.app.locals.deps.payrollPort,
-        accounting: req.app.locals.deps.accountingPort,
       },
     );
     res.json({ success: true, data: result });

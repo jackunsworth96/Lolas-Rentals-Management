@@ -1,5 +1,5 @@
 import { getSupabaseClient } from './client.js';
-import type { CardSettlement, CardSettlementRepository, SettleManyFields } from '@lolas/domain';
+import type { CardSettlement, CardSettlementRepository, JournalLeg, SettleManyFields } from '@lolas/domain';
 import { addBusinessDays } from '../../utils/business-days.js';
 
 function toDomain(row: Record<string, unknown>): CardSettlement {
@@ -159,6 +159,51 @@ export function createCardSettlementRepo(): CardSettlementRepository {
         byStore[r.store_id] = (byStore[r.store_id] ?? 0) + amt;
       }
       return { total, byStore };
+    },
+
+    async matchWithTransaction(
+      transactionId,
+      period,
+      date,
+      storeId,
+      legs,
+      settlementIds,
+      isSettled,
+      dateSettled,
+      settlementRef,
+      netAmount,
+      feeExpense,
+      accountId,
+      paymentIds,
+    ) {
+      const mappedLegs = (legs as JournalLeg[]).map((leg) => ({
+        id: leg.entryId,
+        account_id: leg.accountId,
+        debit: leg.debit.toNumber(),
+        credit: leg.credit.toNumber(),
+        description: leg.description,
+        reference_type: leg.referenceType,
+        reference_id: leg.referenceId,
+      }));
+
+      const { error } = await sb.rpc('match_card_settlement', {
+        p_transaction_id:    transactionId,
+        p_period:            period,
+        p_date:              date,
+        p_store_id:          storeId,
+        p_legs:              mappedLegs,
+        p_settlement_ids:    settlementIds,
+        p_is_paid:           isSettled,
+        p_date_settled:      dateSettled,
+        p_settlement_ref:    settlementRef,
+        p_net_amount:        netAmount,
+        p_fee_expense:       feeExpense,
+        p_account_id:        accountId,
+        p_payment_ids:       paymentIds,
+        p_settlement_status: 'settled',
+      });
+
+      if (error) throw new Error(`match_card_settlement RPC failed: ${error.message}`);
     },
   };
 }

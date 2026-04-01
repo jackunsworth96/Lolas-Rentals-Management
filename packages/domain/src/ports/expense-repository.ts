@@ -1,3 +1,5 @@
+import type { JournalTransaction } from '../entities/journal-transaction.js';
+
 export interface Expense {
   id: string;
   storeId: string;
@@ -18,4 +20,14 @@ export interface ExpenseRepository {
   findByCategory(storeId: string, category: string): Promise<Expense[]>;
   save(expense: Expense): Promise<void>;
   delete(id: string): Promise<void>;
+  createWithJournal(
+    expense: Expense,
+    transaction: JournalTransaction,
+    createdBy: string | null,
+  ): Promise<void>;
+  deleteWithJournal(
+    expenseId: string,
+    referenceType: string,
+    referenceId: string,
+  ): Promise<void>;
 }

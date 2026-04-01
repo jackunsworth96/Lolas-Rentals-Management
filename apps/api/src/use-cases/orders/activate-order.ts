@@ -1,11 +1,8 @@
 import {
   type OrderRepository,
-  type OrderItemRepository,
   type OrderItem,
-  type OrderAddonRepository,
   type OrderAddonRecord,
   type FleetRepository,
-  type AccountingPort,
   type JournalLeg,
   Money,
   NonRentableVehicleError,
@@ -13,10 +10,7 @@ import {
 
 export interface ActivateOrderDeps {
   orderRepo: OrderRepository;
-  orderItemRepo: OrderItemRepository;
-  orderAddonRepo: OrderAddonRepository;
   fleetRepo: FleetRepository;
-  accountingPort: AccountingPort;
 }
 
 export interface VehicleAssignment {
@@ -49,8 +43,7 @@ export async function activateOrder(
   deps: ActivateOrderDeps,
   input: ActivateOrderInput,
 ) {
-  const { orderRepo, orderItemRepo, orderAddonRepo, fleetRepo, accountingPort } =
-    deps;
+  const { orderRepo, fleetRepo } = deps;
 
   const order = await orderRepo.findById(input.orderId);
   if (!order) throw new Error(`Order ${input.orderId} not found`);
@@ -83,21 +76,30 @@ export async function activateOrder(
     returnCondition: null,
   }));
 
-  await orderItemRepo.saveMany(orderItems);
+  const orderAddons: OrderAddonRecord[] = (input.addons ?? []).map((a) => ({
+    ...a,
+    orderId: a.orderId ?? order.id,
+    id: a.id ?? crypto.randomUUID(),
+    mutualExclusivityGroup: a.mutualExclusivityGroup ?? null,
+  }));
 
-  if (input.addons && input.addons.length > 0) {
-    await orderAddonRepo.saveMany(order.id, input.addons, order.storeId);
-  }
-
-  for (const a of input.vehicleAssignments) {
-    await fleetRepo.updateStatus(a.vehicleId, 'Active');
-  }
+  const fleetUpdates = input.vehicleAssignments.map((a) => ({
+    id: a.vehicleId,
+    status: 'Active',
+  }));
 
   order.activate(input.employeeId, input.vehicleAssignments.length);
 
   const amount = order.finalTotal;
+  let journalLegs: JournalLeg[] = [];
+  let journalTransactionId = '';
+  const now = new Date();
+  const journalDate = now.toISOString().slice(0, 10);
+  const journalPeriod = journalDate.slice(0, 7);
+
   if (amount.isPositive()) {
-    const legs: JournalLeg[] = [
+    journalTransactionId = crypto.randomUUID();
+    journalLegs = [
       {
         entryId: crypto.randomUUID(),
         accountId: input.receivableAccountId,
@@ -117,10 +119,19 @@ export async function activateOrder(
         referenceId: order.id,
       },
     ];
-
-    await accountingPort.createTransaction(legs, order.storeId);
   }
 
-  await orderRepo.save(order);
+  await orderRepo.activateOrderAtomic(
+    order,
+    orderItems,
+    orderAddons,
+    fleetUpdates,
+    journalLegs,
+    journalTransactionId,
+    journalPeriod,
+    journalDate,
+    order.storeId,
+  );
+
   return order;
 }

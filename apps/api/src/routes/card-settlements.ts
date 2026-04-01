@@ -52,7 +52,6 @@ router.post('/match', requirePermission(Permission.ViewCardSettlements), validat
     const result = await matchSettlement(
       {
         cardSettlementRepo: req.app.locals.deps.cardSettlementRepo,
-        accountingPort: req.app.locals.deps.accountingPort,
       },
       req.body,
     );

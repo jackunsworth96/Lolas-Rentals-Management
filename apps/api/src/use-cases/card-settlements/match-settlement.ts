@@ -1,14 +1,11 @@
 import {
   type CardSettlementRepository,
-  type AccountingPort,
   type JournalLeg,
   Money,
 } from '@lolas/domain';
-import { getSupabaseClient } from '../../adapters/supabase/client.js';
 
 export interface MatchSettlementDeps {
   cardSettlementRepo: CardSettlementRepository;
-  accountingPort: AccountingPort;
 }
 
 export interface MatchSettlementInput {
@@ -26,7 +23,7 @@ export async function matchSettlement(
   deps: MatchSettlementDeps,
   input: MatchSettlementInput,
 ) {
-  const { cardSettlementRepo, accountingPort } = deps;
+  const { cardSettlementRepo } = deps;
 
   const settlements = await cardSettlementRepo.findByIds(input.settlementIds);
   if (settlements.length === 0) {
@@ -85,29 +82,25 @@ export async function matchSettlement(
     referenceId: input.bankReference,
   });
 
-  await accountingPort.createTransaction(legs, storeId);
-
-  await cardSettlementRepo.settleMany(input.settlementIds, {
-    isPaid: true,
-    dateSettled: input.settlementDate,
-    settlementRef: input.bankReference,
-    netAmount: input.netAmount,
-    feeExpense: input.feeAmount,
-    accountId: input.bankAccountId,
-  });
-
-  // Update corresponding payment records
   const paymentIds = settlements
     .map((s) => s.paymentId)
     .filter((id): id is string => !!id);
 
-  if (paymentIds.length > 0) {
-    const sb = getSupabaseClient();
-    await sb
-      .from('payments')
-      .update({ settlement_status: 'settled' })
-      .in('id', paymentIds);
-  }
+  await cardSettlementRepo.matchWithTransaction(
+    crypto.randomUUID(),
+    input.settlementDate.slice(0, 7),
+    input.settlementDate,
+    storeId,
+    legs,
+    input.settlementIds.map(Number),
+    true,
+    input.settlementDate,
+    input.bankReference,
+    input.netAmount,
+    input.feeAmount,
+    input.bankAccountId,
+    paymentIds,
+  );
 
   return {
     settledCount: settlements.length,

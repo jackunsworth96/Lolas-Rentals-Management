@@ -36,4 +36,5 @@ export interface CashReconciliationRepository {
     overriddenBy: string,
     reason: string,
   ): Promise<void>;
+  reconcileAtomic(reconciliation: CashReconciliation): Promise<void>;
 }

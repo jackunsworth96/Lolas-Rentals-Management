@@ -116,7 +116,6 @@ router.post(
       );
       const result = await createExpense(req.body, {
         expenses: req.app.locals.deps.expenseRepo,
-        accounting: req.app.locals.deps.accountingPort,
       });
       res.status(201).json({ success: true, data: result });
     } catch (err) {
@@ -162,7 +161,6 @@ router.delete(
         { expenseId: req.params.id as string },
         {
           expenses: req.app.locals.deps.expenseRepo,
-          accounting: req.app.locals.deps.accountingPort,
         },
       );
       res.json({ success: true, data: { deleted: true } });

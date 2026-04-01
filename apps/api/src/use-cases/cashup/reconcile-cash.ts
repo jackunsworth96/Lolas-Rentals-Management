@@ -82,8 +82,7 @@ export async function reconcileCash(
     closingBalance: input.closingBalance,
   };
 
-  await deps.cashReconciliation.save(reconciliation);
-  await deps.cashReconciliation.lock(reconciliation.id);
+  await deps.cashReconciliation.reconcileAtomic(reconciliation);
 
   return { reconciliation: { ...reconciliation, isLocked: true } };
 }

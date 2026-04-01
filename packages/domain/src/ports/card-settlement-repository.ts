@@ -1,3 +1,5 @@
+import type { JournalLeg } from '../entities/journal-transaction.js';
+
 export interface CardSettlement {
   id: string;
   storeId: string;
@@ -38,4 +40,19 @@ export interface CardSettlementRepository {
   batchUpdate(ids: string[], fields: { forecastedDate?: string; settlementRef?: string }): Promise<void>;
   assignBatch(ids: string[], batchNo: string): Promise<void>;
   pendingTotals(): Promise<{ total: number; byStore: Record<string, number> }>;
+  matchWithTransaction(
+    transactionId: string,
+    period: string,
+    date: string,
+    storeId: string,
+    legs: JournalLeg[],
+    settlementIds: number[],
+    isSettled: boolean,
+    dateSettled: string,
+    settlementRef: string,
+    netAmount: number,
+    feeExpense: number,
+    accountId: string,
+    paymentIds: string[],
+  ): Promise<void>;
 }

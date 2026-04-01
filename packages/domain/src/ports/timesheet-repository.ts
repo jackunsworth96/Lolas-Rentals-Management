@@ -10,4 +10,23 @@ export interface TimesheetRepository {
     ids: string[],
     status: 'Pending' | 'Approved' | 'Paid',
   ): Promise<void>;
+  runPayrollAtomic(
+    transactions: Array<{
+      transactionId: string;
+      period: string;
+      date: string;
+      storeId: string;
+      legs: Array<{
+        id: string;
+        account_id: string;
+        debit: number;
+        credit: number;
+        description: string;
+        reference_type: string;
+        reference_id: string | null;
+      }>;
+    }>,
+    timesheetIds: string[],
+    status: string,
+  ): Promise<void>;
 }

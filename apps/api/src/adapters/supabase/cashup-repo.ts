@@ -120,5 +120,37 @@ export function createCashReconciliationRepo(): CashReconciliationRepository {
         .eq('id', id);
       if (error) throw new Error(`Failed to override reconciliation: ${error.message}`);
     },
+
+    async reconcileAtomic(reconciliation) {
+      const row = toRow(reconciliation);
+
+      const { error } = await sb.rpc('reconcile_cash_atomic', {
+        p_id:                row.id,
+        p_store_id:          row.store_id,
+        p_date:              row.date,
+        p_opening_balance:   row.opening_balance,
+        p_expected_cash:     row.expected_cash,
+        p_actual_counted:    row.actual_counted,
+        p_variance:          row.variance,
+        p_variance_type:     row.variance_type,
+        p_submitted_by:      row.submitted_by,
+        p_submitted_at:      row.submitted_at,
+        p_is_locked:         row.is_locked,
+        p_overridden_by:     row.overridden_by ?? null,
+        p_overridden_at:     row.overridden_at ?? null,
+        p_override_reason:   row.override_reason ?? null,
+        p_till_counted:      row.till_counted,
+        p_deposits_counted:  row.deposits_counted,
+        p_till_denoms:       row.till_denoms,
+        p_deposit_denoms:    row.deposit_denoms,
+        p_till_expected:     row.till_expected,
+        p_deposits_expected: row.deposits_expected,
+        p_till_variance:     row.till_variance,
+        p_deposit_variance:  row.deposit_variance,
+        p_closing_balance:   row.closing_balance,
+      });
+
+      if (error) throw new Error(`reconcile_cash_atomic RPC failed: ${error.message}`);
+    },
   };
 }

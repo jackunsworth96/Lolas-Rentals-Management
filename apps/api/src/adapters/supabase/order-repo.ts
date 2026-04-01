@@ -4,6 +4,9 @@ import type {
   OrderRepository,
   OrderFilters,
   OrderStatus,
+  OrderItem,
+  OrderAddonRecord,
+  JournalLeg,
   Money,
 } from '@lolas/domain';
 import { Order as OrderEntity, OrderStatus as OS, Money as M } from '@lolas/domain';
@@ -175,5 +178,102 @@ export class SupabaseOrderRepository implements OrderRepository {
     const { error } = await sb.from('orders').upsert(row);
 
     if (error) throw new Error(`save failed: ${error.message}`);
+  }
+
+  async activateOrderAtomic(
+    order: Order,
+    orderItems: OrderItem[],
+    orderAddons: OrderAddonRecord[],
+    fleetUpdates: Array<{ id: string; status: string }>,
+    journalLegs: JournalLeg[],
+    journalTransactionId: string,
+    journalPeriod: string,
+    journalDate: string,
+    journalStoreId: string,
+  ): Promise<void> {
+    const sb = getSupabaseClient();
+    const orderRow = orderToRow(order);
+
+    const items = orderItems.map((item) => ({
+      id: item.id,
+      store_id: item.storeId,
+      order_id: item.orderId,
+      vehicle_id: item.vehicleId,
+      vehicle_name: item.vehicleName,
+      pickup_datetime: item.pickupDatetime,
+      dropoff_datetime: item.dropoffDatetime,
+      rental_days_count: item.rentalDaysCount,
+      pickup_location: item.pickupLocation ?? null,
+      dropoff_location: item.dropoffLocation ?? null,
+      pickup_fee: item.pickupFee,
+      dropoff_fee: item.dropoffFee,
+      rental_rate: item.rentalRate,
+      helmet_numbers: item.helmetNumbers ?? null,
+      discount: item.discount ?? null,
+      ops_notes: item.opsNotes ?? null,
+      return_condition: item.returnCondition ?? null,
+    }));
+
+    const addons = orderAddons.map((addon) => ({
+      id: addon.id,
+      order_id: addon.orderId,
+      addon_name: addon.addonName,
+      addon_price: addon.addonPrice,
+      addon_type: addon.addonType,
+      quantity: addon.quantity,
+      total_amount: addon.totalAmount,
+      store_id: order.storeId,
+    }));
+
+    const fleet = fleetUpdates.map((v) => ({
+      id: v.id,
+      status: v.status,
+      updated_at: new Date().toISOString(),
+    }));
+
+    const legs = journalLegs.map((leg) => ({
+      id: leg.entryId,
+      account_id: leg.accountId,
+      debit: leg.debit.toNumber(),
+      credit: leg.credit.toNumber(),
+      description: leg.description,
+      reference_type: leg.referenceType,
+      reference_id: leg.referenceId,
+    }));
+
+    const { error } = await sb.rpc('activate_order_atomic', {
+      p_order_id:               orderRow.id,
+      p_store_id:               orderRow.store_id,
+      p_woo_order_id:           orderRow.woo_order_id ?? null,
+      p_customer_id:            orderRow.customer_id,
+      p_employee_id:            orderRow.employee_id ?? null,
+      p_order_date:             orderRow.order_date,
+      p_status:                 orderRow.status,
+      p_web_notes:              orderRow.web_notes ?? null,
+      p_quantity:               orderRow.quantity,
+      p_web_quote_raw:          orderRow.web_quote_raw ?? null,
+      p_security_deposit:       orderRow.security_deposit,
+      p_deposit_status:         orderRow.deposit_status,
+      p_card_fee_surcharge:     orderRow.card_fee_surcharge ?? null,
+      p_return_charges:         orderRow.return_charges ?? null,
+      p_final_total:            orderRow.final_total,
+      p_balance_due:            orderRow.balance_due,
+      p_payment_method_id:      orderRow.payment_method_id ?? null,
+      p_deposit_method_id:      orderRow.deposit_method_id ?? null,
+      p_booking_token:          orderRow.booking_token ?? null,
+      p_tips:                   orderRow.tips ?? null,
+      p_charity_donation:       orderRow.charity_donation ?? null,
+      p_updated_at:             orderRow.updated_at ?? new Date().toISOString(),
+      p_order_items:            items,
+      p_order_addons:           addons,
+      p_fleet_updates:          fleet,
+      p_journal_transaction_id: journalTransactionId,
+      p_journal_period:         journalPeriod,
+      p_journal_date:           journalDate,
+      p_journal_store_id:       journalStoreId,
+      p_journal_legs:           legs,
+    });
+
+    if (error) throw new Error(`activate_order_atomic RPC failed: ${error.message}`);
   }
 }

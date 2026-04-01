@@ -156,10 +156,7 @@ export async function processRawOrder(
   const activated = await activateOrder(
     {
       orderRepo: deps.orderRepo,
-      orderItemRepo: deps.orderItemRepo,
-      orderAddonRepo: deps.orderAddonRepo,
       fleetRepo: deps.fleetRepo,
-      accountingPort: deps.accountingPort,
     },
     {
       orderId,

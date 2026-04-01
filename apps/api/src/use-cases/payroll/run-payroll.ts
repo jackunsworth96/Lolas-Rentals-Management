@@ -1,12 +1,10 @@
 import {
   type EmployeeRepository,
   type TimesheetRepository,
-  type AccountingPort,
   type JournalLeg,
   Money,
   DomainError,
   Period,
-  type Timesheet,
 } from '@lolas/domain';
 import { randomUUID } from 'node:crypto';
 import {
@@ -28,9 +26,7 @@ export interface RunPayrollInput {
   storeExpenseAccounts?: Record<string, string>;
 }
 
-export interface RunPayrollDeps extends CalculatePayslipDeps {
-  accounting: AccountingPort;
-}
+export interface RunPayrollDeps extends CalculatePayslipDeps {}
 
 export interface RunPayrollResult {
   payslips: PayslipBreakdown[];
@@ -107,6 +103,22 @@ export async function runPayroll(
   const expenseMap = input.storeExpenseAccounts ?? {};
   const desc = `Payroll ${input.periodStart} to ${input.periodEnd}`;
 
+  const payrollTransactions: Array<{
+    transactionId: string;
+    period: string;
+    date: string;
+    storeId: string;
+    legs: Array<{
+      id: string;
+      account_id: string;
+      debit: number;
+      credit: number;
+      description: string;
+      reference_type: string;
+      reference_id: string | null;
+    }>;
+  }> = [];
+
   for (const [sid, amount] of Object.entries(storeAllocations)) {
     if (amount <= 0) continue;
     const expenseAcct = expenseMap[sid] ?? input.payrollExpenseAccountId;
@@ -131,24 +143,48 @@ export async function runPayroll(
       },
     ];
 
-    await deps.accounting.createTransaction(legs, sid);
+    const txId = randomUUID();
+    const now = new Date();
+    const txDate = now.toISOString().slice(0, 10);
+    const txPeriod = txDate.slice(0, 7);
+
+    payrollTransactions.push({
+      transactionId: txId,
+      period: txPeriod,
+      date: txDate,
+      storeId: sid,
+      legs: legs.map((leg) => ({
+        id: leg.entryId,
+        account_id: leg.accountId,
+        debit: leg.debit.toNumber(),
+        credit: leg.credit.toNumber(),
+        description: leg.description ?? '',
+        reference_type: leg.referenceType,
+        reference_id: leg.referenceId,
+      })),
+    });
   }
 
   const approvedIds = payslips
     .filter((p) => p.netPay > 0)
     .map((p) => p.employeeId);
 
+  const approvedTimesheetIds: string[] = [];
   if (approvedIds.length > 0) {
-    const allTimesheets: Timesheet[] = [];
     for (const empId of approvedIds) {
       const empTs = await deps.timesheets.findByEmployee(empId, period);
-      allTimesheets.push(...empTs);
+      for (const ts of empTs) {
+        approvedTimesheetIds.push(ts.id);
+      }
     }
-    const approvedTimesheetIds = allTimesheets.map((t) => t.id);
+  }
 
-    if (approvedTimesheetIds.length > 0) {
-      await deps.timesheets.bulkUpdateStatus(approvedTimesheetIds, 'Paid');
-    }
+  if (payrollTransactions.length > 0 || approvedTimesheetIds.length > 0) {
+    await deps.timesheets.runPayrollAtomic(
+      payrollTransactions,
+      approvedTimesheetIds,
+      'Paid',
+    );
   }
 
   return {
