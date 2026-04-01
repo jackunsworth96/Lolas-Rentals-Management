@@ -36,6 +36,7 @@ const AboutPage = lazy(() => import('./pages/about/AboutPage.js'));
 const PrivacyPage = lazy(() => import('./pages/privacy/PrivacyPage.js'));
 const UIErrorsPage = lazy(() => import('./pages/ui-errors/UIErrorsPage.js'));
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage.js'));
+const DirectoryPage = lazy(() => import('./pages/directory/DirectoryPage.js'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
@@ -94,6 +95,7 @@ export function AppRouter() {
           <Route path="lost-opportunity" element={<LostOpportunityPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="ui-errors" element={<UIErrorsPage />} />
+          <Route path="directory" element={<DirectoryPage />} />
         </Route>
       </Routes>
     </Suspense>

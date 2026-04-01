@@ -30,6 +30,11 @@ export interface RevenueTrendRow {
   revenue: number;
 }
 
+export interface ExpensesByCategoryRow {
+  category: string;
+  total: number;
+}
+
 export interface StoreMetrics {
   activeRentals: number;
   availableVehicles: number;
@@ -39,11 +44,14 @@ export interface StoreMetrics {
   maintenanceVehicles: MaintenanceVehicle[];
   maintenancePartsCost: number | null;
   maintenanceLabourCost: number | null;
+  expensesByCategory: ExpensesByCategoryRow[] | null;
+  expensesByCategoryLast30: ExpensesByCategoryRow[] | null;
   todayRevenue: number | null;
   miscSalesRevenue: number | null;
   addonRevenue: AddonRevenueRow[] | null;
   cashBalances: CashBalanceRow[] | null;
   revenueTrend: RevenueTrendRow[] | null;
+  revenueThisMonth: RevenueTrendRow[] | null;
 }
 
 export interface DashboardSummary {

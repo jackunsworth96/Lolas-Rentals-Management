@@ -24,3 +24,4 @@ export * from './schemas/payment-routing-schemas.js';
 export * from './schemas/ui-errors-schemas.js';
 export * from './schemas/lost-opportunity-schemas.js';
 export * from './schemas/extend-schemas.js';
+export * from './schemas/directory-schemas.js';

@@ -35,6 +35,11 @@ interface RevenueTrendRow {
   revenue: number;
 }
 
+interface ExpensesByCategoryRow {
+  category: string;
+  total: number;
+}
+
 interface StoreMetrics {
   activeRentals: number;
   availableVehicles: number;
@@ -44,11 +49,14 @@ interface StoreMetrics {
   maintenanceVehicles: MaintenanceVehicle[];
   maintenancePartsCost: number | null;
   maintenanceLabourCost: number | null;
+  expensesByCategory: ExpensesByCategoryRow[] | null;
+  expensesByCategoryLast30: ExpensesByCategoryRow[] | null;
   todayRevenue: number | null;
   miscSalesRevenue: number | null;
   addonRevenue: AddonRevenueRow[] | null;
   cashBalances: CashBalanceRow[] | null;
   revenueTrend: RevenueTrendRow[] | null;
+  revenueThisMonth: RevenueTrendRow[] | null;
 }
 
 function emptyMetrics(financial: boolean): StoreMetrics {
@@ -61,11 +69,14 @@ function emptyMetrics(financial: boolean): StoreMetrics {
     maintenanceVehicles: [],
     maintenancePartsCost: financial ? 0 : null,
     maintenanceLabourCost: financial ? 0 : null,
+    expensesByCategory: financial ? [] : null,
+    expensesByCategoryLast30: financial ? [] : null,
     todayRevenue: financial ? 0 : null,
     miscSalesRevenue: financial ? 0 : null,
     addonRevenue: financial ? [] : null,
     cashBalances: financial ? [] : null,
     revenueTrend: financial ? [] : null,
+    revenueThisMonth: financial ? [] : null,
   };
 }
 
@@ -163,6 +174,13 @@ router.get('/summary', authenticate, async (req, res, next) => {
             .then((r) => ({ key: 'revenueTrend' as const, ...r })),
 
           sb
+            .from('payments')
+            .select('amount, store_id, payment_type, created_at')
+            .gte('created_at', `${firstDayOfMonth}T00:00:00+08:00`)
+            .not('payment_type', 'in', '("deposit","refund")')
+            .then((r) => ({ key: 'revenueThisMonth' as const, ...r })),
+
+          sb
             .from('journal_entries')
             .select('debit, store_id')
             .eq('reference_type', 'maintenance_parts')
@@ -177,6 +195,20 @@ router.get('/summary', authenticate, async (req, res, next) => {
             .gte('date', firstDayOfMonth)
             .lte('date', manilaDate)
             .then((r) => ({ key: 'maintenanceLabourEntries' as const, ...r })),
+
+          sb
+            .from('expenses')
+            .select('category, amount, store_id')
+            .gte('date', firstDayOfMonth)
+            .lte('date', manilaDate)
+            .then((r) => ({ key: 'expensesMonth' as const, ...r })),
+
+          sb
+            .from('expenses')
+            .select('category, amount, store_id')
+            .gte('date', thirtyDaysAgo)
+            .lte('date', manilaDate)
+            .then((r) => ({ key: 'expenses30Days' as const, ...r })),
         ]
       : [];
 
@@ -287,6 +319,21 @@ router.get('/summary', authenticate, async (req, res, next) => {
       return result;
     }
 
+    function aggregateByCategory(
+      rows: Array<Record<string, unknown>>,
+      sid?: string,
+    ): ExpensesByCategoryRow[] {
+      const map = new Map<string, number>();
+      for (const row of rows) {
+        if (sid && row.store_id !== sid) continue;
+        const category = String(row.category ?? 'Uncategorised');
+        map.set(category, (map.get(category) ?? 0) + Number(row.amount ?? 0));
+      }
+      return Array.from(map.entries())
+        .map(([category, total]) => ({ category, total }))
+        .sort((a, b) => b.total - a.total);
+    }
+
     function buildStoreMetrics(sid?: string): StoreMetrics {
       const storeActiveOrders = sid
         ? activeOrders.filter((o) => o.store_id === sid)
@@ -352,11 +399,14 @@ router.get('/summary', authenticate, async (req, res, next) => {
 
       let maintenancePartsCost: number | null = null;
       let maintenanceLabourCost: number | null = null;
+      let expensesByCategory: ExpensesByCategoryRow[] | null = null;
+      let expensesByCategoryLast30: ExpensesByCategoryRow[] | null = null;
       let todayRevenue: number | null = null;
       let miscSalesRevenue: number | null = null;
       let addonRevenue: AddonRevenueRow[] | null = null;
       let cashBalances: CashBalanceRow[] | null = null;
       let revenueTrend: RevenueTrendRow[] | null = null;
+      let revenueThisMonth: RevenueTrendRow[] | null = null;
 
       if (canViewFinancial) {
         const todayPayments = dataMap.get('todayPayments') ?? [];
@@ -417,6 +467,20 @@ router.get('/summary', authenticate, async (req, res, next) => {
           .map(([date, revenue]) => ({ date, revenue }))
           .sort((a, b) => a.date.localeCompare(b.date));
 
+        const thisMonthData = dataMap.get('revenueThisMonth') ?? [];
+        const storeThisMonth = sid
+          ? thisMonthData.filter((t) => t.store_id === sid)
+          : thisMonthData;
+        const thisMonthMap = new Map<string, number>();
+        for (const p of storeThisMonth) {
+          const createdAt = p.created_at as string;
+          const payDate = new Date(createdAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+          thisMonthMap.set(payDate, (thisMonthMap.get(payDate) ?? 0) + Number(p.amount ?? 0));
+        }
+        revenueThisMonth = [...thisMonthMap.entries()]
+          .map(([date, revenue]) => ({ date, revenue }))
+          .sort((a, b) => a.date.localeCompare(b.date));
+
         const partsEntries = dataMap.get('maintenancePartsEntries') ?? [];
         maintenancePartsCost = partsEntries
           .filter((r) => !sid || r.store_id === sid)
@@ -426,6 +490,12 @@ router.get('/summary', authenticate, async (req, res, next) => {
         maintenanceLabourCost = labourEntries
           .filter((r) => !sid || r.store_id === sid)
           .reduce((sum, r) => sum + Number(r.debit ?? 0), 0);
+
+        const expensesMonthRows = dataMap.get('expensesMonth') ?? [];
+        expensesByCategory = aggregateByCategory(expensesMonthRows, sid);
+
+        const expenses30Rows = dataMap.get('expenses30Days') ?? [];
+        expensesByCategoryLast30 = aggregateByCategory(expenses30Rows, sid);
       }
 
       return {
@@ -437,11 +507,14 @@ router.get('/summary', authenticate, async (req, res, next) => {
         maintenanceVehicles: allMaintenance,
         maintenancePartsCost,
         maintenanceLabourCost,
+        expensesByCategory,
+        expensesByCategoryLast30,
         todayRevenue,
         miscSalesRevenue,
         addonRevenue,
         cashBalances,
         revenueTrend,
+        revenueThisMonth,
       };
     }
 

@@ -24,6 +24,7 @@ import { publicPawCardRoutes } from './public-paw-card.js';
 import { publicExtendRoutes } from './public-extend.js';
 import { publicRepairsRoutes } from './public-repairs.js';
 import { dashboardRoutes } from './dashboard.js';
+import { directoryRoutes } from './directory.js';
 import { loginLimiter, publicLimiter, apiLimiter } from '../middleware/rate-limit.js';
 
 const routes = Router();
@@ -48,6 +49,7 @@ routes.use('/maintenance', maintenanceRoutes);
 routes.use('/config', configRoutes);
 routes.use('/paw-card', pawCardRoutes);
 routes.use('/misc-sales', miscSalesRoutes);
+routes.use('/directory', directoryRoutes);
 routes.use('/merchandise', merchandiseRoutes);
 routes.use('/card-settlements', cardSettlementRoutes);
 routes.use('/public', publicTransferRoutes);

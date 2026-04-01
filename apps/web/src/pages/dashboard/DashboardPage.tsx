@@ -21,6 +21,7 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
+  Legend,
 } from 'recharts';
 
 function todayStr(): string {
@@ -75,6 +76,36 @@ export default function DashboardPage() {
     const key = storeIdForApi ?? 'combined';
     return data.stores[key] ?? Object.values(data.stores)[0] ?? null;
   }, [data, storeIdForApi]);
+
+  const expenseCategoryData = useMemo(() => {
+    if (!metrics) return [];
+    const thisMonth = metrics.expensesByCategory ?? [];
+    const last30 = metrics.expensesByCategoryLast30 ?? [];
+    const categories = Array.from(
+      new Set([...thisMonth.map((e) => e.category), ...last30.map((e) => e.category)]),
+    );
+    return categories
+      .map((category) => ({
+        category,
+        thisMonth: thisMonth.find((e) => e.category === category)?.total ?? 0,
+        last30: last30.find((e) => e.category === category)?.total ?? 0,
+      }))
+      .sort((a, b) => b.thisMonth - a.thisMonth);
+  }, [metrics]);
+
+  const revenueCategoryData = useMemo(() => {
+    if (!metrics) return [];
+    const thisMonth = metrics.revenueThisMonth ?? [];
+    const last30 = metrics.revenueTrend ?? [];
+    const dates = Array.from(
+      new Set([...thisMonth.map((r) => r.date), ...last30.map((r) => r.date)]),
+    ).sort();
+    return dates.map((date) => ({
+      date,
+      thisMonth: thisMonth.find((r) => r.date === date)?.revenue ?? 0,
+      last30: last30.find((r) => r.date === date)?.revenue ?? 0,
+    }));
+  }, [metrics]);
 
   if (isLoading) return <LoadingSkeleton />;
   if (error) {
@@ -265,29 +296,102 @@ export default function DashboardPage() {
       )}
 
       {/* SECTION 7 — Revenue Trend */}
-      {canViewFinancial && metrics.revenueTrend !== null && (metrics.revenueTrend ?? []).length > 0 && (
+      {canViewFinancial && (metrics.revenueThisMonth !== null || metrics.revenueTrend !== null) && (
         <section>
-          <SectionHeading>Revenue Trend (Last 30 Days)</SectionHeading>
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={metrics.revenueTrend ?? []} margin={{ top: 4, right: 8, bottom: 4, left: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 10 }}
-                  tickFormatter={(d: string) => d.slice(5)}
-                />
-                <YAxis
-                  tick={{ fontSize: 10 }}
-                  tickFormatter={(v: number) => `₱${(v / 1000).toFixed(0)}k`}
-                />
-                <Tooltip
-                  formatter={(value: number) => [formatCurrency(value), 'Revenue']}
-                  labelFormatter={(label: string) => `Date: ${label}`}
-                />
-                <Bar dataKey="revenue" fill="#2563eb" radius={[2, 2, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          <SectionHeading>Revenue Trend — This Month vs Last 30 Days</SectionHeading>
+          <div className="rounded-2xl bg-white p-6 shadow-sm">
+            <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
+              Revenue Trend — This Month vs Last 30 Days
+            </h3>
+            {revenueCategoryData.length === 0 ? (
+              <p className="py-8 text-center text-sm text-gray-400">
+                No revenue recorded for this period
+              </p>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart
+                  data={revenueCategoryData}
+                  margin={{ top: 5, right: 20, left: 10, bottom: 60 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 11 }}
+                    angle={-35}
+                    textAnchor="end"
+                    interval={0}
+                    tickFormatter={(d: string) => d.slice(5)}
+                  />
+                  <YAxis
+                    tickFormatter={(v: number) => `₱${(v / 1000).toFixed(0)}k`}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <Tooltip
+                    formatter={(value: number, name: string) => [
+                      formatCurrency(value),
+                      name === 'thisMonth' ? 'This Month' : 'Last 30 Days',
+                    ]}
+                  />
+                  <Legend
+                    formatter={(value) =>
+                      value === 'thisMonth' ? 'This Month' : 'Last 30 Days'
+                    }
+                  />
+                  <Bar dataKey="thisMonth" fill="#1d4ed8" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="last30" fill="#60a5fa" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* SECTION 9 — Expenses by Category */}
+      {canViewFinancial && (metrics.expensesByCategory !== null || metrics.expensesByCategoryLast30 !== null) && (
+        <section>
+          <SectionHeading>Expenses by Category</SectionHeading>
+          <div className="rounded-2xl bg-white p-6 shadow-sm">
+            <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
+              Expenses by Category — This Month vs Last 30 Days
+            </h3>
+            {expenseCategoryData.length === 0 ? (
+              <p className="py-8 text-center text-sm text-gray-400">
+                No expenses recorded for this period
+              </p>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart
+                  data={expenseCategoryData}
+                  margin={{ top: 5, right: 20, left: 10, bottom: 60 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis
+                    dataKey="category"
+                    tick={{ fontSize: 11 }}
+                    angle={-35}
+                    textAnchor="end"
+                    interval={0}
+                  />
+                  <YAxis
+                    tickFormatter={(v: number) => `₱${(v / 1000).toFixed(0)}k`}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <Tooltip
+                    formatter={(value: number, name: string) => [
+                      formatCurrency(value),
+                      name === 'thisMonth' ? 'This Month' : 'Last 30 Days',
+                    ]}
+                  />
+                  <Legend
+                    formatter={(value) =>
+                      value === 'thisMonth' ? 'This Month' : 'Last 30 Days'
+                    }
+                  />
+                  <Bar dataKey="thisMonth" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="last30" fill="#f97316" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </section>
       )}
