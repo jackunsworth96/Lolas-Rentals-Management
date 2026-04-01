@@ -10,7 +10,8 @@ export const CreateExpenseRequestSchema = z.object({
   vehicleId: z.string().nullable().default(null),
   employeeId: z.string().nullable().default(null),
   expenseAccountId: z.string(),
-  cashAccountId: z.string(),
+  cashAccountId: z.string().default(''),
+  status: z.enum(['paid', 'unpaid']).default('paid'),
 });
 
 export type CreateExpenseRequest = z.infer<typeof CreateExpenseRequestSchema>;
@@ -32,7 +33,17 @@ export type UpdateExpenseRequest = z.infer<typeof UpdateExpenseRequestSchema>;
 export const ExpenseQuerySchema = z.object({
   storeId: z.string(),
   date: z.string().optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
   category: z.string().optional(),
 });
 
 export type ExpenseQuery = z.infer<typeof ExpenseQuerySchema>;
+
+export const PayExpensesSchema = z.object({
+  expenseIds: z.array(z.string()).min(1),
+  paymentMethodId: z.string(),
+  storeId: z.string(),
+});
+
+export type PayExpensesRequest = z.infer<typeof PayExpensesSchema>;

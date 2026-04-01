@@ -5,13 +5,11 @@ import {
   type MaintenanceRepository,
   type FleetRepository,
 } from '@lolas/domain';
-import { randomUUID } from 'node:crypto';
 import {
-  createMaintenanceExpenseRpc,
-  updateMaintenanceExpenseRpc,
+  upsertMaintenanceExpensesRpc,
   deleteMaintenanceExpenseRpc,
-  findExpenseByMaintenanceId,
   getStoreDefaultCashAccount,
+  getMaintenanceExpenseAccount,
 } from '../../adapters/supabase/maintenance-expense-rpc.js';
 
 export interface SaveMaintenanceInput {
@@ -35,12 +33,6 @@ export interface SaveMaintenanceInput {
   cashAccountId?: string | null;
 }
 
-function buildDescription(vehicleName: string | null, issue: string | null): string {
-  const veh = vehicleName ?? 'Vehicle';
-  const iss = (issue ?? '').slice(0, 50);
-  return `Maintenance — ${veh} — ${iss}`;
-}
-
 export async function saveMaintenance(
   maintenanceId: string,
   input: SaveMaintenanceInput,
@@ -54,7 +46,6 @@ export async function saveMaintenance(
   const partsCost = input.partsCost ?? existing.partsCost.toNumber();
   const laborCost = input.laborCost ?? existing.laborCost.toNumber();
   const totalCost = partsCost + laborCost;
-  const oldTotalCost = existing.totalCost.toNumber();
 
   let downtimeDays: number | null = existing.totalDowntimeDays;
   const dtStart = input.downtimeStart !== undefined ? input.downtimeStart : existing.downtimeStart;
@@ -105,52 +96,31 @@ export async function saveMaintenance(
     }
   }
 
-  // ── Atomic expense + journal entry management ──
-  const linkedExpense = await findExpenseByMaintenanceId(maintenanceId);
-  const description = buildDescription(updated.vehicleName, updated.issueDescription);
+  // ── Expense + journal entry management ──
+  const cashAccountId =
+    input.cashAccountId ??
+    (input.paidFrom !== undefined ? input.paidFrom : existing.paidFrom) ??
+    (await getStoreDefaultCashAccount(updated.storeId));
 
-  if (totalCost > 0) {
-    const cashAccountId = input.cashAccountId
-      ?? (input.paidFrom !== undefined ? input.paidFrom : existing.paidFrom)
-      ?? await getStoreDefaultCashAccount(updated.storeId);
+  if (totalCost > 0 && cashAccountId) {
+    const expenseAccountId =
+      input.expenseAccountId ??
+      (await getMaintenanceExpenseAccount(updated.storeId)) ??
+      cashAccountId;
 
-    if (cashAccountId) {
-      const expenseAccountId = input.expenseAccountId ?? cashAccountId;
-
-      if (linkedExpense) {
-        if (totalCost !== oldTotalCost || input.paidFrom !== undefined) {
-          await updateMaintenanceExpenseRpc({
-            expenseId: linkedExpense.id,
-            amount: totalCost,
-            description,
-            expenseAccountId,
-            cashAccountId,
-            jeDebitId: randomUUID(),
-            jeCreditId: randomUUID(),
-            transactionId: randomUUID(),
-          });
-        }
-      } else {
-        await createMaintenanceExpenseRpc({
-          expenseId: randomUUID(),
-          maintenanceId,
-          storeId: updated.storeId,
-          date: new Date().toISOString().split('T')[0],
-          category: 'Maintenance',
-          description,
-          amount: totalCost,
-          paidFrom: cashAccountId,
-          vehicleId: updated.assetId,
-          employeeId: updated.employeeId,
-          expenseAccountId,
-          cashAccountId,
-          jeDebitId: randomUUID(),
-          jeCreditId: randomUUID(),
-          transactionId: randomUUID(),
-        });
-      }
-    }
-  } else if (totalCost === 0 && linkedExpense) {
+    await upsertMaintenanceExpensesRpc({
+      maintenanceId,
+      storeId: updated.storeId,
+      date: new Date().toISOString().split('T')[0],
+      vehicleId: updated.assetId,
+      employeeId: updated.employeeId,
+      partsCost,
+      laborCost,
+      cashAccountId,
+      expenseAccountId,
+      issueDescription: updated.issueDescription ?? '',
+    });
+  } else if (totalCost === 0) {
     await deleteMaintenanceExpenseRpc(maintenanceId);
   }
 

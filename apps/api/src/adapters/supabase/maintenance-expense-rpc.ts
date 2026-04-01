@@ -1,88 +1,174 @@
 import { getSupabaseClient } from './client.js';
+import { randomUUID } from 'node:crypto';
 
-export interface CreateMaintenanceExpenseParams {
-  expenseId: string;
+export interface UpsertMaintenanceExpensesParams {
   maintenanceId: string;
   storeId: string;
   date: string;
-  category: string;
-  description: string;
-  amount: number;
-  paidFrom: string | null;
   vehicleId: string;
   employeeId: string | null;
-  expenseAccountId: string;
+  partsCost: number;
+  laborCost: number;
   cashAccountId: string;
-  jeDebitId: string;
-  jeCreditId: string;
-  transactionId: string;
-}
-
-export interface UpdateMaintenanceExpenseParams {
-  expenseId: string;
-  amount: number;
-  description: string;
   expenseAccountId: string;
-  cashAccountId: string;
-  jeDebitId: string;
-  jeCreditId: string;
-  transactionId: string;
+  issueDescription: string;
 }
 
-export async function createMaintenanceExpenseRpc(params: CreateMaintenanceExpenseParams): Promise<void> {
+/**
+ * Upserts separate expense rows + journal entry pairs for parts and labour costs.
+ * Uses deterministic expense IDs ({maintenanceId}-parts / {maintenanceId}-labour) so
+ * repeated calls safely overwrite previous entries without needing a lookup.
+ * Delegates to create_expense_with_journal (migration 045/050).
+ */
+export async function upsertMaintenanceExpensesRpc(
+  params: UpsertMaintenanceExpensesParams,
+): Promise<void> {
   const sb = getSupabaseClient();
-  const { error } = await sb.rpc('create_maintenance_expense', {
-    p_expense_id: params.expenseId,
-    p_maintenance_id: params.maintenanceId,
-    p_store_id: params.storeId,
-    p_date: params.date,
-    p_category: params.category,
-    p_description: params.description,
-    p_amount: params.amount,
-    p_paid_from: params.paidFrom,
-    p_vehicle_id: params.vehicleId,
-    p_employee_id: params.employeeId,
-    p_expense_account_id: params.expenseAccountId,
-    p_cash_account_id: params.cashAccountId,
-    p_je_debit_id: params.jeDebitId,
-    p_je_credit_id: params.jeCreditId,
-    p_transaction_id: params.transactionId,
+  const period = params.date.slice(0, 7);
+
+  const partsExpenseId = `${params.maintenanceId}-parts`;
+  const labourExpenseId = `${params.maintenanceId}-labour`;
+
+  // ── Parts ──
+  // Always delete first (idempotent – deletes 0 rows on first run) to avoid
+  // duplicate journal entries on subsequent upserts.
+  await sb.rpc('delete_expense_with_journal', {
+    p_expense_id: partsExpenseId,
+    p_reference_type: 'maintenance_parts',
+    p_reference_id: params.maintenanceId,
   });
-  if (error) throw new Error(`create_maintenance_expense RPC failed: ${error.message}`);
+  if (params.partsCost > 0) {
+    const desc = `Maintenance parts — ${params.issueDescription}`.slice(0, 200);
+    const { error } = await sb.rpc('create_expense_with_journal', {
+      p_expense_id: partsExpenseId,
+      p_store_id: params.storeId,
+      p_date: params.date,
+      p_category: 'Maintenance Parts',
+      p_description: desc,
+      p_amount: params.partsCost,
+      p_paid_from: params.cashAccountId,
+      p_vehicle_id: params.vehicleId,
+      p_employee_id: params.employeeId,
+      p_account_id: params.expenseAccountId,
+      p_status: 'paid',
+      p_transaction_id: randomUUID(),
+      p_period: period,
+      p_journal_date: params.date,
+      p_journal_store_id: params.storeId,
+      p_created_by: null,
+      p_legs: [
+        {
+          id: randomUUID(),
+          account_id: params.expenseAccountId,
+          debit: params.partsCost,
+          credit: 0,
+          description: desc,
+          reference_type: 'maintenance_parts',
+          reference_id: params.maintenanceId,
+        },
+        {
+          id: randomUUID(),
+          account_id: params.cashAccountId,
+          debit: 0,
+          credit: params.partsCost,
+          description: desc,
+          reference_type: 'maintenance_parts',
+          reference_id: params.maintenanceId,
+        },
+      ],
+    });
+    if (error) throw new Error(`create_expense_with_journal (parts) failed: ${error.message}`);
+  }
+
+  // ── Labour ──
+  await sb.rpc('delete_expense_with_journal', {
+    p_expense_id: labourExpenseId,
+    p_reference_type: 'maintenance_labour',
+    p_reference_id: params.maintenanceId,
+  });
+  if (params.laborCost > 0) {
+    const desc = `Maintenance labour — ${params.issueDescription}`.slice(0, 200);
+    const { error } = await sb.rpc('create_expense_with_journal', {
+      p_expense_id: labourExpenseId,
+      p_store_id: params.storeId,
+      p_date: params.date,
+      p_category: 'Maintenance Labour',
+      p_description: desc,
+      p_amount: params.laborCost,
+      p_paid_from: params.cashAccountId,
+      p_vehicle_id: params.vehicleId,
+      p_employee_id: params.employeeId,
+      p_account_id: params.expenseAccountId,
+      p_status: 'paid',
+      p_transaction_id: randomUUID(),
+      p_period: period,
+      p_journal_date: params.date,
+      p_journal_store_id: params.storeId,
+      p_created_by: null,
+      p_legs: [
+        {
+          id: randomUUID(),
+          account_id: params.expenseAccountId,
+          debit: params.laborCost,
+          credit: 0,
+          description: desc,
+          reference_type: 'maintenance_labour',
+          reference_id: params.maintenanceId,
+        },
+        {
+          id: randomUUID(),
+          account_id: params.cashAccountId,
+          debit: 0,
+          credit: params.laborCost,
+          description: desc,
+          reference_type: 'maintenance_labour',
+          reference_id: params.maintenanceId,
+        },
+      ],
+    });
+    if (error) throw new Error(`create_expense_with_journal (labour) failed: ${error.message}`);
+  }
 }
 
-export async function updateMaintenanceExpenseRpc(params: UpdateMaintenanceExpenseParams): Promise<void> {
-  const sb = getSupabaseClient();
-  const { error } = await sb.rpc('update_maintenance_expense', {
-    p_expense_id: params.expenseId,
-    p_amount: params.amount,
-    p_description: params.description,
-    p_expense_account_id: params.expenseAccountId,
-    p_cash_account_id: params.cashAccountId,
-    p_je_debit_id: params.jeDebitId,
-    p_je_credit_id: params.jeCreditId,
-    p_transaction_id: params.transactionId,
-  });
-  if (error) throw new Error(`update_maintenance_expense RPC failed: ${error.message}`);
-}
-
+/**
+ * Removes both the parts and labour expenses and their journal entries for a
+ * given maintenance record. Safe to call even if no expenses exist.
+ */
 export async function deleteMaintenanceExpenseRpc(maintenanceId: string): Promise<void> {
   const sb = getSupabaseClient();
-  const { error } = await sb.rpc('delete_maintenance_expense', {
-    p_maintenance_id: maintenanceId,
+
+  const { error: e1 } = await sb.rpc('delete_expense_with_journal', {
+    p_expense_id: `${maintenanceId}-parts`,
+    p_reference_type: 'maintenance_parts',
+    p_reference_id: maintenanceId,
   });
-  if (error) throw new Error(`delete_maintenance_expense RPC failed: ${error.message}`);
+  if (e1) throw new Error(`delete parts expense failed: ${e1.message}`);
+
+  const { error: e2 } = await sb.rpc('delete_expense_with_journal', {
+    p_expense_id: `${maintenanceId}-labour`,
+    p_reference_type: 'maintenance_labour',
+    p_reference_id: maintenanceId,
+  });
+  if (e2) throw new Error(`delete labour expense failed: ${e2.message}`);
 }
 
-export async function findExpenseByMaintenanceId(maintenanceId: string): Promise<{ id: string; amount: number } | null> {
+/** Looks up a maintenance expense account for the store (type=Expense, name contains 'maintenance' or 'vehicle'). Falls back to the first Expense account. Returns null if none found. */
+export async function getMaintenanceExpenseAccount(storeId: string): Promise<string | null> {
   const sb = getSupabaseClient();
   const { data, error } = await sb
-    .from('expenses')
-    .select('id, amount')
-    .eq('maintenance_id', maintenanceId)
-    .maybeSingle();
-  if (error) throw new Error(`Failed to look up expense for maintenance ${maintenanceId}: ${error.message}`);
-  return data ? { id: data.id as string, amount: Number(data.amount) } : null;
+    .from('chart_of_accounts')
+    .select('id, name, account_type')
+    .in('store_id', [storeId, 'company'])
+    .eq('account_type', 'Expense')
+    .eq('is_active', true);
+  if (error) return null;
+  const accounts = (data ?? []) as Array<{ id: string; name: string }>;
+  const keyword = accounts.find(
+    (a) =>
+      a.name.toLowerCase().includes('maintenance') ||
+      a.name.toLowerCase().includes('vehicle'),
+  );
+  return (keyword ?? accounts[0])?.id ?? null;
 }
 
 export async function getStoreDefaultCashAccount(storeId: string): Promise<string | null> {

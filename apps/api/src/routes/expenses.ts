@@ -7,8 +7,10 @@ import {
   CreateExpenseRequestSchema,
   UpdateExpenseRequestSchema,
   ExpenseQuerySchema,
+  PayExpensesSchema,
 } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
+import { randomUUID } from 'node:crypto';
 
 const router = Router();
 router.use(authenticate);
@@ -20,19 +22,31 @@ router.get(
   validateQuery(ExpenseQuerySchema),
   async (req, res, next) => {
     try {
-      const { storeId, date } = req.query as { storeId: string; date?: string };
-      const effectiveDate = date ?? new Date().toISOString().split('T')[0];
+      const { storeId, date, dateFrom, dateTo } = req.query as {
+        storeId: string;
+        date?: string;
+        dateFrom?: string;
+        dateTo?: string;
+      };
 
       const sb = getSupabaseClient();
 
+      let expensesQuery = sb
+        .from('expenses')
+        .select('*')
+        .eq('store_id', storeId)
+        .order('created_at', { ascending: true });
+
+      if (dateFrom && dateTo) {
+        expensesQuery = expensesQuery.gte('date', dateFrom).lte('date', dateTo);
+      } else {
+        const effectiveDate = date ?? new Date().toISOString().split('T')[0];
+        expensesQuery = expensesQuery.eq('date', effectiveDate);
+      }
+
       const [expensesRes, accountsRes, fleetRes, employeesRes] =
         await Promise.all([
-          sb
-            .from('expenses')
-            .select('*')
-            .eq('store_id', storeId)
-            .eq('date', effectiveDate)
-            .order('created_at', { ascending: true }),
+          expensesQuery,
           sb
             .from('chart_of_accounts')
             .select('id, name, account_type')
@@ -92,6 +106,8 @@ router.get(
               : null,
             accountId: r.account_id,
             accountName: expenseAcct?.name ?? null,
+            status: (r.status as string) ?? 'paid',
+            paidAt: (r.paid_at as string) ?? null,
             createdAt: r.created_at,
           };
         },
@@ -164,6 +180,93 @@ router.delete(
         },
       );
       res.json({ success: true, data: { deleted: true } });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ── POST /pay — batch-pay unpaid expenses ──
+router.post(
+  '/pay',
+  requirePermission(Permission.EditExpenses),
+  validateBody(PayExpensesSchema),
+  async (req, res, next) => {
+    try {
+      const { expenseIds, paymentMethodId, storeId } = req.body as {
+        expenseIds: string[];
+        paymentMethodId: string;
+        storeId: string;
+      };
+
+      const sb = getSupabaseClient();
+
+      const { data: expenseRows, error: expErr } = await sb
+        .from('expenses')
+        .select('id, amount, account_id, category')
+        .in('id', expenseIds);
+      if (expErr) throw new Error(`Failed to fetch expenses: ${expErr.message}`);
+
+      const { data: routingRows, error: routeErr } = await sb
+        .from('payment_routing_rules')
+        .select('received_into_account_id')
+        .eq('store_id', storeId)
+        .eq('payment_method_id', paymentMethodId)
+        .limit(1);
+      if (routeErr)
+        throw new Error(`Failed to fetch routing rules: ${routeErr.message}`);
+
+      const resolvedAccountId = (routingRows?.[0] as Record<string, unknown> | undefined)
+        ?.received_into_account_id as string | undefined;
+      if (!resolvedAccountId)
+        throw new Error('No payment routing rule found for the selected method');
+
+      const now = new Date();
+      const todayDate = now.toISOString().slice(0, 10);
+      const period = todayDate.slice(0, 7);
+      const txId = randomUUID();
+
+      const legs: Record<string, unknown>[] = [];
+      for (const row of (expenseRows ?? []) as Record<string, unknown>[]) {
+        const amt = Number(row.amount ?? 0);
+        legs.push({
+          id: randomUUID(),
+          transaction_id: txId,
+          period,
+          date: todayDate,
+          store_id: storeId,
+          account_id: row.account_id as string,
+          debit: amt,
+          credit: 0,
+          description: `Batch payment - ${row.category as string}`,
+          reference_type: 'expense',
+          reference_id: row.id as string,
+        });
+        legs.push({
+          id: randomUUID(),
+          transaction_id: txId,
+          period,
+          date: todayDate,
+          store_id: storeId,
+          account_id: resolvedAccountId,
+          debit: 0,
+          credit: amt,
+          description: `Batch payment - ${row.category as string}`,
+          reference_type: 'expense',
+          reference_id: row.id as string,
+        });
+      }
+
+      const { error: payErr } = await sb.rpc('pay_expenses_atomic', {
+        p_expense_ids: expenseIds,
+        p_paid_at: now.toISOString(),
+        p_paid_from: resolvedAccountId,
+        p_legs: legs,
+      });
+      if (payErr)
+        throw new Error(`pay_expenses_atomic failed: ${payErr.message}`);
+
+      res.json({ success: true });
     } catch (err) {
       next(err);
     }

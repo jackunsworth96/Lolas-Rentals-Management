@@ -3,11 +3,10 @@ import {
   type FleetRepository,
   DomainError,
 } from '@lolas/domain';
-import { randomUUID } from 'node:crypto';
 import {
-  createMaintenanceExpenseRpc,
-  findExpenseByMaintenanceId,
+  upsertMaintenanceExpensesRpc,
   getStoreDefaultCashAccount,
+  getMaintenanceExpenseAccount,
 } from '../../adapters/supabase/maintenance-expense-rpc.js';
 
 export interface CompleteMaintenanceInput {
@@ -50,36 +49,24 @@ export async function completeMaintenance(
 
   await deps.maintenance.save(record);
 
-  let expenseId: string | null = null;
-
   if (totalCost > 0) {
-    const existing = await findExpenseByMaintenanceId(record.id);
-    if (!existing) {
-      const cashAccountId = input.paidFrom ?? await getStoreDefaultCashAccount(record.storeId);
-      if (cashAccountId) {
-        expenseId = randomUUID();
-        const vehicleName = record.vehicleName ?? 'Vehicle';
-        const issue = (record.issueDescription ?? '').slice(0, 50);
-        const description = `Maintenance — ${vehicleName} — ${issue}`;
+    const cashAccountId = input.paidFrom ?? await getStoreDefaultCashAccount(record.storeId);
+    if (cashAccountId) {
+      const expenseAccountId =
+        (await getMaintenanceExpenseAccount(record.storeId)) ?? cashAccountId;
 
-        await createMaintenanceExpenseRpc({
-          expenseId,
-          maintenanceId: record.id,
-          storeId: record.storeId,
-          date: new Date().toISOString().split('T')[0],
-          category: 'Maintenance',
-          description,
-          amount: totalCost,
-          paidFrom: cashAccountId,
-          vehicleId: record.assetId,
-          employeeId: record.employeeId,
-          expenseAccountId: cashAccountId,
-          cashAccountId,
-          jeDebitId: randomUUID(),
-          jeCreditId: randomUUID(),
-          transactionId: randomUUID(),
-        });
-      }
+      await upsertMaintenanceExpensesRpc({
+        maintenanceId: record.id,
+        storeId: record.storeId,
+        date: new Date().toISOString().split('T')[0],
+        vehicleId: record.assetId,
+        employeeId: record.employeeId,
+        partsCost: input.partsCost,
+        laborCost: input.laborCost,
+        cashAccountId,
+        expenseAccountId,
+        issueDescription: record.issueDescription ?? '',
+      });
     }
   }
 
@@ -87,6 +74,6 @@ export async function completeMaintenance(
     maintenanceId: record.id,
     vehicleId: record.assetId,
     totalCost,
-    expenseId,
+    expenseId: null,
   };
 }

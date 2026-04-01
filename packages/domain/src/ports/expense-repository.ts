@@ -25,6 +25,7 @@ export interface ExpenseRepository {
     transaction: JournalTransaction,
     createdBy: string | null,
   ): Promise<void>;
+  createUnpaid(expense: Expense): Promise<void>;
   deleteWithJournal(
     expenseId: string,
     referenceType: string,

@@ -16,6 +16,8 @@ export interface EnrichedExpense {
   employeeName: string | null;
   accountId: string | null;
   accountName: string | null;
+  status: 'paid' | 'unpaid';
+  paidAt: string | null;
   createdAt: string;
 }
 
@@ -42,6 +44,7 @@ export function useCreateExpense() {
       employeeId: string | null;
       expenseAccountId: string;
       cashAccountId: string;
+      status?: 'paid' | 'unpaid';
     }) => api.post('/expenses', body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['expenses'] }),
   });
@@ -73,6 +76,18 @@ export function useDeleteExpense() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.delete(`/expenses/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['expenses'] }),
+  });
+}
+
+export function usePayExpenses() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      expenseIds: string[];
+      paymentMethodId: string;
+      storeId: string;
+    }) => api.post('/expenses/pay', body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['expenses'] }),
   });
 }

@@ -19,6 +19,7 @@ export interface CreateExpenseInput {
   employeeId: string | null;
   expenseAccountId: string;
   cashAccountId: string;
+  status?: 'paid' | 'unpaid';
 }
 
 export interface CreateExpenseResult {
@@ -82,7 +83,11 @@ export async function createExpense(
     createdBy: null,
   });
 
-  await deps.expenses.createWithJournal(expense, transaction, null);
+  if (input.status === 'unpaid') {
+    await deps.expenses.createUnpaid(expense);
+  } else {
+    await deps.expenses.createWithJournal(expense, transaction, null);
+  }
 
   return { expense };
 }

@@ -5,6 +5,7 @@ import {
   useCreateExpense,
   useUpdateExpense,
   useDeleteExpense,
+  usePayExpenses,
   type EnrichedExpense,
 } from '../../api/expenses.js';
 import {
@@ -85,6 +86,7 @@ const EMPTY_FORM = {
   employeeId: '',
   expenseAccountId: '',
   cashAccountId: '',
+  isUnpaid: false,
 };
 
 export default function ExpensesPage() {
@@ -113,6 +115,17 @@ export default function ExpensesPage() {
   const createMut = useCreateExpense();
   const updateMut = useUpdateExpense();
   const deleteMut = useDeleteExpense();
+  const payMut = usePayExpenses();
+
+  const [filterStatus, setFilterStatus] = useState<'all' | 'paid' | 'unpaid'>('all');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showPayModal, setShowPayModal] = useState(false);
+  const [payMethodId, setPayMethodId] = useState('');
+
+  const filteredExpenses = useMemo(() => {
+    if (filterStatus === 'all') return expenses;
+    return expenses.filter((e) => e.status === filterStatus);
+  }, [expenses, filterStatus]);
 
   const storeAccounts = useMemo(
     () =>
@@ -182,6 +195,7 @@ export default function ExpensesPage() {
       employeeId: expense.employeeId ?? '',
       expenseAccountId: expense.accountId ?? '',
       cashAccountId: expense.paidFrom ?? '',
+      isUnpaid: expense.status === 'unpaid',
     });
     setShowModal(true);
   }
@@ -204,10 +218,10 @@ export default function ExpensesPage() {
       !form.description ||
       !amount ||
       amount <= 0 ||
-      !form.expenseAccountId ||
-      !form.paymentMethodId
+      !form.expenseAccountId
     )
       return;
+    if (!form.isUnpaid && !form.paymentMethodId) return;
     if (isCashAdvance && !form.employeeId) return;
 
     if (editingId) {
@@ -234,11 +248,12 @@ export default function ExpensesPage() {
           category: form.category,
           description: form.description,
           amount,
-          paidFrom: form.cashAccountId || null,
+          paidFrom: form.isUnpaid ? null : (form.cashAccountId || null),
           vehicleId: form.vehicleId || null,
           employeeId: form.employeeId || null,
           expenseAccountId: form.expenseAccountId,
-          cashAccountId: form.cashAccountId,
+          cashAccountId: form.isUnpaid ? '' : form.cashAccountId,
+          status: form.isUnpaid ? 'unpaid' : 'paid',
         },
         { onSuccess: () => setShowModal(false) },
       );
@@ -249,6 +264,33 @@ export default function ExpensesPage() {
     deleteMut.mutate(id, {
       onSuccess: () => setShowDeleteConfirm(null),
     });
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function handlePaySelected() {
+    if (!payMethodId || selectedIds.size === 0) return;
+    payMut.mutate(
+      {
+        expenseIds: Array.from(selectedIds),
+        paymentMethodId: payMethodId,
+        storeId,
+      },
+      {
+        onSuccess: () => {
+          setSelectedIds(new Set());
+          setShowPayModal(false);
+          setPayMethodId('');
+        },
+      },
+    );
   }
 
   function vehicleLabel(v: VehicleConfig): string {
@@ -369,24 +411,66 @@ export default function ExpensesPage() {
             )}
           </div>
 
+          {/* Filter tabs */}
+          <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1">
+            {(['all', 'paid', 'unpaid'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => { setFilterStatus(tab); setSelectedIds(new Set()); }}
+                className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  filterStatus === tab
+                    ? 'bg-gray-900 text-white'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                {tab === 'all' ? 'All' : tab === 'paid' ? 'Paid' : 'Unpaid'}
+                {tab !== 'all' && (
+                  <span className="ml-1.5 text-xs opacity-75">
+                    ({expenses.filter((e) => e.status === tab).length})
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Batch pay bar */}
+          {filterStatus === 'unpaid' && selectedIds.size > 0 && (
+            <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-2">
+              <span className="text-sm font-medium text-amber-800">
+                {selectedIds.size} expense{selectedIds.size > 1 ? 's' : ''} selected
+              </span>
+              <Button onClick={() => setShowPayModal(true)}>
+                Pay selected ({selectedIds.size})
+              </Button>
+            </div>
+          )}
+
           {/* Expense list */}
           <div className="rounded-lg border border-gray-200 bg-white">
             <div className="border-b border-gray-100 px-4 py-3">
               <h2 className="text-sm font-semibold text-gray-900">
-                Expenses ({expenses.length})
+                Expenses ({filteredExpenses.length})
               </h2>
             </div>
-            {expenses.length === 0 ? (
+            {filteredExpenses.length === 0 ? (
               <div className="px-4 py-12 text-center text-sm text-gray-400">
                 No expenses for this date. Click "Add Expense" to record one.
               </div>
             ) : (
               <div className="divide-y divide-gray-50">
-                {expenses.map((e) => (
+                {filteredExpenses.map((e) => (
                   <div
                     key={e.id}
                     className="group flex items-center gap-4 px-4 py-3 hover:bg-gray-50"
                   >
+                    {filterStatus === 'unpaid' && (
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(e.id)}
+                        onChange={() => toggleSelect(e.id)}
+                        className="h-4 w-4 rounded border-gray-300"
+                      />
+                    )}
                     <div
                       className="min-w-0 flex-1 cursor-pointer"
                       onClick={() => openEdit(e)}
@@ -395,6 +479,11 @@ export default function ExpensesPage() {
                         <span className="text-sm font-semibold text-gray-900">
                           {e.category}
                         </span>
+                        {e.status === 'unpaid' && (
+                          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                            UNPAID
+                          </span>
+                        )}
                         {e.category.toLowerCase() === 'cash advance' && (
                           <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
                             CASH ADVANCE
@@ -540,34 +629,51 @@ export default function ExpensesPage() {
                 />
               </div>
 
-              {/* Payment method (paid from) */}
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Paid From *
+              {/* Log as unpaid toggle */}
+              {!editingId && (
+                <label className="flex items-center gap-2 text-sm text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={form.isUnpaid}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, isUnpaid: e.target.checked }))
+                    }
+                    className="h-4 w-4 rounded border-gray-300"
+                  />
+                  Log as unpaid (pay later)
                 </label>
-                <select
-                  value={form.paymentMethodId}
-                  onChange={(e) => {
-                    const methodId = e.target.value;
-                    const resolvedAccountId = routing.resolveReceivedIntoForStore(
-                      storeId,
-                      methodId,
-                    ) ?? '';
-                    setForm((f) => ({
-                      ...f,
-                      paymentMethodId: methodId,
-                      paidFrom: resolvedAccountId,
-                      cashAccountId: resolvedAccountId,
-                    }));
-                  }}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                >
-                  <option value="">Select payment method...</option>
-                  {paymentMethods.map((m) => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
-                  ))}
-                </select>
-              </div>
+              )}
+
+              {/* Payment method (paid from) — hidden for unpaid */}
+              {!form.isUnpaid && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Paid From *
+                  </label>
+                  <select
+                    value={form.paymentMethodId}
+                    onChange={(e) => {
+                      const methodId = e.target.value;
+                      const resolvedAccountId = routing.resolveReceivedIntoForStore(
+                        storeId,
+                        methodId,
+                      ) ?? '';
+                      setForm((f) => ({
+                        ...f,
+                        paymentMethodId: methodId,
+                        paidFrom: resolvedAccountId,
+                        cashAccountId: resolvedAccountId,
+                      }));
+                    }}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    <option value="">Select payment method...</option>
+                    {paymentMethods.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* Expense Account (category mapping) */}
               <div>
@@ -665,7 +771,7 @@ export default function ExpensesPage() {
                   !form.amount ||
                   parseFloat(form.amount) <= 0 ||
                   !form.expenseAccountId ||
-                  !form.paymentMethodId ||
+                  (!form.isUnpaid && !form.paymentMethodId) ||
                   (isCashAdvance && !form.employeeId)
                 }
               >
@@ -702,6 +808,59 @@ export default function ExpensesPage() {
                 loading={deleteMut.isPending}
               >
                 Delete
+              </Button>
+            </div>
+          </div>
+        </ModalOverlay>
+      )}
+
+      {/* ── Pay Selected Modal ── */}
+      {showPayModal && (
+        <ModalOverlay onClose={() => setShowPayModal(false)}>
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+            <h2 className="mb-2 text-lg font-bold text-gray-900">
+              Pay {selectedIds.size} Expense{selectedIds.size > 1 ? 's' : ''}
+            </h2>
+            <p className="mb-4 text-sm text-gray-600">
+              Total:{' '}
+              <span className="font-semibold text-gray-900">
+                {formatCurrency(
+                  expenses
+                    .filter((e) => selectedIds.has(e.id))
+                    .reduce((s, e) => s + e.amount, 0),
+                )}
+              </span>
+            </p>
+            <div className="mb-4">
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                Payment Method *
+              </label>
+              <select
+                value={payMethodId}
+                onChange={(e) => setPayMethodId(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              >
+                <option value="">Select payment method...</option>
+                {paymentMethods.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-3">
+              <Button
+                variant="secondary"
+                className="flex-1"
+                onClick={() => setShowPayModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={handlePaySelected}
+                loading={payMut.isPending}
+                disabled={!payMethodId}
+              >
+                Confirm Payment
               </Button>
             </div>
           </div>

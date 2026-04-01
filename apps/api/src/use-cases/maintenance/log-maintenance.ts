@@ -7,8 +7,9 @@ import {
 } from '@lolas/domain';
 import { randomUUID } from 'node:crypto';
 import {
-  createMaintenanceExpenseRpc,
+  upsertMaintenanceExpensesRpc,
   getStoreDefaultCashAccount,
+  getMaintenanceExpenseAccount,
 } from '../../adapters/supabase/maintenance-expense-rpc.js';
 
 export interface LogMaintenanceInput {
@@ -92,25 +93,22 @@ export async function logMaintenance(
   await deps.maintenance.save(record);
 
   if (totalCost > 0 && resolvedCashAccountId) {
-    const expenseAccountId = input.expenseAccountId ?? resolvedCashAccountId;
-    const description = buildDescription(record.vehicleName, record.issueDescription);
+    const expenseAccountId =
+      input.expenseAccountId ??
+      (await getMaintenanceExpenseAccount(input.storeId)) ??
+      resolvedCashAccountId;
 
-    await createMaintenanceExpenseRpc({
-      expenseId: randomUUID(),
+    await upsertMaintenanceExpensesRpc({
       maintenanceId: record.id,
       storeId: record.storeId,
       date: new Date().toISOString().split('T')[0],
-      category: 'Maintenance',
-      description,
-      amount: totalCost,
-      paidFrom: resolvedCashAccountId,
       vehicleId: record.assetId,
       employeeId: record.employeeId,
-      expenseAccountId,
+      partsCost,
+      laborCost,
       cashAccountId: resolvedCashAccountId,
-      jeDebitId: randomUUID(),
-      jeCreditId: randomUUID(),
-      transactionId: randomUUID(),
+      expenseAccountId,
+      issueDescription: input.issueDescription,
     });
   }
 

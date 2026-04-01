@@ -77,6 +77,25 @@ export function createExpenseRepo(): ExpenseRepository {
       if (error) throw new Error(`Failed to delete expense: ${error.message}`);
     },
 
+    async createUnpaid(expense) {
+      const row = toRow(expense);
+      const { error } = await sb.rpc('create_expense_with_journal', {
+        p_expense_id:  row.id,
+        p_store_id:    row.store_id,
+        p_date:        row.date,
+        p_category:    row.category,
+        p_description: row.description ?? null,
+        p_amount:      row.amount,
+        p_paid_from:   row.paid_from ?? null,
+        p_vehicle_id:  row.vehicle_id ?? null,
+        p_employee_id: row.employee_id ?? null,
+        p_account_id:  row.account_id ?? null,
+        p_status:      'unpaid',
+        p_legs:        [],
+      });
+      if (error) throw new Error(`createUnpaid failed: ${error.message}`);
+    },
+
     async createWithJournal(expense, transaction, createdBy) {
       const row = toRow(expense);
 
