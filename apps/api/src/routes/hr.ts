@@ -23,7 +23,23 @@ router.get('/timesheets', requirePermission(Permission.ViewTimesheets), validate
     const { storeId, periodStart, periodEnd } = req.query as Record<string, string>;
     const period = { start: new Date(periodStart), end: new Date(periodEnd) };
     const timesheets = await req.app.locals.deps.timesheetRepo.findByPeriod(storeId, period);
-    res.json({ success: true, data: timesheets });
+    const data = timesheets.map((t) => ({
+      id: t.id,
+      date: t.date,
+      employeeId: t.employeeId,
+      name: t.name ?? null,
+      dayType: t.dayType,
+      timeIn: t.timeIn ?? null,
+      timeOut: t.timeOut ?? null,
+      regularHours: t.regularHours,
+      overtimeHours: t.overtimeHours,
+      ninePmReturnsCount: t.ninePmReturnsCount,
+      dailyNotes: t.dailyNotes ?? null,
+      payrollStatus: t.payrollStatus,
+      silInflation: t.silInflation,
+      storeId: t.storeId,
+    }));
+    res.json({ success: true, data });
   } catch (err) { next(err); }
 });
 

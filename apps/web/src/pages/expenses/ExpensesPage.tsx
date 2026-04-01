@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useUIStore } from '../../stores/ui-store.js';
 import {
   useExpenses,
@@ -10,6 +10,7 @@ import {
 import {
   useExpenseCategories,
   useChartOfAccounts,
+  usePaymentMethods,
 } from '../../api/config.js';
 import { useFleet } from '../../api/fleet.js';
 import { useEmployees } from '../../api/hr.js';
@@ -78,6 +79,7 @@ const EMPTY_FORM = {
   category: '',
   description: '',
   amount: '',
+  paymentMethodId: '',
   paidFrom: '',
   vehicleId: '',
   employeeId: '',
@@ -102,6 +104,9 @@ export default function ExpensesPage() {
   const { data: employees = [] } = useEmployees(storeId) as {
     data: EmployeeConfig[] | undefined;
   };
+  const { data: paymentMethods = [] } = usePaymentMethods() as {
+    data: Array<{ id: string; name: string }> | undefined;
+  };
 
   const routing = usePaymentRouting();
 
@@ -116,13 +121,6 @@ export default function ExpensesPage() {
         return sid === storeId || sid === 'company';
       }),
     [allAccounts, storeId],
-  );
-  const assetAccounts = useMemo(
-    () =>
-      storeAccounts.filter(
-        (a) => (a.accountType ?? a.account_type) === 'Asset',
-      ),
-    [storeAccounts],
   );
   const expenseAccounts = useMemo(
     () =>
@@ -165,14 +163,6 @@ export default function ExpensesPage() {
     [],
   );
 
-  const routedDefaultCash = routing.getDefaultCashAccount(storeId);
-
-  useEffect(() => {
-    if (routedDefaultCash && !form.cashAccountId) {
-      setForm((prev) => ({ ...prev, cashAccountId: routedDefaultCash, paidFrom: routedDefaultCash }));
-    }
-  }, [routedDefaultCash, form.cashAccountId]);
-
   function openAdd() {
     setEditingId(null);
     setForm({ ...EMPTY_FORM, date });
@@ -186,6 +176,7 @@ export default function ExpensesPage() {
       category: expense.category,
       description: expense.description,
       amount: String(expense.amount),
+      paymentMethodId: '',
       paidFrom: expense.paidFrom ?? '',
       vehicleId: expense.vehicleId ?? '',
       employeeId: expense.employeeId ?? '',
@@ -214,7 +205,7 @@ export default function ExpensesPage() {
       !amount ||
       amount <= 0 ||
       !form.expenseAccountId ||
-      !form.cashAccountId
+      !form.paymentMethodId
     )
       return;
     if (isCashAdvance && !form.employeeId) return;
@@ -549,30 +540,34 @@ export default function ExpensesPage() {
                 />
               </div>
 
-              {/* Payment Account (paid from) */}
-              {!routedDefaultCash && (
+              {/* Payment method (paid from) */}
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Paid From (account) *
+                  Paid From *
                 </label>
                 <select
-                  value={form.cashAccountId}
+                  value={form.paymentMethodId}
                   onChange={(e) => {
-                    setField('cashAccountId', e.target.value);
-                    setField('paidFrom', e.target.value);
+                    const methodId = e.target.value;
+                    const resolvedAccountId = routing.resolveReceivedIntoForStore(
+                      storeId,
+                      methodId,
+                    ) ?? '';
+                    setForm((f) => ({
+                      ...f,
+                      paymentMethodId: methodId,
+                      paidFrom: resolvedAccountId,
+                      cashAccountId: resolvedAccountId,
+                    }));
                   }}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 >
-                  <option value="">Select payment account...</option>
-                  {assetAccounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
+                  <option value="">Select payment method...</option>
+                  {paymentMethods.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
                   ))}
                 </select>
-                <p className="mt-1 text-xs text-amber-600">No default cash account configured — select manually</p>
               </div>
-              )}
 
               {/* Expense Account (category mapping) */}
               <div>
@@ -670,7 +665,7 @@ export default function ExpensesPage() {
                   !form.amount ||
                   parseFloat(form.amount) <= 0 ||
                   !form.expenseAccountId ||
-                  !form.cashAccountId ||
+                  !form.paymentMethodId ||
                   (isCashAdvance && !form.employeeId)
                 }
               >
