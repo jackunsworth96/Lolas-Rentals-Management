@@ -42,6 +42,8 @@ interface StoreMetrics {
   depositsWithheld: number;
   fleetUtilisation: number;
   maintenanceVehicles: MaintenanceVehicle[];
+  maintenancePartsCost: number | null;
+  maintenanceLabourCost: number | null;
   todayRevenue: number | null;
   miscSalesRevenue: number | null;
   addonRevenue: AddonRevenueRow[] | null;
@@ -57,6 +59,8 @@ function emptyMetrics(financial: boolean): StoreMetrics {
     depositsWithheld: 0,
     fleetUtilisation: 0,
     maintenanceVehicles: [],
+    maintenancePartsCost: financial ? 0 : null,
+    maintenanceLabourCost: financial ? 0 : null,
     todayRevenue: financial ? 0 : null,
     miscSalesRevenue: financial ? 0 : null,
     addonRevenue: financial ? [] : null,
@@ -73,6 +77,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
     const canViewFinancial = userPerms.includes(Permission.ViewDashboard);
 
     const manilaDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+    const firstDayOfMonth = manilaDate.slice(0, 7) + '-01';
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
       .toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 
@@ -156,6 +161,22 @@ router.get('/summary', authenticate, async (req, res, next) => {
             .gte('created_at', `${thirtyDaysAgo}T00:00:00+08:00`)
             .not('payment_type', 'in', '("deposit","refund")')
             .then((r) => ({ key: 'revenueTrend' as const, ...r })),
+
+          sb
+            .from('journal_entries')
+            .select('debit, store_id')
+            .eq('reference_type', 'maintenance_parts')
+            .gte('date', firstDayOfMonth)
+            .lte('date', manilaDate)
+            .then((r) => ({ key: 'maintenancePartsEntries' as const, ...r })),
+
+          sb
+            .from('journal_entries')
+            .select('debit, store_id')
+            .eq('reference_type', 'maintenance_labour')
+            .gte('date', firstDayOfMonth)
+            .lte('date', manilaDate)
+            .then((r) => ({ key: 'maintenanceLabourEntries' as const, ...r })),
         ]
       : [];
 
@@ -329,6 +350,8 @@ router.get('/summary', authenticate, async (req, res, next) => {
 
       const allMaintenance = [...maintenanceVehicles, ...extraMaint];
 
+      let maintenancePartsCost: number | null = null;
+      let maintenanceLabourCost: number | null = null;
       let todayRevenue: number | null = null;
       let miscSalesRevenue: number | null = null;
       let addonRevenue: AddonRevenueRow[] | null = null;
@@ -393,6 +416,16 @@ router.get('/summary', authenticate, async (req, res, next) => {
         revenueTrend = [...trendMap.entries()]
           .map(([date, revenue]) => ({ date, revenue }))
           .sort((a, b) => a.date.localeCompare(b.date));
+
+        const partsEntries = dataMap.get('maintenancePartsEntries') ?? [];
+        maintenancePartsCost = partsEntries
+          .filter((r) => !sid || r.store_id === sid)
+          .reduce((sum, r) => sum + Number(r.debit ?? 0), 0);
+
+        const labourEntries = dataMap.get('maintenanceLabourEntries') ?? [];
+        maintenanceLabourCost = labourEntries
+          .filter((r) => !sid || r.store_id === sid)
+          .reduce((sum, r) => sum + Number(r.debit ?? 0), 0);
       }
 
       return {
@@ -402,6 +435,8 @@ router.get('/summary', authenticate, async (req, res, next) => {
         depositsWithheld,
         fleetUtilisation,
         maintenanceVehicles: allMaintenance,
+        maintenancePartsCost,
+        maintenanceLabourCost,
         todayRevenue,
         miscSalesRevenue,
         addonRevenue,

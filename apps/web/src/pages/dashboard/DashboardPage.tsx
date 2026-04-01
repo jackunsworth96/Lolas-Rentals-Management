@@ -189,7 +189,29 @@ export default function DashboardPage() {
                   .reduce((sum: number, r: RevenueTrendRow) => sum + r.revenue, 0),
               )}
             />
+            <StatCard
+              label="Parts Cost (This Month)"
+              value={formatCurrency(metrics.maintenancePartsCost ?? 0)}
+            />
+            <StatCard
+              label="Labour Cost (This Month)"
+              value={formatCurrency(metrics.maintenanceLabourCost ?? 0)}
+            />
           </div>
+          {(() => {
+            const maintenanceTotal =
+              (metrics.maintenancePartsCost ?? 0) + (metrics.maintenanceLabourCost ?? 0);
+            if (maintenanceTotal <= 0) return null;
+            const partsPercent = Math.round(
+              ((metrics.maintenancePartsCost ?? 0) / maintenanceTotal) * 100,
+            );
+            const labourPercent = 100 - partsPercent;
+            return (
+              <p className="mt-2 text-xs text-gray-400">
+                Maintenance split: {partsPercent}% parts / {labourPercent}% labour
+              </p>
+            );
+          })()}
         </section>
       )}
 

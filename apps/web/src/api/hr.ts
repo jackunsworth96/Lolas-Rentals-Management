@@ -151,3 +151,37 @@ export function useDeactivateEmployee() {
     },
   });
 }
+
+export interface RunPayrollPayload {
+  storeId: string;
+  periodStart: string;
+  periodEnd: string;
+  isEndOfMonth: boolean;
+  workingDaysInMonth: number;
+  payrollExpenseAccountId: string;
+  cashAccountId: string;
+}
+
+export interface RunPayrollResult {
+  payslips: Array<{
+    employeeId: string;
+    employeeName: string;
+    grossPay: number;
+    netPay: number;
+  }>;
+  totalNetPay: number;
+  totalGrossPay: number;
+  employeeCount: number;
+}
+
+export function useRunPayroll() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RunPayrollPayload) =>
+      api.post<RunPayrollResult>('/payroll/run', body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['timesheets'] });
+      qc.invalidateQueries({ queryKey: ['payroll'] });
+    },
+  });
+}

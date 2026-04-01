@@ -1,18 +1,8 @@
 import { useState } from 'react';
+import { ALL_PERMISSIONS } from '@lolas/shared';
 import { useRoles, useSaveRole, useDeleteRole, useRolePermissions, useSaveRolePermissions } from '../../../api/config.js';
 import { ConfigSection, type FieldDef } from '../ConfigSection.js';
 import { Modal } from '../../common/Modal.js';
-
-const ALL_PERMISSIONS = [
-  'can_view_inbox', 'can_view_active', 'can_view_completed', 'can_view_fleet',
-  'can_view_maintenance', 'can_view_transfers', 'can_view_cardsettlements',
-  'can_view_expenses', 'can_view_timesheets', 'can_submit_timesheets',
-  'can_view_todo', 'can_manage_todo', 'can_view_lostopportunity', 'can_view_cashup',
-  'can_edit_orders', 'can_edit_fleet', 'can_view_uierrors', 'can_view_miscsales',
-  'can_approve_timesheets', 'can_manage_employees', 'can_edit_accounts', 'can_view_payroll',
-  'can_view_accounts', 'can_view_fleet_book_value', 'can_override_cashup',
-  'can_edit_settings',
-];
 
 const columns = [
   { key: 'id', header: 'ID' },

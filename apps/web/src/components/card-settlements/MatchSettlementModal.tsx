@@ -31,7 +31,6 @@ export function MatchSettlementModal({ open, onClose, selected }: MatchSettlemen
   const [settlementDate, setSettlementDate] = useState(new Date().toISOString().slice(0, 10));
   const [bankReference, setBankReference] = useState('');
   const [netAmount, setNetAmount] = useState(String(grossRounded));
-  const [feeAmount, setFeeAmount] = useState('0');
   const [bankAccountId, setBankAccountId] = useState('');
   const [cardFeeAccountId, setCardFeeAccountId] = useState('');
   const [cardReceivableAccountId, setCardReceivableAccountId] = useState('');
@@ -54,13 +53,17 @@ export function MatchSettlementModal({ open, onClose, selected }: MatchSettlemen
   }, [routedCardReceivable, cardReceivableAccountId]);
 
   const netNum = Number(netAmount) || 0;
-  const feeNum = Number(feeAmount) || 0;
-  const sumCheck = Math.round((netNum + feeNum) * 100) / 100;
-  const isBalanced = sumCheck === grossRounded;
+  const feeComputedDisplay = Math.max(
+    0,
+    Math.round((grossRounded - netNum) * 100) / 100,
+  );
+  const sumCheck = Math.round((netNum + feeComputedDisplay) * 100) / 100;
+  const isBalanced = netNum >= 0 && netNum <= grossRounded;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!isBalanced) return;
+    const feeNum = Math.round((grossRounded - netNum) * 100) / 100;
     matchMutation.mutate(
       {
         settlementIds: selected.map((s) => s.id),
@@ -107,21 +110,33 @@ export function MatchSettlementModal({ open, onClose, selected }: MatchSettlemen
             <input type="text" value={bankReference} onChange={(e) => setBankReference(e.target.value)} required
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           </label>
-          <label className="block">
-            <span className="text-sm font-medium text-gray-700">Net amount received</span>
-            <input type="number" step="0.01" value={netAmount} onChange={(e) => setNetAmount(e.target.value)} required
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium text-gray-700">Fee / charge deducted</span>
-            <input type="number" step="0.01" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} required
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-          </label>
+          <div className="block">
+            <label className="block">
+              <span className="text-sm font-medium text-gray-700">Net amount received</span>
+              <input type="number" step="0.01" value={netAmount} onChange={(e) => setNetAmount(e.target.value)} required
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            </label>
+            {Number(netAmount) > grossRounded && (
+              <p className="mt-1 text-xs text-red-600">
+                Net amount cannot exceed gross total of {formatCurrency(grossRounded)}
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Fee / charge deducted (auto-computed)
+            </label>
+            <div className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
+              {formatCurrency(
+                Math.max(0, Math.round((grossRounded - (Number(netAmount) || 0)) * 100) / 100),
+              )}
+            </div>
+          </div>
         </div>
 
         <div className={`rounded-lg px-3 py-2 text-sm font-medium ${isBalanced ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-          Net ({formatCurrency(netNum)}) + Fee ({formatCurrency(feeNum)}) = {formatCurrency(sumCheck)}
-          {isBalanced ? ' ✓ Balanced' : ` ✗ Must equal gross ${formatCurrency(grossRounded)}`}
+          Net ({formatCurrency(netNum)}) + Fee ({formatCurrency(feeComputedDisplay)}) = {formatCurrency(sumCheck)}
+          {isBalanced ? ' ✓ Balanced' : ` ✗ Net must be between ${formatCurrency(0)} and ${formatCurrency(grossRounded)}`}
         </div>
 
         <div className="grid grid-cols-3 gap-4">

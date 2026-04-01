@@ -37,6 +37,8 @@ export interface StoreMetrics {
   depositsWithheld: number;
   fleetUtilisation: number;
   maintenanceVehicles: MaintenanceVehicle[];
+  maintenancePartsCost: number | null;
+  maintenanceLabourCost: number | null;
   todayRevenue: number | null;
   miscSalesRevenue: number | null;
   addonRevenue: AddonRevenueRow[] | null;
