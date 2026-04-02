@@ -91,7 +91,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Admin',
     items: [
       { label: 'UI Errors', path: '/ui-errors', perm: 'can_view_uierrors', icon: AlertTriangle },
-      { label: 'Settings', path: '/settings', perm: null, icon: Settings },
+      { label: 'Settings', path: '/settings', perm: 'can_edit_settings', icon: Settings },
     ],
   },
 ];

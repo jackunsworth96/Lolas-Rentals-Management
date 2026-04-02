@@ -304,6 +304,17 @@ export default function DashboardPage() {
               {(metrics.cashBalances ?? []).map((a: CashBalanceRow) => (
                 <StatCard key={a.accountId} label={a.accountName} value={formatCurrency(a.balance)} />
               ))}
+              <div className="rounded-2xl border border-amber-100 bg-white p-4 shadow-sm">
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-amber-600">
+                  Deposits Held
+                </p>
+                <p className="text-2xl font-bold text-amber-700">
+                  {formatCurrency(metrics.depositsWithheld ?? 0)}
+                </p>
+                <p className="mt-1 text-xs text-gray-400">
+                  Security deposits on active rentals
+                </p>
+              </div>
             </div>
           )}
         </section>
