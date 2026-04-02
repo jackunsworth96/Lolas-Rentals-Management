@@ -43,7 +43,45 @@ DECLARE
   vehicle jsonb;
   leg jsonb;
 BEGIN
-  -- 1. Upsert order items
+  -- 1. Upsert the order record first
+  INSERT INTO orders (
+    id, store_id, woo_order_id, customer_id, employee_id,
+    order_date, status, web_notes, quantity, web_quote_raw,
+    security_deposit, deposit_status, card_fee_surcharge,
+    return_charges, final_total, balance_due, payment_method_id,
+    deposit_method_id, booking_token, tips, charity_donation, updated_at
+  ) VALUES (
+    p_order_id, p_store_id, p_woo_order_id, p_customer_id, p_employee_id,
+    p_order_date, p_status, p_web_notes, p_quantity, p_web_quote_raw,
+    p_security_deposit, p_deposit_status, p_card_fee_surcharge,
+    p_return_charges, p_final_total, p_balance_due, p_payment_method_id,
+    p_deposit_method_id, p_booking_token, p_tips, p_charity_donation,
+    p_updated_at
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    store_id           = EXCLUDED.store_id,
+    woo_order_id       = EXCLUDED.woo_order_id,
+    customer_id        = EXCLUDED.customer_id,
+    employee_id        = EXCLUDED.employee_id,
+    order_date         = EXCLUDED.order_date,
+    status             = EXCLUDED.status,
+    web_notes          = EXCLUDED.web_notes,
+    quantity           = EXCLUDED.quantity,
+    web_quote_raw      = EXCLUDED.web_quote_raw,
+    security_deposit   = EXCLUDED.security_deposit,
+    deposit_status     = EXCLUDED.deposit_status,
+    card_fee_surcharge = EXCLUDED.card_fee_surcharge,
+    return_charges     = EXCLUDED.return_charges,
+    final_total        = EXCLUDED.final_total,
+    balance_due        = EXCLUDED.balance_due,
+    payment_method_id  = EXCLUDED.payment_method_id,
+    deposit_method_id  = EXCLUDED.deposit_method_id,
+    booking_token      = EXCLUDED.booking_token,
+    tips               = EXCLUDED.tips,
+    charity_donation   = EXCLUDED.charity_donation,
+    updated_at         = EXCLUDED.updated_at;
+
+  -- 2. Upsert order items
   FOR item IN SELECT * FROM jsonb_array_elements(p_order_items)
   LOOP
     INSERT INTO order_items (
@@ -89,7 +127,7 @@ BEGIN
       return_condition  = EXCLUDED.return_condition;
   END LOOP;
 
-  -- 2. Upsert order addons (conditional)
+  -- 3. Upsert order addons (conditional)
   FOR addon IN SELECT * FROM jsonb_array_elements(p_order_addons)
   LOOP
     INSERT INTO order_addons (
@@ -115,7 +153,7 @@ BEGIN
       store_id    = EXCLUDED.store_id;
   END LOOP;
 
-  -- 3. Update fleet vehicle statuses
+  -- 4. Update fleet vehicle statuses
   FOR vehicle IN SELECT * FROM jsonb_array_elements(p_fleet_updates)
   LOOP
     UPDATE fleet
@@ -125,7 +163,7 @@ BEGIN
     WHERE id = vehicle->>'id';
   END LOOP;
 
-  -- 4. Insert journal entries (conditional — only if legs array is non-empty)
+  -- 5. Insert journal entries (conditional — only if legs array is non-empty)
   IF jsonb_array_length(p_journal_legs) > 0 THEN
     FOR leg IN SELECT * FROM jsonb_array_elements(p_journal_legs)
     LOOP
@@ -149,44 +187,6 @@ BEGIN
       );
     END LOOP;
   END IF;
-
-  -- 5. Upsert the order record last
-  INSERT INTO orders (
-    id, store_id, woo_order_id, customer_id, employee_id,
-    order_date, status, web_notes, quantity, web_quote_raw,
-    security_deposit, deposit_status, card_fee_surcharge,
-    return_charges, final_total, balance_due, payment_method_id,
-    deposit_method_id, booking_token, tips, charity_donation, updated_at
-  ) VALUES (
-    p_order_id, p_store_id, p_woo_order_id, p_customer_id, p_employee_id,
-    p_order_date, p_status, p_web_notes, p_quantity, p_web_quote_raw,
-    p_security_deposit, p_deposit_status, p_card_fee_surcharge,
-    p_return_charges, p_final_total, p_balance_due, p_payment_method_id,
-    p_deposit_method_id, p_booking_token, p_tips, p_charity_donation,
-    p_updated_at
-  )
-  ON CONFLICT (id) DO UPDATE SET
-    store_id           = EXCLUDED.store_id,
-    woo_order_id       = EXCLUDED.woo_order_id,
-    customer_id        = EXCLUDED.customer_id,
-    employee_id        = EXCLUDED.employee_id,
-    order_date         = EXCLUDED.order_date,
-    status             = EXCLUDED.status,
-    web_notes          = EXCLUDED.web_notes,
-    quantity           = EXCLUDED.quantity,
-    web_quote_raw      = EXCLUDED.web_quote_raw,
-    security_deposit   = EXCLUDED.security_deposit,
-    deposit_status     = EXCLUDED.deposit_status,
-    card_fee_surcharge = EXCLUDED.card_fee_surcharge,
-    return_charges     = EXCLUDED.return_charges,
-    final_total        = EXCLUDED.final_total,
-    balance_due        = EXCLUDED.balance_due,
-    payment_method_id  = EXCLUDED.payment_method_id,
-    deposit_method_id  = EXCLUDED.deposit_method_id,
-    booking_token      = EXCLUDED.booking_token,
-    tips               = EXCLUDED.tips,
-    charity_donation   = EXCLUDED.charity_donation,
-    updated_at         = EXCLUDED.updated_at;
 
 END;
 $$;
