@@ -174,7 +174,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
 
           sb
             .from('journal_entries')
-            .select('account_id, debit, credit, chart_of_accounts!account_id(name, account_type)')
+            .select('account_id, store_id, debit, credit, chart_of_accounts!account_id(name, account_type)')
             .then((r) => ({ key: 'cashBalances' as const, ...r })),
 
           sb
@@ -452,6 +452,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
           if (!acct || acct.account_type !== 'Asset') continue;
           const lowerName = acct.name.toLowerCase();
           if (!lowerName.includes('cash') && !lowerName.includes('bank') && !lowerName.includes('gcash') && !lowerName.includes('float')) continue;
+          if (sid && row.store_id !== sid) continue;
           const accId = row.account_id as string;
           const existing = balanceMap.get(accId) ?? { name: acct.name, debit: 0, credit: 0 };
           existing.debit += Number(row.debit ?? 0);

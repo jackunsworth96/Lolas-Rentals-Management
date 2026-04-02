@@ -125,18 +125,21 @@ router.get('/calendar', requirePermission(Permission.ViewFleet), validateQuery(z
     const { data: modelRows } = await sb.from('vehicle_models').select('id, name');
     const modelMap = new Map((modelRows ?? []).map((m: { id: string; name: string }) => [m.id, m.name]));
 
-    // 3. Load order_items overlapping [from, to] joined to orders
+    // 3. Load order_items overlapping [from, to]; orders loaded separately (see orderMap)
     const vehicleIds = (fleetRows ?? []).map((v: { id: string }) => v.id);
     type OrderItemRow = {
-      id: string; order_id: string; vehicle_id: string; vehicle_name: string | null;
-      pickup_datetime: string; dropoff_datetime: string; order_reference: string | null;
-      orders: { status: string; customer_id: string } | null;
+      id: string;
+      order_id: string;
+      vehicle_id: string;
+      vehicle_name: string | null;
+      pickup_datetime: string;
+      dropoff_datetime: string;
     };
     let itemRows: OrderItemRow[] = [];
     if (vehicleIds.length > 0) {
       const { data, error } = await sb
         .from('order_items')
-        .select('id, order_id, vehicle_id, vehicle_name, pickup_datetime, dropoff_datetime, order_reference, orders!order_id(status, customer_id)')
+        .select('id, order_id, vehicle_id, vehicle_name, pickup_datetime, dropoff_datetime')
         .in('vehicle_id', vehicleIds)
         .lte('pickup_datetime', `${to}T23:59:59`)
         .gte('dropoff_datetime', `${from}T00:00:00`);
@@ -144,14 +147,64 @@ router.get('/calendar', requirePermission(Permission.ViewFleet), validateQuery(z
       itemRows = (data ?? []) as unknown as OrderItemRow[];
     }
 
+    const orderIds = [...new Set(itemRows.map((i) => i.order_id))];
+
+    const orderMap = new Map<string, {
+      status: string;
+      customer_id: string;
+      raw_order_id: string | null;
+    }>();
+
+    if (orderIds.length > 0) {
+      const { data: orderRows } = await sb
+        .from('orders')
+        .select('id, status, customer_id, raw_order_id')
+        .in('id', orderIds);
+
+      for (const o of (orderRows ?? []) as Array<{
+        id: string;
+        status: string;
+        customer_id: string;
+        raw_order_id: string | null;
+      }>) {
+        orderMap.set(o.id, {
+          status: o.status,
+          customer_id: o.customer_id,
+          raw_order_id: o.raw_order_id,
+        });
+      }
+    }
+
+    const rawOrderIds = [...orderMap.values()]
+      .map((o) => o.raw_order_id)
+      .filter((id): id is string => Boolean(id));
+
+    const refMap = new Map<string, string>();
+    if (rawOrderIds.length > 0) {
+      const { data: rawRows } = await sb
+        .from('orders_raw')
+        .select('id, order_reference')
+        .in('id', rawOrderIds);
+      for (const r of (rawRows ?? []) as Array<{
+        id: string;
+        order_reference: string | null;
+      }>) {
+        if (r.order_reference) refMap.set(r.id, r.order_reference);
+      }
+    }
+
     // Filter to relevant statuses
     itemRows = itemRows.filter((i) => {
-      const s = (i.orders as { status: string } | null)?.status;
+      const s = orderMap.get(i.order_id)?.status;
       return s && !['cancelled', 'skipped'].includes(s);
     });
 
     // 4. Resolve customer names
-    const customerIds = [...new Set(itemRows.map((i) => (i.orders as { customer_id: string } | null)?.customer_id).filter(Boolean))] as string[];
+    const customerIds = [...new Set(
+      itemRows
+        .map((i) => orderMap.get(i.order_id)?.customer_id)
+        .filter((cid): cid is string => Boolean(cid)),
+    )];
     const custMap = new Map<string, string>();
     if (customerIds.length > 0) {
       const { data: custRows } = await sb.from('customers').select('id, name').in('id', customerIds);
@@ -177,8 +230,8 @@ router.get('/calendar', requirePermission(Permission.ViewFleet), validateQuery(z
         storeName: storeMap.get(v.store_id) ?? v.store_id,
         status: v.status,
         bookings: vItems.map((item) => {
-          const orderStatus = (item.orders as { status: string } | null)?.status ?? 'active';
-          const custId = (item.orders as { customer_id: string } | null)?.customer_id;
+          const orderStatus = orderMap.get(item.order_id)?.status ?? 'active';
+          const custId = orderMap.get(item.order_id)?.customer_id;
           const dropoff = new Date(item.dropoff_datetime);
           let calStatus: string;
           if (orderStatus === 'active') {
@@ -193,7 +246,10 @@ router.get('/calendar', requirePermission(Permission.ViewFleet), validateQuery(z
           return {
             orderId: item.order_id,
             orderItemId: item.id,
-            orderReference: item.order_reference,
+            orderReference: (() => {
+              const rawId = orderMap.get(item.order_id)?.raw_order_id;
+              return rawId ? (refMap.get(rawId) ?? null) : null;
+            })(),
             customerName: custId ? (custMap.get(custId) ?? '—') : '—',
             pickupDatetime: item.pickup_datetime,
             dropoffDatetime: item.dropoff_datetime,
