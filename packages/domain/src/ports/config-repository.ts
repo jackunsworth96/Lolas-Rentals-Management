@@ -83,6 +83,7 @@ export interface TransferRoute {
   price: number;
   storeId: string | null;
   isActive: boolean;
+  pricingType: string;
 }
 
 export interface DayType {

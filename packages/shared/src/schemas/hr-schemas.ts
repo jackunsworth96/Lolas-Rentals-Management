@@ -37,7 +37,7 @@ export const SubmitLeaveRequestSchema = z.object({
 export type SubmitLeaveRequest = z.infer<typeof SubmitLeaveRequestSchema>;
 
 export const TimesheetQuerySchema = z.object({
-  storeId: z.string(),
+  storeId: z.string().optional(),
   periodStart: z.string(),
   periodEnd: z.string(),
 });

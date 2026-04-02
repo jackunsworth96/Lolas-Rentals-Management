@@ -1,7 +1,8 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   useTimesheets,
   useEmployees,
+  useAllEmployees,
   useSubmitTimesheet,
   useApproveTimesheets,
   useCheckDuplicates,
@@ -13,8 +14,8 @@ import { useUIStore } from '../../stores/ui-store.js';
 import { Badge } from '../../components/common/Badge.js';
 import { formatCurrency } from '../../utils/currency.js';
 
-function toISODate(d: Date): string {
-  return d.toISOString().split('T')[0];
+function toISODate(date: Date): string {
+  return date.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 }
 
 function todayStr(): string {
@@ -72,12 +73,14 @@ export default function TimesheetsPage() {
   const { data: stores = [] } = useStores();
   const storeList = stores as Array<{ id: string; name: string }>;
 
-  const [storeId, setStoreId] = useState(globalStoreId || '');
+  const [storeId, setStoreId] = useState(globalStoreId || 'all');
   const [periodStart, setPeriodStart] = useState(periodDefaults().start);
   const [periodEnd, setPeriodEnd] = useState(periodDefaults().end);
 
   const { data: timesheets = [], isLoading: tsLoading } = useTimesheets(storeId, periodStart, periodEnd);
-  const { data: employees = [] } = useEmployees(storeId);
+  const { data: storeEmployees = [] } = useEmployees(storeId !== 'all' ? storeId : '');
+  const { data: allEmployees = [] } = useAllEmployees();
+  const employees = storeId === 'all' ? allEmployees : storeEmployees;
   const { data: dayTypes = [] } = useDayTypes() as { data: Array<{ id: string; name: string }> | undefined };
   const dayTypeList = (dayTypes ?? []) as Array<{ id: string; name: string }>;
   const activeEmployees = useMemo(
@@ -141,8 +144,20 @@ export default function TimesheetsPage() {
     setEntryRows((prev) => prev.map((r) => ({ ...r, timeIn, timeOut })));
   }
 
-  const [commonTimeIn, setCommonTimeIn] = useState('');
-  const [commonTimeOut, setCommonTimeOut] = useState('');
+  const [commonTimeIn, setCommonTimeIn] = useState<string>(
+    () => localStorage.getItem('lolas-common-time-in') ?? '',
+  );
+  const [commonTimeOut, setCommonTimeOut] = useState<string>(
+    () => localStorage.getItem('lolas-common-time-out') ?? '',
+  );
+
+  useEffect(() => {
+    localStorage.setItem('lolas-common-time-in', commonTimeIn);
+  }, [commonTimeIn]);
+
+  useEffect(() => {
+    localStorage.setItem('lolas-common-time-out', commonTimeOut);
+  }, [commonTimeOut]);
 
   async function handleSubmit() {
     if (entryRows.length === 0) return;
@@ -242,6 +257,7 @@ export default function TimesheetsPage() {
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
           >
             <option value="">Select store...</option>
+            <option value="all">All Stores</option>
             {storeList.map((s) => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}

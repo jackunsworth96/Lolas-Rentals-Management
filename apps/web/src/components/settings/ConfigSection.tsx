@@ -34,6 +34,10 @@ export interface ConfigSectionProps<T extends Record<string, unknown>> {
   onDelete?: (id: string | number) => void;
   isSaving: boolean;
   saveError?: Error | null;
+  /** Called when the Add button is clicked (before the modal opens) */
+  onAdd?: () => void;
+  /** Called when the modal is closed via Cancel / X (not after a successful save) */
+  onModalClose?: () => void;
 }
 
 export function ConfigSection<T extends Record<string, unknown>>({
@@ -50,6 +54,8 @@ export function ConfigSection<T extends Record<string, unknown>>({
   onDelete,
   isSaving,
   saveError,
+  onAdd,
+  onModalClose,
 }: ConfigSectionProps<T>) {
   const [editing, setEditing] = useState<T | null>(null);
   const [creating, setCreating] = useState(false);
@@ -111,6 +117,7 @@ export function ConfigSection<T extends Record<string, unknown>>({
     setEditing(null);
     setCreating(false);
     setValidationError(null);
+    onModalClose?.();
   }
 
   if (isLoading) return <p className="py-4 text-sm text-gray-500">Loading {title.toLowerCase()}...</p>;
@@ -119,7 +126,7 @@ export function ConfigSection<T extends Record<string, unknown>>({
     <div>
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-base font-semibold text-gray-900">{title}</h3>
-        <button onClick={() => setCreating(true)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">
+        <button onClick={() => { setCreating(true); onAdd?.(); }} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">
           Add
         </button>
       </div>

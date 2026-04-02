@@ -57,7 +57,11 @@ export interface EmployeeRow {
 export function useTimesheets(storeId: string, periodStart: string, periodEnd: string) {
   return useQuery<TimesheetRow[]>({
     queryKey: ['timesheets', storeId, periodStart, periodEnd],
-    queryFn: () => api.get(`/hr/timesheets?storeId=${storeId}&periodStart=${periodStart}&periodEnd=${periodEnd}`),
+    queryFn: () => {
+      const params = new URLSearchParams({ periodStart, periodEnd });
+      if (storeId && storeId !== 'all') params.set('storeId', storeId);
+      return api.get(`/hr/timesheets?${params.toString()}`);
+    },
     enabled: !!storeId && !!periodStart && !!periodEnd,
   });
 }

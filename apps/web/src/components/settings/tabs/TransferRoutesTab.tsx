@@ -2,13 +2,6 @@ import { useTransferRoutes, useSaveTransferRoute, useDeleteTransferRoute, useSto
 import { useUIStore } from '../../../stores/ui-store.js';
 import { ConfigSection, type FieldDef } from '../ConfigSection.js';
 
-const columns = [
-  { key: 'route', header: 'Route' },
-  { key: 'vanType', header: 'Van type' },
-  { key: 'price', header: 'Price' },
-  { key: 'isActive', header: 'Active', render: (r: Record<string, unknown>) => (r.isActive === false ? 'No' : 'Yes') },
-];
-
 export function TransferRoutesTab() {
   const storeId = useUIStore((s) => s.selectedStoreId) ?? '';
   const { data: stores } = useStores();
@@ -18,10 +11,28 @@ export function TransferRoutesTab() {
 
   const storeOpts = ((stores ?? []) as Array<{ id: string; name: string }>).map((s) => ({ value: s.id, label: s.name }));
 
+  const columns = [
+    { key: 'route', header: 'Route' },
+    { key: 'storeId', header: 'Store', render: (r: Record<string, unknown>) => {
+      const store = storeOpts.find((s) => s.value === r.storeId);
+      return store?.label ?? (r.storeId as string | null) ?? '—';
+    } },
+    { key: 'vanType', header: 'Van type' },
+    { key: 'pricingType', header: 'Pricing', render: (r: Record<string, unknown>) =>
+      r.pricingType === 'per_head' ? 'Per Person' : 'Fixed'
+    },
+    { key: 'price', header: 'Price' },
+    { key: 'isActive', header: 'Active', render: (r: Record<string, unknown>) => (r.isActive === false ? 'No' : 'Yes') },
+  ];
+
   const fields: FieldDef[] = [
     { key: 'route', label: 'Route', type: 'text', required: true },
     { key: 'vanType', label: 'Van type', type: 'text' },
     { key: 'price', label: 'Price', type: 'number', required: true },
+    { key: 'pricingType', label: 'Pricing Type', type: 'select', options: [
+      { value: 'fixed', label: 'Fixed (total price)' },
+      { value: 'per_head', label: 'Per Person' },
+    ], default: 'fixed' },
     { key: 'storeId', label: 'Store', type: 'select', options: storeOpts },
     { key: 'isActive', label: 'Active', type: 'boolean' },
   ];

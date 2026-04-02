@@ -51,12 +51,13 @@ export function createTimesheetRepo(): TimesheetRepository {
 
   return {
     async findByPeriod(storeId, period) {
-      const { data, error } = await sb
+      let query = sb
         .from('timesheets')
         .select('*')
-        .eq('store_id', storeId)
         .gte('date', dateStr(period.start))
         .lte('date', dateStr(period.end));
+      if (storeId) query = query.eq('store_id', storeId);
+      const { data, error } = await query;
       if (error) throw new Error(`Failed to fetch timesheets by period: ${error.message}`);
       return (data ?? []).map(toDomain);
     },

@@ -19,8 +19,8 @@ const CLOUDS = [
 
 // How quickly clouds catch up to mouse target (lower = more inertia)
 const LERP   = 0.055;
-// Max movement range in px
-const RANGE  = 700;
+// Max movement range in px (tighter on mobile so parallax does not drift too far)
+const RANGE  = typeof window !== 'undefined' && window.innerWidth < 768 ? 400 : 700;
 
 const FLORAL_PX = 0.025;
 const FLORAL_PY = 0.015;
@@ -94,6 +94,7 @@ export function HeroSection() {
           className="hero-cloud-parallax"
           style={{
             width: c.width,
+            maxWidth: '30vw',
             top:  c.top,
             left: c.left,
             transform: `translate(

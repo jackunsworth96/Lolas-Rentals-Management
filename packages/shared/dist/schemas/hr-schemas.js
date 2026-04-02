@@ -24,7 +24,7 @@ export const SubmitLeaveRequestSchema = z.object({
     storeId: z.string(),
 });
 export const TimesheetQuerySchema = z.object({
-    storeId: z.string(),
+    storeId: z.string().optional(),
     periodStart: z.string(),
     periodEnd: z.string(),
 });

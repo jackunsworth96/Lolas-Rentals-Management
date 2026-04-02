@@ -13,7 +13,6 @@ export declare const TimesheetEntrySchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     date: string;
     employeeId: string;
-    storeId: string;
     name: string | null;
     dayType: string;
     timeIn: string | null;
@@ -21,14 +20,15 @@ export declare const TimesheetEntrySchema: z.ZodObject<{
     ninePmReturnsCount: number;
     dailyNotes: string | null;
     silInflation: number;
+    storeId: string;
 }, {
     date: string;
     employeeId: string;
-    storeId: string;
     name: string | null;
     dayType: string;
     timeIn: string | null;
     timeOut: string | null;
+    storeId: string;
     ninePmReturnsCount?: number | undefined;
     dailyNotes?: string | null | undefined;
     silInflation?: number | undefined;
@@ -49,7 +49,6 @@ export declare const SubmitTimesheetRequestSchema: z.ZodObject<{
     }, "strip", z.ZodTypeAny, {
         date: string;
         employeeId: string;
-        storeId: string;
         name: string | null;
         dayType: string;
         timeIn: string | null;
@@ -57,14 +56,15 @@ export declare const SubmitTimesheetRequestSchema: z.ZodObject<{
         ninePmReturnsCount: number;
         dailyNotes: string | null;
         silInflation: number;
+        storeId: string;
     }, {
         date: string;
         employeeId: string;
-        storeId: string;
         name: string | null;
         dayType: string;
         timeIn: string | null;
         timeOut: string | null;
+        storeId: string;
         ninePmReturnsCount?: number | undefined;
         dailyNotes?: string | null | undefined;
         silInflation?: number | undefined;
@@ -73,7 +73,6 @@ export declare const SubmitTimesheetRequestSchema: z.ZodObject<{
     entries: {
         date: string;
         employeeId: string;
-        storeId: string;
         name: string | null;
         dayType: string;
         timeIn: string | null;
@@ -81,16 +80,17 @@ export declare const SubmitTimesheetRequestSchema: z.ZodObject<{
         ninePmReturnsCount: number;
         dailyNotes: string | null;
         silInflation: number;
+        storeId: string;
     }[];
 }, {
     entries: {
         date: string;
         employeeId: string;
-        storeId: string;
         name: string | null;
         dayType: string;
         timeIn: string | null;
         timeOut: string | null;
+        storeId: string;
         ninePmReturnsCount?: number | undefined;
         dailyNotes?: string | null | undefined;
         silInflation?: number | undefined;
@@ -123,17 +123,17 @@ export declare const SubmitLeaveRequestSchema: z.ZodObject<{
 }>;
 export type SubmitLeaveRequest = z.infer<typeof SubmitLeaveRequestSchema>;
 export declare const TimesheetQuerySchema: z.ZodObject<{
-    storeId: z.ZodString;
+    storeId: z.ZodOptional<z.ZodString>;
     periodStart: z.ZodString;
     periodEnd: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    storeId: string;
     periodStart: string;
     periodEnd: string;
+    storeId?: string | undefined;
 }, {
-    storeId: string;
     periodStart: string;
     periodEnd: string;
+    storeId?: string | undefined;
 }>;
 export type TimesheetQuery = z.infer<typeof TimesheetQuerySchema>;
 //# sourceMappingURL=hr-schemas.d.ts.map
