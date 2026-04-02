@@ -1,5 +1,40 @@
 import { CloudShape } from './CloudShape.js';
 
+import cloud1 from '../../assets/Original Assests/cloud-left-to-right-1.svg';
+import cloud2 from '../../assets/Original Assests/cloud-left-to-right-2.svg';
+import cloud3 from '../../assets/Original Assests/cloud-left-to-right-3.svg';
+
+const clouds = [
+  { src: cloud1, top: '8%', width: 150, duration: 30, delay: 0 },
+  { src: cloud2, top: '14%', width: 82, duration: 20, delay: 4 },
+  { src: cloud3, top: '5%', width: 150, duration: 25, delay: 8 },
+  { src: cloud1, top: '18%', width: 110, duration: 32, delay: 15 },
+  { src: cloud2, top: '10%', width: 65, duration: 22, delay: 20 },
+];
+
+/** Drifting SVG clouds for the marketing home hero. Default export — import for `/book` hero only. */
+export default function HeroHomeDriftClouds() {
+  return (
+    <>
+      {clouds.map((c, i) => (
+        <img
+          key={i}
+          src={c.src}
+          alt=""
+          aria-hidden
+          className="pointer-events-none absolute select-none"
+          style={{
+            top: c.top,
+            left: '-220px',
+            width: c.width,
+            animation: `cloudDriftLegacy ${c.duration}s linear ${c.delay}s infinite`,
+          }}
+        />
+      ))}
+    </>
+  );
+}
+
 export type HeroCloudVariant = 'home' | 'editorial' | 'functional';
 
 const HOME_OPACITY = ['opacity-70', 'opacity-60', 'opacity-50', 'opacity-50', 'opacity-40'] as const;

@@ -1,7 +1,7 @@
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { PawDivider } from '../../components/layout/PawDivider.js';
-import { HeroSection } from '../../components/home/HeroSection.js';
+import { HeroSection } from '../../components/hero/HeroSection.js';
 import { FleetPreviewSection } from '../../components/home/FleetPreviewSection.js';
 import { HowItWorksSection } from '../../components/home/HowItWorksSection.js';
 import { PawCardCallout } from '../../components/home/PawCardCallout.js';
@@ -10,8 +10,9 @@ import { ReviewsSection } from '../../components/home/ReviewsSection.js';
 export default function HomePage() {
   return (
     <PageLayout
-      title="Lola's Rentals | Siargao"
-      floralPosition="absolute"
+      title="Lola's Rentals — Siargao Island"
+      showFloralLeft={false}
+      showFloralRight={false}
     >
       <HeroSection />
 

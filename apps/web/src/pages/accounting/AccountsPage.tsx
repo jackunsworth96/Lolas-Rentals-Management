@@ -50,6 +50,14 @@ function displayBalance(balance: number, accountType: string): { value: number; 
   return { value: display, color: display < 0 ? 'text-red-600' : 'text-gray-900' };
 }
 
+function sortAccountsInGroup(accounts: AccountBalanceItem[]): AccountBalanceItem[] {
+  return [...accounts].sort(
+    (a, b) =>
+      a.accountName.localeCompare(b.accountName) ||
+      (a.storeId ?? '').localeCompare(b.storeId ?? ''),
+  );
+}
+
 export default function AccountsPage() {
   const navigate = useNavigate();
   const [storeId, setStoreId] = useState('all');
@@ -63,13 +71,24 @@ export default function AccountsPage() {
   const [showTransfer, setShowTransfer] = useState(false);
   const months = useMemo(monthOptions, []);
 
+  const nonCompanyStoreCount = useMemo(
+    () => storeList.filter((s) => s.id !== COMPANY_STORE_ID).length,
+    [storeList],
+  );
+
+  const isAllStores = storeId === 'all';
+
   const { storeGroups, companyGroups } = useMemo(() => {
     if (!data?.summary) return { storeGroups: [], companyGroups: [] };
     const store: BalanceSummaryGroup[] = [];
     const company: BalanceSummaryGroup[] = [];
     for (const group of data.summary) {
-      const companyAccts = group.accounts.filter((a) => a.storeId === COMPANY_STORE_ID);
-      const storeAccts = group.accounts.filter((a) => a.storeId !== COMPANY_STORE_ID);
+      const companyAccts = sortAccountsInGroup(
+        group.accounts.filter((a) => a.storeId === COMPANY_STORE_ID),
+      );
+      const storeAccts = sortAccountsInGroup(
+        group.accounts.filter((a) => a.storeId !== COMPANY_STORE_ID),
+      );
       if (storeAccts.length > 0) {
         const d = storeAccts.reduce((s, a) => s + a.debitTotal, 0);
         const c = storeAccts.reduce((s, a) => s + a.creditTotal, 0);
@@ -108,22 +127,29 @@ export default function AccountsPage() {
         </div>
         <div className="flex items-center gap-3">
           {/* Store filter */}
-          <select
-            value={storeId}
-            onChange={(e) => setStoreId(e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          >
-            <option value="all">All Stores (Combined)</option>
-            {[...storeList].filter((s) => s.id !== COMPANY_STORE_ID).sort((a, b) => {
-              const aL = a.name.toLowerCase().includes('lola');
-              const bL = b.name.toLowerCase().includes('lola');
-              if (aL && !bL) return -1;
-              if (!aL && bL) return 1;
-              return a.name.localeCompare(b.name);
-            }).map((s) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
+          <div className="flex items-center">
+            <select
+              value={storeId}
+              onChange={(e) => setStoreId(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="all">All Stores (Combined)</option>
+              {[...storeList].filter((s) => s.id !== COMPANY_STORE_ID).sort((a, b) => {
+                const aL = a.name.toLowerCase().includes('lola');
+                const bL = b.name.toLowerCase().includes('lola');
+                if (aL && !bL) return -1;
+                if (!aL && bL) return 1;
+                return a.name.localeCompare(b.name);
+              }).map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+            {storeId === 'all' && (
+              <span className="ml-2 text-xs text-gray-400">
+                ({nonCompanyStoreCount} {nonCompanyStoreCount === 1 ? 'store' : 'stores'})
+              </span>
+            )}
+          </div>
 
           {/* Month selector */}
           <select
@@ -207,7 +233,12 @@ export default function AccountsPage() {
       {storeGroups.length > 0 && (
         <div className="space-y-6">
           {storeGroups.map((group) => (
-            <AccountTypeGroup key={group.type} group={group} onAccountClick={(id) => navigate(`/accounts/${id}`)} />
+            <AccountTypeGroup
+              key={group.type}
+              group={group}
+              isAllStores={isAllStores}
+              onAccountClick={(id) => navigate(`/accounts/${id}`)}
+            />
           ))}
         </div>
       )}
@@ -222,7 +253,12 @@ export default function AccountsPage() {
             </span>
           </div>
           {companyGroups.map((group) => (
-            <AccountTypeGroup key={`company-${group.type}`} group={group} onAccountClick={(id) => navigate(`/accounts/${id}`)} />
+            <AccountTypeGroup
+              key={`company-${group.type}`}
+              group={group}
+              isAllStores={isAllStores}
+              onAccountClick={(id) => navigate(`/accounts/${id}`)}
+            />
           ))}
         </div>
       )}
@@ -298,7 +334,15 @@ function TransferFundsModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function AccountTypeGroup({ group, onAccountClick }: { group: BalanceSummaryGroup; onAccountClick: (accountId: string) => void }) {
+function AccountTypeGroup({
+  group,
+  isAllStores,
+  onAccountClick,
+}: {
+  group: BalanceSummaryGroup;
+  isAllStores: boolean;
+  onAccountClick: (accountId: string) => void;
+}) {
   const color = TYPE_COLORS[group.type] ?? 'gray';
   const creditNormal = ['Liability', 'Income', 'Equity'].includes(group.type);
   const groupDisplayBalance = creditNormal ? -group.netBalance : group.netBalance;
@@ -337,15 +381,29 @@ function AccountTypeGroup({ group, onAccountClick }: { group: BalanceSummaryGrou
           {group.accounts.map((acct) => {
             const { value: bal, color: balColor } = displayBalance(acct.balance, acct.accountType);
             const hasActivity = acct.debitTotal > 0 || acct.creditTotal > 0;
+            const rowKey = `${acct.accountId}-${acct.storeId ?? ''}`;
             return (
               <tr
-                key={acct.accountId}
+                key={rowKey}
                 onClick={() => onAccountClick(acct.accountId)}
                 className={`border-b border-gray-50 hover:bg-gray-50 transition cursor-pointer ${
                   !hasActivity ? 'opacity-50' : ''
                 }`}
               >
-                <td className="px-4 py-2.5 text-gray-900">{acct.accountName}</td>
+                <td className="px-4 py-2.5 text-gray-900">
+                  <span className="inline-flex flex-wrap items-center gap-x-1">
+                    <span>{acct.accountName}</span>
+                    {isAllStores && acct.storeId && acct.storeId !== COMPANY_STORE_ID && (
+                      <span className="ml-2 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-teal-50 text-teal-700">
+                        {acct.storeId === 'store-lolas'
+                          ? "Lola's"
+                          : acct.storeId === 'store-bass'
+                            ? 'Bass'
+                            : acct.storeId}
+                      </span>
+                    )}
+                  </span>
+                </td>
                 <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">
                   {acct.debitTotal > 0 ? formatCurrency(acct.debitTotal) : '—'}
                 </td>

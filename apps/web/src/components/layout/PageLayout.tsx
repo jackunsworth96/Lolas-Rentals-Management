@@ -7,22 +7,6 @@ import logo from '../../assets/Lolas Original Logo.svg';
 import flowerLeft from '../../assets/Flower Left.svg';
 import flowerRight from '../../assets/Flower Right.svg';
 
-function useFonts() {
-  useEffect(() => {
-    const id = 'page-layout-fonts';
-    if (document.getElementById(id)) return;
-    const link = document.createElement('link');
-    link.id = id;
-    link.rel = 'stylesheet';
-    link.href =
-      'https://fonts.googleapis.com/css2?family=Epilogue:wght@700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap';
-    document.head.appendChild(link);
-    return () => {
-      document.getElementById(id)?.remove();
-    };
-  }, []);
-}
-
 export interface PageLayoutProps {
   children: ReactNode;
   title?: string;
@@ -51,7 +35,7 @@ const BOTTOM_NAV = [
   { to: '/book/repairs', icon: '🔧', label: 'Repairs' },
 ];
 
-const linkBase = 'min-h-[44px] flex items-center transition-opacity duration-200 hover:opacity-80';
+const linkBase = 'min-h-[44px] flex items-center transition-opacity duration-200 hover:opacity-70';
 const linkActive = `${linkBase} font-bold text-gold-brand`;
 const linkInactive = `${linkBase} text-white/80 hover:text-white`;
 
@@ -63,7 +47,6 @@ export function PageLayout({
   floralPosition = 'fixed',
   showBasketIcon = false,
 }: PageLayoutProps) {
-  useFonts();
   const { pathname } = useLocation();
   const basketCount = useBookingStore((s) => s.basket.length);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -90,8 +73,8 @@ export function PageLayout({
 
   return (
     <div
-      className="relative min-h-screen overflow-x-hidden font-body animate-page-fade-in"
-      style={{ background: '#FAF6F0' }}
+      className="relative min-h-screen font-body animate-page-fade-in"
+      style={{ background: '#f1e6d6', overflowX: 'hidden' }}
     >
       {showFloralLeft && (
         <img
@@ -119,7 +102,12 @@ export function PageLayout({
             ☰
           </button>
           <Link to="/book" onClick={() => setMenuOpen(false)}>
-            <img src={logo} alt="Lola's Rentals" className="h-8 w-auto brightness-0 invert" />
+            <img
+              src={logo}
+              alt="Lola's Rentals"
+              className="h-10 w-auto brightness-0 invert"
+              style={{ border: 'none', outline: 'none', boxShadow: 'none', display: 'block' }}
+            />
           </Link>
         </div>
 
@@ -162,7 +150,7 @@ export function PageLayout({
         {showBasketIcon ? (
           <Link
             to="/book/basket"
-            className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border-2 border-white/20 text-white transition-all duration-300 hover:bg-white/10"
+            className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border-2 border-white/30 text-white transition-all duration-300 hover:bg-white/10"
           >
             🛒
             {basketCount > 0 && (
@@ -182,20 +170,20 @@ export function PageLayout({
             <Link
               key={n.to}
               to={n.to}
-              className={`min-h-[44px] flex items-center py-2 font-bold ${isActive(n.to) ? 'text-gold-brand' : 'text-white'}`}
+              className={`min-h-[44px] flex items-center py-2 font-bold ${isActive(n.to) ? 'text-gold-brand' : 'text-white/80'}`}
               onClick={() => setMenuOpen(false)}
             >
               {n.label}
             </Link>
           ))}
-          <div className={`min-h-[44px] flex items-center py-2 font-bold ${isMyRentalActive ? 'text-gold-brand' : 'text-white'}`}>
+          <div className={`min-h-[44px] flex items-center py-2 font-bold ${isMyRentalActive ? 'text-gold-brand' : 'text-white/80'}`}>
             My Rental
           </div>
           {MY_RENTAL_ITEMS.map((item) => (
             <Link
               key={item.to}
               to={item.to}
-              className={`min-h-[44px] flex items-center py-1 pl-4 text-sm font-semibold ${isActive(item.to) ? 'text-gold-brand' : 'text-white/70'}`}
+              className={`min-h-[44px] flex items-center py-1 pl-4 text-sm font-semibold ${isActive(item.to) ? 'text-gold-brand' : 'text-white/80'}`}
               onClick={() => setMenuOpen(false)}
             >
               {item.label}

@@ -89,7 +89,7 @@ export function PawCardDashboard({ accessEmail, displayFullName }: Props) {
       <div className="max-w-5xl mx-auto">
         <div className="flex items-end justify-between mb-8">
           <div>
-            <h2 className="text-4xl font-bold" style={{ fontFamily: 'Epilogue, sans-serif', color: '#1f1b12' }}>Your Impact</h2>
+            <h2 className="text-4xl font-bold" style={{ color: '#1f1b12' }}>Your Impact</h2>
             <p style={{ color: '#3e4946' }}>Real-time stats of your contributions</p>
           </div>
         </div>
@@ -109,7 +109,7 @@ export function PawCardDashboard({ accessEmail, displayFullName }: Props) {
               <img src={discountCard} alt="" className="w-8 h-8 mb-2 bg-transparent" />
               <h4 className="text-xs font-bold uppercase tracking-wider" style={{ color: '#3e4946' }}>My Total Savings</h4>
             </div>
-            <p className="text-4xl font-black mt-2" style={{ fontFamily: 'Epilogue, sans-serif', color: '#1A7A6E' }}>
+            <p className="text-4xl font-black mt-2" style={{ color: '#1A7A6E' }}>
               {dashLoading ? '…' : formatCurrency(myTotal)}
             </p>
             <p className="mt-3 text-sm" style={{ color: '#3e4946' }}>
@@ -129,7 +129,7 @@ export function PawCardDashboard({ accessEmail, displayFullName }: Props) {
               <h4 className="text-xs font-bold uppercase tracking-wider opacity-80">Lola&apos;s Matched Donation</h4>
             </div>
             <div className="relative z-10">
-              <p className="text-4xl font-black mt-2 mb-1" style={{ fontFamily: 'Epilogue, sans-serif' }}>
+              <p className="text-4xl font-black mt-2 mb-1">
                 {dashLoading ? '…' : formatCurrency(myTotal)}
               </p>
               <p className="text-xs opacity-70">
@@ -150,7 +150,7 @@ export function PawCardDashboard({ accessEmail, displayFullName }: Props) {
             <div className="mb-auto">
               <img src={handOnHeart} alt="" className="w-8 h-8 mb-2 bg-transparent" />
               <h4 className="text-xs font-bold uppercase tracking-wider">Community Total</h4>
-              <p className="text-4xl font-black mt-2" style={{ fontFamily: 'Epilogue, sans-serif' }}>
+              <p className="text-4xl font-black mt-2">
                 {dashLoading ? '…' : formatCurrency(communityTotal)}
               </p>
             </div>
@@ -190,7 +190,7 @@ export function PawCardDashboard({ accessEmail, displayFullName }: Props) {
           <FadeUpSection className="md:col-span-3">
           <div className="rounded-2xl bg-white p-8 shadow-lg">
             <div className="mb-4 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-              <h4 className="text-2xl font-bold" style={{ fontFamily: 'Epilogue, sans-serif' }}>Top Savers</h4>
+              <h4 className="text-2xl font-bold">Top Savers</h4>
               <div className="flex gap-2">
                 <button
                   type="button"

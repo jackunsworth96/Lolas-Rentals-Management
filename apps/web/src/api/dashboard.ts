@@ -45,7 +45,7 @@ export interface StoreMetrics {
   maintenancePartsCost: number | null;
   maintenanceLabourCost: number | null;
   expensesByCategory: ExpensesByCategoryRow[] | null;
-  expensesByCategoryLast30: ExpensesByCategoryRow[] | null;
+  expensesByCategoryLastMonth: ExpensesByCategoryRow[] | null;
   todayRevenue: number | null;
   miscSalesRevenue: number | null;
   addonRevenue: AddonRevenueRow[] | null;

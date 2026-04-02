@@ -1,0 +1,868 @@
+# SYSTEM_AUDIT.md — Lola's Rentals Backoffice
+
+> **Audit Date:** 2026-03-30
+> **Auditor:** AI Architect (Forensic Codebase Audit)
+> **Scope:** Every file in the repository — frontend, backend, database, configuration, and utilities
+> **Purpose:** Master reference document for understanding what has been built, how it works, what is broken or incomplete, and what needs to be done next.
+
+---
+
+## Table of Contents
+
+1. [Repository Structure](#1-repository-structure)
+2. [Tech Stack](#2-tech-stack)
+3. [Database Schema (Supabase / PostgreSQL)](#3-database-schema)
+4. [API Layer (Backend)](#4-api-layer)
+5. [Frontend Architecture](#5-frontend-architecture)
+6. [Domain Model (packages/domain)](#6-domain-model)
+7. [Shared Contracts (packages/shared)](#7-shared-contracts)
+8. [Data Flows](#8-data-flows)
+9. [Authentication & Security](#9-authentication--security)
+10. [Edge Functions & Webhooks](#10-edge-functions--webhooks)
+11. [Known Issues & Code Smells](#11-known-issues--code-smells)
+12. [Gap Analysis (Prioritized)](#12-gap-analysis-prioritized)
+
+---
+
+## 1. Repository Structure
+
+### 1.1 Top-Level Layout
+
+```
+lolas-rentals-ui/                          ← Monorepo root (npm workspaces)
+├── apps/
+│   ├── api/                               ← Express 5 REST API (backend)
+│   │   ├── src/
+│   │   │   ├── server.ts                  ← Entry point, DI container, CORS, middleware
+│   │   │   ├── routes/                    ← 20+ route modules
+│   │   │   │   ├── index.ts              ← Central route registry
+│   │   │   │   ├── auth.ts              ← PIN-based authentication
+│   │   │   │   ├── orders.ts            ← Core order management (activate/settle/modify)
+│   │   │   │   ├── orders-raw.ts        ← Raw order ingestion and processing
+│   │   │   │   ├── fleet.ts             ← Fleet management, utilization, depreciation
+│   │   │   │   ├── cashup.ts            ← Daily cash reconciliation (681 lines)
+│   │   │   │   ├── config.ts            ← System configuration CRUD (438 lines)
+│   │   │   │   ├── expenses.ts          ← Expense tracking with journal entries
+│   │   │   │   ├── hr.ts               ← Employee CRUD, timesheets, leave
+│   │   │   │   ├── accounting.ts        ← Journal entries, balances, fund transfers
+│   │   │   │   ├── card-settlements.ts  ← Card payment settlement matching
+│   │   │   │   ├── todo.ts             ← Task management with lifecycle (226 lines)
+│   │   │   │   ├── maintenance.ts       ← Vehicle maintenance logging
+│   │   │   │   ├── transfers.ts         ← Airport/van transfer bookings
+│   │   │   │   ├── merchandise.ts       ← Merchandise inventory CRUD
+│   │   │   │   ├── misc-sales.ts        ← Miscellaneous sales recording
+│   │   │   │   ├── payroll.ts           ← Payslip calculation and payroll runs
+│   │   │   │   ├── paw-card.ts          ← Paw Card loyalty program (backoffice)
+│   │   │   │   ├── public-booking.ts    ← Public booking API (357 lines)
+│   │   │   │   ├── public-extend.ts     ← Customer self-service rental extension (369 lines)
+│   │   │   │   ├── public-transfers.ts  ← Public transfer booking via token
+│   │   │   │   ├── public-paw-card.ts   ← Public paw card lookup
+│   │   │   │   ├── public-repairs.ts    ← Public repair costs lookup
+│   │   │   │   ├── lost-opportunity.ts  ← Lost opportunity tracking
+│   │   │   │   └── ui-errors.ts         ← UI error/feedback tracking
+│   │   │   ├── middleware/
+│   │   │   │   ├── authenticate.ts      ← JWT Bearer token verification
+│   │   │   │   ├── authorize.ts         ← Permission-based authorization
+│   │   │   │   ├── validate.ts          ← Zod-based request validation
+│   │   │   │   └── error-handler.ts     ← Domain error to HTTP status mapping
+│   │   │   ├── adapters/
+│   │   │   │   ├── auth/                ← JWT signing/verification
+│   │   │   │   ├── supabase/            ← Database repositories and ports
+│   │   │   │   └── google-sheets/       ← Google Sheets background sync
+│   │   │   └── use-cases/              ← 17 business-logic modules
+│   │   │       ├── accounting/          ← calculate-balances, create-journal-entry, transfer-funds
+│   │   │       ├── booking/             ← check-availability, compute-quote, create-hold, submit-direct-booking
+│   │   │       ├── card-settlements/    ← match-settlement
+│   │   │       ├── cashup/              ← submit-cashup, override-cashup
+│   │   │       ├── config/              ← settings management
+│   │   │       ├── expenses/            ← create-expense, update-expense, delete-expense
+│   │   │       ├── fleet/               ← vehicle lifecycle
+│   │   │       ├── hr/                  ← submit-timesheet, approve-timesheets, submit-leave
+│   │   │       ├── maintenance/         ← log-maintenance, save-maintenance, complete-maintenance
+│   │   │       ├── misc-sales/          ← record-sale, update-sale, delete-sale
+│   │   │       ├── orders/              ← activate-order, settle-order
+│   │   │       ├── paw-card/            ← lookup-customer, log-savings, company-impact
+│   │   │       ├── payroll/             ← calculate-payslip, run-payroll
+│   │   │       ├── repairs/             ← list-repair-costs
+│   │   │       ├── settings/            ← system settings
+│   │   │       ├── todo/                ← create/update/claim/start/submit/verify/reject/escalate task
+│   │   │       └── transfers/           ← create-transfer, record-payment, record-driver-payment
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   │
+│   └── web/                              ← React 18 + Vite SPA (frontend)
+│       ├── src/
+│       │   ├── App.tsx                   ← Root: QueryClientProvider, BrowserRouter, ErrorBoundary, AppRouter
+│       │   ├── router.tsx               ← 25+ routes (public + backoffice protected)
+│       │   ├── api/                     ← 18 API client modules (React Query)
+│       │   │   ├── client.ts            ← Central fetch wrapper with auth interceptor
+│       │   │   └── orders.ts, fleet.ts, cashup.ts, hr.ts, accounting.ts, ...
+│       │   ├── stores/                  ← Zustand state management
+│       │   │   ├── auth-store.ts        ← Auth token + user persistence (localStorage)
+│       │   │   ├── bookingStore.ts       ← Public booking basket/session
+│       │   │   ├── ui-store.ts          ← UI state (sidebar, theme)
+│       │   │   ├── realtime.ts          ← Supabase realtime subscription
+│       │   │   └── task-notification-store.ts ← Todo notification state
+│       │   ├── hooks/                   ← 3 custom hooks
+│       │   │   ├── use-payment-routing.ts ← Payment routing rule resolution
+│       │   │   ├── useTaskRealtime.ts    ← Task realtime subscriptions
+│       │   │   └── useToast.ts          ← Toast notification hook
+│       │   ├── pages/                   ← 25 page directories
+│       │   └── components/              ← 19 component directories
+│       ├── vite.config.ts               ← Dev server on :3002, proxy /api to :3001
+│       ├── package.json
+│       └── tsconfig.json
+│
+├── packages/
+│   ├── domain/                           ← Pure business logic (zero dependencies)
+│   │   └── src/
+│   │       ├── entities/                ← Order, Vehicle, Employee, JournalTransaction, Timesheet, Transfer, MaintenanceRecord
+│   │       ├── value-objects/           ← Money, StoreId, Period, DateRange, OrderStatus
+│   │       ├── services/               ← DepositCalculator, DepreciationService, PayrollCalculator
+│   │       ├── errors/                  ← DomainError hierarchy
+│   │       └── ports/                   ← 29 repository/port interfaces
+│   └── shared/                           ← Shared contracts (API boundary)
+│       └── src/
+│           ├── constants/               ← Permissions, StoreMapping, OrderStatus, ReferenceTypes
+│           ├── types/                   ← API types
+│           └── schemas/                 ← 19 Zod schema modules
+│
+├── supabase/
+│   ├── migrations/                       ← 41 SQL migration files (001 to 041)
+│   └── functions/
+│       └── order-webhook/index.ts        ← Deno Edge Function for WooCommerce webhook ingestion
+│
+├── package.json                          ← Monorepo root (workspaces)
+├── .env.example                          ← Environment variable template
+└── tsconfig.json                         ← Root TypeScript config
+```
+
+---
+
+## 2. Tech Stack
+
+### 2.1 Frontend
+
+| Component | Technology | Version |
+|---|---|---|
+| **Framework** | React | 18.x |
+| **Build Tool** | Vite | 6.x |
+| **Routing** | React Router | 7.x |
+| **State Management** | Zustand | 5.x (persisted to localStorage) |
+| **Data Fetching** | TanStack React Query | 5.x (staleTime: 30s, retry: 1) |
+| **Styling** | Tailwind CSS | 4.x |
+| **Language** | TypeScript (strict, ESM) | 5.x |
+| **Realtime** | Supabase JS Client | 2.x (for todo task subscriptions) |
+
+### 2.2 Backend
+
+| Component | Technology | Version |
+|---|---|---|
+| **Runtime** | Node.js | ESM mode |
+| **Framework** | Express | 5.x |
+| **Validation** | Zod | 3.x |
+| **Database Client** | Supabase JS | 2.x (service role key) |
+| **Authentication** | jsonwebtoken (JWT) | Custom PIN-based |
+| **File Upload** | Multer | Memory storage (Paw Card receipts) |
+| **Language** | TypeScript (strict, ESM) | 5.x |
+
+### 2.3 Database
+
+| Component | Technology |
+|---|---|
+| **Database** | Supabase (hosted PostgreSQL) |
+| **Migrations** | Raw SQL files (41 files, 001 to 041) |
+| **Security** | Row-Level Security (RLS) with JWT claims |
+| **Storage** | Supabase Storage (paw-card-receipts bucket) |
+
+### 2.4 Infrastructure and External
+
+| Component | Technology |
+|---|---|
+| **Edge Functions** | Supabase Edge Functions (Deno runtime) |
+| **Webhook Source** | WooCommerce (2 stores: lolas, bass) |
+| **Background Sync** | Google Sheets API (spreadsheet sync adapter) |
+| **Hosting** | Render (backend), Vite static deploy (frontend) |
+| **Monorepo** | npm workspaces |
+
+### 2.5 Environment Variables
+
+```
+SUPABASE_URL                - Supabase project URL
+SUPABASE_SERVICE_ROLE_KEY   - Service role key (bypasses RLS)
+JWT_SECRET                  - Secret for signing/verifying JWTs
+ALLOWED_ORIGIN              - CORS allowed origin
+GOOGLE_SHEETS_CLIENT_EMAIL  - Service account for Google Sheets
+GOOGLE_SHEETS_PRIVATE_KEY   - Service account private key
+GOOGLE_SHEETS_ID_LOLAS      - Spreadsheet ID (Lola's store)
+GOOGLE_SHEETS_ID_BASS       - Spreadsheet ID (Bass store)
+NODE_ENV                    - production | development
+PORT                        - API server port (default: 3001)
+VITE_API_URL                - Frontend to API base URL
+```
+
+---
+
+## 3. Database Schema
+
+### 3.1 Table Catalog (30+ tables)
+
+#### Foundation Layer
+| Table | PK Type | Store-scoped | Purpose |
+|---|---|---|---|
+| `stores` | text | N/A | Multi-store root entity (e.g., store-lolas, store-bass) |
+| `roles` | text | No | Role definitions (e.g., Admin, Manager, Staff) |
+| `role_permissions` | (role_id, permission) | No | Permission grants per role |
+| `employees` | text | Yes | Staff records with payroll, leave, government IDs |
+| `users` | uuid | No | Login accounts (username + PIN hash, links to employee + role) |
+
+#### Configuration Layer
+| Table | PK Type | Purpose |
+|---|---|---|
+| `chart_of_accounts` | text | Double-entry ledger accounts (Asset, Liability, Income, Expense, Equity) |
+| `addons` | serial | Per-day and one-time rental add-ons |
+| `locations` | serial | Pickup/dropoff locations with delivery/collection fees |
+| `payment_methods` | text | Cash, Card, GCash, etc. |
+| `vehicle_models` | text | Vehicle model catalog |
+| `vehicle_model_pricing` | serial | Tiered daily rates by model, store, day range |
+| `fleet_statuses` | text | Status definitions with is_rentable flag |
+| `expense_categories` | serial | Categorized expense types with linked accounts |
+| `transfer_routes` | serial | Airport/van transfer pricing |
+| `day_types` | text | Holiday, Regular, etc. (for payroll) |
+| `paw_card_establishments` | serial | Partner businesses for loyalty program |
+| `maintenance_work_types` | serial | Categories of maintenance work |
+| `leave_config` | serial | Store-level leave policy (reset dates, allowances) |
+
+#### Core Business Layer
+| Table | PK Type | Store-scoped | Purpose |
+|---|---|---|---|
+| `customers` | text | Yes | Customer records with spend tracking, blacklist flag |
+| `fleet` | text | Yes | Individual vehicles with status, mileage, depreciation, sale history |
+| `orders` | text | Yes | Order headers: status, totals, deposits, fees, tips, charity |
+| `order_items` | text | Yes | Line items: vehicle assignment, dates, rates, fees, discount |
+| `order_addons` | text | Yes | Add-ons attached to orders/items |
+| `orders_raw` | text | Yes | Raw incoming orders (WooCommerce webhook + direct bookings) |
+
+#### Financial Layer
+| Table | PK Type | Purpose |
+|---|---|---|
+| `payments` | text | All payment records (rental, deposit, refund, extension, addon) |
+| `journal_entries` | text | Double-entry accounting ledger (debit XOR credit constraint) |
+| `cash_reconciliation` | text | Daily cash-up: opening balance, counted cash, variance, denominations |
+| `card_settlements` | serial | Card payment settlement tracking with bank reference matching |
+| `vehicle_swaps` | text | Vehicle swap log (old to new) with reason and date |
+
+#### HR and Operations Layer
+| Table | PK Type | Purpose |
+|---|---|---|
+| `timesheets` | text | Daily attendance: hours, overtime, 9PM returns, day type |
+| `cash_advance_schedules` | text | Employee cash advances with installment deductions |
+| `maintenance` | text | Vehicle maintenance records: parts, labor, downtime tracking |
+| `expenses` | text | Operational expenses with account classification |
+| `transfers` | text | Airport/van transfer service orders |
+
+#### Ancillary Layer
+| Table | PK Type | Purpose |
+|---|---|---|
+| `misc_sales` | text | Non-rental revenue (laundry, fuel, tips, etc.) |
+| `lost_opportunity` | serial | Missed booking tracking for capacity planning |
+| `todo_tasks` | text | Staff task management with lifecycle + seen-by tracking |
+| `todo_comments` | uuid | Task comments |
+| `paw_card_entries` | serial | Loyalty card savings log |
+| `ui_errors` | text | Staff-reported UI bugs and improvement suggestions |
+| `merchandise` | text (sku) | Physical merchandise inventory (stock, cost, sales) |
+| `reviews` | serial | External review aggregation (Google, TripAdvisor, etc.) |
+| `recurring_bills` | serial | Recurring monthly expenses |
+| `directory` | serial | Contact directory (suppliers, mechanics, etc.) |
+
+### 3.2 Key Constraints and Indexes
+
+**Critical Constraints:**
+- `journal_entries.debit_xor_credit`: Enforces that each journal leg is either a debit OR a credit, never both
+- `journal_entries.positive_amounts`: Ensures debit >= 0 AND credit >= 0
+- `orders.status CHECK`: Restricts to unprocessed, active, confirmed, completed, cancelled
+- `timesheets.payroll_status CHECK`: Restricts to Pending, Approved, Paid
+- `timesheets UNIQUE (employee_id, date)`: Prevents duplicate daily entries
+- `cash_reconciliation UNIQUE (store_id, date)`: One reconciliation per store per day
+
+**Indexes (26 total):** Comprehensive index coverage on all foreign keys, date fields, status fields, and composite keys used in queries. Key indexes include:
+- `idx_orders_store_status`, `idx_fleet_store_status` — Most common query patterns
+- `idx_je_account_date`, `idx_je_store_date` — Accounting report queries
+- `idx_payments_order`, `idx_payments_date` — Financial lookups
+
+### 3.3 Row-Level Security (RLS)
+
+**Architecture:** RLS is enabled on ALL tables using two PostgreSQL helper functions:
+
+```sql
+public.user_store_ids()    -- Extracts store_ids[] from JWT claims
+public.has_permission(p)   -- Checks if JWT contains specific permission
+```
+
+**Policy Pattern:**
+| Access Level | SELECT | INSERT/UPDATE/DELETE |
+|---|---|---|
+| **Store-scoped tables** (orders, fleet, etc.) | `store_id = ANY(user_store_ids())` | Store filter + permission check |
+| **Config tables** (addons, models, etc.) | `USING (true)` — all authenticated users | Admin permission required |
+| **Paw Card / Merchandise** | `USING (true)` — public via service role | `USING (true)` — write via service role |
+| **Admin-only** (users) | Admin permission required | Admin permission required |
+
+> [!IMPORTANT]
+> **RLS Bypass**: The backend uses the **service role key** (SUPABASE_SERVICE_ROLE_KEY), which bypasses ALL RLS policies. RLS is therefore only enforced for direct Supabase client connections (e.g., realtime subscriptions from the frontend). All mutation security is handled at the Express middleware layer.
+
+---
+
+## 4. API Layer
+
+### 4.1 Server Architecture (apps/api/src/server.ts)
+
+```
+Request -> CORS -> Express JSON -> Route Matching -> [authenticate] -> [requirePermission] -> [validateBody/Query] -> Handler -> Response
+                                                                                                                        | (on error)
+                                                                                                                  errorHandler middleware
+```
+
+**Dependency Injection:** All repositories and ports are instantiated in server.ts and attached to `app.locals.deps`:
+- orderRepo, orderItemRepo, orderAddonRepo
+- paymentRepo, customerRepo, fleetRepo
+- accountingPort, employeeRepo, timesheetRepo
+- leaveBalancePort, payrollPort, transferRepo
+- maintenanceRepo, expenseRepo, cashReconRepo
+- cardSettlementRepo, todoRepo, configRepo
+- pawCardPort, miscSaleRepo, merchandiseRepo
+- bookingPort, repairsPort
+
+### 4.2 Route Registry
+
+| Prefix | Module | Auth | Description |
+|---|---|---|---|
+| `/api/auth` | auth.ts | No | PIN login, permission fetch |
+| `/api/orders` | orders.ts | Yes | Order lifecycle: activate, settle, modify, add payment/addon, swap vehicle |
+| `/api/orders-raw` | orders-raw.ts | Yes | Raw order inbox: list, process, reject, claim; Google Sheets sync |
+| `/api/fleet` | fleet.ts | Yes | Vehicle CRUD, status, utilization, depreciation, calendar |
+| `/api/cashup` | cashup.ts | Yes | Daily cash reconciliation: summary, submit, override, lock |
+| `/api/config` | config.ts | Yes | Stores, addons, locations, payment methods, vehicle models, accounts, pricing, fleet statuses, expense categories, transfer routes, leave config, paw card establishments, maintenance work types, payment routing |
+| `/api/expenses` | expenses.ts | Yes | Expense CRUD with journal entries |
+| `/api/hr` | hr.ts | Yes | Employees CRUD, timesheets, leave requests |
+| `/api/accounting` | accounting.ts | Yes | Balances (v1 + v2), entries, journal entry creation, fund transfers |
+| `/api/card-settlements` | card-settlements.ts | Yes | Pending/settled listing, match, batch edit, combine |
+| `/api/todo` | todo.ts | Yes | Task CRUD, lifecycle (acknowledge, start, submit, verify/reject), comments, notifications, reports |
+| `/api/maintenance` | maintenance.ts | Yes | Maintenance record CRUD with vehicle status updates |
+| `/api/transfers` | transfers.ts | Yes | Transfer booking CRUD, transfer/driver payment recording |
+| `/api/merchandise` | merchandise.ts | Yes | Merchandise inventory CRUD, stock adjustments |
+| `/api/misc-sales` | misc-sales.ts | Yes | Misc revenue recording with journal entries |
+| `/api/payroll` | payroll.ts | Yes | Payslip calculation, payroll run with accounting entries |
+| `/api/paw-card` | paw-card.ts | Mixed | Loyalty program: lookup, submit, leaderboard, receipt upload |
+| `/api/lost-opportunity` | lost-opportunity.ts | Yes | Lost booking tracking CRUD |
+| `/api/ui-errors` | ui-errors.ts | Yes | UI bug/suggestion tracking |
+| `/api/public/booking` | public-booking.ts | No | Public: availability, quote, hold, submit booking, addons, locations, payment methods, order lookup, transfer routes |
+| `/api/public/extend` | public-extend.ts | No | Public: rental extension lookup and confirmation |
+| `/api/public/transfers` | public-transfers.ts | No | Public: transfer booking via store token |
+| `/api/public/paw-card` | public-paw-card.ts | No | Public: paw card lookup, entries, rental orders |
+| `/api/public/repairs` | public-repairs.ts | No | Public: repair cost lookup |
+
+### 4.3 Middleware Pipeline
+
+1. **authenticate.ts** — Extracts Bearer token from Authorization header, verifies JWT, attaches req.user (userId, username, employeeId, roleId, storeIds[], permissions[])
+2. **authorize.ts** — requirePermission(...permissions) — Checks if ALL required permissions exist in req.user.permissions
+3. **validate.ts** — validateBody(schema) / validateQuery(schema) — Zod schema validation with field-level error reporting
+4. **error-handler.ts** — Maps domain errors to HTTP status codes:
+   - InvalidStatusTransitionError -> 409
+   - UnbalancedTransactionError -> 422
+   - InsufficientLeaveBalanceError -> 409
+   - InvalidAmountError -> 400
+   - NonRentableVehicleError -> 409
+   - Generic DomainError -> 400
+   - Production: error message hidden (500)
+
+### 4.4 Use-Case Architecture
+
+Use-cases are loaded via **dynamic imports** for code splitting:
+```typescript
+const { activateOrder } = await import('../use-cases/orders/activate-order.js');
+```
+
+Each use-case follows the pattern:
+```typescript
+export async function createExpense(
+  input: CreateExpenseRequest,
+  deps: { expenses: ExpenseRepository; accounting: AccountingPort },
+): Promise<Expense> { ... }
+```
+
+**17 use-case modules** covering:
+- accounting/ — balance calculations, journal entries, fund transfers
+- booking/ — availability checking, quote computation, hold management, direct booking submission
+- card-settlements/ — settlement matching with accounting
+- cashup/ — cash reconciliation submission and override
+- expenses/ — expense lifecycle with automatic journal entries
+- fleet/ — vehicle lifecycle management
+- hr/ — timesheet submission/approval, leave management
+- maintenance/ — maintenance logging and completion
+- misc-sales/ — miscellaneous sale recording with journal entries
+- orders/ — order activation (raw to active), settlement
+- paw-card/ — customer lookup, savings logging, company impact metrics
+- payroll/ — payslip calculation, payroll run with accounting entries
+- repairs/ — repair cost listing
+- settings/ — system settings management
+- todo/ — full task lifecycle (create, claim, start, submit, verify/reject/escalate)
+- transfers/ — transfer creation, payment recording
+
+---
+
+## 5. Frontend Architecture
+
+### 5.1 Application Shell
+
+```
+App.tsx
+  QueryClientProvider (React Query, staleTime: 30s)
+    BrowserRouter
+      ErrorBoundary
+        AppRouter (lazy-loaded routes with Suspense)
+```
+
+### 5.2 Route Map
+
+#### Public Routes (unauthenticated)
+| Path | Page | Purpose |
+|---|---|---|
+| `/` | redirect | Redirects to /book |
+| `/book` | HomePage | Public landing page |
+| `/book/reserve` | BrowseBookPage | Vehicle selection and booking |
+| `/book/basket` | BasketPage | Booking basket (multi-vehicle) |
+| `/book/confirmation` | ConfirmationPage | Booking confirmation |
+| `/book/confirmation/:reference` | ConfirmationPage | Specific booking confirmation |
+| `/book/extend` | ExtendPage | Customer self-service extension |
+| `/book/paw-card` | PawCardPage | Public loyalty program portal |
+| `/book/repairs` | RepairsPage | Public repair cost lookup |
+| `/book/about` | AboutPage | About page |
+| `/book/privacy` | PrivacyPage | Privacy policy |
+| `/book/transfer/:token` | PublicBookingPage | Token-authenticated transfer booking |
+| `/login` | LoginPage | Staff PIN login |
+
+#### Backoffice Routes (protected — requires JWT)
+| Path | Page | Module |
+|---|---|---|
+| `/dashboard` | redirect | redirects to /orders/inbox |
+| `/orders/inbox` | InboxPage | Order inbox (raw orders) |
+| `/orders/active` | ActivePage | Active rentals |
+| `/orders/completed` | CompletedPage | Completed orders |
+| `/fleet` | FleetPage | Fleet management |
+| `/fleet/utilization` | UtilizationDashboard | Fleet utilization analytics |
+| `/maintenance` | MaintenancePage | Vehicle maintenance |
+| `/transfers` | TransfersPage | Transfer bookings |
+| `/accounts` | AccountsPage | Chart of accounts and balances |
+| `/accounts/:id` | AccountDetailPage | Account ledger detail |
+| `/card-settlements` | CardSettlementsPage | Card settlement matching |
+| `/cashup` | CashupPage | Daily cash reconciliation |
+| `/hr/employees` | EmployeesPage | Employee management |
+| `/hr/timesheets` | TimesheetsPage | Timesheet entry and approval |
+| `/hr/payroll` | PayrollPage | Payslip and payroll |
+| `/expenses` | ExpensesPage | Daily expense recording |
+| `/todo` | TodoPage | Task management |
+| `/misc-sales` | MiscSalesPage | Miscellaneous sales |
+| `/merchandise` | MerchandisePage | Merchandise inventory |
+| `/lost-opportunity` | LostOpportunityPage | Lost opportunity tracking |
+| `/settings` | SettingsPage | System configuration |
+| `/ui-errors` | UIErrorsPage | UI bug tracker |
+
+### 5.3 State Management (Zustand Stores)
+
+| Store | Persistence | Purpose |
+|---|---|---|
+| auth-store | localStorage (lolas-auth) | JWT token + user profile + hasPermission() |
+| bookingStore | In-memory | Public booking session: dates, store, locations, basket items, session token |
+| ui-store | In-memory | Sidebar collapse state, active store selection |
+| realtime | In-memory | Supabase realtime channel management |
+| task-notification-store | In-memory | Unseen todo task notification count |
+
+### 5.4 API Client Layer
+
+**Central Client** (api/client.ts):
+- Uses fetch with auto-injected Bearer token from auth store
+- Auto-logout on 401 (except login endpoint)
+- Normalizes API base URL from VITE_API_URL
+- Typed response unwrapping (ApiResponse T to T)
+
+**18 Domain API Modules:** Each module exports React Query hooks:
+```
+accounting.ts, card-settlements.ts, cashup.ts, config.ts,
+expenses.ts, fleet.ts, hr.ts, lost-opportunity.ts,
+maintenance.ts, merchandise.ts, misc-sales.ts, orders.ts,
+orders-raw.ts, paw-card.ts, todo.ts, transfers.ts, ui-errors.ts
+```
+
+### 5.5 Component Architecture
+
+**19 component directories** organized by feature:
+- layout/ — AppLayout (sidebar navigation + topbar with store selector)
+- common/ — ErrorBoundary, shared utilities
+- ui/ — Design system primitives
+- orders/, fleet/, hr/, maintenance/ — Backoffice feature components
+- modals/ — Booking modals, settings dialogs
+- booking/, basket/, confirmation/, extend/ — Public booking flow
+- home/, about/, repairs/, public/ — Public-facing components
+- card-settlements/, transfers/, settings/ — Feature-specific components
+
+---
+
+## 6. Domain Model (packages/domain)
+
+### 6.1 Entities
+
+| Entity | Key Behavior |
+|---|---|
+| Order | Status state machine (unprocessed -> active -> confirmed -> completed/cancelled), adjustTotal(Money), deposit management |
+| Vehicle | Status management, canAutoUpdateStatus(), rentability checks, depreciation tracking |
+| Employee | Complete HR profile: rates, allowances, leave balances, government IDs |
+| JournalTransaction | Double-entry transaction assembly with balance validation |
+| Timesheet | Daily attendance with payroll status lifecycle (Pending -> Approved -> Paid) |
+| Transfer | Transfer booking with payment/driver payment status |
+| MaintenanceRecord | Maintenance lifecycle (Reported -> In Progress -> Completed) with cost tracking |
+
+### 6.2 Value Objects
+
+| Value Object | Purpose |
+|---|---|
+| Money | Immutable currency amount with arithmetic (add, subtract, multiply), Money.php(), Money.zero() |
+| StoreId | Store identifier wrapper |
+| Period | Month-based period (YYYY-MM) for accounting |
+| DateRange | Start/end date range with contains(date) |
+| OrderStatus | Status enum with valid transition map |
+
+### 6.3 Domain Services
+
+| Service | Purpose |
+|---|---|
+| DepositCalculator | Calculates security deposits based on configurable rules |
+| DepreciationService | Straight-line depreciation: (purchasePrice + setupCosts - salvageValue) / usefulLifeMonths |
+| PayrollCalculator | Complex payroll computation: base pay, overtime, 9PM bonus, commissions, deductions (SSS, PhilHealth, Pag-IBIG), leave deductions, cash advance installments, 13th month accrual |
+
+### 6.4 Port Interfaces (29 total)
+
+The domain defines **29 port interfaces** that represent all data access boundaries:
+
+```
+OrderRepository, OrderItemRepository, OrderAddonRepository,
+PaymentRepository, CustomerRepository, FleetRepository,
+AccountingPort, EmployeeRepository, TimesheetRepository,
+LeaveBalancePort, PayrollPort, TransferRepository,
+MaintenanceRepository, ExpenseRepository, CashReconciliationRepository,
+CardSettlementRepository, TodoRepository, ConfigRepository,
+AuthPort, SheetSyncPort, RecurringBillsPort,
+PawCardPort, MiscSaleRepository, MerchandiseRepository,
+PaymentRoutingRepository, ReviewRepository, DirectoryRepository,
+BookingPort, RepairsPort
+```
+
+---
+
+## 7. Shared Contracts (packages/shared)
+
+### 7.1 Permission Model (27 permissions)
+
+```
+can_view_inbox, can_view_active, can_view_completed,
+can_view_fleet, can_view_maintenance, can_view_transfers,
+can_view_cardsettlements, can_view_expenses, can_view_timesheets,
+can_submit_timesheets, can_view_todo, can_view_lostopportunity,
+can_view_cashup, can_edit_orders, can_edit_fleet,
+can_view_uierrors, can_view_miscsales, can_approve_timesheets,
+can_edit_accounts, can_view_payroll, can_view_accounts,
+can_view_fleet_book_value, can_override_cashup, can_manage_todo,
+can_manage_employees, can_edit_settings
+```
+
+### 7.2 Store Mapping
+
+Two stores defined: `store-lolas` (source: lolas) and `store-bass` (source: bass)
+Default store: `store-lolas`
+Company-level store: `company` (for cross-store accounts)
+
+### 7.3 Zod Schema Modules (19)
+
+Each module defines request/response schemas with full Zod validation:
+- auth-schemas, order-schemas, orders-raw-schemas, fleet-schemas
+- accounting-schemas, config-schemas, hr-schemas, transfer-schemas
+- payroll-schemas, cashup-schemas, expense-schemas, todo-schemas
+- paw-card-schemas, maintenance-schemas, misc-sales-schemas
+- merchandise-schemas, payment-routing-schemas, ui-errors-schemas
+- lost-opportunity-schemas, extend-schemas
+
+---
+
+## 8. Data Flows
+
+### 8.1 Order Lifecycle
+
+```
+WooCommerce Webhook --> POST /order-webhook?store=lolas --> Edge Function
+    --> INSERT orders_raw
+
+Direct Booking UI --> POST /public/booking/submit --> submit-direct-booking
+    --> INSERT orders_raw
+
+orders_raw --> Staff reviews in Inbox --> Process Raw Order
+    --> Creates order + items + addons + customer + payments
+    --> orders, order_items, order_addons, customers, payments
+
+Active Order --> Record payments, add addons, swap vehicles --> Order Operations
+    --> Settle --> Completed Order --> journal_entries
+```
+
+### 8.2 Cash-Up Flow
+
+```
+1. Staff opens CashUp page
+2. GET /cashup/summary aggregates: payments, expenses, misc_sales, deposits, inter-store transfers
+3. Staff counts till + deposits (enters denominations: 1000 x n, 500 x n, ...)
+4. POST /cashup/submit saves cash_reconciliation record + creates journal entries
+5. If variance: Manager Override required (POST /cashup/override)
+6. If zero variance: record is Locked
+```
+
+### 8.3 Public Booking Flow
+
+```
+1. Customer visits /book, selects dates + store
+2. GET /public/booking/availability shows available models with pricing
+3. POST /public/booking/hold reserves vehicle inventory
+4. Add to basket, select addons, locations
+5. GET /public/booking/quote provides server-side pricing
+6. POST /public/booking/submit creates orders_raw record + releases holds
+7. Redirect to /book/confirmation/:reference
+```
+
+### 8.4 Accounting Data Flow
+
+All financial events create double-entry journal entries:
+
+- **Expense Created** -> Debit Expense Account, Credit Cash/Bank Account
+- **Misc Sale Recorded** -> Debit Cash Account, Credit Income Account
+- **Order Payment** -> Debit Cash/Card Receivable, Credit Revenue + Deposit Liability
+- **Card Settlement Matched** -> Debit Bank, Credit Card Receivable + Debit Card Fee Expense
+- **Payroll Run** -> Debit Salary Expense, Credit Cash + Deductions Payable
+- **Deposit Refund** -> Debit Deposit Liability, Credit Cash
+- **Fund Transfer** -> Debit Destination Account, Credit Source Account
+
+### 8.5 Rental Extension Flow
+
+```
+1. Customer visits /book/extend, enters email + order reference
+2. POST /public/extend/lookup finds booking in orders_raw or orders
+3. Shows current booking details + extension pricing
+4. Customer selects new return date
+5. POST /public/extend/confirm:
+   a. Checks availability for extension window
+   b. Updates dropoff_datetime
+   c. Recalculates per-day addon costs
+   d. Adjusts order.final_total + balance_due
+   e. Creates extension payment record (pending)
+   f. Creates journal entry (Debit Receivable, Credit Rental Income)
+```
+
+---
+
+## 9. Authentication and Security
+
+### 9.1 Authentication Flow
+
+```
+1. Staff enters PIN on /login page
+2. Frontend POSTs to /api/auth/login with { pin }
+3. Backend verifies PIN hash against users table
+4. Fetches employee, role, role_permissions, and employee's store assignments
+5. Signs JWT containing: { userId, username, employeeId, roleId, storeIds[], permissions[] }
+6. Returns token + user payload
+7. Frontend stores in Zustand (persisted to localStorage as 'lolas-auth')
+8. All subsequent requests include Bearer token in Authorization header
+```
+
+### 9.2 Authorization Model
+
+- **Layer 1 — Middleware:** authenticate validates JWT; requirePermission checks permission strings
+- **Layer 2 — RLS:** Database-level policies (currently bypassed by service role key)
+- **Layer 3 — Business Logic:** Use-cases perform domain-level authorization checks
+
+### 9.3 Security Assessment
+
+| Area | Status | Notes |
+|---|---|---|
+| **JWT Verification** | PASS | jsonwebtoken.verify() with JWT_SECRET |
+| **Permission Checks** | PASS | 27 named permissions, checked per route |
+| **Input Validation** | PASS | Zod schemas on all request bodies and query params |
+| **CORS** | WARN | ALLOWED_ORIGIN env var controls allowed origin |
+| **RLS** | WARN | Service role key bypasses all RLS - security relies entirely on Express middleware |
+| **PIN-based Auth** | WARN | No rate limiting on login attempts; PINs may be short |
+| **Public Endpoints** | WARN | /api/public/* endpoints have no authentication; potential for abuse |
+| **File Upload** | PASS | Multer with MIME type whitelist and 5MB limit |
+| **Error Handling** | PASS | Error messages hidden in production mode |
+| **SQL Injection** | PASS | All queries use Supabase client (parameterized) |
+
+---
+
+## 10. Edge Functions and Webhooks
+
+### 10.1 Order Webhook (supabase/functions/order-webhook/index.ts)
+
+**Purpose:** Receives WooCommerce order webhooks and inserts them into orders_raw.
+
+**Flow:**
+1. Receives POST /order-webhook?store=lolas (or bass)
+2. Validates signature (HMAC-SHA256 via x-wc-webhook-signature OR x-webhook-secret header)
+3. Parses JSON body
+4. Inserts into orders_raw table with source column set to store name
+5. Returns { ok: true, store }
+
+**Security:**
+- Per-store secrets: WEBHOOK_SECRET_LOLAS, WEBHOOK_SECRET_BASS
+- CORS: wildcard (*) for edge function
+- Dual verification: supports both WooCommerce HMAC and custom header-based secret
+
+### 10.2 Google Sheets Sync (adapters/google-sheets/)
+
+**Purpose:** Background sync of raw orders from Google Sheets (legacy integration).
+- Reads from configured spreadsheet IDs (GOOGLE_SHEETS_ID_LOLAS, GOOGLE_SHEETS_ID_BASS)
+- Used for order ingestion alongside webhook flow
+- Invoked from orders-raw.ts route via POST /orders-raw/sync
+
+---
+
+## 11. Known Issues and Code Smells
+
+### 11.1 Architecture Concerns
+
+| # | Issue | Severity | Location |
+|---|---|---|---|
+| 1 | **RLS bypassed by service role** — All data security relies on Express middleware, not database-level enforcement | High | server.ts |
+| 2 | **No rate limiting** — Login endpoint and public APIs have no rate limiting | High | All routes |
+| 3 | **No request logging/audit trail** — No middleware to log who did what and when | Medium | All routes |
+| 4 | **Mixed direct Supabase calls** — Some routes use raw getSupabaseClient() while others use repository ports (inconsistent patterns) | Medium | expenses.ts, misc-sales.ts, lost-opportunity.ts, ui-errors.ts |
+| 5 | **Dynamic imports for all use-cases** — Every handler dynamically imports its use-case, adding latency on first call | Low | All routes |
+| 6 | **No API versioning** — All routes are under /api/ with no version prefix | Medium | routes/index.ts |
+| 7 | **Monolith backend** — All 20+ modules in a single Express server with no service decomposition | Low | server.ts |
+
+### 11.2 Type Safety Issues
+
+| # | Issue | Location |
+|---|---|---|
+| 1 | Extensive `as Record<string, unknown>` casting in route handlers | fleet.ts, cashup.ts, orders-raw.ts |
+| 2 | `any` type usage in some Supabase query result handling | Multiple route files |
+| 3 | Employee entity uses spread with type assertion in delete handler | hr.ts line 205 |
+| 4 | Payment routing relies on string-based method key normalization | use-payment-routing.ts |
+
+### 11.3 Permission Model Issues
+
+| # | Issue | Impact |
+|---|---|---|
+| 1 | Create/Delete expense uses ViewExpenses permission, not a dedicated write permission | Users with view-only intent can create/delete expenses |
+| 2 | Create/Delete maintenance uses ViewMaintenance permission | Same as above |
+| 3 | Create transfer uses ViewTransfers permission | Same as above |
+| 4 | Create task uses ViewTodo permission | Same as above |
+
+### 11.4 Data Integrity Concerns
+
+| # | Issue | Impact |
+|---|---|---|
+| 1 | orders_raw.order_id is nullable — processed orders may lose reference to source | Audit trail gap |
+| 2 | payments.order_id is NOT nullable but payments.raw_order_id column exists in some paths | Data model confusion |
+| 3 | public-extend.ts modifies order_items.dropoff_datetime and orders.final_total without transaction isolation | Potential race conditions on concurrent extensions |
+| 4 | Journal entries created without explicit transaction — partial failure leaves unbalanced books | Financial integrity risk |
+| 5 | No soft-delete on orders — cancelled status exists but unclear if used consistently | Data retention |
+
+### 11.5 Performance Concerns
+
+| # | Issue | Location |
+|---|---|---|
+| 1 | Cashup summary performs 8+ parallel Supabase queries per request | cashup.ts GET /summary |
+| 2 | Expenses GET enriches each row with 3 parallel map lookups (accounts, fleet, employees) | expenses.ts |
+| 3 | Extend lookup performs sequential queries across orders_raw, customers, orders, order_items, fleet | public-extend.ts |
+| 4 | No pagination on list endpoints — all records returned at once | Multiple routes |
+| 5 | staleTime: 30s on React Query may cause stale UI for multi-user scenarios | App.tsx |
+
+---
+
+## 12. Gap Analysis (Prioritized)
+
+### CRITICAL (Must Fix — Production Risk)
+
+| # | Gap | Description | Recommendation |
+|---|---|---|---|
+| C1 | **No rate limiting** | Login and all public endpoints are vulnerable to brute force and abuse | Add express-rate-limit middleware: 5 attempts/min for login, 100 req/min for public APIs |
+| C2 | **No database transactions** | Journal entries, order activation, and cashup operations perform multiple writes without transaction isolation | Implement Supabase RPC functions or use BEGIN/COMMIT for critical multi-table writes |
+| C3 | **No request audit logging** | No record of who performed what action and when — critical for a financial system | Add audit log table + middleware that logs user, action, entity, timestamp |
+| C4 | **Extension race conditions** | public-extend.ts modifies multiple tables without locking | Use SELECT FOR UPDATE or RPC with transaction isolation |
+| C5 | **No backup/restore strategy** | No documented database backup procedures | Configure Supabase PITR (Point-in-Time Recovery) and regular backup exports |
+
+### HIGH (Should Fix — Significant Impact)
+
+| # | Gap | Description | Recommendation |
+|---|---|---|---|
+| H1 | **Permission model too coarse** | View permissions allow write operations (expenses, maintenance, transfers, todo) | Split into can_view_* and can_edit_* for each module |
+| H2 | **No pagination** | All list endpoints return unbounded result sets | Add limit/offset or cursor-based pagination to all GET collection endpoints |
+| H3 | **Mixed data access patterns** | Some routes use repositories, others call Supabase directly | Standardize: ALL data access through domain ports/repositories |
+| H4 | **No integration tests** | No test files detected in the repository | Add integration tests for critical flows (order lifecycle, cashup, payroll) |
+| H5 | **No health check endpoint** | No /health or /status endpoint for monitoring | Add health check that verifies database connectivity |
+| H6 | **PIN authentication weakness** | No expiration on PINs, no complexity requirements, no account lockout | Add PIN complexity rules, rotation policy, and lockout after N failed attempts |
+| H7 | **Google Sheets dependency** | Legacy Google Sheets sync creates a fragile integration point | Plan migration path to fully eliminate Google Sheets dependency |
+| H8 | **No HTTPS enforcement** | No Strict-Transport-Security or HTTPS redirect middleware | Add HSTS header and enforce HTTPS in production |
+
+### MEDIUM (Should Address — Quality and Reliability)
+
+| # | Gap | Description | Recommendation |
+|---|---|---|---|
+| M1 | **No API versioning** | Breaking changes will affect all clients simultaneously | Add /api/v1/ prefix, maintain backward compatibility |
+| M2 | **No structured logging** | Uses console.error for error logging | Adopt pino or winston with structured JSON logging |
+| M3 | **Type safety gaps** | Multiple `as Record<string, unknown>` casts bypass TypeScript safety | Define proper types for all Supabase query results |
+| M4 | **No email notifications** | No email for booking confirmations, extension confirmations, payroll | Integrate email service (SendGrid, Resend) for transactional emails |
+| M5 | **No OpenAPI/Swagger docs** | API is undocumented — clients must read source code | Generate OpenAPI spec from Zod schemas |
+| M6 | **Dashboard missing** | /dashboard redirects to inbox — no actual dashboard with KPIs | Build analytics dashboard with revenue, utilization, occupancy metrics |
+| M7 | **No file exports** | No CSV/PDF export for accounting, payroll, or reports | Add export endpoints for financial reports |
+| M8 | **No booking calendar view** | Fleet calendar exists but no visual booking calendar | Add calendar visualization for booking management |
+| M9 | **No automated testing in CI** | No CI/CD pipeline detected | Set up GitHub Actions for lint, type-check, test, and deploy |
+| M10 | **Realtime limited to todo** | Only task notifications use Supabase Realtime | Extend to order status changes, cashup submissions for multi-user awareness |
+| M11 | **No data seeding** | No seed script for development/testing | Create seed data script for local development |
+| M12 | **Webhook CORS wildcard** | Edge function allows * origin | Restrict to known webhook sources |
+
+### LOW (Nice to Have — Polish and Optimization)
+
+| # | Gap | Description | Recommendation |
+|---|---|---|---|
+| L1 | **No dark mode toggle** | UI store exists but no theme switching | Add dark/light mode toggle to sidebar |
+| L2 | **Dynamic import overhead** | Every use-case is dynamically imported on first call | Pre-load use-cases at server startup or use static imports |
+| L3 | **React Query staleTime** | 30s staleTime may show stale data in multi-user environment | Reduce for critical views, add manual invalidation triggers |
+| L4 | **No search functionality** | No global search across orders, customers, fleet | Add search endpoint with full-text search |
+| L5 | **No mobile responsiveness audit** | Tailwind used but no documented responsive design testing | Audit and fix mobile layouts for backoffice |
+| L6 | **Reviews table unused** | reviews table exists but no routes or UI reference it | Either build review aggregation feature or remove table |
+| L7 | **Directory table unused** | directory table exists but no routes or UI | Build contacts directory or remove |
+| L8 | **Recurring bills under-used** | Table exists with auto_post_to_ledger flag but no cron/scheduler | Implement scheduled job to auto-post recurring bills |
+| L9 | **No i18n** | All strings hardcoded in English/Filipino context | Add internationalization framework if multi-language needed |
+| L10 | **Unused variable** | merchandise.ts line 98: reason destructured but prefixed with underscore | Either use reason for audit log or remove from schema |
+
+---
+
+## Summary Statistics
+
+| Metric | Count |
+|---|---|
+| **Database Tables** | 35+ |
+| **API Route Modules** | 22 |
+| **API Endpoints** | 100+ |
+| **Frontend Pages** | 25 |
+| **Frontend Component Dirs** | 19 |
+| **Zustand Stores** | 5 |
+| **Domain Entities** | 7 |
+| **Domain Ports** | 29 |
+| **Zod Schema Modules** | 19 |
+| **Permissions Defined** | 27 |
+| **Migration Files** | 41 |
+| **Use-Case Modules** | 17 |
+| **Critical Gaps** | 5 |
+| **High Priority Gaps** | 8 |
+| **Medium Priority Gaps** | 12 |
+| **Low Priority Gaps** | 10 |
+
+---
+
+> **End of Audit.** This document should be kept up-to-date as the system evolves. Each gap in Section 12 should be tracked in a project management tool and addressed in priority order.

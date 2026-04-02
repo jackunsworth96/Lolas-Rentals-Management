@@ -2,28 +2,196 @@
 @tailwind components;
 @tailwind utilities;
 
+html,
 body {
-  @apply bg-gray-50 text-gray-900 antialiased;
+  overflow-x: hidden;
+  max-width: 100%;
 }
+
+/* =============================================================================
+   HERO SECTION
+   ============================================================================= */
+
+.hero-section {
+  position: relative;
+  width: 100%;
+  min-height: 700px;
+  height: 100svh;
+  max-height: 960px;
+  overflow: hidden;
+  background-color: #f1e6d6;
+}
+
+/* ── Florals ─────────────────────────────────────────────────────────────── */
+.hero-floral {
+  position: absolute;
+  pointer-events: none;
+  z-index: 0;
+  /* No width constraint — hero overflow:hidden clips them at the edge */
+}
+
+.hero-floral--left {
+  position: absolute;
+  left: -80px;
+  top: 50px;
+  width: 360px;
+  pointer-events: none;
+  z-index: 0;
+  transition: none;
+}
+
+.hero-floral--right {
+  position: absolute;
+  right: -80px;
+  top: 22%;
+  width: 380px;
+  pointer-events: none;
+  z-index: 0;
+  transition: none;
+}
+
+/* ── Clouds ──────────────────────────────────────────────────────────────── */
+/* Clouds are absolutely positioned and move via JS transform.
+   overflow:hidden on .hero-section clips any that drift off-screen. */
+.hero-cloud-parallax {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+  z-index: 1;
+  /* NO transition — the JS lerp loop handles smoothing */
+}
+
+/* ── Text content ────────────────────────────────────────────────────────── */
+.hero-content {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 28vh 1.5rem 2rem;
+}
+
+.hero-title {
+  font-family: "Alegreya Sans", Georgia, serif;
+  font-weight: 700;
+  font-size: clamp(2.4rem, 6vw, 4.2rem);
+  line-height: 1.15;
+  color: #1A7A6E;
+}
+
+.hero-subtitle {
+  margin-top: 1rem;
+  font-size: clamp(1.1rem, 2vw, 1.4rem);
+  font-family: "Alegreya Sans", Georgia, serif;
+  color: #3D3D3D;
+}
+
+.hero-cta-btn {
+  margin-top: 2.5rem;
+}
+
+/* ── Road strip ──────────────────────────────────────────────────────────── */
+.hero-road-strip {
+  position: absolute;
+  bottom: 0;
+  left: -4px;
+  right: -4px;
+  width: auto;
+  height: 160px;
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.hero-road-dashes {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  background-color: #2d4a50;
+  border-radius: 6px 6px 0 0;
+}
+
+.hero-road-dashes::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  transform: translateY(-50%);
+  height: 6px;
+  border-radius: 3px;
+  background-image: repeating-linear-gradient(
+    to right,
+    rgba(255,255,255,0.85) 0px,
+    rgba(255,255,255,0.85) 48px,
+    transparent 48px,
+    transparent 80px
+  );
+}
+
+/* ── Lola on her scooter ─────────────────────────────────────────────────── */
+.hero-lola {
+  position: absolute;
+  width: 150px;
+  bottom: 18px;
+  transform: scaleX(-1);
+  animation: lolaRide 22s linear infinite;
+}
+
+@keyframes lolaRide {
+  0%   { left: calc(100% + 10px); }
+  100% { left: -170px; }
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .hero-cloud-parallax {
+    transform: none !important;
+  }
+  .hero-lola {
+    animation: none;
+    left: auto;
+    right: 42%;
+    transform: scaleX(-1);
+  }
+}
+
+body {
+  @apply bg-gray-50 text-gray-900 antialiased font-sans;
+}
+
+@keyframes cloudDriftLegacy {
+  0%   { transform: translateX(-220px); opacity: 0; }
+  5%   { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { transform: translateX(110vw); opacity: 0; }
+}
+
+/* =============================================================================
+   FLOATING CLOUD KEYFRAMES
+   Used by HeroFloatingClouds component (AboutPage, BrowseBookPage,
+   BasketPage, ConfirmationPage, ExtendPage, PawCardPage, RepairsPage).
+   Do not remove.
+   ============================================================================= */
 
 @keyframes float-slow {
   0%, 100% { transform: translateX(0px) translateY(0px); }
-  25% { transform: translateX(20px) translateY(-12px); }
-  50% { transform: translateX(8px) translateY(-20px); }
-  75% { transform: translateX(-15px) translateY(-8px); }
+  25%       { transform: translateX(20px) translateY(-12px); }
+  50%       { transform: translateX(8px) translateY(-20px); }
+  75%       { transform: translateX(-15px) translateY(-8px); }
 }
+
 @keyframes float-medium {
   0%, 100% { transform: translateX(0px) translateY(0px); }
-  33% { transform: translateX(-25px) translateY(-15px); }
-  66% { transform: translateX(18px) translateY(-10px); }
+  33%       { transform: translateX(-25px) translateY(-15px); }
+  66%       { transform: translateX(18px) translateY(-10px); }
 }
+
 @keyframes float-fast {
   0%, 100% { transform: translateX(0px) translateY(0px); }
-  50% { transform: translateX(20px) translateY(-18px); }
-}
-@keyframes drive-along-road {
-  0%   { offset-distance: 0%; opacity: 0; }
-  4%   { opacity: 1; }
-  96%  { opacity: 1; }
-  100% { offset-distance: 100%; opacity: 0; }
+  50%       { transform: translateX(20px) translateY(-18px); }
 }

@@ -80,16 +80,30 @@ export default function DashboardPage() {
   const expenseCategoryData = useMemo(() => {
     if (!metrics) return [];
     const thisMonth = metrics.expensesByCategory ?? [];
-    const last30 = metrics.expensesByCategoryLast30 ?? [];
+    const lastMonth = metrics.expensesByCategoryLastMonth ?? [];
     const categories = Array.from(
-      new Set([...thisMonth.map((e) => e.category), ...last30.map((e) => e.category)]),
+      new Set([...thisMonth.map((e) => e.category), ...lastMonth.map((e) => e.category)]),
     );
-    return categories
-      .map((category) => ({
-        category,
-        thisMonth: thisMonth.find((e) => e.category === category)?.total ?? 0,
-        last30: last30.find((e) => e.category === category)?.total ?? 0,
-      }))
+    const merged = categories.map((category) => ({
+      category,
+      thisMonth: thisMonth.find((e) => e.category === category)?.total ?? 0,
+      lastMonth: lastMonth.find((e) => e.category === category)?.total ?? 0,
+    }));
+
+    // Consolidate maintenance categories
+    const consolidated = new Map<string, { thisMonth: number; lastMonth: number }>();
+    for (const item of merged) {
+      const key = item.category.toLowerCase().startsWith('maintenance')
+        ? 'Maintenance (Total)'
+        : item.category;
+      const existing = consolidated.get(key) ?? { thisMonth: 0, lastMonth: 0 };
+      consolidated.set(key, {
+        thisMonth: existing.thisMonth + item.thisMonth,
+        lastMonth: existing.lastMonth + item.lastMonth,
+      });
+    }
+    return Array.from(consolidated.entries())
+      .map(([category, values]) => ({ category, ...values }))
       .sort((a, b) => b.thisMonth - a.thisMonth);
   }, [metrics]);
 
@@ -311,7 +325,7 @@ export default function DashboardPage() {
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart
                   data={revenueCategoryData}
-                  margin={{ top: 5, right: 20, left: 10, bottom: 60 }}
+                  margin={{ top: 5, right: 20, left: 10, bottom: 80 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis
@@ -333,6 +347,7 @@ export default function DashboardPage() {
                     ]}
                   />
                   <Legend
+                    wrapperStyle={{ paddingTop: '20px' }}
                     formatter={(value) =>
                       value === 'thisMonth' ? 'This Month' : 'Last 30 Days'
                     }
@@ -347,12 +362,12 @@ export default function DashboardPage() {
       )}
 
       {/* SECTION 9 — Expenses by Category */}
-      {canViewFinancial && (metrics.expensesByCategory !== null || metrics.expensesByCategoryLast30 !== null) && (
+      {canViewFinancial && (metrics.expensesByCategory !== null || metrics.expensesByCategoryLastMonth !== null) && (
         <section>
           <SectionHeading>Expenses by Category</SectionHeading>
           <div className="rounded-2xl bg-white p-6 shadow-sm">
             <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
-              Expenses by Category — This Month vs Last 30 Days
+              Expenses by Category — This Month vs Last Month
             </h3>
             {expenseCategoryData.length === 0 ? (
               <p className="py-8 text-center text-sm text-gray-400">
@@ -362,7 +377,7 @@ export default function DashboardPage() {
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart
                   data={expenseCategoryData}
-                  margin={{ top: 5, right: 20, left: 10, bottom: 60 }}
+                  margin={{ top: 5, right: 20, left: 10, bottom: 80 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis
@@ -379,16 +394,17 @@ export default function DashboardPage() {
                   <Tooltip
                     formatter={(value: number, name: string) => [
                       formatCurrency(value),
-                      name === 'thisMonth' ? 'This Month' : 'Last 30 Days',
+                      name === 'thisMonth' ? 'This Month' : 'Last Month',
                     ]}
                   />
                   <Legend
+                    wrapperStyle={{ paddingTop: '20px' }}
                     formatter={(value) =>
-                      value === 'thisMonth' ? 'This Month' : 'Last 30 Days'
+                      value === 'thisMonth' ? 'This Month' : 'Last Month'
                     }
                   />
                   <Bar dataKey="thisMonth" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="last30" fill="#f97316" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="lastMonth" fill="#fb923c" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}

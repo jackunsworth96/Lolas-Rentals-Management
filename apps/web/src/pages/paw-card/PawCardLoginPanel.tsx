@@ -70,7 +70,7 @@ export function PawCardLoginPanel({ access, onAccessGranted, onSignOut }: Props)
         />
         <h3
           className="mb-1 text-2xl font-bold"
-          style={{ fontFamily: 'Epilogue, sans-serif', color: '#1f1b12' }}
+          style={{ color: '#1f1b12' }}
         >
           Welcome, {displayName}!
         </h3>
@@ -98,7 +98,7 @@ export function PawCardLoginPanel({ access, onAccessGranted, onSignOut }: Props)
       />
       <h3
         className="mb-1 text-2xl font-bold"
-        style={{ fontFamily: 'Epilogue, sans-serif', color: '#1f1b12' }}
+        style={{ color: '#1f1b12' }}
       >
         Welcome
       </h3>

@@ -50,7 +50,7 @@ interface StoreMetrics {
   maintenancePartsCost: number | null;
   maintenanceLabourCost: number | null;
   expensesByCategory: ExpensesByCategoryRow[] | null;
-  expensesByCategoryLast30: ExpensesByCategoryRow[] | null;
+  expensesByCategoryLastMonth: ExpensesByCategoryRow[] | null;
   todayRevenue: number | null;
   miscSalesRevenue: number | null;
   addonRevenue: AddonRevenueRow[] | null;
@@ -70,7 +70,7 @@ function emptyMetrics(financial: boolean): StoreMetrics {
     maintenancePartsCost: financial ? 0 : null,
     maintenanceLabourCost: financial ? 0 : null,
     expensesByCategory: financial ? [] : null,
-    expensesByCategoryLast30: financial ? [] : null,
+    expensesByCategoryLastMonth: financial ? [] : null,
     todayRevenue: financial ? 0 : null,
     miscSalesRevenue: financial ? 0 : null,
     addonRevenue: financial ? [] : null,
@@ -91,6 +91,17 @@ router.get('/summary', authenticate, async (req, res, next) => {
     const firstDayOfMonth = manilaDate.slice(0, 7) + '-01';
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
       .toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+    const now = new Date(manilaDate);
+    const firstDayLastMonth = new Date(
+      now.getFullYear(),
+      now.getMonth() - 1,
+      1,
+    ).toISOString().slice(0, 10);
+    const lastDayLastMonth = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      0,
+    ).toISOString().slice(0, 10);
 
     const storeFilter = storeIdParam && storeIdParam !== 'all' ? storeIdParam : undefined;
 
@@ -206,9 +217,9 @@ router.get('/summary', authenticate, async (req, res, next) => {
           sb
             .from('expenses')
             .select('category, amount, store_id')
-            .gte('date', thirtyDaysAgo)
-            .lte('date', manilaDate)
-            .then((r) => ({ key: 'expenses30Days' as const, ...r })),
+            .gte('date', firstDayLastMonth)
+            .lte('date', lastDayLastMonth)
+            .then((r) => ({ key: 'expensesLastMonth' as const, ...r })),
         ]
       : [];
 
@@ -400,7 +411,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
       let maintenancePartsCost: number | null = null;
       let maintenanceLabourCost: number | null = null;
       let expensesByCategory: ExpensesByCategoryRow[] | null = null;
-      let expensesByCategoryLast30: ExpensesByCategoryRow[] | null = null;
+      let expensesByCategoryLastMonth: ExpensesByCategoryRow[] | null = null;
       let todayRevenue: number | null = null;
       let miscSalesRevenue: number | null = null;
       let addonRevenue: AddonRevenueRow[] | null = null;
@@ -494,8 +505,8 @@ router.get('/summary', authenticate, async (req, res, next) => {
         const expensesMonthRows = dataMap.get('expensesMonth') ?? [];
         expensesByCategory = aggregateByCategory(expensesMonthRows, sid);
 
-        const expenses30Rows = dataMap.get('expenses30Days') ?? [];
-        expensesByCategoryLast30 = aggregateByCategory(expenses30Rows, sid);
+        const expensesLastMonthRows = dataMap.get('expensesLastMonth') ?? [];
+        expensesByCategoryLastMonth = aggregateByCategory(expensesLastMonthRows, sid);
       }
 
       return {
@@ -508,7 +519,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
         maintenancePartsCost,
         maintenanceLabourCost,
         expensesByCategory,
-        expensesByCategoryLast30,
+        expensesByCategoryLastMonth,
         todayRevenue,
         miscSalesRevenue,
         addonRevenue,

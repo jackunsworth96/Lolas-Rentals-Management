@@ -39,7 +39,7 @@ export default function PawCardPage() {
               <img src={pawPrint} alt="" className="h-4 w-4 bg-transparent" />
               Paw Card Exclusive
             </div>
-            <h1 className="mb-4 text-5xl font-black leading-tight tracking-tighter md:text-7xl" style={{ fontFamily: 'Epilogue, sans-serif', color: '#1A7A6E' }}>
+            <h1 className="mb-4 font-headline text-5xl font-black leading-tight tracking-tighter md:text-7xl" style={{ color: '#1A7A6E' }}>
               Every Peso <span className="italic" style={{ color: '#F5B731' }}>Wags</span> a Tail
             </h1>
             <p className="mx-auto mb-8 max-w-2xl text-lg leading-relaxed md:text-xl" style={{ color: '#3e4946' }}>
@@ -74,7 +74,7 @@ export default function PawCardPage() {
         <section ref={logRef} id="log-saving" className="mx-auto grid max-w-5xl items-start gap-10 px-6 py-12 md:grid-cols-2">
           <div>
             <div className="mb-4 flex items-center gap-3">
-              <h2 className="text-4xl font-bold" style={{ fontFamily: 'Epilogue, sans-serif', color: '#1A7A6E' }}>Log a Saving</h2>
+              <h2 className="text-4xl font-bold" style={{ color: '#1A7A6E' }}>Log a Saving</h2>
               <img src={discountCard} alt="" className="h-10 w-10 bg-transparent" />
             </div>
             <p className="mb-6 text-lg leading-relaxed" style={{ color: '#3e4946' }}>
