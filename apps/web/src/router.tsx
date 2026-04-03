@@ -44,6 +44,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function RequireFleetBookValue({ children }: { children: React.ReactNode }) {
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  if (!hasPermission('can_view_fleet_book_value')) return <Navigate to="/fleet" replace />;
+  return <>{children}</>;
+}
+
 const Loading = () => (
   <div className="flex h-screen items-center justify-center">
     <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
@@ -78,7 +84,14 @@ export function AppRouter() {
           <Route path="orders/active" element={<ActivePage />} />
           <Route path="orders/completed" element={<CompletedPage />} />
           <Route path="fleet" element={<FleetPage />} />
-          <Route path="fleet/utilization" element={<UtilizationDashboard />} />
+          <Route
+            path="fleet/utilization"
+            element={
+              <RequireFleetBookValue>
+                <UtilizationDashboard />
+              </RequireFleetBookValue>
+            }
+          />
           <Route path="maintenance" element={<MaintenancePage />} />
           <Route path="transfers" element={<TransfersPage />} />
           <Route path="accounts" element={<AccountsPage />} />

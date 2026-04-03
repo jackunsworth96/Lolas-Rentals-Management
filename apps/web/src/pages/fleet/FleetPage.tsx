@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useFleet, useFleetSync } from '../../api/fleet.js';
 import { useStores, useVehicleModels } from '../../api/config.js';
 import { useUIStore } from '../../stores/ui-store.js';
+import { useAuthStore } from '../../stores/auth-store.js';
 import { Table } from '../../components/common/Table.js';
 import { Badge } from '../../components/common/Badge.js';
 import { VehicleModal } from '../../components/fleet/VehicleModal.js';
@@ -33,6 +34,7 @@ function isOrcrExpiringSoon(dateStr: string | null | undefined): boolean {
 }
 
 export default function FleetPage() {
+  const hasPermission = useAuthStore((s) => s.hasPermission);
   const defaultStoreId = useUIStore((s) => s.selectedStoreId) ?? '';
   const [fleetStoreFilter, setFleetStoreFilter] = useState<string>(defaultStoreId || 'all');
   const [search, setSearch] = useState('');
@@ -126,12 +128,14 @@ export default function FleetPage() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <h1 className="text-2xl font-bold text-gray-900">Fleet</h1>
-          <Link
-            to="/fleet/utilization"
-            className="text-sm text-blue-600 hover:underline"
-          >
-            Utilization dashboard
-          </Link>
+          {hasPermission('can_view_fleet_book_value') && (
+            <Link
+              to="/fleet/utilization"
+              className="text-sm text-blue-600 hover:underline"
+            >
+              Utilization dashboard
+            </Link>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <select

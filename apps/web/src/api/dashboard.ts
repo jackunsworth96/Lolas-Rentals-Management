@@ -44,6 +44,10 @@ export interface StoreMetrics {
   maintenanceVehicles: MaintenanceVehicle[];
   maintenancePartsCost: number | null;
   maintenanceLabourCost: number | null;
+  customerBreakdown: {
+    byCountry: Array<{ country: string; count: number }>;
+    byContinent: Array<{ continent: string; count: number }>;
+  } | null;
   expensesByCategory: ExpensesByCategoryRow[] | null;
   expensesByCategoryLastMonth: ExpensesByCategoryRow[] | null;
   todayRevenue: number | null;

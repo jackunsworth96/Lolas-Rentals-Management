@@ -6,6 +6,81 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 const router = Router();
 router.use(authenticate);
 
+function parseCountryFromMobile(mobile: string | null): { country: string; continent: string } {
+  if (!mobile) return { country: 'Unknown', continent: 'Unknown' };
+  const cleaned = mobile.replace(/\s/g, '');
+  if (!cleaned.startsWith('+')) return { country: 'Unknown', continent: 'Unknown' };
+  const num = cleaned.slice(1);
+
+  const lookup: Array<[string, string, string]> = [
+    ['1', 'USA / Canada', 'Americas'],
+    ['27', 'South Africa', 'Africa'],
+    ['31', 'Netherlands', 'Europe'],
+    ['32', 'Belgium', 'Europe'],
+    ['33', 'France', 'Europe'],
+    ['34', 'Spain', 'Europe'],
+    ['39', 'Italy', 'Europe'],
+    ['40', 'Romania', 'Europe'],
+    ['41', 'Switzerland', 'Europe'],
+    ['43', 'Austria', 'Europe'],
+    ['44', 'United Kingdom', 'Europe'],
+    ['45', 'Denmark', 'Europe'],
+    ['46', 'Sweden', 'Europe'],
+    ['47', 'Norway', 'Europe'],
+    ['48', 'Poland', 'Europe'],
+    ['49', 'Germany', 'Europe'],
+    ['51', 'Peru', 'Americas'],
+    ['52', 'Mexico', 'Americas'],
+    ['54', 'Argentina', 'Americas'],
+    ['55', 'Brazil', 'Americas'],
+    ['56', 'Chile', 'Americas'],
+    ['57', 'Colombia', 'Americas'],
+    ['60', 'Malaysia', 'Asia'],
+    ['61', 'Australia', 'Oceania'],
+    ['62', 'Indonesia', 'Asia'],
+    ['63', 'Philippines', 'Asia'],
+    ['64', 'New Zealand', 'Oceania'],
+    ['65', 'Singapore', 'Asia'],
+    ['66', 'Thailand', 'Asia'],
+    ['81', 'Japan', 'Asia'],
+    ['82', 'South Korea', 'Asia'],
+    ['84', 'Vietnam', 'Asia'],
+    ['86', 'China', 'Asia'],
+    ['90', 'Turkey', 'Europe'],
+    ['91', 'India', 'Asia'],
+    ['92', 'Pakistan', 'Asia'],
+    ['94', 'Sri Lanka', 'Asia'],
+    ['95', 'Myanmar', 'Asia'],
+    ['234', 'Nigeria', 'Africa'],
+    ['254', 'Kenya', 'Africa'],
+    ['353', 'Ireland', 'Europe'],
+    ['354', 'Iceland', 'Europe'],
+    ['358', 'Finland', 'Europe'],
+    ['370', 'Lithuania', 'Europe'],
+    ['371', 'Latvia', 'Europe'],
+    ['372', 'Estonia', 'Europe'],
+    ['380', 'Ukraine', 'Europe'],
+    ['385', 'Croatia', 'Europe'],
+    ['386', 'Slovenia', 'Europe'],
+    ['420', 'Czech Republic', 'Europe'],
+    ['421', 'Slovakia', 'Europe'],
+    ['670', 'Timor-Leste', 'Asia'],
+    ['673', 'Brunei', 'Asia'],
+    ['852', 'Hong Kong', 'Asia'],
+    ['853', 'Macau', 'Asia'],
+    ['855', 'Cambodia', 'Asia'],
+    ['856', 'Laos', 'Asia'],
+    ['886', 'Taiwan', 'Asia'],
+    ['972', 'Israel', 'Asia'],
+  ];
+
+  const sorted = [...lookup].sort((a, b) => b[0].length - a[0].length);
+  for (const [prefix, country, continent] of sorted) {
+    if (num.startsWith(prefix)) return { country, continent };
+  }
+  return { country: 'Unknown', continent: 'Unknown' };
+}
+
 interface NinePmVehicle {
   orderId: string;
   vehicleModel: string;
@@ -49,6 +124,10 @@ interface StoreMetrics {
   maintenanceVehicles: MaintenanceVehicle[];
   maintenancePartsCost: number | null;
   maintenanceLabourCost: number | null;
+  customerBreakdown: {
+    byCountry: Array<{ country: string; count: number }>;
+    byContinent: Array<{ continent: string; count: number }>;
+  } | null;
   expensesByCategory: ExpensesByCategoryRow[] | null;
   expensesByCategoryLastMonth: ExpensesByCategoryRow[] | null;
   todayRevenue: number | null;
@@ -69,12 +148,13 @@ function emptyMetrics(financial: boolean): StoreMetrics {
     maintenanceVehicles: [],
     maintenancePartsCost: financial ? 0 : null,
     maintenanceLabourCost: financial ? 0 : null,
+    customerBreakdown: null,
     expensesByCategory: financial ? [] : null,
     expensesByCategoryLastMonth: financial ? [] : null,
     todayRevenue: financial ? 0 : null,
     miscSalesRevenue: financial ? 0 : null,
     addonRevenue: financial ? [] : null,
-    cashBalances: financial ? [] : null,
+    cashBalances: [],
     revenueTrend: financial ? [] : null,
     revenueThisMonth: financial ? [] : null,
   };
@@ -146,6 +226,11 @@ router.get('/summary', authenticate, async (req, res, next) => {
         .select('id, asset_id, status, created_at, fleet!asset_id(name, store_id)')
         .eq('status', 'In Progress')
         .then((r) => ({ key: 'maintenanceRecords' as const, ...r })),
+
+      sb
+        .from('journal_entries')
+        .select('account_id, store_id, debit, credit, chart_of_accounts!account_id(name, account_type)')
+        .then((r) => ({ key: 'cashBalances' as const, ...r })),
     ];
 
     const financialQueries = canViewFinancial
@@ -171,11 +256,6 @@ router.get('/summary', authenticate, async (req, res, next) => {
             .gte('added_at', `${manilaDate}T00:00:00+08:00`)
             .lt('added_at', `${manilaDate}T23:59:59.999+08:00`)
             .then((r) => ({ key: 'addonRevenue' as const, ...r })),
-
-          sb
-            .from('journal_entries')
-            .select('account_id, store_id, debit, credit, chart_of_accounts!account_id(name, account_type)')
-            .then((r) => ({ key: 'cashBalances' as const, ...r })),
 
           sb
             .from('payments')
@@ -220,6 +300,11 @@ router.get('/summary', authenticate, async (req, res, next) => {
             .gte('date', firstDayLastMonth)
             .lte('date', lastDayLastMonth)
             .then((r) => ({ key: 'expensesLastMonth' as const, ...r })),
+
+          sb
+            .from('customers')
+            .select('mobile, store_id')
+            .then((r) => ({ key: 'customers' as const, ...r })),
         ]
       : [];
 
@@ -410,14 +495,34 @@ router.get('/summary', authenticate, async (req, res, next) => {
 
       let maintenancePartsCost: number | null = null;
       let maintenanceLabourCost: number | null = null;
+      let customerBreakdown: StoreMetrics['customerBreakdown'] = null;
       let expensesByCategory: ExpensesByCategoryRow[] | null = null;
       let expensesByCategoryLastMonth: ExpensesByCategoryRow[] | null = null;
       let todayRevenue: number | null = null;
       let miscSalesRevenue: number | null = null;
       let addonRevenue: AddonRevenueRow[] | null = null;
-      let cashBalances: CashBalanceRow[] | null = null;
       let revenueTrend: RevenueTrendRow[] | null = null;
       let revenueThisMonth: RevenueTrendRow[] | null = null;
+
+      const balanceData = dataMap.get('cashBalances') ?? [];
+      const balanceMap = new Map<string, { name: string; debit: number; credit: number }>();
+      for (const row of balanceData) {
+        const acct = row.chart_of_accounts as { name: string; account_type: string } | null;
+        if (!acct || acct.account_type !== 'Asset') continue;
+        const lowerName = acct.name.toLowerCase();
+        if (!lowerName.includes('cash') && !lowerName.includes('bank') && !lowerName.includes('gcash') && !lowerName.includes('float')) continue;
+        if (sid && row.store_id !== sid) continue;
+        const accId = row.account_id as string;
+        const existing = balanceMap.get(accId) ?? { name: acct.name, debit: 0, credit: 0 };
+        existing.debit += Number(row.debit ?? 0);
+        existing.credit += Number(row.credit ?? 0);
+        balanceMap.set(accId, existing);
+      }
+      const cashBalances: CashBalanceRow[] = [...balanceMap.entries()].map(([accountId, v]) => ({
+        accountId,
+        accountName: v.name,
+        balance: v.debit - v.credit,
+      }));
 
       if (canViewFinancial) {
         const todayPayments = dataMap.get('todayPayments') ?? [];
@@ -444,26 +549,6 @@ router.get('/summary', authenticate, async (req, res, next) => {
         addonRevenue = [...addonMap.entries()]
           .map(([addonName, total]) => ({ addonName, total }))
           .sort((a, b) => b.total - a.total);
-
-        const balanceData = dataMap.get('cashBalances') ?? [];
-        const balanceMap = new Map<string, { name: string; debit: number; credit: number }>();
-        for (const row of balanceData) {
-          const acct = row.chart_of_accounts as { name: string; account_type: string } | null;
-          if (!acct || acct.account_type !== 'Asset') continue;
-          const lowerName = acct.name.toLowerCase();
-          if (!lowerName.includes('cash') && !lowerName.includes('bank') && !lowerName.includes('gcash') && !lowerName.includes('float')) continue;
-          if (sid && row.store_id !== sid) continue;
-          const accId = row.account_id as string;
-          const existing = balanceMap.get(accId) ?? { name: acct.name, debit: 0, credit: 0 };
-          existing.debit += Number(row.debit ?? 0);
-          existing.credit += Number(row.credit ?? 0);
-          balanceMap.set(accId, existing);
-        }
-        cashBalances = [...balanceMap.entries()].map(([accountId, v]) => ({
-          accountId,
-          accountName: v.name,
-          balance: v.debit - v.credit,
-        }));
 
         const trendData = dataMap.get('revenueTrend') ?? [];
         const storeTrend = sid
@@ -508,6 +593,31 @@ router.get('/summary', authenticate, async (req, res, next) => {
 
         const expensesLastMonthRows = dataMap.get('expensesLastMonth') ?? [];
         expensesByCategoryLastMonth = aggregateByCategory(expensesLastMonthRows, sid);
+
+        const customerRows = (dataMap.get('customers') ?? []) as Array<{
+          mobile: string | null;
+          store_id: string;
+        }>;
+        const filteredCustomers = sid
+          ? customerRows.filter((c) => c.store_id === sid)
+          : customerRows;
+
+        const countryMap = new Map<string, number>();
+        const continentMap = new Map<string, number>();
+        for (const c of filteredCustomers) {
+          const { country, continent } = parseCountryFromMobile(c.mobile);
+          countryMap.set(country, (countryMap.get(country) ?? 0) + 1);
+          continentMap.set(continent, (continentMap.get(continent) ?? 0) + 1);
+        }
+
+        const byCountry = [...countryMap.entries()]
+          .map(([country, count]) => ({ country, count }))
+          .sort((a, b) => b.count - a.count);
+        const byContinent = [...continentMap.entries()]
+          .map(([continent, count]) => ({ continent, count }))
+          .sort((a, b) => b.count - a.count);
+
+        customerBreakdown = { byCountry, byContinent };
       }
 
       return {
@@ -519,6 +629,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
         maintenanceVehicles: allMaintenance,
         maintenancePartsCost,
         maintenanceLabourCost,
+        customerBreakdown,
         expensesByCategory,
         expensesByCategoryLastMonth,
         todayRevenue,

@@ -22,7 +22,15 @@ import {
   Tooltip,
   CartesianGrid,
   Legend,
+  PieChart,
+  Pie,
+  Cell,
 } from 'recharts';
+
+const PIE_COLORS = [
+  '#00577C', '#FCBC5A', '#363737', '#4CAF50', '#E91E63',
+  '#9C27B0', '#FF5722', '#2196F3', '#009688', '#FF9800',
+];
 
 function todayStr(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
@@ -292,7 +300,7 @@ export default function DashboardPage() {
       )}
 
       {/* SECTION 6 — Cash Balances */}
-      {canViewFinancial && metrics.cashBalances !== null && (
+      {metrics.cashBalances !== null && metrics.cashBalances.length > 0 && (
         <section>
           <SectionHeading>Cash Balances</SectionHeading>
           {(metrics.cashBalances ?? []).length === 0 ? (
@@ -419,6 +427,85 @@ export default function DashboardPage() {
                 </BarChart>
               </ResponsiveContainer>
             )}
+          </div>
+        </section>
+      )}
+
+      {/* SECTION 10 — Customer Breakdown */}
+      {canViewFinancial && metrics.customerBreakdown !== null && (
+        <section>
+          <SectionHeading>Customer Breakdown</SectionHeading>
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+
+            {/* By Country */}
+            <div className="rounded-2xl bg-white p-6 shadow-sm">
+              <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                By Country
+              </h3>
+              {(metrics.customerBreakdown?.byCountry ?? []).length === 0 ? (
+                <p className="py-8 text-center text-sm text-gray-400">No customer data</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={metrics.customerBreakdown?.byCountry ?? []}
+                      dataKey="count"
+                      nameKey="country"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={100}
+                      label={({ country, percent }: { country: string; percent: number }) =>
+                        `${country} ${(percent * 100).toFixed(0)}%`
+                      }
+                      labelLine={false}
+                    >
+                      {(metrics.customerBreakdown?.byCountry ?? []).map((_, index) => (
+                        <Cell key={index} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value: number, name: string) => [`${value} customers`, name]}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+
+            {/* By Continent */}
+            <div className="rounded-2xl bg-white p-6 shadow-sm">
+              <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                By Continent
+              </h3>
+              {(metrics.customerBreakdown?.byContinent ?? []).length === 0 ? (
+                <p className="py-8 text-center text-sm text-gray-400">No customer data</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={metrics.customerBreakdown?.byContinent ?? []}
+                      dataKey="count"
+                      nameKey="continent"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={100}
+                      label={({ continent, percent }: { continent: string; percent: number }) =>
+                        `${continent} ${(percent * 100).toFixed(0)}%`
+                      }
+                      labelLine={false}
+                    >
+                      {(metrics.customerBreakdown?.byContinent ?? []).map((_, index) => (
+                        <Cell key={index} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value: number, name: string) => [`${value} customers`, name]}
+                    />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+
           </div>
         </section>
       )}
