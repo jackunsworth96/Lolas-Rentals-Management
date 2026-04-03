@@ -3,6 +3,8 @@ interface Column<T> {
   header: string;
   render?: (row: T) => React.ReactNode;
   className?: string;
+  /** Applied to `<td>` only. Defaults to `whitespace-nowrap`; set e.g. `whitespace-normal break-words` for wrapped text. */
+  cellClassName?: string;
 }
 
 interface TableProps<T> {
@@ -39,7 +41,12 @@ export function Table<T>({ columns, data, keyFn, onRowClick, getRowClassName, em
               className={[onRowClick ? 'cursor-pointer hover:bg-gray-50' : '', getRowClassName?.(row) ?? ''].filter(Boolean).join(' ')}
             >
               {columns.map((col) => (
-                <td key={col.key} className={`whitespace-nowrap px-4 py-3 text-sm text-gray-900 ${col.className ?? ''}`}>
+                <td
+                  key={col.key}
+                  className={`px-4 py-3 text-sm text-gray-900 align-top ${
+                    col.cellClassName ?? 'whitespace-nowrap'
+                  } ${col.className ?? ''}`}
+                >
                   {col.render ? col.render(row) : String((row as Record<string, unknown>)[col.key] ?? '')}
                 </td>
               ))}

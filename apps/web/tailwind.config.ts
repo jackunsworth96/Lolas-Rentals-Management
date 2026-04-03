@@ -27,6 +27,8 @@ export default {
         sans: ['"Alegreya Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         headline: ['"Alegreya Sans"', 'ui-sans-serif', 'system-serif'],
         body: ['Plus Jakarta Sans', 'sans-serif'],
+        display: ['"Playfair Display"', 'Georgia', 'serif'],
+        lato: ['Lato', 'Nunito', 'sans-serif'],
       },
       borderRadius: {
         '4xl': '2rem',

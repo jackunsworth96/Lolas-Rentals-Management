@@ -35,9 +35,9 @@ const BOTTOM_NAV = [
   { to: '/book/repairs', icon: '🔧', label: 'Repairs' },
 ];
 
-const linkBase = 'min-h-[44px] flex items-center transition-opacity duration-200 hover:opacity-70';
-const linkActive = `${linkBase} font-bold text-gold-brand`;
-const linkInactive = `${linkBase} text-white/80 hover:text-white`;
+const linkBase = 'min-h-[44px] flex items-center transition-colors duration-200';
+const linkActive = `${linkBase} font-bold text-teal-brand`;
+const linkInactive = `${linkBase} text-charcoal-brand/80 hover:text-teal-brand`;
 
 export function PageLayout({
   children,
@@ -74,7 +74,7 @@ export function PageLayout({
   return (
     <div
       className="relative min-h-screen font-body animate-page-fade-in"
-      style={{ background: '#f1e6d6', overflowX: 'hidden' }}
+      style={{ background: '#E8DFD0', overflowX: 'hidden' }}
     >
       {showFloralLeft && (
         <img
@@ -91,21 +91,21 @@ export function PageLayout({
         />
       )}
 
-      <header className="fixed left-0 top-0 z-50 flex w-full items-center justify-between bg-teal-brand px-6 py-4 backdrop-blur-xl">
+      <header className="fixed left-0 top-0 z-50 flex w-full items-center justify-between bg-sand-brand px-6 py-4 shadow-sm">
         <div className="flex items-center gap-3">
           <button
             type="button"
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center text-2xl text-white md:hidden"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center text-2xl text-charcoal-brand md:hidden"
             aria-label="Open menu"
             onClick={() => setMenuOpen((o) => !o)}
           >
             ☰
           </button>
-          <Link to="/book" onClick={() => setMenuOpen(false)}>
+          <Link to="/book" onClick={() => setMenuOpen(false)} className="outline-none focus:outline-none focus-visible:outline-none">
             <img
               src={logo}
               alt="Lola's Rentals"
-              className="h-10 w-auto brightness-0 invert"
+              className="h-10 w-auto border-0 outline-none"
               style={{ border: 'none', outline: 'none', boxShadow: 'none', display: 'block' }}
             />
           </Link>
@@ -150,7 +150,7 @@ export function PageLayout({
         {showBasketIcon ? (
           <Link
             to="/book/basket"
-            className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border-2 border-white/30 text-white transition-all duration-300 hover:bg-white/10"
+            className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border-2 border-charcoal-brand/30 text-charcoal-brand transition-all duration-300 hover:bg-charcoal-brand/10"
           >
             🛒
             {basketCount > 0 && (
@@ -162,28 +162,29 @@ export function PageLayout({
         ) : (
           <div className="w-10" />
         )}
+
       </header>
 
       {menuOpen && (
-        <div className="fixed inset-x-0 top-[72px] z-40 flex flex-col gap-2 bg-teal-brand px-6 py-4 shadow-lg md:hidden">
+        <div className="fixed inset-x-0 top-[72px] z-40 flex flex-col gap-2 bg-sand-brand px-6 py-4 shadow-lg md:hidden">
           {NAV_LINKS.map((n) => (
             <Link
               key={n.to}
               to={n.to}
-              className={`min-h-[44px] flex items-center py-2 font-bold ${isActive(n.to) ? 'text-gold-brand' : 'text-white/80'}`}
+              className={`min-h-[44px] flex items-center py-2 font-bold ${isActive(n.to) ? 'text-teal-brand' : 'text-charcoal-brand/80'}`}
               onClick={() => setMenuOpen(false)}
             >
               {n.label}
             </Link>
           ))}
-          <div className={`min-h-[44px] flex items-center py-2 font-bold ${isMyRentalActive ? 'text-gold-brand' : 'text-white/80'}`}>
+          <div className={`min-h-[44px] flex items-center py-2 font-bold ${isMyRentalActive ? 'text-teal-brand' : 'text-charcoal-brand/80'}`}>
             My Rental
           </div>
           {MY_RENTAL_ITEMS.map((item) => (
             <Link
               key={item.to}
               to={item.to}
-              className={`min-h-[44px] flex items-center py-1 pl-4 text-sm font-semibold ${isActive(item.to) ? 'text-gold-brand' : 'text-white/80'}`}
+              className={`min-h-[44px] flex items-center py-1 pl-4 text-sm font-semibold ${isActive(item.to) ? 'text-teal-brand' : 'text-charcoal-brand/80'}`}
               onClick={() => setMenuOpen(false)}
             >
               {item.label}

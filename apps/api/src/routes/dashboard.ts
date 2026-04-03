@@ -474,24 +474,8 @@ router.get('/summary', authenticate, async (req, res, next) => {
       );
 
       const ninepmVehicles = buildNinepmVehicles(ninepmCandidates, sid);
+      /** Only vehicles with an open maintenance record (In Progress), not fleet status heuristics (e.g. Service Vehicle). */
       const maintenanceVehicles = buildMaintenanceVehicles(maintenanceRecords, sid);
-
-      const nonRentableFleet = storeFleet.filter(
-        (v) => !rentableStatusIds.has(v.status as string) && !rentableStatusNames.has(v.status as string)
-          && v.status !== 'Active' && v.status !== 'active'
-          && v.status !== 'Sold' && v.status !== 'Closed',
-      );
-      const extraMaint: MaintenanceVehicle[] = nonRentableFleet
-        .filter((v) => !maintenanceVehicles.some((m) => m.id === v.id))
-        .map((v) => {
-          const updatedAt = v.updated_at as string | null;
-          const daysDown = updatedAt
-            ? Math.max(0, Math.floor((nowMs - new Date(updatedAt).getTime()) / (24 * 60 * 60 * 1000)))
-            : 0;
-          return { id: v.id as string, name: v.name as string, status: v.status as string, daysDown };
-        });
-
-      const allMaintenance = [...maintenanceVehicles, ...extraMaint];
 
       let maintenancePartsCost: number | null = null;
       let maintenanceLabourCost: number | null = null;
@@ -626,7 +610,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
         ninepmReturns: { count: ninepmVehicles.length, vehicles: ninepmVehicles },
         depositsWithheld,
         fleetUtilisation,
-        maintenanceVehicles: allMaintenance,
+        maintenanceVehicles,
         maintenancePartsCost,
         maintenanceLabourCost,
         customerBreakdown,

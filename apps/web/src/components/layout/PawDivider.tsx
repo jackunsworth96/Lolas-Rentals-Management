@@ -1,4 +1,4 @@
-import pawPrint from '../../assets/Paw Print.svg';
+import pawPrint from '../../assets/Paw Divider.svg';
 
 interface PawDividerProps {
   opacity?: number;

@@ -46,6 +46,7 @@ export default function UIErrorsPage() {
   const createMut = useCreateUIError();
   const updateMut = useUpdateUIErrorFixed();
 
+  const [detailRow, setDetailRow] = useState<UIErrorRow | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [pageSelect, setPageSelect] = useState(REPORT_PAGE_OPTIONS[0]?.value ?? '');
   const [customPage, setCustomPage] = useState('');
@@ -97,21 +98,47 @@ export default function UIErrorsPage() {
     {
       key: 'errorDescription',
       header: 'Description',
-      className: 'max-w-xs',
+      className: 'max-w-xl',
+      cellClassName: 'whitespace-normal',
       render: (r: UIErrorRow) => (
-        <span className="line-clamp-2 whitespace-normal text-gray-800" title={r.errorDescription}>
-          {r.errorDescription}
-        </span>
+        <div className="flex max-w-xl flex-col gap-1">
+          <p className="line-clamp-3 whitespace-pre-wrap break-words text-gray-800">{r.errorDescription}</p>
+          <button
+            type="button"
+            className="w-fit text-left text-xs font-medium text-blue-600 underline hover:text-blue-800"
+            onClick={(e) => {
+              e.stopPropagation();
+              setDetailRow(r);
+            }}
+          >
+            View full
+          </button>
+        </div>
       ),
     },
     {
       key: 'ideaAndImprovements',
       header: 'Ideas',
-      className: 'max-w-xs',
+      className: 'max-w-xl',
+      cellClassName: 'whitespace-normal',
       render: (r: UIErrorRow) => (
-        <span className="line-clamp-2 whitespace-normal text-gray-500" title={r.ideaAndImprovements ?? ''}>
-          {r.ideaAndImprovements ?? '—'}
-        </span>
+        <div className="flex max-w-xl flex-col gap-1">
+          <p className="line-clamp-3 whitespace-pre-wrap break-words text-gray-500">
+            {r.ideaAndImprovements?.trim() ? r.ideaAndImprovements : '—'}
+          </p>
+          {r.ideaAndImprovements?.trim() ? (
+            <button
+              type="button"
+              className="w-fit text-left text-xs font-medium text-blue-600 underline hover:text-blue-800"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDetailRow(r);
+              }}
+            >
+              View full
+            </button>
+          ) : null}
+        </div>
       ),
     },
     {
@@ -188,9 +215,53 @@ export default function UIErrorsPage() {
             columns={columns}
             data={rows}
             keyFn={(r) => r.id}
+            onRowClick={(r) => setDetailRow(r)}
             emptyMessage="No reports yet. Use “Report issue” to add one."
           />
+          {rows.length > 0 ? (
+            <p className="border-t border-gray-100 px-4 py-2 text-xs text-gray-500">
+              Click a row or <span className="font-medium">View full</span> to read the complete description and ideas.
+            </p>
+          ) : null}
         </div>
+      )}
+
+      {detailRow && (
+        <ModalOverlay onClose={() => setDetailRow(null)}>
+          <div className="mx-auto w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-2 border-b border-gray-100 pb-4">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Report detail</h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  {formatDateTime(detailRow.createdAt)}
+                  {' · '}
+                  {detailRow.page}
+                </p>
+              </div>
+              <Badge color={detailRow.fixed ? 'green' : 'yellow'}>{detailRow.fixed ? 'Fixed' : 'Open'}</Badge>
+            </div>
+            <div className="max-h-[min(70vh,32rem)] space-y-4 overflow-y-auto pr-1">
+              <div>
+                <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Description</h3>
+                <p className="whitespace-pre-wrap break-words text-sm text-gray-900">{detailRow.errorDescription}</p>
+              </div>
+              <div>
+                <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Ideas &amp; improvements</h3>
+                <p className="whitespace-pre-wrap break-words text-sm text-gray-700">
+                  {detailRow.ideaAndImprovements?.trim() ? detailRow.ideaAndImprovements : '—'}
+                </p>
+              </div>
+              <p className="text-xs text-gray-400">
+                Reported by {detailRow.employeeName ?? detailRow.employeeId ?? '—'}
+              </p>
+            </div>
+            <div className="mt-6 flex justify-end">
+              <Button variant="secondary" onClick={() => setDetailRow(null)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </ModalOverlay>
       )}
 
       {showModal && (
