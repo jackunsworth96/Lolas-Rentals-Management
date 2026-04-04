@@ -16,6 +16,25 @@ const AvailabilityQuerySchema = z.object({
   dropoffDatetime: z.string().min(1),
 });
 
+router.get('/model-pricing', async (req, res, next) => {
+  try {
+    const { storeId, vehicleModelId } = req.query as {
+      storeId?: string;
+      vehicleModelId?: string;
+    };
+    if (!storeId || !vehicleModelId) {
+      res.status(400).json({ success: false, error: 'storeId and vehicleModelId required' });
+      return;
+    }
+    const { configRepo } = req.app.locals.deps;
+    const tiers = await configRepo.getModelPricing(vehicleModelId, storeId);
+    const minRate = tiers.length > 0
+      ? Math.min(...tiers.map((t: { dailyRate: number }) => Number(t.dailyRate)))
+      : null;
+    res.json({ success: true, data: { minDailyRate: minRate, tiers } });
+  } catch (err) { next(err); }
+});
+
 router.get('/availability', validateQuery(AvailabilityQuerySchema), async (req, res, next) => {
   try {
     const { storeId, pickupDatetime, dropoffDatetime } = req.query as {

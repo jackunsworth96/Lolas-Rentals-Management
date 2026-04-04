@@ -1,21 +1,42 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { motion, useMotionValue, useSpring } from 'framer-motion';
 import { api } from '../../api/client.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { DEFAULT_STORE_ID } from '@lolas/shared';
-import hondaBeatImg from '../../assets/Honda Beat Image.png';
-import tukTukImg from '../../assets/TukTuk Image.png';
+import hondaBeatImg from '../../assets/Honda Beat Image.svg';
+import tukTukImg from '../../assets/TukTuk Image.svg';
 import geckoSvg from '../../assets/Hand Drawn Assets/stand-alone-gekco--without-scenic-background--chil.svg';
+import BorderGlow from './BorderGlow.js';
 
 interface ModelPricing {
   modelId: string;
   modelName: string;
   dailyRate: number | null;
+  minDailyRate?: number | null;
 }
 
-const FALLBACK_FLEET: { name: string; img: string | null; desc: string }[] = [
-  { name: 'Honda Beat', img: hondaBeatImg, desc: 'Perfect for zipping through palm-lined roads with ease and efficiency.' },
-  { name: 'Inflatable Kayak', img: null, desc: 'Lightweight and portable. Discover hidden lagoons at your own pace.' },
+const FALLBACK_FLEET: {
+  name: string;
+  subtitle: string;
+  img: string | null;
+  desc: string;
+  fallbackPrice: number;
+}[] = [
+  {
+    name: 'Scooter',
+    subtitle: 'Honda Beat 110cc',
+    img: hondaBeatImg,
+    desc: "A reliable scooter for up to 2 persons with or without a surf rack. Perfect for cruising around town and visiting the island's best destinations.",
+    fallbackPrice: 465,
+  },
+  {
+    name: 'TukTuk',
+    subtitle: 'Bajaj RE 250cc',
+    img: tukTukImg,
+    desc: 'A great way to travel as a group, suitable for 3–4 persons. Exploring Siargao in a TukTuk is one for the bucket list — book now!',
+    fallbackPrice: 1595,
+  },
 ];
 
 const IMAGE_MAP: Record<string, string> = {
@@ -42,6 +63,39 @@ function buildOneDayRange(): { pickup: string; dropoff: string } {
   const pickup = now.toISOString();
   const drop = new Date(now.getTime() + 24 * 60 * 60 * 1000);
   return { pickup, dropoff: drop.toISOString() };
+}
+
+const springCfg = { damping: 30, stiffness: 100, mass: 2 };
+
+function TiltableCard({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const rotateX = useSpring(useMotionValue(0), springCfg);
+  const rotateY = useSpring(useMotionValue(0), springCfg);
+  const scale = useSpring(1, springCfg);
+
+  function handleMouse(e: React.MouseEvent<HTMLDivElement>) {
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    const offsetX = e.clientX - rect.left - rect.width / 2;
+    const offsetY = e.clientY - rect.top - rect.height / 2;
+    rotateX.set((offsetY / (rect.height / 2)) * -10);
+    rotateY.set((offsetX / (rect.width / 2)) * 10);
+  }
+
+  return (
+    <div
+      ref={ref}
+      onMouseMove={handleMouse}
+      onMouseEnter={() => scale.set(1.03)}
+      onMouseLeave={() => { scale.set(1); rotateX.set(0); rotateY.set(0); }}
+      className="group"
+      style={{ perspective: '800px', height: '100%' }}
+    >
+      <motion.div style={{ rotateX, rotateY, scale, transformStyle: 'preserve-3d', height: '100%' }}>
+        {children}
+      </motion.div>
+    </div>
+  );
 }
 
 export function FleetPreviewSection() {
@@ -76,7 +130,19 @@ export function FleetPreviewSection() {
             }
           }),
         );
-        if (!cancelled) setModels(priced);
+        const withMinPrices: ModelPricing[] = await Promise.all(
+          priced.map(async (m) => {
+            try {
+              const pricing = await api.get<{ data: { minDailyRate: number | null } }>(
+                `/public/booking/model-pricing?storeId=${storeId}&vehicleModelId=${m.modelId}`,
+              );
+              return { ...m, minDailyRate: pricing.data.minDailyRate };
+            } catch {
+              return { ...m, minDailyRate: null };
+            }
+          }),
+        );
+        if (!cancelled) setModels(withMinPrices);
       } catch {
         // keep fallback
       } finally {
@@ -94,30 +160,38 @@ export function FleetPreviewSection() {
           const hide = name.includes('tuk') && HIDDEN_MODELS.some((h) => name.includes(h));
           return !hide;
         })
-        .map((m) => ({
-          key: m.modelId,
-          name: m.modelName,
-          price: m.dailyRate != null ? `${formatCurrency(m.dailyRate)}/day` : null,
-          img: imageForModel(m.modelName),
-          desc: FALLBACK_FLEET.find((f) => m.modelName.toLowerCase().includes(f.name.toLowerCase()))?.desc ?? (
-            m.modelName.toLowerCase().includes('tuk')
-              ? 'A comfortable and practical tuk-tuk, perfect for groups or those wanting a relaxed island experience.'
-              : ''
-          ),
-        }))
+        .map((m) => {
+          const lower = m.modelName.toLowerCase();
+          const isTuk = lower.includes('tuk');
+          const isBeat = lower.includes('honda beat') || lower.includes('beat');
+          const info = isTuk ? FALLBACK_FLEET[1] : isBeat ? FALLBACK_FLEET[0] : null;
+          return {
+            key: m.modelId,
+            name: info?.name ?? m.modelName,
+            subtitle: info?.subtitle ?? '',
+            price: m.minDailyRate != null
+              ? `from ${formatCurrency(m.minDailyRate)}/day`
+              : info != null
+                ? `from ${formatCurrency(info.fallbackPrice)}/day`
+                : m.dailyRate != null
+                  ? `from ${formatCurrency(m.dailyRate)}/day`
+                  : null,
+            img: imageForModel(m.modelName),
+            desc: info?.desc ?? '',
+          };
+        })
     : FALLBACK_FLEET.map((f) => ({
         key: f.name,
         name: f.name,
-        price: null,
+        subtitle: f.subtitle,
+        price: `from ${formatCurrency(f.fallbackPrice)}/day`,
         img: f.img,
         desc: f.desc,
       }));
 
   return (
-    <section
-      className="mx-auto max-w-7xl px-6 py-16"
-      style={{ position: 'relative', overflow: 'hidden' }}
-    >
+    <section style={{ position: 'relative', width: '100%' }}>
+      <div className="mx-auto max-w-7xl px-6 py-16">
       <div style={{ textAlign: 'center', marginBottom: 56 }}>
         <p
           className="font-lato"
@@ -165,141 +239,131 @@ export function FleetPreviewSection() {
           gap: 32,
           maxWidth: 720,
           margin: '0 auto',
+          alignItems: 'stretch',
         }}
       >
         {items.map((v, i) => (
           <div
             key={v.key}
-            className="group animate-card-enter overflow-hidden transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl"
-            style={{
-              backgroundColor: '#FAF6F0',
-              borderRadius: 20,
-              boxShadow: '0 2px 16px rgba(0,0,0,0.07)',
-              animationDelay: `${i * 100}ms`,
-            }}
+            style={{ animationDelay: `${i * 100}ms`, height: '100%', display: 'flex', flexDirection: 'column' }}
+            className="animate-card-enter"
           >
-            <div
-              className="relative overflow-hidden"
-              style={{
-                height: 240,
-                backgroundColor: '#f1e6d6',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '24px',
-              }}
-            >
-              {/* Subtle circle blob behind vehicle */}
-              <div
-                style={{
-                  position: 'absolute',
-                  width: 200,
-                  height: 200,
-                  borderRadius: '50%',
-                  backgroundColor: '#FCBC5A',
-                  opacity: 0.25,
-                  top: '50%',
-                  left: '50%',
-                  transform: 'translate(-50%, -50%)',
-                }}
-              />
-
-              {v.img ? (
-                <img
-                  src={v.img}
-                  alt={v.name}
-                  style={{
-                    position: 'relative',
-                    zIndex: 1,
-                    width: '90%',
-                    height: '90%',
-                    objectFit: 'contain',
-                    transition: 'transform 0.5s ease',
-                    filter: 'drop-shadow(0 6px 16px rgba(0,0,0,0.18))',
-                  }}
-                  className="group-hover:scale-105"
-                />
-              ) : (
-                <span style={{ fontSize: 64, opacity: 0.3, zIndex: 1, position: 'relative' }}>
-                  🛵
-                </span>
-              )}
-
-              <div style={{
-                position: 'absolute', top: 12, right: 12, zIndex: 2,
-                backgroundColor: 'rgba(255,255,255,0.95)',
-                borderRadius: 9999, padding: '4px 12px',
-                fontSize: 13, fontWeight: 700, color: '#00577C',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-              }}>
-                {loading ? '...' : v.price ?? 'See pricing'}
-              </div>
-            </div>
-
-            <div style={{ padding: '20px 24px 24px' }}>
-              <h5
-                className="font-headline font-bold"
-                style={{
-                  fontSize: 20,
-                  color: '#363737',
-                  marginBottom: 6,
-                }}
+            <TiltableCard>
+              <BorderGlow
+                glowColor="44 70 70"
+                backgroundColor="#FAF6F0"
+                borderRadius={20}
+                glowIntensity={1.2}
+                coneSpread={30}
+                colors={['#00577C', '#FCBC5A', '#f1e6d6']}
+                style={{ height: '100%' }}
               >
-                {v.name}
-              </h5>
-              <p
-                className="font-lato"
-                style={{
-                  fontSize: 14,
-                  color: '#363737',
-                  opacity: 0.65,
-                  marginBottom: 20,
-                  lineHeight: 1.5,
-                }}
-              >
-                {v.desc}
-              </p>
-              <Link to="/book/reserve">
-                <button
-                  style={{
-                    width: '100%',
-                    padding: '12px 0',
-                    backgroundColor: '#FCBC5A',
-                    color: '#363737',
-                    border: '2px solid #363737',
-                    borderRadius: 8,
-                    fontWeight: 800,
-                    fontSize: 14,
-                    letterSpacing: '0.05em',
-                    textTransform: 'uppercase',
-                    cursor: 'pointer',
-                    boxShadow: '3px 3px 0 #363737',
-                    transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-                    fontFamily: 'Lato, sans-serif',
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLButtonElement).style.transform = 'translate(-2px, -2px)';
-                    (e.currentTarget as HTMLButtonElement).style.boxShadow = '5px 5px 0 #363737';
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLButtonElement).style.transform = 'translate(0, 0)';
-                    (e.currentTarget as HTMLButtonElement).style.boxShadow = '3px 3px 0 #363737';
-                  }}
-                >
-                  Book Your Ride
-                </button>
-              </Link>
-            </div>
+                {/* Image area — inside the unified card */}
+                <div style={{
+                  height: 220,
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: '18px 18px 0 0',
+                  display: 'flex',
+                  alignItems: 'flex-end',
+                  justifyContent: 'center',
+                  position: 'relative',
+                  overflow: 'hidden',
+                  padding: '0 12px 8px',
+                  margin: '-1px -1px 0',
+                }}>
+                  {v.img ? (
+                    <img
+                      src={v.img}
+                      alt={v.name}
+                      style={{
+                        width: '95%',
+                        height: '95%',
+                        objectFit: 'contain',
+                        objectPosition: 'center bottom',
+                        mixBlendMode: 'multiply',
+                        filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.15))',
+                        marginTop: 'auto',
+                        transition: 'transform 0.5s ease',
+                      }}
+                      className="group-hover:scale-105"
+                    />
+                  ) : (
+                    <span style={{ fontSize: 64, opacity: 0.3 }}>🛵</span>
+                  )}
+                  {/* Price badge */}
+                  <div style={{
+                    position: 'absolute', bottom: 10, right: 10,
+                    backgroundColor: 'rgba(255,255,255,0.95)',
+                    borderRadius: 9999, padding: '3px 10px',
+                    fontSize: 11, fontWeight: 700, color: '#00577C',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                  }}>
+                    {loading ? '...' : v.price ?? 'See pricing'}
+                  </div>
+                </div>
+
+                {/* Content area */}
+                <div style={{ padding: '20px 24px 24px', display: 'flex', flexDirection: 'column', flex: 1 }}>
+                  <p className="font-lato" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#00577C', marginBottom: 2 }}>
+                    {v.name}
+                  </p>
+                  <h5
+                    className="font-headline font-bold"
+                    style={{ fontSize: 20, color: '#363737', marginBottom: 10 }}
+                  >
+                    {v.subtitle}
+                  </h5>
+                  <p
+                    className="font-lato"
+                    style={{ fontSize: 14, color: '#363737', opacity: 0.65, marginBottom: 20, lineHeight: 1.5, flex: 1 }}
+                  >
+                    {v.desc}
+                  </p>
+                  <Link to="/book/reserve">
+                    <button
+                      style={{
+                        width: '100%',
+                        padding: '12px 0',
+                        backgroundColor: '#FCBC5A',
+                        color: '#363737',
+                        border: '2px solid #363737',
+                        borderRadius: 8,
+                        fontWeight: 800,
+                        fontSize: 14,
+                        letterSpacing: '0.05em',
+                        textTransform: 'uppercase',
+                        cursor: 'pointer',
+                        boxShadow: '3px 3px 0 #363737',
+                        transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                        fontFamily: 'Lato, sans-serif',
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.transform = 'translate(-2px, -2px)';
+                        (e.currentTarget as HTMLButtonElement).style.boxShadow = '5px 5px 0 #363737';
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.transform = 'translate(0, 0)';
+                        (e.currentTarget as HTMLButtonElement).style.boxShadow = '3px 3px 0 #363737';
+                      }}
+                    >
+                      Book Your Ride
+                    </button>
+                  </Link>
+                </div>
+              </BorderGlow>
+            </TiltableCard>
           </div>
         ))}
       </div>
+
+      </div>{/* end inner max-width container */}
 
       <img
         src={geckoSvg}
         alt=""
         style={{
           position: 'absolute',
-          right: -20,
+          right: 0,
           bottom: 40,
           width: 140,
           height: 'auto',

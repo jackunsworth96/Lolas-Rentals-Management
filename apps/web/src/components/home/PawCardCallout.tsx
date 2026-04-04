@@ -9,7 +9,8 @@ export function PawCardCallout() {
         borderRadius: 20,
         padding: '48px 40px 40px',
         position: 'relative',
-        overflow: 'visible',
+        overflow: 'hidden',
+        isolation: 'isolate',
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
@@ -17,18 +18,21 @@ export function PawCardCallout() {
         minHeight: 400,
       }}
     >
-      {/* Lola image — top right, partially overlapping */}
+      {/* Lola mascot — inside top-right; white in asset blends away on teal */}
       <img
         src={lolaFace}
         alt="Lola — our mascot"
         style={{
           position: 'absolute',
-          top: -40,
-          right: -20,
-          width: 140,
-          height: 140,
+          top: 12,
+          right: 12,
+          width: 108,
+          height: 108,
           objectFit: 'contain',
+          objectPosition: 'center top',
           zIndex: 2,
+          mixBlendMode: 'multiply',
+          pointerEvents: 'none',
         }}
       />
 
@@ -41,7 +45,7 @@ export function PawCardCallout() {
             lineHeight: 1.15,
             color: '#FFFFFF',
             marginBottom: 20,
-            paddingRight: 100,
+            paddingRight: 120,
           }}
         >
           Every Peso

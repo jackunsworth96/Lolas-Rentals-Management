@@ -180,7 +180,12 @@ function HeroSection() {
   const isTablet = windowWidth < 1024 && windowWidth >= 640;
   const isMobileFlower = windowWidth < 640;
 
-  const flowerWidth  = isMobileFlower ? 160 : isTablet ? 260 : 420;
+  const flowerWidthBase = Math.round(
+    (isMobileFlower ? 160 : isTablet ? 260 : 420) * 0.9,
+  );
+  /** Left flower only: 20% smaller than the shared base */
+  const flowerWidthLeft = Math.round(flowerWidthBase * 0.8);
+  const flowerWidthRight = flowerWidthBase;
   const flowerBottom = isMobileFlower || isTablet ? -40 : -80;
   const flowerOffset = isMobileFlower || isTablet ? -20 : -40;
 
@@ -192,29 +197,61 @@ function HeroSection() {
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
-      {/* ── Flower Left ──────────────────────────────────────── */}
-      <motion.img
-        src={flowerLeft}
-        alt=""
-        aria-hidden="true"
+      {/* ── Flower Left — float like clouds; x stays negative so it never drifts inward off the edge ── */}
+      <motion.div
         className="pointer-events-none absolute z-[1]"
-        style={{ width: flowerWidth, left: flowerOffset, bottom: flowerBottom }}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.8, delay: 0.3 }}
-      />
+        style={{ left: flowerOffset, bottom: flowerBottom }}
+        animate={
+          shouldAnimate
+            ? {
+                x: [0, -12, 0],
+                y: [0, -8, 0],
+              }
+            : {}
+        }
+        transition={{
+          x: { duration: 14, repeat: Infinity, ease: 'linear' },
+          y: { duration: 6, repeat: Infinity, ease: 'easeInOut' },
+        }}
+      >
+        <motion.img
+          src={flowerLeft}
+          alt=""
+          aria-hidden="true"
+          style={{ width: flowerWidthLeft, display: 'block' }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.8, delay: 0.3 }}
+        />
+      </motion.div>
 
-      {/* ── Flower Right ─────────────────────────────────────── */}
-      <motion.img
-        src={flowerRight}
-        alt=""
-        aria-hidden="true"
+      {/* ── Flower Right — same cloud-style float; x stays positive so it drifts toward the outer edge, not inward ── */}
+      <motion.div
         className="pointer-events-none absolute z-[1]"
-        style={{ width: flowerWidth, right: flowerOffset, bottom: flowerBottom }}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.8, delay: 0.3 }}
-      />
+        style={{ right: flowerOffset, bottom: flowerBottom }}
+        animate={
+          shouldAnimate
+            ? {
+                x: [0, 10, 0],
+                y: [0, -5, 0],
+              }
+            : {}
+        }
+        transition={{
+          x: { duration: 11, repeat: Infinity, ease: 'linear' },
+          y: { duration: 8, repeat: Infinity, ease: 'easeInOut' },
+        }}
+      >
+        <motion.img
+          src={flowerRight}
+          alt=""
+          aria-hidden="true"
+          style={{ width: flowerWidthRight, display: 'block' }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.8, delay: 0.3 }}
+        />
+      </motion.div>
 
       {/* ── Cloud 1 — large, slow drift + slow float ──────────── */}
       <motion.div
@@ -474,16 +511,20 @@ export default function HomePage() {
     >
       <HeroSection />
 
-      <SectionDivider variant="a" />
+      <div style={{ marginTop: -4, marginBottom: -120 }}>
+        <SectionDivider variant="dash" />
+      </div>
 
       <FadeUpSection>
         <FleetPreviewSection />
       </FadeUpSection>
 
-      <SectionDivider variant="b" />
+      <div style={{ marginTop: -2, marginBottom: -2 }}>
+        <SectionDivider variant="bold" />
+      </div>
 
       <FadeUpSection>
-        <section style={{ backgroundColor: '#f1e6d6', padding: '96px 5%' }}>
+        <section style={{ backgroundColor: '#f1e6d6', padding: '64px 5%' }}>
           <div style={{ maxWidth: 1280, margin: '0 auto' }}>
             <p
               className="font-lato"
@@ -549,13 +590,15 @@ export default function HomePage() {
         </section>
       </FadeUpSection>
 
-      <SectionDivider variant="a" flip />
+      <div style={{ marginTop: -2, marginBottom: -2 }}>
+        <SectionDivider variant="dash" flip />
+      </div>
 
       <FadeUpSection>
         <section
           style={{
             backgroundColor: '#f1e6d6',
-            padding: '96px 5%',
+            padding: '64px 5%',
           }}
         >
           <div style={{ maxWidth: 1280, margin: '0 auto' }}>
@@ -612,192 +655,158 @@ export default function HomePage() {
         </section>
       </FadeUpSection>
 
-      <SectionDivider variant="b" flip />
+      <div style={{ marginTop: -2, marginBottom: -2 }}>
+        <SectionDivider variant="bold" flip />
+      </div>
 
-      <section style={{ backgroundColor: '#f1e6d6', padding: '96px 5%' }}>
-        <div
-          style={{
-            maxWidth: 1280,
-            margin: '0 auto',
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-            gap: 80,
-            alignItems: 'center',
-          }}
-        >
-          {/* LEFT — Stack card gallery */}
+      <section style={{ backgroundColor: '#f1e6d6', padding: '64px 5%' }}>
+        <div style={{ maxWidth: 1280, margin: '0 auto' }}>
+
+          {/* ── Full-width logo lockup ── */}
           <div
             style={{
               display: 'flex',
-              justifyContent: 'center',
               alignItems: 'center',
+              justifyContent: 'center',
+              gap: 20,
+              marginBottom: 48,
+              flexWrap: 'wrap',
             }}
           >
-            <div style={{ width: 340, height: 420 }}>
-              <Stack
-                randomRotation={true}
-                sensitivity={200}
-                sendToBackOnClick={true}
-                cards={[
-                  bePaw1, bePaw2, bePaw3, bePaw4, bePaw5,
-                  bePaw6, bePaw7, bePaw8, bePaw9, bePaw10,
-                  bePaw11, bePaw12, bePaw13, bePaw14, bePaw15,
-                  bePaw16, bePaw17, bePaw18, bePaw19, bePaw20,
-                ].map((src, i) => (
-                  <img
-                    key={i}
-                    src={src}
-                    alt={`BePawsitive animal ${i + 1}`}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
-                ))}
-                autoplay={true}
-                autoplayDelay={2500}
-                pauseOnHover={true}
-              />
-            </div>
+            <img src={lolasLogo} alt="Lola's Rentals" style={{ height: 68, width: 'auto' }} />
+            <span style={{ fontSize: 26, fontWeight: 800, color: '#363737', opacity: 0.4, fontFamily: 'Lato, sans-serif' }}>
+              ×
+            </span>
+            <img src={bepawsitiveLogo} alt="BePawsitive" style={{ height: 76, width: 'auto' }} />
           </div>
 
-          {/* RIGHT — Text content */}
-          <div>
-            {/* Collab logos */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 32 }}>
-              <img
-                src={lolasLogo}
-                alt="Lola's Rentals"
-                style={{ height: 48, width: 'auto' }}
-              />
-              <span
-                style={{
-                  fontSize: 20,
-                  fontWeight: 800,
-                  color: '#363737',
-                  opacity: 0.4,
-                  fontFamily: 'Lato, sans-serif',
-                }}
-              >
-                ×
-              </span>
-              <img
-                src={bepawsitiveLogo}
-                alt="BePawsitive"
-                style={{ height: 48, width: 'auto' }}
-              />
-            </div>
-
-            {/* CountUp — total donated */}
-            <div style={{ marginBottom: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                <span
-                  style={{
-                    fontSize: 'clamp(48px, 6vw, 72px)',
-                    fontWeight: 800,
-                    color: '#00577C',
-                    fontFamily: 'Alegreya Sans, sans-serif',
-                    lineHeight: 1,
-                  }}
-                >
-                  ₱
-                </span>
-                <CountUp
-                  from={0}
-                  to={282995}
-                  separator=","
-                  direction="up"
-                  duration={2}
-                  startWhen={true}
-                  className="count-up-text"
+          {/* ── Two-column: photos | counter + text ── */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+              gap: 64,
+              alignItems: 'center',
+              marginBottom: 48,
+            }}
+          >
+            {/* LEFT — Stack card gallery, centred */}
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+              <div style={{ width: 340, height: 420 }}>
+                <Stack
+                  randomRotation={true}
+                  sensitivity={200}
+                  sendToBackOnClick={true}
+                  cards={[
+                    bePaw1, bePaw2, bePaw3, bePaw4, bePaw5,
+                    bePaw6, bePaw7, bePaw8, bePaw9, bePaw10,
+                    bePaw11, bePaw12, bePaw13, bePaw14, bePaw15,
+                    bePaw16, bePaw17, bePaw18, bePaw19, bePaw20,
+                  ].map((src, i) => (
+                    <img
+                      key={i}
+                      src={src}
+                      alt={`BePawsitive animal ${i + 1}`}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  ))}
+                  autoplay={true}
+                  autoplayDelay={2500}
+                  pauseOnHover={true}
                 />
               </div>
-              <p
-                className="font-lato"
+            </div>
+
+            {/* RIGHT — Counter + divider + text + CTA, all centred */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+              {/* Counter */}
+              <div style={{ marginBottom: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, justifyContent: 'center' }}>
+                  <span
+                    style={{
+                      fontSize: 'clamp(48px, 6vw, 72px)',
+                      fontWeight: 800,
+                      color: '#00577C',
+                      fontFamily: 'Alegreya Sans, sans-serif',
+                      lineHeight: 1,
+                    }}
+                  >
+                    ₱
+                  </span>
+                  <CountUp
+                    from={0}
+                    to={282995}
+                    separator=","
+                    direction="up"
+                    duration={2}
+                    startWhen={true}
+                    className="count-up-text"
+                  />
+                </div>
+                <p
+                  className="font-lato"
+                  style={{
+                    fontSize: 12,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.1em',
+                    color: '#00577C',
+                    fontWeight: 700,
+                    marginTop: 6,
+                  }}
+                >
+                  Total Donated Since Oct 2022
+                </p>
+              </div>
+
+              {/* Paw divider */}
+              <div style={{ margin: '20px 0', width: '100%', display: 'flex', justifyContent: 'center' }}>
+                <img src={pawDivider} alt="" style={{ width: '100%', maxWidth: 320, height: 'auto', opacity: 0.5 }} />
+              </div>
+
+              {/* Body text */}
+              <p className="font-lato" style={{ fontSize: 16, color: '#363737', lineHeight: 1.7, marginBottom: 12, opacity: 0.8, maxWidth: 380 }}>
+                Every rental directly funds spay, neuter and vaccination clinics
+                for Siargao&apos;s street animals through our BePawsitive partnership.
+              </p>
+              <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.7, opacity: 0.65, marginBottom: 28, maxWidth: 380 }}>
+                It costs just ₱800 to spay or neuter a stray. Every booking makes a difference.
+              </p>
+
+              {/* CTA */}
+              <a
+                href="https://www.facebook.com/bepawsitiveph"
+                target="_blank"
+                rel="noopener noreferrer"
                 style={{
-                  fontSize: 12,
+                  display: 'inline-block',
+                  padding: '14px 36px',
+                  backgroundColor: '#FCBC5A',
+                  color: '#363737',
+                  border: '2px solid #363737',
+                  borderRadius: 8,
+                  fontWeight: 800,
+                  fontSize: 14,
+                  letterSpacing: '0.05em',
                   textTransform: 'uppercase',
-                  letterSpacing: '0.1em',
-                  color: '#00577C',
-                  fontWeight: 700,
-                  marginTop: 4,
+                  textDecoration: 'none',
+                  boxShadow: '4px 4px 0 #363737',
+                  fontFamily: 'Lato, sans-serif',
+                  transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLAnchorElement).style.transform = 'translate(-2px, -2px)';
+                  (e.currentTarget as HTMLAnchorElement).style.boxShadow = '6px 6px 0 #363737';
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLAnchorElement).style.transform = 'translate(0, 0)';
+                  (e.currentTarget as HTMLAnchorElement).style.boxShadow = '4px 4px 0 #363737';
                 }}
               >
-                Total Donated Since Oct 2022
-              </p>
+                Learn About BePawsitive
+              </a>
             </div>
-
-            {/* Paw divider */}
-            <div style={{ margin: '24px 0' }}>
-              <img
-                src={pawDivider}
-                alt=""
-                style={{ width: '100%', maxWidth: 320, height: 'auto', opacity: 0.5 }}
-              />
-            </div>
-
-            {/* Body text */}
-            <p
-              className="font-lato"
-              style={{
-                fontSize: 16,
-                color: '#363737',
-                lineHeight: 1.7,
-                marginBottom: 12,
-                opacity: 0.8,
-              }}
-            >
-              Every rental directly funds spay, neuter and vaccination clinics
-              for Siargao&apos;s street animals through our BePawsitive partnership.
-            </p>
-            <p
-              className="font-lato"
-              style={{
-                fontSize: 15,
-                color: '#363737',
-                lineHeight: 1.7,
-                opacity: 0.65,
-                marginBottom: 28,
-              }}
-            >
-              It costs just ₱800 to spay or neuter a stray. Every booking makes
-              a difference.
-            </p>
-
-            {/* CTA button */}
-            <a
-              href="https://www.facebook.com/bepawsitiveph"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: 'inline-block',
-                padding: '14px 36px',
-                backgroundColor: '#FCBC5A',
-                color: '#363737',
-                border: '2px solid #363737',
-                borderRadius: 8,
-                fontWeight: 800,
-                fontSize: 14,
-                letterSpacing: '0.05em',
-                textTransform: 'uppercase',
-                textDecoration: 'none',
-                boxShadow: '4px 4px 0 #363737',
-                fontFamily: 'Lato, sans-serif',
-                transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLAnchorElement).style.transform =
-                  'translate(-2px, -2px)';
-                (e.currentTarget as HTMLAnchorElement).style.boxShadow =
-                  '6px 6px 0 #363737';
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLAnchorElement).style.transform =
-                  'translate(0, 0)';
-                (e.currentTarget as HTMLAnchorElement).style.boxShadow =
-                  '4px 4px 0 #363737';
-              }}
-            >
-              Learn About BePawsitive
-            </a>
           </div>
+
         </div>
 
         {/* PawCardCallout (left) | Stepper (right) */}
@@ -845,27 +854,11 @@ export default function HomePage() {
             <Stepper initialStep={1} backButtonText="Back" nextButtonText="Next">
               <Step>
                 <div style={{ textAlign: 'center', padding: '8px 0' }}>
-                  <img
-                    src={stepIcon1}
-                    alt="Paw Card"
-                    style={{
-                      width: 80,
-                      height: 80,
-                      margin: '0 auto 16px',
-                      display: 'block',
-                      objectFit: 'contain',
-                    }}
-                  />
-                  <h4
-                    className="font-headline font-bold"
-                    style={{ fontSize: 20, color: '#00577C', marginBottom: 8 }}
-                  >
+                  <img src={stepIcon1} alt="Paw Card" style={{ width: 80, height: 80, margin: '0 auto 16px', display: 'block', objectFit: 'contain', mixBlendMode: 'multiply' }} />
+                  <h4 className="font-headline font-bold" style={{ fontSize: 20, color: '#00577C', marginBottom: 8 }}>
                     Get Your Paw Card
                   </h4>
-                  <p
-                    className="font-lato"
-                    style={{ fontSize: 15, color: '#363737', lineHeight: 1.6, opacity: 0.8 }}
-                  >
+                  <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.6, opacity: 0.8 }}>
                     Every Lola&apos;s rental comes with a free digital Paw Card.
                     It&apos;s your key to island-wide savings and giving back.
                   </p>
@@ -873,27 +866,11 @@ export default function HomePage() {
               </Step>
               <Step>
                 <div style={{ textAlign: 'center', padding: '8px 0' }}>
-                  <img
-                    src={stepIcon2}
-                    alt="Partner Stores"
-                    style={{
-                      width: 80,
-                      height: 80,
-                      margin: '0 auto 16px',
-                      display: 'block',
-                      objectFit: 'contain',
-                    }}
-                  />
-                  <h4
-                    className="font-headline font-bold"
-                    style={{ fontSize: 20, color: '#00577C', marginBottom: 8 }}
-                  >
+                  <img src={stepIcon2} alt="Partner Stores" style={{ width: 80, height: 80, margin: '0 auto 16px', display: 'block', objectFit: 'contain', mixBlendMode: 'multiply' }} />
+                  <h4 className="font-headline font-bold" style={{ fontSize: 20, color: '#00577C', marginBottom: 8 }}>
                     Use It Island-Wide
                   </h4>
-                  <p
-                    className="font-lato"
-                    style={{ fontSize: 15, color: '#363737', lineHeight: 1.6, opacity: 0.8 }}
-                  >
+                  <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.6, opacity: 0.8 }}>
                     Show your Paw Card at 70+ partner establishments across Siargao
                     to unlock exclusive discounts on food, surf, stays and more.
                   </p>
@@ -901,27 +878,11 @@ export default function HomePage() {
               </Step>
               <Step>
                 <div style={{ textAlign: 'center', padding: '8px 0' }}>
-                  <img
-                    src={stepIcon3}
-                    alt="Savings"
-                    style={{
-                      width: 80,
-                      height: 80,
-                      margin: '0 auto 16px',
-                      display: 'block',
-                      objectFit: 'contain',
-                    }}
-                  />
-                  <h4
-                    className="font-headline font-bold"
-                    style={{ fontSize: 20, color: '#00577C', marginBottom: 8 }}
-                  >
+                  <img src={stepIcon3} alt="Savings" style={{ width: 80, height: 80, margin: '0 auto 16px', display: 'block', objectFit: 'contain', mixBlendMode: 'multiply' }} />
+                  <h4 className="font-headline font-bold" style={{ fontSize: 20, color: '#00577C', marginBottom: 8 }}>
                     Save on Every Visit
                   </h4>
-                  <p
-                    className="font-lato"
-                    style={{ fontSize: 15, color: '#363737', lineHeight: 1.6, opacity: 0.8 }}
-                  >
+                  <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.6, opacity: 0.8 }}>
                     Every peso you save is matched by Lola&apos;s Rentals as a donation
                     to BePawsitive — up to ₱100,000 per year.
                   </p>
@@ -929,30 +890,13 @@ export default function HomePage() {
               </Step>
               <Step>
                 <div style={{ textAlign: 'center', padding: '8px 0' }}>
-                  <img
-                    src={stepIcon4}
-                    alt="Lola"
-                    style={{
-                      width: 80,
-                      height: 80,
-                      margin: '0 auto 16px',
-                      display: 'block',
-                      objectFit: 'contain',
-                    }}
-                  />
-                  <h4
-                    className="font-headline font-bold"
-                    style={{ fontSize: 20, color: '#00577C', marginBottom: 8 }}
-                  >
+                  <img src={stepIcon4} alt="Lola" style={{ width: 80, height: 80, margin: '0 auto 16px', display: 'block', objectFit: 'contain', mixBlendMode: 'multiply' }} />
+                  <h4 className="font-headline font-bold" style={{ fontSize: 20, color: '#00577C', marginBottom: 8 }}>
                     Make a Difference
                   </h4>
-                  <p
-                    className="font-lato"
-                    style={{ fontSize: 15, color: '#363737', lineHeight: 1.6, opacity: 0.8 }}
-                  >
+                  <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.6, opacity: 0.8 }}>
                     Your savings directly fund spay, neuter and vaccination clinics
-                    for Siargao&apos;s street animals. Together we&apos;re building a
-                    kinder island.
+                    for Siargao&apos;s street animals. Together we&apos;re building a kinder island.
                   </p>
                 </div>
               </Step>
@@ -961,7 +905,9 @@ export default function HomePage() {
         </div>
       </section>
 
-      <SectionDivider variant="a" />
+      <div style={{ marginTop: -2, marginBottom: -2 }}>
+        <SectionDivider variant="dash" />
+      </div>
 
       <FadeUpSection>
         <ReviewsSection />

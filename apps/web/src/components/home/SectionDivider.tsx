@@ -1,36 +1,40 @@
-import separatorA from '../../assets/Original Assests/separator.svg';
-import separatorB from '../../assets/Original Assests/separator-3.svg';
+import roadDash from '../../assets/Original Assests/road.svg';
+import roadSep  from '../../assets/Original Assests/separator-3.svg';
+
+type DividerVariant = 'dash' | 'bold';
 
 interface SectionDividerProps {
-  variant?: 'a' | 'b';
+  variant?: DividerVariant;
   flip?: boolean;
 }
 
-export default function SectionDivider({
-  variant = 'a',
-  flip = false,
-}: SectionDividerProps) {
-  const src = variant === 'a' ? separatorA : separatorB;
+const SRCS: Record<DividerVariant, string> = {
+  dash: roadDash,
+  bold: roadSep,
+};
 
+export default function SectionDivider({ variant = 'dash', flip = false }: SectionDividerProps) {
   return (
     <div
       style={{
         width: '100%',
         overflow: 'hidden',
         lineHeight: 0,
-        transform: flip ? 'scaleY(-1)' : 'none',
-        marginTop: -2,
-        marginBottom: -2,
+        marginTop: -4,
+        marginBottom: -4,
+        transform: flip ? 'scaleX(-1)' : 'none',
       }}
     >
       <img
-        src={src}
+        src={SRCS[variant]}
         alt=""
         style={{
           width: '100%',
           height: 'auto',
           display: 'block',
           minWidth: 800,
+          margin: 0,
+          padding: 0,
         }}
       />
     </div>
