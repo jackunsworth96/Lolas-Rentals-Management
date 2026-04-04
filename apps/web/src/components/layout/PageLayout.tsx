@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useBookingStore } from '../../stores/bookingStore.js';
 import { FadeUpSection } from '../public/FadeUpSection.js';
+import PillNav from './PillNav.js';
+import ClickSpark from '../home/ClickSpark.js';
 
 import logo from '../../assets/Lolas Original Logo.svg';
 import flowerLeft from '../../assets/Flower Left.svg';
@@ -14,18 +16,24 @@ export interface PageLayoutProps {
   showFloralRight?: boolean;
   floralPosition?: 'fixed' | 'absolute';
   showBasketIcon?: boolean;
+  /** Strip top-padding and horizontal padding from <main> so a hero can sit flush under the nav */
+  fullBleed?: boolean;
 }
 
-const NAV_LINKS: Array<{ to: string; label: string }> = [
-  { to: '/book', label: 'Home' },
-  { to: '/book/reserve', label: 'Reserve' },
-  { to: '/book/repairs', label: 'Repairs' },
-  { to: '/book/about', label: 'About' },
-];
-
-const MY_RENTAL_ITEMS = [
-  { to: '/book/paw-card', label: 'Log Paw Card Savings' },
-  { to: '/book/extend', label: 'Extend My Rental' },
+const NAV_ITEMS = [
+  { label: 'Home', href: '/book' },
+  { label: 'Reserve', href: '/book/reserve' },
+  { label: 'Repairs', href: '/book/repairs' },
+  { label: 'About', href: '/book/about' },
+  {
+    label: 'My Rental',
+    href: '/book/paw-card',
+    isDropdown: true,
+    dropdownItems: [
+      { label: 'Log Paw Card Savings', href: '/book/paw-card' },
+      { label: 'Extend My Rental', href: '/book/extend' },
+    ],
+  },
 ];
 
 const BOTTOM_NAV = [
@@ -35,9 +43,6 @@ const BOTTOM_NAV = [
   { to: '/book/repairs', icon: '🔧', label: 'Repairs' },
 ];
 
-const linkBase = 'min-h-[44px] flex items-center transition-colors duration-200';
-const linkActive = `${linkBase} font-bold text-teal-brand`;
-const linkInactive = `${linkBase} text-charcoal-brand/80 hover:text-teal-brand`;
 
 export function PageLayout({
   children,
@@ -46,35 +51,21 @@ export function PageLayout({
   showFloralRight = true,
   floralPosition = 'fixed',
   showBasketIcon = false,
+  fullBleed = false,
 }: PageLayoutProps) {
   const { pathname } = useLocation();
   const basketCount = useBookingStore((s) => s.basket.length);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [rentalOpen, setRentalOpen] = useState(false);
-  const rentalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (title) document.title = title;
   }, [title]);
 
-  useEffect(() => { setMenuOpen(false); setRentalOpen(false); }, [pathname]);
-
-  useEffect(() => {
-    if (!rentalOpen) return;
-    function handleClick(e: MouseEvent) {
-      if (rentalRef.current && !rentalRef.current.contains(e.target as Node)) setRentalOpen(false);
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [rentalOpen]);
-
   const isActive = (to: string) => (to === '/book' ? pathname === '/book' : pathname.startsWith(to));
-  const isMyRentalActive = MY_RENTAL_ITEMS.some((item) => isActive(item.to));
 
   return (
     <div
       className="relative min-h-screen font-body animate-page-fade-in"
-      style={{ background: '#E8DFD0', overflowX: 'hidden' }}
+      style={{ background: '#f1e6d6', overflowX: 'hidden' }}
     >
       {showFloralLeft && (
         <img
@@ -91,109 +82,37 @@ export function PageLayout({
         />
       )}
 
-      <header className="fixed left-0 top-0 z-50 flex w-full items-center justify-between bg-sand-brand px-6 py-4 shadow-sm">
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center text-2xl text-charcoal-brand md:hidden"
-            aria-label="Open menu"
-            onClick={() => setMenuOpen((o) => !o)}
-          >
-            ☰
-          </button>
-          <Link to="/book" onClick={() => setMenuOpen(false)} className="outline-none focus:outline-none focus-visible:outline-none">
-            <img
-              src={logo}
-              alt="Lola's Rentals"
-              className="h-10 w-auto border-0 outline-none"
-              style={{ border: 'none', outline: 'none', boxShadow: 'none', display: 'block' }}
-            />
-          </Link>
-        </div>
-
-        <nav className="hidden items-center gap-8 md:flex">
-          {NAV_LINKS.map((n) => (
-            <Link key={n.to} to={n.to} className={isActive(n.to) ? linkActive : linkInactive}>
-              {n.label}
-            </Link>
-          ))}
-          <div ref={rentalRef} className="relative">
-            <button
-              type="button"
-              onClick={() => setRentalOpen((o) => !o)}
-              className={`${isMyRentalActive ? linkActive : linkInactive} gap-1`}
-            >
-              My Rental
-              <span className={`text-[10px] transition-transform duration-200 ${rentalOpen ? 'rotate-180' : ''}`}>▼</span>
-            </button>
-            {rentalOpen && (
-              <div className="absolute right-0 top-full mt-2 min-w-[200px] overflow-hidden rounded-xl bg-white shadow-xl">
-                {MY_RENTAL_ITEMS.map((item) => (
-                  <Link
-                    key={item.to}
-                    to={item.to}
-                    className={`block px-5 py-3 text-sm font-semibold transition-colors ${
-                      isActive(item.to)
-                        ? 'bg-teal-brand/5 text-teal-brand'
-                        : 'text-charcoal-brand/80 hover:bg-cream-brand hover:text-teal-brand'
-                    }`}
-                    onClick={() => setRentalOpen(false)}
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
-        </nav>
-
-        {showBasketIcon ? (
-          <Link
-            to="/book/basket"
-            className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border-2 border-charcoal-brand/30 text-charcoal-brand transition-all duration-300 hover:bg-charcoal-brand/10"
-          >
-            🛒
-            {basketCount > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-gold-brand text-[10px] font-black text-charcoal-brand">
-                {basketCount}
-              </span>
-            )}
-          </Link>
-        ) : (
-          <div className="w-10" />
-        )}
-
-      </header>
-
-      {menuOpen && (
-        <div className="fixed inset-x-0 top-[72px] z-40 flex flex-col gap-2 bg-sand-brand px-6 py-4 shadow-lg md:hidden">
-          {NAV_LINKS.map((n) => (
+      <PillNav
+        logo={logo}
+        logoAlt="Lola's Rentals"
+        items={NAV_ITEMS}
+        baseColor="#f1e6d6"
+        navBgColor="#f1e6d6"
+        pillColor="#00577C"
+        pillActiveColor="#00577C"
+        pillActiveTextColor="#FAF6F0"
+        pillTextColor="#363737"
+        hoveredPillTextColor="#FAF6F0"
+        theme="light"
+        initialLoadAnimation={false}
+        rightSlot={
+          showBasketIcon ? (
             <Link
-              key={n.to}
-              to={n.to}
-              className={`min-h-[44px] flex items-center py-2 font-bold ${isActive(n.to) ? 'text-teal-brand' : 'text-charcoal-brand/80'}`}
-              onClick={() => setMenuOpen(false)}
+              to="/book/basket"
+              className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border-2 border-charcoal-brand/30 text-charcoal-brand transition-all duration-300 hover:bg-charcoal-brand/10"
             >
-              {n.label}
+              🛒
+              {basketCount > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-gold-brand text-[10px] font-black text-charcoal-brand">
+                  {basketCount}
+                </span>
+              )}
             </Link>
-          ))}
-          <div className={`min-h-[44px] flex items-center py-2 font-bold ${isMyRentalActive ? 'text-teal-brand' : 'text-charcoal-brand/80'}`}>
-            My Rental
-          </div>
-          {MY_RENTAL_ITEMS.map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              className={`min-h-[44px] flex items-center py-1 pl-4 text-sm font-semibold ${isActive(item.to) ? 'text-teal-brand' : 'text-charcoal-brand/80'}`}
-              onClick={() => setMenuOpen(false)}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </div>
-      )}
+          ) : undefined
+        }
+      />
 
-      <main className="relative z-10 overflow-x-hidden px-4 pb-32 pt-20">{children}</main>
+      <main className={`relative z-10 overflow-x-hidden pb-32 ${fullBleed ? '' : 'px-4 pt-20'}`}>{children}</main>
 
       <FadeUpSection>
         <footer className="w-full border-t border-sand-brand bg-cream-brand pb-32 pt-16 md:pb-16">
@@ -231,6 +150,8 @@ export function PageLayout({
           </div>
         </footer>
       </FadeUpSection>
+
+      <ClickSpark sparkColor="#FCBC5A" sparkSize={10} sparkRadius={14} sparkCount={8} duration={400} easing="ease-out" extraScale={1} />
 
       <nav className="fixed bottom-0 left-0 z-50 flex h-20 w-full items-center justify-around rounded-t-[3rem] bg-cream-brand px-4 pb-4 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] md:hidden">
         {BOTTOM_NAV.map((n) => (

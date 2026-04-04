@@ -14,10 +14,7 @@ body {
 
 .hero-section {
   position: relative;
-  margin-left: -1rem;
-  margin-right: -1rem;
-  margin-top: -5rem;
-  width: calc(100% + 2rem);
+  width: 100%;
   height: 100svh;
   min-height: 560px;
   max-height: 960px;
@@ -269,4 +266,12 @@ body {
 @keyframes marqueeScroll {
   0%   { transform: translateX(0); }
   100% { transform: translateX(-50%); }
+}
+
+.count-up-text {
+  font-size: clamp(48px, 6vw, 72px);
+  font-weight: 800;
+  color: #00577C;
+  font-family: 'Alegreya Sans', sans-serif;
+  line-height: 1;
 }
