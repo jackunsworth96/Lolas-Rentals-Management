@@ -19,7 +19,7 @@ export default {
         },
         'teal-brand': '#00577C',
         'gold-brand': '#FCBC5A',
-        'sand-brand': '#E8DFD0',
+        'sand-brand': '#f1e6d6',
         'cream-brand': '#FAF6F0',
         'charcoal-brand': '#363737',
       },

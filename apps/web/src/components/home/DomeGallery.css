@@ -1,0 +1,101 @@
+/* ── Root container ─────────────────────────────────────────── */
+.dome-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+}
+
+.dome-root:active {
+  cursor: grabbing;
+}
+
+/* ── Flex wrapper ────────────────────────────────────────────── */
+.dome-main {
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Perspective frame ──────────────────────────────────────── */
+.dome-frame {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* ── 3-D context ────────────────────────────────────────────── */
+.dome-viewer {
+  position: relative;
+  transform-style: preserve-3d;
+}
+
+/* ── Rotating sphere ────────────────────────────────────────── */
+.dome-sphere {
+  position: relative;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+/* ── Individual image tiles ─────────────────────────────────── */
+.dome-tile {
+  position: absolute;
+  overflow: hidden;
+  cursor: pointer;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+  transition: box-shadow 0.3s ease;
+}
+
+.dome-tile:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.dome-tile img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  transition: transform 0.4s ease, filter 0.3s ease;
+  transform-origin: center center;
+}
+
+.dome-tile:hover img {
+  transform: scale(1.03);
+}
+
+/* ── Blur scrim ──────────────────────────────────────────────── */
+.dome-scrim {
+  position: fixed;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+  z-index: 100;
+}
+
+.dome-scrim.active {
+  opacity: 0.78;
+  pointer-events: all;
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+}
+
+/* ── Focused / enlarged image ───────────────────────────────── */
+.dome-focused-img {
+  position: fixed;
+  z-index: 200;
+  object-fit: cover;
+  cursor: pointer;
+  box-shadow: 0 32px 100px rgba(0, 0, 0, 0.7);
+  pointer-events: all;
+}

@@ -132,7 +132,7 @@ async function buildItemCanvas(
     ctx.drawImage(img, ix, iy, iconSz, iconSz);
   } catch {
     // Fallback circle placeholder
-    ctx.fillStyle = '#E8DFD0';
+    ctx.fillStyle = '#f1e6d6';
     ctx.beginPath();
     ctx.arc(pw / 2, iconAreaH / 2, iconSz / 2, 0, Math.PI * 2);
     ctx.fill();

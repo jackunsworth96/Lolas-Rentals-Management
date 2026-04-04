@@ -1,0 +1,277 @@
+/* ─── PillNav ─────────────────────────────────────────────── */
+
+.pill-nav {
+  --nav-h: 44px;
+  --pill-pad-x: 20px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 40px;
+  height: 72px;
+  background-color: var(--nav-bg, #f1e6d6);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+/* ─── Logo ────────────────────────────────────────────────── */
+
+.pill-nav-logo-link {
+  display: flex;
+  align-items: center;
+  outline: none;
+  flex-shrink: 0;
+  text-decoration: none;
+}
+
+/* ─── Item list ───────────────────────────────────────────── */
+
+.pill-nav-items {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: var(--nav-h);
+  background: transparent;
+  gap: 4px;
+  padding: 0;
+  list-style: none;
+  margin: 0;
+  flex: 1;
+  justify-content: center;
+}
+
+/* ─── Individual pill ─────────────────────────────────────── */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--nav-h);
+  padding: 0 var(--pill-pad-x);
+  background: transparent;
+  color: var(--pill-text, #363737);
+  text-decoration: none;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 15px;
+  white-space: nowrap;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: color 0.2s ease;
+  font-family: 'Lato', sans-serif;
+  letter-spacing: 0.3px;
+  user-select: none;
+}
+
+.pill.is-active {
+  background: var(--pill-active-bg, #00577C);
+  color: var(--pill-active-text, #FAF6F0);
+}
+
+.pill.is-active::after {
+  display: none;
+}
+
+/* ─── Hover circle (GSAP-controlled) ─────────────────────── */
+
+.pill-hover-circle {
+  position: absolute;
+  left: 50%;
+  bottom: -50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: var(--pill-hover-bg, #00577C);
+  transform: translateX(-50%);
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* ─── Label layer ─────────────────────────────────────────── */
+
+.pill-label-wrap {
+  position: relative;
+  z-index: 2;
+  overflow: hidden;
+  height: 1.3em;
+  display: flex;
+  align-items: flex-start;
+}
+
+.pill-label {
+  position: relative;
+  z-index: 2;
+  display: inline-block;
+  line-height: 1.3;
+  will-change: transform;
+}
+
+.pill-hover-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  color: var(--hover-text, #FAF6F0);
+  z-index: 3;
+  display: inline-block;
+  line-height: 1.3;
+  transform: translateY(110%);
+  opacity: 0;
+  will-change: transform;
+}
+
+/* ─── Dropdown ────────────────────────────────────────────── */
+
+.pill-dropdown-wrap {
+  position: relative;
+}
+
+.pill-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 190px;
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  z-index: 100;
+  padding: 6px 0;
+}
+
+.pill-dropdown-item {
+  display: block;
+  padding: 11px 20px;
+  font-family: 'Lato', 'Nunito', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: #363737;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.pill-dropdown-item:hover {
+  background: #f1e6d6;
+  color: #00577c;
+}
+
+.pill-dropdown-item.is-active {
+  color: #00577c;
+  background: rgba(0, 87, 124, 0.06);
+}
+
+/* ─── Right slot ──────────────────────────────────────────── */
+
+.pill-nav-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 44px;
+  flex-shrink: 0;
+}
+
+/* ─── Hamburger (mobile only) ─────────────────────────────── */
+
+.pill-nav-hamburger {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  color: var(--pill-text, #363737);
+  font-size: 22px;
+  line-height: 1;
+  min-width: 44px;
+  min-height: 44px;
+  flex-shrink: 0;
+}
+
+/* ─── Mobile menu popover ─────────────────────────────────── */
+
+.pill-nav-mobile-menu {
+  position: sticky;
+  left: 0;
+  right: 0;
+  top: 72px;
+  z-index: 49;
+  background: var(--nav-bg, #f1e6d6);
+  padding: 12px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.pill-nav-mobile-link {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 14px;
+  font-family: 'Lato', 'Nunito', sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: #363737;
+  text-decoration: none;
+  border-radius: 10px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.pill-nav-mobile-link:hover,
+.pill-nav-mobile-link.is-active {
+  background: rgba(0, 87, 124, 0.08);
+  color: #00577c;
+}
+
+.pill-nav-mobile-group-label {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 14px;
+  font-family: 'Lato', 'Nunito', sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: #363737;
+  border-radius: 10px;
+}
+
+.pill-nav-mobile-sub {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 6px 14px 6px 32px;
+  font-family: 'Lato', 'Nunito', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: #636363;
+  text-decoration: none;
+  border-radius: 10px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.pill-nav-mobile-sub:hover,
+.pill-nav-mobile-sub.is-active {
+  background: rgba(0, 87, 124, 0.06);
+  color: #00577c;
+}
+
+/* ─── Responsive ──────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .pill-nav {
+    padding: 0 16px;
+  }
+
+  .pill-nav-items {
+    display: none;
+  }
+
+  .pill-nav-hamburger {
+    display: flex;
+  }
+}

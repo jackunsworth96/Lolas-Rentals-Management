@@ -1,5 +1,7 @@
 .variable-proximity {
-  cursor: default;
+  font-family: 'Roboto Flex', sans-serif;
+  font-size: inherit;
+  line-height: inherit;
 }
 
 .sr-only {
@@ -11,5 +13,5 @@
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
-  border-width: 0;
+  border: 0;
 }

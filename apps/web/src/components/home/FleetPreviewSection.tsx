@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api/client.js';
-import { PrimaryCtaButton } from '../public/PrimaryCtaButton.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { DEFAULT_STORE_ID } from '@lolas/shared';
 import hondaBeatImg from '../../assets/Honda Beat Image.png';
 import tukTukImg from '../../assets/TukTuk Image.png';
+import geckoSvg from '../../assets/Hand Drawn Assets/stand-alone-gekco--without-scenic-background--chil.svg';
 
 interface ModelPricing {
   modelId: string;
@@ -15,17 +15,17 @@ interface ModelPricing {
 
 const FALLBACK_FLEET: { name: string; img: string | null; desc: string }[] = [
   { name: 'Honda Beat', img: hondaBeatImg, desc: 'Perfect for zipping through palm-lined roads with ease and efficiency.' },
-  { name: 'TVS Tuk-Tuk', img: tukTukImg, desc: 'The ultimate group explorer. Rugged, iconic, and spacious enough for boards.' },
   { name: 'Inflatable Kayak', img: null, desc: 'Lightweight and portable. Discover hidden lagoons at your own pace.' },
 ];
 
 const IMAGE_MAP: Record<string, string> = {
   'honda beat': hondaBeatImg,
-  tuktuk: tukTukImg,
+  'tuktuk': tukTukImg,
   'tuk-tuk': tukTukImg,
   'tuk tuk': tukTukImg,
-  'tvs tuk-tuk': tukTukImg,
 };
+
+const HIDDEN_MODELS = ['tvs'];
 
 function imageForModel(name: string): string | null {
   const lower = name.toLowerCase();
@@ -87,13 +87,24 @@ export function FleetPreviewSection() {
   }, []);
 
   const items = models.length > 0
-    ? models.map((m) => ({
-        key: m.modelId,
-        name: m.modelName,
-        price: m.dailyRate != null ? `${formatCurrency(m.dailyRate)}/day` : null,
-        img: imageForModel(m.modelName),
-        desc: FALLBACK_FLEET.find((f) => m.modelName.toLowerCase().includes(f.name.toLowerCase()))?.desc ?? '',
-      }))
+    ? models
+        .filter((m) => {
+          const name = m.modelName.toLowerCase();
+          // Hide TVS tuktuk only: require both brand marker and tuktuk in the name.
+          const hide = name.includes('tuk') && HIDDEN_MODELS.some((h) => name.includes(h));
+          return !hide;
+        })
+        .map((m) => ({
+          key: m.modelId,
+          name: m.modelName,
+          price: m.dailyRate != null ? `${formatCurrency(m.dailyRate)}/day` : null,
+          img: imageForModel(m.modelName),
+          desc: FALLBACK_FLEET.find((f) => m.modelName.toLowerCase().includes(f.name.toLowerCase()))?.desc ?? (
+            m.modelName.toLowerCase().includes('tuk')
+              ? 'A comfortable and practical tuk-tuk, perfect for groups or those wanting a relaxed island experience.'
+              : ''
+          ),
+        }))
     : FALLBACK_FLEET.map((f) => ({
         key: f.name,
         name: f.name,
@@ -103,50 +114,200 @@ export function FleetPreviewSection() {
       }));
 
   return (
-    <section className="mx-auto max-w-7xl px-6 py-16">
-      <div className="mb-12 flex flex-col items-end justify-between gap-6 md:flex-row">
-        <div>
-          <h3 className="font-headline text-4xl font-black leading-tight text-charcoal-brand">
-            Featured <br />
-            <span className="italic text-teal-brand">Island Essentials</span>
-          </h3>
-        </div>
-        <p className="max-w-md text-charcoal-brand/70">
-          Our fleet is meticulously maintained and supports local community growth through every kilometer.
+    <section
+      className="mx-auto max-w-7xl px-6 py-16"
+      style={{ position: 'relative', overflow: 'hidden' }}
+    >
+      <div style={{ textAlign: 'center', marginBottom: 56 }}>
+        <p
+          className="font-lato"
+          style={{
+            fontSize: 13,
+            textTransform: 'uppercase',
+            letterSpacing: '0.1em',
+            color: '#00577C',
+            fontWeight: 700,
+            marginBottom: 12,
+          }}
+        >
+          Our Fleet
+        </p>
+        <h2
+          className="font-headline font-bold"
+          style={{
+            fontSize: 'clamp(32px, 5vw, 42px)',
+            color: '#363737',
+            marginBottom: 16,
+            lineHeight: 1.2,
+          }}
+        >
+          Choose Your Ride
+        </h2>
+        <p
+          className="font-lato"
+          style={{
+            fontSize: 16,
+            color: '#363737',
+            opacity: 0.65,
+            maxWidth: 480,
+            margin: '0 auto',
+            lineHeight: 1.6,
+          }}
+        >
+          Well maintained, safety checked, and ready for every Siargao adventure.
         </p>
       </div>
 
-      <div className="grid gap-8 md:grid-cols-3">
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          gap: 32,
+          maxWidth: 720,
+          margin: '0 auto',
+        }}
+      >
         {items.map((v, i) => (
           <div
             key={v.key}
-            className="group animate-card-enter overflow-hidden rounded-4xl bg-cream-brand shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
-            style={{ animationDelay: `${i * 100}ms` }}
+            className="group animate-card-enter overflow-hidden transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl"
+            style={{
+              backgroundColor: '#FAF6F0',
+              borderRadius: 20,
+              boxShadow: '0 2px 16px rgba(0,0,0,0.07)',
+              animationDelay: `${i * 100}ms`,
+            }}
           >
-            <div className="relative h-64 overflow-hidden bg-sand-brand">
+            <div
+              className="relative overflow-hidden"
+              style={{
+                height: 240,
+                backgroundColor: '#f1e6d6',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '24px',
+              }}
+            >
+              {/* Subtle circle blob behind vehicle */}
+              <div
+                style={{
+                  position: 'absolute',
+                  width: 200,
+                  height: 200,
+                  borderRadius: '50%',
+                  backgroundColor: '#FCBC5A',
+                  opacity: 0.25,
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                }}
+              />
+
               {v.img ? (
-                <img src={v.img} alt={v.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                <img
+                  src={v.img}
+                  alt={v.name}
+                  style={{
+                    position: 'relative',
+                    zIndex: 1,
+                    width: '90%',
+                    height: '90%',
+                    objectFit: 'contain',
+                    transition: 'transform 0.5s ease',
+                    filter: 'drop-shadow(0 6px 16px rgba(0,0,0,0.18))',
+                  }}
+                  className="group-hover:scale-105"
+                />
               ) : (
-                <div className="flex h-full w-full items-center justify-center">
-                  <span className="text-5xl opacity-20">🛶</span>
-                </div>
+                <span style={{ fontSize: 64, opacity: 0.3, zIndex: 1, position: 'relative' }}>
+                  🛵
+                </span>
               )}
-              <div className="absolute right-4 top-4 rounded-full bg-white/90 px-3 py-1 text-sm font-bold text-teal-brand backdrop-blur">
+
+              <div style={{
+                position: 'absolute', top: 12, right: 12, zIndex: 2,
+                backgroundColor: 'rgba(255,255,255,0.95)',
+                borderRadius: 9999, padding: '4px 12px',
+                fontSize: 13, fontWeight: 700, color: '#00577C',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+              }}>
                 {loading ? '...' : v.price ?? 'See pricing'}
               </div>
             </div>
-            <div className="p-6">
-              <h5 className="mb-2 text-xl font-bold text-charcoal-brand">{v.name}</h5>
-              <p className="mb-6 text-sm text-charcoal-brand/70">{v.desc}</p>
+
+            <div style={{ padding: '20px 24px 24px' }}>
+              <h5
+                className="font-headline font-bold"
+                style={{
+                  fontSize: 20,
+                  color: '#363737',
+                  marginBottom: 6,
+                }}
+              >
+                {v.name}
+              </h5>
+              <p
+                className="font-lato"
+                style={{
+                  fontSize: 14,
+                  color: '#363737',
+                  opacity: 0.65,
+                  marginBottom: 20,
+                  lineHeight: 1.5,
+                }}
+              >
+                {v.desc}
+              </p>
               <Link to="/book/reserve">
-                <PrimaryCtaButton className="flex w-full items-center justify-center gap-2 py-3">
-                  Book 📅
-                </PrimaryCtaButton>
+                <button
+                  style={{
+                    width: '100%',
+                    padding: '12px 0',
+                    backgroundColor: '#FCBC5A',
+                    color: '#363737',
+                    border: '2px solid #363737',
+                    borderRadius: 8,
+                    fontWeight: 800,
+                    fontSize: 14,
+                    letterSpacing: '0.05em',
+                    textTransform: 'uppercase',
+                    cursor: 'pointer',
+                    boxShadow: '3px 3px 0 #363737',
+                    transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                    fontFamily: 'Lato, sans-serif',
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLButtonElement).style.transform = 'translate(-2px, -2px)';
+                    (e.currentTarget as HTMLButtonElement).style.boxShadow = '5px 5px 0 #363737';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLButtonElement).style.transform = 'translate(0, 0)';
+                    (e.currentTarget as HTMLButtonElement).style.boxShadow = '3px 3px 0 #363737';
+                  }}
+                >
+                  Book Your Ride
+                </button>
               </Link>
             </div>
           </div>
         ))}
       </div>
+
+      <img
+        src={geckoSvg}
+        alt=""
+        style={{
+          position: 'absolute',
+          right: -20,
+          bottom: 40,
+          width: 140,
+          height: 'auto',
+          opacity: 0.85,
+          pointerEvents: 'none',
+          zIndex: 0,
+        }}
+      />
     </section>
   );
 }

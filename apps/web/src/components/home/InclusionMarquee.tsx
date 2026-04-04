@@ -36,7 +36,7 @@ export default function InclusionMarquee({
           top: 0,
           bottom: 0,
           width: 120,
-          background: 'linear-gradient(to right, #E8DFD0, transparent)',
+          background: 'linear-gradient(to right, #f1e6d6, transparent)',
           zIndex: 2,
           pointerEvents: 'none',
         }}
@@ -50,7 +50,7 @@ export default function InclusionMarquee({
           top: 0,
           bottom: 0,
           width: 120,
-          background: 'linear-gradient(to left, #E8DFD0, transparent)',
+          background: 'linear-gradient(to left, #f1e6d6, transparent)',
           zIndex: 2,
           pointerEvents: 'none',
         }}

@@ -104,7 +104,7 @@ export default function ConfirmationPage() {
     <PageLayout title="Booking Confirmed | Lola's Rentals">
       <div
         className="relative -mx-4 -mt-20 min-h-screen overflow-hidden px-4 pt-20"
-        style={{ background: 'linear-gradient(180deg, #FAF6F0 0%, #E8DFD0 100%)' }}
+        style={{ background: 'linear-gradient(180deg, #FAF6F0 0%, #f1e6d6 100%)' }}
       >
         <HeroFloatingClouds variant="functional" />
         <div className="relative z-10 mx-auto flex max-w-lg flex-col items-center pt-8 text-center">
