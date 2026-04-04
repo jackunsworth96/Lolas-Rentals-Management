@@ -100,15 +100,12 @@ import flowerRight from '../../assets/Hero/flower-right.svg';
 import cloud1 from '../../assets/Hero/cloud-left-to-right-1.svg';
 import cloud2 from '../../assets/Hero/cloud-left-to-right-2.svg';
 import cloud3 from '../../assets/Hero/cloud-left-to-right-3.svg';
+import { useIsTouchDevice } from '../../hooks/useIsTouchDevice.js';
 function HeroSection() {
   const prefersReducedMotion = useReducedMotion();
   const shouldAnimate = !prefersReducedMotion;
+  const isTouchDevice = useIsTouchDevice();
   const heroRef = useRef<HTMLElement>(null);
-
-  // Detect touch devices — parallax is mouse-only
-  const isTouchDevice =
-    typeof window !== 'undefined' &&
-    window.matchMedia('(hover: none)').matches;
 
   // ── Per-cloud independent motion values ──────────────────
   // Each cloud has its own raw input and spring config so they
@@ -256,11 +253,21 @@ function HeroSection() {
       {/* ── Cloud 1 — large, slow drift + slow float ──────────── */}
       <motion.div
         style={{ position: 'absolute', top: '10%', left: '6%' }}
-        animate={shouldAnimate ? { x: [0, 18, 0], y: [0, -8, 0] } : {}}
-        transition={{
-          x: { duration: 14, repeat: Infinity, ease: 'linear' },
-          y: { duration: 6, repeat: Infinity, ease: 'easeInOut' },
-        }}
+        animate={
+          shouldAnimate
+            ? isTouchDevice
+              ? { x: [0, 15, 0, -15, 0], y: [0, -8, 0, 8, 0] }
+              : { x: [0, 18, 0], y: [0, -8, 0] }
+            : {}
+        }
+        transition={
+          isTouchDevice
+            ? { duration: 12, repeat: Infinity, ease: 'easeInOut' }
+            : {
+                x: { duration: 14, repeat: Infinity, ease: 'linear' },
+                y: { duration: 6, repeat: Infinity, ease: 'easeInOut' },
+              }
+        }
       >
         <motion.img
           src={cloud1}
@@ -277,11 +284,21 @@ function HeroSection() {
       {/* ── Cloud 2 — small, right side, gentle float ─────────── */}
       <motion.div
         style={{ position: 'absolute', top: '8%', right: '10%' }}
-        animate={shouldAnimate ? { x: [0, -14, 0], y: [0, -5, 0] } : {}}
-        transition={{
-          x: { duration: 11, repeat: Infinity, ease: 'linear' },
-          y: { duration: 8, repeat: Infinity, ease: 'easeInOut' },
-        }}
+        animate={
+          shouldAnimate
+            ? isTouchDevice
+              ? { x: [0, -12, 0, 12, 0], y: [0, 6, 0, -6, 0] }
+              : { x: [0, -14, 0], y: [0, -5, 0] }
+            : {}
+        }
+        transition={
+          isTouchDevice
+            ? { duration: 9, repeat: Infinity, ease: 'easeInOut' }
+            : {
+                x: { duration: 11, repeat: Infinity, ease: 'linear' },
+                y: { duration: 8, repeat: Infinity, ease: 'easeInOut' },
+              }
+        }
       >
         <motion.img
           src={cloud3}
@@ -298,11 +315,21 @@ function HeroSection() {
       {/* ── Cloud 3 — medium, centre-top, snappy float ───────── */}
       <motion.div
         style={{ position: 'absolute', top: '6%', left: '42%' }}
-        animate={shouldAnimate ? { x: [0, 10, 0], y: [0, -10, 0] } : {}}
-        transition={{
-          x: { duration: 17, repeat: Infinity, ease: 'linear' },
-          y: { duration: 5, repeat: Infinity, ease: 'easeInOut' },
-        }}
+        animate={
+          shouldAnimate
+            ? isTouchDevice
+              ? { x: [0, 10, 0, -10, 0], y: [0, -10, 0, 10, 0] }
+              : { x: [0, 10, 0], y: [0, -10, 0] }
+            : {}
+        }
+        transition={
+          isTouchDevice
+            ? { duration: 14, repeat: Infinity, ease: 'easeInOut' }
+            : {
+                x: { duration: 17, repeat: Infinity, ease: 'linear' },
+                y: { duration: 5, repeat: Infinity, ease: 'easeInOut' },
+              }
+        }
       >
         <motion.img
           src={cloud2}
@@ -319,11 +346,21 @@ function HeroSection() {
       {/* ── Cloud 4 — tiny, lower-left, dreamy float ─────────── */}
       <motion.div
         style={{ position: 'absolute', top: '40%', left: '22%' }}
-        animate={shouldAnimate ? { x: [0, 14, 0], y: [0, -6, 0] } : {}}
-        transition={{
-          x: { duration: 19, repeat: Infinity, ease: 'linear' },
-          y: { duration: 9, repeat: Infinity, ease: 'easeInOut' },
-        }}
+        animate={
+          shouldAnimate
+            ? isTouchDevice
+              ? { x: [0, -18, 0, 18, 0], y: [0, 7, 0, -7, 0] }
+              : { x: [0, 14, 0], y: [0, -6, 0] }
+            : {}
+        }
+        transition={
+          isTouchDevice
+            ? { duration: 11, repeat: Infinity, ease: 'easeInOut' }
+            : {
+                x: { duration: 19, repeat: Infinity, ease: 'linear' },
+                y: { duration: 9, repeat: Infinity, ease: 'easeInOut' },
+              }
+        }
       >
         <motion.img
           src={cloud1}
@@ -340,11 +377,21 @@ function HeroSection() {
       {/* ── Cloud 5 — medium-small, right mid, moderate float ── */}
       <motion.div
         style={{ position: 'absolute', top: '18%', right: '28%' }}
-        animate={shouldAnimate ? { x: [0, -10, 0], y: [0, -7, 0] } : {}}
-        transition={{
-          x: { duration: 13, repeat: Infinity, ease: 'linear' },
-          y: { duration: 7, repeat: Infinity, ease: 'easeInOut' },
-        }}
+        animate={
+          shouldAnimate
+            ? isTouchDevice
+              ? { x: [0, 14, 0, -14, 0], y: [0, -5, 0, 5, 0] }
+              : { x: [0, -10, 0], y: [0, -7, 0] }
+            : {}
+        }
+        transition={
+          isTouchDevice
+            ? { duration: 16, repeat: Infinity, ease: 'easeInOut' }
+            : {
+                x: { duration: 13, repeat: Infinity, ease: 'linear' },
+                y: { duration: 7, repeat: Infinity, ease: 'easeInOut' },
+              }
+        }
       >
         <motion.img
           src={cloud3}
@@ -361,9 +408,12 @@ function HeroSection() {
       {/* ── Hero content ─────────────────────────────────────── */}
       <div className="relative z-10 flex h-full flex-col items-center justify-center px-6 pb-20 pt-20 text-center">
         {/* Headline */}
-        {prefersReducedMotion ? (
-          <h1
+        {prefersReducedMotion || isTouchDevice ? (
+          <motion.h1
             className="font-headline font-extrabold"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, ease: 'easeOut', delay: 0.2 }}
             style={{
               fontSize: 'clamp(36px, 5vw, 52px)',
               color: '#00577C',
@@ -374,9 +424,9 @@ function HeroSection() {
           >
             Rated by Many,
             <br />
-            <span className="italic text-gold-brand">Rooted</span>
+            <span style={{ fontStyle: 'italic', color: '#FCBC5A' }}>Rooted</span>
             {' '}in Community
-          </h1>
+          </motion.h1>
         ) : (
           <h1
             style={{
@@ -411,8 +461,11 @@ function HeroSection() {
         )}
 
         {/* Subheadline */}
-        <p
+        <motion.p
           className="font-lato"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: 'easeOut', delay: 0.5 }}
           style={{
             fontSize: 18,
             color: '#363737',
@@ -425,10 +478,15 @@ function HeroSection() {
           Explore Siargao, support our street dogs and cats.
           <br />
           Every rental funds vital spay and neuter clinics.
-        </p>
+        </motion.p>
 
         {/* CTA Button */}
-        <div style={{ display: 'inline-block', transform: 'skewX(-4deg)' }}>
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: 'easeOut', delay: 0.7 }}
+          style={{ display: 'inline-block', transform: 'skewX(-4deg)' }}
+        >
           <motion.div
             whileHover={shouldAnimate ? { x: -2, y: -2 } : {}}
             whileTap={shouldAnimate ? { scale: 0.97 } : {}}
@@ -453,7 +511,7 @@ function HeroSection() {
               </span>
             </Link>
           </motion.div>
-        </div>
+        </motion.div>
 
         {/* Scroll-down arrow */}
         <motion.button
@@ -698,10 +756,16 @@ export default function HomePage() {
                   sensitivity={200}
                   sendToBackOnClick={true}
                   cards={[
-                    bePaw1, bePaw2, bePaw3, bePaw4, bePaw5,
-                    bePaw6, bePaw7, bePaw8, bePaw9, bePaw10,
+                    bePaw1,  bePaw2,  bePaw3,  bePaw4,  bePaw5,
+                    bePaw6,  bePaw7,  bePaw8,  bePaw9,  bePaw10,
                     bePaw11, bePaw12, bePaw13, bePaw14, bePaw15,
                     bePaw16, bePaw17, bePaw18, bePaw19, bePaw20,
+                    bePaw21, bePaw22, bePaw23, bePaw24, bePaw25,
+                    bePaw26, bePaw27, bePaw28, bePaw29, bePaw30,
+                    bePaw31, bePaw32, bePaw33, bePaw34, bePaw35,
+                    bePaw36, bePaw37, bePaw38, bePaw39, bePaw40,
+                    bePaw41, bePaw42, bePaw43, bePaw44, bePaw45,
+                    bePaw46, bePaw47, bePaw48, bePaw49, bePaw50,
                   ].map((src, i) => (
                     <img
                       key={i}

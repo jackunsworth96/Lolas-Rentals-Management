@@ -1,5 +1,6 @@
 import { useRef, useCallback, useEffect } from 'react';
 import './BorderGlow.css';
+import { useIsTouchDevice } from '../../hooks/useIsTouchDevice.js';
 
 interface BorderGlowProps {
   children: React.ReactNode;
@@ -108,6 +109,7 @@ const BorderGlow = ({
   animated = false,
   colors = [],
 }: BorderGlowProps) => {
+  const isTouch = useIsTouchDevice();
   const cardRef = useRef<HTMLDivElement>(null);
 
   const glowVars = buildGlowVars(glowColor, glowIntensity);
@@ -151,6 +153,31 @@ const BorderGlow = ({
     });
     return () => { cancelAngle(); cancelProx(); };
   }, [animated]);
+
+  if (isTouch) {
+    return (
+      <div
+        style={{
+          borderRadius: `${borderRadius}px`,
+          background: backgroundColor,
+          padding: '1.5px',
+          animation: 'borderPulse 3s ease-in-out infinite',
+          height: '100%',
+          ...style,
+        }}
+      >
+        <div
+          style={{
+            borderRadius: `${borderRadius - 2}px`,
+            background: backgroundColor,
+            height: '100%',
+          }}
+        >
+          {children}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

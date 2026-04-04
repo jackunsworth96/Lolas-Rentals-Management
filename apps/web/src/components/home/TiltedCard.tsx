@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react';
-import { motion, useMotionValue, useSpring } from 'framer-motion';
+import { useRef } from 'react';
+import { motion, useMotionValue, useSpring, useInView } from 'framer-motion';
+import { useIsTouchDevice } from '../../hooks/useIsTouchDevice.js';
 
 interface TiltedCardProps {
   icon: string;
@@ -19,10 +20,12 @@ export default function TiltedCard({
   scaleOnHover = 1.04,
 }: TiltedCardProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const isTouch = useIsTouchDevice();
+  const inView = useInView(ref, { once: true, amount: 0.3 });
+
   const rotateX = useSpring(useMotionValue(0), springValues);
   const rotateY = useSpring(useMotionValue(0), springValues);
   const scale = useSpring(1, springValues);
-  const [, setLastY] = useState(0);
 
   function handleMouse(e: React.MouseEvent<HTMLDivElement>) {
     if (!ref.current) return;
@@ -31,7 +34,6 @@ export default function TiltedCard({
     const offsetY = e.clientY - rect.top - rect.height / 2;
     rotateX.set((offsetY / (rect.height / 2)) * -rotateAmplitude);
     rotateY.set((offsetX / (rect.width / 2)) * rotateAmplitude);
-    setLastY(offsetY);
   }
 
   function handleMouseEnter() {
@@ -42,6 +44,31 @@ export default function TiltedCard({
     scale.set(1);
     rotateX.set(0);
     rotateY.set(0);
+  }
+
+  if (isTouch) {
+    return (
+      <motion.div
+        ref={ref}
+        initial={{ opacity: 0, y: 30, scale: 0.95 }}
+        animate={inView ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 30, scale: 0.95 }}
+        transition={{ duration: 0.5, ease: 'easeOut' }}
+        style={{
+          borderRadius: '14px',
+          backgroundColor: '#FFFFFF',
+          boxShadow: '0 2px 16px rgba(0,0,0,0.07)',
+          padding: '40px',
+        }}
+      >
+        <img src={icon} alt="" style={{ width: 64, height: 64, marginBottom: 20, display: 'block' }} />
+        <h3 className="font-headline font-bold" style={{ fontSize: 22, color: '#00577C', marginBottom: 12, lineHeight: 1.3 }}>
+          {title}
+        </h3>
+        <p className="font-lato" style={{ fontSize: 16, color: '#363737', lineHeight: 1.65 }}>
+          {body}
+        </p>
+      </motion.div>
+    );
   }
 
   return (

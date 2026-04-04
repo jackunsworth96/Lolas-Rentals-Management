@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, useMotionValue, useSpring } from 'framer-motion';
+import { useIsTouchDevice } from '../../hooks/useIsTouchDevice.js';
 import { api } from '../../api/client.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { DEFAULT_STORE_ID } from '@lolas/shared';
@@ -69,6 +70,7 @@ const springCfg = { damping: 30, stiffness: 100, mass: 2 };
 
 function TiltableCard({ children }: { children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
+  const isTouch = useIsTouchDevice();
   const rotateX = useSpring(useMotionValue(0), springCfg);
   const rotateY = useSpring(useMotionValue(0), springCfg);
   const scale = useSpring(1, springCfg);
@@ -80,6 +82,20 @@ function TiltableCard({ children }: { children: React.ReactNode }) {
     const offsetY = e.clientY - rect.top - rect.height / 2;
     rotateX.set((offsetY / (rect.height / 2)) * -10);
     rotateY.set((offsetX / (rect.width / 2)) * 10);
+  }
+
+  if (isTouch) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.2 }}
+        transition={{ duration: 0.4, ease: 'easeOut' }}
+        style={{ height: '100%' }}
+      >
+        {children}
+      </motion.div>
+    );
   }
 
   return (

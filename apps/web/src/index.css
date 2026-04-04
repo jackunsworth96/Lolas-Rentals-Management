@@ -268,6 +268,15 @@ body {
   100% { transform: translateX(-50%); }
 }
 
+@keyframes borderPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(0, 87, 124, 0.0);
+  }
+  50% {
+    box-shadow: 0 0 12px 3px rgba(0, 87, 124, 0.25);
+  }
+}
+
 .count-up-text {
   font-size: clamp(48px, 6vw, 72px);
   font-weight: 800;
