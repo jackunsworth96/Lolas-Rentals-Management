@@ -266,12 +266,12 @@ export function FleetPreviewSection() {
           >
             <TiltableCard>
               <BorderGlow
-                glowColor="44 70 70"
+                glowColor="36 96 67"
                 backgroundColor="#FAF6F0"
                 borderRadius={20}
                 glowIntensity={1.2}
                 coneSpread={30}
-                colors={['#00577C', '#FCBC5A', '#f1e6d6']}
+                colors={['#FCBC5A', '#F5A623', '#f1e6d6']}
                 style={{ height: '100%' }}
               >
                 {/* Image area — inside the unified card */}

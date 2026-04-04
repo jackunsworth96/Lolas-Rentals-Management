@@ -1,6 +1,12 @@
-import { useRef } from 'react';
-import { motion, useMotionValue, useSpring, useInView } from 'framer-motion';
+import { useRef, useState } from 'react';
+import { motion, useMotionValue, useSpring } from 'framer-motion';
 import { useIsTouchDevice } from '../../hooks/useIsTouchDevice.js';
+
+/** Soft gold aura for homepage tiles (#FCBC5A) */
+const TILE_SHADOW_IDLE =
+  '0 2px 16px rgba(0,0,0,0.07), 0 0 28px rgba(252,188,90,0.2), 0 0 1px rgba(252,188,90,0.35)';
+const TILE_SHADOW_HOVER =
+  '0 8px 28px rgba(0,0,0,0.1), 0 0 40px rgba(252,188,90,0.35), 0 0 2px rgba(252,188,90,0.45)';
 
 interface TiltedCardProps {
   icon: string;
@@ -21,7 +27,7 @@ export default function TiltedCard({
 }: TiltedCardProps) {
   const ref = useRef<HTMLDivElement>(null);
   const isTouch = useIsTouchDevice();
-  const inView = useInView(ref, { once: true, amount: 0.3 });
+  const [hovered, setHovered] = useState(false);
 
   const rotateX = useSpring(useMotionValue(0), springValues);
   const rotateY = useSpring(useMotionValue(0), springValues);
@@ -49,14 +55,14 @@ export default function TiltedCard({
   if (isTouch) {
     return (
       <motion.div
-        ref={ref}
         initial={{ opacity: 0, y: 30, scale: 0.95 }}
-        animate={inView ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 30, scale: 0.95 }}
+        whileInView={{ opacity: 1, y: 0, scale: 1 }}
+        viewport={{ once: true, amount: 0.08, margin: '0px 0px -60px 0px' }}
         transition={{ duration: 0.5, ease: 'easeOut' }}
         style={{
           borderRadius: '14px',
           backgroundColor: '#FFFFFF',
-          boxShadow: '0 2px 16px rgba(0,0,0,0.07)',
+          boxShadow: TILE_SHADOW_IDLE,
           padding: '40px',
         }}
       >
@@ -75,8 +81,14 @@ export default function TiltedCard({
     <div
       ref={ref}
       onMouseMove={handleMouse}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
+      onMouseEnter={() => {
+        setHovered(true);
+        handleMouseEnter();
+      }}
+      onMouseLeave={() => {
+        setHovered(false);
+        handleMouseLeave();
+      }}
       style={{ perspective: '800px' }}
     >
       <motion.div
@@ -86,9 +98,10 @@ export default function TiltedCard({
           scale,
           borderRadius: '14px',
           backgroundColor: '#FFFFFF',
-          boxShadow: '0 2px 16px rgba(0,0,0,0.07)',
+          boxShadow: hovered ? TILE_SHADOW_HOVER : TILE_SHADOW_IDLE,
           padding: '40px',
           transformStyle: 'preserve-3d',
+          transition: 'box-shadow 0.3s ease',
         }}
       >
         <img
