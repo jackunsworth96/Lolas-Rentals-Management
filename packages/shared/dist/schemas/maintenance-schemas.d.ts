@@ -69,6 +69,7 @@ export declare const SaveMaintenanceRequestSchema: z.ZodObject<{
     notes: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     expenseAccountId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     cashAccountId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    expenseStatus: z.ZodOptional<z.ZodEnum<["paid", "unpaid"]>>;
 }, "strip", z.ZodTypeAny, {
     partsCost: number;
     laborCost: number;
@@ -82,6 +83,7 @@ export declare const SaveMaintenanceRequestSchema: z.ZodObject<{
     paidFrom?: string | null | undefined;
     expenseAccountId?: string | null | undefined;
     cashAccountId?: string | null | undefined;
+    expenseStatus?: "paid" | "unpaid" | undefined;
     status?: "Reported" | "In Progress" | "Completed" | undefined;
     nextServiceDue?: number | null | undefined;
     nextServiceDueDate?: string | null | undefined;
@@ -101,6 +103,7 @@ export declare const SaveMaintenanceRequestSchema: z.ZodObject<{
     paidFrom?: string | null | undefined;
     expenseAccountId?: string | null | undefined;
     cashAccountId?: string | null | undefined;
+    expenseStatus?: "paid" | "unpaid" | undefined;
     status?: "Reported" | "In Progress" | "Completed" | undefined;
     nextServiceDue?: number | null | undefined;
     nextServiceDueDate?: string | null | undefined;

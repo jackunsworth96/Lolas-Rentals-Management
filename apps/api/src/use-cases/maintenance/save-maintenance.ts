@@ -31,6 +31,7 @@ export interface SaveMaintenanceInput {
   notes?: string | null;
   expenseAccountId?: string | null;
   cashAccountId?: string | null;
+  expenseStatus?: 'paid' | 'unpaid';
 }
 
 export async function saveMaintenance(
@@ -97,16 +98,21 @@ export async function saveMaintenance(
   }
 
   // ── Expense + journal entry management ──
-  const cashAccountId =
+  const expenseStatus = input.expenseStatus ?? 'paid';
+
+  const resolvedPaidFrom =
     input.cashAccountId ??
     (input.paidFrom !== undefined ? input.paidFrom : existing.paidFrom) ??
-    (await getStoreDefaultCashAccount(updated.storeId));
+    (expenseStatus === 'unpaid' ? null : await getStoreDefaultCashAccount(updated.storeId));
 
-  if (totalCost > 0 && cashAccountId) {
+  if (totalCost > 0 && (resolvedPaidFrom || expenseStatus === 'unpaid')) {
     const expenseAccountId =
       input.expenseAccountId ??
       (await getMaintenanceExpenseAccount(updated.storeId)) ??
-      cashAccountId;
+      resolvedPaidFrom ??
+      '';
+
+    const cashAccountId = resolvedPaidFrom ?? expenseAccountId;
 
     await upsertMaintenanceExpensesRpc({
       maintenanceId,
@@ -119,6 +125,7 @@ export async function saveMaintenance(
       cashAccountId,
       expenseAccountId,
       issueDescription: updated.issueDescription ?? '',
+      expenseStatus,
     });
   } else if (totalCost === 0) {
     await deleteMaintenanceExpenseRpc(maintenanceId);

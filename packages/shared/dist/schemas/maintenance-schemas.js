@@ -36,6 +36,7 @@ export const SaveMaintenanceRequestSchema = z.object({
     notes: z.string().nullable().optional(),
     expenseAccountId: z.string().nullable().optional(),
     cashAccountId: z.string().nullable().optional(),
+    expenseStatus: z.enum(['paid', 'unpaid']).optional(),
 });
 export const CompleteMaintenanceRequestSchema = z.object({
     maintenanceId: z.string(),

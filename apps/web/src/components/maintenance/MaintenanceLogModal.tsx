@@ -94,6 +94,7 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
     setWorkPerformed((rec.workPerformed as string) ?? '');
     setLaborCost(String(moneyVal(rec.laborCost as number | { amount: number } | null)));
     setPaidFrom((rec.paidFrom as string) ?? '');
+    setPayLater((rec.expenseStatus as string) === 'unpaid');
     setOpsNotes((rec.opsNotes as string) ?? '');
 
     const empList = employees as Array<{ id: string; fullName: string }>;
@@ -115,7 +116,8 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
     }
   }, [record, mode, populateFromRecord]);
 
-  const accList = accounts as Array<{ id: string; name: string }>;
+  const assetAccList = (accounts as Array<{ id: string; name: string; accountType: string }>)
+    .filter((a) => a.accountType === 'Asset');
   const vehList = vehicles as Array<{ id: string; name: string }>;
   const empList = employees as Array<{ id: string; fullName: string }>;
   const partOptions = workTypes as Array<{ id: number; name: string }>;
@@ -188,7 +190,8 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
         partsReplaced: parts.length > 0 ? parts : null,
         partsCost: totalPartsCost,
         laborCost: Number(laborCost) || 0,
-        paidFrom: paidFrom || null,
+        paidFrom: payLater ? null : (paidFrom || null),
+        expenseStatus: payLater ? 'unpaid' : 'paid',
         notes: opsNotes.trim() || null,
       },
       {
@@ -347,7 +350,7 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
                 <select value={paidFrom} onChange={(e) => setPaidFrom(e.target.value)}
                   className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                   <option value="">Default (store cash account)</option>
-                  {accList.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  {assetAccList.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
               </label>
             )}
@@ -655,15 +658,40 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
               {formatCurrency(totalCost)}
             </div>
           </div>
-          <label className="block">
-            <span className="text-sm font-medium text-gray-700">Paid from</span>
-            <select value={paidFrom} onChange={(e) => setPaidFrom(e.target.value)}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-              <option value="">—</option>
-              {accList.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
-          </label>
+          {!payLater && (
+            <label className="block">
+              <span className="text-sm font-medium text-gray-700">Paid from</span>
+              <select value={paidFrom} onChange={(e) => setPaidFrom(e.target.value)}
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <option value="">—</option>
+                {assetAccList.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </label>
+          )}
         </div>
+
+        {totalCost > 0 && (
+          <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
+            <span className="text-sm font-medium text-gray-700">Payment:</span>
+            <button
+              type="button"
+              onClick={() => setPayLater(false)}
+              className={`rounded-md px-3 py-1 text-sm font-medium transition ${!payLater ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-300'}`}
+            >
+              Pay now
+            </button>
+            <button
+              type="button"
+              onClick={() => setPayLater(true)}
+              className={`rounded-md px-3 py-1 text-sm font-medium transition ${payLater ? 'bg-amber-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-300'}`}
+            >
+              Pay later
+            </button>
+            {payLater && (
+              <span className="text-xs text-amber-700">Expense will appear as unpaid in the Expenses page</span>
+            )}
+          </div>
+        )}
 
         {/* Next service */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
