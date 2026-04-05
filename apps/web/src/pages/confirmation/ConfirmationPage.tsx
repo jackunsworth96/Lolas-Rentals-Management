@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
 import { RentalSummaryCard } from '../../components/confirmation/RentalSummaryCard.js';
-import { QuickTipsCard } from '../../components/confirmation/QuickTipsCard.js';
+import Stepper, { Step } from '../../components/home/Stepper.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import { PrimaryCtaButton } from '../../components/public/PrimaryCtaButton.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
@@ -107,143 +107,207 @@ export default function ConfirmationPage() {
         style={{ backgroundColor: '#f1e6d6' }}
       >
         <HeroFloatingClouds variant="editorial" />
-        <div className="relative z-10 mx-auto flex max-w-lg flex-col items-center pt-4 text-center">
-          <div className="relative pb-16">
-            <div
-              className="flex h-48 w-48 items-center justify-center overflow-hidden rounded-full"
-              style={{ animation: 'bounce 3s ease-in-out infinite' }}
-            >
-              <video
-                src={lolaVideo}
-                autoPlay
-                loop
-                muted
-                playsInline
-                className="h-full w-full object-cover"
-                style={{ mixBlendMode: 'multiply' }}
-              />
+        <div className="relative z-10 mx-auto max-w-4xl pt-4">
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
+
+            {/* LEFT — hero identity (sticky on desktop) */}
+            <div className="flex flex-col items-center text-center md:sticky md:top-8 md:self-start">
+              <div className="relative pb-10">
+                <div
+                  className="flex h-40 w-40 items-center justify-center overflow-hidden rounded-full"
+                  style={{ animation: 'bounce 3s ease-in-out infinite' }}
+                >
+                  <video
+                    src={lolaVideo}
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    className="h-full w-full object-cover"
+                    style={{ mixBlendMode: 'multiply' }}
+                  />
+                </div>
+                <div
+                  className={`absolute left-1/2 top-[88%] -mt-4 -translate-x-1/2 whitespace-nowrap transition-all duration-500 ${
+                    pillVisible ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'
+                  }`}
+                  className="font-lato"
+                  style={{
+                    backgroundColor: '#FCBC5A',
+                    color: '#363737',
+                    border: '2px solid #363737',
+                    borderRadius: '12px',
+                    fontWeight: 800,
+                    fontSize: '16px',
+                    letterSpacing: '0.02em',
+                    boxShadow: '4px 4px 0 #363737',
+                    padding: '10px 24px',
+                  }}
+                >
+                  Booking Confirmed!
+                </div>
+              </div>
+
+              <h2 className="mt-3 mb-2 font-headline text-4xl font-black leading-tight tracking-tight text-teal-brand">
+                See you in Siargao.
+              </h2>
+
+              <div className="mb-4 flex flex-col items-center">
+                <span
+                  className="font-lato mb-1.5 text-charcoal-brand/60"
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    letterSpacing: '0.1em',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  Your Reference Number
+                </span>
+                <div className="flex items-center justify-center gap-2">
+                  <span
+                    className="font-lato font-black"
+                    style={{
+                      fontSize: 'clamp(28px, 6vw, 36px)',
+                      letterSpacing: '0.15em',
+                      color: '#363737',
+                      borderBottom: '4px solid #FCBC5A',
+                      paddingBottom: '4px',
+                    }}
+                  >
+                    {refDisplay}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCopy}
+                    className="relative flex min-h-[36px] min-w-[36px] items-center justify-center rounded-full bg-sand-brand text-sm text-charcoal-brand/60 transition-all duration-200 hover:bg-sand-brand/80 active:scale-90"
+                    title="Copy reference"
+                    aria-label="Copy reference number"
+                  >
+                    {copied ? '✓' : '📋'}
+                    {copied && (
+                      <span className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-teal-brand px-3 py-1 text-[10px] font-bold text-white shadow-md animate-fade-up">
+                        Copied!
+                      </span>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className="mb-3 flex w-full justify-center">
+                <img src={pawPrint} alt="" className="h-8 bg-transparent opacity-20 grayscale" />
+              </div>
+
+              {(state.charityDonation ?? 0) > 0 && (
+                <FadeUpSection>
+                  <div className="mb-4 w-full rounded-[2rem] bg-teal-brand/10 px-5 py-4 text-center">
+                    <p className="font-headline text-lg font-bold text-teal-brand">
+                      Thank you for your ₱{(state.charityDonation ?? 0).toLocaleString()} donation to BePawsitive 🐾
+                    </p>
+                    <p className="font-lato mt-1 text-sm text-charcoal-brand/60">
+                      You're helping animals on Siargao!
+                    </p>
+                  </div>
+                </FadeUpSection>
+              )}
             </div>
-            <div
-              className={`absolute left-1/2 top-[88%] -mt-6 -translate-x-1/2 whitespace-nowrap transition-all duration-500 ${
-                pillVisible ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'
-              }`}
-              style={{
-                backgroundColor: '#FCBC5A',
-                color: '#363737',
-                border: '2px solid #363737',
-                borderRadius: '12px',
-                fontWeight: 800,
-                fontSize: '18px',
-                letterSpacing: '0.02em',
-                boxShadow: '4px 4px 0 #363737',
-                fontFamily: 'Lato, sans-serif',
-                padding: '12px 32px',
-              }}
-            >
-              Booking Confirmed!
+
+            {/* RIGHT — booking details */}
+            <div className="flex flex-col">
+              <FadeUpSection>
+                <RentalSummaryCard
+                  vehicleModelName={state.vehicleModelName} pickupDatetime={state.pickupDatetime}
+                  dropoffDatetime={state.dropoffDatetime} rentalDays={state.rentalDays} grandTotal={state.grandTotal}
+                  customerEmail={state.customerEmail}
+                  addonNames={state.addonNames ?? []} transferType={state.transferType}
+                  flightNumber={state.flightNumber} transferRoute={state.transferRoute}
+                  charityDonation={state.charityDonation}
+                />
+              </FadeUpSection>
             </div>
+
           </div>
 
-          <h2 className="mt-4 mb-3 font-headline text-4xl font-black leading-tight tracking-tight text-teal-brand">
-            See you in Siargao.
-          </h2>
+          {/* FULL WIDTH — tips + actions */}
+          <div className="mt-8">
+            <FadeUpSection>
+              <Stepper initialStep={1} backButtonText="Back" nextButtonText="Next">
+                <Step>
+                  <div style={{ textAlign: 'center', padding: '8px 0' }}>
+                    <span style={{ fontSize: 48, display: 'block', marginBottom: 16 }}>💰</span>
+                    <h4 className="font-headline font-bold" style={{ fontSize: 20, color: '#00577C', marginBottom: 8 }}>
+                      Cash Deposit at Pickup
+                    </h4>
+                    <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.6, opacity: 0.8 }}>
+                      Bring ₱{state.vehicleModelName?.toLowerCase().includes('tuktuk') ? '2,000' : '1,000'} cash for your refundable security deposit. This is returned when you drop off.
+                    </p>
+                  </div>
+                </Step>
+                <Step>
+                  <div style={{ textAlign: 'center', padding: '8px 0' }}>
+                    <span style={{ fontSize: 48, display: 'block', marginBottom: 16 }}>📍</span>
+                    <h4 className="font-headline font-bold" style={{ fontSize: 20, color: '#00577C', marginBottom: 8 }}>
+                      Find Us
+                    </h4>
+                    <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.6, opacity: 0.8 }}>
+                      General Luna, near Cloud 9. Look for the teal Lola&apos;s shack! Our team will be ready for you.
+                    </p>
+                  </div>
+                </Step>
+                <Step>
+                  <div style={{ textAlign: 'center', padding: '8px 0' }}>
+                    <span style={{ fontSize: 48, display: 'block', marginBottom: 16 }}>🪪</span>
+                    <h4 className="font-headline font-bold" style={{ fontSize: 20, color: '#00577C', marginBottom: 8 }}>
+                      Bring Your Licence
+                    </h4>
+                    <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.6, opacity: 0.8 }}>
+                      Please have a valid driver&apos;s licence ready at pickup. International licences are accepted.
+                    </p>
+                  </div>
+                </Step>
+                <Step>
+                  <div style={{ textAlign: 'center', padding: '8px 0' }}>
+                    <span style={{ fontSize: 48, display: 'block', marginBottom: 16 }}>⛑️</span>
+                    <h4 className="font-headline font-bold" style={{ fontSize: 20, color: '#00577C', marginBottom: 8 }}>
+                      Gear Included
+                    </h4>
+                    <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.6, opacity: 0.8 }}>
+                      Two sanitised helmets and a full tank of fuel are included with every rental. You&apos;re all set.
+                    </p>
+                  </div>
+                </Step>
+                <Step>
+                  <div style={{ textAlign: 'center', padding: '8px 0' }}>
+                    <span style={{ fontSize: 48, display: 'block', marginBottom: 16 }}>🐾</span>
+                    <h4 className="font-headline font-bold" style={{ fontSize: 20, color: '#00577C', marginBottom: 8 }}>
+                      You&apos;re Paw Card Family
+                    </h4>
+                    <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.6, opacity: 0.8 }}>
+                      Every rental helps feed and neuter street animals on Siargao through our BePawsitive partnership.
+                    </p>
+                  </div>
+                </Step>
+              </Stepper>
+            </FadeUpSection>
 
-          <div className="mb-6 flex flex-col items-center">
-            <span
-              className="mb-2 text-charcoal-brand/60"
-              style={{
-                fontFamily: "'Lato', sans-serif",
-                fontSize: '11px',
-                fontWeight: 700,
-                letterSpacing: '0.1em',
-                textTransform: 'uppercase',
-              }}
-            >
-              Your Reference Number
-            </span>
-            <div className="flex items-center justify-center gap-2">
-              <span
-                className="font-lato font-black"
-                style={{
-                  fontSize: 'clamp(28px, 6vw, 36px)',
-                  letterSpacing: '0.15em',
-                  color: '#363737',
-                  borderBottom: '4px solid #FCBC5A',
-                  paddingBottom: '4px',
-                }}
-              >
-                {refDisplay}
-              </span>
+            <div className="mt-6 max-w-xs mx-auto">
               <button
                 type="button"
-                onClick={handleCopy}
-                className="relative flex min-h-[36px] min-w-[36px] items-center justify-center rounded-full bg-sand-brand text-sm text-charcoal-brand/60 transition-all duration-200 hover:bg-sand-brand/80 active:scale-90"
-                title="Copy reference"
-                aria-label="Copy reference number"
+                onClick={() => navigate('/book')}
+                className="min-h-[44px] w-full rounded-full bg-cream-brand font-headline text-lg font-black text-charcoal-brand shadow-md transition-all duration-300 hover:bg-sand-brand"
               >
-                {copied ? '✓' : '📋'}
-                {copied && (
-                  <span className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-teal-brand px-3 py-1 text-[10px] font-bold text-white shadow-md animate-fade-up">
-                    Copied!
-                  </span>
-                )}
+                Back to Home
               </button>
             </div>
+
+            <p className="font-lato mt-6 mb-8 text-center text-sm font-bold text-charcoal-brand/60">
+              Need help?{' '}
+              <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="text-teal-brand underline decoration-2 underline-offset-4 transition-opacity duration-200 hover:opacity-80">
+                Chat with Lola&apos;s Team
+              </a>
+            </p>
           </div>
 
-          <div className="mb-4 flex w-full justify-center">
-            <img src={pawPrint} alt="" className="h-10 bg-transparent opacity-20 grayscale" />
-          </div>
-
-          {(state.charityDonation ?? 0) > 0 && (
-            <FadeUpSection>
-              <div className="mb-6 w-full rounded-[2rem] bg-teal-brand/10 px-6 py-5 text-center">
-                <p className="font-headline text-lg font-bold text-teal-brand">
-                  Thank you for your ₱{(state.charityDonation ?? 0).toLocaleString()} donation to BePawsitive 🐾
-                </p>
-                <p className="mt-1 text-sm text-charcoal-brand/60">
-                  You're helping animals on Siargao!
-                </p>
-              </div>
-            </FadeUpSection>
-          )}
-
-          <FadeUpSection>
-            <RentalSummaryCard
-              vehicleModelName={state.vehicleModelName} pickupDatetime={state.pickupDatetime}
-              dropoffDatetime={state.dropoffDatetime} rentalDays={state.rentalDays} grandTotal={state.grandTotal}
-              depositAmount={state.depositAmount} customerEmail={state.customerEmail}
-              addonNames={state.addonNames ?? []} transferType={state.transferType}
-              flightNumber={state.flightNumber} transferRoute={state.transferRoute}
-              charityDonation={state.charityDonation}
-            />
-          </FadeUpSection>
-
-          <div className="h-3" />
-          <FadeUpSection><QuickTipsCard /></FadeUpSection>
-          <div className="h-4" />
-
-          <div className="flex w-full flex-col gap-4">
-            <PrimaryCtaButton
-              type="button" onClick={() => navigate('/book/extend')}
-              className="flex min-h-[44px] w-full items-center justify-center gap-3 py-5 font-headline text-lg font-black"
-            >
-              Extend My Rental →
-            </PrimaryCtaButton>
-            <button
-              type="button" onClick={() => navigate('/book')}
-              className="min-h-[44px] w-full rounded-full bg-cream-brand font-headline text-lg font-black text-charcoal-brand shadow-md transition-all duration-300 hover:bg-sand-brand"
-            >
-              Back to Home
-            </button>
-          </div>
-
-          <p className="mt-12 text-sm font-bold text-charcoal-brand/60">
-            Need help?{' '}
-            <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="text-teal-brand underline decoration-2 underline-offset-4 transition-opacity duration-200 hover:opacity-80">
-              Chat with Lola&apos;s Team
-            </a>
-          </p>
         </div>
       </div>
 

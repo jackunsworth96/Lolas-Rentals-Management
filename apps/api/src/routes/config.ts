@@ -304,6 +304,52 @@ router.delete('/maintenance-work-types/:id', edit, async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.deleteWorkType(Number(req.params.id)); res.json({ success: true }); } catch (e) { next(e); }
 });
 
+// ── Repair costs (public pricing catalog) ──
+const repairCostBodySchema = z.object({
+  vehicleType: z.enum(['honda_beat', 'tuk_tuk']),
+  item: z.string().min(1),
+  costPhp: z.number().nonnegative(),
+  sortOrder: z.number().int().optional(),
+});
+
+router.get('/repair-costs', async (req, res, next) => {
+  try {
+    const data = await req.app.locals.deps.configRepo.getRepairCosts();
+    res.json({ success: true, data });
+  } catch (e) { next(e); }
+});
+router.post('/repair-costs', edit, validateBody(repairCostBodySchema), async (req, res, next) => {
+  try {
+    const { vehicleType, item, costPhp, sortOrder } = req.body as z.infer<typeof repairCostBodySchema>;
+    await req.app.locals.deps.configRepo.saveRepairCost({
+      vehicleType,
+      item,
+      costPhp,
+      sortOrder: sortOrder ?? 0,
+    });
+    res.json({ success: true });
+  } catch (e) { next(e); }
+});
+router.put('/repair-costs/:id', edit, validateBody(repairCostBodySchema), async (req, res, next) => {
+  try {
+    const { vehicleType, item, costPhp, sortOrder } = req.body as z.infer<typeof repairCostBodySchema>;
+    await req.app.locals.deps.configRepo.saveRepairCost({
+      id: req.params.id,
+      vehicleType,
+      item,
+      costPhp,
+      sortOrder: sortOrder ?? 0,
+    });
+    res.json({ success: true });
+  } catch (e) { next(e); }
+});
+router.delete('/repair-costs/:id', edit, async (req, res, next) => {
+  try {
+    await req.app.locals.deps.configRepo.deleteRepairCost(req.params.id);
+    res.json({ success: true });
+  } catch (e) { next(e); }
+});
+
 // ── Leave Config ──
 router.get('/leave-config', validateQuery(z.object({ storeId: z.string().min(1) })), async (req, res, next) => {
   try {

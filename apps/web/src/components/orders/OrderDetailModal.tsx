@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Modal } from '../common/Modal.js';
 import { Badge } from '../common/Badge.js';
+import { ExtendOrderModal } from './ExtendOrderModal.js';
 import { useOrder, useOrderItems, useOrderPayments, useOrderAddons, useOrderSwaps, useOrderHistory, useCollectPayment, useSettleOrder, useSwapVehicle, useModifyAddons, useAdjustDates } from '../../api/orders.js';
 import { useFleet } from '../../api/fleet.js';
 import { usePaymentMethods, useChartOfAccounts, useFleetStatuses, useAddons } from '../../api/config.js';
@@ -90,6 +91,9 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editPickup, setEditPickup] = useState('');
   const [editDropoff, setEditDropoff] = useState('');
+
+  // ── Extend booking state ──
+  const [extendOpen, setExtendOpen] = useState(false);
 
   const isActive = order && String(order.status?.value ?? order.status) === 'active';
   const canAct = isActive && !readOnly;
@@ -659,6 +663,21 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                 </form>
               </section>
 
+              {/* ─── EXTEND BOOKING ─── */}
+              <section>
+                <h3 className="mb-3 font-medium text-gray-900">Extend Booking</h3>
+                <p className="mb-3 text-sm text-gray-500">
+                  Push the return date forward for this customer without them needing to use the website.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setExtendOpen(true)}
+                  className="rounded-lg bg-teal-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700"
+                >
+                  Extend Return Date…
+                </button>
+              </section>
+
               {/* ─── SWAP VEHICLE ─── */}
               <section>
                 <h3 className="mb-3 font-medium text-gray-900">Swap Vehicle</h3>
@@ -1197,6 +1216,15 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
             </div>
           )}
         </div>
+      )}
+
+      {/* ─── Extend modal (rendered here so it stacks above the detail modal) ─── */}
+      {enrichedData && (
+        <ExtendOrderModal
+          open={extendOpen}
+          onClose={() => setExtendOpen(false)}
+          enrichedData={enrichedData}
+        />
       )}
 
       {/* ═══════════════════ HISTORY TAB ═══════════════════ */}

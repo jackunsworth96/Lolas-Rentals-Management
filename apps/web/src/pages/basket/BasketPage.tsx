@@ -253,10 +253,11 @@ export default function BasketPage() {
           <div className="relative z-10 flex flex-col items-center">
             <img src={pawPrint} alt="" className="mb-6 h-16 w-16 bg-transparent opacity-20 grayscale" />
             <h2 className="mb-2 text-center font-headline text-3xl font-black text-charcoal-brand">Your basket is empty</h2>
-            <p className="mb-8 text-center text-charcoal-brand/60">Find your perfect ride and add it to your basket</p>
+            <p className="font-lato mb-8 text-center text-charcoal-brand/60">Find your perfect ride and add it to your basket</p>
             <button
               type="button"
               onClick={() => navigate('/book/reserve')}
+              className="font-lato"
               style={{
                 backgroundColor: '#FCBC5A',
                 color: '#363737',
@@ -267,7 +268,6 @@ export default function BasketPage() {
                 letterSpacing: '0.05em',
                 textTransform: 'uppercase',
                 boxShadow: '3px 3px 0 #363737',
-                fontFamily: 'Lato, sans-serif',
                 padding: '12px 32px',
                 transition: 'transform 0.15s ease, box-shadow 0.15s ease',
               }}

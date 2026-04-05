@@ -5,7 +5,8 @@ import { Table } from '../../components/common/Table.js';
 import { Badge } from '../../components/common/Badge.js';
 import { BookingModal } from '../../components/orders/BookingModal.js';
 import { CancelOrderModal } from '../../components/orders/CancelOrderModal.js';
-import { formatDateTime } from '../../utils/date.js';
+import { WalkInBookingModal } from '../../components/orders/WalkInBookingModal.js';
+import { formatDateTime, formatPickupDatetimeManila } from '../../utils/date.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { extractPickupDate } from '../../utils/raw-order-payload.js';
 import { resolveSourceFromStore } from '@lolas/shared';
@@ -67,15 +68,6 @@ function isDirect(r: RawOrder): boolean {
   return r.booking_channel === 'direct';
 }
 
-function formatManilaDatetime(dt: string): string {
-  return new Date(dt).toLocaleString('en-PH', {
-    timeZone: 'Asia/Manila',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  });
-}
-
 export default function InboxPage() {
   const [storeFilter, setStoreFilter] = useState<string>('');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
@@ -97,8 +89,9 @@ export default function InboxPage() {
 
   const [selectedOrder, setSelectedOrder] = useState<RawOrder | null>(null);
   const [cancelOrder, setCancelOrder] = useState<RawOrder | null>(null);
+  const [walkInOpen, setWalkInOpen] = useState(false);
 
-  const canCancelOrders = useAuthStore((s) => s.hasPermission('can_edit_orders'));
+  const canEditOrders = useAuthStore((s) => s.hasPermission('can_edit_orders'));
 
   const todayStr = useMemo(() => toLocalDateStr(new Date()), []);
   const tomorrowStr = useMemo(() => {
@@ -168,7 +161,7 @@ export default function InboxPage() {
         if (isDirect(r)) {
           return (
             <span className="text-sm text-gray-600">
-              {r.pickup_datetime ? formatManilaDatetime(r.pickup_datetime) : '—'}
+              {r.pickup_datetime ? formatPickupDatetimeManila(r.pickup_datetime) : '—'}
             </span>
           );
         }
@@ -206,7 +199,7 @@ export default function InboxPage() {
         </Badge>
       ),
     },
-    ...(canCancelOrders
+    ...(canEditOrders
       ? [
           {
             key: 'actions',
@@ -230,18 +223,29 @@ export default function InboxPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Order Inbox</h1>
           <p className="mt-1 text-sm text-gray-500">
             New orders from the website — review and process into active bookings.
           </p>
         </div>
-        {totalCount > 0 && (
-          <span className="inline-flex items-center rounded-full bg-yellow-100 px-3 py-1 text-sm font-medium text-yellow-800">
-            {totalCount} unprocessed
-          </span>
-        )}
+        <div className="flex shrink-0 items-center gap-3">
+          {totalCount > 0 && (
+            <span className="inline-flex items-center rounded-full bg-yellow-100 px-3 py-1 text-sm font-medium text-yellow-800">
+              {totalCount} unprocessed
+            </span>
+          )}
+          {canEditOrders && (
+            <button
+              type="button"
+              onClick={() => setWalkInOpen(true)}
+              className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700 whitespace-nowrap"
+            >
+              + Walk-in Booking
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Search bar */}
@@ -337,6 +341,11 @@ export default function InboxPage() {
           onCancelled={() => setCancelOrder(null)}
         />
       )}
+
+      <WalkInBookingModal
+        open={walkInOpen}
+        onClose={() => setWalkInOpen(false)}
+      />
     </div>
   );
 }

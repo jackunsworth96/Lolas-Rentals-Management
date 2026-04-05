@@ -18,6 +18,7 @@ import type {
   LeaveConfig,
   Role,
   AppUser,
+  RepairCostConfig,
 } from '@lolas/domain';
 
 function snakeToCamel(obj: Record<string, unknown>): Record<string, unknown> {
@@ -233,6 +234,16 @@ export function createConfigRepo(): ConfigRepository {
       return (data ?? []).map((r) => snakeToCamel(r) as unknown as AppUser);
     },
 
+    async getRepairCosts(): Promise<RepairCostConfig[]> {
+      const { data, error } = await sb()
+        .from('repair_costs')
+        .select('*')
+        .order('vehicle_type', { ascending: true })
+        .order('sort_order', { ascending: true });
+      if (error) throw new Error(`Failed to fetch repair_costs: ${error.message}`);
+      return (data ?? []).map((r) => snakeToCamel(r) as unknown as RepairCostConfig);
+    },
+
     // ── Writes ──
     saveStore: (store) => upsertRow('stores', store),
     deleteStore: (id) => softDelete('stores', id),
@@ -309,5 +320,25 @@ export function createConfigRepo(): ConfigRepository {
     },
 
     deleteUser: (id) => softDelete('users', id),
+
+    async saveRepairCost(cost: Omit<RepairCostConfig, 'id'> & { id?: string }) {
+      const row = rowFromCamel({
+        ...cost,
+        costPhp: cost.costPhp,
+        sortOrder: cost.sortOrder ?? 0,
+      });
+      if (!cost.id) {
+        delete row.id;
+        const { error } = await sb().from('repair_costs').insert(row);
+        if (error) throw new Error(`Failed to insert repair_cost: ${error.message}`);
+        return;
+      }
+      const id = cost.id;
+      delete row.id;
+      const { error } = await sb().from('repair_costs').update(row).eq('id', id);
+      if (error) throw new Error(`Failed to update repair_cost: ${error.message}`);
+    },
+
+    deleteRepairCost: (id) => hardDelete('repair_costs', id),
   };
 }

@@ -2,11 +2,13 @@ import { z } from 'zod';
 export const BookingChannel = {
     WooCommerce: 'woocommerce',
     Direct: 'direct',
+    WalkIn: 'walk_in',
 };
 export const OrdersRawStatusSchema = z.enum([
     'unprocessed',
     'processed',
     'skipped',
+    'cancelled',
 ]);
 /**
  * Public POST /submit body: direct booking fields plus session token for hold verification.

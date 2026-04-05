@@ -134,6 +134,15 @@ export interface AppUser {
   isActive: boolean;
 }
 
+/** Row in `repair_costs` — public pricing catalog (scooter / tuk-tuk). */
+export interface RepairCostConfig {
+  id: string;
+  vehicleType: string;
+  item: string;
+  costPhp: number;
+  sortOrder: number;
+}
+
 export interface ConfigRepository {
   // Reads
   getStores(): Promise<Store[]>;
@@ -157,6 +166,7 @@ export interface ConfigRepository {
   getRoles(): Promise<Role[]>;
   getRolePermissions(roleId: string): Promise<string[]>;
   getUsers(): Promise<AppUser[]>;
+  getRepairCosts(): Promise<RepairCostConfig[]>;
 
   // Writes
   saveStore(store: Store): Promise<void>;
@@ -193,4 +203,6 @@ export interface ConfigRepository {
   saveRolePermissions(roleId: string, permissions: string[]): Promise<void>;
   saveUser(user: AppUser): Promise<void>;
   deleteUser(id: string): Promise<void>;
+  saveRepairCost(cost: Omit<RepairCostConfig, 'id'> & { id?: string }): Promise<void>;
+  deleteRepairCost(id: string): Promise<void>;
 }

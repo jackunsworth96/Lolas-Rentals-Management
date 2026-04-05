@@ -284,3 +284,19 @@ body {
   font-family: 'Alegreya Sans', sans-serif;
   line-height: 1;
 }
+
+/* =============================================================================
+   BRAND HEADING AUTO-COLORS
+   Applies teal to all .font-headline elements. Override with inline styles
+   or higher-specificity selectors where needed (e.g. backoffice).
+   ============================================================================= */
+
+.font-headline {
+  color: #00577C;
+}
+
+.font-headline .accent,
+.font-headline span.gold {
+  color: #FCBC5A;
+  font-style: italic;
+}

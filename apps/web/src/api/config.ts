@@ -80,6 +80,56 @@ export function useMaintenanceWorkTypes() {
     queryFn: () => api.get('/config/maintenance-work-types'),
   });
 }
+
+export interface RepairCostRow {
+  id: string;
+  vehicleType: string;
+  item: string;
+  costPhp: number;
+  sortOrder: number;
+}
+
+export function useRepairCosts() {
+  return useQuery<RepairCostRow[]>({
+    queryKey: ['config', 'repair-costs'],
+    queryFn: () => api.get('/config/repair-costs'),
+  });
+}
+
+export function useSaveRepairCost() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { id?: string; vehicleType: string; item: string; costPhp: number; sortOrder: number }) =>
+      body.id
+        ? api.put(`/config/repair-costs/${body.id}`, {
+            vehicleType: body.vehicleType,
+            item: body.item,
+            costPhp: body.costPhp,
+            sortOrder: body.sortOrder,
+          })
+        : api.post('/config/repair-costs', {
+            vehicleType: body.vehicleType,
+            item: body.item,
+            costPhp: body.costPhp,
+            sortOrder: body.sortOrder,
+          }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['config', 'repair-costs'] });
+      qc.invalidateQueries({ queryKey: ['repair-costs'] });
+    },
+  });
+}
+
+export function useDeleteRepairCost() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/config/repair-costs/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['config', 'repair-costs'] });
+      qc.invalidateQueries({ queryKey: ['repair-costs'] });
+    },
+  });
+}
 export function useConfigEmployees() {
   return useQuery<Array<{ id: string; fullName: string; storeId: string | null }>>({
     queryKey: ['config', 'employees'],

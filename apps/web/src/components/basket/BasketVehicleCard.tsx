@@ -46,17 +46,17 @@ export function BasketVehicleCard({ item, rentalDays, pickupLabel, dropoffLabel,
         <div className="flex items-start justify-between">
           <div>
             <h3 className="font-headline text-2xl font-black text-teal-brand">{item.modelName}</h3>
-            <p className="mt-1 flex items-center text-sm font-bold text-charcoal-brand/60">
+            <p className="font-lato mt-1 flex items-center text-sm font-bold text-charcoal-brand/60">
               📅 {pickupLabel} → {dropoffLabel}
             </p>
           </div>
-          <span className="rounded-full bg-gold-brand px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-charcoal-brand">
+          <span className="font-lato rounded-full bg-gold-brand px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-charcoal-brand">
             {rentalDays} Day{rentalDays !== 1 ? 's' : ''}
           </span>
         </div>
 
         <div className="flex items-baseline justify-between border-t border-charcoal-brand/5 pt-4">
-          <p className="text-sm font-medium text-charcoal-brand/60">
+          <p className="font-lato text-sm font-medium text-charcoal-brand/60">
             {formatCurrency(item.dailyRate)}/day
           </p>
           <p className="font-headline text-2xl font-black text-charcoal-brand">

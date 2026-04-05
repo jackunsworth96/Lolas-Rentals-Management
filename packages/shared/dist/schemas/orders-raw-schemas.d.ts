@@ -2,9 +2,10 @@ import { z } from 'zod';
 export declare const BookingChannel: {
     readonly WooCommerce: "woocommerce";
     readonly Direct: "direct";
+    readonly WalkIn: "walk_in";
 };
 export type BookingChannelType = (typeof BookingChannel)[keyof typeof BookingChannel];
-export declare const OrdersRawStatusSchema: z.ZodEnum<["unprocessed", "processed", "skipped"]>;
+export declare const OrdersRawStatusSchema: z.ZodEnum<["unprocessed", "processed", "skipped", "cancelled"]>;
 export type OrdersRawStatus = z.infer<typeof OrdersRawStatusSchema>;
 /**
  * Matches the `orders_raw` Supabase table (migrations 011, 035, 038, 041, 042).
@@ -58,8 +59,8 @@ export declare const SubmitDirectBookingRequestSchema: z.ZodObject<{
     charityDonation: z.ZodOptional<z.ZodNumber>;
     webPaymentMethod: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    customerName: string;
     sessionToken: string;
+    customerName: string;
     customerEmail: string;
     customerMobile: string;
     vehicleModelId: string;
@@ -76,8 +77,8 @@ export declare const SubmitDirectBookingRequestSchema: z.ZodObject<{
     charityDonation?: number | undefined;
     webPaymentMethod?: string | undefined;
 }, {
-    customerName: string;
     sessionToken: string;
+    customerName: string;
     customerEmail: string;
     customerMobile: string;
     vehicleModelId: string;

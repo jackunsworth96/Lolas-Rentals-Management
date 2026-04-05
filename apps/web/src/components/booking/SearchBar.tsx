@@ -134,7 +134,7 @@ export function SearchBar({ onSearch, searching }: SearchBarProps) {
   function updatePickup(date: string, time: string) {
     let newPickup = '';
     if (date && time) {
-      newPickup = `${date}T${time}`;
+      newPickup = `${date}T${time}:00+08:00`;
     } else if (date) {
       newPickup = date;
     }
@@ -147,7 +147,7 @@ export function SearchBar({ onSearch, searching }: SearchBarProps) {
   function updateDropoff(date: string, time: string) {
     let newDropoff = '';
     if (date && time) {
-      newDropoff = `${date}T${time}`;
+      newDropoff = `${date}T${time}:00+08:00`;
     } else if (date) {
       newDropoff = date;
     }

@@ -12,6 +12,7 @@ import {
 import { useAddons, useLocations, useChartOfAccounts, useStorePricing, useFleetStatuses, usePaymentMethods, useVehicleModels } from '../../api/config.js';
 import { useProcessRawOrder, useCollectPayment, type RawOrder, type ProcessRawOrderPayload } from '../../api/orders-raw.js';
 import { formatCurrency } from '../../utils/currency.js';
+import { formatPickupDatetimeManila } from '../../utils/date.js';
 import { usePaymentRouting } from '../../hooks/use-payment-routing.js';
 import { resolveStoreFromSource } from '@lolas/shared';
 
@@ -39,16 +40,6 @@ function combineFromParts(p: TimeParts): string {
   else if (p.ampm === 'PM' && h24 < 12) h24 += 12;
   return `${p.date}T${String(h24).padStart(2, '0')}:${String(p.minutes).padStart(2, '0')}`;
 }
-
-function formatManilaDatetime(dt: string): string {
-  return new Date(dt).toLocaleString('en-PH', {
-    timeZone: 'Asia/Manila',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  });
-}
-
 
 interface BookingModalProps {
   open: boolean;
@@ -860,11 +851,11 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
                     <dl className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <dt className="text-gray-500">Pickup</dt>
-                        <dd className="font-medium">{rawOrder.pickup_datetime ? formatManilaDatetime(rawOrder.pickup_datetime) : '—'}</dd>
+                        <dd className="font-medium">{rawOrder.pickup_datetime ? formatPickupDatetimeManila(rawOrder.pickup_datetime) : '—'}</dd>
                       </div>
                       <div className="flex justify-between">
                         <dt className="text-gray-500">Dropoff</dt>
-                        <dd className="font-medium">{rawOrder.dropoff_datetime ? formatManilaDatetime(rawOrder.dropoff_datetime) : '—'}</dd>
+                        <dd className="font-medium">{rawOrder.dropoff_datetime ? formatPickupDatetimeManila(rawOrder.dropoff_datetime) : '—'}</dd>
                       </div>
                       {rawOrder.addon_ids && rawOrder.addon_ids.length > 0 && (
                         <div className="flex justify-between">

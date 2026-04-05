@@ -5,7 +5,7 @@ import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import { PrimaryCtaButton } from '../../components/public/PrimaryCtaButton.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { PawDivider } from '../../components/layout/PawDivider.js';
-import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
+import { PageHeader } from '../../components/public/PageHeader.js';
 import { BookingLookupForm } from '../../components/extend/BookingLookupForm.js';
 import { ActiveRentalCard } from '../../components/extend/ActiveRentalCard.js';
 import { ExtendCalendar } from '../../components/extend/ExtendCalendar.js';
@@ -120,17 +120,14 @@ export default function ExtendPage() {
 
   return (
     <PageLayout title="Extend My Rental | Lola's Rentals">
-      <div className="relative mx-auto max-w-xl overflow-hidden">
-        <HeroFloatingClouds variant="functional" />
+      <PageHeader
+        eyebrow="Need More Time?"
+        headingMain="Extend Your"
+        headingAccent="Rental"
+        subheading="Loving Siargao? We get it. Extend your rental in just a few clicks."
+      />
+      <div className="relative mx-auto max-w-xl overflow-hidden px-4 pt-8 pb-16">
         <div className="relative z-10">
-          <div className="mb-10 text-center">
-            <h1 className="mb-4 font-headline text-4xl font-black leading-tight text-teal-brand md:text-5xl">
-              Extend Your Island Time
-            </h1>
-            <p className="px-4 font-medium text-charcoal-brand/70">
-              Not ready to leave yet? We understand. Use the form below to find your rental and choose a new return date.
-            </p>
-          </div>
 
           {pageState === 'confirmed' ? (
           <ConfirmedView dropoff={confirmedDropoff} balance={confirmedBalance} />
@@ -181,16 +178,16 @@ function ConfirmedView({ dropoff, balance }: { dropoff: string; balance: number 
         <div className="mx-auto flex h-28 w-28 items-center justify-center rounded-full bg-gold-brand/20">
           <img src={lolaFace} alt="Lola" className="h-20 w-20 animate-bounce rounded-full object-cover" style={{ animationDuration: '3s' }} />
         </div>
-        <div className="inline-block rounded-full bg-teal-brand px-5 py-2 text-sm font-black text-white">Extension Confirmed!</div>
+        <div className="font-lato inline-block rounded-full bg-teal-brand px-5 py-2 text-sm font-black text-white">Extension Confirmed!</div>
         <h2 className="font-headline text-3xl font-black text-teal-brand">Enjoy the extra time!</h2>
         <div className="rounded-4xl bg-cream-brand p-8 shadow-[0_10px_30px_-5px_rgba(26,122,110,0.1)]">
-          <p className="text-[10px] font-black uppercase tracking-widest text-teal-brand/60">New Return Date</p>
-          <p className="mt-2 text-2xl font-black text-teal-brand">{formatted}</p>
+          <p className="font-lato text-[10px] font-black uppercase tracking-widest text-teal-brand/60">New Return Date</p>
+          <p className="font-lato mt-2 text-2xl font-black text-teal-brand">{formatted}</p>
           {balance > 0 && (
             <div className="mt-6 border-t-2 border-sand-brand pt-6">
-              <p className="text-[10px] font-black uppercase tracking-widest text-gold-brand/60">Balance Due</p>
-              <p className="mt-1 text-3xl font-black text-gold-brand">{formatCurrency(balance)}</p>
-              <p className="mt-1 text-xs font-bold text-charcoal-brand/50">Please settle at return</p>
+              <p className="font-lato text-[10px] font-black uppercase tracking-widest text-gold-brand/60">Balance Due</p>
+              <p className="font-lato mt-1 text-3xl font-black text-gold-brand">{formatCurrency(balance)}</p>
+              <p className="font-lato mt-1 text-xs font-bold text-charcoal-brand/50">Please settle at return</p>
             </div>
           )}
         </div>
@@ -198,7 +195,7 @@ function ConfirmedView({ dropoff, balance }: { dropoff: string; balance: number 
           <Link to="/book/reserve">
             <PrimaryCtaButton className="flex min-h-[44px] w-full items-center justify-center gap-2 py-5 text-lg">Back to Browse</PrimaryCtaButton>
           </Link>
-          <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="block text-sm font-bold text-teal-brand underline transition-opacity hover:opacity-80">
+          <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="font-lato block text-sm font-bold text-teal-brand underline transition-opacity hover:opacity-80">
             Need help? Chat with Lola&apos;s Team
           </a>
         </div>

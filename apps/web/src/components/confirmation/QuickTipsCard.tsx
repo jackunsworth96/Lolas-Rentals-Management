@@ -39,10 +39,10 @@ export function QuickTipsCard({ pickupLocationName }: Props) {
         <h3 className="font-headline text-xl font-extrabold text-white">Quick Tips</h3>
       </div>
 
-      <ul className="space-y-6">
+      <ul className="flex flex-col gap-4 md:flex-row md:flex-wrap md:justify-center md:gap-8">
         {TIPS.map((tip) => (
-          <li key={tip.title} className="flex gap-4">
-            <span className="shrink-0 text-xl text-gold-brand">{tip.icon}</span>
+          <li key={tip.title} className="flex gap-4 md:max-w-[200px] md:flex-col md:items-center md:gap-2 md:text-center">
+            <span className="shrink-0 text-xl text-gold-brand md:shrink">{tip.icon}</span>
             <div>
               <p className="text-sm font-bold text-white">{tip.title}</p>
               <p className="text-xs leading-relaxed text-white/80">

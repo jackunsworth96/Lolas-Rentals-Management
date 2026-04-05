@@ -2,12 +2,87 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
-import { Permission, resolveStoreFromSource } from '@lolas/shared';
+import { Permission, resolveStoreFromSource, resolveSourceFromStore } from '@lolas/shared';
 import { supabase } from '../adapters/supabase/client.js';
 import { processRawOrder, type ProcessRawOrderDeps } from '../use-cases/orders/process-raw-order.js';
 
+function generateWalkInReference(source: string): string {
+  const prefix = source === 'bass' ? 'BB' : 'LR';
+  const now = new Date();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  const hex = Math.floor(Math.random() * 0xffff).toString(16).toUpperCase().padStart(4, '0');
+  return `${prefix}-${m}${d}-${hex}`;
+}
+
+async function uniqueWalkInReference(source: string): Promise<string> {
+  for (let i = 0; i < 5; i++) {
+    const ref = generateWalkInReference(source);
+    const { data } = await supabase.from('orders_raw').select('id').eq('order_reference', ref).maybeSingle();
+    if (!data) return ref;
+  }
+  return generateWalkInReference(source);
+}
+
 const router = Router();
 router.use(authenticate);
+
+const walkInBodySchema = z.object({
+  customerName: z.string().min(1),
+  customerMobile: z.string().min(1),
+  customerEmail: z.string().email().optional(),
+  vehicleModelId: z.string().min(1),
+  storeId: z.string().min(1),
+  pickupDatetime: z.string().min(1),
+  dropoffDatetime: z.string().min(1),
+  pickupLocationId: z.number().int().positive().optional(),
+  dropoffLocationId: z.number().int().positive().optional(),
+  staffNotes: z.string().optional(),
+});
+
+router.post('/walk-in', requirePermission(Permission.EditOrders), async (req, res, next) => {
+  try {
+    const parsed = walkInBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid request body', details: parsed.error.flatten() },
+      });
+      return;
+    }
+
+    const body = parsed.data;
+    const source = resolveSourceFromStore(body.storeId);
+    const orderReference = await uniqueWalkInReference(source);
+
+    const { data, error } = await supabase
+      .from('orders_raw')
+      .insert({
+        source,
+        booking_channel: 'walk_in',
+        status: 'unprocessed',
+        customer_name: body.customerName,
+        customer_email: body.customerEmail ?? null,
+        customer_mobile: body.customerMobile,
+        vehicle_model_id: body.vehicleModelId,
+        store_id: body.storeId,
+        pickup_datetime: body.pickupDatetime,
+        dropoff_datetime: body.dropoffDatetime,
+        pickup_location_id: body.pickupLocationId ?? null,
+        dropoff_location_id: body.dropoffLocationId ?? null,
+        order_reference: orderReference,
+        payload: body.staffNotes ? { staff_notes: body.staffNotes } : null,
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    res.status(201).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.get('/', requirePermission(Permission.ViewInbox), async (req, res, next) => {
   try {

@@ -10,6 +10,18 @@ import { Money } from '@lolas/domain';
 
 const router = Router();
 
+// ── Shared helpers ──
+
+function getDayBracketLabel(days: number): string {
+  if (days <= 2) return '1–2 day rate';
+  if (days <= 6) return '3–6 day rate';
+  return '7+ day rate';
+}
+
+function extDayCount(msA: number, msB: number): number {
+  return Math.max(1, Math.round((msB - msA) / 86400000));
+}
+
 // ── Lookup ──
 
 router.post('/lookup', validateBody(ExtendLookupRequestSchema), async (req, res, next) => {
@@ -144,21 +156,196 @@ router.post('/lookup', validateBody(ExtendLookupRequestSchema), async (req, res,
   }
 });
 
-// ── Confirm Extension ──
+// ── Preview Extension (read-only, no DB writes) ──
 
-router.post('/confirm', validateBody(ExtendConfirmRequestSchema), async (req, res, next) => {
+router.get('/preview', async (req, res, next) => {
   try {
-    const { orderReference, email, newDropoffDatetime } = req.body as {
-      orderReference: string; email: string; newDropoffDatetime: string;
+    const { orderReference, email, newDropoffDatetime } = req.query as {
+      orderReference?: string; email?: string; newDropoffDatetime?: string;
     };
+
+    if (!orderReference || !email || !newDropoffDatetime) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'orderReference, email, and newDropoffDatetime are required' } });
+      return;
+    }
+
     const trimmedEmail = email.trim().toLowerCase();
     const sb = getSupabaseClient();
     const newDropoff = new Date(newDropoffDatetime);
 
+    // ── Try orders_raw ──
+    const { data: rawRows } = await sb
+      .from('orders_raw')
+      .select('vehicle_model_id, store_id, dropoff_datetime, pickup_datetime, payload')
+      .eq('order_reference', orderReference)
+      .ilike('customer_email', trimmedEmail)
+      .in('status', ['unprocessed', 'processed']);
+
+    if (rawRows && rawRows.length > 0) {
+      const row = rawRows[0] as Record<string, unknown>;
+      const currentDropoff = new Date(row.dropoff_datetime as string);
+
+      if (newDropoff <= currentDropoff) {
+        res.status(400).json({ success: false, error: { code: 'INVALID_DATE', message: 'New return date must be after the current return date.' } });
+        return;
+      }
+
+      const avail = await checkAvailability(
+        { bookingPort: req.app.locals.deps.bookingPort },
+        { storeId: row.store_id as string, pickupDatetime: row.dropoff_datetime as string, dropoffDatetime: newDropoffDatetime },
+      );
+      const model = avail.find((m) => m.modelId === (row.vehicle_model_id as string));
+      if (!model || model.availableCount === 0) {
+        res.status(409).json({ success: false, error: { code: 'NOT_AVAILABLE', message: 'Sorry, this vehicle is not available for the extended dates.' } });
+        return;
+      }
+
+      const locRows = await req.app.locals.deps.configRepo.getLocations(row.store_id as string);
+      const storeLoc = locRows.find((l: { deliveryCost: number; collectionCost: number }) =>
+        Number(l.deliveryCost) === 0 && Number(l.collectionCost) === 0,
+      );
+      const locId = storeLoc ? Number(storeLoc.id) : (locRows[0] ? Number(locRows[0].id) : 1);
+      const quote = await computeQuote({ configRepo: req.app.locals.deps.configRepo }, {
+        storeId: row.store_id as string, vehicleModelId: row.vehicle_model_id as string,
+        pickupDatetime: row.dropoff_datetime as string, dropoffDatetime: newDropoffDatetime,
+        pickupLocationId: locId, dropoffLocationId: locId,
+      });
+
+      const extDays = extDayCount(currentDropoff.getTime(), newDropoff.getTime());
+      const computedExtDailyRate = extDays > 0 ? quote.rentalSubtotal / extDays : quote.rentalSubtotal;
+
+      const origPickup = new Date(row.pickup_datetime as string);
+      const origDays = extDayCount(origPickup.getTime(), currentDropoff.getTime());
+      const payload = row.payload as Record<string, unknown> | null;
+      const webQuote = payload ? Number(payload.web_quote ?? 0) : 0;
+      const origDailyRate = webQuote > 0 ? webQuote / origDays : 0;
+
+      const dailyRate = Math.round((origDailyRate > 0 ? Math.max(computedExtDailyRate, origDailyRate) : computedExtDailyRate) * 100) / 100;
+
+      res.json({
+        success: true,
+        data: {
+          extensionDays: extDays,
+          dailyRate,
+          extensionTotal: Math.round(dailyRate * extDays * 100) / 100,
+          bracketLabel: getDayBracketLabel(extDays),
+        },
+      });
+      return;
+    }
+
+    // ── Try processed orders ──
+    const { data: custRows } = await sb.from('customers').select('id').ilike('email', trimmedEmail).limit(10);
+    const custIds = (custRows ?? []).map((c: { id: string }) => c.id).filter(Boolean);
+
+    if (custIds.length > 0) {
+      const { data: orderRows } = await sb
+        .from('orders').select('id, customer_id, store_id').in('customer_id', custIds).eq('status', 'active');
+
+      for (const ord of (orderRows ?? []) as Array<{ id: string; customer_id: string; store_id: string }>) {
+        const { data: items } = await sb
+          .from('order_items')
+          .select('vehicle_id, pickup_datetime, dropoff_datetime, store_id, order_reference, rental_days_count, rental_rate')
+          .eq('order_id', ord.id).not('pickup_datetime', 'is', null);
+
+        const item = (items ?? []).find((i: Record<string, unknown>) => (i as { order_reference: string }).order_reference === orderReference) as Record<string, unknown> | undefined;
+        if (!item) continue;
+
+        const currentDropoff = new Date(item.dropoff_datetime as string);
+        if (newDropoff <= currentDropoff) {
+          res.status(400).json({ success: false, error: { code: 'INVALID_DATE', message: 'New return date must be after the current return date.' } });
+          return;
+        }
+
+        let modelId = '';
+        if (item.vehicle_id) {
+          const { data: veh } = await sb.from('fleet').select('model_id').eq('id', item.vehicle_id as string).single();
+          if (veh) modelId = (veh as { model_id: string }).model_id;
+        }
+
+        if (modelId) {
+          const avail = await checkAvailability(
+            { bookingPort: req.app.locals.deps.bookingPort },
+            { storeId: item.store_id as string, pickupDatetime: item.dropoff_datetime as string, dropoffDatetime: newDropoffDatetime },
+          );
+          const m = avail.find((a) => a.modelId === modelId);
+          if (!m || m.availableCount === 0) {
+            res.status(409).json({ success: false, error: { code: 'NOT_AVAILABLE', message: 'Sorry, this vehicle is not available for the extended dates.' } });
+            return;
+          }
+        }
+
+        const storeId = item.store_id as string;
+        const locRows = await req.app.locals.deps.configRepo.getLocations(storeId);
+        const storeLoc = locRows.find((l: { deliveryCost: number; collectionCost: number }) =>
+          Number(l.deliveryCost) === 0 && Number(l.collectionCost) === 0,
+        );
+        const locId = storeLoc ? Number(storeLoc.id) : (locRows[0] ? Number(locRows[0].id) : 1);
+
+        const extDays = extDayCount(currentDropoff.getTime(), newDropoff.getTime());
+        let dailyRate = 0;
+
+        if (modelId) {
+          const quote = await computeQuote({ configRepo: req.app.locals.deps.configRepo }, {
+            storeId, vehicleModelId: modelId,
+            pickupDatetime: item.dropoff_datetime as string, dropoffDatetime: newDropoffDatetime,
+            pickupLocationId: locId, dropoffLocationId: locId,
+          });
+          const computedExtDailyRate = extDays > 0 ? quote.rentalSubtotal / extDays : quote.rentalSubtotal;
+          const origDailyRate = Number(item.rental_rate ?? 0);
+          dailyRate = Math.round((origDailyRate > 0 ? Math.max(computedExtDailyRate, origDailyRate) : computedExtDailyRate) * 100) / 100;
+        }
+
+        res.json({
+          success: true,
+          data: {
+            extensionDays: extDays,
+            dailyRate,
+            extensionTotal: Math.round(dailyRate * extDays * 100) / 100,
+            bracketLabel: getDayBracketLabel(extDays),
+          },
+        });
+        return;
+      }
+    }
+
+    res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Booking not found. Please check the order reference and email.' } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Confirm Extension ──
+
+router.post('/confirm', validateBody(ExtendConfirmRequestSchema), async (req, res, next) => {
+  try {
+    const {
+      orderReference,
+      email,
+      newDropoffDatetime,
+      overrideDailyRate,
+      paymentStatus = 'unpaid',
+      paymentMethod,
+      paymentAccountId,
+    } = req.body as {
+      orderReference: string;
+      email: string;
+      newDropoffDatetime: string;
+      overrideDailyRate?: number;
+      paymentStatus?: 'paid' | 'unpaid';
+      paymentMethod?: string;
+      paymentAccountId?: string;
+    };
+
+    const trimmedEmail = email.trim().toLowerCase();
+    const sb = getSupabaseClient();
+    const newDropoff = new Date(newDropoffDatetime);
+    const isPaid = paymentStatus === 'paid';
+
     // Find the booking
     const { data: rawRows } = await sb
       .from('orders_raw')
-      .select('id, vehicle_model_id, store_id, dropoff_datetime, pickup_datetime')
+      .select('id, vehicle_model_id, store_id, dropoff_datetime, pickup_datetime, payload')
       .eq('order_reference', orderReference)
       .ilike('customer_email', trimmedEmail)
       .in('status', ['unprocessed', 'processed']);
@@ -183,7 +370,7 @@ router.post('/confirm', validateBody(ExtendConfirmRequestSchema), async (req, re
         return;
       }
 
-      // Compute extension cost
+      // Compute extension cost with rate-protection (or staff override)
       const locRows = await req.app.locals.deps.configRepo.getLocations(row.store_id as string);
       const storeLoc = locRows.find((l: { deliveryCost: number; collectionCost: number }) =>
         Number(l.deliveryCost) === 0 && Number(l.collectionCost) === 0,
@@ -195,6 +382,22 @@ router.post('/confirm', validateBody(ExtendConfirmRequestSchema), async (req, re
         pickupLocationId: locId, dropoffLocationId: locId,
       });
 
+      const extDays = extDayCount(currentDropoff.getTime(), newDropoff.getTime());
+
+      let protectedDailyRate: number;
+      if (overrideDailyRate !== undefined) {
+        protectedDailyRate = overrideDailyRate;
+      } else {
+        const computedExtDailyRate = extDays > 0 ? quote.rentalSubtotal / extDays : quote.rentalSubtotal;
+        const origPickup = new Date(row.pickup_datetime as string);
+        const origDays = extDayCount(origPickup.getTime(), currentDropoff.getTime());
+        const payload = row.payload as Record<string, unknown> | null;
+        const webQuote = payload ? Number(payload.web_quote ?? 0) : 0;
+        const origDailyRate = webQuote > 0 ? webQuote / origDays : 0;
+        protectedDailyRate = origDailyRate > 0 ? Math.max(computedExtDailyRate, origDailyRate) : computedExtDailyRate;
+      }
+      const extensionCost = Math.round(protectedDailyRate * extDays * 100) / 100;
+
       // Update the booking
       const { error: updErr } = await sb
         .from('orders_raw')
@@ -202,7 +405,58 @@ router.post('/confirm', validateBody(ExtendConfirmRequestSchema), async (req, re
         .eq('id', row.id as string);
       if (updErr) throw new Error(`Failed to update booking: ${updErr.message}`);
 
-      res.json({ success: true, data: { success: true, newDropoffDatetime, extensionCost: quote.rentalSubtotal } });
+      // Create payment record
+      if (extensionCost > 0) {
+        const { paymentRepo } = req.app.locals.deps;
+        const payment: Payment = {
+          id: crypto.randomUUID(),
+          storeId: row.store_id as string,
+          orderId: null,
+          rawOrderId: row.id as string,
+          orderItemId: null,
+          orderAddonId: null,
+          paymentType: 'extension',
+          amount: extensionCost,
+          paymentMethodId: isPaid ? (paymentMethod ?? 'cash') : 'pending',
+          transactionDate: new Date().toISOString().slice(0, 10),
+          settlementStatus: isPaid ? null : 'pending',
+          settlementRef: `Extension: ${currentDropoff.toISOString().slice(0, 10)} → ${newDropoff.toISOString().slice(0, 10)}`,
+          customerId: null,
+          accountId: isPaid ? (paymentAccountId ?? null) : null,
+        };
+        await paymentRepo.save(payment);
+
+        if (isPaid) {
+          const accounts = await resolveStoreAccounts(row.store_id as string);
+          if (accounts.receivableAccountId && accounts.incomeAccountId) {
+            const { accountingPort } = req.app.locals.deps;
+            const extAmount = Money.php(extensionCost);
+            const legs: JournalLeg[] = [
+              {
+                entryId: crypto.randomUUID(),
+                accountId: accounts.receivableAccountId,
+                debit: extAmount,
+                credit: Money.zero(),
+                description: `Extension (raw order ${row.id as string}): ${extDays} day${extDays !== 1 ? 's' : ''}`,
+                referenceType: 'extension',
+                referenceId: payment.id,
+              },
+              {
+                entryId: crypto.randomUUID(),
+                accountId: accounts.incomeAccountId,
+                debit: Money.zero(),
+                credit: extAmount,
+                description: `Extension rental income (raw order ${row.id as string})`,
+                referenceType: 'extension',
+                referenceId: payment.id,
+              },
+            ];
+            await accountingPort.createTransaction(legs, row.store_id as string);
+          }
+        }
+      }
+
+      res.json({ success: true, data: { success: true, newDropoffDatetime, extensionCost } });
       return;
     }
 
@@ -254,19 +508,30 @@ router.post('/confirm', validateBody(ExtendConfirmRequestSchema), async (req, re
         );
         const locId = storeLoc ? Number(storeLoc.id) : (locRows[0] ? Number(locRows[0].id) : 1);
 
+        const extDays = extDayCount(currentDropoff.getTime(), newDropoff.getTime());
         let extensionCost = 0;
+
         if (modelId) {
           const quote = await computeQuote({ configRepo: req.app.locals.deps.configRepo }, {
             storeId, vehicleModelId: modelId,
             pickupDatetime: item.dropoff_datetime as string, dropoffDatetime: newDropoffDatetime,
             pickupLocationId: locId, dropoffLocationId: locId,
           });
-          extensionCost = quote.rentalSubtotal;
+
+          let dailyRate: number;
+          if (overrideDailyRate !== undefined) {
+            dailyRate = overrideDailyRate;
+          } else {
+            const computedExtDailyRate = extDays > 0 ? quote.rentalSubtotal / extDays : quote.rentalSubtotal;
+            const origDailyRate = Number(item.rental_rate ?? 0);
+            dailyRate = origDailyRate > 0 ? Math.max(computedExtDailyRate, origDailyRate) : computedExtDailyRate;
+          }
+          extensionCost = Math.round(dailyRate * extDays * 100) / 100;
         }
 
         const pickup = new Date(item.pickup_datetime as string);
-        const oldDays = (item.rental_days_count as number) ?? Math.max(1, Math.ceil((currentDropoff.getTime() - pickup.getTime()) / 86400000));
-        const newDays = Math.max(1, Math.ceil((newDropoff.getTime() - pickup.getTime()) / 86400000));
+        const oldDays = (item.rental_days_count as number) ?? extDayCount(pickup.getTime(), currentDropoff.getTime());
+        const newDays = extDayCount(pickup.getTime(), newDropoff.getTime());
 
         // 1. Update order item dates
         const { error: updErr } = await sb
@@ -304,7 +569,7 @@ router.post('/confirm', validateBody(ExtendConfirmRequestSchema), async (req, re
           }
         }
 
-        // 4. Create extension payment record (pending — staff collects later)
+        // 4. Create extension payment record
         if (extensionCost > 0) {
           const { paymentRepo } = req.app.locals.deps;
           const payment: Payment = {
@@ -316,41 +581,43 @@ router.post('/confirm', validateBody(ExtendConfirmRequestSchema), async (req, re
             orderAddonId: null,
             paymentType: 'extension',
             amount: extensionCost,
-            paymentMethodId: 'pending',
+            paymentMethodId: isPaid ? (paymentMethod ?? 'cash') : 'pending',
             transactionDate: new Date().toISOString().slice(0, 10),
-            settlementStatus: 'pending',
+            settlementStatus: isPaid ? null : 'pending',
             settlementRef: `Extension: ${currentDropoff.toISOString().slice(0, 10)} → ${newDropoff.toISOString().slice(0, 10)}`,
             customerId: ord.customer_id,
-            accountId: null,
+            accountId: isPaid ? (paymentAccountId ?? null) : null,
           };
           await paymentRepo.save(payment);
 
-          // 5. Journal entry: debit receivable, credit rental income
-          const accounts = await resolveStoreAccounts(storeId);
-          if (accounts.receivableAccountId && accounts.incomeAccountId) {
-            const { accountingPort } = req.app.locals.deps;
-            const extAmount = Money.php(extensionCost);
-            const legs: JournalLeg[] = [
-              {
-                entryId: crypto.randomUUID(),
-                accountId: accounts.receivableAccountId,
-                debit: extAmount,
-                credit: Money.zero(),
-                description: `Extension: order ${ord.id} (${oldDays}→${newDays} days)`,
-                referenceType: 'extension',
-                referenceId: payment.id,
-              },
-              {
-                entryId: crypto.randomUUID(),
-                accountId: accounts.incomeAccountId,
-                debit: Money.zero(),
-                credit: extAmount,
-                description: `Extension rental income: order ${ord.id}`,
-                referenceType: 'extension',
-                referenceId: payment.id,
-              },
-            ];
-            await accountingPort.createTransaction(legs, storeId);
+          // 5. Journal entry — only when paid immediately
+          if (isPaid) {
+            const accounts = await resolveStoreAccounts(storeId);
+            if (accounts.receivableAccountId && accounts.incomeAccountId) {
+              const { accountingPort } = req.app.locals.deps;
+              const extAmount = Money.php(extensionCost);
+              const legs: JournalLeg[] = [
+                {
+                  entryId: crypto.randomUUID(),
+                  accountId: accounts.receivableAccountId,
+                  debit: extAmount,
+                  credit: Money.zero(),
+                  description: `Extension: order ${ord.id} (${oldDays}→${newDays} days)`,
+                  referenceType: 'extension',
+                  referenceId: payment.id,
+                },
+                {
+                  entryId: crypto.randomUUID(),
+                  accountId: accounts.incomeAccountId,
+                  debit: Money.zero(),
+                  credit: extAmount,
+                  description: `Extension rental income: order ${ord.id}`,
+                  referenceType: 'extension',
+                  referenceId: payment.id,
+                },
+              ];
+              await accountingPort.createTransaction(legs, storeId);
+            }
           }
         }
 

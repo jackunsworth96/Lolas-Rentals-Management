@@ -1,13 +1,10 @@
-import { useState, useRef } from 'react';
-import { motion, useMotionValue, useSpring } from 'framer-motion';
+import { useState } from 'react';
 import { api } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
-import { useIsTouchDevice } from '../../hooks/useIsTouchDevice.js';
 import { resolveImage } from '../../utils/vehicle-images.js';
 import { formatPhpNumber } from '../../utils/currency.js';
 import { hasBookingDatetimeWithTime } from '../../utils/booking-datetime.js';
-import '../home/BorderGlow.css';
-import BorderGlow from '../home/BorderGlow.js';
+import { BrandCard } from '../public/BrandCard.js';
 
 const VEHICLE_NAME_MAP: Record<string, string> = {
   'Honda Beat': 'Scooter Honda Beat 110cc',
@@ -15,54 +12,6 @@ const VEHICLE_NAME_MAP: Record<string, string> = {
   'TukTuk (TVS)': 'TukTuk TVS King 200cc',
 };
 
-const springCfg = { damping: 30, stiffness: 100, mass: 2 };
-const ROTATE_AMP = 8;
-const SCALE_HOVER = 1.03;
-
-function TiltableCard({ children }: { children: React.ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const isTouch = useIsTouchDevice();
-  const rotateX = useSpring(useMotionValue(0), springCfg);
-  const rotateY = useSpring(useMotionValue(0), springCfg);
-  const scale = useSpring(1, springCfg);
-
-  function handleMouse(e: React.MouseEvent<HTMLDivElement>) {
-    if (!ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
-    const offsetX = e.clientX - rect.left - rect.width / 2;
-    const offsetY = e.clientY - rect.top - rect.height / 2;
-    rotateX.set((offsetY / (rect.height / 2)) * -ROTATE_AMP);
-    rotateY.set((offsetX / (rect.width / 2)) * ROTATE_AMP);
-  }
-
-  if (isTouch) {
-    return (
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, amount: 0.2 }}
-        transition={{ duration: 0.4, ease: 'easeOut' }}
-        style={{ height: '100%' }}
-      >
-        {children}
-      </motion.div>
-    );
-  }
-
-  return (
-    <div
-      ref={ref}
-      onMouseMove={handleMouse}
-      onMouseEnter={() => scale.set(SCALE_HOVER)}
-      onMouseLeave={() => { scale.set(1); rotateX.set(0); rotateY.set(0); }}
-      style={{ perspective: '800px', height: '100%' }}
-    >
-      <motion.div style={{ rotateX, rotateY, scale, transformStyle: 'preserve-3d', height: '100%' }}>
-        {children}
-      </motion.div>
-    </div>
-  );
-}
 
 function formatSlotTime(iso: string): string {
   const d = new Date(iso);
@@ -74,13 +23,15 @@ function formatSlotTime(iso: string): string {
   return `${h}:${m} ${ampm}`;
 }
 
-function toLocalDatetimeStr(d: Date): string {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const min = String(d.getMinutes()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+/** Convert a Date to an ISO string in Manila time (UTC+8) with explicit offset. */
+function toManilaDatetimeStr(d: Date): string {
+  const manila = new Date(d.getTime() + 8 * 60 * 60 * 1000);
+  const yyyy = manila.getUTCFullYear();
+  const mm = String(manila.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(manila.getUTCDate()).padStart(2, '0');
+  const hh = String(manila.getUTCHours()).padStart(2, '0');
+  const min = String(manila.getUTCMinutes()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}:00+08:00`;
 }
 
 function formatNextAvailableDate(iso: string): string {
@@ -226,24 +177,17 @@ export function VehicleCard({
     const rentalMs = currentDropoff.getTime() - currentPickup.getTime();
     const newDropoff = new Date(pickup.getTime() + Math.max(rentalMs, 86400000));
 
-    const pickupStr = toLocalDatetimeStr(pickup);
-    const dropoffStr = toLocalDatetimeStr(newDropoff);
+    const pickupStr = toManilaDatetimeStr(pickup);
+    const dropoffStr = toManilaDatetimeStr(newDropoff);
     setDates(pickupStr, dropoffStr);
     triggerSearch();
     onToast(`Dates updated to ${formatNextAvailableDate(nextAvailablePickup)}`, 'success');
   }
 
   return (
-    <TiltableCard>
-    <BorderGlow
+    <BrandCard
       glowColor="36 96 67"
-      backgroundColor="#FAF6F0"
-      borderRadius={24}
-      glowIntensity={0.8}
-      coneSpread={30}
-      colors={['#FCBC5A', '#F5A623', '#f1e6d6']}
       className={`animate-card-enter ${isUnavailable ? 'opacity-70' : ''}`}
-      style={{ height: '100%' }}
     >
       <div className="group flex h-full flex-col overflow-hidden rounded-[22px] bg-[#FAF6F0]">
         <div className="relative h-40 w-full overflow-hidden rounded-t-[22px] bg-white">
@@ -259,7 +203,7 @@ export function VehicleCard({
             </div>
           )}
           <div className="absolute left-4 top-4 flex gap-2">
-            <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider shadow-sm ${isUnavailable ? 'bg-charcoal-brand/10 text-charcoal-brand/60' : 'bg-teal-700 text-white'}`}>
+            <span className={`font-lato rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider shadow-sm ${isUnavailable ? 'bg-charcoal-brand/10 text-charcoal-brand/60' : 'bg-teal-brand text-white'}`}>
               {isUnavailable ? 'Unavailable' : `${availableCount} available`}
             </span>
           </div>
@@ -267,11 +211,11 @@ export function VehicleCard({
 
         <div className="flex flex-1 flex-col p-6">
           <div className="mb-1 flex items-start justify-between">
-            <h3 className="font-headline text-xl font-bold text-[#00577C]">{displayName}</h3>
+            <h3 className="font-headline text-xl font-bold text-teal-brand">{displayName}</h3>
             <div className="ml-3 shrink-0 text-right">
               {dailyRate != null ? (
                 <p className="text-lg leading-tight">
-                  <span className="font-headline font-bold text-[#00577C]">
+                  <span className="font-headline font-bold text-teal-brand">
                     ₱{formatPhpNumber(dailyRate)}
                   </span>
                   <span
@@ -281,13 +225,13 @@ export function VehicleCard({
                   </span>
                 </p>
               ) : (
-                <p className="text-sm italic text-charcoal-brand/40">Price on request</p>
+                <p className="font-lato text-sm italic text-charcoal-brand/40">Price on request</p>
               )}
             </div>
           </div>
 
           {securityDeposit != null && securityDeposit > 0 && (
-            <p className="mb-4 text-xs text-charcoal-brand/50">
+            <p className="font-lato mb-4 text-xs text-charcoal-brand/50">
               <span className="font-headline font-bold">
                 ₱{formatPhpNumber(securityDeposit)}
               </span>
@@ -300,11 +244,11 @@ export function VehicleCard({
               <button
                 type="button"
                 onClick={handleNextAvailable}
-                className="flex w-full flex-col items-center justify-center gap-1 rounded-full border-2 border-teal-700 bg-transparent py-3.5 font-bold text-teal-700 transition-all duration-300 hover:bg-teal-700/10"
+                className="font-lato flex w-full flex-col items-center justify-center gap-1 rounded-full border-2 border-teal-brand bg-transparent py-3.5 font-bold text-teal-brand transition-all duration-300 hover:bg-teal-brand/10"
               >
-                <span className="text-[11px] text-charcoal-brand/50">Next available from</span>
-                <span className="text-sm">{formatNextAvailableDate(nextAvailablePickup!)} at {formatSlotTime(nextAvailablePickup!)}</span>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-teal-700/60">Tap to use these dates</span>
+                <span className="font-lato text-[11px] text-charcoal-brand/50">Next available from</span>
+                <span className="font-lato text-sm">{formatNextAvailableDate(nextAvailablePickup!)} at {formatSlotTime(nextAvailablePickup!)}</span>
+                <span className="font-lato text-[10px] font-bold uppercase tracking-wider text-teal-brand/60">Tap to use these dates</span>
               </button>
             ) : count === 0 ? (
               <button
@@ -353,7 +297,7 @@ export function VehicleCard({
 
                   {/* count label */}
                   <div
-                    className="font-lato flex flex-1 items-center justify-center font-bold text-[#00577C]"
+                    className="font-lato flex flex-1 items-center justify-center font-bold text-teal-brand"
                     style={{ fontSize: 14, letterSpacing: '0.03em' }}
                   >
                     {count} in basket
@@ -394,7 +338,6 @@ export function VehicleCard({
           </div>
         </div>
       </div>
-    </BorderGlow>
-    </TiltableCard>
+    </BrandCard>
   );
 }

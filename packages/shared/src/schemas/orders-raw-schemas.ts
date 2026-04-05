@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const BookingChannel = {
   WooCommerce: 'woocommerce',
   Direct: 'direct',
+  WalkIn: 'walk_in',
 } as const;
 
 export type BookingChannelType =
@@ -12,6 +13,7 @@ export const OrdersRawStatusSchema = z.enum([
   'unprocessed',
   'processed',
   'skipped',
+  'cancelled',
 ]);
 
 export type OrdersRawStatus = z.infer<typeof OrdersRawStatusSchema>;

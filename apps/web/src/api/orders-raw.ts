@@ -97,6 +97,30 @@ export function useCollectPayment() {
   });
 }
 
+export interface WalkInPayload {
+  customerName: string;
+  customerMobile: string;
+  customerEmail?: string;
+  vehicleModelId: string;
+  storeId: string;
+  pickupDatetime: string;
+  dropoffDatetime: string;
+  pickupLocationId?: number;
+  dropoffLocationId?: number;
+  staffNotes?: string;
+}
+
+export function useCreateWalkIn() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: WalkInPayload) =>
+      api.post<RawOrder>('/orders-raw/walk-in', body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['orders-raw'] });
+    },
+  });
+}
+
 export interface CancelRawOrderPayload {
   id: string;
   reason?: string;
