@@ -10,6 +10,7 @@ import { BrowseBookVehicleSection } from './BrowseBookVehicleSection.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
 import { WHATSAPP_URL } from '../../config/contact.js';
+import { hasBookingDatetimeWithTime } from '../../utils/booking-datetime.js';
 
 interface AvailableModel {
   modelId: string;
@@ -70,7 +71,7 @@ export default function BrowseBookPage() {
     const sid = state.storeId;
     const pickup = state.pickupDatetime;
     const dropoff = state.dropoffDatetime;
-    if (!sid || !pickup || !dropoff) return;
+    if (!sid || !pickup || !dropoff || !hasBookingDatetimeWithTime(pickup) || !hasBookingDatetimeWithTime(dropoff)) return;
     setSearching(true);
     setSearchParams({ storeId: sid, pickup, dropoff });
     await refetchAvailability();
@@ -127,7 +128,7 @@ export default function BrowseBookPage() {
     <PageLayout title="Browse & Book | Lola's Rentals" showBasketIcon>
       <div className="relative mx-auto max-w-7xl overflow-hidden pt-4 md:px-4">
         <HeroFloatingClouds variant="functional" />
-        <section className="relative z-10 mb-12">
+        <section className="relative z-10 mb-6">
           <SearchBar onSearch={handleSearch} searching={isLoading} />
         </section>
 

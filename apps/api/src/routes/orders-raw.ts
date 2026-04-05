@@ -267,4 +267,72 @@ router.post('/:id/collect-payment', requirePermission(Permission.EditOrders), as
   }
 });
 
+const cancelBodySchema = z.object({
+  reason: z.string().optional(),
+});
+
+/*
+ * MIGRATION REQUIRED — run the following in Supabase SQL editor before deploying:
+ *   ALTER TABLE orders_raw ADD COLUMN IF NOT EXISTS cancelled_at  timestamptz;
+ *   ALTER TABLE orders_raw ADD COLUMN IF NOT EXISTS cancelled_reason text;
+ */
+router.patch('/:id/cancel', requirePermission(Permission.EditOrders), async (req, res, next) => {
+  try {
+    const parsed = cancelBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid request body', details: parsed.error.flatten() },
+      });
+      return;
+    }
+
+    const id = req.params.id as string;
+
+    const { data: existing, error: findErr } = await supabase
+      .from('orders_raw')
+      .select('id, order_reference, status')
+      .eq('id', id)
+      .single();
+
+    if (findErr || !existing) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Raw order not found' } });
+      return;
+    }
+
+    if (existing.status === 'cancelled') {
+      res.status(409).json({ success: false, error: { code: 'ALREADY_CANCELLED', message: 'Order is already cancelled' } });
+      return;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const updatePayload: any = {
+      status: 'cancelled',
+      cancelled_at: new Date().toISOString(),
+      ...(parsed.data.reason ? { cancelled_reason: parsed.data.reason } : {}),
+    };
+
+    const { data: updated, error: updateErr } = await supabase
+      .from('orders_raw')
+      .update(updatePayload)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateErr) throw new Error(updateErr.message);
+
+    // Release any booking hold linked to this order reference
+    if (existing.order_reference) {
+      await supabase
+        .from('booking_holds')
+        .delete()
+        .eq('order_reference', existing.order_reference);
+    }
+
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export { router as ordersRawRoutes };

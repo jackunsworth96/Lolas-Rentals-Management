@@ -162,14 +162,29 @@ export interface EmployeePaymentDetail {
   paymentMethod: 'cash' | 'gcash' | 'bank_transfer';
   fromTill?: number;
   fromSafe?: number;
+  bonuses?: number;
 }
 
 export interface PayslipPreview {
   employeeId: string;
   employeeName: string;
+  basicPay: number;
+  overtimePay: number;
+  ninePmBonus: number;
+  tips: number;
+  commission: number;
+  bikeAllowance: number;
+  silInflation: number;
+  bonuses: number;
+  holidayAdjustment: number;
   grossPay: number;
+  cashAdvanceDeduction: number;
+  sssDeduction: number;
+  philhealthDeduction: number;
+  pagibigDeduction: number;
+  totalDeductions: number;
   netPay: number;
-  deductions: number;
+  paidAs: string | null;
 }
 
 export interface RunPayrollPayload {

@@ -112,7 +112,7 @@ export function Sidebar() {
   return (
     <aside
       className={`fixed inset-y-0 left-0 z-30 flex flex-col border-r border-gray-200 bg-white transition-all ${
-        open ? 'w-64' : 'w-16'
+        open ? 'w-52' : 'w-16'
       }`}
     >
       {/* Logo */}

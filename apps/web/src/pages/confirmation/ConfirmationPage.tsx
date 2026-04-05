@@ -9,7 +9,7 @@ import { PrimaryCtaButton } from '../../components/public/PrimaryCtaButton.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
 
-import lolaPhoto from '../../assets/Lola.png';
+import lolaVideo from '../../assets/Checkout_Lola.mp4';
 import pawPrint from '../../assets/Paw Print.svg';
 import { WHATSAPP_URL } from '../../config/contact.js';
 
@@ -66,7 +66,7 @@ export default function ConfirmationPage() {
 
   if (loading) {
     return (
-      <PageLayout title="Loading... | Lola's Rentals">
+      <PageLayout title="Loading... | Lola's Rentals" showFloralRight={false}>
         <div className="flex min-h-[60vh] items-center justify-center">
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-teal-brand border-t-transparent" />
         </div>
@@ -76,7 +76,7 @@ export default function ConfirmationPage() {
 
   if (fetchError || (!state && !reference)) {
     return (
-      <PageLayout title="Booking Not Found | Lola's Rentals">
+      <PageLayout title="Booking Not Found | Lola's Rentals" showFloralRight={false}>
         <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 text-center">
           <h2 className="mb-4 font-headline text-3xl font-black text-charcoal-brand">Booking not found</h2>
           <p className="mb-8 text-charcoal-brand/60">We could not find a booking with that reference. It may have been processed already.</p>
@@ -101,43 +101,83 @@ export default function ConfirmationPage() {
   }
 
   return (
-    <PageLayout title="Booking Confirmed | Lola's Rentals">
+    <PageLayout title="Booking Confirmed | Lola's Rentals" showFloralRight={false}>
       <div
         className="relative -mx-4 -mt-20 min-h-screen overflow-hidden px-4 pt-20"
-        style={{ background: 'linear-gradient(180deg, #FAF6F0 0%, #f1e6d6 100%)' }}
+        style={{ backgroundColor: '#f1e6d6' }}
       >
-        <HeroFloatingClouds variant="functional" />
-        <div className="relative z-10 mx-auto flex max-w-lg flex-col items-center pt-8 text-center">
-          <div className="relative mb-12">
+        <HeroFloatingClouds variant="editorial" />
+        <div className="relative z-10 mx-auto flex max-w-lg flex-col items-center pt-4 text-center">
+          <div className="relative pb-16">
             <div
-              className="flex h-48 w-48 items-center justify-center overflow-hidden rounded-full bg-gold-brand p-2 shadow-2xl"
+              className="flex h-48 w-48 items-center justify-center overflow-hidden rounded-full"
               style={{ animation: 'bounce 3s ease-in-out infinite' }}
             >
-              <img src={lolaPhoto} alt="Lola" className="h-full w-full bg-transparent object-contain" />
+              <video
+                src={lolaVideo}
+                autoPlay
+                loop
+                muted
+                playsInline
+                className="h-full w-full object-cover"
+                style={{ mixBlendMode: 'multiply' }}
+              />
             </div>
             <div
-              className={`absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-2xl bg-teal-brand px-8 py-3 font-headline text-lg font-bold text-white shadow-xl transition-all duration-500 ${
+              className={`absolute left-1/2 top-[88%] -mt-6 -translate-x-1/2 whitespace-nowrap transition-all duration-500 ${
                 pillVisible ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'
               }`}
+              style={{
+                backgroundColor: '#FCBC5A',
+                color: '#363737',
+                border: '2px solid #363737',
+                borderRadius: '12px',
+                fontWeight: 800,
+                fontSize: '18px',
+                letterSpacing: '0.02em',
+                boxShadow: '4px 4px 0 #363737',
+                fontFamily: 'Lato, sans-serif',
+                padding: '12px 32px',
+              }}
             >
               Booking Confirmed!
             </div>
           </div>
 
-          <h2 className="mb-6 font-headline text-4xl font-black leading-tight tracking-tight text-teal-brand">
+          <h2 className="mt-4 mb-3 font-headline text-4xl font-black leading-tight tracking-tight text-teal-brand">
             See you in Siargao.
           </h2>
 
-          <div className="mb-12 flex flex-col items-center">
-            <span className="mb-2 text-xs font-bold uppercase tracking-widest text-charcoal-brand/60">Your Reference Number</span>
-            <div className="flex items-center gap-3">
-              <span className="border-b-4 border-gold-brand pb-1 font-headline text-3xl font-black tracking-tighter text-charcoal-brand md:text-4xl">
+          <div className="mb-6 flex flex-col items-center">
+            <span
+              className="mb-2 text-charcoal-brand/60"
+              style={{
+                fontFamily: "'Lato', sans-serif",
+                fontSize: '11px',
+                fontWeight: 700,
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+              }}
+            >
+              Your Reference Number
+            </span>
+            <div className="flex items-center justify-center gap-2">
+              <span
+                className="font-lato font-black"
+                style={{
+                  fontSize: 'clamp(28px, 6vw, 36px)',
+                  letterSpacing: '0.15em',
+                  color: '#363737',
+                  borderBottom: '4px solid #FCBC5A',
+                  paddingBottom: '4px',
+                }}
+              >
                 {refDisplay}
               </span>
               <button
                 type="button"
                 onClick={handleCopy}
-                className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-sand-brand text-charcoal-brand/60 transition-all duration-200 hover:bg-sand-brand/80 active:scale-90"
+                className="relative flex min-h-[36px] min-w-[36px] items-center justify-center rounded-full bg-sand-brand text-sm text-charcoal-brand/60 transition-all duration-200 hover:bg-sand-brand/80 active:scale-90"
                 title="Copy reference"
                 aria-label="Copy reference number"
               >
@@ -151,7 +191,7 @@ export default function ConfirmationPage() {
             </div>
           </div>
 
-          <div className="mb-12 flex w-full justify-center">
+          <div className="mb-4 flex w-full justify-center">
             <img src={pawPrint} alt="" className="h-10 bg-transparent opacity-20 grayscale" />
           </div>
 
@@ -179,9 +219,9 @@ export default function ConfirmationPage() {
             />
           </FadeUpSection>
 
-          <div className="h-6" />
+          <div className="h-3" />
           <FadeUpSection><QuickTipsCard /></FadeUpSection>
-          <div className="h-10" />
+          <div className="h-4" />
 
           <div className="flex w-full flex-col gap-4">
             <PrimaryCtaButton

@@ -18,7 +18,7 @@ export function AppLayout() {
     <div className="flex h-screen overflow-hidden bg-gray-50">
       <MidayLostOpportunityBanner storeId={selectedStoreId ?? ''} />
       <Sidebar />
-      <div className={`flex flex-1 flex-col transition-all ${sidebarOpen ? 'ml-64' : 'ml-16'}`}>
+      <div className={`flex flex-1 flex-col transition-all ${sidebarOpen ? 'ml-52' : 'ml-16'}`}>
         <Header />
         <main className="flex-1 overflow-y-auto p-6">
           <Outlet />

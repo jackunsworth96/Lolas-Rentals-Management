@@ -27,16 +27,19 @@ export declare const EmployeePaymentDetailSchema: z.ZodObject<{
     paymentMethod: z.ZodEnum<["cash", "gcash", "bank_transfer"]>;
     fromTill: z.ZodOptional<z.ZodNumber>;
     fromSafe: z.ZodOptional<z.ZodNumber>;
+    bonuses: z.ZodOptional<z.ZodDefault<z.ZodNumber>>;
 }, "strip", z.ZodTypeAny, {
     employeeId: string;
     paymentMethod: "cash" | "gcash" | "bank_transfer";
     fromTill?: number | undefined;
     fromSafe?: number | undefined;
+    bonuses?: number | undefined;
 }, {
     employeeId: string;
     paymentMethod: "cash" | "gcash" | "bank_transfer";
     fromTill?: number | undefined;
     fromSafe?: number | undefined;
+    bonuses?: number | undefined;
 }>;
 export type EmployeePaymentDetail = z.infer<typeof EmployeePaymentDetailSchema>;
 export declare const RunPayrollPreviewRequestSchema: z.ZodObject<{
@@ -70,16 +73,19 @@ export declare const RunPayrollRequestSchema: z.ZodObject<{
         paymentMethod: z.ZodEnum<["cash", "gcash", "bank_transfer"]>;
         fromTill: z.ZodOptional<z.ZodNumber>;
         fromSafe: z.ZodOptional<z.ZodNumber>;
+        bonuses: z.ZodOptional<z.ZodDefault<z.ZodNumber>>;
     }, "strip", z.ZodTypeAny, {
         employeeId: string;
         paymentMethod: "cash" | "gcash" | "bank_transfer";
         fromTill?: number | undefined;
         fromSafe?: number | undefined;
+        bonuses?: number | undefined;
     }, {
         employeeId: string;
         paymentMethod: "cash" | "gcash" | "bank_transfer";
         fromTill?: number | undefined;
         fromSafe?: number | undefined;
+        bonuses?: number | undefined;
     }>, "many">;
 }, "strip", z.ZodTypeAny, {
     storeId: string;
@@ -92,6 +98,7 @@ export declare const RunPayrollRequestSchema: z.ZodObject<{
         paymentMethod: "cash" | "gcash" | "bank_transfer";
         fromTill?: number | undefined;
         fromSafe?: number | undefined;
+        bonuses?: number | undefined;
     }[];
 }, {
     storeId: string;
@@ -104,6 +111,7 @@ export declare const RunPayrollRequestSchema: z.ZodObject<{
         paymentMethod: "cash" | "gcash" | "bank_transfer";
         fromTill?: number | undefined;
         fromSafe?: number | undefined;
+        bonuses?: number | undefined;
     }[];
 }>;
 export type RunPayrollRequest = z.infer<typeof RunPayrollRequestSchema>;

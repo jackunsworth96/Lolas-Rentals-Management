@@ -19,6 +19,7 @@ export interface PayrollInput {
   philhealthDeduction: number;
   pagibigDeduction: number;
   isEndOfMonth: boolean;
+  holidayAdjustment: number;
 }
 
 export interface PayrollResult {
@@ -37,6 +38,7 @@ export interface PayrollResult {
   totalDeductions: number;
   netPay: number;
   thirteenthMonthAccrual: number;
+  holidayAdjustment: number;
 }
 
 export function calculatePayroll(input: PayrollInput): PayrollResult {
@@ -65,7 +67,8 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
     commission +
     tips +
     bikeAllowance +
-    bonuses;
+    bonuses +
+    input.holidayAdjustment;
 
   const cashAdvanceDeduction = input.cashAdvanceDeduction;
   const sssDeduction = input.isEndOfMonth ? input.sssDeduction : 0;
@@ -97,6 +100,7 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
     totalDeductions: round2(totalDeductions),
     netPay: round2(netPay),
     thirteenthMonthAccrual: round2(thirteenthMonthAccrual),
+    holidayAdjustment: round2(input.holidayAdjustment),
   };
 }
 

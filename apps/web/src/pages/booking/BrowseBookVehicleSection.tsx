@@ -42,25 +42,31 @@ export function BrowseBookVehicleSection({
   quotes,
   pushToast,
 }: Props) {
+  const pricedModels = useMemo(
+    () => (availableModels ?? []).filter((m) => (quotes[m.modelId]?.dailyRate ?? 0) > 0),
+    [availableModels, quotes],
+  );
+
   const allUnavailable = useMemo(() => {
-    if (!availableModels || availableModels.length === 0) return false;
-    return availableModels.every((m) => m.availableCount === 0);
-  }, [availableModels]);
+    if (pricedModels.length === 0) return false;
+    return pricedModels.every((m) => m.availableCount === 0);
+  }, [pricedModels]);
 
   if (!isSearched) return null;
 
   return (
     <>
-      <div className="my-12 flex justify-center">
-        <img src={pawPrint} alt="" className="h-10 w-10 opacity-10 bg-transparent" />
+      <div className="my-6 flex justify-center">
+        <img src={pawPrint} alt="" className="h-8 w-8 opacity-10 bg-transparent" />
       </div>
 
       <FadeUpSection className="relative z-10">
         <section>
-          <div className="mb-8 flex items-center justify-between">
+          <div className="mb-6 flex flex-col items-center gap-1 text-center">
             <h2 className="font-headline text-3xl font-black tracking-tight text-teal-brand">
               Available Fleet <span className="text-gold-brand">Siargao</span>
             </h2>
+            <p className="text-sm text-charcoal-brand/60">Select your ride and add to basket</p>
           </div>
 
           {isLoading ? (
@@ -76,7 +82,7 @@ export function BrowseBookVehicleSection({
                 </div>
               ))}
             </div>
-          ) : !availableModels || availableModels.length === 0 ? (
+          ) : pricedModels.length === 0 ? (
             <div className="rounded-4xl bg-cream-brand px-8 py-16 text-center">
               <p className="mb-2 text-lg font-bold text-charcoal-brand">
                 No vehicles available for these dates.
@@ -114,7 +120,7 @@ export function BrowseBookVehicleSection({
                     All vehicles are booked for your selected dates
                   </p>
                   <div className="mb-3 space-y-1">
-                    {availableModels.filter((m) => m.nextAvailablePickup).map((m) => (
+                    {pricedModels.filter((m) => m.nextAvailablePickup).map((m) => (
                       <p key={m.modelId} className="text-sm text-charcoal-brand/80">
                         The next available <span className="font-bold">{m.modelName}</span> is from{' '}
                         <span className="font-bold text-teal-brand">{formatNextDate(m.nextAvailablePickup!)}</span>
@@ -135,12 +141,12 @@ export function BrowseBookVehicleSection({
                   </p>
                 </div>
               )}
-              <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
-                {availableModels.map((m, index) => (
+              <div className="flex flex-wrap justify-center gap-8">
+                {pricedModels.map((m, index) => (
                   <div
                     key={m.modelId}
                     className="animate-card-enter"
-                    style={{ animationDelay: `${index * 100}ms` }}
+                    style={{ animationDelay: `${index * 100}ms`, width: '100%', maxWidth: '380px' }}
                   >
                     <VehicleCard
                       modelId={m.modelId}

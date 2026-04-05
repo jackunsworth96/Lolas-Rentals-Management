@@ -40,10 +40,15 @@ type PaymentMethod = 'cash' | 'gcash' | 'bank_transfer';
 interface PaymentRow {
   employeeId: string;
   employeeName: string;
+  /** Net pay from preview (before ad hoc bonus). Used to recalculate when bonus changes. */
+  baseNetPay: number;
   netPay: number;
   paymentMethod: PaymentMethod;
   fromTill: number;
   fromSafe: number;
+  bonus: number;
+  cashAdvance: number;
+  holidayAdjustment: number;
 }
 
 const METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -94,10 +99,14 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees }: Props) 
         return {
           employeeId: p.employeeId,
           employeeName: p.employeeName,
+          baseNetPay: p.netPay,
           netPay: p.netPay,
           paymentMethod: method,
           fromTill: p.netPay,
           fromSafe: 0,
+          bonus: 0,
+          cashAdvance: p.cashAdvanceDeduction ?? 0,
+          holidayAdjustment: p.holidayAdjustment ?? 0,
         };
       }),
     );
@@ -120,6 +129,15 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees }: Props) 
       rows.map((r) => {
         if (r.employeeId !== employeeId) return r;
         const updated = { ...r, ...patch };
+
+        // When bonus changes, recalculate netPay and rebalance till/safe
+        if (patch.bonus !== undefined) {
+          updated.netPay = Math.round((updated.baseNetPay + Math.max(0, patch.bonus)) * 100) / 100;
+          if (updated.paymentMethod === 'cash') {
+            updated.fromTill = updated.netPay;
+            updated.fromSafe = 0;
+          }
+        }
         // Rebalance till/safe when method changes to cash
         if (patch.paymentMethod === 'cash') {
           updated.fromTill = updated.netPay;
@@ -150,6 +168,7 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees }: Props) 
       paymentMethod: r.paymentMethod,
       fromTill: r.paymentMethod === 'cash' ? r.fromTill : undefined,
       fromSafe: r.paymentMethod === 'cash' ? r.fromSafe : undefined,
+      bonuses: r.bonus > 0 ? r.bonus : undefined,
     }));
 
     runPayroll.mutate(
@@ -233,6 +252,7 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees }: Props) 
               <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
                 <tr>
                   <th className="px-3 py-2 text-left">Employee</th>
+                  <th className="px-3 py-2 text-right">Bonus</th>
                   <th className="px-3 py-2 text-right">Net Pay</th>
                   <th className="px-3 py-2 text-left">Payment method</th>
                   <th className="px-3 py-2 text-right">From till</th>
@@ -245,7 +265,36 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees }: Props) 
                   const splitError = isCash && Math.abs(row.fromTill + row.fromSafe - row.netPay) >= 0.01;
                   return (
                     <tr key={row.employeeId} className={splitError ? 'bg-red-50' : ''}>
-                      <td className="px-3 py-2 font-medium text-gray-900">{row.employeeName}</td>
+                      <td className="px-3 py-2">
+                        <div className="font-medium text-gray-900">{row.employeeName}</div>
+                        {row.cashAdvance > 0 && (
+                          <div className="text-xs text-red-600">
+                            Cash advance deduction: {formatCurrency(row.cashAdvance)}
+                          </div>
+                        )}
+                        {row.holidayAdjustment > 0 && (
+                          <div className="text-xs text-teal-700">
+                            Includes {formatCurrency(row.holidayAdjustment)} holiday/SIL adjustment
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <div className="flex items-center justify-end gap-0.5">
+                          <span className="text-xs text-gray-400">₱</span>
+                          <input
+                            type="number"
+                            min={0}
+                            step={0.01}
+                            value={row.bonus || ''}
+                            placeholder="0"
+                            onChange={(e) =>
+                              updateRow(row.employeeId, { bonus: parseFloat(e.target.value) || 0 })
+                            }
+                            className="w-20 rounded border border-gray-300 px-2 py-1 text-right text-sm focus:outline-none focus:ring-1 focus:ring-teal-500"
+                          />
+                        </div>
+                        <div className="text-xs text-gray-400 text-right">Ad hoc payment</div>
+                      </td>
                       <td className="px-3 py-2 text-right tabular-nums text-gray-700">{formatCurrency(row.netPay)}</td>
                       <td className="px-3 py-2">
                         <select
@@ -287,6 +336,9 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees }: Props) 
               <tfoot className="border-t border-gray-200 bg-gray-50">
                 <tr>
                   <td className="px-3 py-2 font-semibold text-gray-700">Total</td>
+                  <td className="px-3 py-2 text-right tabular-nums font-medium text-gray-700">
+                    {formatCurrency(paymentRows.reduce((s, r) => s + r.bonus, 0))}
+                  </td>
                   <td className="px-3 py-2 text-right font-semibold tabular-nums text-gray-900">
                     {formatCurrency(paymentRows.reduce((s, r) => s + r.netPay, 0))}
                   </td>

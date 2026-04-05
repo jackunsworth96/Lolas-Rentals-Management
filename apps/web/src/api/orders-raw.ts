@@ -96,3 +96,19 @@ export function useCollectPayment() {
     },
   });
 }
+
+export interface CancelRawOrderPayload {
+  id: string;
+  reason?: string;
+}
+
+export function useCancelRawOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: CancelRawOrderPayload) =>
+      api.patch<RawOrder>(`/orders-raw/${id}/cancel`, { reason }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['orders-raw'] });
+    },
+  });
+}

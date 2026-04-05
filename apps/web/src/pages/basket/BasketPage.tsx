@@ -9,13 +9,13 @@ import { TransferSection } from '../../components/basket/TransferSection.js';
 import { RenterDetailsForm } from '../../components/basket/RenterDetailsForm.js';
 import { OrderSummaryPanel } from '../../components/basket/OrderSummaryPanel.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
-import { PrimaryCtaButton } from '../../components/public/PrimaryCtaButton.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { PawDivider } from '../../components/layout/PawDivider.js';
 import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
 import type { Addon, TransferDetails, RenterInfo, PaymentMethodOption } from '../../components/basket/basket-types.js';
 
 import pawPrint from '../../assets/Paw Print.svg';
+import { hasBookingDatetimeWithTime } from '../../utils/booking-datetime.js';
 
 interface QuoteResponse {
   dailyRate: number;
@@ -63,7 +63,17 @@ export default function BasketPage() {
   const lastQuotedDatesRef = useRef({ pickup: '', dropoff: '' });
 
   const refreshQuotes = useCallback(async () => {
-    if (!pickupDatetime || !dropoffDatetime || !pickupLocationId || !dropoffLocationId || basket.length === 0) return;
+    if (
+      !pickupDatetime ||
+      !dropoffDatetime ||
+      !hasBookingDatetimeWithTime(pickupDatetime) ||
+      !hasBookingDatetimeWithTime(dropoffDatetime) ||
+      !pickupLocationId ||
+      !dropoffLocationId ||
+      basket.length === 0
+    ) {
+      return;
+    }
     if (
       lastQuotedDatesRef.current.pickup === pickupDatetime &&
       lastQuotedDatesRef.current.dropoff === dropoffDatetime
@@ -244,9 +254,34 @@ export default function BasketPage() {
             <img src={pawPrint} alt="" className="mb-6 h-16 w-16 bg-transparent opacity-20 grayscale" />
             <h2 className="mb-2 text-center font-headline text-3xl font-black text-charcoal-brand">Your basket is empty</h2>
             <p className="mb-8 text-center text-charcoal-brand/60">Find your perfect ride and add it to your basket</p>
-            <PrimaryCtaButton type="button" onClick={() => navigate('/book/reserve')} className="min-h-[44px] px-10 py-4 font-bold">
+            <button
+              type="button"
+              onClick={() => navigate('/book/reserve')}
+              style={{
+                backgroundColor: '#FCBC5A',
+                color: '#363737',
+                border: '2px solid #363737',
+                borderRadius: '8px',
+                fontWeight: 800,
+                fontSize: '14px',
+                letterSpacing: '0.05em',
+                textTransform: 'uppercase',
+                boxShadow: '3px 3px 0 #363737',
+                fontFamily: 'Lato, sans-serif',
+                padding: '12px 32px',
+                transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translate(-2px, -2px)';
+                e.currentTarget.style.boxShadow = '5px 5px 0 #363737';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = '';
+                e.currentTarget.style.boxShadow = '3px 3px 0 #363737';
+              }}
+            >
               Browse Vehicles
-            </PrimaryCtaButton>
+            </button>
           </div>
         </div>
       </PageLayout>

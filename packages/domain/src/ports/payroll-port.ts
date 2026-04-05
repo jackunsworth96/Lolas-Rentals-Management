@@ -26,6 +26,7 @@ export interface PayslipBreakdown {
   totalDeductions: number;
   netPay: number;
   paidAs: string | null;
+  holidayAdjustment: number;
 }
 
 export interface TipsSummary {

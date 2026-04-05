@@ -73,7 +73,13 @@ export async function runPayroll(
     new Date(input.periodEnd),
   );
 
+  // Build lookup early so per-employee bonuses can be passed to each payslip calc
+  const paymentMap = new Map<string, EmployeePaymentDetail>(
+    input.employeePayments.map((ep) => [ep.employeeId, ep]),
+  );
+
   for (const employee of eligibleEmployees) {
+    const empDetail = paymentMap.get(employee.id);
     const payslip = await calculatePayslip(
       {
         employeeId: employee.id,
@@ -82,6 +88,7 @@ export async function runPayroll(
         periodEnd: input.periodEnd,
         isEndOfMonth: input.isEndOfMonth,
         workingDaysInMonth: input.workingDaysInMonth,
+        bonuses: empDetail?.bonuses ?? 0,
       },
       deps,
     );
@@ -96,10 +103,7 @@ export async function runPayroll(
   const txDate = now.toISOString().slice(0, 10);
   const txPeriod = txDate.slice(0, 7);
 
-  // Build a map for quick payment detail lookup
-  const paymentMap = new Map<string, EmployeePaymentDetail>(
-    input.employeePayments.map((ep) => [ep.employeeId, ep]),
-  );
+  // paymentMap already built above for per-employee bonus lookup
 
   const payrollTransactions: Array<{
     transactionId: string;

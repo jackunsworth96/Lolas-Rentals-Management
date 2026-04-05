@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useBookingStore } from '../../stores/bookingStore.js';
 import { api } from '../../api/client.js';
-import { PrimaryCtaButton } from '../public/PrimaryCtaButton.js';
+import { hasBookingDatetimeWithTime } from '../../utils/booking-datetime.js';
+import BorderGlow from '../home/BorderGlow.js';
+
 
 export interface LocationRow {
   id: number;
@@ -36,8 +38,6 @@ function generateTimeSlots(): { value: string; label: string }[] {
 }
 
 const ALL_TIME_SLOTS = generateTimeSlots();
-const DEFAULT_PICKUP_TIME = '09:15';
-const DEFAULT_DROPOFF_TIME = '16:45';
 
 function todayStr(): string {
   const d = new Date();
@@ -69,6 +69,7 @@ function getAvailableDropoffSlots(
   if (!pickupDate || !dropoffDate) return ALL_TIME_SLOTS;
   if (dropoffDate > pickupDate) return ALL_TIME_SLOTS;
   if (dropoffDate === pickupDate) {
+    if (!pickupTime) return ALL_TIME_SLOTS;
     const pickupMins = timeToMinutes(pickupTime);
     return ALL_TIME_SLOTS.filter((s) => timeToMinutes(s.value) > pickupMins);
   }
@@ -76,7 +77,7 @@ function getAvailableDropoffSlots(
 }
 
 const inputClass =
-  'w-full rounded-2xl border-none bg-cream-brand px-4 py-3 font-medium text-charcoal-brand transition-all duration-200 focus:scale-[1.01] focus:ring-2 focus:ring-teal-brand';
+  'w-full rounded-xl border border-[#d1c4b0] bg-white px-4 py-2.5 text-sm font-medium text-charcoal-brand shadow-sm transition-all duration-200 focus:border-[#00577C] focus:outline-none focus:ring-2 focus:ring-[#00577C]/25';
 
 function isStoreLocation(loc: LocationRow): boolean {
   if (loc.locationType === 'store') return true;
@@ -98,9 +99,15 @@ export function SearchBar({ onSearch, searching }: SearchBarProps) {
   const setLocations = useBookingStore((s) => s.setLocations);
 
   const pickupDate = pickupDatetime.slice(0, 10);
-  const pickupTime = pickupDatetime.slice(11, 16) || DEFAULT_PICKUP_TIME;
+  const pickupTime =
+    pickupDatetime.includes('T') && pickupDatetime.slice(11, 16).length === 5
+      ? pickupDatetime.slice(11, 16)
+      : '';
   const dropoffDate = dropoffDatetime.slice(0, 10);
-  const dropoffTime = dropoffDatetime.slice(11, 16) || DEFAULT_DROPOFF_TIME;
+  const dropoffTime =
+    dropoffDatetime.includes('T') && dropoffDatetime.slice(11, 16).length === 5
+      ? dropoffDatetime.slice(11, 16)
+      : '';
 
   const [dateError, setDateError] = useState('');
 
@@ -112,6 +119,7 @@ export function SearchBar({ onSearch, searching }: SearchBarProps) {
 
   function validateDates(pDate: string, pTime: string, dDate: string, dTime: string): boolean {
     if (!pDate || !dDate) { setDateError(''); return true; }
+    if (!pTime || !dTime) { setDateError(''); return true; }
     const pickup = new Date(`${pDate}T${pTime}`);
     const dropoff = new Date(`${dDate}T${dTime}`);
     if (dropoff <= pickup) {
@@ -122,18 +130,30 @@ export function SearchBar({ onSearch, searching }: SearchBarProps) {
     return true;
   }
 
+  /** Date-only until a time is chosen — no default pickup time. */
   function updatePickup(date: string, time: string) {
-    const newTime = time || DEFAULT_PICKUP_TIME;
-    const newPickup = date ? `${date}T${newTime}` : '';
+    let newPickup = '';
+    if (date && time) {
+      newPickup = `${date}T${time}`;
+    } else if (date) {
+      newPickup = date;
+    }
     setDates(newPickup, dropoffDatetime);
-    if (date) validateDates(date, newTime, dropoffDate, dropoffTime);
+    if (date && time) validateDates(date, time, dropoffDate, dropoffTime);
+    else setDateError('');
   }
 
+  /** Date-only until a return time is chosen — no default dropoff time. */
   function updateDropoff(date: string, time: string) {
-    const newTime = time || DEFAULT_DROPOFF_TIME;
-    const newDropoff = date ? `${date}T${newTime}` : '';
+    let newDropoff = '';
+    if (date && time) {
+      newDropoff = `${date}T${time}`;
+    } else if (date) {
+      newDropoff = date;
+    }
     setDates(pickupDatetime, newDropoff);
-    if (date) validateDates(pickupDate, pickupTime, date, newTime);
+    if (date && time) validateDates(pickupDate, pickupTime, date, time);
+    else setDateError('');
   }
 
   const { data: locations } = useQuery<LocationRow[]>({
@@ -160,69 +180,48 @@ export function SearchBar({ onSearch, searching }: SearchBarProps) {
     }
   }, [storeLocationId, pickupLocationId, setLocations]);
 
-  useEffect(() => {
-    if (!pickupDate) return;
-    const slots = getAvailablePickupSlots(pickupDate);
-
-    // Current pickupTime is valid — nothing to correct
-    if (slots.some((s) => s.value === pickupTime)) return;
-
-    let newPickupDate = pickupDate;
-    let newPickupTime: string;
-
-    if (slots.length > 0) {
-      // Today still has future slots — advance to first available
-      newPickupTime = slots[0].value;
-    } else {
-      // All today's slots are past — move to tomorrow at 09:15
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      newPickupDate = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
-      newPickupTime = generateTimeSlots()[0].value;
-    }
-
-    // Re-validate dropoff time against the corrected pickup
-    let newDropoffDatetime = dropoffDatetime;
-    if (dropoffDate) {
-      const dropoffSlots = getAvailableDropoffSlots(newPickupDate, newPickupTime, dropoffDate);
-      if (dropoffSlots.length > 0 && !dropoffSlots.some((s) => s.value === dropoffTime)) {
-        newDropoffDatetime = `${dropoffDate}T${dropoffSlots[0].value}`;
-      }
-    }
-
-    setDates(`${newPickupDate}T${newPickupTime}`, newDropoffDatetime);
-  }, [pickupDate, pickupTime]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const pickupLoc = locations?.find((l) => l.id === pickupLocationId);
   const dropoffLoc = locations?.find((l) => l.id === dropoffLocationId);
   const pickupFee = pickupLoc ? Number(pickupLoc.deliveryCost) : 0;
   const dropoffFee = dropoffLoc ? Number(dropoffLoc.collectionCost) : 0;
 
-  const canSearch = !!storeId && !!pickupDatetime && !!dropoffDatetime && !dateError;
+  const canSearch =
+    !!storeId &&
+    hasBookingDatetimeWithTime(pickupDatetime) &&
+    hasBookingDatetimeWithTime(dropoffDatetime) &&
+    !dateError;
 
   const minPickupDate = todayStr();
 
   return (
-    <div className="rounded-4xl bg-sand-brand p-6 shadow-sm md:p-8">
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+    <BorderGlow
+      glowColor="40 96 67"
+      backgroundColor="#FFFFFF"
+      borderRadius={16}
+      glowIntensity={0.9}
+      coneSpread={30}
+      colors={['#FCBC5A', '#F5A623', '#FAF6F0']}
+    >
+    <div className="rounded-[14px] bg-white/90 p-6 md:p-8">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
         {/* Store — driven from locations API */}
-        <div className="space-y-2">
-          <label className="ml-1 text-xs font-bold uppercase tracking-widest text-teal-brand">Store</label>
+        <div className="space-y-1.5">
+          <label className="ml-1 text-xs font-bold uppercase tracking-wider text-teal-700">Store</label>
           <div className={`${inputClass} flex items-center gap-2`}>
-            <span className="text-teal-brand">📍</span>
-            <span className="font-bold">{storeLocationName}</span>
+            <span>📍</span>
+            <span className="font-semibold">{storeLocationName}</span>
           </div>
         </div>
 
         {/* Pickup Date + Time */}
-        <div className="space-y-2">
-          <label className="ml-1 text-xs font-bold uppercase tracking-widest text-teal-brand">Pickup Date & Time</label>
+        <div className="space-y-1.5">
+          <label className="ml-1 text-xs font-bold uppercase tracking-wider text-teal-700">Pickup Date & Time</label>
           <div className="flex gap-2">
             <input
               type="date"
               value={pickupDate}
               min={minPickupDate}
-              onChange={(e) => updatePickup(e.target.value, pickupTime)}
+              onChange={(e) => updatePickup(e.target.value, '')}
               className={`${inputClass} flex-1`}
             />
             <div className="relative w-28 shrink-0">
@@ -231,46 +230,48 @@ export function SearchBar({ onSearch, searching }: SearchBarProps) {
                 onChange={(e) => updatePickup(pickupDate, e.target.value)}
                 className={`${inputClass} appearance-none pr-7`}
               >
+                <option value="">Time</option>
                 {availablePickupSlots.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
               </select>
-              <span className="pointer-events-none absolute right-3 top-3 text-charcoal-brand/50">▾</span>
+              <span className="pointer-events-none absolute right-2.5 top-2.5 text-charcoal-brand/40 text-xs">▾</span>
             </div>
           </div>
         </div>
 
         {/* Return Date + Time */}
-        <div className="space-y-2">
-          <label className="ml-1 text-xs font-bold uppercase tracking-widest text-teal-brand">Return Date & Time</label>
+        <div className="space-y-1.5">
+          <label className="ml-1 text-xs font-bold uppercase tracking-wider text-teal-700">Return Date & Time</label>
           <div className="flex gap-2">
             <input
               type="date"
               value={dropoffDate}
               min={pickupDate || minPickupDate}
-              onChange={(e) => updateDropoff(e.target.value, dropoffTime)}
-              className={`${inputClass} flex-1 ${dateError ? 'ring-2 ring-red-400' : ''}`}
+              onChange={(e) => updateDropoff(e.target.value, '')}
+              className={`${inputClass} flex-1 ${dateError ? 'border-red-400 ring-2 ring-red-400/20' : ''}`}
             />
             <div className="relative w-28 shrink-0">
               <select
                 value={dropoffTime}
                 onChange={(e) => updateDropoff(dropoffDate, e.target.value)}
-                className={`${inputClass} appearance-none pr-7 ${dateError ? 'ring-2 ring-red-400' : ''}`}
+                className={`${inputClass} appearance-none pr-7 ${dateError ? 'border-red-400 ring-2 ring-red-400/20' : ''}`}
               >
+                <option value="">Time</option>
                 {availableDropoffSlots.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
               </select>
-              <span className="pointer-events-none absolute right-3 top-3 text-charcoal-brand/50">▾</span>
+              <span className="pointer-events-none absolute right-2.5 top-2.5 text-charcoal-brand/40 text-xs">▾</span>
             </div>
           </div>
           {dateError && (
-            <p className="ml-1 text-xs font-bold text-red-500">{dateError}</p>
+            <p className="ml-1 text-xs font-semibold text-red-500">{dateError}</p>
           )}
         </div>
       </div>
 
       {/* Location selectors + Search CTA */}
       {locations && locations.length > 0 && (
-        <div className="mt-6 grid grid-cols-1 gap-6 border-t border-charcoal-brand/10 pt-6 md:grid-cols-3">
-          <div className="space-y-2">
-            <label className="ml-1 text-xs font-bold uppercase tracking-widest text-teal-brand">Pickup Location</label>
+        <div className="mt-5 grid grid-cols-1 gap-5 border-t border-gray-100 pt-5 md:grid-cols-3">
+          <div className="space-y-1.5">
+            <label className="ml-1 text-xs font-bold uppercase tracking-wider text-teal-700">Pickup Location</label>
             <div className="relative">
               <select
                 value={pickupLocationId ?? ''}
@@ -280,15 +281,19 @@ export function SearchBar({ onSearch, searching }: SearchBarProps) {
                 <option value="">Select…</option>
                 {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
-              <span className="pointer-events-none absolute right-3 top-3 text-charcoal-brand/50">▾</span>
+              <span className="pointer-events-none absolute right-2.5 top-2.5 text-charcoal-brand/40 text-xs">▾</span>
             </div>
             {pickupFee > 0 && (
-              <p className="ml-1 text-xs font-bold text-teal-brand">Delivery fee: ₱{pickupFee.toLocaleString()}</p>
+              <p className="ml-1 text-xs font-semibold text-teal-700">
+                Delivery fee:{' '}
+                <span style={{ fontFamily: 'Lato, sans-serif' }}>₱</span>
+                {pickupFee.toLocaleString()}
+              </p>
             )}
           </div>
 
-          <div className="space-y-2">
-            <label className="ml-1 text-xs font-bold uppercase tracking-widest text-teal-brand">Dropoff Location</label>
+          <div className="space-y-1.5">
+            <label className="ml-1 text-xs font-bold uppercase tracking-wider text-teal-700">Return Location</label>
             <div className="relative">
               <select
                 value={dropoffLocationId ?? ''}
@@ -298,28 +303,65 @@ export function SearchBar({ onSearch, searching }: SearchBarProps) {
                 <option value="">Select…</option>
                 {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
-              <span className="pointer-events-none absolute right-3 top-3 text-charcoal-brand/50">▾</span>
+              <span className="pointer-events-none absolute right-2.5 top-2.5 text-charcoal-brand/40 text-xs">▾</span>
             </div>
             {dropoffFee > 0 && (
-              <p className="ml-1 text-xs font-bold text-teal-brand">Collection fee: ₱{dropoffFee.toLocaleString()}</p>
+              <p className="ml-1 text-xs font-semibold text-teal-700">
+                Collection fee:{' '}
+                <span style={{ fontFamily: 'Lato, sans-serif' }}>₱</span>
+                {dropoffFee.toLocaleString()}
+              </p>
             )}
           </div>
 
           <div className="flex items-end">
-            <PrimaryCtaButton
+            <button
               type="button"
               onClick={onSearch}
               disabled={!canSearch || searching}
-              className="flex w-full items-center justify-center gap-2 py-3.5"
+              style={{
+                backgroundColor: '#FCBC5A',
+                color: '#363737',
+                border: '2px solid #363737',
+                borderRadius: 8,
+                fontWeight: 800,
+                fontSize: 14,
+                letterSpacing: '0.05em',
+                textTransform: 'uppercase',
+                boxShadow: '3px 3px 0 #363737',
+                fontFamily: 'Lato, sans-serif',
+                padding: '12px 24px',
+                width: '100%',
+                transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                opacity: !canSearch || searching ? 0.5 : 1,
+                cursor: !canSearch || searching ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+              }}
+              onMouseEnter={(e) => {
+                if (canSearch && !searching) {
+                  e.currentTarget.style.transform = 'translate(-2px,-2px)';
+                  e.currentTarget.style.boxShadow = '5px 5px 0 #363737';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = '';
+                e.currentTarget.style.boxShadow = '3px 3px 0 #363737';
+              }}
             >
               {searching ? (
-                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-charcoal-brand border-t-transparent" />
-              ) : '🔍'}
-              {searching ? 'Searching…' : 'Update Search'}
-            </PrimaryCtaButton>
+                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[#363737] border-t-transparent" />
+              ) : (
+                <span>🔍</span>
+              )}
+              {searching ? 'Searching…' : 'Search Available Vehicles'}
+            </button>
           </div>
         </div>
       )}
     </div>
+    </BorderGlow>
   );
 }

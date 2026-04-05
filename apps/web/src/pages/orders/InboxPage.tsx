@@ -4,10 +4,12 @@ import { useStores } from '../../api/config.js';
 import { Table } from '../../components/common/Table.js';
 import { Badge } from '../../components/common/Badge.js';
 import { BookingModal } from '../../components/orders/BookingModal.js';
+import { CancelOrderModal } from '../../components/orders/CancelOrderModal.js';
 import { formatDateTime } from '../../utils/date.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { extractPickupDate } from '../../utils/raw-order-payload.js';
 import { resolveSourceFromStore } from '@lolas/shared';
+import { useAuthStore } from '../../stores/auth-store.js';
 
 type DateFilter = 'all' | 'today' | 'tomorrow';
 
@@ -94,6 +96,9 @@ export default function InboxPage() {
   const { data: stores } = useStores() as { data: Array<{ id: string; name: string }> | undefined };
 
   const [selectedOrder, setSelectedOrder] = useState<RawOrder | null>(null);
+  const [cancelOrder, setCancelOrder] = useState<RawOrder | null>(null);
+
+  const canCancelOrders = useAuthStore((s) => s.hasPermission('can_edit_orders'));
 
   const todayStr = useMemo(() => toLocalDateStr(new Date()), []);
   const tomorrowStr = useMemo(() => {
@@ -201,6 +206,26 @@ export default function InboxPage() {
         </Badge>
       ),
     },
+    ...(canCancelOrders
+      ? [
+          {
+            key: 'actions',
+            header: '',
+            render: (r: RawOrder) => (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCancelOrder(r);
+                }}
+                className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 hover:border-red-400"
+              >
+                Cancel
+              </button>
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -301,6 +326,15 @@ export default function InboxPage() {
           open={!!selectedOrder}
           onClose={() => setSelectedOrder(null)}
           rawOrder={selectedOrder}
+        />
+      )}
+
+      {cancelOrder && (
+        <CancelOrderModal
+          open={!!cancelOrder}
+          onClose={() => setCancelOrder(null)}
+          rawOrder={cancelOrder}
+          onCancelled={() => setCancelOrder(null)}
         />
       )}
     </div>

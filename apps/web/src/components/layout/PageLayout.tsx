@@ -153,7 +153,7 @@ export function PageLayout({
 
       <ClickSpark sparkColor="#FCBC5A" sparkSize={10} sparkRadius={14} sparkCount={8} duration={400} easing="ease-out" extraScale={1} />
 
-      <nav className="fixed bottom-0 left-0 z-50 flex h-20 w-full items-center justify-around rounded-t-[3rem] bg-cream-brand px-4 pb-4 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] md:hidden">
+      <nav className="fixed bottom-0 left-0 z-50 flex h-20 w-full items-center justify-around bg-cream-brand px-4 pb-4 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] md:hidden">
         {BOTTOM_NAV.map((n) => (
           <Link
             key={n.to}

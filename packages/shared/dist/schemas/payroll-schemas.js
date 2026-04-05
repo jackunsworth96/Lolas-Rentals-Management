@@ -12,6 +12,7 @@ export const EmployeePaymentDetailSchema = z.object({
     paymentMethod: z.enum(['cash', 'gcash', 'bank_transfer']),
     fromTill: z.number().nonnegative().optional(),
     fromSafe: z.number().nonnegative().optional(),
+    bonuses: z.number().nonnegative().default(0).optional(),
 });
 export const RunPayrollPreviewRequestSchema = z.object({
     storeId: z.string(),
