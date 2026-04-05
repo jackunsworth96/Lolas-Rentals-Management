@@ -99,3 +99,22 @@ export function useTransferFunds() {
     },
   });
 }
+
+export interface OwnerDrawingsPayload {
+  amount: number;
+  paymentMethod: 'cash' | 'gcash' | 'bank_transfer';
+  date: string;
+  note?: string;
+}
+
+export function usePostOwnerDrawings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: OwnerDrawingsPayload) => api.post('/accounting/drawings', body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['balances'] });
+      qc.invalidateQueries({ queryKey: ['balances-v2'] });
+      qc.invalidateQueries({ queryKey: ['journal-entries'] });
+    },
+  });
+}

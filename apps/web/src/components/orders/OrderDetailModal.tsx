@@ -8,6 +8,7 @@ import { formatCurrency } from '../../utils/currency.js';
 import { usePaymentRouting } from '../../hooks/use-payment-routing.js';
 import { formatDate } from '../../utils/date.js';
 import type { EnrichedOrder } from '../../types/api.js';
+import { useCustomerPawCardSavings } from '../../api/paw-card.js';
 
 function moneyAmount(val: unknown): number {
   if (val == null) return 0;
@@ -36,7 +37,6 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
   const [settlementRef, setSettlementRef] = useState('');
 
   // ── Swap vehicle state ──
-  const [swapOrderItemId, setSwapOrderItemId] = useState('');
   const [swapNewVehicleId, setSwapNewVehicleId] = useState('');
   const [swapReason, setSwapReason] = useState('');
 
@@ -76,6 +76,15 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
   const modifyAddonsMut = useModifyAddons();
   const adjustDatesMut = useAdjustDates();
   const routing = usePaymentRouting();
+
+  const customerEmailForPaw = useMemo(
+    () =>
+      enrichedData?.customerEmail?.trim() ||
+      (order as { customerEmail?: string | null } | undefined)?.customerEmail?.trim() ||
+      undefined,
+    [enrichedData?.customerEmail, order],
+  );
+  const { data: pawCardSavings } = useCustomerPawCardSavings(customerEmailForPaw);
 
   // ── Date editing state ──
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -425,12 +434,12 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
 
   const handleSwapVehicle = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!swapOrderItemId || !swapNewVehicleId || !swapReason.trim()) return;
+    const currentItem = itemsList[0];
+    if (!currentItem || !swapNewVehicleId || !swapReason.trim()) return;
     swapVehicle.mutate(
-      { id: orderId, orderItemId: swapOrderItemId, newVehicleId: swapNewVehicleId, reason: swapReason.trim() },
+      { id: orderId, orderItemId: currentItem.id, newVehicleId: swapNewVehicleId, reason: swapReason.trim() },
       {
         onSuccess: () => {
-          setSwapOrderItemId('');
           setSwapNewVehicleId('');
           setSwapReason('');
         },
@@ -493,10 +502,17 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
           {/* Customer & Vehicle header */}
           <div className="rounded-lg bg-gray-50 p-4">
             <div className="flex flex-wrap gap-6">
-              <div>
+              <div className="min-w-0 max-w-md">
                 <div className="text-xs font-medium uppercase text-gray-500">Customer</div>
                 <div className="text-base font-semibold text-gray-900">{customerName}</div>
                 {customerMobile && <div className="text-sm text-gray-500">{customerMobile}</div>}
+                {pawCardSavings?.hasPawCard && (
+                  <div className="mt-2 rounded-md border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs text-teal-900">
+                    <span className="mr-1" aria-hidden>🐾</span>
+                    Paw Card member — {formatCurrency(pawCardSavings.totalSaved)} total savings across{' '}
+                    {pawCardSavings.entryCount} {pawCardSavings.entryCount === 1 ? 'visit' : 'visits'}
+                  </div>
+                )}
               </div>
               {vehicleNames && (
                 <div>
@@ -647,16 +663,12 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
               <section>
                 <h3 className="mb-3 font-medium text-gray-900">Swap Vehicle</h3>
                 <form onSubmit={handleSwapVehicle} className="flex flex-wrap items-end gap-4">
-                  <label className="block">
+                  <div className="block">
                     <span className="text-sm text-gray-600">Current vehicle</span>
-                    <select value={swapOrderItemId} onChange={(e) => setSwapOrderItemId(e.target.value)} required
-                      className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                      <option value="">Select</option>
-                      {itemsList.map((i) => (
-                        <option key={i.id} value={i.id}>{i.vehicleName ?? i.id}</option>
-                      ))}
-                    </select>
-                  </label>
+                    <div className="mt-1 flex h-9 w-48 items-center rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-700">
+                      {itemsList[0]?.vehicleName ?? '—'}
+                    </div>
+                  </div>
                   <label className="block">
                     <span className="text-sm text-gray-600">New vehicle</span>
                     <select value={swapNewVehicleId} onChange={(e) => setSwapNewVehicleId(e.target.value)} required
@@ -672,7 +684,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                     <input type="text" value={swapReason} onChange={(e) => setSwapReason(e.target.value)} required placeholder="e.g. customer request"
                       className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
                   </label>
-                  <button type="submit" disabled={swapVehicle.isPending}
+                  <button type="submit" disabled={swapVehicle.isPending || !itemsList[0]}
                     className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
                     {swapVehicle.isPending ? 'Swapping...' : 'Swap Vehicle'}
                   </button>

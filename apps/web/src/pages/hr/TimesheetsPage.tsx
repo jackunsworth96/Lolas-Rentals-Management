@@ -250,20 +250,24 @@ export default function TimesheetsPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-gray-900">Timesheets</h1>
-        <div className="flex items-center gap-3">
-          <select
-            value={storeId}
-            onChange={(e) => setStoreId(e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          >
-            <option value="">Select store...</option>
-            <option value="all">All Stores</option>
-            {storeList.map((s) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
+        <div className="flex items-start gap-3">
+          <div className="border-l-2 border-teal-500 pl-3">
+            <p className="mb-1 text-xs text-gray-400">Viewing:</p>
+            <select
+              value={storeId}
+              onChange={(e) => setStoreId(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            >
+              <option value="">Select store...</option>
+              <option value="all">All Stores</option>
+              {storeList.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-400">Overrides your default store for this page</p>
+          </div>
           <input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-          <span className="text-gray-400">–</span>
+          <span className="mt-2 text-gray-400">–</span>
           <input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
         </div>
       </div>
@@ -319,6 +323,7 @@ export default function TimesheetsPage() {
                       <span className="text-sm text-gray-600">Common Time In</span>
                       <input
                         type="time"
+                        step={900}
                         value={commonTimeIn}
                         onChange={(e) => setCommonTimeIn(e.target.value)}
                         className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
@@ -328,6 +333,7 @@ export default function TimesheetsPage() {
                       <span className="text-sm text-gray-600">Common Time Out</span>
                       <input
                         type="time"
+                        step={900}
                         value={commonTimeOut}
                         onChange={(e) => setCommonTimeOut(e.target.value)}
                         className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
@@ -419,10 +425,10 @@ export default function TimesheetsPage() {
                           {!isLeaveDayType && (
                             <>
                               <td className="px-3 py-2">
-                                <input type="time" value={row.timeIn} onChange={(e) => updateRow(idx, { timeIn: e.target.value })} className="w-24 rounded border border-gray-300 px-2 py-1 text-sm" />
+                                <input type="time" step={900} value={row.timeIn} onChange={(e) => updateRow(idx, { timeIn: e.target.value })} className="w-24 rounded border border-gray-300 px-2 py-1 text-sm" />
                               </td>
                               <td className="px-3 py-2">
-                                <input type="time" value={row.timeOut} onChange={(e) => updateRow(idx, { timeOut: e.target.value })} className="w-24 rounded border border-gray-300 px-2 py-1 text-sm" />
+                                <input type="time" step={900} value={row.timeOut} onChange={(e) => updateRow(idx, { timeOut: e.target.value })} className="w-24 rounded border border-gray-300 px-2 py-1 text-sm" />
                               </td>
                               <td className="px-3 py-2 tabular-nums text-gray-700">{hours.regular || '—'}</td>
                               <td className="px-3 py-2 tabular-nums text-gray-700">{hours.overtime || '—'}</td>

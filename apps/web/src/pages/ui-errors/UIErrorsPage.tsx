@@ -13,6 +13,7 @@ import { Table } from '../../components/common/Table.js';
 
 /** Pages staff can pick when reporting — mirrors main nav + common areas */
 const REPORT_PAGE_OPTIONS: { value: string; label: string }[] = [
+  { value: '/dashboard', label: 'Dashboard' },
   { value: '/orders/inbox', label: 'Orders — Inbox' },
   { value: '/orders/active', label: 'Orders — Active' },
   { value: '/orders/completed', label: 'Orders — Completed' },
@@ -31,7 +32,6 @@ const REPORT_PAGE_OPTIONS: { value: string; label: string }[] = [
   { value: '/misc-sales', label: 'Misc Sales' },
   { value: '/merchandise', label: 'Merchandise' },
   { value: '/book/paw-card', label: 'Paw Card' },
-  { value: '/merchandise', label: 'Merchandise' },
   { value: '/lost-opportunity', label: 'Lost Opportunity' },
   { value: '/settings', label: 'Settings' },
   { value: '/ui-errors', label: 'UI Errors (this page)' },

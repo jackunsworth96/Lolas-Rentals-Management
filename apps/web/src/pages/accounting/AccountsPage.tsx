@@ -6,6 +6,7 @@ import { COMPANY_STORE_ID } from '@lolas/shared';
 import { formatCurrency } from '../../utils/currency.js';
 import { Badge } from '../../components/common/Badge.js';
 import { Button } from '../../components/common/Button.js';
+import { OwnerDrawingsModal } from '../../components/accounting/OwnerDrawingsModal.js';
 
 const TYPE_ORDER = ['Asset', 'Liability', 'Income', 'Expense', 'Equity'];
 const TYPE_COLORS: Record<string, string> = {
@@ -69,6 +70,7 @@ export default function AccountsPage() {
   const { data, isLoading } = useBalancesV2(storeId, month, half);
 
   const [showTransfer, setShowTransfer] = useState(false);
+  const [showDrawings, setShowDrawings] = useState(false);
   const months = useMemo(monthOptions, []);
 
   const nonCompanyStoreCount = useMemo(
@@ -124,10 +126,13 @@ export default function AccountsPage() {
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold text-gray-900">Accounts</h1>
           <Button size="sm" onClick={() => setShowTransfer(true)}>Transfer Funds</Button>
+          <Button size="sm" variant="secondary" onClick={() => setShowDrawings(true)}>Owner Drawings</Button>
         </div>
         <div className="flex items-center gap-3">
           {/* Store filter */}
-          <div className="flex items-center">
+          <div className="border-l-2 border-teal-500 pl-3">
+            <p className="mb-1 text-xs text-gray-400">Viewing:</p>
+            <div className="flex items-center">
             <select
               value={storeId}
               onChange={(e) => setStoreId(e.target.value)}
@@ -149,6 +154,8 @@ export default function AccountsPage() {
                 ({nonCompanyStoreCount} {nonCompanyStoreCount === 1 ? 'store' : 'stores'})
               </span>
             )}
+            </div>
+            <p className="mt-1 text-xs text-gray-400">Overrides your default store for this page</p>
           </div>
 
           {/* Month selector */}
@@ -266,6 +273,11 @@ export default function AccountsPage() {
       {showTransfer && (
         <TransferFundsModal onClose={() => setShowTransfer(false)} />
       )}
+
+      <OwnerDrawingsModal
+        isOpen={showDrawings}
+        onClose={() => setShowDrawings(false)}
+      />
     </div>
   );
 }

@@ -16,6 +16,7 @@ import {
   type TransferRow,
   type CharityDonationRow,
 } from '../../api/cashup.js';
+import { BeforeCloseModal } from '../../components/cashup/BeforeCloseModal.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { formatTime } from '../../utils/date.js';
 import { Button } from '../../components/common/Button.js';
@@ -142,6 +143,9 @@ export default function CashupPage() {
     : 0;
   const tillVariance = tillTotal - expectedCashSales;
   const depVariance = depEnvTotal - expectedDepositsHeld;
+
+  // Before-close gate
+  const [showBeforeCloseModal, setShowBeforeCloseModal] = useState(false);
 
   // Modals
   const [showReconcileModal, setShowReconcileModal] = useState(false);
@@ -372,20 +376,23 @@ export default function CashupPage() {
       </div>
 
       {/* Store tabs — Lola's first */}
-      <div className="mb-4 flex gap-1 rounded-lg bg-gray-100 p-1">
-        {sortedStores.map((s) => (
-          <button
-            key={s.id}
-            onClick={() => setStoreId(s.id)}
-            className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-              storeId === s.id
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            {s.name}
-          </button>
-        ))}
+      <div className="mb-4 border-l-2 border-teal-500 pl-3">
+        <p className="mb-1.5 text-xs text-gray-400">Viewing:</p>
+        <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
+          {sortedStores.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => setStoreId(s.id)}
+              className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+                storeId === s.id
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              {s.name}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Date navigation */}
@@ -713,7 +720,7 @@ export default function CashupPage() {
             <div className="flex gap-3">
               <Button
                 className="flex-1"
-                onClick={() => setShowReconcileModal(true)}
+                onClick={() => setShowBeforeCloseModal(true)}
                 disabled={tillTotal === 0}
               >
                 Reconcile Day
@@ -763,6 +770,19 @@ export default function CashupPage() {
         <div className="rounded-lg bg-white p-12 text-center shadow-sm">
           <p className="text-gray-500">Select a store to view Cash Up</p>
         </div>
+      )}
+
+      {/* ── Before-close gate ── */}
+      {showBeforeCloseModal && (
+        <BeforeCloseModal
+          storeId={storeId}
+          date={date}
+          onProceed={() => {
+            setShowBeforeCloseModal(false);
+            setShowReconcileModal(true);
+          }}
+          onCancel={() => setShowBeforeCloseModal(false)}
+        />
       )}
 
       {/* ── Reconcile Confirmation Modal ── */}

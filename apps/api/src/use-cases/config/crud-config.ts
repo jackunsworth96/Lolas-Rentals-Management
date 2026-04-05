@@ -66,9 +66,10 @@ export async function getFleetStatuses(
 }
 
 export async function getExpenseCategories(
+  storeId: string,
   deps: ConfigDeps,
 ): Promise<ExpenseCategory[]> {
-  return deps.config.getExpenseCategories();
+  return deps.config.getExpenseCategories(storeId);
 }
 
 export async function getTransferRoutes(

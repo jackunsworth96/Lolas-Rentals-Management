@@ -45,6 +45,8 @@ export interface EnrichedOrder {
   orderDate: string;
   customerName: string;
   customerMobile: string | null;
+  /** From customers table — used for Paw Card savings lookup */
+  customerEmail: string | null;
   vehicleNames: string;
   returnDatetime: string | null;
   wooOrderId: string | null;

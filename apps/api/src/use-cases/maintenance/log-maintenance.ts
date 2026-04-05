@@ -19,7 +19,6 @@ export interface LogMaintenanceInput {
   odometer: number | null;
   employeeId: string | null;
   storeId: string;
-  startImmediately: boolean;
   downtimeStart: string | null;
   notes: string | null;
   partsReplaced?: unknown | null;
@@ -28,6 +27,7 @@ export interface LogMaintenanceInput {
   paidFrom?: string | null;
   expenseAccountId?: string | null;
   cashAccountId?: string | null;
+  expenseStatus?: 'paid' | 'unpaid';
 }
 
 function buildDescription(vehicleName: string | null, issue: string | null): string {
@@ -46,7 +46,7 @@ export async function logMaintenance(
   }
 
   const downtimeStart = input.downtimeStart ?? new Date().toISOString().split('T')[0];
-  const downtimeTracked = !!input.downtimeStart || input.startImmediately;
+  const downtimeTracked = !!input.downtimeStart;
 
   const partsCost = input.partsCost ?? 0;
   const laborCost = input.laborCost ?? 0;
@@ -82,21 +82,26 @@ export async function logMaintenance(
     createdAt: new Date(),
   });
 
-  if (input.startImmediately) {
-    record.startWork();
-  }
-
-  if (input.startImmediately && vehicle.canAutoUpdateStatus()) {
+  if (downtimeTracked && vehicle.canAutoUpdateStatus()) {
     await deps.fleet.updateStatus(vehicle.id, 'Under Maintenance');
   }
 
   await deps.maintenance.save(record);
 
-  if (totalCost > 0 && resolvedCashAccountId) {
+  const expenseStatus = input.expenseStatus ?? 'paid';
+
+  // For unpaid expenses we still need an expense account but cashAccountId
+  // may not be set — resolve a fallback so the RPC has a valid account_id.
+  if (totalCost > 0 && (resolvedCashAccountId || expenseStatus === 'unpaid')) {
     const expenseAccountId =
       input.expenseAccountId ??
       (await getMaintenanceExpenseAccount(input.storeId)) ??
-      resolvedCashAccountId;
+      resolvedCashAccountId ??
+      '';
+
+    const cashAccId =
+      resolvedCashAccountId ??
+      expenseAccountId;
 
     await upsertMaintenanceExpensesRpc({
       maintenanceId: record.id,
@@ -106,9 +111,10 @@ export async function logMaintenance(
       employeeId: record.employeeId,
       partsCost,
       laborCost,
-      cashAccountId: resolvedCashAccountId,
+      cashAccountId: cashAccId,
       expenseAccountId,
       issueDescription: input.issueDescription,
+      expenseStatus,
     });
   }
 

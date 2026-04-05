@@ -35,6 +35,7 @@ export interface EmployeeRow {
   ninePmBonusRate: number;
   commissionRate: number;
   paidAs: string | null;
+  defaultPaymentMethod: string;
   monthlyBikeAllowance: number;
   bikeAllowanceUsed: number;
   bikeAllowanceAccrued: number;
@@ -156,14 +157,36 @@ export function useDeactivateEmployee() {
   });
 }
 
+export interface EmployeePaymentDetail {
+  employeeId: string;
+  paymentMethod: 'cash' | 'gcash' | 'bank_transfer';
+  fromTill?: number;
+  fromSafe?: number;
+}
+
+export interface PayslipPreview {
+  employeeId: string;
+  employeeName: string;
+  grossPay: number;
+  netPay: number;
+  deductions: number;
+}
+
 export interface RunPayrollPayload {
   storeId: string;
   periodStart: string;
   periodEnd: string;
   isEndOfMonth: boolean;
   workingDaysInMonth: number;
-  payrollExpenseAccountId: string;
-  cashAccountId: string;
+  employeePayments: EmployeePaymentDetail[];
+}
+
+export interface RunPayrollPreviewPayload {
+  storeId: string;
+  periodStart: string;
+  periodEnd: string;
+  isEndOfMonth: boolean;
+  workingDaysInMonth: number;
 }
 
 export interface RunPayrollResult {
@@ -176,6 +199,13 @@ export interface RunPayrollResult {
   totalNetPay: number;
   totalGrossPay: number;
   employeeCount: number;
+}
+
+export function usePreviewPayroll() {
+  return useMutation({
+    mutationFn: (body: RunPayrollPreviewPayload) =>
+      api.post<PayslipPreview[]>('/payroll/preview', body),
+  });
 }
 
 export function useRunPayroll() {

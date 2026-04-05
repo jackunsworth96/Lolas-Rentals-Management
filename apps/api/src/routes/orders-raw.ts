@@ -11,7 +11,7 @@ router.use(authenticate);
 
 router.get('/', requirePermission(Permission.ViewInbox), async (req, res, next) => {
   try {
-    const { store, status } = req.query as { store?: string; status?: string };
+    const { store, status, search } = req.query as { store?: string; status?: string; search?: string };
 
     let query = supabase
       .from('orders_raw')
@@ -21,6 +21,13 @@ router.get('/', requirePermission(Permission.ViewInbox), async (req, res, next) 
     if (store) query = query.eq('source', store);
     if (status) query = query.eq('status', status);
     else query = query.eq('status', 'unprocessed');
+
+    if (search && search.trim()) {
+      const term = `%${search.trim()}%`;
+      query = query.or(
+        `order_reference.ilike.${term},customer_name.ilike.${term},customer_email.ilike.${term},customer_mobile.ilike.${term},vehicle_model_id.ilike.${term}`,
+      );
+    }
 
     const { data, error } = await query;
     if (error) throw new Error(error.message);

@@ -20,6 +20,7 @@ interface EmployeeRow {
   nine_pm_bonus_rate: number;
   commission_rate: number;
   paid_as: string | null;
+  default_payment_method: string;
   monthly_bike_allowance: number;
   bike_allowance_used: number;
   bike_allowance_accrued: number;
@@ -59,6 +60,7 @@ function rowToEmployee(row: EmployeeRow): Employee {
     ninePmBonusRate: row.nine_pm_bonus_rate ?? 0,
     commissionRate: row.commission_rate ?? 0,
     paidAs: row.paid_as,
+    defaultPaymentMethod: row.default_payment_method ?? 'cash',
     monthlyBikeAllowance: row.monthly_bike_allowance ?? 0,
     bikeAllowanceUsed: row.bike_allowance_used ?? 0,
     bikeAllowanceAccrued: row.bike_allowance_accrued ?? 0,
@@ -99,6 +101,7 @@ function employeeToRow(employee: Employee): Record<string, unknown> {
     nine_pm_bonus_rate: employee.ninePmBonusRate,
     commission_rate: employee.commissionRate,
     paid_as: employee.paidAs,
+    default_payment_method: employee.defaultPaymentMethod,
     monthly_bike_allowance: employee.monthlyBikeAllowance,
     bike_allowance_used: employee.bikeAllowanceUsed,
     bike_allowance_accrued: employee.bikeAllowanceAccrued,

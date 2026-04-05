@@ -42,13 +42,13 @@ export declare const SavePaymentMethodRequestSchema: z.ZodObject<{
     accountId: z.ZodNumber;
     isActive: z.ZodOptional<z.ZodBoolean>;
 }, "strip", z.ZodTypeAny, {
-    accountId: number;
     name: string;
+    accountId: number;
     id?: number | undefined;
     isActive?: boolean | undefined;
 }, {
-    accountId: number;
     name: string;
+    accountId: number;
     id?: number | undefined;
     isActive?: boolean | undefined;
 }>;
@@ -77,14 +77,14 @@ export declare const SaveAccountRequestSchema: z.ZodObject<{
     parentAccountId: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
     isActive: z.ZodOptional<z.ZodBoolean>;
 }, "strip", z.ZodTypeAny, {
-    accountType: "expense" | "asset" | "liability" | "equity" | "revenue";
     name: string;
+    accountType: "asset" | "liability" | "equity" | "revenue" | "expense";
     id?: number | undefined;
     isActive?: boolean | undefined;
     parentAccountId?: number | null | undefined;
 }, {
-    accountType: "expense" | "asset" | "liability" | "equity" | "revenue";
     name: string;
+    accountType: "asset" | "liability" | "equity" | "revenue" | "expense";
     id?: number | undefined;
     isActive?: boolean | undefined;
     parentAccountId?: number | null | undefined;
@@ -95,12 +95,12 @@ export declare const SaveRoleRequestSchema: z.ZodObject<{
     name: z.ZodString;
     permissions: z.ZodArray<z.ZodString, "many">;
 }, "strip", z.ZodTypeAny, {
-    permissions: string[];
     name: string;
+    permissions: string[];
     id?: number | undefined;
 }, {
-    permissions: string[];
     name: string;
+    permissions: string[];
     id?: number | undefined;
 }>;
 export type SaveRoleRequest = z.infer<typeof SaveRoleRequestSchema>;
@@ -120,6 +120,7 @@ export declare const CreateEmployeeRequestSchema: z.ZodObject<{
     ninePmBonusRate: z.ZodDefault<z.ZodNumber>;
     commissionRate: z.ZodDefault<z.ZodNumber>;
     paidAs: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    defaultPaymentMethod: z.ZodDefault<z.ZodEnum<["cash", "gcash", "bank_transfer"]>>;
     monthlyBikeAllowance: z.ZodDefault<z.ZodNumber>;
     holidayAllowance: z.ZodDefault<z.ZodNumber>;
     sickAllowance: z.ZodDefault<z.ZodNumber>;
@@ -132,23 +133,24 @@ export declare const CreateEmployeeRequestSchema: z.ZodObject<{
     pagibigDeductionAmt: z.ZodDefault<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     status: "Active" | "Inactive";
-    storeId: string;
     fullName: string;
+    storeId: string;
     basicRate: number;
     overtimeRate: number;
     ninePmBonusRate: number;
     commissionRate: number;
+    defaultPaymentMethod: "cash" | "gcash" | "bank_transfer";
     monthlyBikeAllowance: number;
     holidayAllowance: number;
     sickAllowance: number;
     sssDeductionAmt: number;
     philhealthDeductionAmt: number;
     pagibigDeductionAmt: number;
-    startDate?: string | null | undefined;
     role?: string | null | undefined;
     birthday?: string | null | undefined;
     emergencyContactName?: string | null | undefined;
     emergencyContactNumber?: string | null | undefined;
+    startDate?: string | null | undefined;
     probationEndDate?: string | null | undefined;
     rateType?: "daily" | "monthly" | null | undefined;
     paidAs?: string | null | undefined;
@@ -157,14 +159,14 @@ export declare const CreateEmployeeRequestSchema: z.ZodObject<{
     pagibigNo?: string | null | undefined;
     tin?: string | null | undefined;
 }, {
-    storeId: string;
     fullName: string;
+    storeId: string;
     status?: "Active" | "Inactive" | undefined;
-    startDate?: string | null | undefined;
     role?: string | null | undefined;
     birthday?: string | null | undefined;
     emergencyContactName?: string | null | undefined;
     emergencyContactNumber?: string | null | undefined;
+    startDate?: string | null | undefined;
     probationEndDate?: string | null | undefined;
     rateType?: "daily" | "monthly" | null | undefined;
     basicRate?: number | undefined;
@@ -172,6 +174,7 @@ export declare const CreateEmployeeRequestSchema: z.ZodObject<{
     ninePmBonusRate?: number | undefined;
     commissionRate?: number | undefined;
     paidAs?: string | null | undefined;
+    defaultPaymentMethod?: "cash" | "gcash" | "bank_transfer" | undefined;
     monthlyBikeAllowance?: number | undefined;
     holidayAllowance?: number | undefined;
     sickAllowance?: number | undefined;
@@ -200,6 +203,7 @@ export declare const UpdateEmployeeRequestSchema: z.ZodObject<{
     ninePmBonusRate: z.ZodOptional<z.ZodDefault<z.ZodNumber>>;
     commissionRate: z.ZodOptional<z.ZodDefault<z.ZodNumber>>;
     paidAs: z.ZodOptional<z.ZodOptional<z.ZodNullable<z.ZodString>>>;
+    defaultPaymentMethod: z.ZodOptional<z.ZodDefault<z.ZodEnum<["cash", "gcash", "bank_transfer"]>>>;
     monthlyBikeAllowance: z.ZodOptional<z.ZodDefault<z.ZodNumber>>;
     holidayAllowance: z.ZodOptional<z.ZodDefault<z.ZodNumber>>;
     sickAllowance: z.ZodOptional<z.ZodDefault<z.ZodNumber>>;
@@ -213,15 +217,15 @@ export declare const UpdateEmployeeRequestSchema: z.ZodObject<{
 } & {
     id: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    status?: "Active" | "Inactive" | undefined;
     id?: string | undefined;
-    startDate?: string | null | undefined;
-    storeId?: string | undefined;
+    status?: "Active" | "Inactive" | undefined;
     fullName?: string | undefined;
+    storeId?: string | undefined;
     role?: string | null | undefined;
     birthday?: string | null | undefined;
     emergencyContactName?: string | null | undefined;
     emergencyContactNumber?: string | null | undefined;
+    startDate?: string | null | undefined;
     probationEndDate?: string | null | undefined;
     rateType?: "daily" | "monthly" | null | undefined;
     basicRate?: number | undefined;
@@ -229,6 +233,7 @@ export declare const UpdateEmployeeRequestSchema: z.ZodObject<{
     ninePmBonusRate?: number | undefined;
     commissionRate?: number | undefined;
     paidAs?: string | null | undefined;
+    defaultPaymentMethod?: "cash" | "gcash" | "bank_transfer" | undefined;
     monthlyBikeAllowance?: number | undefined;
     holidayAllowance?: number | undefined;
     sickAllowance?: number | undefined;
@@ -240,15 +245,15 @@ export declare const UpdateEmployeeRequestSchema: z.ZodObject<{
     philhealthDeductionAmt?: number | undefined;
     pagibigDeductionAmt?: number | undefined;
 }, {
-    status?: "Active" | "Inactive" | undefined;
     id?: string | undefined;
-    startDate?: string | null | undefined;
-    storeId?: string | undefined;
+    status?: "Active" | "Inactive" | undefined;
     fullName?: string | undefined;
+    storeId?: string | undefined;
     role?: string | null | undefined;
     birthday?: string | null | undefined;
     emergencyContactName?: string | null | undefined;
     emergencyContactNumber?: string | null | undefined;
+    startDate?: string | null | undefined;
     probationEndDate?: string | null | undefined;
     rateType?: "daily" | "monthly" | null | undefined;
     basicRate?: number | undefined;
@@ -256,6 +261,7 @@ export declare const UpdateEmployeeRequestSchema: z.ZodObject<{
     ninePmBonusRate?: number | undefined;
     commissionRate?: number | undefined;
     paidAs?: string | null | undefined;
+    defaultPaymentMethod?: "cash" | "gcash" | "bank_transfer" | undefined;
     monthlyBikeAllowance?: number | undefined;
     holidayAllowance?: number | undefined;
     sickAllowance?: number | undefined;

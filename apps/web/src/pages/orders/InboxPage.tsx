@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useOrdersRaw, type RawOrder } from '../../api/orders-raw.js';
 import { useStores } from '../../api/config.js';
 import { Table } from '../../components/common/Table.js';
@@ -77,9 +77,20 @@ function formatManilaDatetime(dt: string): string {
 export default function InboxPage() {
   const [storeFilter, setStoreFilter] = useState<string>('');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
+  const [searchInput, setSearchInput] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setSearchQuery(searchInput.trim());
+    }, 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchInput]);
 
   const apiStore = storeFilter ? resolveSourceFromStore(storeFilter) : undefined;
-  const { data: rawOrders, isLoading, error } = useOrdersRaw(apiStore);
+  const { data: rawOrders, isLoading, error } = useOrdersRaw(apiStore, undefined, searchQuery || undefined);
   const { data: stores } = useStores() as { data: Array<{ id: string; name: string }> | undefined };
 
   const [selectedOrder, setSelectedOrder] = useState<RawOrder | null>(null);
@@ -206,6 +217,28 @@ export default function InboxPage() {
             {totalCount} unprocessed
           </span>
         )}
+      </div>
+
+      {/* Search bar */}
+      <div className="mb-3 flex items-center gap-2">
+        <div className="relative flex-1 max-w-sm">
+          <input
+            type="text"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Search by order ID, name, vehicle, phone or email"
+            className="w-full rounded-lg border border-gray-300 py-2 pl-3 pr-8 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          {searchInput && (
+            <button
+              onClick={() => { setSearchInput(''); setSearchQuery(''); }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              aria-label="Clear search"
+            >
+              ✕
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filters bar */}

@@ -372,4 +372,17 @@ router.get('/transfer-routes', validateQuery(TransferRoutesQuerySchema), async (
   }
 });
 
+// ── GET /charity-impact (public — no auth) ───────────────────────────────────
+router.get('/charity-impact', async (req, res, next) => {
+  try {
+    const { queryCharityImpact } = await import('./dashboard.js');
+    const { getSupabaseClient } = await import('../adapters/supabase/client.js');
+    const sb = getSupabaseClient();
+    const impact = await queryCharityImpact(sb);
+    res.json({ success: true, data: impact });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export { router as publicBookingRoutes };

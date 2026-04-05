@@ -71,3 +71,21 @@ export function useDashboardSummary(storeId?: string) {
     staleTime: 60_000,
   });
 }
+
+export interface CharityImpact {
+  openingBalance: number;
+  totalRaised: number;
+  totalDonated: number;
+  pendingPayout: number;
+  bookingContributions: number;
+  annualCap: number;
+  annualDonated: number;
+}
+
+export function useCharityImpact() {
+  return useQuery<CharityImpact>({
+    queryKey: ['dashboard', 'charity-impact'],
+    queryFn: () => api.get<CharityImpact>('/dashboard/charity-impact'),
+    staleTime: 5 * 60_000,
+  });
+}

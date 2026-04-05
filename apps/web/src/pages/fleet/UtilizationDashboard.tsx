@@ -67,19 +67,23 @@ export default function UtilizationDashboard() {
             ← Back to fleet
           </Link>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <select
-            value={storeId}
-            onChange={(e) => setStoreId(e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          >
-            <option value="all">All stores</option>
-            {storeList.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="border-l-2 border-teal-500 pl-3">
+            <p className="mb-1 text-xs text-gray-400">Viewing:</p>
+            <select
+              value={storeId}
+              onChange={(e) => setStoreId(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            >
+              <option value="all">All stores</option>
+              {storeList.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-400">Overrides your default store for this page</p>
+          </div>
           <div className="flex rounded-lg border border-gray-300 p-0.5">
             {(['7d', '30d', '90d', 'custom'] as const).map((p) => (
               <button

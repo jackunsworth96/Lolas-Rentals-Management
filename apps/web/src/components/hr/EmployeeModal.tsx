@@ -83,6 +83,7 @@ function blankForm(): Record<string, unknown> {
     ninePmBonusRate: 0,
     commissionRate: 0,
     paidAs: '',
+    defaultPaymentMethod: 'cash',
     monthlyBikeAllowance: 0,
     holidayAllowance: 0,
     sickAllowance: 0,
@@ -113,6 +114,7 @@ function employeeToForm(e: EmployeeRow): Record<string, unknown> {
     ninePmBonusRate: e.ninePmBonusRate ?? 0,
     commissionRate: e.commissionRate ?? 0,
     paidAs: e.paidAs ?? '',
+    defaultPaymentMethod: e.defaultPaymentMethod ?? 'cash',
     monthlyBikeAllowance: e.monthlyBikeAllowance ?? 0,
     holidayAllowance: e.holidayAllowance ?? 0,
     sickAllowance: e.sickAllowance ?? 0,
@@ -383,6 +385,19 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
                       <option value="Cash">Cash</option>
                       <option value="GCash">GCash</option>
                       <option value="Bank Transfer">Bank Transfer</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Default Payment Method</label>
+                    <select
+                      value={String(form.defaultPaymentMethod ?? 'cash')}
+                      onChange={(e) => set('defaultPaymentMethod', e.target.value)}
+                      disabled={!editing}
+                      className={inputCls}
+                    >
+                      <option value="cash">Cash</option>
+                      <option value="gcash">GCash</option>
+                      <option value="bank_transfer">Bank Transfer</option>
                     </select>
                   </div>
                 </div>

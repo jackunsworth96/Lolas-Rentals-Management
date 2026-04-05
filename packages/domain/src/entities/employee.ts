@@ -17,6 +17,7 @@ export interface EmployeeProps {
   ninePmBonusRate: number;
   commissionRate: number;
   paidAs: string | null;
+  defaultPaymentMethod: string;
   monthlyBikeAllowance: number;
   bikeAllowanceUsed: number;
   bikeAllowanceAccrued: number;
@@ -55,6 +56,7 @@ export class Employee {
   readonly ninePmBonusRate: number;
   readonly commissionRate: number;
   readonly paidAs: string | null;
+  readonly defaultPaymentMethod: string;
   readonly monthlyBikeAllowance: number;
   readonly thirteenthMonthAccrued: number;
   readonly currentCashAdvance: number;
@@ -93,6 +95,7 @@ export class Employee {
     this.ninePmBonusRate = props.ninePmBonusRate;
     this.commissionRate = props.commissionRate;
     this.paidAs = props.paidAs;
+    this.defaultPaymentMethod = props.defaultPaymentMethod ?? 'cash';
     this.monthlyBikeAllowance = props.monthlyBikeAllowance;
     this.thirteenthMonthAccrued = props.thirteenthMonthAccrued;
     this.currentCashAdvance = props.currentCashAdvance;

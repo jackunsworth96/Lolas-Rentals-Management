@@ -42,6 +42,27 @@ describe('calculatePayroll', () => {
     expect(result.overtimePay).toBe(1000);
   });
 
+  it('falls back to basic_rate/8 per hour when overtime rate is zero (daily)', () => {
+    const result = calculatePayroll({
+      ...baseInput,
+      overtimeRate: 0,
+      basicRate: 800,
+      overtimeHours: 4,
+    });
+    expect(result.overtimePay).toBe((800 / 8) * 4);
+  });
+
+  it('has zero overtime pay for monthly rate employees regardless of hours', () => {
+    const result = calculatePayroll({
+      ...baseInput,
+      rateType: 'monthly',
+      basicRate: 15000,
+      overtimeRate: 100,
+      overtimeHours: 10,
+    });
+    expect(result.overtimePay).toBe(0);
+  });
+
   it('calculates 9PM bonus', () => {
     const result = calculatePayroll(baseInput);
     expect(result.ninePmBonus).toBe(150);

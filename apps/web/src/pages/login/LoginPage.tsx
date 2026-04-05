@@ -45,7 +45,7 @@ export default function LoginPage() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">PIN</label>
-            <input type="password" value={pin} onChange={(e) => setPin(e.target.value)} required inputMode="numeric"
+            <input type="password" value={pin} onChange={(e) => setPin(e.target.value)} required inputMode="text" autoComplete="current-password"
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}

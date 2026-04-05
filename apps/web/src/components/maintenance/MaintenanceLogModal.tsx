@@ -74,7 +74,7 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
   const [laborCost, setLaborCost] = useState('0');
   const [paidFrom, setPaidFrom] = useState('');
   const [opsNotes, setOpsNotes] = useState('');
-  const [startImmediately, setStartImmediately] = useState(false);
+  const [payLater, setPayLater] = useState(false);
 
   const [parts, setParts] = useState<PartEntry[]>([]);
   const [customPartName, setCustomPartName] = useState('');
@@ -157,13 +157,13 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
         mechanic: mechanic.trim() || null,
         odometer: odometer === '' ? null : Number(odometer),
         storeId,
-        startImmediately,
         downtimeStart: downtimeStart || null,
         notes: opsNotes.trim() || null,
         partsReplaced: parts.length > 0 ? parts : null,
         partsCost: totalPartsCost,
         laborCost: Number(laborCost) || 0,
-        paidFrom: paidFrom || null,
+        paidFrom: payLater ? null : (paidFrom || null),
+        expenseStatus: payLater ? 'unpaid' : 'paid',
       },
       { onSuccess: () => onClose() },
     );
@@ -232,7 +232,7 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           </label>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
             <div>
               <span className="text-sm font-medium text-gray-700">Mechanic</span>
               <div className="mt-1 flex items-center gap-2">
@@ -258,8 +258,23 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
             </div>
             <label className="block">
               <span className="text-sm font-medium text-gray-700">Downtime start</span>
+              <div className="mt-1 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date();
+                    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                    if (downtimeStart === today) return;
+                    setDowntimeStart(today);
+                  }}
+                  className="rounded px-2 py-1 text-xs bg-gray-100 text-gray-600"
+                >
+                  Today
+                </button>
+              </div>
               <input type="date" value={downtimeStart} onChange={(e) => setDowntimeStart(e.target.value)}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <p className="mt-1 text-xs text-gray-400">Set this date if the vehicle is off the road for a full day or more</p>
             </label>
           </div>
 
@@ -326,21 +341,40 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
                 {formatCurrency(totalCost)}
               </div>
             </div>
-            <label className="block">
-              <span className="text-sm font-medium text-gray-700">Paid from</span>
-              <select value={paidFrom} onChange={(e) => setPaidFrom(e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-                <option value="">Default (store cash account)</option>
-                {accList.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-              </select>
-            </label>
+            {!payLater && (
+              <label className="block">
+                <span className="text-sm font-medium text-gray-700">Paid from</span>
+                <select value={paidFrom} onChange={(e) => setPaidFrom(e.target.value)}
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                  <option value="">Default (store cash account)</option>
+                  {accList.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              </label>
+            )}
           </div>
 
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={startImmediately} onChange={(e) => setStartImmediately(e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 text-blue-600" />
-            <span className="text-sm text-gray-700">Start immediately (set vehicle to Under Maintenance)</span>
-          </label>
+          {totalCost > 0 && (
+            <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
+              <span className="text-sm font-medium text-gray-700">Payment:</span>
+              <button
+                type="button"
+                onClick={() => setPayLater(false)}
+                className={`rounded-md px-3 py-1 text-sm font-medium transition ${!payLater ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-300'}`}
+              >
+                Pay now
+              </button>
+              <button
+                type="button"
+                onClick={() => setPayLater(true)}
+                className={`rounded-md px-3 py-1 text-sm font-medium transition ${payLater ? 'bg-amber-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-300'}`}
+              >
+                Pay later
+              </button>
+              {payLater && (
+                <span className="text-xs text-amber-700">Expense will appear as unpaid in the Expenses page</span>
+              )}
+            </div>
+          )}
 
           {logMaintenance.error && <p className="text-sm text-red-600">{(logMaintenance.error as Error).message}</p>}
           <div className="flex justify-end gap-2 border-t pt-4">

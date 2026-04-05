@@ -7,7 +7,6 @@ export const LogMaintenanceRequestSchema = z.object({
     odometer: z.number().nullable().default(null),
     employeeId: z.string().nullable().default(null),
     storeId: z.string(),
-    startImmediately: z.boolean().default(false),
     downtimeStart: z.string().nullable().default(null),
     notes: z.string().nullable().default(null),
     partsReplaced: z.unknown().nullable().optional(),
@@ -16,6 +15,7 @@ export const LogMaintenanceRequestSchema = z.object({
     paidFrom: z.string().nullable().optional(),
     expenseAccountId: z.string().nullable().optional(),
     cashAccountId: z.string().nullable().optional(),
+    expenseStatus: z.enum(['paid', 'unpaid']).default('paid'),
 });
 export const SaveMaintenanceRequestSchema = z.object({
     assetId: z.string().optional(),

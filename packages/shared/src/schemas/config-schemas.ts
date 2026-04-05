@@ -75,6 +75,7 @@ export const CreateEmployeeRequestSchema = z.object({
   ninePmBonusRate: z.number().nonnegative().default(0),
   commissionRate: z.number().nonnegative().default(0),
   paidAs: z.string().nullable().optional(),
+  defaultPaymentMethod: z.enum(['cash', 'gcash', 'bank_transfer']).default('cash'),
   monthlyBikeAllowance: z.number().nonnegative().default(0),
   holidayAllowance: z.number().nonnegative().default(0),
   sickAllowance: z.number().nonnegative().default(0),

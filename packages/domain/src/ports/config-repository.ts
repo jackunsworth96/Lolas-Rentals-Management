@@ -146,7 +146,7 @@ export interface ConfigRepository {
   getModelPricing(modelId: string, storeId: string): Promise<ModelPricing[]>;
   getStorePricing(storeId: string): Promise<ModelPricing[]>;
   getFleetStatuses(): Promise<FleetStatus[]>;
-  getExpenseCategories(): Promise<ExpenseCategory[]>;
+  getExpenseCategories(storeId: string): Promise<ExpenseCategory[]>;
   getTaskCategories(): Promise<TaskCategory[]>;
   getTransferRoutes(storeId: string): Promise<TransferRoute[]>;
   getDayTypes(): Promise<DayType[]>;

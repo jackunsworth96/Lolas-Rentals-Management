@@ -677,4 +677,88 @@ router.post(
   },
 );
 
+// ── GET /late-returns-check ── checks if any active orders drop off >= 20:00 on a given date
+router.get(
+  '/late-returns-check',
+  requirePermission(Permission.ViewCashup),
+  validateQuery(z.object({ storeId: z.string(), date: z.string() })),
+  async (req, res, next) => {
+    try {
+      const { storeId, date } = req.query as { storeId: string; date: string };
+      const sb = getSupabaseClient();
+      // Join order_items → orders to filter by store and date
+      const { data, error } = await sb
+        .from('order_items')
+        .select('id, dropoff_datetime, orders!inner(store_id, status)')
+        .eq('orders.store_id', storeId)
+        .neq('orders.status', 'cancelled')
+        .gte('dropoff_datetime', `${date}T20:00:00`)
+        .lt('dropoff_datetime', `${date}T23:59:59`);
+      if (error) throw new Error(`late-returns-check failed: ${error.message}`);
+      const count = (data ?? []).length;
+      res.json({ success: true, data: { hasLateReturns: count > 0, count } });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ── GET /late-return-assignment ── fetch today's assignment for a store
+router.get(
+  '/late-return-assignment',
+  requirePermission(Permission.ViewCashup),
+  validateQuery(z.object({ storeId: z.string(), date: z.string() })),
+  async (req, res, next) => {
+    try {
+      const { storeId, date } = req.query as { storeId: string; date: string };
+      const sb = getSupabaseClient();
+      const { data, error } = await sb
+        .from('late_return_assignments')
+        .select('*')
+        .eq('store_id', storeId)
+        .eq('date', date)
+        .maybeSingle();
+      if (error) throw new Error(`late-return-assignment fetch failed: ${error.message}`);
+      res.json({ success: true, data: data ?? null });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ── POST /late-return-assignment ── upsert assignment for the day
+router.post(
+  '/late-return-assignment',
+  requirePermission(Permission.ViewCashup),
+  validateBody(z.object({
+    storeId: z.string(),
+    date: z.string(),
+    employeeId: z.string(),
+    note: z.string().optional(),
+  })),
+  async (req, res, next) => {
+    try {
+      const { storeId, date, employeeId, note } = req.body as {
+        storeId: string;
+        date: string;
+        employeeId: string;
+        note?: string;
+      };
+      const sb = getSupabaseClient();
+      const { data, error } = await sb
+        .from('late_return_assignments')
+        .upsert(
+          { store_id: storeId, date, employee_id: employeeId, note: note ?? null, updated_at: new Date().toISOString() },
+          { onConflict: 'store_id,date' },
+        )
+        .select()
+        .single();
+      if (error) throw new Error(`late-return-assignment upsert failed: ${error.message}`);
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 export { router as cashupRoutes };

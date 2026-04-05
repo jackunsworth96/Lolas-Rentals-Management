@@ -654,4 +654,61 @@ router.get('/summary', authenticate, async (req, res, next) => {
   }
 });
 
-export { router as dashboardRoutes };
+// ── Charity impact — shared query helper ──────────────────────────────────────
+const CHARITY_OPENING_BALANCE = 282995;
+const CHARITY_PENDING_LEGACY = 2933;
+
+async function queryCharityImpact(sb: ReturnType<typeof getSupabaseClient>) {
+  const yearStart = `${new Date().getFullYear()}-01-01`;
+
+  const [bookingRes, annualRes] = await Promise.all([
+    sb
+      .from('orders_raw')
+      .select('charity_donation')
+      .not('charity_donation', 'is', null)
+      .gt('charity_donation', 0),
+    sb
+      .from('journal_entries')
+      .select('debit')
+      .eq('account_id', 'CHARITY-EXPENSE')
+      .neq('reference_type', 'opening_balance')
+      .gte('date', yearStart),
+  ]);
+
+  const ordersCharitySum = (bookingRes.data ?? []).reduce(
+    (sum, r) => sum + Number((r as { charity_donation?: number | null }).charity_donation ?? 0),
+    0,
+  );
+  const bookingContributions = CHARITY_PENDING_LEGACY + ordersCharitySum;
+  const totalRaised = CHARITY_OPENING_BALANCE + bookingContributions;
+  const totalDonated = CHARITY_OPENING_BALANCE;
+  const pendingPayout = totalRaised - totalDonated;
+
+  const annualDonated = (annualRes.data ?? []).reduce(
+    (sum, r) => sum + Number((r as { debit?: number | null }).debit ?? 0),
+    0,
+  );
+
+  return {
+    openingBalance: CHARITY_OPENING_BALANCE,
+    totalRaised: Math.round(totalRaised * 100) / 100,
+    totalDonated: Math.round(totalDonated * 100) / 100,
+    pendingPayout: Math.round(pendingPayout * 100) / 100,
+    bookingContributions: Math.round(bookingContributions * 100) / 100,
+    annualCap: 100000,
+    annualDonated: Math.round(annualDonated * 100) / 100,
+  };
+}
+
+// ── GET /charity-impact (authenticated) ──────────────────────────────────────
+router.get('/charity-impact', async (req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+    const impact = await queryCharityImpact(sb);
+    res.json({ success: true, data: impact });
+  } catch (err) {
+    next(err);
+  }
+});
+
+export { router as dashboardRoutes, queryCharityImpact, CHARITY_OPENING_BALANCE };

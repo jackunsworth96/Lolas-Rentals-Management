@@ -64,10 +64,17 @@ export async function calculatePayslip(
     0,
   );
 
+  const payrollRateType: 'daily' | 'monthly' =
+    employee.rateType?.toLowerCase() === 'monthly'
+      ? 'monthly'
+      : employee.rateType?.toLowerCase() === 'daily'
+        ? 'daily'
+        : employee.paidAs === 'monthly'
+          ? 'monthly'
+          : 'daily';
+
   const result = calculatePayroll({
-    rateType: (employee.paidAs === 'monthly' ? 'monthly' : 'daily') as
-      | 'daily'
-      | 'monthly',
+    rateType: payrollRateType,
     basicRate: employee.basicRate,
     overtimeRate: employee.overtimeRate,
     ninePmBonusRate: employee.ninePmBonusRate,

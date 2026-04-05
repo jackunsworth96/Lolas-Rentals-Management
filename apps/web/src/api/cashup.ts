@@ -185,6 +185,54 @@ export function useDepositFunds() {
   });
 }
 
+export interface LateReturnsCheck {
+  hasLateReturns: boolean;
+  count: number;
+}
+
+export interface LateReturnAssignment {
+  id: number;
+  store_id: string;
+  date: string;
+  employee_id: string;
+  note: string | null;
+}
+
+export function useLateReturnsCheck(storeId: string, date: string) {
+  return useQuery<LateReturnsCheck>({
+    queryKey: ['cashup', 'late-returns-check', storeId, date],
+    queryFn: () =>
+      api.get(
+        `/cashup/late-returns-check?storeId=${encodeURIComponent(storeId)}&date=${encodeURIComponent(date)}`,
+      ),
+    enabled: !!storeId && !!date,
+  });
+}
+
+export function useLateReturnAssignment(storeId: string, date: string) {
+  return useQuery<LateReturnAssignment | null>({
+    queryKey: ['cashup', 'late-return-assignment', storeId, date],
+    queryFn: () =>
+      api.get(
+        `/cashup/late-return-assignment?storeId=${encodeURIComponent(storeId)}&date=${encodeURIComponent(date)}`,
+      ),
+    enabled: !!storeId && !!date,
+  });
+}
+
+export function useUpsertLateReturnAssignment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { storeId: string; date: string; employeeId: string; note?: string }) =>
+      api.post<LateReturnAssignment>('/cashup/late-return-assignment', body),
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({
+        queryKey: ['cashup', 'late-return-assignment', vars.storeId, vars.date],
+      });
+    },
+  });
+}
+
 export function useInterStoreTransfer() {
   const qc = useQueryClient();
   return useMutation({

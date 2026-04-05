@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useUIStore } from '../../stores/ui-store.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 import { useEmployees, type EmployeeRow } from '../../api/hr.js';
@@ -11,6 +11,11 @@ export default function PayrollPage() {
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const { data: employees, isLoading } = useEmployees(storeId);
   const [showRunPayroll, setShowRunPayroll] = useState(false);
+
+  const activeEmployees = useMemo(
+    () => (employees ?? []).filter((e) => e.status === 'Active'),
+    [employees],
+  );
 
   const canRunPayroll = hasPermission('can_view_payroll');
 
@@ -37,11 +42,12 @@ export default function PayrollPage() {
           </button>
         )}
       </div>
-      <Table columns={columns} data={employees ?? []} keyFn={(r: EmployeeRow) => r.id} emptyMessage="No employees" />
+      <Table columns={columns} data={activeEmployees} keyFn={(r: EmployeeRow) => r.id} emptyMessage="No active employees" />
       <RunPayrollModal
         isOpen={showRunPayroll}
         onClose={() => setShowRunPayroll(false)}
         storeId={storeId}
+        employees={activeEmployees}
       />
     </div>
   );

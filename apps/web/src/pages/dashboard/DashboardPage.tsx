@@ -3,6 +3,7 @@ import { useUIStore } from '../../stores/ui-store.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 import {
   useDashboardSummary,
+  useCharityImpact,
   type StoreMetrics,
   type AddonRevenueRow,
   type CashBalanceRow,
@@ -78,6 +79,8 @@ export default function DashboardPage() {
 
   const canViewFinancial = hasPermission('can_view_dashboard');
   const canViewLostOpp = hasPermission('can_view_lostopportunity');
+
+  const { data: charityImpact } = useCharityImpact();
 
   const metrics: StoreMetrics | null = useMemo(() => {
     if (!data?.stores) return null;
@@ -525,6 +528,92 @@ export default function DashboardPage() {
                 lostOpportunities.reduce((sum: number, o: LostOpportunityRow) => sum + (o.estValue ?? 0), 0),
               )}
             />
+          </div>
+        </section>
+      )}
+
+      {/* SECTION — BePawsitive Impact */}
+      {charityImpact && (
+        <section>
+          <SectionHeading>🐾 BePawsitive Impact</SectionHeading>
+          <div className="rounded-2xl border border-teal-100 bg-white p-6 shadow-sm">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+              {/* Total raised */}
+              <div className="rounded-xl border border-teal-100 bg-teal-50 p-4">
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-teal-600">
+                  Total Raised for BePawsitive
+                </p>
+                <p className="text-2xl font-bold" style={{ color: '#00577C' }}>
+                  {formatCurrency(charityImpact.totalRaised)}
+                </p>
+                <p className="mt-1 text-xs text-teal-500">Since Oct 2022</p>
+              </div>
+
+              {/* From bookings */}
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  From Customer Bookings
+                </p>
+                <p className="text-2xl font-bold text-gray-800">
+                  {formatCurrency(charityImpact.bookingContributions)}
+                </p>
+                <p className="mt-1 text-xs text-gray-400">Booking charity donations</p>
+              </div>
+
+              {/* Pending payout */}
+              <div
+                className={`rounded-xl border p-4 ${
+                  charityImpact.pendingPayout > 0
+                    ? 'border-amber-200 bg-amber-50'
+                    : 'border-green-100 bg-green-50'
+                }`}
+              >
+                <p
+                  className={`mb-1 text-xs font-semibold uppercase tracking-wide ${
+                    charityImpact.pendingPayout > 0 ? 'text-amber-600' : 'text-green-600'
+                  }`}
+                >
+                  Pending Payout
+                </p>
+                <p
+                  className={`text-2xl font-bold ${
+                    charityImpact.pendingPayout > 0 ? 'text-amber-700' : 'text-green-700'
+                  }`}
+                >
+                  {formatCurrency(charityImpact.pendingPayout)}
+                </p>
+                <p
+                  className={`mt-1 text-xs ${
+                    charityImpact.pendingPayout > 0 ? 'text-amber-500' : 'text-green-500'
+                  }`}
+                >
+                  {charityImpact.pendingPayout > 0 ? 'Awaiting transfer to BePawsitive' : 'All paid ✓'}
+                </p>
+              </div>
+            </div>
+
+            {/* Annual donation progress bar */}
+            <div className="mt-5">
+              <div className="mb-2 flex items-center justify-between text-xs text-gray-500">
+                <span className="font-medium">Annual Donation Progress</span>
+                <span>
+                  {formatCurrency(Math.min(charityImpact.annualDonated, charityImpact.annualCap))} of{' '}
+                  {formatCurrency(charityImpact.annualCap)} annual cap
+                </span>
+              </div>
+              <div className="h-2.5 overflow-hidden rounded-full bg-gray-100">
+                <div
+                  className="h-full rounded-full transition-all duration-700"
+                  style={{
+                    width: `${Math.min(100, (charityImpact.annualDonated / charityImpact.annualCap) * 100)}%`,
+                    backgroundColor: '#00577C',
+                  }}
+                />
+              </div>
+              <p className="mt-1.5 text-xs text-gray-400">
+                {((charityImpact.annualDonated / charityImpact.annualCap) * 100).toFixed(1)}% of ₱100,000 annual cap reached
+              </p>
+            </div>
           </div>
         </section>
       )}

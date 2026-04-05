@@ -93,6 +93,44 @@ router.post('/journal', requirePermission(Permission.EditAccounts), validateBody
   } catch (err) { next(err); }
 });
 
+const OwnerDrawingsRequestSchema = z.object({
+  amount: z.number().positive(),
+  paymentMethod: z.enum(['cash', 'gcash', 'bank_transfer']),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  note: z.string().optional(),
+});
+
+const DRAWINGS_CREDIT_ACCOUNTS: Record<string, string> = {
+  cash: 'CASH-LOLA',
+  gcash: 'GCASH-store-lolas',
+  bank_transfer: 'BANK-UNION-BANK-store-lolas',
+};
+
+router.post('/drawings', requirePermission(Permission.EditAccounts), validateBody(OwnerDrawingsRequestSchema), async (req, res, next) => {
+  try {
+    const { amount, paymentMethod, date, note } = req.body as z.infer<typeof OwnerDrawingsRequestSchema>;
+    const creditAccountId = DRAWINGS_CREDIT_ACCOUNTS[paymentMethod];
+    const description = note?.trim() ? `Owner Drawings — ${note.trim()}` : 'Owner Drawings';
+    const period = date.slice(0, 7);
+
+    const { createJournalEntry } = await import('../use-cases/accounting/create-journal-entry.js');
+    const result = await createJournalEntry(
+      {
+        storeId: 'company',
+        date,
+        period,
+        createdBy: req.user!.employeeId,
+        legs: [
+          { accountId: 'OWNER-DRAWINGS-store-lolas', debit: amount, credit: 0, description, referenceType: 'owner_drawings', referenceId: null },
+          { accountId: creditAccountId, debit: 0, credit: amount, description, referenceType: 'owner_drawings', referenceId: null },
+        ],
+      },
+      { accounting: req.app.locals.deps.accountingPort },
+    );
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
 router.post('/transfer', requirePermission(Permission.EditAccounts), validateBody(TransferFundsRequestSchema), async (req, res, next) => {
   try {
     const { transferFunds } = await import('../use-cases/accounting/transfer-funds.js');

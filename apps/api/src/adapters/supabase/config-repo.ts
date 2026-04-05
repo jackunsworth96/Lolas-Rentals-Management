@@ -175,7 +175,19 @@ export function createConfigRepo(): ConfigRepository {
     },
 
     getFleetStatuses: () => selectAll<FleetStatus>('fleet_statuses'),
-    getExpenseCategories: () => selectAllActive<ExpenseCategory>('expense_categories'),
+    async getExpenseCategories(storeId: string): Promise<ExpenseCategory[]> {
+      const { data, error } = await sb()
+        .from('expense_categories')
+        .select('*, chart_of_accounts!inner(store_id)')
+        .eq('is_active', true)
+        .in('chart_of_accounts.store_id', [storeId, 'company']);
+      if (error) throw new Error(`Failed to fetch expense_categories: ${error.message}`);
+      return (data ?? []).map((r) => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { chart_of_accounts: _coa, ...rest } = r as Record<string, unknown> & { chart_of_accounts: unknown };
+        return snakeToCamel(rest) as unknown as ExpenseCategory;
+      });
+    },
     getTaskCategories: () => selectAllActive<TaskCategory>('task_categories'),
     getTransferRoutes: (storeId) => selectWhereActive<TransferRoute>('transfer_routes', 'store_id', storeId),
     getDayTypes: () => selectAll<DayType>('day_types'),

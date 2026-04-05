@@ -1,18 +1,29 @@
 import {
-  type EmployeeRepository,
-  type TimesheetRepository,
-  type JournalLeg,
-  Money,
   DomainError,
   Period,
 } from '@lolas/domain';
 import { randomUUID } from 'node:crypto';
+import type { EmployeePaymentDetail } from '@lolas/shared';
 import {
   calculatePayslip,
   type CalculatePayslipDeps,
-  type CalculatePayslipInput,
 } from './calculate-payslip.js';
 import type { PayslipBreakdown } from '@lolas/domain';
+
+// Payroll is company-level — all journal accounts are always Lola's.
+const PAYROLL_EXPENSE_ACCOUNT = 'EXP-PAYROLL-store-lolas';
+const PAYROLL_JOURNAL_STORE = 'store-lolas';
+
+function resolveCreditAccount(
+  method: 'cash' | 'gcash' | 'bank_transfer',
+  source: 'till' | 'safe',
+): string {
+  if (method === 'cash') {
+    return source === 'safe' ? 'SAFE-store-lolas' : 'CASH-LOLA';
+  }
+  if (method === 'gcash') return 'GCASH-store-lolas';
+  return 'BANK-UNION-BANK-store-lolas';
+}
 
 export interface RunPayrollInput {
   storeId: string;
@@ -20,10 +31,8 @@ export interface RunPayrollInput {
   periodEnd: string;
   isEndOfMonth: boolean;
   workingDaysInMonth: number;
-  payrollExpenseAccountId: string;
-  cashAccountId: string;
+  employeePayments: EmployeePaymentDetail[];
   approvedBy: string;
-  storeExpenseAccounts?: Record<string, string>;
 }
 
 export interface RunPayrollDeps extends CalculatePayslipDeps {}
@@ -33,7 +42,10 @@ export interface RunPayrollResult {
   totalNetPay: number;
   totalGrossPay: number;
   employeeCount: number;
-  storeAllocations: Record<string, number>;
+}
+
+function isMonthlyRateEmployee(employee: { rateType: string | null }): boolean {
+  return employee.rateType?.toLowerCase() === 'monthly';
 }
 
 export async function runPayroll(
@@ -45,63 +57,49 @@ export async function runPayroll(
     throw new DomainError(`No active employees found for store ${input.storeId}`);
   }
 
+  const eligibleEmployees = employees.filter((e) => !isMonthlyRateEmployee(e));
+  if (eligibleEmployees.length === 0) {
+    return {
+      payslips: [],
+      totalNetPay: 0,
+      totalGrossPay: 0,
+      employeeCount: 0,
+    };
+  }
+
   const payslips: PayslipBreakdown[] = [];
-  const storeAllocations: Record<string, number> = {};
   const period = Period.from(
     new Date(input.periodStart),
     new Date(input.periodEnd),
   );
 
-  for (const employee of employees) {
-    const payslipInput: CalculatePayslipInput = {
-      employeeId: employee.id,
-      storeId: input.storeId,
-      periodStart: input.periodStart,
-      periodEnd: input.periodEnd,
-      isEndOfMonth: input.isEndOfMonth,
-      workingDaysInMonth: input.workingDaysInMonth,
-    };
-
-    const payslip = await calculatePayslip(payslipInput, deps);
-    payslips.push(payslip);
-
-    if (payslip.netPay <= 0) continue;
-
-    const empTimesheets = await deps.timesheets.findByEmployee(
-      employee.id,
-      period,
+  for (const employee of eligibleEmployees) {
+    const payslip = await calculatePayslip(
+      {
+        employeeId: employee.id,
+        storeId: input.storeId,
+        periodStart: input.periodStart,
+        periodEnd: input.periodEnd,
+        isEndOfMonth: input.isEndOfMonth,
+        workingDaysInMonth: input.workingDaysInMonth,
+      },
+      deps,
     );
-
-    if (empTimesheets.length === 0) {
-      storeAllocations[input.storeId] = (storeAllocations[input.storeId] ?? 0) + payslip.netPay;
-      continue;
-    }
-
-    const daysByStore: Record<string, number> = {};
-    for (const ts of empTimesheets) {
-      daysByStore[ts.storeId] = (daysByStore[ts.storeId] ?? 0) + 1;
-    }
-
-    const totalDays = empTimesheets.length;
-    let allocated = 0;
-    const storeIds = Object.keys(daysByStore);
-
-    for (let i = 0; i < storeIds.length; i++) {
-      const sid = storeIds[i];
-      const isLast = i === storeIds.length - 1;
-      const share = isLast
-        ? Math.round((payslip.netPay - allocated) * 100) / 100
-        : Math.round((payslip.netPay * daysByStore[sid] / totalDays) * 100) / 100;
-      storeAllocations[sid] = (storeAllocations[sid] ?? 0) + share;
-      allocated += share;
-    }
+    payslips.push(payslip);
   }
 
   const totalNetPay = payslips.reduce((sum, p) => sum + p.netPay, 0);
   const totalGrossPay = payslips.reduce((sum, p) => sum + p.grossPay, 0);
 
-  const expenseMap = input.storeExpenseAccounts ?? {};
   const desc = `Payroll ${input.periodStart} to ${input.periodEnd}`;
+  const now = new Date();
+  const txDate = now.toISOString().slice(0, 10);
+  const txPeriod = txDate.slice(0, 7);
+
+  // Build a map for quick payment detail lookup
+  const paymentMap = new Map<string, EmployeePaymentDetail>(
+    input.employeePayments.map((ep) => [ep.employeeId, ep]),
+  );
 
   const payrollTransactions: Array<{
     transactionId: string;
@@ -119,59 +117,95 @@ export async function runPayroll(
     }>;
   }> = [];
 
-  for (const [sid, amount] of Object.entries(storeAllocations)) {
-    if (amount <= 0) continue;
-    const expenseAcct = expenseMap[sid] ?? input.payrollExpenseAccountId;
-    const legs: JournalLeg[] = [
-      {
-        entryId: randomUUID(),
-        accountId: expenseAcct,
-        debit: Money.php(amount),
-        credit: Money.zero(),
-        description: desc,
-        referenceType: 'payroll',
-        referenceId: null,
-      },
-      {
-        entryId: randomUUID(),
-        accountId: input.cashAccountId,
-        debit: Money.zero(),
-        credit: Money.php(amount),
-        description: desc,
-        referenceType: 'payroll',
-        referenceId: null,
-      },
-    ];
+  for (const payslip of payslips) {
+    if (payslip.netPay <= 0) continue;
 
-    const txId = randomUUID();
-    const now = new Date();
-    const txDate = now.toISOString().slice(0, 10);
-    const txPeriod = txDate.slice(0, 7);
+    const detail = paymentMap.get(payslip.employeeId) ?? {
+      employeeId: payslip.employeeId,
+      paymentMethod: 'cash' as const,
+      fromTill: payslip.netPay,
+      fromSafe: 0,
+    };
+
+    const method = detail.paymentMethod;
+    type RawLeg = {
+      id: string;
+      account_id: string;
+      debit: number;
+      credit: number;
+      description: string;
+      reference_type: string;
+      reference_id: string | null;
+    };
+
+    const legs: RawLeg[] = [];
+
+    // Debit: payroll expense (company-level, always Lola's account)
+    legs.push({
+      id: randomUUID(),
+      account_id: PAYROLL_EXPENSE_ACCOUNT,
+      debit: payslip.netPay,
+      credit: 0,
+      description: `${desc} — ${payslip.employeeName}`,
+      reference_type: 'payroll',
+      reference_id: payslip.employeeId,
+    });
+
+    if (method === 'cash') {
+      const fromTill = detail.fromTill ?? payslip.netPay;
+      const fromSafe = detail.fromSafe ?? 0;
+
+      if (fromTill > 0) {
+        legs.push({
+          id: randomUUID(),
+          account_id: resolveCreditAccount('cash', 'till'),
+          debit: 0,
+          credit: fromTill,
+          description: `${desc} — ${payslip.employeeName} (till)`,
+          reference_type: 'payroll',
+          reference_id: payslip.employeeId,
+        });
+      }
+      if (fromSafe > 0) {
+        legs.push({
+          id: randomUUID(),
+          account_id: resolveCreditAccount('cash', 'safe'),
+          debit: 0,
+          credit: fromSafe,
+          description: `${desc} — ${payslip.employeeName} (safe)`,
+          reference_type: 'payroll',
+          reference_id: payslip.employeeId,
+        });
+      }
+    } else {
+      legs.push({
+        id: randomUUID(),
+        account_id: resolveCreditAccount(method, 'till'),
+        debit: 0,
+        credit: payslip.netPay,
+        description: `${desc} — ${payslip.employeeName}`,
+        reference_type: 'payroll',
+        reference_id: payslip.employeeId,
+      });
+    }
 
     payrollTransactions.push({
-      transactionId: txId,
+      transactionId: randomUUID(),
       period: txPeriod,
       date: txDate,
-      storeId: sid,
-      legs: legs.map((leg) => ({
-        id: leg.entryId,
-        account_id: leg.accountId,
-        debit: leg.debit.toNumber(),
-        credit: leg.credit.toNumber(),
-        description: leg.description ?? '',
-        reference_type: leg.referenceType,
-        reference_id: leg.referenceId,
-      })),
+      storeId: PAYROLL_JOURNAL_STORE,
+      legs,
     });
   }
 
-  const approvedIds = payslips
+  // Collect timesheet IDs of all paid employees to mark as Paid
+  const paidEmployeeIds = payslips
     .filter((p) => p.netPay > 0)
     .map((p) => p.employeeId);
 
   const approvedTimesheetIds: string[] = [];
-  if (approvedIds.length > 0) {
-    for (const empId of approvedIds) {
+  if (paidEmployeeIds.length > 0) {
+    for (const empId of paidEmployeeIds) {
       const empTs = await deps.timesheets.findByEmployee(empId, period);
       for (const ts of empTs) {
         approvedTimesheetIds.push(ts.id);
@@ -192,6 +226,5 @@ export async function runPayroll(
     totalNetPay: Math.round(totalNetPay * 100) / 100,
     totalGrossPay: Math.round(totalGrossPay * 100) / 100,
     employeeCount: payslips.length,
-    storeAllocations,
   };
 }

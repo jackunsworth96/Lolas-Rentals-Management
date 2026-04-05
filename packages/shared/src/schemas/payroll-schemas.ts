@@ -11,15 +11,32 @@ export const CalculatePayslipRequestSchema = z.object({
 
 export type CalculatePayslipRequest = z.infer<typeof CalculatePayslipRequestSchema>;
 
+export const EmployeePaymentDetailSchema = z.object({
+  employeeId: z.string(),
+  paymentMethod: z.enum(['cash', 'gcash', 'bank_transfer']),
+  fromTill: z.number().nonnegative().optional(),
+  fromSafe: z.number().nonnegative().optional(),
+});
+
+export type EmployeePaymentDetail = z.infer<typeof EmployeePaymentDetailSchema>;
+
+export const RunPayrollPreviewRequestSchema = z.object({
+  storeId: z.string(),
+  periodStart: z.string(),
+  periodEnd: z.string(),
+  isEndOfMonth: z.boolean(),
+  workingDaysInMonth: z.number().int().positive(),
+});
+
+export type RunPayrollPreviewRequest = z.infer<typeof RunPayrollPreviewRequestSchema>;
+
 export const RunPayrollRequestSchema = z.object({
   storeId: z.string(),
   periodStart: z.string(),
   periodEnd: z.string(),
   isEndOfMonth: z.boolean(),
   workingDaysInMonth: z.number().int().positive(),
-  payrollExpenseAccountId: z.string(),
-  cashAccountId: z.string(),
-  storeExpenseAccounts: z.record(z.string(), z.string()).optional(),
+  employeePayments: z.array(EmployeePaymentDetailSchema),
 });
 
 export type RunPayrollRequest = z.infer<typeof RunPayrollRequestSchema>;

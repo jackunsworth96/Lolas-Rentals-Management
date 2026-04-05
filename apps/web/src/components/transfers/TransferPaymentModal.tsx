@@ -26,7 +26,9 @@ export function TransferPaymentModal({ open, onClose, transfer, storeId }: Props
     [accList, storeId],
   );
   const assetAccounts = storeAccounts.filter((a) => (a.accountType ?? '').toLowerCase() === 'asset');
-  const incomeAccounts = storeAccounts.filter((a) => (a.accountType ?? '').toLowerCase() === 'income');
+  const transferIncomeAccounts = accList.filter(
+    (a) => a.id === `INCOME-TRANSFER-${storeId}` || a.id === `MISC-INCOME-${storeId}`,
+  );
 
   const totalPrice = moneyAmount(transfer.totalPrice);
 
@@ -185,7 +187,7 @@ export function TransferPaymentModal({ open, onClose, transfer, storeId }: Props
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
               >
                 <option value="">Select...</option>
-                {incomeAccounts.map((a) => (
+                {transferIncomeAccounts.map((a) => (
                   <option key={a.id} value={a.id}>{a.name}</option>
                 ))}
               </select>

@@ -48,6 +48,12 @@ export interface Establishment {
   category: string;
 }
 
+export interface CustomerPawCardSavings {
+  hasPawCard: boolean;
+  totalSaved: number;
+  entryCount: number;
+}
+
 /* ---------- hooks ---------- */
 
 export function usePawCardLookup(email: string) {
@@ -70,6 +76,15 @@ export function useLifetimeSavings(email: string) {
     queryKey: ['paw-card', 'lifetime', email],
     queryFn: () => api.get(`/paw-card/lifetime?email=${encodeURIComponent(email)}`),
     enabled: !!email,
+  });
+}
+
+/** Staff order modal: aggregated savings from paw_card_entries for an email (no auth). */
+export function useCustomerPawCardSavings(email: string | undefined) {
+  return useQuery<CustomerPawCardSavings>({
+    queryKey: ['paw-card', 'customer-savings', email ?? ''],
+    queryFn: () => api.get(`/paw-card/customer-savings?email=${encodeURIComponent(email!)}`),
+    enabled: !!email?.trim(),
   });
 }
 

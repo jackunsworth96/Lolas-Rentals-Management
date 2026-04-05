@@ -30,7 +30,7 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
 
     let query = sb
       .from('orders')
-      .select('id, store_id, order_date, customer_id, status, final_total, balance_due, web_notes, payment_method_id, security_deposit, card_fee_surcharge, woo_order_id, customers!customer_id(name, mobile)')
+      .select('id, store_id, order_date, customer_id, status, final_total, balance_due, web_notes, payment_method_id, security_deposit, card_fee_surcharge, woo_order_id, customers!customer_id(name, mobile, email)')
       .eq('store_id', storeId)
       .order('order_date', { ascending: false });
 
@@ -73,7 +73,7 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
     }
 
     const enriched = (orders ?? []).map((o: Record<string, unknown>) => {
-      const customer = o.customers as { name: string; mobile: string | null } | null;
+      const customer = o.customers as { name: string; mobile: string | null; email: string | null } | null;
       const items = itemsByOrder.get(o.id as string) ?? [];
       const vehicleNames = items.map((i) => i.vehicle_name).filter(Boolean).join(', ');
       const returnDatetime = items.reduce<string | null>((latest, i) => {
@@ -92,6 +92,7 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
         orderDate: o.order_date,
         customerName: customer?.name ?? '—',
         customerMobile: customer?.mobile ?? null,
+        customerEmail: customer?.email?.trim() || null,
         vehicleNames: vehicleNames || '—',
         returnDatetime,
         wooOrderId: (o.woo_order_id as string) ?? null,
@@ -114,7 +115,14 @@ router.get('/:id', requirePermission(Permission.ViewInbox), async (req, res, nex
   try {
     const order = await req.app.locals.deps.orderRepo.findById(req.params.id);
     if (!order) { res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found' } }); return; }
-    res.json({ success: true, data: order });
+    const base = order.toJSON() as Record<string, unknown>;
+    let customerEmail: string | null = null;
+    if (order.customerId) {
+      const { data: c } = await supabase.from('customers').select('email').eq('id', order.customerId).maybeSingle();
+      const em = (c as { email?: string } | null)?.email?.trim();
+      customerEmail = em || null;
+    }
+    res.json({ success: true, data: { ...base, customerEmail } });
   } catch (err) { next(err); }
 });
 

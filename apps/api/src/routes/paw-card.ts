@@ -57,6 +57,35 @@ router.get('/establishments', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/** Public: total Paw Card savings for an email (for staff order modal, etc.). */
+router.get('/customer-savings', async (req, res, next) => {
+  try {
+    const raw = (req.query.email as string | undefined)?.trim();
+    if (!raw) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'email is required' } });
+      return;
+    }
+    const sb = getSupabaseClient();
+    const { data: rows, error } = await sb
+      .from('paw_card_entries')
+      .select('amount_saved')
+      .ilike('email', raw);
+    if (error) throw new Error(`customer-savings query failed: ${error.message}`);
+    const list = rows ?? [];
+    const entryCount = list.length;
+    const totalSaved = list.reduce((sum, r) => sum + Number((r as { amount_saved?: unknown }).amount_saved ?? 0), 0);
+    const hasPawCard = entryCount > 0;
+    res.json({
+      success: true,
+      data: {
+        hasPawCard,
+        totalSaved: Math.round(totalSaved * 100) / 100,
+        entryCount,
+      },
+    });
+  } catch (err) { next(err); }
+});
+
 router.get('/lifetime', async (req, res, next) => {
   try {
     const email = req.query.email as string;

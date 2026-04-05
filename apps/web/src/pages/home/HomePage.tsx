@@ -27,6 +27,7 @@ import { PawCardCallout } from '../../components/home/PawCardCallout.js';
 import { ReviewsSection } from '../../components/home/ReviewsSection.js';
 import Stack from '../../components/home/Stack.js';
 import CountUp from '../../components/home/CountUp.js';
+import BePawsitiveMeter from '../../components/home/BePawsitiveMeter.js';
 import Stepper, { Step } from '../../components/home/Stepper.js';
 import stepIcon1 from '../../assets/Step_1_How_Paw_Card_Works_-_Paw_Card_Icon.svg';
 import stepIcon2 from '../../assets/Step_2_How_Paw_Card_Works_-_Store_Icon.svg';
@@ -797,15 +798,7 @@ export default function HomePage() {
                   >
                     ₱
                   </span>
-                  <CountUp
-                    from={0}
-                    to={282995}
-                    separator=","
-                    direction="up"
-                    duration={2}
-                    startWhen={true}
-                    className="count-up-text"
-                  />
+                  <BePawsitiveMeter />
                 </div>
                 <p
                   className="font-lato"

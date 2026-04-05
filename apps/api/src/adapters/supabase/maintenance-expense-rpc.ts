@@ -12,6 +12,7 @@ export interface UpsertMaintenanceExpensesParams {
   cashAccountId: string;
   expenseAccountId: string;
   issueDescription: string;
+  expenseStatus?: 'paid' | 'unpaid';
 }
 
 /**
@@ -25,6 +26,8 @@ export async function upsertMaintenanceExpensesRpc(
 ): Promise<void> {
   const sb = getSupabaseClient();
   const period = params.date.slice(0, 7);
+  const status = params.expenseStatus ?? 'paid';
+  const isPaid = status === 'paid';
 
   const partsExpenseId = `${params.maintenanceId}-parts`;
   const labourExpenseId = `${params.maintenanceId}-labour`;
@@ -46,36 +49,39 @@ export async function upsertMaintenanceExpensesRpc(
       p_category: 'Maintenance Parts',
       p_description: desc,
       p_amount: params.partsCost,
-      p_paid_from: params.cashAccountId,
+      p_paid_from: isPaid ? params.cashAccountId : null,
       p_vehicle_id: params.vehicleId,
       p_employee_id: params.employeeId,
       p_account_id: params.expenseAccountId,
-      p_status: 'paid',
+      p_status: status,
       p_transaction_id: randomUUID(),
       p_period: period,
       p_journal_date: params.date,
       p_journal_store_id: params.storeId,
       p_created_by: null,
-      p_legs: [
-        {
-          id: randomUUID(),
-          account_id: params.expenseAccountId,
-          debit: params.partsCost,
-          credit: 0,
-          description: desc,
-          reference_type: 'maintenance_parts',
-          reference_id: params.maintenanceId,
-        },
-        {
-          id: randomUUID(),
-          account_id: params.cashAccountId,
-          debit: 0,
-          credit: params.partsCost,
-          description: desc,
-          reference_type: 'maintenance_parts',
-          reference_id: params.maintenanceId,
-        },
-      ],
+      // Pass empty legs when unpaid — RPC skips journal creation for status='unpaid'
+      p_legs: isPaid
+        ? [
+            {
+              id: randomUUID(),
+              account_id: params.expenseAccountId,
+              debit: params.partsCost,
+              credit: 0,
+              description: desc,
+              reference_type: 'maintenance_parts',
+              reference_id: params.maintenanceId,
+            },
+            {
+              id: randomUUID(),
+              account_id: params.cashAccountId,
+              debit: 0,
+              credit: params.partsCost,
+              description: desc,
+              reference_type: 'maintenance_parts',
+              reference_id: params.maintenanceId,
+            },
+          ]
+        : [],
     });
     if (error) throw new Error(`create_expense_with_journal (parts) failed: ${error.message}`);
   }
@@ -95,36 +101,39 @@ export async function upsertMaintenanceExpensesRpc(
       p_category: 'Maintenance Labour',
       p_description: desc,
       p_amount: params.laborCost,
-      p_paid_from: params.cashAccountId,
+      p_paid_from: isPaid ? params.cashAccountId : null,
       p_vehicle_id: params.vehicleId,
       p_employee_id: params.employeeId,
       p_account_id: params.expenseAccountId,
-      p_status: 'paid',
+      p_status: status,
       p_transaction_id: randomUUID(),
       p_period: period,
       p_journal_date: params.date,
       p_journal_store_id: params.storeId,
       p_created_by: null,
-      p_legs: [
-        {
-          id: randomUUID(),
-          account_id: params.expenseAccountId,
-          debit: params.laborCost,
-          credit: 0,
-          description: desc,
-          reference_type: 'maintenance_labour',
-          reference_id: params.maintenanceId,
-        },
-        {
-          id: randomUUID(),
-          account_id: params.cashAccountId,
-          debit: 0,
-          credit: params.laborCost,
-          description: desc,
-          reference_type: 'maintenance_labour',
-          reference_id: params.maintenanceId,
-        },
-      ],
+      // Pass empty legs when unpaid — RPC skips journal creation for status='unpaid'
+      p_legs: isPaid
+        ? [
+            {
+              id: randomUUID(),
+              account_id: params.expenseAccountId,
+              debit: params.laborCost,
+              credit: 0,
+              description: desc,
+              reference_type: 'maintenance_labour',
+              reference_id: params.maintenanceId,
+            },
+            {
+              id: randomUUID(),
+              account_id: params.cashAccountId,
+              debit: 0,
+              credit: params.laborCost,
+              description: desc,
+              reference_type: 'maintenance_labour',
+              reference_id: params.maintenanceId,
+            },
+          ]
+        : [],
     });
     if (error) throw new Error(`create_expense_with_journal (labour) failed: ${error.message}`);
   }

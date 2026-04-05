@@ -51,7 +51,7 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
         ? (input.basicRate / input.workingDaysInMonth) * input.daysWorked
         : 0;
 
-  const overtimePay = input.overtimeRate * input.overtimeHours;
+  const overtimePay = computeOvertimePay(input);
   const ninePmBonus = input.ninePmBonusRate * input.ninePmCount;
   const commission = input.pomRevenueShare * input.commissionRate;
   const tips = input.totalTips;
@@ -98,6 +98,22 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
     netPay: round2(netPay),
     thirteenthMonthAccrual: round2(thirteenthMonthAccrual),
   };
+}
+
+/**
+ * Monthly employees: no overtime pay.
+ * Daily employees: use explicit overtime rate when positive; otherwise hourly fallback (basic_rate / 8) × overtime_hours.
+ */
+function computeOvertimePay(input: PayrollInput): number {
+  if (input.rateType === 'monthly') {
+    return 0;
+  }
+  const hours = input.overtimeHours;
+  const explicitRate = input.overtimeRate ?? 0;
+  if (explicitRate > 0) {
+    return explicitRate * hours;
+  }
+  return (input.basicRate / 8) * hours;
 }
 
 function round2(n: number): number {
