@@ -5,8 +5,6 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { computeQuote } from '../use-cases/booking/compute-quote.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
 import { resolveStoreAccounts } from '../adapters/supabase/maintenance-expense-rpc.js';
-import type { Payment, JournalLeg } from '@lolas/domain';
-import { Money } from '@lolas/domain';
 
 const router = Router();
 
@@ -326,7 +324,6 @@ router.post('/confirm', validateBody(ExtendConfirmRequestSchema), async (req, re
       overrideDailyRate,
       paymentStatus = 'unpaid',
       paymentMethod,
-      paymentAccountId,
     } = req.body as {
       orderReference: string;
       email: string;
@@ -334,7 +331,6 @@ router.post('/confirm', validateBody(ExtendConfirmRequestSchema), async (req, re
       overrideDailyRate?: number;
       paymentStatus?: 'paid' | 'unpaid';
       paymentMethod?: string;
-      paymentAccountId?: string;
     };
 
     const trimmedEmail = email.trim().toLowerCase();
@@ -398,63 +394,37 @@ router.post('/confirm', validateBody(ExtendConfirmRequestSchema), async (req, re
       }
       const extensionCost = Math.round(protectedDailyRate * extDays * 100) / 100;
 
-      // Update the booking
-      const { error: updErr } = await sb
-        .from('orders_raw')
-        .update({ dropoff_datetime: newDropoffDatetime })
-        .eq('id', row.id as string);
-      if (updErr) throw new Error(`Failed to update booking: ${updErr.message}`);
+      const paymentId = crypto.randomUUID();
+      const journalTxId = crypto.randomUUID();
+      const now = new Date();
+      const journalDate = now.toISOString().slice(0, 10);
+      const journalPeriod = journalDate.slice(0, 7);
+      const accounts = await resolveStoreAccounts(row.store_id as string);
 
-      // Create payment record
-      if (extensionCost > 0) {
-        const { paymentRepo } = req.app.locals.deps;
-        const payment: Payment = {
-          id: crypto.randomUUID(),
-          storeId: row.store_id as string,
-          orderId: null,
-          rawOrderId: row.id as string,
-          orderItemId: null,
-          orderAddonId: null,
-          paymentType: 'extension',
-          amount: extensionCost,
-          paymentMethodId: isPaid ? (paymentMethod ?? 'cash') : 'pending',
-          transactionDate: new Date().toISOString().slice(0, 10),
-          settlementStatus: isPaid ? null : 'pending',
-          settlementRef: `Extension: ${currentDropoff.toISOString().slice(0, 10)} → ${newDropoff.toISOString().slice(0, 10)}`,
-          customerId: null,
-          accountId: isPaid ? (paymentAccountId ?? null) : null,
-        };
-        await paymentRepo.save(payment);
+      const { data: rpcResult, error: rpcErr } = await sb
+        .rpc('confirm_extend_raw_atomic', {
+          p_order_id:          row.id as string,
+          p_new_dropoff:       newDropoffDatetime,
+          p_payment_id:        paymentId,
+          p_store_id:          row.store_id as string,
+          p_amount:            extensionCost,
+          p_payment_method_id: isPaid ? (paymentMethod ?? 'cash') : 'pending',
+          p_transaction_date:  journalDate,
+          p_settlement_status: isPaid ? null : 'pending',
+          p_settlement_ref:    `Extension: ${currentDropoff.toISOString().slice(0, 10)} → ${newDropoff.toISOString().slice(0, 10)}`,
+          p_raw_order_id:      row.id as string,
+          p_is_paid:           isPaid,
+          p_receivable_acct:   accounts?.receivableAccountId ?? null,
+          p_income_acct:       accounts?.incomeAccountId ?? null,
+          p_journal_tx_id:     journalTxId,
+          p_journal_date:      journalDate,
+          p_journal_period:    journalPeriod,
+          p_ext_description:   `Extension (raw order ${row.id as string}): ${extDays} day${extDays !== 1 ? 's' : ''}`,
+        });
 
-        if (isPaid) {
-          const accounts = await resolveStoreAccounts(row.store_id as string);
-          if (accounts.receivableAccountId && accounts.incomeAccountId) {
-            const { accountingPort } = req.app.locals.deps;
-            const extAmount = Money.php(extensionCost);
-            const legs: JournalLeg[] = [
-              {
-                entryId: crypto.randomUUID(),
-                accountId: accounts.receivableAccountId,
-                debit: extAmount,
-                credit: Money.zero(),
-                description: `Extension (raw order ${row.id as string}): ${extDays} day${extDays !== 1 ? 's' : ''}`,
-                referenceType: 'extension',
-                referenceId: payment.id,
-              },
-              {
-                entryId: crypto.randomUUID(),
-                accountId: accounts.incomeAccountId,
-                debit: Money.zero(),
-                credit: extAmount,
-                description: `Extension rental income (raw order ${row.id as string})`,
-                referenceType: 'extension',
-                referenceId: payment.id,
-              },
-            ];
-            await accountingPort.createTransaction(legs, row.store_id as string);
-          }
-        }
-      }
+      if (rpcErr) throw new Error(`Extend RPC failed: ${rpcErr.message}`);
+      const extResult = rpcResult as { success: boolean; error?: string };
+      if (!extResult.success) throw new Error(extResult.error ?? 'Extend failed');
 
       res.json({ success: true, data: { success: true, newDropoffDatetime, extensionCost } });
       return;
@@ -533,93 +503,60 @@ router.post('/confirm', validateBody(ExtendConfirmRequestSchema), async (req, re
         const oldDays = (item.rental_days_count as number) ?? extDayCount(pickup.getTime(), currentDropoff.getTime());
         const newDays = extDayCount(pickup.getTime(), newDropoff.getTime());
 
-        // 1. Update order item dates
-        const { error: updErr } = await sb
-          .from('order_items')
-          .update({ dropoff_datetime: newDropoffDatetime, rental_days_count: newDays })
-          .eq('id', item.id as string);
-        if (updErr) throw new Error(`Failed to update order item: ${updErr.message}`);
-
-        // 2. Recalculate per-day add-on costs if day count changed
+        // Build addon updates array for RPC
+        const addonUpdates: Array<{ id: string; new_total: number }> = [];
         let addonDelta = 0;
         if (oldDays !== newDays) {
           const { data: addons } = await sb
             .from('order_addons')
             .select('id, addon_type, addon_price, quantity, total_amount')
             .eq('order_id', ord.id);
-
           for (const addon of (addons ?? []) as Array<Record<string, unknown>>) {
             if ((addon.addon_type as string) === 'per_day') {
-              const oldTotal = Number(addon.total_amount ?? 0);
               const newTotal = Number(addon.addon_price ?? 0) * Number(addon.quantity ?? 1) * newDays;
-              addonDelta += newTotal - oldTotal;
-              await sb.from('order_addons').update({ total_amount: newTotal }).eq('id', addon.id as string);
+              addonDelta += newTotal - Number(addon.total_amount ?? 0);
+              addonUpdates.push({ id: addon.id as string, new_total: newTotal });
             }
           }
         }
 
-        // 3. Update order final_total and balance_due
         const totalDelta = extensionCost + addonDelta;
-        if (totalDelta > 0) {
-          const { orderRepo } = req.app.locals.deps;
-          const order = await orderRepo.findById(ord.id);
-          if (order) {
-            order.adjustTotal(Money.php(totalDelta));
-            await orderRepo.save(order);
-          }
-        }
+        const paymentId = crypto.randomUUID();
+        const journalTxId = crypto.randomUUID();
+        const now = new Date();
+        const journalDate = now.toISOString().slice(0, 10);
+        const journalPeriod = journalDate.slice(0, 7);
+        const accounts = await resolveStoreAccounts(storeId);
 
-        // 4. Create extension payment record
-        if (extensionCost > 0) {
-          const { paymentRepo } = req.app.locals.deps;
-          const payment: Payment = {
-            id: crypto.randomUUID(),
-            storeId,
-            orderId: ord.id,
-            rawOrderId: null,
-            orderItemId: item.id as string,
-            orderAddonId: null,
-            paymentType: 'extension',
-            amount: extensionCost,
-            paymentMethodId: isPaid ? (paymentMethod ?? 'cash') : 'pending',
-            transactionDate: new Date().toISOString().slice(0, 10),
-            settlementStatus: isPaid ? null : 'pending',
-            settlementRef: `Extension: ${currentDropoff.toISOString().slice(0, 10)} → ${newDropoff.toISOString().slice(0, 10)}`,
-            customerId: ord.customer_id,
-            accountId: isPaid ? (paymentAccountId ?? null) : null,
-          };
-          await paymentRepo.save(payment);
+        const { data: rpcResult, error: rpcErr } = await sb
+          .rpc('confirm_extend_order_atomic', {
+            p_order_id:          ord.id,
+            p_order_item_id:     item.id as string,
+            p_new_dropoff:       newDropoffDatetime,
+            p_new_days:          newDays,
+            p_addon_updates:     JSON.stringify(addonUpdates),
+            p_total_delta:       totalDelta,
+            p_payment_id:        paymentId,
+            p_store_id:          storeId,
+            p_amount:            extensionCost,
+            p_payment_method_id: isPaid ? (paymentMethod ?? 'cash') : 'pending',
+            p_transaction_date:  journalDate,
+            p_settlement_status: isPaid ? null : 'pending',
+            p_settlement_ref:    `Extension: ${currentDropoff.toISOString().slice(0, 10)} → ${newDropoff.toISOString().slice(0, 10)}`,
+            p_customer_id:       ord.customer_id,
+            p_order_item_id_fk:  item.id as string,
+            p_is_paid:           isPaid,
+            p_receivable_acct:   accounts?.receivableAccountId ?? null,
+            p_income_acct:       accounts?.incomeAccountId ?? null,
+            p_journal_tx_id:     journalTxId,
+            p_journal_date:      journalDate,
+            p_journal_period:    journalPeriod,
+            p_ext_description:   `Extension: order ${ord.id} (${oldDays}→${newDays} days)`,
+          });
 
-          // 5. Journal entry — only when paid immediately
-          if (isPaid) {
-            const accounts = await resolveStoreAccounts(storeId);
-            if (accounts.receivableAccountId && accounts.incomeAccountId) {
-              const { accountingPort } = req.app.locals.deps;
-              const extAmount = Money.php(extensionCost);
-              const legs: JournalLeg[] = [
-                {
-                  entryId: crypto.randomUUID(),
-                  accountId: accounts.receivableAccountId,
-                  debit: extAmount,
-                  credit: Money.zero(),
-                  description: `Extension: order ${ord.id} (${oldDays}→${newDays} days)`,
-                  referenceType: 'extension',
-                  referenceId: payment.id,
-                },
-                {
-                  entryId: crypto.randomUUID(),
-                  accountId: accounts.incomeAccountId,
-                  debit: Money.zero(),
-                  credit: extAmount,
-                  description: `Extension rental income: order ${ord.id}`,
-                  referenceType: 'extension',
-                  referenceId: payment.id,
-                },
-              ];
-              await accountingPort.createTransaction(legs, storeId);
-            }
-          }
-        }
+        if (rpcErr) throw new Error(`Extend RPC failed: ${rpcErr.message}`);
+        const extResult = rpcResult as { success: boolean; error?: string };
+        if (!extResult.success) throw new Error(extResult.error ?? 'Extend failed');
 
         res.json({ success: true, data: { success: true, newDropoffDatetime, extensionCost, extensionDays: newDays - oldDays } });
         return;
