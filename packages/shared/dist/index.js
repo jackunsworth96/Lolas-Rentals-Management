@@ -25,4 +25,5 @@ export * from './schemas/ui-errors-schemas.js';
 export * from './schemas/lost-opportunity-schemas.js';
 export * from './schemas/extend-schemas.js';
 export * from './schemas/directory-schemas.js';
+export * from './schemas/budget-schemas.js';
 //# sourceMappingURL=index.js.map

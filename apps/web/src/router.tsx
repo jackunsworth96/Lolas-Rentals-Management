@@ -13,6 +13,7 @@ const MaintenancePage = lazy(() => import('./pages/maintenance/MaintenancePage.j
 const TransfersPage = lazy(() => import('./pages/transfers/TransfersPage.js'));
 const PublicBookingPage = lazy(() => import('./pages/transfers/PublicBookingPage.js'));
 const AccountsPage = lazy(() => import('./pages/accounting/AccountsPage.js'));
+const BudgetPage = lazy(() => import('./pages/budget/BudgetPage.js'));
 const AccountDetailPage = lazy(() => import('./pages/accounting/AccountDetailPage.js'));
 const CardSettlementsPage = lazy(() => import('./pages/card-settlements/CardSettlementsPage.js'));
 const CashupPage = lazy(() => import('./pages/cashup/CashupPage.js'));
@@ -96,6 +97,7 @@ export function AppRouter() {
           <Route path="transfers" element={<TransfersPage />} />
           <Route path="accounts" element={<AccountsPage />} />
           <Route path="accounts/:id" element={<AccountDetailPage />} />
+          <Route path="budget" element={<BudgetPage />} />
           <Route path="card-settlements" element={<CardSettlementsPage />} />
           <Route path="cashup" element={<CashupPage />} />
           <Route path="hr/employees" element={<EmployeesPage />} />

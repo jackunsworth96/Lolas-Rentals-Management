@@ -9,6 +9,7 @@ import {
   Wrench,
   ParkingSquare,
   DollarSign,
+  BarChart2,
   CreditCard,
   Calculator,
   Receipt,
@@ -66,6 +67,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Finance',
     items: [
       { label: 'Accounts', path: '/accounts', perm: 'can_view_accounts', icon: DollarSign },
+      { label: 'Budget', path: '/budget', perm: 'can_view_accounts', icon: BarChart2 },
       { label: 'Card Settlements', path: '/card-settlements', perm: 'can_view_cardsettlements', icon: CreditCard },
       { label: 'Cash Up', path: '/cashup', perm: 'can_view_cashup', icon: Calculator },
       { label: 'Expenses', path: '/expenses', perm: 'can_view_expenses', icon: Receipt },
