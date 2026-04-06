@@ -1,4 +1,6 @@
 node_modules/
+# Incremental build caches — must not be committed (breaks clean/CI builds when dist/ is absent)
+*.tsbuildinfo
 apps/api/dist/
 apps/web/dist/
 packages/domain/dist/

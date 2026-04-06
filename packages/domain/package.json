@@ -13,7 +13,7 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --build --force",
     "dev": "tsc --watch --preserveWatchOutput",
     "test": "vitest run",
     "test:watch": "vitest"

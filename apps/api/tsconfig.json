@@ -4,8 +4,8 @@
     "composite": true,
     "baseUrl": ".",
     "paths": {
-      "@lolas/domain": ["../../packages/domain/src/index.ts"],
-      "@lolas/shared": ["../../packages/shared/src/index.ts"]
+      "@lolas/domain": ["../../packages/domain/dist/index.d.ts"],
+      "@lolas/shared": ["../../packages/shared/dist/index.d.ts"]
     },
     "outDir": "dist",
     "rootDir": "src",
