@@ -176,12 +176,13 @@ export default function TransferBookingPage() {
   }
 
   return (
-    <PageLayout title="Airport Transfers | Lola's Rentals">
+    <PageLayout title="Airport Transfers | Lola's Rentals" fullBleed>
       <PageHeader
         eyebrow="Siargao Island"
         headingMain="Airport"
         headingAccent="Transfers"
         subheading="Reliable transfers between General Luna and IAO Airport"
+        className="px-6 pt-20 pb-6 text-center"
       />
 
       <div className="mx-auto max-w-2xl px-4 pt-8">

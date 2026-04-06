@@ -119,14 +119,15 @@ export default function ExtendPage() {
   }
 
   return (
-    <PageLayout title="Extend My Rental | Lola's Rentals">
+    <PageLayout title="Extend My Rental | Lola's Rentals" fullBleed>
       <PageHeader
         eyebrow="Need More Time?"
         headingMain="Extend Your"
         headingAccent="Rental"
         subheading="Loving Siargao? We get it. Extend your rental in just a few clicks."
+        className="px-6 pt-6 pb-4 text-center"
       />
-      <div className="relative mx-auto max-w-xl overflow-hidden px-4 pt-8 pb-16">
+      <div className="relative mx-auto max-w-xl overflow-hidden px-4 pt-2 pb-4">
         <div className="relative z-10">
 
           {pageState === 'confirmed' ? (

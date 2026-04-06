@@ -9,12 +9,13 @@ import { SafetyTipsSection } from '../../components/repairs/SafetyTipsSection.js
 
 export default function RepairsPage() {
   return (
-    <PageLayout title="Repairs & Info | Lola's Rentals">
+    <PageLayout title="Repairs & Info | Lola's Rentals" fullBleed>
       <PageHeader
         eyebrow="Our Commitment"
         headingMain="Repair Costs &"
         headingAccent="Transparency"
         subheading="We publish our repair costs so you always know what to expect. No surprises, ever."
+        className="px-6 pt-20 pb-6 text-center"
       />
 
       <RepairCostsSection />

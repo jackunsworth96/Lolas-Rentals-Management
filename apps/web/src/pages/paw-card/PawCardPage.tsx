@@ -45,7 +45,7 @@ export default function PawCardPage() {
   const customerIdForSubmit = pawAccess?.customerId ?? pawAccess?.email ?? '';
 
   return (
-    <PageLayout title="Paw Card | Lola's Rentals" showFloralLeft={false} showFloralRight={false}>
+    <PageLayout title="Paw Card | Lola's Rentals" showFloralLeft={false} showFloralRight={false} fullBleed>
 
       {/* ── Welcome back animation (visible only when logged in) ── */}
       {pawAccess && (
@@ -112,7 +112,7 @@ export default function PawCardPage() {
         headingMain="Log Your"
         headingAccent="Savings"
         subheading="Every peso saved at our partner businesses goes toward spay, neuter and vaccination initiatives for animals on Siargao."
-        className="px-6 pt-8 pb-6 text-center"
+        className="px-6 pt-20 pb-6 text-center"
       />
 
       {/* ── Inline login form / log-out link ── */}

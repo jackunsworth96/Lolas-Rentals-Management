@@ -37,13 +37,6 @@ const NAV_ITEMS = [
   },
 ];
 
-const BOTTOM_NAV = [
-  { to: '/book', icon: '🏠', label: 'Home' },
-  { to: '/book/reserve', icon: '🏍️', label: 'Reserve' },
-  { to: '/book/transfers', icon: '🚐', label: 'Transfers' },
-  { to: '/book/extend', icon: '📋', label: 'My Rental' },
-  { to: '/book/repairs', icon: '🔧', label: 'Repairs' },
-];
 
 
 export function PageLayout({
@@ -105,7 +98,7 @@ export function PageLayout({
         }
       />
 
-      <main className={`relative z-10 overflow-x-hidden pb-32 ${fullBleed ? '' : 'px-4 pt-20'}`}>{children}</main>
+      <main className={`relative z-10 overflow-x-hidden pb-8 ${fullBleed ? '' : 'px-4 pt-20'}`}>{children}</main>
 
       <FadeUpSection>
         <footer className="w-full border-t border-sand-brand bg-cream-brand pb-32 pt-16 md:pb-16">
@@ -146,22 +139,6 @@ export function PageLayout({
 
       <ClickSpark sparkColor="#FCBC5A" sparkSize={10} sparkRadius={14} sparkCount={8} duration={400} easing="ease-out" extraScale={1} />
 
-      <nav className="fixed bottom-0 left-0 z-50 flex h-20 w-full items-center justify-around bg-cream-brand px-4 pb-4 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] md:hidden">
-        {BOTTOM_NAV.map((n) => (
-          <Link
-            key={n.to}
-            to={n.to}
-            className={`flex min-h-[44px] flex-col items-center gap-0.5 py-2 text-xs font-black transition-all duration-200 ${
-              isActive(n.to)
-                ? 'scale-110 rounded-3xl bg-[#D1E7E4] px-6 text-teal-brand'
-                : 'px-5 text-charcoal-brand/50 hover:opacity-80'
-            }`}
-          >
-            <span className="text-lg">{n.icon}</span>
-            {n.label}
-          </Link>
-        ))}
-      </nav>
     </div>
   );
 }

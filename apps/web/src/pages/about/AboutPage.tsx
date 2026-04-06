@@ -9,12 +9,13 @@ import { TeamSection } from '../../components/about/TeamSection.js';
 
 export default function AboutPage() {
   return (
-    <PageLayout title="About Us | Lola's Rentals">
+    <PageLayout title="About Us | Lola's Rentals" fullBleed>
       <PageHeader
         eyebrow="Siargao Island"
         headingMain="A Small Island Business"
         headingAccent="With a Big Heart"
         subheading="Born on Siargao, built around community."
+        className="px-6 pt-20 pb-6 text-center"
       />
 
       <PawDivider />

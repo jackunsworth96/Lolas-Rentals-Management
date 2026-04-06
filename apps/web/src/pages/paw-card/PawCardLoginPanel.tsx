@@ -81,15 +81,19 @@ export function PawCardLoginPanel({ access, onAccessGranted, compact = false }: 
 
       <form onSubmit={handleSubmit} className={`space-y-3 ${compact ? 'text-center' : 'text-left'}`}>
         <div>
-          <label className={`mb-1.5 block text-sm font-semibold ${compact ? 'text-center' : 'ml-1 text-left'}`}>
-            Email
-          </label>
+          {!compact && (
+            <label htmlFor="paw-card-email" className="mb-1.5 ml-1 block text-left text-sm font-semibold">
+              Email
+            </label>
+          )}
           <input
+            id="paw-card-email"
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="hello@siargao.com"
+            aria-label={compact ? 'Email' : undefined}
             className="w-full rounded-lg px-4 py-3 transition-all duration-200 focus:scale-[1.01] focus:ring-2 focus:ring-teal-brand/40"
             style={{ background: '#ffffff', border: '2px solid #d4c4ae', outlineColor: '#1A7A6E' }}
           />
