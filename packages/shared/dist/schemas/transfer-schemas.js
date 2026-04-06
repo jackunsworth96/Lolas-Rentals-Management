@@ -40,4 +40,16 @@ export const TransferQuerySchema = z.object({
     status: z.string().optional(),
     paymentStatus: z.string().optional(),
 });
+export const PublicTransferBookingSchema = z.object({
+    customerName: z.string().min(1),
+    contactNumber: z.string().min(1),
+    flightNumber: z.string().nullable().default(null),
+    serviceDate: z.string().min(1),
+    flightTime: z.string().nullable().default(null),
+    paxCount: z.number().int().min(1).max(20),
+    route: z.string().min(1),
+    vanType: z.enum(['Shared', 'Private']),
+    totalPrice: z.number().positive(),
+    opsNotes: z.string().nullable().default(null),
+});
 //# sourceMappingURL=transfer-schemas.js.map

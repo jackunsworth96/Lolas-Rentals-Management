@@ -32,6 +32,7 @@ const BasketPage = lazy(() => import('./pages/basket/BasketPage.js'));
 const ConfirmationPage = lazy(() => import('./pages/confirmation/ConfirmationPage.js'));
 const ExtendPage = lazy(() => import('./pages/extend/ExtendPage.js'));
 const HomePage = lazy(() => import('./pages/home/HomePage.js'));
+const TransferBookingPage = lazy(() => import('./pages/TransferBookingPage.js'));
 const RepairsPage = lazy(() => import('./pages/repairs/RepairsPage.js'));
 const AboutPage = lazy(() => import('./pages/about/AboutPage.js'));
 const PrivacyPage = lazy(() => import('./pages/privacy/PrivacyPage.js'));
@@ -73,6 +74,7 @@ export function AppRouter() {
         <Route path="/book/confirmation/:reference" element={<ConfirmationPage />} />
         <Route path="/book/extend" element={<ExtendPage />} />
         <Route path="/book/paw-card" element={<PawCardPage />} />
+        <Route path="/book/transfers" element={<TransferBookingPage />} />
         <Route path="/book/repairs" element={<RepairsPage />} />
         <Route path="/book/about" element={<AboutPage />} />
         <Route path="/book/privacy" element={<PrivacyPage />} />

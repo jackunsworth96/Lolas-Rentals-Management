@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { validateBody } from '../middleware/validate.js';
 import { z } from 'zod';
 import type { Store, ConfigRepository } from '@lolas/domain';
+import { PublicTransferBookingSchema } from '@lolas/shared';
 
 const router = Router();
 
@@ -83,6 +84,100 @@ router.post('/transfer-booking', validateBody(PublicBookingSchema), async (req, 
       { transfers: req.app.locals.deps.transferRepo },
     );
     res.status(201).json({ success: true, data: { id: result.id } });
+  } catch (err) { next(err); }
+});
+
+router.post('/public-transfer-booking', validateBody(PublicTransferBookingSchema), async (req, res, next) => {
+  try {
+    const { createTransfer } = await import('../use-cases/transfers/create-transfer.js');
+    const result = await createTransfer(
+      {
+        serviceDate:    req.body.serviceDate,
+        customerName:   req.body.customerName,
+        contactNumber:  req.body.contactNumber,
+        customerEmail:  null,
+        customerType:   'Online',
+        route:          req.body.route,
+        flightTime:     req.body.flightTime,
+        paxCount:       req.body.paxCount,
+        vanType:        req.body.vanType,
+        accommodation:  null,
+        opsNotes:       req.body.opsNotes,
+        totalPrice:     req.body.totalPrice,
+        paymentMethod:  null,
+        bookingSource:  'Online',
+        bookingToken:   null,
+        storeId:        'store-lolas',
+        orderId:        null,
+      },
+      { transfers: req.app.locals.deps.transferRepo },
+    );
+    res.status(201).json({ success: true, reference: result.id });
+  } catch (err) { next(err); }
+});
+
+router.get('/flight-lookup', async (req, res, next) => {
+  // Requires AERODATABOX_API_KEY in environment variables
+  // Free tier: 100 calls/day via RapidAPI
+  // https://rapidapi.com/aedbx-aedbx/api/aerodatabox
+  try {
+    const flightNumber = req.query.flightNumber as string | undefined;
+    if (!flightNumber) {
+      res.status(400).json({ error: 'flightNumber query parameter is required' });
+      return;
+    }
+
+    const apiKey = process.env.AERODATABOX_API_KEY;
+    if (!apiKey) {
+      res.status(503).json({ error: 'Flight lookup unavailable.' });
+      return;
+    }
+
+    let raw: globalThis.Response;
+    try {
+      raw = await fetch(
+        `https://aerodatabox.p.rapidapi.com/flights/number/${encodeURIComponent(flightNumber)}`,
+        {
+          headers: {
+            'x-rapidapi-host': 'aerodatabox.p.rapidapi.com',
+            'x-rapidapi-key': apiKey,
+          },
+        },
+      );
+    } catch {
+      res.status(503).json({ error: 'Flight lookup service unavailable. Please enter time manually.' });
+      return;
+    }
+
+    if (!raw.ok) {
+      res.status(404).json({ error: 'Flight not found. Please enter date and time manually.' });
+      return;
+    }
+
+    const data = await raw.json() as unknown[];
+    if (!Array.isArray(data) || data.length === 0) {
+      res.status(404).json({ error: 'Flight not found. Please enter date and time manually.' });
+      return;
+    }
+
+    const result  = data[0] as Record<string, unknown>;
+    const dep     = result.departure as Record<string, unknown> | undefined;
+    const arr     = result.arrival   as Record<string, unknown> | undefined;
+    const depTime = dep?.scheduledTime as Record<string, unknown> | undefined;
+    const arrTime = arr?.scheduledTime as Record<string, unknown> | undefined;
+    const airline = result.airline    as Record<string, unknown> | undefined;
+    const depApt  = dep?.airport      as Record<string, unknown> | undefined;
+    const arrApt  = arr?.airport      as Record<string, unknown> | undefined;
+
+    res.json({
+      flightNumber,
+      scheduledDeparture: depTime?.local   ?? null,
+      scheduledArrival:   arrTime?.local   ?? null,
+      flightStatus:       result.status    ?? null,
+      airline:            airline?.name    ?? null,
+      origin:             depApt?.iata     ?? null,
+      destination:        arrApt?.iata     ?? null,
+    });
   } catch (err) { next(err); }
 });
 

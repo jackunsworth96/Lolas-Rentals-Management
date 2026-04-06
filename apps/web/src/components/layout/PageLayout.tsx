@@ -23,6 +23,7 @@ export interface PageLayoutProps {
 const NAV_ITEMS = [
   { label: 'Home', href: '/book' },
   { label: 'Reserve', href: '/book/reserve' },
+  { label: 'Transfers', href: '/book/transfers' },
   { label: 'Repairs', href: '/book/repairs' },
   { label: 'About', href: '/book/about' },
   {
@@ -39,6 +40,7 @@ const NAV_ITEMS = [
 const BOTTOM_NAV = [
   { to: '/book', icon: '🏠', label: 'Home' },
   { to: '/book/reserve', icon: '🏍️', label: 'Reserve' },
+  { to: '/book/transfers', icon: '🚐', label: 'Transfers' },
   { to: '/book/extend', icon: '📋', label: 'My Rental' },
   { to: '/book/repairs', icon: '🔧', label: 'Repairs' },
 ];
