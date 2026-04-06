@@ -43,16 +43,24 @@ export function LocationsTab() {
     const sid = row.storeId;
     return {
       ...row,
-      storeId: sid == null || sid === '' ? (storesList[0]?.id ?? '') : sid,
+      storeId: sid == null || sid === '' ? '__all__' : sid,
     };
   }
 
   function handleSaveLocation(row: Record<string, unknown>) {
     const storeIdValue = row.storeId as string;
+    const existingId = row.id as number | undefined;
 
     if (storeIdValue === '__all__') {
-      for (const store of storesList) {
-        save.mutate({ ...row, storeId: store.id });
+      if (existingId) {
+        // Editing existing row — update it with storeId = null
+        // (null means available to all stores)
+        save.mutate({ ...row, id: existingId, storeId: null });
+      } else {
+        // New row — create one entry per store
+        for (const store of storesList) {
+          save.mutate({ ...row, storeId: store.id });
+        }
       }
     } else {
       save.mutate({ ...row, storeId: storeIdValue });

@@ -60,8 +60,8 @@ export declare const UpdateLostOpportunitySchema: z.ZodObject<{
     storeId: string;
     date?: string | undefined;
     quantity?: number | undefined;
-    time?: string | null | undefined;
     reason?: string | undefined;
+    time?: string | null | undefined;
     vehicleRequested?: string | null | undefined;
     durationDays?: number | null | undefined;
     estValue?: number | null | undefined;
@@ -71,8 +71,8 @@ export declare const UpdateLostOpportunitySchema: z.ZodObject<{
     storeId: string;
     date?: string | undefined;
     quantity?: number | undefined;
-    time?: string | null | undefined;
     reason?: string | undefined;
+    time?: string | null | undefined;
     vehicleRequested?: string | null | undefined;
     durationDays?: number | null | undefined;
     estValue?: number | null | undefined;

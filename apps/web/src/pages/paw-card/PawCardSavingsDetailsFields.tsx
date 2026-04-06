@@ -1,15 +1,6 @@
 type Est = { id: number; name: string };
 
-type RentalOrder = { id: string; order_date: string; status: string };
-
 type Props = {
-  loadingOrders: boolean;
-  ordersError: string;
-  rentalOrders: RentalOrder[];
-  selectedRentalOrderId: string;
-  setSelectedRentalOrderId: (v: string) => void;
-  manualOrderId: string;
-  setManualOrderId: (v: string) => void;
   loadingEst: boolean;
   establishmentsError: string;
   establishments: Est[];
@@ -27,13 +18,6 @@ const inp =
   'w-full rounded-lg border-none px-4 py-3 transition-all duration-200 focus:scale-[1.01] focus:ring-2';
 
 export function PawCardSavingsDetailsFields({
-  loadingOrders,
-  ordersError,
-  rentalOrders,
-  selectedRentalOrderId,
-  setSelectedRentalOrderId,
-  manualOrderId,
-  setManualOrderId,
   loadingEst,
   establishmentsError,
   establishments,
@@ -47,44 +31,7 @@ export function PawCardSavingsDetailsFields({
   setNumPeople,
 }: Props) {
   return (
-    <>
-      {loadingOrders && <p className="text-sm" style={{ color: '#6e7976' }}>Loading your orders…</p>}
-      {ordersError && <p className="text-sm text-red-600">{ordersError}</p>}
-
-      <div>
-        <label className="mb-1.5 ml-1 block text-sm font-semibold">Rental order</label>
-        <select
-          value={selectedRentalOrderId}
-          onChange={(e) => {
-            setSelectedRentalOrderId(e.target.value);
-            if (e.target.value) setManualOrderId('');
-          }}
-          disabled={loadingOrders || !!ordersError}
-          className={`${inp} mb-2`}
-          style={{ background: '#fff', outlineColor: '#1A7A6E' }}
-        >
-          <option value="">
-            {rentalOrders.length ? 'Select your rental order' : 'No orders found for your email — enter ID below'}
-          </option>
-          {rentalOrders.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.id} — {o.order_date} ({o.status})
-            </option>
-          ))}
-        </select>
-        <input
-          type="text"
-          value={manualOrderId}
-          onChange={(e) => {
-            setManualOrderId(e.target.value);
-            if (e.target.value.trim()) setSelectedRentalOrderId('');
-          }}
-          placeholder="Or type your order ID (e.g. from your confirmation)"
-          className={inp}
-          style={{ background: '#f0e7d8', outlineColor: '#1A7A6E' }}
-        />
-      </div>
-
+    <div className="space-y-4 font-lato">
       {loadingEst && <p className="text-sm" style={{ color: '#6e7976' }}>Loading partners…</p>}
       {establishmentsError && <p className="text-sm text-red-600">{establishmentsError}</p>}
 
@@ -148,6 +95,6 @@ export function PawCardSavingsDetailsFields({
           style={{ background: '#fff', outlineColor: '#1A7A6E' }}
         />
       </div>
-    </>
+    </div>
   );
 }

@@ -42,13 +42,13 @@ export declare const SavePaymentMethodRequestSchema: z.ZodObject<{
     accountId: z.ZodNumber;
     isActive: z.ZodOptional<z.ZodBoolean>;
 }, "strip", z.ZodTypeAny, {
-    name: string;
     accountId: number;
+    name: string;
     id?: number | undefined;
     isActive?: boolean | undefined;
 }, {
-    name: string;
     accountId: number;
+    name: string;
     id?: number | undefined;
     isActive?: boolean | undefined;
 }>;
@@ -77,14 +77,14 @@ export declare const SaveAccountRequestSchema: z.ZodObject<{
     parentAccountId: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
     isActive: z.ZodOptional<z.ZodBoolean>;
 }, "strip", z.ZodTypeAny, {
+    accountType: "expense" | "asset" | "liability" | "equity" | "revenue";
     name: string;
-    accountType: "asset" | "liability" | "equity" | "revenue" | "expense";
     id?: number | undefined;
     isActive?: boolean | undefined;
     parentAccountId?: number | null | undefined;
 }, {
+    accountType: "expense" | "asset" | "liability" | "equity" | "revenue";
     name: string;
-    accountType: "asset" | "liability" | "equity" | "revenue" | "expense";
     id?: number | undefined;
     isActive?: boolean | undefined;
     parentAccountId?: number | null | undefined;
@@ -95,12 +95,12 @@ export declare const SaveRoleRequestSchema: z.ZodObject<{
     name: z.ZodString;
     permissions: z.ZodArray<z.ZodString, "many">;
 }, "strip", z.ZodTypeAny, {
-    name: string;
     permissions: string[];
+    name: string;
     id?: number | undefined;
 }, {
-    name: string;
     permissions: string[];
+    name: string;
     id?: number | undefined;
 }>;
 export type SaveRoleRequest = z.infer<typeof SaveRoleRequestSchema>;
@@ -133,8 +133,8 @@ export declare const CreateEmployeeRequestSchema: z.ZodObject<{
     pagibigDeductionAmt: z.ZodDefault<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     status: "Active" | "Inactive";
-    fullName: string;
     storeId: string;
+    fullName: string;
     basicRate: number;
     overtimeRate: number;
     ninePmBonusRate: number;
@@ -146,11 +146,11 @@ export declare const CreateEmployeeRequestSchema: z.ZodObject<{
     sssDeductionAmt: number;
     philhealthDeductionAmt: number;
     pagibigDeductionAmt: number;
+    startDate?: string | null | undefined;
     role?: string | null | undefined;
     birthday?: string | null | undefined;
     emergencyContactName?: string | null | undefined;
     emergencyContactNumber?: string | null | undefined;
-    startDate?: string | null | undefined;
     probationEndDate?: string | null | undefined;
     rateType?: "daily" | "monthly" | null | undefined;
     paidAs?: string | null | undefined;
@@ -159,14 +159,14 @@ export declare const CreateEmployeeRequestSchema: z.ZodObject<{
     pagibigNo?: string | null | undefined;
     tin?: string | null | undefined;
 }, {
-    fullName: string;
     storeId: string;
+    fullName: string;
     status?: "Active" | "Inactive" | undefined;
+    startDate?: string | null | undefined;
     role?: string | null | undefined;
     birthday?: string | null | undefined;
     emergencyContactName?: string | null | undefined;
     emergencyContactNumber?: string | null | undefined;
-    startDate?: string | null | undefined;
     probationEndDate?: string | null | undefined;
     rateType?: "daily" | "monthly" | null | undefined;
     basicRate?: number | undefined;
@@ -217,15 +217,15 @@ export declare const UpdateEmployeeRequestSchema: z.ZodObject<{
 } & {
     id: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    id?: string | undefined;
     status?: "Active" | "Inactive" | undefined;
-    fullName?: string | undefined;
+    id?: string | undefined;
+    startDate?: string | null | undefined;
     storeId?: string | undefined;
+    fullName?: string | undefined;
     role?: string | null | undefined;
     birthday?: string | null | undefined;
     emergencyContactName?: string | null | undefined;
     emergencyContactNumber?: string | null | undefined;
-    startDate?: string | null | undefined;
     probationEndDate?: string | null | undefined;
     rateType?: "daily" | "monthly" | null | undefined;
     basicRate?: number | undefined;
@@ -245,15 +245,15 @@ export declare const UpdateEmployeeRequestSchema: z.ZodObject<{
     philhealthDeductionAmt?: number | undefined;
     pagibigDeductionAmt?: number | undefined;
 }, {
-    id?: string | undefined;
     status?: "Active" | "Inactive" | undefined;
-    fullName?: string | undefined;
+    id?: string | undefined;
+    startDate?: string | null | undefined;
     storeId?: string | undefined;
+    fullName?: string | undefined;
     role?: string | null | undefined;
     birthday?: string | null | undefined;
     emergencyContactName?: string | null | undefined;
     emergencyContactNumber?: string | null | undefined;
-    startDate?: string | null | undefined;
     probationEndDate?: string | null | undefined;
     rateType?: "daily" | "monthly" | null | undefined;
     basicRate?: number | undefined;

@@ -3,7 +3,7 @@ import { getSupabaseClient } from '../../adapters/supabase/client.js';
 
 export type PawCardPublicLookupResult =
   | { found: false }
-  | { found: true; customerId: string | null };
+  | { found: true; customerId: string | null; customerName: string | null };
 
 export interface LookupPawCardPublicDeps {
   customerRepo: CustomerRepository;
@@ -27,20 +27,21 @@ export async function lookupPawCardPublicAccess(
 
   const customer = await deps.customerRepo.findByEmail(normalized);
   if (customer) {
-    return { found: true, customerId: customer.id };
+    return { found: true, customerId: customer.id, customerName: customer.name ?? null };
   }
 
   const sb = getSupabaseClient();
   const { data, error } = await sb
     .from('orders_raw')
-    .select('id')
+    .select('id, customer_name')
     .ilike('customer_email', normalized)
     .limit(1)
     .maybeSingle();
 
   if (error) throw new Error(`orders_raw lookup failed: ${error.message}`);
   if (data) {
-    return { found: true, customerId: null };
+    const row = data as { id: string; customer_name: string | null };
+    return { found: true, customerId: null, customerName: row.customer_name ?? null };
   }
 
   return { found: false };

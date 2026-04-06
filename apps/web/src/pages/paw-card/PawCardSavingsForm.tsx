@@ -68,17 +68,12 @@ export function PawCardSavingsForm({
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
-  const [successInfo, setSuccessInfo] = useState<{ rentalOrderId: string } | null>(null);
+  const [successInfo, setSuccessInfo] = useState<object | null>(null);
   const [uploadError, setUploadError] = useState('');
   const [submitError, setSubmitError] = useState('');
   const [loadingEst, setLoadingEst] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitPressDown, setSubmitPressDown] = useState(false);
-  const [rentalOrders, setRentalOrders] = useState<{ id: string; order_date: string; status: string }[]>([]);
-  const [loadingOrders, setLoadingOrders] = useState(true);
-  const [ordersError, setOrdersError] = useState('');
-  const [selectedRentalOrderId, setSelectedRentalOrderId] = useState('');
-  const [manualOrderId, setManualOrderId] = useState('');
 
   const galleryRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -103,26 +98,6 @@ export function PawCardSavingsForm({
     })();
     return () => { cancelled = true; };
   }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoadingOrders(true);
-      setOrdersError('');
-      try {
-        const q = new URLSearchParams({ email: accessEmail });
-        const list = await api.get<Array<{ id: string; order_date: string; status: string }>>(
-          `/public/paw-card/rental-orders?${q}`,
-        );
-        if (!cancelled) setRentalOrders(list);
-      } catch (err) {
-        if (!cancelled) setOrdersError(formatFetchError(err));
-      } finally {
-        if (!cancelled) setLoadingOrders(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [accessEmail]);
 
   const handleFileChange = useCallback((file: File | null) => {
     setUploadError('');
@@ -163,12 +138,6 @@ export function PawCardSavingsForm({
         return;
       }
 
-      const rentalOrderId = (selectedRentalOrderId || manualOrderId.trim()).trim();
-      if (!rentalOrderId) {
-        setSubmitError('Please select your rental order or enter your order ID.');
-        return;
-      }
-
       let receiptUrl: string | null = null;
       if (receiptFile) {
         try {
@@ -186,7 +155,6 @@ export function PawCardSavingsForm({
         customerId: customerIdForSubmit,
         email,
         fullName: displayFullName,
-        orderId: rentalOrderId,
         establishmentId,
         discountAmount: Number(amount),
         visitDate,
@@ -194,14 +162,12 @@ export function PawCardSavingsForm({
         numberOfPeople,
       });
 
-      setSuccessInfo({ rentalOrderId });
+      setSuccessInfo({});
       setSubmitSuccess(true);
       setEstablishmentId('');
       setAmount('');
       setVisitDate('');
       setNumPeople('');
-      setSelectedRentalOrderId('');
-      setManualOrderId('');
       setReceiptFile(null);
       setReceiptPreview(null);
       setUploadError('');
@@ -214,7 +180,7 @@ export function PawCardSavingsForm({
   };
 
   return (
-    <form onSubmit={handleSubmitSaving} className="space-y-4">
+    <form onSubmit={handleSubmitSaving} className="space-y-4 font-lato">
       {submitSuccess && successInfo && (
         <div className="flex items-center gap-3 p-4 rounded-lg" style={{ background: 'rgba(26,122,110,0.1)' }}>
           <span className="text-xl">✅</span>
@@ -222,20 +188,12 @@ export function PawCardSavingsForm({
             <p className="font-bold text-sm" style={{ color: '#1A7A6E' }}>
               Your saving has been logged!
             </p>
-            <p className="text-xs mt-1" style={{ color: '#3e4946' }}>Rental order: {successInfo.rentalOrderId}</p>
             <p className="text-xs" style={{ color: '#3e4946' }}>Lola&apos;s will match it as a donation.</p>
           </div>
         </div>
       )}
 
       <PawCardSavingsDetailsFields
-        loadingOrders={loadingOrders}
-        ordersError={ordersError}
-        rentalOrders={rentalOrders}
-        selectedRentalOrderId={selectedRentalOrderId}
-        setSelectedRentalOrderId={setSelectedRentalOrderId}
-        manualOrderId={manualOrderId}
-        setManualOrderId={setManualOrderId}
         loadingEst={loadingEst}
         establishmentsError={establishmentsError}
         establishments={establishments}

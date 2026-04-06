@@ -510,6 +510,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                 <div className="text-xs font-medium uppercase text-gray-500">Customer</div>
                 <div className="text-base font-semibold text-gray-900">{customerName}</div>
                 {customerMobile && <div className="text-sm text-gray-500">{customerMobile}</div>}
+                {customerEmailForPaw && <div className="text-sm text-gray-500">{customerEmailForPaw}</div>}
                 {pawCardSavings?.hasPawCard && (
                   <div className="mt-2 rounded-md border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs text-teal-900">
                     <span className="mr-1" aria-hidden>🐾</span>

@@ -13,25 +13,25 @@ export declare const DirectoryContactSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     name: string;
     number?: string | null | undefined;
+    notes?: string | null | undefined;
+    address?: string | null | undefined;
+    category?: string | null | undefined;
     email?: string | null | undefined;
     relationship?: string | null | undefined;
     gcash_number?: string | null | undefined;
-    category?: string | null | undefined;
     bank_name?: string | null | undefined;
     bank_account_number?: string | null | undefined;
-    address?: string | null | undefined;
-    notes?: string | null | undefined;
 }, {
     name: string;
     number?: string | null | undefined;
+    notes?: string | null | undefined;
+    address?: string | null | undefined;
+    category?: string | null | undefined;
     email?: string | null | undefined;
     relationship?: string | null | undefined;
     gcash_number?: string | null | undefined;
-    category?: string | null | undefined;
     bank_name?: string | null | undefined;
     bank_account_number?: string | null | undefined;
-    address?: string | null | undefined;
-    notes?: string | null | undefined;
 }>;
 export type DirectoryContact = z.infer<typeof DirectoryContactSchema>;
 //# sourceMappingURL=directory-schemas.d.ts.map

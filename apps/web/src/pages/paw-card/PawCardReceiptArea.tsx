@@ -19,7 +19,7 @@ export function PawCardReceiptArea({
   onClearReceipt,
 }: Props) {
   return (
-    <div>
+    <div className="font-lato">
       <label className="block text-sm font-semibold mb-1.5 ml-1">Receipt Photo</label>
       <input
         ref={galleryRef}

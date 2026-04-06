@@ -3,6 +3,8 @@ interface PageHeaderProps {
   headingMain: string;
   headingAccent?: string;
   subheading?: string;
+  /** Override the outer wrapper's padding/spacing classes (default: "px-6 py-16 text-center") */
+  className?: string;
 }
 
 export function PageHeader({
@@ -10,9 +12,10 @@ export function PageHeader({
   headingMain,
   headingAccent,
   subheading,
+  className = 'px-6 py-16 text-center',
 }: PageHeaderProps) {
   return (
-    <div className="px-6 py-16 text-center">
+    <div className={className}>
       <div className="mx-auto max-w-3xl">
         {eyebrow && (
           <p
@@ -35,8 +38,8 @@ export function PageHeader({
 
         {subheading && (
           <p
-            className="mx-auto mt-4 max-w-xl leading-relaxed text-charcoal-brand/70"
-            style={{ fontFamily: 'Lato, sans-serif', fontSize: '16px' }}
+            className="mx-auto mt-4 max-w-xl font-lato"
+            style={{ fontSize: 18, color: '#363737', lineHeight: 1.6 }}
           >
             {subheading}
           </p>

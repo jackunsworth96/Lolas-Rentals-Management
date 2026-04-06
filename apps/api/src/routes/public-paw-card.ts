@@ -93,7 +93,7 @@ router.get('/rental-orders', validateQuery(RentalOrdersQuerySchema), async (req,
 
     const { data: orders, error: oErr } = await sb
       .from('orders')
-      .select('id, order_date, status')
+      .select('id, order_date, status, order_reference')
       .in('customer_id', customerIds)
       .order('order_date', { ascending: false })
       .limit(30);

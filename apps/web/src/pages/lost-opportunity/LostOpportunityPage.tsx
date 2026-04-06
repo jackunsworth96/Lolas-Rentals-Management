@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef } from 'react';
 import { useUIStore } from '../../stores/ui-store.js';
-import { useFleet } from '../../api/fleet.js';
+import { useVehicleModels } from '../../api/config.js';
 import {
   useLostOpportunities,
   useCreateLostOpportunity,
@@ -61,20 +61,29 @@ export default function LostOpportunityPage() {
   const storeId = useUIStore((s) => s.selectedStoreId) ?? '';
   const [date, setDate] = useState(todayStr());
   const { data: rows = [], isLoading } = useLostOpportunities(storeId, date);
-  const { data: fleet = [] } = useFleet(storeId) as {
-    data: Array<{ id: string; name?: string }> | undefined;
+  const { data: vehicleModels = [] } = useVehicleModels() as {
+    data: Array<{ id: string; name: string; isActive?: boolean }> | undefined;
   };
 
   const createMut = useCreateLostOpportunity();
   const updateMut = useUpdateLostOpportunity();
   const deleteMut = useDeleteLostOpportunity();
 
-  const fleetNames = useMemo(() => {
-    const names = (fleet ?? [])
-      .map((v) => String(v.name ?? '').trim())
-      .filter(Boolean);
-    return [...new Set(names)].sort((a, b) => a.localeCompare(b));
-  }, [fleet]);
+  const modelNames = useMemo(() => {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const m of (vehicleModels ?? [])) {
+      if (m.isActive === false) continue;
+      const name = String(m.name ?? '').trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push(name);
+      }
+    }
+    return result.sort((a, b) => a.localeCompare(b));
+  }, [vehicleModels]);
 
   const datalistId = 'lost-opp-fleet-names';
 
@@ -285,12 +294,12 @@ export default function LostOpportunityPage() {
               list={datalistId}
               value={vehicleRequested}
               onChange={(e) => setVehicleRequested(e.target.value)}
-              placeholder="Fleet name or e.g. 2× NMAX"
+              placeholder="e.g. Honda Beat, TukTuk"
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
               autoComplete="off"
             />
             <datalist id={datalistId}>
-              {fleetNames.map((n) => (
+              {modelNames.map((n) => (
                 <option key={n} value={n} />
               ))}
             </datalist>

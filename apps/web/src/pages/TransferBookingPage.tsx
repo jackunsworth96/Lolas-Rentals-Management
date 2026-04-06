@@ -55,10 +55,6 @@ export default function TransferBookingPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  const [isLookingUpFlight, setIsLookingUpFlight] = useState(false);
-  const [flightLookupError, setFlightLookupError] = useState<string | null>(null);
-  const [flightFound, setFlightFound] = useState(false);
-  const [flightInfo, setFlightInfo] = useState<{ airline: string; origin: string; destination: string } | null>(null);
 
   function validateForm(): boolean {
     const errs: Record<string, string> = {};
@@ -123,10 +119,6 @@ export default function TransferBookingPage() {
     setIsConfirmed(false);
     setSubmitError(null);
     setFieldErrors({});
-    setIsLookingUpFlight(false);
-    setFlightLookupError(null);
-    setFlightFound(false);
-    setFlightInfo(null);
   }
 
   if (isConfirmed) {
@@ -322,94 +314,14 @@ export default function TransferBookingPage() {
                   />
                 </Field>
 
-                <Field label="Flight Number" helper="Optional — we'll use this to track your flight">
+                <Field label="Flight Number" helper="Optional — helps us track your flight for delays">
                   <input
                     type="text"
                     value={flightNumber}
-                    onChange={(e) => {
-                      setFlightNumber(e.target.value.toUpperCase());
-                      setFlightFound(false);
-                      setFlightLookupError(null);
-                      setFlightInfo(null);
-                    }}
+                    onChange={(e) => setFlightNumber(e.target.value.toUpperCase())}
                     placeholder="e.g. 5J621"
                     className={inputClass}
                   />
-                  {flightNumber.trim().length >= 3 && (
-                    <div className="mt-1">
-                      {flightFound ? (
-                        <span className="font-lato text-sm font-medium text-emerald-600">
-                          ✓ Flight found — details auto-filled
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={isLookingUpFlight}
-                          onClick={async () => {
-                            setIsLookingUpFlight(true);
-                            setFlightLookupError(null);
-                            setFlightFound(false);
-                            setFlightInfo(null);
-                            try {
-                              const apiBase = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
-                              const res = await fetch(
-                                `${apiBase}/api/public/flight-lookup?flightNumber=${encodeURIComponent(flightNumber)}`,
-                              );
-                              if (res.ok) {
-                                const data = await res.json() as {
-                                  scheduledDeparture?: string;
-                                  scheduledArrival?: string;
-                                  flightStatus?: string;
-                                  airline?: string;
-                                  origin?: string;
-                                  destination?: string;
-                                };
-                                const routeUpper = (route ?? '').toUpperCase();
-                                const isDeparting =
-                                  routeUpper.includes('IAO AIRPORT') && routeUpper.startsWith('GENERAL');
-                                const datetimeStr = isDeparting
-                                  ? data.scheduledDeparture
-                                  : data.scheduledArrival;
-                                if (datetimeStr) {
-                                  setServiceDate(datetimeStr.slice(0, 10));
-                                  setFlightTime(datetimeStr.slice(11, 16));
-                                }
-                                setFlightFound(true);
-                                setFlightInfo({
-                                  airline: data.airline ?? '',
-                                  origin: data.origin ?? '',
-                                  destination: data.destination ?? '',
-                                });
-                              } else {
-                                const errData = await res.json().catch(() => ({})) as Record<string, unknown>;
-                                setFlightLookupError(
-                                  (errData.error as string | undefined) ??
-                                  'Flight not found. Please enter date and time manually.',
-                                );
-                              }
-                            } catch {
-                              setFlightLookupError(
-                                'Flight lookup failed. Please enter date and time manually.',
-                              );
-                            } finally {
-                              setIsLookingUpFlight(false);
-                            }
-                          }}
-                          className="font-lato text-sm font-medium text-teal-brand underline underline-offset-2 cursor-pointer bg-transparent border-none p-0 hover:text-teal-brand/70 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {isLookingUpFlight ? 'Looking up flight...' : 'Look up flight →'}
-                        </button>
-                      )}
-                      {flightInfo && (
-                        <p className="mt-1 font-lato text-xs text-emerald-600">
-                          ✓ {flightInfo.airline} {flightNumber} — {flightInfo.origin} → {flightInfo.destination}
-                        </p>
-                      )}
-                      {flightLookupError && (
-                        <p className="mt-1 font-lato text-xs text-red-500">{flightLookupError}</p>
-                      )}
-                    </div>
-                  )}
                 </Field>
 
                 <Field label="Date" required error={fieldErrors.serviceDate}>
@@ -420,25 +332,15 @@ export default function TransferBookingPage() {
                     min={today()}
                     className={inputClass}
                   />
-                  {flightFound && (
-                    <p className="mt-1 font-lato text-xs text-charcoal-brand/50">
-                      Auto-filled from flight lookup — you can edit if needed
-                    </p>
-                  )}
                 </Field>
 
-                <Field label="Time" required error={fieldErrors.flightTime} helper={flightFound ? undefined : 'Enter your flight arrival or departure time'}>
+                <Field label="Time" required error={fieldErrors.flightTime} helper="Enter your flight arrival or departure time">
                   <input
                     type="time"
                     value={flightTime}
                     onChange={(e) => setFlightTime(e.target.value)}
                     className={inputClass}
                   />
-                  {flightFound && (
-                    <p className="mt-1 font-lato text-xs text-charcoal-brand/50">
-                      Auto-filled from flight lookup — you can edit if needed
-                    </p>
-                  )}
                 </Field>
 
                 <Field label="Pickup / Dropoff Notes">

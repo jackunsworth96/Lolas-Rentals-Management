@@ -10,42 +10,42 @@ export declare const UpsertBudgetLinesSchema: z.ZodObject<{
         month: z.ZodNumber;
         amount: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
-        lineType: "revenue" | "expense" | "payroll" | "depreciation" | "drawings" | "transfer_revenue" | "misc_revenue";
+        amount: number;
+        lineType: "payroll" | "expense" | "depreciation" | "revenue" | "drawings" | "transfer_revenue" | "misc_revenue";
         categoryLabel: string;
         month: number;
-        amount: number;
         coaAccountId?: string | null | undefined;
         expenseCategoryId?: number | null | undefined;
     }, {
-        lineType: "revenue" | "expense" | "payroll" | "depreciation" | "drawings" | "transfer_revenue" | "misc_revenue";
+        amount: number;
+        lineType: "payroll" | "expense" | "depreciation" | "revenue" | "drawings" | "transfer_revenue" | "misc_revenue";
         categoryLabel: string;
         month: number;
-        amount: number;
         coaAccountId?: string | null | undefined;
         expenseCategoryId?: number | null | undefined;
     }>, "many">;
 }, "strip", z.ZodTypeAny, {
-    storeId: string | null;
-    year: number;
     lines: {
-        lineType: "revenue" | "expense" | "payroll" | "depreciation" | "drawings" | "transfer_revenue" | "misc_revenue";
+        amount: number;
+        lineType: "payroll" | "expense" | "depreciation" | "revenue" | "drawings" | "transfer_revenue" | "misc_revenue";
         categoryLabel: string;
         month: number;
-        amount: number;
         coaAccountId?: string | null | undefined;
         expenseCategoryId?: number | null | undefined;
     }[];
+    storeId: string | null;
+    year: number;
 }, {
-    storeId: string | null;
-    year: number;
     lines: {
-        lineType: "revenue" | "expense" | "payroll" | "depreciation" | "drawings" | "transfer_revenue" | "misc_revenue";
+        amount: number;
+        lineType: "payroll" | "expense" | "depreciation" | "revenue" | "drawings" | "transfer_revenue" | "misc_revenue";
         categoryLabel: string;
         month: number;
-        amount: number;
         coaAccountId?: string | null | undefined;
         expenseCategoryId?: number | null | undefined;
     }[];
+    storeId: string | null;
+    year: number;
 }>;
 export type UpsertBudgetLinesRequest = z.infer<typeof UpsertBudgetLinesSchema>;
 export declare const GetBudgetQuerySchema: z.ZodObject<{

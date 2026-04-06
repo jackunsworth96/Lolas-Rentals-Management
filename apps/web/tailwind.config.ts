@@ -26,7 +26,8 @@ export default {
       fontFamily: {
         sans: ['"Alegreya Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         headline: ['"Alegreya Sans"', 'ui-sans-serif', 'system-serif'],
-        body: ['Plus Jakarta Sans', 'sans-serif'],
+        // Match `sans` — customer site must not use Plus Jakarta Sans (see DESIGN_SYSTEM: Alegreya + Lato only)
+        body: ['"Alegreya Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         display: ['"Playfair Display"', 'Georgia', 'serif'],
         lato: ['Lato', 'Nunito', 'sans-serif'],
       },

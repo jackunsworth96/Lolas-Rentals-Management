@@ -31,13 +31,15 @@ export default function TopNav({ logo, logoAlt = 'Logo', items, rightSlot }: Top
 
   return (
     <>
-      <header className="sticky top-0 z-50 flex h-16 w-full items-center justify-between border-b border-charcoal-brand/10 bg-sand-brand px-4 shadow-sm md:px-8">
-        {/* Logo */}
-        <Link to="/book" className="flex flex-shrink-0 items-center" onClick={() => setMenuOpen(false)}>
-          <img src={logo} alt={logoAlt} className="h-10 w-auto" />
-        </Link>
+      <header className="sticky top-0 z-50 flex h-16 w-full items-center border-b border-charcoal-brand/10 bg-sand-brand px-4 shadow-sm md:px-8">
+        {/* Logo — left third */}
+        <div className="flex flex-1 items-center">
+          <Link to="/book" className="flex flex-shrink-0 items-center" onClick={() => setMenuOpen(false)}>
+            <img src={logo} alt={logoAlt} className="h-10 w-auto" />
+          </Link>
+        </div>
 
-        {/* Desktop nav */}
+        {/* Desktop nav — true center */}
         <nav className="hidden items-center gap-1 md:flex">
           {items.map((item) => {
             const active = isActive(item.href);
@@ -93,8 +95,8 @@ export default function TopNav({ logo, logoAlt = 'Logo', items, rightSlot }: Top
           })}
         </nav>
 
-        {/* Right slot + hamburger */}
-        <div className="flex items-center gap-3">
+        {/* Right slot + hamburger — right third */}
+        <div className="flex flex-1 items-center justify-end gap-3">
           {rightSlot && <div className="hidden md:block">{rightSlot}</div>}
           <button
             type="button"

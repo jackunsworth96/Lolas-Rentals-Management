@@ -15,6 +15,10 @@ import {
 import { normalizeEmail } from './paw-card-utils.js';
 import type { SavingsRow } from './paw-card-utils.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
+import BorderGlow from '../../components/home/BorderGlow.js';
+import CountUp from '../../components/home/CountUp.js';
+
+const HISTORICAL_DONATIONS = 280000;
 
 type Props = {
   accessEmail: string;
@@ -48,15 +52,10 @@ export function PawCardDashboard({ accessEmail, displayFullName }: Props) {
   const allRows = dashQuery.data ?? [];
   const myRows = useMemo(() => rowsForUser(allRows, email), [allRows, email]);
   const myTotal = useMemo(() => sumAmountSaved(myRows), [myRows]);
-  const communityTotal = useMemo(() => sumAmountSaved(allRows), [allRows]);
-  const uniqueCustomers = useMemo(() => {
-    const s = new Set<string>();
-    for (const r of allRows) {
-      const k = normalizeEmail(r.email ?? '') || normalizeEmail(r.full_name ?? '');
-      if (k) s.add(k);
-    }
-    return s.size;
-  }, [allRows]);
+  const communityTotal = useMemo(
+    () => sumAmountSaved(allRows) + HISTORICAL_DONATIONS,
+    [allRows],
+  );
   const recent = useMemo(() => {
     const mine = [...myRows].sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
@@ -85,11 +84,11 @@ export function PawCardDashboard({ accessEmail, displayFullName }: Props) {
         : '';
 
   return (
-    <section className="px-6 py-12" style={{ background: 'rgba(246,237,221,0.4)' }}>
+    <section className="px-6 py-12 font-lato" style={{ background: '#f1e6d6' }}>
       <div className="max-w-5xl mx-auto">
         <div className="flex items-end justify-between mb-8">
           <div>
-            <h2 className="text-4xl font-bold" style={{ color: '#1f1b12' }}>Your Impact</h2>
+            <h2 className="font-headline text-4xl font-bold" style={{ color: '#1f1b12' }}>Your Impact</h2>
             <p style={{ color: '#3e4946' }}>Real-time stats of your contributions</p>
           </div>
         </div>
@@ -97,100 +96,117 @@ export function PawCardDashboard({ accessEmail, displayFullName }: Props) {
         {dashErr && <p className="text-sm text-red-600 mb-4">{dashErr}</p>}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div
-            className={`flex flex-col justify-between rounded-2xl bg-white p-8 shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${!dashLoading ? 'animate-card-enter' : ''}`}
-            style={
-              !dashLoading
-                ? { animationDelay: '0ms' }
-                : undefined
-            }
+          <BorderGlow
+            backgroundColor="#ffffff"
+            borderRadius={16}
+            glowIntensity={0.8}
+            className={`shadow-lg transition-all duration-200 hover:-translate-y-0.5 ${!dashLoading ? 'animate-card-enter' : ''}`}
+            style={!dashLoading ? { animationDelay: '0ms' } : undefined}
           >
-            <div>
-              <img src={discountCard} alt="" className="w-8 h-8 mb-2 bg-transparent" />
-              <h4 className="text-xs font-bold uppercase tracking-wider" style={{ color: '#3e4946' }}>My Total Savings</h4>
+            <div className="flex h-full flex-col justify-between p-8">
+              <div>
+                <img src={discountCard} alt="" className="w-8 h-8 mb-2 bg-transparent" />
+                <h4 className="font-headline text-xs font-bold uppercase tracking-wider" style={{ color: '#3e4946' }}>My Total Savings</h4>
+              </div>
+              <p className="font-headline text-4xl font-black mt-2" style={{ color: '#1A7A6E' }}>
+                {dashLoading
+                  ? '…'
+                  : <>₱<CountUp to={myTotal} from={0} separator="," startWhen={!dashLoading} /></>}
+              </p>
+              <p className="mt-3 text-sm" style={{ color: '#3e4946' }}>
+                {dashLoading ? 'Loading visits…' : `${myRows.length} visit${myRows.length !== 1 ? 's' : ''} logged`}
+              </p>
             </div>
-            <p className="text-4xl font-black mt-2" style={{ color: '#1A7A6E' }}>
-              {dashLoading ? '…' : formatCurrency(myTotal)}
-            </p>
-            <p className="mt-3 text-sm" style={{ color: '#3e4946' }}>
-              {dashLoading ? 'Loading visits…' : `${myRows.length} visit${myRows.length !== 1 ? 's' : ''} logged`}
-            </p>
-          </div>
+          </BorderGlow>
 
-          <div
-            className={`relative flex flex-col justify-between overflow-hidden rounded-2xl p-8 text-white shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${!dashLoading ? 'animate-card-enter' : ''}`}
-            style={{
-              background: '#1A7A6E',
-              ...(!dashLoading ? { animationDelay: '100ms' } : {}),
-            }}
+          <BorderGlow
+            backgroundColor="#1A7A6E"
+            borderRadius={16}
+            glowIntensity={0.7}
+            className={`shadow-lg transition-all duration-200 hover:-translate-y-0.5 ${!dashLoading ? 'animate-card-enter' : ''}`}
+            style={!dashLoading ? { animationDelay: '100ms' } : undefined}
           >
-            <div className="relative z-10">
-              <img src={pawPrint} alt="" className="w-8 h-8 mb-2 brightness-0 invert bg-transparent" />
-              <h4 className="text-xs font-bold uppercase tracking-wider opacity-80">Lola&apos;s Matched Donation</h4>
+            <div className="relative flex h-full flex-col justify-between p-8" style={{ color: '#ffffff' }}>
+              <div className="relative z-10">
+                <img src={pawPrint} alt="" className="w-8 h-8 mb-2 brightness-0 invert bg-transparent" />
+                <h4 className="font-headline text-xs font-bold uppercase tracking-wider" style={{ color: '#ffffff', opacity: 0.8 }}>Lola&apos;s Matched Donation</h4>
+              </div>
+              <div className="relative z-10">
+                <p className="font-headline text-4xl font-black mt-2 mb-1" style={{ color: '#ffffff' }}>
+                  {dashLoading
+                    ? '…'
+                    : <>₱<CountUp to={Math.round(myTotal)} from={0} separator="," startWhen={!dashLoading} /></>}
+                </p>
+                <p className="text-xs" style={{ color: '#ffffff', opacity: 0.7 }}>
+                  Every peso you save, Lola&apos;s donates the same to Be Pawsitive NGO.
+                </p>
+              </div>
+              <img src={lolaFace} alt="" className="absolute -bottom-4 -right-4 w-28 h-28 opacity-15 pointer-events-none z-0 bg-transparent" />
             </div>
-            <div className="relative z-10">
-              <p className="text-4xl font-black mt-2 mb-1">
-                {dashLoading ? '…' : formatCurrency(myTotal)}
-              </p>
-              <p className="text-xs opacity-70">
-                Every peso you save, Lola&apos;s donates the same to Be Pawsitive NGO.
-              </p>
-            </div>
-            <img src={lolaFace} alt="" className="absolute -bottom-4 -right-4 w-28 h-28 opacity-15 pointer-events-none z-0 bg-transparent" />
-          </div>
+          </BorderGlow>
 
-          <div
-            className={`flex flex-col rounded-2xl p-8 shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md md:row-span-2 ${!dashLoading ? 'animate-card-enter' : ''}`}
-            style={{
-              background: '#F5B731',
-              color: '#271900',
-              ...(!dashLoading ? { animationDelay: '200ms' } : {}),
-            }}
+          <BorderGlow
+            backgroundColor="#F5B731"
+            borderRadius={16}
+            glowIntensity={0.5}
+            className={`shadow-lg transition-all duration-200 hover:-translate-y-0.5 md:row-span-2 ${!dashLoading ? 'animate-card-enter' : ''}`}
+            style={{ color: '#271900', ...(!dashLoading ? { animationDelay: '200ms' } : {}) }}
           >
-            <div className="mb-auto">
-              <img src={handOnHeart} alt="" className="w-8 h-8 mb-2 bg-transparent" />
-              <h4 className="text-xs font-bold uppercase tracking-wider">Community Total</h4>
-              <p className="text-4xl font-black mt-2">
-                {dashLoading ? '…' : formatCurrency(communityTotal)}
-              </p>
+            <div className="flex h-full flex-col p-8">
+              <div className="mb-auto">
+                <img src={handOnHeart} alt="" className="w-8 h-8 mb-2 bg-transparent" />
+                <h4 className="font-headline text-xs font-bold uppercase tracking-wider">Community Total</h4>
+                <p className="font-headline text-4xl font-black mt-2">
+                  {dashLoading
+                    ? '…'
+                    : <>₱<CountUp to={Math.round(communityTotal)} from={0} separator="," startWhen={!dashLoading} /></>}
+                </p>
+              </div>
+              <div className="mt-8 pt-6 border-t" style={{ borderColor: 'rgba(39,25,0,0.1)' }}>
+                <p className="text-lg font-medium leading-snug">
+                  Donated to Be Pawsitive since 2022 — and counting 🐾
+                </p>
+              </div>
             </div>
-            <div className="mt-8 pt-6 border-t" style={{ borderColor: 'rgba(39,25,0,0.1)' }}>
-              <p className="text-lg font-medium leading-snug">
-                <span className="font-black text-2xl">{dashLoading ? '…' : uniqueCustomers}</span> customers contributing across{' '}
-                <span className="font-black text-2xl">{dashLoading ? '…' : allRows.length}</span> visits
-              </p>
-            </div>
-          </div>
+          </BorderGlow>
 
-          <div className="bg-white p-8 rounded-2xl shadow-lg md:col-span-3">
-            <h4 className="font-bold text-sm mb-3" style={{ color: '#3e4946' }}>Recent activity</h4>
-            {dashLoading ? (
-              <p className="text-sm" style={{ color: '#6e7976' }}>Loading…</p>
-            ) : recent.length === 0 ? (
-              <p className="text-sm" style={{ color: '#6e7976' }}>No savings logged yet.</p>
-            ) : (
-              <ul className="space-y-2">
-                {recent.map((s: SavingsRow) => (
-                  <li
-                    key={s.id}
-                    className="flex items-center justify-between px-3 py-2 rounded-lg text-sm"
-                    style={{ background: 'rgba(246,237,221,0.5)' }}
-                  >
-                    <div>
-                      <span className="font-medium">{s.establishment}</span>
-                      <span className="ml-2 text-xs" style={{ color: '#6e7976' }}>{s.date_of_visit ?? '—'}</span>
-                    </div>
-                    <span className="font-bold" style={{ color: '#1A7A6E' }}>{formatCurrency(Number(s.amount_saved))}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          <BorderGlow
+            backgroundColor="#ffffff"
+            borderRadius={16}
+            glowIntensity={0.8}
+            className="shadow-lg md:col-span-3"
+          >
+            <div className="p-8">
+              <h4 className="font-headline font-bold text-sm mb-3" style={{ color: '#3e4946' }}>Recent activity</h4>
+              {dashLoading ? (
+                <p className="text-sm" style={{ color: '#6e7976' }}>Loading…</p>
+              ) : recent.length === 0 ? (
+                <p className="text-sm" style={{ color: '#6e7976' }}>No savings logged yet.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {recent.map((s: SavingsRow) => (
+                    <li
+                      key={s.id}
+                      className="flex items-center justify-between px-3 py-2 rounded-lg text-sm"
+                      style={{ background: 'rgba(246,237,221,0.5)' }}
+                    >
+                      <div>
+                        <span className="font-medium">{s.establishment}</span>
+                        <span className="ml-2 text-xs" style={{ color: '#6e7976' }}>{s.date_of_visit ?? '—'}</span>
+                      </div>
+                      <span className="font-bold" style={{ color: '#1A7A6E' }}>{formatCurrency(Number(s.amount_saved))}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </BorderGlow>
 
           <FadeUpSection className="md:col-span-3">
-          <div className="rounded-2xl bg-white p-8 shadow-lg">
+          <BorderGlow backgroundColor="#ffffff" borderRadius={16} glowIntensity={0.8} className="shadow-lg">
+          <div className="p-8">
             <div className="mb-4 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-              <h4 className="text-2xl font-bold">Top Savers</h4>
+              <h4 className="font-headline text-2xl font-bold">Top Savers</h4>
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -283,6 +299,7 @@ export function PawCardDashboard({ accessEmail, displayFullName }: Props) {
               </p>
             )}
           </div>
+          </BorderGlow>
           </FadeUpSection>
         </div>
       </div>

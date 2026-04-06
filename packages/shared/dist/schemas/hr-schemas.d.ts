@@ -13,6 +13,7 @@ export declare const TimesheetEntrySchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     date: string;
     employeeId: string;
+    storeId: string;
     name: string | null;
     dayType: string;
     timeIn: string | null;
@@ -20,15 +21,14 @@ export declare const TimesheetEntrySchema: z.ZodObject<{
     ninePmReturnsCount: number;
     dailyNotes: string | null;
     silInflation: number;
-    storeId: string;
 }, {
     date: string;
     employeeId: string;
+    storeId: string;
     name: string | null;
     dayType: string;
     timeIn: string | null;
     timeOut: string | null;
-    storeId: string;
     ninePmReturnsCount?: number | undefined;
     dailyNotes?: string | null | undefined;
     silInflation?: number | undefined;
@@ -49,6 +49,7 @@ export declare const SubmitTimesheetRequestSchema: z.ZodObject<{
     }, "strip", z.ZodTypeAny, {
         date: string;
         employeeId: string;
+        storeId: string;
         name: string | null;
         dayType: string;
         timeIn: string | null;
@@ -56,15 +57,14 @@ export declare const SubmitTimesheetRequestSchema: z.ZodObject<{
         ninePmReturnsCount: number;
         dailyNotes: string | null;
         silInflation: number;
-        storeId: string;
     }, {
         date: string;
         employeeId: string;
+        storeId: string;
         name: string | null;
         dayType: string;
         timeIn: string | null;
         timeOut: string | null;
-        storeId: string;
         ninePmReturnsCount?: number | undefined;
         dailyNotes?: string | null | undefined;
         silInflation?: number | undefined;
@@ -73,6 +73,7 @@ export declare const SubmitTimesheetRequestSchema: z.ZodObject<{
     entries: {
         date: string;
         employeeId: string;
+        storeId: string;
         name: string | null;
         dayType: string;
         timeIn: string | null;
@@ -80,17 +81,16 @@ export declare const SubmitTimesheetRequestSchema: z.ZodObject<{
         ninePmReturnsCount: number;
         dailyNotes: string | null;
         silInflation: number;
-        storeId: string;
     }[];
 }, {
     entries: {
         date: string;
         employeeId: string;
+        storeId: string;
         name: string | null;
         dayType: string;
         timeIn: string | null;
         timeOut: string | null;
-        storeId: string;
         ninePmReturnsCount?: number | undefined;
         dailyNotes?: string | null | undefined;
         silInflation?: number | undefined;

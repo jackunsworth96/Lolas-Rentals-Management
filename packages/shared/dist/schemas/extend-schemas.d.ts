@@ -42,18 +42,18 @@ export declare const ExtendConfirmRequestSchema: z.ZodObject<{
     email: string;
     orderReference: string;
     newDropoffDatetime: string;
-    overrideDailyRate?: number | undefined;
-    paymentStatus?: "paid" | "unpaid" | undefined;
-    paymentMethod?: string | undefined;
     paymentAccountId?: string | undefined;
+    paymentMethod?: string | undefined;
+    paymentStatus?: "paid" | "unpaid" | undefined;
+    overrideDailyRate?: number | undefined;
 }, {
     email: string;
     orderReference: string;
     newDropoffDatetime: string;
-    overrideDailyRate?: number | undefined;
-    paymentStatus?: "paid" | "unpaid" | undefined;
-    paymentMethod?: string | undefined;
     paymentAccountId?: string | undefined;
+    paymentMethod?: string | undefined;
+    paymentStatus?: "paid" | "unpaid" | undefined;
+    overrideDailyRate?: number | undefined;
 }>;
 export type ExtendConfirmRequest = z.infer<typeof ExtendConfirmRequestSchema>;
 export type ExtendConfirmResponse = {

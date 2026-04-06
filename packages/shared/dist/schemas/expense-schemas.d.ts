@@ -12,29 +12,29 @@ export declare const CreateExpenseRequestSchema: z.ZodObject<{
     cashAccountId: z.ZodDefault<z.ZodString>;
     status: z.ZodDefault<z.ZodEnum<["paid", "unpaid"]>>;
 }, "strip", z.ZodTypeAny, {
-    storeId: string;
-    date: string;
-    category: string;
-    description: string;
-    amount: number;
-    paidFrom: string | null;
-    vehicleId: string | null;
-    employeeId: string | null;
-    expenseAccountId: string;
-    cashAccountId: string;
     status: "paid" | "unpaid";
-}, {
-    storeId: string;
     date: string;
-    category: string;
+    employeeId: string | null;
+    vehicleId: string | null;
     description: string;
     amount: number;
+    storeId: string;
+    cashAccountId: string;
+    category: string;
+    paidFrom: string | null;
     expenseAccountId: string;
-    paidFrom?: string | null | undefined;
-    vehicleId?: string | null | undefined;
-    employeeId?: string | null | undefined;
-    cashAccountId?: string | undefined;
+}, {
+    date: string;
+    description: string;
+    amount: number;
+    storeId: string;
+    category: string;
+    expenseAccountId: string;
     status?: "paid" | "unpaid" | undefined;
+    employeeId?: string | null | undefined;
+    vehicleId?: string | null | undefined;
+    cashAccountId?: string | undefined;
+    paidFrom?: string | null | undefined;
 }>;
 export type CreateExpenseRequest = z.infer<typeof CreateExpenseRequestSchema>;
 export declare const UpdateExpenseRequestSchema: z.ZodObject<{
@@ -49,24 +49,24 @@ export declare const UpdateExpenseRequestSchema: z.ZodObject<{
     cashAccountId: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     date?: string | undefined;
-    category?: string | undefined;
+    employeeId?: string | null | undefined;
+    vehicleId?: string | null | undefined;
     description?: string | undefined;
     amount?: number | undefined;
-    paidFrom?: string | null | undefined;
-    vehicleId?: string | null | undefined;
-    employeeId?: string | null | undefined;
-    expenseAccountId?: string | undefined;
     cashAccountId?: string | undefined;
+    category?: string | undefined;
+    paidFrom?: string | null | undefined;
+    expenseAccountId?: string | undefined;
 }, {
     date?: string | undefined;
-    category?: string | undefined;
+    employeeId?: string | null | undefined;
+    vehicleId?: string | null | undefined;
     description?: string | undefined;
     amount?: number | undefined;
-    paidFrom?: string | null | undefined;
-    vehicleId?: string | null | undefined;
-    employeeId?: string | null | undefined;
-    expenseAccountId?: string | undefined;
     cashAccountId?: string | undefined;
+    category?: string | undefined;
+    paidFrom?: string | null | undefined;
+    expenseAccountId?: string | undefined;
 }>;
 export type UpdateExpenseRequest = z.infer<typeof UpdateExpenseRequestSchema>;
 export declare const ExpenseQuerySchema: z.ZodObject<{
@@ -78,15 +78,15 @@ export declare const ExpenseQuerySchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     storeId: string;
     date?: string | undefined;
-    category?: string | undefined;
     dateFrom?: string | undefined;
     dateTo?: string | undefined;
+    category?: string | undefined;
 }, {
     storeId: string;
     date?: string | undefined;
-    category?: string | undefined;
     dateFrom?: string | undefined;
     dateTo?: string | undefined;
+    category?: string | undefined;
 }>;
 export type ExpenseQuery = z.infer<typeof ExpenseQuerySchema>;
 export declare const PayExpensesSchema: z.ZodObject<{
@@ -94,13 +94,13 @@ export declare const PayExpensesSchema: z.ZodObject<{
     paymentMethodId: z.ZodString;
     storeId: z.ZodString;
 }, "strip", z.ZodTypeAny, {
+    paymentMethodId: string;
     storeId: string;
     expenseIds: string[];
-    paymentMethodId: string;
 }, {
+    paymentMethodId: string;
     storeId: string;
     expenseIds: string[];
-    paymentMethodId: string;
 }>;
 export type PayExpensesRequest = z.infer<typeof PayExpensesSchema>;
 //# sourceMappingURL=expense-schemas.d.ts.map

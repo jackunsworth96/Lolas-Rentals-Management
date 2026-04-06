@@ -59,8 +59,8 @@ export declare const SubmitDirectBookingRequestSchema: z.ZodObject<{
     charityDonation: z.ZodOptional<z.ZodNumber>;
     webPaymentMethod: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    sessionToken: string;
     customerName: string;
+    sessionToken: string;
     customerEmail: string;
     customerMobile: string;
     vehicleModelId: string;
@@ -77,8 +77,8 @@ export declare const SubmitDirectBookingRequestSchema: z.ZodObject<{
     charityDonation?: number | undefined;
     webPaymentMethod?: string | undefined;
 }, {
-    sessionToken: string;
     customerName: string;
+    sessionToken: string;
     customerEmail: string;
     customerMobile: string;
     vehicleModelId: string;
