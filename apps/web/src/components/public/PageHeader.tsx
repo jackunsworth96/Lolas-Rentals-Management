@@ -12,10 +12,7 @@ export function PageHeader({
   subheading,
 }: PageHeaderProps) {
   return (
-    <div
-      className="px-6 py-0 text-center"
-      style={{ backgroundColor: '#f1e6d6' }}
-    >
+    <div className="px-6 py-16 text-center">
       <div className="mx-auto max-w-3xl">
         {eyebrow && (
           <p
