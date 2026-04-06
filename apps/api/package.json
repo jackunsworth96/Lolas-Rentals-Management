@@ -6,7 +6,7 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "npx tsx watch src/server.ts",
-    "build": "tsc",
+    "build": "tsc --build",
     "start": "node dist/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
