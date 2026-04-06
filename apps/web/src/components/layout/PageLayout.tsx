@@ -2,7 +2,7 @@ import { useEffect, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useBookingStore } from '../../stores/bookingStore.js';
 import { FadeUpSection } from '../public/FadeUpSection.js';
-import PillNav from './PillNav.js';
+import TopNav from './TopNav.js';
 import ClickSpark from '../home/ClickSpark.js';
 
 import logo from '../../assets/Lolas Original Logo.svg';
@@ -84,19 +84,10 @@ export function PageLayout({
         />
       )}
 
-      <PillNav
+      <TopNav
         logo={logo}
         logoAlt="Lola's Rentals"
         items={NAV_ITEMS}
-        baseColor="#f1e6d6"
-        navBgColor="#f1e6d6"
-        pillColor="#00577C"
-        pillActiveColor="#00577C"
-        pillActiveTextColor="#FAF6F0"
-        pillTextColor="#363737"
-        hoveredPillTextColor="#FAF6F0"
-        theme="light"
-        initialLoadAnimation={false}
         rightSlot={
           showBasketIcon ? (
             <Link
