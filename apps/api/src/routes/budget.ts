@@ -20,7 +20,7 @@ router.get(
   validateQuery(GetBudgetQuerySchema),
   async (req, res, next) => {
     try {
-      const { storeId, year, month } = req.query as {
+      const { storeId, year, month } = req.query as unknown as {
         storeId?: string | null;
         year: number;
         month?: number;
@@ -87,7 +87,7 @@ router.get(
   validateQuery(AutoFillQuerySchema),
   async (req, res, next) => {
     try {
-      const { storeId, year } = req.query as {
+      const { storeId, year } = req.query as unknown as {
         storeId?: string | null;
         year: number;
       };
