@@ -125,11 +125,13 @@ router.get('/', requirePermission(Permission.ViewInbox), async (req, res, next) 
 
     res.json({
       success: true,
-      data: data ?? [],
-      total: count ?? 0,
-      page,
-      limit,
-      totalPages: Math.ceil((count ?? 0) / limit),
+      data: {
+        data: data ?? [],
+        total: count ?? 0,
+        page,
+        limit,
+        totalPages: Math.ceil((count ?? 0) / limit),
+      },
     });
   } catch (err) {
     next(err);

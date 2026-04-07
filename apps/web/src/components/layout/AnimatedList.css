@@ -1,0 +1,86 @@
+/* ── AnimatedList overlay nav — brand tokens from DESIGN_SYSTEM.md ── */
+
+.scroll-list-container {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+.scroll-list {
+  max-height: 70vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.5rem 0 1rem;
+}
+
+.scroll-list.no-scrollbar::-webkit-scrollbar { display: none; }
+.scroll-list.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ── Item base ── */
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem 2rem;
+  border-radius: 10px;
+  width: 100%;
+  text-align: center;
+}
+
+.item-text {
+  font-family: 'Alegreya Sans', ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(1.9rem, 5vw, 2.6rem);
+  font-weight: 700;
+  color: #363737;          /* charcoal-brand */
+  line-height: 1.2;
+  transition: color 0.15s ease;
+}
+
+/* Hover / keyboard-selected */
+.item.selected .item-text {
+  color: #00577C;           /* teal-brand */
+}
+
+/* ── Sub-items (dropdown children: "Log Paw Card Savings" etc.) ── */
+.item.sub-item .item-text {
+  font-family: 'Lato', 'Nunito', sans-serif;
+  font-size: clamp(1rem, 3vw, 1.2rem);
+  font-weight: 600;
+  color: #363737;
+  opacity: 0.6;
+}
+
+.item.sub-item.selected .item-text {
+  color: #00577C;
+  opacity: 1;
+}
+
+/* ── Scroll fade gradients (sand-brand #f1e6d6) ── */
+.top-gradient {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  background: linear-gradient(to bottom, #f1e6d6, transparent);
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.bottom-gradient {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  background: linear-gradient(to top, #f1e6d6, transparent);
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}

@@ -5,8 +5,25 @@ import { requirePermission } from '../middleware/authorize.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
 import { Permission } from '@lolas/shared';
 import { z } from 'zod';
+import { getSupabaseClient } from '../adapters/supabase/client.js';
 
 const router = Router();
+
+function mapReviewRow(row: Record<string, unknown>) {
+  return {
+    id: row.id as number,
+    platform: row.platform as string,
+    storeId: (row.store_id as string | null) ?? null,
+    date: row.date == null ? null : String(row.date).slice(0, 10),
+    reviewerName: (row.reviewer_name as string) ?? '',
+    reviewerRole: (row.reviewer_role as string | null) ?? null,
+    starRating: Number(row.star_rating ?? 0),
+    comment: (row.comment as string) ?? '',
+    isActive: Boolean(row.is_active),
+    sortOrder: Number(row.sort_order ?? 0),
+    createdAt: row.created_at as string,
+  };
+}
 router.use(authenticate);
 
 const edit = requirePermission(Permission.EditSettings);
@@ -499,6 +516,95 @@ router.put('/payment-routing', edit, validateBody(z.object({
 
     res.json({ success: true });
   } catch (e) { next(e); }
+});
+
+// ── Reviews (CMS) ──
+const reviewBodySchema = z.object({
+  reviewerName: z.string().min(1),
+  reviewerRole: z.string().nullable().optional(),
+  starRating: z.number().int().min(1).max(5),
+  comment: z.string().min(1),
+  platform: z.string().optional(),
+  date: z.string().nullable().optional(),
+  sortOrder: z.number().int().optional(),
+  isActive: z.boolean().optional(),
+  storeId: z.string().nullable().optional(),
+});
+
+router.get('/reviews', async (req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+    const { data, error } = await sb
+      .from('reviews')
+      .select('*')
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(error.message);
+    const reviews = (data ?? []).map((r) => mapReviewRow(r as Record<string, unknown>));
+    res.json({ success: true, data: reviews });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post('/reviews', edit, validateBody(reviewBodySchema), async (req, res, next) => {
+  try {
+    const body = req.body as z.infer<typeof reviewBodySchema>;
+    const sb = getSupabaseClient();
+    const { error } = await sb.from('reviews').insert({
+      platform: body.platform ?? 'Google',
+      store_id: body.storeId ?? null,
+      date: body.date ?? null,
+      reviewer_name: body.reviewerName,
+      reviewer_role: body.reviewerRole ?? null,
+      star_rating: body.starRating,
+      comment: body.comment,
+      is_active: body.isActive ?? true,
+      sort_order: body.sortOrder ?? 0,
+      external_id: null,
+      replied: false,
+    });
+    if (error) throw new Error(error.message);
+    res.json({ success: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.put('/reviews/:id', edit, validateBody(reviewBodySchema), async (req, res, next) => {
+  try {
+    const body = req.body as z.infer<typeof reviewBodySchema>;
+    const sb = getSupabaseClient();
+    const { error } = await sb
+      .from('reviews')
+      .update({
+        platform: body.platform ?? 'Google',
+        store_id: body.storeId ?? null,
+        date: body.date ?? null,
+        reviewer_name: body.reviewerName,
+        reviewer_role: body.reviewerRole ?? null,
+        star_rating: body.starRating,
+        comment: body.comment,
+        is_active: body.isActive ?? true,
+        sort_order: body.sortOrder ?? 0,
+      })
+      .eq('id', Number(req.params.id));
+    if (error) throw new Error(error.message);
+    res.json({ success: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete('/reviews/:id', edit, async (req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+    const { error } = await sb.from('reviews').delete().eq('id', Number(req.params.id));
+    if (error) throw new Error(error.message);
+    res.json({ success: true });
+  } catch (e) {
+    next(e);
+  }
 });
 
 export { router as configRoutes };

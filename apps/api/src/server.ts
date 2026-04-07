@@ -12,6 +12,8 @@ import express, { type Request, type Response } from 'express';
 import cors from 'cors';
 import { routes } from './routes/index.js';
 import { errorHandler } from './middleware/error-handler.js';
+import { publicReviewsRoutes } from './routes/public-reviews.js';
+import { publicLimiter } from './middleware/rate-limit.js';
 
 import { SupabaseOrderRepository } from './adapters/supabase/order-repo.js';
 import { createOrderItemRepo } from './adapters/supabase/order-item-repo.js';
@@ -103,6 +105,8 @@ app.locals.deps = {
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok' });
 });
+
+app.use('/api/public/reviews', publicLimiter, publicReviewsRoutes);
 
 app.use('/api', routes);
 app.use('/api', (req: Request, res: Response) => {

@@ -91,18 +91,16 @@ export default function InboxPage() {
   const { data: stores } = useStores() as { data: Array<{ id: string; name: string }> | undefined };
 
   useEffect(() => {
-    if (response?.data) {
-      if (page === 1) {
-        setAllOrders(response.data);
-      } else {
-        setAllOrders(prev => [...prev, ...response.data]);
-      }
+    if (!response?.data) return;
+    if (page === 1) {
+      setAllOrders(response.data);
+    } else {
+      setAllOrders((prev) => [...prev, ...response.data]);
     }
-  }, [response, page]);
+  }, [response?.data, page]);
 
   useEffect(() => {
     setPage(1);
-    setAllOrders([]);
   }, [apiStore, searchQuery]);
 
   const [selectedOrder, setSelectedOrder] = useState<RawOrder | null>(null);
