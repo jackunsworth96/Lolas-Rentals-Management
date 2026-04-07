@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Modal } from '../common/Modal.js';
-import { useCreateWalkIn } from '../../api/orders-raw.js';
+import { useCreateWalkInDirect } from '../../api/orders-raw.js';
 import { useLocations, useAddons } from '../../api/config.js';
 import { useAvailableVehicles } from '../../api/fleet.js';
 import { useUIStore } from '../../stores/ui-store.js';
@@ -10,7 +10,12 @@ interface Props {
   onClose: () => void;
 }
 
-interface Location { id: number; name: string; }
+interface Location {
+  id: number;
+  name: string;
+  deliveryCost?: number;
+  collectionCost?: number;
+}
 
 interface Addon {
   id: number;
@@ -44,7 +49,25 @@ const TIME_SLOTS = [
 ];
 
 function todayDate(): string {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dy = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dy}`;
+}
+
+/** Snaps current wall-clock time to the nearest TIME_SLOT (min absolute diff). */
+function nearestTimeSlot(): string {
+  const now = new Date();
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  let best = TIME_SLOTS[0];
+  let bestDiff = Infinity;
+  for (const slot of TIME_SLOTS) {
+    const [h, m] = slot.split(':').map(Number) as [number, number];
+    const diff = Math.abs(h * 60 + m - nowMins);
+    if (diff < bestDiff) { bestDiff = diff; best = slot; }
+  }
+  return best;
 }
 
 function formatCurrency(amount: number): string {
@@ -60,7 +83,7 @@ const SECTION_HDR_CLS =
 const LABEL_CLS = 'font-lato text-sm font-medium text-gray-700';
 
 export function WalkInBookingModal({ open, onClose }: Props) {
-  const createWalkIn = useCreateWalkIn();
+  const createWalkInDirect = useCreateWalkInDirect();
   const storeId = useUIStore((s) => s.selectedStoreId) ?? '';
 
   // ── Form state ──
@@ -77,6 +100,12 @@ export function WalkInBookingModal({ open, onClose }: Props) {
   const [vehicleModelId, setVehicleModelId] = useState('');
   const [selectedAddonIds, setSelectedAddonIds] = useState<Record<string, number>>({});
   const [staffNotes, setStaffNotes] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [depositPaid, setDepositPaid] = useState(true);  // mandatory by default; staff can waive
+  const [depositMethod, setDepositMethod] = useState('cash');
+  const [nationality, setNationality] = useState('');
+  const [helmetNumbers, setHelmetNumbers] = useState('');
+  const [depositAmount, setDepositAmount] = useState(0);
 
   // ── Success state ──
   const [createdRef, setCreatedRef] = useState<string | null>(null);
@@ -98,6 +127,51 @@ export function WalkInBookingModal({ open, onClose }: Props) {
   const { data: availableVehicles = [], isLoading: vehiclesLoading } =
     useAvailableVehicles(storeId, pickupDatetime, dropoffDatetime);
 
+  // ── Auto-set pickup/dropoff to the store's own location (zero-fee) ──
+  // Runs only when the modal opens (or storeId changes) AND both location IDs
+  // are still empty — so React Query refetches never override the user's
+  // manual location selection.
+  useEffect(() => {
+    if (!open) return;
+    if (!locations || locations.length === 0) return;
+    // Don't clobber a location the user has already chosen
+    if (pickupLocationId !== '' || dropoffLocationId !== '') return;
+    const storeLoc = (locations as Array<Location & {
+      delivery_cost?: number;
+      collection_cost?: number;
+    }>).find((l) => {
+      const dc = Number(l.deliveryCost ?? l.delivery_cost ?? 1);
+      const cc = Number(l.collectionCost ?? l.collection_cost ?? 1);
+      return dc === 0 && cc === 0;
+    });
+    if (storeLoc) {
+      setPickupLocationId(String(storeLoc.id));
+      setDropoffLocationId(String(storeLoc.id));
+    }
+  // pickupLocationId/dropoffLocationId intentionally omitted: we only want
+  // this to run on open/storeId/locations changes, not on every user click.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, locations, storeId]);
+
+  // ── Local fee computation — derived directly from locations/addons data ──
+  // These update instantly on selection change without waiting for the quote API.
+  type LocExtended = Location & { delivery_cost?: number; collection_cost?: number };
+  const locsExtended = (locations ?? []) as LocExtended[];
+  const pickupLoc = locsExtended.find((l) => String(l.id) === pickupLocationId);
+  const dropoffLoc = locsExtended.find((l) => String(l.id) === dropoffLocationId);
+  const pickupFeeLocal = Number(pickupLoc?.deliveryCost ?? pickupLoc?.delivery_cost ?? 0);
+  const dropoffFeeLocal = Number(dropoffLoc?.collectionCost ?? dropoffLoc?.collection_cost ?? 0);
+  const localRentalDays =
+    pickupDatetime && dropoffDatetime
+      ? Math.max(
+          1,
+          Math.ceil(
+            (new Date(dropoffDatetime).getTime() - new Date(pickupDatetime).getTime()) /
+              (1000 * 60 * 60 * 24),
+          ),
+        )
+      : 1;
+
   // ── Filtered addons for selected model ──
   const filteredAddons = (addonsRaw as Addon[]).filter((a) => {
     if (!a.isActive) return false;
@@ -115,17 +189,45 @@ export function WalkInBookingModal({ open, onClose }: Props) {
     return true;
   });
 
+  const addonsTotalLocal = filteredAddons.reduce((sum, addon) => {
+    const qty = selectedAddonIds[String(addon.id)] ?? 0;
+    if (!qty) return sum;
+    const unitCost =
+      addon.addonType === 'per_day'
+        ? addon.pricePerDay * localRentalDays
+        : addon.priceOneTime;
+    return sum + unitCost * qty;
+  }, 0);
+
+  // Grand total = server rental base + locally-computed fees (so fees appear immediately)
+  const grandTotalLocal =
+    (quote?.rentalSubtotal ?? 0) + pickupFeeLocal + dropoffFeeLocal + addonsTotalLocal;
+
   // ── Quote fetch ──
+  // Stable serialisation of selectedAddonIds so the effect only re-runs
+  // when the actual addon selection changes, not on every object reference.
+  const addonIdsKey = JSON.stringify(selectedAddonIds);
+
   useEffect(() => {
-    if (!vehicleModelId || !pickupDatetime || !dropoffDatetime || !storeId) {
+    // Guard: all required fields must be present, including location IDs
+    // (backend schema requires positive integers for both — empty string → 400)
+    if (!vehicleModelId || !pickupDatetime || !dropoffDatetime || !storeId
+        || !pickupLocationId || !dropoffLocationId) {
       setQuote(null);
+      setQuoteLoading(false);
       return;
     }
+    // AbortController ensures only the LATEST fetch's result is applied.
+    // Without this, an older fetch (base params) can resolve after a newer
+    // one (with delivery fee or addons), silently overwriting the updated
+    // quote and making fees/addon costs disappear.
+    const controller = new AbortController();
     setQuoteLoading(true);
     const apiBase = ((import.meta.env.VITE_API_URL as string | undefined) ?? '').replace(/\/+$/, '');
-    const addonIds = Object.entries(selectedAddonIds)
+    const parsed: Record<string, number> = JSON.parse(addonIdsKey) as Record<string, number>;
+    const addonIdsParam = Object.entries(parsed)
       .filter(([, qty]) => qty > 0)
-      .map(([id]) => id)
+      .flatMap(([id, qty]) => Array(qty).fill(id) as string[])
       .join(',');
     const url =
       `${apiBase}/api/public/booking/quote` +
@@ -133,16 +235,35 @@ export function WalkInBookingModal({ open, onClose }: Props) {
       `&vehicleModelId=${vehicleModelId}` +
       `&pickupDatetime=${encodeURIComponent(pickupDatetime)}` +
       `&dropoffDatetime=${encodeURIComponent(dropoffDatetime)}` +
-      `&pickupLocationId=${pickupLocationId || ''}` +
-      `&dropoffLocationId=${dropoffLocationId || ''}` +
-      (addonIds ? `&addonIds=${addonIds}` : '');
-    fetch(url)
+      `&pickupLocationId=${pickupLocationId}` +
+      `&dropoffLocationId=${dropoffLocationId}` +
+      (addonIdsParam ? `&addonIds=${addonIdsParam}` : '');
+    fetch(url, { signal: controller.signal })
       .then((r) => r.json())
-      .then((d: { data?: QuoteBreakdown }) => { setQuote(d.data ?? null); })
-      .catch(() => setQuote(null))
+      .then((d: { data?: QuoteBreakdown }) => {
+        // Only overwrite the quote when the server returned valid data.
+        // If the response is an error envelope (no data field), keep the
+        // existing quote visible so the UI doesn't blank out.
+        if (d.data) setQuote(d.data);
+      })
+      .catch((err: unknown) => {
+        // Ignore aborted fetches — a newer fetch is already running.
+        if ((err as Error).name !== 'AbortError') {
+          /* keep existing quote visible on other errors */
+        }
+      })
       .finally(() => setQuoteLoading(false));
+    // Cleanup: abort the in-flight fetch when deps change or component unmounts
+    return () => controller.abort();
   }, [vehicleModelId, pickupDatetime, dropoffDatetime, storeId,
-    pickupLocationId, dropoffLocationId, selectedAddonIds]);
+    pickupLocationId, dropoffLocationId, addonIdsKey]);
+
+  // ── Auto-set deposit amount from quote ──
+  useEffect(() => {
+    if (quote?.securityDeposit) {
+      setDepositAmount(quote.securityDeposit);
+    }
+  }, [quote?.securityDeposit]);
 
   // ── Reset on close ──
   useEffect(() => {
@@ -154,31 +275,54 @@ export function WalkInBookingModal({ open, onClose }: Props) {
       setSelectedVehicleId(''); setVehicleModelId('');
       setSelectedAddonIds({});
       setStaffNotes('');
+      setPaymentMethod('cash');
+      setDepositPaid(true);
+      setDepositMethod('cash');
+      setNationality('');
+      setHelmetNumbers('');
+      setDepositAmount(0);
       setCreatedRef(null); setCopiedLink(false);
       setQuote(null); setQuoteLoading(false);
-      createWalkIn.reset();
+      createWalkInDirect.reset();
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Submit ──
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    createWalkIn.mutate(
+    const selectedVehicle = (availableVehicles ?? []).find((v) => v.id === selectedVehicleId);
+    createWalkInDirect.mutate(
       {
         customerName: customerName.trim(),
         customerMobile: customerMobile.trim(),
         customerEmail: customerEmail.trim() || undefined,
-        vehicleModelId,
+        nationality: nationality.trim() || undefined,
         storeId,
+        vehicleId: selectedVehicleId,
+        vehicleModelId,
+        vehicleName: selectedVehicle?.name ?? vehicleModelId,
         pickupDatetime,
         dropoffDatetime,
         pickupLocationId: pickupLocationId ? Number(pickupLocationId) : undefined,
         dropoffLocationId: dropoffLocationId ? Number(dropoffLocationId) : undefined,
+        addonIds: Object.entries(selectedAddonIds)
+          .filter(([, qty]) => qty > 0)
+          .map(([id]) => Number(id)),
+        helmetNumbers: helmetNumbers.trim() || undefined,
         staffNotes: staffNotes.trim() || undefined,
+        paymentMethod: paymentMethod as 'cash' | 'gcash' | 'card' | 'bank_transfer',
+        depositCollected: depositPaid,
+        depositAmount: depositPaid ? depositAmount : 0,
+        depositMethod: depositMethod as 'cash' | 'gcash' | 'card' | 'bank_transfer',
+        grandTotal: grandTotalLocal,
+        rentalDays: quote?.rentalDays ?? localRentalDays,
+        dailyRate: quote?.dailyRate ?? 0,
+        pickupFee: pickupFeeLocal,
+        dropoffFee: dropoffFeeLocal,
       },
       {
         onSuccess: (data) => {
-          setCreatedRef(data.order_reference ?? data.id);
+          setCreatedRef(data.orderReference ?? data.orderId);
         },
       },
     );
@@ -186,9 +330,10 @@ export function WalkInBookingModal({ open, onClose }: Props) {
 
   const isValid =
     customerName.trim() && customerMobile.trim() &&
-    storeId && vehicleModelId &&
+    storeId && vehicleModelId && selectedVehicleId &&
     pickupDate && pickupTime &&
-    dropoffDate && dropoffTime;
+    dropoffDate && dropoffTime &&
+    pickupLocationId && dropoffLocationId;
 
   // ── Confirmation / share ──
   const confirmationLink = createdRef ? `${SITE_URL}/book/confirmation/${createdRef}` : '';
@@ -225,10 +370,10 @@ export function WalkInBookingModal({ open, onClose }: Props) {
         /* ── Success state (unchanged) ── */
         <div className="space-y-5">
           <div className="rounded-xl bg-green-50 px-5 py-4 text-center">
-            <p className="font-lato text-sm font-semibold uppercase tracking-widest text-green-600">Booking Created!</p>
+            <p className="font-lato text-sm font-semibold uppercase tracking-widest text-green-600">Booking Activated!</p>
             <p className="mt-2 font-lato text-3xl font-black tracking-wide text-gray-900">{createdRef}</p>
             <p className="mt-1 font-lato text-sm text-gray-500">
-              Walk-in booking for <span className="font-medium text-gray-700">{customerName}</span>
+              Walk-in booking for <span className="font-medium text-gray-700">{customerName}</span> is now active.
             </p>
           </div>
 
@@ -309,6 +454,19 @@ export function WalkInBookingModal({ open, onClose }: Props) {
                   className={INPUT_CLS}
                 />
               </label>
+              <label className="block sm:col-span-2">
+                <span className={LABEL_CLS}>
+                  Nationality
+                  <span className="ml-1 font-lato text-xs text-gray-400">(optional)</span>
+                </span>
+                <input
+                  type="text"
+                  value={nationality}
+                  onChange={(e) => setNationality(e.target.value)}
+                  placeholder="e.g. Australian, Filipino, German"
+                  className={INPUT_CLS}
+                />
+              </label>
             </div>
           </section>
 
@@ -320,23 +478,41 @@ export function WalkInBookingModal({ open, onClose }: Props) {
               <div className="block">
                 <span className={LABEL_CLS}>Pickup date <span className="text-red-500">*</span></span>
                 <div className="mt-1 flex gap-2">
-                  <input
-                    type="date"
-                    required
-                    value={pickupDate}
-                    onChange={(e) => setPickupDate(e.target.value)}
-                    className="flex-1 rounded-lg border border-gray-300 px-3 py-2 font-lato text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-                  />
-                  <select
-                    required
-                    value={pickupTime}
-                    onChange={(e) => setPickupTime(e.target.value)}
-                    className="w-28 rounded-lg border border-gray-300 px-3 py-2 font-lato text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-                  >
-                    {TIME_SLOTS.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
+                  <div className="flex flex-1 flex-col gap-1">
+                    <input
+                      type="date"
+                      required
+                      value={pickupDate}
+                      onChange={(e) => setPickupDate(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 font-lato text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setPickupDate(todayDate())}
+                      className="self-start rounded-md border border-teal-200 bg-teal-50 px-2 py-0.5 font-lato text-xs font-medium text-teal-700 transition-colors hover:bg-teal-100"
+                    >
+                      Today
+                    </button>
+                  </div>
+                  <div className="flex w-28 flex-col gap-1">
+                    <select
+                      required
+                      value={pickupTime}
+                      onChange={(e) => setPickupTime(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 font-lato text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                    >
+                      {TIME_SLOTS.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setPickupTime(nearestTimeSlot())}
+                      className="self-start rounded-md border border-teal-200 bg-teal-50 px-2 py-0.5 font-lato text-xs font-medium text-teal-700 transition-colors hover:bg-teal-100"
+                    >
+                      Now
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -344,23 +520,54 @@ export function WalkInBookingModal({ open, onClose }: Props) {
               <div className="block">
                 <span className={LABEL_CLS}>Return date <span className="text-red-500">*</span></span>
                 <div className="mt-1 flex gap-2">
-                  <input
-                    type="date"
-                    required
-                    value={dropoffDate}
-                    onChange={(e) => setDropoffDate(e.target.value)}
-                    className="flex-1 rounded-lg border border-gray-300 px-3 py-2 font-lato text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-                  />
-                  <select
-                    required
-                    value={dropoffTime}
-                    onChange={(e) => setDropoffTime(e.target.value)}
-                    className="w-28 rounded-lg border border-gray-300 px-3 py-2 font-lato text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-                  >
-                    {TIME_SLOTS.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
+                  <div className="flex flex-1 flex-col gap-1">
+                    <input
+                      type="date"
+                      required
+                      value={dropoffDate}
+                      onChange={(e) => setDropoffDate(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 font-lato text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Always base off pickup date; if return is already ahead of
+                        // pickup (user pressed before), increment from there instead.
+                        const base =
+                          dropoffDate && dropoffDate > (pickupDate || todayDate())
+                            ? dropoffDate
+                            : (pickupDate || todayDate());
+                        const d = new Date(`${base}T00:00:00`);
+                        d.setDate(d.getDate() + 1);
+                        const y = d.getFullYear();
+                        const mo = String(d.getMonth() + 1).padStart(2, '0');
+                        const dy = String(d.getDate()).padStart(2, '0');
+                        setDropoffDate(`${y}-${mo}-${dy}`);
+                      }}
+                      className="self-start rounded-md border border-teal-200 bg-teal-50 px-2 py-0.5 font-lato text-xs font-medium text-teal-700 transition-colors hover:bg-teal-100"
+                    >
+                      +1 Day
+                    </button>
+                  </div>
+                  <div className="flex w-28 flex-col gap-1">
+                    <select
+                      required
+                      value={dropoffTime}
+                      onChange={(e) => setDropoffTime(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 font-lato text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                    >
+                      {TIME_SLOTS.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setDropoffTime(nearestTimeSlot())}
+                      className="self-start rounded-md border border-teal-200 bg-teal-50 px-2 py-0.5 font-lato text-xs font-medium text-teal-700 transition-colors hover:bg-teal-100"
+                    >
+                      Now
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -375,29 +582,44 @@ export function WalkInBookingModal({ open, onClose }: Props) {
               ) : availableVehicles.length === 0 ? (
                 <p className="font-lato text-sm text-amber-600">No vehicles available for selected dates.</p>
               ) : (
-                <label className="block">
-                  <span className={LABEL_CLS}>Available vehicle <span className="text-red-500">*</span></span>
-                  <select
-                    required
-                    value={selectedVehicleId}
-                    onChange={(e) => {
-                      const id = e.target.value;
-                      setSelectedVehicleId(id);
-                      const v = availableVehicles.find((v) => v.id === id);
-                      setVehicleModelId(v?.modelId ?? '');
-                      setSelectedAddonIds({});
-                      setQuote(null);
-                    }}
-                    className={SELECT_CLS}
-                  >
-                    <option value="">Select vehicle…</option>
-                    {[...availableVehicles]
-                      .sort((a, b) => a.name.localeCompare(b.name))
-                      .map((v) => (
-                        <option key={v.id} value={v.id}>{v.name}</option>
-                      ))}
-                  </select>
-                </label>
+                <>
+                  <label className="block">
+                    <span className={LABEL_CLS}>Available vehicle <span className="text-red-500">*</span></span>
+                    <select
+                      required
+                      value={selectedVehicleId}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setSelectedVehicleId(id);
+                        const v = availableVehicles.find((v) => v.id === id);
+                        setVehicleModelId(v?.modelId ?? '');
+                        setSelectedAddonIds({});
+                        setQuote(null);
+                      }}
+                      className={SELECT_CLS}
+                    >
+                      <option value="">Select vehicle…</option>
+                      {[...availableVehicles]
+                        .sort((a, b) => a.name.localeCompare(b.name))
+                        .map((v) => (
+                          <option key={v.id} value={v.id}>{v.name}</option>
+                        ))}
+                    </select>
+                  </label>
+                  <label className="mt-3 block">
+                    <span className={LABEL_CLS}>
+                      Helmet numbers
+                      <span className="ml-1 font-lato text-xs text-gray-400">(optional)</span>
+                    </span>
+                    <input
+                      type="text"
+                      value={helmetNumbers}
+                      onChange={(e) => setHelmetNumbers(e.target.value)}
+                      placeholder="e.g. H01, H02"
+                      className={INPUT_CLS}
+                    />
+                  </label>
+                </>
               )}
             </section>
           )}
@@ -408,29 +630,39 @@ export function WalkInBookingModal({ open, onClose }: Props) {
               <h3 className={SECTION_HDR_CLS}>Locations</h3>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label className="block">
-                  <span className={LABEL_CLS}>Pickup location <span className="font-lato text-xs text-gray-400">(optional)</span></span>
+                  <span className={LABEL_CLS}>Pickup location <span className="text-red-500">*</span></span>
                   <select
+                    required
                     value={pickupLocationId}
                     onChange={(e) => setPickupLocationId(e.target.value)}
                     className={SELECT_CLS}
                   >
-                    <option value="">— none —</option>
-                    {(locations ?? []).map((l) => (
-                      <option key={l.id} value={l.id}>{l.name}</option>
-                    ))}
+                    {locsExtended.map((l) => {
+                      const fee = Number(l.deliveryCost ?? l.delivery_cost ?? 0);
+                      return (
+                        <option key={l.id} value={l.id}>
+                          {l.name}{fee > 0 ? ` — ${formatCurrency(fee)}` : ''}
+                        </option>
+                      );
+                    })}
                   </select>
                 </label>
                 <label className="block">
-                  <span className={LABEL_CLS}>Return location <span className="font-lato text-xs text-gray-400">(optional)</span></span>
+                  <span className={LABEL_CLS}>Return location <span className="text-red-500">*</span></span>
                   <select
+                    required
                     value={dropoffLocationId}
                     onChange={(e) => setDropoffLocationId(e.target.value)}
                     className={SELECT_CLS}
                   >
-                    <option value="">— none —</option>
-                    {(locations ?? []).map((l) => (
-                      <option key={l.id} value={l.id}>{l.name}</option>
-                    ))}
+                    {locsExtended.map((l) => {
+                      const fee = Number(l.collectionCost ?? l.collection_cost ?? 0);
+                      return (
+                        <option key={l.id} value={l.id}>
+                          {l.name}{fee > 0 ? ` — ${formatCurrency(fee)}` : ''}
+                        </option>
+                      );
+                    })}
                   </select>
                 </label>
               </div>
@@ -482,43 +714,53 @@ export function WalkInBookingModal({ open, onClose }: Props) {
           {(quoteLoading || quote) && (
             <section>
               <h3 className={SECTION_HDR_CLS}>Price Summary</h3>
-              {quoteLoading ? (
+              {quoteLoading && !quote ? (
                 <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-4">
                   {[1, 2, 3].map((i) => (
                     <div key={i} className="h-4 animate-pulse rounded bg-gray-200" />
                   ))}
                 </div>
               ) : quote ? (
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <div className={`rounded-lg border border-gray-200 bg-gray-50 p-4${quoteLoading ? ' opacity-60' : ''}`}>
                   <div className="space-y-1.5">
                     <div className="flex justify-between">
                       <span className="font-lato text-sm text-gray-600">
-                        Rental ({quote.rentalDays} {quote.rentalDays === 1 ? 'day' : 'days'} @ {formatCurrency(quote.dailyRate)}/day)
+                        Rental ({localRentalDays} {localRentalDays === 1 ? 'day' : 'days'} @ {formatCurrency(quote.dailyRate)}/day)
                       </span>
                       <span className="font-lato text-sm text-gray-800">{formatCurrency(quote.rentalSubtotal)}</span>
                     </div>
-                    {quote.pickupFee > 0 && (
+                    {pickupFeeLocal > 0 && (
                       <div className="flex justify-between">
                         <span className="font-lato text-sm text-gray-600">Pickup fee</span>
-                        <span className="font-lato text-sm text-gray-800">{formatCurrency(quote.pickupFee)}</span>
+                        <span className="font-lato text-sm text-gray-800">{formatCurrency(pickupFeeLocal)}</span>
                       </div>
                     )}
-                    {quote.dropoffFee > 0 && (
+                    {dropoffFeeLocal > 0 && (
                       <div className="flex justify-between">
-                        <span className="font-lato text-sm text-gray-600">Dropoff fee</span>
-                        <span className="font-lato text-sm text-gray-800">{formatCurrency(quote.dropoffFee)}</span>
+                        <span className="font-lato text-sm text-gray-600">Return fee</span>
+                        <span className="font-lato text-sm text-gray-800">{formatCurrency(dropoffFeeLocal)}</span>
                       </div>
                     )}
-                    {quote.addonsTotal > 0 && (
-                      <div className="flex justify-between">
-                        <span className="font-lato text-sm text-gray-600">Add-ons</span>
-                        <span className="font-lato text-sm text-gray-800">{formatCurrency(quote.addonsTotal)}</span>
-                      </div>
-                    )}
+                    {filteredAddons.map((addon) => {
+                      const qty = selectedAddonIds[String(addon.id)] ?? 0;
+                      if (!qty) return null;
+                      const unitCost =
+                        addon.addonType === 'per_day'
+                          ? addon.pricePerDay * (quote.rentalDays ?? localRentalDays)
+                          : addon.priceOneTime;
+                      return (
+                        <div key={addon.id} className="flex justify-between">
+                          <span className="font-lato text-sm text-gray-600">
+                            {addon.name}{qty > 1 ? ` ×${qty}` : ''}
+                          </span>
+                          <span className="font-lato text-sm text-gray-800">{formatCurrency(unitCost * qty)}</span>
+                        </div>
+                      );
+                    })}
                     <div className="my-2 border-t border-gray-300" />
                     <div className="flex justify-between">
                       <span className="font-lato text-sm font-semibold text-gray-900">Total</span>
-                      <span className="font-lato text-sm font-bold text-gray-900">{formatCurrency(quote.grandTotal)}</span>
+                      <span className="font-lato text-sm font-bold text-gray-900">{formatCurrency(grandTotalLocal)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="font-lato text-sm text-gray-600">
@@ -532,7 +774,104 @@ export function WalkInBookingModal({ open, onClose }: Props) {
             </section>
           )}
 
-          {/* ── Section 7: Notes ── */}
+          {/* ── Section 7: Payment ── */}
+          {(quote || (quoteLoading && vehicleModelId)) && (
+            <section>
+              <h3 className={SECTION_HDR_CLS}>Payment</h3>
+              <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+
+                {/* Rental payment method */}
+                <div>
+                  <label className={LABEL_CLS}>Rental payment method</label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    className={SELECT_CLS}
+                  >
+                    <option value="cash">Cash</option>
+                    <option value="gcash">GCash</option>
+                    <option value="card">Card</option>
+                    <option value="bank_transfer">Bank Transfer</option>
+                  </select>
+                </div>
+
+                {/* Security deposit — mandatory by default; staff can waive */}
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className={LABEL_CLS}>Deposit amount <span className="text-red-500">*</span></span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={depositAmount === 0 ? '' : depositAmount}
+                      onChange={(e) =>
+                        setDepositAmount(e.target.value === '' ? 0 : Number(e.target.value))
+                      }
+                      placeholder="0"
+                      disabled={!depositPaid}
+                      className={`${INPUT_CLS} disabled:bg-gray-100 disabled:text-gray-400`}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className={LABEL_CLS}>Deposit method</span>
+                    <select
+                      value={depositMethod}
+                      onChange={(e) => setDepositMethod(e.target.value)}
+                      disabled={!depositPaid}
+                      className={`${SELECT_CLS} disabled:bg-gray-100 disabled:text-gray-400`}
+                    >
+                      <option value="cash">Cash</option>
+                      <option value="gcash">GCash</option>
+                      <option value="card">Card</option>
+                      <option value="bank_transfer">Bank Transfer</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="waiveDeposit"
+                    checked={!depositPaid}
+                    onChange={(e) => setDepositPaid(!e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-red-500 focus:ring-red-400"
+                  />
+                  <label htmlFor="waiveDeposit" className="cursor-pointer font-lato text-sm text-gray-600">
+                    Waive security deposit
+                  </label>
+                </div>
+
+                {/* Amount due summary */}
+                <div className="space-y-1 border-t border-gray-200 pt-3">
+                  <div className="flex justify-between">
+                    <span className="font-lato text-sm text-gray-600">Rental total</span>
+                    <span className="font-lato text-sm font-semibold text-gray-900">
+                      {formatCurrency(grandTotalLocal)}
+                    </span>
+                  </div>
+                  {depositPaid ? (
+                    <div className="flex justify-between">
+                      <span className="font-lato text-sm text-gray-600">Security deposit</span>
+                      <span className="font-lato text-sm text-gray-800">
+                        {formatCurrency(depositAmount)}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between">
+                      <span className="font-lato text-sm text-gray-500 italic">Deposit waived</span>
+                      <span className="font-lato text-sm text-gray-400">—</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between border-t border-gray-200 pt-2">
+                    <span className="font-lato text-sm font-bold text-gray-900">Total to collect now</span>
+                    <span className="font-lato text-sm font-bold text-teal-700">
+                      {formatCurrency(grandTotalLocal + (depositPaid ? depositAmount : 0))}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* ── Section 8: Notes ── */}
           <section>
             <h3 className={SECTION_HDR_CLS}>Notes</h3>
             <label className="block">
@@ -547,9 +886,9 @@ export function WalkInBookingModal({ open, onClose }: Props) {
             </label>
           </section>
 
-          {createWalkIn.error && (
+          {createWalkInDirect.error && (
             <p className="rounded-lg bg-red-50 px-3 py-2 font-lato text-sm text-red-600">
-              {(createWalkIn.error as Error).message}
+              {(createWalkInDirect.error as Error).message}
             </p>
           )}
 
@@ -564,10 +903,10 @@ export function WalkInBookingModal({ open, onClose }: Props) {
             </button>
             <button
               type="submit"
-              disabled={!isValid || createWalkIn.isPending}
+              disabled={!isValid || createWalkInDirect.isPending}
               className="rounded-lg bg-teal-600 px-4 py-2 font-lato text-sm font-medium text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {createWalkIn.isPending ? 'Creating…' : 'Create Booking'}
+              {createWalkInDirect.isPending ? 'Activating…' : 'Create & Activate'}
             </button>
           </div>
         </form>

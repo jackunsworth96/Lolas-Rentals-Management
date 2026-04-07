@@ -145,3 +145,48 @@ export function useCancelRawOrder() {
     },
   });
 }
+
+export interface WalkInDirectPayload {
+  customerName: string;
+  customerMobile: string;
+  customerEmail?: string;
+  nationality?: string;
+  storeId: string;
+  vehicleId: string;
+  vehicleModelId: string;
+  vehicleName: string;
+  pickupDatetime: string;
+  dropoffDatetime: string;
+  pickupLocationId?: number;
+  dropoffLocationId?: number;
+  addonIds?: number[];
+  helmetNumbers?: string;
+  staffNotes?: string;
+  paymentMethod: 'cash' | 'gcash' | 'card' | 'bank_transfer';
+  depositCollected: boolean;
+  depositAmount: number;
+  depositMethod: 'cash' | 'gcash' | 'card' | 'bank_transfer';
+  grandTotal: number;
+  rentalDays: number;
+  dailyRate: number;
+  pickupFee: number;
+  dropoffFee: number;
+}
+
+export interface WalkInDirectResult {
+  orderId: string;
+  orderReference: string;
+  customerId: string;
+}
+
+export function useCreateWalkInDirect() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: WalkInDirectPayload) =>
+      api.post<WalkInDirectResult>('/orders-raw/walk-in-direct', body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['fleet'] });
+    },
+  });
+}

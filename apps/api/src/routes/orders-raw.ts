@@ -84,6 +84,291 @@ router.post('/walk-in', requirePermission(Permission.EditOrders), async (req, re
   }
 });
 
+/* ────────────────────────────────────────────────────────────
+   POST /walk-in-direct
+   Creates AND immediately activates a booking in one step,
+   bypassing the orders_raw inbox entirely.
+   ──────────────────────────────────────────────────────────── */
+
+const walkInDirectSchema = z.object({
+  customerName: z.string().min(1),
+  customerMobile: z.string().min(1),
+  customerEmail: z.string().email().optional(),
+  nationality: z.string().optional(),
+  storeId: z.string().min(1),
+  vehicleId: z.string().min(1),
+  vehicleModelId: z.string().min(1),
+  vehicleName: z.string().min(1),
+  pickupDatetime: z.string().min(1),
+  dropoffDatetime: z.string().min(1),
+  pickupLocationId: z.number().int().positive().optional(),
+  dropoffLocationId: z.number().int().positive().optional(),
+  addonIds: z.array(z.number()).optional(),
+  helmetNumbers: z.string().optional(),
+  staffNotes: z.string().optional(),
+  paymentMethod: z.enum(['cash', 'gcash', 'card', 'bank_transfer']),
+  depositCollected: z.boolean(),
+  depositAmount: z.number().min(0),
+  depositMethod: z.enum(['cash', 'gcash', 'card', 'bank_transfer']),
+  grandTotal: z.number().min(0),
+  rentalDays: z.number().int().min(1),
+  dailyRate: z.number().min(0),
+  pickupFee: z.number().min(0).default(0),
+  dropoffFee: z.number().min(0).default(0),
+});
+
+router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (req, res, next) => {
+  try {
+    const parsed = walkInDirectSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid request body', details: parsed.error.flatten() },
+      });
+      return;
+    }
+
+    const body = parsed.data;
+    const employeeId = req.user!.employeeId;
+
+    // 1. Upsert customer
+    const { data: existingCust } = await supabase
+      .from('customers')
+      .select('id')
+      .eq('mobile', body.customerMobile)
+      .limit(1)
+      .maybeSingle();
+
+    let customerId: string;
+    if (existingCust) {
+      customerId = (existingCust as { id: string }).id;
+    } else {
+      customerId = crypto.randomUUID();
+      const { error: custErr } = await supabase.from('customers').insert({
+        id: customerId,
+        store_id: body.storeId,
+        name: body.customerName,
+        mobile: body.customerMobile,
+        email: body.customerEmail?.toLowerCase() ?? null,
+        notes: body.nationality ? `Nationality: ${body.nationality}` : null,
+      });
+      if (custErr) throw new Error(`Customer insert failed: ${custErr.message}`);
+    }
+
+    // 2. Generate order reference
+    const source = resolveSourceFromStore(body.storeId);
+    const orderReference = await uniqueWalkInReference(source);
+
+    // 3. Build IDs
+    const orderId = crypto.randomUUID();
+    const orderItemId = crypto.randomUUID();
+
+    // 4. Compute rental days
+    const ms = new Date(body.dropoffDatetime).getTime() - new Date(body.pickupDatetime).getTime();
+    const rentalDaysCount = Math.max(1, Math.ceil(ms / (1000 * 60 * 60 * 24)));
+
+    // 5. Resolve location names
+    let pickupLocation = 'Store';
+    let dropoffLocation = 'Store';
+    if (body.pickupLocationId || body.dropoffLocationId) {
+      const { data: locRows } = await supabase
+        .from('locations')
+        .select('id, name')
+        .eq('is_active', true)
+        .or(`store_id.eq.${body.storeId},store_id.is.null`);
+      const locMap = new Map(
+        ((locRows ?? []) as Array<{ id: number; name: string }>).map((l) => [l.id, l.name]),
+      );
+      if (body.pickupLocationId) pickupLocation = locMap.get(body.pickupLocationId) ?? 'Store';
+      if (body.dropoffLocationId) dropoffLocation = locMap.get(body.dropoffLocationId) ?? 'Store';
+    }
+
+    // 6. Build order_items
+    const orderItems = [{
+      id: orderItemId,
+      store_id: body.storeId,
+      order_id: orderId,
+      vehicle_id: body.vehicleId,
+      vehicle_name: body.vehicleName,
+      pickup_datetime: body.pickupDatetime,
+      dropoff_datetime: body.dropoffDatetime,
+      rental_days_count: rentalDaysCount,
+      pickup_location: pickupLocation,
+      dropoff_location: dropoffLocation,
+      pickup_fee: body.pickupFee,
+      dropoff_fee: body.dropoffFee,
+      rental_rate: body.dailyRate,
+      helmet_numbers: body.helmetNumbers ?? null,
+      discount: 0,
+      ops_notes: body.staffNotes ?? null,
+      return_condition: null,
+    }];
+
+    // 7. Build order_addons
+    let orderAddons: Array<Record<string, unknown>> = [];
+    if (body.addonIds && body.addonIds.length > 0) {
+      const { data: addonRows, error: addonErr } = await supabase
+        .from('addons')
+        .select('id, name, addon_type, price_per_day, price_one_time')
+        .in('id', body.addonIds)
+        .eq('is_active', true);
+      if (addonErr) throw new Error(`Addon lookup failed: ${addonErr.message}`);
+
+      orderAddons = ((addonRows ?? []) as Array<{
+        id: number; name: string; addon_type: string;
+        price_per_day: number; price_one_time: number;
+      }>).map((addon) => {
+        const isPerDay = addon.addon_type === 'per_day';
+        const price = isPerDay ? addon.price_per_day : addon.price_one_time;
+        const total = isPerDay ? price * rentalDaysCount : price;
+        return {
+          id: crypto.randomUUID(),
+          order_id: orderId,
+          addon_name: addon.name,
+          addon_price: price,
+          addon_type: addon.addon_type,
+          quantity: 1,
+          total_amount: total,
+          store_id: body.storeId,
+        };
+      });
+    }
+
+    // 8. Fleet updates
+    const fleetUpdates = [{
+      id: body.vehicleId,
+      status: 'Active',
+      updated_at: new Date().toISOString(),
+    }];
+
+    // 9. Accounting accounts
+    const { data: acctData, error: acctErr } = await supabase
+      .from('chart_of_accounts')
+      .select('id, name, account_type')
+      .in('store_id', [body.storeId, 'company'])
+      .eq('is_active', true);
+    if (acctErr) throw new Error(`Account lookup failed: ${acctErr.message}`);
+
+    const accounts = (acctData ?? []) as Array<{ id: string; name: string; account_type: string }>;
+    const receivableAccount = accounts.find(
+      (a) => a.account_type === 'Asset' && a.name.toLowerCase().includes('receivable'),
+    );
+    const incomeAccount = accounts.find(
+      (a) => a.account_type === 'Income' && a.name.toLowerCase().includes('rental'),
+    ) ?? accounts.find(
+      (a) => a.account_type === 'Income',
+    );
+    const receivableAccountId = receivableAccount?.id ?? '';
+    const incomeAccountId = incomeAccount?.id ?? '';
+
+    // 10. Journal legs
+    const now = new Date();
+    const journalDate = now.toISOString().slice(0, 10);
+    const journalPeriod = journalDate.slice(0, 7);
+    let journalTransactionId = '';
+    let journalLegs: Array<Record<string, unknown>> = [];
+
+    if (body.grandTotal > 0 && receivableAccountId && incomeAccountId) {
+      journalTransactionId = crypto.randomUUID();
+      journalLegs = [
+        {
+          id: crypto.randomUUID(),
+          account_id: receivableAccountId,
+          debit: body.grandTotal,
+          credit: 0,
+          description: 'Walk-in order activation',
+          reference_type: 'order',
+          reference_id: orderId,
+        },
+        {
+          id: crypto.randomUUID(),
+          account_id: incomeAccountId,
+          debit: 0,
+          credit: body.grandTotal,
+          description: 'Walk-in rental income',
+          reference_type: 'order',
+          reference_id: orderId,
+        },
+      ];
+    }
+
+    // 11. Order date (Manila timezone)
+    const orderDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+
+    // 12. Call activate_order_atomic RPC
+    const { error: rpcErr } = await supabase.rpc('activate_order_atomic', {
+      p_order_id: orderId,
+      p_store_id: body.storeId,
+      p_woo_order_id: null,
+      p_customer_id: customerId,
+      p_employee_id: employeeId,
+      p_order_date: orderDate,
+      p_status: 'active',
+      p_web_notes: body.staffNotes ?? null,
+      p_quantity: 1,
+      p_web_quote_raw: body.grandTotal,
+      p_security_deposit: body.depositAmount,
+      p_deposit_status: body.depositCollected ? 'paid' : 'pending',
+      p_card_fee_surcharge: 0,
+      p_return_charges: 0,
+      p_final_total: body.grandTotal,
+      p_balance_due: body.depositCollected ? 0 : body.grandTotal,
+      p_payment_method_id: body.paymentMethod,
+      p_deposit_method_id: body.depositMethod,
+      p_booking_token: orderReference,
+      p_tips: 0,
+      p_charity_donation: 0,
+      p_updated_at: now.toISOString(),
+      p_order_items: orderItems,
+      p_order_addons: orderAddons,
+      p_fleet_updates: fleetUpdates,
+      p_journal_transaction_id: journalTransactionId,
+      p_journal_period: journalPeriod,
+      p_journal_date: journalDate,
+      p_journal_store_id: body.storeId,
+      p_journal_legs: journalLegs,
+    });
+    if (rpcErr) throw new Error(`activate_order_atomic RPC failed: ${rpcErr.message}`);
+
+    // 13. Create rental payment
+    const todayManila = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+    const { error: payErr } = await supabase.from('payments').insert({
+      id: crypto.randomUUID(),
+      order_id: orderId,
+      store_id: body.storeId,
+      amount: body.grandTotal,
+      payment_type: 'rental',
+      payment_method_id: body.paymentMethod,
+      transaction_date: todayManila,
+      customer_id: customerId,
+    });
+    if (payErr) throw new Error(`Rental payment insert failed: ${payErr.message}`);
+
+    // 14. Create deposit payment if collected
+    if (body.depositCollected && body.depositAmount > 0) {
+      const { error: depErr } = await supabase.from('payments').insert({
+        id: crypto.randomUUID(),
+        order_id: orderId,
+        store_id: body.storeId,
+        amount: body.depositAmount,
+        payment_type: 'security_deposit',
+        payment_method_id: body.depositMethod,
+        transaction_date: todayManila,
+        customer_id: customerId,
+      });
+      if (depErr) throw new Error(`Deposit payment insert failed: ${depErr.message}`);
+    }
+
+    // 15. Return result
+    res.status(201).json({
+      success: true,
+      data: { orderId, orderReference, customerId },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/', requirePermission(Permission.ViewInbox), async (req, res, next) => {
   try {
     const {
