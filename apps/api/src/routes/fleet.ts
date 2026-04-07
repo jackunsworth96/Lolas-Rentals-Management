@@ -4,6 +4,7 @@ import { requirePermission } from '../middleware/authorize.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
 import { Permission } from '@lolas/shared';
 import { z } from 'zod';
+import { getSupabaseClient } from '../adapters/supabase/client.js';
 
 const router = Router();
 router.use(authenticate);
@@ -316,6 +317,82 @@ router.post('/', requirePermission(Permission.EditFleet), validateBody(z.object(
     res.status(201).json({ success: true, data: vehicleToDto(result) });
   } catch (err) { next(err); }
 });
+
+router.get(
+  '/available',
+  requirePermission(Permission.ViewFleet),
+  validateQuery(z.object({
+    storeId: z.string().min(1),
+    pickupDatetime: z.string().min(1),
+    dropoffDatetime: z.string().min(1),
+  })),
+  async (req, res, next) => {
+    try {
+      const { storeId, pickupDatetime, dropoffDatetime } = req.query as {
+        storeId: string;
+        pickupDatetime: string;
+        dropoffDatetime: string;
+      };
+      const sb = getSupabaseClient();
+
+      // 1. Fetch all active fleet vehicles for the store
+      const { data: fleetRows, error: fleetErr } = await sb
+        .from('fleet')
+        .select('id, name, model_id, status, store_id')
+        .eq('store_id', storeId)
+        .not('status', 'in', '("Sold","Maintenance","Inactive")');
+      if (fleetErr) throw new Error(`Fleet query failed: ${fleetErr.message}`);
+
+      // 2. Find vehicles booked via order_items in the requested window
+      const { data: bookedItemRows, error: bookedErr } = await sb
+        .from('order_items')
+        .select('vehicle_id, orders!inner(status)')
+        .eq('orders.status', 'active')
+        .eq('store_id', storeId)
+        .lt('pickup_datetime', dropoffDatetime)
+        .gt('dropoff_datetime', pickupDatetime);
+      if (bookedErr) throw new Error(`Booked vehicles query failed: ${bookedErr.message}`);
+
+      // 3. Check booking_holds for the window
+      const { data: holdRows, error: holdErr } = await sb
+        .from('booking_holds')
+        .select('vehicle_id')
+        .eq('store_id', storeId)
+        .lt('pickup_datetime', dropoffDatetime)
+        .gt('dropoff_datetime', pickupDatetime);
+      if (holdErr) throw new Error(`Booking holds query failed: ${holdErr.message}`);
+
+      // 4. Combine booked vehicle IDs from both sources into a Set
+      const bookedVehicleIds = new Set<string>();
+      for (const row of (bookedItemRows ?? []) as Array<{ vehicle_id: string }>) {
+        bookedVehicleIds.add(row.vehicle_id);
+      }
+      for (const row of (holdRows ?? []) as Array<{ vehicle_id: string }>) {
+        bookedVehicleIds.add(row.vehicle_id);
+      }
+
+      // 5. Filter fleet to only vehicles not in the booked set
+      type FleetRow = { id: string; name: string; model_id: string | null; status: string; store_id: string };
+      const availableVehicles = ((fleetRows ?? []) as FleetRow[]).filter(
+        (v) => !bookedVehicleIds.has(v.id),
+      );
+
+      // 6. Return available vehicles
+      res.json({
+        success: true,
+        data: availableVehicles.map((v) => ({
+          id: v.id,
+          name: v.name,
+          modelId: v.model_id,
+          status: v.status,
+          storeId: v.store_id,
+        })),
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 router.get('/:id', requirePermission(Permission.ViewFleet), async (req, res, next) => {
   try {

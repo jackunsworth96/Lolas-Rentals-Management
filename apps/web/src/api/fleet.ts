@@ -87,3 +87,27 @@ export function useBatchDepreciation() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['fleet'] }),
   });
 }
+
+export interface AvailableVehicle {
+  id: string;
+  name: string;
+  modelId: string;
+  storeId: string;
+  status: string;
+}
+
+export function useAvailableVehicles(
+  storeId: string,
+  pickupDatetime: string,
+  dropoffDatetime: string,
+) {
+  return useQuery<AvailableVehicle[]>({
+    queryKey: ['fleet', 'available', storeId, pickupDatetime, dropoffDatetime],
+    queryFn: () =>
+      api.get(
+        `/fleet/available?storeId=${encodeURIComponent(storeId)}&pickupDatetime=${encodeURIComponent(pickupDatetime)}&dropoffDatetime=${encodeURIComponent(dropoffDatetime)}`,
+      ),
+    enabled: !!storeId && !!pickupDatetime && !!dropoffDatetime
+      && pickupDatetime !== dropoffDatetime,
+  });
+}

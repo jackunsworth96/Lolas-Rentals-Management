@@ -42,6 +42,7 @@ router.get(
             )
             .eq('store_id', storeId)
             .eq('date', date)
+            .eq('status', 'paid')
             .order('created_at', { ascending: true }),
 
           sb
@@ -270,6 +271,13 @@ router.get(
         };
       });
       const expenseTotal = expenseRows.reduce((s, e) => s + e.amount, 0);
+      const cashExpenseTotal = expenseRows.reduce((s, e) => {
+        const name = (e.paidFromName ?? '').toLowerCase();
+        const isCash = name.includes('cash') &&
+          !name.includes('gcash') &&
+          !name.includes('paymaya');
+        return isCash ? s + e.amount : s;
+      }, 0);
 
       // Cash deposited — pair credit leg (cash leaving) with debit leg (destination)
       const debitByRef = new Map<string, { name: string | null }>();
@@ -330,7 +338,7 @@ router.get(
       // Only cash-method payments affect the physical till
       const totalCashIn = cashSalesTotal + cashDepositsHeldTotal + miscCashTotal;
       const expectedCash =
-        openingAmount + totalCashIn + interStoreIn - expenseTotal - depositTotal - interStoreOut;
+        openingAmount + totalCashIn + interStoreIn - cashExpenseTotal - depositTotal - interStoreOut;
 
       const charityDonationRows = charityEntries.map((c) => ({
         id: c.id,
@@ -382,6 +390,7 @@ router.get(
             miscBankTotal,
             miscSalesTotal: miscCashTotal + miscCardTotal + miscGcashTotal + miscBankTotal,
             expenseTotal,
+            cashExpenseTotal,
             depositTotal,
             interStoreIn,
             interStoreOut,
