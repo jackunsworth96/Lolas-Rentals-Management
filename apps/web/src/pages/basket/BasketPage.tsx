@@ -28,7 +28,7 @@ function rentalDaysFromDates(pickup: string, dropoff: string): number {
   const ms = new Date(dropoff).getTime() - new Date(pickup).getTime();
   const hours = ms / (1000 * 60 * 60);
   const days = hours / 24;
-  return Math.max(1, Math.round(days));
+  return Math.max(1, Math.ceil(days));
 }
 
 function formatDate(iso: string): string {

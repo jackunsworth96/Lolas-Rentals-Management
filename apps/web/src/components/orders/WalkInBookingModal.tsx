@@ -1,16 +1,22 @@
 import { useState, useEffect } from 'react';
 import { Modal } from '../common/Modal.js';
 import { useCreateWalkIn } from '../../api/orders-raw.js';
-import { useStores, useVehicleModels, useLocations } from '../../api/config.js';
+import { useStores, useLocations } from '../../api/config.js';
+import { useFleet } from '../../api/fleet.js';
 
 interface Props {
   open: boolean;
   onClose: () => void;
 }
 
-interface VehicleModel { id: string; name: string; }
 interface Store { id: string; name: string; }
 interface Location { id: number; name: string; }
+interface FleetVehicle {
+  id: string;
+  name: string;
+  modelId: string;
+  status?: string;
+}
 
 const SITE_URL = (import.meta.env.VITE_SITE_URL as string | undefined) ?? window.location.origin;
 
@@ -26,7 +32,6 @@ function todayTime(): string {
 export function WalkInBookingModal({ open, onClose }: Props) {
   const createWalkIn = useCreateWalkIn();
   const { data: stores } = useStores() as { data: Store[] | undefined };
-  const { data: vehicleModels } = useVehicleModels() as { data: VehicleModel[] | undefined };
 
   // Form fields
   const [customerName, setCustomerName] = useState('');
@@ -34,6 +39,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
   const [customerEmail, setCustomerEmail] = useState('');
   const [storeId, setStoreId] = useState('');
   const [vehicleModelId, setVehicleModelId] = useState('');
+  const [vehicleId, setVehicleId] = useState('');
   const [pickupDate, setPickupDate] = useState(todayDate());
   const [pickupTime, setPickupTime] = useState(todayTime());
   const [dropoffDate, setDropoffDate] = useState(todayDate());
@@ -43,6 +49,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
   const [staffNotes, setStaffNotes] = useState('');
 
   const { data: locations } = useLocations(storeId) as { data: Location[] | undefined };
+  const { data: fleetVehicles } = useFleet(storeId) as { data: FleetVehicle[] | undefined };
 
   // Success state
   const [createdRef, setCreatedRef] = useState<string | null>(null);
@@ -51,7 +58,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
   useEffect(() => {
     if (!open) {
       setCustomerName(''); setCustomerMobile(''); setCustomerEmail('');
-      setStoreId(''); setVehicleModelId('');
+      setStoreId(''); setVehicleModelId(''); setVehicleId('');
       setPickupDate(todayDate()); setPickupTime(todayTime());
       setDropoffDate(todayDate()); setDropoffTime(todayTime());
       setPickupLocationId(''); setDropoffLocationId(''); setStaffNotes('');
@@ -215,17 +222,25 @@ export function WalkInBookingModal({ open, onClose }: Props) {
               </label>
 
               <label className="block">
-                <span className="text-sm font-medium text-gray-700">Vehicle model <span className="text-red-500">*</span></span>
+                <span className="text-sm font-medium text-gray-700">Vehicle <span className="text-red-500">*</span></span>
                 <select
                   required
-                  value={vehicleModelId}
-                  onChange={(e) => setVehicleModelId(e.target.value)}
+                  value={vehicleId}
+                  onChange={(e) => {
+                    const selectedId = e.target.value;
+                    setVehicleId(selectedId);
+                    const vehicle = (fleetVehicles ?? []).find((v) => v.id === selectedId);
+                    setVehicleModelId(vehicle?.modelId ?? '');
+                  }}
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
                 >
                   <option value="">Select vehicle…</option>
-                  {(vehicleModels ?? []).map((m) => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
-                  ))}
+                  {(fleetVehicles ?? [])
+                    .filter((v) => v.status !== 'Maintenance' && v.status !== 'Sold')
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((v) => (
+                      <option key={v.id} value={v.id}>{v.name}</option>
+                    ))}
                 </select>
               </label>
 
