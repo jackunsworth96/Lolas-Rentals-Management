@@ -353,31 +353,19 @@ router.get(
         .gt('dropoff_datetime', pickupDatetime);
       if (bookedErr) throw new Error(`Booked vehicles query failed: ${bookedErr.message}`);
 
-      // 3. Check booking_holds for the window
-      const { data: holdRows, error: holdErr } = await sb
-        .from('booking_holds')
-        .select('vehicle_id')
-        .eq('store_id', storeId)
-        .lt('pickup_datetime', dropoffDatetime)
-        .gt('dropoff_datetime', pickupDatetime);
-      if (holdErr) throw new Error(`Booking holds query failed: ${holdErr.message}`);
-
-      // 4. Combine booked vehicle IDs from both sources into a Set
+      // 3. Combine booked vehicle IDs from order_items into a Set
       const bookedVehicleIds = new Set<string>();
       for (const row of (bookedItemRows ?? []) as Array<{ vehicle_id: string }>) {
         bookedVehicleIds.add(row.vehicle_id);
       }
-      for (const row of (holdRows ?? []) as Array<{ vehicle_id: string }>) {
-        bookedVehicleIds.add(row.vehicle_id);
-      }
 
-      // 5. Filter fleet to only vehicles not in the booked set
+      // 4. Filter fleet to only vehicles not in the booked set
       type FleetRow = { id: string; name: string; model_id: string | null; status: string; store_id: string };
       const availableVehicles = ((fleetRows ?? []) as FleetRow[]).filter(
         (v) => !bookedVehicleIds.has(v.id),
       );
 
-      // 6. Return available vehicles
+      // 5. Return available vehicles
       res.json({
         success: true,
         data: availableVehicles.map((v) => ({
