@@ -328,7 +328,10 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       p_journal_store_id: body.storeId,
       p_journal_legs: journalLegs,
     });
-    if (rpcErr) throw new Error(`activate_order_atomic RPC failed: ${rpcErr.message}`);
+    if (rpcErr) {
+      console.error('activate_order_atomic full error:', JSON.stringify(rpcErr, null, 2));
+      throw new Error(`activate_order_atomic RPC failed: ${rpcErr.message} | code: ${rpcErr.code} | details: ${rpcErr.details} | hint: ${rpcErr.hint}`);
+    }
 
     // 13. Create rental payment
     const todayManila = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
