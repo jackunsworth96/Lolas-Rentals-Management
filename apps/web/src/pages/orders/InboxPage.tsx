@@ -83,9 +83,27 @@ export default function InboxPage() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [searchInput]);
 
+  const [page, setPage] = useState(1);
+  const [allOrders, setAllOrders] = useState<RawOrder[]>([]);
+
   const apiStore = storeFilter ? resolveSourceFromStore(storeFilter) : undefined;
-  const { data: rawOrders, isLoading, error } = useOrdersRaw(apiStore, undefined, searchQuery || undefined);
+  const { data: response, isLoading, error } = useOrdersRaw(apiStore, undefined, searchQuery || undefined, page);
   const { data: stores } = useStores() as { data: Array<{ id: string; name: string }> | undefined };
+
+  useEffect(() => {
+    if (response?.data) {
+      if (page === 1) {
+        setAllOrders(response.data);
+      } else {
+        setAllOrders(prev => [...prev, ...response.data]);
+      }
+    }
+  }, [response, page]);
+
+  useEffect(() => {
+    setPage(1);
+    setAllOrders([]);
+  }, [apiStore, searchQuery]);
 
   const [selectedOrder, setSelectedOrder] = useState<RawOrder | null>(null);
   const [cancelOrder, setCancelOrder] = useState<RawOrder | null>(null);
@@ -101,7 +119,7 @@ export default function InboxPage() {
   }, []);
 
   const filteredOrders = useMemo(() => {
-    const all = Array.isArray(rawOrders) ? rawOrders : [];
+    const all = allOrders;
     if (dateFilter === 'all') return all;
 
     const target = dateFilter === 'today' ? todayStr : tomorrowStr;
@@ -112,12 +130,12 @@ export default function InboxPage() {
       const pickupDate = extractPickupDate(order.payload ?? {});
       return pickupDate === target;
     });
-  }, [rawOrders, dateFilter, todayStr, tomorrowStr]);
+  }, [allOrders, dateFilter, todayStr, tomorrowStr]);
 
-  if (isLoading) return <div className="py-12 text-center text-gray-500">Loading orders...</div>;
+  if (isLoading && allOrders.length === 0) return <div className="py-12 text-center text-gray-500">Loading orders...</div>;
   if (error) return <div className="py-12 text-center text-red-500">Failed to load orders</div>;
 
-  const totalCount = Array.isArray(rawOrders) ? rawOrders.length : 0;
+  const totalCount = response?.total ?? allOrders.length;
 
   const columns = [
     {
@@ -340,6 +358,18 @@ export default function InboxPage() {
           rawOrder={cancelOrder}
           onCancelled={() => setCancelOrder(null)}
         />
+      )}
+
+      {response && page < response.totalPages && (
+        <div className="mt-4 flex justify-center">
+          <button
+            onClick={() => setPage(p => p + 1)}
+            disabled={isLoading}
+            className="font-lato text-sm font-semibold text-teal-brand border border-teal-brand rounded-lg px-6 py-2 hover:bg-teal-brand/5 transition-colors disabled:opacity-50"
+          >
+            {isLoading ? 'Loading…' : `Load more (${response.total - allOrders.length} remaining)`}
+          </button>
+        </div>
       )}
 
       <WalkInBookingModal

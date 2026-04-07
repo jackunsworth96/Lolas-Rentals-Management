@@ -84,6 +84,10 @@ export function createTransferRepo(): TransferRepository {
       if (filters?.route) query = query.eq('route', filters.route);
       if (filters?.paymentStatus) query = query.eq('payment_status', filters.paymentStatus);
       if (filters?.bookingSource) query = query.eq('booking_source', filters.bookingSource);
+      if (filters?.driverPaidStatus === 'unpaid') {
+        query = query.or('driver_paid_status.is.null,driver_paid_status.neq.Paid');
+      }
+      query = query.order('service_date', { ascending: true });
       const { data, error } = await query;
       if (error) throw new Error(`Failed to fetch transfers: ${error.message}`);
       return (data ?? []).map(toDomain);

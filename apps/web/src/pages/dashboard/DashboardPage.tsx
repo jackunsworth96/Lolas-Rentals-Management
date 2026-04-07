@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useUIStore } from '../../stores/ui-store.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 import {
@@ -51,6 +51,23 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">{children}</h2>;
 }
 
+function DetailItem({
+  label,
+  value,
+  highlight = false,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div>
+      <p className="font-lato text-xs font-medium uppercase tracking-wide text-gray-500 mb-0.5">{label}</p>
+      <p className={`font-lato text-sm font-semibold ${highlight ? 'text-red-600' : 'text-gray-900'}`}>{value}</p>
+    </div>
+  );
+}
+
 function LoadingSkeleton() {
   return (
     <div className="space-y-6 p-6">
@@ -81,6 +98,8 @@ export default function DashboardPage() {
   const canViewLostOpp = hasPermission('can_view_lostopportunity');
 
   const { data: charityImpact } = useCharityImpact();
+
+  const [selectedReturn, setSelectedReturn] = useState<NinePmVehicle | null>(null);
 
   const metrics: StoreMetrics | null = useMemo(() => {
     if (!data?.stores) return null;
@@ -179,18 +198,56 @@ export default function DashboardPage() {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-4 py-2 text-left font-medium text-gray-500">Vehicle Model</th>
+                  <th className="px-4 py-2 text-left font-medium text-gray-500">Vehicle Name</th>
                   <th className="px-4 py-2 text-left font-medium text-gray-500">Return Time</th>
+                  <th className="px-4 py-2 text-left font-medium text-gray-500">Customer</th>
+                  <th className="px-4 py-2 text-right font-medium text-gray-500">Balance Due</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {metrics.ninepmReturns.vehicles.map((v: NinePmVehicle) => (
-                  <tr key={v.orderId}>
+                  <tr
+                    key={v.orderId}
+                    onClick={() => setSelectedReturn(selectedReturn?.orderId === v.orderId ? null : v)}
+                    className="cursor-pointer hover:bg-blue-50"
+                  >
                     <td className="px-4 py-2 text-gray-900">{v.vehicleModel}</td>
+                    <td className="px-4 py-2 text-gray-600">{v.vehicleName}</td>
                     <td className="px-4 py-2 text-gray-600">{v.returnTime}</td>
+                    <td className="px-4 py-2 text-gray-900">{v.customerName}</td>
+                    <td className={`px-4 py-2 text-right font-medium ${v.balanceDue > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                      {formatCurrency(v.balanceDue)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {selectedReturn && (
+          <div className="mt-4 rounded-lg border border-teal-brand/20 bg-cream-brand p-5 relative">
+            <button
+              onClick={() => setSelectedReturn(null)}
+              className="absolute right-3 top-3 font-lato text-lg font-bold text-charcoal-brand/40 hover:text-charcoal-brand"
+            >
+              ✕
+            </button>
+            <h3 className="font-headline text-lg text-teal-brand mb-4">
+              {selectedReturn.vehicleName} — {selectedReturn.returnTime}
+            </h3>
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+              <DetailItem label="Customer" value={selectedReturn.customerName} />
+              <DetailItem label="Mobile" value={selectedReturn.customerMobile ?? '—'} />
+              <DetailItem label="Vehicle Model" value={selectedReturn.vehicleModel} />
+              <DetailItem label="Helmet Numbers" value={selectedReturn.helmetNumbers ?? 'Not recorded'} />
+              <DetailItem
+                label="Balance Due"
+                value={formatCurrency(selectedReturn.balanceDue)}
+                highlight={selectedReturn.balanceDue > 0}
+              />
+              <DetailItem label="Security Deposit" value={formatCurrency(selectedReturn.securityDeposit)} />
+            </div>
           </div>
         )}
       </section>

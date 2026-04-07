@@ -4,7 +4,13 @@ import { api } from './client.js';
 export interface NinePmVehicle {
   orderId: string;
   vehicleModel: string;
+  vehicleName: string;
   returnTime: string;
+  customerName: string;
+  customerMobile: string | null;
+  helmetNumbers: string | null;
+  balanceDue: number;
+  securityDeposit: number;
 }
 
 export interface MaintenanceVehicle {

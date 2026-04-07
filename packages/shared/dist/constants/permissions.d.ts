@@ -16,6 +16,7 @@ export declare const Permission: {
     readonly ViewLostOpportunity: "can_view_lostopportunity";
     readonly ViewCashup: "can_view_cashup";
     readonly EditOrders: "can_edit_orders";
+    readonly CancelOrders: "can_cancel_orders";
     readonly EditFleet: "can_edit_fleet";
     readonly ViewUIErrors: "can_view_uierrors";
     readonly ViewMiscSales: "can_view_miscsales";
@@ -31,5 +32,5 @@ export declare const Permission: {
     readonly EditSettings: "can_edit_settings";
 };
 export type PermissionType = (typeof Permission)[keyof typeof Permission];
-export declare const ALL_PERMISSIONS: ("can_view_inbox" | "can_view_active" | "can_view_completed" | "can_view_fleet" | "can_view_maintenance" | "can_edit_maintenance" | "can_view_transfers" | "can_edit_transfers" | "can_view_cardsettlements" | "can_view_expenses" | "can_edit_expenses" | "can_view_timesheets" | "can_submit_timesheets" | "can_view_todo" | "can_view_lostopportunity" | "can_view_cashup" | "can_edit_orders" | "can_edit_fleet" | "can_view_uierrors" | "can_view_miscsales" | "can_approve_timesheets" | "can_edit_accounts" | "can_view_payroll" | "can_view_accounts" | "can_view_dashboard" | "can_view_fleet_book_value" | "can_override_cashup" | "can_manage_todo" | "can_manage_employees" | "can_edit_settings")[];
+export declare const ALL_PERMISSIONS: ("can_view_inbox" | "can_view_active" | "can_view_completed" | "can_view_fleet" | "can_view_maintenance" | "can_edit_maintenance" | "can_view_transfers" | "can_edit_transfers" | "can_view_cardsettlements" | "can_view_expenses" | "can_edit_expenses" | "can_view_timesheets" | "can_submit_timesheets" | "can_view_todo" | "can_view_lostopportunity" | "can_view_cashup" | "can_edit_orders" | "can_cancel_orders" | "can_edit_fleet" | "can_view_uierrors" | "can_view_miscsales" | "can_approve_timesheets" | "can_edit_accounts" | "can_view_payroll" | "can_view_accounts" | "can_view_dashboard" | "can_view_fleet_book_value" | "can_override_cashup" | "can_manage_todo" | "can_manage_employees" | "can_edit_settings")[];
 //# sourceMappingURL=permissions.d.ts.map

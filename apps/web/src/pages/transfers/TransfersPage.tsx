@@ -19,12 +19,14 @@ const CUSTOMER_TYPE_COLORS: Record<string, 'blue' | 'purple'> = {
   Online: 'purple',
 };
 
+type TransferTab = 'upcoming' | 'unpaid' | 'completed';
+
 export default function TransfersPage() {
   const storeId = useUIStore((s) => s.selectedStoreId) ?? '';
 
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [paymentFilter, setPaymentFilter] = useState('');
+  const [activeTab, setActiveTab] = useState<TransferTab>('upcoming');
+  const [completedDateFrom, setCompletedDateFrom] = useState('');
+  const [completedDateTo, setCompletedDateTo] = useState('');
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -33,11 +35,22 @@ export default function TransfersPage() {
   const [driverTarget, setDriverTarget] = useState<TransferRow | null>(null);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
-  const { data: transfers, isLoading } = useTransfers(storeId, {
-    dateFrom: dateFrom || undefined,
-    dateTo: dateTo || undefined,
-    paymentStatus: paymentFilter || undefined,
-  });
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  const transferFilters = useMemo(() => {
+    if (activeTab === 'upcoming') {
+      return { dateFrom: todayStr };
+    }
+    if (activeTab === 'unpaid') {
+      return { driverPaidStatus: 'unpaid' };
+    }
+    return {
+      dateTo: completedDateTo || todayStr,
+      ...(completedDateFrom ? { dateFrom: completedDateFrom } : {}),
+    };
+  }, [activeTab, completedDateFrom, completedDateTo, todayStr]);
+
+  const { data: transfers, isLoading } = useTransfers(storeId, transferFilters);
 
   const filtered = useMemo(() => {
     if (!transfers) return [];
@@ -69,6 +82,12 @@ export default function TransfersPage() {
     }
   }
 
+  function switchTab(tab: TransferTab) {
+    setActiveTab(tab);
+    setSearch('');
+    setSelectedIds(new Set());
+  }
+
   if (!storeId) {
     return (
       <div className="py-12 text-center text-gray-500">
@@ -90,53 +109,64 @@ export default function TransfersPage() {
         </button>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="block">
-          <span className="text-xs font-medium text-gray-500">From</span>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="mt-1 block w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          />
-        </label>
-        <label className="block">
-          <span className="text-xs font-medium text-gray-500">To</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="mt-1 block w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          />
-        </label>
-        <label className="block">
-          <span className="text-xs font-medium text-gray-500">Payment Status</span>
-          <select
-            value={paymentFilter}
-            onChange={(e) => setPaymentFilter(e.target.value)}
-            className="mt-1 block w-44 rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          >
-            <option value="">All</option>
-            <option value="Pending">Pending</option>
-            <option value="Partially Paid">Partially Paid</option>
-            <option value="Paid">Paid</option>
-          </select>
-        </label>
-        <label className="block flex-1">
-          <span className="text-xs font-medium text-gray-500">Search</span>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Customer name, contact, route, or ID..."
-            className="mt-1 block w-full min-w-[200px] rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          />
-        </label>
-        {(dateFrom || dateTo || paymentFilter || search) && (
+      {/* Tabs */}
+      <div className="flex flex-wrap items-center gap-2">
+        {([
+          { key: 'upcoming', label: 'Upcoming' },
+          { key: 'unpaid', label: 'Unpaid to Driver' },
+          { key: 'completed', label: 'Completed' },
+        ] as const).map((tab) => (
           <button
-            onClick={() => { setDateFrom(''); setDateTo(''); setPaymentFilter(''); setSearch(''); }}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
+            key={tab.key}
+            onClick={() => switchTab(tab.key)}
+            className={`font-lato text-sm font-medium rounded-full px-4 py-2 transition-colors ${
+              activeTab === tab.key
+                ? 'bg-teal-brand text-white'
+                : 'bg-sand-brand text-charcoal-brand hover:bg-teal-brand/10'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Completed date range */}
+      {activeTab === 'completed' && (
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="block">
+            <span className="font-lato text-xs text-charcoal-brand/60">From</span>
+            <input
+              type="date"
+              value={completedDateFrom}
+              onChange={(e) => setCompletedDateFrom(e.target.value)}
+              className="mt-1 block w-40 font-lato text-sm border border-charcoal-brand/20 rounded-lg px-3 py-2"
+            />
+          </label>
+          <label className="block">
+            <span className="font-lato text-xs text-charcoal-brand/60">To</span>
+            <input
+              type="date"
+              value={completedDateTo}
+              onChange={(e) => setCompletedDateTo(e.target.value)}
+              className="mt-1 block w-40 font-lato text-sm border border-charcoal-brand/20 rounded-lg px-3 py-2"
+            />
+          </label>
+        </div>
+      )}
+
+      {/* Search */}
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Customer name, contact, route, or ID..."
+          className="block w-full max-w-sm rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        />
+        {search && (
+          <button
+            onClick={() => setSearch('')}
+            className="text-sm text-gray-500 hover:text-gray-700"
           >
             Clear
           </button>
@@ -161,7 +191,13 @@ export default function TransfersPage() {
         <div className="py-12 text-center text-sm text-gray-500">Loading transfers...</div>
       ) : filtered.length === 0 ? (
         <div className="py-12 text-center text-sm text-gray-500">
-          {transfers && transfers.length > 0 ? 'No transfers match your search.' : 'No transfers found.'}
+          {search.trim()
+            ? 'No transfers match your search.'
+            : activeTab === 'upcoming'
+            ? 'No upcoming transfers.'
+            : activeTab === 'unpaid'
+            ? 'All driver payments are up to date.'
+            : 'No completed transfers in this date range.'}
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-gray-200">

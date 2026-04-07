@@ -86,11 +86,25 @@ router.post('/walk-in', requirePermission(Permission.EditOrders), async (req, re
 
 router.get('/', requirePermission(Permission.ViewInbox), async (req, res, next) => {
   try {
-    const { store, status, search } = req.query as { store?: string; status?: string; search?: string };
+    const {
+      store, status, search,
+      page: pageStr, limit: limitStr,
+    } = req.query as {
+      store?: string;
+      status?: string;
+      search?: string;
+      page?: string;
+      limit?: string;
+    };
+
+    const limit = Math.min(parseInt(limitStr ?? '50', 10), 200);
+    const page = Math.max(parseInt(pageStr ?? '1', 10), 1);
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
 
     let query = supabase
       .from('orders_raw')
-      .select('*')
+      .select('*', { count: 'exact' })
       .order('created_at', { ascending: false });
 
     if (store) query = query.eq('source', store);
@@ -104,10 +118,19 @@ router.get('/', requirePermission(Permission.ViewInbox), async (req, res, next) 
       );
     }
 
-    const { data, error } = await query;
+    query = query.range(from, to);
+
+    const { data, error, count } = await query;
     if (error) throw new Error(error.message);
 
-    res.json({ success: true, data: data ?? [] });
+    res.json({
+      success: true,
+      data: data ?? [],
+      total: count ?? 0,
+      page,
+      limit,
+      totalPages: Math.ceil((count ?? 0) / limit),
+    });
   } catch (err) {
     next(err);
   }
@@ -346,7 +369,7 @@ const cancelBodySchema = z.object({
   reason: z.string().optional(),
 });
 
-router.patch('/:id/cancel', requirePermission(Permission.EditOrders), async (req, res, next) => {
+router.patch('/:id/cancel', requirePermission(Permission.CancelOrders), async (req, res, next) => {
   try {
     const parsed = cancelBodySchema.safeParse(req.body);
     if (!parsed.success) {

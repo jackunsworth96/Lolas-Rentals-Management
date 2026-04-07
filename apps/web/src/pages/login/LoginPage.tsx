@@ -4,6 +4,7 @@ import { useAuthStore } from '../../stores/auth-store.js';
 import { useUIStore } from '../../stores/ui-store.js';
 import { api } from '../../api/client.js';
 import { Button } from '../../components/common/Button.js';
+import lolaLogo from '../../assets/Lola.BASS.Logo.svg';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -35,8 +36,10 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
       <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-lg">
-        <h1 className="mb-2 text-center text-2xl font-bold text-gray-900">Lola's Rentals</h1>
-        <p className="mb-8 text-center text-sm text-gray-500">Sign in to the backoffice</p>
+        <div className="mb-8 flex justify-center">
+          <img src={lolaLogo} alt="Lola's Rentals" className="h-16 w-auto" />
+        </div>
+        <p className="mb-8 -mt-4 text-center text-sm text-gray-500">Sign in to the backoffice</p>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Username</label>

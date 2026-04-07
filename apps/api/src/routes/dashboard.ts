@@ -84,7 +84,13 @@ function parseCountryFromMobile(mobile: string | null): { country: string; conti
 interface NinePmVehicle {
   orderId: string;
   vehicleModel: string;
+  vehicleName: string;
   returnTime: string;
+  customerName: string;
+  customerMobile: string | null;
+  helmetNumbers: string | null;
+  balanceDue: number;
+  securityDeposit: number;
 }
 
 interface MaintenanceVehicle {
@@ -212,7 +218,22 @@ router.get('/summary', authenticate, async (req, res, next) => {
 
       sb
         .from('order_items')
-        .select('id, order_id, vehicle_id, dropoff_datetime, vehicle_name, orders!inner(store_id, status)')
+        .select(`
+          id,
+          order_id,
+          vehicle_id,
+          dropoff_datetime,
+          vehicle_name,
+          helmet_numbers,
+          orders!inner(
+            id,
+            store_id,
+            status,
+            balance_due,
+            security_deposit,
+            customers!customer_id(name, mobile)
+          )
+        `)
         .eq('orders.status', 'active')
         .then((r) => ({ key: 'ninepmCandidates' as const, ...r })),
 
@@ -365,9 +386,16 @@ router.get('/summary', authenticate, async (req, res, next) => {
     function buildNinepmVehicles(items: Record<string, unknown>[], sid?: string): NinePmVehicle[] {
       const result: NinePmVehicle[] = [];
       for (const item of items) {
-        const orderData = item.orders as { store_id: string; status: string } | null;
-        if (!orderData || orderData.status !== 'active') continue;
-        if (sid && orderData.store_id !== sid) continue;
+        const orderInfo = item.orders as {
+          id: string;
+          store_id: string;
+          status: string;
+          balance_due: number | null;
+          security_deposit: number | null;
+          customers: { name: string; mobile: string | null } | null;
+        } | null;
+        if (!orderInfo || orderInfo.status !== 'active') continue;
+        if (sid && orderInfo.store_id !== sid) continue;
 
         const dropoff = item.dropoff_datetime as string | null;
         if (!dropoff) continue;
@@ -381,13 +409,25 @@ router.get('/summary', authenticate, async (req, res, next) => {
 
         const vehicleId = item.vehicle_id as string | null;
         const vehicleModel = (vehicleId ? fleetModelMap.get(vehicleId) : null) ?? (item.vehicle_name as string) ?? '—';
-
         const returnTime = dropDate.toLocaleTimeString('en-GB', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit' });
+
+        const customerName = orderInfo.customers?.name ?? '—';
+        const customerMobile = orderInfo.customers?.mobile ?? null;
+        const helmetNumbers = (item.helmet_numbers as string | null) ?? null;
+        const balanceDue = Number(orderInfo.balance_due ?? 0);
+        const securityDeposit = Number(orderInfo.security_deposit ?? 0);
+        const vehicleName = (item.vehicle_name as string | null) ?? vehicleModel;
 
         result.push({
           orderId: item.order_id as string,
           vehicleModel,
+          vehicleName,
           returnTime,
+          customerName,
+          customerMobile,
+          helmetNumbers,
+          balanceDue,
+          securityDeposit,
         });
       }
       return result;

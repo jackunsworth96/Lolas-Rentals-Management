@@ -4,13 +4,22 @@ import type { OrdersRawRow } from '@lolas/shared';
 
 export type RawOrder = OrdersRawRow;
 
-export function useOrdersRaw(store?: string, status?: string, search?: string) {
+export interface RawOrdersPage {
+  data: RawOrder[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export function useOrdersRaw(store?: string, status?: string, search?: string, page = 1) {
   const params = new URLSearchParams();
   if (store) params.set('store', store);
   if (status) params.set('status', status);
   if (search) params.set('search', search);
-  return useQuery<RawOrder[]>({
-    queryKey: ['orders-raw', store, status, search],
+  params.set('page', String(page));
+  return useQuery<RawOrdersPage>({
+    queryKey: ['orders-raw', store, status, search, page],
     queryFn: () => api.get(`/orders-raw?${params}`),
   });
 }

@@ -39,6 +39,7 @@ export interface TransferFilters {
   dateFrom?: string;
   dateTo?: string;
   paymentStatus?: string;
+  driverPaidStatus?: string;
 }
 
 export function useTransfers(storeId: string, filters: TransferFilters = {}) {
@@ -46,6 +47,7 @@ export function useTransfers(storeId: string, filters: TransferFilters = {}) {
   if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
   if (filters.dateTo) params.set('dateTo', filters.dateTo);
   if (filters.paymentStatus) params.set('paymentStatus', filters.paymentStatus);
+  if (filters.driverPaidStatus) params.set('driverPaidStatus', filters.driverPaidStatus);
   return useQuery<TransferRow[]>({
     queryKey: ['transfers', storeId, filters],
     queryFn: () => api.get(`/transfers?${params}`),

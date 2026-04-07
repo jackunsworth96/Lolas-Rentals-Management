@@ -7,6 +7,7 @@ export interface TransferFilters {
   route?: string;
   paymentStatus?: string;
   bookingSource?: string;
+  driverPaidStatus?: string;
 }
 
 export interface TransferRepository {

@@ -36,56 +36,17 @@ import stepIcon4 from '../../assets/Step_4_How_Paw_Card_Works_-_Lola_Cartoon_Ico
 import bepawsitiveLogo from '../../assets/Be Pawsitive (blue).svg';
 import pawDivider from '../../assets/Paw Divider.svg';
 import lolasLogo from '../../assets/Lolas Original Logo.svg';
-import bePaw1 from '../../assets/Be Pawsitive/1.png';
-import bePaw2 from '../../assets/Be Pawsitive/2.png';
-import bePaw3 from '../../assets/Be Pawsitive/3.png';
-import bePaw4 from '../../assets/Be Pawsitive/4.png';
-import bePaw5 from '../../assets/Be Pawsitive/5.png';
-import bePaw6 from '../../assets/Be Pawsitive/6.png';
-import bePaw7 from '../../assets/Be Pawsitive/7.png';
-import bePaw8 from '../../assets/Be Pawsitive/8.png';
-import bePaw9 from '../../assets/Be Pawsitive/9.png';
-import bePaw10 from '../../assets/Be Pawsitive/10.png';
-import bePaw11 from '../../assets/Be Pawsitive/11.png';
-import bePaw12 from '../../assets/Be Pawsitive/12.png';
-import bePaw13 from '../../assets/Be Pawsitive/13.png';
-import bePaw14 from '../../assets/Be Pawsitive/14.png';
-import bePaw15 from '../../assets/Be Pawsitive/15.png';
-import bePaw16 from '../../assets/Be Pawsitive/16.png';
-import bePaw17 from '../../assets/Be Pawsitive/17.png';
-import bePaw18 from '../../assets/Be Pawsitive/18.png';
-import bePaw19 from '../../assets/Be Pawsitive/19.png';
-import bePaw20 from '../../assets/Be Pawsitive/20.png';
-import bePaw21 from '../../assets/Be Pawsitive/21.png';
-import bePaw22 from '../../assets/Be Pawsitive/22.png';
-import bePaw23 from '../../assets/Be Pawsitive/23.png';
-import bePaw24 from '../../assets/Be Pawsitive/24.png';
-import bePaw25 from '../../assets/Be Pawsitive/25.png';
-import bePaw26 from '../../assets/Be Pawsitive/26.png';
-import bePaw27 from '../../assets/Be Pawsitive/27.png';
-import bePaw28 from '../../assets/Be Pawsitive/28.png';
-import bePaw29 from '../../assets/Be Pawsitive/29.png';
-import bePaw30 from '../../assets/Be Pawsitive/30.png';
-import bePaw31 from '../../assets/Be Pawsitive/31.png';
-import bePaw32 from '../../assets/Be Pawsitive/32.png';
-import bePaw33 from '../../assets/Be Pawsitive/33.png';
-import bePaw34 from '../../assets/Be Pawsitive/34.png';
-import bePaw35 from '../../assets/Be Pawsitive/35.png';
-import bePaw36 from '../../assets/Be Pawsitive/36.png';
-import bePaw37 from '../../assets/Be Pawsitive/37.png';
-import bePaw38 from '../../assets/Be Pawsitive/38.png';
-import bePaw39 from '../../assets/Be Pawsitive/39.png';
-import bePaw40 from '../../assets/Be Pawsitive/40.png';
-import bePaw41 from '../../assets/Be Pawsitive/41.png';
-import bePaw42 from '../../assets/Be Pawsitive/42.png';
-import bePaw43 from '../../assets/Be Pawsitive/43.png';
-import bePaw44 from '../../assets/Be Pawsitive/44.png';
-import bePaw45 from '../../assets/Be Pawsitive/45.png';
-import bePaw46 from '../../assets/Be Pawsitive/46.png';
-import bePaw47 from '../../assets/Be Pawsitive/47.png';
-import bePaw48 from '../../assets/Be Pawsitive/48.png';
-import bePaw49 from '../../assets/Be Pawsitive/49.png';
-import bePaw50 from '../../assets/Be Pawsitive/50.png';
+const bePawImages = (Object.entries(
+  import.meta.glob('../../assets/Be Pawsitive/*.png', {
+    eager: true,
+    import: 'default',
+  })
+) as [string, string][])
+  .sort(([a], [b]) => {
+    const n = (p: string) => parseInt(p.match(/(\d+)\.png$/)?.[1] ?? '0', 10);
+    return n(a) - n(b);
+  })
+  .map(([, url]) => url);
 import { useState, useEffect, useRef } from 'react';
 import VariableProximity from '../../components/home/VariableProximity.js';
 import { Link } from 'react-router-dom';
@@ -756,18 +717,7 @@ export default function HomePage() {
                   randomRotation={true}
                   sensitivity={200}
                   sendToBackOnClick={true}
-                  cards={[
-                    bePaw1,  bePaw2,  bePaw3,  bePaw4,  bePaw5,
-                    bePaw6,  bePaw7,  bePaw8,  bePaw9,  bePaw10,
-                    bePaw11, bePaw12, bePaw13, bePaw14, bePaw15,
-                    bePaw16, bePaw17, bePaw18, bePaw19, bePaw20,
-                    bePaw21, bePaw22, bePaw23, bePaw24, bePaw25,
-                    bePaw26, bePaw27, bePaw28, bePaw29, bePaw30,
-                    bePaw31, bePaw32, bePaw33, bePaw34, bePaw35,
-                    bePaw36, bePaw37, bePaw38, bePaw39, bePaw40,
-                    bePaw41, bePaw42, bePaw43, bePaw44, bePaw45,
-                    bePaw46, bePaw47, bePaw48, bePaw49, bePaw50,
-                  ].map((src, i) => (
+                  cards={bePawImages.map((src, i) => (
                     <img
                       key={i}
                       src={src}

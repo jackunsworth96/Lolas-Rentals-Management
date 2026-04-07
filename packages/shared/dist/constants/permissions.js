@@ -16,6 +16,7 @@ export const Permission = {
     ViewLostOpportunity: 'can_view_lostopportunity',
     ViewCashup: 'can_view_cashup',
     EditOrders: 'can_edit_orders',
+    CancelOrders: 'can_cancel_orders',
     EditFleet: 'can_edit_fleet',
     ViewUIErrors: 'can_view_uierrors',
     ViewMiscSales: 'can_view_miscsales',
