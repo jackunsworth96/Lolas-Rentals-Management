@@ -147,6 +147,13 @@ export function WalkInBookingModal({ open, onClose }: Props) {
     if (storeLoc) {
       setPickupLocationId(String(storeLoc.id));
       setDropoffLocationId(String(storeLoc.id));
+    } else {
+      // Fallback: use first available location so quote fetch is not blocked
+      const firstLoc = (locations as Array<{ id: number }>)[0];
+      if (firstLoc) {
+        setPickupLocationId(String(firstLoc.id));
+        setDropoffLocationId(String(firstLoc.id));
+      }
     }
   // pickupLocationId/dropoffLocationId intentionally omitted: we only want
   // this to run on open/storeId/locations changes, not on every user click.
@@ -770,7 +777,32 @@ export function WalkInBookingModal({ open, onClose }: Props) {
                     </div>
                   </div>
                 </div>
-              ) : null}
+              ) : (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between">
+                      <span className="font-lato text-sm text-gray-600">
+                        Rental ({localRentalDays} {localRentalDays === 1 ? 'day' : 'days'})
+                      </span>
+                      <span className="font-lato text-sm italic text-gray-400">
+                        Calculating...
+                      </span>
+                    </div>
+                    {(pickupFeeLocal > 0) && (
+                      <div className="flex justify-between">
+                        <span className="font-lato text-sm text-gray-600">Pickup fee</span>
+                        <span className="font-lato text-sm text-gray-800">{formatCurrency(pickupFeeLocal)}</span>
+                      </div>
+                    )}
+                    {(dropoffFeeLocal > 0) && (
+                      <div className="flex justify-between">
+                        <span className="font-lato text-sm text-gray-600">Dropoff fee</span>
+                        <span className="font-lato text-sm text-gray-800">{formatCurrency(dropoffFeeLocal)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </section>
           )}
 
