@@ -711,7 +711,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
           )}
 
           {/* ── Section 6: Price Summary ── */}
-          {(quoteLoading || quote) && (
+          {(vehicleModelId && pickupDatetime && dropoffDatetime) && (
             <section>
               <h3 className={SECTION_HDR_CLS}>Price Summary</h3>
               {quoteLoading && !quote ? (
@@ -775,7 +775,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
           )}
 
           {/* ── Section 7: Payment ── */}
-          {(quote || (quoteLoading && vehicleModelId)) && (
+          {(vehicleModelId && pickupDatetime && dropoffDatetime) && (
             <section>
               <h3 className={SECTION_HDR_CLS}>Payment</h3>
               <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
