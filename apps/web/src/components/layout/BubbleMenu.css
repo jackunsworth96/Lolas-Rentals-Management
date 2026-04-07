@@ -1,0 +1,241 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   BubbleMenu.css — Lola's Rentals brand nav overlay
+   Adapted from react-bits BubbleMenu. GSAP replaced with framer-motion.
+   Brand tokens: sand #f1e6d6 · cream #FAF6F0 · teal #00577C
+                 gold #FCBC5A · charcoal #363737
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Overlay ─────────────────────────────────────────────────────────────── */
+
+.bubble-menu-overlay {
+  position: fixed;
+  inset-x: 0;
+  top: 64px;   /* height of the sticky nav bar (h-16) */
+  bottom: 0;
+  z-index: 40;
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  background-color: #f1e6d6; /* sand-brand, flat — no gradient */
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Pill list grid ──────────────────────────────────────────────────────── */
+
+.pill-list {
+  list-style: none;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+  display: flex;
+  flex-wrap: wrap;
+  row-gap: 1rem;
+  column-gap: 0;
+  width: 100%;
+  max-width: 1280px;
+  justify-content: flex-start;
+  align-content: center;
+}
+
+/* ── Pill column — 3-col desktop layout ─────────────────────────────────── */
+
+.pill-col {
+  display: flex;
+  align-items: stretch;
+  flex: 0 0 calc(100% / 3);
+  box-sizing: border-box;
+  padding: 0 0.55rem;
+}
+
+/*
+ * Orphan centering for 3-col grid:
+ *   nth-child(3n+1) = item is 1st in its row (e.g. 7th item)
+ *   nth-child(3n+2) = item is 2nd in its row (e.g. 8th item)
+ */
+.pill-col:last-child:nth-child(3n + 1) { margin-left: calc(100% / 3);  }
+.pill-col:last-child:nth-child(3n + 2) { margin-left: calc(100% / 6);  }
+
+/* ── Pill link ───────────────────────────────────────────────────────────── */
+
+.pill-link {
+  /* Per-item CSS custom properties (set inline from React) */
+  --item-rot:    0deg;
+  --hover-bg:    #00577C;
+  --hover-color: #ffffff;
+
+  width: 100%;
+  min-height: 140px;
+  padding: clamp(1.2rem, 2.5vw, 3.5rem) 1.5rem;
+
+  /* Headline font — Alegreya Sans, same as h1/h2 on the site */
+  font-family: 'Alegreya Sans', ui-sans-serif, sans-serif;
+  font-size: clamp(1.7rem, 3vw, 3.4rem);
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+  letter-spacing: -0.01em;
+
+  border-radius: 999px;
+  background: #FCBC5A;   /* gold-brand — matches "Book Your Ride" button */
+  color: #363737;        /* charcoal-brand */
+  border: 2px solid #363737;
+
+  /* Skeuomorphic offset shadow — same as primary CTA */
+  box-shadow: 3px 3px 0 #363737;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+  white-space: nowrap;
+  cursor: pointer;
+
+  transition:
+    transform  0.15s ease,
+    box-shadow 0.15s ease;
+  will-change: transform;
+}
+
+/* Desktop: per-item slight rotation + scale hover */
+@media (min-width: 900px) {
+  .pill-link {
+    transform: rotate(var(--item-rot));
+  }
+
+  .pill-link:hover {
+    transform: rotate(var(--item-rot)) translate(-2px, -2px);
+    box-shadow: 5px 5px 0 #363737;
+  }
+
+  .pill-link:active {
+    transform: rotate(var(--item-rot)) translate(0px, 0px);
+    box-shadow: 3px 3px 0 #363737;
+  }
+}
+
+/* Tablet/mobile: no rotation, but keep offset shadow feedback */
+@media (max-width: 899px) {
+  .pill-link:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 5px 5px 0 #363737;
+  }
+
+  .pill-link:active {
+    transform: translate(0px, 0px);
+    box-shadow: 3px 3px 0 #363737;
+  }
+}
+
+/* Currently-active route — inverted: charcoal bg, gold text */
+.pill-link--active {
+  background-color: #363737;
+  color: #FCBC5A;
+  border-color: #363737;
+  box-shadow: 3px 3px 0 rgba(54, 55, 55, 0.4);
+}
+
+/* ── Pill label & icon ───────────────────────────────────────────────────── */
+
+.pill-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  will-change: transform, opacity;
+  line-height: 1.2;
+  pointer-events: none; /* framer-motion animates this */
+}
+
+/* Emoji icon — slightly smaller than the text */
+.pill-icon {
+  font-size: 0.78em;
+  line-height: 1;
+  flex-shrink: 0;
+  /* Prevent emoji from inheriting rotation glitches on webkit */
+  display: inline-block;
+}
+
+/* ── Sub-item pills (dropdown children, e.g. Paw Card / Extend) ──────────── */
+
+/* Sub-items: same gold style, slightly shorter */
+.pill-col--sub .pill-link {
+  min-height: 88px;
+  font-size: clamp(1.1rem, 2vw, 2rem);
+  /* Slightly lighter gold to visually distinguish from main items */
+  background-color: #fdd07e;
+  box-shadow: 3px 3px 0 #363737;
+}
+
+/* ── Tablet: 2-column layout (600–899px) ─────────────────────────────────── */
+
+@media (min-width: 600px) and (max-width: 899px) {
+  .bubble-menu-overlay {
+    align-items: flex-start;
+  }
+
+  .pill-list {
+    padding: 2rem 1.25rem 3rem;
+    row-gap: 0.875rem;
+    align-content: flex-start;
+  }
+
+  .pill-col {
+    flex: 0 0 50%;
+    /* Reset 3-col orphan rules */
+    margin-left: 0 !important;
+    padding: 0 0.4rem;
+  }
+
+  /* Centre the last item if it is alone on its row */
+  .pill-col:last-child:nth-child(odd) {
+    margin-left: 25% !important;
+  }
+
+  .pill-link {
+    min-height: 100px;
+    font-size: clamp(1.3rem, 3.5vw, 2rem);
+  }
+
+  .pill-col--sub .pill-link {
+    min-height: 70px;
+    font-size: clamp(1rem, 3vw, 1.5rem);
+  }
+}
+
+/* ── Mobile: single column (< 600px) ─────────────────────────────────────── */
+
+@media (max-width: 599px) {
+  .bubble-menu-overlay {
+    align-items: flex-start;
+  }
+
+  .pill-list {
+    padding: 1.5rem 0.875rem 3rem;
+    row-gap: 0.75rem;
+    align-content: flex-start;
+  }
+
+  .pill-col,
+  .pill-col--sub {
+    flex: 0 0 100%;
+    margin-left: 0 !important;
+    padding: 0;
+  }
+
+  .pill-link {
+    min-height: 72px;
+    font-size: clamp(1.3rem, 5.5vw, 1.7rem);
+    padding: 1rem 1.5rem;
+    /* No rotation on mobile */
+    transform: none !important;
+  }
+
+  .pill-col--sub .pill-link {
+    min-height: 56px;
+    font-size: clamp(1rem, 4.5vw, 1.3rem);
+    padding: 0.75rem 1.5rem;
+  }
+}
