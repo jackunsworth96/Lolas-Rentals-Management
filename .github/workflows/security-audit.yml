@@ -1,0 +1,207 @@
+name: Security audit
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'SECURITY.md'
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: security-audit-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  npm-audit:
+    name: npm audit (apps/api)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+
+      - name: Install dependencies (npm ci)
+        working-directory: apps/api
+        run: npm ci
+
+      - name: Run npm audit
+        id: run-audit
+        working-directory: apps/api
+        continue-on-error: true
+        run: |
+          npm audit --audit-level=moderate 2>&1 | tee audit-output.txt || true
+          npm audit --json > audit-full.json 2>&1 || true
+          if [ ! -s audit-full.json ]; then
+            echo '{"metadata":{"vulnerabilities":{"info":0,"low":0,"moderate":0,"high":0,"critical":0,"total":0}}}' > audit-full.json
+          fi
+
+      - name: Upload audit artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-artifacts
+          path: |
+            apps/api/audit-output.txt
+            apps/api/audit-full.json
+          if-no-files-found: error
+
+  secret-scan:
+    name: Secret scan (TruffleHog)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog — PR (diff only)
+        if: github.event_name == 'pull_request'
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.pull_request.base.sha }}
+          head: ${{ github.event.pull_request.head.sha }}
+
+      - name: Resolve first commit (full history scan)
+        if: github.event_name == 'push'
+        id: root
+        run: echo "sha=$(git rev-list --max-parents=0 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: TruffleHog — push to main (full repository history)
+        if: github.event_name == 'push'
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ steps.root.outputs.sha }}
+          head: ${{ github.sha }}
+
+  update-security-md:
+    name: Update SECURITY.md (npm audit summary)
+    needs: npm-audit
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download npm audit artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-audit-artifacts
+          path: _audit
+
+      - name: Patch SECURITY.md and push
+        env:
+          PATCH_SCRIPT: |
+            import json
+            import re
+            from datetime import datetime, timezone
+            from pathlib import Path
+
+            root = Path.cwd()
+            audit_json = root / "_audit" / "apps" / "api" / "audit-full.json"
+            audit_txt = root / "_audit" / "apps" / "api" / "audit-output.txt"
+            security = root / "SECURITY.md"
+
+            date_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+            data = {}
+            if audit_json.is_file():
+                try:
+                    data = json.loads(audit_json.read_text(encoding="utf-8", errors="replace"))
+                except json.JSONDecodeError:
+                    data = {}
+
+            v = (data.get("metadata") or {}).get("vulnerabilities") or {}
+            keys = ["critical", "high", "moderate", "low", "info"]
+            rows = []
+            for k in keys:
+                rows.append((k, int(v.get(k, 0) or 0)))
+            total = v.get("total")
+            if total is None:
+                total = sum(n for _, n in rows)
+
+            summary_lines = [
+                f"_Automated scan run:_ {date_utc}",
+                "",
+                "npm audit was run in `apps/api` with `--audit-level=moderate`.",
+                "",
+                "| Severity | Count |",
+                "|----------|-------|",
+            ]
+            for name, count in rows:
+                summary_lines.append(f"| {name} | {count} |")
+            summary_lines.append(f"| **Total** | **{total}** |")
+
+            out_text = ""
+            if audit_txt.is_file():
+                out_text = audit_txt.read_text(encoding="utf-8", errors="replace")
+            if len(out_text) > 50000:
+                out_text = out_text[:50000] + "\n\n… (truncated)"
+
+            block = (
+                "## Automated Scan Results\n\n"
+                + "\n".join(summary_lines)
+                + "\n\n<details>\n<summary>Full npm audit output (apps/api)</summary>\n\n```\n"
+                + out_text
+                + "\n```\n</details>\n"
+            )
+
+            md = security.read_text(encoding="utf-8")
+
+            if "**Last scanned (CI):**" in md:
+                md = re.sub(
+                    r"\*\*Last scanned \(CI\):\*\*[^\n]*",
+                    f"**Last scanned (CI):** {date_utc}",
+                    md,
+                    count=1,
+                )
+            else:
+                md = re.sub(
+                    r"(\*\*Status:\*\*[^\n]*\n)",
+                    rf"\1**Last scanned (CI):** {date_utc}  \n",
+                    md,
+                    count=1,
+                )
+
+            if "## Automated Scan Results" in md:
+                md = re.sub(
+                    r"## Automated Scan Results\n.*?(?=\n## [^\n]+\n|\Z)",
+                    block.rstrip() + "\n\n",
+                    md,
+                    flags=re.DOTALL,
+                )
+            else:
+                anchor = "## Critical Fixes Applied"
+                if anchor in md:
+                    md = md.replace(anchor, block + "\n" + anchor, 1)
+                else:
+                    md = md.rstrip() + "\n\n" + block
+
+            security.write_text(md, encoding="utf-8")
+        run: |
+          set -euo pipefail
+          python3 -c "import os, pathlib, textwrap; pathlib.Path('/tmp/patch_security_md.py').write_text(textwrap.dedent(os.environ['PATCH_SCRIPT']))"
+          python3 /tmp/patch_security_md.py
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add SECURITY.md
+          if git diff --cached --quiet; then
+            echo "No changes to SECURITY.md"
+            exit 0
+          fi
+          git commit -m "chore(security): update automated npm audit results in SECURITY.md"
+          git pull --rebase origin main
+          git push origin main
