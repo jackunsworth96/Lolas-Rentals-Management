@@ -131,7 +131,7 @@ export async function processRawOrder(
     balanceDue: Money.php(finalTotal + input.cardFeeSurcharge),
     paymentMethodId: input.paymentMethodId,
     depositMethodId: input.depositMethodId,
-    bookingToken: null,
+    bookingToken: rawOrder.order_reference ?? null,
     tips: Money.zero(),
     charityDonation: Money.php(Number(rawOrder.charity_donation ?? 0)),
     addons: input.addons.map((a) => ({

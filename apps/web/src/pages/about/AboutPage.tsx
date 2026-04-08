@@ -2,14 +2,12 @@ import { PageLayout } from '../../components/layout/PageLayout.js';
 import { PawDivider } from '../../components/layout/PawDivider.js';
 import { PageHeader } from '../../components/public/PageHeader.js';
 import { BrandStorySection } from '../../components/about/BrandStorySection.js';
-import { ValuesSection } from '../../components/about/ValuesSection.js';
-import { BePawsitiveSection } from '../../components/about/BePawsitiveSection.js';
-import { TimelineSection } from '../../components/about/TimelineSection.js';
-import { TeamSection } from '../../components/about/TeamSection.js';
+import { PawsitiveGallery } from '../../components/about/PawsitiveGallery.js';
 
 export default function AboutPage() {
   return (
     <PageLayout title="About Us | Lola's Rentals" fullBleed>
+      {/* Hero — kept exactly as-is */}
       <PageHeader
         eyebrow="Siargao Island"
         headingMain="A Small Island Business"
@@ -19,13 +17,12 @@ export default function AboutPage() {
       />
 
       <PawDivider />
+
+      {/* Section 1 — Story copy + Lola photo placeholder */}
       <BrandStorySection />
-      <PawDivider />
-      <ValuesSection />
-      <BePawsitiveSection />
-      <PawDivider />
-      <TimelineSection />
-      <TeamSection />
+
+      {/* Section 2 — Be Pawsitive photo gallery */}
+      <PawsitiveGallery />
     </PageLayout>
   );
 }

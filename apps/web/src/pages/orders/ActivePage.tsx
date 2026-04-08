@@ -56,6 +56,7 @@ export default function ActivePage() {
           (o.customerMobile ?? '').toLowerCase().includes(q) ||
           o.vehicleNames.toLowerCase().includes(q) ||
           o.id.toLowerCase().includes(q) ||
+          (o.bookingToken ?? '').toLowerCase().includes(q) ||
           (o.wooOrderId ?? '').toLowerCase().includes(q),
       );
     }
@@ -75,7 +76,7 @@ export default function ActivePage() {
     {
       key: 'wooOrderId',
       header: 'Order Ref',
-      render: (r: EnrichedOrder) => r.wooOrderId ?? r.id.slice(0, 8),
+      render: (r: EnrichedOrder) => r.bookingToken ?? r.wooOrderId ?? r.id.slice(0, 8),
     },
     {
       key: 'customerName',

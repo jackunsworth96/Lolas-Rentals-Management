@@ -49,6 +49,8 @@ export interface EnrichedOrder {
   customerEmail: string | null;
   vehicleNames: string;
   returnDatetime: string | null;
+  /** Human-facing ref (e.g. walk-in LR-… / BB-…); stored as orders.booking_token */
+  bookingToken: string | null;
   wooOrderId: string | null;
   finalTotal: number;
   balanceDue: number;

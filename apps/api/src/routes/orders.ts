@@ -30,7 +30,7 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
 
     let query = sb
       .from('orders')
-      .select('id, store_id, order_date, customer_id, status, final_total, balance_due, web_notes, payment_method_id, security_deposit, card_fee_surcharge, woo_order_id, customers!customer_id(name, mobile, email)')
+      .select('id, store_id, order_date, customer_id, status, final_total, balance_due, web_notes, payment_method_id, security_deposit, card_fee_surcharge, woo_order_id, booking_token, customers!customer_id(name, mobile, email)')
       .eq('store_id', storeId)
       .order('order_date', { ascending: false });
 
@@ -96,6 +96,7 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
         vehicleNames: vehicleNames || '—',
         returnDatetime,
         wooOrderId: (o.woo_order_id as string) ?? null,
+        bookingToken: (o.booking_token as string) ?? null,
         finalTotal: finalTotalNum,
         balanceDue: balanceDueComputed,
         totalPaid: totalPaidNum,

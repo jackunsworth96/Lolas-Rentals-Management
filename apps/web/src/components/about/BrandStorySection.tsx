@@ -1,43 +1,82 @@
 import { FadeUpSection } from '../public/FadeUpSection.js';
-import lolaPhoto from '../../assets/Lola.png';
+import lolaClaireTuktuk from '../../assets/About Us Page/Lola_Claire_tuktuk.jpeg';
 
 export function BrandStorySection() {
   return (
-    <section className="mx-auto max-w-7xl px-6 py-16">
-      <FadeUpSection>
-        <div className="grid items-center gap-12 md:grid-cols-2">
-          <div className="relative order-2 md:order-1">
-            <div className="group relative">
-              <div className="absolute inset-0 -z-10 translate-x-4 translate-y-4 rounded-xl bg-gold-brand/20 transition-transform duration-300 group-hover:translate-x-2 group-hover:translate-y-2" />
-              <img
-                src={lolaPhoto}
-                alt="Lola, the dog who inspired our name"
-                className="h-[500px] w-full rounded-xl object-cover shadow-xl"
-              />
-              <div className="absolute -bottom-6 -right-6 max-w-[220px] rounded-2xl bg-cream-brand p-6 shadow-lg">
-                <p className="font-headline text-xl italic leading-tight text-teal-brand">
-                  Meet Lola, the original inspiration.
+    <FadeUpSection>
+      <section style={{ backgroundColor: '#f1e6d6', padding: '80px 5%' }}>
+        <div style={{ maxWidth: 1280, margin: '0 auto' }}>
+          <div className="grid items-center gap-12 md:grid-cols-2">
+
+            {/* Left: copy */}
+            <div className="space-y-6">
+              <p
+                className="font-lato"
+                style={{
+                  fontSize: 13,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.1em',
+                  color: '#00577C',
+                  fontWeight: 700,
+                }}
+              >
+                Our Story
+              </p>
+              <h2
+                className="font-headline font-bold"
+                style={{
+                  fontSize: 'clamp(26px, 3.5vw, 40px)',
+                  color: '#363737',
+                  lineHeight: 1.2,
+                }}
+              >
+                Still Sandy,{' '}
+                <span style={{ fontStyle: 'italic', color: '#FCBC5A' }}>Still Obsessed</span>
+              </h2>
+              <div
+                className="space-y-5 font-lato"
+                style={{ fontSize: 17, color: '#363737', lineHeight: 1.75, opacity: 0.85 }}
+              >
+                <p>
+                  Lola&apos;s Rentals was born on Siargao — not in a boardroom, but on the kind of lazy
+                  afternoon that only island life produces. We started simple: good scooters, good vibes, and
+                  a belief that getting around should feel like part of the adventure, not a hassle. A few
+                  years (and a lot of kilometres) later, we&apos;re still here, still sandy, and still
+                  obsessed with doing things the right way.
+                </p>
+                <p>
+                  Our mission goes beyond the handlebars. Every rental you book helps fund Be Pawsitive, a
+                  local animal welfare NGO running spay, neuter, and vaccination programs across Siargao. We
+                  believe a healthy island means healthy animals too — and that a business can be good for
+                  its customers and its community at the same time. No greenwashing, no gimmicks. Just real
+                  support for the dogs and cats that make this island feel like home.
                 </p>
               </div>
             </div>
-          </div>
-          <div className="order-1 space-y-8 md:order-2">
-            <h3 className="font-headline text-4xl tracking-tight text-charcoal-brand">Our Roots</h3>
-            <div className="space-y-6 text-xl leading-relaxed text-charcoal-brand/80">
-              <p>Jack moved to Siargao and started Lola&apos;s Rentals — named after his dog Lola.</p>
-              <p>
-                What began as a small scooter rental grew into a community-rooted business with two stores, a charity
-                partnership, and a loyalty scheme that gives back to the island.
-              </p>
+
+            {/* Right: Lola & Claire on the tuktuk */}
+            <div className="flex justify-center">
+              <div
+                className="group relative overflow-hidden"
+                style={{
+                  width: '100%',
+                  maxWidth: 460,
+                  aspectRatio: '3 / 4',
+                  borderRadius: 12,
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+                }}
+              >
+                <img
+                  src={lolaClaireTuktuk}
+                  alt="Lola and Claire on the tuktuk"
+                  className="h-full w-full object-cover transition-transform duration-[3000ms] ease-out group-hover:scale-[1.03]"
+                />
+              </div>
             </div>
-            <div className="pt-4">
-              <span className="inline-flex items-center gap-2 rounded-full bg-gold-brand px-6 py-3 text-sm font-bold uppercase tracking-widest text-charcoal-brand">
-                Est. 2022
-              </span>
-            </div>
+
           </div>
         </div>
-      </FadeUpSection>
-    </section>
+      </section>
+    </FadeUpSection>
   );
 }
