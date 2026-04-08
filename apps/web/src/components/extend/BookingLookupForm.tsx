@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import { WHATSAPP_URL } from '../../config/contact.js';
+import { phoneIcon } from '../public/customerContactIcons.js';
 
 interface Props {
   onFound: (order: Record<string, unknown>) => void;
@@ -62,7 +63,13 @@ export function BookingLookupForm({ loading, onSubmit, error }: Props) {
         {error && (
           <div className="rounded-2xl bg-sand-brand px-4 py-3 text-sm font-bold text-charcoal-brand/70">
             {error}{' '}
-            <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="font-black text-teal-brand underline">
+            <a
+              href={WHATSAPP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 font-black text-teal-brand underline"
+            >
+              <img src={phoneIcon} alt="" className="h-3.5 w-3.5 shrink-0 object-contain" width={14} height={14} />
               WhatsApp us
             </a>
           </div>

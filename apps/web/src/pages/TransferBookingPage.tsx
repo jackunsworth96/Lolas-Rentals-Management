@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
-import { PlaneTakeoff, PlaneLanding, Minus, Plus, CheckCircle2, MessageCircle, Loader2 } from 'lucide-react';
+import { PlaneTakeoff, PlaneLanding, Minus, Plus, CheckCircle2, Loader2 } from 'lucide-react';
 import { PageLayout } from '../components/layout/PageLayout.js';
 import { PageHeader } from '../components/public/PageHeader.js';
 import { PrimaryCtaButton } from '../components/public/PrimaryCtaButton.js';
 import { FadeUpSection } from '../components/public/FadeUpSection.js';
 import { today } from '../utils/date.js';
 import { WHATSAPP_URL } from '../config/contact.js';
+import { phoneIcon } from '../components/public/customerContactIcons.js';
 import { api } from '../api/client.js';
 
 /** Matches public standalone transfer booking (`public-transfers.ts`). */
@@ -283,7 +284,7 @@ export default function TransferBookingPage() {
                 rel="noopener noreferrer"
                 className="mt-6 flex items-center gap-2 rounded-xl bg-[#25D366] px-6 py-3 font-lato font-semibold text-white transition-opacity hover:opacity-90"
               >
-                <MessageCircle size={20} />
+                <img src={phoneIcon} alt="" className="h-5 w-5 object-contain brightness-0 invert" width={20} height={20} />
                 Message us on WhatsApp
               </a>
 

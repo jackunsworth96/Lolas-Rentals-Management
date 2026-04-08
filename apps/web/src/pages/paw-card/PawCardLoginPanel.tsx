@@ -2,6 +2,7 @@ import { useState } from 'react';
 import lolaFace from '../../assets/Lola Face Icon.svg';
 import { PrimaryCtaButton } from '../../components/public/PrimaryCtaButton.js';
 import { WHATSAPP_URL } from '../../config/contact.js';
+import { phoneIcon } from '../../components/public/customerContactIcons.js';
 import { useReducedMotion } from 'framer-motion';
 import { api } from '../../api/client.js';
 
@@ -147,9 +148,10 @@ export function PawCardLoginPanel({ access, onAccessGranted, compact = false }: 
               href={WHATSAPP_HREF}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex font-bold underline transition-opacity duration-200 hover:opacity-80"
+              className="inline-flex items-center gap-2 font-bold underline transition-opacity duration-200 hover:opacity-80"
               style={{ color: '#1A7A6E' }}
             >
+              <img src={phoneIcon} alt="" className="h-4 w-4 shrink-0 object-contain" width={16} height={16} />
               Message us on WhatsApp
             </a>
           </div>

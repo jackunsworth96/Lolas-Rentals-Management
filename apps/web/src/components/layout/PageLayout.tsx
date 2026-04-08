@@ -4,6 +4,8 @@ import { useBookingStore } from '../../stores/bookingStore.js';
 import { FadeUpSection } from '../public/FadeUpSection.js';
 import TopNav from './TopNav.js';
 import ClickSpark from '../home/ClickSpark.js';
+import { instaIcon, phoneIcon, locationIcon } from '../public/customerContactIcons.js';
+import { GOOGLE_MAPS_PLACE_URL } from '../../config/maps.js';
 
 import logo from '../../assets/Lolas Original Logo.svg';
 import flowerLeft from '../../assets/Flower Left.svg';
@@ -111,8 +113,7 @@ export function PageLayout({
                 Lola&apos;s Rentals
               </span>
               <p className="text-sm leading-relaxed text-charcoal-brand/60">
-                © {new Date().getFullYear()} Lola&apos;s Rentals &amp; Tours Inc. Supporting BePawsitive animal welfare on
-                Siargao Island.
+                © 2026 Lola&apos;s Rentals and Tours Inc. | Built in-house
               </p>
             </div>
             <div className="space-y-6">
@@ -123,7 +124,13 @@ export function PageLayout({
                 <a href="https://bepawsitive.com" target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
                   BePawsitive NGO
                 </a>
-                <a href="https://wa.me/639694443413" target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
+                <a
+                  href="https://wa.me/639694443413"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand"
+                >
+                  <img src={phoneIcon} alt="" className="h-4 w-4 shrink-0 object-contain opacity-80" width={16} height={16} />
                   Contact Us
                 </a>
                 <Link to="/book/privacy" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
@@ -131,9 +138,33 @@ export function PageLayout({
                 </Link>
               </div>
               <div className="flex items-center gap-5">
-                <a href="https://instagram.com/lolasrentals" target="_blank" rel="noopener noreferrer" className="text-lg text-charcoal-brand/50 transition-colors hover:text-teal-brand" aria-label="Instagram">📸</a>
-                <a href="https://wa.me/639694443413" target="_blank" rel="noopener noreferrer" className="text-lg text-charcoal-brand/50 transition-colors hover:text-teal-brand" aria-label="WhatsApp">💬</a>
-                <a href="https://goo.gl/maps/ZA5n6BxzQRMnjFdp9" target="_blank" rel="noopener noreferrer" className="text-lg text-charcoal-brand/50 transition-colors hover:text-teal-brand" aria-label="Google Maps">📍</a>
+                <a
+                  href="https://instagram.com/lolasrentals"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex text-charcoal-brand/80 transition-opacity hover:opacity-90"
+                  aria-label="Instagram"
+                >
+                  <img src={instaIcon} alt="" className="h-7 w-7 object-contain" width={28} height={28} />
+                </a>
+                <a
+                  href="https://wa.me/639694443413"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex text-charcoal-brand/80 transition-opacity hover:opacity-90"
+                  aria-label="WhatsApp"
+                >
+                  <img src={phoneIcon} alt="" className="h-7 w-7 object-contain" width={28} height={28} />
+                </a>
+                <a
+                  href={GOOGLE_MAPS_PLACE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex text-charcoal-brand/80 transition-opacity hover:opacity-90"
+                  aria-label="Google Maps"
+                >
+                  <img src={locationIcon} alt="" className="h-7 w-7 object-contain" width={28} height={28} />
+                </a>
               </div>
             </div>
           </div>

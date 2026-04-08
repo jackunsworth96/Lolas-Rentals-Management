@@ -1,3 +1,4 @@
+import { locationIcon } from '../public/customerContactIcons.js';
 import hondaBeatImg from '../../assets/Honda Beat Image.png';
 import tukTukImg from '../../assets/TukTuk Image.png';
 
@@ -48,8 +49,8 @@ export function ActiveRentalCard({ vehicleModelName, pickupLocationName, current
             Active Rental
           </span>
           <h3 className="mt-3 font-headline text-3xl font-black text-charcoal-brand">{vehicleModelName}</h3>
-          <p className="mt-1 flex items-center gap-1 font-semibold text-charcoal-brand/70">
-            <span className="text-sm">📍</span>
+          <p className="mt-1 flex items-center gap-1.5 font-semibold text-charcoal-brand/70">
+            <img src={locationIcon} alt="" className="h-4 w-4 shrink-0 object-contain" width={16} height={16} />
             {pickupLocationName}
           </p>
         </div>

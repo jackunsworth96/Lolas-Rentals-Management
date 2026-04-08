@@ -1,10 +1,5 @@
-/** Official Google Maps place link (opens in Maps app / browser). */
-const MAPS_PLACE_URL =
-  "https://www.google.com/maps/place/Lola's+Rentals/data=!4m2!3m1!1s0x0:0x48a08e679185497b?sa=X&ved=1t:2428&ictx=111";
-
-/** Embedded map preview (search-based; pairs with MAPS_PLACE_URL for exact listing). */
-const MAP_EMBED =
-  "https://www.google.com/maps?q=Lola%27s%20Rentals%20Tourism%20Road%20Catangnan%20General%20Luna&output=embed";
+import { GOOGLE_MAPS_EMBED_URL, GOOGLE_MAPS_PLACE_URL } from '../../config/maps.js';
+import { phoneIcon, locationIcon } from '../public/customerContactIcons.js';
 
 /** Contacts, store info, and map (below Island Safety Tips on the repairs page). */
 export function EmergencyContactsSection() {
@@ -14,7 +9,9 @@ export function EmergencyContactsSection() {
       <div className="grid gap-4">
         <div className="flex items-center justify-between rounded-2xl bg-cream-brand p-6 shadow-sm">
           <div className="flex items-center gap-4">
-            <div className="rounded-full bg-teal-brand p-3 text-white">📞</div>
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-teal-brand p-2">
+              <img src={phoneIcon} alt="" className="h-8 w-8 object-contain" width={32} height={32} />
+            </div>
             <div>
               <p className="text-xs font-bold uppercase tracking-widest text-gold-brand">Lola&apos;s Hotline</p>
               <p className="text-lg font-bold text-charcoal-brand">09694443413</p>
@@ -26,7 +23,9 @@ export function EmergencyContactsSection() {
         </div>
         <div className="flex items-center justify-between rounded-2xl bg-cream-brand p-6 shadow-sm">
           <div className="flex items-center gap-4">
-            <div className="rounded-full bg-teal-brand p-3 text-white">💬</div>
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-teal-brand p-2">
+              <img src={phoneIcon} alt="" className="h-8 w-8 object-contain" width={32} height={32} />
+            </div>
             <div>
               <p className="text-xs font-bold uppercase tracking-widest text-gold-brand">WhatsApp Support</p>
               <p className="text-lg font-bold text-charcoal-brand">Live Messaging</p>
@@ -45,7 +44,8 @@ export function EmergencyContactsSection() {
 
       <div className="space-y-6 rounded-2xl bg-sand-brand/60 p-8">
         <h3 className="flex items-center gap-2 text-xl font-bold text-charcoal-brand">
-          <span className="text-teal-brand">📍</span> Store Location
+          <img src={locationIcon} alt="" className="h-7 w-7 shrink-0 object-contain" width={28} height={28} />
+          Store Location
         </h3>
         <div>
           <p className="font-bold text-teal-brand">Lola&apos;s Rentals (General Luna)</p>
@@ -57,7 +57,7 @@ export function EmergencyContactsSection() {
       <div className="flex min-h-[400px] flex-col overflow-hidden rounded-xl shadow-[0_20px_40px_rgba(62,73,70,0.06)]">
         <div className="relative min-h-[400px] flex-1">
           <a
-            href={MAPS_PLACE_URL}
+            href={GOOGLE_MAPS_PLACE_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="absolute left-3 top-3 z-10 inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 font-lato text-xs font-bold text-teal-brand shadow-md transition-opacity hover:opacity-90"
@@ -69,7 +69,7 @@ export function EmergencyContactsSection() {
           </a>
           <iframe
             title="Lola's Rentals General Luna"
-            src={MAP_EMBED}
+            src={GOOGLE_MAPS_EMBED_URL}
             width="100%"
             height="400"
             style={{ border: 0 }}
@@ -80,7 +80,7 @@ export function EmergencyContactsSection() {
           />
         </div>
         <a
-          href={MAPS_PLACE_URL}
+          href={GOOGLE_MAPS_PLACE_URL}
           target="_blank"
           rel="noopener noreferrer"
           className="bg-teal-brand p-6 text-white transition-opacity hover:opacity-95"

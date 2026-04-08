@@ -4,6 +4,7 @@ import { useBookingStore } from '../../stores/bookingStore.js';
 import { api } from '../../api/client.js';
 import { hasBookingDatetimeWithTime } from '../../utils/booking-datetime.js';
 import BorderGlow from '../home/BorderGlow.js';
+import { locationIcon } from '../public/customerContactIcons.js';
 
 
 export interface LocationRow {
@@ -208,7 +209,7 @@ export function SearchBar({ onSearch, searching }: SearchBarProps) {
         <div className="space-y-1.5">
           <label className="ml-1 text-xs font-bold uppercase tracking-wider text-teal-700">Store</label>
           <div className={`${inputClass} flex items-center gap-2`}>
-            <span>📍</span>
+            <img src={locationIcon} alt="" className="h-4 w-4 shrink-0 object-contain" width={16} height={16} />
             <span className="font-semibold">{storeLocationName}</span>
           </div>
         </div>

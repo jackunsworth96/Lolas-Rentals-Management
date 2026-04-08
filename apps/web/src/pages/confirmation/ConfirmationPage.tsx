@@ -12,6 +12,7 @@ import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
 import lolaVideo from '../../assets/Checkout_Lola.mp4';
 import pawPrint from '../../assets/Paw Print.svg';
 import { WHATSAPP_URL } from '../../config/contact.js';
+import { phoneIcon, locationIcon } from '../../components/public/customerContactIcons.js';
 
 interface ConfirmationState {
   orderReferences: string[];
@@ -247,7 +248,13 @@ export default function ConfirmationPage() {
                 </Step>
                 <Step>
                   <div style={{ textAlign: 'center', padding: '8px 0' }}>
-                    <span style={{ fontSize: 48, display: 'block', marginBottom: 16 }}>📍</span>
+                    <img
+                      src={locationIcon}
+                      alt=""
+                      className="mx-auto mb-4 h-14 w-14 object-contain"
+                      width={56}
+                      height={56}
+                    />
                     <h4 className="font-headline font-bold" style={{ fontSize: 20, color: '#00577C', marginBottom: 8 }}>
                       Find Us
                     </h4>
@@ -304,7 +311,13 @@ export default function ConfirmationPage() {
 
             <p className="font-lato mt-6 mb-8 text-center text-sm font-bold text-charcoal-brand/60">
               Need help?{' '}
-              <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="text-teal-brand underline decoration-2 underline-offset-4 transition-opacity duration-200 hover:opacity-80">
+              <a
+                href={WHATSAPP_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-teal-brand underline decoration-2 underline-offset-4 transition-opacity duration-200 hover:opacity-80"
+              >
+                <img src={phoneIcon} alt="" className="h-4 w-4 shrink-0 object-contain" width={16} height={16} />
                 Chat with Lola&apos;s Team
               </a>
             </p>

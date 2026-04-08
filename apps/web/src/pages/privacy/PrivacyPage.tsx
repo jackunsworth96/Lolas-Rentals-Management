@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { WHATSAPP_URL } from '../../config/contact.js';
+import { phoneIcon } from '../../components/public/customerContactIcons.js';
 
 export default function PrivacyPage() {
   return (
@@ -99,8 +100,9 @@ export default function PrivacyPage() {
                   href={WHATSAPP_URL}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="font-bold text-teal-brand underline underline-offset-4 hover:opacity-80"
+                  className="inline-flex items-center gap-2 font-bold text-teal-brand underline underline-offset-4 hover:opacity-80"
                 >
+                  <img src={phoneIcon} alt="" className="h-4 w-4 shrink-0 object-contain" width={16} height={16} />
                   Message us on WhatsApp
                 </a>
               </li>

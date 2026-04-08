@@ -3,6 +3,7 @@ import pawPrint from '../../assets/Paw Print.svg';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import { VehicleCard } from '../../components/booking/VehicleCard.js';
 import { WHATSAPP_URL } from '../../config/contact.js';
+import { phoneIcon } from '../../components/public/customerContactIcons.js';
 
 interface AvailableModel {
   modelId: string;
@@ -93,8 +94,9 @@ export function BrowseBookVehicleSection({
                   href={WHATSAPP_URL}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="font-bold text-teal-brand underline"
+                  className="inline-flex items-center gap-1.5 font-bold text-teal-brand underline"
                 >
+                  <img src={phoneIcon} alt="" className="h-4 w-4 shrink-0 object-contain" width={16} height={16} />
                   contact us on WhatsApp
                 </a>
                 .

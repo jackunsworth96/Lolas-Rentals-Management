@@ -14,6 +14,7 @@ import { ExtensionSummary } from '../../components/extend/ExtensionSummary.js';
 import { DEFAULT_STORE_ID } from '@lolas/shared';
 import lolaFace from '../../assets/Lola Face Cartoon.svg';
 import { WHATSAPP_URL } from '../../config/contact.js';
+import { phoneIcon } from '../../components/public/customerContactIcons.js';
 import { formatCurrency } from '../../utils/currency.js';
 
 interface OrderData {
@@ -156,7 +157,15 @@ export default function ExtendPage() {
                 {lookupError && (
                   <div className="rounded-2xl bg-red-50 px-5 py-4 text-sm font-bold text-red-700">
                     {lookupError}{' '}
-                    <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="text-teal-brand underline">WhatsApp us</a>
+                    <a
+                      href={WHATSAPP_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-teal-brand underline"
+                    >
+                      <img src={phoneIcon} alt="" className="h-3.5 w-3.5 shrink-0 object-contain" width={14} height={14} />
+                      WhatsApp us
+                    </a>
                   </div>
                 )}
               </>
@@ -196,7 +205,13 @@ function ConfirmedView({ dropoff, balance }: { dropoff: string; balance: number 
           <Link to="/book/reserve">
             <PrimaryCtaButton className="flex min-h-[44px] w-full items-center justify-center gap-2 py-5 text-lg">Back to Browse</PrimaryCtaButton>
           </Link>
-          <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="font-lato block text-sm font-bold text-teal-brand underline transition-opacity hover:opacity-80">
+          <a
+            href={WHATSAPP_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-lato inline-flex items-center justify-center gap-2 text-sm font-bold text-teal-brand underline transition-opacity hover:opacity-80"
+          >
+            <img src={phoneIcon} alt="" className="h-4 w-4 shrink-0 object-contain" width={16} height={16} />
             Need help? Chat with Lola&apos;s Team
           </a>
         </div>

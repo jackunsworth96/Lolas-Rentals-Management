@@ -1,5 +1,7 @@
+import type { ReactNode } from 'react';
 import type { Addon } from './basket-types.js';
 import { formatCurrency } from '../../utils/currency.js';
+import { phoneIcon } from '../public/customerContactIcons.js';
 
 interface Props {
   addons: Addon[];
@@ -13,7 +15,6 @@ const ICON_MAP: Record<string, string> = {
   mind: '🛡️',
   surf: '🏄',
   helmet: '⛑️',
-  phone: '📱',
   bungee: '🔗',
   bingee: '🔗',
   lesson: '📚',
@@ -34,6 +35,14 @@ function iconForAddon(name: string): string {
     if (lower.includes(key)) return emoji;
   }
   return '✨';
+}
+
+function renderAddonIcon(name: string): ReactNode {
+  const lower = name.toLowerCase();
+  if (lower.includes('phone')) {
+    return <img src={phoneIcon} alt="" className="h-5 w-5 object-contain" width={20} height={20} />;
+  }
+  return iconForAddon(name);
 }
 
 function priceLabel(addon: Addon): string {
@@ -76,7 +85,7 @@ export function AddOnsSection({ addons, loading, selectedIds, onToggle }: Props)
             <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm transition-colors ${
               selected ? 'bg-teal-brand/10 text-teal-brand' : 'bg-sand-brand text-charcoal-brand/50'
             }`}>
-              {iconForAddon(addon.name)}
+              {renderAddonIcon(addon.name)}
             </div>
 
             {/* Name + type */}

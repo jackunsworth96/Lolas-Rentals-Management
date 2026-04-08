@@ -207,7 +207,7 @@ export function FleetPreviewSection() {
 
   return (
     <section style={{ position: 'relative', width: '100%' }}>
-      <div className="mx-auto max-w-7xl px-6 py-16">
+      <div className="mx-auto max-w-7xl px-6 max-lg:pb-16 max-lg:pt-28 lg:py-16">
       <div style={{ textAlign: 'center', marginBottom: 56 }}>
         <p
           className="font-lato"

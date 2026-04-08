@@ -138,6 +138,8 @@ function HeroSection() {
 
   const isTablet = windowWidth < 1024 && windowWidth >= 640;
   const isMobileFlower = windowWidth < 640;
+  /** Narrow hero (phone + tablet): cloud behind “Many” + looser horizontal overflow */
+  const isCompactHero = windowWidth < 1024;
 
   const flowerWidthBase = Math.round(
     (isMobileFlower ? 160 : isTablet ? 260 : 420) * 0.9,
@@ -151,7 +153,7 @@ function HeroSection() {
   return (
     <section
       ref={heroRef}
-      className="relative overflow-hidden bg-sand-brand"
+      className="relative overflow-y-hidden bg-sand-brand max-lg:overflow-x-visible lg:overflow-hidden"
       style={{ minHeight: '560px', height: '70vh' }}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
@@ -274,9 +276,13 @@ function HeroSection() {
         />
       </motion.div>
 
-      {/* ── Cloud 3 — medium, centre-top, snappy float ───────── */}
+      {/* ── Cloud 3 — medium, centre-top (shift right on narrow so it sits behind “Many” & can bleed off-edge) ───────── */}
       <motion.div
-        style={{ position: 'absolute', top: '6%', left: '42%' }}
+        style={{
+          position: 'absolute',
+          top: isCompactHero ? '4%' : '6%',
+          left: isCompactHero ? '58%' : '42%',
+        }}
         animate={
           shouldAnimate
             ? isTouchDevice
@@ -298,7 +304,8 @@ function HeroSection() {
           alt=""
           aria-hidden="true"
           style={{
-            width: 110,
+            width: isCompactHero ? 132 : 110,
+            marginLeft: isCompactHero ? '8%' : 0,
             pointerEvents: 'none',
             ...(useParallax ? { x: c3X, y: c3Y } : {}),
           }}
@@ -531,7 +538,7 @@ export default function HomePage() {
     >
       <HeroSection />
 
-      <div style={{ marginTop: -4, marginBottom: -120 }}>
+      <div className="max-lg:-mb-16 lg:-mb-[120px]" style={{ marginTop: -4 }}>
         <SectionDivider variant="dash" />
       </div>
 
@@ -700,19 +707,21 @@ export default function HomePage() {
       <section style={{ backgroundColor: '#f1e6d6', padding: '64px 5%' }}>
         <div style={{ maxWidth: 1280, margin: '0 auto' }}>
 
-          {/* ── Full-width logo lockup ── */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 20,
-              marginBottom: 48,
-              flexWrap: 'wrap',
-            }}
-          >
-            <img src={lolasLogo} alt="Lola's Rentals" style={{ height: 68, width: 'auto' }} />
-            <span style={{ fontSize: 26, fontWeight: 800, color: '#363737', opacity: 0.4, fontFamily: 'Lato, sans-serif' }}>
+          {/* ── Full-width logo lockup (stacked × under Lola on narrow screens) ── */}
+          <div className="mb-12 flex flex-col items-center justify-center gap-1 lg:flex-row lg:gap-5">
+            <div className="flex flex-col items-center gap-1">
+              <img src={lolasLogo} alt="Lola's Rentals" style={{ height: 68, width: 'auto' }} />
+              <span
+                className="leading-none lg:hidden"
+                style={{ fontSize: 26, fontWeight: 800, color: '#363737', opacity: 0.4, fontFamily: 'Lato, sans-serif' }}
+              >
+                ×
+              </span>
+            </div>
+            <span
+              className="hidden leading-none lg:inline"
+              style={{ fontSize: 26, fontWeight: 800, color: '#363737', opacity: 0.4, fontFamily: 'Lato, sans-serif' }}
+            >
               ×
             </span>
             <img src={bepawsitiveLogo} alt="BePawsitive" style={{ height: 76, width: 'auto' }} />
@@ -720,6 +729,7 @@ export default function HomePage() {
 
           {/* ── Two-column: photos | counter + text ── */}
           <div
+            className="isolate"
             style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
@@ -729,7 +739,10 @@ export default function HomePage() {
             }}
           >
             {/* LEFT — Stack card gallery, centred */}
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <div
+              className="relative z-0 max-lg:mb-4"
+              style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}
+            >
               <div style={{ width: 340, height: 420 }}>
                 <Stack
                   randomRotation={true}
@@ -750,10 +763,13 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* RIGHT — Counter + divider + text + CTA, all centred */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+            {/* RIGHT — Counter + divider + text + CTA (z-index keeps caption above stack overflow on narrow layouts) */}
+            <div
+              className="relative z-10"
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}
+            >
               {/* Counter */}
-              <div style={{ marginBottom: 4 }}>
+              <div className="w-full max-w-[min(100%,380px)]" style={{ marginBottom: 4 }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, justifyContent: 'center' }}>
                   <span
                     style={{
@@ -769,14 +785,12 @@ export default function HomePage() {
                   <BePawsitiveMeter />
                 </div>
                 <p
-                  className="font-lato"
+                  className="font-lato relative z-[2] mx-auto mt-2 block w-full max-w-[min(100%,360px)] px-2 text-[13px] leading-snug"
                   style={{
-                    fontSize: 12,
                     textTransform: 'uppercase',
                     letterSpacing: '0.1em',
                     color: '#00577C',
                     fontWeight: 700,
-                    marginTop: 6,
                   }}
                 >
                   Total Donated Since Oct 2022
