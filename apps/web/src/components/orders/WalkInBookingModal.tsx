@@ -237,7 +237,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
       .flatMap(([id, qty]) => Array(qty).fill(id) as string[])
       .join(',');
     const url =
-      `${apiBase}/api/public/booking/quote` +
+      `${apiBase}/public/booking/quote` +
       `?storeId=${storeId}` +
       `&vehicleModelId=${vehicleModelId}` +
       `&pickupDatetime=${encodeURIComponent(pickupDatetime)}` +
