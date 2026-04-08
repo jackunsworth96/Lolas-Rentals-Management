@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { FadeUpSection } from '../public/FadeUpSection.js';
 import lolaLogo from '../../assets/Hero/logo-lola-rentals-1.svg';
 import bePawsitiveLogo from '../../assets/Be Pawsitive (blue).svg';
+import CountUp from '../home/CountUp.js';
 
 // ─── Rotating subheadline ────────────────────────────────────────────────────
 
@@ -24,7 +25,7 @@ function RotatingSubheadline() {
         setIdx((i) => (i + 1) % SUBHEADLINES.length);
         setVisible(true);
       }, 360);
-    }, 4000);
+    }, 7000);
     return () => clearInterval(id);
   }, []);
 
@@ -48,158 +49,82 @@ function RotatingSubheadline() {
   );
 }
 
-// ─── Stats carousel ──────────────────────────────────────────────────────────
+// ─── Animal impact counters ──────────────────────────────────────────────────
 
-const STATS: Array<{ emoji: string; bold: string; rest: string }> = [
-  { emoji: '🐾', bold: '1,120 animals', rest: 'spayed or neutered through Be Pawsitive' },
-  { emoji: '💉', bold: '2,023 animals', rest: 'vaccinated across Siargao' },
-  { emoji: '🐕', bold: 'Hundreds of thousands', rest: 'of future strays potentially prevented' },
-  { emoji: '❤️', bold: '₱300,000+', rest: 'contributed to animal welfare on the island' },
-  {
-    emoji: '🤝',
-    bold: 'Every rental you book',
-    rest: 'helps fund spay, neuter & vaccination programs right here on Siargao',
-  },
-];
-
-function StatsCarousel() {
-  const [idx, setIdx] = useState(0);
-  const [visible, setVisible] = useState(true);
-  const [dir, setDir] = useState<1 | -1>(1);
-  const [paused, setPaused] = useState(false);
-  const busy = useRef(false);
-
-  const go = (newIdx: number, direction: 1 | -1) => {
-    if (busy.current) return;
-    busy.current = true;
-    setDir(direction);
-    setVisible(false);
-    setTimeout(() => {
-      setIdx(newIdx);
-      setVisible(true);
-      busy.current = false;
-    }, 230);
-  };
-
-  useEffect(() => {
-    if (paused) return;
-    const id = setInterval(() => {
-      go((idx + 1) % STATS.length, 1);
-    }, 5000);
-    return () => clearInterval(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paused, idx]);
-
-  const goPrev = () => go((idx - 1 + STATS.length) % STATS.length, -1);
-  const goNext = () => go((idx + 1) % STATS.length, 1);
-
+function AnimalCounters() {
   return (
     <div
-      style={{ maxWidth: 700, margin: '0 auto' }}
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
+      style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'flex-start',
+        gap: 'clamp(32px, 8vw, 80px)',
+        flexWrap: 'wrap',
+        marginTop: 28,
+      }}
     >
-      {/* Thin stat box */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          border: '1.5px solid rgba(0,87,124,0.22)',
-          borderRadius: 10,
-          backgroundColor: 'rgba(250,246,240,0.85)',
-          minHeight: 56,
-          padding: '10px 4px',
-          gap: 2,
-        }}
-      >
-        {/* Left chevron */}
-        <button
-          onClick={goPrev}
-          aria-label="Previous stat"
+      {/* Counter 1 — Fixed */}
+      <div style={{ textAlign: 'center' }}>
+        <CountUp
+          from={0}
+          to={1120}
+          separator=","
+          direction="up"
+          duration={2}
+          startWhen={true}
+          className="count-up-text"
+        />
+        <p
+          className="font-lato"
           style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: '0 10px',
+            fontSize: 12,
+            textTransform: 'uppercase',
+            letterSpacing: '0.1em',
             color: '#00577C',
-            opacity: 0.55,
-            flexShrink: 0,
-            lineHeight: 0,
-            transition: 'opacity 0.15s ease',
-          }}
-          onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.opacity = '1')}
-          onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.opacity = '0.55')}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-        </button>
-
-        {/* Stat content */}
-        <div
-          style={{
-            flex: 1,
-            textAlign: 'center',
-            fontFamily: 'Lato, sans-serif',
-            fontSize: 14,
-            color: '#363737',
-            lineHeight: 1.45,
-            padding: '0 6px',
-            opacity: visible ? 1 : 0,
-            transform: visible ? 'translateX(0)' : `translateX(${dir * 14}px)`,
-            transition: 'opacity 0.23s ease, transform 0.23s ease',
+            fontWeight: 700,
+            marginTop: 8,
           }}
         >
-          <span>{STATS[idx].emoji}</span>
-          {' '}
-          <strong style={{ fontWeight: 700, color: '#00577C' }}>{STATS[idx].bold}</strong>
-          {' '}
-          <span style={{ fontWeight: 400 }}>{STATS[idx].rest}</span>
-        </div>
-
-        {/* Right chevron */}
-        <button
-          onClick={goNext}
-          aria-label="Next stat"
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: '0 10px',
-            color: '#00577C',
-            opacity: 0.55,
-            flexShrink: 0,
-            lineHeight: 0,
-            transition: 'opacity 0.15s ease',
-          }}
-          onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.opacity = '1')}
-          onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.opacity = '0.55')}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="9 18 15 12 9 6" />
-          </svg>
-        </button>
+          Animals Fixed
+        </p>
       </div>
 
-      {/* Dot indicators */}
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 7, marginTop: 12 }}>
-        {STATS.map((_, i) => (
-          <button
-            key={i}
-            onClick={() => go(i, i > idx ? 1 : -1)}
-            aria-label={`Go to stat ${i + 1}`}
-            style={{
-              width: i === idx ? 18 : 6,
-              height: 6,
-              borderRadius: 3,
-              backgroundColor: i === idx ? '#00577C' : 'rgba(0,87,124,0.2)',
-              border: 'none',
-              cursor: 'pointer',
-              padding: 0,
-              transition: 'width 0.3s ease, background-color 0.3s ease',
-            }}
-          />
-        ))}
+      {/* Divider */}
+      <div
+        aria-hidden="true"
+        style={{
+          width: 1,
+          alignSelf: 'stretch',
+          backgroundColor: 'rgba(0,87,124,0.2)',
+          flexShrink: 0,
+          minHeight: 60,
+        }}
+      />
+
+      {/* Counter 2 — Vaccinated */}
+      <div style={{ textAlign: 'center' }}>
+        <CountUp
+          from={0}
+          to={2023}
+          separator=","
+          direction="up"
+          duration={2}
+          startWhen={true}
+          className="count-up-text"
+        />
+        <p
+          className="font-lato"
+          style={{
+            fontSize: 12,
+            textTransform: 'uppercase',
+            letterSpacing: '0.1em',
+            color: '#00577C',
+            fontWeight: 700,
+            marginTop: 8,
+          }}
+        >
+          Animals Vaccinated
+        </p>
       </div>
     </div>
   );
@@ -214,9 +139,16 @@ const rawModules = import.meta.glob('../../assets/About Us Page/*', {
 
 // Sort by filename for a consistent, alphabetical order across builds.
 // Keep the path key alongside the URL so caption overrides can match by filename.
+// Exclude images used elsewhere on the page so they don't appear twice.
+const GALLERY_EXCLUDE = new Set(['Lola_Claire_tuktuk.jpeg', 'group_pic.jpeg']);
+
 const galleryEntries: Array<{ key: string; url: string }> = Object.entries(rawModules)
   .sort(([a], [b]) => a.localeCompare(b))
-  .map(([key, url]) => ({ key, url }));
+  .map(([key, url]) => ({ key, url }))
+  .filter(({ key }) => {
+    const filename = key.split('/').pop() ?? '';
+    return !GALLERY_EXCLUDE.has(filename);
+  });
 
 const CAPTIONS = [
   'Every life counts.',
@@ -355,10 +287,8 @@ export function PawsitiveGallery() {
             {/* Rotating subheadline */}
             <RotatingSubheadline />
 
-            {/* Stats carousel */}
-            <div style={{ marginTop: 28 }}>
-              <StatsCarousel />
-            </div>
+            {/* Animal impact counters */}
+            <AnimalCounters />
           </div>
         </section>
       </FadeUpSection>

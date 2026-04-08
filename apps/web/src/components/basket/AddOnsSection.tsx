@@ -46,22 +46,22 @@ function priceLabel(addon: Addon): string {
 export function AddOnsSection({ addons, loading, selectedIds, onToggle }: Props) {
   if (loading) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-3">
         {[0, 1, 2].map((i) => (
-          <div key={i} className="h-20 animate-pulse rounded-3xl bg-sand-brand" />
+          <div key={i} className="h-14 animate-pulse rounded-lg bg-sand-brand" />
         ))}
       </div>
     );
   }
 
-  if (addons.length === 0) return null;
-
   const standard = addons.filter(
     (a) => !a.name.toLowerCase().includes('transfer'),
   );
 
+  if (standard.length === 0) return null;
+
   return (
-    <div className="space-y-4">
+    <div className="divide-y divide-charcoal-brand/[0.08]">
       {standard.map((addon) => {
         const id = Number(addon.id);
         const selected = selectedIds.has(id);
@@ -70,30 +70,36 @@ export function AddOnsSection({ addons, loading, selectedIds, onToggle }: Props)
             key={id}
             type="button"
             onClick={() => onToggle(id)}
-            className={`flex w-full items-center justify-between rounded-3xl p-5 shadow-md shadow-charcoal-brand/5 transition-all duration-300 ${
-              selected
-                ? 'bg-cream-brand ring-2 ring-teal-brand/20'
-                : 'bg-cream-brand hover:shadow-lg'
-            }`}
+            className="flex w-full items-center gap-3 py-3 text-left transition-colors hover:bg-sand-brand/30 first:pt-1 last:pb-1"
           >
-            <div className="flex items-center gap-4">
-              <div className={`flex h-12 w-12 items-center justify-center rounded-full text-xl ${selected ? 'bg-gold-brand/20' : 'bg-teal-brand/10'}`}>
-                {iconForAddon(addon.name)}
-              </div>
-              <div className="text-left">
-                <h4 className="font-headline font-bold text-charcoal-brand">{addon.name}</h4>
-                <p className="text-xs text-charcoal-brand/60">{priceLabel(addon)}</p>
-              </div>
+            {/* Icon */}
+            <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm transition-colors ${
+              selected ? 'bg-teal-brand/10 text-teal-brand' : 'bg-sand-brand text-charcoal-brand/50'
+            }`}>
+              {iconForAddon(addon.name)}
             </div>
-            {selected ? (
-              <span className="rounded-full bg-gold-brand px-4 py-2 text-xs font-bold uppercase text-charcoal-brand">
-                Selected
-              </span>
-            ) : (
-              <div className="h-8 w-14 rounded-full bg-sand-brand p-1">
-                <div className="h-6 w-6 rounded-full bg-white/50" />
-              </div>
-            )}
+
+            {/* Name + type */}
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-medium text-charcoal-brand">{addon.name}</p>
+              <p className="text-[12px] text-charcoal-brand/50">
+                {addon.addonType === 'per_day' ? 'Per day' : 'One-time charge'}
+              </p>
+            </div>
+
+            {/* Price */}
+            <span className="mr-3 shrink-0 text-[14px] font-medium text-charcoal-brand/70">
+              {priceLabel(addon)}
+            </span>
+
+            {/* Custom toggle */}
+            <div className={`relative h-[22px] w-[40px] shrink-0 rounded-full transition-colors ${
+              selected ? 'bg-teal-brand' : 'bg-charcoal-brand/15'
+            }`}>
+              <span className={`absolute top-[3px] h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                selected ? 'translate-x-[19px]' : 'translate-x-[3px]'
+              }`} />
+            </div>
           </button>
         );
       })}

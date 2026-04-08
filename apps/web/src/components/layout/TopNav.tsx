@@ -136,12 +136,11 @@ export default function TopNav({ items, rightSlot }: TopNavProps) {
   return (
     <>
       {/*
-       * overflow-visible lets the paw spill 14px above the nav top edge.
-       * If the paw top is clipped when the nav sticks, it is caused by
-       * PageLayout's overflowX:'hidden' (CSS forces overflow-y:auto).
-       * Fix: remove overflowX from PageLayout's root div.
+       * Fixed (not sticky) so the bar + paw stay visible while scrolling regardless of
+       * ancestor overflow/transform. PageLayout reserves h-16 flow space below this header.
+       * overflow-visible lets the paw spill above the nav top edge.
        */}
-      <header className="relative sticky top-0 z-50 h-16 w-full overflow-visible border-b border-charcoal-brand/10 bg-sand-brand shadow-sm">
+      <header className="fixed top-0 left-0 right-0 z-50 h-16 w-full overflow-visible border-b border-charcoal-brand/10 bg-sand-brand shadow-sm">
 
         {/* Paw — menu trigger */}
         <button
@@ -149,14 +148,14 @@ export default function TopNav({ items, rightSlot }: TopNavProps) {
           aria-label={menuOpen ? 'Close menu' : 'Open menu'}
           onClick={() => setMenuOpen((o) => !o)}
           className="absolute left-1/2 z-10 -translate-x-1/2 cursor-pointer focus:outline-none"
-          style={{ top: -14 }}
+          style={{ top: -20 }}
         >
           <motion.img
             src={menuPaw}
             alt=""
-            className="w-20 drop-shadow-md"
-            whileHover={{ y: menuOpen ? 0 : 6 }}
-            transition={{ duration: 0.25, ease: 'easeOut' }}
+            className="h-auto w-[7.2rem] max-w-none drop-shadow-md"
+            whileHover={{ y: menuOpen ? 0 : 12 }}
+            transition={{ duration: 0.28, ease: 'easeOut' }}
           />
         </button>
 

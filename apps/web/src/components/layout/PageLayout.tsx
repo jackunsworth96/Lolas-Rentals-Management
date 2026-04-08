@@ -59,8 +59,8 @@ export function PageLayout({
 
   return (
     <div
-      className="relative min-h-screen font-body animate-page-fade-in"
-      style={{ background: '#f1e6d6', overflowX: 'hidden' }}
+      className="relative min-h-screen overflow-x-clip font-body animate-page-fade-in"
+      style={{ background: '#f1e6d6' }}
     >
       {showFloralLeft && (
         <img
@@ -97,6 +97,9 @@ export function PageLayout({
           ) : undefined
         }
       />
+
+      {/* Reserve the same vertical space as the fixed nav (h-16) so content is not hidden underneath */}
+      <div className="h-16 shrink-0" aria-hidden="true" />
 
       <main className={`relative z-10 overflow-x-hidden pb-8 ${fullBleed ? '' : 'px-4 pt-20'}`}>{children}</main>
 

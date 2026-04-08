@@ -48,7 +48,7 @@ export const PublicTransferBookingSchema = z.object({
     flightTime: z.string().nullable().default(null),
     paxCount: z.number().int().min(1).max(20),
     route: z.string().min(1),
-    vanType: z.enum(['Shared', 'Private']),
+    vanType: z.enum(['Shared', 'Private', 'TukTuk']),
     totalPrice: z.number().positive(),
     opsNotes: z.string().nullable().default(null),
 });

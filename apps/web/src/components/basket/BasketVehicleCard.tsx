@@ -31,35 +31,35 @@ export function BasketVehicleCard({ item, rentalDays, pickupLabel, dropoffLabel,
   }
 
   return (
-    <div className="overflow-hidden rounded-[2.5rem] bg-cream-brand shadow-xl shadow-charcoal-brand/5 animate-card-enter">
+    <div className="overflow-hidden rounded-xl border border-charcoal-brand/10 bg-white animate-card-enter">
       <div className="aspect-[16/9] w-full overflow-hidden bg-sand-brand">
         {imgSrc ? (
           <img src={imgSrc} alt={item.modelName} className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
-            <span className="text-5xl opacity-30">🏍️</span>
+            <span className="text-5xl opacity-20">🏍️</span>
           </div>
         )}
       </div>
 
-      <div className="space-y-4 p-6">
-        <div className="flex items-start justify-between">
+      <div className="space-y-3 p-4">
+        <div className="flex items-start justify-between gap-2">
           <div>
-            <h3 className="font-headline text-2xl font-black text-teal-brand">{item.modelName}</h3>
-            <p className="font-lato mt-1 flex items-center text-sm font-bold text-charcoal-brand/60">
+            <h3 className="text-[15px] font-medium text-charcoal-brand">{item.modelName}</h3>
+            <p className="mt-1 flex items-center gap-1.5 text-[12px] text-charcoal-brand/50">
               📅 {pickupLabel} → {dropoffLabel}
             </p>
           </div>
-          <span className="font-lato rounded-full bg-gold-brand px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-charcoal-brand">
+          <span className="shrink-0 rounded-full bg-sand-brand px-2.5 py-0.5 text-[11px] font-medium text-charcoal-brand/70">
             {rentalDays} Day{rentalDays !== 1 ? 's' : ''}
           </span>
         </div>
 
-        <div className="flex items-baseline justify-between border-t border-charcoal-brand/5 pt-4">
-          <p className="font-lato text-sm font-medium text-charcoal-brand/60">
+        <div className="flex items-center justify-between border-t border-charcoal-brand/[0.08] pt-3">
+          <p className="text-[13px] text-charcoal-brand/50">
             {formatCurrency(item.dailyRate)}/day
           </p>
-          <p className="font-headline text-2xl font-black text-charcoal-brand">
+          <p className="text-[14px] font-medium text-charcoal-brand">
             {formatCurrency(subtotal)}
           </p>
         </div>
@@ -76,7 +76,7 @@ export function BasketVehicleCard({ item, rentalDays, pickupLabel, dropoffLabel,
             type="button"
             onClick={handleRemove}
             disabled={removing}
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center text-xs font-bold text-red-500 transition-opacity duration-200 hover:opacity-70 disabled:opacity-40"
+            className="text-[12px] font-medium text-red-400 transition-colors hover:text-red-600 disabled:opacity-40"
           >
             {removing ? 'Removing…' : 'Remove'}
           </button>

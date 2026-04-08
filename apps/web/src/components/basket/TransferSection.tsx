@@ -1,162 +1,260 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
-import type { Addon, TransferDetails } from './basket-types.js';
+import type { TransferDetails } from './basket-types.js';
 import { formatCurrency } from '../../utils/currency.js';
 
+interface TransferRoute {
+  id: number;
+  route: string;
+  vanType: string | null;
+  price: number;
+  pricingType: string;
+  storeId: string | null;
+  isActive: boolean;
+}
+
+interface RouteGroup {
+  vanType: string;
+  route: TransferRoute;
+  displayName: string;
+  icon: string;
+  /** 'shared', 'private', or 'tuktuk' — maps to backend transferType enum */
+  transferType: 'shared' | 'private' | 'tuktuk';
+}
+
 interface Props {
-  transferAddons: Addon[];
   transfer: TransferDetails | null;
   onTransferChange: (t: TransferDetails | null) => void;
   errors: Record<string, string>;
 }
 
-export function TransferSection({ transferAddons, transfer, onTransferChange, errors }: Props) {
+const INPUT_CLS =
+  'h-10 w-full rounded-lg border border-charcoal-brand/[0.15] bg-white px-3 text-[13px] text-charcoal-brand placeholder:text-charcoal-brand/30 focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand transition-colors';
+const LABEL_CLS = 'mb-1.5 block text-[11px] font-medium uppercase tracking-widest text-charcoal-brand/50';
+
+function mapVanType(vanType: string | null): Pick<RouteGroup, 'displayName' | 'icon' | 'transferType'> {
+  const lower = (vanType ?? '').toLowerCase();
+  if (lower.includes('shared')) {
+    return { displayName: 'Shared Van', icon: '🚐', transferType: 'shared' };
+  }
+  if (lower.includes('tuk')) {
+    return { displayName: 'Private TukTuk', icon: '🛺', transferType: 'tuktuk' };
+  }
+  return { displayName: 'Private Van', icon: '🚌', transferType: 'private' };
+}
+
+function buildGroups(routes: TransferRoute[]): RouteGroup[] {
+  const seen = new Set<string>();
+  const groups: RouteGroup[] = [];
+  for (const route of routes) {
+    const key = (route.vanType ?? '').toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const { displayName, icon, transferType } = mapVanType(route.vanType);
+    groups.push({ vanType: route.vanType ?? '', route, displayName, icon, transferType });
+  }
+  return groups;
+}
+
+export function TransferSection({ transfer, onTransferChange, errors }: Props) {
   const storeId = useBookingStore((s) => s.storeId);
-  const [routes, setRoutes] = useState<string[]>([]);
+  const [routes, setRoutes] = useState<TransferRoute[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!storeId) return;
     let cancelled = false;
-    api.get<Array<{ route: string }>>(`/public/booking/transfer-routes?storeId=${storeId}`)
+    setLoading(true);
+    api
+      .get<TransferRoute[]>(`/public/booking/transfer-routes?storeId=${storeId}`)
       .then((data) => {
-        if (!cancelled) setRoutes(data.map((r) => r.route));
+        if (!cancelled) setRoutes(data);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [storeId]);
 
-  if (transferAddons.length === 0) return null;
+  const groups = buildGroups(routes);
 
-  const sharedAddon = transferAddons.find((a) =>
-    a.name.toLowerCase().includes('shared'),
-  );
-  const privateAddon = transferAddons.find((a) =>
-    a.name.toLowerCase().includes('private') || a.name.toLowerCase().includes('tuktuk') || a.name.toLowerCase().includes('tuk'),
-  );
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="h-14 animate-pulse rounded-lg bg-sand-brand" />
+        ))}
+      </div>
+    );
+  }
 
-  function selectType(type: 'shared' | 'private') {
-    if (transfer?.transferType === type) {
-      onTransferChange(null);
-      return;
-    }
+  if (groups.length === 0) return null;
+
+  function selectGroup(group: RouteGroup) {
+    const pricingType = (group.route.pricingType === 'per_head' ? 'per_head' : 'fixed') as 'fixed' | 'per_head';
+    const unitPrice = group.route.price;
+    const prevPax = transfer?.paxCount ?? 1;
+    const paxCount = pricingType === 'per_head' ? prevPax : 1;
+    const totalPrice = pricingType === 'per_head' ? unitPrice * paxCount : unitPrice;
     onTransferChange({
-      transferType: type,
+      transferType: group.transferType,
+      transferRoute: group.route.route,
       flightNumber: transfer?.flightNumber ?? '',
       flightArrivalTime: transfer?.flightArrivalTime ?? '',
-      transferRoute: transfer?.transferRoute ?? '',
+      transferRouteId: group.route.id,
+      vanType: group.vanType,
+      pricingType,
+      unitPrice,
+      paxCount,
+      totalPrice,
     });
   }
 
-  function updateField(field: keyof Omit<TransferDetails, 'transferType'>, value: string) {
+  function updatePaxCount(delta: number) {
+    if (!transfer) return;
+    const next = Math.max(1, transfer.paxCount + delta);
+    onTransferChange({
+      ...transfer,
+      paxCount: next,
+      totalPrice: transfer.unitPrice * next,
+    });
+  }
+
+  function updateField(field: 'flightNumber' | 'flightArrivalTime', value: string) {
     if (!transfer) return;
     onTransferChange({ ...transfer, [field]: value });
   }
 
-  function priceFor(addon: Addon | undefined): string {
-    if (!addon) return '';
-    return addon.addonType === 'per_day'
-      ? formatCurrency(addon.pricePerDay)
-      : formatCurrency(addon.priceOneTime);
-  }
+  const isSelected = (group: RouteGroup) =>
+    transfer !== null && transfer.transferRouteId === group.route.id;
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {sharedAddon && (
-          <button
-            type="button"
-            onClick={() => selectType('shared')}
-            className={`rounded-3xl p-5 text-left shadow-md shadow-charcoal-brand/5 transition-all duration-300 ${
-              transfer?.transferType === 'shared'
-                ? 'bg-cream-brand ring-2 ring-teal-brand/20'
-                : 'bg-cream-brand hover:shadow-lg'
-            }`}
-          >
-            <div className="mb-2 text-2xl">🚐</div>
-            <h4 className="font-headline font-bold text-charcoal-brand">Shared Airport Transfer</h4>
-            <p className="text-xs text-charcoal-brand/60">{priceFor(sharedAddon)}</p>
-          </button>
-        )}
+      <div className="divide-y divide-charcoal-brand/[0.08]">
 
-        {privateAddon && (
-          <button
-            type="button"
-            onClick={() => selectType('private')}
-            className={`rounded-3xl p-5 text-left shadow-md shadow-charcoal-brand/5 transition-all duration-300 ${
-              transfer?.transferType === 'private'
-                ? 'bg-cream-brand ring-2 ring-teal-brand/20'
-                : 'bg-cream-brand hover:shadow-lg'
-            }`}
-          >
-            <div className="mb-2 text-2xl">🛺</div>
-            <h4 className="font-headline font-bold text-charcoal-brand">Private TukTuk Transfer</h4>
-            <p className="text-xs text-charcoal-brand/60">{priceFor(privateAddon)}</p>
-          </button>
-        )}
+        {/* No transfer needed */}
+        <button
+          type="button"
+          onClick={() => onTransferChange(null)}
+          className="flex w-full items-center gap-3 py-3 text-left transition-colors hover:bg-sand-brand/30 first:pt-1"
+        >
+          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm transition-colors ${
+            transfer === null ? 'bg-teal-brand/10 text-teal-brand' : 'bg-sand-brand text-charcoal-brand/50'
+          }`}>
+            ✈️
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-medium text-charcoal-brand">No transfer needed</p>
+            <p className="text-[12px] text-charcoal-brand/50">I'll arrange my own airport transport</p>
+          </div>
+          <div className={`relative h-[22px] w-[40px] shrink-0 rounded-full transition-colors ${
+            transfer === null ? 'bg-teal-brand' : 'bg-charcoal-brand/15'
+          }`}>
+            <span className={`absolute top-[3px] h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+              transfer === null ? 'translate-x-[19px]' : 'translate-x-[3px]'
+            }`} />
+          </div>
+        </button>
+
+        {/* One row per van type group */}
+        {groups.map((group) => {
+          const selected = isSelected(group);
+          const pricingType = group.route.pricingType === 'per_head' ? 'per_head' : 'fixed';
+          const priceLabel = pricingType === 'per_head'
+            ? `${formatCurrency(group.route.price)} / person`
+            : formatCurrency(group.route.price);
+
+          return (
+            <div key={group.vanType} className="last:pb-1">
+              <button
+                type="button"
+                onClick={() => selectGroup(group)}
+                className="flex w-full items-center gap-3 py-3 text-left transition-colors hover:bg-sand-brand/30"
+              >
+                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm transition-colors ${
+                  selected ? 'bg-teal-brand/10 text-teal-brand' : 'bg-sand-brand text-charcoal-brand/50'
+                }`}>
+                  {group.icon}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-medium text-charcoal-brand">{group.displayName}</p>
+                  <p className="text-[12px] text-charcoal-brand/50">
+                    {pricingType === 'per_head' ? 'Per person pricing' : 'Fixed price'}
+                  </p>
+                </div>
+                <span className="mr-3 shrink-0 text-[14px] font-medium text-charcoal-brand/70">
+                  {priceLabel}
+                </span>
+                <div className={`relative h-[22px] w-[40px] shrink-0 rounded-full transition-colors ${
+                  selected ? 'bg-teal-brand' : 'bg-charcoal-brand/15'
+                }`}>
+                  <span className={`absolute top-[3px] h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                    selected ? 'translate-x-[19px]' : 'translate-x-[3px]'
+                  }`} />
+                </div>
+              </button>
+
+              {/* Pax counter — shown when this per_head group is selected */}
+              {selected && pricingType === 'per_head' && transfer && (
+                <div className="mb-2 ml-12 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => updatePaxCount(-1)}
+                    disabled={transfer.paxCount <= 1}
+                    className="flex h-7 w-7 items-center justify-center rounded-full border border-charcoal-brand/20 text-sm font-medium text-charcoal-brand transition-colors hover:bg-sand-brand disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label="Remove passenger"
+                  >
+                    −
+                  </button>
+                  <span className="min-w-[6rem] text-center text-[13px] font-medium text-charcoal-brand">
+                    {transfer.paxCount} passenger{transfer.paxCount !== 1 ? 's' : ''}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => updatePaxCount(1)}
+                    className="flex h-7 w-7 items-center justify-center rounded-full border border-charcoal-brand/20 text-sm font-medium text-charcoal-brand transition-colors hover:bg-sand-brand"
+                    aria-label="Add passenger"
+                  >
+                    +
+                  </button>
+                  <span className="ml-2 text-[13px] font-medium text-teal-brand">
+                    Total: {formatCurrency(transfer.totalPrice)}
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
+      {/* Flight details form — shown when any transfer is selected */}
       {transfer && (
-        <div className="grid grid-cols-1 gap-4 rounded-3xl bg-cream-brand/60 p-5 md:grid-cols-2">
-          <div className="space-y-2">
-            <label className="ml-1 text-[10px] font-black uppercase tracking-[0.2em] text-teal-brand">
-              Flight Number
-            </label>
+        <div className="grid grid-cols-1 gap-4 rounded-lg border border-charcoal-brand/[0.08] bg-sand-brand/30 p-4 md:grid-cols-2">
+          <div>
+            <label className={LABEL_CLS}>Flight Number</label>
             <input
               type="text"
               value={transfer.flightNumber}
               onChange={(e) => updateField('flightNumber', e.target.value)}
               placeholder="e.g. 5J 123"
               autoComplete="off"
-              className={`w-full rounded-2xl border-none bg-sand-brand p-4 font-bold text-charcoal-brand shadow-inner placeholder:text-charcoal-brand/30 transition-all duration-200 focus:scale-[1.01] focus:bg-white focus:ring-2 focus:ring-teal-brand ${
-                errors.flightNumber ? 'ring-2 ring-red-400' : ''
-              }`}
+              className={`${INPUT_CLS} ${errors.flightNumber ? 'border-red-400 ring-1 ring-red-400' : ''}`}
             />
             {errors.flightNumber && (
-              <p className="ml-1 text-xs text-red-500">{errors.flightNumber}</p>
+              <p className="mt-1 text-[11px] text-red-500">{errors.flightNumber}</p>
             )}
           </div>
 
-          <div className="space-y-2">
-            <label className="ml-1 text-[10px] font-black uppercase tracking-[0.2em] text-teal-brand">
-              Flight Arrival Time
-            </label>
+          <div>
+            <label className={LABEL_CLS}>Flight Arrival Time</label>
             <input
               type="datetime-local"
               value={transfer.flightArrivalTime}
               onChange={(e) => updateField('flightArrivalTime', e.target.value)}
-              className={`w-full rounded-2xl border-none bg-sand-brand p-4 font-bold text-charcoal-brand shadow-inner transition-all duration-200 focus:scale-[1.01] focus:bg-white focus:ring-2 focus:ring-teal-brand ${
-                errors.flightArrivalTime ? 'ring-2 ring-red-400' : ''
-              }`}
+              className={`${INPUT_CLS} ${errors.flightArrivalTime ? 'border-red-400 ring-1 ring-red-400' : ''}`}
             />
             {errors.flightArrivalTime && (
-              <p className="ml-1 text-xs text-red-500">{errors.flightArrivalTime}</p>
-            )}
-          </div>
-
-          <div className="space-y-2 md:col-span-2">
-            <label className="ml-1 text-[10px] font-black uppercase tracking-[0.2em] text-teal-brand">
-              Transfer Route
-            </label>
-            <div className="relative">
-              <select
-                value={transfer.transferRoute}
-                onChange={(e) => updateField('transferRoute', e.target.value)}
-                className={`w-full appearance-none rounded-2xl border-none bg-sand-brand p-4 font-bold text-charcoal-brand shadow-inner transition-all duration-200 focus:scale-[1.01] focus:bg-white focus:ring-2 focus:ring-teal-brand ${
-                  errors.transferRoute ? 'ring-2 ring-red-400' : ''
-                }`}
-              >
-                <option value="">Select route…</option>
-                {routes.map((r) => (
-                  <option key={r} value={r}>{r}</option>
-                ))}
-              </select>
-              <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-charcoal-brand/40">
-                ▾
-              </span>
-            </div>
-            {errors.transferRoute && (
-              <p className="ml-1 text-xs text-red-500">{errors.transferRoute}</p>
+              <p className="mt-1 text-[11px] text-red-500">{errors.flightArrivalTime}</p>
             )}
           </div>
         </div>

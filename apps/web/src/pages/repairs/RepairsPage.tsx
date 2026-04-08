@@ -1,9 +1,7 @@
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { PawDivider } from '../../components/layout/PawDivider.js';
 import { PageHeader } from '../../components/public/PageHeader.js';
-import { WhatToDoSection } from '../../components/repairs/WhatToDoSection.js';
 import { EmergencyContactsSection } from '../../components/repairs/EmergencyContactsSection.js';
-import { CommonIssuesSection } from '../../components/repairs/CommonIssuesSection.js';
 import { RepairCostsSection } from '../../components/repairs/RepairCostsSection.js';
 import { SafetyTipsSection } from '../../components/repairs/SafetyTipsSection.js';
 
@@ -21,13 +19,13 @@ export default function RepairsPage() {
       <RepairCostsSection />
 
       <PawDivider />
-      <WhatToDoSection />
-      <PawDivider />
-      <EmergencyContactsSection />
-      <PawDivider />
-      <CommonIssuesSection />
-      <PawDivider />
-      <SafetyTipsSection />
+      <section
+        aria-label="Island safety tips and emergency contacts"
+        className="mx-auto flex max-w-7xl flex-col gap-12 px-6 py-6"
+      >
+        <SafetyTipsSection />
+        <EmergencyContactsSection />
+      </section>
     </PageLayout>
   );
 }

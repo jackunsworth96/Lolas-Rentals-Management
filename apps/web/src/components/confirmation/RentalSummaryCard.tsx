@@ -8,7 +8,7 @@ interface Props {
   grandTotal: number;
   customerEmail: string;
   addonNames: string[];
-  transferType?: 'shared' | 'private' | null;
+  transferType?: 'shared' | 'private' | 'tuktuk' | null;
   flightNumber?: string | null;
   transferRoute?: string | null;
   charityDonation?: number;
@@ -89,7 +89,12 @@ export function RentalSummaryCard({
         {transferType && (
           <div className="rounded-2xl border-l-4 border-gold-brand bg-gold-brand/10 p-4 space-y-1">
             <p className="font-lato text-xs font-black uppercase tracking-wider text-charcoal-brand/60">
-              Transfer — {transferType === 'shared' ? 'Shared Airport' : 'Private TukTuk'}
+              Transfer —{' '}
+              {transferType === 'shared'
+                ? 'Shared Airport Van'
+                : transferType === 'tuktuk'
+                  ? 'Private TukTuk'
+                  : 'Private Airport Van'}
             </p>
             {flightNumber && (
               <p className="font-lato text-sm font-bold text-charcoal-brand">Flight: {flightNumber}</p>

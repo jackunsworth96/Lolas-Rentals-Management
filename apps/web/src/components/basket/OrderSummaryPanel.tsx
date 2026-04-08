@@ -1,6 +1,5 @@
 import type { BasketItem } from '../../stores/bookingStore.js';
 import type { Addon, TransferDetails, PaymentMethodOption } from './basket-types.js';
-import { PrimaryCtaButton } from '../public/PrimaryCtaButton.js';
 import { formatCurrency } from '../../utils/currency.js';
 
 interface Props {
@@ -9,7 +8,6 @@ interface Props {
   selectedAddonIds: Set<number>;
   addons: Addon[];
   transfer: TransferDetails | null;
-  transferAddons: Addon[];
   pickupFee: number;
   dropoffFee: number;
   paymentMethodId: string;
@@ -25,8 +23,9 @@ interface Props {
 
 const PM_ICONS: Record<string, string> = {
   card: '💳',
-  gcash: '🏦',
+  gcash: '📱',
   cash: '💵',
+  bank_transfer: '🏦',
 };
 
 function addonCost(addon: Addon, days: number): number {
@@ -40,7 +39,6 @@ export function OrderSummaryPanel({
   selectedAddonIds,
   addons,
   transfer,
-  transferAddons,
   pickupFee,
   dropoffFee,
   paymentMethodId,
@@ -59,17 +57,7 @@ export function OrderSummaryPanel({
     .filter((a) => selectedAddonIds.has(Number(a.id)))
     .reduce((sum, a) => sum + addonCost(a, rentalDays), 0);
 
-  let transferFee = 0;
-  if (transfer) {
-    const tAddon = transferAddons.find((a) =>
-      transfer.transferType === 'shared'
-        ? a.name.toLowerCase().includes('shared')
-        : a.name.toLowerCase().includes('private') || a.name.toLowerCase().includes('tuk'),
-    );
-    if (tAddon) {
-      transferFee = tAddon.addonType === 'per_day' ? tAddon.pricePerDay : tAddon.priceOneTime;
-    }
-  }
+  const transferFee = transfer?.totalPrice ?? 0;
 
   const deposit = basket.reduce((sum, b) => sum + (b.securityDeposit ?? 0), 0);
   const subtotalBeforeSurcharge = vehicleSubtotal + addonsTotal + transferFee + pickupFee + dropoffFee;
@@ -79,95 +67,97 @@ export function OrderSummaryPanel({
   const grandTotal = subtotalBeforeSurcharge + surchargeAmount + charityDonation;
 
   return (
-    <div className="sticky top-24 space-y-8">
-      <section className="overflow-hidden rounded-[2.5rem] bg-white shadow-2xl shadow-charcoal-brand/10">
-        <div className="p-8">
-          <h2 className="mb-8 text-center font-headline text-3xl font-black italic text-teal-brand">
-            Booking Summary
-          </h2>
+    <div className="sticky top-6 overflow-hidden rounded-xl border border-charcoal-brand/10 bg-white">
 
-          {priceChanged && (
-            <div className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-center text-sm font-bold text-amber-800">
-              Your rental dates changed — we've updated your price
-            </div>
-          )}
+      {/* ── Booking Summary ── */}
+      <div className="p-5 md:p-6">
+        <h2 className="mb-4 text-[15px] font-medium text-charcoal-brand">Booking Summary</h2>
 
-          <div className="mb-4 rounded-2xl bg-sand-brand/60 px-4 py-3 text-center text-sm font-bold text-charcoal-brand/70">
-            Rental Duration: <span className="text-teal-brand">{rentalDays} Day{rentalDays !== 1 ? 's' : ''}</span>
+        {priceChanged && (
+          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] font-medium text-amber-800">
+            Your rental dates changed — prices have been updated.
           </div>
+        )}
 
-          <div className="mb-6 rounded-2xl border border-teal-200 bg-teal-50 p-4">
-            <p className="mb-3 text-sm font-semibold text-teal-800">
-              🐾 Support BePawsitive — Siargao's street animal welfare charity
-            </p>
-            <p className="mb-3 text-xs leading-relaxed text-teal-700">
-              Add a small donation to help fund spay, neuter & vaccination
-              programmes for Siargao's street animals.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {[0, 50, 100, 200].map((amount) => (
-                <button
-                  key={amount}
-                  type="button"
-                  onClick={() => onCharityChange?.(amount)}
-                  className={[
-                    'rounded-full px-4 py-1.5 text-sm font-semibold transition-colors',
-                    charityDonation === amount
-                      ? 'bg-teal-600 text-white'
-                      : 'bg-white border border-teal-300 text-teal-700 hover:bg-teal-100',
-                  ].join(' ')}
-                >
-                  {amount === 0 ? 'No thanks' : `₱${amount}`}
-                </button>
-              ))}
-            </div>
-          </div>
+        {/* Duration pill */}
+        <div className="mb-4 inline-flex items-center rounded-full bg-sand-brand px-3 py-1 text-[12px] text-charcoal-brand/70">
+          Rental Duration:&nbsp;<span className="font-medium text-charcoal-brand">{rentalDays} Day{rentalDays !== 1 ? 's' : ''}</span>
+        </div>
 
-          <div className="mb-8 space-y-5">
-            <Row label={`Vehicle Subtotal (${rentalDays} Day${rentalDays !== 1 ? 's' : ''})`} amount={vehicleSubtotal} />
-            {pickupFee > 0 && <Row label="Delivery Fee" amount={pickupFee} />}
-            {dropoffFee > 0 && <Row label="Collection Fee" amount={dropoffFee} />}
-            {addonsTotal > 0 && <Row label="Add-ons Total" amount={addonsTotal} />}
-            {transferFee > 0 && <Row label="Transfer Fee" amount={transferFee} />}
-            {surchargeAmount > 0 && (
-              <Row label={`Card Surcharge (${surchargePercent}%)`} amount={surchargeAmount} />
-            )}
-            {charityDonation > 0 && <Row label="Donation to BePawsitive 🐾" amount={charityDonation} />}
-            {deposit > 0 && <Row label="Refundable Deposit" amount={deposit} muted />}
-          </div>
-
-          <div className="mb-8 h-px bg-charcoal-brand/5" />
-
-          <div className="mb-8 flex items-center justify-between">
-            <span className="font-headline text-xl font-bold text-charcoal-brand">Grand Total</span>
-            <span className="font-headline text-4xl font-black text-teal-brand">
-              {formatCurrency(grandTotal)}
-            </span>
-          </div>
-
-          <div className="flex items-start gap-3 rounded-2xl bg-sand-brand/60 p-4">
-            <span className="mt-0.5 text-teal-brand">ℹ️</span>
-            <p className="text-xs font-medium leading-relaxed text-charcoal-brand/70">
-              Your booking is partially refundable up to 24 hours before pickup. No-shows will be charged the full amount.
-            </p>
+        {/* BePawsitive donation banner */}
+        <div className="mb-4 rounded-lg border border-teal-200/60 bg-teal-50 p-3">
+          <p className="mb-1 flex items-center gap-1.5 text-[12px] font-medium text-teal-800">
+            🐾 Support BePawsitive
+          </p>
+          <p className="mb-2.5 text-[11px] leading-relaxed text-teal-700/80">
+            Add a small donation to fund spay, neuter &amp; vaccination for Siargao's street animals.
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {[0, 50, 100, 200].map((amount) => (
+              <button
+                key={amount}
+                type="button"
+                onClick={() => onCharityChange?.(amount)}
+                className={[
+                  'rounded-full px-3 py-1 text-[12px] font-medium transition-colors',
+                  charityDonation === amount
+                    ? 'bg-teal-600 text-white'
+                    : 'border border-teal-200 bg-white text-teal-700 hover:bg-teal-50',
+                ].join(' ')}
+              >
+                {amount === 0 ? 'No thanks' : `₱${amount}`}
+              </button>
+            ))}
           </div>
         </div>
-      </section>
 
-      <section className="rounded-[2.5rem] bg-cream-brand p-8 shadow-xl shadow-charcoal-brand/5">
-        <h3 className="mb-6 flex items-center gap-2 font-headline text-lg font-black text-teal-brand">
-          💳 Payment Method
-        </h3>
-        <div className="space-y-4">
+        {/* Line items */}
+        <div className="space-y-2">
+          <Row label={`Vehicle Subtotal (${rentalDays} Day${rentalDays !== 1 ? 's' : ''})`} amount={vehicleSubtotal} />
+          {pickupFee > 0 && <Row label="Delivery Fee" amount={pickupFee} />}
+          {dropoffFee > 0 && <Row label="Collection Fee" amount={dropoffFee} />}
+          {addonsTotal > 0 && <Row label="Add-ons Total" amount={addonsTotal} />}
+          {transferFee > 0 && <Row label="Transfer Fee" amount={transferFee} />}
+          {surchargeAmount > 0 && (
+            <Row label={`Card Surcharge (${surchargePercent}%)`} amount={surchargeAmount} />
+          )}
+          {charityDonation > 0 && <Row label="Donation to BePawsitive 🐾" amount={charityDonation} />}
+        </div>
+
+        {/* Divider + Grand Total */}
+        <div className="mt-4 border-t border-charcoal-brand/10 pt-4">
+          <div className="flex items-baseline justify-between">
+            <span className="text-[15px] font-medium text-charcoal-brand">Grand Total</span>
+            <span className="text-[22px] font-medium text-teal-brand">{formatCurrency(grandTotal)}</span>
+          </div>
+          {deposit > 0 && (
+            <p className="mt-2 flex items-start gap-1.5 text-[11px] leading-relaxed text-charcoal-brand/40">
+              <span>ℹ️</span>
+              <span>
+                Refundable security deposit of {formatCurrency(deposit)} collected on pickup — returned after your rental.
+              </span>
+            </p>
+          )}
+          <p className="mt-1.5 flex items-start gap-1.5 text-[11px] leading-relaxed text-charcoal-brand/40">
+            <span>ℹ️</span>
+            <span>Partially refundable up to 24 hours before pickup. No-shows charged in full.</span>
+          </p>
+        </div>
+      </div>
+
+      {/* ── Payment Method ── */}
+      <div className="border-t border-charcoal-brand/10 px-5 py-5 md:px-6">
+        <h3 className="mb-3 text-[15px] font-medium text-charcoal-brand">Payment Method</h3>
+        <div className="overflow-hidden rounded-lg border border-charcoal-brand/10 divide-y divide-charcoal-brand/[0.08]">
           {paymentMethods.map((pm) => {
             const selected = paymentMethodId === pm.id;
             return (
               <label
                 key={pm.id}
-                className={`flex cursor-pointer items-center gap-4 rounded-2xl p-5 transition-all duration-300 ${
+                className={`flex cursor-pointer items-center gap-3 border-l-[3px] py-3 pl-[13px] pr-4 transition-colors ${
                   selected
-                    ? 'bg-white shadow-sm ring-4 ring-teal-brand/20'
-                    : 'bg-sand-brand/30 hover:bg-white'
+                    ? 'border-l-teal-brand bg-teal-50/60'
+                    : 'border-l-transparent hover:bg-sand-brand/30'
                 }`}
               >
                 <input
@@ -178,54 +168,57 @@ export function OrderSummaryPanel({
                   onChange={() => onPaymentChange(pm.id)}
                   className="sr-only"
                 />
-                <span className="text-xl">{PM_ICONS[pm.id] ?? '💰'}</span>
-                <span className={`flex-1 font-headline font-bold ${selected ? 'text-charcoal-brand' : 'text-charcoal-brand/60'}`}>
+                <span className="text-base">{PM_ICONS[pm.id] ?? '💰'}</span>
+                <span className="flex-1 text-[13px] font-medium text-charcoal-brand">
                   {pm.name}
                   {pm.surchargePercent > 0 && (
-                    <span className="ml-2 text-xs font-medium text-charcoal-brand/40">
+                    <span className="ml-1.5 rounded-full bg-charcoal-brand/[0.08] px-1.5 py-0.5 text-[11px] font-medium text-charcoal-brand/50">
                       +{pm.surchargePercent}% surcharge
                     </span>
                   )}
                 </span>
-                <div className={`h-6 w-6 rounded-full border-4 ${
-                  selected ? 'border-teal-brand bg-white' : 'border-sand-brand bg-white'
-                }`} />
+                {/* Custom radio indicator */}
+                <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
+                  selected ? 'border-teal-brand bg-teal-brand' : 'border-charcoal-brand/20 bg-white'
+                }`}>
+                  {selected && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
+                </div>
               </label>
             );
           })}
         </div>
+      </div>
 
-        <PrimaryCtaButton
+      {/* ── Place Order ── */}
+      <div className="border-t border-charcoal-brand/10 px-5 pb-5 pt-4 md:px-6">
+        <button
           type="button"
           onClick={onPlaceOrder}
           disabled={submitting}
-          className="mt-8 flex w-full items-center justify-center gap-3 py-5 font-headline text-xl font-black"
+          className="w-full rounded-lg bg-teal-brand py-[13px] text-[15px] font-medium text-white transition-colors hover:bg-[#00496a] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {submitting ? (
-            <span className="inline-flex items-center gap-2">
-              <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-charcoal-brand border-t-transparent" />
+            <span className="inline-flex items-center justify-center gap-2">
+              <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
               Processing…
             </span>
           ) : (
-            <>🐾 Place Order</>
+            '🐾  Place Order'
           )}
-        </PrimaryCtaButton>
-
-        <p className="mt-4 text-center text-[10px] font-black uppercase tracking-[0.3em] text-charcoal-brand/40">
-          Secure Encrypted Checkout
+        </button>
+        <p className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-charcoal-brand/40">
+          🔒 Secure encrypted checkout
         </p>
-      </section>
+      </div>
     </div>
   );
 }
 
-function Row({ label, amount, muted }: { label: string; amount: number; muted?: boolean }) {
+function Row({ label, amount }: { label: string; amount: number }) {
   return (
-    <div className="flex items-center justify-between text-charcoal-brand/80">
-      <span className="font-medium">{label}</span>
-      <span className={`font-headline font-black ${muted ? 'text-charcoal-brand/50' : ''}`}>
-        {formatCurrency(amount)}
-      </span>
+    <div className="flex items-baseline justify-between">
+      <span className="text-[13px] text-charcoal-brand/60">{label}</span>
+      <span className="text-[14px] font-medium text-charcoal-brand">{formatCurrency(amount)}</span>
     </div>
   );
 }

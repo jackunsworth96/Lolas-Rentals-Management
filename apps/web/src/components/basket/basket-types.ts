@@ -11,10 +11,23 @@ export interface Addon {
 }
 
 export interface TransferDetails {
-  transferType: 'shared' | 'private';
+  /** Submitted to backend — 'shared', 'private', or 'tuktuk' */
+  transferType: 'shared' | 'private' | 'tuktuk';
+  /** Route text from DB (submitted to backend) */
+  transferRoute: string;
   flightNumber: string;
   flightArrivalTime: string;
-  transferRoute: string;
+  /** DB primary key from transfer_routes */
+  transferRouteId: number;
+  /** Raw van_type string from DB */
+  vanType: string;
+  pricingType: 'fixed' | 'per_head';
+  /** Unit price from DB */
+  unitPrice: number;
+  /** 1 for fixed pricing; user-set for per_head */
+  paxCount: number;
+  /** unitPrice * paxCount for per_head, unitPrice for fixed */
+  totalPrice: number;
 }
 
 export interface RenterInfo {

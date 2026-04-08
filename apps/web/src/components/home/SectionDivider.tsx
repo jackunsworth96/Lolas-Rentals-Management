@@ -32,7 +32,7 @@ export default function SectionDivider({ variant = 'dash', flip = false }: Secti
           width: '100%',
           height: 'auto',
           display: 'block',
-          minWidth: 800,
+          minWidth: 0,
           margin: 0,
           padding: 0,
         }}

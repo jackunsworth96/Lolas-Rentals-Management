@@ -143,7 +143,12 @@ export default function PawCardPage() {
 
       {/* ── Partner logos marquee ── */}
       <div className="pb-2 pt-4">
-        <InclusionMarquee items={PARTNER_LOGOS} speed={90} naked iconSize={96} />
+        <InclusionMarquee
+          items={PARTNER_LOGOS}
+          speed={90}
+          iconSize={96}
+          knockOutIconWhiteMatte={false}
+        />
       </div>
 
       {/* ── Fixed floral decorations (portal to body so they float above all sections) ── */}

@@ -25,7 +25,7 @@ interface ConfirmationState {
   grandTotal: number;
   depositAmount: number;
   addonNames: string[];
-  transferType?: 'shared' | 'private' | null;
+  transferType?: 'shared' | 'private' | 'tuktuk' | null;
   flightNumber?: string | null;
   transferRoute?: string | null;
   charityDonation?: number;
@@ -128,10 +128,9 @@ export default function ConfirmationPage() {
                   />
                 </div>
                 <div
-                  className={`absolute left-1/2 top-[88%] -mt-4 -translate-x-1/2 whitespace-nowrap transition-all duration-500 ${
+                  className={`font-lato absolute left-1/2 top-[88%] -mt-4 -translate-x-1/2 whitespace-nowrap transition-all duration-500 ${
                     pillVisible ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'
                   }`}
-                  className="font-lato"
                   style={{
                     backgroundColor: '#FCBC5A',
                     color: '#363737',
@@ -173,6 +172,9 @@ export default function ConfirmationPage() {
                       color: '#363737',
                       borderBottom: '4px solid #FCBC5A',
                       paddingBottom: '4px',
+                      overflowWrap: 'break-word',
+                      wordBreak: 'break-all',
+                      maxWidth: '100%',
                     }}
                   >
                     {refDisplay}

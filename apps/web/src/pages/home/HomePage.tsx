@@ -5,24 +5,22 @@ import { FleetPreviewSection } from '../../components/home/FleetPreviewSection.j
 import TiltedCard from '../../components/home/TiltedCard.js';
 import InclusionMarquee from '../../components/home/InclusionMarquee.js';
 import iconCommunity from '../../assets/Hand on Heart.svg';
-import iconReady from '../../assets/Peace of Mind Icon.svg';
-import iconBenefits from '../../assets/Paw Card Icon.svg';
-import iconHelmet from '../../assets/Helmet Icon.svg';
-import iconFuel from '../../assets/Fuel Icon.svg';
-import iconPawCard from '../../assets/Paw Card Icon.svg';
-import iconCoat from '../../assets/Coat Icon.svg';
-import iconFirstAid from '../../assets/First Aid Icon.svg';
-import iconRepairKit from '../../assets/Repair Kit Icon.svg';
-import iconPhoneMount from '../../assets/Phone Mount Icon.svg';
-import iconCloth from '../../assets/Cloth Icon.svg';
-import iconDryBag from '../../assets/Dry Bag Icon.svg';
-import iconLesson from '../../assets/Lesson Icon.svg';
-import iconCrashGuard from '../../assets/Crash Guard Icon.svg';
-import iconPeaceOfMind from '../../assets/Peace of Mind Icon.svg';
-import iconSurfRack from '../../assets/Surf Rack Icon.svg';
-import iconBungee from '../../assets/Bingee Cord Icon.svg';
-import iconDelivery from '../../assets/Delivery Collection Icon.svg';
-import iconNinePm from '../../assets/9PM Return Icon.svg';
+import iconPeaceOfMind from '../../assets/Home/Peace of Mind.svg';
+import iconHelmet from '../../assets/Home/Helmet Icon.svg';
+import iconFuel from '../../assets/Home/Fuel Icon.svg';
+import iconPawCard from '../../assets/Home/Paw Card Icon.svg';
+import iconCoat from '../../assets/Home/Coat Icon.svg';
+import iconFirstAid from '../../assets/Home/First Aid Icon.svg';
+import iconRepairKit from '../../assets/Home/Repair Kit Icon.svg';
+import iconPhoneMount from '../../assets/Home/Phone Mount Icon.svg';
+import iconCloth from '../../assets/Home/Cloth Icon.svg';
+import iconDryBag from '../../assets/Home/Dry Bag Icon.svg';
+import iconLesson from '../../assets/Home/Lesson Icon.svg';
+import iconCrashGuard from '../../assets/Home/Crash Guard Icon.svg';
+import iconSurfRack from '../../assets/Home/Surf Rack Icon.svg';
+import iconBungee from '../../assets/Home/Bungee Cord Icon.svg';
+import iconDelivery from '../../assets/Home/Delivery Collection Icon.svg';
+import iconNinePm from '../../assets/Home/9PM Return Icon.svg';
 import { PawCardCallout } from '../../components/home/PawCardCallout.js';
 import { ReviewsSection } from '../../components/home/ReviewsSection.js';
 import Stack from '../../components/home/Stack.js';
@@ -34,6 +32,8 @@ import stepIcon2 from '../../assets/Step_2_How_Paw_Card_Works_-_Store_Icon.svg';
 import stepIcon3 from '../../assets/Step_3_How_Paw_Card_Works_Calculator_Icon.svg';
 import stepIcon4 from '../../assets/Step_4_How_Paw_Card_Works_-_Lola_Cartoon_Icon.svg';
 import bepawsitiveLogo from '../../assets/Be Pawsitive (blue).svg';
+import tickIcon from '../../assets/Home/Tick Icon.svg';
+import pesoIcon from '../../assets/Home/Peso Icon.svg';
 import pawDivider from '../../assets/Paw Divider.svg';
 import lolasLogo from '../../assets/Lolas Original Logo.svg';
 const bePawImages = (Object.entries(
@@ -558,7 +558,7 @@ export default function HomePage() {
                 fontWeight: 700,
               }}
             >
-              Every Rental
+              Every Scooter Rental
             </p>
             <h2
               className="font-headline font-bold"
@@ -580,13 +580,31 @@ export default function HomePage() {
                 color: '#363737',
                 opacity: 0.7,
                 maxWidth: 560,
-                margin: '0 auto 48px',
+                margin: '0 auto 20px',
               }}
             >
-              Everything included with every booking — optional upgrades marked with +
+              We&apos;re nerds for functionality, ensuring every rental is packed with the island essentials you need
+              for total convenience.
             </p>
+            <div
+              className="font-lato flex flex-wrap items-center justify-center gap-x-10 gap-y-3"
+              style={{ marginBottom: 40 }}
+            >
+              <span className="inline-flex items-center gap-2 text-[13px] font-semibold text-teal-brand">
+                <img src={tickIcon} alt="" className="h-5 w-5 shrink-0 object-contain" width={20} height={20} />
+                Included
+              </span>
+              <span className="inline-flex items-center gap-2 text-[13px] font-medium text-charcoal-brand/75">
+                <img src={pesoIcon} alt="" className="h-5 w-5 shrink-0 object-contain" width={20} height={20} />
+                Optional extra
+              </span>
+            </div>
           </div>
           <InclusionMarquee
+            iconSize={86}
+            knockOutIconWhiteMatte={false}
+            includedBadgeSrc={tickIcon}
+            optionalBadgeSrc={pesoIcon}
             items={[
               { icon: iconHelmet,      label: 'Helmet' },
               { icon: iconFuel,        label: 'Full Tank' },
@@ -599,11 +617,11 @@ export default function HomePage() {
               { icon: iconDryBag,      label: '5L Dry Bag' },
               { icon: iconLesson,      label: 'Riding Lesson' },
               { icon: iconCrashGuard,  label: 'Crash Armour' },
-              { icon: iconPeaceOfMind, label: '+ Peace of Mind', isUpgrade: true },
-              { icon: iconSurfRack,    label: '+ Surf Rack',     isUpgrade: true },
-              { icon: iconBungee,      label: '+ Bungee Cord',   isUpgrade: true },
-              { icon: iconDelivery,    label: '+ Delivery',      isUpgrade: true },
-              { icon: iconNinePm,      label: '+ Late Return',   isUpgrade: true },
+              { icon: iconPeaceOfMind, label: 'Peace of Mind', isUpgrade: true },
+              { icon: iconSurfRack,    label: 'Surf Rack',     isUpgrade: true },
+              { icon: iconBungee,      label: 'Bungee Cord',   isUpgrade: true },
+              { icon: iconDelivery,    label: 'Delivery',      isUpgrade: true },
+              { icon: iconNinePm,      label: 'Late Return',   isUpgrade: true },
             ]}
             speed={45}
           />
@@ -661,12 +679,12 @@ export default function HomePage() {
                 body="Every rental directly funds spay, neuter and vaccination clinics for Siargao's street animals through our BePawsitive partnership. We're not just a rental — we're part of the island."
               />
               <TiltedCard
-                icon={iconReady}
+                icon={iconPeaceOfMind}
                 title="Always Ready for You"
                 body="Our fleet is regularly serviced and safety checked. And if anything comes up during your rental, our team is always reachable and responsive — we've got you covered."
               />
               <TiltedCard
-                icon={iconBenefits}
+                icon={iconPawCard}
                 title="More Than Just a Rental"
                 body="Every booking comes loaded with inclusions — helmet, rain gear, first aid kit and more. Plus our Paw Card unlocks exclusive discounts at 70+ island establishments."
               />

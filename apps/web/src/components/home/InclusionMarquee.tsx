@@ -9,25 +9,35 @@ interface MarqueeItem {
 interface InclusionMarqueeProps {
   items: MarqueeItem[];
   speed?: number; // seconds for one full loop
-  /** When true, renders logos without the white card background */
-  naked?: boolean;
-  /** Override the icon display size in px (default 72) */
+  /** Icon size in px (default 72) */
   iconSize?: number;
-  /** Override the edge-fade gradient colour (default #f1e6d6) */
+  /** Edge-fade gradient colour (default #f1e6d6) */
   fadeColor?: string;
+  /**
+   * When true (default), icons use `mix-blend-multiply` so white “matte” baked into many
+   * exported SVG/PNGs blends into sand-tone section backgrounds. Set false for full-colour
+   * logos where multiply would muddy colours (e.g. partner strip on Paw Card).
+   */
+  knockOutIconWhiteMatte?: boolean;
+  /** When both are set, a small tick/peso badge is shown centered under each item’s title. */
+  includedBadgeSrc?: string;
+  optionalBadgeSrc?: string;
 }
 
 export default function InclusionMarquee({
   items,
   speed = 40,
-  naked = false,
   iconSize = 72,
   fadeColor = '#f1e6d6',
+  knockOutIconWhiteMatte = true,
+  includedBadgeSrc,
+  optionalBadgeSrc,
 }: InclusionMarqueeProps) {
   const shouldReduce = useReducedMotion();
 
-  // Duplicate for seamless infinite loop
   const doubled = [...items, ...items];
+  const showKeyBadges = Boolean(includedBadgeSrc && optionalBadgeSrc);
+  const badgeSize = Math.round(iconSize * 0.22);
 
   return (
     <div
@@ -37,7 +47,6 @@ export default function InclusionMarquee({
         position: 'relative',
       }}
     >
-      {/* Left fade edge */}
       <div
         style={{
           position: 'absolute',
@@ -51,7 +60,6 @@ export default function InclusionMarquee({
         }}
       />
 
-      {/* Right fade edge */}
       <div
         style={{
           position: 'absolute',
@@ -65,7 +73,6 @@ export default function InclusionMarquee({
         }}
       />
 
-      {/* Scrolling track */}
       <div
         style={{
           display: 'flex',
@@ -82,62 +89,55 @@ export default function InclusionMarquee({
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: naked ? 0 : 12,
-              padding: naked ? `16px ${iconSize * 0.4}px` : '24px 32px',
-              minWidth: naked ? iconSize * 1.4 : 120,
+              gap: 10,
+              padding: `16px ${iconSize * 0.4}px`,
+              minWidth: iconSize * 1.4,
             }}
           >
-            {naked ? (
+            <div className="shrink-0" style={{ width: iconSize, height: iconSize }}>
               <img
                 src={item.icon}
                 alt={item.label}
+                className={knockOutIconWhiteMatte ? 'mix-blend-multiply' : undefined}
                 style={{
                   width: iconSize,
                   height: iconSize,
                   objectFit: 'contain',
-                  opacity: item.isUpgrade ? 0.5 : 1,
+                  opacity: item.isUpgrade ? 0.78 : 1,
                 }}
               />
-            ) : (
+            </div>
+            {item.label || showKeyBadges ? (
               <div
-                style={{
-                  width: iconSize,
-                  height: iconSize,
-                  backgroundColor: '#FFFFFF',
-                  borderRadius: 16,
-                  boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: 14,
-                  opacity: item.isUpgrade ? 0.7 : 1,
-                }}
+                className="flex flex-col items-center"
+                style={{ gap: item.label && showKeyBadges ? 6 : 0 }}
               >
-                <img
-                  src={item.icon}
-                  alt={item.label}
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'contain',
-                  }}
-                />
+                {item.label ? (
+                  <span
+                    className="font-lato"
+                    style={{
+                      fontSize: 12,
+                      fontWeight: item.isUpgrade ? 400 : 600,
+                      color: item.isUpgrade ? '#363737' : '#00577C',
+                      textAlign: 'center',
+                      whiteSpace: 'nowrap',
+                      opacity: item.isUpgrade ? 0.6 : 1,
+                    }}
+                  >
+                    {item.label}
+                  </span>
+                ) : null}
+                {showKeyBadges ? (
+                  <img
+                    src={item.isUpgrade ? optionalBadgeSrc! : includedBadgeSrc!}
+                    alt=""
+                    width={badgeSize}
+                    height={badgeSize}
+                    className="object-contain drop-shadow-sm"
+                    style={{ width: badgeSize, height: badgeSize }}
+                  />
+                ) : null}
               </div>
-            )}
-            {item.label ? (
-              <span
-                className="font-lato"
-                style={{
-                  fontSize: 12,
-                  fontWeight: item.isUpgrade ? 400 : 600,
-                  color: item.isUpgrade ? '#363737' : '#00577C',
-                  textAlign: 'center',
-                  whiteSpace: 'nowrap',
-                  opacity: item.isUpgrade ? 0.6 : 1,
-                }}
-              >
-                {item.label}
-              </span>
             ) : null}
           </div>
         ))}

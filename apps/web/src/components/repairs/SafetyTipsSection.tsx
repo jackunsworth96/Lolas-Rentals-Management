@@ -10,26 +10,28 @@ const TIPS = [
 
 export function SafetyTipsSection() {
   return (
-    <section className="mx-auto max-w-4xl px-6">
+    <div className="min-w-0">
       <FadeUpSection>
-        <div className="rounded-3xl bg-sand-brand/50 p-10 shadow-[0_20px_40px_rgba(62,73,70,0.06)] md:p-12">
-          <div className="mb-10 flex items-center gap-4">
+        <div className="space-y-6">
+          <div className="flex items-center gap-4">
             <span className="text-4xl text-gold-brand">🛡️</span>
             <h2 className="font-headline text-3xl font-bold text-teal-brand">Island Safety Tips</h2>
           </div>
-          <div className="space-y-8">
+          <ul className="grid list-none grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             {TIPS.map((t) => (
-              <div key={t.title} className="flex gap-6">
-                <span className="text-3xl text-gold-brand">{t.icon}</span>
-                <div>
-                  <h4 className="mb-1 text-lg font-bold text-charcoal-brand">{t.title}</h4>
-                  <p className="text-charcoal-brand/80">{t.body}</p>
-                </div>
-              </div>
+              <li key={t.title}>
+                <article className="flex h-full min-h-[220px] flex-col rounded-2xl bg-sand-brand/50 p-5 shadow-[0_12px_28px_rgba(62,73,70,0.08)]">
+                  <span className="mb-3 text-3xl text-gold-brand" aria-hidden>
+                    {t.icon}
+                  </span>
+                  <h3 className="mb-2 font-headline text-base font-bold text-charcoal-brand">{t.title}</h3>
+                  <p className="text-sm leading-relaxed text-charcoal-brand/85">{t.body}</p>
+                </article>
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
       </FadeUpSection>
-    </section>
+    </div>
   );
 }

@@ -77,7 +77,7 @@ export default {
           '0%': { transform: 'translateX(-220px)', opacity: '0' },
           '5%': { opacity: '1' },
           '90%': { opacity: '1' },
-          '100%': { transform: 'translateX(110vw)', opacity: '0' },
+          '100%': { transform: 'translateX(100vw)', opacity: '0' },
         },
         scooterDrive: {
           '0%': { transform: 'translateX(0%)' },

@@ -386,6 +386,7 @@ export function FleetPreviewSection() {
           opacity: 0.85,
           pointerEvents: 'none',
           zIndex: 0,
+          transform: 'translateY(1cm)',
         }}
       />
     </section>

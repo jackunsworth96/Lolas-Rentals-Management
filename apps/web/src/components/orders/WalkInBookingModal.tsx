@@ -232,10 +232,12 @@ export function WalkInBookingModal({ open, onClose }: Props) {
     setQuoteLoading(true);
     const apiBase = ((import.meta.env.VITE_API_URL as string | undefined) ?? '').replace(/\/+$/, '');
     const parsed: Record<string, number> = JSON.parse(addonIdsKey) as Record<string, number>;
-    const addonIdsParam = Object.entries(parsed)
+    const selectedAddonIdsList = Object.entries(parsed)
       .filter(([, qty]) => qty > 0)
-      .flatMap(([id, qty]) => Array(qty).fill(id) as string[])
-      .join(',');
+      .flatMap(([id, qty]) => Array(qty).fill(Number(id)) as number[]);
+    const addonParams = selectedAddonIdsList
+      .map((id) => `addonIds=${id}`)
+      .join('&');
     const url =
       `${apiBase}/public/booking/quote` +
       `?storeId=${storeId}` +
@@ -244,7 +246,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
       `&dropoffDatetime=${encodeURIComponent(dropoffDatetime)}` +
       `&pickupLocationId=${pickupLocationId}` +
       `&dropoffLocationId=${dropoffLocationId}` +
-      (addonIdsParam ? `&addonIds=${addonIdsParam}` : '');
+      (selectedAddonIdsList.length > 0 ? `&${addonParams}` : '');
     fetch(url, { signal: controller.signal })
       .then((r) => r.json())
       .then((d: { data?: QuoteBreakdown }) => {

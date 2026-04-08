@@ -10,7 +10,6 @@ import { RenterDetailsForm } from '../../components/basket/RenterDetailsForm.js'
 import { OrderSummaryPanel } from '../../components/basket/OrderSummaryPanel.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
-import { PawDivider } from '../../components/layout/PawDivider.js';
 import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
 import type { Addon, TransferDetails, RenterInfo, PaymentMethodOption } from '../../components/basket/basket-types.js';
 
@@ -153,8 +152,8 @@ export default function BasketPage() {
       });
   }, [storeId, singleModelId]);
 
-  const transferAddons = addons.filter((a) => a.name.toLowerCase().includes('transfer') || a.name.toLowerCase().includes('tuk'));
-  const standardAddons = addons.filter((a) => !transferAddons.includes(a));
+  // All addons passed to AddOnsSection — it filters out transfer-named items internally
+  const standardAddons = addons;
 
   function toggleAddon(id: number) {
     setSelectedAddonIds((prev) => {
@@ -175,7 +174,6 @@ export default function BasketPage() {
     if (transfer) {
       if (!transfer.flightNumber.trim()) te.flightNumber = 'Flight number is required';
       if (!transfer.flightArrivalTime) te.flightArrivalTime = 'Arrival time is required';
-      if (!transfer.transferRoute) te.transferRoute = 'Route is required';
     }
     setTransferErrors(te);
     return Object.keys(fe).length === 0 && Object.keys(te).length === 0;
@@ -185,14 +183,6 @@ export default function BasketPage() {
     if (!validate()) return;
     setSubmitting(true);
     const allAddonIds = [...selectedAddonIds];
-    if (transfer) {
-      const tAddon = transferAddons.find((a) =>
-        transfer.transferType === 'shared'
-          ? a.name.toLowerCase().includes('shared')
-          : a.name.toLowerCase().includes('private') || a.name.toLowerCase().includes('tuk'),
-      );
-      if (tAddon) allAddonIds.push(Number(tAddon.id));
-    }
     const orderRefs: string[] = [];
     let serverTotal = 0;
     try {
@@ -211,6 +201,9 @@ export default function BasketPage() {
             flightNumber: transfer?.flightNumber || undefined,
             flightArrivalTime: transfer?.flightArrivalTime || undefined,
             transferRoute: transfer?.transferRoute || undefined,
+            // Additional transfer fields (Zod strips unknown fields silently)
+            transferRouteId: transfer?.transferRouteId ?? undefined,
+            transferPaxCount: transfer?.paxCount ?? undefined,
             charityDonation: charityDonation > 0 ? charityDonation : undefined,
             webPaymentMethod: paymentMethodId || undefined,
           },
@@ -221,7 +214,7 @@ export default function BasketPage() {
       const selAddons = addons.filter((a) => selectedAddonIds.has(Number(a.id)));
       const clientTotal = basket.reduce((s, b) => s + b.dailyRate * rentalDays, 0)
         + selAddons.reduce((s, a) => s + (a.addonType === 'per_day' ? a.pricePerDay * rentalDays : a.priceOneTime), 0)
-        + (transfer ? (transferAddons.find((a) => (transfer.transferType === 'shared' ? a.name.toLowerCase().includes('shared') : a.name.toLowerCase().includes('tuk')))?.priceOneTime ?? 0) : 0)
+        + (transfer?.totalPrice ?? 0)
         + pickupFee + dropoffFee;
       const baseTotal = serverTotal > 0 ? serverTotal : clientTotal;
       const surchargeAmount = surchargePercent > 0
@@ -290,54 +283,53 @@ export default function BasketPage() {
 
   return (
     <PageLayout title="Basket | Lola's Rentals">
-      <div className="relative mx-auto max-w-5xl overflow-hidden">
+      <div className="relative mx-auto max-w-[1100px]">
         <HeroFloatingClouds variant="functional" />
-        <div className="relative z-10 grid grid-cols-1 gap-8 lg:grid-cols-12">
-          <div className="space-y-10 lg:col-span-7">
-            <section>
-              <div className="mb-6 flex items-center gap-3">
-                <span className="text-3xl">🏍️</span>
-                <h2 className="font-headline text-3xl font-black text-charcoal-brand">Your Selection</h2>
-              </div>
-              <div className="space-y-6">
+        <div className="relative z-10 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
+
+          {/* ── LEFT COLUMN (form sections) ── */}
+          <div className="order-2 space-y-6 lg:order-1">
+
+            {/* Your Selection */}
+            <div className="rounded-xl border border-charcoal-brand/10 bg-white p-5 md:p-6">
+              <h2 className="mb-4 text-[15px] font-medium text-charcoal-brand">Your Selection</h2>
+              <div className="space-y-4">
                 {basket.map((item) => (
                   <BasketVehicleCard key={item.holdId} item={item} rentalDays={rentalDays} pickupLabel={formatDate(pickupDatetime)} dropoffLabel={formatDate(dropoffDatetime)} onToast={pushToast} />
                 ))}
               </div>
-            </section>
+            </div>
 
-            <PawDivider size="sm" />
-
+            {/* Enhance Your Journey */}
             <FadeUpSection>
-              <section>
-                <h2 className="mb-6 font-headline text-2xl font-black italic text-charcoal-brand">Enhance Your Journey</h2>
+              <div className="rounded-xl border border-charcoal-brand/10 bg-white p-5 md:p-6">
+                <h2 className="mb-4 text-[15px] font-medium text-charcoal-brand">Enhance Your Journey</h2>
                 <AddOnsSection addons={standardAddons} loading={addonsLoading} selectedIds={selectedAddonIds} onToggle={toggleAddon} />
-              </section>
+              </div>
             </FadeUpSection>
 
-            {transferAddons.length > 0 && (
-              <FadeUpSection>
-                <section>
-                  <h2 className="mb-6 font-headline text-2xl font-black italic text-charcoal-brand">Need a Transfer?</h2>
-                  <TransferSection transferAddons={transferAddons} transfer={transfer} onTransferChange={setTransfer} errors={transferErrors} />
-                </section>
-              </FadeUpSection>
-            )}
-
-            <PawDivider size="sm" />
-
+            {/* Need a Transfer? */}
             <FadeUpSection>
-              <section>
-                <h2 className="mb-6 font-headline text-2xl font-black italic text-charcoal-brand">Renter Details</h2>
+              <div className="rounded-xl border border-charcoal-brand/10 bg-white p-5 md:p-6">
+                <h2 className="mb-4 text-[15px] font-medium text-charcoal-brand">Need a Transfer?</h2>
+                <TransferSection transfer={transfer} onTransferChange={setTransfer} errors={transferErrors} />
+              </div>
+            </FadeUpSection>
+
+            {/* Renter Details */}
+            <FadeUpSection>
+              <div className="rounded-xl border border-charcoal-brand/10 bg-white p-5 md:p-6">
+                <h2 className="mb-4 text-[15px] font-medium text-charcoal-brand">Renter Details</h2>
                 <RenterDetailsForm info={renter} onChange={setRenter} errors={formErrors} />
-              </section>
+              </div>
             </FadeUpSection>
           </div>
 
-          <div className="lg:col-span-5">
+          {/* ── RIGHT COLUMN (summary + payment — first on mobile) ── */}
+          <div className="order-1 lg:order-2">
             <OrderSummaryPanel
               basket={basket} rentalDays={rentalDays} selectedAddonIds={selectedAddonIds} addons={standardAddons}
-              transfer={transfer} transferAddons={transferAddons} pickupFee={pickupFee} dropoffFee={dropoffFee}
+              transfer={transfer} pickupFee={pickupFee} dropoffFee={dropoffFee}
               paymentMethodId={paymentMethodId} onPaymentChange={setPaymentMethodId}
               paymentMethods={paymentMethods} surchargePercent={surchargePercent}
               onPlaceOrder={handlePlaceOrder} submitting={submitting}

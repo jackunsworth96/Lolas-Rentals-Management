@@ -1,24 +1,107 @@
-import { useState } from 'react';
-import { PlaneTakeoff, PlaneLanding, Users, Car, Minus, Plus, CheckCircle2, MessageCircle, Loader2 } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { PlaneTakeoff, PlaneLanding, Minus, Plus, CheckCircle2, MessageCircle, Loader2 } from 'lucide-react';
 import { PageLayout } from '../components/layout/PageLayout.js';
 import { PageHeader } from '../components/public/PageHeader.js';
 import { PrimaryCtaButton } from '../components/public/PrimaryCtaButton.js';
 import { FadeUpSection } from '../components/public/FadeUpSection.js';
 import { today } from '../utils/date.js';
 import { WHATSAPP_URL } from '../config/contact.js';
+import { api } from '../api/client.js';
 
-const ROUTES = [
-  { value: 'General Luna → IAO Airport', icon: PlaneTakeoff, label: 'General Luna → IAO Airport', sub: 'Departing Siargao' },
-  { value: 'IAO Airport → General Luna', icon: PlaneLanding, label: 'IAO Airport → General Luna', sub: 'Arriving in Siargao' },
-] as const;
+/** Matches public standalone transfer booking (`public-transfers.ts`). */
+const TRANSFER_STORE_ID = 'store-lolas';
 
-const SHARED_PRICE = 330;
-const PRIVATE_PRICE = 2500;
+interface TransferRouteRow {
+  id: number;
+  route: string;
+  vanType: string | null;
+  price: number;
+  pricingType: string;
+  storeId: string | null;
+  isActive: boolean;
+}
 
-type VanType = 'Shared' | 'Private';
+type VanType = 'Shared' | 'Private' | 'TukTuk';
 
-function calcTotal(vanType: VanType, paxCount: number): number {
-  return vanType === 'Shared' ? SHARED_PRICE * paxCount : PRIVATE_PRICE;
+interface VanSelection {
+  transferRouteId: number;
+  vanType: VanType;
+  unitPrice: number;
+  pricingType: 'fixed' | 'per_head';
+  displayName: string;
+}
+
+function mapVanTypeMeta(vanType: string | null): {
+  displayName: string;
+  icon: string;
+  submitVan: VanType;
+  defaultPerHead: boolean;
+} {
+  const lower = (vanType ?? '').toLowerCase();
+  if (lower.includes('shared')) {
+    return { displayName: 'Shared Van', icon: '🚐', submitVan: 'Shared', defaultPerHead: true };
+  }
+  if (lower.includes('tuk')) {
+    return { displayName: 'Private TukTuk', icon: '🛺', submitVan: 'TukTuk', defaultPerHead: false };
+  }
+  return { displayName: 'Private Van', icon: '🚌', submitVan: 'Private', defaultPerHead: false };
+}
+
+function pricingFromRow(row: TransferRouteRow, meta: { defaultPerHead: boolean }): 'fixed' | 'per_head' {
+  const p = (row.pricingType ?? '').toLowerCase();
+  if (p === 'per_head') return 'per_head';
+  if (p === 'fixed') return 'fixed';
+  return meta.defaultPerHead ? 'per_head' : 'fixed';
+}
+
+function buildVanOptionsForRoute(rows: TransferRouteRow[]): Array<VanSelection & { icon: string }> {
+  const seen = new Set<string>();
+  const out: Array<VanSelection & { icon: string }> = [];
+  for (const row of rows) {
+    const key = (row.vanType ?? '').toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const meta = mapVanTypeMeta(row.vanType);
+    const pricingType = pricingFromRow(row, meta);
+    out.push({
+      transferRouteId: row.id,
+      vanType: meta.submitVan,
+      unitPrice: row.price,
+      pricingType,
+      displayName: meta.displayName,
+      icon: meta.icon,
+    });
+  }
+  return out;
+}
+
+/** Display order: Shared → TukTuk (center when three options) → Private */
+const VAN_DISPLAY_ORDER: Record<VanType, number> = {
+  Shared: 0,
+  TukTuk: 1,
+  Private: 2,
+};
+
+function sortVanOptionsForDisplay(options: Array<VanSelection & { icon: string }>) {
+  return [...options].sort((a, b) => VAN_DISPLAY_ORDER[a.vanType] - VAN_DISPLAY_ORDER[b.vanType]);
+}
+
+function calcTotal(selection: VanSelection, paxCount: number): number {
+  return selection.pricingType === 'per_head' ? selection.unitPrice * paxCount : selection.unitPrice;
+}
+
+function vanTypeLabel(v: VanType): string {
+  if (v === 'Shared') return 'Shared Van';
+  if (v === 'TukTuk') return 'Private TukTuk';
+  return 'Private Van';
+}
+
+function routeCardMeta(routeStr: string): { Icon: typeof PlaneTakeoff; label: string; sub: string } {
+  const first = routeStr.split(/→|->/).map((s) => s.trim().toLowerCase())[0] ?? '';
+  const outbound = first.includes('luna') || first.includes('general luna');
+  return outbound
+    ? { Icon: PlaneTakeoff, label: routeStr, sub: 'Departing Siargao' }
+    : { Icon: PlaneLanding, label: routeStr, sub: 'Arriving in Siargao' };
 }
 
 function normalizeApiBase(value: string | undefined): string {
@@ -40,8 +123,12 @@ const inputClass =
 export default function TransferBookingPage() {
   const [step, setStep] = useState<1 | 2>(1);
   const [route, setRoute] = useState<string | null>(null);
-  const [vanType, setVanType] = useState<VanType | null>(null);
+  const [vanSelection, setVanSelection] = useState<VanSelection | null>(null);
   const [paxCount, setPaxCount] = useState(1);
+
+  const [allRows, setAllRows] = useState<TransferRouteRow[]>([]);
+  const [routesLoading, setRoutesLoading] = useState(true);
+  const [routesError, setRoutesError] = useState<string | null>(null);
 
   const [customerName, setCustomerName] = useState('');
   const [contactNumber, setContactNumber] = useState('');
@@ -55,6 +142,45 @@ export default function TransferBookingPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
+  useEffect(() => {
+    let cancelled = false;
+    setRoutesLoading(true);
+    setRoutesError(null);
+    api
+      .get<TransferRouteRow[]>(`/public/booking/transfer-routes?storeId=${TRANSFER_STORE_ID}`)
+      .then((data) => {
+        if (!cancelled) setAllRows(data ?? []);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setRoutesError(err instanceof Error ? err.message : 'Failed to load transfer options');
+          setAllRows([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setRoutesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const uniqueRouteStrings = useMemo(() => {
+    const set = new Set(allRows.map((r) => r.route));
+    return Array.from(set).sort();
+  }, [allRows]);
+
+  const vanOptions = useMemo(() => {
+    if (!route) return [];
+    const forRoute = allRows.filter((r) => r.route === route);
+    return sortVanOptionsForDisplay(buildVanOptionsForRoute(forRoute));
+  }, [allRows, route]);
+
+  function onRoutePick(routeStr: string) {
+    setRoute(routeStr);
+    setVanSelection(null);
+    setPaxCount(1);
+  }
 
   function validateForm(): boolean {
     const errs: Record<string, string> = {};
@@ -67,7 +193,7 @@ export default function TransferBookingPage() {
   }
 
   async function handleSubmit() {
-    if (!validateForm() || !route || !vanType) return;
+    if (!validateForm() || !route || !vanSelection) return;
     setIsSubmitting(true);
     setSubmitError(null);
 
@@ -83,17 +209,17 @@ export default function TransferBookingPage() {
           flightTime: flightTime || null,
           paxCount,
           route,
-          vanType,
-          totalPrice: calcTotal(vanType, paxCount),
+          vanType: vanSelection.vanType,
+          totalPrice: calcTotal(vanSelection, paxCount),
           opsNotes: opsNotes.trim() || null,
         }),
       });
 
       if (!res.ok) {
-        const body = await res.json().catch(() => null) as Record<string, unknown> | null;
+        const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
         throw new Error(
           (body?.error as Record<string, string> | undefined)?.message
-          ?? 'Something went wrong. Please try again or WhatsApp us directly.',
+            ?? 'Something went wrong. Please try again or WhatsApp us directly.',
         );
       }
 
@@ -108,7 +234,7 @@ export default function TransferBookingPage() {
   function resetAll() {
     setStep(1);
     setRoute(null);
-    setVanType(null);
+    setVanSelection(null);
     setPaxCount(1);
     setCustomerName('');
     setContactNumber('');
@@ -121,7 +247,7 @@ export default function TransferBookingPage() {
     setFieldErrors({});
   }
 
-  if (isConfirmed) {
+  if (isConfirmed && vanSelection) {
     return (
       <PageLayout title="Booking Confirmed | Lola's Rentals">
         <div className="mx-auto max-w-2xl px-4 pt-8">
@@ -136,7 +262,7 @@ export default function TransferBookingPage() {
               <div className="mt-8 w-full rounded-2xl border border-charcoal-brand/10 bg-sand-brand p-5">
                 <div className="space-y-3 text-left font-lato text-sm">
                   <Row label="Route" value={route ?? ''} />
-                  <Row label="Van Type" value={vanType === 'Shared' ? 'Shared Van' : 'Private Van'} />
+                  <Row label="Van Type" value={vanSelection.displayName} />
                   <Row label="Date" value={serviceDate} />
                   <Row label="Time" value={flightTime} />
                   <Row label="Passengers" value={String(paxCount)} />
@@ -144,7 +270,7 @@ export default function TransferBookingPage() {
                     <div className="flex items-center justify-between">
                       <span className="font-semibold text-charcoal-brand">Total</span>
                       <span className="font-headline text-xl font-bold text-teal-brand">
-                        ₱{calcTotal(vanType!, paxCount).toLocaleString()}
+                        ₱{calcTotal(vanSelection, paxCount).toLocaleString()}
                       </span>
                     </div>
                   </div>
@@ -196,93 +322,186 @@ export default function TransferBookingPage() {
         {step === 1 && (
           <FadeUpSection>
             <div className="space-y-8">
-              {/* Route selection */}
-              <div>
-                <h3 className="mb-3 font-headline text-lg text-teal-brand">Choose your route</h3>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  {ROUTES.map((r) => (
-                    <button
-                      key={r.value}
-                      type="button"
-                      onClick={() => setRoute(r.value)}
-                      className={`text-left ${route === r.value ? cardSelected : cardUnselected}`}
-                    >
-                      <r.icon size={32} className="mb-3 text-teal-brand" />
-                      <p className="font-headline text-lg text-teal-brand">{r.label}</p>
-                      <p className="font-lato text-sm text-charcoal-brand/60">{r.sub}</p>
-                    </button>
+              {routesLoading && (
+                <div className="space-y-3">
+                  {[0, 1, 2].map((i) => (
+                    <div key={i} className="h-14 animate-pulse rounded-lg bg-sand-brand" />
                   ))}
                 </div>
-              </div>
+              )}
 
-              {/* Van type */}
-              <div>
-                <h3 className="mb-3 font-headline text-lg text-teal-brand">Choose your van</h3>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => setVanType('Shared')}
-                    className={`text-left ${vanType === 'Shared' ? cardSelected : cardUnselected}`}
-                  >
-                    <Users size={24} className="mb-2 text-teal-brand" />
-                    <p className="font-headline text-base text-teal-brand">Shared Van</p>
-                    <p className="font-lato text-sm text-charcoal-brand">₱330 per person</p>
-                    <p className="mt-1 font-lato text-xs text-charcoal-brand/60">Perfect for solo travellers and couples</p>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setVanType('Private')}
-                    className={`text-left ${vanType === 'Private' ? cardSelected : cardUnselected}`}
-                  >
-                    <Car size={24} className="mb-2 text-teal-brand" />
-                    <p className="font-headline text-base text-teal-brand">Private Van</p>
-                    <p className="font-lato text-sm text-charcoal-brand">₱2,500 total</p>
-                    <p className="mt-1 font-lato text-xs text-charcoal-brand/60">Ideal for families and groups up to 10</p>
-                  </button>
-                </div>
-              </div>
+              {!routesLoading && routesError && (
+                <p className="rounded-lg border border-red-200 bg-red-50 p-3 font-lato text-sm text-red-700">{routesError}</p>
+              )}
 
-              {/* Passenger count */}
-              <div>
-                <label className="mb-2 block font-lato text-sm font-semibold text-charcoal-brand">Passengers</label>
-                <div className="flex items-center gap-4">
-                  <button
-                    type="button"
-                    onClick={() => setPaxCount((c) => Math.max(1, c - 1))}
-                    className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-charcoal-brand/20 text-charcoal-brand transition-colors hover:border-teal-brand"
-                  >
-                    <Minus size={18} />
-                  </button>
-                  <span className="min-w-[2rem] text-center font-headline text-xl font-bold text-charcoal-brand">{paxCount}</span>
-                  <button
-                    type="button"
-                    onClick={() => setPaxCount((c) => Math.min(10, c + 1))}
-                    className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-charcoal-brand/20 text-charcoal-brand transition-colors hover:border-teal-brand"
-                  >
-                    <Plus size={18} />
-                  </button>
-                </div>
-                {vanType === 'Shared' && (
-                  <p className="mt-2 font-lato text-xs text-charcoal-brand/60">
-                    ₱330 × {paxCount} passenger{paxCount !== 1 ? 's' : ''}
-                  </p>
-                )}
-              </div>
+              {!routesLoading && !routesError && uniqueRouteStrings.length === 0 && (
+                <p className="font-lato text-sm text-charcoal-brand/70">
+                  No transfer routes are available right now. Please contact us on WhatsApp.
+                </p>
+              )}
 
-              {/* Continue */}
-              <PrimaryCtaButton
-                type="button"
-                onClick={() => setStep(2)}
-                disabled={!route || !vanType}
-                className="flex w-full items-center justify-center gap-2 py-3.5 font-bold"
-              >
-                Continue to Your Details →
-              </PrimaryCtaButton>
+              {!routesLoading && !routesError && uniqueRouteStrings.length > 0 && (
+                <>
+                  {/* Route selection */}
+                  <div>
+                    <h3 className="mb-3 font-headline text-lg text-teal-brand">Choose your route</h3>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      {uniqueRouteStrings.map((routeStr) => {
+                        const { Icon, label, sub } = routeCardMeta(routeStr);
+                        return (
+                          <button
+                            key={routeStr}
+                            type="button"
+                            onClick={() => onRoutePick(routeStr)}
+                            className={`text-left ${route === routeStr ? cardSelected : cardUnselected}`}
+                          >
+                            <Icon size={32} className="mb-3 text-teal-brand" />
+                            <p className="font-headline text-lg text-teal-brand">{label}</p>
+                            <p className="font-lato text-sm text-charcoal-brand/60">{sub}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Transport options — dynamic from API for selected route */}
+                  <div>
+                    <h3 className="mb-3 font-headline text-lg text-teal-brand">Choose your transport</h3>
+                    {!route && (
+                      <p className="font-lato text-sm text-charcoal-brand/50">Select a route first.</p>
+                    )}
+                    {route && vanOptions.length === 0 && (
+                      <p className="font-lato text-sm text-charcoal-brand/70">No van options for this route.</p>
+                    )}
+                    {route && vanOptions.length > 0 && (
+                      <div
+                        className={`grid grid-cols-1 gap-4 ${
+                          vanOptions.length >= 3 ? 'md:grid-cols-3' : 'md:grid-cols-2'
+                        }`}
+                      >
+                        {vanOptions.map((opt) => {
+                          const selected =
+                            vanSelection !== null && vanSelection.transferRouteId === opt.transferRouteId;
+                          const isTukTuk = opt.vanType === 'TukTuk';
+                          const priceLine =
+                            opt.pricingType === 'per_head'
+                              ? `₱${opt.unitPrice.toLocaleString()} per person`
+                              : `₱${opt.unitPrice.toLocaleString()} total`;
+                          const blurb =
+                            opt.vanType === 'Shared'
+                              ? 'Perfect for solo travellers and couples'
+                              : opt.vanType === 'TukTuk'
+                                ? 'Private three-wheel transfer'
+                                : 'Ideal for families and groups up to 10';
+                          const transportCardClass = isTukTuk
+                            ? `text-left rounded-2xl border-2 cursor-pointer transition-colors relative overflow-hidden p-0 ${
+                                selected
+                                  ? 'border-teal-brand bg-teal-brand/5 shadow-[0_8px_24px_rgba(62,124,120,0.12)] ring-2 ring-gold-brand/35'
+                                  : 'border-teal-brand/45 bg-cream-brand hover:border-teal-brand hover:shadow-md ring-1 ring-teal-brand/20'
+                              }`
+                            : selected
+                              ? cardSelected
+                              : cardUnselected;
+                          return (
+                            <button
+                              key={opt.transferRouteId}
+                              type="button"
+                              onClick={() => {
+                                setVanSelection({
+                                  transferRouteId: opt.transferRouteId,
+                                  vanType: opt.vanType,
+                                  unitPrice: opt.unitPrice,
+                                  pricingType: opt.pricingType,
+                                  displayName: opt.displayName,
+                                });
+                                if (opt.pricingType === 'per_head') {
+                                  setPaxCount((c) => Math.max(1, c));
+                                } else {
+                                  setPaxCount(1);
+                                }
+                              }}
+                              className={transportCardClass}
+                            >
+                              {isTukTuk && (
+                                <div className="bg-gradient-to-r from-teal-brand via-teal-brand to-teal-brand/90 py-2 text-center font-lato text-[10px] font-bold uppercase tracking-[0.2em] text-white">
+                                  Recommended
+                                </div>
+                              )}
+                              {isTukTuk ? (
+                                <div className="px-6 pb-6 pt-4">
+                                  <span className="mb-2 block text-2xl leading-none" aria-hidden>
+                                    {opt.icon}
+                                  </span>
+                                  <p className="font-headline text-base text-teal-brand">{opt.displayName}</p>
+                                  <p className="font-lato text-sm font-semibold text-charcoal-brand">{priceLine}</p>
+                                  <p className="mt-1 font-lato text-xs text-charcoal-brand/60">{blurb}</p>
+                                </div>
+                              ) : (
+                                <>
+                                  <span className="mb-2 block text-2xl leading-none" aria-hidden>
+                                    {opt.icon}
+                                  </span>
+                                  <p className="font-headline text-base text-teal-brand">{opt.displayName}</p>
+                                  <p className="font-lato text-sm text-charcoal-brand">{priceLine}</p>
+                                  <p className="mt-1 font-lato text-xs text-charcoal-brand/60">{blurb}</p>
+                                </>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Passenger count */}
+                  <div className="flex flex-col items-center text-center">
+                    <label className="mb-3 block font-lato text-sm font-semibold text-charcoal-brand">
+                      Passengers
+                    </label>
+                    <div className="flex items-center justify-center gap-5">
+                      <button
+                        type="button"
+                        onClick={() => setPaxCount((c) => Math.max(1, c - 1))}
+                        className="inline-flex h-11 min-w-[2.75rem] items-center justify-center rounded-lg bg-gold-brand px-3 text-charcoal-brand shadow-[0_2px_0_rgba(54,55,55,0.12)] transition hover:brightness-[0.97] active:translate-y-px active:shadow-none focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-brand focus-visible:ring-offset-2"
+                        aria-label="Decrease passengers"
+                      >
+                        <Minus size={18} strokeWidth={2.25} />
+                      </button>
+                      <span className="min-w-[2.5rem] text-center font-headline text-2xl font-bold text-teal-brand tabular-nums">
+                        {paxCount}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setPaxCount((c) => Math.min(10, c + 1))}
+                        className="inline-flex h-11 min-w-[2.75rem] items-center justify-center rounded-lg bg-gold-brand px-3 text-charcoal-brand shadow-[0_2px_0_rgba(54,55,55,0.12)] transition hover:brightness-[0.97] active:translate-y-px active:shadow-none focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-brand focus-visible:ring-offset-2"
+                        aria-label="Increase passengers"
+                      >
+                        <Plus size={18} strokeWidth={2.25} />
+                      </button>
+                    </div>
+                    {vanSelection?.pricingType === 'per_head' && (
+                      <p className="mt-3 max-w-sm font-lato text-xs text-charcoal-brand/60">
+                        ₱{vanSelection.unitPrice.toLocaleString()} × {paxCount} passenger{paxCount !== 1 ? 's' : ''}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Continue */}
+                  <PrimaryCtaButton
+                    type="button"
+                    onClick={() => setStep(2)}
+                    disabled={!route || !vanSelection || routesLoading}
+                    className="flex w-full items-center justify-center gap-2 py-3.5 font-bold"
+                  >
+                    Continue to Your Details →
+                  </PrimaryCtaButton>
+                </>
+              )}
             </div>
           </FadeUpSection>
         )}
 
-        {step === 2 && (
+        {step === 2 && vanSelection && (
           <FadeUpSection>
             <div className="space-y-6">
               <button
@@ -359,13 +578,13 @@ export default function TransferBookingPage() {
               <div className="rounded-2xl border border-charcoal-brand/10 bg-sand-brand p-5">
                 <div className="space-y-3 font-lato text-sm">
                   <Row label="Route" value={route ?? ''} />
-                  <Row label="Van Type" value={vanType === 'Shared' ? 'Shared Van' : 'Private Van'} />
+                  <Row label="Transport" value={vanTypeLabel(vanSelection.vanType)} />
                   <Row label="Passengers" value={String(paxCount)} />
                   <div className="border-t border-charcoal-brand/10 pt-3">
                     <div className="flex items-center justify-between">
                       <span className="font-semibold text-charcoal-brand">Total</span>
                       <span className="font-headline text-xl font-bold text-teal-brand">
-                        ₱{calcTotal(vanType!, paxCount).toLocaleString()}
+                        ₱{calcTotal(vanSelection, paxCount).toLocaleString()}
                       </span>
                     </div>
                   </div>
