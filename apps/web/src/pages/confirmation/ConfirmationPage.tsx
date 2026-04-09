@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { FileSignature } from 'lucide-react';
 import { api } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
 import { RentalSummaryCard } from '../../components/confirmation/RentalSummaryCard.js';
@@ -255,6 +256,20 @@ export default function ConfirmationPage() {
 
           {/* FULL WIDTH — tips + actions */}
           <div className="mt-8">
+            {state.orderReferences?.[0] ? (
+              <div className="mb-6 w-full">
+                <Link
+                  to={`/waiver/${state.orderReferences[0]}`}
+                  className="flex w-full items-center justify-center border-2 border-teal-brand py-3 px-6 font-lato font-bold text-teal-brand rounded-lg hover:bg-teal-brand/5"
+                >
+                  <FileSignature size={18} className="mr-2 shrink-0" aria-hidden />
+                  Complete your waiver before arrival
+                </Link>
+                <p className="mt-1 text-center font-lato text-xs text-charcoal-brand/50">
+                  Save time at pickup — takes 2 minutes
+                </p>
+              </div>
+            ) : null}
             <FadeUpSection>
               <Stepper initialStep={1} backButtonText="Back" nextButtonText="Next">
                 {(state.depositAmount ?? 0) > 0 && (

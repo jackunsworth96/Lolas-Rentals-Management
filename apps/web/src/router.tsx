@@ -39,6 +39,10 @@ const PrivacyPage = lazy(() => import('./pages/privacy/PrivacyPage.js'));
 const UIErrorsPage = lazy(() => import('./pages/ui-errors/UIErrorsPage.js'));
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage.js'));
 const DirectoryPage = lazy(() => import('./pages/directory/DirectoryPage.js'));
+const WaiverPage = lazy(() => import('./pages/waiver/WaiverPage.js'));
+const WaiverAgreementPage = lazy(() => import('./pages/waiver/WaiverAgreementPage.js'));
+const RefundPolicyPage = lazy(() => import('./pages/legal/RefundPolicyPage.js'));
+const PeaceOfMindPage = lazy(() => import('./pages/peace-of-mind/PeaceOfMindPage.js'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
@@ -78,7 +82,11 @@ export function AppRouter() {
         <Route path="/book/repairs" element={<RepairsPage />} />
         <Route path="/book/about" element={<AboutPage />} />
         <Route path="/book/privacy" element={<PrivacyPage />} />
+        <Route path="/book/waiver-agreement" element={<WaiverAgreementPage />} />
         <Route path="/book/transfer/:token" element={<PublicBookingPage />} />
+        <Route path="/waiver/:orderReference" element={<WaiverPage />} />
+        <Route path="/refund-policy" element={<RefundPolicyPage />} />
+        <Route path="/peace-of-mind" element={<PeaceOfMindPage />} />
 
         {/* Backoffice routes — protected */}
         <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>

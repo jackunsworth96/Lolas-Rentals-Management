@@ -30,7 +30,9 @@ import cors from 'cors';
 import { routes } from './routes/index.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { publicReviewsRoutes } from './routes/public-reviews.js';
+import { waiverRouter } from './routes/public-waiver.js';
 import { publicLimiter } from './middleware/rate-limit.js';
+import { authenticate } from './middleware/authenticate.js';
 
 import { SupabaseOrderRepository } from './adapters/supabase/order-repo.js';
 import { createOrderItemRepo } from './adapters/supabase/order-item-repo.js';
@@ -93,6 +95,9 @@ app.use(
     credentials: true,
   }),
 );
+// Waiver sign payloads include base64 signature data URLs (must run before global json limit).
+app.use('/api/public/waiver', express.json({ limit: '5mb' }));
+app.use('/api/waiver', express.json({ limit: '5mb' }));
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 
@@ -129,6 +134,9 @@ app.get('/health', (_req: Request, res: Response) => {
 });
 
 app.use('/api/public/reviews', publicLimiter, publicReviewsRoutes);
+
+app.use('/api/public/waiver', waiverRouter);
+app.use('/api/waiver', authenticate, waiverRouter);
 
 app.use('/api', routes);
 app.use('/api', (req: Request, res: Response) => {

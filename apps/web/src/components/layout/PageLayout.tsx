@@ -25,6 +25,10 @@ export interface PageLayoutProps {
    * referenced element’s top crosses a viewport threshold, then their offset stays fixed.
    */
   floralScrollFreezeRef?: RefObject<HTMLElement | null>;
+  /** Page shell behind nav + main (nav stays sand-brand). Default matches legacy sand. */
+  contentBackground?: 'sand' | 'cream' | 'light-cream';
+  /** Paint florals above main content (pointer-events-none; light opacity for readability). */
+  elevateFlorals?: boolean;
 }
 
 const NAV_ITEMS = [
@@ -55,6 +59,8 @@ export function PageLayout({
   showBasketIcon = false,
   fullBleed = false,
   floralScrollFreezeRef,
+  contentBackground = 'sand',
+  elevateFlorals = false,
 }: PageLayoutProps) {
   const { pathname } = useLocation();
   const basketCount = useBookingStore((s) => s.basket.length);
@@ -132,8 +138,8 @@ export function PageLayout({
   const isActive = (to: string) => (to === '/book' ? pathname === '/book' : pathname.startsWith(to));
 
   const floralOnTop = Boolean(floralScrollFreezeRef);
-  /** Below nav (z-50), above page content — main uses z-0 when parallax florals are on. */
-  const floralZ = floralOnTop ? 'z-[45]' : 'z-0';
+  /** Parallax / freeze only when ref is set; elevateFlorals only raises z-index + opacity. */
+  const floralZ = floralScrollFreezeRef ? 'z-[10]' : elevateFlorals ? 'z-[25]' : 'z-0';
   const leftFloralStyle = floralOnTop
     ? { transform: `translate3d(0, ${floralShift}px, 0)`, willChange: 'transform' as const }
     : undefined;
@@ -143,8 +149,13 @@ export function PageLayout({
 
   return (
     <div
-      className="relative min-h-screen overflow-x-clip font-body animate-page-fade-in"
-      style={{ background: '#f1e6d6' }}
+      className={`relative min-h-screen overflow-x-clip font-body animate-page-fade-in ${
+        contentBackground === 'light-cream'
+          ? 'bg-[#FAF6F0]'
+          : contentBackground === 'cream'
+            ? 'bg-cream-brand'
+            : 'bg-sand-brand'
+      }`}
     >
       <TopNav
         logo={logo}
@@ -171,8 +182,8 @@ export function PageLayout({
       <div className="h-16 shrink-0" aria-hidden="true" />
 
       <main
-        className={`relative overflow-x-hidden pb-8 ${fullBleed ? '' : 'px-4 pt-20'} ${
-          floralScrollFreezeRef ? 'z-0' : 'z-10'
+        className={`relative pb-8 ${fullBleed ? '' : 'px-4 pt-20'} ${
+          floralScrollFreezeRef ? 'z-20' : elevateFlorals ? 'z-0' : 'z-10'
         }`}
       >
         {children}
@@ -183,7 +194,9 @@ export function PageLayout({
         <img
           src={flowerLeft}
           alt=""
-          className={`pointer-events-none ${floralPosition} left-0 top-0 ${floralZ} w-32 object-contain md:w-48`}
+          className={`pointer-events-none ${floralPosition} left-0 top-0 ${floralZ} w-32 object-contain md:w-48 ${
+            floralOnTop || elevateFlorals ? 'opacity-[0.42]' : ''
+          }`}
           style={leftFloralStyle}
         />
       )}
@@ -191,12 +204,18 @@ export function PageLayout({
         <img
           src={flowerRight}
           alt=""
-          className={`pointer-events-none ${floralPosition} bottom-0 right-0 ${floralZ} w-32 object-contain md:w-48`}
+          className={`pointer-events-none ${floralPosition} bottom-0 right-0 ${floralZ} w-32 object-contain md:w-48 ${
+            floralOnTop || elevateFlorals ? 'opacity-[0.42]' : ''
+          }`}
           style={rightFloralStyle}
         />
       )}
 
-      <FadeUpSection className={floralScrollFreezeRef ? 'relative z-[48]' : ''}>
+      <FadeUpSection
+        className={
+          floralScrollFreezeRef ? 'relative z-[48]' : elevateFlorals ? 'relative z-[35]' : ''
+        }
+      >
         <footer className="w-full border-t border-sand-brand bg-cream-brand pb-32 pt-16 md:pb-16">
           <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-12 px-6 md:flex-row">
             <div className="max-w-xs space-y-4">
@@ -225,6 +244,21 @@ export function PageLayout({
                 </a>
                 <Link to="/book/privacy" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
                   Privacy
+                </Link>
+                <Link
+                  to="/book/waiver-agreement"
+                  className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand"
+                >
+                  Waiver Agreement
+                </Link>
+                <Link to="/refund-policy" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
+                  Refund Policy
+                </Link>
+                <Link
+                  to="/peace-of-mind"
+                  className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand"
+                >
+                  Peace of Mind Cover
                 </Link>
               </div>
               <div className="flex items-center gap-5">

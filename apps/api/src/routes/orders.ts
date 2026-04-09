@@ -72,6 +72,34 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
       }
     }
 
+    const bookingTokens = [
+      ...new Set(
+        (orders ?? [])
+          .map((o: Record<string, unknown>) => (o.booking_token as string | null) ?? null)
+          .filter((t): t is string => typeof t === 'string' && t.length > 0),
+      ),
+    ];
+
+    type WaiverRow = { order_reference: string; status: string; agreed_at: string | null; created_at: string };
+    const waiverByReference = new Map<string, { status: string; agreed_at: string | null }>();
+    if (bookingTokens.length > 0) {
+      const { data: waiverRows, error: waiverErr } = await sb
+        .from('waivers')
+        .select('order_reference, status, agreed_at, created_at')
+        .in('order_reference', bookingTokens);
+      if (waiverErr) throw new Error(`enriched waivers query failed: ${waiverErr.message}`);
+      const bestByRef = new Map<string, WaiverRow>();
+      for (const row of (waiverRows ?? []) as WaiverRow[]) {
+        const cur = bestByRef.get(row.order_reference);
+        if (!cur || (row.created_at ?? '') > (cur.created_at ?? '')) {
+          bestByRef.set(row.order_reference, row);
+        }
+      }
+      for (const [ref, row] of bestByRef) {
+        waiverByReference.set(ref, { status: row.status, agreed_at: row.agreed_at });
+      }
+    }
+
     const enriched = (orders ?? []).map((o: Record<string, unknown>) => {
       const customer = o.customers as { name: string; mobile: string | null; email: string | null } | null;
       const items = itemsByOrder.get(o.id as string) ?? [];
@@ -86,6 +114,9 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
       const totalPaidNum = totalPaid;
       const balanceDueComputed = Math.max(0, finalTotalNum - totalPaidNum);
 
+      const token = (o.booking_token as string) ?? null;
+      const waiverData = token ? waiverByReference.get(token) : undefined;
+
       return {
         id: o.id,
         storeId: o.store_id,
@@ -96,7 +127,7 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
         vehicleNames: vehicleNames || '—',
         returnDatetime,
         wooOrderId: (o.woo_order_id as string) ?? null,
-        bookingToken: (o.booking_token as string) ?? null,
+        bookingToken: token,
         finalTotal: finalTotalNum,
         balanceDue: balanceDueComputed,
         totalPaid: totalPaidNum,
@@ -105,6 +136,8 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
         status: o.status as string,
         webNotes: o.web_notes as string | null,
         paymentMethodId: o.payment_method_id as string | null,
+        waiverStatus: (waiverData?.status as 'pending' | 'signed' | 'expired' | undefined) ?? 'pending',
+        waiverSignedAt: waiverData?.agreed_at ?? null,
       };
     });
 

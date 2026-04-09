@@ -79,6 +79,32 @@ export default function ActivePage() {
       render: (r: EnrichedOrder) => r.bookingToken ?? r.wooOrderId ?? r.id.slice(0, 8),
     },
     {
+      key: 'waiverStatus',
+      header: 'Waiver',
+      render: (r: EnrichedOrder) => {
+        const s = r.waiverStatus ?? 'pending';
+        if (s === 'signed') {
+          return (
+            <span className="inline-flex items-center rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
+              Waiver ✓
+            </span>
+          );
+        }
+        if (s === 'expired') {
+          return (
+            <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-600">
+              Waiver expired
+            </span>
+          );
+        }
+        return (
+          <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+            Waiver ⚠
+          </span>
+        );
+      },
+    },
+    {
       key: 'customerName',
       header: 'Customer',
       render: (r: EnrichedOrder) => (

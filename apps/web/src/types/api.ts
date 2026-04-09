@@ -60,6 +60,8 @@ export interface EnrichedOrder {
   status: string;
   webNotes: string | null;
   paymentMethodId: string | null;
+  waiverStatus: 'pending' | 'signed' | 'expired';
+  waiverSignedAt: string | null;
 }
 
 export interface MaintenanceRecordSummary {

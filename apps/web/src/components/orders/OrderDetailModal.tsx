@@ -1,4 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Modal } from '../common/Modal.js';
 import { Badge } from '../common/Badge.js';
 import { ExtendOrderModal } from './ExtendOrderModal.js';
@@ -7,9 +9,18 @@ import { useFleet } from '../../api/fleet.js';
 import { usePaymentMethods, useChartOfAccounts, useFleetStatuses, useAddons } from '../../api/config.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { usePaymentRouting } from '../../hooks/use-payment-routing.js';
-import { formatDate } from '../../utils/date.js';
+import { formatDate, formatDateTime } from '../../utils/date.js';
 import type { EnrichedOrder } from '../../types/api.js';
 import { useCustomerPawCardSavings } from '../../api/paw-card.js';
+import { useToast } from '../../hooks/useToast.js';
+import { useAuthStore } from '../../stores/auth-store.js';
+
+function waiverFetchApiBase(): string {
+  const raw = (import.meta.env.VITE_API_URL as string | undefined)?.trim() || '/api';
+  const base = raw.replace(/\/+$/, '');
+  if (base.startsWith('http')) return base.endsWith('/api') ? base : `${base}/api`;
+  return base || '/api';
+}
 
 function moneyAmount(val: unknown): number {
   if (val == null) return 0;
@@ -94,6 +105,10 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
 
   // ── Extend booking state ──
   const [extendOpen, setExtendOpen] = useState(false);
+
+  const { toasts, pushToast } = useToast();
+  const canEditOrders = useAuthStore((s) => s.hasPermission('can_edit_orders'));
+  const [sendingWaiverLink, setSendingWaiverLink] = useState(false);
 
   const isActive = order && String(order.status?.value ?? order.status) === 'active';
   const canAct = isActive && !readOnly;
@@ -474,6 +489,44 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
   const surcharge = enrichedData?.cardFeeSurcharge ?? moneyAmount(order.cardFeeSurcharge);
   const paymentMethodName = order.paymentMethodId ? pmLookup.get(order.paymentMethodId)?.name ?? order.paymentMethodId : null;
 
+  const waiverStatus = enrichedData?.waiverStatus ?? 'pending';
+  const waiverSignedAt = enrichedData?.waiverSignedAt ?? null;
+  const orderRefForWaiver = enrichedData?.bookingToken ?? null;
+
+  const sendWaiverLinkToClipboard = async () => {
+    if (!orderRefForWaiver || sendingWaiverLink) return;
+    const token = useAuthStore.getState().token;
+    if (!token) {
+      pushToast('You must be signed in to send a waiver link.', 'error');
+      return;
+    }
+    setSendingWaiverLink(true);
+    try {
+      const res = await fetch(`${waiverFetchApiBase()}/waiver/send-link`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ orderReference: orderRefForWaiver }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { url?: string; error?: { message?: string }; success?: boolean };
+      if (!res.ok) {
+        throw new Error(json?.error?.message ?? `Request failed (${res.status})`);
+      }
+      const url = json?.url;
+      if (!url || typeof url !== 'string') {
+        throw new Error('No waiver URL returned');
+      }
+      await navigator.clipboard.writeText(url);
+      pushToast('Waiver link copied to clipboard', 'success');
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : 'Could not copy waiver link', 'error');
+    } finally {
+      setSendingWaiverLink(false);
+    }
+  };
+
   const itemsList = items as Array<{ id: string; vehicleId: string; vehicleName: string; pickupDatetime: string; dropoffDatetime: string; rentalDaysCount: number; rentalRate: number; pickupFee?: number; dropoffFee?: number; discount?: number }>;
   const rentalSubtotal = itemsList.reduce((sum, i) => sum + (i.rentalRate ?? 0) * (i.rentalDaysCount ?? 0), 0);
   const addonTotal = (orderAddons ?? []).reduce((sum, a) => sum + (a.totalAmount ?? 0), 0);
@@ -487,6 +540,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
   ];
 
   return (
+    <>
     <Modal open onClose={onClose} title={`Order — ${customerName}`} size="xl">
       <div className="mb-4 flex gap-2 border-b border-gray-200">
         {tabs.map((t) => (
@@ -519,6 +573,47 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                   </div>
                 )}
               </div>
+
+              {enrichedData && (
+                <div className="min-w-0 max-w-xs">
+                  <div className="rounded-lg border border-gray-200 bg-white p-4">
+                    <div className="text-xs font-medium uppercase text-gray-500">Waiver</div>
+                    {waiverStatus === 'signed' ? (
+                      <div className="mt-2 flex items-start gap-2">
+                        <CheckCircle2 className="h-5 w-5 shrink-0 text-green-600" aria-hidden />
+                        <div>
+                          <div className="text-sm font-semibold text-gray-900">Waiver signed</div>
+                          {waiverSignedAt && (
+                            <div className="text-xs text-gray-600">{formatDateTime(waiverSignedAt)}</div>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-2">
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" aria-hidden />
+                          <div className="text-sm font-semibold text-gray-900">
+                            {waiverStatus === 'expired' ? 'Waiver expired' : 'Waiver not yet signed'}
+                          </div>
+                        </div>
+                        {orderRefForWaiver && canEditOrders ? (
+                          <button
+                            type="button"
+                            disabled={sendingWaiverLink}
+                            onClick={() => void sendWaiverLinkToClipboard()}
+                            className="mt-3 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            {sendingWaiverLink ? 'Working…' : 'Send waiver link'}
+                          </button>
+                        ) : !orderRefForWaiver ? (
+                          <p className="mt-2 text-xs text-gray-500">No booking reference on this order.</p>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {vehicleNames && (
                 <div>
                   <div className="text-xs font-medium uppercase text-gray-500">Vehicle</div>
@@ -1276,5 +1371,23 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
         </div>
       )}
     </Modal>
+    {open &&
+      toasts.length > 0 &&
+      createPortal(
+        <div className="pointer-events-none fixed bottom-8 left-4 right-4 z-[calc(9999)] flex flex-col-reverse items-stretch gap-2 md:left-auto md:right-8 md:items-end">
+          {toasts.map((t) => (
+            <div
+              key={t.id}
+              className={`pointer-events-auto animate-toast-slide-up rounded-2xl px-5 py-3 text-sm font-bold shadow-lg ${
+                t.type === 'success' ? 'bg-teal-brand text-white' : 'bg-red-600 text-white'
+              }`}
+            >
+              {t.msg}
+            </div>
+          ))}
+        </div>,
+        document.body,
+      )}
+  </>
   );
 }

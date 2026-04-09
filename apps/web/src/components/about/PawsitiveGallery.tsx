@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { FadeUpSection } from '../public/FadeUpSection.js';
-import lolaLogo from '../../assets/Hero/logo-lola-rentals-1.svg';
+import lolasLogo from '../../assets/Lolas Original Logo.svg';
 import bePawsitiveLogo from '../../assets/Be Pawsitive (blue).svg';
 import CountUp from '../home/CountUp.js';
 
@@ -235,29 +235,36 @@ export function PawsitiveGallery() {
       <FadeUpSection>
         <section style={{ backgroundColor: '#f1e6d6', padding: '72px 5% 64px' }}>
           <div style={{ maxWidth: 760, margin: '0 auto', textAlign: 'center' }}>
-            {/* Collab logo strip — h 86.4px / 302px cap */}
-            <div
-              className="flex items-center justify-center"
-              style={{ gap: 30, marginBottom: 42 }}
-            >
-              <img
-                src={lolaLogo}
-                alt="Lola's Rentals"
-                className="h-[86.4px] w-auto object-contain"
-                style={{ maxWidth: 302 }}
-              />
+            {/* Full-width logo lockup — same as home: stacked × under Lola on narrow screens */}
+            <div className="mb-10 flex flex-col items-center justify-center gap-1 lg:mb-12 lg:flex-row lg:gap-5">
+              <div className="flex flex-col items-center gap-1">
+                <img src={lolasLogo} alt="Lola's Rentals" style={{ height: 68, width: 'auto' }} />
+                <span
+                  className="leading-none lg:hidden"
+                  style={{
+                    fontSize: 26,
+                    fontWeight: 800,
+                    color: '#363737',
+                    opacity: 0.4,
+                    fontFamily: 'Lato, sans-serif',
+                  }}
+                >
+                  ×
+                </span>
+              </div>
               <span
-                className="font-headline font-black"
-                style={{ fontSize: 33, color: '#363737', opacity: 0.35, lineHeight: 1 }}
+                className="hidden leading-none lg:inline"
+                style={{
+                  fontSize: 26,
+                  fontWeight: 800,
+                  color: '#363737',
+                  opacity: 0.4,
+                  fontFamily: 'Lato, sans-serif',
+                }}
               >
                 ×
               </span>
-              <img
-                src={bePawsitiveLogo}
-                alt="Be Pawsitive"
-                className="h-[86.4px] w-auto object-contain"
-                style={{ maxWidth: 302 }}
-              />
+              <img src={bePawsitiveLogo} alt="Be Pawsitive" style={{ height: 76, width: 'auto' }} />
             </div>
 
             <h2
