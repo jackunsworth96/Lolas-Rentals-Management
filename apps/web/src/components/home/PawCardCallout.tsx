@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import lolaFace from '../../assets/Lola Face Cartoon.svg';
+import pawPrint from '../../assets/Paw Print.svg';
 
 export function PawCardCallout() {
   return (
@@ -18,21 +18,26 @@ export function PawCardCallout() {
         minHeight: 400,
       }}
     >
-      {/* Lola mascot — inside top-right; white in asset blends away on teal */}
-      <img
-        src={lolaFace}
-        alt="Lola — our mascot"
+      {/* Raster inside SVG: tint via mask so fill is brand gold, rest transparent */}
+      <div
+        aria-hidden
         style={{
           position: 'absolute',
-          top: 12,
-          right: 12,
-          width: 108,
-          height: 108,
-          objectFit: 'contain',
-          objectPosition: 'center top',
-          zIndex: 2,
-          mixBlendMode: 'multiply',
+          top: 20,
+          right: 20,
+          width: 90,
+          height: 90,
           pointerEvents: 'none',
+          zIndex: 2,
+          backgroundColor: 'rgba(252, 188, 90, 0.25)',
+          WebkitMaskImage: `url(${pawPrint})`,
+          maskImage: `url(${pawPrint})`,
+          WebkitMaskRepeat: 'no-repeat',
+          maskRepeat: 'no-repeat',
+          WebkitMaskSize: 'contain',
+          maskSize: 'contain',
+          WebkitMaskPosition: 'center',
+          maskPosition: 'center',
         }}
       />
 
@@ -45,7 +50,7 @@ export function PawCardCallout() {
             lineHeight: 1.15,
             color: '#FFFFFF',
             marginBottom: 20,
-            paddingRight: 120,
+            paddingRight: 0,
           }}
         >
           Every Peso
@@ -63,9 +68,11 @@ export function PawCardCallout() {
             marginBottom: 32,
           }}
         >
-          Join the Paw Card program. Log your savings at 70+ partner businesses
-          and we match every peso as a donation to Be Pawsitive — Siargao&apos;s
-          local animal welfare NGO.
+          The Siargao Paw Card is a community discount and donation scheme. Customers who rent with
+          Lola&apos;s Rentals receive a card that gives them exclusive discounts at partner establishments across
+          the island. Every time a customer logs a saving, Lola&apos;s Rentals matches it peso-for-peso as a
+          charitable donation to Be Pawsitive — the local NGO running spay, neuter and vaccination programmes for
+          Siargao&apos;s street animals.
         </p>
       </div>
 
@@ -74,7 +81,6 @@ export function PawCardCallout() {
         style={{
           display: 'inline-flex',
           alignItems: 'center',
-          gap: 8,
           fontSize: 18,
           fontWeight: 700,
           color: '#FCBC5A',
@@ -89,8 +95,18 @@ export function PawCardCallout() {
           (e.currentTarget as HTMLAnchorElement).style.opacity = '1';
         }}
       >
-        Get Your Paw Card
-        <span style={{ transition: 'transform 0.2s ease' }}>🐾</span>
+        <span
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            lineHeight: 1.25,
+            textAlign: 'left',
+          }}
+        >
+          <span>Existing customer?</span>
+          <span style={{ fontStyle: 'italic' }}>Log in to your Paw Card.</span>
+        </span>
       </Link>
     </div>
   );

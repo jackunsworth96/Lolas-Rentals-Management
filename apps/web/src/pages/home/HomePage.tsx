@@ -528,7 +528,11 @@ function HeroSection() {
 }
 
 
+const PAW_CARD_STEPPER_STEPS = 4;
+
 export default function HomePage() {
+  const [pawCardStep, setPawCardStep] = useState(1);
+
   return (
     <PageLayout
       title="Lola's Rentals — Siargao Island"
@@ -852,12 +856,13 @@ export default function HomePage() {
         <div
           style={{
             maxWidth: 1280,
-            margin: '48px auto 0',
+            margin: 'calc(48px * 1.7) auto 0',
             padding: '0 5%',
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
             gap: 48,
             alignItems: 'stretch',
+            gridAutoRows: '1fr',
           }}
         >
           {/* LEFT — PawCardCallout */}
@@ -866,7 +871,18 @@ export default function HomePage() {
           </div>
 
           {/* RIGHT — How Paw Card Works Stepper */}
-          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              height: '100%',
+              backgroundColor: '#ffffff',
+              borderRadius: 20,
+              padding: '32px 40px 24px',
+              boxShadow: 'none',
+              border: '1px solid rgba(54,55,55,0.08)',
+            }}
+          >
             <p
               className="font-lato"
               style={{
@@ -890,7 +906,52 @@ export default function HomePage() {
             >
               How the Paw Card Works
             </h3>
-            <Stepper initialStep={1} backButtonText="Back" nextButtonText="Next">
+            <div style={{ position: 'relative', overflow: 'visible' }}>
+              {pawCardStep > 1 && (
+                <button
+                  type="button"
+                  aria-label="Previous step"
+                  onClick={() => setPawCardStep((s) => Math.max(1, s - 1))}
+                  style={{
+                    position: 'absolute',
+                    left: -20,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    width: 40,
+                    height: 40,
+                    borderRadius: '50%',
+                    backgroundColor: '#FCBC5A',
+                    border: '2px solid #363737',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    zIndex: 10,
+                  }}
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="#363737"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M10 12L6 8l4-4" />
+                  </svg>
+                </button>
+              )}
+              <Stepper
+                initialStep={1}
+                currentStep={pawCardStep}
+                onStepChange={setPawCardStep}
+                hideButtons
+                backButtonText="Back"
+                nextButtonText="Next"
+                stepCircleContainerClassName="home-paw-stepper-flush"
+              >
               <Step>
                 <div style={{ textAlign: 'center', padding: '8px 0' }}>
                   <img src={stepIcon1} alt="Paw Card" style={{ width: 80, height: 80, margin: '0 auto 16px', display: 'block', objectFit: 'contain', mixBlendMode: 'multiply' }} />
@@ -939,7 +1000,44 @@ export default function HomePage() {
                   </p>
                 </div>
               </Step>
-            </Stepper>
+              </Stepper>
+              {pawCardStep < PAW_CARD_STEPPER_STEPS && (
+                <button
+                  type="button"
+                  aria-label="Next step"
+                  onClick={() => setPawCardStep((s) => Math.min(PAW_CARD_STEPPER_STEPS, s + 1))}
+                  style={{
+                    position: 'absolute',
+                    right: -20,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    width: 40,
+                    height: 40,
+                    borderRadius: '50%',
+                    backgroundColor: '#FCBC5A',
+                    border: '2px solid #363737',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    zIndex: 10,
+                  }}
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="#363737"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M6 4l4 4-4 4" />
+                  </svg>
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </section>

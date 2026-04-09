@@ -1,6 +1,7 @@
 import React, {
   useState,
   useRef,
+  useEffect,
   useLayoutEffect,
   Children,
   type ReactNode,
@@ -19,6 +20,8 @@ interface RenderStepIndicatorProps {
 interface StepperProps {
   children: ReactNode;
   initialStep?: number;
+  /** Controlled step (1-based). When set, parent owns step via `onStepChange`. */
+  currentStep?: number;
   onStepChange?: (step: number) => void;
   onFinalStepCompleted?: () => void;
   stepCircleContainerClassName?: string;
@@ -31,6 +34,7 @@ interface StepperProps {
   nextButtonText?: string;
   disableStepIndicators?: boolean;
   renderStepIndicator?: (props: RenderStepIndicatorProps) => ReactNode;
+  hideButtons?: boolean;
 }
 
 export interface StepProps {
@@ -144,7 +148,7 @@ function StepIndicator({
   const isComplete = step < currentStep;
 
   let bgColor = '#f1e6d6';
-  if (isActive) bgColor = '#00577C';
+  if (isActive) bgColor = '#FCBC5A';
   if (isComplete) bgColor = '#00577C';
 
   return (
@@ -162,7 +166,7 @@ function StepIndicator({
             <polyline points="20 6 9 17 4 12" />
           </svg>
         ) : isActive ? (
-          <div className="active-dot" />
+          <span className="step-number">{step}</span>
         ) : (
           <span className="step-number">{step}</span>
         )}
@@ -191,6 +195,7 @@ function StepConnector({ isComplete }: StepConnectorProps) {
 export default function Stepper({
   children,
   initialStep = 1,
+  currentStep: currentStepProp,
   onStepChange,
   onFinalStepCompleted,
   stepCircleContainerClassName = '',
@@ -203,18 +208,35 @@ export default function Stepper({
   nextButtonText = 'Next',
   disableStepIndicators = false,
   renderStepIndicator,
+  hideButtons = false,
 }: StepperProps) {
-  const [currentStep, setCurrentStep] = useState(initialStep);
+  const [internalStep, setInternalStep] = useState(initialStep);
   const [direction, setDirection] = useState(1);
   const [isCompleted, setIsCompleted] = useState(false);
+  const prevResolvedStepRef = useRef<number | null>(null);
 
   const stepArray = Children.toArray(children);
   const totalSteps = stepArray.length;
 
+  const isControlled = currentStepProp !== undefined;
+  const currentStep = isControlled ? currentStepProp! : internalStep;
+
+  useEffect(() => {
+    if (prevResolvedStepRef.current === null) {
+      prevResolvedStepRef.current = currentStep;
+      return;
+    }
+    if (currentStep !== prevResolvedStepRef.current) {
+      setDirection(currentStep > prevResolvedStepRef.current ? 1 : -1);
+      prevResolvedStepRef.current = currentStep;
+    }
+  }, [currentStep]);
+
   const goToStep = (step: number) => {
     if (step < 1 || step > totalSteps) return;
-    setDirection(step > currentStep ? 1 : -1);
-    setCurrentStep(step);
+    if (!isControlled) {
+      setInternalStep(step);
+    }
     onStepChange?.(step);
   };
 
@@ -276,20 +298,22 @@ export default function Stepper({
         </StepContentWrapper>
 
         {/* Footer nav */}
-        <div className={`footer-container ${footerClassName}`}>
-          <div className={`footer-nav ${currentStep > 1 || isCompleted ? 'spread' : 'end'}`}>
-            {(currentStep > 1 || isCompleted) && (
-              <button className="back-button" onClick={handleBack} {...backButtonProps}>
-                {backButtonText}
-              </button>
-            )}
-            {!isCompleted && (
-              <button className="next-button" onClick={handleNext} {...nextButtonProps}>
-                {currentStep === totalSteps ? 'Finish' : nextButtonText}
-              </button>
-            )}
+        {!hideButtons && (
+          <div className={`footer-container ${footerClassName}`}>
+            <div className={`footer-nav ${currentStep > 1 || isCompleted ? 'spread' : 'end'}`}>
+              {(currentStep > 1 || isCompleted) && (
+                <button type="button" className="back-button" onClick={handleBack} {...backButtonProps}>
+                  {backButtonText}
+                </button>
+              )}
+              {!isCompleted && (
+                <button type="button" className="next-button" onClick={handleNext} {...nextButtonProps}>
+                  {currentStep === totalSteps ? 'Finish' : nextButtonText}
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
