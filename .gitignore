@@ -4,6 +4,13 @@ node_modules/
 apps/api/dist/
 apps/web/dist/
 packages/domain/dist/
+
+# Package build artifacts in src/
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
+packages/*/src/**/*.d.ts
+packages/*/src/**/*.d.ts.map
+
 .env
 .env.local
 *.log
