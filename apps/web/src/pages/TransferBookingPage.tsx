@@ -133,6 +133,7 @@ export default function TransferBookingPage() {
 
   const [customerName, setCustomerName] = useState('');
   const [contactNumber, setContactNumber] = useState('');
+  const [accommodation, setAccommodation] = useState('');
   const [flightNumber, setFlightNumber] = useState('');
   const [serviceDate, setServiceDate] = useState('');
   const [flightTime, setFlightTime] = useState('');
@@ -212,6 +213,7 @@ export default function TransferBookingPage() {
           route,
           vanType: vanSelection.vanType,
           totalPrice: calcTotal(vanSelection, paxCount),
+          accommodation: accommodation.trim() || null,
           opsNotes: opsNotes.trim() || null,
         }),
       });
@@ -239,6 +241,7 @@ export default function TransferBookingPage() {
     setPaxCount(1);
     setCustomerName('');
     setContactNumber('');
+    setAccommodation('');
     setFlightNumber('');
     setServiceDate('');
     setFlightTime('');
@@ -395,7 +398,7 @@ export default function TransferBookingPage() {
                                 ? 'Private three-wheel transfer'
                                 : 'Ideal for families and groups up to 10';
                           const transportCardClass = isTukTuk
-                            ? `w-full text-center rounded-2xl cursor-pointer transition-colors relative overflow-hidden p-0 border-0 shadow-none ring-0 outline-none focus-visible:ring-2 focus-visible:ring-gold-brand/55 focus-visible:ring-offset-2 ${
+                            ? `flex w-full flex-col items-center text-center rounded-2xl cursor-pointer transition-colors relative overflow-hidden p-0 border-0 shadow-none ring-0 outline-none focus-visible:ring-2 focus-visible:ring-gold-brand/55 focus-visible:ring-offset-2 ${
                                 selected ? 'bg-gold-brand/12' : 'bg-cream-brand hover:bg-gold-brand/[0.08]'
                               }`
                             : selected
@@ -420,16 +423,15 @@ export default function TransferBookingPage() {
                           const cardBody = (
                             <>
                               {isTukTuk && (
-                                <div className="bg-gold-brand py-2.5 text-center font-headline text-xs font-semibold tracking-wide text-charcoal-brand">
-                                  Best of Both?
+                                <div className="w-full self-stretch bg-gold-brand py-2.5 text-center font-headline text-xs font-semibold tracking-wide text-charcoal-brand">
+                                  Customer Favourite
                                 </div>
                               )}
                               {isTukTuk ? (
-                                <div className="flex flex-col items-center px-6 pb-6 pt-4">
+                                <div className="flex w-full flex-col items-center px-6 pb-6 pt-4 text-center">
                                   <span className="mb-2 block text-2xl leading-none" aria-hidden>
                                     {opt.icon}
                                   </span>
-                                  <p className="font-headline text-base text-teal-brand">{opt.displayName}</p>
                                   <p className="font-lato text-sm font-semibold text-charcoal-brand">{priceLine}</p>
                                   <p className="mt-1 max-w-[14rem] font-lato text-xs text-charcoal-brand/60">
                                     {blurb}
@@ -556,6 +558,22 @@ export default function TransferBookingPage() {
                     className={inputClass}
                   />
                 </Field>
+
+                <div>
+                  <label className="font-lato text-sm font-medium text-charcoal-brand">
+                    Hotel / Accommodation
+                  </label>
+                  <input
+                    type="text"
+                    value={accommodation}
+                    onChange={(e) => setAccommodation(e.target.value)}
+                    placeholder="e.g. Kalinaw Resort, General Luna"
+                    className="mt-1 w-full rounded-lg border border-charcoal-brand/20 bg-white px-4 py-2.5 font-lato text-sm text-charcoal-brand placeholder:text-charcoal-brand/40 focus:outline-none focus:ring-2 focus:ring-teal-brand/30"
+                  />
+                  <p className="mt-1 text-xs text-charcoal-brand/50">
+                    Optional — helps our driver find you
+                  </p>
+                </div>
 
                 <Field label="Flight Number" helper="Optional — helps us track your flight for delays">
                   <input

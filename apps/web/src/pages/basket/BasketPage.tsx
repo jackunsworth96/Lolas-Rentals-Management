@@ -156,6 +156,7 @@ export default function BasketPage() {
   const [renter, setRenter] = useState<RenterInfo>({ fullName: '', email: '', phone: '', nationality: '' });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [transferErrors, setTransferErrors] = useState<Record<string, string>>({});
+  const [helmetCount, setHelmetCount] = useState(1);
   const [paymentMethodId, setPaymentMethodId] = useState('');
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [paymentMethodError, setPaymentMethodError] = useState('');
@@ -287,6 +288,7 @@ export default function BasketPage() {
   const basketHasTuktuk = basket.some((b) =>
     b.modelName.toLowerCase().includes('tuk'),
   );
+  const showHelmetSelector = !basketHasTuktuk;
 
   const filteredAddons = standardAddons.filter((addon) => {
     const name = addon.name.toLowerCase();
@@ -365,6 +367,7 @@ export default function BasketPage() {
             transferPaxCount: transfer?.paxCount ?? undefined,
             charityDonation: charityDonation > 0 ? charityDonation : undefined,
             webPaymentMethod: paymentMethodId || undefined,
+            ...(showHelmetSelector ? { helmet_count: helmetCount } : {}),
           },
         );
         orderRefs.push(result.orderReference);
@@ -496,6 +499,28 @@ export default function BasketPage() {
                 <RenterDetailsForm info={renter} onChange={setRenter} errors={formErrors} />
               </div>
             </FadeUpSection>
+
+            {showHelmetSelector && (
+              <FadeUpSection>
+                <div className="rounded-xl border border-charcoal-brand/10 bg-white p-5 md:p-6">
+                  <h2 className="mb-1 text-[15px] font-medium text-charcoal-brand">Helmets</h2>
+                  <p className="mb-4 text-[13px] leading-relaxed text-charcoal-brand/60">
+                    One sanitised helmet included. Add a second?
+                  </p>
+                  <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-charcoal-brand/[0.12] bg-sand-brand/20 px-4 py-3 transition-colors hover:bg-sand-brand/35">
+                    <input
+                      type="checkbox"
+                      checked={helmetCount === 2}
+                      onChange={(e) => setHelmetCount(e.target.checked ? 2 : 1)}
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-charcoal-brand/25 text-teal-brand focus:ring-teal-brand"
+                    />
+                    <span className="text-[13px] font-medium leading-snug text-charcoal-brand">
+                      Request an additional helmet
+                    </span>
+                  </label>
+                </div>
+              </FadeUpSection>
+            )}
           </div>
 
           {/* ── RIGHT COLUMN (summary + payment) — below main on mobile, sidebar on lg ── */}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
@@ -11,7 +11,7 @@ import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
 
 import lolaVideo from '../../assets/Checkout_Lola.mp4';
 import pawPrint from '../../assets/Paw Print.svg';
-import { WHATSAPP_URL } from '../../config/contact.js';
+import { WHATSAPP_NUMBER, WHATSAPP_URL } from '../../config/contact.js';
 import { phoneIcon, locationIcon } from '../../components/public/customerContactIcons.js';
 
 interface ConfirmationState {
@@ -37,6 +37,13 @@ export default function ConfirmationPage() {
   const navigate = useNavigate();
   const { reference } = useParams<{ reference?: string }>();
   const clearBasket = useBookingStore((s) => s.clearBasket);
+
+  const basketHadTukRef = useRef<boolean | null>(null);
+  if (basketHadTukRef.current === null) {
+    basketHadTukRef.current = useBookingStore.getState().basket.some((b) =>
+      b.modelName.toLowerCase().includes('tuk'),
+    );
+  }
 
   const navState = location.state as ConfirmationState | null;
 
@@ -113,23 +120,25 @@ export default function ConfirmationPage() {
 
             {/* LEFT — hero identity (sticky on desktop) */}
             <div className="flex flex-col items-center text-center md:sticky md:top-8 md:self-start">
-              <div className="relative pb-10">
-                <div
-                  className="flex h-40 w-40 items-center justify-center overflow-hidden rounded-full"
-                  style={{ animation: 'bounce 3s ease-in-out infinite' }}
-                >
-                  <video
-                    src={lolaVideo}
-                    autoPlay
-                    loop
-                    muted
-                    playsInline
-                    className="h-full w-full object-cover"
-                    style={{ mixBlendMode: 'multiply' }}
-                  />
+              <div className="flex w-full flex-col items-center pt-10">
+                <div className="relative pb-2">
+                  <div
+                    className="flex h-40 w-40 items-center justify-center overflow-hidden rounded-full"
+                    style={{ animation: 'bounce 3s ease-in-out infinite' }}
+                  >
+                    <video
+                      src={lolaVideo}
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      className="h-full w-full object-cover"
+                      style={{ mixBlendMode: 'multiply' }}
+                    />
+                  </div>
                 </div>
                 <div
-                  className={`font-lato absolute left-1/2 top-[88%] -mt-4 -translate-x-1/2 whitespace-nowrap transition-all duration-500 ${
+                  className={`font-lato mb-4 whitespace-nowrap transition-all duration-500 ${
                     pillVisible ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'
                   }`}
                   style={{
@@ -195,6 +204,19 @@ export default function ConfirmationPage() {
                     )}
                   </button>
                 </div>
+                {state.orderReferences.length > 0 && (
+                  <a
+                    href={`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(`Hi Lola's! My booking ref is ${refDisplay}`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-[#25D366] text-white font-bold py-3 px-6 rounded-lg flex items-center justify-center gap-2 w-full mt-3"
+                  >
+                    <svg viewBox="0 0 24 24" width={16} height={16} fill="currentColor" aria-hidden>
+                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+                    </svg>
+                    Send my booking ref via WhatsApp
+                  </a>
+                )}
               </div>
 
               <div className="mb-3 flex w-full justify-center">
@@ -235,17 +257,19 @@ export default function ConfirmationPage() {
           <div className="mt-8">
             <FadeUpSection>
               <Stepper initialStep={1} backButtonText="Back" nextButtonText="Next">
-                <Step>
-                  <div style={{ textAlign: 'center', padding: '8px 0' }}>
-                    <span style={{ fontSize: 48, display: 'block', marginBottom: 16 }}>💰</span>
-                    <h4 className="font-headline font-bold" style={{ fontSize: 20, color: '#00577C', marginBottom: 8 }}>
-                      Cash Deposit at Pickup
-                    </h4>
-                    <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.6, opacity: 0.8 }}>
-                      Bring ₱{state.vehicleModelName?.toLowerCase().includes('tuktuk') ? '2,000' : '1,000'} cash for your refundable security deposit. This is returned when you drop off.
-                    </p>
-                  </div>
-                </Step>
+                {(state.depositAmount ?? 0) > 0 && (
+                  <Step>
+                    <div style={{ textAlign: 'center', padding: '8px 0' }}>
+                      <span style={{ fontSize: 48, display: 'block', marginBottom: 16 }}>💰</span>
+                      <h4 className="font-headline font-bold" style={{ fontSize: 20, color: '#00577C', marginBottom: 8 }}>
+                        Cash Deposit at Pickup
+                      </h4>
+                      <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.6, opacity: 0.8 }}>
+                        A refundable security deposit is required at pickup — ₱1,000 for scooters and ₱2,000 for tuktuks. This is returned in full when you drop off.
+                      </p>
+                    </div>
+                  </Step>
+                )}
                 <Step>
                   <div style={{ textAlign: 'center', padding: '8px 0' }}>
                     <img
@@ -281,7 +305,7 @@ export default function ConfirmationPage() {
                       Gear Included
                     </h4>
                     <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.6, opacity: 0.8 }}>
-                      Two sanitised helmets and a full tank of fuel are included with every rental. You&apos;re all set.
+                      Two sanitised helmets a full tank of fuel, island discounts and so much more included. Delivery and collection available across General Luna.
                     </p>
                   </div>
                 </Step>
@@ -298,6 +322,25 @@ export default function ConfirmationPage() {
                 </Step>
               </Stepper>
             </FadeUpSection>
+
+            {!basketHadTukRef.current && (
+              <div className="rounded-lg border border-charcoal-brand/10 bg-sand-brand/50 p-4 mt-4">
+                <p className="font-lato text-sm font-semibold text-charcoal-brand mb-1">
+                  International Driving Licence
+                </p>
+                <p className="font-lato text-sm text-charcoal-brand/70 mb-2">
+                  Riding in the Philippines requires a valid international driving licence or local Philippine licence.
+                </p>
+                <a
+                  href="https://go.idaoffers.com/aff_c?offer_id=13&aff_id=62491"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-lato text-sm font-medium text-teal-brand hover:underline"
+                >
+                  Get your international licence online →
+                </a>
+              </div>
+            )}
 
             <div className="mt-6 max-w-xs mx-auto">
               <button

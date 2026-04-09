@@ -32,6 +32,8 @@ export const SubmitDirectBookingRequestSchema = z.object({
     transferRoute: z.string().optional(),
     charityDonation: z.number().min(0).optional(),
     webPaymentMethod: z.string().optional(),
+    /** Requested helmet count for scooter/bike direct bookings (1 default, 2 if extra helmet requested). */
+    helmet_count: z.number().int().min(1).max(2).optional(),
 });
 /**
  * Zod schema for creating a direct booking in `orders_raw` (same as submit body minus session token).

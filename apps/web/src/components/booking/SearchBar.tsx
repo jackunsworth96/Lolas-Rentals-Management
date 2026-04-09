@@ -5,6 +5,7 @@ import { api } from '../../api/client.js';
 import { hasBookingDatetimeWithTime } from '../../utils/booking-datetime.js';
 import BorderGlow from '../home/BorderGlow.js';
 import { locationIcon } from '../public/customerContactIcons.js';
+import searchIcon from '../../assets/Original Assests/search_icon.svg';
 
 
 export interface LocationRow {
@@ -355,7 +356,14 @@ export function SearchBar({ onSearch, searching }: SearchBarProps) {
               {searching ? (
                 <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[#363737] border-t-transparent" />
               ) : (
-                <span>🔍</span>
+                <img
+                  src={searchIcon}
+                  alt=""
+                  className="h-4 w-4 shrink-0 object-contain"
+                  width={16}
+                  height={16}
+                  aria-hidden
+                />
               )}
               {searching ? 'Searching…' : 'Search Available Vehicles'}
             </button>

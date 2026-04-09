@@ -331,13 +331,12 @@ router.post('/confirm', validateBody(PublicExtendConfirmSchema), async (req, res
       newDropoffDatetime: string;
     };
     const overrideDailyRate = undefined;
-    const paymentStatus = 'unpaid' as const;
     const paymentMethod = undefined;
 
     const trimmedEmail = email.trim().toLowerCase();
     const sb = getSupabaseClient();
     const newDropoff = new Date(newDropoffDatetime);
-    const isPaid = paymentStatus === 'paid';
+    const isPaid = false;
 
     // Find the booking
     const { data: rawRows } = await sb

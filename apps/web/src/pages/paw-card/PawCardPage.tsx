@@ -154,8 +154,14 @@ export default function PawCardPage() {
       {/* ── Fixed floral decorations (portal to body so they float above all sections) ── */}
       {createPortal(
         <>
-          <img src={flower4} alt="" aria-hidden="true" className="pointer-events-none fixed left-0 top-1/3 w-24 object-contain opacity-60 md:w-40" style={{ zIndex: 15 }} />
-          <img src={aboutUsLowerRight} alt="" aria-hidden="true" className="pointer-events-none fixed right-0 top-1/2 w-24 object-contain opacity-60 md:w-40" style={{ zIndex: 15 }} />
+          <img
+            src={flower4}
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none fixed left-0 top-[20%] w-24 origin-top-left scale-[0.8] object-contain opacity-60 md:w-40"
+            style={{ zIndex: 0 }}
+          />
+          <img src={aboutUsLowerRight} alt="" aria-hidden="true" className="pointer-events-none fixed right-0 top-1/2 w-24 object-contain opacity-60 md:w-40" style={{ zIndex: 0 }} />
         </>,
         document.body,
       )}

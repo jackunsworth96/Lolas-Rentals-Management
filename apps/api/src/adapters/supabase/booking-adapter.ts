@@ -232,13 +232,19 @@ export function createBookingAdapter(): BookingPort {
     },
 
     async insertDirectBooking(input: DirectBookingInsert): Promise<DirectBookingResult> {
+      const payload: Record<string, unknown> | null = (() => {
+        const p: Record<string, unknown> = {};
+        if (input.webQuoteRaw != null) p.web_quote = input.webQuoteRaw;
+        if (input.helmetCount != null) p.helmet_count = input.helmetCount;
+        return Object.keys(p).length > 0 ? p : null;
+      })();
+
       const { data, error } = await sb
         .from('orders_raw')
         .insert({
           source: input.source,
           booking_channel: 'direct',
-          payload:
-            input.webQuoteRaw != null ? { web_quote: input.webQuoteRaw } : null,
+          payload,
           status: 'unprocessed',
           customer_name: input.customerName,
           customer_email: input.customerEmail,

@@ -150,7 +150,7 @@ router.post('/public-transfer-booking', validateBody(PublicTransferBookingSchema
         flightTime:     req.body.flightTime,
         paxCount:       req.body.paxCount,
         vanType:        req.body.vanType,
-        accommodation:  null,
+        accommodation:  req.body.accommodation ?? null,
         opsNotes:       req.body.opsNotes,
         totalPrice:     req.body.totalPrice,
         paymentMethod:  null,

@@ -51,6 +51,7 @@ export interface DirectBookingInsert {
   webQuoteRaw?: number | null;
   charityDonation?: number;
   webPaymentMethod?: string | null;
+  helmetCount?: number | null;
 }
 
 export interface DirectBookingResult {

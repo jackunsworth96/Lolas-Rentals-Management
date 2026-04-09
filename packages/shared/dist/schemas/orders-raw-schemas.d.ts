@@ -58,6 +58,8 @@ export declare const SubmitDirectBookingRequestSchema: z.ZodObject<{
     transferRoute: z.ZodOptional<z.ZodString>;
     charityDonation: z.ZodOptional<z.ZodNumber>;
     webPaymentMethod: z.ZodOptional<z.ZodString>;
+    /** Requested helmet count for scooter/bike direct bookings (1 default, 2 if extra helmet requested). */
+    helmet_count: z.ZodOptional<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     customerName: string;
     sessionToken: string;
@@ -76,6 +78,7 @@ export declare const SubmitDirectBookingRequestSchema: z.ZodObject<{
     transferRoute?: string | undefined;
     charityDonation?: number | undefined;
     webPaymentMethod?: string | undefined;
+    helmet_count?: number | undefined;
 }, {
     customerName: string;
     sessionToken: string;
@@ -94,6 +97,7 @@ export declare const SubmitDirectBookingRequestSchema: z.ZodObject<{
     transferRoute?: string | undefined;
     charityDonation?: number | undefined;
     webPaymentMethod?: string | undefined;
+    helmet_count?: number | undefined;
 }>;
 export type SubmitDirectBookingInput = z.infer<typeof SubmitDirectBookingRequestSchema>;
 /**
@@ -118,6 +122,8 @@ export declare const DirectBookingRequestSchema: z.ZodObject<Omit<{
     transferRoute: z.ZodOptional<z.ZodString>;
     charityDonation: z.ZodOptional<z.ZodNumber>;
     webPaymentMethod: z.ZodOptional<z.ZodString>;
+    /** Requested helmet count for scooter/bike direct bookings (1 default, 2 if extra helmet requested). */
+    helmet_count: z.ZodOptional<z.ZodNumber>;
 }, "sessionToken">, "strip", z.ZodTypeAny, {
     customerName: string;
     customerEmail: string;
@@ -135,6 +141,7 @@ export declare const DirectBookingRequestSchema: z.ZodObject<Omit<{
     transferRoute?: string | undefined;
     charityDonation?: number | undefined;
     webPaymentMethod?: string | undefined;
+    helmet_count?: number | undefined;
 }, {
     customerName: string;
     customerEmail: string;
@@ -152,6 +159,7 @@ export declare const DirectBookingRequestSchema: z.ZodObject<Omit<{
     transferRoute?: string | undefined;
     charityDonation?: number | undefined;
     webPaymentMethod?: string | undefined;
+    helmet_count?: number | undefined;
 }>;
 export type DirectBookingRequest = z.infer<typeof DirectBookingRequestSchema>;
 /**

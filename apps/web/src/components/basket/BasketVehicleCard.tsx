@@ -31,10 +31,14 @@ export function BasketVehicleCard({ item, rentalDays, pickupLabel, dropoffLabel,
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-charcoal-brand/10 bg-white animate-card-enter">
-      <div className="aspect-[16/9] w-full overflow-hidden bg-sand-brand">
+    <div className="min-w-0 max-w-full overflow-hidden rounded-xl border border-charcoal-brand/10 bg-white animate-card-enter">
+      <div className="aspect-[16/9] w-full min-w-0 max-h-48 max-w-full overflow-hidden rounded-lg bg-sand-brand md:max-h-none md:rounded-none">
         {imgSrc ? (
-          <img src={imgSrc} alt={item.modelName} className="h-full w-full object-cover" />
+          <img
+            src={imgSrc}
+            alt={item.modelName}
+            className="h-full w-full max-h-48 object-contain md:max-h-none md:object-cover"
+          />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
             <span className="text-5xl opacity-20">🏍️</span>

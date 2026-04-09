@@ -153,7 +153,7 @@ function HeroSection() {
   return (
     <section
       ref={heroRef}
-      className="relative overflow-y-hidden bg-sand-brand max-lg:overflow-x-visible lg:overflow-hidden"
+      className="relative bg-sand-brand max-lg:overflow-visible lg:overflow-hidden"
       style={{ minHeight: '560px', height: '70vh' }}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
@@ -627,7 +627,7 @@ export default function HomePage() {
               { icon: iconPeaceOfMind, label: 'Peace of Mind', isUpgrade: true },
               { icon: iconSurfRack,    label: 'Surf Rack',     isUpgrade: true },
               { icon: iconBungee,      label: 'Bungee Cord',   isUpgrade: true },
-              { icon: iconDelivery,    label: 'Delivery',      isUpgrade: true },
+              { icon: iconDelivery,    label: 'Delivery/Collection', isUpgrade: true },
               { icon: iconNinePm,      label: 'Late Return',   isUpgrade: true },
             ]}
             speed={45}
