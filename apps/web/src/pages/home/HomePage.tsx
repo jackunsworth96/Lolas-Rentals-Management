@@ -683,7 +683,7 @@ export default function HomePage() {
               <TiltedCard
                 icon={iconCommunity}
                 title="Rooted in Community"
-                body="Every rental directly funds spay, neuter and vaccination clinics for Siargao's street animals through our BePawsitive partnership. We're not just a rental — we're part of the island."
+                body="Every rental directly funds spay, neuter and vaccination clinics for Siargao's street animals through our Be Pawsitive partnership. We're not just a rental — we're part of the island."
               />
               <TiltedCard
                 icon={iconPeaceOfMind}
@@ -724,7 +724,7 @@ export default function HomePage() {
             >
               ×
             </span>
-            <img src={bepawsitiveLogo} alt="BePawsitive" style={{ height: 76, width: 'auto' }} />
+            <img src={bepawsitiveLogo} alt="Be Pawsitive" style={{ height: 76, width: 'auto' }} />
           </div>
 
           {/* ── Two-column: photos | counter + text ── */}
@@ -752,7 +752,7 @@ export default function HomePage() {
                     <img
                       key={i}
                       src={src}
-                      alt={`BePawsitive animal ${i + 1}`}
+                      alt={`Be Pawsitive animal ${i + 1}`}
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     />
                   ))}
@@ -805,7 +805,7 @@ export default function HomePage() {
               {/* Body text */}
               <p className="font-lato" style={{ fontSize: 16, color: '#363737', lineHeight: 1.7, marginBottom: 12, opacity: 0.8, maxWidth: 380 }}>
                 Every rental directly funds spay, neuter and vaccination clinics
-                for Siargao&apos;s street animals through our BePawsitive partnership.
+                for Siargao&apos;s street animals through our Be Pawsitive partnership.
               </p>
               <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.7, opacity: 0.65, marginBottom: 28, maxWidth: 380 }}>
                 It costs just ₱800 to spay or neuter a stray. Every booking makes a difference.
@@ -841,7 +841,7 @@ export default function HomePage() {
                   (e.currentTarget as HTMLAnchorElement).style.boxShadow = '4px 4px 0 #363737';
                 }}
               >
-                Learn About BePawsitive
+                Learn About Be Pawsitive
               </a>
             </div>
           </div>
@@ -923,7 +923,7 @@ export default function HomePage() {
                   </h4>
                   <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.6, opacity: 0.8 }}>
                     Every peso you save is matched by Lola&apos;s Rentals as a donation
-                    to BePawsitive — up to ₱100,000 per year.
+                    to Be Pawsitive — up to ₱100,000 per year.
                   </p>
                 </div>
               </Step>

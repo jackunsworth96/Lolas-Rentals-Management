@@ -129,6 +129,7 @@ export declare const PublicTransferBookingSchema: z.ZodObject<{
     vanType: z.ZodEnum<["Shared", "Private", "TukTuk"]>;
     totalPrice: z.ZodNumber;
     opsNotes: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+    token: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     serviceDate: string;
     customerName: string;
@@ -140,6 +141,7 @@ export declare const PublicTransferBookingSchema: z.ZodObject<{
     opsNotes: string | null;
     totalPrice: number;
     flightNumber: string | null;
+    token: string;
 }, {
     serviceDate: string;
     customerName: string;
@@ -148,6 +150,7 @@ export declare const PublicTransferBookingSchema: z.ZodObject<{
     paxCount: number;
     vanType: "Shared" | "Private" | "TukTuk";
     totalPrice: number;
+    token: string;
     flightTime?: string | null | undefined;
     opsNotes?: string | null | undefined;
     flightNumber?: string | null | undefined;

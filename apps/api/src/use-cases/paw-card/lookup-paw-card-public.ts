@@ -13,6 +13,10 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+function escapeIlike(value: string): string {
+  return value.replace(/[%_\\]/g, '\\$&');
+}
+
 /**
  * Public Paw Card access: renter if email matches `customers.email` or `orders_raw.customer_email`.
  */
@@ -34,7 +38,7 @@ export async function lookupPawCardPublicAccess(
   const { data, error } = await sb
     .from('orders_raw')
     .select('id, customer_name')
-    .ilike('customer_email', normalized)
+    .ilike('customer_email', escapeIlike(normalized))
     .limit(1)
     .maybeSingle();
 

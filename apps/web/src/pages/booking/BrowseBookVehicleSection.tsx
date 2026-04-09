@@ -71,17 +71,8 @@ export function BrowseBookVehicleSection({
           </div>
 
           {isLoading ? (
-            <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="animate-pulse rounded-4xl bg-sand-brand">
-                  <div className="h-64 rounded-t-4xl bg-sand-brand" />
-                  <div className="space-y-3 p-6">
-                    <div className="h-6 w-2/3 rounded bg-cream-brand" />
-                    <div className="h-4 w-1/3 rounded bg-cream-brand" />
-                    <div className="h-12 w-full rounded-3xl bg-cream-brand" />
-                  </div>
-                </div>
-              ))}
+            <div className="flex justify-center py-16" role="status" aria-label="Loading availability">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-teal-brand border-t-transparent" />
             </div>
           ) : pricedModels.length === 0 ? (
             <div className="rounded-4xl bg-cream-brand px-8 py-16 text-center">

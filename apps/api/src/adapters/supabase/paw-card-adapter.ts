@@ -23,14 +23,16 @@ function normalizeEmailForMatch(value: string): string {
   return value.trim().toLowerCase();
 }
 
-/**
- * Paw Card lookup: email / full_name use lowercased ILIKE patterns; order_id uses trimmed original
- * so IDs that differ only by letter case still match PostgreSQL `eq` semantics.
- */
+/** Escape %, _, and \ so they are treated as literals in PostgREST ILIKE patterns. */
+function escapePostgrestLike(value: string): string {
+  return value.replace(/[%_\\,()]/g, '\\$&');
+}
+
 function pawCardLookupOrFilter(rawQuery: string): string {
   const raw = rawQuery.trim();
-  const qLower = raw.toLowerCase();
-  return `email.ilike.%${qLower}%,full_name.ilike.%${qLower}%,order_id.eq.${raw}`;
+  const safe = escapePostgrestLike(raw.toLowerCase());
+  const safeRaw = escapePostgrestLike(raw);
+  return `email.ilike.%${safe}%,full_name.ilike.%${safe}%,order_id.eq.${safeRaw}`;
 }
 
 function looksLikeEmail(value: string): boolean {
@@ -96,10 +98,11 @@ export class SupabasePawCardAdapter implements PawCardPort {
       }
     }
 
+    const safeLower = escapePostgrestLike(qLower);
     const { data: custRows, error: custErr } = await sb
       .from('customers')
       .select('id, name, email, mobile')
-      .or(`email.ilike.%${qLower}%,mobile.ilike.%${qLower}%,name.ilike.%${qLower}%`);
+      .or(`email.ilike.%${safeLower}%,mobile.ilike.%${safeLower}%,name.ilike.%${safeLower}%`);
 
     if (!custErr) {
       for (const c of custRows ?? []) {
@@ -152,11 +155,12 @@ export class SupabasePawCardAdapter implements PawCardPort {
   async getLifetimeSavings(customerId: string): Promise<LifetimeSavings> {
     const sb = getSupabaseClient();
     const idNorm = normalizeEmailForMatch(customerId);
+    const safeId = escapePostgrestLike(idNorm);
 
     const { data, error } = await sb
       .from('paw_card_entries')
       .select('amount_saved')
-      .or(`email.ilike.%${idNorm}%,full_name.ilike.%${idNorm}%`);
+      .or(`email.ilike.%${safeId}%,full_name.ilike.%${safeId}%`);
 
     if (error) throw new Error(`getLifetimeSavings failed: ${error.message}`);
 
@@ -266,10 +270,11 @@ export class SupabasePawCardAdapter implements PawCardPort {
   async getMySubmissions(employeeId: string): Promise<PawCardEntry[]> {
     const sb = getSupabaseClient();
     const idNorm = normalizeEmailForMatch(employeeId);
+    const safeId = escapePostgrestLike(idNorm);
     const { data, error } = await sb
       .from('paw_card_entries')
       .select('*')
-      .or(`email.ilike.%${idNorm}%,full_name.ilike.%${idNorm}%`)
+      .or(`email.ilike.%${safeId}%,full_name.ilike.%${safeId}%`)
       .order('created_at', { ascending: false });
 
     if (error) throw new Error(`getMySubmissions failed: ${error.message}`);

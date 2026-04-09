@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/authenticate.js';
+import { requirePermission } from '../middleware/authorize.js';
 import { validateBody } from '../middleware/validate.js';
-import { DirectoryContactSchema } from '@lolas/shared';
+import { DirectoryContactSchema, Permission } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 
 const router = Router();
 router.use(authenticate);
+const edit = requirePermission(Permission.EditSettings);
 
 // ── GET / — list contacts with optional search ──
 router.get('/', async (req, res, next) => {
@@ -19,7 +21,7 @@ router.get('/', async (req, res, next) => {
       .order('name', { ascending: true });
 
     if (search && search.trim().length > 0) {
-      const s = search.trim();
+      const s = search.trim().replace(/[%_\\,()]/g, '\\$&');
       query = query.or(
         `name.ilike.%${s}%,number.ilike.%${s}%,email.ilike.%${s}%,category.ilike.%${s}%`,
       );
@@ -33,7 +35,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // ── POST / — create contact ──
-router.post('/', validateBody(DirectoryContactSchema), async (req, res, next) => {
+router.post('/', edit, validateBody(DirectoryContactSchema), async (req, res, next) => {
   try {
     const sb = getSupabaseClient();
     const { data, error } = await sb
@@ -47,7 +49,7 @@ router.post('/', validateBody(DirectoryContactSchema), async (req, res, next) =>
 });
 
 // ── PUT /:id — update contact ──
-router.put('/:id', validateBody(DirectoryContactSchema), async (req, res, next) => {
+router.put('/:id', edit, validateBody(DirectoryContactSchema), async (req, res, next) => {
   try {
     const sb = getSupabaseClient();
     const { data, error } = await sb
@@ -62,7 +64,7 @@ router.put('/:id', validateBody(DirectoryContactSchema), async (req, res, next) 
 });
 
 // ── DELETE /:id — delete contact ──
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', edit, async (req, res, next) => {
   try {
     const sb = getSupabaseClient();
     const { error } = await sb

@@ -16,9 +16,15 @@ interface Props {
   surchargePercent: number;
   onPlaceOrder: () => void;
   submitting: boolean;
+  paymentMethodError?: string;
+  /** When false, Place Order is disabled (no valid payment method selected). */
+  canPlaceOrder?: boolean;
   priceChanged?: boolean;
   charityDonation?: number;
   onCharityChange?: (amount: number) => void;
+  /** When false (mobile), primary button opens review sheet instead of submitting. */
+  isMdUp: boolean;
+  onOpenMobileReview?: () => void;
 }
 
 const PM_ICONS: Record<string, string> = {
@@ -47,9 +53,13 @@ export function OrderSummaryPanel({
   surchargePercent,
   onPlaceOrder,
   submitting,
+  paymentMethodError = '',
+  canPlaceOrder = true,
   priceChanged,
   charityDonation = 0,
   onCharityChange,
+  isMdUp,
+  onOpenMobileReview,
 }: Props) {
   const vehicleSubtotal = basket.reduce((sum, b) => sum + b.dailyRate * rentalDays, 0);
 
@@ -84,10 +94,10 @@ export function OrderSummaryPanel({
           Rental Duration:&nbsp;<span className="font-medium text-charcoal-brand">{rentalDays} Day{rentalDays !== 1 ? 's' : ''}</span>
         </div>
 
-        {/* BePawsitive donation banner */}
+        {/* Be Pawsitive donation banner */}
         <div className="mb-4 rounded-lg border border-teal-200/60 bg-teal-50 p-3">
           <p className="mb-1 flex items-center gap-1.5 text-[12px] font-medium text-teal-800">
-            🐾 Support BePawsitive
+            🐾 Support Be Pawsitive
           </p>
           <p className="mb-2.5 text-[11px] leading-relaxed text-teal-700/80">
             Add a small donation to fund spay, neuter &amp; vaccination for Siargao's street animals.
@@ -121,7 +131,7 @@ export function OrderSummaryPanel({
           {surchargeAmount > 0 && (
             <Row label={`Card Surcharge (${surchargePercent}%)`} amount={surchargeAmount} />
           )}
-          {charityDonation > 0 && <Row label="Donation to BePawsitive 🐾" amount={charityDonation} />}
+          {charityDonation > 0 && <Row label="Donation to Be Pawsitive 🐾" amount={charityDonation} />}
         </div>
 
         {/* Divider + Grand Total */}
@@ -187,14 +197,25 @@ export function OrderSummaryPanel({
             );
           })}
         </div>
+        {(paymentMethodError || (paymentMethods.length > 0 && !canPlaceOrder)) && (
+          <p
+            className={`mt-3 text-[13px] font-medium ${paymentMethodError ? 'text-red-600' : 'text-charcoal-brand/70'}`}
+            role={paymentMethodError ? 'alert' : 'status'}
+          >
+            {paymentMethodError || 'Please select a payment method to continue.'}
+          </p>
+        )}
       </div>
 
       {/* ── Place Order ── */}
       <div className="border-t border-charcoal-brand/10 px-5 pb-5 pt-4 md:px-6">
         <button
           type="button"
-          onClick={onPlaceOrder}
-          disabled={submitting}
+          onClick={() => {
+            if (isMdUp) onPlaceOrder();
+            else onOpenMobileReview?.();
+          }}
+          disabled={submitting || !canPlaceOrder}
           className="w-full rounded-lg bg-teal-brand py-[13px] text-[15px] font-medium text-white transition-colors hover:bg-[#00496a] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {submitting ? (

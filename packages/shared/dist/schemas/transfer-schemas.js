@@ -51,5 +51,6 @@ export const PublicTransferBookingSchema = z.object({
     vanType: z.enum(['Shared', 'Private', 'TukTuk']),
     totalPrice: z.number().positive(),
     opsNotes: z.string().nullable().default(null),
+    token: z.string().min(1),
 });
 //# sourceMappingURL=transfer-schemas.js.map

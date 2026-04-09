@@ -130,9 +130,9 @@ function AnimalCounters() {
   );
 }
 
-// Dynamically import every image in the About Us Page folder at build time.
+// Dynamically import every image in the Be Pawsitive Gallery folder at build time.
 // Vite resolves static-asset imports to their hashed URL strings.
-const rawModules = import.meta.glob('../../assets/About Us Page/*', {
+const rawModules = import.meta.glob('../../assets/About Us Page/Be Pawsitive Gallery/*', {
   eager: true,
   import: 'default',
 }) as Record<string, string>;
@@ -174,10 +174,10 @@ function captionFor(pathKey: string, index: number): string {
 
 interface GalleryItemProps {
   src: string;
-  caption: string;
+  alt: string;
 }
 
-function GalleryItem({ src, caption }: GalleryItemProps) {
+function GalleryItem({ src, alt }: GalleryItemProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
 
@@ -216,22 +216,11 @@ function GalleryItem({ src, caption }: GalleryItemProps) {
         {/* Slow zoom on hover — 3s ease as specified */}
         <img
           src={src}
-          alt={caption}
+          alt={alt}
           loading="lazy"
           decoding="async"
           className="block w-full object-cover transition-transform duration-[3000ms] ease-out group-hover:scale-[1.03]"
         />
-
-        {/* Caption overlay: dark gradient fades in from bottom on hover */}
-        <div
-          className="pointer-events-none absolute inset-x-0 bottom-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-          style={{
-            background: 'linear-gradient(to top, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0) 100%)',
-            padding: '56px 16px 14px',
-          }}
-        >
-          <p className="font-lato text-sm font-semibold tracking-wide text-white">{caption}</p>
-        </div>
       </div>
     </div>
   );
@@ -246,7 +235,7 @@ export function PawsitiveGallery() {
       <FadeUpSection>
         <section style={{ backgroundColor: '#f1e6d6', padding: '72px 5% 64px' }}>
           <div style={{ maxWidth: 760, margin: '0 auto', textAlign: 'center' }}>
-            {/* Collab logo strip — 1.5× scale vs base (h-10 / 140px cap / 22px ×) */}
+            {/* Collab logo strip — h 86.4px / 302px cap */}
             <div
               className="flex items-center justify-center"
               style={{ gap: 30, marginBottom: 42 }}
@@ -254,8 +243,8 @@ export function PawsitiveGallery() {
               <img
                 src={lolaLogo}
                 alt="Lola's Rentals"
-                className="h-[60px] w-auto object-contain"
-                style={{ maxWidth: 210 }}
+                className="h-[86.4px] w-auto object-contain"
+                style={{ maxWidth: 302 }}
               />
               <span
                 className="font-headline font-black"
@@ -266,8 +255,8 @@ export function PawsitiveGallery() {
               <img
                 src={bePawsitiveLogo}
                 alt="Be Pawsitive"
-                className="h-[60px] w-auto object-contain"
-                style={{ maxWidth: 210 }}
+                className="h-[86.4px] w-auto object-contain"
+                style={{ maxWidth: 302 }}
               />
             </div>
 
@@ -299,7 +288,7 @@ export function PawsitiveGallery() {
         style={{ columnGap: 2, backgroundColor: '#111' }}
       >
         {galleryEntries.map(({ key, url }, i) => (
-          <GalleryItem key={url} src={url} caption={captionFor(key, i)} />
+          <GalleryItem key={url} src={url} alt={captionFor(key, i)} />
         ))}
       </div>
     </>

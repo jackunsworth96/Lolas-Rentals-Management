@@ -11,13 +11,10 @@ export function BrandStorySection() {
             {/* Left: copy */}
             <div className="space-y-6">
               <p
-                className="font-lato"
+                className="font-lato font-bold uppercase tracking-widest text-charcoal-brand"
                 style={{
                   fontSize: 13,
-                  textTransform: 'uppercase',
                   letterSpacing: '0.1em',
-                  color: '#00577C',
-                  fontWeight: 700,
                 }}
               >
                 Our Story
@@ -30,8 +27,8 @@ export function BrandStorySection() {
                   lineHeight: 1.2,
                 }}
               >
-                Still Sandy,{' '}
-                <span style={{ fontStyle: 'italic', color: '#FCBC5A' }}>Still Obsessed</span>
+                Born on the island.{' '}
+                <span style={{ fontStyle: 'italic', color: '#FCBC5A' }}>Built for the ride.</span>
               </h2>
               <div
                 className="space-y-5 font-lato"
@@ -81,6 +78,15 @@ export function BrandStorySection() {
                   alt="Lola and Claire on the tuktuk"
                   className="h-full w-full object-cover transition-transform duration-[3000ms] ease-out group-hover:scale-[1.03]"
                 />
+                <p
+                  className="pointer-events-none absolute bottom-3 left-3 max-w-[min(100%-1.5rem,20rem)] font-lato text-[13px] font-medium leading-snug text-white animate-fade-up [animation-delay:550ms] [animation-fill-mode:both]"
+                  style={{
+                    textShadow:
+                      '0 1px 3px rgba(0,0,0,0.9), 0 0 20px rgba(0,0,0,0.5), 0 0 1px rgba(0,0,0,0.85)',
+                  }}
+                >
+                  Lola and Claire, vibing and collecting coconuts
+                </p>
               </div>
               <p
                 className="mt-5 max-w-[460px] text-center font-lato text-[15px] leading-relaxed text-charcoal-brand/75"

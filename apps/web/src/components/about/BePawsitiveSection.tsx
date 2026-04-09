@@ -30,7 +30,7 @@ export function BePawsitiveSection() {
                 rel="noopener noreferrer"
                 className="inline-flex gap-3 px-8 py-4 text-base shadow-lg"
               >
-                Learn More About BePawsitive →
+                Learn More About Be Pawsitive →
               </PrimaryCtaButton>
             </div>
           </div>

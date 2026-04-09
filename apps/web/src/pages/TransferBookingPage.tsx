@@ -395,47 +395,45 @@ export default function TransferBookingPage() {
                                 ? 'Private three-wheel transfer'
                                 : 'Ideal for families and groups up to 10';
                           const transportCardClass = isTukTuk
-                            ? `text-left rounded-2xl border-2 cursor-pointer transition-colors relative overflow-hidden p-0 ${
-                                selected
-                                  ? 'border-teal-brand bg-teal-brand/5 shadow-[0_8px_24px_rgba(62,124,120,0.12)] ring-2 ring-gold-brand/35'
-                                  : 'border-teal-brand/45 bg-cream-brand hover:border-teal-brand hover:shadow-md ring-1 ring-teal-brand/20'
+                            ? `w-full text-center rounded-2xl cursor-pointer transition-colors relative overflow-hidden p-0 border-0 shadow-none ring-0 outline-none focus-visible:ring-2 focus-visible:ring-gold-brand/55 focus-visible:ring-offset-2 ${
+                                selected ? 'bg-gold-brand/12' : 'bg-cream-brand hover:bg-gold-brand/[0.08]'
                               }`
                             : selected
                               ? cardSelected
                               : cardUnselected;
-                          return (
-                            <button
-                              key={opt.transferRouteId}
-                              type="button"
-                              onClick={() => {
-                                setVanSelection({
-                                  transferRouteId: opt.transferRouteId,
-                                  vanType: opt.vanType,
-                                  unitPrice: opt.unitPrice,
-                                  pricingType: opt.pricingType,
-                                  displayName: opt.displayName,
-                                });
-                                if (opt.pricingType === 'per_head') {
-                                  setPaxCount((c) => Math.max(1, c));
-                                } else {
-                                  setPaxCount(1);
-                                }
-                              }}
-                              className={transportCardClass}
-                            >
+
+                          const pickVan = () => {
+                            setVanSelection({
+                              transferRouteId: opt.transferRouteId,
+                              vanType: opt.vanType,
+                              unitPrice: opt.unitPrice,
+                              pricingType: opt.pricingType,
+                              displayName: opt.displayName,
+                            });
+                            if (opt.pricingType === 'per_head') {
+                              setPaxCount((c) => Math.max(1, c));
+                            } else {
+                              setPaxCount(1);
+                            }
+                          };
+
+                          const cardBody = (
+                            <>
                               {isTukTuk && (
-                                <div className="bg-gradient-to-r from-teal-brand via-teal-brand to-teal-brand/90 py-2 text-center font-lato text-[10px] font-bold uppercase tracking-[0.2em] text-white">
-                                  Recommended
+                                <div className="bg-gold-brand py-2.5 text-center font-headline text-xs font-semibold tracking-wide text-charcoal-brand">
+                                  Best of Both?
                                 </div>
                               )}
                               {isTukTuk ? (
-                                <div className="px-6 pb-6 pt-4">
+                                <div className="flex flex-col items-center px-6 pb-6 pt-4">
                                   <span className="mb-2 block text-2xl leading-none" aria-hidden>
                                     {opt.icon}
                                   </span>
                                   <p className="font-headline text-base text-teal-brand">{opt.displayName}</p>
                                   <p className="font-lato text-sm font-semibold text-charcoal-brand">{priceLine}</p>
-                                  <p className="mt-1 font-lato text-xs text-charcoal-brand/60">{blurb}</p>
+                                  <p className="mt-1 max-w-[14rem] font-lato text-xs text-charcoal-brand/60">
+                                    {blurb}
+                                  </p>
                                 </div>
                               ) : (
                                 <>
@@ -447,6 +445,30 @@ export default function TransferBookingPage() {
                                   <p className="mt-1 font-lato text-xs text-charcoal-brand/60">{blurb}</p>
                                 </>
                               )}
+                            </>
+                          );
+
+                          if (isTukTuk) {
+                            return (
+                              <div
+                                key={opt.transferRouteId}
+                                className="h-full min-h-0 w-full min-w-0 rounded-2xl animate-gold-glow-pulse"
+                              >
+                                <button type="button" onClick={pickVan} className={transportCardClass}>
+                                  {cardBody}
+                                </button>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <button
+                              key={opt.transferRouteId}
+                              type="button"
+                              onClick={pickVan}
+                              className={transportCardClass}
+                            >
+                              {cardBody}
                             </button>
                           );
                         })}

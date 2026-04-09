@@ -1,4 +1,6 @@
+import { useRef } from 'react';
 import type { RenterInfo } from './basket-types.js';
+import { inferNationalityFromPhone } from '../../utils/phone-nationality-infer.js';
 
 const COUNTRIES = [
   'Afghanistan', 'Albania', 'Algeria', 'Andorra', 'Angola', 'Argentina', 'Armenia',
@@ -39,8 +41,25 @@ const INPUT_CLS =
 const LABEL_CLS = 'mb-1.5 block text-[11px] font-medium uppercase tracking-widest text-charcoal-brand/50';
 
 export function RenterDetailsForm({ info, onChange, errors }: Props) {
+  /** Once the user picks a nationality (non-empty), phone edits no longer override it. */
+  const nationalityLockedRef = useRef(false);
+
   function update(field: keyof RenterInfo, value: string) {
     onChange({ ...info, [field]: value });
+  }
+
+  function handlePhoneChange(value: string) {
+    const inferred = inferNationalityFromPhone(value);
+    if (inferred && !nationalityLockedRef.current) {
+      onChange({ ...info, phone: value, nationality: inferred });
+      return;
+    }
+    update('phone', value);
+  }
+
+  function handleNationalityChange(value: string) {
+    nationalityLockedRef.current = value.trim() !== '';
+    update('nationality', value);
   }
 
   return (
@@ -76,11 +95,14 @@ export function RenterDetailsForm({ info, onChange, errors }: Props) {
         <input
           type="tel"
           value={info.phone}
-          onChange={(e) => update('phone', e.target.value)}
+          onChange={(e) => handlePhoneChange(e.target.value)}
           placeholder="+63 9XX XXX XXXX"
           autoComplete="tel"
           className={`${INPUT_CLS} ${errors.phone ? 'border-red-400 ring-1 ring-red-400' : ''}`}
         />
+        <p className="mt-1 text-[11px] leading-snug text-charcoal-brand/45">
+          Start with your country code (e.g. +63). We&apos;ll match nationality when we can — change it below anytime.
+        </p>
         {errors.phone && <p className="mt-1 text-[11px] text-red-500">{errors.phone}</p>}
       </div>
 
@@ -89,7 +111,7 @@ export function RenterDetailsForm({ info, onChange, errors }: Props) {
         <div className="relative">
           <select
             value={info.nationality}
-            onChange={(e) => update('nationality', e.target.value)}
+            onChange={(e) => handleNationalityChange(e.target.value)}
             autoComplete="country-name"
             className={`${INPUT_CLS} appearance-none pr-8 ${errors.nationality ? 'border-red-400 ring-1 ring-red-400' : ''}`}
           >

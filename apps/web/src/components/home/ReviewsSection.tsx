@@ -42,6 +42,12 @@ function initialsFromName(name: string): string {
   return parts[0]?.[0]?.toUpperCase() ?? '?';
 }
 
+const reviewsTrackClassName =
+  'flex gap-6 overflow-x-auto snap-x snap-mandatory [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:grid md:grid-cols-3 md:overflow-visible md:snap-none';
+
+const reviewCardSlotClassName =
+  'min-w-[280px] shrink-0 snap-start md:min-w-0 md:shrink md:snap-none';
+
 function mapApiToDisplay(r: Review, index: number): DisplayReview {
   return {
     key: `api-${r.id}-${index}`,
@@ -84,42 +90,45 @@ export function ReviewsSection() {
           </p>
         </div>
 
-        {showSkeleton ? (
-          <div className="grid gap-6 md:grid-cols-3">
-            {[0, 1, 2].map((i) => (
-              <div
-                key={i}
-                className="h-48 animate-pulse rounded-4xl bg-gray-200/80"
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="grid gap-6 md:grid-cols-3">
-            {rows.map((r) => (
-              <BrandCard key={r.key} className="h-full">
-                <div className="flex h-full min-h-[220px] flex-col p-8">
-                  <div className="mb-4 flex gap-0.5">
-                    {Array.from({ length: r.starRating }).map((_, i) => (
-                      <span key={i} className="text-xl text-gold-brand">
-                        ⭐
-                      </span>
-                    ))}
-                  </div>
-                  <p className="font-lato mb-6 flex-1 text-sm italic leading-relaxed text-charcoal-brand">{r.text}</p>
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sand-brand text-sm font-black text-teal-brand">
-                      {r.initials}
-                    </div>
-                    <div>
-                      <h6 className="font-lato text-sm font-bold text-charcoal-brand">{r.name}</h6>
-                      <p className="font-lato text-[10px] font-black uppercase text-charcoal-brand/50">{r.role}</p>
-                    </div>
-                  </div>
+        <div className="md:overflow-hidden">
+          {showSkeleton ? (
+            <div className={reviewsTrackClassName}>
+              {[0, 1, 2].map((i) => (
+                <div key={i} className={reviewCardSlotClassName}>
+                  <div className="h-48 animate-pulse rounded-4xl bg-gray-200/80" />
                 </div>
-              </BrandCard>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          ) : (
+            <div className={reviewsTrackClassName}>
+              {rows.map((r) => (
+                <div key={r.key} className={reviewCardSlotClassName}>
+                  <BrandCard className="h-full">
+                    <div className="flex h-full min-h-[220px] flex-col p-8">
+                      <div className="mb-4 flex gap-0.5">
+                        {Array.from({ length: r.starRating }).map((_, i) => (
+                          <span key={i} className="text-xl text-gold-brand">
+                            ⭐
+                          </span>
+                        ))}
+                      </div>
+                      <p className="font-lato mb-6 flex-1 text-sm italic leading-relaxed text-charcoal-brand">{r.text}</p>
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sand-brand text-sm font-black text-teal-brand">
+                          {r.initials}
+                        </div>
+                        <div>
+                          <h6 className="font-lato text-sm font-bold text-charcoal-brand">{r.name}</h6>
+                          <p className="font-lato text-[10px] font-black uppercase text-charcoal-brand/50">{r.role}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </BrandCard>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );

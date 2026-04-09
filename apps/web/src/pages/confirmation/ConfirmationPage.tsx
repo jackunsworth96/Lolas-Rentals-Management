@@ -205,7 +205,7 @@ export default function ConfirmationPage() {
                 <FadeUpSection>
                   <div className="mb-4 w-full rounded-[2rem] bg-teal-brand/10 px-5 py-4 text-center">
                     <p className="font-headline text-lg font-bold text-teal-brand">
-                      Thank you for your ₱{(state.charityDonation ?? 0).toLocaleString()} donation to BePawsitive 🐾
+                      Thank you for your ₱{(state.charityDonation ?? 0).toLocaleString()} donation to Be Pawsitive 🐾
                     </p>
                     <p className="font-lato mt-1 text-sm text-charcoal-brand/60">
                       You're helping animals on Siargao!
@@ -292,7 +292,7 @@ export default function ConfirmationPage() {
                       You&apos;re Paw Card Family
                     </h4>
                     <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.6, opacity: 0.8 }}>
-                      Every rental helps feed and neuter street animals on Siargao through our BePawsitive partnership.
+                      Every rental helps feed and neuter street animals on Siargao through our Be Pawsitive partnership.
                     </p>
                   </div>
                 </Step>

@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import multer from 'multer';
+import rateLimit from 'express-rate-limit';
 import { randomBytes } from 'node:crypto';
 import { validateBody, validateQuery } from '../middleware/validate.js';
+import { authenticate } from '../middleware/authenticate.js';
 import {
   PawCardLookupQuerySchema,
   PawCardSubmitRequestSchema,
@@ -38,7 +40,7 @@ router.get('/', (_req, res) => {
   res.json({ success: true, data: { service: 'paw-card', status: 'active' } });
 });
 
-router.get('/lookup', validateQuery(PawCardLookupQuerySchema), async (req, res, next) => {
+router.get('/lookup', authenticate, validateQuery(PawCardLookupQuerySchema), async (req, res, next) => {
   try {
     const { email, mobile, orderId, q } = req.query as Record<string, string>;
     const query = q || email || mobile || orderId || '';
@@ -57,8 +59,7 @@ router.get('/establishments', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-/** Public: total Paw Card savings for an email (for staff order modal, etc.). */
-router.get('/customer-savings', async (req, res, next) => {
+router.get('/customer-savings', authenticate, async (req, res, next) => {
   try {
     const raw = (req.query.email as string | undefined)?.trim();
     if (!raw) {
@@ -69,7 +70,7 @@ router.get('/customer-savings', async (req, res, next) => {
     const { data: rows, error } = await sb
       .from('paw_card_entries')
       .select('amount_saved')
-      .ilike('email', raw);
+      .ilike('email', raw.replace(/[%_\\]/g, '\\$&'));
     if (error) throw new Error(`customer-savings query failed: ${error.message}`);
     const list = rows ?? [];
     const entryCount = list.length;
@@ -86,7 +87,7 @@ router.get('/customer-savings', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.get('/lifetime', async (req, res, next) => {
+router.get('/lifetime', authenticate, async (req, res, next) => {
   try {
     const email = req.query.email as string;
     if (!email) { res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'email is required' } }); return; }
@@ -97,7 +98,7 @@ router.get('/lifetime', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/submit', validateBody(PawCardSubmitRequestSchema), async (req, res, next) => {
+router.post('/submit', authenticate, validateBody(PawCardSubmitRequestSchema), async (req, res, next) => {
   try {
     const { logSavings } = await import('../use-cases/paw-card/log-savings.js');
     const bodyStoreId = req.body.storeId;
@@ -110,7 +111,7 @@ router.post('/submit', validateBody(PawCardSubmitRequestSchema), async (req, res
   } catch (err) { next(err); }
 });
 
-router.get('/company-impact', async (req, res, next) => {
+router.get('/company-impact', authenticate, async (req, res, next) => {
   try {
     const establishmentId = (req.query.establishmentId as string) || 'all';
     const { getCompanyImpact } = await import('../use-cases/paw-card/company-impact.js');
@@ -119,7 +120,7 @@ router.get('/company-impact', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.get('/my-submissions', validateQuery(PawCardMySubmissionsQuerySchema), async (req, res, next) => {
+router.get('/my-submissions', authenticate, validateQuery(PawCardMySubmissionsQuerySchema), async (req, res, next) => {
   try {
     const email = req.query.email as string;
     const customers = await req.app.locals.deps.pawCardPort.lookupCustomer(email);
@@ -129,7 +130,7 @@ router.get('/my-submissions', validateQuery(PawCardMySubmissionsQuerySchema), as
   } catch (err) { next(err); }
 });
 
-router.get('/leaderboard', validateQuery(PawCardLeaderboardQuerySchema), async (req, res, next) => {
+router.get('/leaderboard', authenticate, validateQuery(PawCardLeaderboardQuerySchema), async (req, res, next) => {
   try {
     const email = (req.query.email as string) || undefined;
     const result = await req.app.locals.deps.pawCardPort.getLeaderboard(email);
@@ -137,7 +138,15 @@ router.get('/leaderboard', validateQuery(PawCardLeaderboardQuerySchema), async (
   } catch (err) { next(err); }
 });
 
-router.post('/register', validateBody(PawCardRegisterSchema), async (req, res, next) => {
+const registerLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { success: false, error: { code: 'RATE_LIMIT', message: 'Too many registration attempts' } },
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+});
+
+router.post('/register', registerLimiter, validateBody(PawCardRegisterSchema), async (req, res, next) => {
   try {
     const result = await req.app.locals.deps.pawCardPort.registerCustomer({
       name: req.body.fullName,
@@ -149,7 +158,7 @@ router.post('/register', validateBody(PawCardRegisterSchema), async (req, res, n
   } catch (err) { next(err); }
 });
 
-router.post('/upload-receipt', (req, res, next) => {
+router.post('/upload-receipt', authenticate, (req, res, next) => {
   upload.single('receipt')(req, res, async (err) => {
     if (err) {
       const message = err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE'

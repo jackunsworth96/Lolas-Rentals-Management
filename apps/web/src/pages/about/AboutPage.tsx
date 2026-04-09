@@ -1,19 +1,23 @@
+import { useRef } from 'react';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { PawDivider } from '../../components/layout/PawDivider.js';
 import { BrandStorySection } from '../../components/about/BrandStorySection.js';
 import { PawsitiveGallery } from '../../components/about/PawsitiveGallery.js';
-import groupPic from '../../assets/About Us Page/group_pic.jpeg';
+import groupPic from '../../assets/About Us Page/Be Pawsitive Gallery/group_pic.jpeg';
+import separator3 from '../../assets/About Us Page/separator-3.svg';
 
 export default function AboutPage() {
+  const gallerySectionRef = useRef<HTMLDivElement>(null);
+
   return (
-    <PageLayout title="About Us | Lola's Rentals" fullBleed>
+    <PageLayout title="About Us | Lola's Rentals" fullBleed floralScrollFreezeRef={gallerySectionRef}>
 
       {/* ── Hero ── group_pic full-bleed with text overlay */}
       <div className="relative w-full overflow-hidden" style={{ height: 'clamp(420px, 65vh, 780px)' }}>
         <img
           src={groupPic}
           alt="The Lola's Rentals team"
-          className="h-full w-full object-cover"
+          className="h-full w-full animate-page-fade-in object-cover"
           style={{ objectPosition: 'center 20%' }}
         />
         {/* Gradient overlay for readability */}
@@ -33,7 +37,7 @@ export default function AboutPage() {
             Siargao Island
           </p>
           <h1
-            className="font-headline font-black text-white"
+            className="font-headline font-black !text-white"
             style={{ fontSize: 'clamp(32px, 5vw, 56px)', lineHeight: 1.1 }}
           >
             A Small Island Business
@@ -54,8 +58,18 @@ export default function AboutPage() {
       {/* Section 1 — Story copy + Lola & Claire photo */}
       <BrandStorySection />
 
-      {/* Section 2 — Be Pawsitive photo gallery */}
-      <PawsitiveGallery />
+      <div className="w-full pt-[1.44rem] pb-[0.512rem]">
+        <img
+          src={separator3}
+          alt=""
+          className="block h-auto w-full max-w-none"
+        />
+      </div>
+
+      {/* Section 2 — Be Pawsitive photo gallery (floral parallax freezes when this block reaches the viewport band) */}
+      <div ref={gallerySectionRef} className="w-full">
+        <PawsitiveGallery />
+      </div>
 
     </PageLayout>
   );

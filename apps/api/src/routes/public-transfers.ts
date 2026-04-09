@@ -1,8 +1,18 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { validateBody } from '../middleware/validate.js';
 import { z } from 'zod';
 import type { Store, ConfigRepository } from '@lolas/domain';
 import { PublicTransferBookingSchema } from '@lolas/shared';
+
+const flightLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: {
+    success: false,
+    error: { code: 'RATE_LIMIT', message: 'Too many flight lookups' },
+  },
+});
 
 const router = Router();
 
@@ -70,6 +80,21 @@ router.post('/transfer-booking', validateBody(PublicBookingSchema), async (req, 
       res.status(404).json({ success: false, error: { code: 'INVALID_LINK', message: 'This booking link is not valid or has been disabled.' } });
       return;
     }
+
+    const routes = await req.app.locals.deps.configRepo.getTransferRoutes(store.id);
+    const matchedRoute = routes.find((r: { route: string; vanType: string | null; price: number }) =>
+      r.route === req.body.route && (!req.body.vanType || r.vanType === req.body.vanType),
+    );
+    if (matchedRoute) {
+      const expectedPrice = (matchedRoute as { pricingType?: string; price: number }).pricingType === 'per_head'
+        ? matchedRoute.price * (req.body.paxCount ?? 1)
+        : matchedRoute.price;
+      if (req.body.totalPrice < expectedPrice) {
+        res.status(400).json({ success: false, error: { code: 'PRICE_MISMATCH', message: 'Submitted price is below the configured rate' } });
+        return;
+      }
+    }
+
     const { createTransfer } = await import('../use-cases/transfers/create-transfer.js');
     const result = await createTransfer(
       {
@@ -89,6 +114,30 @@ router.post('/transfer-booking', validateBody(PublicBookingSchema), async (req, 
 
 router.post('/public-transfer-booking', validateBody(PublicTransferBookingSchema), async (req, res, next) => {
   try {
+    const token = req.body.token as string | undefined;
+    if (!token) {
+      res.status(401).json({ success: false, error: { code: 'MISSING_TOKEN', message: 'Booking token is required' } });
+      return;
+    }
+    const store = await resolveToken(req.app.locals.deps.configRepo, token);
+    if (!store) {
+      res.status(401).json({ success: false, error: { code: 'INVALID_TOKEN', message: 'Invalid or disabled booking token' } });
+      return;
+    }
+    const routes = await req.app.locals.deps.configRepo.getTransferRoutes(store.id);
+    const matchedRoute = routes.find((r: { route: string; vanType: string | null; price: number }) =>
+      r.route === req.body.route && (!req.body.vanType || r.vanType === req.body.vanType),
+    );
+    if (matchedRoute) {
+      const expectedPrice = (matchedRoute as { pricingType?: string; price: number }).pricingType === 'per_head'
+        ? matchedRoute.price * (req.body.paxCount ?? 1)
+        : matchedRoute.price;
+      if (req.body.totalPrice < expectedPrice) {
+        res.status(400).json({ success: false, error: { code: 'PRICE_MISMATCH', message: 'Submitted price is below the configured rate' } });
+        return;
+      }
+    }
+
     const { createTransfer } = await import('../use-cases/transfers/create-transfer.js');
     const result = await createTransfer(
       {
@@ -106,8 +155,8 @@ router.post('/public-transfer-booking', validateBody(PublicTransferBookingSchema
         totalPrice:     req.body.totalPrice,
         paymentMethod:  null,
         bookingSource:  'Online',
-        bookingToken:   null,
-        storeId:        'store-lolas',
+        bookingToken:   token,
+        storeId:        store.id,
         orderId:        null,
       },
       { transfers: req.app.locals.deps.transferRepo },
@@ -116,7 +165,7 @@ router.post('/public-transfer-booking', validateBody(PublicTransferBookingSchema
   } catch (err) { next(err); }
 });
 
-router.get('/flight-lookup', async (req, res, next) => {
+router.get('/flight-lookup', flightLimiter, async (req, res, next) => {
   // Requires AERODATABOX_API_KEY in environment variables
   // Free tier: 100 calls/day via RapidAPI
   // https://rapidapi.com/aedbx-aedbx/api/aerodatabox

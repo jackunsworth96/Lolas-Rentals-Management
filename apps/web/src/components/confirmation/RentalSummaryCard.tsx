@@ -107,7 +107,7 @@ export function RentalSummaryCard({
 
         {charityDonation > 0 && (
           <div className="flex items-center justify-between rounded-2xl bg-teal-brand/5 px-4 py-3">
-            <span className="font-lato text-sm font-bold text-teal-brand">Donation to BePawsitive 🐾</span>
+            <span className="font-lato text-sm font-bold text-teal-brand">Donation to Be Pawsitive 🐾</span>
             <span className="font-lato text-sm font-bold text-teal-brand">{formatCurrency(charityDonation)}</span>
           </div>
         )}

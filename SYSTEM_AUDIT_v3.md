@@ -506,7 +506,7 @@ The homepage is **fully rebuilt** in v3. Section order:
 | 6 | Divider | `SectionDivider variant="dash" flip` | |
 | 7 | **Why Choose Us** | Three `TiltedCard` | 3D tilt on desktop; `whileInView` fade-in on touch |
 | 8 | Divider | `SectionDivider variant="bold" flip` | |
-| 9 | **BePawsitive** | `Stack` (50 images) + `CountUp` | All 50 animal photos rotate; animated ₱282,995 counter; paw divider; Facebook CTA |
+| 9 | **Be Pawsitive** | `Stack` (50 images) + `CountUp` | All 50 animal photos rotate; animated ₱282,995 counter; paw divider; Facebook CTA |
 | 10 | **Paw Card + Stepper** | `PawCardCallout` + `Stepper` | Side-by-side grid; teal card with gold CTA; 4-step Paw Card explainer |
 | 11 | Divider | `SectionDivider variant="dash"` | |
 | 12 | **Reviews** | `ReviewsSection` | Static review cards |
@@ -885,7 +885,7 @@ Build output flags several chunks >500 KB (noted in Rollup warnings):
 | H6 | PIN hardening | ❌ **Open** — no rotation/complexity policy |
 | H7 | Google Sheets legacy dependency | ❌ **Open** |
 | H8 | HTTPS / HSTS | ⚠️ **Hosting concern** |
-| H9 | **50 BePawsitive PNGs eager import** | 🆕 **New** — large bundle; should be lazy-loaded or served from CDN |
+| H9 | **50 Be Pawsitive PNGs eager import** | 🆕 **New** — large bundle; should be lazy-loaded or served from CDN |
 | H10 | **No ViewDirectory permission** | 🆕 **New** — directory visible to all authenticated users; should have own perm |
 
 ### MEDIUM

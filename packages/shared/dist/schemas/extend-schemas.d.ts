@@ -26,34 +26,70 @@ export type ExtendLookupResponse = {
 } | {
     found: false;
 };
-export declare const ExtendConfirmRequestSchema: z.ZodObject<{
+export declare const PublicExtendConfirmSchema: z.ZodObject<{
     orderReference: z.ZodString;
     email: z.ZodString;
     newDropoffDatetime: z.ZodString;
-    /** Staff-entered rate override — skips the no-downgrade check when provided */
+}, "strip", z.ZodTypeAny, {
+    email: string;
+    orderReference: string;
+    newDropoffDatetime: string;
+}, {
+    email: string;
+    orderReference: string;
+    newDropoffDatetime: string;
+}>;
+export declare const StaffExtendConfirmSchema: z.ZodObject<{
+    orderReference: z.ZodString;
+    email: z.ZodString;
+    newDropoffDatetime: z.ZodString;
+} & {
     overrideDailyRate: z.ZodOptional<z.ZodNumber>;
-    /** Whether the extension fee is collected now or left as a pending balance */
     paymentStatus: z.ZodOptional<z.ZodEnum<["paid", "unpaid"]>>;
-    /** Payment method identifier (cash / gcash / card / bank_transfer) — required when paid */
     paymentMethod: z.ZodOptional<z.ZodString>;
-    /** Account ID to credit — required when paid */
     paymentAccountId: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     email: string;
     orderReference: string;
     newDropoffDatetime: string;
-    paymentAccountId?: string | undefined;
     paymentMethod?: string | undefined;
     paymentStatus?: "paid" | "unpaid" | undefined;
     overrideDailyRate?: number | undefined;
+    paymentAccountId?: string | undefined;
 }, {
     email: string;
     orderReference: string;
     newDropoffDatetime: string;
-    paymentAccountId?: string | undefined;
     paymentMethod?: string | undefined;
     paymentStatus?: "paid" | "unpaid" | undefined;
     overrideDailyRate?: number | undefined;
+    paymentAccountId?: string | undefined;
+}>;
+export declare const ExtendConfirmRequestSchema: z.ZodObject<{
+    orderReference: z.ZodString;
+    email: z.ZodString;
+    newDropoffDatetime: z.ZodString;
+} & {
+    overrideDailyRate: z.ZodOptional<z.ZodNumber>;
+    paymentStatus: z.ZodOptional<z.ZodEnum<["paid", "unpaid"]>>;
+    paymentMethod: z.ZodOptional<z.ZodString>;
+    paymentAccountId: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    email: string;
+    orderReference: string;
+    newDropoffDatetime: string;
+    paymentMethod?: string | undefined;
+    paymentStatus?: "paid" | "unpaid" | undefined;
+    overrideDailyRate?: number | undefined;
+    paymentAccountId?: string | undefined;
+}, {
+    email: string;
+    orderReference: string;
+    newDropoffDatetime: string;
+    paymentMethod?: string | undefined;
+    paymentStatus?: "paid" | "unpaid" | undefined;
+    overrideDailyRate?: number | undefined;
+    paymentAccountId?: string | undefined;
 }>;
 export type ExtendConfirmRequest = z.infer<typeof ExtendConfirmRequestSchema>;
 export type ExtendConfirmResponse = {

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import rateLimit from 'express-rate-limit';
 import { SubmitDirectBookingRequestSchema, type SubmitDirectBookingInput } from '@lolas/shared';
 import { validateQuery, validateBody } from '../middleware/validate.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
@@ -7,6 +8,14 @@ import { computeQuote } from '../use-cases/booking/compute-quote.js';
 import { createHold } from '../use-cases/booking/create-hold.js';
 import { releaseHold } from '../use-cases/booking/release-hold.js';
 import { submitDirectBooking, type SubmitDirectBookingResult } from '../use-cases/booking/submit-direct-booking.js';
+
+const holdLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  message: { success: false, error: { code: 'RATE_LIMIT', message: 'Too many hold requests. Please try again later.' } },
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+});
 
 const router = Router();
 
@@ -117,10 +126,10 @@ const CreateHoldBodySchema = z.object({
   storeId: z.string().min(1),
   pickupDatetime: z.string().min(1),
   dropoffDatetime: z.string().min(1),
-  sessionToken: z.string().min(1),
+  sessionToken: z.string().min(20),
 });
 
-router.post('/hold', validateBody(CreateHoldBodySchema), async (req, res, next) => {
+router.post('/hold', holdLimiter, validateBody(CreateHoldBodySchema), async (req, res, next) => {
   try {
     const hold = await createHold(
       { bookingPort: req.app.locals.deps.bookingPort },
@@ -185,7 +194,15 @@ router.get('/hold/:sessionToken', async (req, res, next) => {
 
 // ── Submit ──
 
-router.post('/submit', validateBody(SubmitDirectBookingRequestSchema), async (req, res, next) => {
+const submitLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { success: false, error: { code: 'RATE_LIMIT', message: 'Too many booking submissions. Please try again later.' } },
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+});
+
+router.post('/submit', submitLimiter, validateBody(SubmitDirectBookingRequestSchema), async (req, res, next) => {
   try {
     const result: SubmitDirectBookingResult = await submitDirectBooking(
       { bookingPort: req.app.locals.deps.bookingPort, configRepo: req.app.locals.deps.configRepo },
@@ -263,10 +280,34 @@ router.get('/payment-methods', async (req, res, next) => {
 
 // ── Order Lookup (public) ──
 
+function maskEmail(email: string): string {
+  const [local, domain] = email.split('@');
+  if (!domain) return '***';
+  const visible = local.slice(0, 1);
+  return `${visible}***@${domain}`;
+}
+
+function maskName(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 0) return '';
+  const first = parts[0];
+  if (parts.length === 1) return first;
+  return `${first} ${parts[parts.length - 1][0]}.`;
+}
+
 router.get('/order/:reference', async (req, res, next) => {
   try {
     const reference = req.params.reference;
-    const sb = req.app.locals.deps.bookingPort;
+    const email = req.query.email as string | undefined;
+
+    if (!email) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'email is required' },
+      });
+      return;
+    }
+
     const configRepo = req.app.locals.deps.configRepo;
 
     const { getSupabaseClient } = await import('../adapters/supabase/client.js');
@@ -289,6 +330,15 @@ router.get('/order/:reference', async (req, res, next) => {
     }
 
     const row = rows[0] as Record<string, unknown>;
+
+    const storedEmail = ((row.customer_email as string) ?? '').trim().toLowerCase();
+    if (storedEmail !== email.trim().toLowerCase()) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Booking not found' },
+      });
+      return;
+    }
 
     const pickupDt = row.pickup_datetime as string;
     const dropoffDt = row.dropoff_datetime as string;
@@ -336,8 +386,8 @@ router.get('/order/:reference', async (req, res, next) => {
       success: true,
       data: {
         orderReferences: [row.order_reference as string],
-        customerName: row.customer_name as string,
-        customerEmail: row.customer_email as string,
+        customerName: maskName(row.customer_name as string),
+        customerEmail: maskEmail(row.customer_email as string),
         vehicleModelName,
         pickupDatetime: pickupDt,
         dropoffDatetime: dropoffDt,

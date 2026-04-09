@@ -1,8 +1,21 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import rateLimit from 'express-rate-limit';
 import { validateBody, validateQuery } from '../middleware/validate.js';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { lookupPawCardPublicAccess } from '../use-cases/paw-card/lookup-paw-card-public.js';
+
+const lookupLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { success: false, error: { code: 'RATE_LIMIT', message: 'Too many lookup requests' } },
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+});
+
+function escapeIlike(value: string): string {
+  return value.replace(/[%_\\]/g, '\\$&');
+}
 
 const router = Router();
 
@@ -15,7 +28,7 @@ function startOfCurrentMonthIso(): string {
   return new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0).toISOString();
 }
 
-router.post('/lookup', validateBody(LookupBodySchema), async (req, res, next) => {
+router.post('/lookup', lookupLimiter, validateBody(LookupBodySchema), async (req, res, next) => {
   try {
     const { email } = req.body as { email: string };
     const data = await lookupPawCardPublicAccess(
@@ -49,10 +62,11 @@ router.get('/entries', validateQuery(EntriesQuerySchema), async (req, res, next)
     }
 
     const sb = getSupabaseClient();
-    let q = sb.from('paw_card_entries').select('*');
+    let q = sb.from('paw_card_entries').select('*').ilike('email', escapeIlike(email));
     if (period === 'month') {
       q = q.gte('created_at', startOfCurrentMonthIso());
     }
+    q = q.order('created_at', { ascending: false }).limit(200);
     const { data, error } = await q;
     if (error) throw new Error(error.message);
     res.json({ success: true, data: data ?? [] });
@@ -81,7 +95,7 @@ router.get('/rental-orders', validateQuery(RentalOrdersQuerySchema), async (req,
     const { data: custRows, error: cErr } = await sb
       .from('customers')
       .select('id')
-      .ilike('email', email)
+      .ilike('email', escapeIlike(email))
       .limit(10);
     if (cErr) throw new Error(cErr.message);
 

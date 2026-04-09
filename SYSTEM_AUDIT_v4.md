@@ -8,7 +8,7 @@
 > - **Migrations 053+:** `late_return_assignments` table; `orders_raw.cancelled_at / cancelled_reason`; `orders_raw` status check extended to include `'cancelled'`; `paw_card_establishments` +14 columns; `employees.default_payment_method`; `repair_costs` (already existed, no schema change in v4).
 > - **New API endpoints (15):** cancel order, walk-in booking, extend preview, repair costs CRUD, charity impact (dashboard + public), paw-card customer savings, cashup late-return assignment, cashup late-returns-check, accounting drawings, payroll preview.
 > - **New frontend components (14):** `PageHeader`, `BrandCard`, `BePawsitiveMeter`, `BeforeCloseModal`, `MidayLostOpportunityBanner`, `CancelOrderModal`, `WalkInBookingModal`, `ExtendOrderModal`, `OwnerDrawingsModal`, `Aurora`, `RepairCostsTab`; RepairsPage + RepairCostsSection rebuilt.
-> - **Key logic:** Per-employee payroll payment methods, payroll inflators (holiday/SIL/POM/9pm bonus), owner drawings exclusion; maintenance pay-later + downtime redesign; cashup Before Close Modal (gates submission); midday lost-opportunity banner; two-step extend flow; walk-in + cancel from inbox; BePawsitive meter; Manila timezone fix for direct booking datetimes; inbox pickup shows date + time; typography system-wide audit (font-lato / font-headline enforcement, brand color corrections); global `.font-headline` CSS color rule; `DESIGN_SYSTEM.md` created.
+> - **Key logic:** Per-employee payroll payment methods, payroll inflators (holiday/SIL/POM/9pm bonus), owner drawings exclusion; maintenance pay-later + downtime redesign; cashup Before Close Modal (gates submission); midday lost-opportunity banner; two-step extend flow; walk-in + cancel from inbox; Be Pawsitive meter; Manila timezone fix for direct booking datetimes; inbox pickup shows date + time; typography system-wide audit (font-lato / font-headline enforcement, brand color corrections); global `.font-headline` CSS color rule; `DESIGN_SYSTEM.md` created.
 
 ---
 
@@ -435,7 +435,7 @@ All rate-limited by `publicLimiter`. No `authenticate` middleware.
 | GET | `/payment-methods` | Public payment method list + surcharge |
 | GET | `/order/:reference` | Lookup `orders_raw` booking + enriched totals |
 | GET | `/transfer-routes` | Transfer routes for store |
-| **GET** | **`/charity-impact`** | **NEW v4** — public BePawsitive donation aggregate for meter widget |
+| **GET** | **`/charity-impact`** | **NEW v4** — public Be Pawsitive donation aggregate for meter widget |
 
 ### 4.5 Public Extend Endpoints — `/api/public/extend`
 
@@ -545,7 +545,7 @@ All v3 components retained. **v4 addition:**
 
 | Component | Purpose | API |
 |-----------|---------|-----|
-| `BePawsitiveMeter.tsx` | **NEW v4** — animated BePawsitive fundraising meter with live data | `GET /public/booking/charity-impact` |
+| `BePawsitiveMeter.tsx` | **NEW v4** — animated Be Pawsitive fundraising meter with live data | `GET /public/booking/charity-impact` |
 
 ### 5.7 Public Components (`apps/web/src/components/public/`)
 
@@ -889,7 +889,7 @@ GET /api/dashboard/summary?storeId=
 
 v4 addition:
 GET /api/dashboard/charity-impact
-  → Aggregate BePawsitive donations from order totals
+  → Aggregate Be Pawsitive donations from order totals
   → Used by BePawsitiveMeter widget
 ```
 
@@ -1030,7 +1030,7 @@ Build output flags several chunks >500 KB (noted in Rollup warnings):
 | H6 | PIN hardening | ❌ **Open** — no rotation/complexity policy |
 | H7 | Google Sheets legacy dependency | ❌ **Open** |
 | H8 | HTTPS / HSTS | ⚠️ **Hosting concern** |
-| H9 | 50 BePawsitive PNGs eager import | ❌ **Open** — large bundle; should be lazy-loaded or CDN |
+| H9 | 50 Be Pawsitive PNGs eager import | ❌ **Open** — large bundle; should be lazy-loaded or CDN |
 | H10 | No ViewDirectory permission | ❌ **Open** — directory visible to all authenticated users |
 | H11 | Cancel/walk-in no dedicated permission | 🆕 **New v4** — any authenticated user can access; should be gated |
 | H12 | Auto email receipt | ❌ **Open** — waiting on email service integration |
@@ -1089,7 +1089,7 @@ Build output flags several chunks >500 KB (noted in Rollup warnings):
 | Before Close Modal (cashup gate) | ✅ v4 |
 | Late return assignments | ✅ v4 |
 | Midday lost opportunity banner | ✅ v4 |
-| BePawsitive donation meter (live) | ✅ v4 |
+| Be Pawsitive donation meter (live) | ✅ v4 |
 | Paw Card savings on active order | ✅ v4 |
 | Typography system-wide audit + fixes | ✅ v4 |
 | DESIGN_SYSTEM.md | ✅ v4 |

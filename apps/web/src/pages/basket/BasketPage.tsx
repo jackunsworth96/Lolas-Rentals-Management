@@ -1,13 +1,14 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
 import { useToast } from '../../hooks/useToast.js';
 import { BasketVehicleCard } from '../../components/basket/BasketVehicleCard.js';
-import { AddOnsSection } from '../../components/basket/AddOnsSection.js';
+import { AddOnsSection, isNinePmReturnAddonName } from '../../components/basket/AddOnsSection.js';
 import { TransferSection } from '../../components/basket/TransferSection.js';
 import { RenterDetailsForm } from '../../components/basket/RenterDetailsForm.js';
 import { OrderSummaryPanel } from '../../components/basket/OrderSummaryPanel.js';
+import { OrderReviewSheet } from '../../components/basket/OrderReviewSheet.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
@@ -41,6 +42,11 @@ function formatDate(iso: string): string {
     minute: '2-digit',
     hour12: true,
   });
+}
+
+function addonLineTotal(addon: Addon, rentalDaysCount: number): number {
+  if (addon.addonType === 'per_day') return addon.pricePerDay * rentalDaysCount;
+  return addon.priceOneTime;
 }
 
 export default function BasketPage() {
@@ -108,12 +114,51 @@ export default function BasketPage() {
   const [addons, setAddons] = useState<Addon[]>([]);
   const [addonsLoading, setAddonsLoading] = useState(true);
   const [selectedAddonIds, setSelectedAddonIds] = useState<Set<number>>(new Set());
+  const [ninePmRemovedNotice, setNinePmRemovedNotice] = useState(false);
+  const selectedAddonIdsRef = useRef(selectedAddonIds);
+  selectedAddonIdsRef.current = selectedAddonIds;
+  const prevDropoffForNinePmRef = useRef<string | null>(null);
+
+  const ninePmReturnEligible = dropoffDatetime.includes('T16:45');
+
+  useEffect(() => {
+    if (prevDropoffForNinePmRef.current === null) {
+      prevDropoffForNinePmRef.current = dropoffDatetime;
+      return;
+    }
+    const prev = prevDropoffForNinePmRef.current;
+    prevDropoffForNinePmRef.current = dropoffDatetime;
+
+    const wasEligible = prev.includes('T16:45');
+    const nowEligible = dropoffDatetime.includes('T16:45');
+    if (!wasEligible || nowEligible) return;
+
+    const ninePmAddon = addons.find((a) => isNinePmReturnAddonName(a.name));
+    if (!ninePmAddon) return;
+    const nid = Number(ninePmAddon.id);
+    if (!selectedAddonIdsRef.current.has(nid)) return;
+
+    setSelectedAddonIds((sel) => {
+      if (!sel.has(nid)) return sel;
+      const next = new Set(sel);
+      next.delete(nid);
+      return next;
+    });
+    setNinePmRemovedNotice(true);
+  }, [dropoffDatetime, addons]);
+
+  useEffect(() => {
+    if (!ninePmRemovedNotice) return;
+    const t = window.setTimeout(() => setNinePmRemovedNotice(false), 4000);
+    return () => window.clearTimeout(t);
+  }, [ninePmRemovedNotice]);
   const [transfer, setTransfer] = useState<TransferDetails | null>(null);
   const [renter, setRenter] = useState<RenterInfo>({ fullName: '', email: '', phone: '', nationality: '' });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [transferErrors, setTransferErrors] = useState<Record<string, string>>({});
-  const [paymentMethodId, setPaymentMethodId] = useState('cash');
+  const [paymentMethodId, setPaymentMethodId] = useState('');
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
+  const [paymentMethodError, setPaymentMethodError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [charityDonation, setCharityDonation] = useState(0);
   type LocFee = { id: number; deliveryCost: number; collectionCost: number };
@@ -123,6 +168,90 @@ export default function BasketPage() {
 
   const selectedPm = paymentMethods.find((pm) => pm.id === paymentMethodId);
   const surchargePercent = selectedPm?.surchargePercent ?? 0;
+
+  const [isMdUp, setIsMdUp] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(min-width: 768px)').matches : true,
+  );
+  const [reviewSheetOpen, setReviewSheetOpen] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const sync = () => setIsMdUp(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+
+  useEffect(() => {
+    if (isMdUp && reviewSheetOpen) setReviewSheetOpen(false);
+  }, [isMdUp, reviewSheetOpen]);
+
+  const reviewSheetItems = useMemo(
+    () =>
+      basket.map((b) => ({
+        modelName: b.modelName,
+        dailyRate: b.dailyRate,
+        rentalDays,
+        pickupDatetime,
+        dropoffDatetime,
+      })),
+    [basket, rentalDays, pickupDatetime, dropoffDatetime],
+  );
+
+  const reviewSheetAddons = useMemo(
+    () =>
+      addons
+        .filter((a) => selectedAddonIds.has(Number(a.id)))
+        .map((a) => ({ name: a.name, total: addonLineTotal(a, rentalDays) })),
+    [addons, selectedAddonIds, rentalDays],
+  );
+
+  const reviewSheetTransfer = useMemo(() => {
+    if (!transfer) return null;
+    return {
+      route: transfer.transferRoute,
+      vanType: transfer.vanType,
+      total: transfer.totalPrice,
+    };
+  }, [transfer]);
+
+  const reviewSheetGrandTotal = useMemo(() => {
+    const vehicleSubtotal = basket.reduce((s, b) => s + b.dailyRate * rentalDays, 0);
+    const addonsTotal = addons
+      .filter((a) => selectedAddonIds.has(Number(a.id)))
+      .reduce((s, a) => s + addonLineTotal(a, rentalDays), 0);
+    const transferFee = transfer?.totalPrice ?? 0;
+    const subtotalBeforeSurcharge =
+      vehicleSubtotal + addonsTotal + transferFee + pickupFee + dropoffFee;
+    const surchargeAmount =
+      surchargePercent > 0
+        ? Math.round(subtotalBeforeSurcharge * (surchargePercent / 100) * 100) / 100
+        : 0;
+    return subtotalBeforeSurcharge + surchargeAmount + charityDonation;
+  }, [
+    basket,
+    rentalDays,
+    addons,
+    selectedAddonIds,
+    transfer,
+    pickupFee,
+    dropoffFee,
+    surchargePercent,
+    charityDonation,
+  ]);
+
+  const reviewSheetDeposit = useMemo(
+    () => basket.reduce((s, b) => s + (b.securityDeposit ?? 0), 0),
+    [basket],
+  );
+
+  function handleOpenMobileReview() {
+    if (!validate()) return;
+    setReviewSheetOpen(true);
+  }
+  const hasSelectedPaymentMethod =
+    paymentMethodId.trim() !== '' &&
+    paymentMethods.some((pm) => pm.id === paymentMethodId);
 
   const { toasts, pushToast } = useToast();
 
@@ -155,6 +284,20 @@ export default function BasketPage() {
   // All addons passed to AddOnsSection — it filters out transfer-named items internally
   const standardAddons = addons;
 
+  const basketHasTuktuk = basket.some((b) =>
+    b.modelName.toLowerCase().includes('tuk'),
+  );
+
+  const filteredAddons = standardAddons.filter((addon) => {
+    const name = addon.name.toLowerCase();
+    const isPeaceOfMind = name.includes('peace') || name.includes('mind');
+    if (!isPeaceOfMind) return true;
+    if (basketHasTuktuk) {
+      return !name.includes('scooter') && !name.includes('bike');
+    }
+    return !name.includes('tuk');
+  });
+
   function toggleAddon(id: number) {
     setSelectedAddonIds((prev) => {
       const next = new Set(prev);
@@ -176,13 +319,29 @@ export default function BasketPage() {
       if (!transfer.flightArrivalTime) te.flightArrivalTime = 'Arrival time is required';
     }
     setTransferErrors(te);
-    return Object.keys(fe).length === 0 && Object.keys(te).length === 0;
+
+    let payErr = '';
+    if (!paymentMethodId.trim() || !paymentMethods.some((pm) => pm.id === paymentMethodId)) {
+      payErr = 'Please select a payment method to continue';
+    }
+    setPaymentMethodError(payErr);
+
+    return (
+      Object.keys(fe).length === 0 &&
+      Object.keys(te).length === 0 &&
+      payErr === ''
+    );
   }
 
   async function handlePlaceOrder() {
     if (!validate()) return;
     setSubmitting(true);
-    const allAddonIds = [...selectedAddonIds];
+    const ninePmAddon = addons.find((a) => isNinePmReturnAddonName(a.name));
+    let allAddonIds = [...selectedAddonIds];
+    if (ninePmAddon && !ninePmReturnEligible) {
+      const nid = Number(ninePmAddon.id);
+      allAddonIds = allAddonIds.filter((id) => id !== nid);
+    }
     const orderRefs: string[] = [];
     let serverTotal = 0;
     try {
@@ -211,7 +370,8 @@ export default function BasketPage() {
         orderRefs.push(result.orderReference);
         if (result.serverQuote != null) serverTotal += result.serverQuote;
       }
-      const selAddons = addons.filter((a) => selectedAddonIds.has(Number(a.id)));
+      const submittedAddonIds = new Set(allAddonIds);
+      const selAddons = addons.filter((a) => submittedAddonIds.has(Number(a.id)));
       const clientTotal = basket.reduce((s, b) => s + b.dailyRate * rentalDays, 0)
         + selAddons.reduce((s, a) => s + (a.addonType === 'per_day' ? a.pricePerDay * rentalDays : a.priceOneTime), 0)
         + (transfer?.totalPrice ?? 0)
@@ -287,8 +447,8 @@ export default function BasketPage() {
         <HeroFloatingClouds variant="functional" />
         <div className="relative z-10 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
 
-          {/* ── LEFT COLUMN (form sections) ── */}
-          <div className="order-2 space-y-6 lg:order-1">
+          {/* ── LEFT COLUMN (form sections) — first on mobile & left column on lg ── */}
+          <div className="order-1 space-y-6">
 
             {/* Your Selection */}
             <div className="rounded-xl border border-charcoal-brand/10 bg-white p-5 md:p-6">
@@ -304,14 +464,27 @@ export default function BasketPage() {
             <FadeUpSection>
               <div className="rounded-xl border border-charcoal-brand/10 bg-white p-5 md:p-6">
                 <h2 className="mb-4 text-[15px] font-medium text-charcoal-brand">Enhance Your Journey</h2>
-                <AddOnsSection addons={standardAddons} loading={addonsLoading} selectedIds={selectedAddonIds} onToggle={toggleAddon} />
+                <AddOnsSection
+                  addons={filteredAddons}
+                  loading={addonsLoading}
+                  selectedIds={selectedAddonIds}
+                  onToggle={toggleAddon}
+                  ninePmReturnEligible={ninePmReturnEligible}
+                  ninePmRemovedNotice={ninePmRemovedNotice}
+                  onDismissNinePmRemovedNotice={() => setNinePmRemovedNotice(false)}
+                />
               </div>
             </FadeUpSection>
 
             {/* Need a Transfer? */}
             <FadeUpSection>
               <div className="rounded-xl border border-charcoal-brand/10 bg-white p-5 md:p-6">
-                <h2 className="mb-4 text-[15px] font-medium text-charcoal-brand">Need a Transfer?</h2>
+                <div className="mb-4 flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-3">
+                  <h2 className="text-[15px] font-medium text-charcoal-brand">Need a Transfer?</h2>
+                  <span className="text-[13px] font-medium text-charcoal-brand/55">
+                    IAO Airport → General Luna
+                  </span>
+                </div>
                 <TransferSection transfer={transfer} onTransferChange={setTransfer} errors={transferErrors} />
               </div>
             </FadeUpSection>
@@ -325,21 +498,44 @@ export default function BasketPage() {
             </FadeUpSection>
           </div>
 
-          {/* ── RIGHT COLUMN (summary + payment — first on mobile) ── */}
-          <div className="order-1 lg:order-2">
+          {/* ── RIGHT COLUMN (summary + payment) — below main on mobile, sidebar on lg ── */}
+          <div className="order-2">
             <OrderSummaryPanel
               basket={basket} rentalDays={rentalDays} selectedAddonIds={selectedAddonIds} addons={standardAddons}
               transfer={transfer} pickupFee={pickupFee} dropoffFee={dropoffFee}
-              paymentMethodId={paymentMethodId} onPaymentChange={setPaymentMethodId}
+              paymentMethodId={paymentMethodId}
+              onPaymentChange={(id) => {
+                setPaymentMethodId(id);
+                setPaymentMethodError('');
+              }}
               paymentMethods={paymentMethods} surchargePercent={surchargePercent}
               onPlaceOrder={handlePlaceOrder} submitting={submitting}
+              paymentMethodError={paymentMethodError}
+              canPlaceOrder={hasSelectedPaymentMethod && paymentMethods.length > 0}
               priceChanged={priceChanged}
               charityDonation={charityDonation}
               onCharityChange={setCharityDonation}
+              isMdUp={isMdUp}
+              onOpenMobileReview={handleOpenMobileReview}
             />
           </div>
         </div>
       </div>
+
+      <OrderReviewSheet
+        open={reviewSheetOpen}
+        onClose={() => setReviewSheetOpen(false)}
+        onConfirm={() => {
+          void handlePlaceOrder();
+        }}
+        submitting={submitting}
+        items={reviewSheetItems}
+        addons={reviewSheetAddons}
+        transfer={reviewSheetTransfer}
+        grandTotal={reviewSheetGrandTotal}
+        paymentMethodLabel={selectedPm?.name ?? '—'}
+        depositAmount={reviewSheetDeposit}
+      />
 
       <div className="fixed bottom-28 left-4 right-4 z-[60] flex flex-col-reverse items-stretch gap-2 md:bottom-8 md:left-auto md:right-8 md:items-end">
         {toasts.map((t) => (

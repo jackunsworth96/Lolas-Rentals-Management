@@ -183,7 +183,7 @@ export default function TopNav({ items, rightSlot }: TopNavProps) {
               type="button"
               aria-label="Close menu"
               onClick={() => setMenuOpen(false)}
-              className="absolute right-5 top-4 z-10 flex min-h-[44px] min-w-[44px] items-center justify-center text-charcoal-brand transition-colors hover:text-teal-brand"
+              className="absolute right-5 top-2 z-10 flex min-h-[44px] min-w-[44px] items-center justify-center text-charcoal-brand transition-colors hover:text-teal-brand"
             >
               <X size={24} />
             </button>

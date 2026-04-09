@@ -8,7 +8,24 @@ const apiDir = resolve(__dirname, '..');
 const monorepoRoot = resolve(__dirname, '../..');
 [monorepoRoot, apiDir, process.cwd()].forEach((dir) => config({ path: resolve(dir, '.env') }));
 
+import { z } from 'zod';
+
+const EnvSchema = z.object({
+  SUPABASE_URL: z.string().url(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+  JWT_SECRET: z.string().min(32),
+  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  PORT: z.coerce.number().default(3001),
+});
+
+const _env = EnvSchema.safeParse(process.env);
+if (!_env.success) {
+  console.error('Invalid environment variables:', _env.error.flatten().fieldErrors);
+  process.exit(1);
+}
+
 import express, { type Request, type Response } from 'express';
+import helmet from 'helmet';
 import cors from 'cors';
 import { routes } from './routes/index.js';
 import { errorHandler } from './middleware/error-handler.js';
@@ -41,24 +58,28 @@ import { createBookingAdapter } from './adapters/supabase/booking-adapter.js';
 import { createRepairsAdapter } from './adapters/supabase/repairs-adapter.js';
 import { createBudgetRepo } from './adapters/supabase/budget-repo.js';
 
-const DEFAULT_CORS_ORIGINS = [
-  'https://lolas-rentals-management-web.vercel.app',
-  'http://localhost:3000',
-  'http://localhost:3002',
-  'http://localhost:3003',
-] as const;
-
 function buildCorsAllowedOrigins(): string[] {
+  const origins: string[] = [
+    process.env.CORS_ORIGIN ?? 'https://lolas-rentals-management-web.vercel.app',
+  ];
+
   const fromEnv = process.env.ALLOWED_ORIGIN?.trim();
-  const extra = fromEnv
-    ? fromEnv.split(',').map((s) => s.trim()).filter(Boolean)
-    : [];
-  return [...new Set([...DEFAULT_CORS_ORIGINS, ...extra])];
+  if (fromEnv) {
+    origins.push(...fromEnv.split(',').map((s) => s.trim()).filter(Boolean));
+  }
+
+  if (process.env.NODE_ENV !== 'production') {
+    origins.push('http://localhost:3000', 'http://localhost:3002', 'http://localhost:3003');
+  }
+
+  return [...new Set(origins.filter(Boolean))];
 }
 
 const CORS_ALLOWED_ORIGINS = buildCorsAllowedOrigins();
 
 const app = express();
+app.set('trust proxy', process.env.TRUST_PROXY === 'false' ? false : 1);
+app.use(helmet());
 
 app.use(
   cors({
@@ -72,7 +93,8 @@ app.use(
     credentials: true,
   }),
 );
-app.use(express.json());
+app.use(express.json({ limit: '100kb' }));
+app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 
 app.locals.deps = {
   orderRepo: new SupabaseOrderRepository(),
@@ -112,7 +134,11 @@ app.use('/api', routes);
 app.use('/api', (req: Request, res: Response) => {
   res.status(404).json({
     success: false,
-    error: { code: 'NOT_FOUND', message: 'Not found', path: req.originalUrl },
+    error: {
+      code: 'NOT_FOUND',
+      message: 'Not found',
+      ...(process.env.NODE_ENV !== 'production' && { path: req.originalUrl }),
+    },
   });
 });
 

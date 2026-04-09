@@ -329,8 +329,8 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       p_journal_legs: journalLegs,
     });
     if (rpcErr) {
-      console.error('activate_order_atomic full error:', JSON.stringify(rpcErr, null, 2));
-      throw new Error(`activate_order_atomic RPC failed: ${rpcErr.message} | code: ${rpcErr.code} | details: ${rpcErr.details} | hint: ${rpcErr.hint}`);
+      console.error('RPC error:', rpcErr.message, { code: rpcErr.code });
+      throw new Error(`activate_order_atomic RPC failed: ${rpcErr.message}`);
     }
 
     // 13. Create rental payment
@@ -400,7 +400,8 @@ router.get('/', requirePermission(Permission.ViewInbox), async (req, res, next) 
     else query = query.eq('status', 'unprocessed');
 
     if (search && search.trim()) {
-      const term = `%${search.trim()}%`;
+      const safe = search.trim().replace(/[%_\\,()]/g, '\\$&');
+      const term = `%${safe}%`;
       query = query.or(
         `order_reference.ilike.${term},customer_name.ilike.${term},customer_email.ilike.${term},customer_mobile.ilike.${term},vehicle_model_id.ilike.${term}`,
       );

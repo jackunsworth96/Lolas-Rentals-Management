@@ -53,10 +53,11 @@ export class SupabaseCustomerRepository implements CustomerRepository {
 
   async findByEmail(email: string): Promise<Customer | null> {
     const sb = getSupabaseClient();
+    const escaped = email.replace(/[%_\\]/g, '\\$&');
     const { data, error } = await sb
       .from('customers')
       .select('*')
-      .ilike('email', email)
+      .ilike('email', escaped)
       .maybeSingle();
 
     if (error) throw new Error(`findByEmail failed: ${error.message}`);
@@ -77,7 +78,8 @@ export class SupabaseCustomerRepository implements CustomerRepository {
 
   async search(storeId: string, query: string): Promise<Customer[]> {
     const sb = getSupabaseClient();
-    const pattern = `%${query}%`;
+    const safe = query.trim().replace(/[%_\\,()]/g, '\\$&');
+    const pattern = `%${safe}%`;
     const { data, error } = await sb
       .from('customers')
       .select('*')

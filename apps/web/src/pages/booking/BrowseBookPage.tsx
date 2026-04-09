@@ -80,9 +80,19 @@ export default function BrowseBookPage() {
   }
 
   const [quotes, setQuotes] = useState<Record<string, QuoteData>>({});
+  const [quotesLoading, setQuotesLoading] = useState(false);
   useEffect(() => {
-    if (!availableModels || !searchParams || pickupLocationId == null || dropoffLocationId == null) return;
+    if (!availableModels || !searchParams || pickupLocationId == null || dropoffLocationId == null) {
+      setQuotesLoading(false);
+      return;
+    }
+    if (availableModels.length === 0) {
+      setQuotesLoading(false);
+      setQuotes({});
+      return;
+    }
     let cancelled = false;
+    setQuotesLoading(true);
     const load = async () => {
       const newQuotes: Record<string, QuoteData> = {};
       await Promise.all(
@@ -97,10 +107,15 @@ export default function BrowseBookPage() {
           }
         }),
       );
-      if (!cancelled) setQuotes(newQuotes);
+      if (!cancelled) {
+        setQuotes(newQuotes);
+        setQuotesLoading(false);
+      }
     };
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [availableModels, searchParams, pickupLocationId, dropoffLocationId, pushToast]);
 
   useEffect(() => {
@@ -123,7 +138,7 @@ export default function BrowseBookPage() {
   }, [basket, sessionToken, removeFromBasket, pushToast]);
 
   const isSearched = !!searchParams;
-  const isLoading = searching || availFetching;
+  const isLoading = searching || availFetching || quotesLoading;
 
   return (
     <PageLayout title="Browse & Book | Lola's Rentals" showBasketIcon>

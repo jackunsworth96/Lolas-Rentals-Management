@@ -83,6 +83,15 @@ export default {
           '0%': { transform: 'translateX(0%)' },
           '100%': { transform: 'translateX(-50%)' },
         },
+        'gold-glow-pulse': {
+          '0%, 100%': {
+            boxShadow: '0 0 0 0 rgba(252, 188, 90, 0), 0 0 0 0 rgba(252, 188, 90, 0)',
+          },
+          '50%': {
+            boxShadow:
+              '0 0 22px 6px rgba(252, 188, 90, 0.38), 0 0 8px 2px rgba(252, 188, 90, 0.2)',
+          },
+        },
       },
       animationDuration: {
         '8s': '8s',
@@ -109,6 +118,7 @@ export default {
         'cloud-slow-delay': 'cloudDriftLegacy 28s linear 14s infinite',
         'cloud-medium-delay': 'cloudDriftLegacy 18s linear 9s infinite',
         'scooter-drive': 'scooterDrive 12s linear infinite',
+        'gold-glow-pulse': 'gold-glow-pulse 2.4s ease-in-out infinite',
       },
     },
   },

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { ExtendLookupRequestSchema, ExtendConfirmRequestSchema } from '@lolas/shared';
+import { ExtendLookupRequestSchema, PublicExtendConfirmSchema } from '@lolas/shared';
 import { validateBody } from '../middleware/validate.js';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { computeQuote } from '../use-cases/booking/compute-quote.js';
@@ -7,6 +7,10 @@ import { checkAvailability } from '../use-cases/booking/check-availability.js';
 import { resolveStoreAccounts } from '../adapters/supabase/maintenance-expense-rpc.js';
 
 const router = Router();
+
+function escapeIlike(value: string): string {
+  return value.replace(/[%_\\]/g, '\\$&');
+}
 
 // ── Shared helpers ──
 
@@ -33,7 +37,7 @@ router.post('/lookup', validateBody(ExtendLookupRequestSchema), async (req, res,
       .from('orders_raw')
       .select('order_reference, vehicle_model_id, store_id, dropoff_datetime, pickup_datetime, customer_name')
       .eq('order_reference', orderReference)
-      .ilike('customer_email', trimmedEmail)
+      .ilike('customer_email', escapeIlike(trimmedEmail))
       .in('status', ['unprocessed', 'processed']);
 
     if (rawErr) throw new Error(`orders_raw lookup failed: ${rawErr.message}`);
@@ -86,7 +90,7 @@ router.post('/lookup', validateBody(ExtendLookupRequestSchema), async (req, res,
 
     // 2. Check processed orders via orders + customers
     const { data: custRows, error: cErr } = await sb
-      .from('customers').select('id').ilike('email', trimmedEmail).limit(10);
+      .from('customers').select('id').ilike('email', escapeIlike(trimmedEmail)).limit(10);
     if (cErr) throw new Error(`customer lookup failed: ${cErr.message}`);
     const custIds = (custRows ?? []).map((c: { id: string }) => c.id).filter(Boolean);
 
@@ -176,7 +180,7 @@ router.get('/preview', async (req, res, next) => {
       .from('orders_raw')
       .select('vehicle_model_id, store_id, dropoff_datetime, pickup_datetime, payload')
       .eq('order_reference', orderReference)
-      .ilike('customer_email', trimmedEmail)
+      .ilike('customer_email', escapeIlike(trimmedEmail))
       .in('status', ['unprocessed', 'processed']);
 
     if (rawRows && rawRows.length > 0) {
@@ -233,7 +237,7 @@ router.get('/preview', async (req, res, next) => {
     }
 
     // ── Try processed orders ──
-    const { data: custRows } = await sb.from('customers').select('id').ilike('email', trimmedEmail).limit(10);
+    const { data: custRows } = await sb.from('customers').select('id').ilike('email', escapeIlike(trimmedEmail)).limit(10);
     const custIds = (custRows ?? []).map((c: { id: string }) => c.id).filter(Boolean);
 
     if (custIds.length > 0) {
@@ -315,23 +319,20 @@ router.get('/preview', async (req, res, next) => {
 
 // ── Confirm Extension ──
 
-router.post('/confirm', validateBody(ExtendConfirmRequestSchema), async (req, res, next) => {
+router.post('/confirm', validateBody(PublicExtendConfirmSchema), async (req, res, next) => {
   try {
     const {
       orderReference,
       email,
       newDropoffDatetime,
-      overrideDailyRate,
-      paymentStatus = 'unpaid',
-      paymentMethod,
     } = req.body as {
       orderReference: string;
       email: string;
       newDropoffDatetime: string;
-      overrideDailyRate?: number;
-      paymentStatus?: 'paid' | 'unpaid';
-      paymentMethod?: string;
     };
+    const overrideDailyRate = undefined;
+    const paymentStatus = 'unpaid' as const;
+    const paymentMethod = undefined;
 
     const trimmedEmail = email.trim().toLowerCase();
     const sb = getSupabaseClient();
@@ -343,7 +344,7 @@ router.post('/confirm', validateBody(ExtendConfirmRequestSchema), async (req, re
       .from('orders_raw')
       .select('id, vehicle_model_id, store_id, dropoff_datetime, pickup_datetime, payload')
       .eq('order_reference', orderReference)
-      .ilike('customer_email', trimmedEmail)
+      .ilike('customer_email', escapeIlike(trimmedEmail))
       .in('status', ['unprocessed', 'processed']);
 
     if (rawRows && rawRows.length > 0) {
@@ -431,7 +432,7 @@ router.post('/confirm', validateBody(ExtendConfirmRequestSchema), async (req, re
     }
 
     // Check processed orders (active)
-    const { data: custRows } = await sb.from('customers').select('id').ilike('email', trimmedEmail).limit(10);
+    const { data: custRows } = await sb.from('customers').select('id').ilike('email', escapeIlike(trimmedEmail)).limit(10);
     const custIds = (custRows ?? []).map((c: { id: string }) => c.id).filter(Boolean);
 
     if (custIds.length > 0) {

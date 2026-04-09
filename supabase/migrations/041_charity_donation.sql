@@ -1,7 +1,7 @@
 -- ============================================================
 -- 041: Charity donation support
 --   1. Add charity_donation column to orders_raw (direct bookings)
---   2. Create CHARITY-PAYABLE liability account for donations owed to BePawsitive
+--   2. Create CHARITY-PAYABLE liability account for donations owed to Be Pawsitive
 -- ============================================================
 
 -- 1. orders_raw column

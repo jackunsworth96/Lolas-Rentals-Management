@@ -158,17 +158,6 @@
   display: inline-block;
 }
 
-/* ── Sub-item pills (dropdown children, e.g. Paw Card / Extend) ──────────── */
-
-/* Sub-items: same gold style, slightly shorter */
-.pill-col--sub .pill-link {
-  min-height: 88px;
-  font-size: clamp(1.1rem, 2vw, 2rem);
-  /* Slightly lighter gold to visually distinguish from main items */
-  background-color: #fdd07e;
-  box-shadow: 3px 3px 0 #363737;
-}
-
 /* ── Tablet: 2-column layout (600–899px) ─────────────────────────────────── */
 
 @media (min-width: 600px) and (max-width: 899px) {
@@ -198,11 +187,6 @@
     min-height: 100px;
     font-size: clamp(1.3rem, 3.5vw, 2rem);
   }
-
-  .pill-col--sub .pill-link {
-    min-height: 70px;
-    font-size: clamp(1rem, 3vw, 1.5rem);
-  }
 }
 
 /* ── Mobile: single column (< 600px) ─────────────────────────────────────── */
@@ -213,8 +197,9 @@
   }
 
   .pill-list {
-    padding: 1.5rem 0.875rem 3rem;
-    row-gap: 0.75rem;
+    /* Extra top padding: breathing room below the MENU paw */
+    padding: 2.75rem 0.875rem 3rem;
+    row-gap: 1.25rem;
     align-content: flex-start;
   }
 
@@ -225,17 +210,12 @@
     padding: 0;
   }
 
+  /* Single-column mobile: one size and gold for every pill (incl. Paw Card / Extend). */
   .pill-link {
-    min-height: 72px;
-    font-size: clamp(1.3rem, 5.5vw, 1.7rem);
-    padding: 1rem 1.5rem;
-    /* No rotation on mobile */
-    transform: none !important;
-  }
-
-  .pill-col--sub .pill-link {
     min-height: 56px;
     font-size: clamp(1rem, 4.5vw, 1.3rem);
     padding: 0.75rem 1.5rem;
+    /* No rotation on mobile */
+    transform: none !important;
   }
 }

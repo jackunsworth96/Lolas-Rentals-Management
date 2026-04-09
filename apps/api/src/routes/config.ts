@@ -29,7 +29,7 @@ router.use(authenticate);
 const edit = requirePermission(Permission.EditSettings);
 
 // ── Stores ──
-router.get('/stores', async (req, res, next) => {
+router.get('/stores', edit, async (req, res, next) => {
   try { res.json({ success: true, data: await req.app.locals.deps.configRepo.getStores() }); } catch (e) { next(e); }
 });
 router.post('/stores', edit, validateBody(z.object({
@@ -418,7 +418,7 @@ router.get('/employees', async (req, res, next) => {
 });
 
 // ── Users ──
-router.get('/users', async (req, res, next) => {
+router.get('/users', edit, async (req, res, next) => {
   try { res.json({ success: true, data: await req.app.locals.deps.configRepo.getUsers() }); } catch (e) { next(e); }
 });
 router.post('/users', edit, validateBody(z.object({
@@ -427,7 +427,8 @@ router.post('/users', edit, validateBody(z.object({
   try {
     const { saveUser } = await import('../use-cases/settings/save-user.js');
     const result = await saveUser({ configRepo: req.app.locals.deps.configRepo }, { ...req.body, isActive: req.body.isActive ?? true });
-    res.json({ success: true, data: result });
+    const { pinHash: _, ...safeUser } = result;
+    res.json({ success: true, data: safeUser });
   } catch (e) { next(e); }
 });
 router.put('/users/:id', edit, validateBody(z.object({
@@ -436,7 +437,8 @@ router.put('/users/:id', edit, validateBody(z.object({
   try {
     const { saveUser } = await import('../use-cases/settings/save-user.js');
     const result = await saveUser({ configRepo: req.app.locals.deps.configRepo }, { id: req.params.id, ...req.body, isActive: req.body.isActive ?? true });
-    res.json({ success: true, data: result });
+    const { pinHash: _, ...safeUser } = result;
+    res.json({ success: true, data: safeUser });
   } catch (e) { next(e); }
 });
 router.delete('/users/:id', edit, async (req, res, next) => {
@@ -444,7 +446,7 @@ router.delete('/users/:id', edit, async (req, res, next) => {
 });
 
 // ── Payment Routing Rules ──
-router.get('/payment-routing', async (req, res, next) => {
+router.get('/payment-routing', edit, async (req, res, next) => {
   try {
     const routingRepo = req.app.locals.deps.paymentRoutingRepo;
     const rules = await routingRepo.findAll();

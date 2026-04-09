@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useBookingStore } from '../../stores/bookingStore.js';
 import { FadeUpSection } from '../public/FadeUpSection.js';
@@ -20,6 +20,11 @@ export interface PageLayoutProps {
   showBasketIcon?: boolean;
   /** Strip top-padding and horizontal padding from <main> so a hero can sit flush under the nav */
   fullBleed?: boolean;
+  /**
+   * When set (e.g. About page): florals sit above main content and drift with scroll until the
+   * referenced element’s top crosses a viewport threshold, then their offset stays fixed.
+   */
+  floralScrollFreezeRef?: RefObject<HTMLElement | null>;
 }
 
 const NAV_ITEMS = [
@@ -49,36 +54,89 @@ export function PageLayout({
   floralPosition = 'fixed',
   showBasketIcon = false,
   fullBleed = false,
+  floralScrollFreezeRef,
 }: PageLayoutProps) {
   const { pathname } = useLocation();
   const basketCount = useBookingStore((s) => s.basket.length);
+
+  const floralParallaxLocked = useRef<number | null>(null);
+  const [floralShift, setFloralShift] = useState(0);
 
   useEffect(() => {
     if (title) document.title = title;
   }, [title]);
 
+  useEffect(() => {
+    if (!floralScrollFreezeRef) return;
+
+    const FREEZE_TOP_PX = 140;
+    const PARALLAX = 0.11;
+
+    const update = () => {
+      const freezeEl = floralScrollFreezeRef.current;
+      const y = window.scrollY;
+      const shift = y * PARALLAX;
+
+      if (!freezeEl) {
+        floralParallaxLocked.current = null;
+        setFloralShift(shift);
+        return;
+      }
+
+      const top = freezeEl.getBoundingClientRect().top;
+
+      if (top <= FREEZE_TOP_PX) {
+        if (floralParallaxLocked.current === null) {
+          floralParallaxLocked.current = shift;
+        }
+        setFloralShift(floralParallaxLocked.current);
+      } else {
+        floralParallaxLocked.current = null;
+        setFloralShift(shift);
+      }
+    };
+
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        ticking = false;
+        update();
+      });
+    };
+
+    update();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+
+    const ro = new ResizeObserver(() => update());
+    if (floralScrollFreezeRef.current) ro.observe(floralScrollFreezeRef.current);
+
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      ro.disconnect();
+    };
+  }, [floralScrollFreezeRef]);
+
   const isActive = (to: string) => (to === '/book' ? pathname === '/book' : pathname.startsWith(to));
+
+  const floralOnTop = Boolean(floralScrollFreezeRef);
+  /** Below nav (z-50), above page content — main uses z-0 when parallax florals are on. */
+  const floralZ = floralOnTop ? 'z-[45]' : 'z-0';
+  const leftFloralStyle = floralOnTop
+    ? { transform: `translate3d(0, ${floralShift}px, 0)`, willChange: 'transform' as const }
+    : undefined;
+  const rightFloralStyle = floralOnTop
+    ? { transform: `translate3d(0, ${-floralShift * 0.65}px, 0)`, willChange: 'transform' as const }
+    : undefined;
 
   return (
     <div
       className="relative min-h-screen overflow-x-clip font-body animate-page-fade-in"
       style={{ background: '#f1e6d6' }}
     >
-      {showFloralLeft && (
-        <img
-          src={flowerLeft}
-          alt=""
-          className={`pointer-events-none ${floralPosition} left-0 top-0 z-0 w-32 object-contain md:w-48`}
-        />
-      )}
-      {showFloralRight && (
-        <img
-          src={flowerRight}
-          alt=""
-          className={`pointer-events-none ${floralPosition} bottom-0 right-0 z-0 w-32 object-contain md:w-48`}
-        />
-      )}
-
       <TopNav
         logo={logo}
         logoAlt="Lola's Rentals"
@@ -103,9 +161,33 @@ export function PageLayout({
       {/* Reserve the same vertical space as the fixed nav (h-16) so content is not hidden underneath */}
       <div className="h-16 shrink-0" aria-hidden="true" />
 
-      <main className={`relative z-10 overflow-x-hidden pb-8 ${fullBleed ? '' : 'px-4 pt-20'}`}>{children}</main>
+      <main
+        className={`relative overflow-x-hidden pb-8 ${fullBleed ? '' : 'px-4 pt-20'} ${
+          floralScrollFreezeRef ? 'z-0' : 'z-10'
+        }`}
+      >
+        {children}
+      </main>
 
-      <FadeUpSection>
+      {/* After <main> in the tree so fixed florals paint above the page layer (see floralZ). */}
+      {showFloralLeft && (
+        <img
+          src={flowerLeft}
+          alt=""
+          className={`pointer-events-none ${floralPosition} left-0 top-0 ${floralZ} w-32 object-contain md:w-48`}
+          style={leftFloralStyle}
+        />
+      )}
+      {showFloralRight && (
+        <img
+          src={flowerRight}
+          alt=""
+          className={`pointer-events-none ${floralPosition} bottom-0 right-0 ${floralZ} w-32 object-contain md:w-48`}
+          style={rightFloralStyle}
+        />
+      )}
+
+      <FadeUpSection className={floralScrollFreezeRef ? 'relative z-[48]' : ''}>
         <footer className="w-full border-t border-sand-brand bg-cream-brand pb-32 pt-16 md:pb-16">
           <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-12 px-6 md:flex-row">
             <div className="max-w-xs space-y-4">
@@ -122,15 +204,14 @@ export function PageLayout({
                   Island Safety
                 </Link>
                 <a href="https://bepawsitive.com" target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
-                  BePawsitive NGO
+                  Be Pawsitive NGO
                 </a>
                 <a
                   href="https://wa.me/639694443413"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand"
+                  className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand"
                 >
-                  <img src={phoneIcon} alt="" className="h-4 w-4 shrink-0 object-contain opacity-80" width={16} height={16} />
                   Contact Us
                 </a>
                 <Link to="/book/privacy" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">

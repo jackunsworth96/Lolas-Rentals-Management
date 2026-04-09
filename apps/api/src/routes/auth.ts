@@ -10,7 +10,7 @@ const router = Router();
 
 /** Exact match for ILIKE: escape %, _, and \ so they are not LIKE wildcards. */
 function escapeForILikeExact(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+  return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_').replace(/,/g, '\\,').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
 }
 
 router.post('/login', validateBody(LoginRequestSchema), async (req, res, next) => {
@@ -52,10 +52,7 @@ router.post('/login', validateBody(LoginRequestSchema), async (req, res, next) =
 
     const valid = await verifyPin(String(pin), String(user.pin_hash));
     if (!valid) {
-      console.error('[auth/login] PIN verification failed (bcrypt mismatch or wrong PIN)', {
-        userId: user.id,
-        username: user.username,
-      });
+      console.error('[auth/login] PIN verification failed', { userId: user.id });
       res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Invalid credentials' } });
       return;
     }
