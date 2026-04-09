@@ -24,7 +24,7 @@ router.get(
       const { storeId, date } = req.query as { storeId: string; date: string };
       const sb = getSupabaseClient();
 
-      const [paymentsRes, expensesRes, depositsRes, transfersRes, miscSalesRes, reconRes, prevReconRes, storesRes, charityRes] =
+      const [paymentsRes, expensesRes, depositsRes, transfersRes, miscSalesRes, reconRes, prevReconRes, storesRes, charityRes, completedOrdersRes] =
         await Promise.all([
           sb
             .from('payments')
@@ -96,6 +96,12 @@ router.get(
             .eq('reference_type', 'order_charity')
             .gt('credit', 0)
             .order('created_at', { ascending: true }),
+
+          sb
+            .from('orders')
+            .select('id')
+            .eq('store_id', storeId)
+            .eq('status', 'completed'),
         ]);
 
       if (paymentsRes.error)
@@ -114,6 +120,8 @@ router.get(
         throw new Error(`Previous recon query failed: ${prevReconRes.error.message}`);
       if (charityRes.error)
         throw new Error(`Charity donations query failed: ${charityRes.error.message}`);
+      if (completedOrdersRes.error)
+        throw new Error(`Completed orders query failed: ${completedOrdersRes.error.message}`);
 
       const payments = (paymentsRes.data ?? []) as Record<string, unknown>[];
       const expenses = (expensesRes.data ?? []) as Record<string, unknown>[];
@@ -124,6 +132,9 @@ router.get(
       const allStores = ((storesRes.data ?? []) as { id: string; name: string; default_float_amount: number }[]);
       const currentStore = allStores.find((s) => s.id === storeId);
       const otherStores = allStores.filter((s) => s.id !== storeId);
+
+      const completedOrders = (completedOrdersRes.data ?? []) as { id: string }[];
+      const completedOrderIds = new Set(completedOrders.map((o) => o.id));
 
       const GCASH_IDS = new Set(['gcash', 'paymaya']);
       const DEPOSIT_TYPES = new Set(['deposit', 'security_deposit']);
@@ -180,6 +191,10 @@ router.get(
         const isDeposit = DEPOSIT_TYPES.has(paymentType);
 
         if (isDeposit) {
+          // Skip deposits for completed orders — deposit has been refunded or applied on settlement
+          if (p.order_id && completedOrderIds.has(p.order_id as string)) {
+            continue;
+          }
           const label = resolveMethodLabel(methodKey, rawMethodId);
           if (!depositsHeldByMethod[label]) {
             depositsHeldByMethod[label] = { label, rows: [], total: 0 };
