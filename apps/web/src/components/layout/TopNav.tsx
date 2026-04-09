@@ -37,7 +37,6 @@ interface PillItem {
   label: string;
   icon: string;
   href: string;
-  rotation: number;
   hoverBg: string;
   hoverColor: string;
   isSub: boolean;
@@ -47,15 +46,15 @@ interface PillItem {
 
 const PILL_VISUALS: Record<
   string,
-  { icon: string; rotation: number; hoverBg: string; hoverColor: string }
+  { icon: string; hoverBg: string; hoverColor: string }
 > = {
-  '/book':           { icon: '🏡', rotation: -6, hoverBg: '#00577C', hoverColor: '#ffffff' },
-  '/book/reserve':   { icon: '🛵', rotation:  5, hoverBg: '#FCBC5A', hoverColor: '#363737' },
-  '/book/transfers': { icon: '🚐', rotation: -4, hoverBg: '#00577C', hoverColor: '#ffffff' },
-  '/book/repairs':   { icon: '🔧', rotation:  6, hoverBg: '#363737', hoverColor: '#FCBC5A' },
-  '/book/about':     { icon: '🐾', rotation: -5, hoverBg: '#FCBC5A', hoverColor: '#363737' },
-  '/book/paw-card':  { icon: '🪪', rotation:  3, hoverBg: '#1A7A6E', hoverColor: '#ffffff' },
-  '/book/extend':    { icon: '📅', rotation: -3, hoverBg: '#1A7A6E', hoverColor: '#ffffff' },
+  '/book':           { icon: '🏡', hoverBg: '#00577C', hoverColor: '#ffffff' },
+  '/book/reserve':   { icon: '🛵', hoverBg: '#FCBC5A', hoverColor: '#363737' },
+  '/book/transfers': { icon: '🚐', hoverBg: '#00577C', hoverColor: '#ffffff' },
+  '/book/repairs':   { icon: '🔧', hoverBg: '#363737', hoverColor: '#FCBC5A' },
+  '/book/about':     { icon: '🐾', hoverBg: '#FCBC5A', hoverColor: '#363737' },
+  '/book/paw-card':  { icon: '🪪', hoverBg: '#1A7A6E', hoverColor: '#ffffff' },
+  '/book/extend':    { icon: '📅', hoverBg: '#1A7A6E', hoverColor: '#ffffff' },
 };
 
 function buildPills(items: NavItem[]): PillItem[] {
@@ -65,13 +64,13 @@ function buildPills(items: NavItem[]): PillItem[] {
       // Expand dropdown children directly into the pill list as sub-items
       for (const sub of item.dropdownItems ?? []) {
         const v = PILL_VISUALS[sub.href] ?? {
-          icon: '•', rotation: 0, hoverBg: '#00577C', hoverColor: '#fff',
+          icon: '•', hoverBg: '#00577C', hoverColor: '#fff',
         };
         pills.push({ label: sub.label, href: sub.href, isSub: true, ...v });
       }
     } else {
       const v = PILL_VISUALS[item.href] ?? {
-        icon: '•', rotation: 0, hoverBg: '#00577C', hoverColor: '#fff',
+        icon: '•', hoverBg: '#00577C', hoverColor: '#fff',
       };
       pills.push({ label: item.label, href: item.href, isSub: false, ...v });
     }
@@ -210,7 +209,6 @@ export default function TopNav({ items, rightSlot }: TopNavProps) {
                     role="menuitem"
                     className={`pill-link${isActive(pill.href) ? ' pill-link--active' : ''}`}
                     style={{
-                      '--item-rot': `${pill.rotation}deg`,
                       '--hover-bg': pill.hoverBg,
                       '--hover-color': pill.hoverColor,
                     } as CSSProperties}
@@ -218,7 +216,7 @@ export default function TopNav({ items, rightSlot }: TopNavProps) {
                   >
                     <motion.span className="pill-label" variants={labelVariants}>
                       <span className="pill-icon" aria-hidden="true">{pill.icon}</span>
-                      {pill.label}
+                      <span className="pill-text">{pill.label}</span>
                     </motion.span>
                   </Link>
                 </motion.li>

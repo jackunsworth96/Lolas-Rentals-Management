@@ -23,6 +23,14 @@
   justify-content: center;
 }
 
+/* Web + tablet: extra breathing room around the whole menu panel */
+@media (min-width: 600px) {
+  .bubble-menu-overlay {
+    padding: clamp(1.25rem, 4vh, 2.5rem) clamp(1rem, 5vw, 3rem);
+    box-sizing: border-box;
+  }
+}
+
 /* ── Pill list grid ──────────────────────────────────────────────────────── */
 
 .pill-list {
@@ -31,12 +39,28 @@
   padding: 2rem 1.5rem 3rem;
   display: flex;
   flex-wrap: wrap;
-  row-gap: 1rem;
+  row-gap: 1.25rem;
   column-gap: 0;
   width: 100%;
   max-width: 1280px;
   justify-content: flex-start;
   align-content: center;
+}
+
+/* Web + tablet: narrower grid + larger gaps so pills float in more negative space */
+@media (min-width: 600px) {
+  .pill-list {
+    max-width: min(46rem, 100%);
+    padding: clamp(2rem, 5vh, 3.5rem) clamp(1.5rem, 6vw, 3rem) clamp(2.5rem, 6vh, 4rem);
+    row-gap: clamp(1.5rem, 3vh, 2.5rem);
+  }
+
+  /* One height for every pill; icon stays inline with label (no stacked icon layout). */
+  .pill-link {
+    height: 5rem;
+    min-height: 5rem;
+    max-height: 5rem;
+  }
 }
 
 /* ── Pill column — 3-col desktop layout ─────────────────────────────────── */
@@ -46,7 +70,14 @@
   align-items: stretch;
   flex: 0 0 calc(100% / 3);
   box-sizing: border-box;
+  min-width: 0;
   padding: 0 0.55rem;
+}
+
+@media (min-width: 600px) {
+  .pill-col {
+    padding: 0 clamp(0.65rem, 2vw, 1.1rem);
+  }
 }
 
 /*
@@ -60,20 +91,18 @@
 /* ── Pill link ───────────────────────────────────────────────────────────── */
 
 .pill-link {
-  /* Per-item CSS custom properties (set inline from React) */
-  --item-rot:    0deg;
+  /* Per-item hover colors (set inline from React) */
   --hover-bg:    #00577C;
   --hover-color: #ffffff;
 
   width: 100%;
-  min-height: 140px;
-  padding: clamp(1.2rem, 2.5vw, 3.5rem) 1.5rem;
+  padding: 0 clamp(0.65rem, 1.5vw, 1.1rem);
 
   /* Headline font — Alegreya Sans, same as h1/h2 on the site */
   font-family: 'Alegreya Sans', ui-sans-serif, sans-serif;
-  font-size: clamp(1.7rem, 3vw, 3.4rem);
+  font-size: clamp(0.85rem, 1.5vw, 1.7rem);
   font-weight: 700;
-  line-height: 1;
+  line-height: 1.15;
   text-decoration: none;
   letter-spacing: -0.01em;
 
@@ -82,8 +111,7 @@
   color: #363737;        /* charcoal-brand */
   border: 2px solid #363737;
 
-  /* Skeuomorphic offset shadow — same as primary CTA */
-  box-shadow: 3px 3px 0 #363737;
+  box-shadow: 2px 2px 0 #363737;
 
   display: flex;
   align-items: center;
@@ -91,43 +119,22 @@
   position: relative;
   overflow: hidden;
   box-sizing: border-box;
-  white-space: nowrap;
   cursor: pointer;
 
   transition:
     transform  0.15s ease,
     box-shadow 0.15s ease;
-  will-change: transform;
 }
 
-/* Desktop: per-item slight rotation + scale hover */
-@media (min-width: 900px) {
-  .pill-link {
-    transform: rotate(var(--item-rot));
-  }
-
-  .pill-link:hover {
-    transform: rotate(var(--item-rot)) translate(-2px, -2px);
-    box-shadow: 5px 5px 0 #363737;
-  }
-
-  .pill-link:active {
-    transform: rotate(var(--item-rot)) translate(0px, 0px);
-    box-shadow: 3px 3px 0 #363737;
-  }
+/* No per-item rotation: rotate() does not affect flex layout, so tilted pills overlapped neighbors. */
+.pill-link:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0 #363737;
 }
 
-/* Tablet/mobile: no rotation, but keep offset shadow feedback */
-@media (max-width: 899px) {
-  .pill-link:hover {
-    transform: translate(-2px, -2px);
-    box-shadow: 5px 5px 0 #363737;
-  }
-
-  .pill-link:active {
-    transform: translate(0px, 0px);
-    box-shadow: 3px 3px 0 #363737;
-  }
+.pill-link:active {
+  transform: translate(0, 0);
+  box-shadow: 2px 2px 0 #363737;
 }
 
 /* Currently-active route — inverted: charcoal bg, gold text */
@@ -135,18 +142,33 @@
   background-color: #363737;
   color: #FCBC5A;
   border-color: #363737;
-  box-shadow: 3px 3px 0 rgba(54, 55, 55, 0.4);
+  box-shadow: 2px 2px 0 rgba(54, 55, 55, 0.4);
 }
 
 /* ── Pill label & icon ───────────────────────────────────────────────────── */
 
 .pill-label {
-  display: inline-flex;
+  display: flex;
+  flex-flow: row nowrap;
   align-items: center;
+  justify-content: center;
   gap: 0.45em;
+  max-width: 100%;
+  min-width: 0;
   will-change: transform, opacity;
-  line-height: 1.2;
   pointer-events: none; /* framer-motion animates this */
+}
+
+/* Long labels wrap to a second line without growing the pill (line-clamp). */
+.pill-text {
+  min-width: 0;
+  text-align: center;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 /* Emoji icon — slightly smaller than the text */
@@ -154,7 +176,7 @@
   font-size: 0.78em;
   line-height: 1;
   flex-shrink: 0;
-  /* Prevent emoji from inheriting rotation glitches on webkit */
+  /* Isolate emoji rendering from parent transforms */
   display: inline-block;
 }
 
@@ -166,8 +188,7 @@
   }
 
   .pill-list {
-    padding: 2rem 1.25rem 3rem;
-    row-gap: 0.875rem;
+    /* Inherits compact pill size + max-width from (min-width: 600px); keep top-aligned grid */
     align-content: flex-start;
   }
 
@@ -175,17 +196,11 @@
     flex: 0 0 50%;
     /* Reset 3-col orphan rules */
     margin-left: 0 !important;
-    padding: 0 0.4rem;
   }
 
   /* Centre the last item if it is alone on its row */
   .pill-col:last-child:nth-child(odd) {
     margin-left: 25% !important;
-  }
-
-  .pill-link {
-    min-height: 100px;
-    font-size: clamp(1.3rem, 3.5vw, 2rem);
   }
 }
 
@@ -197,8 +212,9 @@
   }
 
   .pill-list {
+    max-width: 1280px;
     /* Extra top padding: breathing room below the MENU paw */
-    padding: 2.75rem 0.875rem 3rem;
+    padding: 2.75rem 1.125rem 3rem;
     row-gap: 1.25rem;
     align-content: flex-start;
   }
@@ -212,10 +228,16 @@
 
   /* Single-column mobile: one size and gold for every pill (incl. Paw Card / Extend). */
   .pill-link {
-    min-height: 56px;
-    font-size: clamp(1rem, 4.5vw, 1.3rem);
-    padding: 0.75rem 1.5rem;
-    /* No rotation on mobile */
+    height: 3.5rem;
+    min-height: 3.5rem;
+    max-height: 3.5rem;
+    padding: 0 1.25rem;
+    font-size: clamp(0.9rem, 4vw, 1.2rem);
+    /* Framer / hover must not shift layout on narrow touch targets */
     transform: none !important;
+  }
+
+  .pill-text {
+    -webkit-line-clamp: 2;
   }
 }
