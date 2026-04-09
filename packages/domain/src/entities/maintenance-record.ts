@@ -27,6 +27,7 @@ export interface MaintenanceRecordProps {
   employeeId: string | null;
   storeId: string;
   createdAt: Date;
+  expenseStatus?: string;
 }
 
 export class MaintenanceRecord {
@@ -48,6 +49,7 @@ export class MaintenanceRecord {
   readonly employeeId: string | null;
   readonly storeId: string;
   readonly createdAt: Date;
+  readonly expenseStatus?: string;
 
   private _status: MaintenanceStatus;
   private _workPerformed: string | null;
@@ -74,6 +76,7 @@ export class MaintenanceRecord {
     this.employeeId = props.employeeId;
     this.storeId = props.storeId;
     this.createdAt = props.createdAt;
+    this.expenseStatus = props.expenseStatus;
 
     this._status = props.status;
     this._workPerformed = props.workPerformed;

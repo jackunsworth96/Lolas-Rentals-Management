@@ -33,6 +33,7 @@ import { publicReviewsRoutes } from './routes/public-reviews.js';
 import { waiverRouter } from './routes/public-waiver.js';
 import { publicLimiter } from './middleware/rate-limit.js';
 import { authenticate } from './middleware/authenticate.js';
+import inspectionRouter from './routes/inspections.js';
 
 import { SupabaseOrderRepository } from './adapters/supabase/order-repo.js';
 import { createOrderItemRepo } from './adapters/supabase/order-item-repo.js';
@@ -137,6 +138,8 @@ app.use('/api/public/reviews', publicLimiter, publicReviewsRoutes);
 
 app.use('/api/public/waiver', waiverRouter);
 app.use('/api/waiver', authenticate, waiverRouter);
+
+app.use('/api/inspections', authenticate, inspectionRouter);
 
 app.use('/api', routes);
 app.use('/api', (req: Request, res: Response) => {

@@ -15,6 +15,8 @@ export const Permission = {
     ViewTodo: 'can_view_todo',
     ViewLostOpportunity: 'can_view_lostopportunity',
     ViewCashup: 'can_view_cashup',
+    /** Same capability as inbox/order visibility (no separate `can_view_orders` in DB yet). */
+    ViewOrders: 'can_view_inbox',
     EditOrders: 'can_edit_orders',
     CancelOrders: 'can_cancel_orders',
     EditFleet: 'can_edit_fleet',

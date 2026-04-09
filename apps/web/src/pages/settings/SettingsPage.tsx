@@ -18,6 +18,7 @@ import { TaskCategoriesTab } from '../../components/settings/tabs/TaskCategories
 import { MaintenancePartsTab } from '../../components/settings/tabs/MaintenancePartsTab.js';
 import { RepairCostsTab } from '../../components/settings/tabs/RepairCostsTab.js';
 import { ReviewsTab } from '../../components/settings/tabs/ReviewsTab.js';
+import { InspectionChecklistTab } from '../../components/settings/tabs/InspectionChecklistTab.js';
 
 const TABS = [
   { key: 'stores', label: 'Stores' },
@@ -33,6 +34,7 @@ const TABS = [
   { key: 'maintenance-parts', label: 'Maintenance Parts' },
   { key: 'repair-costs', label: 'Repair Costs' },
   { key: 'reviews', label: 'Reviews' },
+  { key: 'inspection-checklist', label: 'Inspection Checklist' },
   { key: 'transfer-routes', label: 'Transfer Routes' },
   { key: 'chart-of-accounts', label: 'Chart of Accounts' },
   { key: 'payment-routing', label: 'Payment Routing' },
@@ -57,6 +59,7 @@ const TAB_COMPONENT: Record<TabKey, React.FC> = {
   'maintenance-parts': MaintenancePartsTab,
   'repair-costs': RepairCostsTab,
   reviews: ReviewsTab,
+  'inspection-checklist': InspectionChecklistTab,
   'transfer-routes': TransferRoutesTab,
   'chart-of-accounts': ChartOfAccountsTab,
   'payment-routing': PaymentRoutingTab,

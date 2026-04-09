@@ -1,9 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useEnrichedOrders } from '../../api/orders.js';
 import { useUIStore } from '../../stores/ui-store.js';
+import { useAuthStore } from '../../stores/auth-store.js';
 import { Table } from '../../components/common/Table.js';
 import { Badge } from '../../components/common/Badge.js';
 import { OrderDetailModal } from '../../components/orders/OrderDetailModal.js';
+import { InspectionModal } from '../../components/orders/InspectionModal.js';
 import { formatCurrency } from '../../utils/currency.js';
 import type { EnrichedOrder } from '../../types/api.js';
 
@@ -37,13 +39,21 @@ function formatReturnDate(dt: string | null): string {
 
 export default function ActivePage() {
   const storeId = useUIStore((s) => s.selectedStoreId) ?? '';
-  const { data: orders, isLoading } = useEnrichedOrders(storeId, 'active,confirmed') as {
+  const currentUser = useAuthStore((s) => s.user);
+  const { data: orders, isLoading, refetch: refetchOrders } = useEnrichedOrders(storeId, 'active,confirmed') as {
     data: EnrichedOrder[] | undefined;
     isLoading: boolean;
+    refetch: () => void;
   };
   const [selectedOrder, setSelectedOrder] = useState<EnrichedOrder | null>(null);
+  const [inspectionOrderId, setInspectionOrderId] = useState<string | null>(null);
+  const [inspectionOrderRef, setInspectionOrderRef] = useState('');
   const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
+
+  useEffect(() => {
+    console.log('inspectionOrderId changed:', inspectionOrderId);
+  }, [inspectionOrderId]);
 
   const filtered = useMemo(() => {
     let list = orders ?? [];
@@ -76,7 +86,21 @@ export default function ActivePage() {
     {
       key: 'wooOrderId',
       header: 'Order Ref',
-      render: (r: EnrichedOrder) => r.bookingToken ?? r.wooOrderId ?? r.id.slice(0, 8),
+      cellClassName: 'whitespace-normal',
+      render: (r: EnrichedOrder) => {
+        const refText = r.bookingToken ?? r.wooOrderId ?? r.id.slice(0, 8);
+        const inspectionStatus = r.inspectionStatus ?? 'pending';
+        return (
+          <div className="flex flex-wrap items-center gap-2">
+            <span>{refText}</span>
+            {inspectionStatus === 'completed' && (
+              <span className="inline-flex items-center rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
+                Inspection ✓
+              </span>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: 'waiverStatus',
@@ -148,6 +172,25 @@ export default function ActivePage() {
         <Badge color={r.status === 'confirmed' ? 'green' : 'blue'}>
           {r.status === 'confirmed' ? 'Confirmed' : 'Active'}
         </Badge>
+      ),
+    },
+    {
+      key: 'inspection',
+      header: '',
+      render: (r: EnrichedOrder) => (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            console.log('Inspection button clicked', r.id);
+            setInspectionOrderId(r.id);
+            setInspectionOrderRef(r.bookingToken ?? r.wooOrderId ?? r.id);
+            console.log('inspectionOrderId set to', r.id);
+          }}
+          className="font-lato text-xs font-medium px-3 py-1.5 rounded-lg border border-teal-brand text-teal-brand hover:bg-teal-brand/5 transition-colors"
+        >
+          Inspection
+        </button>
       ),
     },
   ];
@@ -224,6 +267,22 @@ export default function ActivePage() {
           enrichedData={selectedOrder}
         />
       )}
+
+      {inspectionOrderId &&
+        (console.log('Rendering InspectionModal') || (
+          <InspectionModal
+            open={!!inspectionOrderId}
+            onClose={() => setInspectionOrderId(null)}
+            orderId={inspectionOrderId}
+            orderReference={inspectionOrderRef}
+            storeId={storeId}
+            employeeName={currentUser?.username ?? 'Staff'}
+            onComplete={() => {
+              setInspectionOrderId(null);
+              void refetchOrders();
+            }}
+          />
+        ))}
     </div>
   );
 }

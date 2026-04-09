@@ -36,6 +36,7 @@ function toDto(r: MaintenanceRecord) {
     employeeId: r.employeeId ?? null,
     storeId: r.storeId,
     createdAt: r.createdAt,
+    expenseStatus: r.expenseStatus ?? 'paid',
   };
 }
 

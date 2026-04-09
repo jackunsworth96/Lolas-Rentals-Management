@@ -15,6 +15,8 @@ export declare const Permission: {
     readonly ViewTodo: "can_view_todo";
     readonly ViewLostOpportunity: "can_view_lostopportunity";
     readonly ViewCashup: "can_view_cashup";
+    /** Same capability as inbox/order visibility (no separate `can_view_orders` in DB yet). */
+    readonly ViewOrders: "can_view_inbox";
     readonly EditOrders: "can_edit_orders";
     readonly CancelOrders: "can_cancel_orders";
     readonly EditFleet: "can_edit_fleet";

@@ -100,6 +100,26 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
       }
     }
 
+    const inspectionByOrderId = new Map<string, { status: string }>();
+    if (orderIds.length > 0) {
+      const { data: inspectionRows, error: inspErr } = await sb
+        .from('inspections')
+        .select('order_id, status, created_at')
+        .in('order_id', orderIds);
+      if (inspErr) throw new Error(`enriched inspections query failed: ${inspErr.message}`);
+      type InspRow = { order_id: string; status: string; created_at: string };
+      const bestInsp = new Map<string, InspRow>();
+      for (const row of (inspectionRows ?? []) as InspRow[]) {
+        const cur = bestInsp.get(row.order_id);
+        if (!cur || (row.created_at ?? '') > (cur.created_at ?? '')) {
+          bestInsp.set(row.order_id, row);
+        }
+      }
+      for (const [oid, row] of bestInsp) {
+        inspectionByOrderId.set(oid, { status: row.status });
+      }
+    }
+
     const enriched = (orders ?? []).map((o: Record<string, unknown>) => {
       const customer = o.customers as { name: string; mobile: string | null; email: string | null } | null;
       const items = itemsByOrder.get(o.id as string) ?? [];
@@ -116,6 +136,9 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
 
       const token = (o.booking_token as string) ?? null;
       const waiverData = token ? waiverByReference.get(token) : undefined;
+
+      const insp = inspectionByOrderId.get(o.id as string);
+      const inspectionStatus = insp?.status === 'completed' ? 'completed' : 'pending';
 
       return {
         id: o.id,
@@ -138,6 +161,7 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
         paymentMethodId: o.payment_method_id as string | null,
         waiverStatus: (waiverData?.status as 'pending' | 'signed' | 'expired' | undefined) ?? 'pending',
         waiverSignedAt: waiverData?.agreed_at ?? null,
+        inspectionStatus,
       };
     });
 

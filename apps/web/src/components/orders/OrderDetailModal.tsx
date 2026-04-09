@@ -1,9 +1,12 @@
 import { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Modal } from '../common/Modal.js';
 import { Badge } from '../common/Badge.js';
 import { ExtendOrderModal } from './ExtendOrderModal.js';
+import { InspectionModal } from './InspectionModal.js';
+import { useInspectionByOrder } from '../../api/inspections.js';
 import { useOrder, useOrderItems, useOrderPayments, useOrderAddons, useOrderSwaps, useOrderHistory, useCollectPayment, useSettleOrder, useSwapVehicle, useModifyAddons, useAdjustDates } from '../../api/orders.js';
 import { useFleet } from '../../api/fleet.js';
 import { usePaymentMethods, useChartOfAccounts, useFleetStatuses, useAddons } from '../../api/config.js';
@@ -107,11 +110,21 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
   const [extendOpen, setExtendOpen] = useState(false);
 
   const { toasts, pushToast } = useToast();
+  const queryClient = useQueryClient();
+  const authUser = useAuthStore((s) => s.user);
   const canEditOrders = useAuthStore((s) => s.hasPermission('can_edit_orders'));
   const [sendingWaiverLink, setSendingWaiverLink] = useState(false);
+  const [inspectionModalOpen, setInspectionModalOpen] = useState(false);
 
-  const isActive = order && String(order.status?.value ?? order.status) === 'active';
+  const { data: inspectionOrderPayload, isLoading: inspectionOrderLoading, refetch: refetchInspection } =
+    useInspectionByOrder(orderId);
+
+  const orderStatusStr = String(order?.status?.value ?? order?.status ?? '');
+  const isActive = !!order && orderStatusStr === 'active';
   const canAct = isActive && !readOnly;
+  /** Handover inspection is allowed for active and confirmed rentals (matches Active orders list). */
+  const canStartInspection =
+    !readOnly && (orderStatusStr === 'active' || orderStatusStr === 'confirmed');
 
   // ── Store-filtered accounts (include company-wide accounts) ──
   const storeAccounts = useMemo(
@@ -613,6 +626,49 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                   </div>
                 </div>
               )}
+
+              <div className="min-w-0 max-w-xs">
+                <div className="rounded-lg border border-gray-200 bg-white p-4">
+                  <div className="text-xs font-medium uppercase text-gray-500">Inspection</div>
+                  {inspectionOrderLoading ? (
+                    <p className="mt-2 text-sm text-gray-500">Loading…</p>
+                  ) : inspectionOrderPayload?.exists && inspectionOrderPayload.inspection?.status === 'completed' ? (
+                    <div className="mt-2 flex items-start gap-2">
+                      <span className="text-lg leading-none" aria-hidden>
+                        ✅
+                      </span>
+                      <div>
+                        <div className="text-sm font-semibold text-gray-900">Inspection completed</div>
+                        {inspectionOrderPayload.inspection?.createdAt && (
+                          <div className="text-xs text-gray-600">
+                            {formatDateTime(String(inspectionOrderPayload.inspection.createdAt))}
+                          </div>
+                        )}
+                        {inspectionOrderPayload.inspection?.vehicleName && (
+                          <div className="mt-1 text-xs text-gray-600">
+                            Vehicle: {inspectionOrderPayload.inspection.vehicleName}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : inspectionOrderPayload?.exists && inspectionOrderPayload.inspection?.status === 'pending' ? (
+                    <p className="mt-2 text-sm text-amber-800">Inspection in progress (not completed).</p>
+                  ) : (
+                    <div className="mt-2">
+                      <p className="text-sm text-gray-600">No inspection on record</p>
+                      {canStartInspection && (
+                        <button
+                          type="button"
+                          onClick={() => setInspectionModalOpen(true)}
+                          className="mt-3 w-full rounded-lg border border-teal-brand bg-white px-3 py-2 text-sm font-medium text-teal-brand hover:bg-teal-50"
+                        >
+                          Start Inspection
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
 
               {vehicleNames && (
                 <div>
@@ -1322,6 +1378,23 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
           enrichedData={enrichedData}
         />
       )}
+
+      {inspectionModalOpen &&
+        createPortal(
+          <InspectionModal
+            open={inspectionModalOpen}
+            onClose={() => setInspectionModalOpen(false)}
+            orderId={orderId}
+            orderReference={enrichedData?.bookingToken ?? enrichedData?.wooOrderId ?? orderId}
+            storeId={storeId}
+            employeeName={authUser?.username ?? 'Staff'}
+            onComplete={() => {
+              void refetchInspection();
+              void queryClient.invalidateQueries({ queryKey: ['orders', 'enriched'] });
+            }}
+          />,
+          document.body,
+        )}
 
       {/* ═══════════════════ HISTORY TAB ═══════════════════ */}
       {tab === 'history' && (
