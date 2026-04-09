@@ -3,6 +3,10 @@ import { X } from 'lucide-react';
 import type { Addon } from './basket-types.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { phoneIcon } from '../public/customerContactIcons.js';
+import peaceOfMindIcon from '../../assets/Basket/Peace of Mind.svg';
+import surfRackIcon from '../../assets/Basket/Surf Rack Icon.svg';
+import bungeeCordIcon from '../../assets/Basket/Bungee Cord Icon.svg';
+import ninePmReturnIcon from '../../assets/Basket/9PM Return Icon.svg';
 
 /** Matches the 9PM late-return add-on from the catalog (name varies slightly by store). */
 export function isNinePmReturnAddonName(name: string): boolean {
@@ -54,10 +58,32 @@ function iconForAddon(name: string): string {
   return '✨';
 }
 
+function basketAssetIconSrc(name: string): string | null {
+  if (isNinePmReturnAddonName(name)) return ninePmReturnIcon;
+  const lower = name.toLowerCase();
+  if (lower.includes('peace') || lower.includes('mind')) return peaceOfMindIcon;
+  if (lower.includes('surf')) return surfRackIcon;
+  if (lower.includes('bungee') || lower.includes('bingee')) return bungeeCordIcon;
+  return null;
+}
+
 function renderAddonIcon(name: string): ReactNode {
   const lower = name.toLowerCase();
   if (lower.includes('phone')) {
     return <img src={phoneIcon} alt="" className="h-5 w-5 object-contain" width={20} height={20} />;
+  }
+  const assetSrc = basketAssetIconSrc(name);
+  if (assetSrc) {
+    return (
+      <img
+        src={assetSrc}
+        alt=""
+        className="h-5 w-5 object-contain"
+        width={20}
+        height={20}
+        aria-hidden
+      />
+    );
   }
   return iconForAddon(name);
 }

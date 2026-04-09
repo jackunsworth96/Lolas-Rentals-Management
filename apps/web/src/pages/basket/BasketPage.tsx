@@ -23,6 +23,30 @@ interface QuoteResponse {
   grandTotal: number;
 }
 
+interface AvailableModel {
+  modelId: string;
+  availableCount: number;
+}
+
+const TIME_SLOTS: { value: string; label: string }[] = [
+  '09:15','09:45','10:15','10:45',
+  '11:15','11:45','12:15','12:45',
+  '13:15','13:45','14:15','14:45',
+  '15:15','15:45','16:15','16:45',
+].map((t) => {
+  const [hStr, mStr] = t.split(':');
+  const h = parseInt(hStr, 10);
+  const m = mStr;
+  const h12 = h > 12 ? h - 12 : h;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  return { value: t, label: `${h12}:${m} ${ampm}` };
+});
+
+function todayDate(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function rentalDaysFromDates(pickup: string, dropoff: string): number {
   if (!pickup || !dropoff) return 1;
   const ms = new Date(dropoff).getTime() - new Date(pickup).getTime();
@@ -61,11 +85,92 @@ export default function BasketPage() {
   const sessionToken = useBookingStore((s) => s.sessionToken);
   const clearBasket = useBookingStore((s) => s.clearBasket);
   const updateBasketRate = useBookingStore((s) => s.updateBasketRate);
+  const replaceBasketHold = useBookingStore((s) => s.replaceBasketHold);
+  const setDates = useBookingStore((s) => s.setDates);
 
   const rentalDays = rentalDaysFromDates(pickupDatetime, dropoffDatetime);
 
   const [priceChanged, setPriceChanged] = useState(false);
   const lastQuotedDatesRef = useRef({ pickup: '', dropoff: '' });
+
+  // ── Change Dates ──
+  const [changingDates, setChangingDates] = useState(false);
+  const [newPickupDate, setNewPickupDate] = useState('');
+  const [newPickupTime, setNewPickupTime] = useState('09:15');
+  const [newDropoffDate, setNewDropoffDate] = useState('');
+  const [newDropoffTime, setNewDropoffTime] = useState('09:15');
+  const [dateChangeError, setDateChangeError] = useState('');
+  const [dateChangeLoading, setDateChangeLoading] = useState(false);
+
+  async function swapHold(
+    item: BasketItem,
+    pickup: string,
+    dropoff: string,
+  ): Promise<boolean> {
+    // 1. Check availability before touching the existing hold
+    let avail: AvailableModel[];
+    try {
+      avail = await api.get<AvailableModel[]>(
+        `/public/booking/availability?storeId=${encodeURIComponent(storeId)}&pickupDatetime=${encodeURIComponent(pickup)}&dropoffDatetime=${encodeURIComponent(dropoff)}`,
+      );
+    } catch {
+      return false;
+    }
+    const match = avail.find((m) => m.modelId === item.vehicleModelId && m.availableCount > 0);
+    if (!match) return false;
+
+    // 2. Create the new hold first
+    let newHold: { holdId: string; expiresAt: string };
+    try {
+      newHold = await api.post<{ holdId: string; expiresAt: string }>('/public/booking/hold', {
+        vehicleModelId: item.vehicleModelId,
+        storeId,
+        pickupDatetime: pickup,
+        dropoffDatetime: dropoff,
+        sessionToken,
+      });
+    } catch {
+      return false; // New hold failed — existing hold untouched
+    }
+
+    // 3. Release the old hold (fire-and-forget — expiry handles cleanup if this fails)
+    api.delete(`/public/booking/hold/${item.holdId}`, { sessionToken }).catch(() => {});
+
+    // 4. Update the store
+    replaceBasketHold(item.holdId, { holdId: newHold.holdId, expiresAt: newHold.expiresAt });
+    return true;
+  }
+
+  async function handleChangeDates() {
+    if (!newPickupDate || !newDropoffDate) return;
+    const pickup = `${newPickupDate}T${newPickupTime}:00`;
+    const dropoff = `${newDropoffDate}T${newDropoffTime}:00`;
+    if (new Date(dropoff) <= new Date(pickup)) {
+      setDateChangeError('Return date must be after pick-up date.');
+      return;
+    }
+    setDateChangeLoading(true);
+    setDateChangeError('');
+
+    // Snapshot current basket — store may update mid-loop via replaceBasketHold
+    const snapshot = useBookingStore.getState().basket;
+    const results = await Promise.all(snapshot.map((item) => swapHold(item, pickup, dropoff)));
+
+    if (results.some((r) => !r)) {
+      setDateChangeError(
+        "Sorry, we don't have availability for these dates. Please choose different dates or go back to browse other vehicles.",
+      );
+      setDateChangeLoading(false);
+      return;
+    }
+
+    // All holds swapped — commit dates globally
+    setDates(pickup, dropoff);
+    setChangingDates(false);
+    setDateChangeError('');
+    setDateChangeLoading(false);
+    // refreshQuotes fires automatically via the useEffect watching pickupDatetime/dropoffDatetime
+  }
 
   const refreshQuotes = useCallback(async () => {
     if (
@@ -455,7 +560,130 @@ export default function BasketPage() {
 
             {/* Your Selection */}
             <div className="rounded-xl border border-charcoal-brand/10 bg-white p-5 md:p-6">
-              <h2 className="mb-4 text-[15px] font-medium text-charcoal-brand">Your Selection</h2>
+              <div className="mb-4 flex items-center justify-between gap-2">
+                <h2 className="text-[15px] font-medium text-charcoal-brand">Your Selection</h2>
+                {!changingDates && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Pre-fill with current dates if they exist, otherwise blank
+                      const [pd = '', pt = '09:15'] = pickupDatetime
+                        ? [pickupDatetime.slice(0, 10), pickupDatetime.slice(11, 16)]
+                        : [];
+                      const [dd = '', dt = '09:15'] = dropoffDatetime
+                        ? [dropoffDatetime.slice(0, 10), dropoffDatetime.slice(11, 16)]
+                        : [];
+                      setNewPickupDate(pd);
+                      setNewPickupTime(TIME_SLOTS.find((s) => s.value === pt) ? pt : '09:15');
+                      setNewDropoffDate(dd);
+                      setNewDropoffTime(TIME_SLOTS.find((s) => s.value === dt) ? dt : '09:15');
+                      setDateChangeError('');
+                      setChangingDates(true);
+                    }}
+                    className="font-lato text-xs font-semibold text-teal-brand underline underline-offset-2 transition-opacity hover:opacity-70"
+                  >
+                    Change dates
+                  </button>
+                )}
+              </div>
+
+              {/* Date change panel */}
+              {changingDates && (
+                <div className="mb-5 rounded-lg border border-teal-brand/20 bg-sand-brand/40 p-4 space-y-4">
+                  <p className="font-lato text-sm font-semibold text-charcoal-brand">Select new dates</p>
+
+                  {/* Pick-up row */}
+                  <div className="space-y-1.5">
+                    <label className="font-lato text-[11px] font-bold uppercase tracking-wide text-charcoal-brand/55">
+                      Pick-up
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="date"
+                        value={newPickupDate}
+                        min={todayDate()}
+                        onChange={(e) => {
+                          setNewPickupDate(e.target.value);
+                          if (newDropoffDate && e.target.value > newDropoffDate) {
+                            setNewDropoffDate(e.target.value);
+                          }
+                        }}
+                        className="min-w-0 flex-1 rounded-lg border border-charcoal-brand/15 bg-white px-3 py-2 font-lato text-sm text-charcoal-brand outline-none focus:ring-2 focus:ring-teal-brand"
+                      />
+                      <select
+                        value={newPickupTime}
+                        onChange={(e) => setNewPickupTime(e.target.value)}
+                        className="w-[110px] shrink-0 rounded-lg border border-charcoal-brand/15 bg-white px-2 py-2 font-lato text-sm text-charcoal-brand outline-none focus:ring-2 focus:ring-teal-brand"
+                      >
+                        {TIME_SLOTS.map((s) => (
+                          <option key={s.value} value={s.value}>{s.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Return row */}
+                  <div className="space-y-1.5">
+                    <label className="font-lato text-[11px] font-bold uppercase tracking-wide text-charcoal-brand/55">
+                      Return
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="date"
+                        value={newDropoffDate}
+                        min={newPickupDate || todayDate()}
+                        onChange={(e) => setNewDropoffDate(e.target.value)}
+                        className="min-w-0 flex-1 rounded-lg border border-charcoal-brand/15 bg-white px-3 py-2 font-lato text-sm text-charcoal-brand outline-none focus:ring-2 focus:ring-teal-brand"
+                      />
+                      <select
+                        value={newDropoffTime}
+                        onChange={(e) => setNewDropoffTime(e.target.value)}
+                        className="w-[110px] shrink-0 rounded-lg border border-charcoal-brand/15 bg-white px-2 py-2 font-lato text-sm text-charcoal-brand outline-none focus:ring-2 focus:ring-teal-brand"
+                      >
+                        {TIME_SLOTS.map((s) => (
+                          <option key={s.value} value={s.value}>{s.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Error */}
+                  {dateChangeError && (
+                    <p className="font-lato text-xs font-medium text-red-600">{dateChangeError}</p>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      disabled={dateChangeLoading}
+                      onClick={() => {
+                        setChangingDates(false);
+                        setDateChangeError('');
+                      }}
+                      className="flex-1 rounded-[6px] border-2 border-charcoal-brand/30 bg-white font-lato text-xs font-extrabold uppercase tracking-[0.05em] text-charcoal-brand/70 transition-colors hover:border-charcoal-brand/60 hover:text-charcoal-brand disabled:opacity-40"
+                      style={{ padding: '10px 16px' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={dateChangeLoading || !newPickupDate || !newDropoffDate}
+                      onClick={() => { void handleChangeDates(); }}
+                      className="flex-[2] rounded-[6px] border-2 border-charcoal-brand bg-gold-brand font-lato text-xs font-extrabold uppercase tracking-[0.05em] text-charcoal-brand transition-all duration-150 disabled:pointer-events-none disabled:opacity-40"
+                      style={{ padding: '10px 16px', boxShadow: dateChangeLoading || !newPickupDate || !newDropoffDate ? 'none' : '3px 3px 0 #363737' }}
+                    >
+                      {dateChangeLoading ? (
+                        <span className="inline-flex items-center justify-center gap-2">
+                          <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-charcoal-brand border-t-transparent" />
+                          Checking…
+                        </span>
+                      ) : 'Confirm new dates'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-4">
                 {basket.map((item) => (
                   <BasketVehicleCard key={item.holdId} item={item} rentalDays={rentalDays} pickupLabel={formatDate(pickupDatetime)} dropoffLabel={formatDate(dropoffDatetime)} onToast={pushToast} />

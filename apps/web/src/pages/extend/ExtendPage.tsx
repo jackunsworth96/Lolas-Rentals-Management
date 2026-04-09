@@ -126,9 +126,10 @@ export default function ExtendPage() {
         headingMain="Extend Your"
         headingAccent="Rental"
         subheading="Loving Siargao? We get it. Extend your rental in just a few clicks."
-        className="px-6 pt-6 pb-4 text-center"
+        fitAboveFold
+        className="px-4 pb-3 pt-8 text-center sm:px-6 sm:pb-6 sm:pt-20"
       />
-      <div className="relative mx-auto max-w-xl overflow-hidden px-4 pt-2 pb-4">
+      <div className="relative mx-auto max-w-3xl overflow-hidden px-3 pb-3 pt-2 sm:px-4 sm:pb-4 sm:pt-8">
         <div className="relative z-10">
 
           {pageState === 'confirmed' ? (

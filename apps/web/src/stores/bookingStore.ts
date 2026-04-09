@@ -26,6 +26,7 @@ interface BookingState {
   addToBasket: (item: BasketItem) => void;
   removeFromBasket: (holdId: string) => void;
   updateBasketRate: (holdId: string, dailyRate: number, securityDeposit?: number) => void;
+  replaceBasketHold: (oldHoldId: string, newHold: Pick<BasketItem, 'holdId' | 'expiresAt'>) => void;
   clearBasket: () => void;
   triggerSearch: () => void;
 }
@@ -68,6 +69,15 @@ export const useBookingStore = create<BookingState>((set) => ({
       basket: s.basket.map((b) =>
         b.holdId === holdId
           ? { ...b, dailyRate, ...(securityDeposit !== undefined ? { securityDeposit } : {}) }
+          : b,
+      ),
+    })),
+
+  replaceBasketHold: (oldHoldId, newHold) =>
+    set((s) => ({
+      basket: s.basket.map((b) =>
+        b.holdId === oldHoldId
+          ? { ...b, holdId: newHold.holdId, expiresAt: newHold.expiresAt }
           : b,
       ),
     })),
