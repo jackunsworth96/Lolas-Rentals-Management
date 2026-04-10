@@ -8,13 +8,13 @@ import { X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 
 import menuPaw from '../../assets/Menu_Paw_Clean.png';
-import navHome from '../../assets/Nav Buttons/Nav Home.svg';
-import navReserve from '../../assets/Nav Buttons/Nav Reserve.svg';
-import navTransfers from '../../assets/Nav Buttons/Nav Transfers.svg';
-import navRepairs from '../../assets/Nav Buttons/Nav Repairs.svg';
-import navAbout from '../../assets/Nav Buttons/Nav About.svg';
-import navPawCard from '../../assets/Nav Buttons/Nav Paw Card.svg';
-import navExtend from '../../assets/Nav Buttons/Nav Extend.svg';
+import navHome from '../../assets/nav-buttons/Nav Home.svg';
+import navReserve from '../../assets/nav-buttons/Nav Reserve.svg';
+import navTransfers from '../../assets/nav-buttons/Nav Transfers.svg';
+import navRepairs from '../../assets/nav-buttons/Nav Repairs.svg';
+import navAbout from '../../assets/nav-buttons/Nav About.svg';
+import navPawCard from '../../assets/nav-buttons/Nav Paw Card.svg';
+import navExtend from '../../assets/nav-buttons/Nav Extend.svg';
 import './BubbleMenu.css';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
