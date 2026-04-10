@@ -25,9 +25,7 @@ export function BePawsitiveSection() {
             </p>
             <div className="flex justify-center md:justify-start">
               <PrimaryCtaButton
-                href="https://bepawsitive.com"
-                target="_blank"
-                rel="noopener noreferrer"
+                href="/book/bepawsitive"
                 className="inline-flex gap-3 px-8 py-4 text-base shadow-lg"
               >
                 Learn More About Be Pawsitive →

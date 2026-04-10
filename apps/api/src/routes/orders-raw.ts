@@ -543,7 +543,7 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
       })),
       addons: body.addons.map((a) => ({
         id: a.id ?? crypto.randomUUID(),
-        orderId: '',
+        orderId: undefined,
         addonName: a.addonName,
         addonPrice: a.addonPrice,
         addonType: a.addonType,

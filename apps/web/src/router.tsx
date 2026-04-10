@@ -43,6 +43,7 @@ const WaiverPage = lazy(() => import('./pages/waiver/WaiverPage.js'));
 const WaiverAgreementPage = lazy(() => import('./pages/waiver/WaiverAgreementPage.js'));
 const RefundPolicyPage = lazy(() => import('./pages/legal/RefundPolicyPage.js'));
 const PeaceOfMindPage = lazy(() => import('./pages/peace-of-mind/PeaceOfMindPage.js'));
+const BePawsitivePage = lazy(() => import('./pages/bepawsitive/BePawsitivePage.js'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
@@ -87,6 +88,7 @@ export function AppRouter() {
         <Route path="/waiver/:orderReference" element={<WaiverPage />} />
         <Route path="/refund-policy" element={<RefundPolicyPage />} />
         <Route path="/peace-of-mind" element={<PeaceOfMindPage />} />
+        <Route path="/book/bepawsitive" element={<BePawsitivePage />} />
 
         {/* Backoffice routes — protected */}
         <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>

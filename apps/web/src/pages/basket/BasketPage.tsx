@@ -269,8 +269,11 @@ export default function BasketPage() {
   const [charityDonation, setCharityDonation] = useState(0);
   type LocFee = { id: number; deliveryCost: number; collectionCost: number };
   const [locations, setLocations] = useState<LocFee[]>([]);
-  const pickupFee = locations.find((l) => l.id === pickupLocationId)?.deliveryCost ?? 0;
-  const dropoffFee = locations.find((l) => l.id === dropoffLocationId)?.collectionCost ?? 0;
+  const vehicleCount = basket.length || 1;
+  const pickupFeePerVehicle = locations.find((l) => l.id === pickupLocationId)?.deliveryCost ?? 0;
+  const dropoffFeePerVehicle = locations.find((l) => l.id === dropoffLocationId)?.collectionCost ?? 0;
+  const pickupFee = pickupFeePerVehicle * vehicleCount;
+  const dropoffFee = dropoffFeePerVehicle * vehicleCount;
 
   const selectedPm = paymentMethods.find((pm) => pm.id === paymentMethodId);
   const surchargePercent = selectedPm?.surchargePercent ?? 0;
@@ -478,6 +481,8 @@ export default function BasketPage() {
         orderRefs.push(result.orderReference);
         if (result.serverQuote != null) serverTotal += result.serverQuote;
       }
+      // Location fees are per-vehicle and applied once to the total after all vehicles are summed
+      if (serverTotal > 0) serverTotal += pickupFee + dropoffFee;
       const submittedAddonIds = new Set(allAddonIds);
       const selAddons = addons.filter((a) => submittedAddonIds.has(Number(a.id)));
       const clientTotal = basket.reduce((s, b) => s + b.dailyRate * rentalDays, 0)
@@ -755,7 +760,7 @@ export default function BasketPage() {
           <div className="order-2">
             <OrderSummaryPanel
               basket={basket} rentalDays={rentalDays} selectedAddonIds={selectedAddonIds} addons={standardAddons}
-              transfer={transfer} pickupFee={pickupFee} dropoffFee={dropoffFee}
+              transfer={transfer} pickupFee={pickupFee} dropoffFee={dropoffFee} vehicleCount={vehicleCount}
               paymentMethodId={paymentMethodId}
               onPaymentChange={(id) => {
                 setPaymentMethodId(id);

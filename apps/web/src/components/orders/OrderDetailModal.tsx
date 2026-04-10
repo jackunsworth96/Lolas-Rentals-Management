@@ -6,6 +6,7 @@ import { Modal } from '../common/Modal.js';
 import { Badge } from '../common/Badge.js';
 import { ExtendOrderModal } from './ExtendOrderModal.js';
 import { InspectionModal } from './InspectionModal.js';
+import { MayaPaymentModal } from './MayaPaymentModal.js';
 import { useInspectionByOrder } from '../../api/inspections.js';
 import { useOrder, useOrderItems, useOrderPayments, useOrderAddons, useOrderSwaps, useOrderHistory, useCollectPayment, useSettleOrder, useSwapVehicle, useModifyAddons, useAdjustDates } from '../../api/orders.js';
 import { useFleet } from '../../api/fleet.js';
@@ -82,6 +83,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
   const { data: vehicles = [] } = useFleet(storeId);
   const { data: configAddons = [] } = useAddons(storeId) as { data: Array<{ id: number; name: string; pricePerDay?: number; price_per_day?: number; priceOneTime?: number; price_one_time?: number; addonType?: string; addon_type?: string; isActive?: boolean; is_active?: boolean; mutualExclusivityGroup?: string; mutual_exclusivity_group?: string }> | undefined };
   const { data: paymentMethods = [] } = usePaymentMethods() as { data: Array<{ id: string; name: string; surchargePercent?: number; surcharge_percent?: number; isActive?: boolean; is_active?: boolean }> | undefined };
+  const cardSurchargePercent = Number(paymentMethods.find((m) => m.id === 'Card')?.surcharge_percent ?? paymentMethods.find((m) => m.id === 'Card')?.surchargePercent ?? 0);
   const { data: accounts = [] } = useChartOfAccounts() as { data: Array<Record<string, unknown>> | undefined };
   const { data: fleetStatuses = [] } = useFleetStatuses() as { data: Array<{ id: string; name: string; isRentable?: boolean; is_rentable?: boolean }> | undefined };
 
@@ -115,6 +117,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
   const canEditOrders = useAuthStore((s) => s.hasPermission('can_edit_orders'));
   const [sendingWaiverLink, setSendingWaiverLink] = useState(false);
   const [inspectionModalOpen, setInspectionModalOpen] = useState(false);
+  const [showMayaModal, setShowMayaModal] = useState(false);
 
   const { data: inspectionOrderPayload, isLoading: inspectionOrderLoading, refetch: refetchInspection } =
     useInspectionByOrder(orderId);
@@ -815,6 +818,22 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                 </form>
               </section>
 
+              {/* ─── REQUEST PAYMENT VIA MAYA ─── */}
+              <section>
+                <h3 className="mb-3 font-medium text-gray-900">Request Payment via Maya</h3>
+                <p className="mb-3 text-sm text-gray-500">
+                  Generate a hosted Maya checkout link to send to the customer for online card payment.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowMayaModal(true)}
+                  className="flex items-center gap-2 rounded-lg border border-green-600 px-5 py-2 text-sm font-medium text-green-700 transition-colors hover:bg-green-50"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                  Request Payment via Maya…
+                </button>
+              </section>
+
               {/* ─── EXTEND BOOKING ─── */}
               <section>
                 <h3 className="mb-3 font-medium text-gray-900">Extend Booking</h3>
@@ -1444,6 +1463,14 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
         </div>
       )}
     </Modal>
+    <MayaPaymentModal
+      isOpen={showMayaModal}
+      onClose={() => setShowMayaModal(false)}
+      orderId={(order as { id?: string } | undefined)?.id ?? orderId}
+      orderReference={String((order as { booking_token?: string } | undefined)?.booking_token ?? orderId)}
+      balanceDue={Number((order as { balance_due?: unknown } | undefined)?.balance_due ?? 0)}
+      cardSurchargePercent={cardSurchargePercent}
+    />
     {open &&
       toasts.length > 0 &&
       createPortal(

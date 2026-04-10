@@ -25,6 +25,7 @@ interface Props {
   /** When false (mobile), primary button opens review sheet instead of submitting. */
   isMdUp: boolean;
   onOpenMobileReview?: () => void;
+  vehicleCount?: number;
 }
 
 const PM_ICONS: Record<string, string> = {
@@ -60,6 +61,7 @@ export function OrderSummaryPanel({
   onCharityChange,
   isMdUp,
   onOpenMobileReview,
+  vehicleCount = 1,
 }: Props) {
   const vehicleSubtotal = basket.reduce((sum, b) => sum + b.dailyRate * rentalDays, 0);
 
@@ -124,8 +126,12 @@ export function OrderSummaryPanel({
         {/* Line items */}
         <div className="space-y-2">
           <Row label={`Vehicle Subtotal (${rentalDays} Day${rentalDays !== 1 ? 's' : ''})`} amount={vehicleSubtotal} />
-          {pickupFee > 0 && <Row label="Delivery Fee" amount={pickupFee} />}
-          {dropoffFee > 0 && <Row label="Collection Fee" amount={dropoffFee} />}
+          {pickupFee > 0 && (
+            <Row label={vehicleCount > 1 ? `Delivery Fee (×${vehicleCount})` : 'Delivery Fee'} amount={pickupFee} />
+          )}
+          {dropoffFee > 0 && (
+            <Row label={vehicleCount > 1 ? `Collection Fee (×${vehicleCount})` : 'Collection Fee'} amount={dropoffFee} />
+          )}
           {addonsTotal > 0 && <Row label="Add-ons Total" amount={addonsTotal} />}
           {transferFee > 0 && <Row label="Transfer Fee" amount={transferFee} />}
           {surchargeAmount > 0 && (

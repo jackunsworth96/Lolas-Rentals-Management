@@ -26,6 +26,7 @@ import { publicRepairsRoutes } from './public-repairs.js';
 import { dashboardRoutes } from './dashboard.js';
 import { directoryRoutes } from './directory.js';
 import { budgetRoutes } from './budget.js';
+import mayaRouter from './maya.js';
 import { loginLimiter, publicLimiter, apiLimiter } from '../middleware/rate-limit.js';
 
 const routes = Router();
@@ -61,5 +62,6 @@ routes.use('/public/paw-card', publicPawCardRoutes);
 routes.use('/public/extend', publicExtendRoutes);
 routes.use('/public/repairs', publicRepairsRoutes);
 routes.use('/budget', budgetRoutes);
+routes.use('/payments/maya', mayaRouter);
 
 export { routes };

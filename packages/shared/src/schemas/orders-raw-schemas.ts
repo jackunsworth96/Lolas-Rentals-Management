@@ -133,5 +133,8 @@ export interface QuoteBreakdown {
   addonsTotal: number;
   /** Refundable security deposit (e.g. cash/card hold at pickup); not included in grandTotal */
   securityDeposit: number;
+  /** Rental + add-ons only; location fees excluded (fees are shared across the order, not per-vehicle) */
   grandTotal: number;
+  /** grandTotal plus pickupFee + dropoffFee; use for single-vehicle display or full order totals */
+  grandTotalWithFees: number;
 }

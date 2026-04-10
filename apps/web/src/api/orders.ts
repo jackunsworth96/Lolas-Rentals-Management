@@ -129,3 +129,10 @@ export function useSwapVehicle() {
     },
   });
 }
+
+export function useCreateMayaCheckout() {
+  return useMutation({
+    mutationFn: (params: { orderId: string; amountPHP: number; description?: string }) =>
+      api.post<{ checkoutId: string; redirectUrl: string }>('/payments/maya/checkout', params),
+  });
+}

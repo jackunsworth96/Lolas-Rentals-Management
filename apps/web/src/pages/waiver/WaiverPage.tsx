@@ -8,7 +8,7 @@ import {
 } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { CheckCircle2 } from 'lucide-react';
-import pawCardIcon from '../../assets/Home/Paw Card Icon.svg';
+import lolasLogo from '../../assets/Lolas Original Logo.svg';
 import { WaiverSigningTermsContent } from '../../components/waiver/WaiverSigningTermsContent.js';
 import { formatPickupDatetimeManila } from '../../utils/date.js';
 
@@ -193,7 +193,6 @@ export default function WaiverPage() {
   const [passengerHasInk, setPassengerHasInk] = useState([false, false, false, false]);
 
   const [alreadySignedOnLoad, setAlreadySignedOnLoad] = useState(false);
-  const [logoSrc, setLogoSrc] = useState('/lolas-paw.png');
 
   const setPassengerInk = (index: number, has: boolean) => {
     setPassengerHasInk((prev) => {
@@ -352,10 +351,9 @@ export default function WaiverPage() {
           <>
             <div className="flex justify-center mb-6">
               <img
-                src={logoSrc}
-                alt="Lola's"
+                src={lolasLogo}
+                alt="Lola's Rentals"
                 className="h-16 w-auto object-contain"
-                onError={() => setLogoSrc(pawCardIcon)}
               />
             </div>
             <h1 className="font-headline text-2xl sm:text-3xl text-teal-brand text-center mb-2">

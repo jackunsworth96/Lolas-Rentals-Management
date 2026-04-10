@@ -128,8 +128,6 @@ export async function computeQuote(
     }
   }
 
-  const grandTotal = rentalSubtotal + pickupFee + dropoffFee + addonsTotal;
-
   return {
     rentalDays,
     dailyRate,
@@ -139,6 +137,7 @@ export async function computeQuote(
     addons: addonLines,
     addonsTotal,
     securityDeposit,
-    grandTotal,
+    grandTotal: rentalSubtotal + addonsTotal,
+    grandTotalWithFees: rentalSubtotal + pickupFee + dropoffFee + addonsTotal,
   };
 }
