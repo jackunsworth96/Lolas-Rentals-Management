@@ -1,6 +1,6 @@
 export interface OrderAddonRecord {
   id: string;
-  orderId: string;
+  orderId?: string;
   addonName: string;
   addonPrice: number;
   addonType: 'per_day' | 'one_time';
