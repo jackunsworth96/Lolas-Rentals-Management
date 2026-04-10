@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { CalendarDays } from 'lucide-react';
 import { api } from '../../api/client.js';
 import { useBookingStore, type BasketItem } from '../../stores/bookingStore.js';
 import { HoldCountdown } from '../booking/HoldCountdown.js';
@@ -51,7 +52,14 @@ export function BasketVehicleCard({ item, rentalDays, pickupLabel, dropoffLabel,
           <div>
             <h3 className="text-[15px] font-medium text-charcoal-brand">{item.modelName}</h3>
             <p className="mt-1 flex items-center gap-1.5 text-[12px] text-charcoal-brand/50">
-              📅 {pickupLabel} → {dropoffLabel}
+              <CalendarDays
+                className="h-3.5 w-3.5 shrink-0 text-teal-brand/70"
+                strokeWidth={2}
+                aria-hidden
+              />
+              <span>
+                {pickupLabel} → {dropoffLabel}
+              </span>
             </p>
           </div>
           <span className="shrink-0 rounded-full bg-sand-brand px-2.5 py-0.5 text-[11px] font-medium text-charcoal-brand/70">

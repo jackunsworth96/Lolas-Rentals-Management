@@ -453,6 +453,7 @@ export default function BasketPage() {
       allAddonIds = allAddonIds.filter((id) => id !== nid);
     }
     const orderRefs: string[] = [];
+    const submittedOrderRefs: string[] = [];
     let serverTotal = 0;
     try {
       for (const item of basket) {
@@ -460,6 +461,7 @@ export default function BasketPage() {
           '/public/booking/submit',
           {
             sessionToken, vehicleModelId: item.vehicleModelId,
+            holdId: item.holdId,
             customerName: renter.fullName.trim(), customerEmail: renter.email.trim(),
             customerMobile: renter.phone.trim(),
             pickupDatetime: pickupDatetime,
@@ -479,6 +481,7 @@ export default function BasketPage() {
           },
         );
         orderRefs.push(result.orderReference);
+        submittedOrderRefs.push(result.orderReference);
         if (result.serverQuote != null) serverTotal += result.serverQuote;
       }
       // Location fees are per-vehicle and applied once to the total after all vehicles are summed
@@ -506,6 +509,14 @@ export default function BasketPage() {
       };
       navigate(`/book/confirmation/${encodeURIComponent(orderRefs[0])}`, { state: confirmState });
     } catch (err: unknown) {
+      // Rollback: cancel any orders already submitted before the failure
+      for (const ref of submittedOrderRefs) {
+        try {
+          await api.patch(`/public/booking/cancel/${encodeURIComponent(ref)}`, {});
+        } catch {
+          // Best effort — ignore individual cancel failures
+        }
+      }
       const msg = err instanceof Error ? err.message : 'Something went wrong';
       pushToast(msg, 'error');
     } finally { setSubmitting(false); }

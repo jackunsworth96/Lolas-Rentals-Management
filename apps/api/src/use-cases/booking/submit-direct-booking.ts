@@ -142,9 +142,11 @@ export async function submitDirectBooking(
     helmetCount: input.helmet_count ?? null,
   });
 
-  // 6. Clean up the hold (best-effort; booking is already persisted)
+  // 6. Clean up the hold (best-effort; booking is already persisted).
+  // Pass holdId when available so only the specific hold row is deleted,
+  // preserving any other same-model holds in the same session.
   try {
-    await bookingPort.deleteHoldBySessionAndModel(input.sessionToken, input.vehicleModelId);
+    await bookingPort.deleteHoldBySessionAndModel(input.sessionToken, input.vehicleModelId, input.holdId);
   } catch {
     // Hold cleanup is non-critical; it will expire naturally
   }

@@ -73,6 +73,8 @@ export const SubmitDirectBookingRequestSchema = z.object({
   webPaymentMethod: z.string().optional(),
   /** Requested helmet count for scooter/bike direct bookings (1 default, 2 if extra helmet requested). */
   helmet_count: z.number().int().min(1).max(2).optional(),
+  /** ID of the specific hold being consumed. Used server-side to delete only that hold row. */
+  holdId: z.string().optional(),
 });
 
 export type SubmitDirectBookingInput = z.infer<typeof SubmitDirectBookingRequestSchema>;

@@ -11,7 +11,7 @@ import { submitDirectBooking, type SubmitDirectBookingResult } from '../use-case
 
 const holdLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
-  max: 5,
+  max: 20,
   message: { success: false, error: { code: 'RATE_LIMIT', message: 'Too many hold requests. Please try again later.' } },
   standardHeaders: 'draft-7',
   legacyHeaders: false,
@@ -218,6 +218,28 @@ router.post('/submit', submitLimiter, validateBody(SubmitDirectBookingRequestSch
         charityDonation: result.charityDonation,
       },
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Cancel (rollback for partial multi-vehicle failures) ──
+
+router.patch('/cancel/:orderReference', async (req, res, next) => {
+  try {
+    const { orderReference } = req.params;
+    const { getSupabaseClient } = await import('../adapters/supabase/client.js');
+    const sb = getSupabaseClient();
+
+    const { error } = await sb
+      .from('orders_raw')
+      .update({ status: 'cancelled' })
+      .eq('order_reference', orderReference)
+      .eq('booking_channel', 'direct')
+      .eq('status', 'unprocessed');
+
+    if (error) throw new Error(`Cancel failed: ${error.message}`);
+    res.json({ success: true });
   } catch (err) {
     next(err);
   }

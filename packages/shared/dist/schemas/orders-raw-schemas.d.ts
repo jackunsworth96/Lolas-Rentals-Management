@@ -60,6 +60,8 @@ export declare const SubmitDirectBookingRequestSchema: z.ZodObject<{
     webPaymentMethod: z.ZodOptional<z.ZodString>;
     /** Requested helmet count for scooter/bike direct bookings (1 default, 2 if extra helmet requested). */
     helmet_count: z.ZodOptional<z.ZodNumber>;
+    /** ID of the specific hold being consumed. Used server-side to delete only that hold row. */
+    holdId: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     customerName: string;
     sessionToken: string;
@@ -79,6 +81,7 @@ export declare const SubmitDirectBookingRequestSchema: z.ZodObject<{
     charityDonation?: number | undefined;
     webPaymentMethod?: string | undefined;
     helmet_count?: number | undefined;
+    holdId?: string | undefined;
 }, {
     customerName: string;
     sessionToken: string;
@@ -98,6 +101,7 @@ export declare const SubmitDirectBookingRequestSchema: z.ZodObject<{
     charityDonation?: number | undefined;
     webPaymentMethod?: string | undefined;
     helmet_count?: number | undefined;
+    holdId?: string | undefined;
 }>;
 export type SubmitDirectBookingInput = z.infer<typeof SubmitDirectBookingRequestSchema>;
 /**
@@ -124,6 +128,8 @@ export declare const DirectBookingRequestSchema: z.ZodObject<Omit<{
     webPaymentMethod: z.ZodOptional<z.ZodString>;
     /** Requested helmet count for scooter/bike direct bookings (1 default, 2 if extra helmet requested). */
     helmet_count: z.ZodOptional<z.ZodNumber>;
+    /** ID of the specific hold being consumed. Used server-side to delete only that hold row. */
+    holdId: z.ZodOptional<z.ZodString>;
 }, "sessionToken">, "strip", z.ZodTypeAny, {
     customerName: string;
     customerEmail: string;
@@ -142,6 +148,7 @@ export declare const DirectBookingRequestSchema: z.ZodObject<Omit<{
     charityDonation?: number | undefined;
     webPaymentMethod?: string | undefined;
     helmet_count?: number | undefined;
+    holdId?: string | undefined;
 }, {
     customerName: string;
     customerEmail: string;
@@ -160,6 +167,7 @@ export declare const DirectBookingRequestSchema: z.ZodObject<Omit<{
     charityDonation?: number | undefined;
     webPaymentMethod?: string | undefined;
     helmet_count?: number | undefined;
+    holdId?: string | undefined;
 }>;
 export type DirectBookingRequest = z.infer<typeof DirectBookingRequestSchema>;
 /**

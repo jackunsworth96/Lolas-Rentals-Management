@@ -221,13 +221,16 @@ export function createBookingAdapter(): BookingPort {
       return data ? dbRowToHold(data as HoldDbRow) : null;
     },
 
-    async deleteHoldBySessionAndModel(sessionToken: string, vehicleModelId: string): Promise<void> {
-      const { error } = await sb
-        .from('booking_holds')
-        .delete()
-        .eq('session_token', sessionToken)
-        .eq('vehicle_model_id', vehicleModelId);
+    async deleteHoldBySessionAndModel(sessionToken: string, vehicleModelId: string, holdId?: string): Promise<void> {
+      let query = sb.from('booking_holds').delete();
 
+      if (holdId) {
+        query = query.eq('id', holdId);
+      } else {
+        query = query.eq('session_token', sessionToken).eq('vehicle_model_id', vehicleModelId);
+      }
+
+      const { error } = await query;
       if (error) throw new Error(`Failed to clean up holds: ${error.message}`);
     },
 

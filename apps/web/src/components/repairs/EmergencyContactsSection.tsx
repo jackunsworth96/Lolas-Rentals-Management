@@ -1,44 +1,75 @@
 import { GOOGLE_MAPS_EMBED_URL, GOOGLE_MAPS_PLACE_URL } from '../../config/maps.js';
-import { phoneIcon, locationIcon } from '../public/customerContactIcons.js';
+import { phoneIcon, messageIcon, locationIcon } from '../public/customerContactIcons.js';
 
 /** Contacts, store info, and map (below Island Safety Tips on the repairs page). */
 export function EmergencyContactsSection() {
   return (
     <div className="flex min-w-0 flex-col space-y-8">
       <h2 className="font-headline text-3xl font-bold text-teal-brand md:text-4xl">Emergency Contacts</h2>
-      <div className="grid gap-4">
-        <div className="flex items-center justify-between rounded-2xl bg-cream-brand p-6 shadow-sm">
-          <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-teal-brand p-2">
-              <img src={phoneIcon} alt="" className="h-8 w-8 object-contain" width={32} height={32} />
+      <div className="grid gap-8 md:grid-cols-2 md:items-start">
+        <div className="flex min-w-0 flex-col gap-4">
+          <div className="flex items-center justify-between rounded-2xl bg-cream-brand p-6 shadow-sm">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-teal-brand p-2">
+                <img src={phoneIcon} alt="" className="h-8 w-8 object-contain" width={32} height={32} />
+              </div>
+              <div className="flex flex-col gap-0">
+                <p className="text-sm font-bold uppercase tracking-widest leading-tight text-teal-brand">Lola&apos;s Reception</p>
+                <p className="text-lg font-bold leading-tight text-charcoal-brand">09694443413</p>
+              </div>
             </div>
-            <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-gold-brand">Lola&apos;s Hotline</p>
-              <p className="text-lg font-bold text-charcoal-brand">09694443413</p>
-            </div>
+            <a href="tel:09694443413" className="shrink-0 font-bold text-teal-brand underline decoration-4 underline-offset-4">
+              Call
+            </a>
           </div>
-          <a href="tel:09694443413" className="font-bold text-teal-brand underline decoration-4 underline-offset-4">
-            Call
-          </a>
+          <div className="flex items-center justify-between rounded-2xl bg-cream-brand p-6 shadow-sm">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-teal-brand p-2">
+                <img src={messageIcon} alt="" className="h-8 w-8 object-contain" width={32} height={32} />
+              </div>
+              <div className="flex flex-col gap-0">
+                <p className="text-sm font-bold uppercase tracking-widest leading-tight text-teal-brand">WhatsApp Support</p>
+                <p className="text-lg font-bold leading-tight text-charcoal-brand">Live Messaging</p>
+              </div>
+            </div>
+            <a
+              href="https://wa.me/639694443413"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 font-bold text-teal-brand underline decoration-4 underline-offset-4"
+            >
+              Chat
+            </a>
+          </div>
         </div>
-        <div className="flex items-center justify-between rounded-2xl bg-cream-brand p-6 shadow-sm">
-          <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-teal-brand p-2">
-              <img src={phoneIcon} alt="" className="h-8 w-8 object-contain" width={32} height={32} />
+        <div className="flex min-w-0 flex-col gap-4">
+          <div className="flex items-center justify-between rounded-2xl bg-cream-brand p-6 shadow-sm">
+            <div className="flex min-w-0 flex-col gap-0 pr-4">
+              <p className="text-sm font-bold uppercase tracking-widest leading-tight text-teal-brand">National Emergency Hotline</p>
+              <p className="text-lg font-bold leading-tight text-charcoal-brand">911</p>
             </div>
-            <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-gold-brand">WhatsApp Support</p>
-              <p className="text-lg font-bold text-charcoal-brand">Live Messaging</p>
-            </div>
+            <a href="tel:911" className="shrink-0 font-bold text-teal-brand underline decoration-4 underline-offset-4">
+              Call
+            </a>
           </div>
-          <a
-            href="https://wa.me/639694443413"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-bold text-teal-brand underline decoration-4 underline-offset-4"
-          >
-            Chat
-          </a>
+          <div className="flex items-center justify-between rounded-2xl bg-cream-brand p-6 shadow-sm">
+            <div className="flex min-w-0 flex-col gap-0 pr-4">
+              <p className="text-sm font-bold uppercase tracking-widest leading-tight text-teal-brand">Police Station (General Luna)</p>
+              <p className="text-lg font-bold leading-tight text-charcoal-brand">09985987338</p>
+            </div>
+            <a href="tel:+639985987338" className="shrink-0 font-bold text-teal-brand underline decoration-4 underline-offset-4">
+              Call
+            </a>
+          </div>
+          <div className="flex items-center justify-between rounded-2xl bg-cream-brand p-6 shadow-sm">
+            <div className="flex min-w-0 flex-col gap-0 pr-4">
+              <p className="text-sm font-bold uppercase tracking-widest leading-tight text-teal-brand">Tourist Police (General Luna)</p>
+              <p className="text-lg font-bold leading-tight text-charcoal-brand">09093365618</p>
+            </div>
+            <a href="tel:+639093365618" className="shrink-0 font-bold text-teal-brand underline decoration-4 underline-offset-4">
+              Call
+            </a>
+          </div>
         </div>
       </div>
 

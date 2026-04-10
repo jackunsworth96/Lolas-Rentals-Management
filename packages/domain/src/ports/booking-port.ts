@@ -63,7 +63,7 @@ export interface BookingPort {
   checkAvailability(query: AvailabilityQuery): Promise<AvailableModel[]>;
   insertHold(input: InsertHoldInput): Promise<HoldRow>;
   deleteHold(holdId: string, sessionToken: string): Promise<boolean>;
-  deleteHoldBySessionAndModel(sessionToken: string, vehicleModelId: string): Promise<void>;
+  deleteHoldBySessionAndModel(sessionToken: string, vehicleModelId: string, holdId?: string): Promise<void>;
   findActiveHoldsBySession(sessionToken: string): Promise<HoldRow[]>;
   findActiveHold(
     sessionToken: string,

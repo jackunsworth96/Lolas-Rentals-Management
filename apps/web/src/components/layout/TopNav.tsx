@@ -2,13 +2,19 @@ import {
   useState,
   useMemo,
   type ReactNode,
-  type CSSProperties,
 } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 
 import menuPaw from '../../assets/Menu_Paw_Clean.png';
+import navHome from '../../assets/Nav Buttons/Nav Home.svg';
+import navReserve from '../../assets/Nav Buttons/Nav Reserve.svg';
+import navTransfers from '../../assets/Nav Buttons/Nav Transfers.svg';
+import navRepairs from '../../assets/Nav Buttons/Nav Repairs.svg';
+import navAbout from '../../assets/Nav Buttons/Nav About.svg';
+import navPawCard from '../../assets/Nav Buttons/Nav Paw Card.svg';
+import navExtend from '../../assets/Nav Buttons/Nav Extend.svg';
 import './BubbleMenu.css';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -33,54 +39,51 @@ interface TopNavProps {
   rightSlot?: ReactNode;
 }
 
-interface PillItem {
+interface NavBubbleItem {
   label: string;
-  icon: string;
+  iconSrc?: string;
   href: string;
-  hoverBg: string;
-  hoverColor: string;
   isSub: boolean;
 }
 
-// ── Per-route visual config ───────────────────────────────────────────────────
+// ── Per-route SVG (full graphic is the control; no separate pill chrome) ─────
 
-const PILL_VISUALS: Record<
-  string,
-  { icon: string; hoverBg: string; hoverColor: string }
-> = {
-  '/book':           { icon: '🏡', hoverBg: '#00577C', hoverColor: '#ffffff' },
-  '/book/reserve':   { icon: '🛵', hoverBg: '#FCBC5A', hoverColor: '#363737' },
-  '/book/transfers': { icon: '🚐', hoverBg: '#00577C', hoverColor: '#ffffff' },
-  '/book/repairs':   { icon: '🔧', hoverBg: '#363737', hoverColor: '#FCBC5A' },
-  '/book/about':     { icon: '🐾', hoverBg: '#FCBC5A', hoverColor: '#363737' },
-  '/book/paw-card':  { icon: '🪪', hoverBg: '#1A7A6E', hoverColor: '#ffffff' },
-  '/book/extend':    { icon: '📅', hoverBg: '#1A7A6E', hoverColor: '#ffffff' },
+const NAV_SVG_BY_HREF: Record<string, string> = {
+  '/book': navHome,
+  '/book/reserve': navReserve,
+  '/book/transfers': navTransfers,
+  '/book/repairs': navRepairs,
+  '/book/about': navAbout,
+  '/book/paw-card': navPawCard,
+  '/book/extend': navExtend,
 };
 
-function buildPills(items: NavItem[]): PillItem[] {
-  const pills: PillItem[] = [];
+function buildNavBubbleItems(items: NavItem[]): NavBubbleItem[] {
+  const out: NavBubbleItem[] = [];
   for (const item of items) {
     if (item.isDropdown) {
-      // Expand dropdown children directly into the pill list as sub-items
       for (const sub of item.dropdownItems ?? []) {
-        const v = PILL_VISUALS[sub.href] ?? {
-          icon: '•', hoverBg: '#00577C', hoverColor: '#fff',
-        };
-        pills.push({ label: sub.label, href: sub.href, isSub: true, ...v });
+        out.push({
+          label: sub.label,
+          href: sub.href,
+          isSub: true,
+          iconSrc: NAV_SVG_BY_HREF[sub.href],
+        });
       }
     } else {
-      const v = PILL_VISUALS[item.href] ?? {
-        icon: '•', hoverBg: '#00577C', hoverColor: '#fff',
-      };
-      pills.push({ label: item.label, href: item.href, isSub: false, ...v });
+      out.push({
+        label: item.label,
+        href: item.href,
+        isSub: false,
+        iconSrc: NAV_SVG_BY_HREF[item.href],
+      });
     }
   }
-  return pills;
+  return out;
 }
 
 // ── Framer Motion variants ────────────────────────────────────────────────────
 
-// Orchestrates stagger across all pill children
 const listVariants = {
   hidden: {},
   visible: {
@@ -91,8 +94,7 @@ const listVariants = {
   },
 };
 
-// Pill: scale-bounce pop (mimics back.out(1.5) via spring)
-const pillVariants = {
+const itemVariants = {
   hidden: { scale: 0, opacity: 0 },
   visible: {
     scale: 1,
@@ -106,21 +108,6 @@ const pillVariants = {
   },
 };
 
-// Label: slides up into view after the pill has scaled in
-const labelVariants = {
-  hidden: { y: 22, opacity: 0 },
-  visible: {
-    y: 0,
-    opacity: 1,
-    transition: { duration: 0.28, ease: 'easeOut' as const },
-  },
-  exit: {
-    y: 16,
-    opacity: 0,
-    transition: { duration: 0.12, ease: 'easeIn' as const },
-  },
-};
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function TopNav({ items, rightSlot }: TopNavProps) {
@@ -130,18 +117,12 @@ export default function TopNav({ items, rightSlot }: TopNavProps) {
   const isActive = (href: string) =>
     href === '/book' ? pathname === '/book' : pathname.startsWith(href);
 
-  const pills = useMemo(() => buildPills(items), [items]);
+  const navItems = useMemo(() => buildNavBubbleItems(items), [items]);
 
   return (
     <>
-      {/*
-       * Fixed (not sticky) so the bar + paw stay visible while scrolling regardless of
-       * ancestor overflow/transform. PageLayout reserves h-16 flow space below this header.
-       * overflow-visible lets the paw spill above the nav top edge.
-       */}
       <header className="fixed top-0 left-0 right-0 z-50 h-16 w-full overflow-visible border-b border-charcoal-brand/10 bg-sand-brand shadow-sm">
 
-        {/* Paw — menu trigger */}
         <button
           type="button"
           aria-label={menuOpen ? 'Close menu' : 'Open menu'}
@@ -158,7 +139,6 @@ export default function TopNav({ items, rightSlot }: TopNavProps) {
           />
         </button>
 
-        {/* Basket / rightSlot */}
         {rightSlot && (
           <div className="absolute right-4 top-1/2 -translate-y-1/2">
             {rightSlot}
@@ -166,7 +146,6 @@ export default function TopNav({ items, rightSlot }: TopNavProps) {
         )}
       </header>
 
-      {/* ── BubbleMenu overlay — anchored below the nav bar ── */}
       <AnimatePresence>
         {menuOpen && (
           <motion.div
@@ -177,7 +156,6 @@ export default function TopNav({ items, rightSlot }: TopNavProps) {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
           >
-            {/* Close button */}
             <button
               type="button"
               aria-label="Close menu"
@@ -187,7 +165,6 @@ export default function TopNav({ items, rightSlot }: TopNavProps) {
               <X size={24} />
             </button>
 
-            {/* Staggered pill grid */}
             <motion.ul
               className="pill-list"
               role="menu"
@@ -197,27 +174,32 @@ export default function TopNav({ items, rightSlot }: TopNavProps) {
               animate="visible"
               exit="exit"
             >
-              {pills.map((pill) => (
+              {navItems.map((entry) => (
                 <motion.li
-                  key={pill.href}
-                  className={`pill-col${pill.isSub ? ' pill-col--sub' : ''}`}
+                  key={entry.href}
+                  className={`pill-col${entry.isSub ? ' pill-col--sub' : ''}`}
                   role="none"
-                  variants={pillVariants}
+                  variants={itemVariants}
                 >
                   <Link
-                    to={pill.href}
+                    to={entry.href}
                     role="menuitem"
-                    className={`pill-link${isActive(pill.href) ? ' pill-link--active' : ''}`}
-                    style={{
-                      '--hover-bg': pill.hoverBg,
-                      '--hover-color': pill.hoverColor,
-                    } as CSSProperties}
+                    aria-label={entry.label}
+                    className={`nav-svg-link${isActive(entry.href) ? ' nav-svg-link--active' : ''}`}
                     onClick={() => setMenuOpen(false)}
                   >
-                    <motion.span className="pill-label" variants={labelVariants}>
-                      <span className="pill-icon" aria-hidden="true">{pill.icon}</span>
-                      <span className="pill-text">{pill.label}</span>
-                    </motion.span>
+                    {entry.iconSrc ? (
+                      <img
+                        src={entry.iconSrc}
+                        alt=""
+                        className="nav-svg-link__img"
+                        width={280}
+                        height={120}
+                        draggable={false}
+                      />
+                    ) : (
+                      <span className="nav-svg-link__fallback">{entry.label}</span>
+                    )}
                   </Link>
                 </motion.li>
               ))}

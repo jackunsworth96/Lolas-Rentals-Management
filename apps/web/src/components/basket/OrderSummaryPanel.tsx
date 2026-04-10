@@ -1,3 +1,4 @@
+import { Banknote, CreditCard, Landmark, Lock, Wallet } from 'lucide-react';
 import type { BasketItem } from '../../stores/bookingStore.js';
 import type { Addon, TransferDetails, PaymentMethodOption } from './basket-types.js';
 import { formatCurrency } from '../../utils/currency.js';
@@ -28,12 +29,34 @@ interface Props {
   vehicleCount?: number;
 }
 
-const PM_ICONS: Record<string, string> = {
-  card: '💳',
-  gcash: '📱',
-  cash: '💵',
-  bank_transfer: '🏦',
-};
+const PM_ICON_CLASS = 'h-5 w-5 shrink-0 text-charcoal-brand/85';
+
+/** Match API ids/names (DB may use `Card` vs `card`, etc.) */
+function PaymentMethodIcon({ id, name }: { id: string; name: string }) {
+  const norm = id.toLowerCase().replace(/[\s-]+/g, '_');
+  const nameLower = name.toLowerCase();
+  const props = {
+    className: PM_ICON_CLASS,
+    size: 20,
+    strokeWidth: 2 as const,
+    'aria-hidden': true as const,
+  };
+
+  if (norm.includes('gcash') || nameLower.includes('gcash')) {
+    return <Wallet {...props} />;
+  }
+  if (norm.includes('bank') || nameLower.includes('bank')) {
+    return <Landmark {...props} />;
+  }
+  if (norm.includes('card') || nameLower.includes('credit') || nameLower.includes('debit')) {
+    return <CreditCard {...props} />;
+  }
+  if (norm === 'cash' || norm.includes('cash')) {
+    return <Banknote {...props} />;
+  }
+
+  return <Wallet {...props} />;
+}
 
 function addonCost(addon: Addon, days: number): number {
   if (addon.addonType === 'per_day') return addon.pricePerDay * days;
@@ -154,9 +177,16 @@ export function OrderSummaryPanel({
               </span>
             </p>
           )}
-          <p className="mt-1.5 flex items-start gap-1.5 text-[11px] leading-relaxed text-charcoal-brand/40">
-            <span>ℹ️</span>
-            <span>Partially refundable up to 24 hours before pickup. No-shows charged in full.</span>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-charcoal-brand/45">
+            <a
+              href="/refund-policy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-teal-brand underline decoration-teal-brand/35 underline-offset-2 transition-colors hover:text-[#00496a]"
+            >
+              Refund &amp; cancellation policy
+            </a>
+            <span className="text-charcoal-brand/40"> (new tab — your basket is kept here)</span>
           </p>
         </div>
       </div>
@@ -184,7 +214,7 @@ export function OrderSummaryPanel({
                   onChange={() => onPaymentChange(pm.id)}
                   className="sr-only"
                 />
-                <span className="text-base">{PM_ICONS[pm.id] ?? '💰'}</span>
+                <PaymentMethodIcon id={pm.id} name={pm.name} />
                 <span className="flex-1 text-[13px] font-medium text-charcoal-brand">
                   {pm.name}
                   {pm.surchargePercent > 0 && (
@@ -230,11 +260,12 @@ export function OrderSummaryPanel({
               Processing…
             </span>
           ) : (
-            '🐾  Place Order'
+            'Place Order'
           )}
         </button>
         <p className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-charcoal-brand/40">
-          🔒 Secure encrypted checkout
+          <Lock className="h-3.5 w-3.5 shrink-0 text-charcoal-brand/50" strokeWidth={2.25} aria-hidden />
+          <span>Secure encrypted checkout</span>
         </p>
       </div>
     </div>
