@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   MapPin,
   Instagram,
@@ -15,6 +15,27 @@ import {
   usePublicEstablishments,
   type PawCardEstablishment,
 } from '../../api/paw-card-establishments.js';
+
+function useInView(threshold = 0.1) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [inView, setInView] = useState(false);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setInView(true);
+          observer.disconnect();
+        }
+      },
+      { threshold },
+    );
+    if (ref.current) observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, []);
+
+  return { ref, inView };
+}
 
 const logoModules = import.meta.glob('../../assets/paw_card_partner_logos/*.svg', {
   eager: true,
@@ -329,8 +350,8 @@ export default function PawCardPartnersPage() {
         {/* Cards grid */}
         {!isLoading && !error && filtered.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filtered.map((e) => (
-              <EstablishmentCard key={e.id} establishment={e} />
+            {filtered.map((e, index) => (
+              <EstablishmentCard key={e.id} establishment={e} index={index} />
             ))}
           </div>
         )}
@@ -357,20 +378,59 @@ export default function PawCardPartnersPage() {
   );
 }
 
-function EstablishmentCard({ establishment: e }: { establishment: PawCardEstablishment }) {
+interface EstablishmentCardProps {
+  establishment: PawCardEstablishment;
+  index: number;
+}
+
+function EstablishmentCard({ establishment: e, index }: EstablishmentCardProps) {
+  const { ref, inView } = useInView(0.1);
+  const [hovered, setHovered] = useState(false);
   const displayName = e.name ?? '';
   const initials = getInitials(e.name);
   const key = toLogoLookupKey(e.name);
   const logoSrc = LOGO_MAP[key] ?? null;
   const categoryLabel = CATEGORY_MAP[e.category] ?? e.category;
+  const stagger = (index % 3) * 0.1;
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-charcoal-brand/8 overflow-hidden flex flex-col">
+    <div
+      ref={ref}
+      className="bg-white rounded-2xl shadow-sm border border-charcoal-brand/8 overflow-hidden flex flex-col"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        opacity: inView ? 1 : 0,
+        transform: inView
+          ? hovered
+            ? 'translateY(-6px) scale(1.02)'
+            : 'translateY(0) scale(1)'
+          : 'translateY(24px) scale(1)',
+        transition: `opacity 0.5s ease ${stagger}s, transform 0.4s ease ${stagger}s, box-shadow 0.3s ease`,
+        boxShadow: hovered
+          ? '0 12px 40px rgba(0,87,124,0.15), 0 4px 12px rgba(0,87,124,0.1)'
+          : '0 1px 4px rgba(54,55,55,0.06)',
+        cursor: 'pointer',
+      }}
+    >
 
       {/* ── Top — discount banner ── */}
-      <div className="bg-[#1B5E7B] p-4 flex items-start justify-between gap-3">
+      <div
+        className="p-4 flex items-start justify-between gap-3"
+        style={{
+          backgroundColor: hovered ? '#1d6b8a' : '#1B5E7B',
+          transition: 'background-color 0.3s ease',
+        }}
+      >
         <div className="flex-1 min-w-0">
-          <span className="inline-block bg-gold-brand text-charcoal-brand font-bold text-xs px-2 py-1 rounded mb-2">
+          <span
+            className="inline-block text-charcoal-brand font-bold text-xs px-2 py-1 rounded mb-2"
+            style={{
+              backgroundColor: hovered ? '#f5b045' : '#FCBC5A',
+              transform: hovered ? 'scale(1.05)' : 'scale(1)',
+              transition: 'all 0.3s ease',
+            }}
+          >
             DISCOUNT
           </span>
           <p className="text-white text-2xl font-bold leading-tight">{e.discount_headline}</p>
@@ -379,7 +439,15 @@ function EstablishmentCard({ establishment: e }: { establishment: PawCardEstabli
           )}
         </div>
         {/* Logo circle */}
-        <div className="flex-shrink-0 w-16 h-16 rounded-full bg-white flex items-center justify-center shadow-inner overflow-hidden">
+        <div
+          className="flex-shrink-0 w-16 h-16 rounded-full bg-white flex items-center justify-center shadow-inner overflow-hidden"
+          style={{
+            boxShadow: hovered
+              ? '0 0 0 3px rgba(252,188,90,0.6)'
+              : '0 0 0 0px rgba(252,188,90,0)',
+            transition: 'box-shadow 0.3s ease',
+          }}
+        >
           {logoSrc ? (
             <img
               src={logoSrc}
@@ -465,7 +533,16 @@ function EstablishmentCard({ establishment: e }: { establishment: PawCardEstabli
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label={`${e.name} on Google Maps`}
-                className="text-charcoal-brand/40 hover:text-teal-brand transition-colors"
+                className="text-charcoal-brand/40"
+                style={{ transition: 'color 0.2s ease, transform 0.2s ease' }}
+                onMouseEnter={(ev) => {
+                  ev.currentTarget.style.transform = 'scale(1.2)';
+                  ev.currentTarget.style.color = '#00577C';
+                }}
+                onMouseLeave={(ev) => {
+                  ev.currentTarget.style.transform = 'scale(1)';
+                  ev.currentTarget.style.color = '';
+                }}
               >
                 <MapPin className="w-4 h-4" />
               </a>
@@ -476,7 +553,16 @@ function EstablishmentCard({ establishment: e }: { establishment: PawCardEstabli
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label={`${e.name} on Instagram`}
-                className="text-charcoal-brand/40 hover:text-pink-500 transition-colors"
+                className="text-charcoal-brand/40"
+                style={{ transition: 'color 0.2s ease, transform 0.2s ease' }}
+                onMouseEnter={(ev) => {
+                  ev.currentTarget.style.transform = 'scale(1.2)';
+                  ev.currentTarget.style.color = '#00577C';
+                }}
+                onMouseLeave={(ev) => {
+                  ev.currentTarget.style.transform = 'scale(1)';
+                  ev.currentTarget.style.color = '';
+                }}
               >
                 <Instagram className="w-4 h-4" />
               </a>
