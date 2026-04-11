@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
 import { authenticate } from '../middleware/authenticate.js';
 import {
   createMayaCheckout,
@@ -10,66 +10,81 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 const router = Router();
 
 // POST /api/payments/maya/checkout
-router.post('/checkout', authenticate, async (req: Request, res: Response) => {
-  try {
-    const { orderId, amountPHP, description } = req.body as {
-      orderId?: string;
-      amountPHP?: number;
-      description?: string;
-    };
-
-    if (!orderId || amountPHP == null || amountPHP <= 0) {
-      res.status(400).json({ error: 'orderId and a positive amountPHP are required' });
-      return;
-    }
-
-    const centavos = Math.round(amountPHP * 100);
-    const supabase = getSupabaseClient();
-
-    const { data: order } = await supabase
-      .from('orders')
-      .select('id, booking_token, store_id')
-      .eq('id', orderId)
-      .single();
-
-    if (!order) {
-      res.status(404).json({ error: 'Order not found' });
-      return;
-    }
-
-    const webUrl = process.env.WEB_URL ?? '';
-    const token = (order as { booking_token?: string }).booking_token;
-    const redirectBase = `${webUrl}/book/confirmation/${token}`;
-    const redirectSuccess = redirectBase;
-    const redirectFailure = `${redirectBase}?payment=failed`;
-    const redirectCancel = `${redirectBase}?payment=cancelled`;
-
-    const result = await createMayaCheckout({
-      orderId,
-      orderReference: token ?? orderId,
-      amountInCentavos: centavos,
-      description: description ?? "Lola's Rentals \u2013 Payment",
-      redirectSuccess,
-      redirectFailure,
-      redirectCancel,
+router.post(
+  '/checkout',
+  authenticate,
+  async (req: Request, res: Response, next: NextFunction) => {
+    console.log('Maya checkout request:', {
+      orderId: req.body.orderId,
+      amountPHP: req.body.amountPHP,
+      MAYA_BASE_URL: process.env.MAYA_BASE_URL,
+      hasMayaSecretKey: !!process.env.MAYA_SECRET_KEY,
+      hasMayaPublicKey: !!process.env.MAYA_PUBLIC_KEY,
     });
+    try {
+      const { orderId, amountPHP, description } = req.body as {
+        orderId?: string;
+        amountPHP?: number;
+        description?: string;
+      };
 
-    await supabase.from('maya_checkouts').insert({
-      checkout_id: result.checkoutId,
-      order_id: orderId,
-      store_id: (order as { store_id?: string }).store_id,
-      amount_php: amountPHP,
-      status: 'pending',
-      redirect_url: result.redirectUrl,
-      created_by: req.user!.employeeId,
-    });
+      if (!orderId || amountPHP == null || amountPHP <= 0) {
+        res.status(400).json({ error: 'orderId and a positive amountPHP are required' });
+        return;
+      }
 
-    res.status(200).json({ checkoutId: result.checkoutId, redirectUrl: result.redirectUrl });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    res.status(500).json({ error: message });
-  }
-});
+      const centavos = Math.round(amountPHP * 100);
+      const supabase = getSupabaseClient();
+
+      const { data: order } = await supabase
+        .from('orders')
+        .select('id, booking_token, store_id')
+        .eq('id', orderId)
+        .single();
+
+      if (!order) {
+        res.status(404).json({ error: 'Order not found' });
+        return;
+      }
+
+      const webUrl = process.env.WEB_URL ?? '';
+      const token = (order as { booking_token?: string }).booking_token;
+      const redirectBase = `${webUrl}/book/confirmation/${token}`;
+      const redirectSuccess = redirectBase;
+      const redirectFailure = `${redirectBase}?payment=failed`;
+      const redirectCancel = `${redirectBase}?payment=cancelled`;
+
+      const result = await createMayaCheckout({
+        orderId,
+        orderReference: token ?? orderId,
+        amountInCentavos: centavos,
+        description: description ?? "Lola's Rentals \u2013 Payment",
+        redirectSuccess,
+        redirectFailure,
+        redirectCancel,
+      });
+
+      await supabase.from('maya_checkouts').insert({
+        checkout_id: result.checkoutId,
+        order_id: orderId,
+        store_id: (order as { store_id?: string }).store_id,
+        amount_php: amountPHP,
+        status: 'pending',
+        redirect_url: result.redirectUrl,
+        created_by: req.user!.employeeId,
+      });
+
+      res.status(200).json({ checkoutId: result.checkoutId, redirectUrl: result.redirectUrl });
+    } catch (err: unknown) {
+      console.error('Maya checkout error:', err);
+      console.error('Maya checkout error details:', {
+        message: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+      next(err);
+    }
+  },
+);
 
 // POST /api/payments/maya/webhook  (no auth — Maya calls this directly)
 router.post(
