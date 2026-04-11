@@ -514,7 +514,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
 
       const storeActiveVehicleIds = new Set<string>();
       for (const item of ninepmCandidates) {
-        const orderData = item.orders as { store_id: string; status: string } | null;
+        const orderData = item.orders as unknown as { store_id: string; status: string } | null;
         if (!orderData || orderData.status !== 'active') continue;
         if (sid && orderData.store_id !== sid) continue;
         const vid = item.vehicle_id as string | undefined;
@@ -534,7 +534,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
 
       const tomorrowBookedVehicleIds = new Set<string>();
       for (const item of (dataMap.get('tomorrowBookings') ?? [])) {
-        const orderData = item.orders as { store_id: string; status: string } | null;
+        const orderData = item.orders as unknown as { store_id: string; status: string } | null;
         if (!orderData) continue;
         if (sid && orderData.store_id !== sid) continue;
         const vid = item.vehicle_id as string | undefined;
@@ -879,7 +879,7 @@ router.get('/availability-detail', async (req, res, next) => {
     const vehicleDropoffs = new Map<string, string>();
 
     for (const item of orderItems) {
-      const orderData = item.orders as { store_id: string; status: string } | null;
+      const orderData = item.orders as unknown as { store_id: string; status: string } | null;
       if (!orderData) continue;
       if (storeIdParam && storeIdParam !== 'all' && orderData.store_id !== storeIdParam) continue;
       const vid = item.vehicle_id as string | null;
