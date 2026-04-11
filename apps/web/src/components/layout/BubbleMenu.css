@@ -20,6 +20,8 @@
 
   display: flex;
   align-items: center;
+  /* When supported: center if it fits, else align to start so nothing is clipped off-screen. */
+  align-items: safe center;
   justify-content: center;
 }
 
@@ -39,7 +41,7 @@
   padding: 2rem 1.5rem 3rem;
   display: flex;
   flex-wrap: wrap;
-  row-gap: 1.25rem;
+  row-gap: 1.0625rem;
   column-gap: 0;
   width: 100%;
   max-width: 1280px;
@@ -55,13 +57,17 @@
 /* Web + tablet: narrower grid + larger gaps */
 @media (min-width: 600px) {
   .pill-list {
+    /* Don’t stretch to full overlay width — keeps the cluster visually centered */
+    width: min(46rem, 100%);
     max-width: min(46rem, 100%);
+    flex: 0 1 auto;
     padding: var(--nav-bubble-pad-top) clamp(1.5rem, 6vw, 3rem) clamp(2.5rem, 6vh, 4rem);
-    row-gap: clamp(1.5rem, 3vh, 2.5rem);
+    row-gap: clamp(1.275rem, 2.55vh, 2.125rem);
+    align-content: center;
   }
 }
 
-/* ── Pill column — 3-col desktop layout ─────────────────────────────────── */
+/* ── Pill column — 3-col default (mobile + tablet portrait / narrow) ─ */
 
 .pill-col {
   display: flex;
@@ -78,17 +84,33 @@
   }
 }
 
+/* Web (wide): 4 columns × 2 rows — must follow base .pill-col so flex-basis wins */
+@media (min-width: 900px) {
+  .pill-list {
+    width: min(56rem, 100%);
+    max-width: min(56rem, 100%);
+  }
+
+  .pill-col {
+    flex: 0 0 25%;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+}
+
 /*
- * Orphan centering for 3-col grid:
+ * Orphan centering for 3-col grid (mobile + sub-900 layouts only; reset at 900px+):
  *   Last item alone on its row (3n+1, e.g. 7th of 7): auto margins center the cell.
  *   Two on last row (3n+2): nudge first of the pair.
  */
-.pill-col:last-child:nth-child(3n + 1) {
-  margin-left: auto;
-  margin-right: auto;
-}
-.pill-col:last-child:nth-child(3n + 2) {
-  margin-left: calc(100% / 6);
+@media (max-width: 899px) {
+  .pill-col:last-child:nth-child(3n + 1) {
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .pill-col:last-child:nth-child(3n + 2) {
+    margin-left: calc(100% / 6);
+  }
 }
 
 /* ── SVG-as-button nav (no gold pill chrome) ─────────────────────────────── */
@@ -141,6 +163,32 @@
   pointer-events: none;
 }
 
+/*
+ * Web + tablet: scale icons with viewport height, but keep a sane desktop size
+ * (clamp avoids the previous all-min() rule, which read as tiny on large monitors).
+ */
+@media (min-width: 600px) {
+  .nav-svg-link__img {
+    max-height: clamp(
+      118px,
+      calc((100dvh - 64px - 10rem) / 3.15),
+      260px
+    );
+  }
+}
+
+/* Room for slightly larger assets on wide desktop */
+@media (min-width: 900px) {
+  .nav-svg-link__img {
+    max-width: min(100%, 280px);
+    max-height: clamp(
+      128px,
+      calc((100dvh - 64px - 9.25rem) / 2.05),
+      280px
+    );
+  }
+}
+
 .nav-svg-link__fallback {
   font-family: 'Alegreya Sans', ui-sans-serif, sans-serif;
   font-size: clamp(0.95rem, 3.5vw, 1.2rem);
@@ -154,15 +202,6 @@
 /* ── Tablet: 2-column layout (600–899px) ─────────────────────────────────── */
 
 @media (min-width: 600px) and (max-width: 899px) {
-  .bubble-menu-overlay {
-    align-items: flex-start;
-  }
-
-  .pill-list {
-    /* Inherits compact pill size + max-width from (min-width: 600px); keep top-aligned grid */
-    align-content: flex-start;
-  }
-
   .pill-col {
     flex: 0 0 50%;
     /* Reset 3-col orphan rules */

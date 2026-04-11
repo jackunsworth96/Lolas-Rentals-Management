@@ -13,6 +13,7 @@ import {
 } from '../../api/dashboard.js';
 import { useLostOpportunities, type LostOpportunityRow } from '../../api/lost-opportunity.js';
 import { useStores } from '../../api/config.js';
+import { AvailabilityDetailModal } from '../../components/dashboard/AvailabilityDetailModal.js';
 import { formatCurrency } from '../../utils/currency.js';
 import {
   ResponsiveContainer,
@@ -88,6 +89,9 @@ export default function DashboardPage() {
   const { data, isLoading, error } = useDashboardSummary(storeIdForApi);
 
   const today = todayStr();
+  const tomorrowManila = new Date();
+  tomorrowManila.setDate(tomorrowManila.getDate() + 1);
+  const tomorrowDate = tomorrowManila.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
   const lostOppStoreId = selectedStoreId || storeList[0]?.id || '';
   const { data: lostOpps = [] } = useLostOpportunities(lostOppStoreId, today) as {
     data: LostOpportunityRow[] | undefined;
@@ -100,6 +104,8 @@ export default function DashboardPage() {
   const { data: charityImpact } = useCharityImpact();
 
   const [selectedReturn, setSelectedReturn] = useState<NinePmVehicle | null>(null);
+  const [showAvailability, setShowAvailability] = useState(false);
+  const [showTomorrowAvailability, setShowTomorrowAvailability] = useState(false);
 
   const metrics: StoreMetrics | null = useMemo(() => {
     if (!data?.stores) return null;
@@ -177,13 +183,47 @@ export default function DashboardPage() {
       {/* SECTION 1 — Daily Pulse */}
       <section>
         <SectionHeading>Daily Pulse</SectionHeading>
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
           <StatCard label="Active Rentals" value={String(metrics.activeRentals)} />
-          <StatCard label="Available Vehicles" value={String(metrics.availableVehicles)} />
+          <button
+            type="button"
+            className="cursor-pointer text-left"
+            onClick={() => setShowAvailability(true)}
+          >
+            <StatCard
+              label="Available Vehicles"
+              value={String(metrics.availableVehicles)}
+              sub="tap to see details"
+            />
+          </button>
+          <button
+            type="button"
+            className="text-left w-full cursor-pointer"
+            onClick={() => setShowTomorrowAvailability(true)}
+          >
+            <StatCard
+              label="Available Tomorrow"
+              value={String(metrics.tomorrowAvailable ?? 0)}
+              sub="tap to see details"
+            />
+          </button>
           <StatCard label="Fleet Utilisation" value={`${metrics.fleetUtilisation}%`} />
           <StatCard label="Deposits Withheld" value={formatCurrency(metrics.depositsWithheld)} />
         </div>
       </section>
+
+      {/* SECTION — Today's Bookings by Source */}
+      {metrics.bookingSourceSplit !== null && (
+        <section>
+          <SectionHeading>Today's Bookings by Source</SectionHeading>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <StatCard label="Direct / Online" value={String(metrics.bookingSourceSplit.directWeb)} />
+            <StatCard label="Walk-in" value={String(metrics.bookingSourceSplit.walkIn)} />
+            <StatCard label="WooCommerce" value={String(metrics.bookingSourceSplit.wooCommerce)} />
+            <StatCard label="Total Today" value={String(metrics.bookingSourceSplit.total)} />
+          </div>
+        </section>
+      )}
 
       {/* SECTION 2 — 9PM Returns */}
       <section>
@@ -588,6 +628,18 @@ export default function DashboardPage() {
           </div>
         </section>
       )}
+
+      <AvailabilityDetailModal
+        open={showAvailability}
+        onClose={() => setShowAvailability(false)}
+        storeId={selectedStoreId}
+      />
+      <AvailabilityDetailModal
+        open={showTomorrowAvailability}
+        onClose={() => setShowTomorrowAvailability(false)}
+        storeId={selectedStoreId}
+        date={tomorrowDate}
+      />
 
       {/* SECTION — Be Pawsitive Impact */}
       {charityImpact && (

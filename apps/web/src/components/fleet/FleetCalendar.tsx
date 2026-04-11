@@ -61,8 +61,10 @@ function addDays(d: Date, n: number): Date {
   return r;
 }
 
-const LABEL_WIDTH = 180;
-const DAY_WIDTH = 72;
+/** Vehicle name column */
+const LABEL_WIDTH = 140;
+/** Day column width (px) */
+const DAY_WIDTH = 52;
 const ROW_HEIGHT = 40;
 
 interface Props {
@@ -141,7 +143,7 @@ export function FleetCalendar({ storeId }: Props) {
   return (
     <div className="rounded-lg border border-gray-200 bg-white">
       {/* Navigation */}
-      <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+      <div className="flex items-center justify-between border-b border-gray-200 px-2 py-3">
         <button
           type="button"
           onClick={() => setOffset((o) => o - 1)}
@@ -171,7 +173,7 @@ export function FleetCalendar({ storeId }: Props) {
       </div>
 
       {/* Legend */}
-      <div className="flex flex-wrap items-center gap-4 border-b border-gray-100 px-4 py-2 text-xs">
+      <div className="flex flex-wrap items-center gap-4 border-b border-gray-100 px-2 py-2 text-xs">
         {[
           { label: 'Active', color: 'bg-green-400' },
           { label: 'Due Soon', color: 'bg-amber-400' },
@@ -187,7 +189,7 @@ export function FleetCalendar({ storeId }: Props) {
       </div>
 
       {/* Gantt area */}
-      <div className="flex overflow-hidden">
+      <div className="flex min-w-0 overflow-hidden">
         {/* Fixed labels column */}
         <div className="shrink-0 border-r border-gray-200" style={{ width: LABEL_WIDTH }}>
           {/* Date header spacer */}
@@ -241,7 +243,7 @@ export function FleetCalendar({ storeId }: Props) {
         </div>
 
         {/* Scrollable Gantt grid */}
-        <div className="flex-1 overflow-x-auto" ref={scrollRef}>
+        <div className="min-w-0 flex-1 overflow-x-auto" ref={scrollRef}>
           <div style={{ minWidth: gridWidth }}>
             {/* Date headers */}
             <div className="flex h-8 border-b border-gray-200 bg-gray-50">
@@ -353,7 +355,7 @@ export function FleetCalendar({ storeId }: Props) {
       </div>
 
       {/* Today marker legend */}
-      <div className="border-t border-gray-200 px-4 py-2 text-[10px] text-gray-400">
+      <div className="border-t border-gray-200 px-2 py-2 text-[10px] text-gray-400">
         Blue column = today · Hover any booking bar for details · Click to open order
       </div>
 

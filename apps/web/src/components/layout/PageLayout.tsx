@@ -43,6 +43,7 @@ const NAV_ITEMS = [
     isDropdown: true,
     dropdownItems: [
       { label: 'Log Paw Card Savings', href: '/book/paw-card' },
+      { label: 'Partner Discounts', href: '/paw-card/partners' },
       { label: 'Extend My Rental', href: '/book/extend' },
     ],
   },

@@ -142,6 +142,13 @@ interface StoreMetrics {
   cashBalances: CashBalanceRow[] | null;
   revenueTrend: RevenueTrendRow[] | null;
   revenueThisMonth: RevenueTrendRow[] | null;
+  tomorrowAvailable: number;
+  bookingSourceSplit: {
+    directWeb: number;
+    walkIn: number;
+    wooCommerce: number;
+    total: number;
+  } | null;
 }
 
 function emptyMetrics(financial: boolean): StoreMetrics {
@@ -163,6 +170,8 @@ function emptyMetrics(financial: boolean): StoreMetrics {
     cashBalances: [],
     revenueTrend: financial ? [] : null,
     revenueThisMonth: financial ? [] : null,
+    tomorrowAvailable: 0,
+    bookingSourceSplit: null,
   };
 }
 
@@ -188,6 +197,9 @@ router.get('/summary', authenticate, async (req, res, next) => {
       now.getMonth(),
       0,
     ).toISOString().slice(0, 10);
+
+    const tomorrowDate = new Date(Date.now() + 24 * 60 * 60 * 1000)
+      .toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 
     const storeFilter = storeIdParam && storeIdParam !== 'all' ? storeIdParam : undefined;
 
@@ -235,6 +247,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
           )
         `)
         .eq('orders.status', 'active')
+        .gt('dropoff_datetime', new Date().toISOString())
         .then((r) => ({ key: 'ninepmCandidates' as const, ...r })),
 
       sb
@@ -252,6 +265,21 @@ router.get('/summary', authenticate, async (req, res, next) => {
         .from('journal_entries')
         .select('account_id, store_id, debit, credit, chart_of_accounts!account_id(name, account_type)')
         .then((r) => ({ key: 'cashBalances' as const, ...r })),
+
+      sb
+        .from('order_items')
+        .select('vehicle_id, orders!inner(store_id, status)')
+        .in('orders.status', ['active', 'confirmed'])
+        .lt('pickup_datetime', `${tomorrowDate}T23:59:59+08:00`)
+        .gt('dropoff_datetime', `${tomorrowDate}T00:00:00+08:00`)
+        .then((r) => ({ key: 'tomorrowBookings' as const, ...r })),
+
+      sb
+        .from('orders_raw')
+        .select('source, booking_channel, store_id')
+        .gte('created_at', `${manilaDate}T00:00:00+08:00`)
+        .lt('created_at', `${manilaDate}T23:59:59.999+08:00`)
+        .then((r) => ({ key: 'bookingSourceData' as const, ...r })),
     ];
 
     const financialQueries = canViewFinancial
@@ -504,6 +532,16 @@ router.get('/summary', authenticate, async (req, res, next) => {
       const bookedVehicleIds = new Set([...storeActiveVehicleIds, ...storeUpcomingVehicleIds]);
       const availableVehicles = rentableFleet.filter((v) => !bookedVehicleIds.has(v.id as string)).length;
 
+      const tomorrowBookedVehicleIds = new Set<string>();
+      for (const item of (dataMap.get('tomorrowBookings') ?? [])) {
+        const orderData = item.orders as { store_id: string; status: string } | null;
+        if (!orderData) continue;
+        if (sid && orderData.store_id !== sid) continue;
+        const vid = item.vehicle_id as string | undefined;
+        if (vid) tomorrowBookedVehicleIds.add(vid);
+      }
+      const tomorrowAvailable = rentableFleet.filter((v) => !tomorrowBookedVehicleIds.has(v.id as string)).length;
+
       const activeCount = storeActiveOrders.length;
       const fleetUtilisation = totalRentable > 0
         ? Math.round((storeActiveVehicleIds.size / totalRentable) * 100)
@@ -527,6 +565,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
       let addonRevenue: AddonRevenueRow[] | null = null;
       let revenueTrend: RevenueTrendRow[] | null = null;
       let revenueThisMonth: RevenueTrendRow[] | null = null;
+      let bookingSourceSplit: StoreMetrics['bookingSourceSplit'] = null;
 
       const balanceData = dataMap.get('cashBalances') ?? [];
       const balanceMap = new Map<string, { name: string; debit: number; credit: number }>();
@@ -547,6 +586,31 @@ router.get('/summary', authenticate, async (req, res, next) => {
         accountName: v.name,
         balance: v.debit - v.credit,
       }));
+
+      const bookingSourceRaw = dataMap.get('bookingSourceData') ?? [];
+      const storeBookingRows = sid
+        ? bookingSourceRaw.filter((r) => r.store_id === sid)
+        : bookingSourceRaw;
+      let bDirectWeb = 0;
+      let bWalkIn = 0;
+      let bWooCommerce = 0;
+      for (const row of storeBookingRows) {
+        const source = row.source as string | null;
+        const channel = row.booking_channel as string | null;
+        if (channel === 'direct' || source === 'lolas-direct' || source === 'bass-direct') {
+          bDirectWeb++;
+        } else if (source === 'lolas-walkin' || source === 'bass-walkin' || channel === 'walk-in') {
+          bWalkIn++;
+        } else if ((source === 'lolas' || source === 'bass') && (channel === null || channel === 'woo')) {
+          bWooCommerce++;
+        }
+      }
+      bookingSourceSplit = {
+        directWeb: bDirectWeb,
+        walkIn: bWalkIn,
+        wooCommerce: bWooCommerce,
+        total: storeBookingRows.length,
+      };
 
       if (canViewFinancial) {
         const todayPayments = dataMap.get('todayPayments') ?? [];
@@ -662,6 +726,8 @@ router.get('/summary', authenticate, async (req, res, next) => {
         cashBalances,
         revenueTrend,
         revenueThisMonth,
+        tomorrowAvailable,
+        bookingSourceSplit,
       };
     }
 
@@ -746,6 +812,149 @@ router.get('/charity-impact', async (req, res, next) => {
     const sb = getSupabaseClient();
     const impact = await queryCharityImpact(sb);
     res.json({ success: true, data: impact });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── GET /availability-detail ──────────────────────────────────────────────────
+router.get('/availability-detail', async (req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+    const storeIdParam = req.query.storeId as string | undefined;
+    const dateParam = req.query.date as string | undefined;
+    const targetDate = dateParam ?? new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+
+    const [fleetRes, fleetStatusRes, orderItemsRes, vehicleModelsRes] = await Promise.all([
+      sb
+        .from('fleet')
+        .select('id, name, model_id, status, surf_rack, store_id'),
+
+      sb
+        .from('fleet_statuses')
+        .select('id, name, is_rentable'),
+
+      sb
+        .from('order_items')
+        .select(`
+          vehicle_id,
+          vehicle_name,
+          dropoff_datetime,
+          orders!inner(store_id, status)
+        `)
+        .in('orders.status', ['active', 'confirmed'])
+        .lt('pickup_datetime', `${targetDate}T23:59:59+08:00`)
+        .gt('dropoff_datetime', new Date().toISOString()),
+
+      sb
+        .from('vehicle_models')
+        .select('id, name'),
+    ]);
+
+    if (fleetRes.error) throw new Error(fleetRes.error.message);
+    if (fleetStatusRes.error) throw new Error(fleetStatusRes.error.message);
+
+    const allFleet = fleetRes.data ?? [];
+    const fleetStatuses = fleetStatusRes.data ?? [];
+    const orderItems = orderItemsRes.data ?? [];
+    const vehicleModels = vehicleModelsRes.data ?? [];
+
+    const rentableStatusIds = new Set(
+      fleetStatuses.filter((s) => s.is_rentable).map((s) => s.id as string),
+    );
+    const rentableStatusNames = new Set(
+      fleetStatuses.filter((s) => s.is_rentable).map((s) => s.name as string),
+    );
+
+    const storeFleet =
+      storeIdParam && storeIdParam !== 'all'
+        ? allFleet.filter((v) => v.store_id === storeIdParam)
+        : allFleet;
+
+    const rentableFleet = storeFleet.filter(
+      (v) => rentableStatusIds.has(v.status as string) || rentableStatusNames.has(v.status as string),
+    );
+
+    const bookedVehicleIds = new Set<string>();
+    const vehicleDropoffs = new Map<string, string>();
+
+    for (const item of orderItems) {
+      const orderData = item.orders as { store_id: string; status: string } | null;
+      if (!orderData) continue;
+      if (storeIdParam && storeIdParam !== 'all' && orderData.store_id !== storeIdParam) continue;
+      const vid = item.vehicle_id as string | null;
+      if (!vid) continue;
+      bookedVehicleIds.add(vid);
+      const dropoff = item.dropoff_datetime as string | null;
+      const existing = vehicleDropoffs.get(vid);
+      if (dropoff && (!existing || dropoff > existing)) vehicleDropoffs.set(vid, dropoff);
+    }
+
+    const modelNameMap = new Map<string, string>();
+    for (const m of vehicleModels) modelNameMap.set(m.id as string, m.name as string);
+
+    const modelMap = new Map<string, {
+      modelName: string;
+      units: Array<{ id: string; name: string; surfRack: boolean; isBooked: boolean; dropoff: string | null }>;
+    }>();
+
+    for (const v of rentableFleet) {
+      const modelId = v.model_id as string | null;
+      if (!modelId) continue;
+      const modelName = modelNameMap.get(modelId) ?? 'Unknown';
+      if (!modelMap.has(modelId)) modelMap.set(modelId, { modelName, units: [] });
+      const isBooked = bookedVehicleIds.has(v.id as string);
+      modelMap.get(modelId)!.units.push({
+        id: v.id as string,
+        name: v.name as string,
+        surfRack: Boolean(v.surf_rack),
+        isBooked,
+        dropoff: isBooked ? (vehicleDropoffs.get(v.id as string) ?? null) : null,
+      });
+    }
+
+    const models = [...modelMap.entries()].map(([modelId, { modelName, units }]) => {
+      const availableUnits = units.filter((u) => !u.isBooked);
+      const bookedUnits = units.filter((u) => u.isBooked && u.dropoff !== null);
+
+      const returningToday = bookedUnits
+        .filter((u) => {
+          if (!u.dropoff) return false;
+          return new Date(u.dropoff).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }) === targetDate;
+        })
+        .map((u) => {
+          const dropoffDt = new Date(u.dropoff!);
+          const availableFrom = new Date(dropoffDt.getTime() + 30 * 60 * 1000);
+          return {
+            vehicleName: u.name,
+            dropoffDatetime: u.dropoff!,
+            availableFrom: availableFrom.toLocaleTimeString('en-GB', {
+              timeZone: 'Asia/Manila',
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+          };
+        })
+        .sort((a, b) => a.dropoffDatetime.localeCompare(b.dropoffDatetime));
+
+      return {
+        modelId,
+        modelName,
+        totalUnits: units.length,
+        availableNow: availableUnits.length,
+        withSurfRack: availableUnits.filter((u) => u.surfRack).length,
+        withoutSurfRack: availableUnits.filter((u) => !u.surfRack).length,
+        isScooter: !modelName.toLowerCase().includes('tuk'),
+        returningToday,
+      };
+    });
+
+    models.sort((a, b) => {
+      if (a.isScooter !== b.isScooter) return a.isScooter ? -1 : 1;
+      return a.modelName.localeCompare(b.modelName);
+    });
+
+    res.json({ success: true, data: { models } });
   } catch (err) {
     next(err);
   }

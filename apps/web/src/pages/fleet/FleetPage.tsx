@@ -124,7 +124,7 @@ export default function FleetPage() {
   if (isLoading) return <div className="py-12 text-center text-gray-500">Loading fleet...</div>;
 
   return (
-    <div>
+    <div className="w-full min-w-0 overflow-x-hidden">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <h1 className="text-2xl font-bold text-gray-900">Fleet</h1>
@@ -250,7 +250,9 @@ export default function FleetPage() {
       )}
 
       {viewMode === 'calendar' && (
-        <FleetCalendar storeId={storeIdForApi} />
+        <div className="w-full min-w-0 overflow-x-auto">
+          <FleetCalendar storeId={storeIdForApi} />
+        </div>
       )}
 
       {editVehicleId && (

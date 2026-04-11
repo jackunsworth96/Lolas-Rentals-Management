@@ -15,6 +15,7 @@ import navRepairs from '../../assets/nav-buttons/Nav Repairs.svg';
 import navAbout from '../../assets/nav-buttons/Nav About.svg';
 import navPawCard from '../../assets/nav-buttons/Nav Paw Card.svg';
 import navExtend from '../../assets/nav-buttons/Nav Extend.svg';
+import navPartners from '../../assets/nav-buttons/Nav Partners.svg';
 import './BubbleMenu.css';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -55,6 +56,7 @@ const NAV_SVG_BY_HREF: Record<string, string> = {
   '/book/repairs': navRepairs,
   '/book/about': navAbout,
   '/book/paw-card': navPawCard,
+  '/paw-card/partners': navPartners,
   '/book/extend': navExtend,
 };
 

@@ -62,6 +62,13 @@ export interface StoreMetrics {
   cashBalances: CashBalanceRow[] | null;
   revenueTrend: RevenueTrendRow[] | null;
   revenueThisMonth: RevenueTrendRow[] | null;
+  tomorrowAvailable: number;
+  bookingSourceSplit: {
+    directWeb: number;
+    walkIn: number;
+    wooCommerce: number;
+    total: number;
+  } | null;
 }
 
 export interface DashboardSummary {

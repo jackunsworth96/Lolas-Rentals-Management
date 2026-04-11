@@ -118,4 +118,36 @@ router.get('/rental-orders', validateQuery(RentalOrdersQuerySchema), async (req,
   }
 });
 
+router.get('/establishments', async (req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+    const { data, error } = await sb
+      .from('paw_card_establishments')
+      .select(`
+        id,
+        name,
+        category,
+        discount_headline,
+        discount_conditions,
+        description,
+        opening_hours,
+        saving_solo,
+        saving_group,
+        google_rating,
+        google_maps_url,
+        instagram_url,
+        is_favourite,
+        is_high_value,
+        time_of_day,
+        discount_code
+      `)
+      .eq('is_active', true)
+      .order('name');
+    if (error) throw new Error(error.message);
+    res.json({ success: true, data: data ?? [] });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export { router as publicPawCardRoutes };

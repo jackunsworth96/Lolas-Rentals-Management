@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
+import { ArrowRight } from 'lucide-react';
 import { PawCardLoginPanel, type PawCardAccess } from './PawCardLoginPanel.js';
 import { PawCardSavingsForm } from './PawCardSavingsForm.js';
 import { PawCardDashboard } from './PawCardDashboard.js';
@@ -149,6 +151,17 @@ export default function PawCardPage() {
           iconSize={96}
           knockOutIconWhiteMatte={false}
         />
+      </div>
+
+      {/* ── Partner discounts CTA ── */}
+      <div className="py-4 text-center">
+        <Link
+          to="/paw-card/partners"
+          className="inline-flex items-center gap-2 font-lato text-sm font-medium text-teal-brand hover:text-teal-brand/80 transition-colors group"
+        >
+          View all partner discounts
+          <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+        </Link>
       </div>
 
       {/* ── Fixed floral decorations (portal to body so they float above all sections) ── */}
