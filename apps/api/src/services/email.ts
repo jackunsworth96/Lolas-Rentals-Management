@@ -647,6 +647,109 @@ export function postRentalThankYouHtml({
 
 import { createHash } from 'node:crypto';
 
+export function extendConfirmationHtml({
+  customerName,
+  orderReference,
+  vehicleName,
+  newDropoffDatetime,
+  extensionDays,
+  extensionCost,
+  whatsappNumber,
+}: {
+  customerName: string;
+  orderReference: string;
+  vehicleName?: string;
+  newDropoffDatetime: string;
+  extensionDays: number;
+  extensionCost: number;
+  whatsappNumber: string;
+}): string {
+  const vehicleRow = vehicleName
+    ? `<tr>
+              <td style="padding: 8px 0; color: #666; font-size: 14px;">Vehicle</td>
+              <td style="padding: 8px 0; font-weight: 700; color: #363737;">${vehicleName}</td>
+            </tr>`
+    : '';
+
+  const costRow =
+    extensionCost > 0
+      ? `<tr style="border-top: 2px solid #FCBC5A;">
+              <td style="padding: 16px 0 8px; color: #666; font-size: 14px;">Extension Cost</td>
+              <td style="padding: 16px 0 8px; font-weight: 700; color: #363737; font-size: 18px;">
+                ₱${extensionCost.toLocaleString()}
+              </td>
+            </tr>`
+      : `<tr style="border-top: 2px solid #FCBC5A;">
+              <td style="padding: 16px 0 8px; color: #666; font-size: 14px;">Extension Cost</td>
+              <td style="padding: 16px 0 8px; font-weight: 700; color: #16a34a;">No additional charge</td>
+            </tr>`;
+
+  return `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+
+      <div style="background: #00577C; padding: 32px; text-align: center;">
+        <h1 style="color: white; margin: 0; font-size: 32px; font-weight: 900;">
+          Lola's<span style="color: #FCBC5A;">*</span> Rentals
+        </h1>
+        <p style="color: rgba(255,255,255,0.7); margin: 4px 0 0; font-size: 13px; letter-spacing: 2px; text-transform: uppercase;">
+          Siargao Island · Est. 2019
+        </p>
+      </div>
+
+      <div style="padding: 32px; background: #FAF6F0;">
+
+        <h2 style="color: #363737; margin: 0 0 8px;">
+          Rental Extended! 🛵
+        </h2>
+        <p style="color: #363737; line-height: 1.6; margin: 0 0 24px;">
+          Great news — your rental extension has been confirmed. Here are your updated details:
+        </p>
+
+        <div style="background: white; border-radius: 12px; padding: 24px; margin: 24px 0; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-size: 14px; width: 180px;">Booking Reference</td>
+              <td style="padding: 8px 0; font-weight: 700; color: #363737;">${orderReference}</td>
+            </tr>
+            ${vehicleRow}
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-size: 14px;">Extension</td>
+              <td style="padding: 8px 0; color: #363737;">+${extensionDays} ${extensionDays === 1 ? 'day' : 'days'}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-size: 14px;">New Return Time</td>
+              <td style="padding: 8px 0; font-weight: 700; color: #00577C; font-size: 16px;">${newDropoffDatetime}</td>
+            </tr>
+            ${costRow}
+          </table>
+        </div>
+
+        <div style="background: #00577C; border-radius: 12px; padding: 16px; text-align: center; margin: 24px 0;">
+          <p style="color: white; margin: 0; font-size: 14px; line-height: 1.6;">
+            🐾 Don't forget to ask about your Paw Card if you haven't already —
+            discounts at 75+ local businesses across Siargao!
+          </p>
+        </div>
+
+        <p style="color: #363737; font-size: 14px; line-height: 1.6;">
+          💬 Questions? WhatsApp us — we're open <strong>9am–5pm Philippine Time</strong>.
+          Messages outside hours will be picked up when we reopen.
+          <br/><br/>
+          <a href="https://wa.me/${whatsappNumber}" style="color: #00577C; font-weight: 700;">
+            WhatsApp Lola's Rentals
+          </a>
+        </p>
+
+        <p style="color: #999; font-size: 12px; text-align: center; margin-top: 32px;">
+          Lola's Rentals &amp; Tours Inc. — Siargao Island, Philippines<br/>
+          This is an automated confirmation. Please do not reply to this email.
+        </p>
+
+      </div>
+    </div>
+  `;
+}
+
 export function maintenanceLogHtml(
   r: {
     id: string;

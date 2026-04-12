@@ -5,6 +5,7 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { computeQuote } from '../use-cases/booking/compute-quote.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
 import { resolveStoreAccounts } from '../adapters/supabase/maintenance-expense-rpc.js';
+import { sendEmail, extendConfirmationHtml } from '../services/email.js';
 
 const router = Router();
 
@@ -426,6 +427,35 @@ router.post('/confirm', validateBody(PublicExtendConfirmSchema), async (req, res
       const extResult = rpcResult as { success: boolean; error?: string };
       if (!extResult.success) throw new Error(extResult.error ?? 'Extend failed');
 
+      // Fire-and-forget extension confirmation email — never blocks the response.
+      void (async () => {
+        try {
+          const formatManila = (iso: string) =>
+            new Date(iso).toLocaleString('en-PH', {
+              timeZone: 'Asia/Manila',
+              dateStyle: 'medium',
+              timeStyle: 'short',
+            });
+          const extDaysRaw = Math.max(1, Math.round(
+            (newDropoff.getTime() - currentDropoff.getTime()) / (1000 * 60 * 60 * 24),
+          ));
+          await sendEmail({
+            to: trimmedEmail,
+            subject: `Rental Extended — ${orderReference} | Lola's Rentals`,
+            html: extendConfirmationHtml({
+              customerName: trimmedEmail.split('@')[0],
+              orderReference,
+              newDropoffDatetime: formatManila(newDropoffDatetime),
+              extensionDays: extDaysRaw,
+              extensionCost,
+              whatsappNumber: process.env.WHATSAPP_NUMBER ?? '639XXXXXXXXX',
+            }),
+          });
+        } catch (emailErr) {
+          console.error('[extend-email] Raw path error:', emailErr);
+        }
+      })();
+
       res.json({ success: true, data: { success: true, newDropoffDatetime, extensionCost } });
       return;
     }
@@ -557,6 +587,32 @@ router.post('/confirm', validateBody(PublicExtendConfirmSchema), async (req, res
         if (rpcErr) throw new Error(`Extend RPC failed: ${rpcErr.message}`);
         const extResult = rpcResult as { success: boolean; error?: string };
         if (!extResult.success) throw new Error(extResult.error ?? 'Extend failed');
+
+        // Fire-and-forget extension confirmation email — never blocks the response.
+        void (async () => {
+          try {
+            const formatManila = (iso: string) =>
+              new Date(iso).toLocaleString('en-PH', {
+                timeZone: 'Asia/Manila',
+                dateStyle: 'medium',
+                timeStyle: 'short',
+              });
+            await sendEmail({
+              to: trimmedEmail,
+              subject: `Rental Extended — ${orderReference} | Lola's Rentals`,
+              html: extendConfirmationHtml({
+                customerName: trimmedEmail.split('@')[0],
+                orderReference,
+                newDropoffDatetime: formatManila(newDropoffDatetime),
+                extensionDays: newDays - oldDays,
+                extensionCost,
+                whatsappNumber: process.env.WHATSAPP_NUMBER ?? '639XXXXXXXXX',
+              }),
+            });
+          } catch (emailErr) {
+            console.error('[extend-email] Active path error:', emailErr);
+          }
+        })();
 
         res.json({ success: true, data: { success: true, newDropoffDatetime, extensionCost, extensionDays: newDays - oldDays } });
         return;

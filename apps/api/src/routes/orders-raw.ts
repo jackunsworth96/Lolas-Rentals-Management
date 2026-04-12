@@ -5,6 +5,7 @@ import { requirePermission } from '../middleware/authorize.js';
 import { Permission, resolveStoreFromSource, resolveSourceFromStore } from '@lolas/shared';
 import { supabase } from '../adapters/supabase/client.js';
 import { processRawOrder, type ProcessRawOrderDeps } from '../use-cases/orders/process-raw-order.js';
+import { sendEmail, bookingConfirmationHtml, NOTIFICATION_EMAIL } from '../services/email.js';
 
 function generateWalkInReference(source: string): string {
   const prefix = source === 'bass' ? 'BB' : 'LR';
@@ -400,6 +401,97 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       success: true,
       data: { orderId, orderReference, customerId },
     });
+
+    // 17. Fire-and-forget booking confirmation email
+    void (async () => {
+      try {
+        const formatManila = (iso: string) =>
+          new Date(iso).toLocaleString('en-PH', {
+            timeZone: 'Asia/Manila',
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          });
+
+        const waiverUrl = `${process.env.WEB_URL ?? 'https://lolasrentals.com'}/waiver/${orderReference}`;
+        const whatsappNumber = process.env.WHATSAPP_NUMBER ?? '639XXXXXXXXX';
+
+        // Customer confirmation
+        if (body.customerEmail) {
+          void sendEmail({
+            to: body.customerEmail,
+            subject: `Booking Confirmed — ${orderReference} | Lola's Rentals`,
+            html: bookingConfirmationHtml({
+              customerName: body.customerName,
+              orderReference,
+              vehicleName: body.vehicleName,
+              vehicleCount: 1,
+              pickupDatetime: formatManila(body.pickupDatetime),
+              dropoffDatetime: formatManila(body.dropoffDatetime),
+              pickupLocation,
+              dropoffLocation,
+              totalAmount: body.grandTotal,
+              paymentMethod: body.paymentMethod,
+              addons: [],
+              charityDonation: body.charityDonation ?? 0,
+              hasTransfer: false,
+              transferAmount: 0,
+              waiverUrl,
+              whatsappNumber,
+            }),
+          });
+        }
+
+        // Staff alert
+        void sendEmail({
+          to: NOTIFICATION_EMAIL,
+          subject: `🐾 New Walk-in — ${orderReference} — ${body.customerName}`,
+          html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+              <h2 style="color: #00577C;">New Walk-in Booking</h2>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 8px 0; color: #666; font-size: 14px; width: 140px;">Reference</td>
+                  <td style="padding: 8px 0; font-weight: 700;">${orderReference}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; color: #666; font-size: 14px;">Customer</td>
+                  <td style="padding: 8px 0; font-weight: 700;">${body.customerName}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; color: #666; font-size: 14px;">Email</td>
+                  <td style="padding: 8px 0;">${body.customerEmail ?? '—'}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; color: #666; font-size: 14px;">Mobile</td>
+                  <td style="padding: 8px 0;">${body.customerMobile ?? '—'}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; color: #666; font-size: 14px;">Vehicle</td>
+                  <td style="padding: 8px 0; font-weight: 700;">${body.vehicleName}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; color: #666; font-size: 14px;">Pick Up</td>
+                  <td style="padding: 8px 0;">${formatManila(body.pickupDatetime)}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; color: #666; font-size: 14px;">Return</td>
+                  <td style="padding: 8px 0;">${formatManila(body.dropoffDatetime)}</td>
+                </tr>
+                <tr style="border-top: 2px solid #FCBC5A;">
+                  <td style="padding: 16px 0 8px; color: #666; font-size: 14px;">Total</td>
+                  <td style="padding: 16px 0 8px; font-weight: 700; color: #00577C; font-size: 18px;">₱${body.grandTotal.toLocaleString()}</td>
+                </tr>
+              </table>
+              <p style="margin-top: 24px; font-size: 12px; color: #999;">
+                Sent automatically by Lola's Rentals platform — Walk-in booking
+              </p>
+            </div>
+          `,
+        });
+      } catch (err) {
+        console.error('[walk-in-email] Error:', err);
+      }
+    })();
   } catch (err) {
     next(err);
   }
