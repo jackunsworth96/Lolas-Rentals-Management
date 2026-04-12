@@ -106,7 +106,7 @@ export async function submitDirectBooking(
         addonIds: input.addonIds && input.addonIds.length > 0 ? input.addonIds : undefined,
       },
     );
-    webQuoteRaw = fullQuote.grandTotal;
+    webQuoteRaw = fullQuote.grandTotalWithFees ?? fullQuote.grandTotal;
   } catch {
     // Non-fatal: booking still proceeds even if quote computation fails
   }
