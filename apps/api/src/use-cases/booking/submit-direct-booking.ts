@@ -3,6 +3,7 @@ import type { SubmitDirectBookingInput } from '@lolas/shared';
 import { resolveSourceFromStore } from '@lolas/shared';
 import { computeQuote } from './compute-quote.js';
 import { sendEmail, bookingConfirmationHtml, NOTIFICATION_EMAIL } from '../../services/email.js';
+import { getSupabaseClient } from '../../adapters/supabase/client.js';
 
 function formatManilaDateTime(iso: string): string {
   return new Date(iso).toLocaleString('en-PH', {
@@ -91,8 +92,9 @@ export async function submitDirectBooking(
 
   // 3. Compute quote so the total is persisted with the order
   let webQuoteRaw: number | null = null;
+  let fullQuote: Awaited<ReturnType<typeof computeQuote>> | null = null;
   try {
-    const quote = await computeQuote(
+    fullQuote = await computeQuote(
       { configRepo: deps.configRepo },
       {
         storeId: input.storeId,
@@ -104,7 +106,7 @@ export async function submitDirectBooking(
         addonIds: input.addonIds && input.addonIds.length > 0 ? input.addonIds : undefined,
       },
     );
-    webQuoteRaw = quote.grandTotal;
+    webQuoteRaw = fullQuote.grandTotal;
   } catch {
     // Non-fatal: booking still proceeds even if quote computation fails
   }
@@ -163,12 +165,51 @@ export async function submitDirectBooking(
   // 7. Fire-and-forget emails — never block the booking response.
   const grandTotal = webQuoteRaw ?? 0;
   void (async () => {
+    const sb = getSupabaseClient();
+
+    // Look up vehicle display name
     let vehicleName = input.vehicleModelId;
     try {
       const vm = await deps.configRepo.getVehicleModelById(input.vehicleModelId);
       if (vm?.name) vehicleName = vm.name;
     } catch { /* non-critical */ }
 
+    // Look up location display names
+    let pickupLocation = 'General Luna';
+    let dropoffLocation = 'General Luna';
+    try {
+      const { data: locs } = await sb
+        .from('locations')
+        .select('id, name')
+        .in('id', [input.pickupLocationId, input.dropoffLocationId]);
+      if (locs) {
+        const locMap = new Map((locs as { id: number; name: string }[]).map((l) => [l.id, l.name]));
+        pickupLocation = locMap.get(input.pickupLocationId) ?? pickupLocation;
+        dropoffLocation = locMap.get(input.dropoffLocationId) ?? dropoffLocation;
+      }
+    } catch { /* non-critical */ }
+
+    // Look up transfer route name if a transfer was booked
+    const hasTransfer = !!(input.transferType);
+    let transferRoute = input.transferRoute ?? undefined;
+
+    // Derive payment method display label
+    const pmRaw = input.webPaymentMethod ?? 'cash';
+    const paymentMethod = pmRaw.charAt(0).toUpperCase() + pmRaw.slice(1);
+
+    // Addon lines from the computed quote
+    const addons = (fullQuote?.addons ?? []).map((a) => ({
+      name: a.name,
+      price: a.total,
+    }));
+
+    const depositAmount = fullQuote?.securityDeposit ?? 0;
+    const charityDonation = input.charityDonation ?? 0;
+
+    const waiverUrl = `${process.env.WEB_URL ?? 'https://lolasrentals.com'}/waiver/${orderReference}`;
+    const whatsappNumber = process.env.WHATSAPP_NUMBER ?? '639XXXXXXXXX';
+
+    // ── Customer confirmation ──────────────────────────────────────────────
     void sendEmail({
       to: input.customerEmail,
       subject: `Booking Confirmed — ${orderReference} | Lola's Rentals`,
@@ -176,79 +217,104 @@ export async function submitDirectBooking(
         customerName: input.customerName,
         orderReference,
         vehicleName,
+        vehicleCount: 1,
         pickupDatetime: formatManilaDateTime(input.pickupDatetime),
         dropoffDatetime: formatManilaDateTime(input.dropoffDatetime),
+        pickupLocation,
+        dropoffLocation,
         totalAmount: grandTotal,
+        paymentMethod,
+        depositAmount,
+        addons,
+        charityDonation,
+        hasTransfer,
+        transferType: input.transferType ?? undefined,
+        transferRoute,
+        waiverUrl,
+        whatsappNumber,
       }),
     });
 
+    // ── Staff alert ────────────────────────────────────────────────────────
+    const addonsStaffHtml =
+      addons.length > 0
+        ? addons
+            .map((a) => `<tr><td style="padding:4px 0;color:#666;font-size:13px;">Add-on</td><td style="padding:4px 0;font-size:13px;">${a.name} — ₱${a.price.toLocaleString()}</td></tr>`)
+            .join('')
+        : '';
+
+    const transferStaffHtml = hasTransfer
+      ? `<tr><td style="padding:4px 0;color:#666;font-size:13px;">Transfer</td><td style="padding:4px 0;font-size:13px;font-weight:700;">${
+          input.transferType === 'tuktuk' ? 'Private TukTuk' : input.transferType === 'private' ? 'Private Van' : 'Shared Van'
+        }${transferRoute ? ` — ${transferRoute}` : ''}</td></tr>
+        ${input.flightNumber ? `<tr><td style="padding:4px 0;color:#666;font-size:13px;">Flight</td><td style="padding:4px 0;font-size:13px;">${input.flightNumber}</td></tr>` : ''}
+        ${input.flightArrivalTime ? `<tr><td style="padding:4px 0;color:#666;font-size:13px;">Arrival</td><td style="padding:4px 0;font-size:13px;">${input.flightArrivalTime}</td></tr>` : ''}`
+      : '';
+
+    const charityStaffHtml =
+      charityDonation > 0
+        ? `<tr><td style="padding:4px 0;color:#666;font-size:13px;">Charity</td><td style="padding:4px 0;font-size:13px;color:#00577C;">₱${charityDonation.toLocaleString()} → BePawsitive</td></tr>`
+        : '';
+
     void sendEmail({
       to: NOTIFICATION_EMAIL,
-      subject: `🐾 New Booking — ${orderReference}`,
+      subject: `🐾 New Booking — ${orderReference} — ${input.customerName}`,
       html: `
-        <div style="font-family: sans-serif; max-width: 600px; 
-          margin: 0 auto; padding: 24px;">
-          <h2 style="color: #00577C;">New Booking Received</h2>
-          <table style="width: 100%; border-collapse: collapse;">
-            <tr>
-              <td style="padding: 8px 0; color: #666; 
-                font-size: 14px; width: 140px;">Reference</td>
-              <td style="padding: 8px 0; font-weight: 700;">
-                ${orderReference}
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 0; color: #666; 
-                font-size: 14px;">Customer</td>
-              <td style="padding: 8px 0; font-weight: 700;">
-                ${input.customerName}
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 0; color: #666; 
-                font-size: 14px;">Email</td>
-              <td style="padding: 8px 0;">
-                ${input.customerEmail}
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 0; color: #666; 
-                font-size: 14px;">Mobile</td>
-              <td style="padding: 8px 0;">
-                ${input.customerMobile ?? '—'}
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 0; color: #666; 
-                font-size: 14px;">Vehicle</td>
-              <td style="padding: 8px 0; font-weight: 700;">
-                ${vehicleName}
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 0; color: #666; 
-                font-size: 14px;">Pick Up</td>
-              <td style="padding: 8px 0;">
-                ${formatManilaDateTime(input.pickupDatetime)}
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 0; color: #666; 
-                font-size: 14px;">Return</td>
-              <td style="padding: 8px 0;">
-                ${formatManilaDateTime(input.dropoffDatetime)}
-              </td>
-            </tr>
-            <tr style="border-top: 2px solid #FCBC5A;">
-              <td style="padding: 16px 0 8px; color: #666; 
-                font-size: 14px;">Total</td>
-              <td style="padding: 16px 0 8px; font-weight: 700; 
-                color: #00577C; font-size: 18px;">
-                ₱${grandTotal.toLocaleString()}
-              </td>
-            </tr>
-          </table>
-          <p style="margin-top: 24px; font-size: 12px; color: #999;">
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+          <div style="background: #00577C; border-radius: 10px; padding: 20px 24px; margin-bottom: 20px;">
+            <h2 style="color: white; margin: 0; font-size: 20px;">🐾 New Booking Received</h2>
+            <p style="color: rgba(255,255,255,0.75); margin: 4px 0 0; font-size: 13px;">${orderReference}</p>
+          </div>
+          <div style="background: white; border-radius: 10px; padding: 20px 24px; border: 1px solid #eee;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="padding: 6px 0; color: #666; font-size: 13px; width: 130px;">Customer</td>
+                <td style="padding: 6px 0; font-weight: 700; font-size: 14px;">${input.customerName}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #666; font-size: 13px;">Email</td>
+                <td style="padding: 6px 0; font-size: 13px;">
+                  <a href="mailto:${input.customerEmail}" style="color: #00577C;">${input.customerEmail}</a>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #666; font-size: 13px;">Mobile</td>
+                <td style="padding: 6px 0; font-size: 13px;">
+                  <a href="tel:${input.customerMobile ?? ''}" style="color: #00577C;">${input.customerMobile ?? '—'}</a>
+                </td>
+              </tr>
+              <tr style="border-top: 1px solid #f0f0f0;">
+                <td style="padding: 6px 0; color: #666; font-size: 13px;">Vehicle</td>
+                <td style="padding: 6px 0; font-weight: 700; font-size: 14px;">${vehicleName}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #666; font-size: 13px;">Pick Up</td>
+                <td style="padding: 6px 0; font-size: 13px;">${pickupLocation} — ${formatManilaDateTime(input.pickupDatetime)}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #666; font-size: 13px;">Drop Off</td>
+                <td style="padding: 6px 0; font-size: 13px;">${dropoffLocation} — ${formatManilaDateTime(input.dropoffDatetime)}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #666; font-size: 13px;">Payment</td>
+                <td style="padding: 6px 0; font-size: 13px;">${paymentMethod}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #666; font-size: 13px;">Deposit</td>
+                <td style="padding: 6px 0; font-size: 13px;">₱${depositAmount.toLocaleString()}</td>
+              </tr>
+              ${addonsStaffHtml}
+              ${transferStaffHtml}
+              ${charityStaffHtml}
+              <tr style="border-top: 2px solid #FCBC5A;">
+                <td style="padding: 12px 0 6px; color: #666; font-size: 13px;">Total</td>
+                <td style="padding: 12px 0 6px; font-weight: 800; color: #00577C; font-size: 18px;">
+                  ₱${grandTotal.toLocaleString()}
+                </td>
+              </tr>
+            </table>
+          </div>
+          <p style="margin-top: 16px; font-size: 11px; color: #bbb; text-align: center;">
             Sent automatically by Lola's Rentals platform
           </p>
         </div>
