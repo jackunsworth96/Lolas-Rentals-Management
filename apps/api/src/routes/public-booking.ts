@@ -234,7 +234,7 @@ router.patch('/cancel/:orderReference', async (req, res, next) => {
     const { error } = await sb
       .from('orders_raw')
       .update({ status: 'cancelled' })
-      .eq('order_reference', orderReference)
+      .eq('booking_token', orderReference)
       .eq('booking_channel', 'direct')
       .eq('status', 'unprocessed');
 

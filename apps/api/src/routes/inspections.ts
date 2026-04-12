@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import crypto from 'crypto';
 import { requirePermission } from '../middleware/authorize.js';
 import { validateBody } from '../middleware/validate.js';
 import { Permission } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { logMaintenance } from '../use-cases/maintenance/log-maintenance.js';
+import { sendEmail, inspectionLogHtml } from '../services/email.js';
 
 const router = Router();
 
@@ -276,6 +278,84 @@ router.post(
       }
 
       res.status(201).json({ success: true, data: { inspectionId } });
+
+      const INSPECTION_LOG_EMAIL =
+        process.env.MAINTENANCE_LOG_EMAIL ?? process.env.NOTIFICATION_EMAIL;
+
+      if (INSPECTION_LOG_EMAIL) {
+        void (async () => {
+          try {
+            const loggedAt = new Date().toLocaleString('en-PH', {
+              timeZone: 'Asia/Manila',
+              dateStyle: 'medium',
+              timeStyle: 'short',
+            });
+
+            let plateNumber = 'Not recorded';
+            let engineNumber = 'Not recorded';
+            let chassisNumber = 'Not recorded';
+
+            if (body.vehicleId) {
+              const { data: vehicle } = await sb
+                .from('fleet')
+                .select('plate_number, engine_number, chassis_number')
+                .eq('id', body.vehicleId)
+                .single();
+              if (vehicle) {
+                plateNumber = (vehicle as Record<string, unknown>).plate_number as string ?? 'Not recorded';
+                engineNumber = (vehicle as Record<string, unknown>).engine_number as string ?? 'Not recorded';
+                chassisNumber = (vehicle as Record<string, unknown>).chassis_number as string ?? 'Not recorded';
+              }
+            }
+
+            const hashContent = [
+              inspectionId,
+              body.orderReference,
+              body.vehicleName ?? '',
+              plateNumber,
+              loggedAt,
+              String(body.results.length),
+            ].join('|');
+
+            const contentHash = crypto
+              .createHash('sha256')
+              .update(hashContent)
+              .digest('hex')
+              .toUpperCase()
+              .slice(0, 32);
+
+            await sendEmail({
+              to: INSPECTION_LOG_EMAIL,
+              subject: `🔍 Inspection — ${body.vehicleName ?? 'Vehicle'} — ${body.orderReference} — ${loggedAt}`,
+              html: inspectionLogHtml({
+                inspectionId,
+                orderReference: body.orderReference,
+                vehicleName: body.vehicleName ?? 'Unknown',
+                plateNumber,
+                engineNumber,
+                chassisNumber,
+                kmReading: body.kmReading ?? undefined,
+                damageNotes: body.damageNotes ?? undefined,
+                helmetNumbers: body.helmetNumbers ?? undefined,
+                hasCustomerSignature: !!(body.customerSignatureUrl),
+                storeId: body.storeId,
+                loggedAt,
+                results: body.results.map((r) => ({
+                  itemName: r.itemName,
+                  result: r.result,
+                  qty: r.qty ?? undefined,
+                  notes: r.notes ?? undefined,
+                })),
+                contentHash,
+              }),
+            });
+
+            console.log('[inspection-log] Email sent for:', body.orderReference);
+          } catch (err) {
+            console.error('[inspection-log] Email failed:', err);
+          }
+        })();
+      }
     } catch (err) {
       if (inspectionId) {
         await sb.from('inspections').delete().eq('id', inspectionId);

@@ -889,3 +889,200 @@ export function maintenanceLogHtml(
     </div>
   `;
 }
+
+export function inspectionLogHtml({
+  inspectionId,
+  orderReference,
+  vehicleName,
+  plateNumber,
+  engineNumber,
+  chassisNumber,
+  kmReading,
+  damageNotes,
+  helmetNumbers,
+  hasCustomerSignature,
+  storeId,
+  loggedAt,
+  results,
+  contentHash,
+}: {
+  inspectionId: string;
+  orderReference: string;
+  vehicleName: string;
+  plateNumber: string;
+  engineNumber: string;
+  chassisNumber: string;
+  kmReading?: string;
+  damageNotes?: string;
+  helmetNumbers?: string;
+  hasCustomerSignature: boolean;
+  storeId: string;
+  loggedAt: string;
+  results: Array<{
+    itemName: string;
+    result: string;
+    qty?: number;
+    notes?: string;
+  }>;
+  contentHash: string;
+}): string {
+  const issueItems = results.filter((r) => r.result === 'issue_noted');
+  const acceptedCount = results.filter((r) => r.result === 'accepted').length;
+
+  const resultLabel = (r: string) => {
+    switch (r) {
+      case 'accepted': return '✅ Accepted';
+      case 'issue_noted': return '⚠️ Issue Noted';
+      case 'na': return '— N/A';
+      case 'declined': return '❌ Declined';
+      default: return r;
+    }
+  };
+
+  const resultColor = (r: string) => {
+    switch (r) {
+      case 'accepted': return '#16a34a';
+      case 'issue_noted': return '#d97706';
+      case 'declined': return '#dc2626';
+      default: return '#64748b';
+    }
+  };
+
+  return `
+    <div style="font-family: sans-serif; max-width: 650px; margin: 0 auto;">
+
+      <div style="background: #1e293b; padding: 24px 32px; text-align: center;">
+        <h1 style="color: white; margin: 0; font-size: 20px; font-weight: 700;">
+          🔍 Vehicle Inspection Record
+        </h1>
+        <p style="color: rgba(255,255,255,0.6); margin: 6px 0 0; font-size: 12px; letter-spacing: 2px; text-transform: uppercase;">
+          Lola's Rentals · Tamper-Evident Legal Record
+        </p>
+      </div>
+
+      <div style="background: #f8fafc; padding: 28px 32px;">
+
+        <div style="background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 8px; padding: 12px; margin-bottom: 20px;">
+          <p style="margin: 0; font-size: 12px; color: #92400E; line-height: 1.7;">
+            ⚠️ This is an automated tamper-evident record generated at the moment of inspection submission.
+            Any discrepancy between this email and the database record may indicate unauthorised modification.
+          </p>
+        </div>
+
+        <div style="background: white; border-radius: 10px; padding: 24px; margin-bottom: 20px; border: 1px solid #e2e8f0;">
+          <p style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 14px;">
+            Inspection Details
+          </p>
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+            <tr>
+              <td style="padding: 7px 0; color: #64748b; width: 180px;">Inspection ID</td>
+              <td style="padding: 7px 0; font-family: monospace; font-size: 12px; color: #475569;">${inspectionId}</td>
+            </tr>
+            <tr>
+              <td style="padding: 7px 0; color: #64748b;">Logged At</td>
+              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${loggedAt}</td>
+            </tr>
+            <tr>
+              <td style="padding: 7px 0; color: #64748b;">Order Reference</td>
+              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${orderReference}</td>
+            </tr>
+            <tr>
+              <td style="padding: 7px 0; color: #64748b;">Store</td>
+              <td style="padding: 7px 0; color: #1e293b;">${storeId}</td>
+            </tr>
+          </table>
+        </div>
+
+        <div style="background: white; border-radius: 10px; padding: 24px; margin-bottom: 20px; border: 1px solid #e2e8f0;">
+          <p style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 14px;">
+            Vehicle Identity
+          </p>
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+            <tr>
+              <td style="padding: 7px 0; color: #64748b; width: 180px;">Vehicle</td>
+              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${vehicleName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 7px 0; color: #64748b;">Plate Number</td>
+              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${plateNumber}</td>
+            </tr>
+            <tr>
+              <td style="padding: 7px 0; color: #64748b;">Engine Number</td>
+              <td style="padding: 7px 0; color: #1e293b;">${engineNumber}</td>
+            </tr>
+            <tr>
+              <td style="padding: 7px 0; color: #64748b;">Chassis Number</td>
+              <td style="padding: 7px 0; color: #1e293b;">${chassisNumber}</td>
+            </tr>
+            ${kmReading ? `
+            <tr>
+              <td style="padding: 7px 0; color: #64748b;">KM Reading</td>
+              <td style="padding: 7px 0; color: #1e293b;">${kmReading} km</td>
+            </tr>` : ''}
+            ${helmetNumbers ? `
+            <tr>
+              <td style="padding: 7px 0; color: #64748b;">Helmet Numbers</td>
+              <td style="padding: 7px 0; color: #1e293b;">${helmetNumbers}</td>
+            </tr>` : ''}
+            <tr>
+              <td style="padding: 7px 0; color: #64748b;">Customer Signature</td>
+              <td style="padding: 7px 0; font-weight: 600; color: ${hasCustomerSignature ? '#16a34a' : '#dc2626'};">
+                ${hasCustomerSignature ? '✅ Captured' : '❌ Not captured'}
+              </td>
+            </tr>
+          </table>
+        </div>
+
+        ${damageNotes ? `
+        <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 10px; padding: 20px; margin-bottom: 20px;">
+          <p style="font-size: 12px; font-weight: 700; color: #991B1B; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 8px;">
+            ⚠️ Damage Notes
+          </p>
+          <p style="color: #7F1D1D; font-size: 14px; margin: 0; line-height: 1.6;">${damageNotes}</p>
+        </div>` : ''}
+
+        <div style="background: white; border-radius: 10px; padding: 24px; margin-bottom: 20px; border: 1px solid #e2e8f0;">
+          <p style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 14px;">
+            Inspection Checklist (${acceptedCount} accepted, ${issueItems.length} issues)
+          </p>
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            ${results.map((r) => `
+            <tr style="border-bottom: 1px solid #f1f5f9;">
+              <td style="padding: 7px 0; color: #475569; width: 55%;">
+                ${r.itemName}${r.qty ? ` (×${r.qty})` : ''}
+              </td>
+              <td style="padding: 7px 0; font-weight: 600; color: ${resultColor(r.result)};">
+                ${resultLabel(r.result)}
+              </td>
+            </tr>
+            ${r.notes ? `
+            <tr style="border-bottom: 1px solid #f1f5f9;">
+              <td colspan="2" style="padding: 4px 0 8px; padding-left: 12px; font-size: 12px; color: #d97706; font-style: italic;">
+                Note: ${r.notes}
+              </td>
+            </tr>` : ''}
+            `).join('')}
+          </table>
+        </div>
+
+        <div style="background: #1e293b; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+          <p style="color: #94a3b8; font-size: 11px; margin: 0 0 6px; font-family: monospace;">
+            TAMPER-EVIDENT HASH (SHA-256)
+          </p>
+          <p style="color: #FCBC5A; font-size: 12px; margin: 0; font-family: monospace; word-break: break-all;">
+            ${contentHash}
+          </p>
+          <p style="color: #64748b; font-size: 10px; margin: 8px 0 0; line-height: 1.6;">
+            Hash derived from: inspection ID + order reference + vehicle name + plate number + logged at timestamp + result count.
+            Any post-submission change to these fields will cause verification to fail.
+          </p>
+        </div>
+
+        <p style="color: #94a3b8; font-size: 11px; text-align: center; margin: 0;">
+          Lola's Rentals &amp; Tours Inc. — Internal use only. Do not forward externally.
+        </p>
+
+      </div>
+    </div>
+  `;
+}
