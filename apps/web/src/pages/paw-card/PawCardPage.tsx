@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
@@ -32,6 +32,8 @@ const PARTNER_LOGOS = Object.entries(_logoRaw)
 export default function PawCardPage() {
   const qc = useQueryClient();
   const [pawAccess, setPawAccess] = useState<PawCardAccess | null>(null);
+  const [searchParams] = useSearchParams();
+  const preselectedEstablishmentId = searchParams.get('establishment');
 
   const displayFirstName =
     pawAccess?.customerName
@@ -195,6 +197,7 @@ export default function PawCardPage() {
                       customerIdForSubmit={customerIdForSubmit}
                       displayFullName={displayFullName}
                       onLogged={handleLogged}
+                      preselectedEstablishmentId={preselectedEstablishmentId ?? undefined}
                     />
                   </div>
                 </BorderGlow>

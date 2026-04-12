@@ -12,6 +12,7 @@ type Props = {
   customerIdForSubmit: string;
   displayFullName: string;
   onLogged: () => void;
+  preselectedEstablishmentId?: string;
 };
 
 function apiBaseUrl(): string {
@@ -58,6 +59,7 @@ export function PawCardSavingsForm({
   customerIdForSubmit,
   displayFullName,
   onLogged,
+  preselectedEstablishmentId,
 }: Props) {
   const [establishments, setEstablishments] = useState<Est[]>([]);
   const [establishmentsError, setEstablishmentsError] = useState('');
@@ -98,6 +100,19 @@ export function PawCardSavingsForm({
     })();
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    if (
+      preselectedEstablishmentId &&
+      establishments.length > 0 &&
+      !establishmentId
+    ) {
+      const match = establishments.find(
+        (e) => String(e.id) === preselectedEstablishmentId,
+      );
+      if (match) setEstablishmentId(String(match.id));
+    }
+  }, [preselectedEstablishmentId, establishments, establishmentId]);
 
   const handleFileChange = useCallback((file: File | null) => {
     setUploadError('');

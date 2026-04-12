@@ -27,3 +27,13 @@ export function usePublicEstablishments() {
     staleTime: 5 * 60_000,
   });
 }
+
+export function useTopEstablishments() {
+  return useQuery({
+    queryKey: ['top-establishments'],
+    queryFn: () => api.get<{ name: string; count: number }[]>(
+      '/public/paw-card/top-establishments',
+    ),
+    staleTime: 5 * 60 * 1000,
+  });
+}

@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, Fragment } from 'react';
 import {
   MapPin,
   Instagram,
@@ -9,12 +9,16 @@ import {
   Search,
   Users,
   User,
+  Trophy,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import {
   usePublicEstablishments,
+  useTopEstablishments,
   type PawCardEstablishment,
 } from '../../api/paw-card-establishments.js';
+import pawPrintAsset from '../../assets/Paw Print.svg';
 
 function useInView(threshold = 0.1) {
   const ref = useRef<HTMLDivElement>(null);
@@ -129,6 +133,7 @@ function MarqueeRow({
 }
 
 const CATEGORY_MAP: Record<string, string> = {
+  // slugs (legacy)
   food: 'Food & Drink',
   food_drink: 'Food & Drink',
   cafe: 'Food & Drink',
@@ -137,6 +142,11 @@ const CATEGORY_MAP: Record<string, string> = {
   service: 'Services',
   services: 'Services',
   shopping: 'Shopping',
+  // display labels as stored in DB
+  'Food & Drink': 'Food & Drink',
+  'Activities': 'Activities',
+  'Services': 'Services',
+  'Shopping': 'Shopping',
 };
 
 const FILTER_TABS = ['All', 'Food & Drink', 'Activities', 'Services', 'Shopping'] as const;
@@ -148,12 +158,47 @@ function getInitials(name: string | null | undefined): string {
   return ((words[0]?.[0] ?? '') + (words[1]?.[0] ?? '')).toUpperCase();
 }
 
-function sortEstablishments(items: PawCardEstablishment[]): PawCardEstablishment[] {
-  return [...items].sort((a, b) => {
-    if (a.is_favourite !== b.is_favourite) return a.is_favourite ? -1 : 1;
-    if (a.is_high_value !== b.is_high_value) return a.is_high_value ? -1 : 1;
-    return (a.name ?? '').localeCompare(b.name ?? '');
-  });
+const LETTER_NAV_ORDER = [
+  ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''),
+  '0-9',
+  '#',
+] as const;
+
+/** First index letter for grouping (A–Z, 0–9, or # for other). */
+function indexLetter(name: string): string {
+  const s = (name ?? '').trim();
+  if (!s) return '#';
+  const ch = s[0];
+  const upper = ch.toUpperCase();
+  if (upper >= 'A' && upper <= 'Z') return upper;
+  if (ch >= '0' && ch <= '9') return '0-9';
+  return '#';
+}
+
+function letterAnchorId(letter: string): string {
+  if (letter === '0-9') return 'paw-partners-letter-09';
+  if (letter === '#') return 'paw-partners-letter-symbol';
+  return `paw-partners-letter-${letter}`;
+}
+
+function scrollToPartnerLetter(letter: string): void {
+  const el = document.getElementById(letterAnchorId(letter));
+  el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function groupPartnersByLetter(
+  items: PawCardEstablishment[],
+): { letter: string; items: PawCardEstablishment[] }[] {
+  const map = new Map<string, PawCardEstablishment[]>();
+  for (const e of items) {
+    const L = indexLetter(e.name ?? '');
+    if (!map.has(L)) map.set(L, []);
+    map.get(L)!.push(e);
+  }
+  return LETTER_NAV_ORDER.filter((L) => map.has(L)).map((L) => ({
+    letter: L,
+    items: map.get(L)!,
+  }));
 }
 
 export default function PawCardPartnersPage() {
@@ -161,9 +206,33 @@ export default function PawCardPartnersPage() {
   const [search, setSearch] = useState('');
 
   const { data: establishments = [], isLoading, error } = usePublicEstablishments();
+  const { data: topData } = useTopEstablishments();
+
+  const topEstablishments = useMemo(() => {
+    if (!topData || !establishments.length) return [];
+    return (topData as { name: string; count: number }[])
+      .slice(0, 10)
+      .map(({ name, count }) => {
+        const match = establishments.find(
+          (e) => (e.name ?? '').toLowerCase().trim() === name.toLowerCase().trim(),
+        );
+        return match ? { ...match, redemptionCount: count } : null;
+      })
+      .filter((e): e is NonNullable<typeof e> => e !== null);
+  }, [topData, establishments]);
+
+  const topNames = useMemo(
+    () =>
+      new Set(
+        (topData as { name: string; count: number }[] ?? [])
+          .slice(0, 10)
+          .map((t) => t.name.toLowerCase().trim()),
+      ),
+    [topData],
+  );
 
   const filtered = useMemo(() => {
-    let items = sortEstablishments(establishments);
+    let items = [...establishments];
 
     if (activeFilter !== 'All') {
       items = items.filter((e) => CATEGORY_MAP[e.category ?? ''] === activeFilter);
@@ -179,8 +248,18 @@ export default function PawCardPartnersPage() {
       );
     }
 
+    items.sort((a, b) =>
+      (a.name ?? '').localeCompare(b.name ?? '', undefined, { sensitivity: 'base' }),
+    );
     return items;
   }, [establishments, activeFilter, search]);
+
+  const partnersByLetter = useMemo(() => groupPartnersByLetter(filtered), [filtered]);
+
+  const lettersPresent = useMemo(
+    () => new Set(partnersByLetter.map((g) => g.letter)),
+    [partnersByLetter],
+  );
 
   const third = Math.ceil(allLogos.length / 3);
   const row1 = allLogos.slice(0, third);
@@ -202,6 +281,64 @@ export default function PawCardPartnersPage() {
         @keyframes marquee-right {
           0% { transform: translateX(-50%); }
           100% { transform: translateX(0); }
+        }
+        @keyframes paw-first-glitter-sweep {
+          0% { transform: translate(-130%, -40%) rotate(28deg); }
+          100% { transform: translate(130%, 40%) rotate(28deg); }
+        }
+        .paw-first-glitter {
+          position: absolute;
+          top: -60%;
+          left: -60%;
+          width: 220%;
+          height: 220%;
+          z-index: 2;
+          pointer-events: none;
+          mix-blend-mode: soft-light;
+          background: linear-gradient(
+            105deg,
+            transparent 0%,
+            transparent 38%,
+            rgba(255, 255, 255, 0) 42%,
+            rgba(255, 255, 255, 0.75) 47%,
+            rgba(255, 248, 220, 0.95) 50%,
+            rgba(255, 255, 255, 0.8) 53%,
+            rgba(255, 255, 255, 0) 58%,
+            transparent 100%
+          );
+          animation: paw-first-glitter-sweep 2.8s ease-in-out infinite;
+        }
+        @keyframes paw-first-place-glow {
+          0%, 100% {
+            box-shadow:
+              0 0 0 3px rgba(252, 188, 90, 0.45),
+              0 2px 14px rgba(252, 188, 90, 0.4),
+              0 0 28px rgba(255, 224, 140, 0.35);
+          }
+          50% {
+            box-shadow:
+              0 0 0 4px rgba(252, 188, 90, 0.55),
+              0 4px 22px rgba(252, 188, 90, 0.55),
+              0 0 36px rgba(255, 235, 170, 0.55);
+          }
+        }
+        .paw-card-first-place-btn {
+          border-width: 3px !important;
+          animation: paw-first-place-glow 2.4s ease-in-out infinite;
+        }
+        .paw-card-first-place-btn:hover {
+          animation: none;
+          box-shadow: 0 4px 20px rgba(252, 188, 90, 0.5) !important;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .paw-first-glitter {
+            animation: none;
+            opacity: 0;
+          }
+          .paw-card-first-place-btn {
+            animation: none;
+            box-shadow: 0 0 0 3px rgba(252, 188, 90, 0.4), 0 2px 12px rgba(252, 188, 90, 0.35) !important;
+          }
         }
       `}</style>
 
@@ -308,6 +445,182 @@ export default function PawCardPartnersPage() {
         </div>
       </div>
 
+      {/* ── Customer Favourites ── */}
+      {topEstablishments.length > 0 && (
+        <div style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 24px 0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+            <img
+              src={pawPrintAsset}
+              alt=""
+              aria-hidden="true"
+              style={{ width: 28, height: 28, objectFit: 'contain', display: 'block', flexShrink: 0 }}
+            />
+            <div>
+              <h2 className="font-headline font-bold" style={{ fontSize: 24, color: '#363737', marginBottom: 2 }}>
+                Customer Favourites
+              </h2>
+              <p className="font-lato" style={{ fontSize: 14, color: 'rgba(54,55,55,0.6)' }}>
+                Most visited by Lola&apos;s customers
+              </p>
+            </div>
+          </div>
+
+          <div
+            className="[-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(10, 80px)',
+              columnGap: 12,
+              rowGap: 12,
+              justifyContent: 'center',
+              maxWidth: '100%',
+              overflowX: 'auto',
+              overflowY: 'visible',
+              paddingTop: 12,
+              paddingBottom: 14,
+              scrollbarWidth: 'none',
+            }}
+          >
+            {topEstablishments.map((est, index) => {
+              const logoKey = toLogoLookupKey(est.name ?? '');
+              const logoSrc = LOGO_MAP[logoKey] ?? null;
+
+              const isFirstPlace = index === 0;
+
+              return (
+                <button
+                  key={est.id}
+                  type="button"
+                  className={isFirstPlace ? 'paw-card-first-place-btn' : undefined}
+                  onClick={() => {
+                    const el = document.getElementById(`establishment-${est.id}`);
+                    if (el) {
+                      el.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'center',
+                      });
+                      el.style.outline = '3px solid #FCBC5A';
+                      el.style.outlineOffset = '3px';
+                      setTimeout(() => {
+                        el.style.outline = '';
+                        el.style.outlineOffset = '';
+                      }, 2000);
+                    }
+                  }}
+                  style={{
+                    position: 'relative',
+                    flexShrink: 0,
+                    width: 80,
+                    height: 80,
+                    borderRadius: '50%',
+                    border: '2px solid #FCBC5A',
+                    backgroundColor: 'white',
+                    padding: 6,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: isFirstPlace ? undefined : '0 2px 12px rgba(252,188,90,0.3)',
+                    transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+                  }}
+                  onMouseEnter={(ev) => {
+                    ev.currentTarget.style.transform = 'scale(1.1)';
+                    if (!isFirstPlace) {
+                      ev.currentTarget.style.boxShadow = '0 4px 20px rgba(252,188,90,0.5)';
+                    }
+                  }}
+                  onMouseLeave={(ev) => {
+                    ev.currentTarget.style.transform = 'scale(1)';
+                    if (!isFirstPlace) {
+                      ev.currentTarget.style.boxShadow = '0 2px 12px rgba(252,188,90,0.3)';
+                    }
+                  }}
+                  title={`${est.name} — ${est.redemptionCount} visits`}
+                >
+                  <div style={{
+                    position: 'absolute',
+                    top: -4,
+                    left: -4,
+                    width: 22,
+                    height: 22,
+                    borderRadius: '50%',
+                    backgroundColor: '#FCBC5A',
+                    color: '#363737',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    fontFamily: 'Lato, sans-serif',
+                    boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
+                    zIndex: 2,
+                  }}>
+                    {index + 1}
+                  </div>
+
+                  <div
+                    style={{
+                      position: 'relative',
+                      zIndex: 0,
+                      width: '100%',
+                      height: '100%',
+                      borderRadius: '50%',
+                      overflow: 'hidden',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {isFirstPlace && <span className="paw-first-glitter" aria-hidden />}
+                    {logoSrc ? (
+                      <img
+                        src={logoSrc}
+                        alt={est.name ?? ''}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'contain',
+                          borderRadius: '50%',
+                          position: 'relative',
+                          zIndex: 1,
+                        }}
+                      />
+                    ) : (
+                      <span style={{
+                        fontSize: 16,
+                        fontWeight: 700,
+                        color: '#00577C',
+                        fontFamily: 'Lato, sans-serif',
+                        position: 'relative',
+                        zIndex: 1,
+                      }}>
+                        {(est.name ?? '').slice(0, 2).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{
+                    position: 'absolute',
+                    bottom: -4,
+                    right: -4,
+                    zIndex: 3,
+                    backgroundColor: '#00577C',
+                    color: 'white',
+                    borderRadius: 10,
+                    padding: '1px 5px',
+                    fontSize: 9,
+                    fontFamily: 'Lato, sans-serif',
+                    fontWeight: 600,
+                  }}>
+                    {est.redemptionCount}x
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ── Content ── */}
       <section className="px-6 py-10 max-w-7xl mx-auto">
 
@@ -347,12 +660,71 @@ export default function PawCardPartnersPage() {
           </div>
         )}
 
-        {/* Cards grid */}
+        {/* A–Z jump nav */}
         {!isLoading && !error && filtered.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filtered.map((e, index) => (
-              <EstablishmentCard key={e.id} establishment={e} index={index} />
-            ))}
+          <nav
+            aria-label="Jump to partners by first letter"
+            className="mb-6 flex flex-wrap items-center justify-center gap-1 sm:justify-start"
+          >
+            <span className="mr-1 font-lato text-[11px] font-bold uppercase tracking-wide text-charcoal-brand/45">
+              A–Z
+            </span>
+            {LETTER_NAV_ORDER.map((letter) => {
+              const has = lettersPresent.has(letter);
+              const label =
+                letter === '0-9' ? '0–9' : letter === '#' ? '#' : letter;
+              return has ? (
+                <button
+                  key={letter}
+                  type="button"
+                  onClick={() => scrollToPartnerLetter(letter)}
+                  className="min-w-[1.75rem] rounded-md border border-charcoal-brand/15 bg-white px-1.5 py-1 font-lato text-xs font-bold text-teal-brand shadow-sm transition-colors hover:border-gold-brand hover:bg-gold-brand/15"
+                >
+                  {label}
+                </button>
+              ) : (
+                <span
+                  key={letter}
+                  className="min-w-[1.75rem] px-1.5 py-1 text-center font-lato text-xs font-bold text-charcoal-brand/20"
+                  aria-hidden
+                >
+                  {label}
+                </span>
+              );
+            })}
+          </nav>
+        )}
+
+        {/* Cards grid (A–Z, grouped by letter) */}
+        {!isLoading && !error && filtered.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
+            {(() => {
+              let cardIndex = 0;
+              return partnersByLetter.map(({ letter, items: letterItems }) => (
+                <Fragment key={letter}>
+                  <div
+                    id={letterAnchorId(letter)}
+                    className="col-span-full scroll-mt-28 border-b border-charcoal-brand/10 pb-2 pt-4 first:pt-0"
+                  >
+                    <h3 className="font-headline text-lg font-bold text-teal-brand">
+                      {letter === '0-9' ? '0–9' : letter === '#' ? 'Other' : letter}
+                    </h3>
+                  </div>
+                  {letterItems.map((e) => {
+                    const index = cardIndex++;
+                    return (
+                      <div key={e.id} id={`establishment-${e.id}`} className="h-full min-w-0 flex flex-col">
+                        <EstablishmentCard
+                          establishment={e}
+                          index={index}
+                          isFavourite={topNames.has((e.name ?? '').toLowerCase().trim())}
+                        />
+                      </div>
+                    );
+                  })}
+                </Fragment>
+              ));
+            })()}
           </div>
         )}
 
@@ -379,11 +751,12 @@ export default function PawCardPartnersPage() {
 }
 
 interface EstablishmentCardProps {
-  establishment: PawCardEstablishment;
+  establishment: PawCardEstablishment & { redemptionCount?: number };
   index: number;
+  isFavourite?: boolean;
 }
 
-function EstablishmentCard({ establishment: e, index }: EstablishmentCardProps) {
+function EstablishmentCard({ establishment: e, index, isFavourite }: EstablishmentCardProps) {
   const { ref, inView } = useInView(0.1);
   const [hovered, setHovered] = useState(false);
   const displayName = e.name ?? '';
@@ -396,7 +769,7 @@ function EstablishmentCard({ establishment: e, index }: EstablishmentCardProps) 
   return (
     <div
       ref={ref}
-      className="bg-white rounded-2xl shadow-sm border border-charcoal-brand/8 overflow-hidden flex flex-col"
+      className="bg-white rounded-2xl shadow-sm border border-charcoal-brand/8 overflow-hidden flex min-h-0 w-full min-w-0 flex-1 flex-col"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -463,7 +836,7 @@ function EstablishmentCard({ establishment: e, index }: EstablishmentCardProps) 
       </div>
 
       {/* ── Middle — details ── */}
-      <div className="p-4 flex-1">
+      <div className="p-4 flex-1 min-h-0 flex flex-col">
         <p className="text-xs font-bold text-charcoal-brand/50 uppercase tracking-wide mb-1">
           {categoryLabel}
         </p>
@@ -477,8 +850,8 @@ function EstablishmentCard({ establishment: e, index }: EstablishmentCardProps) 
         )}
       </div>
 
-      {/* ── Bottom — meta + links ── */}
-      <div className="border-t border-charcoal-brand/8 p-4">
+      {/* ── Bottom — meta + links + CTA (pinned to card bottom in each row) ── */}
+      <div className="border-t border-charcoal-brand/8 p-4 mt-auto shrink-0">
         {/* Row 1: savings / rating / hours */}
         <div className="flex items-center gap-3 flex-wrap text-xs text-charcoal-brand/60 mb-2.5">
           {(e.saving_solo != null || e.saving_group != null) && (
@@ -507,6 +880,24 @@ function EstablishmentCard({ establishment: e, index }: EstablishmentCardProps) 
         {/* Row 2: badges + external links */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 flex-wrap">
+            {isFavourite && (
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                backgroundColor: '#FFF8ED',
+                color: '#B45309',
+                border: '1px solid #FCD34D',
+                borderRadius: 20,
+                padding: '2px 8px',
+                fontSize: 11,
+                fontFamily: 'Lato, sans-serif',
+                fontWeight: 600,
+              }}>
+                <Trophy className="h-3 w-3 flex-shrink-0" strokeWidth={2.5} aria-hidden />
+                Top Ten
+              </span>
+            )}
             {e.is_favourite && (
               <span className="flex items-center gap-1 bg-red-50 text-red-500 text-xs px-2 py-0.5 rounded-full">
                 <Heart className="w-3 h-3 fill-red-400 flex-shrink-0" />
@@ -568,6 +959,41 @@ function EstablishmentCard({ establishment: e, index }: EstablishmentCardProps) 
               </a>
             )}
           </div>
+        </div>
+
+        {/* Log Saving CTA */}
+        <div style={{
+          marginTop: 12,
+          paddingTop: 12,
+          borderTop: '1px solid rgba(54,55,55,0.08)',
+        }}>
+          <Link
+            to={`/book/paw-card?establishment=${e.id}`}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              width: '100%',
+              padding: '8px 16px',
+              backgroundColor: '#FCBC5A',
+              color: '#363737',
+              borderRadius: 8,
+              fontSize: 13,
+              fontWeight: 700,
+              fontFamily: 'Lato, sans-serif',
+              textDecoration: 'none',
+              transition: 'opacity 0.2s ease',
+            }}
+            onMouseEnter={(ev) => {
+              (ev.currentTarget as HTMLAnchorElement).style.opacity = '0.85';
+            }}
+            onMouseLeave={(ev) => {
+              (ev.currentTarget as HTMLAnchorElement).style.opacity = '1';
+            }}
+          >
+            🐾 Log My Saving
+          </Link>
         </div>
       </div>
     </div>
