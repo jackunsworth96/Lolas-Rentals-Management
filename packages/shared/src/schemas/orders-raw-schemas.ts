@@ -75,6 +75,8 @@ export const SubmitDirectBookingRequestSchema = z.object({
   helmet_count: z.number().int().min(1).max(2).optional(),
   /** ID of the specific hold being consumed. Used server-side to delete only that hold row. */
   holdId: z.string().optional(),
+  /** Total price of any transfer booked alongside this rental (for email/receipt display). */
+  transferAmount: z.number().min(0).optional(),
 });
 
 export type SubmitDirectBookingInput = z.infer<typeof SubmitDirectBookingRequestSchema>;

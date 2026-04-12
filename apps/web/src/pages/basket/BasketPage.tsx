@@ -476,6 +476,7 @@ export default function BasketPage() {
             transferRouteId: transfer?.transferRouteId ?? undefined,
             transferPaxCount: transfer?.paxCount ?? undefined,
             charityDonation: charityDonation > 0 ? charityDonation : undefined,
+            transferAmount: (transfer?.totalPrice ?? 0) > 0 ? (transfer?.totalPrice ?? 0) : undefined,
             webPaymentMethod: paymentMethodId || undefined,
             ...(showHelmetSelector ? { helmet_count: helmetCount } : {}),
           },

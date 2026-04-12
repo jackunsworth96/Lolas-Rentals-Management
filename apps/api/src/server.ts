@@ -31,6 +31,7 @@ import { routes } from './routes/index.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { publicReviewsRoutes } from './routes/public-reviews.js';
 import { waiverRouter } from './routes/public-waiver.js';
+import { startWaiverReminderJob } from './jobs/waiver-reminder.js';
 import { publicLimiter } from './middleware/rate-limit.js';
 import { authenticate } from './middleware/authenticate.js';
 import inspectionRouter from './routes/inspections.js';
@@ -162,6 +163,7 @@ const PORT = Number(process.env.PORT) || 3001;
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
     console.log(`API server listening on port ${PORT}`);
+    startWaiverReminderJob();
   });
 }
 

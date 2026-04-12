@@ -7,6 +7,7 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { validateBody } from '../middleware/validate.js';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
+import { sendEmail, waiverConfirmationHtml } from '../services/email.js';
 
 const waiverLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -219,6 +220,27 @@ waiverRouter.post('/:orderReference/sign', validateBody(WaiverSignBodySchema), a
     if (insErr) throw new Error(`waivers insert failed: ${insErr.message}`);
 
     const row = inserted as { id: string; agreed_at: string };
+
+    // Fire-and-forget confirmation email — never block the response.
+    void (async () => {
+      if (!body.driverEmail) return;
+      await sendEmail({
+        to: body.driverEmail,
+        subject: `Waiver Signed — ${orderReference} | Lola's Rentals`,
+        html: waiverConfirmationHtml({
+          driverName: body.driverName,
+          orderReference,
+          signedAt: new Date().toLocaleString('en-PH', {
+            timeZone: 'Asia/Manila',
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          }),
+          hasLicence: !!(body.licenceFrontUrl),
+          whatsappNumber: process.env.WHATSAPP_NUMBER ?? '639XXXXXXXXX',
+        }),
+      });
+    })();
+
     res.status(201).json({
       success: true,
       waiverId: row.id,

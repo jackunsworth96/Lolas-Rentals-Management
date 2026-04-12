@@ -115,6 +115,7 @@ const walkInDirectSchema = z.object({
   dailyRate: z.number().min(0),
   pickupFee: z.number().min(0).default(0),
   dropoffFee: z.number().min(0).default(0),
+  charityDonation: z.number().min(0).optional(),
 });
 
 router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (req, res, next) => {
@@ -317,7 +318,7 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       p_deposit_method_id: body.depositMethod,
       p_booking_token: orderReference,
       p_tips: 0,
-      p_charity_donation: 0,
+      p_charity_donation: body.charityDonation ?? 0,
       p_updated_at: now.toISOString(),
       p_order_items: orderItems,
       p_order_addons: orderAddons,
@@ -362,7 +363,39 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       if (depErr) throw new Error(`Deposit payment insert failed: ${depErr.message}`);
     }
 
-    // 15. Return result
+    // 15. Post charity journal if applicable
+    const charityAmount = body.charityDonation ?? 0;
+    if (charityAmount > 0 && receivableAccountId) {
+      try {
+        const { Money } = await import('@lolas/domain');
+        const charityLegs = [
+          {
+            entryId: crypto.randomUUID(),
+            accountId: receivableAccountId,
+            debit: Money.php(charityAmount),
+            credit: Money.zero(),
+            description: `Order ${orderId} charity donation receivable (Be Pawsitive)`,
+            referenceType: 'order_charity' as const,
+            referenceId: orderId,
+          },
+          {
+            entryId: crypto.randomUUID(),
+            accountId: 'CHARITY-PAYABLE',
+            debit: Money.zero(),
+            credit: Money.php(charityAmount),
+            description: `Order ${orderId} charity donation payable (Be Pawsitive)`,
+            referenceType: 'order_charity' as const,
+            referenceId: orderId,
+          },
+        ];
+        await req.app.locals.deps.accountingPort.createTransaction(charityLegs, body.storeId);
+      } catch (charityErr) {
+        // Non-fatal — log and continue so order creation is not rolled back
+        console.error('Charity journal post failed:', charityErr);
+      }
+    }
+
+    // 16. Return result
     res.status(201).json({
       success: true,
       data: { orderId, orderReference, customerId },

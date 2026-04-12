@@ -203,8 +203,8 @@ export async function submitDirectBooking(
       price: a.total,
     }));
 
-    const depositAmount = fullQuote?.securityDeposit ?? 0;
     const charityDonation = input.charityDonation ?? 0;
+    const transferAmount = input.transferAmount ?? 0;
 
     const waiverUrl = `${process.env.WEB_URL ?? 'https://lolasrentals.com'}/waiver/${orderReference}`;
     const whatsappNumber = process.env.WHATSAPP_NUMBER ?? '639XXXXXXXXX';
@@ -224,12 +224,12 @@ export async function submitDirectBooking(
         dropoffLocation,
         totalAmount: grandTotal,
         paymentMethod,
-        depositAmount,
         addons,
         charityDonation,
         hasTransfer,
         transferType: input.transferType ?? undefined,
         transferRoute,
+        transferAmount,
         waiverUrl,
         whatsappNumber,
       }),
@@ -299,10 +299,6 @@ export async function submitDirectBooking(
                 <td style="padding: 6px 0; color: #666; font-size: 13px;">Payment</td>
                 <td style="padding: 6px 0; font-size: 13px;">${paymentMethod}</td>
               </tr>
-              <tr>
-                <td style="padding: 6px 0; color: #666; font-size: 13px;">Deposit</td>
-                <td style="padding: 6px 0; font-size: 13px;">₱${depositAmount.toLocaleString()}</td>
-              </tr>
               ${addonsStaffHtml}
               ${transferStaffHtml}
               ${charityStaffHtml}
@@ -310,6 +306,11 @@ export async function submitDirectBooking(
                 <td style="padding: 12px 0 6px; color: #666; font-size: 13px;">Total</td>
                 <td style="padding: 12px 0 6px; font-weight: 800; color: #00577C; font-size: 18px;">
                   ₱${grandTotal.toLocaleString()}
+                </td>
+              </tr>
+              <tr>
+                <td colspan="2" style="padding: 8px 0; font-size: 12px; color: #888; font-style: italic;">
+                  💰 A cash security deposit is collected at pickup: ₱1,000 per scooter or ₱2,000 per TukTuk. This is fully refundable upon return.
                 </td>
               </tr>
             </table>

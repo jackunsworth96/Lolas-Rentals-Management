@@ -165,6 +165,8 @@ export async function processRawOrder(
       addons: input.addons,
       receivableAccountId: input.receivableAccountId,
       incomeAccountId: input.incomeAccountId,
+      // process-raw-order posts the charity journal itself below; skip it here.
+      skipCharityPosting: true,
     },
   );
 

@@ -3,6 +3,7 @@ import {
   type OrderItem,
   type OrderAddonRecord,
   type FleetRepository,
+  type AccountingPort,
   type JournalLeg,
   Money,
   NonRentableVehicleError,
@@ -11,6 +12,8 @@ import {
 export interface ActivateOrderDeps {
   orderRepo: OrderRepository;
   fleetRepo: FleetRepository;
+  /** Required when skipCharityPosting is false/absent and order has a charity donation. */
+  accountingPort?: AccountingPort;
 }
 
 export interface VehicleAssignment {
@@ -37,6 +40,13 @@ export interface ActivateOrderInput {
   addons?: OrderAddonRecord[];
   receivableAccountId: string;
   incomeAccountId: string;
+  /**
+   * Set to true when the caller (e.g. process-raw-order.ts) will post
+   * the charity journal itself after this function returns.
+   * Leave unset (or false) for all other activation paths so charity
+   * is posted here.
+   */
+  skipCharityPosting?: boolean;
 }
 
 export async function activateOrder(
@@ -132,6 +142,37 @@ export async function activateOrder(
     journalDate,
     order.storeId,
   );
+
+  // Post charity journal unless the caller has indicated it will handle it.
+  // process-raw-order.ts posts charity itself after calling activateOrder,
+  // so it passes skipCharityPosting: true to avoid a double-post.
+  const charityAmount = order.charityDonation;
+  if (!input.skipCharityPosting && charityAmount && charityAmount.isPositive()) {
+    const { accountingPort } = deps;
+    if (accountingPort && input.receivableAccountId) {
+      const charityLegs: JournalLeg[] = [
+        {
+          entryId: crypto.randomUUID(),
+          accountId: input.receivableAccountId,
+          debit: charityAmount,
+          credit: Money.zero(),
+          description: `Order ${order.id} charity donation receivable (Be Pawsitive)`,
+          referenceType: 'order_charity',
+          referenceId: order.id,
+        },
+        {
+          entryId: crypto.randomUUID(),
+          accountId: 'CHARITY-PAYABLE',
+          debit: Money.zero(),
+          credit: charityAmount,
+          description: `Order ${order.id} charity donation payable (Be Pawsitive)`,
+          referenceType: 'order_charity',
+          referenceId: order.id,
+        },
+      ];
+      await accountingPort.createTransaction(charityLegs, order.storeId);
+    }
+  }
 
   return order;
 }
