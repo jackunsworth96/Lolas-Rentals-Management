@@ -5,7 +5,7 @@ import { requirePermission } from '../middleware/authorize.js';
 import { Permission, resolveStoreFromSource, resolveSourceFromStore } from '@lolas/shared';
 import { supabase } from '../adapters/supabase/client.js';
 import { processRawOrder, type ProcessRawOrderDeps } from '../use-cases/orders/process-raw-order.js';
-import { sendEmail, bookingConfirmationHtml, NOTIFICATION_EMAIL } from '../services/email.js';
+import { sendEmail, bookingConfirmationHtml, bookingCancellationHtml, NOTIFICATION_EMAIL } from '../services/email.js';
 
 function generateWalkInReference(source: string): string {
   const prefix = source === 'bass' ? 'BB' : 'LR';
@@ -827,6 +827,60 @@ router.patch('/:id/cancel', requirePermission(Permission.CancelOrders), async (r
     }
 
     res.json({ success: true });
+
+    void (async () => {
+      try {
+        const formatManila = (iso: string) =>
+          new Date(iso).toLocaleString('en-PH', {
+            timeZone: 'Asia/Manila',
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          });
+
+        const { data: order } = await supabase
+          .from('orders_raw')
+          .select(`
+            customer_email,
+            customer_name,
+            vehicle_model_id,
+            pickup_datetime,
+            dropoff_datetime,
+            booking_token
+          `)
+          .eq('id', id)
+          .single();
+
+        if (!order?.customer_email) return;
+
+        let vehicleName = order.vehicle_model_id;
+        try {
+          const { data: vm } = await supabase
+            .from('vehicle_models')
+            .select('name')
+            .eq('id', order.vehicle_model_id)
+            .single();
+          if (vm?.name) vehicleName = vm.name;
+        } catch { /* non-critical */ }
+
+        void sendEmail({
+          to: order.customer_email,
+          subject: `Booking Cancelled — ${order.booking_token} | Lola's Rentals`,
+          html: bookingCancellationHtml({
+            orderReference: order.booking_token ?? id,
+            vehicleName,
+            pickupDatetime: order.pickup_datetime
+              ? formatManila(order.pickup_datetime)
+              : undefined,
+            dropoffDatetime: order.dropoff_datetime
+              ? formatManila(order.dropoff_datetime)
+              : undefined,
+            whatsappNumber: process.env.WHATSAPP_NUMBER ?? '639XXXXXXXXX',
+          }),
+        });
+      } catch (err) {
+        console.error('[cancel-email] Error:', err);
+      }
+    })();
   } catch (err) {
     next(err);
   }

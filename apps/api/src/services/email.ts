@@ -10,7 +10,17 @@
 
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+let resendClient: Resend | undefined;
+function getResend(): Resend {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) {
+    throw new Error('RESEND_API_KEY not set');
+  }
+  if (!resendClient) {
+    resendClient = new Resend(key);
+  }
+  return resendClient;
+}
 
 export const FROM_EMAIL =
   process.env.NOTIFICATION_EMAIL_FROM ?? 'noreply@lolasrentals.com';
@@ -34,7 +44,7 @@ export async function sendEmail({
     return;
   }
   try {
-    await resend.emails.send({
+    await getResend().emails.send({
       from: FROM_EMAIL,
       to: Array.isArray(to) ? to : [to],
       subject,
@@ -1082,6 +1092,154 @@ export function inspectionLogHtml({
           Lola's Rentals &amp; Tours Inc. — Internal use only. Do not forward externally.
         </p>
 
+      </div>
+    </div>
+  `;
+}
+
+export function bookingCancellationHtml({
+  orderReference,
+  vehicleName,
+  pickupDatetime,
+  dropoffDatetime,
+  whatsappNumber,
+}: {
+  orderReference: string;
+  vehicleName?: string;
+  pickupDatetime?: string;
+  dropoffDatetime?: string;
+  whatsappNumber: string;
+}): string {
+  return `
+    <div style="font-family: sans-serif;
+      max-width: 600px; margin: 0 auto;">
+
+      <div style="background: #00577C;
+        padding: 32px; text-align: center;">
+        <h1 style="color: white; margin: 0;
+          font-size: 32px; font-weight: 900;">
+          Lola's<span style="color: #FCBC5A;">*</span>
+          Rentals
+        </h1>
+        <p style="color: rgba(255,255,255,0.7);
+          margin: 4px 0 0; font-size: 13px;
+          letter-spacing: 2px;
+          text-transform: uppercase;">
+          Siargao Island · Est. 2019
+        </p>
+      </div>
+
+      <div style="padding: 32px;
+        background: #FAF6F0;">
+
+        <h2 style="color: #363737;">
+          Booking Cancelled
+        </h2>
+        <p style="color: #363737; line-height: 1.6;">
+          We're sorry — your booking has been 
+          cancelled.
+        </p>
+
+        <div style="background: white;
+          border-radius: 12px; padding: 24px;
+          margin: 24px 0;">
+          <table style="width: 100%;
+            border-collapse: collapse;">
+            <tr>
+              <td style="padding: 8px 0; color: #666;
+                font-size: 14px; width: 180px;">
+                Booking Reference</td>
+              <td style="padding: 8px 0;
+                font-weight: 700; color: #363737;">
+                ${orderReference}
+              </td>
+            </tr>
+            ${vehicleName ? `
+            <tr>
+              <td style="padding: 8px 0; color: #666;
+                font-size: 14px;">Vehicle</td>
+              <td style="padding: 8px 0;
+                font-weight: 700; color: #363737;">
+                ${vehicleName}
+              </td>
+            </tr>` : ''}
+            ${pickupDatetime ? `
+            <tr>
+              <td style="padding: 8px 0; color: #666;
+                font-size: 14px;">Pick Up</td>
+              <td style="padding: 8px 0;
+                color: #363737;">${pickupDatetime}</td>
+            </tr>` : ''}
+            ${dropoffDatetime ? `
+            <tr>
+              <td style="padding: 8px 0; color: #666;
+                font-size: 14px;">Return</td>
+              <td style="padding: 8px 0;
+                color: #363737;">${dropoffDatetime}</td>
+            </tr>` : ''}
+          </table>
+        </div>
+
+        <div style="background: #FEF2F2;
+          border: 1px solid #FECACA;
+          border-radius: 12px; padding: 20px;
+          margin: 24px 0;">
+          <p style="color: #7F1D1D; font-size: 14px;
+            line-height: 1.7; margin: 0;">
+            This is an automated email so 
+            unfortunately we're unable to explain 
+            exactly why this has happened. It's 
+            possible your session timed out, or 
+            an error may have occurred during 
+            the booking process.
+            <br/><br/>
+            <strong>Please don't worry</strong> — 
+            if you'd like to pursue a booking with 
+            us, simply try again or get in touch 
+            and we'll be happy to help!
+          </p>
+        </div>
+
+        <div style="text-align: center;
+          margin: 24px 0;">
+          <p style="color: #363737; font-size: 15px;
+            line-height: 1.6; margin: 0 0 16px;">
+            💬 Get in touch — we're open
+            <strong>9am–5pm Philippine Time</strong>.
+            Messages outside hours will be picked 
+            up when we reopen.
+          </p>
+          <a href="https://wa.me/${whatsappNumber}"
+            style="display: inline-block;
+              background: #00577C;
+              color: white;
+              padding: 12px 28px;
+              border-radius: 8px;
+              font-weight: 700;
+              font-size: 14px;
+              text-decoration: none;">
+            WhatsApp Lola's Rentals
+          </a>
+        </div>
+
+        <div style="background: #00577C;
+          border-radius: 12px; padding: 16px;
+          text-align: center; margin: 24px 0;">
+          <p style="color: white; margin: 0;
+            font-size: 14px; line-height: 1.6;">
+            🐾 We hope to welcome you to Siargao 
+            soon. When you're ready to book, 
+            we'll be here!
+          </p>
+        </div>
+
+        <p style="color: #999; font-size: 12px;
+          text-align: center; margin-top: 32px;">
+          Lola's Rentals &amp; Tours Inc. —
+          Siargao Island, Philippines<br/>
+          This is an automated message.
+          Please do not reply to this email.
+        </p>
       </div>
     </div>
   `;
