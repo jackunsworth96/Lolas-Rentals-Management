@@ -845,7 +845,7 @@ router.patch('/:id/cancel', requirePermission(Permission.CancelOrders), async (r
             vehicle_model_id,
             pickup_datetime,
             dropoff_datetime,
-            booking_token
+            order_reference
           `)
           .eq('id', id)
           .single();
@@ -864,9 +864,9 @@ router.patch('/:id/cancel', requirePermission(Permission.CancelOrders), async (r
 
         void sendEmail({
           to: order.customer_email,
-          subject: `Booking Cancelled — ${order.booking_token} | Lola's Rentals`,
+          subject: `Booking Cancelled — ${order.order_reference} | Lola's Rentals`,
           html: bookingCancellationHtml({
-            orderReference: order.booking_token ?? id,
+            orderReference: order.order_reference ?? id,
             vehicleName,
             pickupDatetime: order.pickup_datetime
               ? formatManila(order.pickup_datetime)

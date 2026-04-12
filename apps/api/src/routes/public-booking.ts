@@ -235,7 +235,7 @@ router.patch('/cancel/:orderReference', async (req, res, next) => {
     const { error } = await sb
       .from('orders_raw')
       .update({ status: 'cancelled' })
-      .eq('booking_token', orderReference)
+      .eq('order_reference', orderReference)
       .eq('booking_channel', 'direct')
       .eq('status', 'unprocessed');
 
@@ -259,9 +259,9 @@ router.patch('/cancel/:orderReference', async (req, res, next) => {
             vehicle_model_id,
             pickup_datetime,
             dropoff_datetime,
-            booking_token
+            order_reference
           `)
-          .eq('booking_token', orderReference)
+          .eq('order_reference', orderReference)
           .single();
 
         if (!order?.customer_email) return;
