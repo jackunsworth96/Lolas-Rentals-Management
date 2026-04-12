@@ -20,6 +20,8 @@ export function VehicleModal({ open, onClose, vehicleId }: VehicleModalProps) {
 
   const [name, setName] = useState('');
   const [plateNumber, setPlateNumber] = useState('');
+  const [engineNumber, setEngineNumber] = useState('');
+  const [chassisNumber, setChassisNumber] = useState('');
   const [gpsId, setGpsId] = useState('');
   const [status, setStatus] = useState('');
   const [storeId, setStoreId] = useState('');
@@ -37,6 +39,8 @@ export function VehicleModal({ open, onClose, vehicleId }: VehicleModalProps) {
     if (vehicle) {
       setName(vehicle.name ?? '');
       setPlateNumber(vehicle.plateNumber ?? '');
+      setEngineNumber((vehicle as Record<string, unknown>).engineNumber as string ?? '');
+      setChassisNumber((vehicle as Record<string, unknown>).chassisNumber as string ?? '');
       setGpsId(vehicle.gpsId ?? '');
       setStatus(vehicle.status ?? 'Available');
       setStoreId(vehicle.storeId ?? '');
@@ -55,6 +59,8 @@ export function VehicleModal({ open, onClose, vehicleId }: VehicleModalProps) {
         id: vehicleId,
         name: name.trim() || undefined,
         plateNumber: plateNumber.trim() || null,
+        engineNumber: engineNumber.trim() || null,
+        chassisNumber: chassisNumber.trim() || null,
         gpsId: gpsId.trim() || null,
         status: isProtected ? undefined : (status || undefined),
         storeId: storeId || undefined,
@@ -89,6 +95,16 @@ export function VehicleModal({ open, onClose, vehicleId }: VehicleModalProps) {
           <label className="block">
             <span className="text-sm font-medium text-gray-700">Plate number</span>
             <input type="text" value={plateNumber} onChange={(e) => setPlateNumber(e.target.value)}
+              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium text-gray-700">Engine number</span>
+            <input type="text" value={engineNumber} onChange={(e) => setEngineNumber(e.target.value)}
+              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium text-gray-700">Chassis number</span>
+            <input type="text" value={chassisNumber} onChange={(e) => setChassisNumber(e.target.value)}
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
           </label>
           <label className="block">

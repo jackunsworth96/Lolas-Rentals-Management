@@ -460,3 +460,329 @@ export function waiverReminderHtml({
     </div>
   `;
 }
+
+export function postRentalThankYouHtml({
+  customerName,
+  orderReference,
+  vehicleName,
+  rentalDays,
+  totalPaid,
+  pickupDatetime,
+  dropoffDatetime,
+  pawCardSavings,
+  pawCardEstablishments,
+  whatsappNumber,
+}: {
+  customerName: string;
+  orderReference: string;
+  vehicleName: string;
+  rentalDays: number;
+  totalPaid: number;
+  pickupDatetime: string;
+  dropoffDatetime: string;
+  pawCardSavings: number;
+  pawCardEstablishments: Array<{ name: string; saved: number }>;
+  whatsappNumber: string;
+}): string {
+  const effectiveDailyRate = rentalDays > 0 ? Math.round(totalPaid / rentalDays) : totalPaid;
+
+  const pawCardSection =
+    pawCardSavings > 0
+      ? `
+    <div style="background: #00577C; border-radius: 12px; padding: 24px; margin: 24px 0;">
+      <p style="color: #FCBC5A; font-weight: 700; font-size: 16px; margin: 0 0 12px;">
+        🐾 Your Paw Card Impact
+      </p>
+      <p style="color: white; font-size: 14px; line-height: 1.6; margin: 0 0 12px;">
+        During your stay you saved
+        <strong>₱${pawCardSavings.toLocaleString()}</strong>
+        using your Paw Card at ${pawCardEstablishments.length} local
+        ${pawCardEstablishments.length === 1 ? 'business' : 'businesses'}:
+      </p>
+      <ul style="color: rgba(255,255,255,0.85); margin: 0 0 16px; padding-left: 20px; font-size: 14px; line-height: 1.8;">
+        ${pawCardEstablishments.map((e) => `<li>${e.name} — ₱${e.saved.toLocaleString()} saved</li>`).join('')}
+      </ul>
+      <p style="color: white; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+        Lola's Rentals matched that <strong>peso-for-peso</strong> as a donation to BePawsitive —
+        funding spay and neuter clinics for Siargao's street animals.
+        <strong style="color: #FCBC5A;">₱${pawCardSavings.toLocaleString()} donated in your name.</strong>
+      </p>
+      <div style="background: rgba(255,255,255,0.1); border-radius: 8px; padding: 16px;">
+        <p style="color: rgba(255,255,255,0.9); font-size: 13px; line-height: 1.7; margin: 0; font-style: italic;">
+          🐱 Did you know? Spaying a single female cat in the Philippines costs around ₱1,000 — and
+          prevents potentially hundreds of thousands of kittens over 7 years. Your savings are literally
+          changing lives on this island.
+          <br/><br/>
+          <span style="font-size: 11px; color: rgba(255,255,255,0.6);">
+            Source: PAWS Philippines &amp; published veterinary population studies
+          </span>
+        </p>
+      </div>
+    </div>`
+      : `
+    <div style="background: #00577C; border-radius: 12px; padding: 20px; margin: 24px 0; text-align: center;">
+      <p style="color: white; margin: 0; font-size: 14px;">
+        🐾 Don't forget your Paw Card next time! Log your savings at 75+ partner businesses
+        and help fund animal welfare on Siargao.
+      </p>
+    </div>`;
+
+  return `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+
+      <div style="background: #00577C; padding: 32px; text-align: center;">
+        <h1 style="color: white; margin: 0; font-size: 32px; font-weight: 900;">
+          Lola's<span style="color: #FCBC5A;">*</span> Rentals
+        </h1>
+        <p style="color: rgba(255,255,255,0.7); margin: 4px 0 0; font-size: 13px; letter-spacing: 2px; text-transform: uppercase;">
+          Siargao Island · Est. 2019
+        </p>
+      </div>
+
+      <div style="padding: 32px; background: #FAF6F0;">
+
+        <h2 style="color: #363737; margin: 0 0 8px;">
+          Thank you, ${customerName}! 🐾
+        </h2>
+        <p style="color: #363737; line-height: 1.6; margin: 0 0 24px;">
+          Your rental has come to an end — we hope Siargao treated you well and that you made fond
+          memories here. We hope to see you again.
+        </p>
+
+        <div style="background: white; border-radius: 12px; padding: 24px; margin: 24px 0; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+          <p style="color: #363737; font-weight: 700; margin: 0 0 16px; font-size: 15px;">
+            🛵 Your Rental Summary
+          </p>
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-size: 14px; width: 160px;">Booking Reference</td>
+              <td style="padding: 8px 0; font-weight: 700; color: #363737;">${orderReference}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-size: 14px;">Vehicle</td>
+              <td style="padding: 8px 0; font-weight: 700; color: #363737;">${vehicleName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-size: 14px;">Pick Up</td>
+              <td style="padding: 8px 0; color: #363737;">${pickupDatetime}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-size: 14px;">Return</td>
+              <td style="padding: 8px 0; color: #363737;">${dropoffDatetime}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; font-size: 14px;">Duration</td>
+              <td style="padding: 8px 0; color: #363737;">${rentalDays} ${rentalDays === 1 ? 'day' : 'days'}</td>
+            </tr>
+            <tr style="border-top: 2px solid #FCBC5A;">
+              <td style="padding: 16px 0 8px; color: #666; font-size: 14px;">Total Paid</td>
+              <td style="padding: 16px 0 8px; font-weight: 700; color: #00577C; font-size: 18px;">
+                ₱${totalPaid.toLocaleString()}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 4px 0 8px; color: #888; font-size: 12px;">Effective daily rate</td>
+              <td style="padding: 4px 0 8px; color: #888; font-size: 12px;">
+                ₱${effectiveDailyRate.toLocaleString()}/day
+              </td>
+            </tr>
+          </table>
+        </div>
+
+        ${pawCardSection}
+
+        <div style="background: white; border-radius: 12px; padding: 24px; margin: 24px 0; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+          <p style="color: #363737; font-weight: 700; font-size: 16px; margin: 0 0 8px;">
+            ⭐ Loved your experience?
+          </p>
+          <p style="color: #666; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
+            Reviews mean the world to small island businesses like ours. If you had a great time, a quick
+            Google review helps other travellers discover us — and keeps Siargao's community thriving.
+          </p>
+          <a href="https://g.page/r/CXtJhZFnjqBIEBE/review"
+            style="display: inline-block; background: #FCBC5A; color: #363737; padding: 14px 32px;
+              border-radius: 8px; font-weight: 700; font-size: 15px; text-decoration: none;">
+            Leave Us a Google Review →
+          </a>
+        </div>
+
+        <div style="background: white; border-radius: 12px; padding: 20px; margin: 24px 0; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+          <p style="color: #363737; font-weight: 700; margin: 0 0 8px;">
+            📸 Share your Siargao moments
+          </p>
+          <p style="color: #666; font-size: 14px; margin: 0;">
+            Tag us on Instagram
+            <a href="https://instagram.com/lolasrentals" style="color: #00577C; font-weight: 700;">
+              @lolasrentals
+            </a>
+            — we'd love to see your adventures!
+          </p>
+        </div>
+
+        <div style="text-align: center; margin: 24px 0;">
+          <p style="color: #363737; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+            💬 Siargao will always be here. And so will we. 🐾
+            <br/>
+            WhatsApp us when you're planning your next trip!
+          </p>
+          <a href="https://wa.me/${whatsappNumber}"
+            style="display: inline-block; background: #00577C; color: white; padding: 12px 28px;
+              border-radius: 8px; font-weight: 700; font-size: 14px; text-decoration: none;">
+            WhatsApp Lola's Rentals
+          </a>
+          <p style="color: #888; font-size: 12px; margin: 8px 0 0;">
+            We're open 9am–5pm Philippine Time
+          </p>
+        </div>
+
+        <p style="color: #999; font-size: 12px; text-align: center; margin-top: 32px;">
+          Lola's Rentals &amp; Tours Inc. — Siargao Island, Philippines<br/>
+          This is an automated message. Please do not reply to this email.
+        </p>
+
+      </div>
+    </div>
+  `;
+}
+
+import { createHash } from 'node:crypto';
+
+export function maintenanceLogHtml(
+  r: {
+    id: string;
+    vehicleName: string | null;
+    issueDescription: string | null;
+    mechanic: string | null;
+    odometer: number | null;
+    partsCost: number;
+    laborCost: number;
+    totalCost: number;
+    downtimeStart: string | null;
+    storeId: string;
+    createdAt: Date;
+  },
+  {
+    plateNumber,
+    engineNumber,
+    chassisNumber,
+  }: {
+    plateNumber: string;
+    engineNumber: string;
+    chassisNumber: string;
+  },
+): string {
+  const createdAt = r.createdAt.toLocaleString('en-PH', {
+    timeZone: 'Asia/Manila',
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+
+  // Tamper-evident hash: any post-send edit to vehicle identity fields will invalidate it.
+  const hashContent = [
+    r.id,
+    r.vehicleName ?? '',
+    plateNumber,
+    r.issueDescription ?? '',
+    createdAt,
+  ].join('|');
+  const hash = createHash('sha256').update(hashContent).digest('hex').slice(0, 16).toUpperCase();
+
+  return `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+
+      <div style="background: #1e293b; padding: 28px 32px; text-align: center;">
+        <h1 style="color: white; margin: 0; font-size: 22px; font-weight: 700; letter-spacing: 0.04em;">
+          🔧 Maintenance Log
+        </h1>
+        <p style="color: rgba(255,255,255,0.6); margin: 6px 0 0; font-size: 12px; letter-spacing: 2px; text-transform: uppercase;">
+          Lola's Rentals · Internal Record
+        </p>
+      </div>
+
+      <div style="background: #f8fafc; padding: 28px 32px;">
+
+        <div style="background: white; border-radius: 10px; padding: 24px; margin-bottom: 20px; border: 1px solid #e2e8f0;">
+          <p style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 14px;">
+            Vehicle Identity
+          </p>
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+            <tr>
+              <td style="padding: 7px 0; color: #64748b; width: 160px;">Vehicle</td>
+              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${r.vehicleName ?? '—'}</td>
+            </tr>
+            <tr>
+              <td style="padding: 7px 0; color: #64748b;">Plate Number</td>
+              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${plateNumber}</td>
+            </tr>
+            <tr>
+              <td style="padding: 7px 0; color: #64748b;">Engine Number</td>
+              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${engineNumber}</td>
+            </tr>
+            <tr>
+              <td style="padding: 7px 0; color: #64748b;">Chassis Number</td>
+              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${chassisNumber}</td>
+            </tr>
+          </table>
+        </div>
+
+        <div style="background: white; border-radius: 10px; padding: 24px; margin-bottom: 20px; border: 1px solid #e2e8f0;">
+          <p style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 14px;">
+            Maintenance Details
+          </p>
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+            <tr>
+              <td style="padding: 7px 0; color: #64748b; width: 160px;">Record ID</td>
+              <td style="padding: 7px 0; color: #475569; font-size: 12px; font-family: monospace;">${r.id}</td>
+            </tr>
+            <tr>
+              <td style="padding: 7px 0; color: #64748b;">Logged At</td>
+              <td style="padding: 7px 0; color: #1e293b;">${createdAt}</td>
+            </tr>
+            <tr>
+              <td style="padding: 7px 0; color: #64748b;">Issue</td>
+              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${r.issueDescription ?? '—'}</td>
+            </tr>
+            <tr>
+              <td style="padding: 7px 0; color: #64748b;">Mechanic</td>
+              <td style="padding: 7px 0; color: #1e293b;">${r.mechanic ?? '—'}</td>
+            </tr>
+            <tr>
+              <td style="padding: 7px 0; color: #64748b;">Odometer</td>
+              <td style="padding: 7px 0; color: #1e293b;">${r.odometer != null ? `${r.odometer.toLocaleString()} km` : '—'}</td>
+            </tr>
+            <tr>
+              <td style="padding: 7px 0; color: #64748b;">Downtime Start</td>
+              <td style="padding: 7px 0; color: #1e293b;">${r.downtimeStart ?? '—'}</td>
+            </tr>
+            <tr style="border-top: 1px solid #f1f5f9;">
+              <td style="padding: 10px 0 7px; color: #64748b;">Parts Cost</td>
+              <td style="padding: 10px 0 7px; color: #1e293b;">₱${r.partsCost.toLocaleString()}</td>
+            </tr>
+            <tr>
+              <td style="padding: 7px 0; color: #64748b;">Labour Cost</td>
+              <td style="padding: 7px 0; color: #1e293b;">₱${r.laborCost.toLocaleString()}</td>
+            </tr>
+            <tr style="border-top: 2px solid #e2e8f0;">
+              <td style="padding: 10px 0 7px; color: #64748b; font-weight: 700;">Total Cost</td>
+              <td style="padding: 10px 0 7px; font-weight: 700; color: #1e293b; font-size: 16px;">₱${r.totalCost.toLocaleString()}</td>
+            </tr>
+          </table>
+        </div>
+
+        <div style="background: #f1f5f9; border-radius: 8px; padding: 14px 18px; margin-bottom: 20px;">
+          <p style="margin: 0; font-size: 11px; color: #64748b; line-height: 1.7;">
+            <strong style="color: #475569;">Tamper-evident hash:</strong>
+            <span style="font-family: monospace; letter-spacing: 0.06em;">${hash}</span>
+            &nbsp;·&nbsp; This hash is derived from the record ID, vehicle name, plate number, issue description,
+            and log timestamp. Any post-submission change to these fields will cause verification to fail.
+          </p>
+        </div>
+
+        <p style="color: #94a3b8; font-size: 11px; text-align: center; margin: 0;">
+          Lola's Rentals &amp; Tours Inc. — Internal use only. Do not forward externally.
+        </p>
+
+      </div>
+    </div>
+  `;
+}

@@ -17,6 +17,8 @@ function vehicleToDto(v: any) {
     storeId: v.storeId,
     modelId: v.modelId,
     plateNumber: v.plateNumber,
+    engineNumber: v.engineNumber ?? null,
+    chassisNumber: v.chassisNumber ?? null,
     gpsId: v.gpsId,
     status: v.status,
     currentMileage: v.currentMileage,
@@ -409,6 +411,7 @@ router.get('/:id', requirePermission(Permission.ViewFleet), async (req, res, nex
 
 router.put('/:id', requirePermission(Permission.EditFleet), validateBody(z.object({
   name: z.string().optional(), plateNumber: z.string().nullable().optional(),
+  engineNumber: z.string().nullable().optional(), chassisNumber: z.string().nullable().optional(),
   gpsId: z.string().nullable().optional(), status: z.string().optional(),
   currentMileage: z.number().optional(), orcrExpiryDate: z.string().nullable().optional(),
   surfRack: z.boolean().optional(), owner: z.string().nullable().optional(),

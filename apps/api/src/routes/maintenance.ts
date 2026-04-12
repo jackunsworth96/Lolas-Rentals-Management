@@ -10,6 +10,8 @@ import {
   MaintenanceQuerySchema,
 } from '@lolas/shared';
 import type { MaintenanceRecord } from '@lolas/domain';
+import { getSupabaseClient } from '../adapters/supabase/client.js';
+import { sendEmail, maintenanceLogHtml, NOTIFICATION_EMAIL } from '../services/email.js';
 
 function toDto(r: MaintenanceRecord) {
   return {
@@ -71,6 +73,48 @@ router.post('/', requirePermission(Permission.EditMaintenance), validateBody(Log
       maintenance: req.app.locals.deps.maintenanceRepo,
       fleet: req.app.locals.deps.fleetRepo,
     });
+
+    // Fire-and-forget tamper-evident maintenance log email.
+    void (async () => {
+      try {
+        const sb = getSupabaseClient();
+        const { data: vehicle } = await sb
+          .from('fleet')
+          .select('plate_number, engine_number, chassis_number')
+          .eq('id', result.assetId)
+          .maybeSingle();
+
+        const v = vehicle as { plate_number?: string; engine_number?: string; chassis_number?: string } | null;
+
+        void sendEmail({
+          to: NOTIFICATION_EMAIL,
+          subject: `🔧 Maintenance Logged — ${result.vehicleName ?? result.assetId}`,
+          html: maintenanceLogHtml(
+            {
+              id: result.id,
+              vehicleName: result.vehicleName ?? null,
+              issueDescription: result.issueDescription ?? null,
+              mechanic: result.mechanic ?? null,
+              odometer: result.odometer ?? null,
+              partsCost: result.partsCost?.toNumber?.() ?? 0,
+              laborCost: result.laborCost?.toNumber?.() ?? 0,
+              totalCost: result.totalCost?.toNumber?.() ?? 0,
+              downtimeStart: result.downtimeStart ?? null,
+              storeId: result.storeId,
+              createdAt: result.createdAt,
+            },
+            {
+              plateNumber: v?.plate_number ?? 'Not recorded',
+              engineNumber: v?.engine_number ?? 'Not recorded',
+              chassisNumber: v?.chassis_number ?? 'Not recorded',
+            },
+          ),
+        });
+      } catch (emailErr) {
+        console.error('[maintenance] Email error:', emailErr);
+      }
+    })();
+
     res.status(201).json({ success: true, data: result });
   } catch (err) { next(err); }
 });

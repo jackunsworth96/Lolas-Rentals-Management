@@ -8,6 +8,8 @@ export interface UpdateVehicleInput {
   vehicleId: string;
   name?: string;
   plateNumber?: string | null;
+  engineNumber?: string | null;
+  chassisNumber?: string | null;
   gpsId?: string | null;
   status?: string;
   currentMileage?: number;
@@ -40,6 +42,10 @@ export async function updateVehicle(
     modelId: input.modelId !== undefined ? input.modelId : vehicle.modelId,
     plateNumber:
       input.plateNumber !== undefined ? input.plateNumber : vehicle.plateNumber,
+    engineNumber:
+      input.engineNumber !== undefined ? input.engineNumber : vehicle.engineNumber,
+    chassisNumber:
+      input.chassisNumber !== undefined ? input.chassisNumber : vehicle.chassisNumber,
     gpsId: input.gpsId !== undefined ? input.gpsId : vehicle.gpsId,
     status: input.status ?? vehicle.status,
     currentMileage: input.currentMileage ?? vehicle.currentMileage,

@@ -9,6 +9,8 @@ interface VehicleRow {
   name: string;
   model_id: string | null;
   plate_number: string | null;
+  engine_number: string | null;
+  chassis_number: string | null;
   gps_id: string | null;
   status: string;
   current_mileage: number;
@@ -39,6 +41,8 @@ function rowToVehicle(row: VehicleRow): Vehicle {
     name: row.name,
     modelId: row.model_id,
     plateNumber: row.plate_number,
+    engineNumber: row.engine_number,
+    chassisNumber: row.chassis_number,
     gpsId: row.gps_id,
     status: row.status,
     currentMileage: row.current_mileage,
@@ -70,6 +74,8 @@ function vehicleToRow(vehicle: Vehicle): Record<string, unknown> {
     name: vehicle.name,
     model_id: vehicle.modelId,
     plate_number: vehicle.plateNumber,
+    engine_number: vehicle.engineNumber,
+    chassis_number: vehicle.chassisNumber,
     gps_id: vehicle.gpsId,
     status: vehicle.status,
     current_mileage: vehicle.currentMileage,

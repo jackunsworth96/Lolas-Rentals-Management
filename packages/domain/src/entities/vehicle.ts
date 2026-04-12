@@ -10,6 +10,8 @@ export interface VehicleProps {
   name: string;
   modelId: string | null;
   plateNumber: string | null;
+  engineNumber?: string | null;
+  chassisNumber?: string | null;
   gpsId: string | null;
   status: string;
   currentMileage: number;
@@ -39,6 +41,8 @@ export class Vehicle {
   readonly name: string;
   readonly modelId: string | null;
   readonly plateNumber: string | null;
+  readonly engineNumber: string | null;
+  readonly chassisNumber: string | null;
   readonly gpsId: string | null;
   readonly currentMileage: number;
   readonly orcrExpiryDate: string | null;
@@ -68,6 +72,8 @@ export class Vehicle {
     this.name = props.name;
     this.modelId = props.modelId;
     this.plateNumber = props.plateNumber;
+    this.engineNumber = props.engineNumber ?? null;
+    this.chassisNumber = props.chassisNumber ?? null;
     this.gpsId = props.gpsId;
     this.currentMileage = props.currentMileage;
     this.orcrExpiryDate = props.orcrExpiryDate;
