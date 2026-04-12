@@ -2,6 +2,15 @@ import type { BookingPort, ConfigRepository } from '@lolas/domain';
 import type { SubmitDirectBookingInput } from '@lolas/shared';
 import { resolveSourceFromStore } from '@lolas/shared';
 import { computeQuote } from './compute-quote.js';
+import { sendEmail, bookingConfirmationHtml, NOTIFICATION_EMAIL } from '../../services/email.js';
+
+function formatManilaDateTime(iso: string): string {
+  return new Date(iso).toLocaleString('en-PH', {
+    timeZone: 'Asia/Manila',
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
 
 export interface SubmitDirectBookingDeps {
   bookingPort: BookingPort;
@@ -150,6 +159,102 @@ export async function submitDirectBooking(
   } catch {
     // Hold cleanup is non-critical; it will expire naturally
   }
+
+  // 7. Fire-and-forget emails — never block the booking response.
+  const grandTotal = webQuoteRaw ?? 0;
+  void (async () => {
+    let vehicleName = input.vehicleModelId;
+    try {
+      const vm = await deps.configRepo.getVehicleModelById(input.vehicleModelId);
+      if (vm?.name) vehicleName = vm.name;
+    } catch { /* non-critical */ }
+
+    void sendEmail({
+      to: input.customerEmail,
+      subject: `Booking Confirmed — ${orderReference} | Lola's Rentals`,
+      html: bookingConfirmationHtml({
+        customerName: input.customerName,
+        orderReference,
+        vehicleName,
+        pickupDatetime: formatManilaDateTime(input.pickupDatetime),
+        dropoffDatetime: formatManilaDateTime(input.dropoffDatetime),
+        totalAmount: grandTotal,
+      }),
+    });
+
+    void sendEmail({
+      to: NOTIFICATION_EMAIL,
+      subject: `🐾 New Booking — ${orderReference}`,
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; 
+          margin: 0 auto; padding: 24px;">
+          <h2 style="color: #00577C;">New Booking Received</h2>
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 8px 0; color: #666; 
+                font-size: 14px; width: 140px;">Reference</td>
+              <td style="padding: 8px 0; font-weight: 700;">
+                ${orderReference}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; 
+                font-size: 14px;">Customer</td>
+              <td style="padding: 8px 0; font-weight: 700;">
+                ${input.customerName}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; 
+                font-size: 14px;">Email</td>
+              <td style="padding: 8px 0;">
+                ${input.customerEmail}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; 
+                font-size: 14px;">Mobile</td>
+              <td style="padding: 8px 0;">
+                ${input.customerMobile ?? '—'}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; 
+                font-size: 14px;">Vehicle</td>
+              <td style="padding: 8px 0; font-weight: 700;">
+                ${vehicleName}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; 
+                font-size: 14px;">Pick Up</td>
+              <td style="padding: 8px 0;">
+                ${formatManilaDateTime(input.pickupDatetime)}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666; 
+                font-size: 14px;">Return</td>
+              <td style="padding: 8px 0;">
+                ${formatManilaDateTime(input.dropoffDatetime)}
+              </td>
+            </tr>
+            <tr style="border-top: 2px solid #FCBC5A;">
+              <td style="padding: 16px 0 8px; color: #666; 
+                font-size: 14px;">Total</td>
+              <td style="padding: 16px 0 8px; font-weight: 700; 
+                color: #00577C; font-size: 18px;">
+                ₱${grandTotal.toLocaleString()}
+              </td>
+            </tr>
+          </table>
+          <p style="margin-top: 24px; font-size: 12px; color: #999;">
+            Sent automatically by Lola's Rentals platform
+          </p>
+        </div>
+      `,
+    });
+  })();
 
   return { ...result, serverQuote: webQuoteRaw, charityDonation: input.charityDonation ?? 0 };
 }
