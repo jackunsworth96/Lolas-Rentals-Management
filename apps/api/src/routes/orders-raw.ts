@@ -330,42 +330,21 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       p_journal_date: journalDate,
       p_journal_store_id: body.storeId,
       p_journal_legs: journalLegs,
+      p_rental_payment_id:  crypto.randomUUID(),
+      p_rental_amount:      body.grandTotal,
+      p_transaction_date:   formatManilaDate(),
+      p_deposit_payment_id: body.depositCollected && body.depositAmount > 0
+                              ? crypto.randomUUID()
+                              : null,
+      p_deposit_amount:     body.depositAmount ?? 0,
+      p_deposit_collected:  body.depositCollected ?? false,
     });
     if (rpcErr) {
       console.error('RPC error:', rpcErr.message, { code: rpcErr.code });
       throw new Error(`activate_order_atomic RPC failed: ${rpcErr.message}`);
     }
 
-    // 13. Create rental payment
-    const todayManila = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
-    const { error: payErr } = await supabase.from('payments').insert({
-      id: crypto.randomUUID(),
-      order_id: orderId,
-      store_id: body.storeId,
-      amount: body.grandTotal,
-      payment_type: 'rental',
-      payment_method_id: body.paymentMethod,
-      transaction_date: todayManila,
-      customer_id: customerId,
-    });
-    if (payErr) throw new Error(`Rental payment insert failed: ${payErr.message}`);
-
-    // 14. Create deposit payment if collected
-    if (body.depositCollected && body.depositAmount > 0) {
-      const { error: depErr } = await supabase.from('payments').insert({
-        id: crypto.randomUUID(),
-        order_id: orderId,
-        store_id: body.storeId,
-        amount: body.depositAmount,
-        payment_type: 'security_deposit',
-        payment_method_id: body.depositMethod,
-        transaction_date: todayManila,
-        customer_id: customerId,
-      });
-      if (depErr) throw new Error(`Deposit payment insert failed: ${depErr.message}`);
-    }
-
-    // 15. Post charity journal if applicable
+    // 13. Post charity journal if applicable
     const charityAmount = body.charityDonation ?? 0;
     if (charityAmount > 0 && receivableAccountId) {
       try {
