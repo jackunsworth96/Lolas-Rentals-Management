@@ -126,7 +126,7 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
   }, [successResult, onClose]);
 
   const newDropoffDatetime = newDate && newTime ? `${newDate}T${newTime}:00` : '';
-  const orderReference = enrichedData.wooOrderId;
+  const orderReference = enrichedData.bookingToken ?? enrichedData.wooOrderId;
 
   async function handleCalculate() {
     if (!newDropoffDatetime || !emailToUse || !orderReference) return;
@@ -169,7 +169,7 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
 
     try {
       const res = await api.post<{ success: boolean; newDropoffDatetime?: string; extensionCost?: number; reason?: string }>(
-        '/public/extend/confirm',
+        '/extend/confirm',
         {
           orderReference,
           email: emailToUse,
