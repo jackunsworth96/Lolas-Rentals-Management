@@ -6,6 +6,7 @@ import {
   parseMayaWebhookPayload,
 } from '../services/maya.js';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
+import { formatManilaDate } from '../utils/manila-date.js';
 
 const router = Router();
 
@@ -14,13 +15,6 @@ router.post(
   '/checkout',
   authenticate,
   async (req: Request, res: Response, next: NextFunction) => {
-    console.log('Maya checkout request:', {
-      orderId: req.body.orderId,
-      amountPHP: req.body.amountPHP,
-      MAYA_BASE_URL: process.env.MAYA_BASE_URL,
-      hasMayaSecretKey: !!process.env.MAYA_SECRET_KEY,
-      hasMayaPublicKey: !!process.env.MAYA_PUBLIC_KEY,
-    });
     try {
       const { orderId, amountPHP, description } = req.body as {
         orderId?: string;
@@ -77,10 +71,6 @@ router.post(
       res.status(200).json({ checkoutId: result.checkoutId, redirectUrl: result.redirectUrl });
     } catch (err: unknown) {
       console.error('Maya checkout error:', err);
-      console.error('Maya checkout error details:', {
-        message: err instanceof Error ? err.message : String(err),
-        stack: err instanceof Error ? err.stack : undefined,
-      });
       next(err);
     }
   },
@@ -135,7 +125,7 @@ router.post(
           payment_type: 'card_maya',
           amount: record.amount_php,
           payment_method_id: 'Card',
-          transaction_date: new Date().toISOString().split('T')[0],
+          transaction_date: formatManilaDate(),
           settlement_status: 'pending',
           settlement_ref: payload.checkoutId,
           created_at: new Date().toISOString(),
