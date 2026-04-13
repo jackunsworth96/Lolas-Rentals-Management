@@ -43,6 +43,7 @@ export interface DirectBookingInsert {
   dropoffLocationId: number;
   storeId: string;
   orderReference: string;
+  cancellationToken: string;
   addonIds: number[] | null;
   transferType?: string | null;
   flightNumber?: string | null;
@@ -57,6 +58,7 @@ export interface DirectBookingInsert {
 export interface DirectBookingResult {
   id: string;
   orderReference: string;
+  cancellationToken: string;
 }
 
 export interface BookingPort {

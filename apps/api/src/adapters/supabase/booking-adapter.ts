@@ -259,6 +259,7 @@ export function createBookingAdapter(): BookingPort {
           dropoff_location_id: input.dropoffLocationId,
           store_id: input.storeId,
           order_reference: input.orderReference,
+          cancellation_token: input.cancellationToken,
           addon_ids: input.addonIds,
           transfer_type: input.transferType ?? null,
           flight_number: input.flightNumber ?? null,
@@ -267,13 +268,15 @@ export function createBookingAdapter(): BookingPort {
           charity_donation: input.charityDonation ?? 0,
           web_payment_method: input.webPaymentMethod ?? null,
         })
-        .select('id, order_reference')
+        .select('id, order_reference, cancellation_token')
         .single();
 
       if (error) throw new Error(`Failed to insert direct booking: ${error.message}`);
+      const row = data as { id: string; order_reference: string; cancellation_token: string };
       return {
-        id: (data as { id: string; order_reference: string }).id,
-        orderReference: (data as { id: string; order_reference: string }).order_reference,
+        id: row.id,
+        orderReference: row.order_reference,
+        cancellationToken: row.cancellation_token,
       };
     },
 

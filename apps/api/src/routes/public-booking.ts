@@ -18,6 +18,14 @@ const holdLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const cancelLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  message: { success: false, error: { code: 'RATE_LIMIT', message: 'Too many cancel attempts. Please try again later.' } },
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+});
+
 const router = Router();
 
 const AvailabilityQuerySchema = z.object({
@@ -226,17 +234,47 @@ router.post('/submit', submitLimiter, validateBody(SubmitDirectBookingRequestSch
 
 // ── Cancel (rollback for partial multi-vehicle failures) ──
 
-router.patch('/cancel/:orderReference', async (req, res, next) => {
+router.patch('/cancel/:orderReference', cancelLimiter, async (req, res, next) => {
   try {
-    const { orderReference } = req.params;
+    const orderReference = req.params.orderReference as string;
+    const { token } = req.query as { token?: string };
+    if (!token || token.trim().length === 0) {
+      res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Cancellation token is required.' },
+      });
+      return;
+    }
+
     const { getSupabaseClient } = await import('../adapters/supabase/client.js');
     const sb = getSupabaseClient();
 
-    const { error } = await sb
+    const { data: orderRow, error: fetchErr } = await sb
       .from('orders_raw')
-      .update({ status: 'cancelled' })
+      .select('id, cancellation_token, status')
       .eq('order_reference', orderReference)
       .eq('booking_channel', 'direct')
+      .single();
+
+    if (fetchErr || !orderRow) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Booking not found.' } });
+      return;
+    }
+
+    if (orderRow.status !== 'unprocessed') {
+      res.status(409).json({ success: false, error: { code: 'ALREADY_PROCESSED', message: 'This booking cannot be cancelled.' } });
+      return;
+    }
+
+    if (!orderRow.cancellation_token || orderRow.cancellation_token !== token.trim()) {
+      res.status(401).json({ success: false, error: { code: 'INVALID_TOKEN', message: 'Invalid cancellation token.' } });
+      return;
+    }
+
+    const { error } = await sb
+      .from('orders_raw')
+      .update({ status: 'cancelled', cancelled_at: new Date().toISOString(), cancelled_reason: 'customer_request' })
+      .eq('id', orderRow.id)
       .eq('status', 'unprocessed');
 
     if (error) throw new Error(`Cancel failed: ${error.message}`);

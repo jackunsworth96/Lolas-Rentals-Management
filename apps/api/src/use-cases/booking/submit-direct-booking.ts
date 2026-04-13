@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { BookingPort, ConfigRepository } from '@lolas/domain';
 import type { SubmitDirectBookingInput } from '@lolas/shared';
 import { resolveSourceFromStore } from '@lolas/shared';
@@ -50,6 +51,7 @@ function httpError(message: string, statusCode: number): Error {
 export interface SubmitDirectBookingResult {
   id: string;
   orderReference: string;
+  cancellationToken: string;
   serverQuote: number | null;
   charityDonation: number;
 }
@@ -125,9 +127,10 @@ export async function submitDirectBooking(
     }
   }
 
-  // 4. Generate a unique order reference
+  // 4. Generate a unique order reference + cancellation token
   const source = resolveSourceFromStore(input.storeId);
   const orderReference = await uniqueOrderReference(bookingPort, source);
+  const cancellationToken = randomBytes(32).toString('hex');
 
   // 5. Insert into orders_raw
   const result = await bookingPort.insertDirectBooking({
@@ -142,6 +145,7 @@ export async function submitDirectBooking(
     dropoffLocationId: input.dropoffLocationId,
     storeId: input.storeId,
     orderReference,
+    cancellationToken,
     addonIds: input.addonIds && input.addonIds.length > 0 ? input.addonIds : null,
     transferType: input.transferType ?? null,
     flightNumber: input.flightNumber ?? null,
@@ -232,6 +236,7 @@ export async function submitDirectBooking(
         transferAmount,
         waiverUrl,
         whatsappNumber,
+        cancelUrl: `${process.env.WEB_URL ?? 'https://lolasrentals.com'}/book/cancel/${orderReference}?token=${cancellationToken}`,
       }),
     });
 
@@ -323,5 +328,5 @@ export async function submitDirectBooking(
     });
   })();
 
-  return { ...result, serverQuote: webQuoteRaw, charityDonation: input.charityDonation ?? 0 };
+  return { ...result, serverQuote: webQuoteRaw, charityDonation: input.charityDonation ?? 0, cancellationToken: result.cancellationToken };
 }

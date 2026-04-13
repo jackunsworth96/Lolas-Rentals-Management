@@ -77,6 +77,7 @@ export function bookingConfirmationHtml({
   transferAmount,
   waiverUrl,
   whatsappNumber,
+  cancelUrl,
 }: {
   customerName: string;
   orderReference: string;
@@ -96,6 +97,7 @@ export function bookingConfirmationHtml({
   transferAmount?: number;
   waiverUrl: string;
   whatsappNumber: string;
+  cancelUrl?: string;
 }): string {
   const vehicleLabel =
     vehicleCount > 1 ? `${vehicleName} × ${vehicleCount}` : vehicleName;
@@ -251,6 +253,15 @@ export function bookingConfirmationHtml({
             Complete My Waiver →
           </a>
         </div>
+
+        ${cancelUrl ? `
+        <div style="margin-top:16px;text-align:center;">
+          <a href="${cancelUrl}"
+             style="color:#999;font-size:12px;text-decoration:underline;">
+            Need to cancel? Click here to cancel this booking.
+          </a>
+        </div>
+        ` : ''}
 
         <!-- Paw Card (stays teal) -->
         <div style="background: #00577C; border-radius: 12px; padding: 20px; margin: 20px 0; text-align: center;">
