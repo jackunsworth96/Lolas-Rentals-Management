@@ -10,7 +10,7 @@ import { BrowseBookVehicleSection } from './BrowseBookVehicleSection.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
 import { WHATSAPP_URL } from '../../config/contact.js';
-import { phoneIcon } from '../../components/public/customerContactIcons.js';
+import chatIcon from '../../assets/Buttons/chat icon.svg';
 import { hasBookingDatetimeWithTime } from '../../utils/booking-datetime.js';
 
 interface AvailableModel {
@@ -179,10 +179,10 @@ export default function BrowseBookPage() {
           href={WHATSAPP_URL}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex h-16 w-16 items-center justify-center rounded-full bg-[#25D366] text-white shadow-xl transition-all duration-300 ease-in-out hover:scale-110 hover:brightness-110 active:scale-95"
+          className="flex h-16 w-16 items-center justify-center rounded-full bg-cream-brand shadow-xl ring-2 ring-charcoal-brand/15 transition-all duration-300 ease-in-out hover:scale-110 hover:opacity-95 active:scale-95"
           aria-label="Chat with us on WhatsApp"
         >
-          <img src={phoneIcon} alt="" className="h-9 w-9 object-contain brightness-0 invert" width={36} height={36} />
+          <img src={chatIcon} alt="" className="h-12 w-12 object-contain" width={48} height={48} />
         </a>
       </div>
 

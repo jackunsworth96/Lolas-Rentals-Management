@@ -456,7 +456,8 @@ export default function BasketPage() {
     const submittedOrderRefs: string[] = [];
     let serverTotal = 0;
     try {
-      for (const item of basket) {
+      for (let i = 0; i < basket.length; i++) {
+        const item = basket[i];
         const result = await api.post<{ id: string; orderReference: string; serverQuote: number | null; charityDonation: number }>(
           '/public/booking/submit',
           {
@@ -475,7 +476,7 @@ export default function BasketPage() {
             // Additional transfer fields (Zod strips unknown fields silently)
             transferRouteId: transfer?.transferRouteId ?? undefined,
             transferPaxCount: transfer?.paxCount ?? undefined,
-            charityDonation: charityDonation > 0 ? charityDonation : undefined,
+            charityDonation: i === 0 && charityDonation > 0 ? charityDonation : undefined,
             transferAmount: (transfer?.totalPrice ?? 0) > 0 ? (transfer?.totalPrice ?? 0) : undefined,
             webPaymentMethod: paymentMethodId || undefined,
             ...(showHelmetSelector ? { helmet_count: helmetCount } : {}),

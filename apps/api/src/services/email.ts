@@ -1255,3 +1255,76 @@ export function bookingCancellationHtml({
     </div>
   `;
 }
+
+export function transferBookingConfirmationHtml({
+  customerName,
+  serviceDate,
+  route,
+  paxCount,
+  vanType,
+  flightTime,
+  totalPrice,
+  whatsappNumber,
+}: {
+  customerName: string;
+  serviceDate: string;
+  route: string;
+  paxCount: number;
+  vanType?: string | null;
+  flightTime?: string | null;
+  totalPrice: number;
+  whatsappNumber: string;
+}): string {
+  const formatPrice = (n: number) => `₱${n.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
+  return `
+    <div style="font-family: 'Lato', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #FAF6F0; padding: 32px 16px;">
+      <div style="background: white; border-radius: 16px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <h1 style="font-family: 'Alegreya Sans', serif; color: #00577C; font-size: 28px; margin: 0;">
+            Transfer Booking Confirmed
+          </h1>
+          <p style="color: #363737; margin-top: 8px;">Thank you, ${customerName}!</p>
+        </div>
+        <div style="background: #E8DFD0; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 6px 0; color: #666; font-size: 14px;">Route</td>
+              <td style="padding: 6px 0; font-weight: 600; color: #363737; text-align: right;">${route}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #666; font-size: 14px;">Date</td>
+              <td style="padding: 6px 0; font-weight: 600; color: #363737; text-align: right;">${serviceDate}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #666; font-size: 14px;">Passengers</td>
+              <td style="padding: 6px 0; font-weight: 600; color: #363737; text-align: right;">${paxCount}</td>
+            </tr>
+            ${vanType ? `<tr>
+              <td style="padding: 6px 0; color: #666; font-size: 14px;">Van Type</td>
+              <td style="padding: 6px 0; font-weight: 600; color: #363737; text-align: right;">${vanType}</td>
+            </tr>` : ''}
+            ${flightTime ? `<tr>
+              <td style="padding: 6px 0; color: #666; font-size: 14px;">Flight Time</td>
+              <td style="padding: 6px 0; font-weight: 600; color: #363737; text-align: right;">${flightTime}</td>
+            </tr>` : ''}
+            <tr style="border-top: 1px solid #ccc;">
+              <td style="padding: 12px 0 6px; color: #363737; font-weight: 700;">Total</td>
+              <td style="padding: 12px 0 6px; font-weight: 700; color: #00577C; text-align: right; font-size: 18px;">${formatPrice(totalPrice)}</td>
+            </tr>
+          </table>
+        </div>
+        <div style="text-align: center; margin-bottom: 24px;">
+          <a href="https://wa.me/${whatsappNumber}"
+             style="display: inline-block; background: #00577C; color: white; padding: 12px 28px;
+                    border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">
+            Questions? WhatsApp Us
+          </a>
+        </div>
+        <p style="color: #999; font-size: 12px; text-align: center; margin-top: 32px;">
+          Lola's Rentals &amp; Tours Inc. — Siargao Island, Philippines<br/>
+          This is an automated message. Please do not reply to this email.
+        </p>
+      </div>
+    </div>
+  `;
+}

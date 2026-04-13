@@ -4,6 +4,7 @@ import { validateBody } from '../middleware/validate.js';
 import { z } from 'zod';
 import type { Store, ConfigRepository } from '@lolas/domain';
 import { PublicTransferBookingSchema } from '@lolas/shared';
+import { sendEmail, transferBookingConfirmationHtml } from '../services/email.js';
 
 const flightLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -109,6 +110,30 @@ router.post('/transfer-booking', validateBody(PublicBookingSchema), async (req, 
       { transfers: req.app.locals.deps.transferRepo },
     );
     res.status(201).json({ success: true, data: { id: result.id } });
+
+    void (async () => {
+      try {
+        const emailTo = req.body.customerEmail as string | null;
+        if (!emailTo) return;
+        const whatsappNumber = process.env.WHATSAPP_NUMBER ?? '639XXXXXXXXX';
+        await sendEmail({
+          to: emailTo,
+          subject: `Transfer Booking Confirmed — ${req.body.route} | Lola's Rentals`,
+          html: transferBookingConfirmationHtml({
+            customerName: req.body.customerName,
+            serviceDate:  req.body.serviceDate,
+            route:        req.body.route,
+            paxCount:     req.body.paxCount ?? 1,
+            vanType:      req.body.vanType ?? null,
+            flightTime:   req.body.flightTime ?? null,
+            totalPrice:   req.body.totalPrice,
+            whatsappNumber,
+          }),
+        });
+      } catch (err) {
+        console.error('[transfer-email]', err);
+      }
+    })();
   } catch (err) { next(err); }
 });
 
@@ -162,6 +187,30 @@ router.post('/public-transfer-booking', validateBody(PublicTransferBookingSchema
       { transfers: req.app.locals.deps.transferRepo },
     );
     res.status(201).json({ success: true, reference: result.id });
+
+    void (async () => {
+      try {
+        const emailTo = null as string | null;
+        if (!emailTo) return;
+        const whatsappNumber = process.env.WHATSAPP_NUMBER ?? '639XXXXXXXXX';
+        await sendEmail({
+          to: emailTo,
+          subject: `Transfer Booking Confirmed — ${req.body.route} | Lola's Rentals`,
+          html: transferBookingConfirmationHtml({
+            customerName: req.body.customerName,
+            serviceDate:  req.body.serviceDate,
+            route:        req.body.route,
+            paxCount:     req.body.paxCount ?? 1,
+            vanType:      req.body.vanType ?? null,
+            flightTime:   req.body.flightTime ?? null,
+            totalPrice:   req.body.totalPrice,
+            whatsappNumber,
+          }),
+        });
+      } catch (err) {
+        console.error('[transfer-email]', err);
+      }
+    })();
   } catch (err) { next(err); }
 });
 

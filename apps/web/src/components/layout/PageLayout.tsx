@@ -10,6 +10,7 @@ import { GOOGLE_MAPS_PLACE_URL } from '../../config/maps.js';
 import logo from '../../assets/Lolas Original Logo.svg';
 import flowerLeft from '../../assets/Flower Left.svg';
 import flowerRight from '../../assets/Flower Right.svg';
+import basketIcon from '../../assets/Buttons/basket icon.svg';
 
 export interface PageLayoutProps {
   children: ReactNode;
@@ -166,9 +167,10 @@ export function PageLayout({
           showBasketIcon ? (
             <Link
               to="/book/basket"
-              className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border-2 border-charcoal-brand/30 text-charcoal-brand transition-all duration-300 hover:bg-charcoal-brand/10"
+              aria-label="Basket"
+              className="relative flex min-h-[44px] min-w-[44px] items-center justify-center text-charcoal-brand transition-opacity duration-300 hover:opacity-75"
             >
-              🛒
+              <img src={basketIcon} alt="" className="h-[1.65rem] w-[1.65rem] object-contain" width={27} height={27} />
               {basketCount > 0 && (
                 <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-gold-brand text-[10px] font-black text-charcoal-brand">
                   {basketCount}
