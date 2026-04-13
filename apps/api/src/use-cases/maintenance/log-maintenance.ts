@@ -11,6 +11,7 @@ import {
   getStoreDefaultCashAccount,
   getMaintenanceExpenseAccount,
 } from '../../adapters/supabase/maintenance-expense-rpc.js';
+import { formatManilaDate } from '../../utils/manila-date.js';
 
 export interface LogMaintenanceInput {
   assetId: string;
@@ -45,7 +46,7 @@ export async function logMaintenance(
     throw new DomainError(`Vehicle ${input.assetId} not found`);
   }
 
-  const downtimeStart = input.downtimeStart ?? new Date().toISOString().split('T')[0];
+  const downtimeStart = input.downtimeStart ?? formatManilaDate();
   const downtimeTracked = !!input.downtimeStart;
 
   const partsCost = input.partsCost ?? 0;
@@ -106,7 +107,7 @@ export async function logMaintenance(
     await upsertMaintenanceExpensesRpc({
       maintenanceId: record.id,
       storeId: record.storeId,
-      date: new Date().toISOString().split('T')[0],
+      date: formatManilaDate(),
       vehicleId: record.assetId,
       employeeId: record.employeeId,
       partsCost,

@@ -12,7 +12,7 @@ import { submitDirectBooking, type SubmitDirectBookingResult } from '../use-case
 
 const holdLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
-  max: 20,
+  limit: 20,
   message: { success: false, error: { code: 'RATE_LIMIT', message: 'Too many hold requests. Please try again later.' } },
   standardHeaders: 'draft-7',
   legacyHeaders: false,
@@ -197,7 +197,7 @@ router.get('/hold/:sessionToken', async (req, res, next) => {
 
 const submitLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  limit: 5,
   message: { success: false, error: { code: 'RATE_LIMIT', message: 'Too many booking submissions. Please try again later.' } },
   standardHeaders: 'draft-7',
   legacyHeaders: false,

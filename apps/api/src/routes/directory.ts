@@ -10,7 +10,7 @@ router.use(authenticate);
 const edit = requirePermission(Permission.EditSettings);
 
 // ── GET / — list contacts with optional search ──
-router.get('/', async (req, res, next) => {
+router.get('/', requirePermission(Permission.ViewAccounts), async (req, res, next) => {
   try {
     const search = req.query.search as string | undefined;
     const sb = getSupabaseClient();

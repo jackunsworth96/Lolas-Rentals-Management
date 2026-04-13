@@ -26,7 +26,7 @@ export const SubmitDirectBookingRequestSchema = z.object({
     dropoffLocationId: z.number().int().positive(),
     storeId: z.string().min(1),
     addonIds: z.array(z.number().int().positive()).optional(),
-    transferType: z.enum(['shared', 'private']).nullable().optional(),
+    transferType: z.enum(['shared', 'private', 'tuktuk']).nullable().optional(),
     flightNumber: z.string().optional(),
     flightArrivalTime: z.string().optional(),
     transferRoute: z.string().optional(),
@@ -34,6 +34,10 @@ export const SubmitDirectBookingRequestSchema = z.object({
     webPaymentMethod: z.string().optional(),
     /** Requested helmet count for scooter/bike direct bookings (1 default, 2 if extra helmet requested). */
     helmet_count: z.number().int().min(1).max(2).optional(),
+    /** ID of the specific hold being consumed. Used server-side to delete only that hold row. */
+    holdId: z.string().optional(),
+    /** Total price of any transfer booked alongside this rental (for email/receipt display). */
+    transferAmount: z.number().min(0).optional(),
 });
 /**
  * Zod schema for creating a direct booking in `orders_raw` (same as submit body minus session token).

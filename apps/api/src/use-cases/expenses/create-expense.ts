@@ -7,6 +7,7 @@ import {
   DomainError,
 } from '@lolas/domain';
 import { randomUUID } from 'node:crypto';
+import { formatManilaDate } from '../../utils/manila-date.js';
 
 export interface CreateExpenseInput {
   storeId: string;
@@ -70,8 +71,7 @@ export async function createExpense(
     },
   ];
 
-  const now = new Date();
-  const date = now.toISOString().slice(0, 10);
+  const date = formatManilaDate();
   const period = date.slice(0, 7);
 
   const transaction = JournalTransaction.create({

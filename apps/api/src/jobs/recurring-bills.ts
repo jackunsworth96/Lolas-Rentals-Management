@@ -1,4 +1,5 @@
 import { supabase } from '../adapters/supabase/client.js';
+import { formatManilaDate } from '../utils/manila-date.js';
 import { getStoreDefaultCashAccount } from '../adapters/supabase/maintenance-expense-rpc.js';
 import { randomUUID } from 'node:crypto';
 
@@ -40,7 +41,7 @@ export async function postRecurringBills(): Promise<void> {
     }
 
     const transactionId = randomUUID();
-    const dateStr = today.toISOString().split('T')[0];
+    const dateStr = formatManilaDate(today);
     const period = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
 
     const { error: jeError } = await supabase.from('journal_entries').insert([

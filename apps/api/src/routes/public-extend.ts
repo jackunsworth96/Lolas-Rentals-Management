@@ -6,6 +6,7 @@ import { computeQuote } from '../use-cases/booking/compute-quote.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
 import { resolveStoreAccounts } from '../adapters/supabase/maintenance-expense-rpc.js';
 import { sendEmail, extendConfirmationHtml } from '../services/email.js';
+import { formatManilaDate } from '../utils/manila-date.js';
 
 const router = Router();
 
@@ -398,7 +399,7 @@ router.post('/confirm', validateBody(PublicExtendConfirmSchema), async (req, res
       const paymentId = crypto.randomUUID();
       const journalTxId = crypto.randomUUID();
       const now = new Date();
-      const journalDate = now.toISOString().slice(0, 10);
+      const journalDate = formatManilaDate(now);
       const journalPeriod = journalDate.slice(0, 7);
       const accounts = await resolveStoreAccounts(row.store_id as string);
 
@@ -412,7 +413,7 @@ router.post('/confirm', validateBody(PublicExtendConfirmSchema), async (req, res
           p_payment_method_id: isPaid ? (paymentMethod ?? 'cash') : 'pending',
           p_transaction_date:  journalDate,
           p_settlement_status: isPaid ? null : 'pending',
-          p_settlement_ref:    `Extension: ${currentDropoff.toISOString().slice(0, 10)} → ${newDropoff.toISOString().slice(0, 10)}`,
+          p_settlement_ref:    `Extension: ${formatManilaDate(currentDropoff)} → ${formatManilaDate(newDropoff)}`,
           p_raw_order_id:      row.id as string,
           p_is_paid:           isPaid,
           p_receivable_acct:   accounts?.receivableAccountId ?? null,
@@ -554,7 +555,7 @@ router.post('/confirm', validateBody(PublicExtendConfirmSchema), async (req, res
         const paymentId = crypto.randomUUID();
         const journalTxId = crypto.randomUUID();
         const now = new Date();
-        const journalDate = now.toISOString().slice(0, 10);
+        const journalDate = formatManilaDate(now);
         const journalPeriod = journalDate.slice(0, 7);
         const accounts = await resolveStoreAccounts(storeId);
 
@@ -572,7 +573,7 @@ router.post('/confirm', validateBody(PublicExtendConfirmSchema), async (req, res
             p_payment_method_id: isPaid ? (paymentMethod ?? 'cash') : 'pending',
             p_transaction_date:  journalDate,
             p_settlement_status: isPaid ? null : 'pending',
-            p_settlement_ref:    `Extension: ${currentDropoff.toISOString().slice(0, 10)} → ${newDropoff.toISOString().slice(0, 10)}`,
+            p_settlement_ref:    `Extension: ${formatManilaDate(currentDropoff)} → ${formatManilaDate(newDropoff)}`,
             p_customer_id:       ord.customer_id,
             p_order_item_id_fk:  item.id as string,
             p_is_paid:           isPaid,

@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../../adapters/supabase/client.js';
+import { formatManilaDate } from '../../utils/manila-date.js';
 
 const RENTABLE_STATUSES = ['Available', 'Active', 'Under Maintenance', 'Service Vehicle', 'Pending ORCR'];
 const NON_RENTABLE = ['Sold', 'Closed'];
@@ -47,7 +48,7 @@ export interface UtilizationResult {
 function addDays(dateStr: string, days: number): string {
   const d = new Date(dateStr);
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return formatManilaDate(d);
 }
 
 export async function getFleetUtilization(

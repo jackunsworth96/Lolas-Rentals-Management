@@ -6,6 +6,7 @@ import { Permission, resolveStoreFromSource, resolveSourceFromStore } from '@lol
 import { supabase } from '../adapters/supabase/client.js';
 import { processRawOrder, type ProcessRawOrderDeps } from '../use-cases/orders/process-raw-order.js';
 import { sendEmail, bookingConfirmationHtml, bookingCancellationHtml, NOTIFICATION_EMAIL } from '../services/email.js';
+import { formatManilaDate } from '../utils/manila-date.js';
 
 function generateWalkInReference(source: string): string {
   const prefix = source === 'bass' ? 'BB' : 'LR';
@@ -265,7 +266,7 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
 
     // 10. Journal legs
     const now = new Date();
-    const journalDate = now.toISOString().slice(0, 10);
+    const journalDate = formatManilaDate(now);
     const journalPeriod = journalDate.slice(0, 7);
     let journalTransactionId = '';
     let journalLegs: Array<Record<string, unknown>> = [];
@@ -729,7 +730,7 @@ router.post('/:id/collect-payment', requirePermission(Permission.EditOrders), as
 
     const storeId = resolveStoreFromSource(rawOrder.source);
     const { paymentRepo, cardSettlementRepo } = req.app.locals.deps;
-    const txDate = new Date().toISOString().slice(0, 10);
+    const txDate = formatManilaDate();
     const paymentId = crypto.randomUUID();
 
     const payment = {

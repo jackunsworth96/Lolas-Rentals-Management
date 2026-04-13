@@ -11,6 +11,7 @@ import {
   getStoreDefaultCashAccount,
   getMaintenanceExpenseAccount,
 } from '../../adapters/supabase/maintenance-expense-rpc.js';
+import { formatManilaDate } from '../../utils/manila-date.js';
 
 export interface SaveMaintenanceInput {
   assetId?: string;
@@ -117,7 +118,7 @@ export async function saveMaintenance(
     await upsertMaintenanceExpensesRpc({
       maintenanceId,
       storeId: updated.storeId,
-      date: new Date().toISOString().split('T')[0],
+      date: formatManilaDate(),
       vehicleId: updated.assetId,
       employeeId: updated.employeeId,
       partsCost,

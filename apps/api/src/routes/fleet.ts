@@ -5,6 +5,7 @@ import { validateBody, validateQuery } from '../middleware/validate.js';
 import { Permission } from '@lolas/shared';
 import { z } from 'zod';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
+import { formatManilaDate } from '../utils/manila-date.js';
 
 const router = Router();
 router.use(authenticate);
@@ -79,24 +80,24 @@ router.get('/utilization', requirePermission(Permission.ViewFleet), validateQuer
     const { from, to, period, storeId } = req.query as { from?: string; to?: string; period?: string; storeId?: string };
     let fromDate: string;
     let toDate: string;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = formatManilaDate();
     if (from && to) {
       fromDate = from;
       toDate = to;
     } else if (period === '7d') {
       const d = new Date();
       d.setDate(d.getDate() - 7);
-      fromDate = d.toISOString().slice(0, 10);
+      fromDate = formatManilaDate(d);
       toDate = today;
     } else if (period === '90d') {
       const d = new Date();
       d.setDate(d.getDate() - 90);
-      fromDate = d.toISOString().slice(0, 10);
+      fromDate = formatManilaDate(d);
       toDate = today;
     } else {
       const d = new Date();
       d.setDate(d.getDate() - 30);
-      fromDate = d.toISOString().slice(0, 10);
+      fromDate = formatManilaDate(d);
       toDate = today;
     }
     const result = await getFleetUtilization(fromDate, toDate, storeId, true);

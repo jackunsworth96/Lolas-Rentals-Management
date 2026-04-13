@@ -7,7 +7,7 @@ import { lookupPawCardPublicAccess } from '../use-cases/paw-card/lookup-paw-card
 
 const lookupLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  limit: 10,
   message: { success: false, error: { code: 'RATE_LIMIT', message: 'Too many lookup requests' } },
   standardHeaders: 'draft-7',
   legacyHeaders: false,

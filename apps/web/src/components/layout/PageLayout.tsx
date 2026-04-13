@@ -233,11 +233,8 @@ export function PageLayout({
                   Island Safety
                 </Link>
                 <Link to="/book/bepawsitive" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
-                  BePawsitive
-                </Link>
-                <a href="https://bepawsitive.com" target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
                   Be Pawsitive NGO
-                </a>
+                </Link>
                 <a
                   href="https://wa.me/639694443413"
                   target="_blank"

@@ -4,6 +4,7 @@ import {
   NonRentableVehicleError,
 } from '@lolas/domain';
 import { supabase } from '../../adapters/supabase/client.js';
+import { formatManilaDate, formatManilaTime } from '../../utils/manila-date.js';
 
 export interface SwapVehicleDeps {
   orderItemRepo: OrderItemRepository;
@@ -63,8 +64,8 @@ export async function swapVehicle(
     old_vehicle_name: oldVehicleName,
     new_vehicle_id: newVehicle.id,
     new_vehicle_name: newVehicle.name,
-    swap_date: now.toISOString().slice(0, 10),
-    swap_time: now.toTimeString().slice(0, 8),
+    swap_date: formatManilaDate(now),
+    swap_time: formatManilaTime(now),
     reason: input.reason,
     employee_id: input.employeeId,
   });

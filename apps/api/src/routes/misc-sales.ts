@@ -9,6 +9,7 @@ import {
   MiscSaleQuerySchema,
 } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
+import { formatManilaDate } from '../utils/manila-date.js';
 
 const router = Router();
 router.use(authenticate);
@@ -18,7 +19,7 @@ const perm = requirePermission(Permission.ViewMiscSales);
 router.get('/', perm, validateQuery(MiscSaleQuerySchema), async (req, res, next) => {
   try {
     const { storeId, date } = req.query as { storeId: string; date?: string };
-    const effectiveDate = date ?? new Date().toISOString().split('T')[0];
+    const effectiveDate = date ?? formatManilaDate();
 
     const sb = getSupabaseClient();
 

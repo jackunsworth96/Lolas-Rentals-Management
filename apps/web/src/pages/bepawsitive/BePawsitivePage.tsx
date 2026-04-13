@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageLayout } from '../../components/layout/PageLayout.js';
+import runPhoto1 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 092746.png';
+import runPhoto2 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 092806.png';
+import runPhoto3 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 092829.png';
+import runPhoto4 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 092847.png';
+import runPhoto5 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 092902.png';
+import runPhoto6 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 092926.png';
+import runPhoto7 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 092945.png';
+import runPhoto8 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 092959.png';
+import runPhoto9 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 093428.png';
 
 // ---------------------------------------------------------------------------
 // CountUp hook — animates a number from 0 → target when trigger flips true
@@ -494,9 +503,9 @@ export default function BePawsitivePage() {
               {/* Placeholder runner stats */}
               <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
                 {[
-                  { num: '[XXX]+', sub: 'Last Year', label: 'Runners' },
-                  { num: '[X]', sub: 'Of Running', label: 'Hours' },
-                  { num: '[X] km', sub: 'Available', label: 'Routes' },
+                  { num: '453+', sub: '2025 Fun Run', label: 'Runners' },
+                  { num: '307+', sub: '2024 Fun Run', label: 'Runners' },
+                  { num: '₱488,000', sub: 'Raised in 2024', label: 'Donated' },
                 ].map((s) => (
                   <div
                     key={s.label}
@@ -537,30 +546,35 @@ export default function BePawsitivePage() {
                 ))}
               </div>
 
-              {/* TODO: Replace with actual fun run photos */}
+              {/* Fun run photos — swap src values when better photos are available */}
               <div
                 style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(3, 1fr)',
                   gap: 8,
+                  marginTop: 16,
                 }}
               >
-                {[0, 1, 2, 3, 4, 5].map((i) => (
+                {[runPhoto1, runPhoto2, runPhoto3, runPhoto4, runPhoto5, runPhoto6, runPhoto7, runPhoto8, runPhoto9].map((src, i) => (
                   <div
                     key={i}
                     style={{
-                      background: 'rgba(255,255,255,0.1)',
                       borderRadius: 8,
+                      overflow: 'hidden',
                       height: 140,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'rgba(255,255,255,0.5)',
-                      fontSize: '0.9rem',
-                      fontFamily: FONT_BODY,
+                      background: 'rgba(255,255,255,0.1)',
                     }}
                   >
-                    📷 Photo
+                    <img
+                      src={src}
+                      alt={`Siargao fun run 2025 photo ${i + 1}`}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        display: 'block',
+                      }}
+                    />
                   </div>
                 ))}
               </div>

@@ -64,9 +64,14 @@ export default function ConfirmationPage() {
     if (state) return;
     if (!reference) { setFetchError(true); return; }
 
+    const savedEmail = sessionStorage.getItem(`confirm_email_${reference}`) ?? '';
+    if (!savedEmail) { setFetchError(true); setLoading(false); return; }
+
     let cancelled = false;
     setLoading(true);
-    api.get<ConfirmationState>(`/public/booking/order/${encodeURIComponent(reference)}`)
+    api.get<ConfirmationState>(
+      `/public/booking/order/${encodeURIComponent(reference)}?email=${encodeURIComponent(savedEmail)}`
+    )
       .then((data) => { if (!cancelled) setState(data); })
       .catch(() => { if (!cancelled) setFetchError(true); })
       .finally(() => { if (!cancelled) setLoading(false); });

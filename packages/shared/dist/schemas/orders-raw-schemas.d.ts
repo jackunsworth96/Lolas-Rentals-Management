@@ -52,7 +52,7 @@ export declare const SubmitDirectBookingRequestSchema: z.ZodObject<{
     dropoffLocationId: z.ZodNumber;
     storeId: z.ZodString;
     addonIds: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
-    transferType: z.ZodOptional<z.ZodNullable<z.ZodEnum<["shared", "private"]>>>;
+    transferType: z.ZodOptional<z.ZodNullable<z.ZodEnum<["shared", "private", "tuktuk"]>>>;
     flightNumber: z.ZodOptional<z.ZodString>;
     flightArrivalTime: z.ZodOptional<z.ZodString>;
     transferRoute: z.ZodOptional<z.ZodString>;
@@ -62,9 +62,11 @@ export declare const SubmitDirectBookingRequestSchema: z.ZodObject<{
     helmet_count: z.ZodOptional<z.ZodNumber>;
     /** ID of the specific hold being consumed. Used server-side to delete only that hold row. */
     holdId: z.ZodOptional<z.ZodString>;
+    /** Total price of any transfer booked alongside this rental (for email/receipt display). */
+    transferAmount: z.ZodOptional<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
-    customerName: string;
     sessionToken: string;
+    customerName: string;
     customerEmail: string;
     customerMobile: string;
     vehicleModelId: string;
@@ -74,7 +76,7 @@ export declare const SubmitDirectBookingRequestSchema: z.ZodObject<{
     dropoffLocationId: number;
     storeId: string;
     addonIds?: number[] | undefined;
-    transferType?: "shared" | "private" | null | undefined;
+    transferType?: "shared" | "private" | "tuktuk" | null | undefined;
     flightNumber?: string | undefined;
     flightArrivalTime?: string | undefined;
     transferRoute?: string | undefined;
@@ -82,9 +84,10 @@ export declare const SubmitDirectBookingRequestSchema: z.ZodObject<{
     webPaymentMethod?: string | undefined;
     helmet_count?: number | undefined;
     holdId?: string | undefined;
+    transferAmount?: number | undefined;
 }, {
-    customerName: string;
     sessionToken: string;
+    customerName: string;
     customerEmail: string;
     customerMobile: string;
     vehicleModelId: string;
@@ -94,7 +97,7 @@ export declare const SubmitDirectBookingRequestSchema: z.ZodObject<{
     dropoffLocationId: number;
     storeId: string;
     addonIds?: number[] | undefined;
-    transferType?: "shared" | "private" | null | undefined;
+    transferType?: "shared" | "private" | "tuktuk" | null | undefined;
     flightNumber?: string | undefined;
     flightArrivalTime?: string | undefined;
     transferRoute?: string | undefined;
@@ -102,6 +105,7 @@ export declare const SubmitDirectBookingRequestSchema: z.ZodObject<{
     webPaymentMethod?: string | undefined;
     helmet_count?: number | undefined;
     holdId?: string | undefined;
+    transferAmount?: number | undefined;
 }>;
 export type SubmitDirectBookingInput = z.infer<typeof SubmitDirectBookingRequestSchema>;
 /**
@@ -120,7 +124,7 @@ export declare const DirectBookingRequestSchema: z.ZodObject<Omit<{
     dropoffLocationId: z.ZodNumber;
     storeId: z.ZodString;
     addonIds: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
-    transferType: z.ZodOptional<z.ZodNullable<z.ZodEnum<["shared", "private"]>>>;
+    transferType: z.ZodOptional<z.ZodNullable<z.ZodEnum<["shared", "private", "tuktuk"]>>>;
     flightNumber: z.ZodOptional<z.ZodString>;
     flightArrivalTime: z.ZodOptional<z.ZodString>;
     transferRoute: z.ZodOptional<z.ZodString>;
@@ -130,6 +134,8 @@ export declare const DirectBookingRequestSchema: z.ZodObject<Omit<{
     helmet_count: z.ZodOptional<z.ZodNumber>;
     /** ID of the specific hold being consumed. Used server-side to delete only that hold row. */
     holdId: z.ZodOptional<z.ZodString>;
+    /** Total price of any transfer booked alongside this rental (for email/receipt display). */
+    transferAmount: z.ZodOptional<z.ZodNumber>;
 }, "sessionToken">, "strip", z.ZodTypeAny, {
     customerName: string;
     customerEmail: string;
@@ -141,7 +147,7 @@ export declare const DirectBookingRequestSchema: z.ZodObject<Omit<{
     dropoffLocationId: number;
     storeId: string;
     addonIds?: number[] | undefined;
-    transferType?: "shared" | "private" | null | undefined;
+    transferType?: "shared" | "private" | "tuktuk" | null | undefined;
     flightNumber?: string | undefined;
     flightArrivalTime?: string | undefined;
     transferRoute?: string | undefined;
@@ -149,6 +155,7 @@ export declare const DirectBookingRequestSchema: z.ZodObject<Omit<{
     webPaymentMethod?: string | undefined;
     helmet_count?: number | undefined;
     holdId?: string | undefined;
+    transferAmount?: number | undefined;
 }, {
     customerName: string;
     customerEmail: string;
@@ -160,7 +167,7 @@ export declare const DirectBookingRequestSchema: z.ZodObject<Omit<{
     dropoffLocationId: number;
     storeId: string;
     addonIds?: number[] | undefined;
-    transferType?: "shared" | "private" | null | undefined;
+    transferType?: "shared" | "private" | "tuktuk" | null | undefined;
     flightNumber?: string | undefined;
     flightArrivalTime?: string | undefined;
     transferRoute?: string | undefined;
@@ -168,6 +175,7 @@ export declare const DirectBookingRequestSchema: z.ZodObject<Omit<{
     webPaymentMethod?: string | undefined;
     helmet_count?: number | undefined;
     holdId?: string | undefined;
+    transferAmount?: number | undefined;
 }>;
 export type DirectBookingRequest = z.infer<typeof DirectBookingRequestSchema>;
 /**

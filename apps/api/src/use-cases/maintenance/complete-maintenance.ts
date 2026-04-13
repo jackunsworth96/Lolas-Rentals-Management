@@ -10,6 +10,7 @@ import {
   getStoreDefaultCashAccount,
   getMaintenanceExpenseAccount,
 } from '../../adapters/supabase/maintenance-expense-rpc.js';
+import { formatManilaDate } from '../../utils/manila-date.js';
 
 export interface CompleteMaintenanceInput {
   maintenanceId: string;
@@ -43,7 +44,7 @@ export async function completeMaintenance(
   // Validates transition and updates status/workPerformed (mutates private fields)
   record.complete(input.workPerformed);
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = formatManilaDate();
   const totalCost = input.partsCost + input.laborCost;
 
   // Stamp downtime end and compute duration when tracked and still open

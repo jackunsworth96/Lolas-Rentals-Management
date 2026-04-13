@@ -9,6 +9,7 @@ import type {
   LeaderboardEntry,
 } from '@lolas/domain';
 import { getSupabaseClient } from './client.js';
+import { formatManilaDate } from '../../utils/manila-date.js';
 
 function privacyName(fullName: string): string {
   const parts = fullName.trim().split(/\s+/);
@@ -200,7 +201,7 @@ export class SupabasePawCardAdapter implements PawCardPort {
     const numberOfPeople =
       typeof n === 'number' && Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
 
-    const pawRef = `PAW-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(Math.floor(1000 + Math.random() * 9000))}`;
+    const pawRef = `PAW-${formatManilaDate().replace(/-/g, '')}-${String(Math.floor(1000 + Math.random() * 9000))}`;
 
     const { data, error } = await sb
       .from('paw_card_entries')

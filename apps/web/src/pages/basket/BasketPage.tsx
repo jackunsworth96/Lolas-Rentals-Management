@@ -498,6 +498,8 @@ export default function BasketPage() {
         ? Math.round(baseTotal * (surchargePercent / 100) * 100) / 100
         : 0;
       const grandTotal = baseTotal + surchargeAmount;
+      // Persist email for confirmation page refresh/bookmark recovery
+      sessionStorage.setItem(`confirm_email_${orderRefs[0]}`, renter.email.trim());
       clearBasket();
       const confirmState = {
         orderReferences: orderRefs, customerName: renter.fullName.trim(), customerEmail: renter.email.trim(),

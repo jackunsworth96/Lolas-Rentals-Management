@@ -1,4 +1,5 @@
 import { getSupabaseClient } from './client.js';
+import { formatManilaDate } from '../../utils/manila-date.js';
 import type { TimesheetRepository } from '@lolas/domain';
 import { Timesheet, type Period } from '@lolas/domain';
 
@@ -43,7 +44,7 @@ function toDomain(row: Record<string, unknown>): Timesheet {
 }
 
 function dateStr(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return formatManilaDate(d);
 }
 
 export function createTimesheetRepo(): TimesheetRepository {

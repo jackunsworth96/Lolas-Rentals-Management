@@ -140,7 +140,7 @@ router.get('/leaderboard', authenticate, validateQuery(PawCardLeaderboardQuerySc
 
 const registerLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  limit: 5,
   message: { success: false, error: { code: 'RATE_LIMIT', message: 'Too many registration attempts' } },
   standardHeaders: 'draft-7',
   legacyHeaders: false,

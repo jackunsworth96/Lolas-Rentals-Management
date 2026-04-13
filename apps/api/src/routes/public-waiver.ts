@@ -11,7 +11,7 @@ import { sendEmail, waiverConfirmationHtml } from '../services/email.js';
 
 const waiverLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  limit: 20,
   message: { success: false, error: { code: 'RATE_LIMIT', message: 'Too many requests. Try again later.' } },
   standardHeaders: 'draft-7',
   legacyHeaders: false,

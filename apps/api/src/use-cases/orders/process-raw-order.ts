@@ -18,6 +18,7 @@ import {
 } from '@lolas/domain';
 import { supabase } from '../../adapters/supabase/client.js';
 import { activateOrder, type VehicleAssignment } from './activate-order.js';
+import { formatManilaDate } from '../../utils/manila-date.js';
 
 function extractWooOrderId(payload: Record<string, unknown>): string | null {
   for (const key of ['number', 'id', 'order_key']) {
@@ -118,7 +119,7 @@ export async function processRawOrder(
     wooOrderId,
     customerId: customer.id,
     employeeId: null,
-    orderDate: new Date().toISOString().slice(0, 10),
+    orderDate: formatManilaDate(),
     status: OrderStatus.Unprocessed,
     webNotes: input.webNotes,
     quantity: input.vehicleAssignments.length,
@@ -172,7 +173,7 @@ export async function processRawOrder(
 
   await deps.paymentRepo.linkToOrder(input.rawOrderId, orderId);
 
-  const txnDate = new Date().toISOString().slice(0, 10);
+  const txnDate = formatManilaDate();
   const rentalAmount = finalTotal + input.cardFeeSurcharge;
 
   if (input.isCardPayment && input.paymentMethodId && input.receivableAccountId) {

@@ -11,6 +11,7 @@ import {
 } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { randomUUID } from 'node:crypto';
+import { formatManilaDate } from '../utils/manila-date.js';
 
 const router = Router();
 router.use(authenticate);
@@ -40,7 +41,7 @@ router.get(
       if (dateFrom && dateTo) {
         expensesQuery = expensesQuery.gte('date', dateFrom).lte('date', dateTo);
       } else {
-        const effectiveDate = date ?? new Date().toISOString().split('T')[0];
+        const effectiveDate = date ?? formatManilaDate();
         expensesQuery = expensesQuery.eq('date', effectiveDate);
       }
 
@@ -222,7 +223,7 @@ router.post(
         throw new Error('No payment routing rule found for the selected method');
 
       const now = new Date();
-      const todayDate = now.toISOString().slice(0, 10);
+      const todayDate = formatManilaDate(now);
       const period = todayDate.slice(0, 7);
       const txId = randomUUID();
 

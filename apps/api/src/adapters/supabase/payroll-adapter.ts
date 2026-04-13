@@ -9,10 +9,11 @@ import type {
 } from '@lolas/domain';
 import type { Period } from '@lolas/domain';
 import { getSupabaseClient } from './client.js';
+import { formatManilaDate } from '../../utils/manila-date.js';
 
 function dateStr(d: Date | string): string {
   if (typeof d === 'string') return d;
-  return d.toISOString().slice(0, 10);
+  return formatManilaDate(d);
 }
 
 /**

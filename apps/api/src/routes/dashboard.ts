@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/authenticate.js';
 import { Permission } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
+import { formatManilaDate } from '../utils/manila-date.js';
 
 const router = Router();
 router.use(authenticate);
@@ -187,16 +188,8 @@ router.get('/summary', authenticate, async (req, res, next) => {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
       .toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
     const now = new Date(manilaDate);
-    const firstDayLastMonth = new Date(
-      now.getFullYear(),
-      now.getMonth() - 1,
-      1,
-    ).toISOString().slice(0, 10);
-    const lastDayLastMonth = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      0,
-    ).toISOString().slice(0, 10);
+    const firstDayLastMonth = formatManilaDate(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+    const lastDayLastMonth = formatManilaDate(new Date(now.getFullYear(), now.getMonth(), 0));
 
     const tomorrowDate = new Date(Date.now() + 24 * 60 * 60 * 1000)
       .toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });

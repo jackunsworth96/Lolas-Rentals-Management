@@ -7,7 +7,7 @@ import { PublicTransferBookingSchema } from '@lolas/shared';
 
 const flightLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  limit: 10,
   message: {
     success: false,
     error: { code: 'RATE_LIMIT', message: 'Too many flight lookups' },

@@ -11,6 +11,7 @@ import {
   Money,
 } from '@lolas/domain';
 import { getSupabaseClient } from './client.js';
+import { formatManilaDate } from '../../utils/manila-date.js';
 
 interface JournalEntryRow {
   id: string;
@@ -73,8 +74,7 @@ export class SupabaseAccountingRepository implements AccountingPort {
     const sb = getSupabaseClient();
 
     const txId = crypto.randomUUID();
-    const now = new Date();
-    const date = now.toISOString().slice(0, 10);
+    const date = formatManilaDate();
     const period = date.slice(0, 7);
 
     const firstLeg = legs[0];

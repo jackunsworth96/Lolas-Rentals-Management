@@ -10,6 +10,7 @@ import {
   type JournalLeg,
   Money,
 } from '@lolas/domain';
+import { formatManilaDate } from '../../utils/manila-date.js';
 
 export interface ModifyAddonsDeps {
   orderRepo: OrderRepository;
@@ -96,7 +97,7 @@ export async function modifyAddons(
       paymentType: 'addon',
       amount: paymentAmount.toNumber(),
       paymentMethodId: input.paymentMethodId,
-      transactionDate: new Date().toISOString().slice(0, 10),
+      transactionDate: formatManilaDate(),
       settlementStatus: input.isCardPayment ? 'pending' : null,
       settlementRef: input.settlementRef ?? null,
       customerId: order.customerId,
@@ -138,7 +139,7 @@ export async function modifyAddons(
         name: null,
         amount: paymentAmount.toNumber(),
         refNumber: input.settlementRef ?? null,
-        transactionDate: new Date().toISOString().slice(0, 10),
+        transactionDate: formatManilaDate(),
         forecastedDate: null,
         isPaid: false,
         dateSettled: null,

@@ -8,6 +8,7 @@ import {
   Money,
   NonRentableVehicleError,
 } from '@lolas/domain';
+import { formatManilaDate } from '../../utils/manila-date.js';
 
 export interface ActivateOrderDeps {
   orderRepo: OrderRepository;
@@ -103,8 +104,7 @@ export async function activateOrder(
   const amount = order.finalTotal;
   let journalLegs: JournalLeg[] = [];
   let journalTransactionId = '';
-  const now = new Date();
-  const journalDate = now.toISOString().slice(0, 10);
+  const journalDate = formatManilaDate();
   const journalPeriod = journalDate.slice(0, 7);
 
   if (amount.isPositive()) {

@@ -9,6 +9,7 @@ import {
   type CalculatePayslipDeps,
 } from './calculate-payslip.js';
 import type { PayslipBreakdown } from '@lolas/domain';
+import { formatManilaDate } from '../../utils/manila-date.js';
 
 // Payroll is company-level — all journal accounts are always Lola's.
 const PAYROLL_EXPENSE_ACCOUNT = 'EXP-PAYROLL-store-lolas';
@@ -99,8 +100,7 @@ export async function runPayroll(
   const totalGrossPay = payslips.reduce((sum, p) => sum + p.grossPay, 0);
 
   const desc = `Payroll ${input.periodStart} to ${input.periodEnd}`;
-  const now = new Date();
-  const txDate = now.toISOString().slice(0, 10);
+  const txDate = formatManilaDate();
   const txPeriod = txDate.slice(0, 7);
 
   // paymentMap already built above for per-employee bonus lookup

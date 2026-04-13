@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { sendEmail, postRentalThankYouHtml } from '../services/email.js';
+import { formatManilaDate } from '../utils/manila-date.js';
 
 export function startPostRentalEmailJob(): void {
   // Run every hour at :30
@@ -76,8 +77,8 @@ export function startPostRentalEmailJob(): void {
             : 1;
 
         // Paw Card savings during rental window
-        const pickupDate = pickup ? pickup.toISOString().slice(0, 10) : null;
-        const dropoffDate = dropoff ? dropoff.toISOString().slice(0, 10) : null;
+        const pickupDate = pickup ? formatManilaDate(pickup) : null;
+        const dropoffDate = dropoff ? formatManilaDate(dropoff) : null;
 
         let pawCardSavings = 0;
         let pawCardEstablishments: Array<{ name: string; saved: number }> = [];
