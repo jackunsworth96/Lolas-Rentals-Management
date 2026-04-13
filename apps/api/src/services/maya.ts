@@ -64,14 +64,19 @@ export async function createMayaCheckout(
 
   if (response.status !== 201) {
     let message = `Maya API error: ${response.status} ${response.statusText}`;
+    let errorDetail = '';
     try {
-      const errorBody = (await response.json()) as { message?: string };
-      if (errorBody.message) {
-        message = `Maya API error: ${errorBody.message}`;
+      const errorBody = await response.json();
+      errorDetail = JSON.stringify(errorBody);
+      if ((errorBody as { message?: string }).message) {
+        message = `Maya API error: ${(errorBody as { message?: string }).message}`;
       }
     } catch {
-      // ignore JSON parse failure; use the status-based message above
+      // ignore JSON parse failure
     }
+    console.error('[Maya] API error response:', errorDetail);
+    console.error('[Maya] Request URL:', `${MAYA_BASE_URL}/checkout/v1/checkouts`);
+    console.error('[Maya] Secret key prefix:', process.env.MAYA_SECRET_KEY?.slice(0, 10));
     throw new Error(message);
   }
 
