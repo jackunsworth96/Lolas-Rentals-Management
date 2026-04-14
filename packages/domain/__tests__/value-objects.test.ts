@@ -80,6 +80,63 @@ describe('Money', () => {
     const m = Money.php(10);
     expect(Object.isFrozen(m)).toBe(true);
   });
+
+  // ── Centavos arithmetic — rounding boundary tests ──
+  it('rounds x.xx5 correctly (no Number.EPSILON defect)', () => {
+    // These are the cases where the old Number.EPSILON trick fails
+    expect(Money.php(0.615).amount).toBe(0.62);
+    expect(Money.php(0.625).amount).toBe(0.63);
+    expect(Money.php(1.005).amount).toBe(1.01);
+    expect(Money.php(2.675).amount).toBe(2.68);
+  });
+
+  it('chained addition produces exact results', () => {
+    // 3 × ₱166.67 = ₱500.01 (centavos: 3 × 16667 = 50001)
+    const a = Money.php(166.67);
+    const b = Money.php(166.67);
+    const c = Money.php(166.67);
+    const result = a.add(b).add(c);
+    expect(result.amount).toBe(500.01);
+  });
+
+  it('add and subtract are inverse operations', () => {
+    const base = Money.php(1000);
+    const delta = Money.php(25);
+    const result = base.add(delta).subtract(delta);
+    expect(result.amount).toBe(1000);
+    expect(result.equals(base)).toBe(true);
+  });
+
+  it('multiply handles fractional factors correctly', () => {
+    // 5 days × ₱333.33/day = ₱1666.65
+    const dailyRate = Money.php(333.33);
+    const result = dailyRate.multiply(5);
+    expect(result.amount).toBe(1666.65);
+  });
+
+  it('large amounts round correctly', () => {
+    expect(Money.php(9999.995).amount).toBe(10000.00);
+    expect(Money.php(1234.565).amount).toBe(1234.57);
+  });
+
+  it('zero operations are stable', () => {
+    const m = Money.php(1000);
+    expect(m.add(Money.zero()).equals(m)).toBe(true);
+    expect(m.subtract(Money.zero()).equals(m)).toBe(true);
+    expect(Money.zero().multiply(999).isZero()).toBe(true);
+  });
+
+  it('security deposit survives multiple save cycles (regression)', () => {
+    // Simulate load → arithmetic → save cycle repeated 5 times
+    // Each cycle: load from DB (php), do nothing, save (toNumber), reload
+    let deposit = Money.php(1000.00);
+    for (let i = 0; i < 5; i++) {
+      const saved = deposit.toNumber();    // simulate save to DB
+      deposit = Money.php(saved);          // simulate reload from DB
+    }
+    expect(deposit.amount).toBe(1000.00);
+    expect(deposit.toNumber()).toBe(1000.00);
+  });
 });
 
 describe('StoreId', () => {

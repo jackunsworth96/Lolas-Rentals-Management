@@ -215,4 +215,66 @@ describe('Order', () => {
       expect(balance.isNegative()).toBe(true);
     });
   });
+
+  describe('adjustTotal', () => {
+    it('increases finalTotal and balanceDue by the delta', () => {
+      const order = Order.create(makeOrderProps({
+        finalTotal: Money.php(2000),
+        balanceDue: Money.php(1000),
+      }));
+      order.adjustTotal(Money.php(25));
+      expect(order.finalTotal.amount).toBe(2025);
+      expect(order.balanceDue.amount).toBe(1025);
+    });
+
+    it('does not change securityDeposit when adjusting total', () => {
+      const order = Order.create(makeOrderProps({
+        finalTotal: Money.php(2000),
+        balanceDue: Money.php(1000),
+        securityDeposit: Money.php(1000),
+      }));
+      order.adjustTotal(Money.php(25));
+      expect(order.securityDeposit.amount).toBe(1000);
+    });
+
+    it('handles negative delta (remove addon)', () => {
+      const order = Order.create(makeOrderProps({
+        finalTotal: Money.php(2025),
+        balanceDue: Money.php(1025),
+      }));
+      order.adjustTotal(Money.php(-25));
+      expect(order.finalTotal.amount).toBe(2000);
+      expect(order.balanceDue.amount).toBe(1000);
+    });
+  });
+
+  describe('applyPayments', () => {
+    it('sets balanceDue to finalTotal minus total payments', () => {
+      const order = Order.create(makeOrderProps({
+        finalTotal: Money.php(2025),
+        balanceDue: Money.php(2025),
+      }));
+      order.applyPayments(Money.php(1025));
+      expect(order.balanceDue.amount).toBe(1000);
+    });
+
+    it('does not change finalTotal', () => {
+      const order = Order.create(makeOrderProps({
+        finalTotal: Money.php(2025),
+        balanceDue: Money.php(2025),
+      }));
+      order.applyPayments(Money.php(1025));
+      expect(order.finalTotal.amount).toBe(2025);
+    });
+
+    it('does not change securityDeposit', () => {
+      const order = Order.create(makeOrderProps({
+        finalTotal: Money.php(2025),
+        balanceDue: Money.php(2025),
+        securityDeposit: Money.php(1000),
+      }));
+      order.applyPayments(Money.php(1025));
+      expect(order.securityDeposit.amount).toBe(1000);
+    });
+  });
 });

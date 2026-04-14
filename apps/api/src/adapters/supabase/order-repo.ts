@@ -174,9 +174,19 @@ export class SupabaseOrderRepository implements OrderRepository {
 
   async save(order: Order): Promise<void> {
     const sb = getSupabaseClient();
-    const row = orderToRow(order);
-    const { error } = await sb.from('orders').upsert(row);
-
+    const { error } = await sb
+      .from('orders')
+      .update({
+        status:            order.status.value,
+        employee_id:       order.employeeId,
+        final_total:       order.finalTotal.toNumber(),
+        balance_due:       order.balanceDue.toNumber(),
+        deposit_status:    order.depositStatus,
+        return_charges:    order.returnCharges.toNumber(),
+        card_fee_surcharge: order.cardFeeSurcharge.toNumber(),
+        updated_at:        order.updatedAt.toISOString(),
+      })
+      .eq('id', order.id);
     if (error) throw new Error(`save failed: ${error.message}`);
   }
 
