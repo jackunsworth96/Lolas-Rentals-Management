@@ -306,15 +306,14 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
 
   const handleSaveAddons = () => {
     if (!hasPendingAddonChanges) return;
-    if (pendingAddonAdds.length > 0 && !addonPaymentMethodId) return;
-    if (pendingAddonAdds.length > 0 && !isAddonCardPayment && !addonAccountId) return;
-
     modifyAddonsMut.mutate(
       {
         id: orderId,
         addons: pendingAddonAdds,
         removedAddonIds: pendingAddonRemoves,
-        paymentMethodId: pendingAddonAdds.length > 0 ? addonPaymentMethodId : null,
+        paymentMethodId: pendingAddonAdds.length > 0 
+          ? (addonPaymentMethodId || 'pending') 
+          : null,
         accountId: isAddonCardPayment ? null : (addonAccountId || null),
         receivableAccountId: defaultReceivableId || undefined,
         isCardPayment: isAddonCardPayment,
@@ -1338,9 +1337,12 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                 <div className="flex flex-wrap items-end gap-3 pt-2 border-t border-blue-200">
                   <label className="block">
                     <span className="text-xs font-medium text-blue-800">Payment Method</span>
-                    <select value={addonPaymentMethodId} onChange={(e) => { setAddonPaymentMethodId(e.target.value); setAddonAccountId(''); setAddonSettlementRef(''); }} required
-                      className="mt-1 block w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm">
-                      <option value="">Select method</option>
+                    <select
+                      value={addonPaymentMethodId}
+                      onChange={(e) => { setAddonPaymentMethodId(e.target.value); setAddonAccountId(''); setAddonSettlementRef(''); }}
+                      className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    >
+                      <option value="">Charge to balance — collect later</option>
                       {activePaymentMethods.map((pm) => <option key={pm.id} value={pm.id}>{pm.name}</option>)}
                     </select>
                   </label>
@@ -1355,13 +1357,18 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                   {addonPaymentMethodId && !isAddonCardPayment && !routedAddonAcct && (
                     <label className="block">
                       <span className="text-xs font-medium text-blue-800">Account</span>
-                      <select value={addonAccountId} onChange={(e) => setAddonAccountId(e.target.value)} required
+                      <select value={addonAccountId} onChange={(e) => setAddonAccountId(e.target.value)}
                         className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm">
                         <option value="">Select</option>
                         {paymentAccountOptions.map((a) => <option key={String(a.id)} value={String(a.id)}>{String(a.name)}</option>)}
                       </select>
                       <p className="mt-1 text-xs text-amber-600">No routing rule — select manually</p>
                     </label>
+                  )}
+                  {!addonPaymentMethodId && (
+                    <p className="text-xs text-amber-700">
+                      ⚠ Balance will increase by {formatCurrency(pendingAddonAddTotal)} — collect payment later via "Collect Payment"
+                    </p>
                   )}
                 </div>
               )}
@@ -1370,7 +1377,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                 <button
                   type="button"
                   onClick={handleSaveAddons}
-                  disabled={modifyAddonsMut.isPending || (pendingAddonAdds.length > 0 && (!addonPaymentMethodId || (!isAddonCardPayment && !addonAccountId)))}
+                  disabled={modifyAddonsMut.isPending || (pendingAddonAdds.length > 0 && (!!addonPaymentMethodId && !isAddonCardPayment && !routedAddonAcct && !addonAccountId))}
                   className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                 >
                   {modifyAddonsMut.isPending ? 'Saving...' : 'Save Changes'}

@@ -83,10 +83,11 @@ export async function modifyAddons(
     order.adjustTotal(Money.php(totalDelta));
   }
 
-  // If new add-ons were added and a payment method is provided, collect payment
+  // Record payment for new add-ons (immediate or pending)
   const addedTotal = input.addons.reduce((s, a) => s + a.totalAmount, 0);
-  if (addedTotal > 0 && input.paymentMethodId && input.receivableAccountId) {
+  if (addedTotal > 0) {
     const paymentAmount = Money.php(addedTotal);
+    const isPending = !input.paymentMethodId || input.paymentMethodId === 'pending';
     const payment: Payment = {
       id: crypto.randomUUID(),
       storeId: order.storeId,
@@ -96,16 +97,16 @@ export async function modifyAddons(
       orderAddonId: null,
       paymentType: 'addon',
       amount: paymentAmount.toNumber(),
-      paymentMethodId: input.paymentMethodId,
+      paymentMethodId: isPending ? 'pending' : input.paymentMethodId!,
       transactionDate: formatManilaDate(),
-      settlementStatus: input.isCardPayment ? 'pending' : null,
+      settlementStatus: (isPending || input.isCardPayment) ? 'pending' : null,
       settlementRef: input.settlementRef ?? null,
       customerId: order.customerId,
-      accountId: input.isCardPayment ? null : (input.accountId ?? null),
+      accountId: isPending ? null : (input.isCardPayment ? null : (input.accountId ?? null)),
     };
     await paymentRepo.save(payment);
 
-    if (!input.isCardPayment && input.accountId) {
+    if (!isPending && !input.isCardPayment && input.accountId) {
       const legs: JournalLeg[] = [
         {
           entryId: crypto.randomUUID(),
@@ -118,7 +119,7 @@ export async function modifyAddons(
         },
         {
           entryId: crypto.randomUUID(),
-          accountId: input.receivableAccountId,
+          accountId: input.receivableAccountId!,
           debit: Money.zero(),
           credit: paymentAmount,
           description: `Order ${order.id} addon receivable reduced`,
@@ -129,7 +130,7 @@ export async function modifyAddons(
       await accountingPort.createTransaction(legs, order.storeId);
     }
 
-    if (input.isCardPayment) {
+    if (!isPending && input.isCardPayment) {
       const settlement: CardSettlement = {
         id: crypto.randomUUID(),
         storeId: order.storeId,
@@ -153,13 +154,17 @@ export async function modifyAddons(
       await deps.cardSettlementRepo.save(settlement);
     }
 
-    // Recalculate balance from all payments
-    const allPayments = await paymentRepo.findByOrderId(order.id);
-    const totalPaid = allPayments.reduce(
-      (sum, p) => sum.add(Money.php(p.amount)),
-      Money.zero(),
-    );
-    order.applyPayments(totalPaid);
+    if (!isPending) {
+      // Recalculate balance from all payments
+      const allPayments = await paymentRepo.findByOrderId(order.id);
+      const totalPaid = allPayments.reduce(
+        (sum, p) => sum.add(Money.php(p.amount)),
+        Money.zero(),
+      );
+      order.applyPayments(totalPaid);
+    }
+    // When pending: adjustTotal already increased balanceDue correctly.
+    // Do not call applyPayments — balance stays increased.
   }
 
   await orderRepo.save(order);
