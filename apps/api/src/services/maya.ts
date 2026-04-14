@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 
-const MAYA_BASE_URL = 'https://pg.maya.ph';
+const MAYA_BASE_URL = process.env.MAYA_BASE_URL ?? 'https://payments.maya.ph';
 
 export interface MayaCheckoutParams {
   orderId: string;
