@@ -493,7 +493,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
   const statusVal = order.status?.value ?? order.status;
   const total = enrichedData?.finalTotal ?? moneyAmount(order.finalTotal);
   const totalPaid = enrichedData?.totalPaid ?? (payments as Array<{ amount: number }>).reduce((s, p) => s + (p.amount ?? 0), 0);
-  const balance = total - totalPaid;
+  const balance = Math.max(0, total - totalPaid);
 
   const wooOrderId = enrichedData?.wooOrderId ?? null;
   const customerName = enrichedData?.customerName ?? order.customerId ?? '—';
