@@ -18,12 +18,10 @@ export declare const CreateTransferRequestSchema: z.ZodObject<{
     storeId: z.ZodString;
     orderId: z.ZodDefault<z.ZodNullable<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
-    orderId: string | null;
-    customerName: string;
-    customerEmail: string | null;
-    storeId: string;
     serviceDate: string;
+    customerName: string;
     contactNumber: string | null;
+    customerEmail: string | null;
     customerType: "Walk-in" | "Online" | null;
     route: string;
     flightTime: string | null;
@@ -35,15 +33,16 @@ export declare const CreateTransferRequestSchema: z.ZodObject<{
     paymentMethod: string | null;
     bookingSource: string | null;
     bookingToken: string | null;
-}, {
-    customerName: string;
     storeId: string;
+    orderId: string | null;
+}, {
     serviceDate: string;
+    customerName: string;
     route: string;
     totalPrice: number;
-    orderId?: string | null | undefined;
-    customerEmail?: string | null | undefined;
+    storeId: string;
     contactNumber?: string | null | undefined;
+    customerEmail?: string | null | undefined;
     customerType?: "Walk-in" | "Online" | null | undefined;
     flightTime?: string | null | undefined;
     paxCount?: number | undefined;
@@ -53,6 +52,7 @@ export declare const CreateTransferRequestSchema: z.ZodObject<{
     paymentMethod?: string | null | undefined;
     bookingSource?: string | null | undefined;
     bookingToken?: string | null | undefined;
+    orderId?: string | null | undefined;
 }>;
 export type CreateTransferRequest = z.infer<typeof CreateTransferRequestSchema>;
 export declare const RecordTransferPaymentRequestSchema: z.ZodObject<{
@@ -63,17 +63,17 @@ export declare const RecordTransferPaymentRequestSchema: z.ZodObject<{
     cashAccountId: z.ZodString;
     transferIncomeAccountId: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    date: string;
-    amount: number;
     paymentMethod: string;
     transferId: string;
+    amount: number;
+    date: string;
     cashAccountId: string;
     transferIncomeAccountId: string;
 }, {
-    date: string;
-    amount: number;
     paymentMethod: string;
     transferId: string;
+    amount: number;
+    date: string;
     cashAccountId: string;
     transferIncomeAccountId: string;
 }>;
@@ -85,14 +85,14 @@ export declare const RecordDriverPaymentRequestSchema: z.ZodObject<{
     driverExpenseAccountId: z.ZodString;
     cashAccountId: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    date: string;
     transferId: string;
+    date: string;
     cashAccountId: string;
     driverFee: number;
     driverExpenseAccountId: string;
 }, {
-    date: string;
     transferId: string;
+    date: string;
     cashAccountId: string;
     driverFee: number;
     driverExpenseAccountId: string;
@@ -121,6 +121,7 @@ export type TransferQuery = z.infer<typeof TransferQuerySchema>;
 export declare const PublicTransferBookingSchema: z.ZodObject<{
     customerName: z.ZodString;
     contactNumber: z.ZodString;
+    customerEmail: z.ZodEffects<z.ZodDefault<z.ZodUnion<[z.ZodString, z.ZodLiteral<"">, z.ZodNull]>>, string | null, string | null | undefined>;
     flightNumber: z.ZodDefault<z.ZodNullable<z.ZodString>>;
     serviceDate: z.ZodString;
     flightTime: z.ZodDefault<z.ZodNullable<z.ZodString>>;
@@ -130,13 +131,13 @@ export declare const PublicTransferBookingSchema: z.ZodObject<{
     totalPrice: z.ZodNumber;
     accommodation: z.ZodDefault<z.ZodNullable<z.ZodString>>;
     opsNotes: z.ZodDefault<z.ZodNullable<z.ZodString>>;
-    token: z.ZodString;
+    token: z.ZodOptional<z.ZodString>;
+    storeId: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    token: string;
-    customerName: string;
-    flightNumber: string | null;
     serviceDate: string;
+    customerName: string;
     contactNumber: string;
+    customerEmail: string | null;
     route: string;
     flightTime: string | null;
     paxCount: number;
@@ -144,19 +145,24 @@ export declare const PublicTransferBookingSchema: z.ZodObject<{
     accommodation: string | null;
     opsNotes: string | null;
     totalPrice: number;
+    flightNumber: string | null;
+    storeId?: string | undefined;
+    token?: string | undefined;
 }, {
-    token: string;
-    customerName: string;
     serviceDate: string;
+    customerName: string;
     contactNumber: string;
     route: string;
     paxCount: number;
     vanType: "Shared" | "Private" | "TukTuk";
     totalPrice: number;
-    flightNumber?: string | null | undefined;
+    customerEmail?: string | null | undefined;
     flightTime?: string | null | undefined;
     accommodation?: string | null | undefined;
     opsNotes?: string | null | undefined;
+    storeId?: string | undefined;
+    flightNumber?: string | null | undefined;
+    token?: string | undefined;
 }>;
 export type PublicTransferBooking = z.infer<typeof PublicTransferBookingSchema>;
 //# sourceMappingURL=transfer-schemas.d.ts.map

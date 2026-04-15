@@ -140,13 +140,25 @@ router.post('/transfer-booking', validateBody(PublicBookingSchema), async (req, 
 router.post('/public-transfer-booking', validateBody(PublicTransferBookingSchema), async (req, res, next) => {
   try {
     const token = req.body.token as string | undefined;
-    if (!token) {
-      res.status(401).json({ success: false, error: { code: 'MISSING_TOKEN', message: 'Booking token is required' } });
-      return;
-    }
-    const store = await resolveToken(req.app.locals.deps.configRepo, token);
-    if (!store) {
-      res.status(401).json({ success: false, error: { code: 'INVALID_TOKEN', message: 'Invalid or disabled booking token' } });
+    const storeId = req.body.storeId as string | undefined;
+
+    let store: Awaited<ReturnType<typeof resolveToken>> = null;
+
+    if (token) {
+      store = await resolveToken(req.app.locals.deps.configRepo, token);
+      if (!store) {
+        res.status(401).json({ success: false, error: { code: 'INVALID_TOKEN', message: 'Invalid or disabled booking token' } });
+        return;
+      }
+    } else if (storeId) {
+      const allStores: Store[] = await req.app.locals.deps.configRepo.getStores();
+      store = allStores.find((s) => s.id === storeId) ?? null;
+      if (!store) {
+        res.status(404).json({ success: false, error: { code: 'INVALID_STORE', message: 'Store not found' } });
+        return;
+      }
+    } else {
+      res.status(401).json({ success: false, error: { code: 'MISSING_TOKEN', message: 'token or storeId is required' } });
       return;
     }
     const routes = await req.app.locals.deps.configRepo.getTransferRoutes(store.id);
@@ -169,7 +181,7 @@ router.post('/public-transfer-booking', validateBody(PublicTransferBookingSchema
         serviceDate:    req.body.serviceDate,
         customerName:   req.body.customerName,
         contactNumber:  req.body.contactNumber,
-        customerEmail:  null,
+        customerEmail:  req.body.customerEmail ?? null,
         customerType:   'Online',
         route:          req.body.route,
         flightTime:     req.body.flightTime,
@@ -180,7 +192,7 @@ router.post('/public-transfer-booking', validateBody(PublicTransferBookingSchema
         totalPrice:     req.body.totalPrice,
         paymentMethod:  null,
         bookingSource:  'Online',
-        bookingToken:   token,
+        bookingToken:   token ?? null,
         storeId:        store.id,
         orderId:        null,
       },
@@ -190,7 +202,7 @@ router.post('/public-transfer-booking', validateBody(PublicTransferBookingSchema
 
     void (async () => {
       try {
-        const emailTo = null as string | null;
+        const emailTo = req.body.customerEmail as string | null;
         if (!emailTo) return;
         const whatsappNumber = process.env.WHATSAPP_NUMBER ?? '639XXXXXXXXX';
         await sendEmail({

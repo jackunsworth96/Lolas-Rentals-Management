@@ -43,6 +43,7 @@ export const TransferQuerySchema = z.object({
 export const PublicTransferBookingSchema = z.object({
     customerName: z.string().min(1),
     contactNumber: z.string().min(1),
+    customerEmail: z.union([z.string().email(), z.literal(''), z.null()]).default(null).transform((v) => v || null),
     flightNumber: z.string().nullable().default(null),
     serviceDate: z.string().min(1),
     flightTime: z.string().nullable().default(null),
@@ -52,6 +53,7 @@ export const PublicTransferBookingSchema = z.object({
     totalPrice: z.number().positive(),
     accommodation: z.string().nullable().default(null),
     opsNotes: z.string().nullable().default(null),
-    token: z.string().min(1),
+    token: z.string().min(1).optional(),
+    storeId: z.string().min(1).optional(),
 });
 //# sourceMappingURL=transfer-schemas.js.map

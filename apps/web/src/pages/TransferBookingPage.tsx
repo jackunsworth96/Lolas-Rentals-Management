@@ -134,6 +134,7 @@ export default function TransferBookingPage() {
 
   const [customerName, setCustomerName] = useState('');
   const [contactNumber, setContactNumber] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
   const [accommodation, setAccommodation] = useState('');
   const [flightNumber, setFlightNumber] = useState('');
   const [serviceDate, setServiceDate] = useState('');
@@ -207,6 +208,7 @@ export default function TransferBookingPage() {
         body: JSON.stringify({
           customerName: customerName.trim(),
           contactNumber: contactNumber.trim(),
+          customerEmail: customerEmail.trim() || null,
           flightNumber: flightNumber.trim().toUpperCase() || null,
           serviceDate,
           flightTime: flightTime || null,
@@ -216,6 +218,7 @@ export default function TransferBookingPage() {
           totalPrice: calcTotal(vanSelection, paxCount),
           accommodation: accommodation.trim() || null,
           opsNotes: opsNotes.trim() || null,
+          storeId: TRANSFER_STORE_ID,
         }),
       });
 
@@ -242,6 +245,7 @@ export default function TransferBookingPage() {
     setPaxCount(1);
     setCustomerName('');
     setContactNumber('');
+    setCustomerEmail('');
     setAccommodation('');
     setFlightNumber('');
     setServiceDate('');
@@ -570,6 +574,19 @@ export default function TransferBookingPage() {
                     value={contactNumber}
                     onChange={(e) => setContactNumber(e.target.value)}
                     placeholder="+63 912 345 6789"
+                    className={inputClass}
+                  />
+                </Field>
+
+                <Field
+                  label="Email"
+                  helper="Optional — we will send your booking confirmation to this address"
+                >
+                  <input
+                    type="email"
+                    value={customerEmail}
+                    onChange={(e) => setCustomerEmail(e.target.value)}
+                    placeholder="you@example.com"
                     className={inputClass}
                   />
                 </Field>
