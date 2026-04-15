@@ -2,22 +2,22 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../../api/client.js';
 import { formatCurrency } from '../../utils/currency.js';
+import { PageLayout } from '../../components/layout/PageLayout.js';
 
 interface TransferRoute {
   id: number;
   route: string;
   vanType: string | null;
   price: number;
+  pricingType?: string;
 }
 
 export default function PublicBookingPage() {
   const { token } = useParams<{ token: string }>();
-
   const [storeName, setStoreName] = useState('');
   const [routes, setRoutes] = useState<TransferRoute[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-
   const [serviceDate, setServiceDate] = useState('');
   const [flightTime, setFlightTime] = useState('');
   const [customerName, setCustomerName] = useState('');
@@ -49,13 +49,15 @@ export default function PublicBookingPage() {
     [routes, selectedRouteId],
   );
 
-  const totalPrice = selectedRoute?.price ?? 0;
+  const isPerHead = selectedRoute?.pricingType === 'per_head';
+  const totalPrice = selectedRoute
+    ? (isPerHead ? selectedRoute.price * paxCount : selectedRoute.price)
+    : 0;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     if (!selectedRoute) { setError('Please select a route'); return; }
-
     setSubmitting(true);
     try {
       const result = await api.post<{ id: string }>('/public/transfer-booking', {
@@ -81,206 +83,227 @@ export default function PublicBookingPage() {
     }
   }
 
-  if (!token) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <h1 className="text-xl font-bold text-red-600">Invalid Booking Link</h1>
-          <p className="mt-2 text-gray-600">This link is missing information. Please ask the rental shop for the correct link.</p>
-        </div>
-      </div>
-    );
-  }
+  const inputClass = 'mt-1 block w-full rounded-lg border border-charcoal-brand/20 bg-white px-3 py-2.5 text-sm text-charcoal-brand placeholder-charcoal-brand/40 focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand';
+  const labelClass = 'block text-sm font-medium text-charcoal-brand font-lato';
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <p className="text-gray-500">Loading booking form...</p>
-      </div>
+      <PageLayout title="Transfer Booking | Lola's Rentals" showFloralRight={false}>
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-teal-brand border-t-transparent" />
+        </div>
+      </PageLayout>
     );
   }
 
-  if (!routes.length && error) {
+  if (!token || (error && routes.length === 0)) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
-        <div className="w-full max-w-md rounded-2xl bg-white p-8 text-center shadow-lg">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
-            <svg className="h-8 w-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </div>
-          <h1 className="text-xl font-bold text-gray-900">Link Not Found</h1>
-          <p className="mt-2 text-gray-600">{error}</p>
+      <PageLayout title="Transfer Booking | Lola's Rentals" showFloralRight={false}>
+        <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 text-center">
+          <div className="mb-4 text-4xl">🚐</div>
+          <h2 className="font-headline text-2xl font-bold text-charcoal-brand mb-2">Invalid booking link</h2>
+          <p className="text-charcoal-brand/70 text-sm max-w-sm">
+            {error || 'This booking link is not valid. Please contact the rental shop for a new link.'}
+          </p>
         </div>
-      </div>
+      </PageLayout>
     );
   }
 
   if (submitted) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-        <div className="w-full max-w-md rounded-2xl bg-white p-8 text-center shadow-lg">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
-            <svg className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <PageLayout title="Booking Confirmed | Lola's Rentals" showFloralRight={false}>
+        <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 text-center">
+          <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-teal-brand/10">
+            <svg className="h-10 w-10 text-teal-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-green-600">Booking Confirmed!</h1>
-          <p className="mt-2 text-gray-600">Thank you, {customerName}. We'll be in touch with your transfer details.</p>
+          <h2 className="font-headline text-3xl font-bold text-teal-brand mb-2">Booking Confirmed!</h2>
           {bookingRef && (
-            <div className="mt-4 rounded-lg bg-blue-50 p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-blue-500">Booking Reference</p>
-              <p className="mt-1 font-mono text-2xl font-bold tracking-wider text-blue-700">{bookingRef}</p>
-              <p className="mt-1 text-xs text-gray-500">Quote this reference when contacting us</p>
-            </div>
+            <p className="mb-2 text-sm text-charcoal-brand/60 font-lato">
+              Reference: <span className="font-mono font-semibold text-charcoal-brand">{bookingRef}</span>
+            </p>
           )}
-          {selectedRoute && (
-            <div className="mt-4 rounded-lg bg-gray-50 p-3 text-sm text-gray-600">
-              <p><strong>Route:</strong> {selectedRoute.route}</p>
-              <p><strong>Date:</strong> {serviceDate}</p>
-              <p><strong>Total:</strong> {formatCurrency(totalPrice)}</p>
-            </div>
-          )}
+          <p className="text-charcoal-brand/70 text-sm max-w-sm font-lato">
+            Your transfer has been booked.{storeName ? ` ${storeName} will be in touch to confirm the details.` : ''}
+          </p>
         </div>
-      </div>
+      </PageLayout>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <div className="w-full max-w-lg rounded-2xl bg-white p-8 shadow-lg">
-        <div className="mb-6">
-          {storeName && <p className="text-sm font-medium text-blue-600">{storeName}</p>}
-          <h1 className="text-2xl font-bold text-gray-900">Book a Transfer</h1>
-          <p className="mt-1 text-sm text-gray-500">Fill in the details below and we'll confirm your booking.</p>
+    <PageLayout title="Transfer Booking | Lola's Rentals" showFloralRight={false}>
+      <div className="mx-auto max-w-2xl px-4 py-10">
+
+        <div className="mb-8 text-center">
+          <h1 className="font-headline text-4xl font-black text-teal-brand mb-2">
+            Book a Transfer
+          </h1>
+          {storeName && (
+            <p className="text-charcoal-brand/70 font-lato text-sm">{storeName}</p>
+          )}
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <label className="block">
-            <span className="text-sm font-medium text-gray-700">Route *</span>
-            <select
-              value={selectedRouteId}
-              onChange={(e) => setSelectedRouteId(e.target.value)}
-              required
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm"
-            >
-              <option value="">Select your route...</option>
-              {routes.map((r) => (
-                <option key={r.id} value={String(r.id)}>
-                  {r.route}{r.vanType ? ` (${r.vanType})` : ''} — {formatCurrency(r.price)}
-                </option>
-              ))}
-            </select>
-          </label>
+        <form onSubmit={handleSubmit} className="space-y-6">
 
-          {selectedRoute && (
-            <div className="rounded-lg bg-blue-50 p-3">
-              <p className="text-sm text-gray-600">
-                Route: <strong>{selectedRoute.route}</strong>
-                {selectedRoute.vanType && <> · {selectedRoute.vanType}</>}
-              </p>
-              <p className="text-lg font-bold text-blue-700">{formatCurrency(totalPrice)}</p>
-            </div>
-          )}
+          <div className="rounded-2xl bg-sand-brand p-6 space-y-4">
+            <h2 className="font-headline text-xl font-bold text-charcoal-brand">Your Transfer</h2>
 
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="text-sm font-medium text-gray-700">Service Date *</span>
-              <input
-                type="date"
-                value={serviceDate}
-                onChange={(e) => setServiceDate(e.target.value)}
+            <div>
+              <label className={labelClass}>
+                Route <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={selectedRouteId}
+                onChange={(e) => setSelectedRouteId(e.target.value)}
                 required
-                min={new Date().toISOString().slice(0, 10)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm"
-              />
-            </label>
-            <label className="block">
-              <span className="text-sm font-medium text-gray-700">Flight / Pickup Time</span>
+                className={inputClass}
+              >
+                <option value="">Select a route…</option>
+                {routes.map((r) => (
+                  <option key={r.id} value={String(r.id)}>
+                    {r.route}{r.vanType ? ` — ${r.vanType}` : ''}{' '}
+                    ({formatCurrency(r.price)}{r.pricingType === 'per_head' ? '/person' : ''})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className={labelClass}>
+                  Service Date <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={serviceDate}
+                  onChange={(e) => setServiceDate(e.target.value)}
+                  required
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>
+                  Passengers <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={paxCount}
+                  onChange={(e) => setPaxCount(Number(e.target.value))}
+                  required
+                  className={inputClass}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className={labelClass}>Flight Time</label>
               <input
                 type="time"
                 value={flightTime}
                 onChange={(e) => setFlightTime(e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm"
+                className={inputClass}
               />
-            </label>
+              <p className="mt-1 text-xs text-charcoal-brand/50 font-lato">
+                If applicable — helps us time your pickup
+              </p>
+            </div>
+
+            {selectedRoute && (
+              <div className="rounded-xl bg-teal-brand/10 border border-teal-brand/20 px-4 py-3 flex items-center justify-between">
+                <span className="text-sm font-medium text-teal-brand font-lato">Total</span>
+                <span className="text-xl font-bold text-teal-brand font-headline">
+                  {formatCurrency(totalPrice)}
+                </span>
+              </div>
+            )}
           </div>
 
-          <label className="block">
-            <span className="text-sm font-medium text-gray-700">Full Name *</span>
-            <input
-              type="text"
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              required
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm"
-            />
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="text-sm font-medium text-gray-700">Contact Number</span>
+          <div className="rounded-2xl bg-sand-brand p-6 space-y-4">
+            <h2 className="font-headline text-xl font-bold text-charcoal-brand">Your Details</h2>
+
+            <div>
+              <label className={labelClass}>
+                Full Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                required
+                autoComplete="name"
+                className={inputClass}
+              />
+            </div>
+
+            <div>
+              <label className={labelClass}>
+                WhatsApp / Contact Number <span className="text-red-500">*</span>
+              </label>
               <input
                 type="tel"
                 value={contactNumber}
                 onChange={(e) => setContactNumber(e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm"
+                required
+                autoComplete="tel"
+                className={inputClass}
               />
-            </label>
-            <label className="block">
-              <span className="text-sm font-medium text-gray-700">Email</span>
+            </div>
+
+            <div>
+              <label className={labelClass}>Email</label>
               <input
                 type="email"
                 value={customerEmail}
                 onChange={(e) => setCustomerEmail(e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm"
+                autoComplete="email"
+                className={inputClass}
               />
-            </label>
-          </div>
+            </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="text-sm font-medium text-gray-700">Passengers</span>
-              <input
-                type="number"
-                min={1}
-                value={paxCount}
-                onChange={(e) => setPaxCount(Number(e.target.value) || 1)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm"
-              />
-            </label>
-            <label className="block">
-              <span className="text-sm font-medium text-gray-700">Hotel / Accommodation</span>
+            <div>
+              <label className={labelClass}>Accommodation / Drop-off</label>
               <input
                 type="text"
                 value={accommodation}
                 onChange={(e) => setAccommodation(e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm"
+                placeholder="e.g. Harana Surf Resort"
+                className={inputClass}
               />
-            </label>
+            </div>
+
+            <div>
+              <label className={labelClass}>Notes for the driver</label>
+              <textarea
+                value={opsNotes}
+                onChange={(e) => setOpsNotes(e.target.value)}
+                rows={3}
+                placeholder="Any special requests or information…"
+                className={inputClass}
+              />
+            </div>
           </div>
 
-          <label className="block">
-            <span className="text-sm font-medium text-gray-700">Notes</span>
-            <textarea
-              value={opsNotes}
-              onChange={(e) => setOpsNotes(e.target.value)}
-              rows={2}
-              placeholder="Special requests, luggage info, etc."
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm"
-            />
-          </label>
-
-          {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+          {error && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 font-lato">
+              {error}
+            </div>
+          )}
 
           <button
             type="submit"
-            disabled={submitting || !selectedRouteId}
-            className="w-full rounded-lg bg-blue-600 px-4 py-3 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            disabled={submitting}
+            className="w-full rounded-xl bg-teal-brand px-6 py-3.5 text-base font-bold text-white font-lato hover:bg-teal-700 disabled:opacity-50 transition-colors"
           >
-            {submitting ? 'Submitting...' : `Submit Booking${totalPrice > 0 ? ` — ${formatCurrency(totalPrice)}` : ''}`}
+            {submitting ? 'Booking…' : 'Confirm Transfer Booking'}
           </button>
+
         </form>
       </div>
-    </div>
+    </PageLayout>
   );
 }
