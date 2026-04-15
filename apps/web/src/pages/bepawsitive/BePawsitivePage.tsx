@@ -123,10 +123,10 @@ export default function BePawsitivePage() {
   };
 
   return (
-    <PageLayout fullBleed title="BePawsitive | Lola's Rentals">
+    <PageLayout fullBleed title="Be Pawsitive | Lola's Rentals">
       <SEO
-        title="BePawsitive — Lola's Rentals x Siargao Animal Welfare"
-        description="Every rental at Lola's supports BePawsitive, Siargao's animal welfare NGO. Spaying, neutering and vaccinating street animals on the island. Join the movement."
+        title="Be Pawsitive — Lola's Rentals x Siargao Animal Welfare"
+        description="Every rental at Lola's supports Be Pawsitive, Siargao's animal welfare NGO. Spaying, neutering and vaccinating street animals on the island. Join the movement."
         canonical="/book/bepawsitive"
       />
 
@@ -160,7 +160,7 @@ export default function BePawsitivePage() {
             fontFamily: FONT_BODY,
           }}
         >
-          Lola&apos;s Rentals × BePawsitive
+          Lola&apos;s Rentals × Be Pawsitive
         </span>
 
         <h1
@@ -187,7 +187,7 @@ export default function BePawsitivePage() {
             color: 'white',
           }}
         >
-          BePawsitive is a Siargao-based animal welfare organisation dedicated to spaying, neutering,
+          Be Pawsitive is a Siargao-based animal welfare organisation dedicated to spaying, neutering,
           and vaccinating street animals across the island. Every rental booked with Lola&apos;s helps
           fund their life-changing work.
         </p>
@@ -294,7 +294,7 @@ export default function BePawsitivePage() {
               fontFamily: FONT_BODY,
             }}
           >
-            About BePawsitive
+            About Be Pawsitive
           </p>
           <h2
             style={{
@@ -309,9 +309,9 @@ export default function BePawsitivePage() {
           </h2>
 
           {[
-            `BePawsitive is a SEC-registered animal welfare organisation based on Siargao Island, Philippines. Founded on a simple belief — that every stray animal deserves love, care, and a healthy life — the organisation runs spay, neuter, and vaccination programmes across the island to control the stray population and prevent unnecessary suffering.`,
-            `Each year, BePawsitive hosts free spay and neuter events in partnership with volunteer veterinarians, reaching communities across Siargao. Their most recent event in March 2026, held across Santa Fe and Dapa, saw 481 animals fixed and 723 vaccinated — making it one of their biggest events yet. The impact compounds: every animal spayed or neutered prevents hundreds of future strays from entering the cycle.`,
-            `Lola's Rentals has been a proud sponsor of BePawsitive since the beginning. It's why Lola herself — our Jack Russell terrier mascot — is at the heart of everything we do. And it's why every vehicle in our fleet is named after an animal that's been through the programme.`,
+            `Be Pawsitive is a SEC-registered animal welfare organisation based on Siargao Island, Philippines. Founded on a simple belief — that every stray animal deserves love, care, and a healthy life — the organisation runs spay, neuter, and vaccination programmes across the island to control the stray population and prevent unnecessary suffering.`,
+            `Each year, Be Pawsitive hosts free spay and neuter events in partnership with volunteer veterinarians, reaching communities across Siargao. Their most recent event in March 2026, held across Santa Fe and Dapa, saw 481 animals fixed and 723 vaccinated — making it one of their biggest events yet. The impact compounds: every animal spayed or neutered prevents hundreds of future strays from entering the cycle.`,
+            `Lola's Rentals has been a proud sponsor of Be Pawsitive since the beginning. It's why Lola herself — our rescue, now pampered pooch — is at the heart of everything we do. And it's why every vehicle in our fleet is named after an animal that's been through the programme.`,
           ].map((para, i) => (
             <p
               key={i}
@@ -361,7 +361,7 @@ export default function BePawsitivePage() {
               lineHeight: 1.2,
             }}
           >
-            AquaFlask × BePawsitive Run 2026
+            AquaFlask × Be Pawsitive Run 2026
           </h2>
 
           <p
@@ -651,7 +651,7 @@ export default function BePawsitivePage() {
             }}
           >
             Lola&apos;s Rentals matches every peso saved by Paw Card holders at partner
-            establishments — peso for peso — as a direct donation to BePawsitive. No admin fees, no
+            establishments — peso for peso — as a direct donation to Be Pawsitive. No admin fees, no
             markup. Every centavo goes to funding spay, neuter, and vaccination events across
             Siargao.
           </p>
@@ -749,7 +749,7 @@ export default function BePawsitivePage() {
             fontFamily: FONT_BODY,
           }}
         >
-          Follow BePawsitive on Instagram
+          Follow Be Pawsitive on Instagram
         </p>
         <a
           href="https://www.instagram.com/bepawsitive.siargao/"
