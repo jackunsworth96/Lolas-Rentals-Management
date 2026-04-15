@@ -24,6 +24,7 @@ const API_BASE = normalizeApiBase(import.meta.env.VITE_API_URL as string | undef
 interface OrderWaiverPayload {
   orderReference: string;
   customerName: string;
+  customerEmail?: string | null;
   vehicleModelName: string;
   pickupDatetime: string;
   dropoffDatetime: string;
@@ -228,6 +229,9 @@ export default function WaiverPage() {
         if (cancelled) return;
         setOrderData(data);
         setDriverName(data.customerName ?? '');
+        if (data.customerEmail && !driverEmail) {
+          setDriverEmail(data.customerEmail);
+        }
         if (data.waiverStatus === 'signed') {
           setAlreadySignedOnLoad(true);
           setStep(3);
@@ -277,6 +281,10 @@ export default function WaiverPage() {
 
   const submitWaiver = async () => {
     if (!orderReference || !licenceFrontUrl || !signatureCanvasRef.current) return;
+    if (!driverEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(driverEmail.trim())) {
+      setError('A valid email address is required');
+      return;
+    }
     if (isCanvasBlank(signatureCanvasRef.current)) {
       setError('Please add your signature.');
       return;
@@ -298,7 +306,7 @@ export default function WaiverPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           driverName: driverName.trim(),
-          driverEmail: driverEmail.trim() || undefined,
+          driverEmail: driverEmail.trim(),
           driverMobile: driverMobile.trim() || undefined,
           agreedToTerms: true,
           driverSignatureDataUrl,
@@ -404,7 +412,9 @@ export default function WaiverPage() {
                   />
                 </div>
                 <div>
-                  <label className="font-lato text-sm font-medium text-charcoal-brand block mb-1">Email</label>
+                  <label className="font-lato text-sm font-medium text-charcoal-brand block mb-1">
+                    Email <span className="text-red-600">*</span>
+                  </label>
                   <input
                     type="email"
                     className={inputClass}

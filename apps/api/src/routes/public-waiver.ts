@@ -34,7 +34,7 @@ const licenceUpload = multer({
 
 const WaiverSignBodySchema = z.object({
   driverName: z.string().min(1),
-  driverEmail: z.string().email().optional(),
+  driverEmail: z.string().email({ message: 'A valid email address is required' }),
   driverMobile: z.string().optional(),
   agreedToTerms: z.boolean().refine((v) => v === true),
   driverSignatureDataUrl: z.string().min(1),
@@ -69,7 +69,7 @@ async function fetchOrdersRawByReference(orderReference: string) {
   const { data, error } = await sb
     .from('orders_raw')
     .select(
-      'order_reference, customer_name, vehicle_model_id, pickup_datetime, dropoff_datetime, store_id, status',
+      'order_reference, customer_name, customer_email, vehicle_model_id, pickup_datetime, dropoff_datetime, store_id, status',
     )
     .eq('order_reference', orderReference)
     .in('status', ['unprocessed', 'processed'])
@@ -151,6 +151,7 @@ waiverRouter.get('/:orderReference', async (req, res, next) => {
     res.json({
       orderReference,
       customerName: (order.customer_name as string) ?? '',
+      customerEmail: (order.customer_email as string | null) ?? null,
       vehicleModelName,
       pickupDatetime: order.pickup_datetime as string,
       dropoffDatetime: order.dropoff_datetime as string,
