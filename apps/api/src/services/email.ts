@@ -10,6 +10,20 @@
 
 import { Resend } from 'resend';
 
+/**
+ * Escape user-supplied strings before interpolating into HTML email templates.
+ * Prevents HTML injection via customer names, notes, references, etc.
+ */
+function escapeHtml(str: string | null | undefined): string {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
 let resendClient: Resend | undefined;
 function getResend(): Resend {
   const key = process.env.RESEND_API_KEY;
@@ -99,7 +113,7 @@ export function bookingConfirmationHtml({
   cancelUrl?: string;
 }): string {
   const vehicleLabel =
-    vehicleCount > 1 ? `${vehicleName} × ${vehicleCount}` : vehicleName;
+    vehicleCount > 1 ? `${escapeHtml(vehicleName)} × ${vehicleCount}` : escapeHtml(vehicleName);
 
   const transferTypeLabel =
     transferType === 'tuktuk'
@@ -127,7 +141,7 @@ export function bookingConfirmationHtml({
           ${addons
             .map(
               (a) =>
-                `<p style="margin: 4px 0; font-size: 14px; color: #363737;">✓ ${a.name} — ₱${a.price.toLocaleString()}</p>`,
+                `<p style="margin: 4px 0; font-size: 14px; color: #363737;">✓ ${escapeHtml(a.name)} — ₱${a.price.toLocaleString()}</p>`,
             )
             .join('')}
         </div>`
@@ -148,7 +162,7 @@ export function bookingConfirmationHtml({
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px;">
           <tr>
             <td style="padding: 4px 0; color: rgba(255,255,255,0.75); font-size: 13px; width: 80px;">Route</td>
-            <td style="padding: 4px 0; font-weight: 700; color: white; font-size: 13px;">${transferRoute ?? 'Airport Transfer'}</td>
+            <td style="padding: 4px 0; font-weight: 700; color: white; font-size: 13px;">${escapeHtml(transferRoute ?? 'Airport Transfer')}</td>
           </tr>
           <tr>
             <td style="padding: 4px 0; color: rgba(255,255,255,0.75); font-size: 13px;">Type</td>
@@ -189,7 +203,7 @@ export function bookingConfirmationHtml({
 
         <!-- Greeting -->
         <h2 style="color: #363737; margin: 0 0 8px; font-size: 22px;">
-          Hi ${customerName}! 🐾
+          Hi ${escapeHtml(customerName)}! 🐾
         </h2>
         <p style="color: #363737; line-height: 1.6; margin: 0 0 24px; font-size: 15px;">
           Your booking is confirmed — we can't wait to see you on the island!
@@ -200,7 +214,7 @@ export function bookingConfirmationHtml({
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
               <td style="padding: 8px 0; color: #888; font-size: 13px; width: 150px;">Order Reference</td>
-              <td style="padding: 8px 0; font-weight: 700; color: #363737; font-size: 14px;">${orderReference}</td>
+              <td style="padding: 8px 0; font-weight: 700; color: #363737; font-size: 14px;">${escapeHtml(orderReference)}</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #888; font-size: 13px;">Vehicle</td>
@@ -208,15 +222,15 @@ export function bookingConfirmationHtml({
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #888; font-size: 13px;">Pick Up</td>
-              <td style="padding: 8px 0; font-weight: 700; color: #363737; font-size: 14px;">${pickupLocation} — ${pickupDatetime}</td>
+              <td style="padding: 8px 0; font-weight: 700; color: #363737; font-size: 14px;">${escapeHtml(pickupLocation)} — ${escapeHtml(pickupDatetime)}</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #888; font-size: 13px;">Drop Off</td>
-              <td style="padding: 8px 0; font-weight: 700; color: #363737; font-size: 14px;">${dropoffLocation} — ${dropoffDatetime}</td>
+              <td style="padding: 8px 0; font-weight: 700; color: #363737; font-size: 14px;">${escapeHtml(dropoffLocation)} — ${escapeHtml(dropoffDatetime)}</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #888; font-size: 13px;">Payment</td>
-              <td style="padding: 8px 0; font-weight: 700; color: #363737; font-size: 14px;">${paymentMethod}</td>
+              <td style="padding: 8px 0; font-weight: 700; color: #363737; font-size: 14px;">${escapeHtml(paymentMethod)}</td>
             </tr>
             ${transferRowHtml}
             <tr style="border-top: 2px solid #eee;">
@@ -246,7 +260,7 @@ export function bookingConfirmationHtml({
           <p style="margin: 0 0 16px; font-size: 13px; color: rgba(255,255,255,0.85); line-height: 1.5;">
             Sign your waiver before you arrive for a faster handover. It only takes 2 minutes!
           </p>
-          <a href="${waiverUrl}"
+          <a href="${escapeHtml(waiverUrl)}"
             style="display: inline-block; background: #FCBC5A; color: #363737; text-decoration: none;
               font-weight: 800; font-size: 14px; padding: 12px 28px; border-radius: 8px; letter-spacing: 0.02em;">
             Complete My Waiver →
@@ -255,7 +269,7 @@ export function bookingConfirmationHtml({
 
         ${cancelUrl ? `
         <div style="margin-top:16px;text-align:center;">
-          <a href="${cancelUrl}"
+          <a href="${escapeHtml(cancelUrl)}"
              style="color:#999;font-size:12px;text-decoration:underline;">
             Need to cancel? Click here to cancel this booking.
           </a>
@@ -279,7 +293,7 @@ export function bookingConfirmationHtml({
             We'll always get back to you!
           </p>
           <p style="margin: 0;">
-            <a href="https://wa.me/${whatsappNumber}"
+            <a href="https://wa.me/${escapeHtml(whatsappNumber)}"
               style="color: #FCBC5A; font-weight: 700; font-size: 14px; text-decoration: none;">
               WhatsApp Lola's Rentals
             </a>
@@ -330,7 +344,7 @@ export function waiverConfirmationHtml({
       <div style="padding: 32px; background: #FAF6F0;">
 
         <h2 style="color: #363737; margin: 0 0 8px;">
-          ✅ Waiver Signed, ${driverName}!
+          ✅ Waiver Signed, ${escapeHtml(driverName)}!
         </h2>
         <p style="color: #363737; line-height: 1.6; margin: 0 0 24px;">
           Your vehicle inspection waiver has been successfully signed. Here's a summary for your records.
@@ -340,15 +354,15 @@ export function waiverConfirmationHtml({
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
               <td style="padding: 8px 0; color: #666; font-size: 14px; width: 160px;">Booking Reference</td>
-              <td style="padding: 8px 0; font-weight: 700; color: #363737;">${orderReference}</td>
+              <td style="padding: 8px 0; font-weight: 700; color: #363737;">${escapeHtml(orderReference)}</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #666; font-size: 14px;">Signed By</td>
-              <td style="padding: 8px 0; font-weight: 700; color: #363737;">${driverName}</td>
+              <td style="padding: 8px 0; font-weight: 700; color: #363737;">${escapeHtml(driverName)}</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #666; font-size: 14px;">Signed At</td>
-              <td style="padding: 8px 0; color: #363737;">${signedAt}</td>
+              <td style="padding: 8px 0; color: #363737;">${escapeHtml(signedAt)}</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #666; font-size: 14px;">Licence Uploaded</td>
@@ -384,7 +398,7 @@ export function waiverConfirmationHtml({
           💬 Questions? WhatsApp us — we're open <strong>9am–5pm Philippine Time</strong>.
           Messages outside hours will be picked up when we reopen.
           <br/><br/>
-          <a href="https://wa.me/${whatsappNumber}" style="color: #00577C; font-weight: 700;">
+          <a href="https://wa.me/${escapeHtml(whatsappNumber)}" style="color: #00577C; font-weight: 700;">
             WhatsApp Lola's Rentals
           </a>
         </p>
@@ -427,7 +441,7 @@ export function waiverReminderHtml({
       <div style="padding: 32px; background: #FAF6F0;">
 
         <h2 style="color: #363737; margin: 0 0 8px;">
-          ⚡ Action Required, ${customerName}!
+          ⚡ Action Required, ${escapeHtml(customerName)}!
         </h2>
         <p style="color: #363737; line-height: 1.6; margin: 0 0 24px;">
           Your rental starts tomorrow and we noticed you haven't signed your waiver yet.
@@ -439,12 +453,12 @@ export function waiverReminderHtml({
             📋 Your rental is tomorrow
           </p>
           <p style="color: rgba(255,255,255,0.85); margin: 0 0 8px; font-size: 14px;">
-            Booking Reference: <strong style="color: #FCBC5A;">${orderReference}</strong>
+            Booking Reference: <strong style="color: #FCBC5A;">${escapeHtml(orderReference)}</strong>
           </p>
           <p style="color: rgba(255,255,255,0.85); margin: 0 0 20px; font-size: 14px;">
-            Pick Up: ${pickupDatetime}
+            Pick Up: ${escapeHtml(pickupDatetime)}
           </p>
-          <a href="${waiverUrl}"
+          <a href="${escapeHtml(waiverUrl)}"
             style="display: inline-block; background: #FCBC5A; color: #363737; padding: 14px 32px;
               border-radius: 8px; font-weight: 700; font-size: 16px; text-decoration: none;">
             Sign My Waiver Now →
@@ -466,7 +480,7 @@ export function waiverReminderHtml({
           💬 Questions? WhatsApp us — we're open <strong>9am–5pm Philippine Time</strong>.
           Messages outside hours will be picked up when we reopen.
           <br/><br/>
-          <a href="https://wa.me/${whatsappNumber}" style="color: #00577C; font-weight: 700;">
+          <a href="https://wa.me/${escapeHtml(whatsappNumber)}" style="color: #00577C; font-weight: 700;">
             WhatsApp Lola's Rentals
           </a>
         </p>
@@ -520,7 +534,7 @@ export function postRentalThankYouHtml({
         ${pawCardEstablishments.length === 1 ? 'business' : 'businesses'}:
       </p>
       <ul style="color: rgba(255,255,255,0.85); margin: 0 0 16px; padding-left: 20px; font-size: 14px; line-height: 1.8;">
-        ${pawCardEstablishments.map((e) => `<li>${e.name} — ₱${e.saved.toLocaleString()} saved</li>`).join('')}
+        ${pawCardEstablishments.map((e) => `<li>${escapeHtml(e.name)} — ₱${e.saved.toLocaleString()} saved</li>`).join('')}
       </ul>
       <p style="color: white; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
         Lola's Rentals matched that <strong>peso-for-peso</strong> as a donation to BePawsitive —
@@ -562,7 +576,7 @@ export function postRentalThankYouHtml({
       <div style="padding: 32px; background: #FAF6F0;">
 
         <h2 style="color: #363737; margin: 0 0 8px;">
-          Thank you, ${customerName}! 🐾
+          Thank you, ${escapeHtml(customerName)}! 🐾
         </h2>
         <p style="color: #363737; line-height: 1.6; margin: 0 0 24px;">
           Your rental has come to an end — we hope Siargao treated you well and that you made fond
@@ -576,19 +590,19 @@ export function postRentalThankYouHtml({
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
               <td style="padding: 8px 0; color: #666; font-size: 14px; width: 160px;">Booking Reference</td>
-              <td style="padding: 8px 0; font-weight: 700; color: #363737;">${orderReference}</td>
+              <td style="padding: 8px 0; font-weight: 700; color: #363737;">${escapeHtml(orderReference)}</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #666; font-size: 14px;">Vehicle</td>
-              <td style="padding: 8px 0; font-weight: 700; color: #363737;">${vehicleName}</td>
+              <td style="padding: 8px 0; font-weight: 700; color: #363737;">${escapeHtml(vehicleName)}</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #666; font-size: 14px;">Pick Up</td>
-              <td style="padding: 8px 0; color: #363737;">${pickupDatetime}</td>
+              <td style="padding: 8px 0; color: #363737;">${escapeHtml(pickupDatetime)}</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #666; font-size: 14px;">Return</td>
-              <td style="padding: 8px 0; color: #363737;">${dropoffDatetime}</td>
+              <td style="padding: 8px 0; color: #363737;">${escapeHtml(dropoffDatetime)}</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #666; font-size: 14px;">Duration</td>
@@ -645,7 +659,7 @@ export function postRentalThankYouHtml({
             <br/>
             WhatsApp us when you're planning your next trip!
           </p>
-          <a href="https://wa.me/${whatsappNumber}"
+          <a href="https://wa.me/${escapeHtml(whatsappNumber)}"
             style="display: inline-block; background: #00577C; color: white; padding: 12px 28px;
               border-radius: 8px; font-weight: 700; font-size: 14px; text-decoration: none;">
             WhatsApp Lola's Rentals
@@ -687,7 +701,7 @@ export function extendConfirmationHtml({
   const vehicleRow = vehicleName
     ? `<tr>
               <td style="padding: 8px 0; color: #666; font-size: 14px;">Vehicle</td>
-              <td style="padding: 8px 0; font-weight: 700; color: #363737;">${vehicleName}</td>
+              <td style="padding: 8px 0; font-weight: 700; color: #363737;">${escapeHtml(vehicleName)}</td>
             </tr>`
     : '';
 
@@ -729,7 +743,7 @@ export function extendConfirmationHtml({
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
               <td style="padding: 8px 0; color: #666; font-size: 14px; width: 180px;">Booking Reference</td>
-              <td style="padding: 8px 0; font-weight: 700; color: #363737;">${orderReference}</td>
+              <td style="padding: 8px 0; font-weight: 700; color: #363737;">${escapeHtml(orderReference)}</td>
             </tr>
             ${vehicleRow}
             <tr>
@@ -738,7 +752,7 @@ export function extendConfirmationHtml({
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #666; font-size: 14px;">New Return Time</td>
-              <td style="padding: 8px 0; font-weight: 700; color: #00577C; font-size: 16px;">${newDropoffDatetime}</td>
+              <td style="padding: 8px 0; font-weight: 700; color: #00577C; font-size: 16px;">${escapeHtml(newDropoffDatetime)}</td>
             </tr>
             ${costRow}
           </table>
@@ -755,7 +769,7 @@ export function extendConfirmationHtml({
           💬 Questions? WhatsApp us — we're open <strong>9am–5pm Philippine Time</strong>.
           Messages outside hours will be picked up when we reopen.
           <br/><br/>
-          <a href="https://wa.me/${whatsappNumber}" style="color: #00577C; font-weight: 700;">
+          <a href="https://wa.me/${escapeHtml(whatsappNumber)}" style="color: #00577C; font-weight: 700;">
             WhatsApp Lola's Rentals
           </a>
         </p>
@@ -831,19 +845,19 @@ export function maintenanceLogHtml(
           <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
             <tr>
               <td style="padding: 7px 0; color: #64748b; width: 160px;">Vehicle</td>
-              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${r.vehicleName ?? '—'}</td>
+              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${escapeHtml(r.vehicleName ?? '—')}</td>
             </tr>
             <tr>
               <td style="padding: 7px 0; color: #64748b;">Plate Number</td>
-              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${plateNumber}</td>
+              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${escapeHtml(plateNumber)}</td>
             </tr>
             <tr>
               <td style="padding: 7px 0; color: #64748b;">Engine Number</td>
-              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${engineNumber}</td>
+              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${escapeHtml(engineNumber)}</td>
             </tr>
             <tr>
               <td style="padding: 7px 0; color: #64748b;">Chassis Number</td>
-              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${chassisNumber}</td>
+              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${escapeHtml(chassisNumber)}</td>
             </tr>
           </table>
         </div>
@@ -855,19 +869,19 @@ export function maintenanceLogHtml(
           <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
             <tr>
               <td style="padding: 7px 0; color: #64748b; width: 160px;">Record ID</td>
-              <td style="padding: 7px 0; color: #475569; font-size: 12px; font-family: monospace;">${r.id}</td>
+              <td style="padding: 7px 0; color: #475569; font-size: 12px; font-family: monospace;">${escapeHtml(r.id)}</td>
             </tr>
             <tr>
               <td style="padding: 7px 0; color: #64748b;">Logged At</td>
-              <td style="padding: 7px 0; color: #1e293b;">${createdAt}</td>
+              <td style="padding: 7px 0; color: #1e293b;">${escapeHtml(createdAt)}</td>
             </tr>
             <tr>
               <td style="padding: 7px 0; color: #64748b;">Issue</td>
-              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${r.issueDescription ?? '—'}</td>
+              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${escapeHtml(r.issueDescription ?? '—')}</td>
             </tr>
             <tr>
               <td style="padding: 7px 0; color: #64748b;">Mechanic</td>
-              <td style="padding: 7px 0; color: #1e293b;">${r.mechanic ?? '—'}</td>
+              <td style="padding: 7px 0; color: #1e293b;">${escapeHtml(r.mechanic ?? '—')}</td>
             </tr>
             <tr>
               <td style="padding: 7px 0; color: #64748b;">Odometer</td>
@@ -875,7 +889,7 @@ export function maintenanceLogHtml(
             </tr>
             <tr>
               <td style="padding: 7px 0; color: #64748b;">Downtime Start</td>
-              <td style="padding: 7px 0; color: #1e293b;">${r.downtimeStart ?? '—'}</td>
+              <td style="padding: 7px 0; color: #1e293b;">${escapeHtml(r.downtimeStart ?? '—')}</td>
             </tr>
             <tr style="border-top: 1px solid #f1f5f9;">
               <td style="padding: 10px 0 7px; color: #64748b;">Parts Cost</td>
@@ -996,19 +1010,19 @@ export function inspectionLogHtml({
           <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
             <tr>
               <td style="padding: 7px 0; color: #64748b; width: 180px;">Inspection ID</td>
-              <td style="padding: 7px 0; font-family: monospace; font-size: 12px; color: #475569;">${inspectionId}</td>
+              <td style="padding: 7px 0; font-family: monospace; font-size: 12px; color: #475569;">${escapeHtml(inspectionId)}</td>
             </tr>
             <tr>
               <td style="padding: 7px 0; color: #64748b;">Logged At</td>
-              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${loggedAt}</td>
+              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${escapeHtml(loggedAt)}</td>
             </tr>
             <tr>
               <td style="padding: 7px 0; color: #64748b;">Order Reference</td>
-              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${orderReference}</td>
+              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${escapeHtml(orderReference)}</td>
             </tr>
             <tr>
               <td style="padding: 7px 0; color: #64748b;">Store</td>
-              <td style="padding: 7px 0; color: #1e293b;">${storeId}</td>
+              <td style="padding: 7px 0; color: #1e293b;">${escapeHtml(storeId)}</td>
             </tr>
           </table>
         </div>
@@ -1020,29 +1034,29 @@ export function inspectionLogHtml({
           <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
             <tr>
               <td style="padding: 7px 0; color: #64748b; width: 180px;">Vehicle</td>
-              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${vehicleName}</td>
+              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${escapeHtml(vehicleName)}</td>
             </tr>
             <tr>
               <td style="padding: 7px 0; color: #64748b;">Plate Number</td>
-              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${plateNumber}</td>
+              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${escapeHtml(plateNumber)}</td>
             </tr>
             <tr>
               <td style="padding: 7px 0; color: #64748b;">Engine Number</td>
-              <td style="padding: 7px 0; color: #1e293b;">${engineNumber}</td>
+              <td style="padding: 7px 0; color: #1e293b;">${escapeHtml(engineNumber)}</td>
             </tr>
             <tr>
               <td style="padding: 7px 0; color: #64748b;">Chassis Number</td>
-              <td style="padding: 7px 0; color: #1e293b;">${chassisNumber}</td>
+              <td style="padding: 7px 0; color: #1e293b;">${escapeHtml(chassisNumber)}</td>
             </tr>
             ${kmReading ? `
             <tr>
               <td style="padding: 7px 0; color: #64748b;">KM Reading</td>
-              <td style="padding: 7px 0; color: #1e293b;">${kmReading} km</td>
+              <td style="padding: 7px 0; color: #1e293b;">${escapeHtml(kmReading)} km</td>
             </tr>` : ''}
             ${helmetNumbers ? `
             <tr>
               <td style="padding: 7px 0; color: #64748b;">Helmet Numbers</td>
-              <td style="padding: 7px 0; color: #1e293b;">${helmetNumbers}</td>
+              <td style="padding: 7px 0; color: #1e293b;">${escapeHtml(helmetNumbers)}</td>
             </tr>` : ''}
             <tr>
               <td style="padding: 7px 0; color: #64748b;">Customer Signature</td>
@@ -1058,7 +1072,7 @@ export function inspectionLogHtml({
           <p style="font-size: 12px; font-weight: 700; color: #991B1B; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 8px;">
             ⚠️ Damage Notes
           </p>
-          <p style="color: #7F1D1D; font-size: 14px; margin: 0; line-height: 1.6;">${damageNotes}</p>
+          <p style="color: #7F1D1D; font-size: 14px; margin: 0; line-height: 1.6;">${escapeHtml(damageNotes)}</p>
         </div>` : ''}
 
         <div style="background: white; border-radius: 10px; padding: 24px; margin-bottom: 20px; border: 1px solid #e2e8f0;">
@@ -1069,7 +1083,7 @@ export function inspectionLogHtml({
             ${results.map((r) => `
             <tr style="border-bottom: 1px solid #f1f5f9;">
               <td style="padding: 7px 0; color: #475569; width: 55%;">
-                ${r.itemName}${r.qty ? ` (×${r.qty})` : ''}
+                ${escapeHtml(r.itemName)}${r.qty ? ` (×${r.qty})` : ''}
               </td>
               <td style="padding: 7px 0; font-weight: 600; color: ${resultColor(r.result)};">
                 ${resultLabel(r.result)}
@@ -1078,7 +1092,7 @@ export function inspectionLogHtml({
             ${r.notes ? `
             <tr style="border-bottom: 1px solid #f1f5f9;">
               <td colspan="2" style="padding: 4px 0 8px; padding-left: 12px; font-size: 12px; color: #d97706; font-style: italic;">
-                Note: ${r.notes}
+                Note: ${escapeHtml(r.notes)}
               </td>
             </tr>` : ''}
             `).join('')}
@@ -1090,7 +1104,7 @@ export function inspectionLogHtml({
             TAMPER-EVIDENT HASH (SHA-256)
           </p>
           <p style="color: #FCBC5A; font-size: 12px; margin: 0; font-family: monospace; word-break: break-all;">
-            ${contentHash}
+            ${escapeHtml(contentHash)}
           </p>
           <p style="color: #64748b; font-size: 10px; margin: 8px 0 0; line-height: 1.6;">
             Hash derived from: inspection ID + order reference + vehicle name + plate number + logged at timestamp + result count.
@@ -1161,7 +1175,7 @@ export function bookingCancellationHtml({
                 Booking Reference</td>
               <td style="padding: 8px 0;
                 font-weight: 700; color: #363737;">
-                ${orderReference}
+                ${escapeHtml(orderReference)}
               </td>
             </tr>
             ${vehicleName ? `
@@ -1170,7 +1184,7 @@ export function bookingCancellationHtml({
                 font-size: 14px;">Vehicle</td>
               <td style="padding: 8px 0;
                 font-weight: 700; color: #363737;">
-                ${vehicleName}
+                ${escapeHtml(vehicleName)}
               </td>
             </tr>` : ''}
             ${pickupDatetime ? `
@@ -1178,14 +1192,14 @@ export function bookingCancellationHtml({
               <td style="padding: 8px 0; color: #666;
                 font-size: 14px;">Pick Up</td>
               <td style="padding: 8px 0;
-                color: #363737;">${pickupDatetime}</td>
+                color: #363737;">${escapeHtml(pickupDatetime)}</td>
             </tr>` : ''}
             ${dropoffDatetime ? `
             <tr>
               <td style="padding: 8px 0; color: #666;
                 font-size: 14px;">Return</td>
               <td style="padding: 8px 0;
-                color: #363737;">${dropoffDatetime}</td>
+                color: #363737;">${escapeHtml(dropoffDatetime)}</td>
             </tr>` : ''}
           </table>
         </div>
@@ -1219,7 +1233,7 @@ export function bookingCancellationHtml({
             Messages outside hours will be picked 
             up when we reopen.
           </p>
-          <a href="https://wa.me/${whatsappNumber}"
+          <a href="https://wa.me/${escapeHtml(whatsappNumber)}"
             style="display: inline-block;
               background: #00577C;
               color: white;
@@ -1282,17 +1296,17 @@ export function transferBookingConfirmationHtml({
           <h1 style="font-family: 'Alegreya Sans', serif; color: #00577C; font-size: 28px; margin: 0;">
             Transfer Booking Confirmed
           </h1>
-          <p style="color: #363737; margin-top: 8px;">Thank you, ${customerName}!</p>
+          <p style="color: #363737; margin-top: 8px;">Thank you, ${escapeHtml(customerName)}!</p>
         </div>
         <div style="background: #E8DFD0; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
               <td style="padding: 6px 0; color: #666; font-size: 14px;">Route</td>
-              <td style="padding: 6px 0; font-weight: 600; color: #363737; text-align: right;">${route}</td>
+              <td style="padding: 6px 0; font-weight: 600; color: #363737; text-align: right;">${escapeHtml(route)}</td>
             </tr>
             <tr>
               <td style="padding: 6px 0; color: #666; font-size: 14px;">Date</td>
-              <td style="padding: 6px 0; font-weight: 600; color: #363737; text-align: right;">${serviceDate}</td>
+              <td style="padding: 6px 0; font-weight: 600; color: #363737; text-align: right;">${escapeHtml(serviceDate)}</td>
             </tr>
             <tr>
               <td style="padding: 6px 0; color: #666; font-size: 14px;">Passengers</td>
@@ -1300,11 +1314,11 @@ export function transferBookingConfirmationHtml({
             </tr>
             ${vanType ? `<tr>
               <td style="padding: 6px 0; color: #666; font-size: 14px;">Van Type</td>
-              <td style="padding: 6px 0; font-weight: 600; color: #363737; text-align: right;">${vanType}</td>
+              <td style="padding: 6px 0; font-weight: 600; color: #363737; text-align: right;">${escapeHtml(vanType)}</td>
             </tr>` : ''}
             ${flightTime ? `<tr>
               <td style="padding: 6px 0; color: #666; font-size: 14px;">Flight Time</td>
-              <td style="padding: 6px 0; font-weight: 600; color: #363737; text-align: right;">${flightTime}</td>
+              <td style="padding: 6px 0; font-weight: 600; color: #363737; text-align: right;">${escapeHtml(flightTime)}</td>
             </tr>` : ''}
             <tr style="border-top: 1px solid #ccc;">
               <td style="padding: 12px 0 6px; color: #363737; font-weight: 700;">Total</td>
@@ -1313,7 +1327,7 @@ export function transferBookingConfirmationHtml({
           </table>
         </div>
         <div style="text-align: center; margin-bottom: 24px;">
-          <a href="https://wa.me/${whatsappNumber}"
+          <a href="https://wa.me/${escapeHtml(whatsappNumber)}"
              style="display: inline-block; background: #00577C; color: white; padding: 12px 28px;
                     border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">
             Questions? WhatsApp Us
