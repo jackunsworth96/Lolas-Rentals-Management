@@ -11,6 +11,7 @@ import runPhoto6 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 
 import runPhoto7 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 092945.png';
 import runPhoto8 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 092959.png';
 import runPhoto9 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 093428.png';
+import animalDivider from '../../assets/Be Pawsitive/Run 2025/Lola.Cat.Illustrations/animal divider.svg';
 
 // ---------------------------------------------------------------------------
 // CountUp hook — animates a number from 0 → target when trigger flips true
@@ -615,11 +616,11 @@ export default function BePawsitivePage() {
       {/* ================================================================
           SECTION 5 — LOLA'S CONTRIBUTION
           ================================================================ */}
-      <section id="lolas-contribution" style={{ background: 'white', padding: sectionPad }}>
+      <section id="lolas-contribution" style={{ background: 'white', padding: sectionPad, paddingBottom: 280, position: 'relative', overflow: 'hidden' }}>
         <div ref={donationRef} style={{ maxWidth: 800, margin: '0 auto', textAlign: 'center' }}>
           <p
             style={{
-              color: '#397dbe',
+              color: '#00577C',
               fontSize: '0.85rem',
               fontWeight: 700,
               textTransform: 'uppercase',
@@ -673,7 +674,7 @@ export default function BePawsitivePage() {
             style={{
               fontFamily: FONT_HEADLINE,
               fontSize: 'clamp(2.8rem, 5vw, 4rem)',
-              color: '#397dbe',
+              color: '#00577C',
               fontWeight: 700,
               lineHeight: 1,
               marginBottom: 12,
@@ -696,7 +697,7 @@ export default function BePawsitivePage() {
             <Link
               to="/book/paw-card"
               style={{
-                background: '#397dbe',
+                background: '#00577C',
                 color: 'white',
                 padding: '14px 28px',
                 borderRadius: 8,
@@ -706,7 +707,7 @@ export default function BePawsitivePage() {
                 fontSize: '1rem',
               }}
             >
-              Get Your Paw Card
+              Paw Card Login
             </Link>
             <a
               href="https://www.be-pawsitive.org/donate"
@@ -714,8 +715,8 @@ export default function BePawsitivePage() {
               rel="noopener noreferrer"
               style={{
                 background: 'transparent',
-                color: '#397dbe',
-                border: '2px solid #397dbe',
+                color: '#00577C',
+                border: '2px solid #00577C',
                 padding: '14px 28px',
                 borderRadius: 8,
                 fontWeight: 600,
@@ -727,6 +728,26 @@ export default function BePawsitivePage() {
               Donate Directly
             </a>
           </div>
+        </div>
+
+        {/* Animal divider — runs edge to edge at bottom of section */}
+        <div style={{
+          position: 'absolute',
+          bottom: -4,
+          left: -1,
+          right: -1,
+          lineHeight: 0,
+          fontSize: 0,
+        }}>
+          <img
+            src={animalDivider}
+            alt=""
+            aria-hidden="true"
+            style={{
+              width: '100%',
+              display: 'block',
+            }}
+          />
         </div>
       </section>
 
