@@ -8,6 +8,7 @@ import { SearchBar } from '../../components/booking/SearchBar.js';
 import { HoldCountdown } from '../../components/booking/HoldCountdown.js';
 import { BrowseBookVehicleSection } from './BrowseBookVehicleSection.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
+import { SEO } from '../../components/seo/SEO.js';
 import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
 import { WHATSAPP_URL } from '../../config/contact.js';
 import chatIcon from '../../assets/Buttons/chat icon.svg';
@@ -142,6 +143,20 @@ export default function BrowseBookPage() {
 
   return (
     <PageLayout title="Browse & Book | Lola's Rentals" showBasketIcon>
+      <SEO
+        title="Reserve a Scooter, Motorbike or Tuktuk — Siargao Island"
+        description="Browse and reserve Honda Beat scooters, motorbikes, tuktuks and tricycles online. Pick your dates, choose your vehicle, instant confirmation. Lola's Rentals, General Luna, Siargao."
+        canonical="/book/reserve"
+        schema={{
+          "@context": "https://schema.org",
+          "@type": "Service",
+          "name": "Vehicle Rental Siargao",
+          "provider": { "@type": "LocalBusiness", "name": "Lola's Rentals & Tours Inc." },
+          "areaServed": { "@type": "Place", "name": "Siargao Island, Philippines" },
+          "serviceType": "Vehicle Rental",
+          "description": "Online scooter, motorbike, tuktuk and tricycle rental booking for Siargao Island"
+        }}
+      />
       <div className="relative mx-auto max-w-7xl overflow-hidden pt-4 md:px-4">
         <HeroFloatingClouds variant="functional" />
         <section className="relative z-10 mb-6">

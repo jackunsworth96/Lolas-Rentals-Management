@@ -1,5 +1,6 @@
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
+import { SEO } from '../../components/seo/SEO.js';
 import SectionDivider from '../../components/home/SectionDivider.js';
 import { FleetPreviewSection } from '../../components/home/FleetPreviewSection.js';
 import TiltedCard from '../../components/home/TiltedCard.js';
@@ -540,6 +541,49 @@ export default function HomePage() {
       showFloralRight={false}
       fullBleed
     >
+      <SEO
+        title="Siargao Scooter, Motorbike & Tuktuk Rental | Lola's Rentals"
+        description="Rent scooters, motorbikes, tuktuks and tricycles on Siargao Island. Honda Beat, Honda Click and more. Easy online booking, free helmet included. Based in General Luna."
+        canonical="/book"
+        schema={{
+          "@context": "https://schema.org",
+          "@type": "LocalBusiness",
+          "name": "Lola's Rentals & Tours Inc.",
+          "description": "Scooter, motorbike, tuktuk and tricycle rental on Siargao Island, Philippines. Airport transfers from Sayak Airport.",
+          "url": "https://lolasrentals.com",
+          "telephone": "+639XXXXXXXXX",
+          "address": {
+            "@type": "PostalAddress",
+            "streetAddress": "Tourism Rd, Catangnan",
+            "addressLocality": "General Luna",
+            "addressRegion": "Surigao del Norte",
+            "postalCode": "8419",
+            "addressCountry": "PH"
+          },
+          "geo": {
+            "@type": "GeoCoordinates",
+            "latitude": 9.8283,
+            "longitude": 126.1775
+          },
+          "openingHours": "Mo-Su 07:00-19:00",
+          "priceRange": "₱₱",
+          "hasOfferCatalog": {
+            "@type": "OfferCatalog",
+            "name": "Vehicle Rentals",
+            "itemListElement": [
+              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Scooter Rental Siargao" } },
+              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Motorbike Rental Siargao" } },
+              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Tuktuk Rental Siargao" } },
+              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Tricycle Rental Siargao" } },
+              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Airport Transfer Siargao" } }
+            ]
+          },
+          "sameAs": [
+            "https://www.facebook.com/lolasrentalssiargao",
+            "https://www.instagram.com/lolasrentals"
+          ]
+        }}
+      />
       <HeroSection />
 
       <div className="max-lg:-mb-16 lg:-mb-[120px]" style={{ marginTop: -4 }}>

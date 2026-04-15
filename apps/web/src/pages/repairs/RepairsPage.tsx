@@ -1,4 +1,5 @@
 import { PageLayout } from '../../components/layout/PageLayout.js';
+import { SEO } from '../../components/seo/SEO.js';
 import { PawDivider } from '../../components/layout/PawDivider.js';
 import { PageHeader } from '../../components/public/PageHeader.js';
 import { EmergencyContactsSection } from '../../components/repairs/EmergencyContactsSection.js';
@@ -8,6 +9,11 @@ import { SafetyTipsSection } from '../../components/repairs/SafetyTipsSection.js
 export default function RepairsPage() {
   return (
     <PageLayout title="Repairs & Info | Lola's Rentals" fullBleed>
+      <SEO
+        title="Scooter & Motorbike Repairs — Siargao Island"
+        description="Scooter and motorbike repair services on Siargao Island. Quick turnaround, fair prices. Lola's Rentals & Tours, General Luna."
+        canonical="/book/repairs"
+      />
       <PageHeader
         eyebrow="Our Commitment"
         headingMain="Repair Costs &"

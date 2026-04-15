@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { PageLayout } from '../../components/layout/PageLayout.js';
+import { SEO } from '../../components/seo/SEO.js';
 import { PawDivider } from '../../components/layout/PawDivider.js';
 import { BrandStorySection } from '../../components/about/BrandStorySection.js';
 import { PawsitiveGallery } from '../../components/about/PawsitiveGallery.js';
@@ -11,6 +12,11 @@ export default function AboutPage() {
 
   return (
     <PageLayout title="About Us | Lola's Rentals" fullBleed floralScrollFreezeRef={gallerySectionRef}>
+      <SEO
+        title="About Lola's Rentals — Siargao's Trusted Vehicle Rental"
+        description="Learn about Lola's Rentals & Tours, Siargao Island's premium scooter, motorbike and tuktuk rental company. Based in General Luna since 2019. Proud sponsor of BePawsitive animal welfare."
+        canonical="/book/about"
+      />
 
       {/* ── Hero ── group_pic full-bleed with text overlay */}
       <div className="relative w-full overflow-hidden" style={{ height: 'clamp(420px, 65vh, 780px)' }}>

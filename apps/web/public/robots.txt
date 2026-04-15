@@ -1,0 +1,15 @@
+User-agent: *
+Allow: /book
+Allow: /book/reserve
+Allow: /book/transfers
+Allow: /book/about
+Allow: /book/bepawsitive
+Allow: /book/repairs
+Disallow: /dashboard
+Disallow: /orders
+Disallow: /fleet
+Disallow: /accounts
+Disallow: /settings
+Disallow: /waiver
+Disallow: /book/cancel
+Sitemap: https://lolasrentals.com/sitemap.xml

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { PlaneTakeoff, PlaneLanding, Minus, Plus, CheckCircle2, Loader2 } from 'lucide-react';
 import { PageLayout } from '../components/layout/PageLayout.js';
+import { SEO } from '../components/seo/SEO.js';
 import { PageHeader } from '../components/public/PageHeader.js';
 import { PrimaryCtaButton } from '../components/public/PrimaryCtaButton.js';
 import { FadeUpSection } from '../components/public/FadeUpSection.js';
@@ -307,6 +308,20 @@ export default function TransferBookingPage() {
 
   return (
     <PageLayout title="Airport Transfers | Lola's Rentals" fullBleed>
+      <SEO
+        title="Siargao Airport Transfer & Tuktuk Hire — Book Online"
+        description="Book airport transfers from Sayak Airport (IAO) to General Luna, Cloud 9 and all Siargao destinations. Shared and private vans, tuktuks available. Lola's Rentals & Tours."
+        canonical="/book/transfers"
+        schema={{
+          "@context": "https://schema.org",
+          "@type": "Service",
+          "name": "Siargao Airport Transfer",
+          "provider": { "@type": "LocalBusiness", "name": "Lola's Rentals & Tours Inc." },
+          "areaServed": { "@type": "Place", "name": "Siargao Island, Philippines" },
+          "serviceType": "Airport Transfer",
+          "description": "Airport transfers from Sayak Airport to General Luna and all Siargao destinations"
+        }}
+      />
       <PageHeader
         eyebrow="Siargao Island"
         headingMain="Airport"

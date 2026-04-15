@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageLayout } from '../../components/layout/PageLayout.js';
+import { SEO } from '../../components/seo/SEO.js';
 import runPhoto1 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 092746.png';
 import runPhoto2 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 092806.png';
 import runPhoto3 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 092829.png';
@@ -123,6 +124,11 @@ export default function BePawsitivePage() {
 
   return (
     <PageLayout fullBleed title="BePawsitive | Lola's Rentals">
+      <SEO
+        title="BePawsitive — Lola's Rentals x Siargao Animal Welfare"
+        description="Every rental at Lola's supports BePawsitive, Siargao's animal welfare NGO. Spaying, neutering and vaccinating street animals on the island. Join the movement."
+        canonical="/book/bepawsitive"
+      />
 
       {/* ================================================================
           SECTION 1 — HERO
