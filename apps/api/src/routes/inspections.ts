@@ -350,7 +350,6 @@ router.post(
               }),
             });
 
-            console.log('[inspection-log] Email sent for:', body.orderReference);
           } catch (err) {
             console.error('[inspection-log] Email failed:', err);
           }

@@ -51,7 +51,6 @@ export async function sendEmail({
       html,
       text: text ?? html.replace(/<[^>]+>/g, ''),
     });
-    console.log('Email sent:', subject, '→', to);
   } catch (err) {
     console.error('Email send failed:', err);
     // Don't throw — email failure should never break the main flow

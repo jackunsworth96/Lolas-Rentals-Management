@@ -127,7 +127,6 @@ export function startWaiverReminderJob(): void {
           sent_at: now.toISOString(),
         });
 
-        console.log('[waiver-reminder] Sent reminder for:', token);
       }
     } catch (err) {
       console.error('[waiver-reminder] Job error:', err);

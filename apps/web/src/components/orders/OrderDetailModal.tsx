@@ -384,57 +384,6 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
   const settleFinalSurcharge = settleFinalPM ? Number(settleFinalPM.surchargePercent ?? settleFinalPM.surcharge_percent ?? 0) : 0;
   const isSettleFinalCard = settleFinalSurcharge > 0;
 
-  useEffect(() => {
-    if (!import.meta.env.DEV || !open || !order || orderLoading) return;
-    const ordTotal = enrichedData?.finalTotal ?? moneyAmount(order.finalTotal);
-    const ordPaid = enrichedData?.totalPaid ?? (payments as Array<{ amount: number }>).reduce((s, p) => s + (p.amount ?? 0), 0);
-    const bal = ordTotal - ordPaid;
-    const secDep = enrichedData?.securityDeposit ?? moneyAmount(order.securityDeposit);
-    const depositApplied = Math.min(secDep, Math.max(0, bal));
-    const depositRefund = Math.max(0, secDep - Math.max(0, bal));
-    const remainingAfterDeposit = Math.max(0, bal - depositApplied);
-    const refundReady = depositRefund <= 0 || (!!settleRefundMethodId && !!effectiveRefundAccountId.trim());
-    const finalPayReady = remainingAfterDeposit <= 0 || (!!settleFinalMethodId && (isSettleFinalCard || !!settleFinalAccountId));
-    const settleReady = !!settleDepositAccountId && !!settleReceivableAccountId && refundReady && finalPayReady;
-    const buttonDisabled = settleOrder.isPending || !settleReady;
-    console.log('[OrderDetailModal Settle button]', {
-      buttonDisabled,
-      settleOrder_isPending: settleOrder.isPending,
-      settleReady,
-      settleDepositAccountId: settleDepositAccountId || '(empty)',
-      settleReceivableAccountId: settleReceivableAccountId || '(empty)',
-      refundReady,
-      finalPayReady,
-      depositRefund,
-      remainingAfterDeposit,
-      balance: bal,
-      securityDeposit: secDep,
-      settleRefundMethodId: settleRefundMethodId || '(empty)',
-      effectiveRefundAccountId: effectiveRefundAccountId || '(empty)',
-      routedRefundResolved: routedRefundResolved ?? '(null)',
-      settleFinalMethodId: settleFinalMethodId || '(empty)',
-      settleFinalAccountId: settleFinalAccountId || '(empty)',
-      isSettleFinalCard,
-      routedSettleFinalAcct: routedSettleFinalAcct ?? '(null)',
-    });
-  }, [
-    open,
-    order,
-    orderLoading,
-    enrichedData,
-    payments,
-    settleOrder.isPending,
-    settleDepositAccountId,
-    settleReceivableAccountId,
-    settleRefundMethodId,
-    effectiveRefundAccountId,
-    routedRefundResolved,
-    settleFinalMethodId,
-    settleFinalAccountId,
-    isSettleFinalCard,
-    routedSettleFinalAcct,
-  ]);
-
   const handleSettle = (e: React.FormEvent) => {
     e.preventDefault();
     if (!settlementDate || !settleDepositAccountId || !settleReceivableAccountId) return;

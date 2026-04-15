@@ -454,11 +454,12 @@ export default function BasketPage() {
     }
     const orderRefs: string[] = [];
     const submittedOrderRefs: string[] = [];
+    const submittedOrderTokens: Record<string, string> = {};
     let serverTotal = 0;
     try {
       for (let i = 0; i < basket.length; i++) {
         const item = basket[i];
-        const result = await api.post<{ id: string; orderReference: string; serverQuote: number | null; charityDonation: number }>(
+        const result = await api.post<{ id: string; orderReference: string; cancellationToken: string; serverQuote: number | null; charityDonation: number }>(
           '/public/booking/submit',
           {
             sessionToken, vehicleModelId: item.vehicleModelId,
@@ -484,6 +485,7 @@ export default function BasketPage() {
         );
         orderRefs.push(result.orderReference);
         submittedOrderRefs.push(result.orderReference);
+        if (result.cancellationToken) submittedOrderTokens[result.orderReference] = result.cancellationToken;
         if (result.serverQuote != null) serverTotal += result.serverQuote;
       }
       // Location fees are per-vehicle and applied once to the total after all vehicles are summed
@@ -516,7 +518,8 @@ export default function BasketPage() {
       // Rollback: cancel any orders already submitted before the failure
       for (const ref of submittedOrderRefs) {
         try {
-          await api.patch(`/public/booking/cancel/${encodeURIComponent(ref)}`, {});
+          const cancelToken = submittedOrderTokens[ref];
+          await api.patch(`/public/booking/cancel/${encodeURIComponent(ref)}?token=${encodeURIComponent(cancelToken ?? '')}`, {});
         } catch {
           // Best effort — ignore individual cancel failures
         }

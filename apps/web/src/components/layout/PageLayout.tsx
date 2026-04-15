@@ -300,7 +300,7 @@ export function PageLayout({
 
       <button
         onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-        className="fixed bottom-6 right-6 z-50 md:hidden flex items-center justify-center w-10 h-10 rounded-full bg-teal-brand text-white shadow-md transition-opacity duration-300"
+        className="fixed bottom-6 right-6 z-50 md:hidden flex items-center justify-center w-11 h-11 rounded-full bg-teal-brand text-white shadow-md transition-opacity duration-300"
         style={{
           opacity: showBackTop ? 1 : 0,
           pointerEvents: showBackTop ? 'auto' : 'none',
@@ -322,29 +322,6 @@ export function PageLayout({
       </button>
 
       <ClickSpark sparkColor="#FCBC5A" sparkSize={10} sparkRadius={14} sparkCount={8} duration={400} easing="ease-out" extraScale={1} />
-
-      <button
-        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-        className="fixed bottom-6 right-6 z-50 md:hidden flex items-center justify-center w-10 h-10 rounded-full bg-teal-brand text-white shadow-md transition-opacity duration-300"
-        style={{
-          opacity: showBackTop ? 1 : 0,
-          pointerEvents: showBackTop ? 'auto' : 'none',
-        }}
-        aria-label="Back to top"
-      >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M8 12V4M4 8l4-4 4 4" />
-        </svg>
-      </button>
 
     </div>
   );

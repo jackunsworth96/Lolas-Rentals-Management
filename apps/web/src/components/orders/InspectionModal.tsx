@@ -53,14 +53,6 @@ export function InspectionModal({
   employeeName,
   onComplete,
 }: InspectionModalProps) {
-  console.log('InspectionModal mounting', {
-    open,
-    orderId,
-    orderReference,
-    storeId,
-    employeeName,
-  });
-
   const [items, setItems] = useState<InspectionItem[]>([]);
   const [results, setResults] = useState<Record<string, InspectionResult>>({});
   const [vehicleId, setVehicleId] = useState('');
@@ -81,18 +73,9 @@ export function InspectionModal({
   const isDrawingRef = useRef(false);
 
   useEffect(() => {
-    if (open) {
-      console.log('InspectionModal opened, items:', items);
-      console.log('InspectionModal results:', results);
-      console.log('InspectionModal vehicles:', availableVehicles);
-    }
-  }, [open, items, results, availableVehicles]);
-
-  useEffect(() => {
     const d = dialogRef.current;
     if (!d) return;
     if (open && !d.open) {
-      console.log('Calling showModal');
       d.showModal();
     } else if (!open && d.open) {
       isClosingRef.current = true;
@@ -123,7 +106,6 @@ export function InspectionModal({
         `/fleet/available?storeId=${storeId}&pickupDatetime=${encodeURIComponent(now)}&dropoffDatetime=${encodeURIComponent(future)}`,
       )
       .then((data) => {
-        console.log('Vehicles:', data);
         setAvailableVehicles(Array.isArray(data) ? data : []);
       })
       .catch((err: unknown) => console.error('Vehicles error:', err));

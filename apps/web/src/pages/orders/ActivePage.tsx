@@ -51,10 +51,6 @@ export default function ActivePage() {
   const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
 
-  useEffect(() => {
-    console.log('inspectionOrderId changed:', inspectionOrderId);
-  }, [inspectionOrderId]);
-
   const filtered = useMemo(() => {
     let list = orders ?? [];
 
@@ -182,10 +178,8 @@ export default function ActivePage() {
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            console.log('Inspection button clicked', r.id);
             setInspectionOrderId(r.id);
             setInspectionOrderRef(r.bookingToken ?? r.wooOrderId ?? r.id);
-            console.log('inspectionOrderId set to', r.id);
           }}
           className="font-lato text-xs font-medium px-3 py-1.5 rounded-lg border border-teal-brand text-teal-brand hover:bg-teal-brand/5 transition-colors"
         >
@@ -268,21 +262,20 @@ export default function ActivePage() {
         />
       )}
 
-      {inspectionOrderId &&
-        (console.log('Rendering InspectionModal') || (
-          <InspectionModal
-            open={!!inspectionOrderId}
-            onClose={() => setInspectionOrderId(null)}
-            orderId={inspectionOrderId}
-            orderReference={inspectionOrderRef}
-            storeId={storeId}
-            employeeName={currentUser?.username ?? 'Staff'}
-            onComplete={() => {
-              setInspectionOrderId(null);
-              void refetchOrders();
-            }}
-          />
-        ))}
+      {inspectionOrderId && (
+        <InspectionModal
+          open={!!inspectionOrderId}
+          onClose={() => setInspectionOrderId(null)}
+          orderId={inspectionOrderId}
+          orderReference={inspectionOrderRef}
+          storeId={storeId}
+          employeeName={currentUser?.username ?? 'Staff'}
+          onComplete={() => {
+            setInspectionOrderId(null);
+            void refetchOrders();
+          }}
+        />
+      )}
     </div>
   );
 }

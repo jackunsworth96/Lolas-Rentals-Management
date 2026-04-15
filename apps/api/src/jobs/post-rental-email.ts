@@ -135,12 +135,6 @@ export function startPostRentalEmailJob(): void {
           sent_at: now.toISOString(),
         });
 
-        console.log(
-          '[post-rental-email] Sent to:',
-          c.email,
-          'for order:',
-          (order.booking_token as string | null) ?? order.id,
-        );
       }
     } catch (err) {
       console.error('[post-rental-email] Job error:', err);
