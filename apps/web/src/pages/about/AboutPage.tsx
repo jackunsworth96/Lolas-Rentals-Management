@@ -14,7 +14,7 @@ export default function AboutPage() {
     <PageLayout title="About Us | Lola's Rentals" fullBleed floralScrollFreezeRef={gallerySectionRef}>
       <SEO
         title="About Lola's Rentals — Siargao's Trusted Vehicle Rental"
-        description="Learn about Lola's Rentals & Tours, Siargao Island's premium scooter, motorbike and tuktuk rental company. Based in General Luna since 2019. Proud sponsor of BePawsitive animal welfare."
+        description="Learn about Lola's Rentals & Tours, Siargao Island's premium scooter, motorbike and tuktuk rental company. Based in General Luna since 2019. Proud sponsor of Be Pawsitive animal welfare."
         canonical="/book/about"
       />
 

@@ -150,7 +150,7 @@ export function bookingConfirmationHtml({
   const charityHtml =
     charityDonation > 0
       ? `<p style="font-size: 13px; color: #00577C; font-style: italic; margin: 8px 0 16px;">
-          🐾 ₱${charityDonation.toLocaleString()} will be donated to BePawsitive — thank you for giving back to Siargao's street animals!
+          🐾 ₱${charityDonation.toLocaleString()} will be donated to Be Pawsitive — thank you for giving back to Siargao's street animals!
         </p>`
       : '';
 
@@ -537,7 +537,7 @@ export function postRentalThankYouHtml({
         ${pawCardEstablishments.map((e) => `<li>${escapeHtml(e.name)} — ₱${e.saved.toLocaleString()} saved</li>`).join('')}
       </ul>
       <p style="color: white; font-size: 14px; line-height: 1.6; margin: 0 0 16px;">
-        Lola's Rentals matched that <strong>peso-for-peso</strong> as a donation to BePawsitive —
+        Lola's Rentals matched that <strong>peso-for-peso</strong> as a donation to Be Pawsitive —
         funding spay and neuter clinics for Siargao's street animals.
         <strong style="color: #FCBC5A;">₱${pawCardSavings.toLocaleString()} donated in your name.</strong>
       </p>

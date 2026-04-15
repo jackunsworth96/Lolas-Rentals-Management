@@ -258,7 +258,7 @@ export async function submitDirectBooking(
 
     const charityStaffHtml =
       charityDonation > 0
-        ? `<tr><td style="padding:4px 0;color:#666;font-size:13px;">Charity</td><td style="padding:4px 0;font-size:13px;color:#00577C;">₱${charityDonation.toLocaleString()} → BePawsitive</td></tr>`
+        ? `<tr><td style="padding:4px 0;color:#666;font-size:13px;">Charity</td><td style="padding:4px 0;font-size:13px;color:#00577C;">₱${charityDonation.toLocaleString()} → Be Pawsitive</td></tr>`
         : '';
 
     void sendEmail({
