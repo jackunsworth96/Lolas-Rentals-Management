@@ -430,7 +430,7 @@ router.get('/order/:reference', async (req, res, next) => {
 
     const { data: rows, error } = await supabase
       .from('orders_raw')
-      .select('*')
+      .select('id, order_reference, customer_email, customer_name, vehicle_model_id, pickup_datetime, dropoff_datetime, pickup_location_id, dropoff_location_id, addon_ids, transfer_type, flight_number, transfer_route, charity_donation, booking_channel, store_id, status')
       .eq('order_reference', reference)
       .eq('booking_channel', 'direct')
       .limit(1);

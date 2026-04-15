@@ -46,6 +46,7 @@ const RefundPolicyPage = lazy(() => import('./pages/legal/RefundPolicyPage.js'))
 const PeaceOfMindPage = lazy(() => import('./pages/peace-of-mind/PeaceOfMindPage.js'));
 const BePawsitivePage = lazy(() => import('./pages/bepawsitive/BePawsitivePage.js'));
 const CancelBookingPage = lazy(() => import('./pages/cancel/CancelBookingPage.js'));
+const NotFoundPage = lazy(() => import('./pages/not-found/NotFoundPage.js'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
@@ -61,7 +62,7 @@ function RequireFleetBookValue({ children }: { children: React.ReactNode }) {
 
 const Loading = () => (
   <div className="flex h-screen items-center justify-center">
-    <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+    <div className="h-8 w-8 animate-spin rounded-full border-4 border-teal-brand border-t-transparent" />
   </div>
 );
 
@@ -128,6 +129,7 @@ export function AppRouter() {
           <Route path="ui-errors" element={<UIErrorsPage />} />
           <Route path="directory" element={<DirectoryPage />} />
         </Route>
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Suspense>
   );

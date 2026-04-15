@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { ExtendLookupRequestSchema, PublicExtendConfirmSchema, StaffExtendConfirmSchema, Permission } from '@lolas/shared';
 import { validateBody } from '../middleware/validate.js';
 import { authenticate } from '../middleware/authenticate.js';
@@ -17,6 +18,22 @@ function escapeIlike(value: string): string {
   return value.replace(/[%_\\]/g, '\\$&');
 }
 
+const extendLookupLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  message: { success: false, error: { code: 'RATE_LIMIT', message: 'Too many extend lookup attempts. Please try again later.' } },
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+});
+
+const extendConfirmLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  message: { success: false, error: { code: 'RATE_LIMIT', message: 'Too many extend confirm attempts. Please try again later.' } },
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+});
+
 // ── Shared helpers ──
 
 function getDayBracketLabel(days: number): string {
@@ -31,7 +48,7 @@ function extDayCount(msA: number, msB: number): number {
 
 // ── Lookup ──
 
-router.post('/lookup', validateBody(ExtendLookupRequestSchema), async (req, res, next) => {
+router.post('/lookup', extendLookupLimiter, validateBody(ExtendLookupRequestSchema), async (req, res, next) => {
   try {
     const { email, orderReference } = req.body as { email: string; orderReference: string };
     const trimmedEmail = email.trim().toLowerCase();
@@ -165,7 +182,7 @@ router.post('/lookup', validateBody(ExtendLookupRequestSchema), async (req, res,
 
 // ── Preview Extension (read-only, no DB writes) ──
 
-router.get('/preview', async (req, res, next) => {
+router.get('/preview', extendLookupLimiter, async (req, res, next) => {
   try {
     const { orderReference, email, newDropoffDatetime } = req.query as {
       orderReference?: string; email?: string; newDropoffDatetime?: string;
@@ -324,7 +341,7 @@ router.get('/preview', async (req, res, next) => {
 
 // ── Confirm Extension ──
 
-router.post('/confirm', validateBody(PublicExtendConfirmSchema), async (req, res, next) => {
+router.post('/confirm', extendConfirmLimiter, validateBody(PublicExtendConfirmSchema), async (req, res, next) => {
   try {
     const {
       orderReference,

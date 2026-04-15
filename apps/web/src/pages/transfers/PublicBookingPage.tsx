@@ -181,6 +181,7 @@ export default function PublicBookingPage() {
                   value={serviceDate}
                   onChange={(e) => setServiceDate(e.target.value)}
                   required
+                  min={new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })}
                   className={inputClass}
                 />
               </div>
