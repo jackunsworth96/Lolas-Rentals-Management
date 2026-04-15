@@ -551,7 +551,7 @@ export default function HomePage() {
           "name": "Lola's Rentals & Tours Inc.",
           "description": "Scooter, motorbike, tuktuk and tricycle rental on Siargao Island, Philippines. Airport transfers from Sayak Airport.",
           "url": "https://lolasrentals.com",
-          "telephone": "+639XXXXXXXXX",
+          "telephone": "+639694443413",
           "address": {
             "@type": "PostalAddress",
             "streetAddress": "Tourism Rd, Catangnan",
