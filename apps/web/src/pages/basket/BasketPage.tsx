@@ -453,6 +453,7 @@ export default function BasketPage() {
       allAddonIds = allAddonIds.filter((id) => id !== nid);
     }
     const orderRefs: string[] = [];
+    const orderIds: string[] = [];
     const submittedOrderRefs: string[] = [];
     const submittedOrderTokens: Record<string, string> = {};
     let serverTotal = 0;
@@ -484,6 +485,7 @@ export default function BasketPage() {
           },
         );
         orderRefs.push(result.orderReference);
+        orderIds.push(result.id);
         submittedOrderRefs.push(result.orderReference);
         if (result.cancellationToken) submittedOrderTokens[result.orderReference] = result.cancellationToken;
         if (result.serverQuote != null) serverTotal += result.serverQuote;
@@ -513,7 +515,31 @@ export default function BasketPage() {
         flightNumber: transfer?.flightNumber ?? null, transferRoute: transfer?.transferRoute ?? null,
         charityDonation,
       };
-      navigate(`/book/confirmation/${encodeURIComponent(orderRefs[0])}`, { state: confirmState });
+      const isCardPayment = surchargePercent > 0;
+      if (isCardPayment && orderIds[0]) {
+        // Store confirmation state in sessionStorage for when Maya redirects back
+        sessionStorage.setItem(
+          `confirm_state_${orderRefs[0]}`,
+          JSON.stringify(confirmState),
+        );
+        try {
+          const mayaResult = await api.post<{ checkoutId: string; redirectUrl: string }>(
+            '/payments/maya/checkout',
+            {
+              orderId: orderIds[0],
+              amountPHP: grandTotal,
+              description: `Lola's Rentals – ${orderRefs[0]}`,
+            },
+          );
+          // Redirect to Maya hosted payment page
+          window.location.href = mayaResult.redirectUrl;
+        } catch {
+          // If Maya checkout fails, fall back to normal confirmation
+          navigate(`/book/confirmation/${encodeURIComponent(orderRefs[0])}`, { state: confirmState });
+        }
+      } else {
+        navigate(`/book/confirmation/${encodeURIComponent(orderRefs[0])}`, { state: confirmState });
+      }
     } catch (err: unknown) {
       // Rollback: cancel any orders already submitted before the failure
       for (const ref of submittedOrderRefs) {

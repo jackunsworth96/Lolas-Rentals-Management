@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { FileSignature } from 'lucide-react';
 import { api } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
@@ -48,6 +48,9 @@ export default function ConfirmationPage() {
 
   const navState = location.state as ConfirmationState | null;
 
+  const [searchParams] = useSearchParams();
+  const paymentStatus = searchParams.get('payment') as 'success' | 'failed' | 'cancelled' | null;
+
   const [state, setState] = useState<ConfirmationState | null>(navState);
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState(false);
@@ -64,9 +67,21 @@ export default function ConfirmationPage() {
     if (state) return;
     if (!reference) { setFetchError(true); return; }
 
+    // Check if Maya redirected back with stored confirmation state
+    const storedState = sessionStorage.getItem(`confirm_state_${reference}`);
+    if (storedState) {
+      try {
+        const parsed = JSON.parse(storedState) as ConfirmationState;
+        setState(parsed);
+        return;
+      } catch {
+        // ignore parse errors, fall through to API fetch
+      }
+    }
+
+    // Fall back to API fetch using saved email
     const savedEmail = sessionStorage.getItem(`confirm_email_${reference}`) ?? '';
     if (!savedEmail) { setFetchError(true); setLoading(false); return; }
-
     let cancelled = false;
     setLoading(true);
     api.get<ConfirmationState>(
@@ -116,6 +131,35 @@ export default function ConfirmationPage() {
 
   return (
     <PageLayout title="Booking Confirmed | Lola's Rentals" showFloralRight={false}>
+      {paymentStatus === 'success' && (
+        <div className="mx-auto max-w-2xl px-4 pt-6">
+          <div className="rounded-xl border border-green-200 bg-green-50 px-5 py-4 flex items-center gap-3">
+            <svg className="h-6 w-6 shrink-0 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            <div>
+              <p className="font-semibold text-green-800 font-lato">Payment received!</p>
+              <p className="text-sm text-green-700 font-lato">Your card payment was successful. Your booking is confirmed.</p>
+            </div>
+          </div>
+        </div>
+      )}
+      {(paymentStatus === 'failed' || paymentStatus === 'cancelled') && (
+        <div className="mx-auto max-w-2xl px-4 pt-6">
+          <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4 flex items-center gap-3">
+            <svg className="h-6 w-6 shrink-0 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            <div>
+              <p className="font-semibold text-red-800 font-lato">Payment {paymentStatus === 'cancelled' ? 'cancelled' : 'failed'}</p>
+              <p className="text-sm text-red-700 font-lato">
+                Your booking is still confirmed but payment was not completed.
+                Please <a href={`https://wa.me/${WHATSAPP_NUMBER}`} className="underline font-medium">contact us on WhatsApp</a> to arrange payment.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       <div
         className="relative -mx-4 -mt-20 min-h-screen overflow-hidden px-4 pt-20"
         style={{ backgroundColor: '#f1e6d6' }}
