@@ -3,7 +3,13 @@ import type { BookingPort, ConfigRepository, TransferRepository } from '@lolas/d
 import type { SubmitDirectBookingInput } from '@lolas/shared';
 import { resolveSourceFromStore } from '@lolas/shared';
 import { computeQuote } from './compute-quote.js';
-import { sendEmail, bookingConfirmationHtml, NOTIFICATION_EMAIL } from '../../services/email.js';
+import {
+  sendEmail,
+  bookingConfirmationHtml,
+  bookingStaffAlertHtml,
+  escapeHtml,
+  NOTIFICATION_EMAIL,
+} from '../../services/email.js';
 import { getSupabaseClient } from '../../adapters/supabase/client.js';
 import { formatManilaDate } from '../../utils/manila-date.js';
 
@@ -203,7 +209,7 @@ export async function submitDirectBooking(
           totalPrice: input.transferAmount ?? 0,
           paymentMethod: null,
           bookingSource: 'Online',
-          bookingToken: null,
+          bookingToken: orderReference,
           storeId: input.storeId,
           orderId: null,
         },
@@ -296,16 +302,16 @@ export async function submitDirectBooking(
     const addonsStaffHtml =
       addons.length > 0
         ? addons
-            .map((a) => `<tr><td style="padding:4px 0;color:#666;font-size:13px;">Add-on</td><td style="padding:4px 0;font-size:13px;">${a.name} — ₱${a.price.toLocaleString()}</td></tr>`)
+            .map((a) => `<tr><td style="padding:4px 0;color:#666;font-size:13px;">Add-on</td><td style="padding:4px 0;font-size:13px;">${escapeHtml(a.name)} — ₱${a.price.toLocaleString()}</td></tr>`)
             .join('')
         : '';
 
     const transferStaffHtml = hasTransfer
       ? `<tr><td style="padding:4px 0;color:#666;font-size:13px;">Transfer</td><td style="padding:4px 0;font-size:13px;font-weight:700;">${
           input.transferType === 'tuktuk' ? 'Private TukTuk' : input.transferType === 'private' ? 'Private Van' : 'Shared Van'
-        }${transferRoute ? ` — ${transferRoute}` : ''}</td></tr>
-        ${input.flightNumber ? `<tr><td style="padding:4px 0;color:#666;font-size:13px;">Flight</td><td style="padding:4px 0;font-size:13px;">${input.flightNumber}</td></tr>` : ''}
-        ${input.flightArrivalTime ? `<tr><td style="padding:4px 0;color:#666;font-size:13px;">Arrival</td><td style="padding:4px 0;font-size:13px;">${input.flightArrivalTime}</td></tr>` : ''}`
+        }${transferRoute ? ` — ${escapeHtml(transferRoute)}` : ''}</td></tr>
+        ${input.flightNumber ? `<tr><td style="padding:4px 0;color:#666;font-size:13px;">Flight</td><td style="padding:4px 0;font-size:13px;">${escapeHtml(input.flightNumber)}</td></tr>` : ''}
+        ${input.flightArrivalTime ? `<tr><td style="padding:4px 0;color:#666;font-size:13px;">Arrival</td><td style="padding:4px 0;font-size:13px;">${escapeHtml(input.flightArrivalTime)}</td></tr>` : ''}`
       : '';
 
     const charityStaffHtml =
@@ -316,67 +322,22 @@ export async function submitDirectBooking(
     void sendEmail({
       to: NOTIFICATION_EMAIL,
       subject: `🐾 New Booking — ${orderReference} — ${input.customerName}`,
-      html: `
-        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
-          <div style="background: #00577C; border-radius: 10px; padding: 20px 24px; margin-bottom: 20px;">
-            <h2 style="color: white; margin: 0; font-size: 20px;">🐾 New Booking Received</h2>
-            <p style="color: rgba(255,255,255,0.75); margin: 4px 0 0; font-size: 13px;">${orderReference}</p>
-          </div>
-          <div style="background: white; border-radius: 10px; padding: 20px 24px; border: 1px solid #eee;">
-            <table style="width: 100%; border-collapse: collapse;">
-              <tr>
-                <td style="padding: 6px 0; color: #666; font-size: 13px; width: 130px;">Customer</td>
-                <td style="padding: 6px 0; font-weight: 700; font-size: 14px;">${input.customerName}</td>
-              </tr>
-              <tr>
-                <td style="padding: 6px 0; color: #666; font-size: 13px;">Email</td>
-                <td style="padding: 6px 0; font-size: 13px;">
-                  <a href="mailto:${input.customerEmail}" style="color: #00577C;">${input.customerEmail}</a>
-                </td>
-              </tr>
-              <tr>
-                <td style="padding: 6px 0; color: #666; font-size: 13px;">Mobile</td>
-                <td style="padding: 6px 0; font-size: 13px;">
-                  <a href="tel:${input.customerMobile ?? ''}" style="color: #00577C;">${input.customerMobile ?? '—'}</a>
-                </td>
-              </tr>
-              <tr style="border-top: 1px solid #f0f0f0;">
-                <td style="padding: 6px 0; color: #666; font-size: 13px;">Vehicle</td>
-                <td style="padding: 6px 0; font-weight: 700; font-size: 14px;">${vehicleName}</td>
-              </tr>
-              <tr>
-                <td style="padding: 6px 0; color: #666; font-size: 13px;">Pick Up</td>
-                <td style="padding: 6px 0; font-size: 13px;">${pickupLocation} — ${formatManilaDateTime(input.pickupDatetime)}</td>
-              </tr>
-              <tr>
-                <td style="padding: 6px 0; color: #666; font-size: 13px;">Drop Off</td>
-                <td style="padding: 6px 0; font-size: 13px;">${dropoffLocation} — ${formatManilaDateTime(input.dropoffDatetime)}</td>
-              </tr>
-              <tr>
-                <td style="padding: 6px 0; color: #666; font-size: 13px;">Payment</td>
-                <td style="padding: 6px 0; font-size: 13px;">${paymentMethodLabel}</td>
-              </tr>
-              ${addonsStaffHtml}
-              ${transferStaffHtml}
-              ${charityStaffHtml}
-              <tr style="border-top: 2px solid #FCBC5A;">
-                <td style="padding: 12px 0 6px; color: #666; font-size: 13px;">Total</td>
-                <td style="padding: 12px 0 6px; font-weight: 800; color: #00577C; font-size: 18px;">
-                  ₱${grandTotal.toLocaleString()}
-                </td>
-              </tr>
-              <tr>
-                <td colspan="2" style="padding: 8px 0; font-size: 12px; color: #888; font-style: italic;">
-                  💰 A cash security deposit is collected at pickup: ₱1,000 per scooter or ₱2,000 per TukTuk. This is fully refundable upon return.
-                </td>
-              </tr>
-            </table>
-          </div>
-          <p style="margin-top: 16px; font-size: 11px; color: #bbb; text-align: center;">
-            Sent automatically by Lola's Rentals platform
-          </p>
-        </div>
-      `,
+      html: bookingStaffAlertHtml({
+        customerName: input.customerName,
+        customerEmail: input.customerEmail,
+        customerMobile: input.customerMobile,
+        orderReference,
+        vehicleName,
+        pickupLocation,
+        dropoffLocation,
+        pickupDatetime: formatManilaDateTime(input.pickupDatetime),
+        dropoffDatetime: formatManilaDateTime(input.dropoffDatetime),
+        paymentMethodLabel,
+        addonsStaffHtml,
+        transferStaffHtml,
+        charityStaffHtml,
+        grandTotal,
+      }),
     });
   })();
 

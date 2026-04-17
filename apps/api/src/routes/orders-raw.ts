@@ -5,7 +5,7 @@ import { requirePermission } from '../middleware/authorize.js';
 import { Permission, resolveStoreFromSource, resolveSourceFromStore } from '@lolas/shared';
 import { supabase } from '../adapters/supabase/client.js';
 import { processRawOrder, type ProcessRawOrderDeps } from '../use-cases/orders/process-raw-order.js';
-import { sendEmail, bookingConfirmationHtml, bookingCancellationHtml, NOTIFICATION_EMAIL } from '../services/email.js';
+import { sendEmail, bookingConfirmationHtml, bookingCancellationHtml, walkInStaffAlertHtml, NOTIFICATION_EMAIL } from '../services/email.js';
 import { formatManilaDate } from '../utils/manila-date.js';
 
 function generateWalkInReference(source: string): string {
@@ -459,48 +459,16 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
         void sendEmail({
           to: NOTIFICATION_EMAIL,
           subject: `🐾 New Walk-in — ${orderReference} — ${body.customerName}`,
-          html: `
-            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
-              <h2 style="color: #00577C;">New Walk-in Booking</h2>
-              <table style="width: 100%; border-collapse: collapse;">
-                <tr>
-                  <td style="padding: 8px 0; color: #666; font-size: 14px; width: 140px;">Reference</td>
-                  <td style="padding: 8px 0; font-weight: 700;">${orderReference}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #666; font-size: 14px;">Customer</td>
-                  <td style="padding: 8px 0; font-weight: 700;">${body.customerName}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #666; font-size: 14px;">Email</td>
-                  <td style="padding: 8px 0;">${body.customerEmail ?? '—'}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #666; font-size: 14px;">Mobile</td>
-                  <td style="padding: 8px 0;">${body.customerMobile ?? '—'}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #666; font-size: 14px;">Vehicle</td>
-                  <td style="padding: 8px 0; font-weight: 700;">${body.vehicleName}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #666; font-size: 14px;">Pick Up</td>
-                  <td style="padding: 8px 0;">${formatManila(body.pickupDatetime)}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #666; font-size: 14px;">Return</td>
-                  <td style="padding: 8px 0;">${formatManila(body.dropoffDatetime)}</td>
-                </tr>
-                <tr style="border-top: 2px solid #FCBC5A;">
-                  <td style="padding: 16px 0 8px; color: #666; font-size: 14px;">Total</td>
-                  <td style="padding: 16px 0 8px; font-weight: 700; color: #00577C; font-size: 18px;">₱${body.grandTotal.toLocaleString()}</td>
-                </tr>
-              </table>
-              <p style="margin-top: 24px; font-size: 12px; color: #999;">
-                Sent automatically by Lola's Rentals platform — Walk-in booking
-              </p>
-            </div>
-          `,
+          html: walkInStaffAlertHtml({
+            customerName: body.customerName,
+            customerEmail: body.customerEmail,
+            customerMobile: body.customerMobile,
+            orderReference,
+            vehicleName: body.vehicleName,
+            pickupDatetime: formatManila(body.pickupDatetime),
+            dropoffDatetime: formatManila(body.dropoffDatetime),
+            grandTotal: body.grandTotal,
+          }),
         });
       } catch (err) {
         console.error('[walk-in-email] Error:', err);
