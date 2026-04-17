@@ -8,6 +8,7 @@ import { PawCardLoginPanel, type PawCardAccess } from './PawCardLoginPanel.js';
 import { PawCardSavingsForm } from './PawCardSavingsForm.js';
 import { PawCardDashboard } from './PawCardDashboard.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
+import { SEO } from '../../components/seo/SEO.js';
 import { PageHeader } from '../../components/public/PageHeader.js';
 import BorderGlow from '../../components/home/BorderGlow.js';
 import InclusionMarquee from '../../components/home/InclusionMarquee.js';
@@ -50,6 +51,11 @@ export default function PawCardPage() {
 
   return (
     <PageLayout title="Paw Card | Lola's Rentals" showFloralLeft={false} showFloralRight={false} fullBleed>
+      <SEO
+        title="Paw Card | Lola's Rentals Siargao"
+        description="Join the Siargao Paw Card loyalty programme — discounts at 70+ island businesses."
+        canonical="/book/paw-card"
+      />
 
       {/* ── Welcome back animation (visible only when logged in) ── */}
       {pawAccess && (

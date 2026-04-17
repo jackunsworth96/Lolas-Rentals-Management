@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { PageLayout } from '../../components/layout/PageLayout.js';
+import { SEO } from '../../components/seo/SEO.js';
 import {
   usePublicEstablishments,
   useTopEstablishments,
@@ -273,6 +274,11 @@ export default function PawCardPartnersPage() {
       showFloralRight={false}
       fullBleed
     >
+      <SEO
+        title="Paw Card Partners | Lola's Rentals Siargao"
+        description="Explore 70+ Paw Card partner businesses across Siargao Island."
+        canonical="/paw-card/partners"
+      />
       <style>{`
         @keyframes marquee-left {
           0% { transform: translateX(0); }

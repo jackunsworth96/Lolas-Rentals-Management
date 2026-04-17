@@ -9,6 +9,7 @@ import {
 import { Link, useParams } from 'react-router-dom';
 import { CheckCircle2 } from 'lucide-react';
 import lolasLogo from '../../assets/Lolas Original Logo.svg';
+import { SEO } from '../../components/seo/SEO.js';
 import { WaiverSigningTermsContent } from '../../components/waiver/WaiverSigningTermsContent.js';
 import { formatPickupDatetimeManila } from '../../utils/date.js';
 import { api } from '../../api/client.js';
@@ -341,6 +342,11 @@ export default function WaiverPage() {
 
   return (
     <div className="min-h-screen bg-cream-brand pb-12 pt-6 px-4 sm:px-6">
+      <SEO
+        title="Rental Waiver | Lola's Rentals"
+        description="Complete your rental waiver for Lola's Rentals Siargao."
+        noIndex={true}
+      />
       <div className="mx-auto max-w-lg">
         {step === 1 && (
           <>

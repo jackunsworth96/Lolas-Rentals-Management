@@ -4,6 +4,7 @@ import { api } from '../../api/client.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import { PrimaryCtaButton } from '../../components/public/PrimaryCtaButton.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
+import { SEO } from '../../components/seo/SEO.js';
 import { PawDivider } from '../../components/layout/PawDivider.js';
 import { PageHeader } from '../../components/public/PageHeader.js';
 import { BookingLookupForm } from '../../components/extend/BookingLookupForm.js';
@@ -121,6 +122,11 @@ export default function ExtendPage() {
 
   return (
     <PageLayout title="Extend My Rental | Lola's Rentals" fullBleed>
+      <SEO
+        title="Extend Your Rental | Lola's Rentals"
+        description="Extend your Lola's Rentals scooter or motorbike rental on Siargao."
+        noIndex={true}
+      />
       <PageHeader
         eyebrow="Need More Time?"
         headingMain="Extend Your"

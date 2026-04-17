@@ -8,6 +8,7 @@ import Stepper, { Step } from '../../components/home/Stepper.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import { PrimaryCtaButton } from '../../components/public/PrimaryCtaButton.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
+import { SEO } from '../../components/seo/SEO.js';
 import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
 
 import lolaVideo from '../../assets/Checkout_Lola.mp4';
@@ -132,6 +133,11 @@ export default function ConfirmationPage() {
 
   return (
     <PageLayout title="Booking Confirmed | Lola's Rentals" showFloralRight={false}>
+      <SEO
+        title="Booking Confirmed | Lola's Rentals"
+        description="Your Lola's Rentals booking is confirmed."
+        noIndex={true}
+      />
       {paymentStatus === 'success' && (
         <div className="mx-auto max-w-2xl px-4 pt-6">
           <div className="rounded-xl border border-green-200 bg-green-50 px-5 py-4 flex items-center gap-3">

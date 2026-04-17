@@ -1,6 +1,7 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import type { ReactNode } from 'react';
 import { PageLayout } from '../../components/layout/PageLayout.js';
+import { SEO } from '../../components/seo/SEO.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import { PageHeader } from '../../components/public/PageHeader.js';
 import { WHATSAPP_URL } from '../../config/contact.js';
@@ -53,6 +54,11 @@ function AnimatedPanel({ children, delay = 0 }: { children: ReactNode; delay?: n
 export default function PeaceOfMindPage() {
   return (
     <PageLayout title="Peace of Mind Cover | Lola's Rentals" contentBackground="sand" elevateFlorals fullBleed>
+      <SEO
+        title="Peace of Mind | Lola's Rentals Siargao"
+        description="Ride with confidence. Our peace-of-mind promise covers you on every rental."
+        canonical="/peace-of-mind"
+      />
       <div className="min-h-screen bg-[#f1e6d6] pb-12">
         <section className="w-full bg-[#f1e6d6]">
           <FadeUpSection onlyAnimateOnMobile>

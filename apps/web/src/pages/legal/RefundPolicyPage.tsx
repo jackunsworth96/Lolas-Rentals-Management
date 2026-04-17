@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { PageLayout } from '../../components/layout/PageLayout.js';
+import { SEO } from '../../components/seo/SEO.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import { WHATSAPP_URL } from '../../config/contact.js';
 
@@ -15,6 +16,11 @@ function BulletItem({ children }: { children: ReactNode }) {
 export default function RefundPolicyPage() {
   return (
     <PageLayout title="Refund & Returns Policy | Lola's Rentals">
+      <SEO
+        title="Refund Policy | Lola's Rentals Siargao"
+        description="Clear, fair refund and cancellation policy for all Lola's Rentals bookings."
+        canonical="/refund-policy"
+      />
       <article className="mx-auto max-w-3xl px-4 py-12 md:px-6">
         <FadeUpSection onlyAnimateOnMobile>
           <h1 className="mb-2 font-headline text-3xl font-black text-teal-brand md:text-4xl">
