@@ -175,6 +175,7 @@ export async function submitDirectBooking(
     webPaymentMethod: input.webPaymentMethod ?? null,
     helmetCount: input.helmet_count ?? null,
     transferAmount: input.transferAmount ?? null,
+    transferPaxCount: input.transferPaxCount ?? null,
   });
 
   // 6. Clean up the hold (best-effort; booking is already persisted).

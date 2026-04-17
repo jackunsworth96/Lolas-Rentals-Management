@@ -241,6 +241,8 @@ export function createBookingAdapter(): BookingPort {
         if (input.helmetCount != null) p.helmet_count = input.helmetCount;
         if (input.transferAmount != null && input.transferAmount > 0)
           p.transfer_amount = input.transferAmount;
+        if (input.transferPaxCount != null && input.transferPaxCount > 0)
+          p.transfer_pax_count = input.transferPaxCount;
         return Object.keys(p).length > 0 ? p : null;
       })();
 

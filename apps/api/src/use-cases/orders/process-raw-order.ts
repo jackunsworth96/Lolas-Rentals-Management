@@ -385,7 +385,11 @@ export async function processRawOrder(
             customerType: 'Online',
             route: rawOrder.transfer_route as string,
             flightTime: (rawOrder.flight_arrival_time as string | null) ?? null,
-            paxCount: 1,
+            paxCount: typeof rawOrder.payload === 'object' &&
+              rawOrder.payload !== null &&
+              'transfer_pax_count' in (rawOrder.payload as Record<string, unknown>)
+              ? Number((rawOrder.payload as Record<string, unknown>).transfer_pax_count ?? 1)
+              : 1,
             vanType: rawOrder.transfer_type as string,
             accommodation: null,
             opsNotes: null,

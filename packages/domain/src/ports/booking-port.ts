@@ -54,6 +54,7 @@ export interface DirectBookingInsert {
   webPaymentMethod?: string | null;
   helmetCount?: number | null;
   transferAmount?: number | null;
+  transferPaxCount?: number | null;
 }
 
 export interface DirectBookingResult {
