@@ -680,7 +680,7 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
 });
 
 const collectPaymentSchema = z.object({
-  amount: z.number().min(0),
+  amount: z.number().positive(),
   paymentMethodId: z.string().min(1),
   note: z.string().optional().default(''),
   isCardPayment: z.boolean().optional().default(false),
