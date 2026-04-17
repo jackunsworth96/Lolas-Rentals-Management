@@ -84,6 +84,7 @@ export interface TransferRoute {
   storeId: string | null;
   isActive: boolean;
   pricingType: string;
+  driverCut?: number | null;
 }
 
 export interface DayType {

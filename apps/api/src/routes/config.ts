@@ -227,6 +227,7 @@ router.post('/transfer-routes', edit, validateBody(z.object({
   route: z.string().min(1), vanType: z.string().nullable().optional(), price: z.number().nonnegative(),
   storeId: z.string().nullable().optional(), isActive: z.boolean().optional(),
   pricingType: z.enum(['fixed', 'per_head']).optional().default('fixed'),
+  driverCut: z.number().min(0).optional().nullable(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveTransferRoute(req.body); res.json({ success: true }); } catch (e) { next(e); }
 });
@@ -234,6 +235,7 @@ router.put('/transfer-routes/:id', edit, validateBody(z.object({
   route: z.string().min(1), vanType: z.string().nullable().optional(), price: z.number().nonnegative(),
   storeId: z.string().nullable().optional(), isActive: z.boolean().optional(),
   pricingType: z.enum(['fixed', 'per_head']).optional().default('fixed'),
+  driverCut: z.number().min(0).optional().nullable(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveTransferRoute({ id: Number(req.params.id), ...req.body }); res.json({ success: true }); } catch (e) { next(e); }
 });

@@ -22,13 +22,15 @@ export function TransferRoutesTab() {
       r.pricingType === 'per_head' ? 'Per Person' : 'Fixed'
     },
     { key: 'price', header: 'Price' },
+    { key: 'driverCut', header: 'Driver Cut (₱)' },
     { key: 'isActive', header: 'Active', render: (r: Record<string, unknown>) => (r.isActive === false ? 'No' : 'Yes') },
   ];
 
   const fields: FieldDef[] = [
     { key: 'route', label: 'Route', type: 'text', required: true },
     { key: 'vanType', label: 'Van type', type: 'text' },
-    { key: 'price', label: 'Price', type: 'number', required: true },
+    { key: 'price', label: 'Price (₱)', type: 'number', required: true },
+    { key: 'driverCut', label: 'Driver Cut (₱)', type: 'number' },
     { key: 'pricingType', label: 'Pricing Type', type: 'select', options: [
       { value: 'fixed', label: 'Fixed (total price)' },
       { value: 'per_head', label: 'Per Person' },
@@ -36,6 +38,12 @@ export function TransferRoutesTab() {
     { key: 'storeId', label: 'Store', type: 'select', options: storeOpts },
     { key: 'isActive', label: 'Active', type: 'boolean' },
   ];
+
+  const helperNote = (
+    <p className="text-xs text-gray-500 mb-2">
+      Fixed amount paid to driver per booking. For shared van, this is per person.
+    </p>
+  );
 
   if (!storeId) return <p className="text-sm text-gray-500">Select a store to manage transfer routes.</p>;
 
@@ -46,6 +54,7 @@ export function TransferRoutesTab() {
       isLoading={isLoading}
       columns={columns}
       fields={fields}
+      extraContent={helperNote}
       onSave={(row) => save.mutate(row)}
       onDelete={(id) => del.mutate(id)}
       isSaving={save.isPending}
