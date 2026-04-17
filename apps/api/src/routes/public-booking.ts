@@ -214,7 +214,11 @@ const submitLimiter = rateLimit({
 router.post('/submit', submitLimiter, validateBody(SubmitDirectBookingRequestSchema), async (req, res, next) => {
   try {
     const result: SubmitDirectBookingResult = await submitDirectBooking(
-      { bookingPort: req.app.locals.deps.bookingPort, configRepo: req.app.locals.deps.configRepo },
+      {
+        bookingPort: req.app.locals.deps.bookingPort,
+        configRepo: req.app.locals.deps.configRepo,
+        transferRepo: req.app.locals.deps.transferRepo,
+      },
       req.body as SubmitDirectBookingInput,
     );
 

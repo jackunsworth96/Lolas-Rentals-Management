@@ -1,10 +1,11 @@
 import { randomBytes } from 'node:crypto';
-import type { BookingPort, ConfigRepository } from '@lolas/domain';
+import type { BookingPort, ConfigRepository, TransferRepository } from '@lolas/domain';
 import type { SubmitDirectBookingInput } from '@lolas/shared';
 import { resolveSourceFromStore } from '@lolas/shared';
 import { computeQuote } from './compute-quote.js';
 import { sendEmail, bookingConfirmationHtml, NOTIFICATION_EMAIL } from '../../services/email.js';
 import { getSupabaseClient } from '../../adapters/supabase/client.js';
+import { formatManilaDate } from '../../utils/manila-date.js';
 
 function formatManilaDateTime(iso: string): string {
   return new Date(iso).toLocaleString('en-PH', {
@@ -17,6 +18,7 @@ function formatManilaDateTime(iso: string): string {
 export interface SubmitDirectBookingDeps {
   bookingPort: BookingPort;
   configRepo: ConfigRepository;
+  transferRepo: TransferRepository;
 }
 
 function generateOrderReference(source: string): string {
@@ -176,6 +178,41 @@ export async function submitDirectBooking(
     await bookingPort.deleteHoldBySessionAndModel(input.sessionToken, input.vehicleModelId, input.holdId);
   } catch {
     // Hold cleanup is non-critical; it will expire naturally
+  }
+
+  // 6b. Create transfer record immediately if booking includes a transfer
+  if (input.transferType && input.transferRoute) {
+    try {
+      const { createTransfer } = await import('../transfers/create-transfer.js');
+      const serviceDate = input.pickupDatetime
+        ? new Date(input.pickupDatetime).toISOString().split('T')[0]
+        : formatManilaDate();
+      await createTransfer(
+        {
+          serviceDate,
+          customerName: input.customerName,
+          contactNumber: input.customerMobile ?? null,
+          customerEmail: input.customerEmail,
+          customerType: 'Online',
+          route: input.transferRoute,
+          flightTime: input.flightArrivalTime ?? null,
+          paxCount: 1,
+          vanType: input.transferType,
+          accommodation: null,
+          opsNotes: null,
+          totalPrice: input.transferAmount ?? 0,
+          paymentMethod: null,
+          bookingSource: 'Online',
+          bookingToken: null,
+          storeId: input.storeId,
+          orderId: null,
+        },
+        { transfers: deps.transferRepo },
+      );
+    } catch (transferErr) {
+      // Non-fatal — log but don't block booking response
+      console.error('[submit-direct-booking] Failed to create transfer record:', transferErr);
+    }
   }
 
   // 7. Fire-and-forget emails — never block the booking response.

@@ -499,8 +499,8 @@ export default function BasketPage() {
         if (result.cancellationToken) submittedOrderTokens[result.orderReference] = result.cancellationToken;
         if (result.serverQuote != null) serverTotal += result.serverQuote;
       }
-      // Location fees are per-vehicle and applied once to the total after all vehicles are summed
-      if (serverTotal > 0) serverTotal += pickupFee + dropoffFee;
+      // serverTotal = webQuoteRaw from API = rental + fees + addons + transfer + charity
+      // Do NOT add pickupFee/dropoffFee again — already included in webQuoteRaw
       const submittedAddonIds = new Set(allAddonIds);
       const selAddons = addons.filter((a) => submittedAddonIds.has(Number(a.id)));
       const clientTotal = basket.reduce((s, b) => s + b.dailyRate * rentalDays, 0)
