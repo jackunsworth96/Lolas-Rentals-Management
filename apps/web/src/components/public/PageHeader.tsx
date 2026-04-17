@@ -1,3 +1,5 @@
+import { AnimatedHeading } from './AnimatedHeading.js';
+
 interface PageHeaderProps {
   eyebrow?: string;
   headingMain: string;
@@ -43,15 +45,24 @@ export function PageHeader({
               ? 'text-[clamp(1.35rem,5.5vw,3rem)] leading-[1.12] sm:text-[clamp(2rem,5vw,3rem)] sm:leading-[1.15]'
               : ''
           }`}
-          style={
-            fitAboveFold
-              ? undefined
-              : { fontSize: 'clamp(32px, 5vw, 48px)', lineHeight: 1.15 }
-          }
+          style={fitAboveFold ? undefined : { fontSize: 'clamp(32px, 5vw, 48px)', lineHeight: 1.15 }}
+          aria-label={`${headingMain}${headingAccent ? ' ' + headingAccent : ''}`}
         >
-          {headingMain}
+          <AnimatedHeading
+            text={headingMain}
+            tag="span"
+            className="text-teal-brand"
+          />
           {headingAccent && (
-            <span className="italic text-gold-brand"> {headingAccent}</span>
+            <>
+              {' '}
+              <AnimatedHeading
+                text={headingAccent}
+                tag="span"
+                delay={20}
+                className="italic text-gold-brand"
+              />
+            </>
           )}
         </h1>
 

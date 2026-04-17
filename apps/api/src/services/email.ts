@@ -232,6 +232,27 @@ export function bookingConfirmationHtml({
               <td style="padding: 8px 0; color: #888; font-size: 13px;">Payment</td>
               <td style="padding: 8px 0; font-weight: 700; color: #363737; font-size: 14px;">${escapeHtml(paymentMethod)}</td>
             </tr>
+            ${paymentMethod === 'GCash' ? `
+            <tr>
+              <td colspan="2" style="padding: 8px 0 16px;">
+                <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px 14px;">
+                  <p style="margin: 0 0 6px; font-size: 13px; font-weight: 700; color: #166534; font-family: Lato, sans-serif;">
+                    📱 GCash Payment Instructions
+                  </p>
+                  <p style="margin: 0 0 4px; font-size: 13px; color: #166534; font-family: Lato, sans-serif;">
+                    Please send <strong>₱${displayTotal.toLocaleString()}</strong> to:
+                  </p>
+                  <p style="margin: 0 0 4px; font-size: 15px; font-weight: 700; color: #166534; font-family: Lato, sans-serif;">
+                    09694443413
+                  </p>
+                  <p style="margin: 0; font-size: 12px; color: #166534; font-family: Lato, sans-serif; opacity: 0.8;">
+                    Use your order reference <strong>${escapeHtml(orderReference)}</strong> as the GCash message/note.
+                    Send us a screenshot on WhatsApp once paid.
+                  </p>
+                </div>
+              </td>
+            </tr>
+            ` : ''}
             ${transferRowHtml}
             <tr style="border-top: 2px solid #eee;">
               <td style="padding: 16px 0 8px; color: #888; font-size: 13px;">Total</td>
@@ -1298,7 +1319,7 @@ export function transferBookingConfirmationHtml({
           </h1>
           <p style="color: #363737; margin-top: 8px;">Thank you, ${escapeHtml(customerName)}!</p>
         </div>
-        <div style="background: #E8DFD0; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+        <div style="background: #f1e6d6; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
               <td style="padding: 6px 0; color: #666; font-size: 14px;">Route</td>

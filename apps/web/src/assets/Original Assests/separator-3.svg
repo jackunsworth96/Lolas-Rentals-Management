@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1440" height="243" viewBox="0 0 1440 243" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1566" height="243" viewBox="-72 0 1566 243" fill="none">
+  <rect x="-72" y="0" width="1566" height="243" fill="#f1e6d6"></rect>
   <rect x="242.803" y="40.8191" width="153.6" height="100" transform="rotate(-12.8516 242.803 40.8191)" fill="url(#pattern0)"></rect>
   <path d="M-62.2154 241.224C52.5737 189.784 345.408 84.3357 598.434 74.0588C914.716 61.2126 1219.59 128.99 1493.62 1.99998" stroke="#363737" stroke-width="3" stroke-dasharray="40 40"></path>
   <defs>

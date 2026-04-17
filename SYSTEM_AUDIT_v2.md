@@ -113,7 +113,7 @@ User Interface/                    ← Monorepo root (npm workspaces: lolas-back
 
 - **Primary sans / UI font:** **Alegreya Sans** (Google Fonts in `index.html`; `fontFamily.sans` and `font-headline` in Tailwind).  
 - **Brand teal:** **`#00577C`** — Tailwind `teal-brand` (nav, accents).  
-- **Supporting tokens:** `gold-brand` `#FCBC5A`, `cream-brand` `#FAF6F0`, `sand-brand` `#E8DFD0`, `charcoal-brand` `#363737`.  
+- **Supporting tokens:** `gold-brand` `#FCBC5A`, `cream-brand` `#FAF6F0`, `sand-brand` `#f1e6d6`, `charcoal-brand` `#363737`.  
 - **Body (tailwind `font-body`):** Plus Jakarta Sans (declared; ensure font loading if used heavily).
 
 ### 2.2 Backend

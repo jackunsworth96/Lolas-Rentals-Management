@@ -149,6 +149,9 @@ export function PageLayout({
     ? { transform: `translate3d(0, ${-floralShift * 0.65}px, 0)`, willChange: 'transform' as const }
     : undefined;
 
+  const shellBgStyle =
+    contentBackground === 'sand' ? { backgroundColor: '#f1e6d6' as const } : undefined;
+
   return (
     <div
       className={`relative min-h-screen overflow-x-clip font-body animate-page-fade-in ${
@@ -156,8 +159,9 @@ export function PageLayout({
           ? 'bg-[#FAF6F0]'
           : contentBackground === 'cream'
             ? 'bg-cream-brand'
-            : 'bg-sand-brand'
+            : ''
       }`}
+      style={shellBgStyle}
     >
       <TopNav
         logo={logo}

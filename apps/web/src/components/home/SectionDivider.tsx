@@ -23,6 +23,7 @@ export default function SectionDivider({ variant = 'dash', flip = false }: Secti
         marginTop: -4,
         marginBottom: -4,
         transform: flip ? 'scaleX(-1)' : 'none',
+        backgroundColor: '#f1e6d6',
       }}
     >
       <img

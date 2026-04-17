@@ -194,7 +194,7 @@ Lola's Rentals is a feature-rich rental management platform with a clean monorep
 
 | # | Page | Finding | File / Line |
 |---|------|---------|-------------|
-| V-1 | **Global** | `sand-brand` in Tailwind is `#f1e6d6`, not spec `#E8DFD0`. All pages using `sand-brand` or `#f1e6d6` are slightly off-spec. | `apps/web/tailwind.config.ts` L21–22 |
+| V-1 | **Global** | `sand-brand` in Tailwind is `#f1e6d6` (canonical). | `apps/web/tailwind.config.ts` L21–22 |
 | V-2 | **Global** | Body font defaults to Alegreya Sans, not Lato. `fontFamily.body` maps to Alegreya Sans, violating the Lato body text spec. | `apps/web/tailwind.config.ts` L26–32 |
 | V-3 | **Global** | `index.html` loads 5 font families (Alegreya Sans, Inter, Playfair, Lato, Roboto Flex) — Inter and Roboto are not in the design system. | `apps/web/index.html` L6–11 |
 | V-4 | **Global** | `index.css` hero title uses `#1A7A6E` (not teal `#00577C`); subtitle uses `#3D3D3D` (not charcoal `#363737`). | `apps/web/src/index.css` L71–78 |
@@ -405,7 +405,7 @@ Lola's Rentals is a feature-rich rental management platform with a clean monorep
 | 24 | **Fix PageLayout duplicate back-to-top buttons.** Remove duplicate, increase to 44px. | M-1 | 15 min |
 | 25 | **Remove all debug `console.log` from production code.** 11 in frontend, 30 in backend. | S-21, S-18 | 0.5 days |
 | 26 | **Add basic SEO meta tags.** Install `react-helmet-async`, add descriptions and OG tags to customer pages. | SEO-2 | 1 day |
-| 27 | **Fix `sand-brand` to `#E8DFD0` and body font to Lato.** Update tailwind.config.ts. | V-1, V-2 | 0.5 days |
+| 27 | **Fix body font to Lato.** Update tailwind.config.ts (`fontFamily.body`). | V-2 | 0.5 days |
 | 28 | **HTML-encode email template interpolations.** | S-15 | 0.5 days |
 | 29 | **Enable `strict: true` in web tsconfig.** Fix null safety issues. | T-1 | 2 days |
 | 30 | **Add ESLint configuration.** Create `eslint.config.js` with TypeScript + React rules. | CQ-1 | 0.5 days |

@@ -5,7 +5,7 @@ export function useIsTouchDevice(): boolean {
   useEffect(() => {
     setIsTouch(
       typeof window !== 'undefined' &&
-        window.matchMedia('(hover: none)').matches,
+        window.matchMedia('(hover: none) and (pointer: coarse)').matches,
     );
   }, []);
   return isTouch;

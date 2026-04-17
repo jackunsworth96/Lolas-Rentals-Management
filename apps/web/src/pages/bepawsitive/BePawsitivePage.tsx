@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { AnimatedHeading } from '../../components/public/AnimatedHeading.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { SEO } from '../../components/seo/SEO.js';
 import runPhoto1 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 092746.png';
@@ -173,8 +174,22 @@ export default function BePawsitivePage() {
             lineHeight: 1.15,
             maxWidth: 720,
           }}
+          aria-label="Running for a Pawsitive Future"
         >
-          Running for a Pawsitive Future
+          <AnimatedHeading
+            text="Running for a"
+            tag="span"
+            delay={20}
+            className="block"
+            style={{ color: 'white' }}
+          />
+          <AnimatedHeading
+            text="Pawsitive Future"
+            tag="span"
+            delay={20}
+            className="block italic"
+            style={{ color: '#FCBC5A' }}
+          />
         </h1>
 
         <p

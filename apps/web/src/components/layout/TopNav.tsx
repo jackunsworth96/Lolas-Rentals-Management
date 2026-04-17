@@ -123,7 +123,10 @@ export default function TopNav({ items, rightSlot }: TopNavProps) {
 
   return (
     <>
-      <header className="fixed top-0 left-0 right-0 z-50 h-16 w-full overflow-visible border-b border-charcoal-brand/10 bg-sand-brand shadow-sm">
+      <header
+        className="fixed top-0 left-0 right-0 z-50 h-16 w-full overflow-visible border-b border-charcoal-brand/10 shadow-sm"
+        style={{ backgroundColor: '#f1e6d6' }}
+      >
 
         <button
           type="button"

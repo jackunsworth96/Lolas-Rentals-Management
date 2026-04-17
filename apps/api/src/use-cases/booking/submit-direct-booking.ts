@@ -198,8 +198,11 @@ export async function submitDirectBooking(
     let transferRoute = input.transferRoute ?? undefined;
 
     // Derive payment method display label
-    const pmRaw = input.webPaymentMethod ?? 'cash';
-    const paymentMethod = pmRaw.charAt(0).toUpperCase() + pmRaw.slice(1);
+    const pmRaw = (input.webPaymentMethod ?? 'cash').toLowerCase();
+    const paymentMethodLabel =
+      pmRaw === 'gcash' ? 'GCash' :
+      pmRaw === 'cash' ? 'Cash on Arrival' :
+      pmRaw.charAt(0).toUpperCase() + pmRaw.slice(1);
 
     // Addon lines from the computed quote
     const addons = (fullQuote?.addons ?? []).map((a) => ({
@@ -227,7 +230,7 @@ export async function submitDirectBooking(
         pickupLocation,
         dropoffLocation,
         totalAmount: grandTotal,
-        paymentMethod,
+        paymentMethod: paymentMethodLabel,
         addons,
         charityDonation,
         hasTransfer,
@@ -302,7 +305,7 @@ export async function submitDirectBooking(
               </tr>
               <tr>
                 <td style="padding: 6px 0; color: #666; font-size: 13px;">Payment</td>
-                <td style="padding: 6px 0; font-size: 13px;">${paymentMethod}</td>
+                <td style="padding: 6px 0; font-size: 13px;">${paymentMethodLabel}</td>
               </tr>
               ${addonsStaffHtml}
               ${transferStaffHtml}

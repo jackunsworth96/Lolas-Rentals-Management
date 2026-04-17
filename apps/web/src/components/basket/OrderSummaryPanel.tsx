@@ -233,6 +233,9 @@ export function OrderSummaryPanel({
             );
           })}
         </div>
+        <p className="mt-3 text-[12px] text-charcoal-brand/50 font-lato text-center">
+          {'\u{1F4B3}'} Card payments coming soon — we&apos;re still setting things up!
+        </p>
         {(paymentMethodError || (paymentMethods.length > 0 && !canPlaceOrder)) && (
           <p
             className={`mt-3 text-[13px] font-medium ${paymentMethodError ? 'text-red-600' : 'text-charcoal-brand/70'}`}

@@ -1,3 +1,4 @@
+import { AnimatedHeading } from '../../components/public/AnimatedHeading.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { SEO } from '../../components/seo/SEO.js';
@@ -64,6 +65,10 @@ import cloud1 from '../../assets/Hero/cloud-left-to-right-1.svg';
 import cloud2 from '../../assets/Hero/cloud-left-to-right-2.svg';
 import cloud3 from '../../assets/Hero/cloud-left-to-right-3.svg';
 import { useIsTouchDevice } from '../../hooks/useIsTouchDevice.js';
+
+/** Same sand as `sand-brand` in tailwind.config — inlined here so hero matches section bands without class/CSS drift. */
+const HOME_SAND = '#f1e6d6';
+
 function HeroSection() {
   const prefersReducedMotion = useReducedMotion();
   const shouldAnimate = !prefersReducedMotion;
@@ -154,8 +159,8 @@ function HeroSection() {
   return (
     <section
       ref={heroRef}
-      className="relative bg-sand-brand max-lg:overflow-visible lg:overflow-hidden"
-      style={{ minHeight: '560px', height: '70vh' }}
+      className="relative max-lg:overflow-visible lg:overflow-hidden"
+      style={{ minHeight: '560px', height: '70vh', backgroundColor: HOME_SAND }}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
@@ -379,11 +384,8 @@ function HeroSection() {
       <div className="relative z-10 flex h-full flex-col items-center justify-center px-6 pb-20 pt-20 text-center">
         {/* Headline */}
         {prefersReducedMotion || isTouchDevice ? (
-          <motion.h1
+          <h1
             className="font-headline font-extrabold"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, ease: 'easeOut', delay: 0.2 }}
             style={{
               fontSize: 'clamp(36px, 5vw, 52px)',
               color: '#00577C',
@@ -391,12 +393,22 @@ function HeroSection() {
               lineHeight: 1.15,
               marginBottom: 24,
             }}
+            aria-label="Rated by Many, Rooted in Community"
           >
-            Rated by Many,
-            <br />
-            <span style={{ fontStyle: 'italic', color: '#FCBC5A' }}>Rooted</span>
-            {' '}in Community
-          </motion.h1>
+            <AnimatedHeading
+              text="Rated by Many,"
+              tag="span"
+              className="block"
+              style={{ color: '#00577C' }}
+            />
+            <AnimatedHeading
+              text="Rooted in Community"
+              tag="span"
+              delay={20}
+              className="block italic"
+              style={{ color: '#FCBC5A' }}
+            />
+          </h1>
         ) : (
           <h1
             style={{
@@ -586,7 +598,7 @@ export default function HomePage() {
       />
       <HeroSection />
 
-      <div className="max-lg:-mb-16 lg:-mb-[120px]" style={{ marginTop: -4 }}>
+      <div className="max-lg:-mb-4 lg:-mb-[60px]" style={{ marginTop: -4, transform: 'rotate(10deg)', transformOrigin: 'center' }}>
         <SectionDivider variant="dash" />
       </div>
 
@@ -599,7 +611,7 @@ export default function HomePage() {
       </div>
 
       <FadeUpSection>
-        <section style={{ backgroundColor: '#f1e6d6', padding: '64px 5%' }}>
+        <section style={{ backgroundColor: HOME_SAND, padding: '64px 5%' }}>
           <div style={{ maxWidth: 1280, margin: '0 auto' }}>
             <p
               className="font-lato"
@@ -690,7 +702,7 @@ export default function HomePage() {
       <FadeUpSection>
         <section
           style={{
-            backgroundColor: '#f1e6d6',
+            backgroundColor: HOME_SAND,
             padding: '64px 5%',
           }}
         >
@@ -752,7 +764,7 @@ export default function HomePage() {
         <SectionDivider variant="bold" flip />
       </div>
 
-      <section style={{ backgroundColor: '#f1e6d6', padding: '64px 5%' }}>
+      <section style={{ backgroundColor: HOME_SAND, padding: '64px 5%' }}>
         <div style={{ maxWidth: 1280, margin: '0 auto' }}>
 
           {/* ── Full-width logo lockup (stacked × under Lola on narrow screens) ── */}

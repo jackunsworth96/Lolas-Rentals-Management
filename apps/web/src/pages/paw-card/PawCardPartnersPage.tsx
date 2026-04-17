@@ -468,16 +468,16 @@ export default function PawCardPartnersPage() {
           <div
             className="[-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
             style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(10, 80px)',
-              columnGap: 12,
-              rowGap: 12,
-              justifyContent: 'center',
-              maxWidth: '100%',
+              display: 'flex',
+              flexDirection: 'row',
+              flexWrap: 'nowrap',
+              gap: 12,
               overflowX: 'auto',
               overflowY: 'visible',
               paddingTop: 12,
               paddingBottom: 14,
+              paddingLeft: 4,
+              paddingRight: 4,
               scrollbarWidth: 'none',
             }}
           >

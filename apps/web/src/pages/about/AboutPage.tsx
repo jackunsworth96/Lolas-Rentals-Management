@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { AnimatedHeading } from '../../components/public/AnimatedHeading.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { SEO } from '../../components/seo/SEO.js';
 import { PawDivider } from '../../components/layout/PawDivider.js';
@@ -45,9 +46,20 @@ export default function AboutPage() {
           <h1
             className="font-headline font-black !text-white"
             style={{ fontSize: 'clamp(32px, 5vw, 56px)', lineHeight: 1.1 }}
+            aria-label="A Small Island Business With a Big Heart"
           >
-            A Small Island Business
-            <span className="italic text-gold-brand"> With a Big Heart</span>
+            <AnimatedHeading
+              text="A Small Island Business"
+              tag="span"
+              className="!text-white"
+            />
+            {' '}
+            <AnimatedHeading
+              text="With a Big Heart"
+              tag="span"
+              delay={20}
+              className="italic text-gold-brand"
+            />
           </h1>
           <p
             className="mx-auto mt-4 max-w-xl font-lato text-white/80"

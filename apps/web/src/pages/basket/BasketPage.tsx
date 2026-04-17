@@ -380,12 +380,21 @@ export default function BasketPage() {
       .then((data) => setLocations(data))
       .catch(() => pushToast('Failed to load delivery locations. Fees may be inaccurate.', 'error'));
     api.get<PaymentMethodOption[]>('/public/booking/payment-methods')
-      .then((data) => setPaymentMethods(data))
+      .then((data) =>
+        setPaymentMethods(
+          data.filter(
+            (pm) =>
+              !pm.id.toLowerCase().includes('card') &&
+              !pm.id.toLowerCase().includes('bank') &&
+              !pm.name.toLowerCase().includes('bank') &&
+              pm.surchargePercent === 0,
+          ),
+        ),
+      )
       .catch(() => {
         setPaymentMethods([
           { id: 'cash', name: 'Cash on Arrival', surchargePercent: 0 },
           { id: 'gcash', name: 'GCash', surchargePercent: 0 },
-          { id: 'card', name: 'Credit / Debit Card', surchargePercent: 0 },
         ]);
       });
   }, [storeId, singleModelId]);
