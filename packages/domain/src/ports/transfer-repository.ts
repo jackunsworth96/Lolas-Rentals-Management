@@ -13,5 +13,6 @@ export interface TransferFilters {
 export interface TransferRepository {
   findById(id: string): Promise<Transfer | null>;
   findByStore(storeId: string, filters?: TransferFilters): Promise<Transfer[]>;
+  findByBookingToken(token: string): Promise<Transfer | null>;
   save(transfer: Transfer): Promise<void>;
 }

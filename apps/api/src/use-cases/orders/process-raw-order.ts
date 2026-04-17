@@ -16,6 +16,7 @@ import {
   Order as OrderEntity,
   OrderStatus,
   Money,
+  Transfer,
 } from '@lolas/domain';
 import { supabase } from '../../adapters/supabase/client.js';
 import { activateOrder, type VehicleAssignment } from './activate-order.js';
@@ -334,36 +335,74 @@ export async function processRawOrder(
   // Create transfer record if booking included a transfer
   if (rawOrder.transfer_type && rawOrder.transfer_route) {
     try {
-      const { createTransfer } = await import('../transfers/create-transfer.js');
-      const serviceDate = rawOrder.pickup_datetime
-        ? new Date(rawOrder.pickup_datetime).toISOString().split('T')[0]
-        : formatManilaDate();
-      await createTransfer(
-        {
-          serviceDate,
-          customerName: rawOrder.customer_name as string,
-          contactNumber: (rawOrder.customer_mobile as string | null) ?? null,
-          customerEmail: (rawOrder.customer_email as string | null) ?? null,
-          customerType: 'Online',
-          route: rawOrder.transfer_route as string,
-          flightTime: (rawOrder.flight_arrival_time as string | null) ?? null,
-          paxCount: 1,
-          vanType: rawOrder.transfer_type as string,
-          accommodation: null,
-          opsNotes: null,
-          totalPrice: typeof rawOrder.payload === 'object' &&
-            rawOrder.payload !== null &&
-            'transfer_amount' in (rawOrder.payload as Record<string, unknown>)
-            ? Number((rawOrder.payload as Record<string, unknown>).transfer_amount ?? 0)
-            : 0,
-          paymentMethod: null,
-          bookingSource: 'Online',
-          bookingToken: null,
-          storeId: rawOrder.store_id as string,
+      const existingTransfer = rawOrder.order_reference
+        ? await deps.transferRepo.findByBookingToken(rawOrder.order_reference as string)
+        : null;
+
+      if (existingTransfer) {
+        // Link the already-created online transfer to the newly activated order
+        // instead of creating a duplicate row.
+        const linked = Transfer.create({
+          id: existingTransfer.id,
           orderId,
-        },
-        { transfers: deps.transferRepo },
-      );
+          serviceDate: existingTransfer.serviceDate,
+          customerName: existingTransfer.customerName,
+          contactNumber: existingTransfer.contactNumber,
+          customerEmail: existingTransfer.customerEmail,
+          customerType: existingTransfer.customerType,
+          route: existingTransfer.route,
+          flightTime: existingTransfer.flightTime,
+          paxCount: existingTransfer.paxCount,
+          vanType: existingTransfer.vanType,
+          accommodation: existingTransfer.accommodation,
+          status: existingTransfer.status,
+          opsNotes: existingTransfer.opsNotes,
+          totalPrice: existingTransfer.totalPrice,
+          paymentMethod: existingTransfer.paymentMethod,
+          paymentStatus: existingTransfer.paymentStatus,
+          driverFee: existingTransfer.driverFee,
+          netProfit: existingTransfer.netProfit,
+          driverPaidStatus: existingTransfer.driverPaidStatus,
+          bookingSource: existingTransfer.bookingSource,
+          bookingToken: existingTransfer.bookingToken,
+          storeId: existingTransfer.storeId,
+          createdAt: existingTransfer.createdAt,
+          updatedAt: new Date(),
+        });
+        await deps.transferRepo.save(linked);
+      } else {
+        // Fallback for walk-in edge cases or legacy data with no pre-created transfer.
+        const { createTransfer } = await import('../transfers/create-transfer.js');
+        const serviceDate = rawOrder.pickup_datetime
+          ? new Date(rawOrder.pickup_datetime).toISOString().split('T')[0]
+          : formatManilaDate();
+        await createTransfer(
+          {
+            serviceDate,
+            customerName: rawOrder.customer_name as string,
+            contactNumber: (rawOrder.customer_mobile as string | null) ?? null,
+            customerEmail: (rawOrder.customer_email as string | null) ?? null,
+            customerType: 'Online',
+            route: rawOrder.transfer_route as string,
+            flightTime: (rawOrder.flight_arrival_time as string | null) ?? null,
+            paxCount: 1,
+            vanType: rawOrder.transfer_type as string,
+            accommodation: null,
+            opsNotes: null,
+            totalPrice: typeof rawOrder.payload === 'object' &&
+              rawOrder.payload !== null &&
+              'transfer_amount' in (rawOrder.payload as Record<string, unknown>)
+              ? Number((rawOrder.payload as Record<string, unknown>).transfer_amount ?? 0)
+              : 0,
+            paymentMethod: null,
+            bookingSource: 'Online',
+            bookingToken: null,
+            storeId: rawOrder.store_id as string,
+            orderId,
+          },
+          { transfers: deps.transferRepo },
+        );
+      }
     } catch (transferErr) {
       // Non-fatal — log but don't block activation
       console.error('[process-raw-order] Failed to create transfer record:', transferErr);

@@ -76,6 +76,16 @@ export function createTransferRepo(): TransferRepository {
       return data ? toDomain(data) : null;
     },
 
+    async findByBookingToken(token) {
+      const { data, error } = await sb
+        .from('transfers')
+        .select('*')
+        .eq('booking_token', token)
+        .maybeSingle();
+      if (error) throw new Error(`Failed to fetch transfer by booking token: ${error.message}`);
+      return data ? toDomain(data) : null;
+    },
+
     async findByStore(storeId, filters?) {
       let query = sb.from('transfers').select('*').eq('store_id', storeId);
       if (filters?.dateFrom) query = query.gte('service_date', filters.dateFrom);
