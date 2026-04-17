@@ -15,6 +15,15 @@ const flightLimiter = rateLimit({
   },
 });
 
+const bookingLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  message: {
+    success: false,
+    error: { code: 'RATE_LIMIT', message: 'Too many transfer booking requests' },
+  },
+});
+
 const router = Router();
 
 const PublicBookingSchema = z.object({
@@ -74,7 +83,7 @@ router.get('/store-info', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/transfer-booking', validateBody(PublicBookingSchema), async (req, res, next) => {
+router.post('/transfer-booking', bookingLimiter, validateBody(PublicBookingSchema), async (req, res, next) => {
   try {
     const store = await resolveToken(req.app.locals.deps.configRepo, req.body.token);
     if (!store) {
@@ -137,7 +146,7 @@ router.post('/transfer-booking', validateBody(PublicBookingSchema), async (req, 
   } catch (err) { next(err); }
 });
 
-router.post('/public-transfer-booking', validateBody(PublicTransferBookingSchema), async (req, res, next) => {
+router.post('/public-transfer-booking', bookingLimiter, validateBody(PublicTransferBookingSchema), async (req, res, next) => {
   try {
     const token = req.body.token as string | undefined;
     const storeId = req.body.storeId as string | undefined;
