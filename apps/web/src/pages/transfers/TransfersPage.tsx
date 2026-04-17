@@ -8,6 +8,14 @@ import { AddTransferModal } from '../../components/transfers/AddTransferModal.js
 import { TransferPaymentModal } from '../../components/transfers/TransferPaymentModal.js';
 import { DriverPaymentModal } from '../../components/transfers/DriverPaymentModal.js';
 
+/** Returns true when the route originates from General Luna (GL→IAO direction).
+ *  The driver needs to collect the customer from their accommodation, so the
+ *  pickup/accommodation field is operationally meaningful for these rows. */
+function isGlToIao(route: string): boolean {
+  const first = route.split(/→|->/).map((s) => s.trim().toLowerCase())[0] ?? '';
+  return first.includes('luna') || first.includes('general');
+}
+
 const PAYMENT_STATUS_COLORS: Record<string, 'green' | 'yellow' | 'red'> = {
   Paid: 'green',
   'Partially Paid': 'yellow',
@@ -217,6 +225,7 @@ export default function TransfersPage() {
                 <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Contact</th>
                 <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Type</th>
                 <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Route</th>
+                <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Pickup / Accommodation</th>
                 <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Pax</th>
                 <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Van</th>
                 <th className="px-3 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Total</th>
@@ -264,6 +273,9 @@ export default function TransfersPage() {
                         )}
                       </td>
                       <td className="px-3 py-3 text-sm text-gray-900">{t.route}</td>
+                      <td className="px-3 py-3 text-sm text-gray-600">
+                        {isGlToIao(t.route) ? (t.accommodation ?? '—') : <span className="text-gray-300">—</span>}
+                      </td>
                       <td className="px-3 py-3 text-center text-sm text-gray-900">{t.paxCount}</td>
                       <td className="px-3 py-3 text-sm text-gray-600">{t.vanType ?? '—'}</td>
                       <td className="whitespace-nowrap px-3 py-3 text-right text-sm font-medium text-gray-900">
@@ -291,7 +303,7 @@ export default function TransfersPage() {
                     </tr>
                     {isExpanded && (
                       <tr key={`${t.id}-actions`}>
-                        <td colSpan={14} className="bg-gray-50 px-6 py-3">
+                        <td colSpan={15} className="bg-gray-50 px-6 py-3">
                           <div className="flex flex-wrap items-center gap-3">
                             {t.paymentStatus !== 'Paid' && (
                               <button
