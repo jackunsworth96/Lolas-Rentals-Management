@@ -1,4 +1,5 @@
 import { Banknote, CreditCard, Landmark, Lock, Wallet } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import type { BasketItem } from '../../stores/bookingStore.js';
 import type { Addon, TransferDetails, PaymentMethodOption } from './basket-types.js';
 import { formatCurrency } from '../../utils/currency.js';
@@ -122,28 +123,46 @@ export function OrderSummaryPanel({
         {/* Be Pawsitive donation banner */}
         <div className="mb-4 rounded-lg border border-teal-200/60 bg-teal-50 p-3">
           <p className="mb-1 flex items-center gap-1.5 text-[12px] font-medium text-teal-800">
-            🐾 Support Be Pawsitive
+            {'\u{1F43E}'} Support Be Pawsitive
           </p>
           <p className="mb-2.5 text-[11px] leading-relaxed text-teal-700/80">
             Add a small donation to fund spay, neuter &amp; vaccination for Siargao's street animals.
           </p>
           <div className="flex flex-wrap gap-1.5">
-            {[0, 50, 100, 200].map((amount) => (
-              <button
-                key={amount}
-                type="button"
-                onClick={() => onCharityChange?.(amount)}
-                className={[
-                  'rounded-full px-3 py-1 text-[12px] font-medium transition-colors',
-                  charityDonation === amount
-                    ? 'bg-teal-600 text-white'
-                    : 'border border-teal-200 bg-white text-teal-700 hover:bg-teal-50',
-                ].join(' ')}
-              >
-                {amount === 0 ? 'No thanks' : `₱${amount}`}
-              </button>
-            ))}
+            {[
+              { amount: 0, label: 'No thanks' },
+              { amount: 50 },
+              { amount: 100 },
+              { amount: 200 },
+              { amount: 5000, label: '\u20B15,000 \u{1F43E}' },
+            ].map(({ amount, label }) => {
+              const selected = charityDonation === amount;
+              const isFiveK = amount === 5000;
+              return (
+                <button
+                  key={amount}
+                  type="button"
+                  onClick={() => onCharityChange?.(amount)}
+                  className={[
+                    'rounded-full px-3 py-1 text-[12px] font-medium transition-colors',
+                    selected
+                      ? 'bg-teal-600 text-white'
+                      : isFiveK
+                        ? 'border border-teal-brand bg-sand-brand text-teal-brand hover:bg-sand-brand/90'
+                        : 'border border-teal-200 bg-white text-teal-700 hover:bg-teal-50',
+                  ].join(' ')}
+                >
+                  {label ?? `\u20B1${amount}`}
+                </button>
+              );
+            })}
           </div>
+          <Link
+            to="/book/bepawsitive"
+            className="mt-2.5 inline-block font-lato text-sm text-teal-brand underline decoration-teal-brand/35 underline-offset-2 transition-colors hover:text-[#00496a]"
+          >
+            Learn more about BePawsitive →
+          </Link>
         </div>
 
         {/* Line items */}
@@ -160,7 +179,7 @@ export function OrderSummaryPanel({
           {surchargeAmount > 0 && (
             <Row label={`Card Surcharge (${surchargePercent}%)`} amount={surchargeAmount} />
           )}
-          {charityDonation > 0 && <Row label="Donation to Be Pawsitive 🐾" amount={charityDonation} />}
+          {charityDonation > 0 && <Row label={'Donation to Be Pawsitive \u{1F43E}'} amount={charityDonation} />}
         </div>
 
         {/* Divider + Grand Total */}
@@ -171,7 +190,7 @@ export function OrderSummaryPanel({
           </div>
           {deposit > 0 && (
             <p className="mt-2 flex items-start gap-1.5 text-[11px] leading-relaxed text-charcoal-brand/40">
-              <span>ℹ️</span>
+              <span>{'\u2139\uFE0F'}</span>
               <span>
                 Refundable security deposit of {formatCurrency(deposit)} collected on pickup — returned after your rental.
               </span>
