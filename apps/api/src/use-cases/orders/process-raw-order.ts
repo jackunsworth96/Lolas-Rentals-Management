@@ -19,6 +19,7 @@ import {
   Transfer,
 } from '@lolas/domain';
 import { supabase } from '../../adapters/supabase/client.js';
+import { resolveCharityPayableAccount } from '../../adapters/supabase/maintenance-expense-rpc.js';
 import { activateOrder, type VehicleAssignment } from './activate-order.js';
 import { formatManilaDate } from '../../utils/manila-date.js';
 
@@ -309,27 +310,30 @@ export async function processRawOrder(
 
   const charityAmount = Number(rawOrder.charity_donation ?? 0);
   if (charityAmount > 0 && input.receivableAccountId) {
-    const charityLegs: JournalLeg[] = [
-      {
-        entryId: crypto.randomUUID(),
-        accountId: input.receivableAccountId,
-        debit: Money.php(charityAmount),
-        credit: Money.zero(),
-        description: `Order ${orderId} charity donation receivable (Be Pawsitive)`,
-        referenceType: 'order_charity',
-        referenceId: orderId,
-      },
-      {
-        entryId: crypto.randomUUID(),
-        accountId: 'CHARITY-PAYABLE',
-        debit: Money.zero(),
-        credit: Money.php(charityAmount),
-        description: `Order ${orderId} charity donation payable (Be Pawsitive)`,
-        referenceType: 'order_charity',
-        referenceId: orderId,
-      },
-    ];
-    await deps.accountingPort.createTransaction(charityLegs, input.storeId);
+    const charityPayableAccountId = await resolveCharityPayableAccount(input.storeId);
+    if (charityPayableAccountId) {
+      const charityLegs: JournalLeg[] = [
+        {
+          entryId: crypto.randomUUID(),
+          accountId: input.receivableAccountId,
+          debit: Money.php(charityAmount),
+          credit: Money.zero(),
+          description: `Order ${orderId} charity donation receivable (Be Pawsitive)`,
+          referenceType: 'order_charity',
+          referenceId: orderId,
+        },
+        {
+          entryId: crypto.randomUUID(),
+          accountId: charityPayableAccountId,
+          debit: Money.zero(),
+          credit: Money.php(charityAmount),
+          description: `Order ${orderId} charity donation payable (Be Pawsitive)`,
+          referenceType: 'order_charity',
+          referenceId: orderId,
+        },
+      ];
+      await deps.accountingPort.createTransaction(charityLegs, input.storeId);
+    }
   }
 
   // Create transfer record if booking included a transfer

@@ -8,6 +8,7 @@ import {
   Money,
   NonRentableVehicleError,
 } from '@lolas/domain';
+import { resolveCharityPayableAccount } from '../../adapters/supabase/maintenance-expense-rpc.js';
 import { formatManilaDate } from '../../utils/manila-date.js';
 
 export interface ActivateOrderDeps {
@@ -150,27 +151,30 @@ export async function activateOrder(
   if (!input.skipCharityPosting && charityAmount && charityAmount.isPositive()) {
     const { accountingPort } = deps;
     if (accountingPort && input.receivableAccountId) {
-      const charityLegs: JournalLeg[] = [
-        {
-          entryId: crypto.randomUUID(),
-          accountId: input.receivableAccountId,
-          debit: charityAmount,
-          credit: Money.zero(),
-          description: `Order ${order.id} charity donation receivable (Be Pawsitive)`,
-          referenceType: 'order_charity',
-          referenceId: order.id,
-        },
-        {
-          entryId: crypto.randomUUID(),
-          accountId: 'CHARITY-PAYABLE',
-          debit: Money.zero(),
-          credit: charityAmount,
-          description: `Order ${order.id} charity donation payable (Be Pawsitive)`,
-          referenceType: 'order_charity',
-          referenceId: order.id,
-        },
-      ];
-      await accountingPort.createTransaction(charityLegs, order.storeId);
+      const charityPayableAccountId = await resolveCharityPayableAccount(order.storeId);
+      if (charityPayableAccountId) {
+        const charityLegs: JournalLeg[] = [
+          {
+            entryId: crypto.randomUUID(),
+            accountId: input.receivableAccountId,
+            debit: charityAmount,
+            credit: Money.zero(),
+            description: `Order ${order.id} charity donation receivable (Be Pawsitive)`,
+            referenceType: 'order_charity',
+            referenceId: order.id,
+          },
+          {
+            entryId: crypto.randomUUID(),
+            accountId: charityPayableAccountId,
+            debit: Money.zero(),
+            credit: charityAmount,
+            description: `Order ${order.id} charity donation payable (Be Pawsitive)`,
+            referenceType: 'order_charity',
+            referenceId: order.id,
+          },
+        ];
+        await accountingPort.createTransaction(charityLegs, order.storeId);
+      }
     }
   }
 

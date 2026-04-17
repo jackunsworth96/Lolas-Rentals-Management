@@ -219,3 +219,52 @@ export async function resolveStoreAccounts(storeId: string): Promise<{
     incomeAccountId: income?.id ?? null,
   };
 }
+
+/** The logical account code used in error messages when the charity-payable row is missing. */
+const CHARITY_PAYABLE_ACCOUNT_CODE = 'CHARITY-PAYABLE';
+
+/**
+ * Resolves the charity-payable Liability account from chart_of_accounts.
+ *
+ * Behaviour when the row is not found:
+ *  - non-production: throws a descriptive Error so the misconfiguration is caught early
+ *  - production:     logs console.error and returns null so the caller skips the posting
+ */
+export async function resolveCharityPayableAccount(storeId: string): Promise<string | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from('chart_of_accounts')
+    .select('id, name, account_type')
+    .in('store_id', [storeId, 'company'])
+    .eq('is_active', true);
+  if (error) throw new Error(`Failed to look up accounts: ${error.message}`);
+
+  const accounts = (data ?? []) as Array<{ id: string; name: string; account_type: string }>;
+
+  const account =
+    accounts.find(
+      (a) =>
+        a.name.toLowerCase().includes('charity') &&
+        a.name.toLowerCase().includes('payable'),
+    ) ??
+    accounts.find(
+      (a) => a.account_type === 'Liability' && a.name.toLowerCase().includes('charity'),
+    );
+
+  if (!account) {
+    if (process.env.NODE_ENV !== 'production') {
+      throw new Error(
+        `chart_of_accounts row not found for account '${CHARITY_PAYABLE_ACCOUNT_CODE}' ` +
+          `(store ${storeId}). Ensure a Liability account whose name contains 'charity' ` +
+          `exists at the store or company level with is_active = true.`,
+      );
+    }
+    console.error(
+      `[account-resolver] chart_of_accounts row not found for '${CHARITY_PAYABLE_ACCOUNT_CODE}' ` +
+        `(store ${storeId}) — charity accrual will be skipped.`,
+    );
+    return null;
+  }
+
+  return account.id;
+}
