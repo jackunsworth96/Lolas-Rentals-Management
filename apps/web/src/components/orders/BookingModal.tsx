@@ -822,6 +822,26 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
                           <dd className="font-medium">{rawOrder.flight_number}</dd>
                         </div>
                       )}
+                      {rawOrder.flight_arrival_time && (
+                        <div className="flex justify-between">
+                          <dt className="text-gray-500">Arrival Time</dt>
+                          <dd className="font-medium">
+                            {new Date(rawOrder.flight_arrival_time as string).toLocaleString('en-PH', {
+                              timeZone: 'Asia/Manila',
+                              dateStyle: 'medium',
+                              timeStyle: 'short',
+                            })}
+                          </dd>
+                        </div>
+                      )}
+                      {isDirect && Number((rawOrder.payload as Record<string, unknown> | null)?.helmet_count ?? 0) > 0 && (
+                        <div className="flex justify-between">
+                          <dt className="text-gray-500">Extra Helmets</dt>
+                          <dd className="font-medium">
+                            {Number((rawOrder.payload as Record<string, unknown> | null)?.helmet_count)}
+                          </dd>
+                        </div>
+                      )}
                     </>
                   ) : (
                     <>
@@ -1255,6 +1275,15 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
                   <div className="flex justify-between border-t pt-2">
                     <dt className="font-medium text-gray-700">Add-on Subtotal</dt>
                     <dd className="font-medium">{formatCurrency(addonSubtotal)}</dd>
+                  </div>
+                )}
+
+                {isDirect && Number((rawOrder.payload as Record<string, unknown> | null)?.transfer_amount ?? 0) > 0 && (
+                  <div className="flex justify-between text-charcoal-brand">
+                    <dt className="text-gray-600">Airport Transfer</dt>
+                    <dd className="font-medium">
+                      {formatCurrency(Number((rawOrder.payload as Record<string, unknown> | null)?.transfer_amount))}
+                    </dd>
                   </div>
                 )}
 

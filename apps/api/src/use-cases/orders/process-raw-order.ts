@@ -351,7 +351,11 @@ export async function processRawOrder(
           vanType: rawOrder.transfer_type as string,
           accommodation: null,
           opsNotes: null,
-          totalPrice: 0,
+          totalPrice: typeof rawOrder.payload === 'object' &&
+            rawOrder.payload !== null &&
+            'transfer_amount' in (rawOrder.payload as Record<string, unknown>)
+            ? Number((rawOrder.payload as Record<string, unknown>).transfer_amount ?? 0)
+            : 0,
           paymentMethod: null,
           bookingSource: 'Online',
           bookingToken: null,

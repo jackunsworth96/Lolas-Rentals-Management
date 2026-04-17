@@ -53,6 +53,7 @@ export interface DirectBookingInsert {
   charityDonation?: number;
   webPaymentMethod?: string | null;
   helmetCount?: number | null;
+  transferAmount?: number | null;
 }
 
 export interface DirectBookingResult {

@@ -239,6 +239,8 @@ export function createBookingAdapter(): BookingPort {
         const p: Record<string, unknown> = {};
         if (input.webQuoteRaw != null) p.web_quote = input.webQuoteRaw;
         if (input.helmetCount != null) p.helmet_count = input.helmetCount;
+        if (input.transferAmount != null && input.transferAmount > 0)
+          p.transfer_amount = input.transferAmount;
         return Object.keys(p).length > 0 ? p : null;
       })();
 
