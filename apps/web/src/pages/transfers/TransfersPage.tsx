@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useUIStore } from '../../stores/ui-store.js';
-import { useTransfers, moneyAmount, type TransferRow } from '../../api/transfers.js';
+import { useTransfers, useMarkTransferCollected, moneyAmount, type TransferRow } from '../../api/transfers.js';
 import { Badge } from '../../components/common/Badge.js';
 import { formatDate } from '../../utils/date.js';
 import { formatCurrency } from '../../utils/currency.js';
@@ -28,6 +28,13 @@ const CUSTOMER_TYPE_COLORS: Record<string, 'blue' | 'purple'> = {
 };
 
 type TransferTab = 'upcoming' | 'unpaid' | 'completed';
+
+/** Compute the driver cut for a single transfer given the route's driver_cut and pricing_type. */
+function computeDriverCut(t: TransferRow): number {
+  const cut = t.routeDriverCut ?? 0;
+  if (cut === 0) return 0;
+  return t.routePricingType === 'per_head' ? cut * t.paxCount : cut;
+}
 
 export default function TransfersPage() {
   const storeId = useUIStore((s) => s.selectedStoreId) ?? '';
@@ -59,6 +66,7 @@ export default function TransfersPage() {
   }, [activeTab, completedDateFrom, completedDateTo, todayStr]);
 
   const { data: transfers, isLoading } = useTransfers(storeId, transferFilters);
+  const markCollected = useMarkTransferCollected();
 
   const filtered = useMemo(() => {
     if (!transfers) return [];
@@ -72,6 +80,23 @@ export default function TransfersPage() {
         t.route.toLowerCase().includes(q),
     );
   }, [transfers, search]);
+
+  // Settlement summary derived from the visible rows
+  const settlement = useMemo(() => {
+    const outstanding = filtered.filter((t) => !t.collectedAt);
+    const collected = filtered.filter((t) => !!t.collectedAt);
+    const outstandingTotal = outstanding.reduce((s, t) => s + moneyAmount(t.totalPrice), 0);
+    const collectedTotal = collected.reduce((s, t) => s + (t.collectedAmount ?? moneyAmount(t.totalPrice)), 0);
+    const driverCutTotal = collected.reduce((s, t) => s + computeDriverCut(t), 0);
+    return {
+      outstandingCount: outstanding.length,
+      outstandingTotal,
+      collectedCount: collected.length,
+      collectedTotal,
+      driverCutTotal,
+      netKeeps: collectedTotal - driverCutTotal,
+    };
+  }, [filtered]);
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -94,6 +119,10 @@ export default function TransfersPage() {
     setActiveTab(tab);
     setSearch('');
     setSelectedIds(new Set());
+  }
+
+  function handleMarkCollected(t: TransferRow) {
+    markCollected.mutate({ id: t.id, collectedAmount: moneyAmount(t.totalPrice) });
   }
 
   if (!storeId) {
@@ -194,6 +223,40 @@ export default function TransfersPage() {
         </div>
       )}
 
+      {/* Settlement summary panel */}
+      {filtered.length > 0 && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="rounded-xl border border-charcoal-brand/10 bg-sand-brand px-4 py-3">
+            <p className="font-lato text-xs font-medium uppercase tracking-wider text-charcoal-brand/50">Outstanding</p>
+            <p className="mt-1 font-lato text-lg font-bold text-charcoal-brand">
+              {formatCurrency(settlement.outstandingTotal)}
+            </p>
+            <p className="font-lato text-xs text-charcoal-brand/60">{settlement.outstandingCount} transfer{settlement.outstandingCount !== 1 ? 's' : ''}</p>
+          </div>
+          <div className="rounded-xl border border-teal-brand/20 bg-teal-brand/5 px-4 py-3">
+            <p className="font-lato text-xs font-medium uppercase tracking-wider text-teal-brand/70">Collected</p>
+            <p className="mt-1 font-lato text-lg font-bold text-teal-brand">
+              {formatCurrency(settlement.collectedTotal)}
+            </p>
+            <p className="font-lato text-xs text-teal-brand/60">{settlement.collectedCount} transfer{settlement.collectedCount !== 1 ? 's' : ''}</p>
+          </div>
+          <div className="rounded-xl border border-charcoal-brand/10 bg-sand-brand px-4 py-3">
+            <p className="font-lato text-xs font-medium uppercase tracking-wider text-charcoal-brand/50">Driver Cut</p>
+            <p className="mt-1 font-lato text-lg font-bold text-charcoal-brand">
+              {formatCurrency(settlement.driverCutTotal)}
+            </p>
+            <p className="font-lato text-xs text-charcoal-brand/60">from collected transfers</p>
+          </div>
+          <div className="rounded-xl border border-teal-brand/30 bg-teal-brand px-4 py-3">
+            <p className="font-lato text-xs font-medium uppercase tracking-wider text-white/70">Net Lola's Keeps</p>
+            <p className="mt-1 font-lato text-lg font-bold text-white">
+              {formatCurrency(settlement.netKeeps)}
+            </p>
+            <p className="font-lato text-xs text-white/60">collected − driver cut</p>
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       {isLoading ? (
         <div className="py-12 text-center text-sm text-gray-500">Loading transfers...</div>
@@ -233,6 +296,7 @@ export default function TransfersPage() {
                 <th className="px-3 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Net Profit</th>
                 <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Payment</th>
                 <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Driver Paid</th>
+                <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Collected</th>
                 <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Source</th>
               </tr>
             </thead>
@@ -299,11 +363,26 @@ export default function TransfersPage() {
                           <span className="text-gray-400">—</span>
                         )}
                       </td>
+                      <td className="px-3 py-3 text-sm" onClick={(e) => e.stopPropagation()}>
+                        {t.collectedAt ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+                            ✓ {formatDate(t.collectedAt.slice(0, 10))}
+                          </span>
+                        ) : (
+                          <button
+                            disabled={markCollected.isPending}
+                            onClick={() => handleMarkCollected(t)}
+                            className="rounded-md bg-teal-brand px-2 py-1 text-xs font-medium text-white hover:bg-teal-brand/80 disabled:opacity-50"
+                          >
+                            Mark Collected
+                          </button>
+                        )}
+                      </td>
                       <td className="px-3 py-3 text-sm text-gray-600">{t.bookingSource ?? '—'}</td>
                     </tr>
                     {isExpanded && (
                       <tr key={`${t.id}-actions`}>
-                        <td colSpan={15} className="bg-gray-50 px-6 py-3">
+                        <td colSpan={16} className="bg-gray-50 px-6 py-3">
                           <div className="flex flex-wrap items-center gap-3">
                             {t.paymentStatus !== 'Paid' && (
                               <button

@@ -27,6 +27,14 @@ export interface TransferRow {
   storeId: string;
   createdAt: string;
   updatedAt: string;
+  /** ISO string when cash was physically collected; null if not yet collected. */
+  collectedAt: string | null;
+  /** Amount collected from the driver / customer. */
+  collectedAmount: number | null;
+  /** driver_cut from the matching transfer_routes row. */
+  routeDriverCut: number | null;
+  /** pricing_type from the matching transfer_routes row. */
+  routePricingType: 'fixed' | 'per_head' | null;
 }
 
 export function moneyAmount(val: { amount: number } | number | null | undefined): number {
@@ -89,6 +97,19 @@ export function useRecordDriverPayment() {
   return useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       api.post('/transfers/driver-payment', body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transfers'] }),
+  });
+}
+
+export function markTransferCollected(id: string, collectedAmount: number): Promise<TransferRow> {
+  return api.patch(`/transfers/${id}/collect`, { collectedAmount });
+}
+
+export function useMarkTransferCollected() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, collectedAmount }: { id: string; collectedAmount: number }) =>
+      markTransferCollected(id, collectedAmount),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['transfers'] }),
   });
 }

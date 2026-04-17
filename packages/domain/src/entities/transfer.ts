@@ -28,6 +28,14 @@ export interface TransferProps {
   storeId: string;
   createdAt: Date;
   updatedAt: Date;
+  /** Set when cash for this transfer has been physically collected by the store. */
+  collectedAt?: Date | null;
+  /** Actual amount collected (may differ from totalPrice if discounted). */
+  collectedAmount?: number | null;
+  /** driver_cut from the matching transfer_routes row (read-only, not persisted on this entity). */
+  routeDriverCut?: number | null;
+  /** pricing_type from the matching transfer_routes row ('fixed' | 'per_head'). */
+  routePricingType?: 'fixed' | 'per_head' | null;
 }
 
 export class Transfer {
@@ -56,6 +64,10 @@ export class Transfer {
   readonly storeId: string;
   readonly createdAt: Date;
   readonly updatedAt: Date;
+  readonly collectedAt: Date | null;
+  readonly collectedAmount: number | null;
+  readonly routeDriverCut: number | null;
+  readonly routePricingType: 'fixed' | 'per_head' | null;
 
   private constructor(props: TransferProps) {
     this.id = props.id;
@@ -83,6 +95,10 @@ export class Transfer {
     this.storeId = props.storeId;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
+    this.collectedAt = props.collectedAt ?? null;
+    this.collectedAmount = props.collectedAmount ?? null;
+    this.routeDriverCut = props.routeDriverCut ?? null;
+    this.routePricingType = props.routePricingType ?? null;
   }
 
   static create(props: TransferProps): Transfer {
@@ -101,5 +117,13 @@ export class Transfer {
   calculateNetProfit(): Money {
     const fee = this.driverFee ?? Money.zero();
     return this.totalPrice.subtract(fee);
+  }
+
+  withCollected(collectedAt: Date, collectedAmount: number): Transfer {
+    return Transfer.create({
+      ...(this as unknown as TransferProps),
+      collectedAt,
+      collectedAmount,
+    });
   }
 }

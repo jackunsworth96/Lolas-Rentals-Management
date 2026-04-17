@@ -8,6 +8,7 @@ import {
   RecordTransferPaymentRequestSchema,
   RecordDriverPaymentRequestSchema,
   TransferQuerySchema,
+  CollectTransferBodySchema,
 } from '@lolas/shared';
 
 const router = Router();
@@ -56,6 +57,22 @@ router.post('/driver-payment', requirePermission(Permission.EditTransfers), vali
       accounting: req.app.locals.deps.accountingPort,
     });
     res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+router.patch('/:id/collect', requirePermission(Permission.EditTransfers), validateBody(CollectTransferBodySchema), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const { collectedAmount } = req.body as { collectedAmount: number };
+    const existing = await req.app.locals.deps.transferRepo.findById(id);
+    if (!existing) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Transfer not found' } });
+      return;
+    }
+    const updated = existing.withCollected(new Date(), collectedAmount);
+    await req.app.locals.deps.transferRepo.save(updated);
+    const refreshed = await req.app.locals.deps.transferRepo.findById(id);
+    res.json({ success: true, data: refreshed });
   } catch (err) { next(err); }
 });
 

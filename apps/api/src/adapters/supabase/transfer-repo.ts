@@ -2,6 +2,8 @@ import { getSupabaseClient } from './client.js';
 import type { TransferRepository, TransferFilters } from '@lolas/domain';
 import { Transfer, Money } from '@lolas/domain';
 
+type RouteInfo = { driverCut: number | null; pricingType: 'fixed' | 'per_head' | null };
+
 function toRow(t: Transfer) {
   return {
     id: t.id,
@@ -29,10 +31,12 @@ function toRow(t: Transfer) {
     store_id: t.storeId,
     created_at: t.createdAt.toISOString(),
     updated_at: t.updatedAt.toISOString(),
+    collected_at: t.collectedAt?.toISOString() ?? null,
+    collected_amount: t.collectedAmount,
   };
 }
 
-function toDomain(row: Record<string, unknown>): Transfer {
+function toDomain(row: Record<string, unknown>, routeInfo?: RouteInfo): Transfer {
   return Transfer.create({
     id: row.id as string,
     orderId: row.order_id as string | null,
@@ -59,7 +63,32 @@ function toDomain(row: Record<string, unknown>): Transfer {
     storeId: row.store_id as string,
     createdAt: new Date(row.created_at as string),
     updatedAt: new Date(row.updated_at as string),
+    collectedAt: row.collected_at ? new Date(row.collected_at as string) : null,
+    collectedAmount: row.collected_amount != null ? (row.collected_amount as number) : null,
+    routeDriverCut: routeInfo?.driverCut ?? null,
+    routePricingType: routeInfo?.pricingType ?? null,
   });
+}
+
+function routeKey(route: string, vanType: string | null): string {
+  return `${route}|${vanType ?? ''}`;
+}
+
+async function fetchRouteMap(storeId: string): Promise<Map<string, RouteInfo>> {
+  const sb = getSupabaseClient();
+  const { data } = await sb
+    .from('transfer_routes')
+    .select('route, van_type, driver_cut, pricing_type')
+    .eq('store_id', storeId)
+    .eq('is_active', true);
+  const map = new Map<string, RouteInfo>();
+  for (const r of data ?? []) {
+    map.set(routeKey(r.route as string, r.van_type as string | null), {
+      driverCut: r.driver_cut as number | null,
+      pricingType: (r.pricing_type as 'fixed' | 'per_head') ?? null,
+    });
+  }
+  return map;
 }
 
 export function createTransferRepo(): TransferRepository {
@@ -73,7 +102,10 @@ export function createTransferRepo(): TransferRepository {
         .eq('id', id)
         .maybeSingle();
       if (error) throw new Error(`Failed to fetch transfer: ${error.message}`);
-      return data ? toDomain(data) : null;
+      if (!data) return null;
+      const routeMap = await fetchRouteMap(data.store_id as string);
+      const info = routeMap.get(routeKey(data.route as string, data.van_type as string | null));
+      return toDomain(data, info);
     },
 
     async findByBookingToken(token) {
@@ -83,7 +115,10 @@ export function createTransferRepo(): TransferRepository {
         .eq('booking_token', token)
         .maybeSingle();
       if (error) throw new Error(`Failed to fetch transfer by booking token: ${error.message}`);
-      return data ? toDomain(data) : null;
+      if (!data) return null;
+      const routeMap = await fetchRouteMap(data.store_id as string);
+      const info = routeMap.get(routeKey(data.route as string, data.van_type as string | null));
+      return toDomain(data, info);
     },
 
     async findByStore(storeId, filters?) {
@@ -100,7 +135,11 @@ export function createTransferRepo(): TransferRepository {
       query = query.order('service_date', { ascending: true });
       const { data, error } = await query;
       if (error) throw new Error(`Failed to fetch transfers: ${error.message}`);
-      return (data ?? []).map(toDomain);
+      const routeMap = await fetchRouteMap(storeId);
+      return (data ?? []).map((row) => {
+        const info = routeMap.get(routeKey(row.route as string, row.van_type as string | null));
+        return toDomain(row, info);
+      });
     },
 
     async save(transfer) {

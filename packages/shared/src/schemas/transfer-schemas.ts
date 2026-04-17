@@ -43,6 +43,12 @@ export const RecordDriverPaymentRequestSchema = z.object({
 
 export type RecordDriverPaymentRequest = z.infer<typeof RecordDriverPaymentRequestSchema>;
 
+export const CollectTransferBodySchema = z.object({
+  collectedAmount: z.number().positive(),
+});
+
+export type CollectTransferBody = z.infer<typeof CollectTransferBodySchema>;
+
 export const TransferQuerySchema = z.object({
   storeId: z.string(),
   dateFrom: z.string().optional(),
