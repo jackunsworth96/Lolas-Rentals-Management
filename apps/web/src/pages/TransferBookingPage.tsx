@@ -106,15 +106,6 @@ function routeCardMeta(routeStr: string): { Icon: typeof PlaneTakeoff; label: st
     : { Icon: PlaneLanding, label: routeStr, sub: 'Arriving in Siargao' };
 }
 
-function normalizeApiBase(value: string | undefined): string {
-  const raw = (value ?? '').trim() || '/api';
-  const base = raw.replace(/\/+$/, '');
-  if (base.startsWith('http')) return base.endsWith('/api') ? base : `${base}/api`;
-  return base || '/api';
-}
-
-const API_BASE = normalizeApiBase(import.meta.env.VITE_API_URL as string | undefined);
-
 const cardBase = 'rounded-2xl p-6 border-2 cursor-pointer transition-colors';
 const cardUnselected = `${cardBase} bg-cream-brand border-charcoal-brand/10 hover:border-teal-brand/40`;
 const cardSelected = `${cardBase} border-teal-brand bg-teal-brand/5`;
@@ -202,34 +193,21 @@ export default function TransferBookingPage() {
     setSubmitError(null);
 
     try {
-      const res = await fetch(`${API_BASE}/public/public-transfer-booking`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customerName: customerName.trim(),
-          contactNumber: contactNumber.trim(),
-          customerEmail: customerEmail.trim() || null,
-          flightNumber: flightNumber.trim().toUpperCase() || null,
-          serviceDate,
-          flightTime: flightTime || null,
-          paxCount,
-          route,
-          vanType: vanSelection.vanType,
-          totalPrice: calcTotal(vanSelection, paxCount),
-          accommodation: accommodation.trim() || null,
-          opsNotes: opsNotes.trim() || null,
-          storeId: TRANSFER_STORE_ID,
-        }),
+      await api.post('/public/public-transfer-booking', {
+        customerName: customerName.trim(),
+        contactNumber: contactNumber.trim(),
+        customerEmail: customerEmail.trim() || null,
+        flightNumber: flightNumber.trim().toUpperCase() || null,
+        serviceDate,
+        flightTime: flightTime || null,
+        paxCount,
+        route,
+        vanType: vanSelection.vanType,
+        totalPrice: calcTotal(vanSelection, paxCount),
+        accommodation: accommodation.trim() || null,
+        opsNotes: opsNotes.trim() || null,
+        storeId: TRANSFER_STORE_ID,
       });
-
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-        throw new Error(
-          (body?.error as Record<string, string> | undefined)?.message
-            ?? 'Something went wrong. Please try again or WhatsApp us directly.',
-        );
-      }
-
       setIsConfirmed(true);
     } catch (err: unknown) {
       setSubmitError(err instanceof Error ? err.message : 'Something went wrong. Please try again or WhatsApp us directly.');

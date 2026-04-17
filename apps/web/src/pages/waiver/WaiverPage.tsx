@@ -11,13 +11,8 @@ import { CheckCircle2 } from 'lucide-react';
 import lolasLogo from '../../assets/Lolas Original Logo.svg';
 import { WaiverSigningTermsContent } from '../../components/waiver/WaiverSigningTermsContent.js';
 import { formatPickupDatetimeManila } from '../../utils/date.js';
-
-function normalizeApiBase(value: string | undefined): string {
-  const raw = (value ?? '').trim() || '/api';
-  const base = raw.replace(/\/+$/, '');
-  if (base.startsWith('http')) return base.endsWith('/api') ? base : `${base}/api`;
-  return base || '/api';
-}
+import { api } from '../../api/client.js';
+import { normalizeApiBase } from '../../api/normalize-api-base.js';
 
 const API_BASE = normalizeApiBase(import.meta.env.VITE_API_URL as string | undefined);
 
@@ -301,24 +296,16 @@ export default function WaiverPage() {
         }
       }
 
-      const res = await fetch(`${API_BASE}/public/waiver/${encodeURIComponent(orderReference)}/sign`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          driverName: driverName.trim(),
-          driverEmail: driverEmail.trim(),
-          driverMobile: driverMobile.trim() || undefined,
-          agreedToTerms: true,
-          driverSignatureDataUrl,
-          licenceFrontUrl,
-          licenceBackUrl: licenceBackUrl || undefined,
-          passengerSignatures: passengerSignatures.length ? passengerSignatures : undefined,
-        }),
+      await api.post(`/public/waiver/${encodeURIComponent(orderReference)}/sign`, {
+        driverName: driverName.trim(),
+        driverEmail: driverEmail.trim(),
+        driverMobile: driverMobile.trim() || undefined,
+        agreedToTerms: true,
+        driverSignatureDataUrl,
+        licenceFrontUrl,
+        licenceBackUrl: licenceBackUrl || undefined,
+        passengerSignatures: passengerSignatures.length ? passengerSignatures : undefined,
       });
-      if (!res.ok) {
-        const j = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
-        throw new Error(j?.error?.message ?? `Submit failed (${res.status})`);
-      }
       setAlreadySignedOnLoad(false);
       setStep(3);
     } catch (err) {
