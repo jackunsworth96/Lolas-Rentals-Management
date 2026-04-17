@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Modal } from '../common/Modal.js';
+import { normalizeApiBase } from '../../api/normalize-api-base.js';
 import { useCreateWalkInDirect } from '../../api/orders-raw.js';
 import { useLocations, useAddons } from '../../api/config.js';
 import { useAvailableVehicles } from '../../api/fleet.js';
@@ -230,7 +231,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
     // quote and making fees/addon costs disappear.
     const controller = new AbortController();
     setQuoteLoading(true);
-    const apiBase = ((import.meta.env.VITE_API_URL as string | undefined) ?? '').replace(/\/+$/, '');
+    const apiBase = normalizeApiBase(import.meta.env.VITE_API_URL as string | undefined);
     const parsed: Record<string, number> = JSON.parse(addonIdsKey) as Record<string, number>;
     const selectedAddonIdsList = Object.entries(parsed)
       .filter(([, qty]) => qty > 0)

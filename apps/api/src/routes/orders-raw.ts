@@ -118,6 +118,8 @@ const walkInDirectSchema = z.object({
   pickupFee: z.number().min(0).default(0),
   dropoffFee: z.number().min(0).default(0),
   charityDonation: z.number().min(0).optional(),
+  paymentAccountId: z.string().min(1).optional().nullable(),
+  depositLiabilityAccountId: z.string().min(1).optional().nullable(),
 });
 
 router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (req, res, next) => {
@@ -330,18 +332,50 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       p_journal_date: journalDate,
       p_journal_store_id: body.storeId,
       p_journal_legs: journalLegs,
-      p_rental_payment_id:  crypto.randomUUID(),
-      p_rental_amount:      body.grandTotal,
-      p_transaction_date:   formatManilaDate(),
-      p_deposit_payment_id: body.depositCollected && body.depositAmount > 0
-                              ? crypto.randomUUID()
-                              : null,
-      p_deposit_amount:     body.depositAmount ?? 0,
-      p_deposit_collected:  body.depositCollected ?? false,
     });
     if (rpcErr) {
       console.error('RPC error:', rpcErr.message, { code: rpcErr.code });
       throw new Error(`activate_order_atomic RPC failed: ${rpcErr.message}`);
+    }
+
+    // 12b. Insert rental and deposit payments
+    const paymentRepo = req.app.locals.deps.paymentRepo;
+    const rentalPaymentId = crypto.randomUUID();
+    await paymentRepo.save({
+      id: rentalPaymentId,
+      storeId: body.storeId,
+      orderId,
+      rawOrderId: null,
+      orderItemId: null,
+      orderAddonId: null,
+      paymentType: 'rental',
+      amount: body.grandTotal,
+      paymentMethodId: body.paymentMethod,
+      transactionDate: formatManilaDate(),
+      settlementStatus: null,
+      settlementRef: null,
+      customerId,
+      accountId: body.paymentAccountId ?? null,
+    });
+
+    if (body.depositCollected && body.depositAmount > 0) {
+      const depositPaymentId = crypto.randomUUID();
+      await paymentRepo.save({
+        id: depositPaymentId,
+        storeId: body.storeId,
+        orderId,
+        rawOrderId: null,
+        orderItemId: null,
+        orderAddonId: null,
+        paymentType: 'security_deposit',
+        amount: body.depositAmount,
+        paymentMethodId: body.depositMethod,
+        transactionDate: formatManilaDate(),
+        settlementStatus: null,
+        settlementRef: null,
+        customerId,
+        accountId: body.depositLiabilityAccountId ?? null,
+      });
     }
 
     // 13. Post charity journal if applicable
@@ -622,6 +656,7 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
       paymentRepo: req.app.locals.deps.paymentRepo,
       accountingPort: req.app.locals.deps.accountingPort,
       cardSettlementRepo: req.app.locals.deps.cardSettlementRepo,
+      transferRepo: req.app.locals.deps.transferRepo,
     };
 
     const body = parsed.data;

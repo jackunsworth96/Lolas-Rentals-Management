@@ -1,13 +1,5 @@
 import { useAuthStore } from '../stores/auth-store.js';
-
-function normalizeApiBase(value: string | undefined): string {
-  const raw = (value ?? '').trim() || '/api';
-  const base = raw.replace(/\/+$/, '');
-  if (base.startsWith('http')) {
-    return base.endsWith('/api') ? base : `${base}/api`;
-  }
-  return base || '/api';
-}
+import { normalizeApiBase } from './normalize-api-base.js';
 
 const BASE_URL = normalizeApiBase(import.meta.env.VITE_API_URL as string | undefined);
 

@@ -174,20 +174,37 @@ export class SupabaseOrderRepository implements OrderRepository {
 
   async save(order: Order): Promise<void> {
     const sb = getSupabaseClient();
-    const { error } = await sb
+    // Check if this order already exists
+    const { data: existing } = await sb
       .from('orders')
-      .update({
-        status:            order.status.value,
-        employee_id:       order.employeeId,
-        final_total:       order.finalTotal.toNumber(),
-        balance_due:       order.balanceDue.toNumber(),
-        deposit_status:    order.depositStatus,
-        return_charges:    order.returnCharges.toNumber(),
-        card_fee_surcharge: order.cardFeeSurcharge.toNumber(),
-        updated_at:        order.updatedAt.toISOString(),
-      })
-      .eq('id', order.id);
-    if (error) throw new Error(`save failed: ${error.message}`);
+      .select('id')
+      .eq('id', order.id)
+      .maybeSingle();
+
+    if (existing) {
+      // UPDATE — only mutable business fields, never security_deposit
+      const { error } = await sb
+        .from('orders')
+        .update({
+          status:             order.status.value,
+          employee_id:        order.employeeId,
+          final_total:        order.finalTotal.toNumber(),
+          balance_due:        order.balanceDue.toNumber(),
+          deposit_status:     order.depositStatus,
+          return_charges:     order.returnCharges.toNumber(),
+          card_fee_surcharge: order.cardFeeSurcharge.toNumber(),
+          updated_at:         order.updatedAt.toISOString(),
+        })
+        .eq('id', order.id);
+      if (error) throw new Error(`save (update) failed: ${error.message}`);
+    } else {
+      // INSERT — full row for new orders
+      const row = orderToRow(order);
+      const { error } = await sb
+        .from('orders')
+        .insert(row);
+      if (error) throw new Error(`save (insert) failed: ${error.message}`);
+    }
   }
 
   async activateOrderAtomic(

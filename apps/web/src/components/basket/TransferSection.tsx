@@ -129,34 +129,10 @@ export function TransferSection({ transfer, onTransferChange, errors }: Props) {
     transfer !== null && transfer.transferRouteId === group.route.id;
 
   return (
-    <div className="space-y-4">
-      <div className="divide-y divide-charcoal-brand/[0.08]">
+    <div className="space-y-3">
 
-        {/* No transfer needed */}
-        <button
-          type="button"
-          onClick={() => onTransferChange(null)}
-          className="flex w-full items-center gap-3 py-3 text-left transition-colors hover:bg-sand-brand/30 first:pt-1"
-        >
-          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm transition-colors ${
-            transfer === null ? 'bg-teal-brand/10 text-teal-brand' : 'bg-sand-brand text-charcoal-brand/50'
-          }`}>
-            ✈️
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-medium text-charcoal-brand">No transfer needed</p>
-            <p className="text-[12px] text-charcoal-brand/50">I'll arrange my own airport transport</p>
-          </div>
-          <div className={`relative h-[22px] w-[40px] shrink-0 rounded-full transition-colors ${
-            transfer === null ? 'bg-teal-brand' : 'bg-charcoal-brand/15'
-          }`}>
-            <span className={`absolute top-[3px] h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
-              transfer === null ? 'translate-x-[19px]' : 'translate-x-[3px]'
-            }`} />
-          </div>
-        </button>
-
-        {/* One row per van type group */}
+      {/* Van type selection rows */}
+      <div className="divide-y divide-charcoal-brand/[0.08] rounded-xl border border-charcoal-brand/10 overflow-hidden">
         {groups.map((group) => {
           const selected = isSelected(group);
           const pricingType = group.route.pricingType === 'per_head' ? 'per_head' : 'fixed';
@@ -165,14 +141,14 @@ export function TransferSection({ transfer, onTransferChange, errors }: Props) {
             : formatCurrency(group.route.price);
 
           return (
-            <div key={group.vanType} className="last:pb-1">
+            <div key={group.vanType} className={selected ? 'bg-teal-brand/5' : 'bg-white'}>
               <button
                 type="button"
-                onClick={() => selectGroup(group)}
-                className="flex w-full items-center gap-3 py-3 text-left transition-colors hover:bg-sand-brand/30"
+                onClick={() => (selected ? onTransferChange(null) : selectGroup(group))}
+                className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-sand-brand/30"
               >
                 <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm transition-colors ${
-                  selected ? 'bg-teal-brand/10 text-teal-brand' : 'bg-sand-brand text-charcoal-brand/50'
+                  selected ? 'bg-teal-brand/10' : 'bg-sand-brand'
                 }`}>
                   {group.icon}
                 </div>
@@ -182,7 +158,9 @@ export function TransferSection({ transfer, onTransferChange, errors }: Props) {
                     {pricingType === 'per_head' ? 'Per person pricing' : 'Fixed price'}
                   </p>
                 </div>
-                <span className="mr-3 shrink-0 text-[14px] font-medium text-charcoal-brand/70">
+                <span className={`mr-3 shrink-0 text-[14px] font-medium ${
+                  selected ? 'text-teal-brand' : 'text-charcoal-brand/70'
+                }`}>
                   {priceLabel}
                 </span>
                 <div className={`relative h-[22px] w-[40px] shrink-0 rounded-full transition-colors ${
@@ -196,7 +174,7 @@ export function TransferSection({ transfer, onTransferChange, errors }: Props) {
 
               {/* Pax counter — shown when this per_head group is selected */}
               {selected && pricingType === 'per_head' && transfer && (
-                <div className="mb-2 ml-12 flex items-center gap-3">
+                <div className="mb-3 ml-16 flex items-center gap-3 px-4">
                   <button
                     type="button"
                     onClick={() => updatePaxCount(-1)}
@@ -244,7 +222,6 @@ export function TransferSection({ transfer, onTransferChange, errors }: Props) {
               <p className="mt-1 text-[11px] text-red-500">{errors.flightNumber}</p>
             )}
           </div>
-
           <div>
             <label className={LABEL_CLS}>Flight Arrival Time</label>
             <input
@@ -259,6 +236,7 @@ export function TransferSection({ transfer, onTransferChange, errors }: Props) {
           </div>
         </div>
       )}
+
     </div>
   );
 }

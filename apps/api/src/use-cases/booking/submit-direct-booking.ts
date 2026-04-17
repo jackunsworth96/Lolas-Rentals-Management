@@ -127,6 +127,17 @@ export async function submitDirectBooking(
     }
   }
 
+  // 3c. Add transfer and charity to webQuoteRaw so the persisted
+  // quote matches what the customer sees on the confirmation page
+  if (webQuoteRaw !== null) {
+    if (input.transferAmount && input.transferAmount > 0) {
+      webQuoteRaw += input.transferAmount;
+    }
+    if (input.charityDonation && input.charityDonation > 0) {
+      webQuoteRaw += input.charityDonation;
+    }
+  }
+
   // 4. Generate a unique order reference + cancellation token
   const source = resolveSourceFromStore(input.storeId);
   const orderReference = await uniqueOrderReference(bookingPort, source);

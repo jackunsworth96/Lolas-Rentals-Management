@@ -12,6 +12,7 @@ import {
   type CardSettlement,
   type JournalLeg,
   type Customer,
+  type TransferRepository,
   Order as OrderEntity,
   OrderStatus,
   Money,
@@ -37,6 +38,7 @@ export interface ProcessRawOrderDeps {
   paymentRepo: PaymentRepository;
   accountingPort: AccountingPort;
   cardSettlementRepo: CardSettlementRepository;
+  transferRepo: TransferRepository;
 }
 
 export interface ProcessRawOrderInput {
@@ -327,6 +329,41 @@ export async function processRawOrder(
       },
     ];
     await deps.accountingPort.createTransaction(charityLegs, input.storeId);
+  }
+
+  // Create transfer record if booking included a transfer
+  if (rawOrder.transfer_type && rawOrder.transfer_route) {
+    try {
+      const { createTransfer } = await import('../transfers/create-transfer.js');
+      const serviceDate = rawOrder.pickup_datetime
+        ? new Date(rawOrder.pickup_datetime).toISOString().split('T')[0]
+        : formatManilaDate();
+      await createTransfer(
+        {
+          serviceDate,
+          customerName: rawOrder.customer_name as string,
+          contactNumber: (rawOrder.customer_mobile as string | null) ?? null,
+          customerEmail: (rawOrder.customer_email as string | null) ?? null,
+          customerType: 'Online',
+          route: rawOrder.transfer_route as string,
+          flightTime: (rawOrder.flight_arrival_time as string | null) ?? null,
+          paxCount: 1,
+          vanType: rawOrder.transfer_type as string,
+          accommodation: null,
+          opsNotes: null,
+          totalPrice: 0,
+          paymentMethod: null,
+          bookingSource: 'Online',
+          bookingToken: null,
+          storeId: rawOrder.store_id as string,
+          orderId,
+        },
+        { transfers: deps.transferRepo },
+      );
+    } catch (transferErr) {
+      // Non-fatal — log but don't block activation
+      console.error('[process-raw-order] Failed to create transfer record:', transferErr);
+    }
   }
 
   const allPayments = await deps.paymentRepo.findByOrderId(orderId);
