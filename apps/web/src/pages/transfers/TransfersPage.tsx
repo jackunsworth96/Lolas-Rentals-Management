@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useUIStore } from '../../stores/ui-store.js';
-import { useTransfers, useMarkTransferCollected, moneyAmount, type TransferRow } from '../../api/transfers.js';
+import { useTransfers, useMarkTransferCollected, notifyDriver, moneyAmount, type TransferRow } from '../../api/transfers.js';
+import { useToast } from '../../hooks/useToast.js';
 import { Badge } from '../../components/common/Badge.js';
 import { formatDate } from '../../utils/date.js';
 import { formatCurrency } from '../../utils/currency.js';
@@ -67,6 +68,8 @@ export default function TransfersPage() {
 
   const { data: transfers, isLoading } = useTransfers(storeId, transferFilters);
   const markCollected = useMarkTransferCollected();
+  const { toasts, pushToast } = useToast();
+  const [notifyingId, setNotifyingId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     if (!transfers) return [];
@@ -123,6 +126,18 @@ export default function TransfersPage() {
 
   function handleMarkCollected(t: TransferRow) {
     markCollected.mutate({ id: t.id, collectedAmount: moneyAmount(t.totalPrice) });
+  }
+
+  async function handleNotifyDriver(t: TransferRow) {
+    setNotifyingId(t.id);
+    try {
+      await notifyDriver(t.id);
+      pushToast('Driver notified', 'success');
+    } catch {
+      pushToast('Failed to notify driver', 'error');
+    } finally {
+      setNotifyingId(null);
+    }
   }
 
   if (!storeId) {
@@ -400,6 +415,15 @@ export default function TransfersPage() {
                                 Record Driver Payment
                               </button>
                             )}
+                            {t.serviceDate >= todayStr && (
+                              <button
+                                disabled={notifyingId === t.id}
+                                onClick={() => handleNotifyDriver(t)}
+                                className="rounded-lg bg-teal-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-brand/80 disabled:opacity-50"
+                              >
+                                {notifyingId === t.id ? 'Sending…' : 'Notify Driver 🔔'}
+                              </button>
+                            )}
                             <div className="ml-auto space-y-0.5 text-right text-xs text-gray-500">
                               {t.accommodation && <p>Hotel: {t.accommodation}</p>}
                               {t.opsNotes && <p>Notes: {t.opsNotes}</p>}
@@ -460,6 +484,20 @@ export default function TransfersPage() {
           storeId={storeId}
         />
       )}
+
+      {/* Toast container */}
+      <div className="fixed bottom-8 right-8 z-[60] flex flex-col-reverse items-end gap-2">
+        {toasts.map((t) => (
+          <div
+            key={t.id}
+            className={`animate-toast-slide-up font-lato rounded-2xl px-5 py-3 text-sm font-bold shadow-lg ${
+              t.type === 'success' ? 'bg-teal-brand text-white' : 'bg-red-600 text-white'
+            }`}
+          >
+            {t.msg}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

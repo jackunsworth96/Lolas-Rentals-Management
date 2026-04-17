@@ -1364,6 +1364,122 @@ export function transferBookingConfirmationHtml({
 }
 
 /**
+ * Driver notification email sent when staff dispatch a transfer job.
+ * Designed for mobile readability — large text, clear sections, no clutter.
+ * All user/DB-supplied strings are routed through escapeHtml().
+ */
+export function driverNotificationHtml({
+  customerName,
+  route,
+  pickupLocation,
+  pickupTime,
+  flightNumber,
+  flightArrivalTime,
+  paxCount,
+  totalPrice,
+  driverCut,
+}: {
+  customerName: string;
+  route: string;
+  pickupLocation: string | null;
+  pickupTime: string | null;
+  flightNumber: string | null;
+  flightArrivalTime: string | null;
+  paxCount: number;
+  totalPrice: number;
+  driverCut: number;
+}): string {
+  const pickupRow = pickupLocation
+    ? `<tr>
+        <td style="padding:10px 0 4px;color:#64748b;font-size:13px;width:120px;">Pickup / Hotel</td>
+        <td style="padding:10px 0 4px;font-weight:700;color:#1e293b;font-size:15px;">${escapeHtml(pickupLocation)}</td>
+      </tr>`
+    : '';
+
+  const pickupTimeRow = pickupTime
+    ? `<tr>
+        <td style="padding:4px 0;color:#64748b;font-size:13px;">Date / Time</td>
+        <td style="padding:4px 0;font-weight:700;color:#1e293b;font-size:15px;">${escapeHtml(pickupTime)}</td>
+      </tr>`
+    : '';
+
+  const flightNumberRow = flightNumber
+    ? `<tr>
+        <td style="padding:4px 0;color:#64748b;font-size:13px;">Flight No.</td>
+        <td style="padding:4px 0;font-weight:700;color:#1e293b;font-size:15px;">${escapeHtml(flightNumber)}</td>
+      </tr>`
+    : '';
+
+  const flightArrivalRow = flightArrivalTime
+    ? `<tr>
+        <td style="padding:4px 0;color:#64748b;font-size:13px;">Flight Time</td>
+        <td style="padding:4px 0;font-weight:700;color:#1e293b;font-size:15px;">${escapeHtml(flightArrivalTime)}</td>
+      </tr>`
+    : '';
+
+  return `
+    <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; background: #f1f5f9; padding: 16px;">
+
+      <div style="background: #00577C; border-radius: 12px; padding: 20px 24px; margin-bottom: 16px; text-align: center;">
+        <p style="color: rgba(255,255,255,0.7); margin: 0 0 4px; font-size: 11px; letter-spacing: 2px; text-transform: uppercase;">
+          Lola's Rentals — Driver Job
+        </p>
+        <h1 style="color: white; margin: 0; font-size: 22px; font-weight: 900;">
+          🚐 Transfer Job
+        </h1>
+      </div>
+
+      <!-- Customer & Route -->
+      <div style="background: white; border-radius: 12px; padding: 20px 24px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.07);">
+        <p style="margin: 0 0 14px; font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em;">
+          Job Details
+        </p>
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding:10px 0 4px;color:#64748b;font-size:13px;width:120px;">Customer</td>
+            <td style="padding:10px 0 4px;font-weight:900;color:#1e293b;font-size:18px;">${escapeHtml(customerName)}</td>
+          </tr>
+          <tr>
+            <td style="padding:4px 0;color:#64748b;font-size:13px;">Route</td>
+            <td style="padding:4px 0;font-weight:700;color:#00577C;font-size:16px;">${escapeHtml(route)}</td>
+          </tr>
+          <tr>
+            <td style="padding:4px 0;color:#64748b;font-size:13px;">Passengers</td>
+            <td style="padding:4px 0;font-weight:700;color:#1e293b;font-size:15px;">${paxCount} pax</td>
+          </tr>
+          ${pickupRow}
+          ${pickupTimeRow}
+          ${flightNumberRow}
+          ${flightArrivalRow}
+        </table>
+      </div>
+
+      <!-- Payment -->
+      <div style="background: white; border-radius: 12px; padding: 20px 24px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.07);">
+        <p style="margin: 0 0 14px; font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em;">
+          Payment
+        </p>
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding:6px 0;color:#64748b;font-size:13px;width:120px;">Transfer Total</td>
+            <td style="padding:6px 0;color:#1e293b;font-size:14px;">₱${totalPrice.toLocaleString()}</td>
+          </tr>
+          <tr style="border-top:2px solid #FCBC5A;">
+            <td style="padding:12px 0 6px;color:#64748b;font-size:13px;font-weight:700;">Your Cut</td>
+            <td style="padding:12px 0 6px;font-weight:900;color:#00577C;font-size:22px;">₱${driverCut.toLocaleString()}</td>
+          </tr>
+        </table>
+      </div>
+
+      <p style="color:#94a3b8;font-size:11px;text-align:center;margin:12px 0 0;">
+        Lola's Rentals &amp; Tours Inc. — Driver notification
+      </p>
+
+    </div>
+  `;
+}
+
+/**
  * Internal staff alert when a walk-in booking is created via /walk-in-direct.
  * All user/DB-supplied strings are routed through escapeHtml() to prevent HTML injection.
  */

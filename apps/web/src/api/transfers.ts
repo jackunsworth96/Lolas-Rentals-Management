@@ -101,6 +101,10 @@ export function useRecordDriverPayment() {
   });
 }
 
+export function notifyDriver(id: string): Promise<void> {
+  return api.post(`/transfers/${id}/notify-driver`, {});
+}
+
 export function markTransferCollected(id: string, collectedAmount: number): Promise<TransferRow> {
   return api.patch(`/transfers/${id}/collect`, { collectedAmount });
 }

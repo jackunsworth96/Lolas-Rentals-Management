@@ -60,6 +60,50 @@ router.post('/driver-payment', requirePermission(Permission.EditTransfers), vali
   } catch (err) { next(err); }
 });
 
+router.post('/:id/notify-driver', requirePermission(Permission.EditTransfers), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const transfer = await req.app.locals.deps.transferRepo.findById(id);
+    if (!transfer) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Transfer not found' } });
+      return;
+    }
+
+    const driverEmail = process.env.DRIVER_EMAIL;
+    if (!driverEmail) {
+      res.status(500).json({ success: false, error: { code: 'CONFIG_ERROR', message: 'DRIVER_EMAIL not configured' } });
+      return;
+    }
+
+    const { sendEmail, driverNotificationHtml } = await import('../services/email.js');
+
+    const cut = transfer.routeDriverCut ?? 0;
+    const driverCut = transfer.routePricingType === 'per_head'
+      ? cut * transfer.paxCount
+      : cut;
+
+    const html = driverNotificationHtml({
+      customerName: transfer.customerName,
+      route: transfer.route,
+      pickupLocation: transfer.accommodation,
+      pickupTime: transfer.serviceDate,
+      flightNumber: null,
+      flightArrivalTime: transfer.flightTime,
+      paxCount: transfer.paxCount,
+      totalPrice: transfer.totalPrice.toNumber(),
+      driverCut,
+    });
+
+    await sendEmail({
+      to: driverEmail,
+      subject: `Transfer job — ${transfer.customerName} — ${transfer.route}`,
+      html,
+    });
+
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 router.patch('/:id/collect', requirePermission(Permission.EditTransfers), validateBody(CollectTransferBodySchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
