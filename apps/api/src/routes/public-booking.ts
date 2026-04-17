@@ -255,7 +255,7 @@ router.patch('/cancel/:orderReference', cancelLimiter, async (req, res, next) =>
 
     const { data: orderRow, error: fetchErr } = await sb
       .from('orders_raw')
-      .select('id, cancellation_token, status')
+      .select('id, cancellation_token, cancellation_token_used, status')
       .eq('order_reference', orderReference)
       .eq('booking_channel', 'direct')
       .single();
@@ -265,19 +265,29 @@ router.patch('/cancel/:orderReference', cancelLimiter, async (req, res, next) =>
       return;
     }
 
-    if (orderRow.status !== 'unprocessed') {
-      res.status(409).json({ success: false, error: { code: 'ALREADY_PROCESSED', message: 'This booking cannot be cancelled.' } });
-      return;
-    }
-
     if (!orderRow.cancellation_token || orderRow.cancellation_token !== token.trim()) {
       res.status(401).json({ success: false, error: { code: 'INVALID_TOKEN', message: 'Invalid cancellation token.' } });
       return;
     }
 
+    if (orderRow.cancellation_token_used) {
+      res.status(400).json({ success: false, error: { code: 'TOKEN_ALREADY_USED', message: 'This cancellation link has already been used.' } });
+      return;
+    }
+
+    if (orderRow.status !== 'unprocessed') {
+      res.status(409).json({ success: false, error: { code: 'ALREADY_PROCESSED', message: 'This booking cannot be cancelled.' } });
+      return;
+    }
+
     const { error } = await sb
       .from('orders_raw')
-      .update({ status: 'cancelled', cancelled_at: new Date().toISOString(), cancelled_reason: 'customer_request' })
+      .update({
+        status: 'cancelled',
+        cancelled_at: new Date().toISOString(),
+        cancelled_reason: 'customer_request',
+        cancellation_token_used: true,
+      })
       .eq('id', orderRow.id)
       .eq('status', 'unprocessed');
 
