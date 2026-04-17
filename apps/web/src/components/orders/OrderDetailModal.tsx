@@ -434,7 +434,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
   if (orderLoading || !order) {
     return (
       <Modal open onClose={onClose} title="Order" size="lg">
-        <div className="py-8 text-center text-gray-500">Loading order...</div>
+        <div className="py-8 text-center text-charcoal-brand/60">Loading order...</div>
       </Modal>
     );
   }
@@ -511,7 +511,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`border-b-2 px-4 py-2 text-sm font-medium ${tab === t.key ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+            className={`border-b-2 px-4 py-2 text-sm font-medium ${tab === t.key ? 'border-teal-brand text-teal-brand' : 'border-transparent text-charcoal-brand/60 hover:text-charcoal-brand'}`}
           >
             {t.label}
           </button>
@@ -522,13 +522,13 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
       {tab === 'summary' && (
         <div className="space-y-5">
           {/* Customer & Vehicle header */}
-          <div className="rounded-lg bg-gray-50 p-4">
+          <div className="rounded-lg bg-sand-brand p-4">
             <div className="flex flex-wrap gap-6">
               <div className="min-w-0 max-w-md">
-                <div className="text-xs font-medium uppercase text-gray-500">Customer</div>
+                <div className="text-xs font-medium uppercase text-charcoal-brand/60">Customer</div>
                 <div className="text-base font-semibold text-gray-900">{customerName}</div>
-                {customerMobile && <div className="text-sm text-gray-500">{customerMobile}</div>}
-                {customerEmailForPaw && <div className="text-sm text-gray-500">{customerEmailForPaw}</div>}
+                {customerMobile && <div className="text-sm text-charcoal-brand/60">{customerMobile}</div>}
+                {customerEmailForPaw && <div className="text-sm text-charcoal-brand/60">{customerEmailForPaw}</div>}
                 {pawCardSavings?.hasPawCard && (
                   <div className="mt-2 rounded-md border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs text-teal-900">
                     <span className="mr-1" aria-hidden>🐾</span>
@@ -541,7 +541,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
               {enrichedData && (
                 <div className="min-w-0 max-w-xs">
                   <div className="rounded-lg border border-gray-200 bg-white p-4">
-                    <div className="text-xs font-medium uppercase text-gray-500">Waiver</div>
+                    <div className="text-xs font-medium uppercase text-charcoal-brand/60">Waiver</div>
                     {waiverStatus === 'signed' ? (
                       <div className="mt-2 flex items-start gap-2">
                         <CheckCircle2 className="h-5 w-5 shrink-0 text-green-600" aria-hidden />
@@ -565,12 +565,12 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                             type="button"
                             disabled={sendingWaiverLink}
                             onClick={() => void sendWaiverLinkToClipboard()}
-                            className="mt-3 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                            className="mt-3 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-sand-brand disabled:opacity-50"
                           >
                             {sendingWaiverLink ? 'Working…' : 'Send waiver link'}
                           </button>
                         ) : !orderRefForWaiver ? (
-                          <p className="mt-2 text-xs text-gray-500">No booking reference on this order.</p>
+                          <p className="mt-2 text-xs text-charcoal-brand/60">No booking reference on this order.</p>
                         ) : null}
                       </div>
                     )}
@@ -580,9 +580,9 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
 
               <div className="min-w-0 max-w-xs">
                 <div className="rounded-lg border border-gray-200 bg-white p-4">
-                  <div className="text-xs font-medium uppercase text-gray-500">Inspection</div>
+                  <div className="text-xs font-medium uppercase text-charcoal-brand/60">Inspection</div>
                   {inspectionOrderLoading ? (
-                    <p className="mt-2 text-sm text-gray-500">Loading…</p>
+                    <p className="mt-2 text-sm text-charcoal-brand/60">Loading…</p>
                   ) : inspectionOrderPayload?.exists && inspectionOrderPayload.inspection?.status === 'completed' ? (
                     <div className="mt-2 flex items-start gap-2">
                       <span className="text-lg leading-none" aria-hidden>
@@ -623,13 +623,13 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
 
               {vehicleNames && (
                 <div>
-                  <div className="text-xs font-medium uppercase text-gray-500">Vehicle</div>
+                  <div className="text-xs font-medium uppercase text-charcoal-brand/60">Vehicle</div>
                   <div className="text-base font-semibold text-gray-900">{vehicleNames}</div>
                 </div>
               )}
               {returnDatetime && (
                 <div>
-                  <div className="text-xs font-medium uppercase text-gray-500">Return date</div>
+                  <div className="text-xs font-medium uppercase text-charcoal-brand/60">Return date</div>
                   <div className="text-base font-semibold text-gray-900">
                     {new Date(returnDatetime).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                   </div>
@@ -645,8 +645,8 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
 
           {/* Pricing breakdown */}
           <div>
-            <h3 className="mb-2 text-sm font-medium text-gray-700">Pricing Breakdown</h3>
-            <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 text-sm">
+            <h3 className="mb-2 text-sm font-medium text-charcoal-brand">Pricing Breakdown</h3>
+            <div className="rounded-lg border border-gray-200 divide-y divide-sand-brand text-sm">
               <div className="flex justify-between px-4 py-2">
                 <span className="text-gray-600">Rental subtotal</span>
                 <span>{formatCurrency(rentalSubtotal)}</span>
@@ -688,21 +688,21 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
           <dl className="grid grid-cols-2 gap-4 text-sm">
             {wooOrderId && (
               <div>
-                <dt className="text-gray-500">Order Ref</dt>
+                <dt className="text-charcoal-brand/60">Order Ref</dt>
                 <dd className="font-medium">{wooOrderId}</dd>
               </div>
             )}
             <div>
-              <dt className="text-gray-500">Order ID</dt>
+              <dt className="text-charcoal-brand/60">Order ID</dt>
               <dd className="font-mono text-xs">{order.id}</dd>
             </div>
             <div>
-              <dt className="text-gray-500">Order date</dt>
+              <dt className="text-charcoal-brand/60">Order date</dt>
               <dd>{formatDate(order.orderDate)}</dd>
             </div>
             {paymentMethodName && (
               <div>
-                <dt className="text-gray-500">Payment method</dt>
+                <dt className="text-charcoal-brand/60">Payment method</dt>
                 <dd>{paymentMethodName}</dd>
               </div>
             )}
@@ -710,8 +710,8 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
 
           {order.webNotes && (
             <div>
-              <dt className="text-sm text-gray-500">Notes</dt>
-              <dd className="mt-1 rounded bg-gray-50 p-2 text-sm">{order.webNotes}</dd>
+              <dt className="text-sm text-charcoal-brand/60">Notes</dt>
+              <dd className="mt-1 rounded bg-sand-brand p-2 text-sm">{order.webNotes}</dd>
             </div>
           )}
 
@@ -758,7 +758,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                       </label>
                     )}
                     <button type="submit" disabled={collectPaymentMut.isPending}
-                      className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+                      className="rounded-lg bg-teal-brand px-5 py-2 text-sm font-medium text-white hover:bg-teal-brand/90 disabled:opacity-50">
                       {collectPaymentMut.isPending ? 'Saving...' : 'Record Payment'}
                     </button>
                   </div>
@@ -769,7 +769,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
               {/* ─── REQUEST PAYMENT VIA MAYA ─── */}
               <section>
                 <h3 className="mb-3 font-medium text-gray-900">Request Payment via Maya</h3>
-                <p className="mb-3 text-sm text-gray-500">
+                <p className="mb-3 text-sm text-charcoal-brand/60">
                   Generate a hosted Maya checkout link to send to the customer for online card payment.
                 </p>
                 <button
@@ -785,7 +785,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
               {/* ─── EXTEND BOOKING ─── */}
               <section>
                 <h3 className="mb-3 font-medium text-gray-900">Extend Booking</h3>
-                <p className="mb-3 text-sm text-gray-500">
+                <p className="mb-3 text-sm text-charcoal-brand/60">
                   Push the return date forward for this customer without them needing to use the website.
                 </p>
                 <button
@@ -803,7 +803,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                 <form onSubmit={handleSwapVehicle} className="flex flex-wrap items-end gap-4">
                   <div className="block">
                     <span className="text-sm text-gray-600">Current vehicle</span>
-                    <div className="mt-1 flex h-9 w-48 items-center rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-700">
+                    <div className="mt-1 flex h-9 w-48 items-center rounded-lg border border-gray-200 bg-sand-brand px-3 text-sm text-charcoal-brand">
                       {itemsList[0]?.vehicleName ?? '—'}
                     </div>
                   </div>
@@ -823,7 +823,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                       className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
                   </label>
                   <button type="submit" disabled={swapVehicle.isPending || !itemsList[0]}
-                    className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+                    className="rounded-lg bg-teal-brand px-5 py-2 text-sm font-medium text-white hover:bg-teal-brand/90 disabled:opacity-50">
                     {swapVehicle.isPending ? 'Swapping...' : 'Swap Vehicle'}
                   </button>
                 </form>
@@ -847,7 +847,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                   return (
                     <div className="space-y-4">
                       {/* Settlement summary */}
-                      <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 text-sm">
+                      <div className="rounded-lg border border-gray-200 divide-y divide-sand-brand text-sm">
                         <div className="flex justify-between px-4 py-2.5">
                           <span className="text-gray-600">Order Total</span>
                           <span className="font-medium">{formatCurrency(total)}</span>
@@ -974,11 +974,11 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
       {tab === 'payments' && (
         <div className="space-y-2">
           {(payments as unknown[]).length === 0 ? (
-            <p className="text-sm text-gray-500">No payments recorded.</p>
+            <p className="text-sm text-charcoal-brand/60">No payments recorded.</p>
           ) : (
             <table className="min-w-full text-sm">
               <thead>
-                <tr className="border-b text-left text-gray-500">
+                <tr className="border-b text-left text-charcoal-brand/60">
                   <th className="pb-2 pr-4">Date</th>
                   <th className="pb-2 pr-4">Type</th>
                   <th className="pb-2 pr-4">Amount</th>
@@ -990,7 +990,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                 {(payments as Array<{ transactionDate: string; amount: number; paymentMethodId: string; paymentType?: string; settlementStatus?: string | null; settlementRef?: string | null }>).map((p, idx) => {
                   const isExt = p.paymentType === 'extension';
                   return (
-                    <tr key={idx} className={`border-b hover:bg-gray-50 ${isExt ? 'bg-amber-50' : ''}`}>
+                    <tr key={idx} className={`border-b hover:bg-sand-brand ${isExt ? 'bg-amber-50' : ''}`}>
                       <td className="py-2 pr-4">{formatDate(p.transactionDate)}</td>
                       <td className="py-2 pr-4">
                         {isExt ? (
@@ -1006,7 +1006,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                       </td>
                       <td className="py-2 pr-4 font-medium">{formatCurrency(p.amount)}</td>
                       <td className="py-2 pr-4">{isExt && p.paymentMethodId === 'pending' ? '—' : (pmLookup.get(p.paymentMethodId)?.name ?? p.paymentMethodId)}</td>
-                      <td className="py-2 text-gray-500">{p.settlementRef ?? '—'}</td>
+                      <td className="py-2 text-charcoal-brand/60">{p.settlementRef ?? '—'}</td>
                     </tr>
                   );
                 })}
@@ -1027,9 +1027,9 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
       {tab === 'vehicles' && (
         <div className="space-y-6">
           <div>
-            <h3 className="mb-2 text-sm font-medium text-gray-700">Current Assignments</h3>
+            <h3 className="mb-2 text-sm font-medium text-charcoal-brand">Current Assignments</h3>
             {itemsList.length === 0 ? (
-              <p className="text-sm text-gray-500">No vehicle assignments.</p>
+              <p className="text-sm text-charcoal-brand/60">No vehicle assignments.</p>
             ) : (
               <div className="space-y-3">
                 {itemsList.map((i) => {
@@ -1038,7 +1038,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                     <div key={i.id} className="rounded-lg border border-gray-200 p-3">
                       <div className="flex items-center justify-between">
                         <div className="font-medium text-gray-900">{i.vehicleName}</div>
-                        <div className="text-sm text-gray-500">
+                        <div className="text-sm text-charcoal-brand/60">
                           {i.rentalDaysCount} day{i.rentalDaysCount !== 1 ? 's' : ''} × {formatCurrency(i.rentalRate)} = {formatCurrency((i.rentalRate ?? 0) * (i.rentalDaysCount ?? 0))}
                         </div>
                       </div>
@@ -1055,14 +1055,14 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                                 setEditPickup(i.pickupDatetime ? new Date(i.pickupDatetime).toISOString().slice(0, 16) : '');
                                 setEditDropoff(i.dropoffDatetime ? new Date(i.dropoffDatetime).toISOString().slice(0, 16) : '');
                               }}
-                              className="ml-auto text-xs font-medium text-blue-600 hover:text-blue-800"
+                              className="ml-auto text-xs font-medium text-teal-brand hover:text-teal-brand/80"
                             >
                               Adjust Dates
                             </button>
                           )}
                         </div>
                       ) : (
-                        <div className="mt-3 space-y-3 rounded-lg bg-gray-50 p-3">
+                        <div className="mt-3 space-y-3 rounded-lg bg-sand-brand p-3">
                           <div className="flex flex-wrap gap-4">
                             <label className="block">
                               <span className="text-xs font-medium text-gray-600">Pickup</span>
@@ -1114,14 +1114,14 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                                   { onSuccess: () => setEditingItemId(null) },
                                 );
                               }}
-                              className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                              className="rounded-lg bg-teal-brand px-4 py-1.5 text-sm font-medium text-white hover:bg-teal-brand/90 disabled:opacity-50"
                             >
                               {adjustDatesMut.isPending ? 'Saving...' : 'Save Dates'}
                             </button>
                             <button
                               type="button"
                               onClick={() => setEditingItemId(null)}
-                              className="rounded-lg border border-gray-300 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+                              className="rounded-lg border border-gray-300 px-4 py-1.5 text-sm text-gray-600 hover:bg-sand-brand"
                             >
                               Cancel
                             </button>
@@ -1138,10 +1138,10 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
 
           {(swaps as Array<{ id: string; oldVehicleName: string; newVehicleName: string; swapDate: string; swapTime: string; reason: string }>).length > 0 && (
             <div>
-              <h3 className="mb-2 text-sm font-medium text-gray-700">Swap History</h3>
+              <h3 className="mb-2 text-sm font-medium text-charcoal-brand">Swap History</h3>
               <table className="min-w-full text-sm">
                 <thead>
-                  <tr className="border-b text-left text-gray-500">
+                  <tr className="border-b text-left text-charcoal-brand/60">
                     <th className="pb-2 pr-4">Date</th>
                     <th className="pb-2 pr-4">From</th>
                     <th className="pb-2 pr-4">To</th>
@@ -1150,7 +1150,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                 </thead>
                 <tbody>
                   {(swaps as Array<{ id: string; oldVehicleName: string; newVehicleName: string; swapDate: string; swapTime: string; reason: string }>).map((s) => (
-                    <tr key={s.id} className="border-b hover:bg-gray-50">
+                    <tr key={s.id} className="border-b hover:bg-sand-brand">
                       <td className="py-2 pr-4">{formatDate(s.swapDate)}{s.swapTime ? ` ${s.swapTime.slice(0, 5)}` : ''}</td>
                       <td className="py-2 pr-4 text-red-600">{s.oldVehicleName ?? '—'}</td>
                       <td className="py-2 pr-4 text-green-600">{s.newVehicleName ?? '—'}</td>
@@ -1169,13 +1169,13 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
         <div className="space-y-6">
           {/* Current add-ons */}
           <div>
-            <h3 className="mb-2 text-sm font-medium text-gray-700">Current Add-ons</h3>
+            <h3 className="mb-2 text-sm font-medium text-charcoal-brand">Current Add-ons</h3>
             {(orderAddons ?? []).length === 0 ? (
-              <p className="text-sm text-gray-500">No add-ons on this order.</p>
+              <p className="text-sm text-charcoal-brand/60">No add-ons on this order.</p>
             ) : (
               <table className="min-w-full text-sm">
                 <thead>
-                  <tr className="border-b text-left text-gray-500">
+                  <tr className="border-b text-left text-charcoal-brand/60">
                     <th className="pb-2 pr-4">Add-on</th>
                     <th className="pb-2 pr-4">Type</th>
                     <th className="pb-2 pr-4">Price</th>
@@ -1188,7 +1188,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                   {(orderAddons ?? []).map((a) => {
                     const isMarkedForRemoval = pendingAddonRemoves.includes(a.id);
                     return (
-                      <tr key={a.id} className={`border-b hover:bg-gray-50 ${isMarkedForRemoval ? 'opacity-40 line-through' : ''}`}>
+                      <tr key={a.id} className={`border-b hover:bg-sand-brand ${isMarkedForRemoval ? 'opacity-40 line-through' : ''}`}>
                         <td className="py-2 pr-4 font-medium">{a.addonName}</td>
                         <td className="py-2 pr-4 capitalize">{a.addonType === 'per_day' ? 'Per day' : 'One-time'}</td>
                         <td className="py-2 pr-4">{formatCurrency(a.addonPrice ?? 0)}</td>
@@ -1199,7 +1199,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                             <button
                               type="button"
                               onClick={() => setPendingAddonRemoves((prev) => prev.includes(a.id) ? prev.filter((id) => id !== a.id) : [...prev, a.id])}
-                              className={`text-xs font-medium ${isMarkedForRemoval ? 'text-blue-600 hover:text-blue-800' : 'text-red-600 hover:text-red-800'}`}
+                              className={`text-xs font-medium ${isMarkedForRemoval ? 'text-teal-brand hover:text-teal-brand/80' : 'text-red-600 hover:text-red-800'}`}
                             >
                               {isMarkedForRemoval ? 'Undo' : 'Remove'}
                             </button>
@@ -1222,7 +1222,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
           {/* Available add-ons to toggle */}
           {canAct && (configAddons ?? []).length > 0 && (
             <div>
-              <h3 className="mb-2 text-sm font-medium text-gray-700">Available Add-ons</h3>
+              <h3 className="mb-2 text-sm font-medium text-charcoal-brand">Available Add-ons</h3>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {(configAddons ?? [])
                   .filter((ca) => ca.isActive !== false && ca.is_active !== false)
@@ -1243,19 +1243,19 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                             ? 'border-green-300 bg-green-50 text-green-800'
                             : isPendingAdd
                               ? 'border-blue-300 bg-blue-50 text-blue-800'
-                              : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                              : 'border-gray-200 bg-white text-charcoal-brand hover:bg-sand-brand'
                         }`}
                       >
                         <div>
                           <div className="font-medium">{ca.name}</div>
-                          <div className="text-xs text-gray-500">
+                          <div className="text-xs text-charcoal-brand/60">
                             {type === 'per_day' ? `${formatCurrency(price)}/day × ${rentalDays} days` : formatCurrency(price)}
                           </div>
                         </div>
                         <div className="text-right">
                           <div className="font-semibold">{formatCurrency(total)}</div>
                           {isOnOrder && <span className="text-xs text-green-600">Active</span>}
-                          {isPendingAdd && <span className="text-xs text-blue-600">Adding</span>}
+                          {isPendingAdd && <span className="text-xs text-teal-brand">Adding</span>}
                         </div>
                       </button>
                     );
@@ -1327,14 +1327,14 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                   type="button"
                   onClick={handleSaveAddons}
                   disabled={modifyAddonsMut.isPending || (pendingAddonAdds.length > 0 && (!!addonPaymentMethodId && !isAddonCardPayment && !routedAddonAcct && !addonAccountId))}
-                  className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                  className="rounded-lg bg-teal-brand px-5 py-2 text-sm font-medium text-white hover:bg-teal-brand/90 disabled:opacity-50"
                 >
                   {modifyAddonsMut.isPending ? 'Saving...' : 'Save Changes'}
                 </button>
                 <button
                   type="button"
                   onClick={() => { setPendingAddonAdds([]); setPendingAddonRemoves([]); setAddonPaymentMethodId(''); setAddonAccountId(''); setAddonSettlementRef(''); }}
-                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-sand-brand"
                 >
                   Cancel
                 </button>
@@ -1375,7 +1375,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
       {tab === 'history' && (
         <div>
           {(history ?? []).length === 0 ? (
-            <p className="text-sm text-gray-500">No history events recorded.</p>
+            <p className="text-sm text-charcoal-brand/60">No history events recorded.</p>
           ) : (
             <div className="relative ml-4 border-l-2 border-gray-200 pl-6 space-y-0">
               {(history ?? []).map((evt, idx) => {
@@ -1384,7 +1384,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                   evt.type === 'payment' ? 'bg-green-500' :
                   evt.type === 'swap' ? 'bg-amber-500' :
                   evt.type === 'addon' ? 'bg-purple-500' :
-                  evt.type === 'settled' ? 'bg-blue-600' :
+                  evt.type === 'settled' ? 'bg-teal-brand' :
                   evt.type === 'activated' ? 'bg-blue-500' :
                   'bg-gray-400';
 
@@ -1394,7 +1394,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <div className="text-sm font-medium text-gray-900">{evt.description}</div>
-                        {evt.detail && <div className="text-xs text-gray-500">{evt.detail}</div>}
+                        {evt.detail && <div className="text-xs text-charcoal-brand/60">{evt.detail}</div>}
                       </div>
                       <div className="shrink-0 text-right">
                         {evt.amount != null && evt.amount > 0 && (
