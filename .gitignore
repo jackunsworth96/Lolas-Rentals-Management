@@ -18,3 +18,7 @@ packages/*/src/**/*.d.ts.map
 coverage/
 .turbo/
 .vite/
+
+# Build outputs
+packages/shared/dist/
+packages/*/dist/

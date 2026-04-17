@@ -1,1 +1,0 @@
-{"version":3,"file":"order-status.js","sourceRoot":"","sources":["../../src/constants/order-status.ts"],"names":[],"mappings":"AAAA,MAAM,CAAC,MAAM,WAAW,GAAG;IACzB,WAAW,EAAE,aAAa;IAC1B,MAAM,EAAE,QAAQ;IAChB,SAAS,EAAE,WAAW;IACtB,SAAS,EAAE,WAAW;IACtB,SAAS,EAAE,WAAW;CACd,CAAC"}
