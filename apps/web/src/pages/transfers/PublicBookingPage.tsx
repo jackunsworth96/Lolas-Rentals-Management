@@ -85,6 +85,7 @@ export default function PublicBookingPage() {
 
   const inputClass = 'mt-1 block w-full rounded-lg border border-charcoal-brand/20 bg-white px-3 py-2.5 text-sm text-charcoal-brand placeholder-charcoal-brand/40 focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand';
   const labelClass = 'block text-sm font-medium text-charcoal-brand font-lato';
+  const todayManilaISO = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 
   if (loading) {
     return (
@@ -181,7 +182,7 @@ export default function PublicBookingPage() {
                   value={serviceDate}
                   onChange={(e) => setServiceDate(e.target.value)}
                   required
-                  min={new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })}
+                  min={todayManilaISO}
                   className={inputClass}
                 />
               </div>
