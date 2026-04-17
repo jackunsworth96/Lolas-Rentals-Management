@@ -64,6 +64,8 @@ export declare const SubmitDirectBookingRequestSchema: z.ZodObject<{
     holdId: z.ZodOptional<z.ZodString>;
     /** Total price of any transfer booked alongside this rental (for email/receipt display). */
     transferAmount: z.ZodOptional<z.ZodNumber>;
+    /** Number of passengers for the transfer (defaults to 1 if not provided). */
+    transferPaxCount: z.ZodOptional<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     sessionToken: string;
     customerName: string;
@@ -85,6 +87,7 @@ export declare const SubmitDirectBookingRequestSchema: z.ZodObject<{
     helmet_count?: number | undefined;
     holdId?: string | undefined;
     transferAmount?: number | undefined;
+    transferPaxCount?: number | undefined;
 }, {
     sessionToken: string;
     customerName: string;
@@ -106,6 +109,7 @@ export declare const SubmitDirectBookingRequestSchema: z.ZodObject<{
     helmet_count?: number | undefined;
     holdId?: string | undefined;
     transferAmount?: number | undefined;
+    transferPaxCount?: number | undefined;
 }>;
 export type SubmitDirectBookingInput = z.infer<typeof SubmitDirectBookingRequestSchema>;
 /**
@@ -136,6 +140,8 @@ export declare const DirectBookingRequestSchema: z.ZodObject<Omit<{
     holdId: z.ZodOptional<z.ZodString>;
     /** Total price of any transfer booked alongside this rental (for email/receipt display). */
     transferAmount: z.ZodOptional<z.ZodNumber>;
+    /** Number of passengers for the transfer (defaults to 1 if not provided). */
+    transferPaxCount: z.ZodOptional<z.ZodNumber>;
 }, "sessionToken">, "strip", z.ZodTypeAny, {
     customerName: string;
     customerEmail: string;
@@ -156,6 +162,7 @@ export declare const DirectBookingRequestSchema: z.ZodObject<Omit<{
     helmet_count?: number | undefined;
     holdId?: string | undefined;
     transferAmount?: number | undefined;
+    transferPaxCount?: number | undefined;
 }, {
     customerName: string;
     customerEmail: string;
@@ -176,6 +183,7 @@ export declare const DirectBookingRequestSchema: z.ZodObject<Omit<{
     helmet_count?: number | undefined;
     holdId?: string | undefined;
     transferAmount?: number | undefined;
+    transferPaxCount?: number | undefined;
 }>;
 export type DirectBookingRequest = z.infer<typeof DirectBookingRequestSchema>;
 /**

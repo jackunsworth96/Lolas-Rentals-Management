@@ -11,6 +11,7 @@ interface Props {
   transferType?: 'shared' | 'private' | 'tuktuk' | null;
   flightNumber?: string | null;
   transferRoute?: string | null;
+  transferPrice?: number;
   charityDonation?: number;
 }
 
@@ -33,6 +34,7 @@ export function RentalSummaryCard({
   transferType,
   flightNumber,
   transferRoute,
+  transferPrice = 0,
   charityDonation = 0,
 }: Props) {
   return (
@@ -101,6 +103,11 @@ export function RentalSummaryCard({
             )}
             {transferRoute && (
               <p className="font-lato text-sm font-bold text-charcoal-brand">Route: {transferRoute}</p>
+            )}
+            {transferPrice > 0 && (
+              <p className="font-lato text-sm font-bold text-charcoal-brand">
+                Transfer Total: {formatCurrency(transferPrice)}
+              </p>
             )}
           </div>
         )}

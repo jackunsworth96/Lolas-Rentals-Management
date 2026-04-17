@@ -30,6 +30,7 @@ interface ConfirmationState {
   transferType?: 'shared' | 'private' | 'tuktuk' | null;
   flightNumber?: string | null;
   transferRoute?: string | null;
+  transferPrice?: number;
   charityDonation?: number;
 }
 
@@ -296,6 +297,7 @@ export default function ConfirmationPage() {
                   customerEmail={state.customerEmail}
                   addonNames={state.addonNames ?? []} transferType={state.transferType}
                   flightNumber={state.flightNumber} transferRoute={state.transferRoute}
+                  transferPrice={state.transferPrice}
                   charityDonation={state.charityDonation}
                 />
               </FadeUpSection>
@@ -347,7 +349,7 @@ export default function ConfirmationPage() {
                       Find Us
                     </h4>
                     <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.6, opacity: 0.8 }}>
-                      General Luna, near Cloud 9. Look for the teal Lola&apos;s shack! Our team will be ready for you.
+                      Tourism Rd, Catangnan, General Luna. Look for the Lola&apos;s shack on the backroad! Our team will be ready for you.
                     </p>
                   </div>
                 </Step>

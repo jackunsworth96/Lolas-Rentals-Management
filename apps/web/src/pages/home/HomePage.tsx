@@ -50,7 +50,6 @@ const bePawImages = (Object.entries(
   })
   .map(([, url]) => url);
 import { useState, useEffect, useRef } from 'react';
-import VariableProximity from '../../components/home/VariableProximity.js';
 import { Link } from 'react-router-dom';
 import {
   motion,
@@ -383,64 +382,29 @@ function HeroSection() {
       {/* ── Hero content ─────────────────────────────────────── */}
       <div className="relative z-10 flex h-full flex-col items-center justify-center px-6 pb-20 pt-20 text-center">
         {/* Headline */}
-        {prefersReducedMotion || isTouchDevice ? (
-          <h1
-            className="font-headline font-extrabold"
-            style={{
-              fontSize: 'clamp(36px, 5vw, 52px)',
-              color: '#00577C',
-              textAlign: 'center',
-              lineHeight: 1.15,
-              marginBottom: 24,
-            }}
-            aria-label="Rated by Many, Rooted in Community"
-          >
-            <AnimatedHeading
-              text="Rated by Many,"
-              tag="span"
-              className="block"
-              style={{ color: '#00577C' }}
-            />
-            <AnimatedHeading
-              text="Rooted in Community"
-              tag="span"
-              delay={20}
-              className="block italic"
-              style={{ color: '#FCBC5A' }}
-            />
-          </h1>
-        ) : (
-          <h1
-            style={{
-              fontSize: 'clamp(36px, 5vw, 52px)',
-              color: '#00577C',
-              textAlign: 'center',
-              lineHeight: 1.15,
-              marginBottom: 24,
-              fontWeight: 700,
-            }}
-            aria-label="Rated by Many, Rooted in Community"
-          >
-            <VariableProximity
-              label="Rated by Many,"
-              fromFontVariationSettings="'wght' 300, 'opsz' 9"
-              toFontVariationSettings="'wght' 900, 'opsz' 40"
-              containerRef={heroRef}
-              radius={150}
-              falloff="linear"
-              style={{ display: 'block' }}
-            />
-            <VariableProximity
-              label="Rooted in Community"
-              fromFontVariationSettings="'wght' 300, 'opsz' 9"
-              toFontVariationSettings="'wght' 900, 'opsz' 40"
-              containerRef={heroRef}
-              radius={150}
-              falloff="linear"
-              style={{ display: 'block', fontStyle: 'italic', color: '#FCBC5A' }}
-            />
-          </h1>
-        )}
+        <h1
+          className="font-headline font-extrabold"
+          style={{
+            fontSize: 'clamp(36px, 5vw, 52px)',
+            textAlign: 'center',
+            lineHeight: 1.15,
+            marginBottom: 24,
+          }}
+          aria-label="Siargao's #1 Trusted Rental — Book in 2 Minutes"
+        >
+          <AnimatedHeading
+            text="Siargao's #1 Trusted Rental"
+            tag="span"
+            className="block text-teal-brand"
+            delay={20}
+          />
+          <AnimatedHeading
+            text="Book in 2 Minutes"
+            tag="span"
+            className="block italic text-gold-brand"
+            delay={20}
+          />
+        </h1>
 
         {/* Subheadline */}
         <motion.p

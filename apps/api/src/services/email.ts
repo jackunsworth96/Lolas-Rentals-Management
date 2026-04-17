@@ -194,7 +194,7 @@ export function bookingConfirmationHtml({
           Lola's<span style="color: #FCBC5A;">*</span> Rentals
         </h1>
         <p style="color: rgba(255,255,255,0.7); margin: 6px 0 0; font-size: 13px; letter-spacing: 2px; text-transform: uppercase;">
-          Siargao Island · Est. 2019
+          Siargao Island · Est. 2023
         </p>
       </div>
 
@@ -358,7 +358,7 @@ export function waiverConfirmationHtml({
           Lola's<span style="color: #FCBC5A;">*</span> Rentals
         </h1>
         <p style="color: rgba(255,255,255,0.7); margin: 4px 0 0; font-size: 13px; letter-spacing: 2px; text-transform: uppercase;">
-          Siargao Island · Est. 2019
+          Siargao Island · Est. 2023
         </p>
       </div>
 
@@ -455,7 +455,7 @@ export function waiverReminderHtml({
           Lola's<span style="color: #FCBC5A;">*</span> Rentals
         </h1>
         <p style="color: rgba(255,255,255,0.7); margin: 4px 0 0; font-size: 13px; letter-spacing: 2px; text-transform: uppercase;">
-          Siargao Island · Est. 2019
+          Siargao Island · Est. 2023
         </p>
       </div>
 
@@ -590,7 +590,7 @@ export function postRentalThankYouHtml({
           Lola's<span style="color: #FCBC5A;">*</span> Rentals
         </h1>
         <p style="color: rgba(255,255,255,0.7); margin: 4px 0 0; font-size: 13px; letter-spacing: 2px; text-transform: uppercase;">
-          Siargao Island · Est. 2019
+          Siargao Island · Est. 2023
         </p>
       </div>
 
@@ -747,7 +747,7 @@ export function extendConfirmationHtml({
           Lola's<span style="color: #FCBC5A;">*</span> Rentals
         </h1>
         <p style="color: rgba(255,255,255,0.7); margin: 4px 0 0; font-size: 13px; letter-spacing: 2px; text-transform: uppercase;">
-          Siargao Island · Est. 2019
+          Siargao Island · Est. 2023
         </p>
       </div>
 
@@ -1170,7 +1170,7 @@ export function bookingCancellationHtml({
           margin: 4px 0 0; font-size: 13px;
           letter-spacing: 2px;
           text-transform: uppercase;">
-          Siargao Island · Est. 2019
+          Siargao Island · Est. 2023
         </p>
       </div>
 

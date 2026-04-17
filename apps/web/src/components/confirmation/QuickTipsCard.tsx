@@ -11,7 +11,7 @@ const TIPS = [
     getDesc: (loc?: string) =>
       loc
         ? `${loc}. Look for the teal Lola's shack!`
-        : "General Luna, near Cloud 9. Look for the teal Lola's shack!",
+        : "Tourism Rd, Catangnan, General Luna. Look for the Lola's shack on the backroad!",
   },
   {
     icon: '🪪',

@@ -77,6 +77,8 @@ export const SubmitDirectBookingRequestSchema = z.object({
   holdId: z.string().optional(),
   /** Total price of any transfer booked alongside this rental (for email/receipt display). */
   transferAmount: z.number().min(0).optional(),
+  /** Number of passengers for the transfer (defaults to 1 if not provided). */
+  transferPaxCount: z.number().int().positive().optional(),
 });
 
 export type SubmitDirectBookingInput = z.infer<typeof SubmitDirectBookingRequestSchema>;

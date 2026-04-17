@@ -522,6 +522,7 @@ export default function BasketPage() {
         depositAmount: basket.reduce((s, b) => s + (b.securityDeposit ?? 0), 0),
         addonNames: selAddons.map((a) => a.name), transferType: transfer?.transferType ?? null,
         flightNumber: transfer?.flightNumber ?? null, transferRoute: transfer?.transferRoute ?? null,
+        transferPrice: (transfer?.totalPrice ?? 0) > 0 ? (transfer?.totalPrice ?? 0) : undefined,
         charityDonation,
       };
       const isCardPayment = surchargePercent > 0;
