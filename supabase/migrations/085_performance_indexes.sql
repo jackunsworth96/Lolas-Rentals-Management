@@ -19,10 +19,9 @@ CREATE INDEX IF NOT EXISTS idx_orders_store_status
 CREATE INDEX IF NOT EXISTS idx_orders_raw_store_status
   ON public.orders_raw(store_id, status);
 
--- paw_card_establishments: featured + sort for top-establishments query
-CREATE INDEX IF NOT EXISTS idx_paw_card_establishments_featured_sort
-  ON public.paw_card_establishments(is_featured DESC, sort_order ASC)
-  WHERE is_active = true;
+-- paw_card_establishments: id, name, is_active only (002_config_tables); top-N uses paw_card_entries (084)
+CREATE INDEX IF NOT EXISTS idx_paw_card_establishments_active_name
+  ON public.paw_card_establishments(is_active, name);
 
 -- lower(email) index for case-insensitive email lookups
 CREATE INDEX IF NOT EXISTS idx_customers_email_lower
