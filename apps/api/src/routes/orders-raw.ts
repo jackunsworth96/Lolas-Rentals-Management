@@ -9,6 +9,10 @@ import { processRawOrder, type ProcessRawOrderDeps } from '../use-cases/orders/p
 import { sendEmail, bookingConfirmationHtml, bookingCancellationHtml, walkInStaffAlertHtml, NOTIFICATION_EMAIL } from '../services/email.js';
 import { formatManilaDate } from '../utils/manila-date.js';
 
+/** GET list / GET :id — explicit columns; excludes payload (V10-11). */
+const ORDERS_RAW_INBOX_COLUMNS =
+  'id, order_reference, status, customer_name, customer_email, customer_mobile, pickup_datetime, dropoff_datetime, store_id, vehicle_model_id, charity_donation, transfer_type, transfer_route, flight_arrival_time, transfer_pax_count, transfer_amount, cancellation_token_used, created_at, updated_at, source, booking_channel, pickup_location_id, dropoff_location_id, addon_ids, web_payment_method, flight_number';
+
 function generateWalkInReference(source: string): string {
   const prefix = source === 'bass' ? 'BB' : 'LR';
   const now = new Date();
@@ -470,7 +474,7 @@ router.get('/', requirePermission(Permission.ViewInbox), async (req, res, next) 
 
     let query = supabase
       .from('orders_raw')
-      .select('*', { count: 'exact' })
+      .select(ORDERS_RAW_INBOX_COLUMNS, { count: 'exact' })
       .order('created_at', { ascending: false });
 
     if (store) query = query.eq('source', store);
@@ -509,7 +513,7 @@ router.get('/:id', requirePermission(Permission.ViewInbox), async (req, res, nex
   try {
     const { data, error } = await supabase
       .from('orders_raw')
-      .select('*')
+      .select(ORDERS_RAW_INBOX_COLUMNS)
       .eq('id', req.params.id as string)
       .single();
 

@@ -271,6 +271,14 @@ export function createBookingAdapter(): BookingPort {
           transfer_route: input.transferRoute ?? null,
           charity_donation: input.charityDonation ?? 0,
           web_payment_method: input.webPaymentMethod ?? null,
+          transfer_pax_count:
+            input.transferPaxCount != null && input.transferPaxCount > 0
+              ? input.transferPaxCount
+              : null,
+          transfer_amount:
+            input.transferAmount != null && input.transferAmount > 0
+              ? input.transferAmount
+              : null,
         })
         .select('id, order_reference, cancellation_token')
         .single();

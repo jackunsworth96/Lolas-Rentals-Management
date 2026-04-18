@@ -1278,11 +1278,21 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
                   </div>
                 )}
 
-                {isDirect && Number((rawOrder.payload as Record<string, unknown> | null)?.transfer_amount ?? 0) > 0 && (
+                {isDirect &&
+ Number(
+                    rawOrder.transfer_amount ??
+                      (rawOrder.payload as Record<string, unknown> | null)?.transfer_amount ??
+                      0,
+                  ) > 0 && (
                   <div className="flex justify-between text-charcoal-brand">
                     <dt className="text-gray-600">Airport Transfer</dt>
                     <dd className="font-medium">
-                      {formatCurrency(Number((rawOrder.payload as Record<string, unknown> | null)?.transfer_amount))}
+                      {formatCurrency(
+                        Number(
+                          rawOrder.transfer_amount ??
+                            (rawOrder.payload as Record<string, unknown> | null)?.transfer_amount,
+                        ),
+                      )}
                     </dd>
                   </div>
                 )}

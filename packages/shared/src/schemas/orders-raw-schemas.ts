@@ -19,7 +19,7 @@ export const OrdersRawStatusSchema = z.enum([
 export type OrdersRawStatus = z.infer<typeof OrdersRawStatusSchema>;
 
 /**
- * Matches the `orders_raw` Supabase table (migrations 011, 035, 038, 041, 042).
+ * Matches the `orders_raw` Supabase table (migrations 011, 035, 038, 041, 042, 082).
  * Direct-booking quote totals are stored in `payload.web_quote` (jsonb), not a top-level column.
  */
 export interface OrdersRawRow {
@@ -47,6 +47,9 @@ export interface OrdersRawRow {
   transfer_route: string | null;
   charity_donation: number;
   web_payment_method: string | null;
+  transfer_pax_count: number | null;
+  transfer_amount: number | null;
+  updated_at: string;
 }
 
 /**
