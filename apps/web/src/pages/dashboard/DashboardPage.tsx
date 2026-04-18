@@ -48,6 +48,15 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
   );
 }
 
+function SkeletonStatCard() {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm animate-pulse">
+      <div className="h-2.5 w-20 rounded bg-gray-200" />
+      <div className="mt-2 h-7 w-16 rounded bg-gray-200" />
+    </div>
+  );
+}
+
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">{children}</h2>;
 }
@@ -157,7 +166,6 @@ export default function DashboardPage() {
     }));
   }, [metrics]);
 
-  if (isLoading) return <LoadingSkeleton />;
   if (error) {
     return (
       <div className="py-12 text-center text-red-600">
@@ -165,11 +173,14 @@ export default function DashboardPage() {
       </div>
     );
   }
-  if (!metrics) return <div className="py-12 text-center text-gray-500">No data available</div>;
 
   const storeName = storeIdForApi
     ? storeList.find((s) => s.id === storeIdForApi)?.name ?? storeIdForApi
     : 'All Stores';
+
+  if (!isLoading && !metrics) {
+    return <div className="py-12 text-center text-gray-500">No data available</div>;
+  }
 
   return (
     <div className="space-y-8 p-6">
@@ -180,40 +191,100 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* SECTION — Operations Status (quick stats, count-only queries) */}
+      <section>
+        <SectionHeading>Operations Status</SectionHeading>
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-6">
+          {isLoading ? (
+            <>
+              <SkeletonStatCard />
+              <SkeletonStatCard />
+              <SkeletonStatCard />
+              <SkeletonStatCard />
+              <SkeletonStatCard />
+              <SkeletonStatCard />
+            </>
+          ) : (
+            <>
+              <StatCard label="Active Rentals" value={String(data?.activeOrdersCount ?? 0)} />
+              <StatCard label="Revenue Today" value={formatCurrency(data?.revenueToday ?? 0)} />
+              <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Cash-Up</p>
+                <p className={`mt-1 text-2xl font-semibold ${
+                  data?.cashupStatus === 'closed'
+                    ? 'text-green-600'
+                    : data?.cashupStatus === 'open'
+                      ? 'text-amber-600'
+                      : 'text-gray-400'
+                }`}>
+                  {data?.cashupStatus === 'closed'
+                    ? 'Closed'
+                    : data?.cashupStatus === 'open'
+                      ? 'Open'
+                      : 'Not started'}
+                </p>
+              </div>
+              <StatCard label="Pending Tasks" value={String(data?.pendingInboxCount ?? 0)} />
+              <StatCard label="Transfers Today" value={String(data?.upcomingTransfersCount ?? 0)} />
+              <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Overdue Returns</p>
+                <p className={`mt-1 text-2xl font-semibold ${
+                  (data?.overdueOrdersCount ?? 0) > 0 ? 'text-red-600' : 'text-gray-900'
+                }`}>
+                  {data?.overdueOrdersCount ?? 0}
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+      </section>
+
       {/* SECTION 1 — Daily Pulse */}
       <section>
         <SectionHeading>Daily Pulse</SectionHeading>
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-          <StatCard label="Active Rentals" value={String(metrics.activeRentals)} />
-          <button
-            type="button"
-            className="cursor-pointer text-left"
-            onClick={() => setShowAvailability(true)}
-          >
-            <StatCard
-              label="Available Vehicles"
-              value={String(metrics.availableVehicles)}
-              sub="tap to see details"
-            />
-          </button>
-          <button
-            type="button"
-            className="text-left w-full cursor-pointer"
-            onClick={() => setShowTomorrowAvailability(true)}
-          >
-            <StatCard
-              label="Available Tomorrow"
-              value={String(metrics.tomorrowAvailable ?? 0)}
-              sub="tap to see details"
-            />
-          </button>
-          <StatCard label="Fleet Utilisation" value={`${metrics.fleetUtilisation}%`} />
-          <StatCard label="Deposits Withheld" value={formatCurrency(metrics.depositsWithheld)} />
+          {isLoading || !metrics ? (
+            <>
+              <SkeletonStatCard />
+              <SkeletonStatCard />
+              <SkeletonStatCard />
+              <SkeletonStatCard />
+              <SkeletonStatCard />
+            </>
+          ) : (
+            <>
+              <StatCard label="Active Rentals" value={String(metrics.activeRentals)} />
+              <button
+                type="button"
+                className="cursor-pointer text-left"
+                onClick={() => setShowAvailability(true)}
+              >
+                <StatCard
+                  label="Available Vehicles"
+                  value={String(metrics.availableVehicles)}
+                  sub="tap to see details"
+                />
+              </button>
+              <button
+                type="button"
+                className="text-left w-full cursor-pointer"
+                onClick={() => setShowTomorrowAvailability(true)}
+              >
+                <StatCard
+                  label="Available Tomorrow"
+                  value={String(metrics.tomorrowAvailable ?? 0)}
+                  sub="tap to see details"
+                />
+              </button>
+              <StatCard label="Fleet Utilisation" value={`${metrics.fleetUtilisation}%`} />
+              <StatCard label="Deposits Withheld" value={formatCurrency(metrics.depositsWithheld)} />
+            </>
+          )}
         </div>
       </section>
 
       {/* SECTION — Today's Bookings by Source */}
-      {metrics.bookingSourceSplit !== null && (
+      {metrics?.bookingSourceSplit != null && (
         <section>
           <SectionHeading>Today's Bookings by Source</SectionHeading>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -226,7 +297,7 @@ export default function DashboardPage() {
       )}
 
       {/* SECTION 2 — 9PM Returns */}
-      <section>
+      {metrics != null && <section>
         <SectionHeading>9PM Returns</SectionHeading>
         {metrics.ninepmReturns.count === 0 ? (
           <div className="rounded-lg border border-gray-200 bg-white p-5 text-center text-sm text-gray-500">
@@ -290,10 +361,10 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
-      </section>
+      </section>}
 
       {/* SECTION 3 — Fleet Health */}
-      <section>
+      {metrics != null && <section>
         <SectionHeading>Fleet Health</SectionHeading>
         {metrics.maintenanceVehicles.length === 0 ? (
           <div className="rounded-lg border border-gray-200 bg-white p-5 text-center text-sm text-gray-500">
@@ -321,10 +392,10 @@ export default function DashboardPage() {
             </table>
           </div>
         )}
-      </section>
+      </section>}
 
       {/* SECTION 4 — Financial Summary */}
-      {canViewFinancial && metrics.todayRevenue !== null && (
+      {canViewFinancial && metrics?.todayRevenue !== null && metrics != null && (
         <section>
           <SectionHeading>Financial Summary</SectionHeading>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -369,7 +440,7 @@ export default function DashboardPage() {
       )}
 
       {/* SECTION 5 — Addon Revenue Breakdown */}
-      {canViewFinancial && metrics.addonRevenue !== null && (
+      {canViewFinancial && metrics?.addonRevenue !== null && metrics != null && (
         <section>
           <SectionHeading>Addon Revenue Breakdown</SectionHeading>
           {(metrics.addonRevenue ?? []).length === 0 ? (
@@ -400,7 +471,7 @@ export default function DashboardPage() {
       )}
 
       {/* SECTION 6 — Cash Balances */}
-      {metrics.cashBalances !== null && metrics.cashBalances.length > 0 && (
+      {metrics?.cashBalances != null && metrics.cashBalances.length > 0 && (
         <section>
           <SectionHeading>Cash Balances</SectionHeading>
           {(metrics.cashBalances ?? []).length === 0 ? (
@@ -429,7 +500,7 @@ export default function DashboardPage() {
       )}
 
       {/* SECTION 7 — Revenue Trend */}
-      {canViewFinancial && (metrics.revenueThisMonth !== null || metrics.revenueTrend !== null) && (
+      {canViewFinancial && metrics != null && (metrics.revenueThisMonth !== null || metrics.revenueTrend !== null) && (
         <section>
           <SectionHeading>Revenue Trend — This Month vs Last 30 Days</SectionHeading>
           <div className="rounded-2xl bg-white p-6 shadow-sm">
@@ -481,7 +552,7 @@ export default function DashboardPage() {
       )}
 
       {/* SECTION 9 — Expenses by Category */}
-      {canViewFinancial && (metrics.expensesByCategory !== null || metrics.expensesByCategoryLastMonth !== null) && (
+      {canViewFinancial && metrics != null && (metrics.expensesByCategory !== null || metrics.expensesByCategoryLastMonth !== null) && (
         <section>
           <SectionHeading>Expenses by Category</SectionHeading>
           <div className="rounded-2xl bg-white p-6 shadow-sm">
@@ -532,7 +603,7 @@ export default function DashboardPage() {
       )}
 
       {/* SECTION 10 — Customer Breakdown */}
-      {canViewFinancial && metrics.customerBreakdown !== null && (
+      {canViewFinancial && metrics?.customerBreakdown !== null && metrics != null && (
         <section>
           <SectionHeading>Customer Breakdown</SectionHeading>
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">

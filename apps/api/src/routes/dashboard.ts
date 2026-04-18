@@ -350,10 +350,50 @@ router.get('/summary', authenticate, async (req, res, next) => {
         ]
       : [];
 
-    const allResults = await Promise.all([
-      ...operationalQueries,
-      ...financialQueries.filter(Boolean),
-    ]);
+    // Quick-stats count queries — run in parallel with the main queries
+    const cashupStatusQuery = (() => {
+      let q = sb.from('cash_reconciliation')
+        .select('store_id, is_locked')
+        .eq('date', manilaDate);
+      if (storeFilter) q = q.eq('store_id', storeFilter);
+      return q;
+    })();
+
+    const pendingTasksQuery = (() => {
+      let q = sb.from('tasks')
+        .select('id', { count: 'exact', head: true })
+        .neq('status', 'Closed');
+      if (storeFilter) q = q.eq('store_id', storeFilter);
+      return q;
+    })();
+
+    const upcomingTransfersQuery = (() => {
+      let q = sb.from('transfers')
+        .select('id', { count: 'exact', head: true })
+        .eq('service_date', manilaDate)
+        .neq('status', 'Cancelled');
+      if (storeFilter) q = q.eq('store_id', storeFilter);
+      return q;
+    })();
+
+    // Select minimal fields to count distinct overdue orders in JS
+    const overdueItemsQuery = (() => {
+      let q = sb.from('order_items')
+        .select('order_id, orders!inner(store_id, status)')
+        .eq('orders.status', 'active')
+        .lt('dropoff_datetime', new Date().toISOString());
+      if (storeFilter) q = q.eq('orders.store_id', storeFilter);
+      return q;
+    })();
+
+    const [allResults, cashupResult, pendingTasksResult, upcomingTransfersResult, overdueResult] =
+      await Promise.all([
+        Promise.all([...operationalQueries, ...financialQueries.filter(Boolean)]),
+        cashupStatusQuery,
+        pendingTasksQuery,
+        upcomingTransfersQuery,
+        overdueItemsQuery,
+      ]);
 
     const dataMap = new Map<string, Record<string, unknown>[]>();
     for (const result of allResults) {
@@ -732,6 +772,40 @@ router.get('/summary', authenticate, async (req, res, next) => {
       stores[sid] = buildStoreMetrics(sid);
     }
 
+    // ── Quick Stats ──────────────────────────────────────────────────────────
+    // cashupStatus: 'open' if any store has an unsubmitted reconciliation today,
+    //               'closed' if all present records are locked, null if none started
+    const cashupRows = (cashupResult.data ?? []) as Array<{ store_id: string; is_locked: boolean }>;
+    const cashupStatus: 'open' | 'closed' | null =
+      cashupRows.length === 0
+        ? null
+        : cashupRows.every((r) => r.is_locked)
+          ? 'closed'
+          : 'open';
+
+    const pendingInboxCount: number = pendingTasksResult.count ?? 0;
+    const upcomingTransfersCount: number = upcomingTransfersResult.count ?? 0;
+
+    const overdueItems = (overdueResult.data ?? []) as unknown as Array<{
+      order_id: string;
+      orders: { store_id: string; status: string } | Array<{ store_id: string; status: string }>;
+    }>;
+    const overdueOrdersCount = new Set(overdueItems.map((i) => i.order_id)).size;
+
+    const baseMetrics = storeFilter
+      ? (stores[storeFilter] ?? emptyMetrics(canViewFinancial))
+      : stores['combined'];
+
+    const quickStats = {
+      activeOrdersCount: baseMetrics.activeRentals,
+      revenueToday: baseMetrics.todayRevenue ?? 0,
+      cashupStatus,
+      pendingInboxCount,
+      upcomingTransfersCount,
+      overdueOrdersCount,
+    };
+    // ─────────────────────────────────────────────────────────────────────────
+
     if (storeFilter) {
       res.json({
         success: true,
@@ -740,12 +814,13 @@ router.get('/summary', authenticate, async (req, res, next) => {
           stores: {
             [storeFilter]: stores[storeFilter] ?? emptyMetrics(canViewFinancial),
           },
+          ...quickStats,
         },
       });
     } else {
       res.json({
         success: true,
-        data: { date: manilaDate, stores },
+        data: { date: manilaDate, stores, ...quickStats },
       });
     }
   } catch (err) {

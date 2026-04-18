@@ -74,6 +74,13 @@ export interface StoreMetrics {
 export interface DashboardSummary {
   date: string;
   stores: Record<string, StoreMetrics>;
+  /** Quick stats — computed server-side with count-only queries */
+  activeOrdersCount: number;
+  revenueToday: number;
+  cashupStatus: 'open' | 'closed' | null;
+  pendingInboxCount: number;
+  upcomingTransfersCount: number;
+  overdueOrdersCount: number;
 }
 
 export function useDashboardSummary(storeId?: string) {
