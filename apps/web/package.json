@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@lolas/shared": "*",
+    "@sentry/react": "^10.49.0",
     "@supabase/supabase-js": "^2.49.0",
     "@tanstack/react-query": "^5.62.0",
     "@types/react": "^18.3.0",

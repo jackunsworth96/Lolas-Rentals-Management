@@ -24,6 +24,10 @@ if (!_env.success) {
   process.exit(1);
 }
 
+initSentry();
+
+import * as Sentry from '@sentry/node';
+import { initSentry } from './lib/sentry.js';
 import express, { type Request, type Response } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -160,6 +164,7 @@ app.use('/api', (req: Request, res: Response) => {
   });
 });
 
+Sentry.setupExpressErrorHandler(app);
 app.use(errorHandler);
 
 const PORT = Number(process.env.PORT) || 3001;
