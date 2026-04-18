@@ -378,7 +378,7 @@ export function OrderDetailSummaryTab({
     }
     setSendingWaiverLink(true);
     try {
-      const res = await fetch(`${waiverFetchApiBase()}/waiver/send-link`, {
+      const res = await fetch(`${waiverFetchApiBase()}/public/waiver/send-link`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

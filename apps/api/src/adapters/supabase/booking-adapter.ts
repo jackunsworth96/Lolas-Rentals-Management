@@ -271,6 +271,7 @@ export function createBookingAdapter(): BookingPort {
           transfer_route: input.transferRoute ?? null,
           charity_donation: input.charityDonation ?? 0,
           web_payment_method: input.webPaymentMethod ?? null,
+          web_quote_raw: input.webQuoteRaw ?? null,
           transfer_pax_count:
             input.transferPaxCount != null && input.transferPaxCount > 0
               ? input.transferPaxCount
