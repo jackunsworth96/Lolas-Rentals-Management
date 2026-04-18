@@ -153,21 +153,10 @@ router.get('/establishments', async (req, res, next) => {
 router.get('/top-establishments', async (req, res, next) => {
   try {
     const sb = getSupabaseClient();
-    const { data, error } = await sb
-      .from('paw_card_entries')
-      .select('establishment')
-      .not('establishment', 'is', null);
+    const { data, error } = await sb.rpc('top_paw_card_establishments', { p_limit: 10 });
     if (error) throw new Error(error.message);
-    const counts: Record<string, number> = {};
-    for (const row of data ?? []) {
-      const name = ((row as { establishment: string }).establishment ?? '').trim();
-      if (name) counts[name] = (counts[name] ?? 0) + 1;
-    }
-    const top10 = Object.entries(counts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .map(([name, count]) => ({ name, count }));
-    res.json({ success: true, data: top10 });
+    res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
+    res.json({ success: true, data: data ?? [] });
   } catch (err) {
     next(err);
   }
