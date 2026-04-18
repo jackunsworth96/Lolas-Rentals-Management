@@ -382,35 +382,30 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
     // 13. Post charity journal if applicable
     const charityAmount = body.charityDonation ?? 0;
     if (charityAmount > 0 && receivableAccountId) {
-      try {
-        const { Money } = await import('@lolas/domain');
-        const charityPayableAccountId = await resolveCharityPayableAccount(body.storeId);
-        if (charityPayableAccountId) {
-          const charityLegs = [
-            {
-              entryId: crypto.randomUUID(),
-              accountId: receivableAccountId,
-              debit: Money.php(charityAmount),
-              credit: Money.zero(),
-              description: `Order ${orderId} charity donation receivable (Be Pawsitive)`,
-              referenceType: 'order_charity' as const,
-              referenceId: orderId,
-            },
-            {
-              entryId: crypto.randomUUID(),
-              accountId: charityPayableAccountId,
-              debit: Money.zero(),
-              credit: Money.php(charityAmount),
-              description: `Order ${orderId} charity donation payable (Be Pawsitive)`,
-              referenceType: 'order_charity' as const,
-              referenceId: orderId,
-            },
-          ];
-          await req.app.locals.deps.accountingPort.createTransaction(charityLegs, body.storeId);
-        }
-      } catch (charityErr) {
-        // Non-fatal — log and continue so order creation is not rolled back
-        console.error(`Charity journal post failed (account: 'CHARITY-PAYABLE'):`, charityErr);
+      const { Money } = await import('@lolas/domain');
+      const charityPayableAccountId = await resolveCharityPayableAccount(body.storeId);
+      if (charityPayableAccountId) {
+        const charityLegs = [
+          {
+            entryId: crypto.randomUUID(),
+            accountId: receivableAccountId,
+            debit: Money.php(charityAmount),
+            credit: Money.zero(),
+            description: `Order ${orderId} charity donation receivable (Be Pawsitive)`,
+            referenceType: 'order_charity' as const,
+            referenceId: orderId,
+          },
+          {
+            entryId: crypto.randomUUID(),
+            accountId: charityPayableAccountId,
+            debit: Money.zero(),
+            credit: Money.php(charityAmount),
+            description: `Order ${orderId} charity donation payable (Be Pawsitive)`,
+            referenceType: 'order_charity' as const,
+            referenceId: orderId,
+          },
+        ];
+        await req.app.locals.deps.accountingPort.createTransaction(charityLegs, body.storeId);
       }
     }
 
