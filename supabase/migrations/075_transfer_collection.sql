@@ -1,4 +1,5 @@
--- Migration 075: Add collection tracking columns to transfers table
-ALTER TABLE public.transfers
-  ADD COLUMN IF NOT EXISTS collected_at timestamptz NULL,
-  ADD COLUMN IF NOT EXISTS collected_amount numeric(10,2) NULL;
+-- Migration 075: intentional no-op.
+-- The columns collected_at and collected_amount were already added in
+-- 074_transfer_collect_and_driver_cut.sql. This file exists only to keep
+-- migration numbering contiguous. Do NOT add DDL here.
+SELECT 1;
