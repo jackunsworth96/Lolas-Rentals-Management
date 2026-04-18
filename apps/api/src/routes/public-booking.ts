@@ -280,7 +280,7 @@ router.patch('/cancel/:orderReference', cancelLimiter, async (req, res, next) =>
       return;
     }
 
-    const { error } = await sb
+    const { data: updatedRow, error } = await sb
       .from('orders_raw')
       .update({
         status: 'cancelled',
@@ -289,9 +289,22 @@ router.patch('/cancel/:orderReference', cancelLimiter, async (req, res, next) =>
         cancellation_token_used: true,
       })
       .eq('id', orderRow.id)
-      .eq('status', 'unprocessed');
+      .eq('status', 'unprocessed')
+      .eq('cancellation_token_used', false)
+      .select('id')
+      .maybeSingle();
 
     if (error) throw new Error(`Cancel failed: ${error.message}`);
+    if (!updatedRow) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'TOKEN_ALREADY_USED',
+          message: 'This cancellation link has already been used or the booking could not be found.',
+        },
+      });
+      return;
+    }
     res.json({ success: true });
 
     void (async () => {
