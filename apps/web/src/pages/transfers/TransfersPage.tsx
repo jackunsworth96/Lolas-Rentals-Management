@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useUIStore } from '../../stores/ui-store.js';
 import { useTransfers, useTransferSummary, notifyDriver, moneyAmount, type TransferRow } from '../../api/transfers.js';
 import { useToast } from '../../hooks/useToast.js';
+import { useIsMobile } from '../../hooks/useIsMobile.js';
 import { Badge } from '../../components/common/Badge.js';
 import { formatDate } from '../../utils/date.js';
 import { formatCurrency } from '../../utils/currency.js';
@@ -34,6 +35,7 @@ type TransferTab = 'upcoming' | 'unpaid' | 'completed';
 
 export default function TransfersPage() {
   const storeId = useUIStore((s) => s.selectedStoreId) ?? '';
+  const isMobile = useIsMobile();
 
   const [activeTab, setActiveTab] = useState<TransferTab>('upcoming');
   const [completedDateFrom, setCompletedDateFrom] = useState('');
@@ -226,7 +228,7 @@ export default function TransfersPage() {
 
       {/* Settlement summary panel */}
       {(summaryLoading || (summary && (summary.outstanding.count > 0 || summary.collected.count > 0))) && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="flex flex-col gap-3 md:grid md:grid-cols-4">
           {summaryLoading ? (
             <>
               <div className="animate-pulse rounded-xl border border-charcoal-brand/10 bg-sand-brand px-4 py-3">
@@ -285,7 +287,7 @@ export default function TransfersPage() {
         </div>
       )}
 
-      {/* Table */}
+      {/* Table / Card list */}
       {isLoading ? (
         <div className="py-12 text-center text-sm text-gray-500">Loading transfers...</div>
       ) : filtered.length === 0 ? (
@@ -298,7 +300,80 @@ export default function TransfersPage() {
             ? 'All driver payments are up to date.'
             : 'No completed transfers in this date range.'}
         </div>
+      ) : isMobile ? (
+        /* ── Mobile card list ── */
+        <div className="flex flex-col gap-3">
+          {filtered.map((t) => {
+            const total = moneyAmount(t.totalPrice);
+            const isUpcoming = t.serviceDate >= todayStr;
+            return (
+              <div
+                key={t.id}
+                className="rounded-lg border border-sand-brand bg-white p-4 shadow-sm"
+              >
+                {/* Customer name + collected badge */}
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-lato text-base font-bold text-charcoal-brand leading-tight">
+                    {t.customerName}
+                  </p>
+                  {t.collectedAt ? (
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+                      ✓ Collected
+                    </span>
+                  ) : (
+                    <span className="inline-flex shrink-0 items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                      Pending
+                    </span>
+                  )}
+                </div>
+
+                {/* Route */}
+                <p className="mt-1 font-lato text-sm font-medium text-teal-brand">{t.route}</p>
+
+                {/* Date / time */}
+                <p className="mt-2 font-lato text-xs text-charcoal-brand/70">
+                  {formatDate(t.serviceDate)}
+                  {t.flightTime && (
+                    <span className="ml-1 text-charcoal-brand/50">{t.flightTime}</span>
+                  )}
+                </p>
+
+                {/* Pax + total */}
+                <div className="mt-2 flex items-center gap-4">
+                  <span className="font-lato text-xs text-charcoal-brand/60">
+                    {t.paxCount} pax
+                  </span>
+                  <span className="font-lato text-sm font-bold text-charcoal-brand">
+                    {formatCurrency(total)}
+                  </span>
+                </div>
+
+                {/* Action buttons */}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {!t.collectedAt && (
+                    <button
+                      onClick={() => setCollectTarget(t)}
+                      className="rounded-lg bg-teal-brand px-3 py-1.5 font-lato text-xs font-medium text-white hover:bg-teal-brand/80"
+                    >
+                      Collect
+                    </button>
+                  )}
+                  {isUpcoming && (
+                    <button
+                      disabled={notifyingId === t.id}
+                      onClick={() => handleNotifyDriver(t)}
+                      className="rounded-lg border border-teal-brand px-3 py-1.5 font-lato text-xs font-medium text-teal-brand hover:bg-teal-brand/10 disabled:opacity-50"
+                    >
+                      {notifyingId === t.id ? 'Sending…' : 'Notify Driver 🔔'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       ) : (
+        /* ── Desktop table ── */
         <div className="w-full overflow-x-auto rounded-lg border border-gray-200">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
