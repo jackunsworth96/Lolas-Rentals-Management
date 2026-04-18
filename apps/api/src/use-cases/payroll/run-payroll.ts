@@ -222,6 +222,10 @@ export async function runPayroll(
       payrollTransactions,
       approvedTimesheetIds,
       'Paid',
+      input.storeId,
+      input.periodStart,
+      input.periodEnd,
+      input.approvedBy,
     );
   }
 

@@ -57,7 +57,24 @@ router.post('/run', requirePermission(Permission.ViewPayroll), validateBody(RunP
       },
     );
     res.json({ success: true, data: result });
-  } catch (err) { next(err); }
+  } catch (err) {
+    // AC-06: the payroll_runs header has UNIQUE (store_id, period_start,
+    // period_end). A second run for the same period surfaces as Postgres
+    // SQLSTATE 23505, re-thrown from the timesheet-repo wrapper with the
+    // code preserved. Map it to a 409 so the UI can surface a clear message.
+    const code = (err as { code?: string } | null)?.code;
+    if (code === '23505') {
+      res.status(409).json({
+        success: false,
+        error: {
+          code: 'PAYROLL_ALREADY_RUN',
+          message: 'Payroll has already been run for this period. Check existing payroll records before re-running.',
+        },
+      });
+      return;
+    }
+    next(err);
+  }
 });
 
 export { router as payrollRoutes };

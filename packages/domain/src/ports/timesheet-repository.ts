@@ -28,5 +28,12 @@ export interface TimesheetRepository {
     }>,
     timesheetIds: string[],
     status: string,
+    // Idempotency key: the header row written by run_payroll_atomic is
+    // UNIQUE on (storeId, periodStart, periodEnd). A repeat call with the
+    // same triple rejects with SQLSTATE 23505 (unique_violation).
+    storeId: string,
+    periodStart: string,
+    periodEnd: string,
+    runBy: string | null,
   ): Promise<void>;
 }
