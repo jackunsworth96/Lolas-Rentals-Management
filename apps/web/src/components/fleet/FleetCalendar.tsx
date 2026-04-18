@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback, memo } from 'react';
 import { useFleetCalendar } from '../../api/fleet.js';
 import { OrderDetailModal } from '../orders/OrderDetailModal.js';
 
@@ -67,6 +67,170 @@ const LABEL_WIDTH = 140;
 const DAY_WIDTH = 52;
 const ROW_HEIGHT = 40;
 
+/** Pure helper — compute booking bar position from range metadata. */
+function computeBarStyle(
+  booking: { pickupDatetime: string; dropoffDatetime: string },
+  rangeFrom: Date,
+  daysCount: number,
+): { left: number; width: number } {
+  const pickup = new Date(booking.pickupDatetime);
+  const dropoff = new Date(booking.dropoffDatetime);
+  const startDay = Math.max(0, daysBetween(rangeFrom, pickup));
+  const endDay = Math.min(daysCount, daysBetween(rangeFrom, dropoff) + 1);
+  const left = startDay * DAY_WIDTH;
+  const width = Math.max(DAY_WIDTH * 0.5, (endDay - startDay) * DAY_WIDTH - 4);
+  return { left, width };
+}
+
+// ─── Sub-components ──────────────────────────────────────────────────────────
+// All wrapped with React.memo so they only re-render when their own props change,
+// preventing the N×M cell re-render on unrelated state changes (e.g. modal open/close).
+
+interface GanttDayColumnProps {
+  left: number;
+  isToday: boolean;
+  isWeekend: boolean;
+}
+const GanttDayColumn = memo(function GanttDayColumn({ left, isToday, isWeekend }: GanttDayColumnProps) {
+  return (
+    <div
+      className={`absolute top-0 h-full border-r ${isToday ? 'border-blue-300 bg-blue-50/40' : isWeekend ? 'border-gray-100 bg-gray-50/50' : 'border-gray-100'}`}
+      style={{ left, width: DAY_WIDTH }}
+    />
+  );
+});
+
+interface GanttDateHeaderProps {
+  date: Date;
+  isToday: boolean;
+  isWeekend: boolean;
+}
+const GanttDateHeader = memo(function GanttDateHeader({ date, isToday, isWeekend }: GanttDateHeaderProps) {
+  return (
+    <div
+      className={`flex shrink-0 items-center justify-center text-[10px] ${isToday ? 'bg-blue-100 font-bold text-blue-700' : isWeekend ? 'bg-gray-100 text-gray-400' : 'text-gray-500'}`}
+      style={{ width: DAY_WIDTH }}
+    >
+      <div className="text-center leading-tight">
+        <div>{date.toLocaleDateString('en-PH', { weekday: 'short' })}</div>
+        <div>{date.getDate()}</div>
+      </div>
+    </div>
+  );
+});
+
+interface GanttBookingBarProps {
+  booking: CalendarBooking;
+  left: number;
+  width: number;
+  storeId: string;
+  onBookingClick: (orderId: string, storeId: string) => void;
+}
+const GanttBookingBar = memo(function GanttBookingBar({
+  booking: b,
+  left,
+  width,
+  storeId,
+  onBookingClick,
+}: GanttBookingBarProps) {
+  const colors = STATUS_COLORS[b.status] ?? STATUS_COLORS.active;
+  return (
+    <button
+      type="button"
+      onClick={() => onBookingClick(b.orderId, storeId)}
+      className={`absolute top-1 z-10 flex items-center rounded border px-1.5 text-[10px] font-medium truncate cursor-pointer hover:opacity-80 transition-opacity ${colors.bg} ${colors.border} ${colors.text}`}
+      style={{ left: left + 2, width, height: ROW_HEIGHT - 8 }}
+      title={`${b.customerName} · ${b.orderReference ?? b.orderId}\n${new Date(b.pickupDatetime).toLocaleDateString()} → ${new Date(b.dropoffDatetime).toLocaleDateString()}\nStatus: ${b.status}`}
+    >
+      {b.customerName}
+    </button>
+  );
+});
+
+interface GanttVehicleRowProps {
+  vehicle: CalendarVehicle;
+  days: Date[];
+  rangeFrom: Date;
+  todayStr: string;
+  onBookingClick: (orderId: string, storeId: string) => void;
+}
+const GanttVehicleRow = memo(function GanttVehicleRow({
+  vehicle: v,
+  days,
+  rangeFrom,
+  todayStr,
+  onBookingClick,
+}: GanttVehicleRowProps) {
+  return (
+    <div className="relative border-b border-gray-100" style={{ height: ROW_HEIGHT }}>
+      {days.map((d) => {
+        const dateStr = toDateStr(d);
+        return (
+          <GanttDayColumn
+            key={dateStr}
+            left={daysBetween(rangeFrom, d) * DAY_WIDTH}
+            isToday={dateStr === todayStr}
+            isWeekend={d.getDay() === 0 || d.getDay() === 6}
+          />
+        );
+      })}
+      {v.bookings.map((b) => {
+        const { left, width } = computeBarStyle(b, rangeFrom, days.length);
+        return (
+          <GanttBookingBar
+            key={b.orderItemId}
+            booking={b}
+            left={left}
+            width={width}
+            storeId={v.storeId}
+            onBookingClick={onBookingClick}
+          />
+        );
+      })}
+    </div>
+  );
+});
+
+interface GanttUnassignedRowProps {
+  booking: UnassignedBooking;
+  days: Date[];
+  rangeFrom: Date;
+  todayStr: string;
+}
+const GanttUnassignedRow = memo(function GanttUnassignedRow({
+  booking: u,
+  days,
+  rangeFrom,
+  todayStr,
+}: GanttUnassignedRowProps) {
+  const bar = computeBarStyle(u, rangeFrom, days.length);
+  const colors = STATUS_COLORS.unprocessed;
+  return (
+    <div className="relative border-b border-gray-100" style={{ height: ROW_HEIGHT }}>
+      {days.map((d) => {
+        const dateStr = toDateStr(d);
+        return (
+          <GanttDayColumn
+            key={dateStr}
+            left={daysBetween(rangeFrom, d) * DAY_WIDTH}
+            isToday={dateStr === todayStr}
+            isWeekend={d.getDay() === 0 || d.getDay() === 6}
+          />
+        );
+      })}
+      <div
+        className={`absolute top-1 z-10 flex items-center rounded border px-1.5 text-[10px] font-medium truncate ${colors.bg} ${colors.border} ${colors.text}`}
+        style={{ left: bar.left + 2, width: bar.width, height: ROW_HEIGHT - 8 }}
+        title={`${u.customerName} · ${u.orderReference ?? u.rawOrderId}\n${u.vehicleModelName}\nNeeds vehicle assignment`}
+      >
+        {u.customerName} — {u.orderReference ?? ''}
+      </div>
+    </div>
+  );
+});
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
 interface Props {
   storeId: string;
 }
@@ -82,6 +246,8 @@ export function FleetCalendar({ storeId }: Props) {
     d.setHours(0, 0, 0, 0);
     return d;
   }, []);
+
+  const todayStr = useMemo(() => toDateStr(today), [today]);
 
   const rangeFrom = useMemo(() => addDays(today, -7 + offset * 14), [today, offset]);
   const rangeTo = useMemo(() => addDays(today, 7 + offset * 14), [today, offset]);
@@ -113,30 +279,20 @@ export function FleetCalendar({ storeId }: Props) {
     return map;
   }, [vehicles]);
 
+  const gridWidth = useMemo(() => days.length * DAY_WIDTH, [days]);
+
   useEffect(() => {
     if (!scrollRef.current) return;
-    const todayIdx = days.findIndex((d) => toDateStr(d) === toDateStr(today));
+    const todayIdx = days.findIndex((d) => toDateStr(d) === todayStr);
     if (todayIdx >= 0) {
       scrollRef.current.scrollLeft = Math.max(0, todayIdx * DAY_WIDTH - scrollRef.current.clientWidth / 2 + DAY_WIDTH / 2);
     }
-  }, [days, today, offset]);
+  }, [days, todayStr, offset]);
 
-  function barStyle(booking: { pickupDatetime: string; dropoffDatetime: string }) {
-    const pickup = new Date(booking.pickupDatetime);
-    const dropoff = new Date(booking.dropoffDatetime);
-    const startDay = Math.max(0, daysBetween(rangeFrom, pickup));
-    const endDay = Math.min(days.length, daysBetween(rangeFrom, dropoff) + 1);
-    const left = startDay * DAY_WIDTH;
-    const width = Math.max(DAY_WIDTH * 0.5, (endDay - startDay) * DAY_WIDTH - 4);
-    return { left, width };
-  }
-
-  function handleBookingClick(orderId: string, sid: string) {
+  const handleBookingClick = useCallback((orderId: string, sid: string) => {
     setSelectedOrderId(orderId);
     setSelectedStoreId(sid);
-  }
-
-  const gridWidth = days.length * DAY_WIDTH;
+  }, []);
 
   if (isLoading) return <div className="py-12 text-center text-gray-500">Loading calendar...</div>;
 
@@ -248,19 +404,14 @@ export function FleetCalendar({ storeId }: Props) {
             {/* Date headers */}
             <div className="flex h-8 border-b border-gray-200 bg-gray-50">
               {days.map((d) => {
-                const isToday = toDateStr(d) === toDateStr(today);
-                const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+                const dateStr = toDateStr(d);
                 return (
-                  <div
-                    key={toDateStr(d)}
-                    className={`flex shrink-0 items-center justify-center text-[10px] ${isToday ? 'bg-blue-100 font-bold text-blue-700' : isWeekend ? 'bg-gray-100 text-gray-400' : 'text-gray-500'}`}
-                    style={{ width: DAY_WIDTH }}
-                  >
-                    <div className="text-center leading-tight">
-                      <div>{d.toLocaleDateString('en-PH', { weekday: 'short' })}</div>
-                      <div>{d.getDate()}</div>
-                    </div>
-                  </div>
+                  <GanttDateHeader
+                    key={dateStr}
+                    date={d}
+                    isToday={dateStr === todayStr}
+                    isWeekend={d.getDay() === 0 || d.getDay() === 6}
+                  />
                 );
               })}
             </div>
@@ -272,42 +423,14 @@ export function FleetCalendar({ storeId }: Props) {
                 <div style={{ height: ROW_HEIGHT / 1.3 }} />
 
                 {storeVehicles.map((v) => (
-                  <div
+                  <GanttVehicleRow
                     key={v.vehicleId}
-                    className="relative border-b border-gray-100"
-                    style={{ height: ROW_HEIGHT }}
-                  >
-                    {/* Day grid lines + today marker */}
-                    {days.map((d) => {
-                      const isToday = toDateStr(d) === toDateStr(today);
-                      const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-                      return (
-                        <div
-                          key={toDateStr(d)}
-                          className={`absolute top-0 h-full border-r ${isToday ? 'border-blue-300 bg-blue-50/40' : isWeekend ? 'border-gray-100 bg-gray-50/50' : 'border-gray-100'}`}
-                          style={{ left: daysBetween(rangeFrom, d) * DAY_WIDTH, width: DAY_WIDTH }}
-                        />
-                      );
-                    })}
-
-                    {/* Booking bars */}
-                    {v.bookings.map((b) => {
-                      const { left, width } = barStyle(b);
-                      const colors = STATUS_COLORS[b.status] ?? STATUS_COLORS.active;
-                      return (
-                        <button
-                          key={b.orderItemId}
-                          type="button"
-                          onClick={() => handleBookingClick(b.orderId, v.storeId)}
-                          className={`absolute top-1 z-10 flex items-center rounded border px-1.5 text-[10px] font-medium truncate cursor-pointer hover:opacity-80 transition-opacity ${colors.bg} ${colors.border} ${colors.text}`}
-                          style={{ left: left + 2, width, height: ROW_HEIGHT - 8 }}
-                          title={`${b.customerName} · ${b.orderReference ?? b.orderId}\n${new Date(b.pickupDatetime).toLocaleDateString()} → ${new Date(b.dropoffDatetime).toLocaleDateString()}\nStatus: ${b.status}`}
-                        >
-                          {b.customerName}
-                        </button>
-                      );
-                    })}
-                  </div>
+                    vehicle={v}
+                    days={days}
+                    rangeFrom={rangeFrom}
+                    todayStr={todayStr}
+                    onBookingClick={handleBookingClick}
+                  />
                 ))}
               </div>
             ))}
@@ -317,36 +440,13 @@ export function FleetCalendar({ storeId }: Props) {
               <div>
                 <div style={{ height: ROW_HEIGHT / 1.3 }} />
                 {unassigned.map((u) => (
-                  <div
+                  <GanttUnassignedRow
                     key={u.rawOrderId}
-                    className="relative border-b border-gray-100"
-                    style={{ height: ROW_HEIGHT }}
-                  >
-                    {days.map((d) => {
-                      const isToday = toDateStr(d) === toDateStr(today);
-                      const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-                      return (
-                        <div
-                          key={toDateStr(d)}
-                          className={`absolute top-0 h-full border-r ${isToday ? 'border-blue-300 bg-blue-50/40' : isWeekend ? 'border-gray-100 bg-gray-50/50' : 'border-gray-100'}`}
-                          style={{ left: daysBetween(rangeFrom, d) * DAY_WIDTH, width: DAY_WIDTH }}
-                        />
-                      );
-                    })}
-                    {(() => {
-                      const { left, width } = barStyle(u);
-                      const colors = STATUS_COLORS.unprocessed;
-                      return (
-                        <div
-                          className={`absolute top-1 z-10 flex items-center rounded border px-1.5 text-[10px] font-medium truncate ${colors.bg} ${colors.border} ${colors.text}`}
-                          style={{ left: left + 2, width, height: ROW_HEIGHT - 8 }}
-                          title={`${u.customerName} · ${u.orderReference ?? u.rawOrderId}\n${u.vehicleModelName}\nNeeds vehicle assignment`}
-                        >
-                          {u.customerName} — {u.orderReference ?? ''}
-                        </div>
-                      );
-                    })()}
-                  </div>
+                    booking={u}
+                    days={days}
+                    rangeFrom={rangeFrom}
+                    todayStr={todayStr}
+                  />
                 ))}
               </div>
             )}

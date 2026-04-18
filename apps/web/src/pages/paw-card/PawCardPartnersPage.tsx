@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect, Fragment } from 'react';
+import { useState, useMemo, useRef, useEffect, Fragment, memo } from 'react';
 import {
   MapPin,
   Instagram,
@@ -762,7 +762,9 @@ interface EstablishmentCardProps {
   isFavourite?: boolean;
 }
 
-function EstablishmentCard({ establishment: e, index, isFavourite }: EstablishmentCardProps) {
+// 70+ partners renders this component many times; memo prevents re-renders when
+// parent filter/search state changes but this card's own props are unchanged.
+const EstablishmentCard = memo(function EstablishmentCard({ establishment: e, index, isFavourite }: EstablishmentCardProps) {
   const { ref, inView } = useInView(0.1);
   const [hovered, setHovered] = useState(false);
   const displayName = e.name ?? '';
@@ -1004,4 +1006,4 @@ function EstablishmentCard({ establishment: e, index, isFavourite }: Establishme
       </div>
     </div>
   );
-}
+});
