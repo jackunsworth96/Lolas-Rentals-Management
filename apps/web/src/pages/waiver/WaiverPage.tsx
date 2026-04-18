@@ -13,9 +13,6 @@ import { SEO } from '../../components/seo/SEO.js';
 import { WaiverSigningTermsContent } from '../../components/waiver/WaiverSigningTermsContent.js';
 import { formatPickupDatetimeManila } from '../../utils/date.js';
 import { api } from '../../api/client.js';
-import { normalizeApiBase } from '../../api/normalize-api-base.js';
-
-const API_BASE = normalizeApiBase(import.meta.env.VITE_API_URL as string | undefined);
 
 interface OrderWaiverPayload {
   orderReference: string;
@@ -210,18 +207,9 @@ export default function WaiverPage() {
       setLoading(true);
       setError('');
       try {
-        const res = await fetch(`${API_BASE}/public/waiver/${encodeURIComponent(orderReference)}`);
-        if (!res.ok) {
-          if (res.status === 404) {
-            if (!cancelled) {
-              setOrderData(null);
-              setError('We could not find a booking for this link.');
-            }
-            return;
-          }
-          throw new Error(`Request failed (${res.status})`);
-        }
-        const data = (await res.json()) as OrderWaiverPayload;
+        const data = await api.get<OrderWaiverPayload>(
+          `/public/waiver/${encodeURIComponent(orderReference)}`,
+        );
         if (cancelled) return;
         setOrderData(data);
         setDriverName(data.customerName ?? '');
@@ -232,8 +220,11 @@ export default function WaiverPage() {
           setAlreadySignedOnLoad(true);
           setStep(3);
         }
-      } catch {
-        if (!cancelled) setError('Something went wrong loading your booking. Please try again.');
+      } catch (err) {
+        if (!cancelled)
+          setError(
+            err instanceof Error ? err.message : 'Something went wrong loading your booking. Please try again.',
+          );
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -247,16 +238,11 @@ export default function WaiverPage() {
   const uploadLicence = async (file: File, side: 'front' | 'back') => {
     const fd = new FormData();
     fd.append('file', file);
-    const res = await fetch(
-      `${API_BASE}/public/waiver/${encodeURIComponent(orderReference)}/upload-licence?side=${side}`,
-      { method: 'POST', body: fd },
+    const result = await api.upload<{ url: string }>(
+      `/public/waiver/${encodeURIComponent(orderReference)}/upload-licence?side=${side}`,
+      fd,
     );
-    if (!res.ok) {
-      const j = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
-      throw new Error(j?.error?.message ?? 'Upload failed');
-    }
-    const j = (await res.json()) as { url: string };
-    return j.url;
+    return result.url;
   };
 
   const onPickLicence = (side: 'front' | 'back') => (e: React.ChangeEvent<HTMLInputElement>) => {

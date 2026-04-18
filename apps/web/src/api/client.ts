@@ -61,6 +61,34 @@ async function request<T>(
   return json.data as T;
 }
 
+async function uploadRequest<T>(path: string, body: FormData): Promise<T> {
+  const token = useAuthStore.getState().token;
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${BASE_URL}${path}`, { method: 'POST', body, headers });
+
+  if (response.status === 401) {
+    useAuthStore.getState().logout();
+    throw new Error('Session expired');
+  }
+
+  let json: ApiResponse<T>;
+  try {
+    json = await response.json();
+  } catch {
+    throw new Error(response.ok ? 'Invalid response' : `Request failed: ${response.status} ${response.statusText}`);
+  }
+
+  if (!response.ok || !json.success) {
+    throw new Error(json.error?.message ?? 'Request failed');
+  }
+
+  return json.data as T;
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body: unknown) =>
@@ -71,4 +99,6 @@ export const api = {
     request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
   delete: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'DELETE', ...(body != null ? { body: JSON.stringify(body) } : {}) }),
+  /** POST multipart/form-data — does NOT set Content-Type so the browser supplies the correct boundary. */
+  upload: <T>(path: string, body: FormData) => uploadRequest<T>(path, body),
 };
