@@ -11,6 +11,8 @@ import {
   Money,
   calculateRefundableDeposit,
 } from '@lolas/domain';
+import { supabase } from '../../adapters/supabase/client.js';
+import { formatManilaDate } from '../../utils/manila-date.js';
 
 export interface SettleOrderDeps {
   orderRepo: OrderRepository;
@@ -34,11 +36,23 @@ export interface SettleOrderInput {
   settlementRef?: string | null;
 }
 
+function serialiseLeg(leg: JournalLeg): Record<string, unknown> {
+  return {
+    id: leg.entryId,
+    account_id: leg.accountId,
+    debit: leg.debit.toNumber(),
+    credit: leg.credit.toNumber(),
+    description: leg.description,
+    reference_type: leg.referenceType,
+    reference_id: leg.referenceId,
+  };
+}
+
 export async function settleOrder(
   deps: SettleOrderDeps,
   input: SettleOrderInput,
 ) {
-  const { orderRepo, orderItemRepo, paymentRepo, fleetRepo, accountingPort } = deps;
+  const { orderRepo, orderItemRepo, paymentRepo } = deps;
 
   const order = await orderRepo.findById(input.orderId);
   if (!order) throw new Error(`Order ${input.orderId} not found`);
@@ -61,8 +75,13 @@ export async function settleOrder(
 
   const balanceAfterDeposit = balanceBeforeDeposit.subtract(amountApplied);
 
-  // Collect final payment if there's a remaining balance and payment info provided
+  // All side effects are collected here and posted by the
+  // settle_order_atomic RPC in a single DB transaction.
+  const legs: JournalLeg[] = [];
   let finalPayment: Payment | null = null;
+  let cardSettlement: CardSettlement | null = null;
+
+  // ── Final payment (optional) ─────────────────────────────
   if (
     balanceAfterDeposit.isPositive() &&
     input.finalPaymentMethodId &&
@@ -86,10 +105,9 @@ export async function settleOrder(
       customerId: order.customerId,
       accountId: input.isCardPayment ? null : (input.finalPaymentAccountId ?? null),
     };
-    await paymentRepo.save(finalPayment);
 
     if (!input.isCardPayment && input.finalPaymentAccountId) {
-      const paymentLegs: JournalLeg[] = [
+      legs.push(
         {
           entryId: crypto.randomUUID(),
           accountId: input.finalPaymentAccountId,
@@ -108,12 +126,11 @@ export async function settleOrder(
           referenceType: 'payment',
           referenceId: finalPayment.id,
         },
-      ];
-      await accountingPort.createTransaction(paymentLegs, order.storeId);
+      );
     }
 
     if (input.isCardPayment) {
-      const settlement: CardSettlement = {
+      cardSettlement = {
         id: crypto.randomUUID(),
         storeId: order.storeId,
         orderId: order.id,
@@ -133,16 +150,10 @@ export async function settleOrder(
         batchNo: null,
         createdAt: new Date(),
       };
-      await deps.cardSettlementRepo.save(settlement);
     }
   }
 
-  // Transition order to completed
-  order.settle();
-
-  // Deposit journal entries
-  const legs: JournalLeg[] = [];
-
+  // ── Deposit-applied legs ─────────────────────────────────
   if (amountApplied.isPositive()) {
     legs.push(
       {
@@ -166,6 +177,7 @@ export async function settleOrder(
     );
   }
 
+  // ── Deposit-refund legs ──────────────────────────────────
   if (refund.isPositive()) {
     legs.push(
       {
@@ -189,33 +201,85 @@ export async function settleOrder(
     );
   }
 
-  if (legs.length > 0) {
-    await accountingPort.createTransaction(legs, order.storeId);
+  // Compute the post-settlement balance locally so we can
+  // stamp it on orders.balance_due inside the same RPC call.
+  const paymentsAfter = finalPayment
+    ? totalPayments.add(Money.php(finalPayment.amount))
+    : totalPayments;
+  const finalBalanceDue = order.finalTotal.subtract(paymentsAfter);
+
+  const fleetReleases = orderItems.map((item) => ({
+    vehicle_id: item.vehicleId,
+  }));
+
+  const journalTransactionId =
+    legs.length > 0 ? crypto.randomUUID() : '';
+  const journalDate = formatManilaDate();
+  const journalPeriod = journalDate.slice(0, 7);
+
+  const { error: rpcErr } = await supabase.rpc('settle_order_atomic', {
+    p_order_id: order.id,
+    p_store_id: order.storeId,
+    p_settled_at: new Date().toISOString(),
+    p_final_balance_due: finalBalanceDue.toNumber(),
+    p_final_payment: finalPayment
+      ? {
+          id: finalPayment.id,
+          amount: finalPayment.amount,
+          payment_type: finalPayment.paymentType,
+          payment_method_id: finalPayment.paymentMethodId,
+          transaction_date: finalPayment.transactionDate,
+          settlement_status: finalPayment.settlementStatus,
+          settlement_ref: finalPayment.settlementRef,
+          customer_id: finalPayment.customerId,
+          account_id: finalPayment.accountId,
+        }
+      : null,
+    p_card_settlement: cardSettlement
+      ? {
+          store_id: cardSettlement.storeId,
+          customer_id: cardSettlement.customerId,
+          name: cardSettlement.name,
+          amount: cardSettlement.amount,
+          ref_number: cardSettlement.refNumber,
+          raw_date: cardSettlement.transactionDate,
+          forecasted_date: cardSettlement.forecastedDate,
+          is_paid: cardSettlement.isPaid,
+          date_settled: cardSettlement.dateSettled,
+          settlement_ref: cardSettlement.settlementRef,
+          net_amount: cardSettlement.netAmount,
+          fee_expense: cardSettlement.feeExpense,
+          account_id: cardSettlement.accountId,
+          batch_no: cardSettlement.batchNo,
+        }
+      : null,
+    p_fleet_releases: fleetReleases,
+    p_journal_transaction_id: journalTransactionId,
+    p_journal_period: journalPeriod,
+    p_journal_date: journalDate,
+    p_journal_legs: legs.map(serialiseLeg),
+  });
+
+  if (rpcErr) {
+    throw new Error(`settle_order_atomic RPC failed: ${rpcErr.message}`);
   }
 
-  // Release all vehicles back to available
-  await Promise.all(
-    orderItems.map((item) =>
-      fleetRepo.updateStatus(item.vehicleId, 'Available'),
-    ),
-  );
-
-  // Recalculate final balance
-  const allPayments = await paymentRepo.findByOrderId(order.id);
-  const finalTotalPaid = allPayments.reduce(
-    (sum, p) => sum.add(Money.php(p.amount)),
-    Money.zero(),
-  );
-  order.applyPayments(finalTotalPaid);
-  await orderRepo.save(order);
+  // Reload the order so we return a fresh domain object that
+  // reflects the status/balance the RPC just persisted.
+  const reloaded = await orderRepo.findById(order.id);
+  if (!reloaded) {
+    throw new Error(
+      `settle_order_atomic succeeded but order ${order.id} could not be reloaded`,
+    );
+  }
 
   return {
-    order,
+    order: reloaded,
     balanceBeforeDeposit: balanceBeforeDeposit.toNumber(),
     depositApplied: amountApplied.toNumber(),
     depositRefund: refund.toNumber(),
     balanceAfterDeposit: balanceAfterDeposit.toNumber(),
     finalPaymentCollected: finalPayment?.amount ?? 0,
-    finalBalanceDue: order.balanceDue.toNumber(),
+    finalBalanceDue: finalBalanceDue.toNumber(),
   };
 }
