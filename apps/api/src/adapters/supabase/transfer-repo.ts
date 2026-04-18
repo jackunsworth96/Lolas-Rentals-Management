@@ -31,6 +31,7 @@ const TransferRowSchema = z.object({
   updated_at: z.string(),
   collected_at: z.string().nullable(),
   collected_amount: z.number().nullable(),
+  pickup_time: z.string().nullable(),
 });
 
 type RouteInfo = { driverCut: number | null; pricingType: 'fixed' | 'per_head' | null };
@@ -64,6 +65,7 @@ function toRow(t: Transfer) {
     updated_at: t.updatedAt.toISOString(),
     collected_at: t.collectedAt?.toISOString() ?? null,
     collected_amount: t.collectedAmount,
+    pickup_time: t.pickupTime,
   };
 }
 
@@ -103,6 +105,7 @@ function toDomain(raw: unknown, routeInfo?: RouteInfo): Transfer {
     collectedAmount: row.collected_amount,
     routeDriverCut: routeInfo?.driverCut ?? null,
     routePricingType: routeInfo?.pricingType ?? null,
+    pickupTime: row.pickup_time,
   });
 }
 

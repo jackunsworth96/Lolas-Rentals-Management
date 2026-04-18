@@ -36,6 +36,8 @@ export interface TransferProps {
   routeDriverCut?: number | null;
   /** pricing_type from the matching transfer_routes row ('fixed' | 'per_head'). */
   routePricingType?: 'fixed' | 'per_head' | null;
+  /** Scheduled pickup time in HH:MM format, stored as Postgres time. */
+  pickupTime?: string | null;
 }
 
 export class Transfer {
@@ -68,6 +70,7 @@ export class Transfer {
   readonly collectedAmount: number | null;
   readonly routeDriverCut: number | null;
   readonly routePricingType: 'fixed' | 'per_head' | null;
+  readonly pickupTime: string | null;
 
   private constructor(props: TransferProps) {
     this.id = props.id;
@@ -99,6 +102,7 @@ export class Transfer {
     this.collectedAmount = props.collectedAmount ?? null;
     this.routeDriverCut = props.routeDriverCut ?? null;
     this.routePricingType = props.routePricingType ?? null;
+    this.pickupTime = props.pickupTime ?? null;
   }
 
   static create(props: TransferProps): Transfer {
@@ -124,6 +128,13 @@ export class Transfer {
       ...(this as unknown as TransferProps),
       collectedAt,
       collectedAmount,
+    });
+  }
+
+  withPickupTime(time: string | null): Transfer {
+    return Transfer.create({
+      ...(this as unknown as TransferProps),
+      pickupTime: time,
     });
   }
 }

@@ -1,4 +1,5 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
+import { z } from 'zod';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
@@ -11,6 +12,10 @@ import {
   TransferSummaryQuerySchema,
   CollectTransferBodySchema,
 } from '@lolas/shared';
+
+const PickupTimeBodySchema = z.object({
+  pickupTime: z.string().regex(/^\d{2}:\d{2}$/).nullable(),
+});
 
 const router = Router();
 router.use(authenticate);
@@ -104,7 +109,7 @@ router.post('/:id/notify-driver', requirePermission(Permission.EditTransfers), a
       customerName: transfer.customerName,
       route: transfer.route,
       pickupLocation: transfer.accommodation,
-      pickupTime: transfer.serviceDate,
+      pickupTime: transfer.pickupTime ?? null,
       flightNumber: null,
       flightArrivalTime: transfer.flightTime,
       paxCount: transfer.paxCount,
@@ -163,6 +168,25 @@ router.patch('/:id/collect', requirePermission(Permission.EditTransfers), valida
     );
 
     await transferRepo.save(existing.withCollected(new Date(), body.collectedAmount));
+    const refreshed = await transferRepo.findById(id);
+    res.json({ success: true, data: refreshed });
+  } catch (err) { next(err); }
+});
+
+router.patch('/:id/pickup-time', requirePermission(Permission.EditTransfers), validateBody(PickupTimeBodySchema), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = String(req.params.id);
+    const { pickupTime } = req.body as { pickupTime: string | null };
+    const transferRepo = req.app.locals.deps.transferRepo;
+
+    const existing = await transferRepo.findById(id);
+    if (!existing) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Transfer not found' } });
+      return;
+    }
+
+    const updated = existing.withPickupTime(pickupTime);
+    await transferRepo.save(updated);
     const refreshed = await transferRepo.findById(id);
     res.json({ success: true, data: refreshed });
   } catch (err) { next(err); }

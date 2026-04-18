@@ -35,6 +35,8 @@ export interface TransferRow {
   routeDriverCut: number | null;
   /** pricing_type from the matching transfer_routes row. */
   routePricingType: 'fixed' | 'per_head' | null;
+  /** Scheduled pickup time in HH:MM format; null if not yet set. */
+  pickupTime: string | null;
 }
 
 export function moneyAmount(val: { amount: number } | number | null | undefined): number {
@@ -139,6 +141,10 @@ export interface MarkTransferCollectedVars {
 export function markTransferCollected(vars: MarkTransferCollectedVars): Promise<TransferRow> {
   const { id, ...body } = vars;
   return api.patch(`/transfers/${id}/collect`, body);
+}
+
+export function updatePickupTime(id: string, pickupTime: string | null): Promise<TransferRow> {
+  return api.patch(`/transfers/${id}/pickup-time`, { pickupTime });
 }
 
 export function useMarkTransferCollected() {

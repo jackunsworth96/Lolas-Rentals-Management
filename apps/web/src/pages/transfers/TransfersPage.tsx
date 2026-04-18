@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useUIStore } from '../../stores/ui-store.js';
-import { useTransfers, useTransferSummary, notifyDriver, moneyAmount, type TransferRow } from '../../api/transfers.js';
+import { useTransfers, useTransferSummary, notifyDriver, updatePickupTime, moneyAmount, type TransferRow } from '../../api/transfers.js';
 import { useToast } from '../../hooks/useToast.js';
 import { useIsMobile } from '../../hooks/useIsMobile.js';
 import { Badge } from '../../components/common/Badge.js';
@@ -79,6 +79,22 @@ export default function TransfersPage() {
 
   const { toasts, pushToast } = useToast();
   const [notifyingId, setNotifyingId] = useState<string | null>(null);
+  const [savingPickupTimeId, setSavingPickupTimeId] = useState<string | null>(null);
+  const [savedPickupTimeId, setSavedPickupTimeId] = useState<string | null>(null);
+
+  async function handlePickupTimeChange(t: TransferRow, value: string) {
+    setSavingPickupTimeId(t.id);
+    setSavedPickupTimeId(null);
+    try {
+      await updatePickupTime(t.id, value || null);
+      setSavedPickupTimeId(t.id);
+      setTimeout(() => setSavedPickupTimeId((prev) => (prev === t.id ? null : prev)), 2000);
+    } catch {
+      pushToast('Failed to save pickup time', 'error');
+    } finally {
+      setSavingPickupTimeId(null);
+    }
+  }
 
   const filtered = useMemo(() => {
     if (!transfers) return [];
@@ -337,6 +353,11 @@ export default function TransfersPage() {
                     <span className="ml-1 text-charcoal-brand/50">{t.flightTime}</span>
                   )}
                 </p>
+                {t.pickupTime && (
+                  <p className="mt-0.5 font-lato text-xs font-medium text-teal-brand">
+                    ⏰ Pickup: {t.pickupTime}
+                  </p>
+                )}
 
                 {/* Pax + total */}
                 <div className="mt-2 flex items-center gap-4">
@@ -387,6 +408,7 @@ export default function TransfersPage() {
                   />
                 </th>
                 <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Date</th>
+                <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Pickup Time</th>
                 <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Customer</th>
                 <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Contact</th>
                 <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Type</th>
@@ -428,6 +450,9 @@ export default function TransfersPage() {
                         {t.flightTime && (
                           <span className="ml-1 text-xs text-gray-500">{t.flightTime}</span>
                         )}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3 text-sm text-gray-900">
+                        {t.pickupTime ?? <span className="text-gray-400">—</span>}
                       </td>
                       <td className="px-3 py-3 text-sm font-medium text-gray-900">{t.customerName}</td>
                       <td className="px-3 py-3 text-sm text-gray-600">{t.contactNumber ?? '—'}</td>
@@ -483,7 +508,7 @@ export default function TransfersPage() {
                     </tr>
                     {isExpanded && (
                       <tr key={`${t.id}-actions`}>
-                        <td colSpan={16} className="bg-gray-50 px-6 py-3">
+                        <td colSpan={17} className="bg-gray-50 px-6 py-3">
                           <div className="flex flex-wrap items-center gap-3">
                             {t.paymentStatus !== 'Paid' && (
                               <button
@@ -510,6 +535,19 @@ export default function TransfersPage() {
                                 {notifyingId === t.id ? 'Sending…' : 'Notify Driver 🔔'}
                               </button>
                             )}
+                            <label className="flex items-center gap-2 text-xs text-gray-600">
+                              <span className="font-medium whitespace-nowrap">Pickup Time</span>
+                              <input
+                                type="time"
+                                defaultValue={t.pickupTime ?? ''}
+                                disabled={savingPickupTimeId === t.id}
+                                onBlur={(e) => handlePickupTimeChange(t, e.target.value)}
+                                className="rounded border border-gray-300 px-2 py-1 text-sm disabled:opacity-50"
+                              />
+                              {savedPickupTimeId === t.id && (
+                                <span className="text-green-600 font-medium">Saved</span>
+                              )}
+                            </label>
                             <div className="ml-auto space-y-0.5 text-right text-xs text-gray-500">
                               {t.accommodation && <p>Hotel: {t.accommodation}</p>}
                               {t.opsNotes && <p>Notes: {t.opsNotes}</p>}
