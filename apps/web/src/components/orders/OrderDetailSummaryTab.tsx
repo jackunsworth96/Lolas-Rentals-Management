@@ -570,7 +570,7 @@ export function OrderDetailSummaryTab({
         </div>
 
         {/* Details grid */}
-        <dl className="grid grid-cols-2 gap-4 text-sm">
+        <dl className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
           {wooOrderId && (
             <div>
               <dt className="text-charcoal-brand/60">Order Ref</dt>
@@ -608,17 +608,17 @@ export function OrderDetailSummaryTab({
             <section>
               <h3 className="mb-3 font-medium text-gray-900">Collect Payment</h3>
               <form onSubmit={handleCollectPayment} className="space-y-3">
-                <div className="flex flex-wrap items-end gap-4">
+                <div className="flex flex-col sm:flex-row sm:flex-wrap items-end gap-4">
                   <label className="block">
                     <span className="text-sm text-gray-600">Amount</span>
                     <input type="number" step="0.01" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} required
                       placeholder={balance > 0 ? String(balance) : '0'}
-                      className="mt-1 block w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                      className="mt-1 block w-full sm:w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
                   </label>
                   <label className="block">
                     <span className="text-sm text-gray-600">Method</span>
                     <select value={paymentMethodId} onChange={(e) => { setPaymentMethodId(e.target.value); setPaymentAccountId(''); setSettlementRef(''); }} required
-                      className="mt-1 block w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                      className="mt-1 block w-full sm:w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
                       <option value="">Select method</option>
                       {activePaymentMethods.map((pm) => <option key={pm.id} value={pm.id}>{pm.name}</option>)}
                     </select>
@@ -628,14 +628,14 @@ export function OrderDetailSummaryTab({
                       <span className="text-sm text-gray-600">Card Reference #</span>
                       <input type="text" value={settlementRef} onChange={(e) => setSettlementRef(e.target.value)}
                         placeholder="Terminal receipt #"
-                        className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                        className="mt-1 block w-full sm:w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
                     </label>
                   )}
                   {paymentMethodId && !isCardPayment && !routedCollectAcct && (
                     <label className="block">
                       <span className="text-sm text-gray-600">Account</span>
                       <select value={paymentAccountId} onChange={(e) => setPaymentAccountId(e.target.value)} required
-                        className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                        className="mt-1 block w-full sm:w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
                         <option value="">Select</option>
                         {paymentAccountOptions.map((a) => <option key={String(a.id)} value={String(a.id)}>{String(a.name)}</option>)}
                       </select>
@@ -643,7 +643,7 @@ export function OrderDetailSummaryTab({
                     </label>
                   )}
                   <button type="submit" disabled={collectPaymentMut.isPending}
-                    className="rounded-lg bg-teal-brand px-5 py-2 text-sm font-medium text-white hover:bg-teal-brand/90 disabled:opacity-50">
+                    className="w-full sm:w-auto rounded-lg bg-teal-brand px-5 py-2 text-sm font-medium text-white hover:bg-teal-brand/90 disabled:opacity-50">
                     {collectPaymentMut.isPending ? 'Saving...' : 'Record Payment'}
                   </button>
                 </div>
@@ -660,7 +660,7 @@ export function OrderDetailSummaryTab({
               <button
                 type="button"
                 onClick={() => setShowMayaModal(true)}
-                className="flex items-center gap-2 rounded-lg border border-green-600 px-5 py-2 text-sm font-medium text-green-700 transition-colors hover:bg-green-50"
+                className="flex w-full sm:w-auto items-center gap-2 rounded-lg border border-green-600 px-5 py-2 text-sm font-medium text-green-700 transition-colors hover:bg-green-50"
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
                 Request Payment via Maya…
@@ -676,7 +676,7 @@ export function OrderDetailSummaryTab({
               <button
                 type="button"
                 onClick={() => setExtendOpen(true)}
-                className="rounded-lg bg-teal-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700"
+                className="w-full sm:w-auto rounded-lg bg-teal-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700"
               >
                 Extend Return Date…
               </button>
@@ -685,17 +685,17 @@ export function OrderDetailSummaryTab({
             {/* ─── SWAP VEHICLE ─── */}
             <section>
               <h3 className="mb-3 font-medium text-gray-900">Swap Vehicle</h3>
-              <form onSubmit={handleSwapVehicle} className="flex flex-wrap items-end gap-4">
+              <form onSubmit={handleSwapVehicle} className="flex flex-col sm:flex-row sm:flex-wrap items-end gap-4">
                 <div className="block">
                   <span className="text-sm text-gray-600">Current vehicle</span>
-                  <div className="mt-1 flex h-9 w-48 items-center rounded-lg border border-gray-200 bg-sand-brand px-3 text-sm text-charcoal-brand">
+                  <div className="mt-1 flex h-9 w-full sm:w-48 items-center rounded-lg border border-gray-200 bg-sand-brand px-3 text-sm text-charcoal-brand">
                     {itemsList[0]?.vehicleName ?? '—'}
                   </div>
                 </div>
                 <label className="block">
                   <span className="text-sm text-gray-600">New vehicle</span>
                   <select value={swapNewVehicleId} onChange={(e) => setSwapNewVehicleId(e.target.value)} required
-                    className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    className="mt-1 block w-full sm:w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
                     <option value="">Select available vehicle</option>
                     {availableVehicles.map((v) => (
                       <option key={String(v.id)} value={String(v.id)}>{String(v.name)}</option>
@@ -705,10 +705,10 @@ export function OrderDetailSummaryTab({
                 <label className="block">
                   <span className="text-sm text-gray-600">Reason</span>
                   <input type="text" value={swapReason} onChange={(e) => setSwapReason(e.target.value)} required placeholder="e.g. customer request"
-                    className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                    className="mt-1 block w-full sm:w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
                 </label>
                 <button type="submit" disabled={swapVehicle.isPending || !itemsList[0]}
-                  className="rounded-lg bg-teal-brand px-5 py-2 text-sm font-medium text-white hover:bg-teal-brand/90 disabled:opacity-50">
+                  className="w-full sm:w-auto rounded-lg bg-teal-brand px-5 py-2 text-sm font-medium text-white hover:bg-teal-brand/90 disabled:opacity-50">
                   {swapVehicle.isPending ? 'Swapping...' : 'Swap Vehicle'}
                 </button>
               </form>
@@ -772,11 +772,11 @@ export function OrderDetailSummaryTab({
                         <p className="text-sm font-medium text-amber-900">
                           Final payment of {formatCurrency(remainingAfterDeposit)} required
                         </p>
-                        <div className="flex flex-wrap items-end gap-3">
+                        <div className="flex flex-col sm:flex-row sm:flex-wrap items-end gap-3">
                           <label className="block">
                             <span className="text-xs font-medium text-amber-800">Payment Method</span>
                             <select value={settleFinalMethodId} onChange={(e) => { setSettleFinalMethodId(e.target.value); setSettleFinalAccountId(''); setSettleFinalRef(''); }} required
-                              className="mt-1 block w-44 rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                              className="mt-1 block w-full sm:w-44 rounded-lg border border-gray-300 px-3 py-2 text-sm">
                               <option value="">Select method</option>
                               {activePaymentMethods.map((pm) => <option key={pm.id} value={pm.id}>{pm.name}</option>)}
                             </select>
@@ -785,7 +785,7 @@ export function OrderDetailSummaryTab({
                             <label className="block">
                               <span className="text-xs font-medium text-amber-800">Account</span>
                               <select value={settleFinalAccountId} onChange={(e) => setSettleFinalAccountId(e.target.value)} required
-                                className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                                className="mt-1 block w-full sm:w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm">
                                 <option value="">Select</option>
                                 {paymentAccountOptions.map((a) => <option key={String(a.id)} value={String(a.id)}>{String(a.name)}</option>)}
                               </select>
@@ -797,7 +797,7 @@ export function OrderDetailSummaryTab({
                               <span className="text-xs font-medium text-amber-800">Card Reference #</span>
                               <input type="text" value={settleFinalRef} onChange={(e) => setSettleFinalRef(e.target.value)}
                                 placeholder="Terminal receipt #"
-                                className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                                className="mt-1 block w-full sm:w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
                             </label>
                           )}
                         </div>
@@ -816,7 +816,7 @@ export function OrderDetailSummaryTab({
                             value={settleRefundMethodId}
                             onChange={(e) => { setSettleRefundMethodId(e.target.value); setSettleRefundAccountId(''); }}
                             required
-                            className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            className="mt-1 block w-full sm:w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm"
                           >
                             <option value="">Select method</option>
                             {refundPaymentMethods.map((pm) => <option key={pm.id} value={pm.id}>{pm.name}</option>)}
@@ -826,7 +826,7 @@ export function OrderDetailSummaryTab({
                           <label className="block">
                             <span className="text-xs font-medium text-amber-800">Refund Account</span>
                             <select value={settleRefundAccountId} onChange={(e) => setSettleRefundAccountId(e.target.value)} required
-                              className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                              className="mt-1 block w-full sm:w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm">
                               <option value="">Select</option>
                               {refundAccountOptions.map((a) => <option key={String(a.id)} value={String(a.id)}>{String(a.name)}</option>)}
                             </select>
