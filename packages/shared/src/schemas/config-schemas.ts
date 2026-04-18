@@ -61,7 +61,8 @@ export type SaveRoleRequest = z.infer<typeof SaveRoleRequestSchema>;
 
 export const CreateEmployeeRequestSchema = z.object({
   fullName: z.string().min(1),
-  storeId: z.string().min(1),
+  storeIds: z.array(z.string()).min(1),
+  storeId: z.string().min(1).optional(),
   role: z.string().nullable().optional(),
   status: z.enum(['Active', 'Inactive']).default('Active'),
   birthday: z.string().nullable().optional(),

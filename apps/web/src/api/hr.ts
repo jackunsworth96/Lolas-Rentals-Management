@@ -21,6 +21,7 @@ export interface TimesheetRow {
 export interface EmployeeRow {
   id: string;
   storeId: string | null;
+  storeIds: string[];
   fullName: string;
   role: string | null;
   status: string;

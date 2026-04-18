@@ -69,7 +69,7 @@ const TABS: { key: Tab; label: string }[] = [
 function blankForm(): Record<string, unknown> {
   return {
     fullName: '',
-    storeId: '',
+    storeIds: [] as string[],
     role: '',
     status: 'Active',
     birthday: '',
@@ -100,7 +100,7 @@ function blankForm(): Record<string, unknown> {
 function employeeToForm(e: EmployeeRow): Record<string, unknown> {
   return {
     fullName: e.fullName,
-    storeId: e.storeId ?? '',
+    storeIds: e.storeIds?.length ? e.storeIds : (e.storeId ? [e.storeId] : []),
     role: e.role ?? '',
     status: e.status,
     birthday: e.birthday ?? '',
@@ -141,7 +141,7 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
   const saveMut = useSaveEmployee();
   const deactivateMut = useDeactivateEmployee();
 
-  const leaveStoreId = String(form.storeId ?? employee?.storeId ?? '').trim();
+  const leaveStoreId = ((form.storeIds as string[]) ?? [])[0] ?? employee?.storeIds?.[0] ?? employee?.storeId ?? '';
   const { data: leaveConfig, isFetched: leaveCfgFetched } = useLeaveConfig(
     leaveStoreId || undefined,
   );
@@ -184,13 +184,13 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const payload: Record<string, unknown> = { ...form };
-    // Convert empty strings to null for optional fields
+    // Convert empty strings to null for optional fields (skip arrays)
     for (const k of Object.keys(payload)) {
-      if (payload[k] === '') payload[k] = null;
+      if (payload[k] === '' && !Array.isArray(payload[k])) payload[k] = null;
     }
     // Ensure required fields stay as strings
     if (!payload.fullName) return;
-    if (!payload.storeId) return;
+    if (!(payload.storeIds as string[])?.length) return;
 
     if (isNew) {
       createMut.mutate(payload, { onSuccess: () => onClose() });
@@ -262,19 +262,39 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className={labelCls}>Store *</label>
-                    <select
-                      value={String(form.storeId ?? '')}
-                      onChange={(e) => set('storeId', e.target.value)}
-                      disabled={!editing}
-                      required
-                      className={inputCls}
-                    >
-                      <option value="">Select store...</option>
-                      {stores.map((s) => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
+                    <label className={labelCls}>Store(s) *</label>
+                    <div className="space-y-2 pt-1">
+                      {stores.map((s) => {
+                        const checked = (form.storeIds as string[]).includes(s.id);
+                        return (
+                          <label
+                            key={s.id}
+                            className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+                              checked
+                                ? 'border-teal-500 bg-teal-50 text-teal-800'
+                                : 'border-gray-300 bg-white text-gray-700'
+                            } ${!editing ? 'pointer-events-none opacity-60' : ''}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={!editing}
+                              onChange={(e) => {
+                                const ids = form.storeIds as string[];
+                                set(
+                                  'storeIds',
+                                  e.target.checked
+                                    ? [...ids, s.id]
+                                    : ids.filter((id) => id !== s.id),
+                                );
+                              }}
+                              className="h-4 w-4 rounded border-gray-300 accent-teal-600"
+                            />
+                            {s.name}
+                          </label>
+                        );
+                      })}
+                    </div>
                   </div>
                   <div>
                     <label className={labelCls}>Status</label>

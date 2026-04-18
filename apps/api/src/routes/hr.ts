@@ -12,6 +12,7 @@ import {
   UpdateEmployeeRequestSchema,
 } from '@lolas/shared';
 import { Employee as EmployeeEntity } from '@lolas/domain';
+import { supabase } from '../adapters/supabase/client.js';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 
@@ -113,10 +114,13 @@ router.get('/employees/:id', requirePermission(Permission.ViewTimesheets), async
 router.post('/employees', requirePermission(Permission.ManageEmployees), validateBody(CreateEmployeeRequestSchema), async (req, res, next) => {
   try {
     const body = req.body;
+    const storeIds: string[] = body.storeIds;
+    const primaryStoreId: string = storeIds[0];
     const now = new Date();
     const employee = EmployeeEntity.create({
       id: randomUUID(),
-      storeId: body.storeId,
+      storeId: primaryStoreId,
+      storeIds,
       fullName: body.fullName,
       role: body.role ?? null,
       status: body.status ?? 'Active',
@@ -154,6 +158,11 @@ router.post('/employees', requirePermission(Permission.ManageEmployees), validat
     });
 
     await req.app.locals.deps.employeeRepo.save(employee);
+
+    const rows = storeIds.map((sid) => ({ employee_id: employee.id, store_id: sid }));
+    const { error: esErr } = await supabase.from('employee_stores').insert(rows);
+    if (esErr) throw new Error(`employee_stores insert failed: ${esErr.message}`);
+
     res.status(201).json({ success: true, data: employee });
   } catch (err) { next(err); }
 });
@@ -167,9 +176,12 @@ router.put('/employees/:id', requirePermission(Permission.ManageEmployees), vali
     }
 
     const body = req.body;
+    const storeIds: string[] = body.storeIds ?? existing.storeIds;
+    const primaryStoreId: string = storeIds[0] ?? existing.storeId ?? '';
     const updated = EmployeeEntity.create({
       id: existing.id,
-      storeId: body.storeId ?? existing.storeId,
+      storeId: primaryStoreId,
+      storeIds,
       fullName: body.fullName ?? existing.fullName,
       role: body.role !== undefined ? body.role : existing.role,
       status: body.status ?? existing.status,
@@ -207,6 +219,19 @@ router.put('/employees/:id', requirePermission(Permission.ManageEmployees), vali
     });
 
     await req.app.locals.deps.employeeRepo.save(updated);
+
+    const { error: delErr } = await supabase
+      .from('employee_stores')
+      .delete()
+      .eq('employee_id', existing.id);
+    if (delErr) throw new Error(`employee_stores delete failed: ${delErr.message}`);
+
+    if (storeIds.length > 0) {
+      const rows = storeIds.map((sid) => ({ employee_id: existing.id, store_id: sid }));
+      const { error: insErr } = await supabase.from('employee_stores').insert(rows);
+      if (insErr) throw new Error(`employee_stores re-insert failed: ${insErr.message}`);
+    }
+
     res.json({ success: true, data: updated });
   } catch (err) { next(err); }
 });

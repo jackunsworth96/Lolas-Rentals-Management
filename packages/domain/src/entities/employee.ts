@@ -3,6 +3,7 @@ import { InsufficientLeaveBalanceError } from '../errors/domain-error.js';
 export interface EmployeeProps {
   id: string;
   storeId: string | null;
+  storeIds?: string[];
   fullName: string;
   role: string | null;
   status: string;
@@ -42,6 +43,7 @@ export interface EmployeeProps {
 export class Employee {
   readonly id: string;
   readonly storeId: string | null;
+  readonly storeIds: string[];
   readonly fullName: string;
   readonly role: string | null;
   readonly status: string;
@@ -81,6 +83,7 @@ export class Employee {
   private constructor(props: EmployeeProps) {
     this.id = props.id;
     this.storeId = props.storeId;
+    this.storeIds = props.storeIds ?? (props.storeId ? [props.storeId] : []);
     this.fullName = props.fullName;
     this.role = props.role;
     this.status = props.status;

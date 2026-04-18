@@ -65,27 +65,21 @@ router.post('/login', validateBody(LoginRequestSchema), async (req, res, next) =
       logSupabaseError('auth/login role_permissions', permErr);
     }
 
-    const { data: employee, error: empErr } = await supabase
-      .from('employees')
+    const { data: employeeStores, error: empErr } = await supabase
+      .from('employee_stores')
       .select('store_id')
-      .eq('id', user.employee_id)
-      .maybeSingle();
+      .eq('employee_id', user.employee_id);
     if (empErr) {
-      logSupabaseError('auth/login employees lookup', empErr);
+      logSupabaseError('auth/login employee_stores lookup', empErr);
     }
-    if (!employee) {
-      console.error('[auth/login] No employee row for users.employee_id', {
-        userId: user.id,
-        employeeId: user.employee_id,
-      });
-    }
+    const storeIds = employeeStores?.map((r) => r.store_id) ?? [];
 
     const payload: TokenPayload = {
       userId: user.id,
       username: user.username,
       employeeId: user.employee_id,
       roleId: user.role_id,
-      storeIds: employee?.store_id ? [employee.store_id] : [],
+      storeIds,
       permissions: (permissions ?? []).map((p) => p.permission),
     };
 
