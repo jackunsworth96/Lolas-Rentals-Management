@@ -447,16 +447,35 @@ export async function processRawOrder(
     for (const leg of depositLegs) journalLegs.push(serialiseLeg(leg));
   }
 
-  // (d) Charity legs — resolved before the RPC call per contract.
-  if (charityAmount > 0 && input.receivableAccountId) {
-    const charityPayableAccountId = await resolveCharityPayableAccount(
-      input.storeId,
-    );
+  // (d) Charity legs — always posted when charity_donation > 0 (AC-09).
+  // The receivable account is resolved inline if the caller did not supply
+  // one so charity is never silently skipped regardless of payment method.
+  if (charityAmount > 0) {
+    let charityReceivableId = input.receivableAccountId;
+    if (!charityReceivableId) {
+      const { data: arAccts } = await supabase
+        .from('chart_of_accounts')
+        .select('id, name, account_type')
+        .in('store_id', [input.storeId, 'company'])
+        .eq('is_active', true);
+      const arRow = (
+        (arAccts ?? []) as Array<{ id: string; name: string; account_type: string }>
+      ).find(
+        (a) => a.account_type === 'Asset' && a.name.toLowerCase().includes('receivable'),
+      );
+      if (!arRow) {
+        throw new Error(
+          `No Accounts Receivable account found for store ${input.storeId} — cannot post charity journal`,
+        );
+      }
+      charityReceivableId = arRow.id;
+    }
+    const charityPayableAccountId = await resolveCharityPayableAccount(input.storeId);
     if (charityPayableAccountId) {
       const charityLegs: JournalLeg[] = [
         {
           entryId: crypto.randomUUID(),
-          accountId: input.receivableAccountId,
+          accountId: charityReceivableId,
           debit: Money.php(charityAmount),
           credit: Money.zero(),
           description: `Order ${orderId} charity donation receivable (Be Pawsitive)`,

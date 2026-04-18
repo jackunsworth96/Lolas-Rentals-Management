@@ -14,7 +14,7 @@ import { formatManilaDate } from '../../utils/manila-date.js';
 export interface ActivateOrderDeps {
   orderRepo: OrderRepository;
   fleetRepo: FleetRepository;
-  /** Required when skipCharityPosting is false/absent and order has a charity donation. */
+  /** Retained for interface compatibility; no longer used by activateOrder directly. */
   accountingPort?: AccountingPort;
 }
 
@@ -43,10 +43,9 @@ export interface ActivateOrderInput {
   receivableAccountId: string;
   incomeAccountId: string;
   /**
-   * Set to true when the caller (e.g. process-raw-order.ts) will post
-   * the charity journal itself after this function returns.
-   * Leave unset (or false) for all other activation paths so charity
-   * is posted here.
+   * Set to true only when the caller guarantees it will post the charity
+   * journal itself inside its own atomic RPC call. Leave unset (or false)
+   * for all activation paths so charity is always folded into this RPC.
    */
   skipCharityPosting?: boolean;
 }
@@ -104,12 +103,10 @@ export async function activateOrder(
 
   const amount = order.finalTotal;
   let journalLegs: JournalLeg[] = [];
-  let journalTransactionId = '';
   const journalDate = formatManilaDate();
   const journalPeriod = journalDate.slice(0, 7);
 
   if (amount.isPositive()) {
-    journalTransactionId = crypto.randomUUID();
     journalLegs = [
       {
         entryId: crypto.randomUUID(),
@@ -132,6 +129,38 @@ export async function activateOrder(
     ];
   }
 
+  // Charity legs folded into the same activate_order_atomic RPC call so the
+  // posting is atomic and never skipped based on payment method (AC-09).
+  // resolveCharityPayableAccount is called here, before the RPC, per contract.
+  const charityAmount = order.charityDonation;
+  if (!input.skipCharityPosting && charityAmount && charityAmount.isPositive() && input.receivableAccountId) {
+    const charityPayableAccountId = await resolveCharityPayableAccount(order.storeId);
+    if (charityPayableAccountId) {
+      journalLegs.push(
+        {
+          entryId: crypto.randomUUID(),
+          accountId: input.receivableAccountId,
+          debit: charityAmount,
+          credit: Money.zero(),
+          description: `Order ${order.id} charity donation receivable (Be Pawsitive)`,
+          referenceType: 'order_charity',
+          referenceId: order.id,
+        },
+        {
+          entryId: crypto.randomUUID(),
+          accountId: charityPayableAccountId,
+          debit: Money.zero(),
+          credit: charityAmount,
+          description: `Order ${order.id} charity donation payable (Be Pawsitive)`,
+          referenceType: 'order_charity',
+          referenceId: order.id,
+        },
+      );
+    }
+  }
+
+  const journalTransactionId = journalLegs.length > 0 ? crypto.randomUUID() : '';
+
   await orderRepo.activateOrderAtomic(
     order,
     orderItems,
@@ -143,40 +172,6 @@ export async function activateOrder(
     journalDate,
     order.storeId,
   );
-
-  // Post charity journal unless the caller has indicated it will handle it.
-  // process-raw-order.ts posts charity itself after calling activateOrder,
-  // so it passes skipCharityPosting: true to avoid a double-post.
-  const charityAmount = order.charityDonation;
-  if (!input.skipCharityPosting && charityAmount && charityAmount.isPositive()) {
-    const { accountingPort } = deps;
-    if (accountingPort && input.receivableAccountId) {
-      const charityPayableAccountId = await resolveCharityPayableAccount(order.storeId);
-      if (charityPayableAccountId) {
-        const charityLegs: JournalLeg[] = [
-          {
-            entryId: crypto.randomUUID(),
-            accountId: input.receivableAccountId,
-            debit: charityAmount,
-            credit: Money.zero(),
-            description: `Order ${order.id} charity donation receivable (Be Pawsitive)`,
-            referenceType: 'order_charity',
-            referenceId: order.id,
-          },
-          {
-            entryId: crypto.randomUUID(),
-            accountId: charityPayableAccountId,
-            debit: Money.zero(),
-            credit: charityAmount,
-            description: `Order ${order.id} charity donation payable (Be Pawsitive)`,
-            referenceType: 'order_charity',
-            referenceId: order.id,
-          },
-        ];
-        await accountingPort.createTransaction(charityLegs, order.storeId);
-      }
-    }
-  }
 
   return order;
 }
