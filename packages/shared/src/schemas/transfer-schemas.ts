@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const CreateTransferRequestSchema = z.object({
   serviceDate: z.string(),
   customerName: z.string().min(1),
-  contactNumber: z.string().nullable().default(null),
+  contactNumber: z.string().min(7),
   customerEmail: z.string().email().nullable().default(null),
   customerType: z.enum(['Walk-in', 'Online']).nullable().default(null),
   route: z.string().min(1),

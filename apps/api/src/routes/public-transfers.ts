@@ -29,7 +29,7 @@ const router = Router();
 const PublicBookingSchema = z.object({
   serviceDate: z.string().min(1),
   customerName: z.string().min(1),
-  contactNumber: z.string().nullable().default(null),
+  contactNumber: z.string().min(7),
   customerEmail: z.union([z.string().email(), z.literal(''), z.null()]).default(null).transform((v) => v || null),
   route: z.string().min(1),
   flightTime: z.string().nullable().default(null),
