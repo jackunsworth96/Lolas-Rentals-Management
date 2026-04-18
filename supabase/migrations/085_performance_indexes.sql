@@ -15,10 +15,6 @@ CREATE INDEX IF NOT EXISTS idx_transfers_collected_at
 CREATE INDEX IF NOT EXISTS idx_orders_store_status
   ON public.orders(store_id, status);
 
--- orders: dropoff_datetime for late-return queries
-CREATE INDEX IF NOT EXISTS idx_orders_dropoff_datetime
-  ON public.orders(dropoff_datetime);
-
 -- orders_raw: status filter used on inbox page
 CREATE INDEX IF NOT EXISTS idx_orders_raw_store_status
   ON public.orders_raw(store_id, status);
