@@ -590,6 +590,32 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
       return;
     }
 
+    // Guard: block activation when a transfer add-on has no amount set.
+    const { data: rawOrderCheck, error: rawCheckErr } = await supabase
+      .from('orders_raw')
+      .select('transfer_type, transfer_amount')
+      .eq('id', req.params.id as string)
+      .single();
+
+    if (rawCheckErr || !rawOrderCheck) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Raw order not found' } });
+      return;
+    }
+
+    const hasTransfer = rawOrderCheck.transfer_type != null && rawOrderCheck.transfer_type !== '';
+    const transferAmountMissing = hasTransfer && (!rawOrderCheck.transfer_amount || rawOrderCheck.transfer_amount === 0);
+
+    if (transferAmountMissing) {
+      res.status(422).json({
+        success: false,
+        error: {
+          code: 'TRANSFER_AMOUNT_MISSING',
+          message: 'This booking includes a transfer but the transfer amount is missing or zero. Edit the transfer amount before activating.',
+        },
+      });
+      return;
+    }
+
     const deps: ProcessRawOrderDeps = {
       orderRepo: req.app.locals.deps.orderRepo,
       orderItemRepo: req.app.locals.deps.orderItemRepo,

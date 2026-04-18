@@ -629,6 +629,11 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
 
   const depositValid = waiveDeposit || (Number(securityDeposit) > 0);
 
+  const transferAmountMissing =
+    !!rawOrder.transfer_type &&
+    rawOrder.transfer_type !== '' &&
+    (!rawOrder.transfer_amount || rawOrder.transfer_amount === 0);
+
   async function handleActivate() {
     if (!depositValid) return;
     processMutation.mutate(buildPayload(), {
@@ -1510,23 +1515,36 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
         </button>
 
         {step === 'summary' ? (
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleCollectPayment}
-              disabled={collectMutation.isPending || !paymentMethodId}
-              className="rounded-lg border border-blue-600 px-5 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50"
-              title="Record payment without activating the order"
-            >
-              {collectMutation.isPending ? 'Collecting...' : 'Collect Payment'}
-            </button>
-            <button
-              onClick={handleActivate}
-              disabled={processMutation.isPending || !depositValid}
-              className="rounded-lg bg-green-600 px-6 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-              title={!depositValid ? 'Security deposit is required (or waive it)' : undefined}
-            >
-              {processMutation.isPending ? 'Activating...' : 'Activate Order'}
-            </button>
+          <div className="flex flex-col items-end gap-2">
+            {transferAmountMissing && (
+              <p className="text-sm text-amber-700 font-medium">
+                Transfer amount is missing — please set it before activating.
+              </p>
+            )}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleCollectPayment}
+                disabled={collectMutation.isPending || !paymentMethodId}
+                className="rounded-lg border border-blue-600 px-5 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50"
+                title="Record payment without activating the order"
+              >
+                {collectMutation.isPending ? 'Collecting...' : 'Collect Payment'}
+              </button>
+              <button
+                onClick={handleActivate}
+                disabled={processMutation.isPending || !depositValid || transferAmountMissing}
+                className="rounded-lg bg-green-600 px-6 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                title={
+                  transferAmountMissing
+                    ? 'Set the transfer amount before activating'
+                    : !depositValid
+                      ? 'Security deposit is required (or waive it)'
+                      : undefined
+                }
+              >
+                {processMutation.isPending ? 'Activating...' : 'Activate Order'}
+              </button>
+            </div>
           </div>
         ) : (
           <button
