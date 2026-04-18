@@ -11,6 +11,7 @@ import { OrderSummaryPanel } from '../../components/basket/OrderSummaryPanel.js'
 import { OrderReviewSheet } from '../../components/basket/OrderReviewSheet.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
+import { SEO } from '../../components/seo/SEO.js';
 import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
 import type { Addon, TransferDetails, RenterInfo, PaymentMethodOption } from '../../components/basket/basket-types.js';
 
@@ -567,6 +568,12 @@ export default function BasketPage() {
 
   if (basket.length === 0) {
     return (
+      <>
+        <SEO
+          noIndex
+          title="Your Basket | Lola's Rentals"
+          description="Review your vehicle selection and complete your Lola's Rentals booking for Siargao."
+        />
       <PageLayout title="Basket | Lola's Rentals">
         <div className="relative flex min-h-[60vh] flex-col items-center justify-center overflow-hidden px-2">
           <HeroFloatingClouds variant="functional" />
@@ -605,10 +612,17 @@ export default function BasketPage() {
           </div>
         </div>
       </PageLayout>
+      </>
     );
   }
 
   return (
+    <>
+      <SEO
+        noIndex
+        title="Your Basket | Lola's Rentals"
+        description="Review your vehicle selection and complete your Lola's Rentals booking for Siargao."
+      />
     <PageLayout title="Basket | Lola's Rentals">
       <div className="relative mx-auto max-w-[1100px]">
         <HeroFloatingClouds variant="functional" />
@@ -857,5 +871,6 @@ export default function BasketPage() {
         ))}
       </div>
     </PageLayout>
+    </>
   );
 }

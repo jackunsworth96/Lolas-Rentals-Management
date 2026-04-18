@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { PageLayout } from '../../components/layout/PageLayout.js';
+import { SEO } from '../../components/seo/SEO.js';
 import { WHATSAPP_URL } from '../../config/contact.js';
 
 type CancelPhase = 'confirming' | 'loading' | 'success' | 'error';
@@ -78,6 +79,12 @@ export default function CancelBookingPage() {
   }
 
   return (
+    <>
+      <SEO
+        noIndex
+        title="Cancel Booking | Lola's Rentals"
+        description="Confirm cancellation of your Lola's Rentals vehicle booking in Siargao."
+      />
     <PageLayout title="Cancel Booking | Lola's Rentals" showFloralRight={false}>
       <div className="mx-auto flex min-h-[60vh] max-w-md flex-col items-center justify-center px-4 text-center">
 
@@ -193,5 +200,6 @@ export default function CancelBookingPage() {
 
       </div>
     </PageLayout>
+    </>
   );
 }

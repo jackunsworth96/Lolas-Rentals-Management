@@ -1,10 +1,17 @@
 import { Link } from 'react-router-dom';
 import { PageLayout } from '../../components/layout/PageLayout.js';
+import { SEO } from '../../components/seo/SEO.js';
 import { WHATSAPP_URL } from '../../config/contact.js';
 import { phoneIcon } from '../../components/public/customerContactIcons.js';
 
 export default function PrivacyPage() {
   return (
+    <>
+      <SEO
+        noIndex={false}
+        title="Privacy Policy | Lola's Rentals Siargao"
+        description="How Lola's Rentals & Tours collects, uses, and protects your personal information."
+      />
     <PageLayout title="Privacy Policy | Lola's Rentals">
       <article className="mx-auto max-w-2xl px-4 py-12">
         <h1 className="mb-2 font-headline text-3xl font-black text-teal-brand md:text-4xl">Privacy Policy</h1>
@@ -129,5 +136,6 @@ export default function PrivacyPage() {
         </div>
       </article>
     </PageLayout>
+    </>
   );
 }
