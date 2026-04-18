@@ -1,6 +1,6 @@
 -- Migration 087: employee_stores junction table for multi-store employee support
 CREATE TABLE IF NOT EXISTS public.employee_stores (
-  employee_id uuid NOT NULL REFERENCES public.employees(id) ON DELETE CASCADE,
+  employee_id text NOT NULL REFERENCES public.employees(id) ON DELETE CASCADE,
   store_id    text NOT NULL REFERENCES public.stores(id) ON DELETE CASCADE,
   PRIMARY KEY (employee_id, store_id)
 );
