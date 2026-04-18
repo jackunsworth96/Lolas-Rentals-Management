@@ -1,5 +1,5 @@
 import { getSupabaseClient } from './client.js';
-import type { TransferRepository, TransferFilters } from '@lolas/domain';
+import type { TransferRepository, TransferFilters, TransferSummary } from '@lolas/domain';
 import { Transfer, Money } from '@lolas/domain';
 
 type RouteInfo = { driverCut: number | null; pricingType: 'fixed' | 'per_head' | null };
@@ -145,6 +145,57 @@ export function createTransferRepo(): TransferRepository {
     async save(transfer) {
       const { error } = await sb.from('transfers').upsert(toRow(transfer));
       if (error) throw new Error(`Failed to save transfer: ${error.message}`);
+    },
+
+    async getSummary(storeId, filters?): Promise<TransferSummary> {
+      // Use PostgREST aggregate columns to avoid fetching all rows.
+      // The supabase-js client forwards these to PostgREST which evaluates them server-side.
+      type AggRow = Record<string, unknown>;
+
+      // -- Outstanding (not yet collected) --
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let outQ = (sb as any)
+        .from('transfers')
+        .select('count:id.count(), total:total_price.sum()')
+        .eq('store_id', storeId)
+        .is('collected_at', null);
+      if (filters?.dateFrom) outQ = outQ.gte('service_date', filters.dateFrom);
+      if (filters?.dateTo) outQ = outQ.lte('service_date', filters.dateTo);
+      const { data: outData, error: outErr } = await outQ;
+      if (outErr) throw new Error(`Transfer summary (outstanding) failed: ${outErr.message}`);
+
+      const outRow: AggRow = (outData as AggRow[])[0] ?? {};
+      const outCount = Number(outRow['count'] ?? 0);
+      const outTotal = Number(outRow['total'] ?? 0);
+
+      // -- Collected --
+      // Uses stored driver_fee; SQL SUM ignores NULLs so defaults to 0 when unset.
+      // collected_amount is the actual cash collected; falls back via COALESCE in app logic.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let colQ = (sb as any)
+        .from('transfers')
+        .select('count:id.count(), total:collected_amount.sum(), driverCut:driver_fee.sum()')
+        .eq('store_id', storeId)
+        .not('collected_at', 'is', null);
+      if (filters?.dateFrom) colQ = colQ.gte('service_date', filters.dateFrom);
+      if (filters?.dateTo) colQ = colQ.lte('service_date', filters.dateTo);
+      const { data: colData, error: colErr } = await colQ;
+      if (colErr) throw new Error(`Transfer summary (collected) failed: ${colErr.message}`);
+
+      const colRow: AggRow = (colData as AggRow[])[0] ?? {};
+      const colCount = Number(colRow['count'] ?? 0);
+      const colTotal = Number(colRow['total'] ?? 0);
+      const colDriverCut = Number(colRow['driverCut'] ?? 0);
+
+      return {
+        outstanding: { count: outCount, total: outTotal },
+        collected: {
+          count: colCount,
+          total: colTotal,
+          driverCut: colDriverCut,
+          netLolas: colTotal - colDriverCut,
+        },
+      };
     },
   };
 }

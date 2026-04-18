@@ -8,6 +8,7 @@ import {
   RecordTransferPaymentRequestSchema,
   RecordDriverPaymentRequestSchema,
   TransferQuerySchema,
+  TransferSummaryQuerySchema,
   CollectTransferBodySchema,
 } from '@lolas/shared';
 
@@ -19,6 +20,14 @@ router.get('/', requirePermission(Permission.ViewTransfers), validateQuery(Trans
     const { storeId, ...filters } = req.query as Record<string, string>;
     const transfers = await req.app.locals.deps.transferRepo.findByStore(storeId, filters);
     res.json({ success: true, data: transfers });
+  } catch (err) { next(err); }
+});
+
+router.get('/summary', requirePermission(Permission.ViewTransfers), validateQuery(TransferSummaryQuerySchema), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { storeId, dateFrom, dateTo } = req.query as Record<string, string | undefined>;
+    const summary = await req.app.locals.deps.transferRepo.getSummary(storeId!, { dateFrom, dateTo });
+    res.json({ success: true, data: summary });
   } catch (err) { next(err); }
 });
 

@@ -71,12 +71,34 @@ export function useTransfer(id: string) {
   });
 }
 
+export interface TransferSummary {
+  outstanding: { count: number; total: number };
+  collected: { count: number; total: number; driverCut: number; netLolas: number };
+}
+
+export function useTransferSummary(
+  storeId: string,
+  filters: { dateFrom?: string; dateTo?: string } = {},
+) {
+  const params = new URLSearchParams({ storeId });
+  if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
+  if (filters.dateTo) params.set('dateTo', filters.dateTo);
+  return useQuery<TransferSummary>({
+    queryKey: ['transfers-summary', storeId, filters],
+    queryFn: () => api.get(`/transfers/summary?${params}`),
+    enabled: !!storeId,
+  });
+}
+
 export function useCreateTransfer() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       api.post('/transfers', body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['transfers'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['transfers'] });
+      qc.invalidateQueries({ queryKey: ['transfers-summary'] });
+    },
   });
 }
 
@@ -125,6 +147,7 @@ export function useMarkTransferCollected() {
     mutationFn: (vars: MarkTransferCollectedVars) => markTransferCollected(vars),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['transfers'] });
+      qc.invalidateQueries({ queryKey: ['transfers-summary'] });
       qc.invalidateQueries({ queryKey: ['card-settlements'] });
     },
   });

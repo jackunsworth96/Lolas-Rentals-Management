@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useUIStore } from '../../stores/ui-store.js';
-import { useTransfers, notifyDriver, moneyAmount, type TransferRow } from '../../api/transfers.js';
+import { useTransfers, useTransferSummary, notifyDriver, moneyAmount, type TransferRow } from '../../api/transfers.js';
 import { useToast } from '../../hooks/useToast.js';
 import { Badge } from '../../components/common/Badge.js';
 import { formatDate } from '../../utils/date.js';
@@ -31,12 +31,6 @@ const CUSTOMER_TYPE_COLORS: Record<string, 'blue' | 'purple'> = {
 
 type TransferTab = 'upcoming' | 'unpaid' | 'completed';
 
-/** Compute the driver cut for a single transfer given the route's driver_cut and pricing_type. */
-function computeDriverCut(t: TransferRow): number {
-  const cut = t.routeDriverCut ?? 0;
-  if (cut === 0) return 0;
-  return t.routePricingType === 'per_head' ? cut * t.paxCount : cut;
-}
 
 export default function TransfersPage() {
   const storeId = useUIStore((s) => s.selectedStoreId) ?? '';
@@ -69,6 +63,18 @@ export default function TransfersPage() {
   }, [activeTab, completedDateFrom, completedDateTo, todayStr]);
 
   const { data: transfers, isLoading } = useTransfers(storeId, transferFilters);
+
+  const summaryFilters = useMemo(() => {
+    if (activeTab === 'upcoming') return { dateFrom: todayStr };
+    if (activeTab === 'completed') return {
+      ...(completedDateFrom ? { dateFrom: completedDateFrom } : {}),
+      dateTo: completedDateTo || todayStr,
+    };
+    return {};
+  }, [activeTab, todayStr, completedDateFrom, completedDateTo]);
+
+  const { data: summary, isLoading: summaryLoading } = useTransferSummary(storeId, summaryFilters);
+
   const { toasts, pushToast } = useToast();
   const [notifyingId, setNotifyingId] = useState<string | null>(null);
 
@@ -84,23 +90,6 @@ export default function TransfersPage() {
         t.route.toLowerCase().includes(q),
     );
   }, [transfers, search]);
-
-  // Settlement summary derived from the visible rows
-  const settlement = useMemo(() => {
-    const outstanding = filtered.filter((t) => !t.collectedAt);
-    const collected = filtered.filter((t) => !!t.collectedAt);
-    const outstandingTotal = outstanding.reduce((s, t) => s + moneyAmount(t.totalPrice), 0);
-    const collectedTotal = collected.reduce((s, t) => s + (t.collectedAmount ?? moneyAmount(t.totalPrice)), 0);
-    const driverCutTotal = collected.reduce((s, t) => s + computeDriverCut(t), 0);
-    return {
-      outstandingCount: outstanding.length,
-      outstandingTotal,
-      collectedCount: collected.length,
-      collectedTotal,
-      driverCutTotal,
-      netKeeps: collectedTotal - driverCutTotal,
-    };
-  }, [filtered]);
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -236,36 +225,63 @@ export default function TransfersPage() {
       )}
 
       {/* Settlement summary panel */}
-      {filtered.length > 0 && (
+      {(summaryLoading || (summary && (summary.outstanding.count > 0 || summary.collected.count > 0))) && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div className="rounded-xl border border-charcoal-brand/10 bg-sand-brand px-4 py-3">
-            <p className="font-lato text-xs font-medium uppercase tracking-wider text-charcoal-brand/50">Outstanding</p>
-            <p className="mt-1 font-lato text-lg font-bold text-charcoal-brand">
-              {formatCurrency(settlement.outstandingTotal)}
-            </p>
-            <p className="font-lato text-xs text-charcoal-brand/60">{settlement.outstandingCount} transfer{settlement.outstandingCount !== 1 ? 's' : ''}</p>
-          </div>
-          <div className="rounded-xl border border-teal-brand/20 bg-teal-brand/5 px-4 py-3">
-            <p className="font-lato text-xs font-medium uppercase tracking-wider text-teal-brand/70">Collected</p>
-            <p className="mt-1 font-lato text-lg font-bold text-teal-brand">
-              {formatCurrency(settlement.collectedTotal)}
-            </p>
-            <p className="font-lato text-xs text-teal-brand/60">{settlement.collectedCount} transfer{settlement.collectedCount !== 1 ? 's' : ''}</p>
-          </div>
-          <div className="rounded-xl border border-charcoal-brand/10 bg-sand-brand px-4 py-3">
-            <p className="font-lato text-xs font-medium uppercase tracking-wider text-charcoal-brand/50">Driver Cut</p>
-            <p className="mt-1 font-lato text-lg font-bold text-charcoal-brand">
-              {formatCurrency(settlement.driverCutTotal)}
-            </p>
-            <p className="font-lato text-xs text-charcoal-brand/60">from collected transfers</p>
-          </div>
-          <div className="rounded-xl border border-teal-brand/30 bg-teal-brand px-4 py-3">
-            <p className="font-lato text-xs font-medium uppercase tracking-wider text-white/70">Net Lola's Keeps</p>
-            <p className="mt-1 font-lato text-lg font-bold text-white">
-              {formatCurrency(settlement.netKeeps)}
-            </p>
-            <p className="font-lato text-xs text-white/60">collected − driver cut</p>
-          </div>
+          {summaryLoading ? (
+            <>
+              <div className="animate-pulse rounded-xl border border-charcoal-brand/10 bg-sand-brand px-4 py-3">
+                <div className="h-3 w-24 rounded bg-charcoal-brand/10" />
+                <div className="mt-2 h-6 w-20 rounded bg-charcoal-brand/15" />
+                <div className="mt-1 h-3 w-16 rounded bg-charcoal-brand/10" />
+              </div>
+              <div className="animate-pulse rounded-xl border border-teal-brand/20 bg-teal-brand/5 px-4 py-3">
+                <div className="h-3 w-20 rounded bg-teal-brand/10" />
+                <div className="mt-2 h-6 w-20 rounded bg-teal-brand/15" />
+                <div className="mt-1 h-3 w-16 rounded bg-teal-brand/10" />
+              </div>
+              <div className="animate-pulse rounded-xl border border-charcoal-brand/10 bg-sand-brand px-4 py-3">
+                <div className="h-3 w-20 rounded bg-charcoal-brand/10" />
+                <div className="mt-2 h-6 w-20 rounded bg-charcoal-brand/15" />
+                <div className="mt-1 h-3 w-24 rounded bg-charcoal-brand/10" />
+              </div>
+              <div className="animate-pulse rounded-xl border border-teal-brand/30 bg-teal-brand px-4 py-3">
+                <div className="h-3 w-28 rounded bg-white/20" />
+                <div className="mt-2 h-6 w-20 rounded bg-white/25" />
+                <div className="mt-1 h-3 w-24 rounded bg-white/20" />
+              </div>
+            </>
+          ) : summary ? (
+            <>
+              <div className="rounded-xl border border-charcoal-brand/10 bg-sand-brand px-4 py-3">
+                <p className="font-lato text-xs font-medium uppercase tracking-wider text-charcoal-brand/50">Outstanding</p>
+                <p className="mt-1 font-lato text-lg font-bold text-charcoal-brand">
+                  {formatCurrency(summary.outstanding.total)}
+                </p>
+                <p className="font-lato text-xs text-charcoal-brand/60">{summary.outstanding.count} transfer{summary.outstanding.count !== 1 ? 's' : ''}</p>
+              </div>
+              <div className="rounded-xl border border-teal-brand/20 bg-teal-brand/5 px-4 py-3">
+                <p className="font-lato text-xs font-medium uppercase tracking-wider text-teal-brand/70">Collected</p>
+                <p className="mt-1 font-lato text-lg font-bold text-teal-brand">
+                  {formatCurrency(summary.collected.total)}
+                </p>
+                <p className="font-lato text-xs text-teal-brand/60">{summary.collected.count} transfer{summary.collected.count !== 1 ? 's' : ''}</p>
+              </div>
+              <div className="rounded-xl border border-charcoal-brand/10 bg-sand-brand px-4 py-3">
+                <p className="font-lato text-xs font-medium uppercase tracking-wider text-charcoal-brand/50">Driver Cut</p>
+                <p className="mt-1 font-lato text-lg font-bold text-charcoal-brand">
+                  {formatCurrency(summary.collected.driverCut)}
+                </p>
+                <p className="font-lato text-xs text-charcoal-brand/60">from collected transfers</p>
+              </div>
+              <div className="rounded-xl border border-teal-brand/30 bg-teal-brand px-4 py-3">
+                <p className="font-lato text-xs font-medium uppercase tracking-wider text-white/70">Net Lola's Keeps</p>
+                <p className="mt-1 font-lato text-lg font-bold text-white">
+                  {formatCurrency(summary.collected.netLolas)}
+                </p>
+                <p className="font-lato text-xs text-white/60">collected − driver cut</p>
+              </div>
+            </>
+          ) : null}
         </div>
       )}
 

@@ -63,6 +63,14 @@ export const TransferQuerySchema = z.object({
 
 export type TransferQuery = z.infer<typeof TransferQuerySchema>;
 
+export const TransferSummaryQuerySchema = z.object({
+  storeId: z.string(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+});
+
+export type TransferSummaryQuery = z.infer<typeof TransferSummaryQuerySchema>;
+
 export const PublicTransferBookingSchema = z.object({
   customerName:  z.string().min(1),
   contactNumber: z.string().min(1),
