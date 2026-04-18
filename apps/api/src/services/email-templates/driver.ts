@@ -48,12 +48,31 @@ export function driverNotificationHtml({
     ? 'INBOUND — Airport → General Luna'
     : 'OUTBOUND — General Luna → Airport';
 
-  const pickupTimeRow = pickupTime
-    ? `<tr>
-        <td style="padding:4px 0;color:#64748b;font-size:13px;">Date / Time</td>
-        <td style="padding:4px 0;font-weight:700;color:#1e293b;font-size:15px;">${escapeHtml(pickupTime)}</td>
-      </tr>`
-    : '';
+  let pickupTimeDisplay: string;
+  if (!pickupTime) {
+    pickupTimeDisplay = 'TBC';
+  } else {
+    const match = /^(\d{2}):(\d{2})$/.exec(pickupTime);
+    if (!match) {
+      pickupTimeDisplay = escapeHtml(pickupTime);
+    } else {
+      const h = parseInt(match[1], 10);
+      const m = parseInt(match[2], 10);
+      const startLabel = `${match[1]}:${match[2]}`;
+      const endMins = (h * 60 + m + 30) % (24 * 60);
+      const endLabel = `${String(Math.floor(endMins / 60)).padStart(2, '0')}:${String(endMins % 60).padStart(2, '0')}`;
+      pickupTimeDisplay = escapeHtml(`${startLabel} – ${endLabel}`);
+    }
+  }
+  const pickupTimeBannerRow = `
+    <tr>
+      <td colspan="2" style="padding-top:12px;">
+        <div style="background:rgba(0,0,0,0.12);border-radius:8px;padding:10px 14px;display:inline-block;">
+          <span style="font-size:11px;font-weight:700;color:#7a5800;text-transform:uppercase;letter-spacing:0.08em;">⏰ Pickup Time</span>
+          <p style="margin:2px 0 0;font-size:22px;font-weight:900;color:#1e293b;letter-spacing:0.03em;">${pickupTimeDisplay}</p>
+        </div>
+      </td>
+    </tr>`;
 
   const flightNumberRow = flightNumber
     ? `<tr>
@@ -108,6 +127,7 @@ export function driverNotificationHtml({
               </p>
             </td>
           </tr>
+          ${pickupTimeBannerRow}
         </table>
       </div>
 
@@ -129,7 +149,6 @@ export function driverNotificationHtml({
             <td style="padding:4px 0;color:#64748b;font-size:13px;">Passengers</td>
             <td style="padding:4px 0;font-weight:700;color:#1e293b;font-size:15px;">${paxCount} pax</td>
           </tr>
-          ${pickupTimeRow}
           ${flightNumberRow}
           ${flightArrivalRow}
         </table>
