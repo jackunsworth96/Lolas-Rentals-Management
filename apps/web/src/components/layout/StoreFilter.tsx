@@ -1,12 +1,20 @@
 import { useStores } from '../../api/config.js';
+import { useAuthStore } from '../../stores/auth-store.js';
 import { useUIStore } from '../../stores/ui-store.js';
 
 export function StoreFilter() {
   const { data: stores } = useStores();
+  const userStoreIds = useAuthStore((s) => s.user?.storeIds ?? []);
   const selectedStoreId = useUIStore((s) => s.selectedStoreId);
   const setSelectedStore = useUIStore((s) => s.setSelectedStore);
 
-  const list = Array.isArray(stores) ? stores : [];
+  const allStores = Array.isArray(stores) ? stores : [];
+  // Show only stores the logged-in user is assigned to (from JWT storeIds).
+  // If the user has no storeIds (e.g. super-admin with no assignment), show all.
+  const list =
+    userStoreIds.length > 0
+      ? allStores.filter((s) => userStoreIds.includes(s.id))
+      : allStores;
 
   return (
     <div className="flex items-center gap-1.5">

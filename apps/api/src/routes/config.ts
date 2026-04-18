@@ -29,7 +29,8 @@ router.use(authenticate);
 const edit = requirePermission(Permission.EditSettings);
 
 // ── Stores ──
-router.get('/stores', edit, async (req, res, next) => {
+// No EditSettings required — all authenticated users need the stores list (e.g. StoreFilter dropdown).
+router.get('/stores', async (req, res, next) => {
   try { res.json({ success: true, data: await req.app.locals.deps.configRepo.getStores() }); } catch (e) { next(e); }
 });
 router.post('/stores', edit, validateBody(z.object({
