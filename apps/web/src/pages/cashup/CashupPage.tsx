@@ -17,6 +17,11 @@ import {
   type CharityDonationRow,
 } from '../../api/cashup.js';
 import { BeforeCloseModal } from '../../components/cashup/BeforeCloseModal.js';
+import { DenominationCounter } from '../../components/cashup/DenominationCounter.js';
+import {
+  ReconcileModal,
+  InterStoreTransferModal,
+} from '../../components/cashup/TransferReconciliation.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { formatTime } from '../../utils/date.js';
 import { Button } from '../../components/common/Button.js';
@@ -57,12 +62,6 @@ function varianceColor(v: number): string {
   if (v === 0) return 'text-green-600';
   if (Math.abs(v) <= 100) return 'text-amber-600';
   return 'text-red-600';
-}
-
-function varianceBg(v: number): string {
-  if (v === 0) return 'bg-green-50 border-green-200';
-  if (Math.abs(v) <= 100) return 'bg-amber-50 border-amber-200';
-  return 'bg-red-50 border-red-200';
 }
 
 export default function CashupPage() {
@@ -601,124 +600,21 @@ export default function CashupPage() {
             )}
           </div>
 
-          {/* Denomination Counting + Expected vs Actual */}
-          <div className="grid gap-6 lg:grid-cols-2">
-            {/* Till denomination grid */}
-            <div className="rounded-lg border border-gray-200 bg-white p-5">
-              <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-base font-semibold text-gray-900">
-                  Till Count
-                </h3>
-                {hasSavedDenoms && !isLocked && (
-                  <Button size="sm" variant="ghost" className="!py-2" onClick={loadSavedDenoms}>
-                    Load saved
-                  </Button>
-                )}
-              </div>
-              <DenominationGrid
-                denoms={tillDenoms}
-                onChange={setTillDenom}
-                disabled={isLocked}
-              />
-              <div className="mt-4 border-t border-gray-200 pt-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-gray-900">
-                    Total Till
-                  </span>
-                  <span className="text-lg font-bold text-gray-900">
-                    {formatCurrency(tillTotal)}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Deposit envelope denomination grid */}
-            <div className="rounded-lg border border-gray-200 bg-white p-5">
-              <h3 className="mb-4 text-base font-semibold text-gray-900">
-                Deposit Envelope Count
-              </h3>
-              <DenominationGrid
-                denoms={depEnvDenoms}
-                onChange={setDepEnvDenom}
-                disabled={isLocked}
-              />
-              <div className="mt-4 border-t border-gray-200 pt-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-gray-900">
-                    Total Deposits
-                  </span>
-                  <span className="text-lg font-bold text-cyan-700">
-                    {formatCurrency(depEnvTotal)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Expected vs Actual — two rows */}
-          <div className="grid gap-6 lg:grid-cols-2">
-            <div className={`rounded-lg border p-5 ${varianceBg(tillVariance)}`}>
-              <h3 className="mb-4 text-base font-semibold text-gray-900">
-                Expected Cash vs Actual Counted
-              </h3>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Expected Cash (sales)</span>
-                  <span className="font-medium">{formatCurrency(expectedCashSales)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Actual Counted (till)</span>
-                  <span className="font-medium">{formatCurrency(tillTotal)}</span>
-                </div>
-                <div className="border-t border-gray-200 pt-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm font-semibold">Variance</span>
-                    <span className={`text-lg font-bold ${varianceColor(tillVariance)}`}>
-                      {tillVariance > 0 ? '+' : ''}
-                      {formatCurrency(tillVariance)}
-                    </span>
-                  </div>
-                  {tillVariance !== 0 && (
-                    <p className="mt-1 text-xs text-gray-500">
-                      {tillVariance > 0 ? 'Over' : 'Short'} by{' '}
-                      {formatCurrency(Math.abs(tillVariance))}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className={`rounded-lg border p-5 ${varianceBg(depVariance)}`}>
-              <h3 className="mb-4 text-base font-semibold text-gray-900">
-                Expected Deposits Held vs Envelope
-              </h3>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Expected Deposits (cash)</span>
-                  <span className="font-medium">{formatCurrency(expectedDepositsHeld)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Deposit Envelope Count</span>
-                  <span className="font-medium">{formatCurrency(depEnvTotal)}</span>
-                </div>
-                <div className="border-t border-gray-200 pt-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm font-semibold">Variance</span>
-                    <span className={`text-lg font-bold ${varianceColor(depVariance)}`}>
-                      {depVariance > 0 ? '+' : ''}
-                      {formatCurrency(depVariance)}
-                    </span>
-                  </div>
-                  {depVariance !== 0 && (
-                    <p className="mt-1 text-xs text-gray-500">
-                      {depVariance > 0 ? 'Over' : 'Short'} by{' '}
-                      {formatCurrency(Math.abs(depVariance))}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
+          <DenominationCounter
+            tillDenoms={tillDenoms}
+            depEnvDenoms={depEnvDenoms}
+            onTillDenomChange={setTillDenom}
+            onDepEnvDenomChange={setDepEnvDenom}
+            tillTotal={tillTotal}
+            depEnvTotal={depEnvTotal}
+            expectedCashSales={expectedCashSales}
+            expectedDepositsHeld={expectedDepositsHeld}
+            tillVariance={tillVariance}
+            depVariance={depVariance}
+            isLocked={isLocked}
+            hasSavedDenoms={!!hasSavedDenoms}
+            onLoadSavedDenoms={loadSavedDenoms}
+          />
 
           {/* Action buttons */}
           {!isLocked && (
@@ -792,61 +688,19 @@ export default function CashupPage() {
 
       {/* ── Reconcile Confirmation Modal ── */}
       {showReconcileModal && summary && (
-        <ModalOverlay onClose={() => setShowReconcileModal(false)}>
-          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
-            <h2 className="mb-4 text-lg font-bold text-gray-900">
-              Confirm Reconciliation
-            </h2>
-            <p className="mb-4 text-sm text-gray-600">
-              This will lock the cash up record for{' '}
-              <span className="font-medium">{formatDateLabel(date)}</span>.
-            </p>
-            <div className="mb-4 space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm">
-              <Row label="Opening Float" value={summary.openingFloat.amount} />
-              <Row label="Cash Sales (income)" value={summary.totals.cashSalesTotal} color="green" />
-              {(summary.totals.miscCashTotal ?? 0) > 0 && (
-                <Row label="Misc Sales — Cash (income)" value={summary.totals.miscCashTotal} color="green" />
-              )}
-              <Row label="Cash Deposits Held (liability)" value={summary.totals.cashDepositsHeldTotal} color="cyan" />
-              {summary.totals.interStoreIn > 0 && (
-                <Row label="Inter-store Cash In" value={summary.totals.interStoreIn} color="green" />
-              )}
-              <Row label="Expenses Paid" value={-summary.totals.expenseTotal} color="red" />
-              <Row label="Cash Deposited" value={-summary.totals.depositTotal} color="blue" />
-              {summary.totals.interStoreOut > 0 && (
-                <Row label="Inter-store Cash Out" value={-summary.totals.interStoreOut} color="red" />
-              )}
-              <div className="border-t border-gray-200 pt-2">
-                <Row label="Expected Cash (sales)" value={expectedCashSales} bold />
-                <Row label="Expected Deposits Held" value={expectedDepositsHeld} bold />
-              </div>
-              <Row label="Till Counted" value={tillTotal} bold />
-              <Row label="Deposit Envelope" value={depEnvTotal} bold />
-              <div className="border-t border-gray-200 pt-2">
-                <div className="flex justify-between">
-                  <span className="font-semibold">Till Variance</span>
-                  <span className={`font-bold ${varianceColor(tillVariance)}`}>
-                    {tillVariance > 0 ? '+' : ''}{formatCurrency(tillVariance)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="font-semibold">Deposit Variance</span>
-                  <span className={`font-bold ${varianceColor(depVariance)}`}>
-                    {depVariance > 0 ? '+' : ''}{formatCurrency(depVariance)}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <Button variant="secondary" className="flex-1" onClick={() => setShowReconcileModal(false)}>
-                Cancel
-              </Button>
-              <Button className="flex-1" onClick={handleReconcile} loading={reconcileMut.isPending}>
-                Confirm & Lock
-              </Button>
-            </div>
-          </div>
-        </ModalOverlay>
+        <ReconcileModal
+          summary={summary}
+          dateLabel={formatDateLabel(date)}
+          tillTotal={tillTotal}
+          depEnvTotal={depEnvTotal}
+          tillVariance={tillVariance}
+          depVariance={depVariance}
+          expectedCashSales={expectedCashSales}
+          expectedDepositsHeld={expectedDepositsHeld}
+          isPending={reconcileMut.isPending}
+          onConfirm={handleReconcile}
+          onCancel={() => setShowReconcileModal(false)}
+        />
       )}
 
       {/* ── Override Modal ── */}
@@ -983,134 +837,32 @@ export default function CashupPage() {
 
       {/* ── Inter-store Transfer Modal ── */}
       {showTransferModal && (
-        <ModalOverlay onClose={() => setShowTransferModal(false)}>
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-            <h2 className="mb-4 text-lg font-bold text-gray-900">
-              {isLolasStore
-                ? `Issue Float to ${otherStoreName}`
-                : `Send Cash to ${otherStoreName}`}
-            </h2>
-            <p className="mb-4 text-sm text-gray-600">
-              {isLolasStore
-                ? `Transfer opening float from ${currentStoreName} to ${otherStoreName}.`
-                : `Send end-of-day cash from ${currentStoreName} to ${otherStoreName}.`}
-            </p>
-            <div className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Amount *</label>
-                <input
-                  type="number"
-                  min={0}
-                  step={0.01}
-                  value={transferAmount}
-                  onChange={(e) => setTransferAmount(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  placeholder="0.00"
-                />
-              </div>
-              {!routedCashAcct && (
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  From — {currentStoreName} Cash Account *
-                </label>
-                <select
-                  value={transferFromAcct}
-                  onChange={(e) => setTransferFromAcct(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                >
-                  <option value="">Select account...</option>
-                  {assetAccounts.map((a) => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
-                  ))}
-                </select>
-                <p className="mt-1 text-xs text-amber-600">No routing rule configured — select manually</p>
-              </div>
-              )}
-              {!routedOtherCashAcct && (
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  To — {otherStoreName} Cash Account *
-                </label>
-                <select
-                  value={transferToAcct}
-                  onChange={(e) => setTransferToAcct(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                >
-                  <option value="">Select account...</option>
-                  {otherStoreAccounts.map((a) => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
-                  ))}
-                </select>
-                <p className="mt-1 text-xs text-amber-600">No routing rule configured — select manually</p>
-              </div>
-              )}
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Notes</label>
-                <input
-                  type="text"
-                  value={transferNotes}
-                  onChange={(e) => setTransferNotes(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  placeholder="Optional"
-                />
-              </div>
-            </div>
-            <div className="mt-6 flex gap-3">
-              <Button variant="secondary" className="flex-1" onClick={() => setShowTransferModal(false)}>
-                Cancel
-              </Button>
-              <Button
-                className="flex-1"
-                onClick={handleTransfer}
-                loading={transferMut.isPending}
-                disabled={!transferAmount || parseFloat(transferAmount) <= 0 || !transferFromAcct || !transferToAcct}
-              >
-                {isLolasStore ? 'Issue Float' : 'Send Cash'}
-              </Button>
-            </div>
-          </div>
-        </ModalOverlay>
+        <InterStoreTransferModal
+          isLolasStore={isLolasStore}
+          currentStoreName={currentStoreName}
+          otherStoreName={otherStoreName}
+          transferAmount={transferAmount}
+          onTransferAmountChange={setTransferAmount}
+          transferNotes={transferNotes}
+          onTransferNotesChange={setTransferNotes}
+          transferFromAcct={transferFromAcct}
+          onTransferFromAcctChange={setTransferFromAcct}
+          transferToAcct={transferToAcct}
+          onTransferToAcctChange={setTransferToAcct}
+          assetAccounts={assetAccounts}
+          otherStoreAccounts={otherStoreAccounts}
+          routedCashAcct={routedCashAcct}
+          routedOtherCashAcct={routedOtherCashAcct}
+          isPending={transferMut.isPending}
+          onConfirm={handleTransfer}
+          onCancel={() => setShowTransferModal(false)}
+        />
       )}
     </div>
   );
 }
 
 /* ── Sub-components ── */
-
-function DenominationGrid({
-  denoms,
-  onChange,
-  disabled,
-}: {
-  denoms: Record<number, number>;
-  onChange: (denom: number, count: number) => void;
-  disabled: boolean;
-}) {
-  return (
-    <div className="space-y-2">
-      {DENOMINATIONS.map((d) => (
-        <div key={d} className="flex items-center gap-3">
-          <span className="w-16 text-right text-sm font-medium text-gray-700">
-            ₱{d.toLocaleString()}
-          </span>
-          <span className="text-gray-400">×</span>
-          <input
-            type="number"
-            min={0}
-            value={denoms[d] || ''}
-            onChange={(e) => onChange(d, parseInt(e.target.value) || 0)}
-            disabled={disabled}
-            className="w-20 rounded-md border border-gray-300 px-2 py-2 text-center text-sm disabled:bg-gray-50"
-            placeholder="0"
-          />
-          <span className="text-sm text-gray-500">
-            = {formatCurrency(d * (denoms[d] || 0))}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 function SummaryCard({
   label,
@@ -1519,32 +1271,6 @@ function MiscSalesSection({
           ))
         )}
       </div>
-    </div>
-  );
-}
-
-function Row({
-  label,
-  value,
-  color,
-  bold,
-}: {
-  label: string;
-  value: number;
-  color?: string;
-  bold?: boolean;
-}) {
-  const colorCls =
-    color === 'green' ? 'text-green-700' :
-    color === 'red' ? 'text-red-700' :
-    color === 'blue' ? 'text-blue-700' :
-    color === 'cyan' ? 'text-cyan-700' : '';
-  return (
-    <div className="flex justify-between">
-      <span className={bold ? 'font-semibold' : 'text-gray-600'}>{label}</span>
-      <span className={`${bold ? 'font-bold' : 'font-medium'} ${colorCls}`}>
-        {formatCurrency(value)}
-      </span>
     </div>
   );
 }
