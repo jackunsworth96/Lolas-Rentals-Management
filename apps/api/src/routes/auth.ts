@@ -65,14 +65,20 @@ router.post('/login', validateBody(LoginRequestSchema), async (req, res, next) =
       logSupabaseError('auth/login role_permissions', permErr);
     }
 
-    const { data: employeeStores, error: empErr } = await supabase
-      .from('employee_stores')
-      .select('store_id')
-      .eq('employee_id', user.employee_id);
+    const { data: employee, error: empErr } = await supabase
+      .from('employees')
+      .select('store_id, employee_stores(store_id)')
+      .eq('id', user.employee_id)
+      .maybeSingle();
     if (empErr) {
       logSupabaseError('auth/login employee_stores lookup', empErr);
     }
-    const storeIds = employeeStores?.map((r) => r.store_id) ?? [];
+    const joinedStoreIds = (employee?.employee_stores ?? []).map(
+      (r: { store_id: string }) => r.store_id,
+    );
+    const storeIds = joinedStoreIds.length > 0
+      ? Array.from(new Set(joinedStoreIds))
+      : (employee?.store_id ? [employee.store_id] : []);
 
     const payload: TokenPayload = {
       userId: user.id,
