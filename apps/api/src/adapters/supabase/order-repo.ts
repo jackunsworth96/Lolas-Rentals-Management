@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type {
   Order,
   OrderProps,
@@ -13,33 +14,40 @@ import { Order as OrderEntity, OrderStatus as OS, Money as M } from '@lolas/doma
 import { getSupabaseClient } from './client.js';
 import { parseDate } from './mappers.js';
 
-interface OrderRow {
-  id: string;
-  store_id: string;
-  woo_order_id: string | null;
-  customer_id: string | null;
-  employee_id: string | null;
-  order_date: string;
-  status: string;
-  web_notes: string | null;
-  quantity: number;
-  web_quote_raw: number | null;
-  security_deposit: number;
-  deposit_status: string | null;
-  card_fee_surcharge: number;
-  return_charges: number;
-  final_total: number;
-  balance_due: number;
-  payment_method_id: string | null;
-  deposit_method_id: string | null;
-  booking_token: string | null;
-  tips: number;
-  charity_donation: number;
-  created_at: string;
-  updated_at: string;
-}
+const OrderRowSchema = z.object({
+  id: z.string(),
+  store_id: z.string(),
+  woo_order_id: z.string().nullable(),
+  customer_id: z.string().nullable(),
+  employee_id: z.string().nullable(),
+  order_date: z.string(),
+  status: z.string(),
+  web_notes: z.string().nullable(),
+  quantity: z.number(),
+  web_quote_raw: z.number().nullable(),
+  security_deposit: z.number(),
+  deposit_status: z.string().nullable(),
+  card_fee_surcharge: z.number(),
+  return_charges: z.number(),
+  final_total: z.number(),
+  balance_due: z.number(),
+  payment_method_id: z.string().nullable(),
+  deposit_method_id: z.string().nullable(),
+  booking_token: z.string().nullable(),
+  tips: z.number(),
+  charity_donation: z.number(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
 
-function rowToOrder(row: OrderRow): Order {
+type OrderRow = z.infer<typeof OrderRowSchema>;
+
+function rowToOrder(raw: unknown): Order {
+  const result = OrderRowSchema.safeParse(raw);
+  if (!result.success) {
+    throw new Error('Invalid OrderRow from Supabase: ' + result.error.message);
+  }
+  const row = result.data;
   return OrderEntity.create({
     id: row.id,
     storeId: row.store_id,

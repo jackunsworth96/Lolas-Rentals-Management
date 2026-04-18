@@ -1,5 +1,23 @@
+import { z } from 'zod';
 import { getSupabaseClient } from './client.js';
 import type { Payment, PaymentRepository } from '@lolas/domain';
+
+const PaymentRowSchema = z.object({
+  id: z.string(),
+  store_id: z.string(),
+  order_id: z.string().nullable(),
+  raw_order_id: z.string().nullable(),
+  order_item_id: z.string().nullable(),
+  order_addon_id: z.string().nullable(),
+  payment_type: z.string(),
+  amount: z.number(),
+  payment_method_id: z.string(),
+  transaction_date: z.string(),
+  settlement_status: z.string().nullable(),
+  settlement_ref: z.string().nullable(),
+  customer_id: z.string().nullable(),
+  account_id: z.string().nullable(),
+});
 
 function toRow(p: Payment) {
   return {
@@ -20,22 +38,27 @@ function toRow(p: Payment) {
   };
 }
 
-function toDomain(row: Record<string, unknown>): Payment {
+function toDomain(raw: unknown): Payment {
+  const result = PaymentRowSchema.safeParse(raw);
+  if (!result.success) {
+    throw new Error('Invalid PaymentRow from Supabase: ' + result.error.message);
+  }
+  const row = result.data;
   return {
-    id: row.id as string,
-    storeId: row.store_id as string,
-    orderId: (row.order_id as string) ?? null,
-    rawOrderId: (row.raw_order_id as string) ?? null,
-    orderItemId: row.order_item_id as string | null,
-    orderAddonId: row.order_addon_id as string | null,
-    paymentType: row.payment_type as string,
-    amount: row.amount as number,
-    paymentMethodId: row.payment_method_id as string,
-    transactionDate: row.transaction_date as string,
-    settlementStatus: row.settlement_status as string | null,
-    settlementRef: row.settlement_ref as string | null,
-    customerId: row.customer_id as string | null,
-    accountId: row.account_id as string | null,
+    id: row.id,
+    storeId: row.store_id,
+    orderId: row.order_id,
+    rawOrderId: row.raw_order_id,
+    orderItemId: row.order_item_id,
+    orderAddonId: row.order_addon_id,
+    paymentType: row.payment_type,
+    amount: row.amount,
+    paymentMethodId: row.payment_method_id,
+    transactionDate: row.transaction_date,
+    settlementStatus: row.settlement_status,
+    settlementRef: row.settlement_ref,
+    customerId: row.customer_id,
+    accountId: row.account_id,
   };
 }
 

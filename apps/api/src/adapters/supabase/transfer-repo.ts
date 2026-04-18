@@ -1,6 +1,37 @@
+import { z } from 'zod';
 import { getSupabaseClient } from './client.js';
 import type { TransferRepository, TransferFilters, TransferSummary } from '@lolas/domain';
 import { Transfer, Money } from '@lolas/domain';
+
+const TransferRowSchema = z.object({
+  id: z.string(),
+  order_id: z.string().nullable(),
+  service_date: z.string(),
+  customer_name: z.string(),
+  contact_number: z.string().nullable(),
+  customer_email: z.string().nullable(),
+  customer_type: z.enum(['Walk-in', 'Online']).nullable(),
+  route: z.string(),
+  flight_time: z.string().nullable(),
+  pax_count: z.number(),
+  van_type: z.string().nullable(),
+  accommodation: z.string().nullable(),
+  status: z.string(),
+  ops_notes: z.string().nullable(),
+  total_price: z.number(),
+  payment_method: z.string().nullable(),
+  payment_status: z.string(),
+  driver_fee: z.number().nullable(),
+  net_profit: z.number().nullable(),
+  driver_paid_status: z.string().nullable(),
+  booking_source: z.string().nullable(),
+  booking_token: z.string().nullable(),
+  store_id: z.string(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  collected_at: z.string().nullable(),
+  collected_amount: z.number().nullable(),
+});
 
 type RouteInfo = { driverCut: number | null; pricingType: 'fixed' | 'per_head' | null };
 
@@ -36,35 +67,40 @@ function toRow(t: Transfer) {
   };
 }
 
-function toDomain(row: Record<string, unknown>, routeInfo?: RouteInfo): Transfer {
+function toDomain(raw: unknown, routeInfo?: RouteInfo): Transfer {
+  const result = TransferRowSchema.safeParse(raw);
+  if (!result.success) {
+    throw new Error('Invalid TransferRow from Supabase: ' + result.error.message);
+  }
+  const row = result.data;
   return Transfer.create({
-    id: row.id as string,
-    orderId: row.order_id as string | null,
-    serviceDate: row.service_date as string,
-    customerName: row.customer_name as string,
-    contactNumber: row.contact_number as string | null,
-    customerEmail: row.customer_email as string | null,
-    customerType: row.customer_type as 'Walk-in' | 'Online' | null,
-    route: row.route as string,
-    flightTime: row.flight_time as string | null,
-    paxCount: row.pax_count as number,
-    vanType: row.van_type as string | null,
-    accommodation: row.accommodation as string | null,
-    status: row.status as string,
-    opsNotes: row.ops_notes as string | null,
-    totalPrice: Money.php(row.total_price as number),
-    paymentMethod: row.payment_method as string | null,
+    id: row.id,
+    orderId: row.order_id,
+    serviceDate: row.service_date,
+    customerName: row.customer_name,
+    contactNumber: row.contact_number,
+    customerEmail: row.customer_email,
+    customerType: row.customer_type,
+    route: row.route,
+    flightTime: row.flight_time,
+    paxCount: row.pax_count,
+    vanType: row.van_type,
+    accommodation: row.accommodation,
+    status: row.status,
+    opsNotes: row.ops_notes,
+    totalPrice: Money.php(row.total_price),
+    paymentMethod: row.payment_method,
     paymentStatus: row.payment_status as 'Pending' | 'Partially Paid' | 'Paid',
-    driverFee: row.driver_fee != null ? Money.php(row.driver_fee as number) : null,
-    netProfit: row.net_profit != null ? Money.php(row.net_profit as number) : null,
-    driverPaidStatus: row.driver_paid_status as string | null,
-    bookingSource: row.booking_source as string | null,
-    bookingToken: row.booking_token as string | null,
-    storeId: row.store_id as string,
-    createdAt: new Date(row.created_at as string),
-    updatedAt: new Date(row.updated_at as string),
-    collectedAt: row.collected_at ? new Date(row.collected_at as string) : null,
-    collectedAmount: row.collected_amount != null ? (row.collected_amount as number) : null,
+    driverFee: row.driver_fee != null ? Money.php(row.driver_fee) : null,
+    netProfit: row.net_profit != null ? Money.php(row.net_profit) : null,
+    driverPaidStatus: row.driver_paid_status,
+    bookingSource: row.booking_source,
+    bookingToken: row.booking_token,
+    storeId: row.store_id,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+    collectedAt: row.collected_at ? new Date(row.collected_at) : null,
+    collectedAmount: row.collected_amount,
     routeDriverCut: routeInfo?.driverCut ?? null,
     routePricingType: routeInfo?.pricingType ?? null,
   });

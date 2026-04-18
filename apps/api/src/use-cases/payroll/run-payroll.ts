@@ -10,17 +10,19 @@ import {
 } from './calculate-payslip.js';
 import type { PayslipBreakdown } from '@lolas/domain';
 import { formatManilaDate } from '../../utils/manila-date.js';
+import { resolvePayrollAccounts } from '../../adapters/supabase/config-repo.js';
 
-// Payroll is company-level — all journal accounts are always Lola's.
-const PAYROLL_EXPENSE_ACCOUNT = 'EXP-PAYROLL-store-lolas';
+// Payroll journal entries are always posted to the company store.
 const PAYROLL_JOURNAL_STORE = 'store-lolas';
 
 function resolveCreditAccount(
   method: 'cash' | 'gcash' | 'bank_transfer',
   source: 'till' | 'safe',
+  cashAccountId: string,
+  safeAccountId: string,
 ): string {
   if (method === 'cash') {
-    return source === 'safe' ? 'SAFE-store-lolas' : 'CASH-LOLA';
+    return source === 'safe' ? safeAccountId : cashAccountId;
   }
   if (method === 'gcash') return 'GCASH-store-lolas';
   return 'BANK-UNION-BANK-store-lolas';
@@ -99,6 +101,8 @@ export async function runPayroll(
   const totalNetPay = payslips.reduce((sum, p) => sum + p.netPay, 0);
   const totalGrossPay = payslips.reduce((sum, p) => sum + p.grossPay, 0);
 
+  const { cashAccountId, safeAccountId, wagesAccountId } = await resolvePayrollAccounts(input.storeId);
+
   const desc = `Payroll ${input.periodStart} to ${input.periodEnd}`;
   const txDate = formatManilaDate();
   const txPeriod = txDate.slice(0, 7);
@@ -147,7 +151,7 @@ export async function runPayroll(
     // Debit: payroll expense (company-level, always Lola's account)
     legs.push({
       id: randomUUID(),
-      account_id: PAYROLL_EXPENSE_ACCOUNT,
+      account_id: wagesAccountId,
       debit: payslip.netPay,
       credit: 0,
       description: `${desc} — ${payslip.employeeName}`,
@@ -162,7 +166,7 @@ export async function runPayroll(
       if (fromTill > 0) {
         legs.push({
           id: randomUUID(),
-          account_id: resolveCreditAccount('cash', 'till'),
+          account_id: resolveCreditAccount('cash', 'till', cashAccountId, safeAccountId),
           debit: 0,
           credit: fromTill,
           description: `${desc} — ${payslip.employeeName} (till)`,
@@ -173,7 +177,7 @@ export async function runPayroll(
       if (fromSafe > 0) {
         legs.push({
           id: randomUUID(),
-          account_id: resolveCreditAccount('cash', 'safe'),
+          account_id: resolveCreditAccount('cash', 'safe', cashAccountId, safeAccountId),
           debit: 0,
           credit: fromSafe,
           description: `${desc} — ${payslip.employeeName} (safe)`,
@@ -184,7 +188,7 @@ export async function runPayroll(
     } else {
       legs.push({
         id: randomUUID(),
-        account_id: resolveCreditAccount(method, 'till'),
+        account_id: resolveCreditAccount(method, 'till', cashAccountId, safeAccountId),
         debit: 0,
         credit: payslip.netPay,
         description: `${desc} — ${payslip.employeeName}`,

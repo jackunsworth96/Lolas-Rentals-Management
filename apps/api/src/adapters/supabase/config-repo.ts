@@ -342,3 +342,59 @@ export function createConfigRepo(): ConfigRepository {
     deleteRepairCost: (id) => hardDelete('repair_costs', id),
   };
 }
+
+/**
+ * Resolves the three ledger accounts required to post a payroll journal entry.
+ * Throws a descriptive error if any account is missing so misconfiguration is
+ * caught immediately rather than silently posting to a stale hardcoded ID.
+ */
+export async function resolvePayrollAccounts(storeId: string): Promise<{
+  cashAccountId: string;
+  safeAccountId: string;
+  wagesAccountId: string;
+}> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('chart_of_accounts')
+    .select('id, name, account_type')
+    .in('store_id', [storeId, 'company'])
+    .eq('is_active', true);
+  if (error) throw new Error(`Failed to look up payroll accounts: ${error.message}`);
+
+  const accounts = (data ?? []) as Array<{ id: string; name: string; account_type: string }>;
+
+  const cash = accounts.find(
+    (a) => a.account_type === 'Asset' && a.name.toLowerCase().includes('cash'),
+  );
+  const safe = accounts.find(
+    (a) =>
+      a.account_type === 'Asset' &&
+      (a.name.toLowerCase().includes('safe') || a.name.toLowerCase().includes('bank')),
+  );
+  const wages = accounts.find(
+    (a) =>
+      a.account_type === 'Expense' &&
+      (a.name.toLowerCase().includes('wage') ||
+        a.name.toLowerCase().includes('salary') ||
+        a.name.toLowerCase().includes('payroll')),
+  );
+
+  const missing: string[] = [];
+  if (!cash) missing.push("Cash (Asset, name includes 'cash')");
+  if (!safe) missing.push("Safe/Bank (Asset, name includes 'safe' or 'bank')");
+  if (!wages) missing.push("Wages/Payroll Expense (Expense, name includes 'wage', 'salary', or 'payroll')");
+
+  if (missing.length > 0) {
+    throw new Error(
+      `chart_of_accounts rows not found for payroll (store ${storeId}). ` +
+        `Missing: ${missing.join('; ')}. ` +
+        `Ensure active accounts exist at the store or company level with is_active = true.`,
+    );
+  }
+
+  return {
+    cashAccountId: cash!.id,
+    safeAccountId: safe!.id,
+    wagesAccountId: wages!.id,
+  };
+}
