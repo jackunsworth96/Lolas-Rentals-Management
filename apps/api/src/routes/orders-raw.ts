@@ -267,10 +267,11 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
     const receivableAccountId = receivableAccount?.id ?? '';
     const incomeAccountId = incomeAccount?.id ?? '';
 
-    // 10. Journal legs
+    // 10. Journal legs (rental + charity folded into a single balanced posting — AC-05)
     const now = new Date();
     const journalDate = formatManilaDate(now);
     const journalPeriod = journalDate.slice(0, 7);
+    const charityAmount = body.charityDonation ?? 0;
     let journalTransactionId = '';
     let journalLegs: Array<Record<string, unknown>> = [];
 
@@ -296,12 +297,47 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
           reference_id: orderId,
         },
       ];
+
+      // Fold charity legs into the same activate_order_atomic call so
+      // assert_balanced_legs can verify the full posting atomically.
+      // Let resolveCharityPayableAccount throw on misconfiguration in non-prod.
+      if (charityAmount > 0) {
+        const charityPayableAccountId = await resolveCharityPayableAccount(body.storeId);
+        if (charityPayableAccountId) {
+          journalLegs.push(
+            {
+              id: crypto.randomUUID(),
+              account_id: receivableAccountId,
+              debit: charityAmount,
+              credit: 0,
+              description: `Order ${orderId} charity donation receivable (Be Pawsitive)`,
+              reference_type: 'order_charity',
+              reference_id: orderId,
+            },
+            {
+              id: crypto.randomUUID(),
+              account_id: charityPayableAccountId,
+              debit: 0,
+              credit: charityAmount,
+              description: `Order ${orderId} charity donation payable (Be Pawsitive)`,
+              reference_type: 'order_charity',
+              reference_id: orderId,
+            },
+          );
+        }
+      }
     }
 
     // 11. Order date (Manila timezone)
     const orderDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 
-    // 12. Call activate_order_atomic RPC
+    // 12. Payment ids & transaction date for the atomic RPC
+    const rentalPaymentId = crypto.randomUUID();
+    const depositPaymentId =
+      body.depositCollected && body.depositAmount > 0 ? crypto.randomUUID() : null;
+    const transactionDate = formatManilaDate();
+
+    // 13. Call activate_order_atomic RPC (order + journal + payments in one tx)
     const { error: rpcErr } = await supabase.rpc('activate_order_atomic', {
       p_order_id: orderId,
       p_store_id: body.storeId,
@@ -323,7 +359,7 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       p_deposit_method_id: body.depositMethod,
       p_booking_token: orderReference,
       p_tips: 0,
-      p_charity_donation: body.charityDonation ?? 0,
+      p_charity_donation: charityAmount,
       p_updated_at: now.toISOString(),
       p_order_items: orderItems,
       p_order_addons: orderAddons,
@@ -333,80 +369,16 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       p_journal_date: journalDate,
       p_journal_store_id: body.storeId,
       p_journal_legs: journalLegs,
+      p_rental_payment_id: rentalPaymentId,
+      p_rental_amount: body.grandTotal,
+      p_transaction_date: transactionDate,
+      p_deposit_payment_id: depositPaymentId,
+      p_deposit_amount: body.depositCollected ? body.depositAmount : 0,
+      p_deposit_collected: body.depositCollected,
     });
     if (rpcErr) {
       console.error('RPC error:', rpcErr.message, { code: rpcErr.code });
       throw new Error(`activate_order_atomic RPC failed: ${rpcErr.message}`);
-    }
-
-    // 12b. Insert rental and deposit payments
-    const paymentRepo = req.app.locals.deps.paymentRepo;
-    const rentalPaymentId = crypto.randomUUID();
-    await paymentRepo.save({
-      id: rentalPaymentId,
-      storeId: body.storeId,
-      orderId,
-      rawOrderId: null,
-      orderItemId: null,
-      orderAddonId: null,
-      paymentType: 'rental',
-      amount: body.grandTotal,
-      paymentMethodId: body.paymentMethod,
-      transactionDate: formatManilaDate(),
-      settlementStatus: null,
-      settlementRef: null,
-      customerId,
-      accountId: body.paymentAccountId ?? null,
-    });
-
-    if (body.depositCollected && body.depositAmount > 0) {
-      const depositPaymentId = crypto.randomUUID();
-      await paymentRepo.save({
-        id: depositPaymentId,
-        storeId: body.storeId,
-        orderId,
-        rawOrderId: null,
-        orderItemId: null,
-        orderAddonId: null,
-        paymentType: 'security_deposit',
-        amount: body.depositAmount,
-        paymentMethodId: body.depositMethod,
-        transactionDate: formatManilaDate(),
-        settlementStatus: null,
-        settlementRef: null,
-        customerId,
-        accountId: body.depositLiabilityAccountId ?? null,
-      });
-    }
-
-    // 13. Post charity journal if applicable
-    const charityAmount = body.charityDonation ?? 0;
-    if (charityAmount > 0 && receivableAccountId) {
-      const { Money } = await import('@lolas/domain');
-      const charityPayableAccountId = await resolveCharityPayableAccount(body.storeId);
-      if (charityPayableAccountId) {
-        const charityLegs = [
-          {
-            entryId: crypto.randomUUID(),
-            accountId: receivableAccountId,
-            debit: Money.php(charityAmount),
-            credit: Money.zero(),
-            description: `Order ${orderId} charity donation receivable (Be Pawsitive)`,
-            referenceType: 'order_charity' as const,
-            referenceId: orderId,
-          },
-          {
-            entryId: crypto.randomUUID(),
-            accountId: charityPayableAccountId,
-            debit: Money.zero(),
-            credit: Money.php(charityAmount),
-            description: `Order ${orderId} charity donation payable (Be Pawsitive)`,
-            referenceType: 'order_charity' as const,
-            referenceId: orderId,
-          },
-        ];
-        await req.app.locals.deps.accountingPort.createTransaction(charityLegs, body.storeId);
-      }
     }
 
     // 16. Return result
