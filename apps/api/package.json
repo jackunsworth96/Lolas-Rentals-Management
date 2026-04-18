@@ -17,6 +17,9 @@
   "dependencies": {
     "@lolas/domain": "*",
     "@lolas/shared": "*",
+    "@types/pino-http": "^5.0.0",
+    "pino": "^8.0.0",
+    "pino-http": "^9.0.0",
     "@supabase/supabase-js": "^2.49.0",
     "@types/bcrypt": "^5.0.2",
     "@types/cors": "^2.8.17",

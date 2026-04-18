@@ -27,6 +27,8 @@ if (!_env.success) {
 import express, { type Request, type Response } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
+import pinoHttp from 'pino-http';
+import { logger } from './lib/logger.js';
 import { routes } from './routes/index.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { publicReviewsRoutes } from './routes/public-reviews.js';
@@ -84,6 +86,7 @@ const CORS_ALLOWED_ORIGINS = buildCorsAllowedOrigins();
 
 const app = express();
 app.set('trust proxy', process.env.TRUST_PROXY === 'false' ? false : 1);
+app.use(pinoHttp({ logger }));
 app.use(helmet());
 
 app.use(
@@ -163,7 +166,7 @@ const PORT = Number(process.env.PORT) || 3001;
 
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
-    console.log(`API server listening on port ${PORT}`);
+    logger.info({ port: PORT }, 'API server listening');
     startWaiverReminderJob();
     startPostRentalEmailJob();
   });

@@ -1,5 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import crypto from 'crypto';
+import { logger } from '../lib/logger.js';
 import { Money, type JournalLeg } from '@lolas/domain';
 import { authenticate } from '../middleware/authenticate.js';
 import {
@@ -96,7 +97,7 @@ router.post(
 
       res.status(200).json({ checkoutId: result.checkoutId, redirectUrl: result.redirectUrl });
     } catch (err: unknown) {
-      console.error('Maya checkout error:', err);
+      logger.error({ err }, 'Maya checkout error');
       next(err);
     }
   },
@@ -152,9 +153,7 @@ router.post(
       if (!record) {
         // Unknown checkout — can't reconcile. Return 200 so Maya stops
         // retrying, but surface the anomaly in the logs.
-        console.error('[maya-webhook] checkout not found', {
-          checkoutId: payload.checkoutId,
-        });
+        logger.error({ checkoutId: payload.checkoutId }, '[maya-webhook] checkout not found');
         res.status(200).json({ received: true });
         return;
       }
@@ -200,11 +199,10 @@ router.post(
         if (!order && !rawOrder) {
           // Neither an activated order nor a raw order exists for this
           // checkout. Log and ack — Maya needs a 200 to stop retrying.
-          console.error('[maya-webhook] no order or orders_raw row for checkout', {
-            checkoutId: payload.checkoutId,
-            orderId: record.order_id,
-            rawOrderId: record.raw_order_id,
-          });
+          logger.error(
+            { checkoutId: payload.checkoutId, orderId: record.order_id, rawOrderId: record.raw_order_id },
+            '[maya-webhook] no order or orders_raw row for checkout',
+          );
           res.status(200).json({ received: true });
           return;
         }
@@ -321,11 +319,10 @@ router.post(
           // Do NOT post a journal entry: journal posting happens in
           // process_raw_order_atomic when staff activate the booking.
           if (rawOrder.status !== 'unprocessed') {
-            console.error('[maya-webhook] raw order not in unprocessed state', {
-              checkoutId: payload.checkoutId,
-              rawOrderId: rawOrder.id,
-              rawOrderStatus: rawOrder.status,
-            });
+            logger.error(
+              { checkoutId: payload.checkoutId, rawOrderId: rawOrder.id, rawOrderStatus: rawOrder.status },
+              '[maya-webhook] raw order not in unprocessed state',
+            );
             res.status(200).json({ received: true });
             return;
           }

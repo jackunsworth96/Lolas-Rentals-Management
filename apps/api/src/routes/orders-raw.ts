@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { logger } from '../lib/logger.js';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { Permission, resolveStoreFromSource, resolveSourceFromStore } from '@lolas/shared';
@@ -381,7 +382,7 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       p_deposit_collected: body.depositCollected,
     });
     if (rpcErr) {
-      console.error('RPC error:', rpcErr.message, { code: rpcErr.code });
+      logger.error({ rpcCode: rpcErr.code, rpcMessage: rpcErr.message }, 'activate_order_atomic RPC failed');
       throw new Error(`activate_order_atomic RPC failed: ${rpcErr.message}`);
     }
 
