@@ -89,6 +89,7 @@ export function useTransferSummary(
     queryKey: ['transfers-summary', storeId, filters],
     queryFn: () => api.get(`/transfers/summary?${params}`),
     enabled: !!storeId,
+    throwOnError: false,
   });
 }
 

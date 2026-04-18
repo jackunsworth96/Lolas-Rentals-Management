@@ -75,7 +75,7 @@ export default function TransfersPage() {
     return {};
   }, [activeTab, todayStr, completedDateFrom, completedDateTo]);
 
-  const { data: summary, isLoading: summaryLoading } = useTransferSummary(storeId, summaryFilters);
+  const { data: summary, isLoading: summaryLoading, isError: summaryError } = useTransferSummary(storeId, summaryFilters);
 
   const { toasts, pushToast } = useToast();
   const [notifyingId, setNotifyingId] = useState<string | null>(null);
@@ -243,7 +243,7 @@ export default function TransfersPage() {
       )}
 
       {/* Settlement summary panel */}
-      {(summaryLoading || (summary && (summary.outstanding.count > 0 || summary.collected.count > 0))) && (
+      {(summaryLoading || summaryError || (summary && (summary.outstanding.count > 0 || summary.collected.count > 0))) && (
         <div className="flex flex-col gap-3 md:grid md:grid-cols-4">
           {summaryLoading ? (
             <>
@@ -266,6 +266,29 @@ export default function TransfersPage() {
                 <div className="h-3 w-28 rounded bg-white/20" />
                 <div className="mt-2 h-6 w-20 rounded bg-white/25" />
                 <div className="mt-1 h-3 w-24 rounded bg-white/20" />
+              </div>
+            </>
+          ) : summaryError ? (
+            <>
+              <div className="rounded-xl border border-charcoal-brand/10 bg-sand-brand px-4 py-3">
+                <p className="font-lato text-xs font-medium uppercase tracking-wider text-charcoal-brand/50">Outstanding</p>
+                <p className="mt-1 font-lato text-lg font-bold text-charcoal-brand/30">—</p>
+                <p className="font-lato text-xs text-charcoal-brand/40">Could not load summary</p>
+              </div>
+              <div className="rounded-xl border border-teal-brand/20 bg-teal-brand/5 px-4 py-3">
+                <p className="font-lato text-xs font-medium uppercase tracking-wider text-teal-brand/70">Collected</p>
+                <p className="mt-1 font-lato text-lg font-bold text-teal-brand/30">—</p>
+                <p className="font-lato text-xs text-teal-brand/40">Could not load summary</p>
+              </div>
+              <div className="rounded-xl border border-charcoal-brand/10 bg-sand-brand px-4 py-3">
+                <p className="font-lato text-xs font-medium uppercase tracking-wider text-charcoal-brand/50">Driver Cut</p>
+                <p className="mt-1 font-lato text-lg font-bold text-charcoal-brand/30">—</p>
+                <p className="font-lato text-xs text-charcoal-brand/40">from collected transfers</p>
+              </div>
+              <div className="rounded-xl border border-teal-brand/30 bg-teal-brand px-4 py-3">
+                <p className="font-lato text-xs font-medium uppercase tracking-wider text-white/70">Net Lola's Keeps</p>
+                <p className="mt-1 font-lato text-lg font-bold text-white/40">—</p>
+                <p className="font-lato text-xs text-white/50">Could not load summary</p>
               </div>
             </>
           ) : summary ? (
