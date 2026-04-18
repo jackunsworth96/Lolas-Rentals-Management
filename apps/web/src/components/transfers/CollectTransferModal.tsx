@@ -65,6 +65,7 @@ export function CollectTransferModal({ transfer, onClose, onSuccess }: Props) {
 
   const totalPrice = transfer ? moneyAmount(transfer.totalPrice) : 0;
 
+  const [collectedAmount, setCollectedAmount] = useState<number>(totalPrice);
   const [paymentMethodId, setPaymentMethodId] = useState('');
   const [cashAccountId, setCashAccountId] = useState('');
   const [date, setDate] = useState(todayManila());
@@ -74,12 +75,13 @@ export function CollectTransferModal({ transfer, onClose, onSuccess }: Props) {
 
   useEffect(() => {
     if (open) {
+      setCollectedAmount(totalPrice);
       setPaymentMethodId('');
       setCashAccountId('');
       setDate(todayManila());
       setError('');
     }
-  }, [open, transfer?.id]);
+  }, [open, transfer?.id, totalPrice]);
 
   const routing = usePaymentRouting();
   const routedCashAcct = routing.getReceivedInto(storeId, paymentMethodId);
@@ -112,10 +114,15 @@ export function CollectTransferModal({ transfer, onClose, onSuccess }: Props) {
       return;
     }
 
+    if (collectedAmount <= 0) {
+      setError('Enter a valid amount greater than 0');
+      return;
+    }
+
     try {
       await mutation.mutateAsync({
         id: transfer.id,
-        collectedAmount: totalPrice,
+        collectedAmount,
         paymentMethod: paymentMethodId,
         cashAccountId,
         transferIncomeAccountId: resolvedIncomeAccountId,
@@ -160,12 +167,15 @@ export function CollectTransferModal({ transfer, onClose, onSuccess }: Props) {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
-            <span className="font-lato text-xs font-medium text-charcoal-brand/70">Amount</span>
+            <span className="font-lato text-xs font-medium text-charcoal-brand/70">Amount *</span>
             <input
-              type="text"
-              readOnly
-              value={formatCurrency(totalPrice)}
-              className="mt-1 block w-full rounded-lg border border-charcoal-brand/20 bg-sand-brand/50 px-3 py-2 font-lato text-sm text-charcoal-brand"
+              type="number"
+              min="0"
+              step="0.01"
+              required
+              value={collectedAmount}
+              onChange={(e) => setCollectedAmount(Number(e.target.value))}
+              className="mt-1 block w-full rounded-lg border border-charcoal-brand/20 bg-white px-3 py-2 font-lato text-sm text-charcoal-brand focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand"
             />
           </label>
           <label className="block">
