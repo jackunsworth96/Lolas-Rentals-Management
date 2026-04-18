@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useUIStore } from '../../stores/ui-store.js';
 import { useTransfers, notifyDriver, moneyAmount, type TransferRow } from '../../api/transfers.js';
 import { useToast } from '../../hooks/useToast.js';
@@ -319,9 +319,8 @@ export default function TransfersPage() {
                 const netProfit = moneyAmount(t.netProfit) || (total - driverFee);
                 const isExpanded = expandedRow === t.id;
                 return (
-                  <>
+                  <React.Fragment key={t.id}>
                     <tr
-                      key={t.id}
                       onClick={() => setExpandedRow(isExpanded ? null : t.id)}
                       className="cursor-pointer hover:bg-gray-50"
                     >
@@ -430,7 +429,7 @@ export default function TransfersPage() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </React.Fragment>
                 );
               })}
             </tbody>

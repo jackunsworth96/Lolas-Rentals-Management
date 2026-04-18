@@ -46,7 +46,7 @@ const EntriesQuerySchema = z.object({
   period: z.enum(['month', 'all']),
 });
 
-router.get('/entries', validateQuery(EntriesQuerySchema), async (req, res, next) => {
+router.get('/entries', lookupLimiter, validateQuery(EntriesQuerySchema), async (req, res, next) => {
   try {
     const { email, period } = req.query as { email: string; period: 'month' | 'all' };
     const access = await lookupPawCardPublicAccess(
@@ -79,7 +79,7 @@ const RentalOrdersQuerySchema = z.object({
   email: z.string().email(),
 });
 
-router.get('/rental-orders', validateQuery(RentalOrdersQuerySchema), async (req, res, next) => {
+router.get('/rental-orders', lookupLimiter, validateQuery(RentalOrdersQuerySchema), async (req, res, next) => {
   try {
     const email = (req.query.email as string).trim().toLowerCase();
     const access = await lookupPawCardPublicAccess(
