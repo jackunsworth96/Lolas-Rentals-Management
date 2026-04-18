@@ -357,7 +357,7 @@ export default function CashupPage() {
         <h1 className="text-2xl font-bold text-gray-900">Cash Up</h1>
         <div className="flex items-center gap-2">
           {!isLocked && summary?.otherStores && summary.otherStores.length > 0 && (
-            <Button size="sm" variant="secondary" onClick={openTransferModal}>
+            <Button size="sm" variant="secondary" className="!py-2" onClick={openTransferModal}>
               {isLolasStore
                 ? `Issue Float to ${otherStoreName}`
                 : `Send Cash to ${otherStoreName}`}
@@ -367,6 +367,7 @@ export default function CashupPage() {
             <Button
               size="sm"
               variant="secondary"
+              className="!py-2"
               onClick={() => setShowDepositModal(true)}
             >
               Cash Deposited
@@ -398,10 +399,12 @@ export default function CashupPage() {
       {/* Date navigation */}
       <div className="mb-6 flex items-center gap-3">
         <button
+          type="button"
           onClick={() => setDate(shiftDate(date, -1))}
           className="rounded-lg border border-gray-300 p-2 hover:bg-gray-50"
         >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <span className="sr-only">Previous day</span>
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
@@ -414,10 +417,12 @@ export default function CashupPage() {
           )}
         </div>
         <button
+          type="button"
           onClick={() => setDate(shiftDate(date, 1))}
           className="rounded-lg border border-gray-300 p-2 hover:bg-gray-50"
         >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <span className="sr-only">Next day</span>
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
         </button>
@@ -449,7 +454,7 @@ export default function CashupPage() {
                 </span>
               </div>
               {canOverride && (
-                <Button size="sm" variant="ghost" onClick={() => setShowOverrideModal(true)}>
+                <Button size="sm" variant="ghost" className="!py-2" onClick={() => setShowOverrideModal(true)}>
                   Override
                 </Button>
               )}
@@ -605,7 +610,7 @@ export default function CashupPage() {
                   Till Count
                 </h3>
                 {hasSavedDenoms && !isLocked && (
-                  <Button size="sm" variant="ghost" onClick={loadSavedDenoms}>
+                  <Button size="sm" variant="ghost" className="!py-2" onClick={loadSavedDenoms}>
                     Load saved
                   </Button>
                 )}
@@ -1095,7 +1100,7 @@ function DenominationGrid({
             value={denoms[d] || ''}
             onChange={(e) => onChange(d, parseInt(e.target.value) || 0)}
             disabled={disabled}
-            className="w-20 rounded-md border border-gray-300 px-2 py-1.5 text-center text-sm disabled:bg-gray-50"
+            className="w-20 rounded-md border border-gray-300 px-2 py-2 text-center text-sm disabled:bg-gray-50"
             placeholder="0"
           />
           <span className="text-sm text-gray-500">

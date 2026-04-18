@@ -512,7 +512,8 @@ export default function DashboardPage() {
                 No revenue recorded for this period
               </p>
             ) : (
-              <ResponsiveContainer width="100%" height={300}>
+              <div className="h-48 w-full md:h-72">
+                <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={revenueCategoryData}
                   margin={{ top: 5, right: 20, left: 10, bottom: 80 }}
@@ -545,7 +546,8 @@ export default function DashboardPage() {
                   <Bar dataKey="thisMonth" fill="#1d4ed8" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="last30" fill="#60a5fa" radius={[4, 4, 0, 0]} />
                 </BarChart>
-              </ResponsiveContainer>
+                </ResponsiveContainer>
+              </div>
             )}
           </div>
         </section>
@@ -564,7 +566,8 @@ export default function DashboardPage() {
                 No expenses recorded for this period
               </p>
             ) : (
-              <ResponsiveContainer width="100%" height={300}>
+              <div className="h-48 w-full md:h-72">
+                <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={expenseCategoryData}
                   margin={{ top: 5, right: 20, left: 10, bottom: 80 }}
@@ -596,7 +599,8 @@ export default function DashboardPage() {
                   <Bar dataKey="thisMonth" fill="#ef4444" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="lastMonth" fill="#fb923c" radius={[4, 4, 0, 0]} />
                 </BarChart>
-              </ResponsiveContainer>
+                </ResponsiveContainer>
+              </div>
             )}
           </div>
         </section>
@@ -616,7 +620,8 @@ export default function DashboardPage() {
               {(metrics.customerBreakdown?.byCountry ?? []).length === 0 ? (
                 <p className="py-8 text-center text-sm text-gray-400">No customer data</p>
               ) : (
-                <ResponsiveContainer width="100%" height={300}>
+                <div className="h-48 w-full md:h-72">
+                  <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
                       data={metrics.customerBreakdown?.byCountry ?? []}
@@ -638,7 +643,8 @@ export default function DashboardPage() {
                       formatter={(value: number, name: string) => [`${value} customers`, name]}
                     />
                   </PieChart>
-                </ResponsiveContainer>
+                  </ResponsiveContainer>
+                </div>
               )}
             </div>
 
@@ -650,7 +656,8 @@ export default function DashboardPage() {
               {(metrics.customerBreakdown?.byContinent ?? []).length === 0 ? (
                 <p className="py-8 text-center text-sm text-gray-400">No customer data</p>
               ) : (
-                <ResponsiveContainer width="100%" height={300}>
+                <div className="h-48 w-full md:h-72">
+                  <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
                       data={metrics.customerBreakdown?.byContinent ?? []}
@@ -673,7 +680,8 @@ export default function DashboardPage() {
                     />
                     <Legend />
                   </PieChart>
-                </ResponsiveContainer>
+                  </ResponsiveContainer>
+                </div>
               )}
             </div>
 

@@ -316,14 +316,17 @@ export default function ExpensesPage() {
       {/* Date navigation */}
       <div className="mb-6 flex items-center gap-3">
         <button
+          type="button"
           onClick={() => setDate(shiftDate(date, -1))}
           className="rounded-lg border border-gray-300 p-2 hover:bg-gray-50"
         >
+          <span className="sr-only">Previous day</span>
           <svg
             className="h-4 w-4"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
+            aria-hidden
           >
             <path
               strokeLinecap="round"
@@ -342,14 +345,17 @@ export default function ExpensesPage() {
           )}
         </div>
         <button
+          type="button"
           onClick={() => setDate(shiftDate(date, 1))}
           className="rounded-lg border border-gray-300 p-2 hover:bg-gray-50"
         >
+          <span className="sr-only">Next day</span>
           <svg
             className="h-4 w-4"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
+            aria-hidden
           >
             <path
               strokeLinecap="round"
@@ -417,7 +423,7 @@ export default function ExpensesPage() {
               <button
                 key={tab}
                 onClick={() => { setFilterStatus(tab); setSelectedIds(new Set()); }}
-                className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                   filterStatus === tab
                     ? 'bg-gray-900 text-white'
                     : 'text-gray-600 hover:bg-gray-100'
@@ -530,15 +536,18 @@ export default function ExpensesPage() {
                       -{formatCurrency(e.amount)}
                     </span>
                     <button
+                      type="button"
                       onClick={() => setShowDeleteConfirm(e.id)}
-                      className="rounded p-1 text-gray-300 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-500 group-hover:opacity-100"
+                      className="rounded p-2 text-gray-300 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-500 group-hover:opacity-100"
                       title="Delete expense"
                     >
+                      <span className="sr-only">Delete expense</span>
                       <svg
                         className="h-4 w-4"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
+                        aria-hidden
                       >
                         <path
                           strokeLinecap="round"
