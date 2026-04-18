@@ -105,15 +105,27 @@ export function notifyDriver(id: string): Promise<void> {
   return api.post(`/transfers/${id}/notify-driver`, {});
 }
 
-export function markTransferCollected(id: string, collectedAmount: number): Promise<TransferRow> {
-  return api.patch(`/transfers/${id}/collect`, { collectedAmount });
+export interface MarkTransferCollectedVars {
+  id: string;
+  collectedAmount: number;
+  paymentMethod: string;
+  cashAccountId: string;
+  transferIncomeAccountId: string;
+  date: string;
+}
+
+export function markTransferCollected(vars: MarkTransferCollectedVars): Promise<TransferRow> {
+  const { id, ...body } = vars;
+  return api.patch(`/transfers/${id}/collect`, body);
 }
 
 export function useMarkTransferCollected() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, collectedAmount }: { id: string; collectedAmount: number }) =>
-      markTransferCollected(id, collectedAmount),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['transfers'] }),
+    mutationFn: (vars: MarkTransferCollectedVars) => markTransferCollected(vars),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['transfers'] });
+      qc.invalidateQueries({ queryKey: ['card-settlements'] });
+    },
   });
 }

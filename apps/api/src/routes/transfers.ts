@@ -106,16 +106,45 @@ router.post('/:id/notify-driver', requirePermission(Permission.EditTransfers), a
 
 router.patch('/:id/collect', requirePermission(Permission.EditTransfers), validateBody(CollectTransferBodySchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { id } = req.params;
-    const { collectedAmount } = req.body as { collectedAmount: number };
-    const existing = await req.app.locals.deps.transferRepo.findById(id);
+    const id = String(req.params.id);
+    const body = req.body as {
+      collectedAmount: number;
+      paymentMethod: string;
+      cashAccountId: string;
+      transferIncomeAccountId: string;
+      date: string;
+    };
+    const transferRepo = req.app.locals.deps.transferRepo;
+    const accountingPort = req.app.locals.deps.accountingPort;
+
+    const existing = await transferRepo.findById(id);
     if (!existing) {
       res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Transfer not found' } });
       return;
     }
-    const updated = existing.withCollected(new Date(), collectedAmount);
-    await req.app.locals.deps.transferRepo.save(updated);
-    const refreshed = await req.app.locals.deps.transferRepo.findById(id);
+    if (existing.collectedAt) {
+      res.status(409).json({
+        success: false,
+        error: { code: 'ALREADY_COLLECTED', message: 'Transfer payment has already been collected' },
+      });
+      return;
+    }
+
+    const { recordTransferPayment } = await import('../use-cases/transfers/record-payment.js');
+    await recordTransferPayment(
+      {
+        transferId: id,
+        amount: body.collectedAmount,
+        paymentMethod: body.paymentMethod,
+        date: body.date,
+        cashAccountId: body.cashAccountId,
+        transferIncomeAccountId: body.transferIncomeAccountId,
+      },
+      { transfers: transferRepo, accounting: accountingPort },
+    );
+
+    await transferRepo.save(existing.withCollected(new Date(), body.collectedAmount));
+    const refreshed = await transferRepo.findById(id);
     res.json({ success: true, data: refreshed });
   } catch (err) { next(err); }
 });

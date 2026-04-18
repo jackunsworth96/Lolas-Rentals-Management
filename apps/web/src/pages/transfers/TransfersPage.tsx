@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useUIStore } from '../../stores/ui-store.js';
-import { useTransfers, useMarkTransferCollected, notifyDriver, moneyAmount, type TransferRow } from '../../api/transfers.js';
+import { useTransfers, notifyDriver, moneyAmount, type TransferRow } from '../../api/transfers.js';
 import { useToast } from '../../hooks/useToast.js';
 import { Badge } from '../../components/common/Badge.js';
 import { formatDate } from '../../utils/date.js';
@@ -8,6 +8,7 @@ import { formatCurrency } from '../../utils/currency.js';
 import { AddTransferModal } from '../../components/transfers/AddTransferModal.js';
 import { TransferPaymentModal } from '../../components/transfers/TransferPaymentModal.js';
 import { DriverPaymentModal } from '../../components/transfers/DriverPaymentModal.js';
+import { CollectTransferModal } from '../../components/transfers/CollectTransferModal.js';
 
 /** Returns true when the route originates from General Luna (GL→IAO direction).
  *  The driver needs to collect the customer from their accommodation, so the
@@ -49,6 +50,7 @@ export default function TransfersPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [paymentTarget, setPaymentTarget] = useState<TransferRow | null>(null);
   const [driverTarget, setDriverTarget] = useState<TransferRow | null>(null);
+  const [collectTarget, setCollectTarget] = useState<TransferRow | null>(null);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -67,7 +69,6 @@ export default function TransfersPage() {
   }, [activeTab, completedDateFrom, completedDateTo, todayStr]);
 
   const { data: transfers, isLoading } = useTransfers(storeId, transferFilters);
-  const markCollected = useMarkTransferCollected();
   const { toasts, pushToast } = useToast();
   const [notifyingId, setNotifyingId] = useState<string | null>(null);
 
@@ -122,10 +123,6 @@ export default function TransfersPage() {
     setActiveTab(tab);
     setSearch('');
     setSelectedIds(new Set());
-  }
-
-  function handleMarkCollected(t: TransferRow) {
-    markCollected.mutate({ id: t.id, collectedAmount: moneyAmount(t.totalPrice) });
   }
 
   async function handleNotifyDriver(t: TransferRow) {
@@ -385,11 +382,10 @@ export default function TransfersPage() {
                           </span>
                         ) : (
                           <button
-                            disabled={markCollected.isPending}
-                            onClick={() => handleMarkCollected(t)}
-                            className="rounded-md bg-teal-brand px-2 py-1 text-xs font-medium text-white hover:bg-teal-brand/80 disabled:opacity-50"
+                            onClick={() => setCollectTarget(t)}
+                            className="rounded-md bg-teal-brand px-2 py-1 text-xs font-medium text-white hover:bg-teal-brand/80"
                           >
-                            Mark Collected
+                            Collect
                           </button>
                         )}
                       </td>
@@ -482,6 +478,13 @@ export default function TransfersPage() {
           onClose={() => setDriverTarget(null)}
           transfer={driverTarget}
           storeId={storeId}
+        />
+      )}
+      {collectTarget && (
+        <CollectTransferModal
+          transfer={collectTarget}
+          onClose={() => setCollectTarget(null)}
+          onSuccess={(msg) => pushToast(msg, 'success')}
         />
       )}
 
