@@ -1,4 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
+import crypto from 'crypto';
+import { Money, type JournalLeg } from '@lolas/domain';
 import { authenticate } from '../middleware/authenticate.js';
 import {
   createMayaCheckout,
@@ -84,7 +86,10 @@ router.post(
     const signature = req.headers['x-maya-signature'] as string | undefined;
 
     if (!signature) {
-      res.status(400).json({ error: 'Missing signature' });
+      res.status(400).json({
+        success: false,
+        error: { code: 'MISSING_SIGNATURE', message: 'Missing signature' },
+      });
       return;
     }
 
@@ -92,7 +97,10 @@ router.post(
 
     const valid = verifyMayaWebhook(rawBody, signature);
     if (!valid) {
-      res.status(401).json({ error: 'Invalid signature' });
+      res.status(401).json({
+        success: false,
+        error: { code: 'INVALID_SIGNATURE', message: 'Invalid signature' },
+      });
       return;
     }
 
@@ -112,6 +120,21 @@ router.post(
         | null;
 
       if (record && record.status !== 'paid') {
+        // Amount parity: webhook payload must match stored checkout exactly.
+        if (
+          payload.totalAmount.currency !== 'PHP' ||
+          Number(payload.totalAmount.value) !== Number(record.amount_php)
+        ) {
+          res.status(400).json({
+            success: false,
+            error: {
+              code: 'AMOUNT_MISMATCH',
+              message: 'Webhook amount does not match stored checkout',
+            },
+          });
+          return;
+        }
+
         await supabase
           .from('maya_checkouts')
           .update({ status: 'paid', paid_at: new Date().toISOString() })
@@ -155,6 +178,72 @@ router.post(
             .update({ balance_due: newBalance })
             .eq('id', record.order_id);
         }
+
+        // AC-01: post a balanced journal entry — DR Maya/card clearing, CR Receivable.
+        const { data: acctData, error: acctErr } = await supabase
+          .from('chart_of_accounts')
+          .select('id, name, account_type')
+          .in('store_id', [record.store_id, 'company'])
+          .eq('is_active', true);
+        if (acctErr) {
+          throw new Error(`Maya webhook account lookup failed: ${acctErr.message}`);
+        }
+        const accounts = (acctData ?? []) as Array<{
+          id: string;
+          name: string;
+          account_type: string;
+        }>;
+
+        const clearingAccount =
+          accounts.find(
+            (a) =>
+              a.account_type === 'Asset' &&
+              (a.name.toLowerCase().includes('maya') ||
+                a.name.toLowerCase().includes('card')),
+          ) ??
+          accounts.find(
+            (a) => a.account_type === 'Asset' && a.name.toLowerCase().includes('bank'),
+          );
+
+        const receivableAccount = accounts.find(
+          (a) => a.account_type === 'Asset' && a.name.toLowerCase().includes('receivable'),
+        );
+
+        if (!clearingAccount) {
+          throw new Error(
+            'Maya webhook: no Maya/card/bank clearing asset account found in chart_of_accounts',
+          );
+        }
+        if (!receivableAccount) {
+          throw new Error(
+            'Maya webhook: no receivable asset account found in chart_of_accounts',
+          );
+        }
+
+        const amount = Money.php(Number(record.amount_php));
+        const description = `Order ${record.order_id} Maya payment ${payload.checkoutId}`;
+        const legs: JournalLeg[] = [
+          {
+            entryId: crypto.randomUUID(),
+            accountId: clearingAccount.id,
+            debit: amount,
+            credit: Money.zero(),
+            description,
+            referenceType: 'payment',
+            referenceId: paymentId,
+          },
+          {
+            entryId: crypto.randomUUID(),
+            accountId: receivableAccount.id,
+            debit: Money.zero(),
+            credit: amount,
+            description,
+            referenceType: 'payment',
+            referenceId: paymentId,
+          },
+        ];
+
+        await req.app.locals.deps.accountingPort.createTransaction(legs, record.store_id);
       }
     }
 

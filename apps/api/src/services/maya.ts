@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { z } from 'zod';
 
 const MAYA_BASE_URL = process.env.MAYA_BASE_URL ?? 'https://payments.maya.ph';
 
@@ -17,17 +18,19 @@ export interface MayaCheckoutResult {
   redirectUrl: string;
 }
 
-export interface MayaWebhookPayload {
-  checkoutId: string;
-  requestReferenceNumber: string;
-  status: 'PAYMENT_SUCCESS' | 'PAYMENT_FAILED' | 'PAYMENT_EXPIRED' | string;
-  totalAmount: {
-    value: number;
-    currency: string;
-  };
-  createdAt: string;
-  updatedAt: string;
-}
+export const MayaWebhookPayloadSchema = z.object({
+  checkoutId: z.string().min(1),
+  requestReferenceNumber: z.string().min(1),
+  status: z.string().min(1),
+  totalAmount: z.object({
+    value: z.coerce.number().positive(),
+    currency: z.string().min(3),
+  }),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+});
+
+export type MayaWebhookPayload = z.infer<typeof MayaWebhookPayloadSchema>;
 
 export async function createMayaCheckout(
   params: MayaCheckoutParams,
@@ -76,7 +79,6 @@ export async function createMayaCheckout(
     }
     console.error('[Maya] API error response:', errorDetail);
     console.error('[Maya] Request URL:', `${MAYA_BASE_URL}/checkout/v1/checkouts`);
-    console.error('[Maya] Secret key prefix:', process.env.MAYA_SECRET_KEY?.slice(0, 10));
     throw new Error(message);
   }
 
@@ -113,5 +115,5 @@ export function verifyMayaWebhook(rawBody: string, signature: string): boolean {
 }
 
 export function parseMayaWebhookPayload(body: unknown): MayaWebhookPayload {
-  return body as MayaWebhookPayload;
+  return MayaWebhookPayloadSchema.parse(body);
 }
