@@ -1367,6 +1367,9 @@ export function transferBookingConfirmationHtml({
  * Driver notification email sent when staff dispatch a transfer job.
  * Designed for mobile readability — large text, clear sections, no clutter.
  * All user/DB-supplied strings are routed through escapeHtml().
+ *
+ * direction: 'iao-to-gl' = inbound (airport pickup → accommodation dropoff)
+ *            'gl-to-iao' = outbound (accommodation pickup → airport dropoff)
  */
 export function driverNotificationHtml({
   customerName,
@@ -1378,6 +1381,7 @@ export function driverNotificationHtml({
   paxCount,
   totalPrice,
   driverCut,
+  direction,
 }: {
   customerName: string;
   route: string;
@@ -1388,13 +1392,24 @@ export function driverNotificationHtml({
   paxCount: number;
   totalPrice: number;
   driverCut: number;
+  direction: 'gl-to-iao' | 'iao-to-gl';
 }): string {
-  const pickupRow = pickupLocation
-    ? `<tr>
-        <td style="padding:10px 0 4px;color:#64748b;font-size:13px;width:120px;">Pickup / Hotel</td>
-        <td style="padding:10px 0 4px;font-weight:700;color:#1e293b;font-size:15px;">${escapeHtml(pickupLocation)}</td>
-      </tr>`
-    : '';
+  const isInbound = direction === 'iao-to-gl';
+
+  // For inbound (IAO→GL) the driver goes to the airport first.
+  // For outbound (GL→IAO) the driver collects from the customer's accommodation.
+  const pickupFromLabel = isInbound
+    ? 'IAO Airport'
+    : (pickupLocation ?? 'Customer Accommodation');
+
+  const dropoffAtLabel = isInbound
+    ? (pickupLocation ?? 'Customer Accommodation')
+    : 'IAO Airport';
+
+  const directionIcon = isInbound ? '✈️' : '🏨';
+  const directionLabel = isInbound
+    ? 'INBOUND — Airport → General Luna'
+    : 'OUTBOUND — General Luna → Airport';
 
   const pickupTimeRow = pickupTime
     ? `<tr>
@@ -1429,6 +1444,36 @@ export function driverNotificationHtml({
         </h1>
       </div>
 
+      <!-- Direction banner — most important info for the driver -->
+      <div style="background: #FCBC5A; border-radius: 12px; padding: 20px 24px; margin-bottom: 12px;">
+        <p style="margin: 0 0 6px; font-size: 11px; font-weight: 700; color: #7a5800; text-transform: uppercase; letter-spacing: 0.08em;">
+          ${directionIcon} Direction
+        </p>
+        <p style="margin: 0 0 16px; font-size: 14px; font-weight: 700; color: #363737;">
+          ${escapeHtml(directionLabel)}
+        </p>
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 0 0 10px; vertical-align: top; width: 50%;">
+              <p style="margin: 0 0 4px; font-size: 11px; font-weight: 700; color: #7a5800; text-transform: uppercase; letter-spacing: 0.06em;">
+                📍 Pickup From
+              </p>
+              <p style="margin: 0; font-size: 17px; font-weight: 900; color: #1e293b; line-height: 1.3;">
+                ${escapeHtml(pickupFromLabel)}
+              </p>
+            </td>
+            <td style="padding: 0 0 10px; vertical-align: top; padding-left: 16px;">
+              <p style="margin: 0 0 4px; font-size: 11px; font-weight: 700; color: #7a5800; text-transform: uppercase; letter-spacing: 0.06em;">
+                🏁 Drop Off At
+              </p>
+              <p style="margin: 0; font-size: 17px; font-weight: 900; color: #1e293b; line-height: 1.3;">
+                ${escapeHtml(dropoffAtLabel)}
+              </p>
+            </td>
+          </tr>
+        </table>
+      </div>
+
       <!-- Customer & Route -->
       <div style="background: white; border-radius: 12px; padding: 20px 24px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.07);">
         <p style="margin: 0 0 14px; font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em;">
@@ -1447,7 +1492,6 @@ export function driverNotificationHtml({
             <td style="padding:4px 0;color:#64748b;font-size:13px;">Passengers</td>
             <td style="padding:4px 0;font-weight:700;color:#1e293b;font-size:15px;">${paxCount} pax</td>
           </tr>
-          ${pickupRow}
           ${pickupTimeRow}
           ${flightNumberRow}
           ${flightArrivalRow}

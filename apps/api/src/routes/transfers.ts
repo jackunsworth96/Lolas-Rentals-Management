@@ -82,6 +82,15 @@ router.post('/:id/notify-driver', requirePermission(Permission.EditTransfers), a
       ? cut * transfer.paxCount
       : cut;
 
+    // Derive direction from the route string.
+    // If the first segment contains 'iao' or 'airport' the journey originates at the
+    // airport (IAO→GL inbound). Otherwise it originates in General Luna (GL→IAO outbound).
+    const routeFirstSegment = transfer.route.split(/→|->/).map((s: string) => s.trim().toLowerCase())[0] ?? '';
+    const direction: 'iao-to-gl' | 'gl-to-iao' =
+      routeFirstSegment.includes('iao') || routeFirstSegment.includes('airport')
+        ? 'iao-to-gl'
+        : 'gl-to-iao';
+
     const html = driverNotificationHtml({
       customerName: transfer.customerName,
       route: transfer.route,
@@ -92,6 +101,7 @@ router.post('/:id/notify-driver', requirePermission(Permission.EditTransfers), a
       paxCount: transfer.paxCount,
       totalPrice: transfer.totalPrice.toNumber(),
       driverCut,
+      direction,
     });
 
     await sendEmail({
