@@ -13,6 +13,7 @@ import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { SEO } from '../../components/seo/SEO.js';
 import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
+import LolasChat from '../../components/chat/LolasChat.js';
 import type { Addon, TransferDetails, RenterInfo, PaymentMethodOption } from '../../components/basket/basket-types.js';
 
 import pawPrint from '../../assets/Paw Print.svg';
@@ -611,6 +612,7 @@ export default function BasketPage() {
             </button>
           </div>
         </div>
+        <LolasChat />
       </PageLayout>
       </>
     );
@@ -870,6 +872,8 @@ export default function BasketPage() {
           </div>
         ))}
       </div>
+
+      <LolasChat />
     </PageLayout>
     </>
   );

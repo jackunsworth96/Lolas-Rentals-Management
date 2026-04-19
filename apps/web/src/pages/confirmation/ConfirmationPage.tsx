@@ -10,6 +10,7 @@ import { PrimaryCtaButton } from '../../components/public/PrimaryCtaButton.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { SEO } from '../../components/seo/SEO.js';
 import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
+import LolasChat from '../../components/chat/LolasChat.js';
 
 import lolaVideo from '../../assets/Checkout_Lola.mp4';
 import pawPrint from '../../assets/Paw Print.svg';
@@ -446,6 +447,8 @@ export default function ConfirmationPage() {
           50% { transform: translateY(-12px); }
         }
       `}</style>
+
+      <LolasChat />
     </PageLayout>
   );
 }

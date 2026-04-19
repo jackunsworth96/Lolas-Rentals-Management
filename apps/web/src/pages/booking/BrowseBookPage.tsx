@@ -9,8 +9,7 @@ import { BrowseBookVehicleSection } from './BrowseBookVehicleSection.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { SEO } from '../../components/seo/SEO.js';
 import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
-import { WHATSAPP_URL } from '../../config/contact.js';
-import chatIcon from '../../assets/Buttons/chat icon.svg';
+import LolasChat from '../../components/chat/LolasChat.js';
 import { hasBookingDatetimeWithTime } from '../../utils/booking-datetime.js';
 import SectionDivider from '../../components/home/SectionDivider.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
@@ -402,18 +401,6 @@ export default function BrowseBookPage() {
         <ReviewsSection />
       </FadeUpSection>
 
-      <div className="fixed bottom-28 right-6 z-40 md:bottom-12 md:right-12">
-        <a
-          href={WHATSAPP_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex h-16 w-16 items-center justify-center rounded-full bg-cream-brand shadow-xl ring-2 ring-charcoal-brand/15 transition-all duration-300 ease-in-out hover:scale-110 hover:opacity-95 active:scale-95"
-          aria-label="Chat with us on WhatsApp"
-        >
-          <img src={chatIcon} alt="" className="h-12 w-12 object-contain" width={48} height={48} />
-        </a>
-      </div>
-
       <div className="fixed bottom-28 left-4 right-4 z-[60] flex flex-col-reverse items-stretch gap-2 md:bottom-8 md:left-auto md:right-8 md:items-end">
         {toasts.map((t) => (
           <div
@@ -426,6 +413,8 @@ export default function BrowseBookPage() {
           </div>
         ))}
       </div>
+
+      <LolasChat />
     </PageLayout>
   );
 }
