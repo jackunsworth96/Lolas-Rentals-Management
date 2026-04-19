@@ -241,7 +241,7 @@ export default function BrowseBookPage() {
   }, [isLoading, isSearched, availableModels]);
 
   return (
-    <PageLayout title="Browse & Book | Lola's Rentals" showBasketIcon>
+    <PageLayout title="Browse & Book | Lola's Rentals" showBasketIcon unclipLeftFloral>
       <SEO
         title="Reserve a Scooter, Motorbike or Tuktuk — Siargao Island"
         description="Browse and reserve Honda Beat scooters, motorbikes, tuktuks and tricycles online. Pick your dates, choose your vehicle, instant confirmation. Lola's Rentals, General Luna, Siargao."
@@ -314,7 +314,7 @@ export default function BrowseBookPage() {
           </div>
         </div>
 
-        <div ref={vehicleGridRef}>
+        <div ref={vehicleGridRef} className="relative z-10 bg-cream-brand">
           <BrowseBookVehicleSection
             isSearched={isSearched}
             isLoading={isLoading}
@@ -327,7 +327,7 @@ export default function BrowseBookPage() {
 
       {/* ── Below-fold trust builders ──────────────────────────── */}
 
-      <div className="relative z-0" style={{ marginTop: -2, marginBottom: -2 }}>
+      <div className="relative z-0 pointer-events-none -mb-16 md:-mb-24">
         <SectionDivider variant="bold" />
       </div>
 

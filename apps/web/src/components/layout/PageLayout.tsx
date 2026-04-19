@@ -30,6 +30,11 @@ export interface PageLayoutProps {
   contentBackground?: 'sand' | 'cream' | 'light-cream';
   /** Paint florals above main content (pointer-events-none; light opacity for readability). */
   elevateFlorals?: boolean;
+  /**
+   * Reserve / similar: shell stops clipping the fixed left floral horizontally, and that flower
+   * paints at z-20 so it is not clipped under main.
+   */
+  unclipLeftFloral?: boolean;
 }
 
 const NAV_ITEMS = [
@@ -63,6 +68,7 @@ export function PageLayout({
   floralScrollFreezeRef,
   contentBackground = 'sand',
   elevateFlorals = false,
+  unclipLeftFloral = false,
 }: PageLayoutProps) {
   const { pathname } = useLocation();
   const basketCount = useBookingStore((s) => s.basket.length);
@@ -142,6 +148,7 @@ export function PageLayout({
   const floralOnTop = Boolean(floralScrollFreezeRef);
   /** Parallax / freeze only when ref is set; elevateFlorals only raises z-index + opacity. */
   const floralZ = floralScrollFreezeRef ? 'z-[10]' : elevateFlorals ? 'z-[25]' : 'z-0';
+  const leftFloralZ = unclipLeftFloral ? 'z-20' : floralZ;
   const leftFloralStyle = floralOnTop
     ? { transform: `translate3d(0, ${floralShift}px, 0)`, willChange: 'transform' as const }
     : undefined;
@@ -154,7 +161,9 @@ export function PageLayout({
 
   return (
     <div
-      className={`relative min-h-screen overflow-x-clip font-body animate-page-fade-in ${
+      className={`relative min-h-screen font-body animate-page-fade-in ${
+        unclipLeftFloral ? 'overflow-x-visible' : 'overflow-x-clip'
+      } ${
         contentBackground === 'light-cream'
           ? 'bg-[#FAF6F0]'
           : contentBackground === 'cream'
@@ -201,7 +210,7 @@ export function PageLayout({
         <img
           src={flowerLeft}
           alt=""
-          className={`pointer-events-none ${floralPosition} left-0 top-0 ${floralZ} w-32 object-contain md:w-48 ${
+          className={`pointer-events-none ${floralPosition} left-0 top-0 ${leftFloralZ} w-32 object-contain md:w-48 ${
             floralOnTop || elevateFlorals ? 'opacity-[0.42]' : ''
           }`}
           style={leftFloralStyle}
