@@ -243,6 +243,8 @@ export function createBookingAdapter(): BookingPort {
           p.transfer_amount = input.transferAmount;
         if (input.transferPaxCount != null && input.transferPaxCount > 0)
           p.transfer_pax_count = input.transferPaxCount;
+        const acc = input.accommodationName?.trim();
+        if (acc) p.accommodation_name = acc;
         return Object.keys(p).length > 0 ? p : null;
       })();
 

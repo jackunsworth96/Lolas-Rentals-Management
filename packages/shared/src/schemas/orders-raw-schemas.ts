@@ -22,6 +22,7 @@ export type OrdersRawStatus = z.infer<typeof OrdersRawStatusSchema>;
  * Matches the `orders_raw` Supabase table (migrations 011, 035, 038, 041, 042, 082, 089).
  * Direct-booking quote totals are stored in `web_quote_raw` (top-level column, migration 089).
  * For legacy rows the value may be null; the payload jsonb field is excluded from inbox queries.
+ * Direct bookings may store `accommodation_name` inside `payload` until a top-level column is added (migration TBD).
  */
 export interface OrdersRawRow {
   id: string;
@@ -85,6 +86,8 @@ export const SubmitDirectBookingRequestSchema = z.object({
   transferAmount: z.number().min(0).optional(),
   /** Number of passengers for the transfer (defaults to 1 if not provided). */
   transferPaxCount: z.number().int().positive().optional(),
+  /** Where the guest is staying (optional). Stored in `orders_raw.payload.accommodation_name` until a dedicated column exists. */
+  accommodationName: z.string().max(500).optional(),
 });
 
 export type SubmitDirectBookingInput = z.infer<typeof SubmitDirectBookingRequestSchema>;

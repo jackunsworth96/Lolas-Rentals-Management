@@ -55,6 +55,8 @@ export interface DirectBookingInsert {
   helmetCount?: number | null;
   transferAmount?: number | null;
   transferPaxCount?: number | null;
+  /** Guest accommodation note; persisted on orders_raw.payload.accommodation_name when no DB column. */
+  accommodationName?: string | null;
 }
 
 export interface DirectBookingResult {

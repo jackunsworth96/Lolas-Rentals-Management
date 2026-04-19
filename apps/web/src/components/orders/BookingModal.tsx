@@ -848,6 +848,17 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
                           </dd>
                         </div>
                       )}
+                      {isDirect &&
+                        String(
+                          (rawOrder.payload as Record<string, unknown> | null)?.accommodation_name ?? '',
+                        ).trim() !== '' && (
+                        <div className="flex justify-between gap-2">
+                          <dt className="shrink-0 text-gray-500">Staying at</dt>
+                          <dd className="font-medium text-right">
+                            {String((rawOrder.payload as Record<string, unknown> | null)?.accommodation_name)}
+                          </dd>
+                        </div>
+                      )}
                     </>
                   ) : (
                     <>

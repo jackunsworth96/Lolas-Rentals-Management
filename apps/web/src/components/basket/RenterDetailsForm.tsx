@@ -126,6 +126,18 @@ export function RenterDetailsForm({ info, onChange, errors }: Props) {
           <p className="mt-1 text-[11px] text-red-500">{errors.nationality}</p>
         )}
       </div>
+
+      <div className="md:col-span-2">
+        <label className={LABEL_CLS}>Where are you staying? (optional)</label>
+        <input
+          type="text"
+          value={info.accommodationName ?? ''}
+          onChange={(e) => update('accommodationName', e.target.value)}
+          placeholder="e.g. Kermit Resort, Cloud 9"
+          autoComplete="off"
+          className={INPUT_CLS}
+        />
+      </div>
     </div>
   );
 }

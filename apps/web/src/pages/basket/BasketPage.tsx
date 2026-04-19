@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client.js';
-import { useBookingStore } from '../../stores/bookingStore.js';
+import { useBookingStore, type BasketItem } from '../../stores/bookingStore.js';
 import { useToast } from '../../hooks/useToast.js';
 import { BasketVehicleCard } from '../../components/basket/BasketVehicleCard.js';
 import { AddOnsSection, isNinePmReturnAddonName } from '../../components/basket/AddOnsSection.js';
@@ -260,7 +260,13 @@ export default function BasketPage() {
     return () => window.clearTimeout(t);
   }, [ninePmRemovedNotice]);
   const [transfer, setTransfer] = useState<TransferDetails | null>(null);
-  const [renter, setRenter] = useState<RenterInfo>({ fullName: '', email: '', phone: '', nationality: '' });
+  const [renter, setRenter] = useState<RenterInfo>({
+    fullName: '',
+    email: '',
+    phone: '',
+    nationality: '',
+    accommodationName: '',
+  });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [transferErrors, setTransferErrors] = useState<Record<string, string>>({});
   const [helmetCount, setHelmetCount] = useState(1);
@@ -493,6 +499,9 @@ export default function BasketPage() {
             transferAmount: (transfer?.totalPrice ?? 0) > 0 ? (transfer?.totalPrice ?? 0) : undefined,
             webPaymentMethod: paymentMethodId || undefined,
             ...(showHelmetSelector ? { helmet_count: helmetCount } : {}),
+            ...(renter.accommodationName?.trim()
+              ? { accommodationName: renter.accommodationName.trim() }
+              : {}),
           },
         );
         orderRefs.push(result.orderReference);

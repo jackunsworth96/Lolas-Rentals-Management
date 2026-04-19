@@ -49,6 +49,14 @@ function formatNextAvailableWeekdayDayMonth(iso: string): string {
   return `${weekday} ${day} ${month}`;
 }
 
+/** Urgent scarcity line for low stock (browse grid badge). */
+function scarcityUrgencyCopy(availableCount: number): string {
+  if (availableCount <= 0) return 'Unavailable';
+  if (availableCount === 1) return 'Last one available!';
+  if (availableCount === 2) return 'Only 2 left!';
+  return 'Limited availability';
+}
+
 interface VehicleCardProps {
   modelId: string;
   modelName: string;
@@ -206,7 +214,7 @@ export function VehicleCard({
           {(isUnavailable || availableCount <= 5) && (
             <div className="absolute left-4 top-4 flex gap-2">
               <span className={`font-lato rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider shadow-sm ${isUnavailable ? 'bg-charcoal-brand/10 text-charcoal-brand/60' : 'bg-teal-brand text-white'}`}>
-                {isUnavailable ? 'Unavailable' : `${availableCount} available`}
+                {scarcityUrgencyCopy(isUnavailable ? 0 : availableCount)}
               </span>
             </div>
           )}
