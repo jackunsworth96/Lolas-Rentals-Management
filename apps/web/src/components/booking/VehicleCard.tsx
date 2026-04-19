@@ -5,6 +5,7 @@ import { resolveImage } from '../../utils/vehicle-images.js';
 import { formatPhpNumber } from '../../utils/currency.js';
 import { hasBookingDatetimeWithTime } from '../../utils/booking-datetime.js';
 import { BrandCard } from '../public/BrandCard.js';
+import basketIcon from '../../assets/Buttons/basket icon.svg';
 
 const VEHICLE_NAME_MAP: Record<string, string> = {
   'Honda Beat': 'Scooter Honda Beat 110cc',
@@ -270,7 +271,18 @@ export function VehicleCard({
               >
                 {addLoading
                   ? <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[#363737] border-t-transparent" />
-                  : '🛒 Add to Basket'}
+                  : (
+                    <>
+                      <img
+                        src={basketIcon}
+                        alt=""
+                        className="h-[1.65rem] w-[1.65rem] shrink-0 object-contain"
+                        width={27}
+                        height={27}
+                      />
+                      <span>Add to Basket</span>
+                    </>
+                  )}
               </button>
             ) : (
               <div className="w-full">
