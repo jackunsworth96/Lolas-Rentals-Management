@@ -373,6 +373,19 @@ export default function ConfirmationPage() {
                     <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.6, opacity: 0.8 }}>
                       Please have a valid driver&apos;s licence ready at pickup. International licences are accepted.
                     </p>
+                    {!basketHadTukRef.current && (
+                      <p className="font-lato mt-2" style={{ fontSize: 13, color: '#363737', opacity: 0.65 }}>
+                        Don&apos;t have one?{' '}
+                        <a
+                          href="https://go.idaoffers.com/aff_c?offer_id=13&aff_id=62491"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium text-teal-brand hover:underline"
+                        >
+                          Get yours online →
+                        </a>
+                      </p>
+                    )}
                   </div>
                 </Step>
                 <Step>
@@ -399,25 +412,6 @@ export default function ConfirmationPage() {
                 </Step>
               </Stepper>
             </FadeUpSection>
-
-            {!basketHadTukRef.current && (
-              <div className="rounded-lg border border-charcoal-brand/10 bg-sand-brand/50 p-4 mt-4">
-                <p className="font-lato text-sm font-semibold text-charcoal-brand mb-1">
-                  International Driving Licence
-                </p>
-                <p className="font-lato text-sm text-charcoal-brand/70 mb-2">
-                  Riding in the Philippines requires a valid international driving licence or local Philippine licence.
-                </p>
-                <a
-                  href="https://go.idaoffers.com/aff_c?offer_id=13&aff_id=62491"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-lato text-sm font-medium text-teal-brand hover:underline"
-                >
-                  Get your international licence online →
-                </a>
-              </div>
-            )}
 
             <div className="mt-6 max-w-xs mx-auto">
               <button
