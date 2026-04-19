@@ -256,7 +256,7 @@ export default function BrowseBookPage() {
           "description": "Online scooter, motorbike, tuktuk and tricycle rental booking for Siargao Island"
         }}
       />
-      <div className="relative mx-auto max-w-7xl overflow-hidden pt-4 md:px-4">
+      <div className="relative z-10 mx-auto max-w-7xl overflow-visible pt-4 md:px-4">
         <HeroFloatingClouds variant="functional" />
         <section className="relative z-10 mb-6">
           <SearchBar
@@ -327,7 +327,7 @@ export default function BrowseBookPage() {
 
       {/* ── Below-fold trust builders ──────────────────────────── */}
 
-      <div style={{ marginTop: -2, marginBottom: -2 }}>
+      <div className="relative z-0" style={{ marginTop: -2, marginBottom: -2 }}>
         <SectionDivider variant="bold" />
       </div>
 
