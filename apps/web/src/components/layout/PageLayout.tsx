@@ -31,8 +31,8 @@ export interface PageLayoutProps {
   /** Paint florals above main content (pointer-events-none; light opacity for readability). */
   elevateFlorals?: boolean;
   /**
-   * Reserve / similar: shell stops clipping horizontal overflow, and both florals
-   * paint at z-20 so they are not clipped under main.
+   * Reserve / similar: shell stops clipping horizontal overflow; left floral at z-20
+   * above main, right floral at z-10 so fixed chat widgets (higher z-index) stay on top.
    */
   unclipLeftFloral?: boolean;
 }
@@ -149,7 +149,7 @@ export function PageLayout({
   /** Parallax / freeze only when ref is set; elevateFlorals only raises z-index + opacity. */
   const floralZ = floralScrollFreezeRef ? 'z-[10]' : elevateFlorals ? 'z-[25]' : 'z-0';
   const leftFloralZ = unclipLeftFloral ? 'z-20' : floralZ;
-  const rightFloralZ = unclipLeftFloral ? 'z-20' : floralZ;
+  const rightFloralZ = unclipLeftFloral ? 'z-10' : floralZ;
   const leftFloralStyle = floralOnTop
     ? { transform: `translate3d(0, ${floralShift}px, 0)`, willChange: 'transform' as const }
     : undefined;
