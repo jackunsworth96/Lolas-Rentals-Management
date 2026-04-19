@@ -267,7 +267,6 @@ export async function submitDirectBooking(
     }));
 
     const charityDonation = input.charityDonation ?? 0;
-    const transferAmount = input.transferAmount ?? 0;
 
     const waiverUrl = `${process.env.WEB_URL ?? 'https://lolasrentals.com'}/waiver/${orderReference}`;
     const whatsappNumber = process.env.WHATSAPP_NUMBER ?? '639XXXXXXXXX';
@@ -292,7 +291,9 @@ export async function submitDirectBooking(
         hasTransfer,
         transferType: input.transferType ?? undefined,
         transferRoute,
-        transferAmount,
+        // grandTotal already includes transfer (and charity) from webQuoteRaw above — do not pass
+        // transfer again or bookingConfirmationHtml would double-add it (displayTotal = total + transfer).
+        transferAmount: 0,
         waiverUrl,
         whatsappNumber,
         cancelUrl: `${process.env.WEB_URL ?? 'https://lolasrentals.com'}/book/cancel/${orderReference}?token=${cancellationToken}`,

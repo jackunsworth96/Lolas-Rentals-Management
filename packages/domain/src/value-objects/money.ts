@@ -90,4 +90,9 @@ export class Money {
       ? `-${CURRENCY_SYMBOL}${formatted}`
       : `${CURRENCY_SYMBOL}${formatted}`;
   }
+
+  /** Ensures JSON.stringify (e.g. Express res.json) preserves peso amount — private fields are not serialized. */
+  toJSON(): { amount: number } {
+    return { amount: this.amount };
+  }
 }
