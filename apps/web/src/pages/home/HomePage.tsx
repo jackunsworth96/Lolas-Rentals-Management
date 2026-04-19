@@ -390,10 +390,10 @@ function HeroSection() {
             lineHeight: 1.15,
             marginBottom: 24,
           }}
-          aria-label="Siargao's #1 Trusted Rental — Book in 2 Minutes"
+          aria-label="Siargao's Most Loved Rental — Book in 2 Minutes"
         >
           <AnimatedHeading
-            text="Siargao's #1 Trusted Rental"
+            text="Siargao's Most Loved Rental"
             tag="span"
             className="block text-teal-brand"
             delay={20}
