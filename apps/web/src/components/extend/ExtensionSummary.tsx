@@ -6,6 +6,7 @@ interface Props {
   extensionCost: number | null;
   extensionDays: number;
   originalDays: number;
+  newReturnDisplay: string;
   loading: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -16,6 +17,7 @@ export function ExtensionSummary({
   extensionCost,
   extensionDays,
   originalDays,
+  newReturnDisplay,
   loading,
   onConfirm,
   onCancel,
@@ -28,6 +30,13 @@ export function ExtensionSummary({
       <h2 className="mb-8 font-headline text-2xl font-black text-teal-brand">Summary of Charges</h2>
 
       <div className="space-y-5">
+        <div className="flex items-center justify-between">
+          <span className="font-bold text-charcoal-brand/70">New Return</span>
+          <span className="font-black text-teal-brand text-right">{newReturnDisplay}</span>
+        </div>
+
+        <div className="border-b-2 border-sand-brand pb-1" />
+
         <div className="flex items-center justify-between">
           <span className="font-bold text-charcoal-brand/70">Original Cost ({originalDays} Day{originalDays !== 1 ? 's' : ''})</span>
           <span className="font-black text-charcoal-brand">{formatCurrency(originalTotal)}</span>

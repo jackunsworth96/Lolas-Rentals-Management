@@ -58,7 +58,10 @@ export function ExtendCalendar({ currentDropoff, selectedDate, selectedTime, onS
   function handleDayClick(day: number) {
     const clicked = new Date(viewYear, viewMonth, day);
     if (clicked <= dropoffDate) return;
-    onSelectDate(clicked.toISOString().slice(0, 10));
+    // Build YYYY-MM-DD from local date components — toISOString() converts to UTC
+    // which shifts the date back by UTC+8, causing a consistent off-by-one in Manila.
+    const iso = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    onSelectDate(iso);
   }
 
   const selectedDateObj = selectedDate ? new Date(selectedDate) : null;
@@ -132,7 +135,8 @@ export function ExtendCalendar({ currentDropoff, selectedDate, selectedTime, onS
 
       {selectedDate && (
         <p className="mt-6 text-center text-sm font-bold italic text-teal-brand">
-          New Return: {formatLongDate(selectedDate)} ({additionalDays} Additional Day{additionalDays !== 1 ? 's' : ''})
+          New Return: {formatLongDate(selectedDate)} at {TIME_SLOTS.find(s => s.value === selectedTime)?.label ?? selectedTime}{' '}
+          ({additionalDays} Additional Day{additionalDays !== 1 ? 's' : ''})
         </p>
       )}
     </section>

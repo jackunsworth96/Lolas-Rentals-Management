@@ -33,6 +33,19 @@ type PageState = 'lookup' | 'rental' | 'confirmed';
 
 const DEFAULT_TIME = '16:45';
 
+function formatNewReturn(date: string, time: string): string {
+  // Parse YYYY-MM-DD as local midnight to avoid UTC shift in Manila (UTC+8)
+  const [y, m, d] = date.split('-').map(Number);
+  const dateLabel = new Date(y, m - 1, d).toLocaleDateString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric',
+  });
+  const [h, min] = time.split(':').map(Number);
+  const h12 = h > 12 ? h - 12 : h === 0 ? 12 : h;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const timeLabel = `${h12}:${String(min).padStart(2, '0')} ${ampm}`;
+  return `${dateLabel} at ${timeLabel}`;
+}
+
 export default function ExtendPage() {
   const [pageState, setPageState] = useState<PageState>('lookup');
   const [lookupLoading, setLookupLoading] = useState(false);
@@ -158,7 +171,16 @@ export default function ExtendPage() {
                 </FadeUpSection>
                 {selectedDate && (
                   <FadeUpSection>
-                    <ExtensionSummary originalTotal={order.originalTotal} extensionCost={extensionCost} extensionDays={extensionDays} originalDays={order.rentalDays} loading={confirmLoading || quoteLoading} onConfirm={handleConfirm} onCancel={handleReset} />
+                    <ExtensionSummary
+                      originalTotal={order.originalTotal}
+                      extensionCost={extensionCost}
+                      extensionDays={extensionDays}
+                      originalDays={order.rentalDays}
+                      newReturnDisplay={formatNewReturn(selectedDate, selectedTime)}
+                      loading={confirmLoading || quoteLoading}
+                      onConfirm={handleConfirm}
+                      onCancel={handleReset}
+                    />
                   </FadeUpSection>
                 )}
                 {lookupError && (
@@ -186,9 +208,12 @@ export default function ExtendPage() {
 }
 
 function ConfirmedView({ dropoff, balance }: { dropoff: string; balance: number }) {
-  const formatted = new Date(dropoff).toLocaleDateString('en-US', {
+  // dropoff is a naive local datetime string (e.g. "2026-04-21T16:45:00") — no UTC conversion needed
+  const d = new Date(dropoff);
+  const dateFormatted = d.toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   });
+  const timeFormatted = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   return (
     <FadeUpSection>
       <div className="space-y-8 text-center">
@@ -198,8 +223,9 @@ function ConfirmedView({ dropoff, balance }: { dropoff: string; balance: number 
         <div className="font-lato inline-block rounded-full bg-teal-brand px-5 py-2 text-sm font-black text-white">Extension Confirmed!</div>
         <h2 className="font-headline text-3xl font-black text-teal-brand">Enjoy the extra time!</h2>
         <div className="rounded-4xl bg-cream-brand p-8 shadow-[0_10px_30px_-5px_rgba(26,122,110,0.1)]">
-          <p className="font-lato text-[10px] font-black uppercase tracking-widest text-teal-brand/60">New Return Date</p>
-          <p className="font-lato mt-2 text-2xl font-black text-teal-brand">{formatted}</p>
+          <p className="font-lato text-[10px] font-black uppercase tracking-widest text-teal-brand/60">New Return Date &amp; Time</p>
+          <p className="font-lato mt-2 text-2xl font-black text-teal-brand">{dateFormatted}</p>
+          <p className="font-lato mt-1 text-lg font-bold text-teal-brand/70">{timeFormatted}</p>
           {balance > 0 && (
             <div className="mt-6 border-t-2 border-sand-brand pt-6">
               <p className="font-lato text-[10px] font-black uppercase tracking-widest text-gold-brand/60">Balance Due</p>
