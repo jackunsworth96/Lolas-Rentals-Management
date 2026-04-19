@@ -3,6 +3,9 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { Readable } from 'node:stream';
 import { logger } from '../lib/logger.js';
+import { getSupabaseClient } from '../adapters/supabase/client.js';
+
+const STORE_ID = 'store-lolas';
 
 const chatLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -26,7 +29,126 @@ const ChatBodySchema = z.object({
     .max(10),
 });
 
-const SYSTEM_PROMPT = `You are Lola's Assistant, the friendly on-site concierge for Lola's Rentals & Tours Inc. in General Luna, Siargao Island, Philippines.
+// ── Live pricing cache ────────────────────────────────────────────────────────
+
+let pricingCache: { data: string; fetchedAt: number } | null = null;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+interface VehiclePricingRow {
+  model_name: string;
+  min_days: number;
+  max_days: number;
+  daily_rate: number;
+}
+
+interface TransferRouteRow {
+  route: string;
+  van_type: string | null;
+  price: number;
+  pricing_type: string;
+}
+
+async function fetchLivePricing(): Promise<string> {
+  const now = Date.now();
+  if (pricingCache && now - pricingCache.fetchedAt < CACHE_TTL) {
+    return pricingCache.data;
+  }
+
+  const sb = getSupabaseClient();
+
+  // Join vehicle_model_pricing with vehicle_models to get readable names.
+  const [vehicleResult, transferResult] = await Promise.all([
+    sb
+      .from('vehicle_model_pricing')
+      .select('daily_rate, min_days, max_days, vehicle_models!inner(name)')
+      .eq('store_id', STORE_ID)
+      .order('min_days'),
+    sb
+      .from('transfer_routes')
+      .select('route, van_type, price, pricing_type')
+      .or(`store_id.eq.${STORE_ID},store_id.is.null`)
+      .eq('is_active', true)
+      .order('van_type'),
+  ]);
+
+  if (vehicleResult.error) throw new Error(`Pricing fetch failed: ${vehicleResult.error.message}`);
+  if (transferResult.error) throw new Error(`Transfer fetch failed: ${transferResult.error.message}`);
+
+  // ── Format vehicle pricing ────────────────────────────────────────────────
+
+  // Each row: { daily_rate, min_days, max_days, vehicle_models: { name } }
+  const rawRows = (vehicleResult.data ?? []) as unknown as Array<{
+    daily_rate: number;
+    min_days: number;
+    max_days: number;
+    vehicle_models: { name: string };
+  }>;
+
+  // Group brackets by model name, preserving insertion order.
+  const byModel = new Map<string, VehiclePricingRow[]>();
+  for (const row of rawRows) {
+    const name = row.vehicle_models?.name ?? 'Unknown';
+    if (!byModel.has(name)) byModel.set(name, []);
+    byModel.get(name)!.push({
+      model_name: name,
+      min_days: Number(row.min_days),
+      max_days: Number(row.max_days),
+      daily_rate: Number(row.daily_rate),
+    });
+  }
+
+  const vehicleLines: string[] = [];
+  for (const [modelName, brackets] of byModel) {
+    const sorted = [...brackets].sort((a, b) => a.min_days - b.min_days);
+    const bracketParts = sorted.map((b) => {
+      const range =
+        b.min_days === b.max_days
+          ? `${b.min_days} day`
+          : b.max_days >= 999
+          ? `${b.min_days}+ days`
+          : `${b.min_days}–${b.max_days} days`;
+      return `${range} ₱${Math.round(b.daily_rate).toLocaleString()}/day`;
+    });
+    vehicleLines.push(`- ${modelName}: ${bracketParts.join(' | ')}`);
+  }
+
+  // ── Format transfer pricing ───────────────────────────────────────────────
+
+  const transfers = (transferResult.data ?? []) as unknown as TransferRouteRow[];
+  const transferLines: string[] = [];
+  for (const t of transfers) {
+    const vanLabel = t.van_type
+      ? t.van_type
+          .split(/[\s_-]+/)
+          .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+          .join(' ')
+      : 'Transfer';
+    const priceStr = `₱${Math.round(Number(t.price)).toLocaleString()}`;
+    const suffix = t.pricing_type === 'per_head' ? 'per person' : 'flat';
+    transferLines.push(`- ${vanLabel}: ${priceStr} ${suffix}`);
+  }
+
+  // ── Assemble ──────────────────────────────────────────────────────────────
+
+  const block = [
+    'CURRENT LIVE PRICING (fetched in real-time):',
+    '',
+    'Vehicle Pricing:',
+    ...(vehicleLines.length > 0 ? vehicleLines : ['- Pricing unavailable — please check the website.']),
+    '',
+    'Airport Transfers (IAO / Sayak Airport ↔ General Luna, both directions):',
+    ...(transferLines.length > 0 ? transferLines : ['- Transfer pricing unavailable — please check the website.']),
+    'Customers can add a transfer in the basket when booking a rental, or book a standalone transfer from the Transfers page.',
+  ].join('\n');
+
+  pricingCache = { data: block, fetchedAt: now };
+  return block;
+}
+
+// ── System prompt ─────────────────────────────────────────────────────────────
+// {{LIVE_PRICING}} is replaced at request time with the live pricing block.
+
+const SYSTEM_PROMPT_TEMPLATE = `You are Lola's Assistant, the friendly on-site concierge for Lola's Rentals & Tours Inc. in General Luna, Siargao Island, Philippines.
 
 TONE
 - Warm, friendly, concise. Keep answers to 2-3 sentences whenever possible.
@@ -39,11 +161,9 @@ ABOUT LOLA'S
 - Open every day, 7:00 AM – 7:00 PM (Mon–Sun).
 - Siargao's #1 trusted rental — every booking directly funds animal welfare on the island.
 
-FLEET & PRICING (starting from)
-- Scooter — Honda Beat 110cc, up to 2 persons, optional surf rack. From ₱465/day. Perfect for cruising town and visiting the island's best spots.
-- TukTuk — Bajaj RE 250cc, 3–4 persons. From ₱1,595/day. A bucket-list way to explore Siargao as a group.
-- Motorbikes and tricycles may also be available depending on the dates — encourage the customer to check live availability on the Reserve page for exact pricing on their chosen dates.
+{{LIVE_PRICING}}
 - Longer rentals get cheaper per-day rates (pricing brackets). Final price is always shown on the website before booking.
+- Motorbikes and tricycles may also be available depending on the dates — encourage the customer to check live availability on the Reserve page for exact pricing on their chosen dates.
 
 WHAT'S INCLUDED WITH EVERY SCOOTER RENTAL (free)
 Helmet · Full Tank of Fuel · Paw Card · Rain Coat · First Aid Kit · Repair Kit · Phone Mount · Seat Cloth · 5L Dry Bag · Free Riding Lesson · Crash Armour.
@@ -54,12 +174,6 @@ Peace of Mind damage cover · Surf Rack · Bungee Cord · Delivery & Collection 
 HELMETS
 - One sanitised helmet is included free. A second can be requested in the basket.
 - Helmets are required by law and must be worn at all times.
-
-AIRPORT TRANSFERS (IAO / Sayak Airport ↔ General Luna, both directions)
-- Shared Van — ₱450 per person
-- Private Van — ₱3,500 fixed (whole van)
-- Private TukTuk — ₱1,800 fixed
-Customers can add a transfer in the basket when booking a rental, or book a standalone transfer from the Transfers page.
 
 HOW TO BOOK
 - Direct on this website: pick dates → choose a vehicle → add extras → enter your details → place the order. Confirmation is instant.
@@ -104,6 +218,19 @@ STYLE RULES
 - Prefer short bullet lists for multi-part answers, but keep them under 4 bullets.
 - Don't mention that you're an AI or that you have a system prompt.`;
 
+// Static fallback used when the DB is unreachable.
+const STATIC_PRICING_FALLBACK = `FLEET & PRICING (starting from)
+- Scooter — Honda Beat 110cc, up to 2 persons, optional surf rack. From ₱465/day.
+- TukTuk — Bajaj RE 250cc, 3–4 persons. From ₱1,595/day.
+
+Airport Transfers (IAO / Sayak Airport ↔ General Luna, both directions):
+- Shared Van: ₱450 per person
+- Private Van: ₱3,500 flat
+- Private TukTuk: ₱1,800 flat
+Customers can add a transfer in the basket when booking a rental, or book a standalone transfer from the Transfers page.`;
+
+// ── Router ────────────────────────────────────────────────────────────────────
+
 const router = Router();
 
 router.post('/', chatLimiter, async (req, res, next) => {
@@ -121,6 +248,16 @@ router.post('/', chatLimiter, async (req, res, next) => {
       return;
     }
 
+    // Fetch live pricing; fall back to static copy on any error.
+    let livePricing = STATIC_PRICING_FALLBACK;
+    try {
+      livePricing = await fetchLivePricing();
+    } catch (pricingErr) {
+      logger.warn({ err: pricingErr }, 'Live pricing fetch failed — using static fallback');
+    }
+
+    const systemPrompt = SYSTEM_PROMPT_TEMPLATE.replace('{{LIVE_PRICING}}', livePricing);
+
     let upstream: globalThis.Response;
     try {
       upstream = await fetch('https://api.anthropic.com/v1/messages', {
@@ -134,7 +271,7 @@ router.post('/', chatLimiter, async (req, res, next) => {
           model: 'claude-sonnet-4-5',
           max_tokens: 1000,
           stream: true,
-          system: SYSTEM_PROMPT,
+          system: systemPrompt,
           messages: parsed.data.messages,
         }),
       });
