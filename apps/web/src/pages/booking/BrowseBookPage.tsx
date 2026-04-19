@@ -40,6 +40,21 @@ import pawDivider from '../../assets/Paw Divider.svg';
 
 const SAND = '#f1e6d6';
 
+/** Same source as `BePawsitiveMeter` — public charity impact total. */
+const CHARITY_IMPACT_ENDPOINT = '/api/public/booking/charity-impact';
+
+interface CharityImpactPayload {
+  totalRaised: number;
+}
+
+/** Match `CountUp` integer formatting (thousands separator `,`). */
+function formatCharityTotalRaised(n: number): string {
+  const rounded = parseFloat(n.toFixed(0));
+  const parts = rounded.toString().split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return parts.join('.');
+}
+
 /** Public reserve/browse page only — does not replace API store id or location row names. */
 const RESERVE_PAGE_STORE_DISPLAY_NAME = "Lola's Rentals Siargao";
 
@@ -113,6 +128,21 @@ export default function BrowseBookPage() {
     }
     prevBasketLen.current = basket.length;
   }, [basket.length]);
+
+  const { data: charityTotalRaised, isSuccess: charityTotalSuccess } = useQuery({
+    queryKey: ['charity-impact'],
+    queryFn: async () => {
+      const r = await fetch(CHARITY_IMPACT_ENDPOINT);
+      if (!r.ok) throw new Error('charity impact fetch failed');
+      const json = (await r.json()) as { success?: boolean; data?: CharityImpactPayload };
+      if (json?.data?.totalRaised == null) throw new Error('charity impact missing total');
+      return json.data.totalRaised;
+    },
+    retry: false,
+  });
+
+  const showCharityTotalInTagline =
+    charityTotalSuccess && typeof charityTotalRaised === 'number' && charityTotalRaised > 0;
 
   const {
     data: availableModels,
@@ -276,8 +306,10 @@ export default function BrowseBookPage() {
                 </Fragment>
               ))}
             </div>
-            <p className="font-lato mt-2 text-center text-[11px] italic text-charcoal-brand/60">
-              Book with us now — your rental funds animal welfare on Siargao
+            <p className="font-lato mx-auto mt-3 max-w-xl border-t border-teal-brand/20 pt-3 text-center text-sm font-semibold leading-snug text-teal-brand sm:text-[15px]">
+              {showCharityTotalInTagline
+                ? `Book with us now — your rental funds animal welfare on Siargao · ₱${formatCharityTotalRaised(charityTotalRaised)} donated so far 🐾`
+                : 'Book with us now — your rental funds animal welfare on Siargao'}
             </p>
           </div>
         </div>
