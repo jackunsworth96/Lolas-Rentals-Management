@@ -162,9 +162,13 @@ export function PageLayout({
   const leftFloralStyle = floralOnTop
     ? { transform: `translate3d(0, ${floralShift}px, 0)`, willChange: 'transform' as const }
     : undefined;
-  const rightFloralStyle = floralOnTop
+  // When unclipLeftFloral (reserve page), shift the right floral up so it clears the chat
+  // button zone (chat sits at bottom-28 / bottom-12, h-16 → top at ~176px from viewport bottom).
+  const rightFloralStyle: React.CSSProperties | undefined = floralOnTop
     ? { transform: `translate3d(0, ${-floralShift * 0.65}px, 0)`, willChange: 'transform' as const }
-    : undefined;
+    : unclipLeftFloral
+      ? { bottom: '12rem' }
+      : undefined;
 
   const shellBgStyle =
     contentBackground === 'sand' ? { backgroundColor: '#f1e6d6' as const } : undefined;
