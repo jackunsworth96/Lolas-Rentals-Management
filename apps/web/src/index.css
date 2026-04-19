@@ -8,6 +8,17 @@ body {
   max-width: 100%;
 }
 
+/* Third-party live chat roots — sit above PageLayout florals (typically z-0–z-20) */
+#crisp-chatbox,
+#crisp-client,
+.crisp-client,
+[data-id='crisp'],
+#tawkchat-container,
+#intercom-container,
+.intercom-lightweight-app {
+  z-index: 100000 !important;
+}
+
 /* =============================================================================
    HERO SECTION — fully responsive
    ============================================================================= */
