@@ -22,8 +22,13 @@ router.use(authenticate);
 
 router.get('/', requirePermission(Permission.ViewTransfers), validateQuery(TransferQuerySchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { storeId, ...filters } = req.query as Record<string, string>;
-    const transfers = await req.app.locals.deps.transferRepo.findByStore(storeId, filters);
+    const { storeId, orderId, ...filters } = req.query as Record<string, string | undefined>;
+    if (orderId) {
+      const transfer = await req.app.locals.deps.transferRepo.findByOrderId(orderId);
+      res.json({ success: true, data: transfer ? [transfer] : [] });
+      return;
+    }
+    const transfers = await req.app.locals.deps.transferRepo.findByStore(storeId as string, filters);
     res.json({ success: true, data: transfers });
   } catch (err) { next(err); }
 });

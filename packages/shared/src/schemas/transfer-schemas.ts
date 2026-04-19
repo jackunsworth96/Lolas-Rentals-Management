@@ -54,11 +54,15 @@ export const CollectTransferBodySchema = z.object({
 export type CollectTransferBody = z.infer<typeof CollectTransferBodySchema>;
 
 export const TransferQuerySchema = z.object({
-  storeId: z.string(),
+  storeId: z.string().optional(),
+  orderId: z.string().optional(),
   dateFrom: z.string().optional(),
   dateTo: z.string().optional(),
   status: z.string().optional(),
   paymentStatus: z.string().optional(),
+  driverPaidStatus: z.string().optional(),
+}).refine((v) => !!v.storeId || !!v.orderId, {
+  message: 'Either storeId or orderId must be provided',
 });
 
 export type TransferQuery = z.infer<typeof TransferQuerySchema>;

@@ -73,6 +73,21 @@ export function useTransfer(id: string) {
   });
 }
 
+/** Fetch the (single) transfer linked to an order by order_id. Returns null if none. */
+export async function fetchTransferByOrderId(orderId: string): Promise<TransferRow | null> {
+  const params = new URLSearchParams({ orderId });
+  const rows = await api.get<TransferRow[]>(`/transfers?${params}`);
+  return rows[0] ?? null;
+}
+
+export function useTransferByOrderId(orderId: string) {
+  return useQuery<TransferRow | null>({
+    queryKey: ['transfers', 'by-order', orderId],
+    queryFn: () => fetchTransferByOrderId(orderId),
+    enabled: !!orderId,
+  });
+}
+
 export interface TransferSummary {
   outstanding: { count: number; total: number };
   collected: { count: number; total: number; driverCut: number; netLolas: number };

@@ -9,6 +9,7 @@ import { OrderDetailPaymentsTab } from './OrderDetailPaymentsTab.js';
 import { OrderDetailVehiclesTab } from './OrderDetailVehiclesTab.js';
 import { OrderDetailAddonsTab } from './OrderDetailAddonsTab.js';
 import { OrderDetailHistoryTab } from './OrderDetailHistoryTab.js';
+import { OrderDetailTransferTab } from './OrderDetailTransferTab.js';
 
 function moneyAmount(val: unknown): number {
   if (val == null) return 0;
@@ -25,7 +26,7 @@ interface OrderDetailModalProps {
   enrichedData?: EnrichedOrder;
 }
 
-type TabKey = 'summary' | 'payments' | 'vehicles' | 'addons' | 'history';
+type TabKey = 'summary' | 'payments' | 'vehicles' | 'addons' | 'transfer' | 'history';
 
 export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = false, enrichedData }: OrderDetailModalProps) {
   const [tab, setTab] = useState<TabKey>('summary');
@@ -54,6 +55,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
     { key: 'payments', label: `Payments (${payments.length})` },
     { key: 'vehicles', label: `Vehicles (${items.length})` },
     { key: 'addons', label: `Add-ons (${orderAddons.length})` },
+    { key: 'transfer', label: 'Transfer' },
     { key: 'history', label: 'History' },
   ];
 
@@ -108,6 +110,10 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
             items={items}
             canAct={canAct}
           />
+        )}
+
+        {tab === 'transfer' && (
+          <OrderDetailTransferTab order={order} pushToast={pushToast} />
         )}
 
         {tab === 'history' && (

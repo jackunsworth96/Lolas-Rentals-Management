@@ -19,6 +19,7 @@ export interface TransferRepository {
   findById(id: string): Promise<Transfer | null>;
   findByStore(storeId: string, filters?: TransferFilters): Promise<Transfer[]>;
   findByBookingToken(token: string): Promise<Transfer | null>;
+  findByOrderId(orderId: string): Promise<Transfer | null>;
   save(transfer: Transfer): Promise<void>;
   getSummary(storeId: string, filters?: Pick<TransferFilters, 'dateFrom' | 'dateTo'>): Promise<TransferSummary>;
 }

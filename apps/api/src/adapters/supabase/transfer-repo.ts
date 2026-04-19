@@ -160,6 +160,19 @@ export function createTransferRepo(): TransferRepository {
       return toDomain(data, info);
     },
 
+    async findByOrderId(orderId) {
+      const { data, error } = await sb
+        .from('transfers')
+        .select('*')
+        .eq('order_id', orderId)
+        .maybeSingle();
+      if (error) throw new Error(`Failed to fetch transfer by order id: ${error.message}`);
+      if (!data) return null;
+      const routeMap = await fetchRouteMap(data.store_id as string);
+      const info = routeMap.get(routeKey(data.route as string, data.van_type as string | null));
+      return toDomain(data, info);
+    },
+
     async findByStore(storeId, filters?) {
       let query = sb.from('transfers').select('*').eq('store_id', storeId);
       if (filters?.dateFrom) query = query.gte('service_date', filters.dateFrom);
