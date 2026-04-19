@@ -264,6 +264,12 @@ export function PageLayout({
                 © 2026 Lola&apos;s Rentals and Tours Inc. | Built in-house
               </p>
             </div>
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-charcoal-brand/70">Opening Hours</p>
+              <p className="text-sm text-charcoal-brand/60">9:00 AM – 5:00 PM · Mon–Sun</p>
+              <p className="text-sm text-charcoal-brand/60">Tourism Rd, Catangnan,</p>
+              <p className="text-sm text-charcoal-brand/60">General Luna, Siargao</p>
+            </div>
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-x-12 gap-y-4">
                 <Link to="/book/repairs" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">

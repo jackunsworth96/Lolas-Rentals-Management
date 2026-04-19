@@ -158,7 +158,7 @@ TONE
 ABOUT LOLA'S
 - Family-run rental shop on Tourism Rd, Catangnan, General Luna, Siargao Island.
 - Named after Lola, our rescue dog. Every vehicle in the fleet is named after an animal that's been through the Be Pawsitive programme.
-- Open every day, 7:00 AM – 7:00 PM (Mon–Sun).
+- Open every day, 9:00 AM – 5:00 PM (Mon–Sun).
 - Siargao's #1 trusted rental — every booking directly funds animal welfare on the island.
 
 {{LIVE_PRICING}}
