@@ -77,6 +77,14 @@ export default function LolasChat() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // Sync body class so PageLayout can hide the back-to-top button when chat is open.
+  useEffect(() => {
+    document.body.classList.toggle('chat-open', open);
+    return () => {
+      document.body.classList.remove('chat-open');
+    };
+  }, [open]);
+
   // Seed the opening message once when the panel is first opened.
   useEffect(() => {
     if (open && messages.length === 0) {

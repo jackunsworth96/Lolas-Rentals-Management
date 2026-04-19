@@ -562,7 +562,7 @@ export default function HomePage() {
       />
       <HeroSection />
 
-      <div className="max-lg:-mb-4 lg:-mb-[60px]" style={{ marginTop: -4, transform: 'rotate(10deg)', transformOrigin: 'center' }}>
+      <div className="max-lg:-mb-4 lg:-mb-[60px]" style={{ marginTop: -4, transform: 'rotate(10deg)', transformOrigin: 'center', width: '110%', marginLeft: '-5%' }}>
         <SectionDivider variant="dash" />
       </div>
 
@@ -1066,9 +1066,7 @@ export default function HomePage() {
         <SectionDivider variant="dash" />
       </div>
 
-      <FadeUpSection>
-        <ReviewsSection />
-      </FadeUpSection>
+      <ReviewsSection />
     </PageLayout>
   );
 }

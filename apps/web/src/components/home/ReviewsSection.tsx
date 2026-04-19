@@ -43,7 +43,7 @@ function initialsFromName(name: string): string {
 }
 
 const reviewsTrackClassName =
-  'flex gap-6 overflow-x-auto snap-x snap-mandatory [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:grid md:grid-cols-3 md:overflow-visible md:snap-none';
+  'flex gap-6 overflow-x-auto snap-x snap-mandatory [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden pl-6 pr-6 md:pl-0 md:pr-0 md:grid md:grid-cols-3 md:overflow-visible md:snap-none';
 
 const reviewCardSlotClassName =
   'min-w-[280px] shrink-0 snap-start md:min-w-0 md:shrink md:snap-none';
@@ -90,7 +90,7 @@ export function ReviewsSection() {
           </p>
         </div>
 
-        <div className="md:overflow-hidden">
+        <div className="-mx-6 md:mx-0 md:overflow-hidden">
           {showSkeleton ? (
             <div className={reviewsTrackClassName}>
               {[0, 1, 2].map((i) => (
