@@ -161,9 +161,11 @@ export function OrderSummaryPanel({
           </div>
           <Link
             to="/book/bepawsitive"
+            target="_blank"
+            rel="noopener noreferrer"
             className="mt-2.5 inline-block font-lato text-sm text-teal-brand underline decoration-teal-brand/35 underline-offset-2 transition-colors hover:text-[#00496a]"
           >
-            Learn more about BePawsitive →
+            Learn more about Be Pawsitive →
           </Link>
         </div>
 
