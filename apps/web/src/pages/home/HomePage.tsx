@@ -158,7 +158,7 @@ function HeroSection() {
   return (
     <section
       ref={heroRef}
-      className="relative max-lg:overflow-visible lg:overflow-hidden"
+      className="relative z-10 overflow-visible"
       style={{ minHeight: '560px', height: '70vh', backgroundColor: HOME_SAND }}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
