@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { FileSignature } from 'lucide-react';
+import { Check, Clipboard, FileSignature } from 'lucide-react';
 import { api } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
 import { RentalSummaryCard } from '../../components/confirmation/RentalSummaryCard.js';
@@ -253,7 +253,11 @@ export default function ConfirmationPage() {
                     title="Copy reference"
                     aria-label="Copy reference number"
                   >
-                    {copied ? '✓' : '📋'}
+                    {copied ? (
+                      <Check className="h-5 w-5 shrink-0" strokeWidth={2.5} aria-hidden />
+                    ) : (
+                      <Clipboard className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />
+                    )}
                     {copied && (
                       <span className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-teal-brand px-3 py-1 text-[10px] font-bold text-white shadow-md animate-fade-up">
                         Copied!
