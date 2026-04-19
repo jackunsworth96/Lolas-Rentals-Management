@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Send, X } from 'lucide-react';
 import pawPrint from '../../assets/Paw Print.svg';
+import { normalizeApiBase } from '../../api/normalize-api-base.js';
 
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
+const API_BASE = normalizeApiBase(import.meta.env.VITE_API_URL);
 
 const WHATSAPP_URL =
   "https://wa.me/639694443413?text=Hi%20Lola's%20Rentals%2C%20I%20have%20a%20question%20about%20renting%20a%20scooter";
@@ -135,7 +136,7 @@ export default function LolasChat() {
     abortRef.current = controller;
 
     try {
-      const response = await fetch(`${API_BASE}/api/public/chat`, {
+      const response = await fetch(`${API_BASE}/public/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: historyForApi }),
