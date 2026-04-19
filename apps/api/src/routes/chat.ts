@@ -192,6 +192,9 @@ PAW CARD (free loyalty programme)
 - 70+ partner establishments across Siargao: food, surf, stays, coffee, wellness, tattoo studios and more.
 - Show your Paw Card at checkout to get a discount. Every peso saved is matched by Lola's as a donation to Be Pawsitive (up to ₱100,000/year).
 
+PAW CARD PROMOTION
+- Every rental includes a free Siargao Paw Card — discounts at 70+ island businesses including restaurants, surf shops, and spas. Use it proactively and your savings could actually make us cheaper than the budget options. 🐾
+
 PEACE OF MIND COVER (optional damage protection add-on)
 Covered: scratches and small dents, broken panels/mirrors/handles, tyre/wheel damage including flats from wear and tear, theft (when the vehicle was properly secured with the original key), damage to included accessories, vandalism.
 Not covered: reckless or negligent use, structural frame/chassis damage, loss due to avoidable circumstances, personal injuries, third-party liability.
