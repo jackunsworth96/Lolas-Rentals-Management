@@ -107,7 +107,11 @@ export async function resolveExtensionForRaw(args: ExtensionInputs): Promise<Ext
     const payload = row.payload as Record<string, unknown> | null;
     const webQuote = payload ? Number(payload.web_quote ?? 0) : 0;
     const origDailyRate = webQuote > 0 ? webQuote / origDays : 0;
-    protectedDailyRate = origDailyRate > 0 ? Math.max(computedExtDailyRate, origDailyRate) : computedExtDailyRate;
+    // Extension daily rate = bracket rate for the extension days, capped so the
+    // customer is never charged more per day than their original rate, but if the
+    // extension-days bracket is cheaper (e.g. unlocked the 7+ day bracket through
+    // volume) the customer keeps that cheaper rate.
+    protectedDailyRate = origDailyRate > 0 ? Math.min(computedExtDailyRate, origDailyRate) : computedExtDailyRate;
   }
   const extensionCost = Math.round(protectedDailyRate * extDays * 100) / 100;
 
@@ -260,7 +264,10 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
       } else {
         const computedExtDailyRate = extDays > 0 ? quote.rentalSubtotal / extDays : quote.rentalSubtotal;
         const origDailyRate = Number(item.rental_rate ?? 0);
-        dailyRate = origDailyRate > 0 ? Math.max(computedExtDailyRate, origDailyRate) : computedExtDailyRate;
+        // Extension daily rate = bracket rate for the extension days, capped so the
+        // customer is never charged more per day than their original rate, but if the
+        // extension-days bracket is cheaper (unlocked by volume) the customer keeps it.
+        dailyRate = origDailyRate > 0 ? Math.min(computedExtDailyRate, origDailyRate) : computedExtDailyRate;
       }
       extensionCost = Math.round(dailyRate * extDays * 100) / 100;
     }
