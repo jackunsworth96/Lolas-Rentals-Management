@@ -72,7 +72,7 @@ async function fetchOrdersRawByReference(orderReference: string) {
       'order_reference, customer_name, customer_email, vehicle_model_id, pickup_datetime, dropoff_datetime, store_id, status',
     )
     .eq('order_reference', orderReference)
-    .in('status', ['unprocessed', 'processed'])
+    .in('status', ['unprocessed', 'processed', 'activated'])
     .limit(1)
     .maybeSingle();
 

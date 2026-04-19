@@ -677,6 +677,16 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
 
     res.json({ success: true, data: result });
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : undefined;
+    logger.error(
+      {
+        rawOrderId: String(req.params.id ?? ''),
+        errMessage: message,
+        stack,
+      },
+      'POST /orders-raw/:id/process failed',
+    );
     next(err);
   }
 });

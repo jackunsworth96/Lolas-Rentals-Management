@@ -551,10 +551,12 @@ export async function processRawOrder(
         'transfer_pax_count' in payload
           ? Number(payload.transfer_pax_count ?? 1)
           : 1;
-      const transferAmount =
-        'transfer_amount' in payload
-          ? Number(payload.transfer_amount ?? 0)
-          : 0;
+      const pl = payload as { transfer_amount?: unknown };
+      const transferAmount = Number(
+        pl.transfer_amount !== undefined && pl.transfer_amount !== null
+          ? pl.transfer_amount
+          : (rawOrder as { transfer_amount?: number | null }).transfer_amount ?? 0,
+      );
       const fresh = Transfer.create({
         id: crypto.randomUUID(),
         orderId,
@@ -643,7 +645,9 @@ export async function processRawOrder(
   );
 
   if (rpcErr) {
-    throw new Error(`process_raw_order_atomic RPC failed: ${rpcErr.message}`);
+    throw new Error(
+      `process_raw_order_atomic RPC failed (rawOrderId=${input.rawOrderId}, orderId=${orderId}): ${rpcErr.message}`,
+    );
   }
 
   // Supabase returns TABLE functions as an array of rows.
