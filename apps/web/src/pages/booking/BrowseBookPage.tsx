@@ -40,6 +40,9 @@ import pawDivider from '../../assets/Paw Divider.svg';
 
 const SAND = '#f1e6d6';
 
+/** Public reserve/browse page only — does not replace API store id or location row names. */
+const RESERVE_PAGE_STORE_DISPLAY_NAME = "Lola's Rentals Siargao";
+
 const INCLUSION_ITEMS = [
   { icon: iconHelmet,      label: 'Helmet' },
   { icon: iconFuel,        label: 'Full Tank' },
@@ -205,7 +208,11 @@ export default function BrowseBookPage() {
       <div className="relative mx-auto max-w-7xl overflow-hidden pt-4 md:px-4">
         <HeroFloatingClouds variant="functional" />
         <section className="relative z-10 mb-6">
-          <SearchBar onSearch={handleSearch} searching={isLoading} />
+          <SearchBar
+            onSearch={handleSearch}
+            searching={isLoading}
+            storeDisplayName={RESERVE_PAGE_STORE_DISPLAY_NAME}
+          />
         </section>
 
         {basket.length > 0 && (

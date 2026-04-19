@@ -19,6 +19,8 @@ export interface LocationRow {
 interface SearchBarProps {
   onSearch: () => void;
   searching: boolean;
+  /** Customer-facing label for the Store field only; API location names are unchanged for selectors. */
+  storeDisplayName: string;
 }
 
 function generateTimeSlots(): { value: string; label: string }[] {
@@ -86,7 +88,7 @@ function isStoreLocation(loc: LocationRow): boolean {
   return loc.deliveryCost === 0 && loc.collectionCost === 0;
 }
 
-export function SearchBar({ onSearch, searching }: SearchBarProps) {
+export function SearchBar({ onSearch, searching, storeDisplayName }: SearchBarProps) {
   const storeId = useBookingStore((s) => s.storeId);
   const searchTrigger = useBookingStore((s) => s.searchTrigger);
   const prevTrigger = useRef(searchTrigger);
@@ -170,12 +172,6 @@ export function SearchBar({ onSearch, searching }: SearchBarProps) {
     return store ? store.id : locations[0].id;
   }, [locations]);
 
-  const storeLocationName = useMemo(() => {
-    if (!locations || locations.length === 0) return "Lola's Rentals";
-    const store = locations.find(isStoreLocation);
-    return store ? store.name : locations[0].name;
-  }, [locations]);
-
   useEffect(() => {
     if (storeLocationId != null && pickupLocationId == null) {
       setLocations(storeLocationId, storeLocationId);
@@ -211,7 +207,7 @@ export function SearchBar({ onSearch, searching }: SearchBarProps) {
           <label className="ml-1 text-xs font-bold uppercase tracking-wider text-teal-700">Store</label>
           <div className={`${inputClass} flex items-center gap-2`}>
             <img src={locationIcon} alt="" className="h-4 w-4 shrink-0 object-contain" width={16} height={16} />
-            <span className="font-semibold">{storeLocationName}</span>
+            <span className="font-semibold">{storeDisplayName}</span>
           </div>
         </div>
 
