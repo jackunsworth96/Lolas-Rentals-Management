@@ -49,10 +49,11 @@ router.post('/lookup', extendLookupLimiter, validateBody(ExtendLookupRequestSche
     const trimmedEmail = email.trim().toLowerCase();
     const sb = getSupabaseClient();
 
-    // 1. Check orders_raw (unprocessed direct bookings)
+    // 1. Block extensions on raw (unactivated) bookings — the rental
+    // hasn't started yet, so there is nothing to extend.
     const { data: rawRows, error: rawErr } = await sb
       .from('orders_raw')
-      .select('order_reference, vehicle_model_id, store_id, dropoff_datetime, pickup_datetime, customer_name')
+      .select('id')
       .eq('order_reference', orderReference)
       .ilike('customer_email', escapeIlike(trimmedEmail))
       .in('status', ['unprocessed', 'processed']);
@@ -60,46 +61,11 @@ router.post('/lookup', extendLookupLimiter, validateBody(ExtendLookupRequestSche
     if (rawErr) throw new Error(`orders_raw lookup failed: ${rawErr.message}`);
 
     if (rawRows && rawRows.length > 0) {
-      const row = rawRows[0] as Record<string, unknown>;
-      const modelId = row.vehicle_model_id as string;
-      const storeId = row.store_id as string;
-
-      const { data: model } = await sb.from('vehicle_models').select('name').eq('id', modelId).single();
-      const { data: locs } = await sb.from('locations').select('name').eq('store_id', storeId).limit(1);
-
-      const pickup = new Date(row.pickup_datetime as string);
-      const dropoff = new Date(row.dropoff_datetime as string);
-      const days = Math.max(1, Math.ceil((dropoff.getTime() - pickup.getTime()) / 86400000));
-
-      let originalTotal = 0;
-      try {
-        const locRows = await req.app.locals.deps.configRepo.getLocations(storeId);
-        const storeLoc = locRows.find((l: { deliveryCost: number; collectionCost: number }) =>
-          Number(l.deliveryCost) === 0 && Number(l.collectionCost) === 0,
-        );
-        const locId = storeLoc ? Number(storeLoc.id) : (locRows[0] ? Number(locRows[0].id) : 1);
-        const quote = await computeQuote({ configRepo: req.app.locals.deps.configRepo }, {
-          storeId, vehicleModelId: modelId,
-          pickupDatetime: row.pickup_datetime as string, dropoffDatetime: row.dropoff_datetime as string,
-          pickupLocationId: locId, dropoffLocationId: locId,
-        });
-        originalTotal = quote.grandTotal;
-      } catch { /* fallback to 0 */ }
-
-      res.json({
-        success: true,
-        data: {
-          found: true,
-          order: {
-            orderReference: row.order_reference as string,
-            vehicleModelName: (model as { name: string } | null)?.name ?? 'Vehicle',
-            vehicleModelId: modelId,
-            storeId,
-            currentDropoffDatetime: row.dropoff_datetime as string,
-            pickupLocationName: (locs as { name: string }[] | null)?.[0]?.name ?? 'General Luna',
-            originalTotal,
-            rentalDays: days,
-          },
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'ORDER_NOT_ACTIVE',
+          message: 'Extensions are only available once your rental has started. Please contact us if you need to make changes to your booking.',
         },
       });
       return;
@@ -192,62 +158,20 @@ router.get('/preview', extendLookupLimiter, async (req, res, next) => {
     const sb = getSupabaseClient();
     const newDropoff = new Date(newDropoffDatetime);
 
-    // ── Try orders_raw ──
+    // ── Block extensions on raw (unactivated) bookings ──
     const { data: rawRows } = await sb
       .from('orders_raw')
-      .select('vehicle_model_id, store_id, dropoff_datetime, pickup_datetime, payload')
+      .select('id')
       .eq('order_reference', orderReference)
       .ilike('customer_email', escapeIlike(trimmedEmail))
       .in('status', ['unprocessed', 'processed']);
 
     if (rawRows && rawRows.length > 0) {
-      const row = rawRows[0] as Record<string, unknown>;
-      const currentDropoff = new Date(row.dropoff_datetime as string);
-
-      if (newDropoff <= currentDropoff) {
-        res.status(400).json({ success: false, error: { code: 'INVALID_DATE', message: 'New return date must be after the current return date.' } });
-        return;
-      }
-
-      const avail = await checkAvailability(
-        { bookingPort: req.app.locals.deps.bookingPort },
-        { storeId: row.store_id as string, pickupDatetime: row.dropoff_datetime as string, dropoffDatetime: newDropoffDatetime },
-      );
-      const model = avail.find((m) => m.modelId === (row.vehicle_model_id as string));
-      if (!model || model.availableCount === 0) {
-        res.status(409).json({ success: false, error: { code: 'NOT_AVAILABLE', message: 'Sorry, this vehicle is not available for the extended dates.' } });
-        return;
-      }
-
-      const locRows = await req.app.locals.deps.configRepo.getLocations(row.store_id as string);
-      const storeLoc = locRows.find((l: { deliveryCost: number; collectionCost: number }) =>
-        Number(l.deliveryCost) === 0 && Number(l.collectionCost) === 0,
-      );
-      const locId = storeLoc ? Number(storeLoc.id) : (locRows[0] ? Number(locRows[0].id) : 1);
-      const quote = await computeQuote({ configRepo: req.app.locals.deps.configRepo }, {
-        storeId: row.store_id as string, vehicleModelId: row.vehicle_model_id as string,
-        pickupDatetime: row.dropoff_datetime as string, dropoffDatetime: newDropoffDatetime,
-        pickupLocationId: locId, dropoffLocationId: locId,
-      });
-
-      const extDays = extDayCount(currentDropoff.getTime(), newDropoff.getTime());
-      const computedExtDailyRate = extDays > 0 ? quote.rentalSubtotal / extDays : quote.rentalSubtotal;
-
-      const origPickup = new Date(row.pickup_datetime as string);
-      const origDays = extDayCount(origPickup.getTime(), currentDropoff.getTime());
-      const payload = row.payload as Record<string, unknown> | null;
-      const webQuote = payload ? Number(payload.web_quote ?? 0) : 0;
-      const origDailyRate = webQuote > 0 ? webQuote / origDays : 0;
-
-      const dailyRate = Math.round((origDailyRate > 0 ? Math.max(computedExtDailyRate, origDailyRate) : computedExtDailyRate) * 100) / 100;
-
-      res.json({
-        success: true,
-        data: {
-          extensionDays: extDays,
-          dailyRate,
-          extensionTotal: Math.round(dailyRate * extDays * 100) / 100,
-          bracketLabel: getDayBracketLabel(extDays),
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'ORDER_NOT_ACTIVE',
+          message: 'Extensions are only available once your rental has started. Please contact us if you need to make changes to your booking.',
         },
       });
       return;
@@ -312,7 +236,9 @@ router.get('/preview', extendLookupLimiter, async (req, res, next) => {
           });
           const computedExtDailyRate = extDays > 0 ? quote.rentalSubtotal / extDays : quote.rentalSubtotal;
           const origDailyRate = Number(item.rental_rate ?? 0);
-          dailyRate = Math.round((origDailyRate > 0 ? Math.max(computedExtDailyRate, origDailyRate) : computedExtDailyRate) * 100) / 100;
+          // Daily rate = bracket rate for extension days, capped at the original rate
+          // (never higher), but if the extension bracket is cheaper the customer keeps it.
+          dailyRate = Math.round((origDailyRate > 0 ? Math.min(computedExtDailyRate, origDailyRate) : computedExtDailyRate) * 100) / 100;
         }
 
         res.json({
@@ -345,6 +271,26 @@ router.post('/confirm', extendConfirmLimiter, validateBody(PublicExtendConfirmSc
     };
     const trimmedEmail = email.trim().toLowerCase();
     const deps = req.app.locals.deps;
+
+    // Block extensions on raw (unactivated) bookings — the rental hasn't
+    // started yet, so there is nothing to extend.
+    const sb = getSupabaseClient();
+    const { data: rawMatches } = await sb
+      .from('orders_raw')
+      .select('id')
+      .eq('order_reference', orderReference)
+      .ilike('customer_email', escapeIlike(trimmedEmail))
+      .in('status', ['unprocessed', 'processed']);
+    if (rawMatches && rawMatches.length > 0) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'ORDER_NOT_ACTIVE',
+          message: 'Extensions are only available once your rental has started. Please contact us if you need to make changes to your booking.',
+        },
+      });
+      return;
+    }
 
     // Public path: never paid, no override, payment method always 'pending'.
     const rawOutcome = await resolveExtensionForRaw({

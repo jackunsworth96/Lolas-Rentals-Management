@@ -140,11 +140,24 @@ export default function ActivePage() {
       header: 'Return',
       render: (r: EnrichedOrder) => {
         const color = returnDateColor(r.returnDatetime);
-        if (color === 'red')
-          return <span className="font-medium text-red-600">{formatReturnDate(r.returnDatetime)}</span>;
-        if (color === 'yellow')
-          return <span className="font-medium text-amber-600">{formatReturnDate(r.returnDatetime)}</span>;
-        return <span>{formatReturnDate(r.returnDatetime)}</span>;
+        const label = formatReturnDate(r.returnDatetime);
+        const cls =
+          color === 'red' ? 'font-medium text-red-600'
+          : color === 'yellow' ? 'font-medium text-amber-600'
+          : '';
+        return (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={cls}>{label}</span>
+            {r.hasExtension && (
+              <span
+                title="Rental has been extended"
+                className="inline-flex items-center rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700"
+              >
+                Extended
+              </span>
+            )}
+          </div>
+        );
       },
     },
     {

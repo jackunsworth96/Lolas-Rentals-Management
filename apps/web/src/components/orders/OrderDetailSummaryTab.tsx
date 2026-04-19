@@ -300,9 +300,18 @@ export function OrderDetailSummaryTab({
   const isSettleFinalCard = settleFinalSurcharge > 0;
 
   // ── Derived totals ──
+  // Unpaid extensions are stored as 'pending' payment rows (IOU) — exclude
+  // them from totalPaid so balance_due reflects the unpaid extension amount.
   const total = enrichedData?.finalTotal ?? moneyAmount(order.finalTotal);
-  const totalPaid = enrichedData?.totalPaid ?? payments.reduce((s, p) => s + (p.amount ?? 0), 0);
+  const totalPaid =
+    enrichedData?.totalPaid ??
+    payments.reduce((s, p) => {
+      const isUnpaidExtension = p.paymentType === 'extension' && p.settlementStatus === 'pending';
+      return isUnpaidExtension ? s : s + (p.amount ?? 0);
+    }, 0);
   const balance = Math.max(0, total - totalPaid);
+  const hasExtension =
+    enrichedData?.hasExtension ?? payments.some((p) => p.paymentType === 'extension');
 
   const wooOrderId = enrichedData?.wooOrderId ?? null;
   const customerName = enrichedData?.customerName ?? order.customerId ?? '—';
@@ -515,12 +524,30 @@ export function OrderDetailSummaryTab({
             {returnDatetime && (
               <div>
                 <div className="text-xs font-medium uppercase text-charcoal-brand/60">Return date</div>
-                <div className="text-base font-semibold text-gray-900">
-                  {new Date(returnDatetime).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                <div className="flex items-center gap-2">
+                  <div className="text-base font-semibold text-gray-900">
+                    {new Date(returnDatetime).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                  {hasExtension && (
+                    <span
+                      title="Rental has been extended — return date is updated"
+                      className="inline-flex items-center rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700"
+                    >
+                      Extended
+                    </span>
+                  )}
                 </div>
               </div>
             )}
-            <div className="ml-auto">
+            <div className="ml-auto flex items-center gap-2">
+              {hasExtension && !returnDatetime && (
+                <span
+                  title="Rental has been extended"
+                  className="inline-flex items-center rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700"
+                >
+                  Extended
+                </span>
+              )}
               <Badge color={statusVal === 'active' ? 'blue' : statusVal === 'completed' ? 'green' : 'gray'} className="text-sm">
                 {String(statusVal)}
               </Badge>

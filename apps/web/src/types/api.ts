@@ -64,6 +64,8 @@ export interface EnrichedOrder {
   waiverSignedAt: string | null;
   /** From inspections table — list views only show a badge when `completed`. */
   inspectionStatus?: 'pending' | 'completed';
+  /** True when the order has at least one `payments.payment_type = 'extension'` row. */
+  hasExtension?: boolean;
 }
 
 export interface MaintenanceRecordSummary {

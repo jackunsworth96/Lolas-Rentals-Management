@@ -60,14 +60,27 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
     }
 
     let paymentsByOrder = new Map<string, number>();
+    let extendedOrderIds = new Set<string>();
     if (orderIds.length > 0) {
       const { data: payments, error: payErr } = await sb
         .from('payments')
-        .select('order_id, amount')
+        .select('order_id, amount, payment_type, settlement_status')
         .in('order_id', orderIds);
       if (!payErr && payments) {
-        for (const p of payments) {
-          paymentsByOrder.set(p.order_id, (paymentsByOrder.get(p.order_id) ?? 0) + Number(p.amount ?? 0));
+        for (const p of payments as Array<{ order_id: string; amount: number | string | null; payment_type: string | null; settlement_status: string | null }>) {
+          if (p.payment_type === 'extension') {
+            extendedOrderIds.add(p.order_id);
+          }
+          // Unpaid extensions are recorded as 'pending' IOU rows (no cash
+          // received yet) — exclude them from totalPaid so the balance
+          // due correctly reflects the extra amount the customer owes.
+          const isUnpaidExtension =
+            p.payment_type === 'extension' && p.settlement_status === 'pending';
+          if (isUnpaidExtension) continue;
+          paymentsByOrder.set(
+            p.order_id,
+            (paymentsByOrder.get(p.order_id) ?? 0) + Number(p.amount ?? 0),
+          );
         }
       }
     }
@@ -139,6 +152,7 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
 
       const insp = inspectionByOrderId.get(o.id as string);
       const inspectionStatus = insp?.status === 'completed' ? 'completed' : 'pending';
+      const hasExtension = extendedOrderIds.has(o.id as string);
 
       return {
         id: o.id,
@@ -162,6 +176,7 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
         waiverStatus: (waiverData?.status as 'pending' | 'signed' | 'expired' | undefined) ?? 'pending',
         waiverSignedAt: waiverData?.agreed_at ?? null,
         inspectionStatus,
+        hasExtension,
       };
     });
 
