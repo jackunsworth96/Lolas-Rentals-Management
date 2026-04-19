@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../../api/client.js';
+import { api, ApiError } from '../../api/client.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import { PrimaryCtaButton } from '../../components/public/PrimaryCtaButton.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
@@ -32,6 +32,9 @@ interface OrderData {
 type PageState = 'lookup' | 'rental' | 'confirmed';
 
 const DEFAULT_TIME = '16:45';
+
+const ORDER_NOT_ACTIVE_CUSTOMER_MESSAGE =
+  "Your booking hasn't been activated yet — extensions are only available once your rental has started. Please contact us if you need to make changes to your booking.";
 
 function formatNewReturn(date: string, time: string): string {
   // Parse YYYY-MM-DD as local midnight to avoid UTC shift in Manila (UTC+8)
@@ -77,7 +80,13 @@ export default function ExtendPage() {
       const res = await api.post<{ found: boolean; order?: OrderData }>('/public/extend/lookup', { email, orderReference });
       if (res.found && res.order) { setOrder(res.order); setPageState('rental'); }
       else setLookupError("We couldn't find that booking. Double-check your reference or contact us on WhatsApp for help.");
-    } catch { setLookupError("Something went wrong. Please try again or contact us on WhatsApp for help."); }
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'ORDER_NOT_ACTIVE') {
+        setLookupError(ORDER_NOT_ACTIVE_CUSTOMER_MESSAGE);
+      } else {
+        setLookupError("Something went wrong. Please try again or contact us on WhatsApp for help.");
+      }
+    }
     finally { setLookupLoading(false); }
   }, []);
 
@@ -123,8 +132,12 @@ export default function ExtendPage() {
       } else {
         setLookupError(res.reason ?? 'Extension failed. Please try again.');
       }
-    } catch {
-      setLookupError('Something went wrong. Please try again.');
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'ORDER_NOT_ACTIVE') {
+        setLookupError(ORDER_NOT_ACTIVE_CUSTOMER_MESSAGE);
+      } else {
+        setLookupError('Something went wrong. Please try again.');
+      }
     } finally { setConfirmLoading(false); }
   }
 
@@ -184,13 +197,23 @@ export default function ExtendPage() {
                   </FadeUpSection>
                 )}
                 {lookupError && (
-                  <div className="rounded-2xl bg-red-50 px-5 py-4 text-sm font-bold text-red-700">
+                  <div
+                    className={
+                      lookupError === ORDER_NOT_ACTIVE_CUSTOMER_MESSAGE
+                        ? 'rounded-2xl bg-sand-brand px-3 py-2 text-xs font-bold text-charcoal-brand/70 sm:px-4 sm:py-3 sm:text-sm'
+                        : 'rounded-2xl bg-red-50 px-5 py-4 text-sm font-bold text-red-700'
+                    }
+                  >
                     {lookupError}{' '}
                     <a
                       href={WHATSAPP_URL}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-teal-brand underline"
+                      className={
+                        lookupError === ORDER_NOT_ACTIVE_CUSTOMER_MESSAGE
+                          ? 'inline-flex items-center gap-1 font-black text-teal-brand underline'
+                          : 'inline-flex items-center gap-1 text-teal-brand underline'
+                      }
                     >
                       <img src={phoneIcon} alt="" className="h-3.5 w-3.5 shrink-0 object-contain" width={14} height={14} />
                       WhatsApp us

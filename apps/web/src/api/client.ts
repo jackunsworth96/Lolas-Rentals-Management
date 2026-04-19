@@ -3,6 +3,18 @@ import { normalizeApiBase } from './normalize-api-base.js';
 
 const BASE_URL = normalizeApiBase(import.meta.env.VITE_API_URL as string | undefined);
 
+/** Thrown when the API returns `success: false` or a non-OK status with a JSON body. */
+export class ApiError extends Error {
+  readonly code?: string;
+
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = code;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
 interface ApiResponse<T> {
   success: boolean;
   data?: T;
@@ -55,7 +67,7 @@ async function request<T>(
   }
 
   if (!response.ok || !json.success) {
-    throw new Error(json.error?.message ?? 'Request failed');
+    throw new ApiError(json.error?.message ?? 'Request failed', json.error?.code);
   }
 
   return json.data as T;
@@ -83,7 +95,7 @@ async function uploadRequest<T>(path: string, body: FormData): Promise<T> {
   }
 
   if (!response.ok || !json.success) {
-    throw new Error(json.error?.message ?? 'Request failed');
+    throw new ApiError(json.error?.message ?? 'Request failed', json.error?.code);
   }
 
   return json.data as T;
