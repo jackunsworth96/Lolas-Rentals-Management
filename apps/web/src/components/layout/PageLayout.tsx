@@ -31,9 +31,10 @@ export interface PageLayoutProps {
   /** Paint florals above main content (pointer-events-none; light opacity for readability). */
   elevateFlorals?: boolean;
   /**
-   * Reserve / similar: shell stops clipping horizontal overflow; left floral at z-20
-   * above main. Right floral must stay below main (z-10): same z-index as main would paint
-   * the floral after main and cover every fixed child inside main (e.g. chat launcher).
+   * Reserve / similar: shell stops clipping horizontal overflow; florals stay at modest z-index,
+   * while main uses z-[30] so the whole page layer (incl. fixed chat) stacks above both flowers.
+   * (Left flower art can extend toward the bottom-right; if it were z-20 with main z-10 it would
+   * cover third-party chat.)
    */
   unclipLeftFloral?: boolean;
 }
@@ -149,8 +150,15 @@ export function PageLayout({
   const floralOnTop = Boolean(floralScrollFreezeRef);
   /** Parallax / freeze only when ref is set; elevateFlorals only raises z-index + opacity. */
   const floralZ = floralScrollFreezeRef ? 'z-[10]' : elevateFlorals ? 'z-[25]' : 'z-0';
-  const leftFloralZ = unclipLeftFloral ? 'z-20' : floralZ;
+  const leftFloralZ = unclipLeftFloral ? 'z-10' : floralZ;
   const rightFloralZ = unclipLeftFloral ? 'z-0' : floralZ;
+  const mainZ = unclipLeftFloral
+    ? 'z-[30]'
+    : floralScrollFreezeRef
+      ? 'z-20'
+      : elevateFlorals
+        ? 'z-0'
+        : 'z-10';
   const leftFloralStyle = floralOnTop
     ? { transform: `translate3d(0, ${floralShift}px, 0)`, willChange: 'transform' as const }
     : undefined;
@@ -200,9 +208,7 @@ export function PageLayout({
       <div className="h-16 shrink-0" aria-hidden="true" />
 
       <main
-        className={`relative pb-8 ${fullBleed ? '' : 'px-4 pt-20'} ${
-          floralScrollFreezeRef ? 'z-20' : elevateFlorals ? 'z-0' : 'z-10'
-        }`}
+        className={`relative pb-8 ${fullBleed ? '' : 'px-4 pt-20'} ${mainZ}`}
       >
         {children}
       </main>
