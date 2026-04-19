@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Fragment } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client.js';
@@ -60,6 +60,17 @@ const INCLUSION_ITEMS = [
   { icon: iconBungee,      label: 'Bungee Cord',   isUpgrade: true },
   { icon: iconDelivery,    label: 'Delivery/Collection', isUpgrade: true },
   { icon: iconNinePm,      label: 'Late Return',   isUpgrade: true },
+];
+
+/** Seven key inclusions shown in the compact strip above the vehicle grid. */
+const COMPACT_STRIP_ITEMS = [
+  { icon: iconHelmet,      label: 'Helmet' },
+  { icon: iconFuel,        label: 'Full Tank' },
+  { icon: iconSurfRack,    label: 'Surf Rack' },
+  { icon: iconPeaceOfMind, label: 'Damage Protection' },
+  { icon: iconDryBag,      label: 'Dry Bag' },
+  { icon: iconFirstAid,    label: 'First Aid' },
+  { icon: iconPawCard,     label: 'Paw Card' },
 ];
 
 interface AvailableModel {
@@ -231,6 +242,30 @@ export default function BrowseBookPage() {
             ))}
           </div>
         )}
+
+        {/* ── Compact inclusions strip ── */}
+        <div className="relative z-10 mb-6">
+          <div className="rounded-2xl border border-teal-brand/20 bg-sand-brand/50 px-5 py-3">
+            <div className="flex flex-wrap items-center justify-center gap-x-1 gap-y-2">
+              {COMPACT_STRIP_ITEMS.map(({ icon, label }, i) => (
+                <Fragment key={label}>
+                  {i > 0 && (
+                    <span className="shrink-0 text-[10px] leading-none text-charcoal-brand/25" aria-hidden="true">
+                      ·
+                    </span>
+                  )}
+                  <span className="inline-flex items-center gap-1.5 font-lato text-[12px] font-semibold text-charcoal-brand/80">
+                    <img src={icon} alt="" className="h-5 w-5 shrink-0 object-contain" width={20} height={20} />
+                    {label}
+                  </span>
+                </Fragment>
+              ))}
+            </div>
+            <p className="font-lato mt-2 text-center text-[11px] italic text-charcoal-brand/60">
+              Book with us now — your rental funds animal welfare on Siargao
+            </p>
+          </div>
+        </div>
 
         <BrowseBookVehicleSection
           isSearched={isSearched}
