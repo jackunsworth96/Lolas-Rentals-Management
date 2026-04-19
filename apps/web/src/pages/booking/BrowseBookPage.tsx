@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, Fragment } from 'react';
-import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
@@ -17,7 +16,6 @@ import SectionDivider from '../../components/home/SectionDivider.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import InclusionMarquee from '../../components/home/InclusionMarquee.js';
 import { ReviewsSection } from '../../components/home/ReviewsSection.js';
-import BePawsitiveMeter from '../../components/home/BePawsitiveMeter.js';
 import iconPeaceOfMind from '../../assets/Home/Peace of Mind.svg';
 import iconHelmet from '../../assets/Home/Helmet Icon.svg';
 import iconFuel from '../../assets/Home/Fuel Icon.svg';
@@ -36,11 +34,10 @@ import iconDelivery from '../../assets/Home/Delivery Collection Icon.svg';
 import iconNinePm from '../../assets/Home/9PM Return Icon.svg';
 import tickIcon from '../../assets/Home/Tick Icon.svg';
 import pesoIcon from '../../assets/Home/Peso Icon.svg';
-import pawDivider from '../../assets/Paw Divider.svg';
 
 const SAND = '#f1e6d6';
 
-/** Same source as `BePawsitiveMeter` — public charity impact total. */
+/** Same source as Be Pawsitive meter on other pages — public charity impact total. */
 const CHARITY_IMPACT_ENDPOINT = '/api/public/booking/charity-impact';
 
 interface CharityImpactPayload {
@@ -403,96 +400,6 @@ export default function BrowseBookPage() {
       {/* Reviews */}
       <FadeUpSection>
         <ReviewsSection />
-      </FadeUpSection>
-
-      <div style={{ marginTop: -2, marginBottom: -2 }}>
-        <SectionDivider variant="bold" flip />
-      </div>
-
-      {/* Be Pawsitive donation counter */}
-      <FadeUpSection>
-        <section style={{ backgroundColor: SAND, padding: '64px 5%' }}>
-          <div
-            style={{
-              maxWidth: 480,
-              margin: '0 auto',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              textAlign: 'center',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, justifyContent: 'center' }}>
-              <span
-                style={{
-                  fontSize: 'clamp(48px, 6vw, 72px)',
-                  fontWeight: 800,
-                  color: '#00577C',
-                  fontFamily: 'Alegreya Sans, sans-serif',
-                  lineHeight: 1,
-                }}
-              >
-                ₱
-              </span>
-              <BePawsitiveMeter />
-            </div>
-            <p
-              className="font-lato mx-auto mt-2 block text-[13px] leading-snug"
-              style={{
-                textTransform: 'uppercase',
-                letterSpacing: '0.1em',
-                color: '#00577C',
-                fontWeight: 700,
-              }}
-            >
-              Total Donated Since Oct 2022
-            </p>
-
-            <div style={{ margin: '20px 0', width: '100%', display: 'flex', justifyContent: 'center' }}>
-              <img src={pawDivider} alt="" style={{ width: '100%', maxWidth: 320, height: 'auto', opacity: 0.5 }} />
-            </div>
-
-            <p className="font-lato" style={{ fontSize: 16, color: '#363737', lineHeight: 1.7, marginBottom: 12, opacity: 0.8 }}>
-              Every rental directly funds spay, neuter and vaccination clinics
-              for Siargao&apos;s street animals through our Be Pawsitive partnership.
-            </p>
-            <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.7, opacity: 0.65, marginBottom: 28 }}>
-              It costs just ₱800 to spay or neuter a stray. Every booking makes a difference.
-            </p>
-
-            <a
-              href="https://www.facebook.com/bepawsitiveph"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: 'inline-block',
-                padding: '14px 36px',
-                backgroundColor: '#FCBC5A',
-                color: '#363737',
-                border: '2px solid #363737',
-                borderRadius: 8,
-                fontWeight: 800,
-                fontSize: 14,
-                letterSpacing: '0.05em',
-                textTransform: 'uppercase',
-                textDecoration: 'none',
-                boxShadow: '4px 4px 0 #363737',
-                fontFamily: 'Lato, sans-serif',
-                transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLAnchorElement).style.transform = 'translate(-2px, -2px)';
-                (e.currentTarget as HTMLAnchorElement).style.boxShadow = '6px 6px 0 #363737';
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLAnchorElement).style.transform = 'translate(0, 0)';
-                (e.currentTarget as HTMLAnchorElement).style.boxShadow = '4px 4px 0 #363737';
-              }}
-            >
-              Learn About Be Pawsitive
-            </a>
-          </div>
-        </section>
       </FadeUpSection>
 
       <div className="fixed bottom-28 right-6 z-40 md:bottom-12 md:right-12">
