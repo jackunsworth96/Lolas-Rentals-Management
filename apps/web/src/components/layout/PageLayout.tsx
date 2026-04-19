@@ -31,8 +31,8 @@ export interface PageLayoutProps {
   /** Paint florals above main content (pointer-events-none; light opacity for readability). */
   elevateFlorals?: boolean;
   /**
-   * Reserve / similar: shell stops clipping the fixed left floral horizontally, and that flower
-   * paints at z-20 so it is not clipped under main.
+   * Reserve / similar: shell stops clipping horizontal overflow, and both florals
+   * paint at z-20 so they are not clipped under main.
    */
   unclipLeftFloral?: boolean;
 }
@@ -149,6 +149,7 @@ export function PageLayout({
   /** Parallax / freeze only when ref is set; elevateFlorals only raises z-index + opacity. */
   const floralZ = floralScrollFreezeRef ? 'z-[10]' : elevateFlorals ? 'z-[25]' : 'z-0';
   const leftFloralZ = unclipLeftFloral ? 'z-20' : floralZ;
+  const rightFloralZ = unclipLeftFloral ? 'z-20' : floralZ;
   const leftFloralStyle = floralOnTop
     ? { transform: `translate3d(0, ${floralShift}px, 0)`, willChange: 'transform' as const }
     : undefined;
@@ -220,7 +221,7 @@ export function PageLayout({
         <img
           src={flowerRight}
           alt=""
-          className={`pointer-events-none ${floralPosition} bottom-0 right-0 ${floralZ} w-32 object-contain md:w-48 ${
+          className={`pointer-events-none ${floralPosition} bottom-0 right-0 ${rightFloralZ} w-32 object-contain md:w-48 ${
             floralOnTop || elevateFlorals ? 'opacity-[0.42]' : ''
           }`}
           style={rightFloralStyle}

@@ -4,7 +4,7 @@
 
 html,
 body {
-  overflow-x: hidden;
+  overflow-x: clip; /* 'hidden' propagates to the viewport and clips position:fixed elements; 'clip' does not propagate */
   max-width: 100%;
 }
 
