@@ -32,6 +32,14 @@ interface Props {
 
 const PM_ICON_CLASS = 'h-5 w-5 shrink-0 text-charcoal-brand/85';
 
+const CHARITY_DONATION_PRESETS: Array<{ amount: number; label?: string }> = [
+  { amount: 0, label: 'No thanks' },
+  { amount: 100 },
+  { amount: 500 },
+  { amount: 1000 },
+  { amount: 5000, label: '₱5,000 🐾' },
+];
+
 /** Match API ids/names (DB may use `Card` vs `card`, etc.) */
 function PaymentMethodIcon({ id, name }: { id: string; name: string }) {
   const norm = id.toLowerCase().replace(/[\s-]+/g, '_');
@@ -129,13 +137,7 @@ export function OrderSummaryPanel({
             Add a small donation to fund spay, neuter &amp; vaccination for Siargao's street animals.
           </p>
           <div className="flex flex-wrap gap-1.5">
-            {[
-              { amount: 0, label: 'No thanks' },
-              { amount: 50 },
-              { amount: 100 },
-              { amount: 200 },
-              { amount: 5000, label: '\u20B15,000 \u{1F43E}' },
-            ].map(({ amount, label }) => {
+            {CHARITY_DONATION_PRESETS.map(({ amount, label }) => {
               const selected = charityDonation === amount;
               const isFiveK = amount === 5000;
               return (
