@@ -220,8 +220,9 @@ function ConfirmedView({ dropoff, balance }: { dropoff: string; balance: number 
         <div className="mx-auto flex h-28 w-28 items-center justify-center rounded-full bg-gold-brand/20">
           <img src={lolaFace} alt="Lola" className="h-20 w-20 animate-bounce rounded-full object-cover" style={{ animationDuration: '3s' }} />
         </div>
-        <div className="font-lato inline-block rounded-full bg-teal-brand px-5 py-2 text-sm font-black text-white">Extension Confirmed!</div>
-        <h2 className="font-headline text-3xl font-black text-teal-brand">Enjoy the extra time!</h2>
+        <p className="font-lato mx-auto max-w-xl text-base font-semibold leading-relaxed text-charcoal-brand md:text-lg">
+          Extension confirmed! Your new return date/time has been updated. Please come by our store to settle the outstanding balance within the next 24hrs during our opening hours of 9AM - 5PM.
+        </p>
         <div className="rounded-4xl bg-cream-brand p-8 shadow-[0_10px_30px_-5px_rgba(26,122,110,0.1)]">
           <p className="font-lato text-[10px] font-black uppercase tracking-widest text-teal-brand/60">New Return Date &amp; Time</p>
           <p className="font-lato mt-2 text-2xl font-black text-teal-brand">{dateFormatted}</p>
@@ -230,7 +231,6 @@ function ConfirmedView({ dropoff, balance }: { dropoff: string; balance: number 
             <div className="mt-6 border-t-2 border-sand-brand pt-6">
               <p className="font-lato text-[10px] font-black uppercase tracking-widest text-gold-brand/60">Balance Due</p>
               <p className="font-lato mt-1 text-3xl font-black text-gold-brand">{formatCurrency(balance)}</p>
-              <p className="font-lato mt-1 text-xs font-bold text-charcoal-brand/50">Please settle at return</p>
             </div>
           )}
         </div>
