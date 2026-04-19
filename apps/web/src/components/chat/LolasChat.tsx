@@ -366,7 +366,8 @@ export default function LolasChat() {
                 disabled={sending}
                 rows={1}
                 placeholder="Ask me anything..."
-                className="font-lato max-h-28 flex-1 resize-none bg-transparent text-sm text-charcoal-brand placeholder:text-charcoal-brand/40 focus:outline-none disabled:opacity-60"
+                className="font-lato max-h-28 min-h-0 flex-1 resize-none bg-transparent py-2 text-sm leading-normal text-charcoal-brand placeholder:text-charcoal-brand/40 focus:outline-none disabled:opacity-60"
+                style={{ resize: 'none', overflowY: 'hidden' }}
               />
               <button
                 type="button"

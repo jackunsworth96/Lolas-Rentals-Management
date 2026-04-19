@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { usePublicReviews, type Review } from '../../api/reviews.js';
 import { BrandCard } from '../public/BrandCard.js';
 
@@ -46,7 +46,30 @@ const reviewsTrackClassName =
   'flex gap-6 overflow-x-auto snap-x snap-mandatory [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden pl-6 pr-6 md:pl-0 md:pr-0 md:grid md:grid-cols-3 md:overflow-visible md:snap-none';
 
 const reviewCardSlotClassName =
-  'min-w-[280px] shrink-0 snap-start md:min-w-0 md:shrink md:snap-none';
+  'w-[85vw] max-w-[340px] shrink-0 snap-start md:w-72 md:max-w-none md:shrink md:snap-none';
+
+const REVIEW_PREVIEW_CHARS = 120;
+
+function ReviewQuote({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = text.length > REVIEW_PREVIEW_CHARS;
+  const shown = !isLong || expanded ? text : `${text.slice(0, REVIEW_PREVIEW_CHARS)}...`;
+
+  return (
+    <div className="mb-6 flex-1">
+      <p className="font-lato text-sm italic leading-relaxed text-charcoal-brand">{shown}</p>
+      {isLong && (
+        <button
+          type="button"
+          className="font-lato mt-1 cursor-pointer text-xs text-[#00577C] underline"
+          onClick={() => setExpanded((e) => !e)}
+        >
+          {expanded ? 'Read less' : 'Read more'}
+        </button>
+      )}
+    </div>
+  );
+}
 
 function mapApiToDisplay(r: Review, index: number): DisplayReview {
   return {
@@ -112,7 +135,7 @@ export function ReviewsSection() {
                           </span>
                         ))}
                       </div>
-                      <p className="font-lato mb-6 flex-1 text-sm italic leading-relaxed text-charcoal-brand">{r.text}</p>
+                      <ReviewQuote text={r.text} />
                       <div className="flex items-center gap-3">
                         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sand-brand text-sm font-black text-teal-brand">
                           {r.initials}
