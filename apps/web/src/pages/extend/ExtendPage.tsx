@@ -13,7 +13,7 @@ import { ExtendCalendar } from '../../components/extend/ExtendCalendar.js';
 import { ExtensionSummary } from '../../components/extend/ExtensionSummary.js';
 
 import { DEFAULT_STORE_ID } from '@lolas/shared';
-import lolaFace from '../../assets/Lola Face Cartoon.svg';
+import lolaVideo from '../../assets/Checkout_Lola.mp4';
 import { WHATSAPP_URL } from '../../config/contact.js';
 import { phoneIcon } from '../../components/public/customerContactIcons.js';
 import { formatCurrency } from '../../utils/currency.js';
@@ -217,8 +217,23 @@ function ConfirmedView({ dropoff, balance }: { dropoff: string; balance: number 
   return (
     <FadeUpSection>
       <div className="space-y-8 text-center">
-        <div className="mx-auto flex h-28 w-28 items-center justify-center rounded-full bg-gold-brand/20">
-          <img src={lolaFace} alt="Lola" className="h-20 w-20 animate-bounce rounded-full object-cover" style={{ animationDuration: '3s' }} />
+        <div className="flex justify-center">
+          <div className="relative pb-2">
+            <div
+              className="flex h-40 w-40 items-center justify-center overflow-hidden rounded-full"
+              style={{ animation: 'bounce 3s ease-in-out infinite' }}
+            >
+              <video
+                src={lolaVideo}
+                autoPlay
+                loop
+                muted
+                playsInline
+                className="h-full w-full object-cover"
+                style={{ mixBlendMode: 'multiply' }}
+              />
+            </div>
+          </div>
         </div>
         <p className="font-lato mx-auto max-w-xl text-base font-semibold leading-relaxed text-charcoal-brand md:text-lg">
           Extension confirmed! Your new return date/time has been updated. Please come by our store to settle the outstanding balance within the next 24hrs during our opening hours of 9AM - 5PM.
