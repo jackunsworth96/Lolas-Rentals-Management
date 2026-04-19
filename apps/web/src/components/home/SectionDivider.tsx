@@ -17,7 +17,11 @@ export default function SectionDivider({ variant = 'dash', flip = false }: Secti
   return (
     <div
       style={{
-        width: '100%',
+        width: '100vw',
+        position: 'relative',
+        left: '50%',
+        marginLeft: '-50vw',
+        marginRight: '-50vw',
         overflow: 'hidden',
         lineHeight: 0,
         marginTop: -4,

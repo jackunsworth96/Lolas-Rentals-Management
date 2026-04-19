@@ -222,7 +222,7 @@ export function PageLayout({
       <div className="h-16 shrink-0" aria-hidden="true" />
 
       <main
-        className={`relative pb-8 ${fullBleed ? '' : 'px-4 pt-20'} ${mainZ}`}
+        className={`relative pb-8 ${fullBleed ? '' : 'pt-20'} ${mainZ}`}
       >
         {children}
       </main>

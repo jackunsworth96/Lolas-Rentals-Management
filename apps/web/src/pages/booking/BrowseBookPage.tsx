@@ -252,7 +252,7 @@ export default function BrowseBookPage() {
           "description": "Online scooter, motorbike, tuktuk and tricycle rental booking for Siargao Island"
         }}
       />
-      <div className="relative z-10 mx-auto max-w-7xl overflow-visible pt-4 md:px-4">
+      <div className="relative z-10 mx-auto max-w-7xl overflow-visible px-4 pt-4">
         <HeroFloatingClouds variant="functional" />
         <section className="relative z-10 mb-6">
           <SearchBar

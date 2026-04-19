@@ -562,7 +562,7 @@ export default function HomePage() {
       />
       <HeroSection />
 
-      <div className="max-lg:-mb-4 lg:-mb-[60px]" style={{ marginTop: -4, transform: 'rotate(10deg)', transformOrigin: 'center', width: '110%', marginLeft: '-5%' }}>
+      <div className="max-lg:-mb-4 lg:-mb-[60px]" style={{ marginTop: -4, transform: 'rotate(10deg)', transformOrigin: 'center' }}>
         <SectionDivider variant="dash" />
       </div>
 
