@@ -197,8 +197,18 @@ export default function BrowseBookPage() {
     return () => clearInterval(interval);
   }, [basket, sessionToken, removeFromBasket, pushToast]);
 
+  const vehicleGridRef = useRef<HTMLDivElement>(null);
+
   const isSearched = !!searchParams;
   const isLoading = searching || availFetching || quotesLoading;
+
+  const prevIsLoading = useRef(false);
+  useEffect(() => {
+    if (prevIsLoading.current && !isLoading && isSearched && availableModels && availableModels.length > 0) {
+      vehicleGridRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    prevIsLoading.current = isLoading;
+  }, [isLoading, isSearched, availableModels]);
 
   return (
     <PageLayout title="Browse & Book | Lola's Rentals" showBasketIcon>
@@ -224,6 +234,11 @@ export default function BrowseBookPage() {
             searching={isLoading}
             storeDisplayName={RESERVE_PAGE_STORE_DISPLAY_NAME}
           />
+          {isSearched && (
+            <p className="font-lato mt-2 text-center text-xs italic text-charcoal-brand/60">
+              Our vehicles fill up fast — secure yours now
+            </p>
+          )}
         </section>
 
         {basket.length > 0 && (
@@ -267,13 +282,15 @@ export default function BrowseBookPage() {
           </div>
         </div>
 
-        <BrowseBookVehicleSection
-          isSearched={isSearched}
-          isLoading={isLoading}
-          availableModels={availableModels}
-          quotes={quotes}
-          pushToast={pushToast}
-        />
+        <div ref={vehicleGridRef}>
+          <BrowseBookVehicleSection
+            isSearched={isSearched}
+            isLoading={isLoading}
+            availableModels={availableModels}
+            quotes={quotes}
+            pushToast={pushToast}
+          />
+        </div>
       </div>
 
       {/* ── Below-fold trust builders ──────────────────────────── */}

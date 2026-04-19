@@ -203,11 +203,13 @@ export function VehicleCard({
               <span className="text-4xl opacity-30">🏍️</span>
             </div>
           )}
-          <div className="absolute left-4 top-4 flex gap-2">
-            <span className={`font-lato rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider shadow-sm ${isUnavailable ? 'bg-charcoal-brand/10 text-charcoal-brand/60' : 'bg-teal-brand text-white'}`}>
-              {isUnavailable ? 'Unavailable' : `${availableCount} available`}
-            </span>
-          </div>
+          {(isUnavailable || availableCount <= 5) && (
+            <div className="absolute left-4 top-4 flex gap-2">
+              <span className={`font-lato rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider shadow-sm ${isUnavailable ? 'bg-charcoal-brand/10 text-charcoal-brand/60' : 'bg-teal-brand text-white'}`}>
+                {isUnavailable ? 'Unavailable' : `${availableCount} available`}
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-1 flex-col p-6">
