@@ -314,7 +314,7 @@ export default function BrowseBookPage() {
           </div>
         </div>
 
-        <div ref={vehicleGridRef} className="relative z-10 bg-cream-brand">
+        <div ref={vehicleGridRef} className="relative z-10">
           <BrowseBookVehicleSection
             isSearched={isSearched}
             isLoading={isLoading}
@@ -326,10 +326,6 @@ export default function BrowseBookPage() {
       </div>
 
       {/* ── Below-fold trust builders ──────────────────────────── */}
-
-      <div className="relative z-0 pointer-events-none -mb-16 md:-mb-24">
-        <SectionDivider variant="bold" />
-      </div>
 
       {/* Inclusions strip */}
       <FadeUpSection>
