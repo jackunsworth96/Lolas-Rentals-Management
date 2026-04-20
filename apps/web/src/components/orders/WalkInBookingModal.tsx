@@ -118,9 +118,9 @@ export function WalkInBookingModal({ open, onClose }: Props) {
 
   // ── Derived datetimes ──
   const pickupDatetime =
-    pickupDate && pickupTime ? `${pickupDate}T${pickupTime}:00` : '';
+    pickupDate && pickupTime ? `${pickupDate}T${pickupTime}:00+08:00` : '';
   const dropoffDatetime =
-    dropoffDate && dropoffTime ? `${dropoffDate}T${dropoffTime}:00` : '';
+    dropoffDate && dropoffTime ? `${dropoffDate}T${dropoffTime}:00+08:00` : '';
 
   // ── Data hooks ──
   const { data: locations } = useLocations(storeId) as { data: Location[] | undefined };

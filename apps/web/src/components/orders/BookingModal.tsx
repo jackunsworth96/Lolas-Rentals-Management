@@ -38,7 +38,7 @@ function combineFromParts(p: TimeParts): string {
   let h24 = p.hours12;
   if (p.ampm === 'AM' && h24 === 12) h24 = 0;
   else if (p.ampm === 'PM' && h24 < 12) h24 += 12;
-  return `${p.date}T${String(h24).padStart(2, '0')}:${String(p.minutes).padStart(2, '0')}`;
+  return `${p.date}T${String(h24).padStart(2, '0')}:${String(p.minutes).padStart(2, '0')}:00+08:00`;
 }
 
 interface BookingModalProps {
@@ -588,8 +588,12 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
         .map((v) => ({
           vehicleId: v.vehicleId,
           vehicleName: v.vehicleName,
-          pickupDatetime: v.pickupDatetime,
-          dropoffDatetime: v.dropoffDatetime,
+          pickupDatetime: v.pickupDatetime.includes('+') || v.pickupDatetime.endsWith('Z')
+            ? v.pickupDatetime
+            : `${v.pickupDatetime}:00+08:00`,
+          dropoffDatetime: v.dropoffDatetime.includes('+') || v.dropoffDatetime.endsWith('Z')
+            ? v.dropoffDatetime
+            : `${v.dropoffDatetime}:00+08:00`,
           rentalDaysCount: v.rentalDaysCount,
           pickupLocation: v.pickupLocation,
           dropoffLocation: v.dropoffLocation,
