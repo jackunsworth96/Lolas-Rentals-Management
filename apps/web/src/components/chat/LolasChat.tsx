@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Send, X } from 'lucide-react';
 import aiChatIcon from '../../assets/Buttons/ai chat icon.svg';
 import { normalizeApiBase } from '../../api/normalize-api-base.js';
@@ -66,12 +66,111 @@ function WhatsAppButton({ label = '💬 Chat with us on WhatsApp' }: { label?: s
   );
 }
 
+// ── Draggable launcher position ──────────────────────────────────────────────
+
+const SNAP_MARGIN = 16; // px from the viewport edge when snapped
+
+interface Pos { x: number; y: number }
+
+function loadPos(): Pos | null {
+  try {
+    const raw = localStorage.getItem('lolas-chat-pos');
+    if (!raw) return null;
+    return JSON.parse(raw) as Pos;
+  } catch {
+    return null;
+  }
+}
+
+function savePos(pos: Pos) {
+  try { localStorage.setItem('lolas-chat-pos', JSON.stringify(pos)); } catch { /* noop */ }
+}
+
+function clampToViewport(x: number, y: number, btnSize: number): Pos {
+  const maxX = window.innerWidth - btnSize - SNAP_MARGIN;
+  const maxY = window.innerHeight - btnSize - SNAP_MARGIN;
+  return {
+    x: Math.max(SNAP_MARGIN, Math.min(x, maxX)),
+    y: Math.max(SNAP_MARGIN, Math.min(y, maxY)),
+  };
+}
+
+function snapToEdge(x: number, y: number, btnSize: number): Pos {
+  const midX = window.innerWidth / 2;
+  // Snap horizontally to whichever edge is closer
+  const snappedX = x + btnSize / 2 < midX ? SNAP_MARGIN : window.innerWidth - btnSize - SNAP_MARGIN;
+  const clampedY = Math.max(SNAP_MARGIN, Math.min(y, window.innerHeight - btnSize - SNAP_MARGIN));
+  return { x: snappedX, y: clampedY };
+}
+
+function useDraggable(btnSize: number) {
+  const defaultPos = (): Pos => ({
+    x: window.innerWidth - btnSize - SNAP_MARGIN,
+    y: window.innerHeight - btnSize - SNAP_MARGIN * 4,
+  });
+
+  const [pos, setPos] = useState<Pos>(() => loadPos() ?? defaultPos());
+  const dragging = useRef(false);
+  const hasDragged = useRef(false);
+  const startPointer = useRef<Pos>({ x: 0, y: 0 });
+  const startPos = useRef<Pos>({ x: 0, y: 0 });
+
+  // Re-clamp on resize
+  useEffect(() => {
+    function onResize() {
+      setPos((p) => clampToViewport(p.x, p.y, btnSize));
+    }
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [btnSize]);
+
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    // Only drag on primary button / touch
+    if (e.button !== 0 && e.pointerType !== 'touch') return;
+    dragging.current = true;
+    hasDragged.current = false;
+    startPointer.current = { x: e.clientX, y: e.clientY };
+    startPos.current = pos;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    e.preventDefault();
+  }, [pos]);
+
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!dragging.current) return;
+    const dx = e.clientX - startPointer.current.x;
+    const dy = e.clientY - startPointer.current.y;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasDragged.current = true;
+    const newPos = clampToViewport(startPos.current.x + dx, startPos.current.y + dy, btnSize);
+    setPos(newPos);
+  }, [btnSize]);
+
+  const onPointerUp = useCallback((e: React.PointerEvent) => {
+    if (!dragging.current) return;
+    dragging.current = false;
+    const dx = e.clientX - startPointer.current.x;
+    const dy = e.clientY - startPointer.current.y;
+    const moved = Math.abs(dx) > 3 || Math.abs(dy) > 3;
+    if (moved) {
+      const snapped = snapToEdge(startPos.current.x + dx, startPos.current.y + dy, btnSize);
+      setPos(snapped);
+      savePos(snapped);
+    }
+  }, [btnSize]);
+
+  return { pos, hasDragged, onPointerDown, onPointerMove, onPointerUp };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function LolasChat() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [waitingForFirstToken, setWaitingForFirstToken] = useState(false);
+
+  const BTN_SIZE = 64; // matches h-16/w-16 (4rem)
+  const { pos, hasDragged, onPointerDown, onPointerMove, onPointerUp } = useDraggable(BTN_SIZE);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -246,31 +345,64 @@ export default function LolasChat() {
 
   return (
     <>
-      {/* Floating launcher button */}
+      {/* Floating launcher button — draggable, snaps to nearest side */}
       {!open && (
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={(e) => {
+            onPointerUp(e);
+            // Only fire the open action when the button wasn't dragged
+            if (!hasDragged.current) setOpen(true);
+          }}
           aria-label="Open chat with Lola's Assistant"
-          className="fixed bottom-6 right-6 z-[60] flex items-center justify-center bg-transparent p-0 transition-all duration-200 hover:scale-105 active:scale-95 md:bottom-8 md:right-8"
+          style={{ left: pos.x, top: pos.y, touchAction: 'none' }}
+          className="fixed z-[60] flex h-16 w-16 cursor-grab items-center justify-center bg-transparent p-0 transition-transform duration-150 active:cursor-grabbing active:scale-95 select-none"
         >
           <img
             src={aiChatIcon}
             alt=""
-            className="h-14 w-14 object-contain md:h-16 md:w-16"
+            className="h-full w-full object-contain"
             aria-hidden
+            draggable={false}
           />
         </button>
       )}
 
-      {/* Chat panel */}
-      {open && (
+      {/* Chat panel — mobile: slide-up sheet; desktop: floats near the icon */}
+      {open && (() => {
+        // On desktop, anchor the panel so it sits next to the snapped icon.
+        // Determine which horizontal side the icon is on.
+        const isRight = pos.x + BTN_SIZE / 2 > window.innerWidth / 2;
+        const panelW = 400;
+        const panelH = Math.min(448, window.innerHeight - 96);
+        const desktopLeft = isRight
+          ? Math.max(SNAP_MARGIN, pos.x - panelW + BTN_SIZE)
+          : Math.min(pos.x, window.innerWidth - panelW - SNAP_MARGIN);
+        const desktopTop = Math.max(
+          SNAP_MARGIN,
+          Math.min(pos.y + BTN_SIZE + 8, window.innerHeight - panelH - SNAP_MARGIN),
+        );
+        return (
         <div
           role="dialog"
           aria-label="Lola's Assistant chat"
-          className="fixed z-[60] flex flex-col overflow-hidden bg-sand-brand shadow-2xl ring-1 ring-charcoal-brand/10
-                     inset-x-0 bottom-0 h-[80vh] rounded-t-3xl
-                     md:inset-auto md:bottom-8 md:right-8 md:h-[520px] md:w-[400px] md:rounded-3xl"
+          className="fixed inset-x-0 bottom-0 z-[60] flex max-h-[calc(100dvh-0.75rem)] flex-col overflow-hidden rounded-t-3xl bg-sand-brand pb-[env(safe-area-inset-bottom,0px)] shadow-2xl ring-1 ring-charcoal-brand/10
+                     h-[min(72dvh,28rem)]
+                     md:inset-auto md:rounded-3xl md:pb-0"
+          style={{
+            // desktop: position alongside the dragged icon
+            ...(window.innerWidth >= 768
+              ? {
+                  left: desktopLeft,
+                  top: desktopTop,
+                  width: panelW,
+                  height: panelH,
+                  maxHeight: `calc(100dvh - ${SNAP_MARGIN * 2}px)`,
+                }
+              : {}),
+          }}
         >
           {/* Header */}
           <div className="flex items-start justify-between gap-3 border-b border-charcoal-brand/10 bg-cream-brand px-5 pb-3 pt-4">
@@ -303,7 +435,7 @@ export default function LolasChat() {
           {/* Messages */}
           <div
             ref={scrollRef}
-            className="flex-1 overflow-y-auto px-4 py-4"
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4"
             style={{ scrollBehavior: 'smooth' }}
           >
             <div className="flex flex-col gap-3">
@@ -379,7 +511,8 @@ export default function LolasChat() {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </>
   );
 }
