@@ -40,10 +40,7 @@ export function RentalSummaryCard({
 }: Props) {
   return (
     <div className="w-full rounded-[2.5rem] bg-cream-brand p-6 text-left shadow-[0_20px_40px_rgba(0,0,0,0.08)]">
-      <div className="mb-5 flex items-center gap-3">
-        <span className="text-2xl">🏍️</span>
-        <h3 className="font-headline text-2xl font-extrabold text-teal-brand">Rental Summary</h3>
-      </div>
+      <h3 className="font-headline mb-5 text-2xl font-extrabold text-teal-brand">Rental Summary</h3>
 
       <div className="space-y-4">
         <div className="flex items-start justify-between">
