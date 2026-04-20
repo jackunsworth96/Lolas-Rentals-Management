@@ -206,17 +206,19 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
   if (custIds.length === 0) return { kind: 'not_found' };
 
   const { data: orderRows } = await sb
-    .from('orders').select('id, customer_id, store_id').in('customer_id', custIds).eq('status', 'active');
+    .from('orders')
+    .select('id, customer_id, store_id, booking_token')
+    .in('customer_id', custIds)
+    .eq('status', 'active')
+    .eq('booking_token', orderReference);
 
   for (const ord of (orderRows ?? []) as Array<{ id: string; customer_id: string; store_id: string }>) {
     const { data: items } = await sb
       .from('order_items')
-      .select('id, vehicle_id, pickup_datetime, dropoff_datetime, store_id, order_reference, rental_days_count, rental_rate, pickup_fee, dropoff_fee, discount')
+      .select('id, vehicle_id, pickup_datetime, dropoff_datetime, store_id, rental_days_count, rental_rate, pickup_fee, dropoff_fee, discount')
       .eq('order_id', ord.id).not('pickup_datetime', 'is', null);
 
-    const item = (items ?? []).find(
-      (i: Record<string, unknown>) => (i as { order_reference: string }).order_reference === orderReference,
-    ) as Record<string, unknown> | undefined;
+    const item = (items ?? [])[0] as Record<string, unknown> | undefined;
     if (!item) continue;
 
     const currentDropoff = new Date(item.dropoff_datetime as string);

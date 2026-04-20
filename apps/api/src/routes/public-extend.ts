@@ -80,21 +80,21 @@ router.post('/lookup', extendLookupLimiter, validateBody(ExtendLookupRequestSche
     if (custIds.length > 0) {
       const { data: orderRows, error: oErr } = await sb
         .from('orders')
-        .select('id, order_date, status, customer_id')
+        .select('id, order_date, status, customer_id, booking_token')
         .in('customer_id', custIds)
-        .eq('status', 'active');
+        .eq('status', 'active')
+        .eq('booking_token', orderReference);
       if (oErr) throw new Error(`orders lookup failed: ${oErr.message}`);
 
       for (const ord of (orderRows ?? []) as Array<Record<string, unknown>>) {
         const { data: items } = await sb
           .from('order_items')
-          .select('vehicle_id, pickup_datetime, dropoff_datetime, store_id, order_reference, rental_days_count')
+          .select('vehicle_id, pickup_datetime, dropoff_datetime, store_id, rental_days_count')
           .eq('order_id', ord.id as string)
           .not('pickup_datetime', 'is', null);
 
         if (!items || items.length === 0) continue;
         const item = items[0] as Record<string, unknown>;
-        if ((item.order_reference as string) !== orderReference) continue;
 
         const storeId = item.store_id as string;
         let modelName = 'Vehicle';
@@ -183,15 +183,19 @@ router.get('/preview', extendLookupLimiter, async (req, res, next) => {
 
     if (custIds.length > 0) {
       const { data: orderRows } = await sb
-        .from('orders').select('id, customer_id, store_id').in('customer_id', custIds).eq('status', 'active');
+        .from('orders')
+        .select('id, customer_id, store_id, booking_token')
+        .in('customer_id', custIds)
+        .eq('status', 'active')
+        .eq('booking_token', orderReference);
 
       for (const ord of (orderRows ?? []) as Array<{ id: string; customer_id: string; store_id: string }>) {
         const { data: items } = await sb
           .from('order_items')
-          .select('vehicle_id, pickup_datetime, dropoff_datetime, store_id, order_reference, rental_days_count, rental_rate')
+          .select('vehicle_id, pickup_datetime, dropoff_datetime, store_id, rental_days_count, rental_rate')
           .eq('order_id', ord.id).not('pickup_datetime', 'is', null);
 
-        const item = (items ?? []).find((i: Record<string, unknown>) => (i as { order_reference: string }).order_reference === orderReference) as Record<string, unknown> | undefined;
+        const item = (items ?? [])[0] as Record<string, unknown> | undefined;
         if (!item) continue;
 
         const currentDropoff = new Date(item.dropoff_datetime as string);
