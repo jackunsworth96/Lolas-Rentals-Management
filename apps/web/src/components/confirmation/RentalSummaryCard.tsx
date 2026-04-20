@@ -1,19 +1,5 @@
 import { formatCurrency } from '../../utils/currency.js';
-import iconHelmet from '../../assets/Home/Helmet Icon.svg';
-import iconFuel from '../../assets/Home/Fuel Icon.svg';
-import iconCoat from '../../assets/Home/Coat Icon.svg';
-import iconPawCard from '../../assets/Home/Paw Card Icon.svg';
-import iconFirstAid from '../../assets/Home/First Aid Icon.svg';
-import iconRepairKit from '../../assets/Home/Repair Kit Icon.svg';
-
-const CONFIRMATION_INCLUSIONS: { icon: string; label: string }[] = [
-  { icon: iconHelmet, label: 'Helmet' },
-  { icon: iconFuel, label: 'Full Tank' },
-  { icon: iconCoat, label: 'Rain Coat' },
-  { icon: iconPawCard, label: 'Paw Card' },
-  { icon: iconFirstAid, label: 'First Aid' },
-  { icon: iconRepairKit, label: 'Repair Kit' },
-];
+import { RentalIncludedIconsGrid } from '../public/RentalIncludedIconsGrid.js';
 
 interface Props {
   vehicleModelName: string;
@@ -70,19 +56,7 @@ export function RentalSummaryCard({
         </div>
 
         <div className="rounded-2xl border border-teal-brand/15 bg-sand-brand/50 px-3 py-4">
-          <p className="font-lato mb-3 text-center text-[10px] font-black uppercase tracking-wider text-charcoal-brand/50">
-            What&apos;s included
-          </p>
-          <div className="flex flex-wrap justify-center gap-x-3 gap-y-4 sm:gap-x-4">
-            {CONFIRMATION_INCLUSIONS.map(({ icon, label }) => (
-              <div key={label} className="flex w-[4.5rem] flex-col items-center gap-1.5">
-                <img src={icon} alt="" className="h-8 w-8 object-contain" width={32} height={32} />
-                <span className="font-lato text-center text-[10px] font-semibold leading-tight text-charcoal-brand/85">
-                  {label}
-                </span>
-              </div>
-            ))}
-          </div>
+          <RentalIncludedIconsGrid variant="card" showOptionals />
         </div>
 
         <div className="grid grid-cols-2 gap-3 rounded-2xl bg-sand-brand/30 p-4">
