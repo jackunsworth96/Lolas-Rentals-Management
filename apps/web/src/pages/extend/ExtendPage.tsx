@@ -11,6 +11,7 @@ import { BookingLookupForm } from '../../components/extend/BookingLookupForm.js'
 import { ActiveRentalCard } from '../../components/extend/ActiveRentalCard.js';
 import { ExtendCalendar } from '../../components/extend/ExtendCalendar.js';
 import { ExtensionSummary } from '../../components/extend/ExtensionSummary.js';
+import { RentalIncludedIconsGrid } from '../../components/public/RentalIncludedIconsGrid.js';
 
 import lolaVideo from '../../assets/Checkout_Lola.mp4';
 import { WHATSAPP_URL } from '../../config/contact.js';
@@ -92,7 +93,7 @@ export default function ExtendPage() {
   // original daily rate) — not the raw bracket rate from /public/booking/quote.
   useEffect(() => {
     if (!order || !selectedDate || !lookupEmail) { setExtensionCost(null); return; }
-    const newDropoff = `${selectedDate}T${selectedTime}:00`;
+    const newDropoff = `${selectedDate}T${selectedTime}:00+08:00`;
     let cancelled = false;
     setQuoteLoading(true);
     setExtensionCost(null);
@@ -124,7 +125,7 @@ export default function ExtendPage() {
   async function handleConfirm() {
     if (!order || !selectedDate) return;
     setConfirmLoading(true);
-    const newDropoff = `${selectedDate}T${selectedTime}:00`;
+    const newDropoff = `${selectedDate}T${selectedTime}:00+08:00`;
     try {
       const res = await api.post<{ success: boolean; newDropoffDatetime?: string; extensionCost?: number; reason?: string }>(
         '/public/extend/confirm',
@@ -205,13 +206,18 @@ export default function ExtendPage() {
                 <div className="lg:grid lg:grid-cols-[340px_1fr] lg:items-start lg:gap-10">
 
                   {/* ── Left column: vehicle card, sticky on desktop ── */}
-                  <div className="lg:sticky lg:top-24">
+                  <div className="space-y-4 lg:sticky lg:top-24">
                     <FadeUpSection>
                       <ActiveRentalCard
                         vehicleModelName={order.vehicleModelName}
                         pickupLocationName={order.pickupLocationName}
                         currentDropoffDatetime={order.currentDropoffDatetime}
                       />
+                    </FadeUpSection>
+                    <FadeUpSection>
+                      <div className="rounded-2xl border border-teal-brand/15 bg-sand-brand/50 px-3 py-4">
+                        <RentalIncludedIconsGrid variant="card" />
+                      </div>
                     </FadeUpSection>
                   </div>
 

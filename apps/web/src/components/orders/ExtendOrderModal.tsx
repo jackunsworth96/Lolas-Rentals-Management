@@ -125,7 +125,7 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
     return () => clearTimeout(t);
   }, [successResult, onClose]);
 
-  const newDropoffDatetime = newDate && newTime ? `${newDate}T${newTime}:00` : '';
+  const newDropoffDatetime = newDate && newTime ? `${newDate}T${newTime}:00+08:00` : '';
   const orderReference = enrichedData.bookingToken ?? enrichedData.wooOrderId;
 
   async function handleCalculate() {
