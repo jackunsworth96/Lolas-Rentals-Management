@@ -118,7 +118,8 @@ waiverRouter.post(
 
       const base = normalizePublicWebOrigin(rawWeb);
       res.json({
-        url: `${base}/waiver/${encodeURIComponent(orderReference)}`,
+        success: true,
+        data: { url: `${base}/waiver/${encodeURIComponent(orderReference)}` },
       });
     } catch (err) {
       next(err);
@@ -151,14 +152,17 @@ waiverRouter.get('/:orderReference', async (req, res, next) => {
     const vehicleModelName = await fetchVehicleModelName(order.vehicle_model_id as string | undefined);
 
     res.json({
-      orderReference,
-      customerName: (order.customer_name as string) ?? '',
-      customerEmail: (order.customer_email as string | null) ?? null,
-      vehicleModelName,
-      pickupDatetime: order.pickup_datetime as string,
-      dropoffDatetime: order.dropoff_datetime as string,
-      waiverStatus: isSigned ? 'signed' : 'pending',
-      signedAt: isSigned && waiver?.agreed_at ? String(waiver.agreed_at) : null,
+      success: true,
+      data: {
+        orderReference,
+        customerName: (order.customer_name as string) ?? '',
+        customerEmail: (order.customer_email as string | null) ?? null,
+        vehicleModelName,
+        pickupDatetime: order.pickup_datetime as string,
+        dropoffDatetime: order.dropoff_datetime as string,
+        waiverStatus: isSigned ? 'signed' : 'pending',
+        signedAt: isSigned && waiver?.agreed_at ? String(waiver.agreed_at) : null,
+      },
     });
   } catch (err) {
     next(err);
@@ -246,8 +250,7 @@ waiverRouter.post('/:orderReference/sign', validateBody(WaiverSignBodySchema), a
 
     res.status(201).json({
       success: true,
-      waiverId: row.id,
-      signedAt: row.agreed_at,
+      data: { waiverId: row.id, signedAt: row.agreed_at },
     });
   } catch (err) {
     next(err);
@@ -310,7 +313,7 @@ waiverRouter.post('/:orderReference/upload-licence', (req, res, next) => {
         throw new Error(signErr?.message ?? 'Could not create signed URL');
       }
 
-      res.json({ url: signed.signedUrl });
+      res.json({ success: true, data: { url: signed.signedUrl } });
     } catch (uploadError) {
       next(uploadError);
     }

@@ -395,11 +395,11 @@ export function OrderDetailSummaryTab({
         },
         body: JSON.stringify({ orderReference: orderRefForWaiver }),
       });
-      const json = (await res.json().catch(() => ({}))) as { url?: string; error?: { message?: string }; success?: boolean };
+      const json = (await res.json().catch(() => ({}))) as { url?: string; data?: { url?: string }; error?: { message?: string }; success?: boolean };
       if (!res.ok) {
         throw new Error(json?.error?.message ?? `Request failed (${res.status})`);
       }
-      const url = json?.url;
+      const url = json?.data?.url ?? json?.url;
       if (!url || typeof url !== 'string') {
         throw new Error('No waiver URL returned');
       }
