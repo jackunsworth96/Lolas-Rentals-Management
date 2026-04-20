@@ -34,27 +34,53 @@ export function AnimatedHeading({
     return () => observer.disconnect();
   }, []);
 
-  const chars = text.split('');
+  const words = text.split(' ');
+  // Pre-calculate global char index for consistent animation timing across words
+  let globalCharIndex = 0;
 
   return (
     <Tag ref={ref as React.Ref<HTMLElement>} className={className} style={style} aria-label={text}>
-      {chars.map((char, i) => (
-        <span
-          key={i}
-          aria-hidden="true"
-          style={{
-            display: 'inline-block',
-            opacity: visible ? 1 : 0,
-            transform: visible ? 'translateY(0)' : 'translateY(18px)',
-            transition: visible
-              ? `opacity 0.35s ease ${i * delay}ms, transform 0.35s ease ${i * delay}ms`
-              : 'none',
-            whiteSpace: char === ' ' ? 'pre' : 'normal',
-          }}
-        >
-          {char}
-        </span>
-      ))}
+      {words.map((word, wi) => {
+        const wordSpans = word.split('').map((char) => {
+          const idx = globalCharIndex++;
+          return (
+            <span
+              key={idx}
+              aria-hidden="true"
+              style={{
+                display: 'inline-block',
+                opacity: visible ? 1 : 0,
+                transform: visible ? 'translateY(0)' : 'translateY(18px)',
+                transition: visible
+                  ? `opacity 0.35s ease ${idx * delay}ms, transform 0.35s ease ${idx * delay}ms`
+                  : 'none',
+              }}
+            >
+              {char}
+            </span>
+          );
+        });
+        // Space between words (not after the last word)
+        const spaceIdx = globalCharIndex++;
+        return (
+          <span key={wi} style={{ display: 'inline-block', whiteSpace: 'nowrap' }}>
+            {wordSpans}
+            {wi < words.length - 1 && (
+              <span
+                aria-hidden="true"
+                style={{
+                  display: 'inline-block',
+                  whiteSpace: 'pre',
+                  opacity: visible ? 1 : 0,
+                  transition: visible ? `opacity 0.35s ease ${spaceIdx * delay}ms` : 'none',
+                }}
+              >
+                {' '}
+              </span>
+            )}
+          </span>
+        );
+      })}
     </Tag>
   );
 }
