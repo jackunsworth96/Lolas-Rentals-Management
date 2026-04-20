@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
+import { ChunkErrorBoundary } from './components/ChunkErrorBoundary.js';
 import { AppLayout } from './components/layout/AppLayout.js';
 import { useAuthStore } from './stores/auth-store.js';
 
@@ -68,69 +69,71 @@ const Loading = () => (
 
 export function AppRouter() {
   return (
-    <Suspense fallback={<Loading />}>
-      <Routes>
-        {/* Root redirects to customer homepage */}
-        <Route path="/" element={<Navigate to="/book" replace />} />
-        <Route path="/login" element={<LoginPage />} />
+    <ChunkErrorBoundary>
+      <Suspense fallback={<Loading />}>
+        <Routes>
+          {/* Root redirects to customer homepage */}
+          <Route path="/" element={<Navigate to="/book" replace />} />
+          <Route path="/login" element={<LoginPage />} />
 
-        {/* Customer-facing routes — all under /book */}
-        <Route path="/book" element={<HomePage />} />
-        <Route path="/book/reserve" element={<BrowseBookPage />} />
-        <Route path="/book/basket" element={<BasketPage />} />
-        <Route path="/book/confirmation" element={<ConfirmationPage />} />
-        <Route path="/book/confirmation/:reference" element={<ConfirmationPage />} />
-        <Route path="/book/extend" element={<ExtendPage />} />
-        <Route path="/book/paw-card" element={<PawCardPage />} />
-        <Route path="/paw-card/partners" element={<PawCardPartnersPage />} />
-        <Route path="/book/transfers" element={<TransferBookingPage />} />
-        <Route path="/book/repairs" element={<RepairsPage />} />
-        <Route path="/book/about" element={<AboutPage />} />
-        <Route path="/book/privacy" element={<PrivacyPage />} />
-        <Route path="/book/waiver-agreement" element={<WaiverAgreementPage />} />
-        <Route path="/book/transfer/:token" element={<PublicBookingPage />} />
-        <Route path="/waiver/:orderReference" element={<WaiverPage />} />
-        <Route path="/refund-policy" element={<RefundPolicyPage />} />
-        <Route path="/peace-of-mind" element={<PeaceOfMindPage />} />
-        <Route path="/book/bepawsitive" element={<BePawsitivePage />} />
-        <Route path="/book/cancel/:orderReference" element={<CancelBookingPage />} />
+          {/* Customer-facing routes — all under /book */}
+          <Route path="/book" element={<HomePage />} />
+          <Route path="/book/reserve" element={<BrowseBookPage />} />
+          <Route path="/book/basket" element={<BasketPage />} />
+          <Route path="/book/confirmation" element={<ConfirmationPage />} />
+          <Route path="/book/confirmation/:reference" element={<ConfirmationPage />} />
+          <Route path="/book/extend" element={<ExtendPage />} />
+          <Route path="/book/paw-card" element={<PawCardPage />} />
+          <Route path="/paw-card/partners" element={<PawCardPartnersPage />} />
+          <Route path="/book/transfers" element={<TransferBookingPage />} />
+          <Route path="/book/repairs" element={<RepairsPage />} />
+          <Route path="/book/about" element={<AboutPage />} />
+          <Route path="/book/privacy" element={<PrivacyPage />} />
+          <Route path="/book/waiver-agreement" element={<WaiverAgreementPage />} />
+          <Route path="/book/transfer/:token" element={<PublicBookingPage />} />
+          <Route path="/waiver/:orderReference" element={<WaiverPage />} />
+          <Route path="/refund-policy" element={<RefundPolicyPage />} />
+          <Route path="/peace-of-mind" element={<PeaceOfMindPage />} />
+          <Route path="/book/bepawsitive" element={<BePawsitivePage />} />
+          <Route path="/book/cancel/:orderReference" element={<CancelBookingPage />} />
 
-        {/* Backoffice routes — protected */}
-        <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="orders/inbox" element={<InboxPage />} />
-          <Route path="orders/active" element={<ActivePage />} />
-          <Route path="orders/completed" element={<CompletedPage />} />
-          <Route path="fleet" element={<FleetPage />} />
-          <Route
-            path="fleet/utilization"
-            element={
-              <RequireFleetBookValue>
-                <UtilizationDashboard />
-              </RequireFleetBookValue>
-            }
-          />
-          <Route path="maintenance" element={<MaintenancePage />} />
-          <Route path="transfers" element={<TransfersPage />} />
-          <Route path="accounts" element={<AccountsPage />} />
-          <Route path="accounts/:id" element={<AccountDetailPage />} />
-          <Route path="budget" element={<BudgetPage />} />
-          <Route path="card-settlements" element={<CardSettlementsPage />} />
-          <Route path="cashup" element={<CashupPage />} />
-          <Route path="hr/employees" element={<EmployeesPage />} />
-          <Route path="hr/timesheets" element={<TimesheetsPage />} />
-          <Route path="hr/payroll" element={<PayrollPage />} />
-          <Route path="expenses" element={<ExpensesPage />} />
-          <Route path="todo" element={<TodoPage />} />
-          <Route path="misc-sales" element={<MiscSalesPage />} />
-          <Route path="merchandise" element={<MerchandisePage />} />
-          <Route path="lost-opportunity" element={<LostOpportunityPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-          <Route path="ui-errors" element={<UIErrorsPage />} />
-          <Route path="directory" element={<DirectoryPage />} />
-        </Route>
-        <Route path="*" element={<NotFoundPage />} />
-      </Routes>
-    </Suspense>
+          {/* Backoffice routes — protected */}
+          <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="orders/inbox" element={<InboxPage />} />
+            <Route path="orders/active" element={<ActivePage />} />
+            <Route path="orders/completed" element={<CompletedPage />} />
+            <Route path="fleet" element={<FleetPage />} />
+            <Route
+              path="fleet/utilization"
+              element={
+                <RequireFleetBookValue>
+                  <UtilizationDashboard />
+                </RequireFleetBookValue>
+              }
+            />
+            <Route path="maintenance" element={<MaintenancePage />} />
+            <Route path="transfers" element={<TransfersPage />} />
+            <Route path="accounts" element={<AccountsPage />} />
+            <Route path="accounts/:id" element={<AccountDetailPage />} />
+            <Route path="budget" element={<BudgetPage />} />
+            <Route path="card-settlements" element={<CardSettlementsPage />} />
+            <Route path="cashup" element={<CashupPage />} />
+            <Route path="hr/employees" element={<EmployeesPage />} />
+            <Route path="hr/timesheets" element={<TimesheetsPage />} />
+            <Route path="hr/payroll" element={<PayrollPage />} />
+            <Route path="expenses" element={<ExpensesPage />} />
+            <Route path="todo" element={<TodoPage />} />
+            <Route path="misc-sales" element={<MiscSalesPage />} />
+            <Route path="merchandise" element={<MerchandisePage />} />
+            <Route path="lost-opportunity" element={<LostOpportunityPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+            <Route path="ui-errors" element={<UIErrorsPage />} />
+            <Route path="directory" element={<DirectoryPage />} />
+          </Route>
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </Suspense>
+    </ChunkErrorBoundary>
   );
 }

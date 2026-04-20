@@ -606,9 +606,7 @@ export function OrderDetailSummaryTab({
           )}
           <div>
             <dt className="text-charcoal-brand/60">Order ID</dt>
-            <dd className="font-medium">
-              {enrichedData?.bookingToken ?? order.bookingToken ?? order.booking_token ?? order.id}
-            </dd>
+            <dd className="font-medium">{order.bookingToken ?? order.booking_token ?? order.id}</dd>
           </div>
           <div>
             <dt className="text-charcoal-brand/60">Order date</dt>
