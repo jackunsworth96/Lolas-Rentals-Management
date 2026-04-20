@@ -29,8 +29,6 @@ export function RentalIncludedIconsGrid({
     ? [...HOME_INCLUDED_RENTAL_ITEMS, ...HOME_OPTIONAL_ADDON_ITEMS]
     : HOME_INCLUDED_RENTAL_ITEMS;
 
-  const includedCount = HOME_INCLUDED_RENTAL_ITEMS.length;
-
   if (showOptionals) {
     return (
       <div className={className}>
@@ -67,12 +65,8 @@ export function RentalIncludedIconsGrid({
 
         {/* Desktop: all 11 in one line */}
         <div className="hidden sm:flex sm:flex-wrap sm:justify-center sm:gap-x-3 sm:gap-y-3">
-          {allItems.map(({ icon, label }, i) => (
-            <div key={label} className="relative flex flex-col items-center gap-1.5 w-[4.25rem]">
-              {/* subtle divider before the first optional item */}
-              {i === includedCount && (
-                <span className="absolute -left-[7px] top-1 h-8 w-px bg-teal-brand/20" aria-hidden />
-              )}
+          {allItems.map(({ icon, label }) => (
+            <div key={label} className="flex w-[4.25rem] flex-col items-center gap-1.5">
               <img src={icon} alt="" className="h-8 w-8 object-contain" width={32} height={32} />
               <span className="font-lato text-center text-[10px] font-semibold leading-tight text-charcoal-brand/85">
                 {label}
