@@ -45,6 +45,8 @@ interface BookingModalProps {
   open: boolean;
   onClose: () => void;
   rawOrder: RawOrder;
+  /** When set, "Walk-in booking" in the vehicles step closes this modal and runs this (e.g. open walk-in on Inbox). */
+  onWalkInBooking?: () => void;
 }
 
 type Step = 'review' | 'vehicles' | 'addons' | 'summary';
@@ -184,7 +186,7 @@ function emptyVehicleRow(): VehicleRow {
   };
 }
 
-export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
+export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: BookingModalProps) {
   const storeId = storeIdFromSource(rawOrder.source);
   const isDirect = rawOrder.booking_channel === 'direct';
   const payload = rawOrder.payload ?? {};
@@ -566,10 +568,6 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
       updated[index] = merged;
       return updated;
     });
-  }
-
-  function addVehicleRow() {
-    setVehicles((prev) => [...prev, emptyVehicleRow()]);
   }
 
   function removeVehicleRow(index: number) {
@@ -1209,12 +1207,24 @@ export function BookingModal({ open, onClose, rawOrder }: BookingModalProps) {
               );
             })}
 
-            <button
-              onClick={addVehicleRow}
-              className="rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600"
-            >
-              + Add another vehicle
-            </button>
+            <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-500">
+              Need to add another vehicle? Create a separate{' '}
+              {onWalkInBooking ? (
+                <button
+                  type="button"
+                  className="text-teal-700 underline"
+                  onClick={() => {
+                    onClose();
+                    onWalkInBooking();
+                  }}
+                >
+                  Walk-in booking
+                </button>
+              ) : (
+                'Walk-in booking'
+              )}{' '}
+              instead.
+            </div>
           </div>
         )}
 

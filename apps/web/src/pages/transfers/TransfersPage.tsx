@@ -1,6 +1,15 @@
 import React, { useState, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useUIStore } from '../../stores/ui-store.js';
-import { useTransfers, useTransferSummary, notifyDriver, updatePickupTime, moneyAmount, type TransferRow } from '../../api/transfers.js';
+import {
+  useTransfers,
+  useTransferSummary,
+  notifyDriver,
+  updatePickupTime,
+  cancelTransfer,
+  moneyAmount,
+  type TransferRow,
+} from '../../api/transfers.js';
 import { useToast } from '../../hooks/useToast.js';
 import { useIsMobile } from '../../hooks/useIsMobile.js';
 import { Badge } from '../../components/common/Badge.js';
@@ -17,6 +26,10 @@ import { CollectTransferModal } from '../../components/transfers/CollectTransfer
 function isGlToIao(route: string): boolean {
   const first = route.split(/→|->/).map((s) => s.trim().toLowerCase())[0] ?? '';
   return first.includes('luna') || first.includes('general');
+}
+
+function canCancelTransfer(t: TransferRow): boolean {
+  return !t.collectedAt && t.status !== 'cancelled';
 }
 
 const PAYMENT_STATUS_COLORS: Record<string, 'green' | 'yellow' | 'red'> = {
@@ -36,6 +49,7 @@ type TransferTab = 'upcoming' | 'unpaid' | 'completed';
 export default function TransfersPage() {
   const storeId = useUIStore((s) => s.selectedStoreId) ?? '';
   const isMobile = useIsMobile();
+  const queryClient = useQueryClient();
 
   const [activeTab, setActiveTab] = useState<TransferTab>('upcoming');
   const [completedDateFrom, setCompletedDateFrom] = useState('');
@@ -79,6 +93,7 @@ export default function TransfersPage() {
 
   const { toasts, pushToast } = useToast();
   const [notifyingId, setNotifyingId] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [savingPickupTimeId, setSavingPickupTimeId] = useState<string | null>(null);
   const [savedPickupTimeId, setSavedPickupTimeId] = useState<string | null>(null);
 
@@ -141,6 +156,21 @@ export default function TransfersPage() {
       pushToast('Failed to notify driver', 'error');
     } finally {
       setNotifyingId(null);
+    }
+  }
+
+  async function handleCancelTransfer(t: TransferRow) {
+    if (!window.confirm('Cancel this transfer? This cannot be undone.')) return;
+    setCancellingId(t.id);
+    try {
+      await cancelTransfer(t.id);
+      pushToast('Transfer cancelled', 'success');
+      await queryClient.invalidateQueries({ queryKey: ['transfers'] });
+      await queryClient.invalidateQueries({ queryKey: ['transfers-summary'] });
+    } catch {
+      pushToast('Failed to cancel transfer', 'error');
+    } finally {
+      setCancellingId(null);
     }
   }
 
@@ -411,6 +441,16 @@ export default function TransfersPage() {
                       {notifyingId === t.id ? 'Sending…' : 'Notify Driver 🔔'}
                     </button>
                   )}
+                  {canCancelTransfer(t) && (
+                    <button
+                      type="button"
+                      disabled={cancellingId === t.id}
+                      onClick={() => void handleCancelTransfer(t)}
+                      className="rounded-lg px-3 py-1.5 font-lato text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      {cancellingId === t.id ? 'Cancelling…' : 'Cancel'}
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -446,6 +486,7 @@ export default function TransfersPage() {
                 <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Driver Paid</th>
                 <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Collected</th>
                 <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Source</th>
+                <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"> </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 bg-white">
@@ -528,10 +569,24 @@ export default function TransfersPage() {
                         )}
                       </td>
                       <td className="px-3 py-3 text-sm text-gray-600">{t.bookingSource ?? '—'}</td>
+                      <td className="px-3 py-3 text-sm" onClick={(e) => e.stopPropagation()}>
+                        {canCancelTransfer(t) ? (
+                          <button
+                            type="button"
+                            disabled={cancellingId === t.id}
+                            onClick={() => void handleCancelTransfer(t)}
+                            className="whitespace-nowrap text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
+                          >
+                            {cancellingId === t.id ? 'Cancelling…' : 'Cancel'}
+                          </button>
+                        ) : (
+                          <span className="text-gray-300">—</span>
+                        )}
+                      </td>
                     </tr>
                     {isExpanded && (
                       <tr key={`${t.id}-actions`}>
-                        <td colSpan={17} className="bg-gray-50 px-6 py-3">
+                        <td colSpan={18} className="bg-gray-50 px-6 py-3">
                           <div className="flex flex-wrap items-center gap-3">
                             {t.paymentStatus !== 'Paid' && (
                               <button

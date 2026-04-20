@@ -346,6 +346,7 @@ export default function InboxPage() {
           open={!!selectedOrder}
           onClose={() => setSelectedOrder(null)}
           rawOrder={selectedOrder}
+          onWalkInBooking={() => setWalkInOpen(true)}
         />
       )}
 

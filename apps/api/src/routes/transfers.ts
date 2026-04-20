@@ -197,4 +197,36 @@ router.patch('/:id/pickup-time', requirePermission(Permission.EditTransfers), va
   } catch (err) { next(err); }
 });
 
+router.delete('/:id', requirePermission(Permission.EditTransfers), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = String(req.params.id);
+    const transferRepo = req.app.locals.deps.transferRepo;
+
+    const existing = await transferRepo.findById(id);
+    if (!existing) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Transfer not found' } });
+      return;
+    }
+    if (existing.status === 'cancelled') {
+      res.status(409).json({
+        success: false,
+        error: { code: 'ALREADY_CANCELLED', message: 'Transfer is already cancelled' },
+      });
+      return;
+    }
+    if (existing.collectedAt) {
+      res.status(409).json({
+        success: false,
+        error: { code: 'COLLECTED', message: 'Cannot cancel a collected transfer' },
+      });
+      return;
+    }
+
+    const updated = existing.withStatus('cancelled');
+    await transferRepo.save(updated);
+    const refreshed = await transferRepo.findById(id);
+    res.json({ success: true, data: refreshed });
+  } catch (err) { next(err); }
+});
+
 export { router as transferRoutes };

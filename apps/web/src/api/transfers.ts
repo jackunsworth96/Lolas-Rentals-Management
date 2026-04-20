@@ -163,6 +163,10 @@ export function updatePickupTime(id: string, pickupTime: string | null): Promise
   return api.patch(`/transfers/${id}/pickup-time`, { pickupTime });
 }
 
+export async function cancelTransfer(id: string): Promise<void> {
+  await api.delete(`/transfers/${id}`);
+}
+
 export function useMarkTransferCollected() {
   const qc = useQueryClient();
   return useMutation({

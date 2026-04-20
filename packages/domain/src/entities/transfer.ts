@@ -137,4 +137,12 @@ export class Transfer {
       pickupTime: time,
     });
   }
+
+  withStatus(status: string): Transfer {
+    return Transfer.create({
+      ...(this as unknown as TransferProps),
+      status,
+      updatedAt: new Date(),
+    });
+  }
 }
