@@ -26,6 +26,7 @@ export const PublicExtendConfirmSchema = z.object({
   orderReference: z.string().min(1),
   email: z.string().email(),
   newDropoffDatetime: z.string().min(1),
+  ninePmAddonId: z.number().int().positive().optional(),
 });
 
 export const StaffExtendConfirmSchema = PublicExtendConfirmSchema.extend({

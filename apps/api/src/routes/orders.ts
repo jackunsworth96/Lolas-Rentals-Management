@@ -60,6 +60,7 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
     }
 
     let paymentsByOrder = new Map<string, number>();
+    let pendingExtensionsByOrder = new Map<string, number>();
     let extendedOrderIds = new Set<string>();
     if (orderIds.length > 0) {
       const { data: payments, error: payErr } = await sb
@@ -71,12 +72,28 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
           if (p.payment_type === 'extension') {
             extendedOrderIds.add(p.order_id);
           }
-          // Unpaid extensions are recorded as 'pending' IOU rows (no cash
-          // received yet) — exclude them from totalPaid so the balance
-          // due correctly reflects the extra amount the customer owes.
+          // Track pending extension IOUs separately — these are amounts the
+          // customer still owes that aren't in orders.balance_due until the
+          // extension RPC bumps it (see migration 091).
           const isUnpaidExtension =
             p.payment_type === 'extension' && p.settlement_status === 'pending';
-          if (isUnpaidExtension) continue;
+          if (isUnpaidExtension) {
+            pendingExtensionsByOrder.set(
+              p.order_id,
+              (pendingExtensionsByOrder.get(p.order_id) ?? 0) + Number(p.amount ?? 0),
+            );
+            continue;
+          }
+          // Absorbed extensions were rolled into a final settlement payment —
+          // the cash is captured by the settlement payment row, so skip here
+          // (see migration 092).
+          if (p.payment_type === 'extension' && p.settlement_status === 'absorbed') {
+            continue;
+          }
+          // Deposits are held against orders.security_deposit, not against
+          // final_total — counting them here would mask unpaid rental charges.
+          // Pending extension IOUs are excluded because no cash was received yet.
+          if (p.payment_type === 'deposit') continue;
           paymentsByOrder.set(
             p.order_id,
             (paymentsByOrder.get(p.order_id) ?? 0) + Number(p.amount ?? 0),
@@ -142,10 +159,17 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
         return !latest || i.dropoff_datetime > latest ? i.dropoff_datetime : latest;
       }, null);
       const totalPaid = paymentsByOrder.get(o.id as string) ?? 0;
+      const pendingExtensionsTotal = pendingExtensionsByOrder.get(o.id as string) ?? 0;
 
       const finalTotalNum = Number(o.final_total ?? 0);
       const totalPaidNum = totalPaid;
-      const balanceDueComputed = Math.max(0, finalTotalNum - totalPaidNum);
+      // Balance = rental/addon charges not yet paid. Use max of:
+      //   (a) final_total - totalPaid (works when migration 091 applied and
+      //       extension RPC bumped final_total)
+      //   (b) pendingExtensionsTotal (fallback when final_total is stale —
+      //       the IOU rows authoritatively show outstanding extension debt)
+      const balanceFromFinalTotal = Math.max(0, finalTotalNum - totalPaidNum);
+      const balanceDueComputed = Math.max(balanceFromFinalTotal, pendingExtensionsTotal);
 
       const token = (o.booking_token as string) ?? null;
       const waiverData = token ? waiverByReference.get(token) : undefined;
@@ -168,6 +192,7 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
         finalTotal: finalTotalNum,
         balanceDue: balanceDueComputed,
         totalPaid: totalPaidNum,
+        pendingExtensionsTotal,
         securityDeposit: Number(o.security_deposit ?? 0),
         cardFeeSurcharge: Number(o.card_fee_surcharge ?? 0),
         status: o.status as string,
@@ -220,7 +245,7 @@ router.get('/:id/history', requirePermission(Permission.ViewInbox), async (req, 
 
     const [orderRes, paymentsRes, swapsRes, addonsRes] = await Promise.all([
       sb.from('orders').select('id, status, order_date, created_at, employee_id').eq('id', orderId).maybeSingle(),
-      sb.from('payments').select('id, payment_type, amount, payment_method_id, transaction_date, settlement_ref, created_at').eq('order_id', orderId).order('created_at', { ascending: true }),
+      sb.from('payments').select('id, payment_type, amount, payment_method_id, transaction_date, settlement_status, settlement_ref, created_at').eq('order_id', orderId).order('created_at', { ascending: true }),
       sb.from('vehicle_swaps').select('id, old_vehicle_name, new_vehicle_name, reason, swap_date, swap_time, employee_id, created_at').eq('order_id', orderId).order('created_at', { ascending: true }),
       sb.from('order_addons').select('id, addon_name, addon_price, addon_type, total_amount, added_at').eq('order_id', orderId).order('added_at', { ascending: true }),
     ]);
@@ -255,7 +280,13 @@ router.get('/:id/history', requirePermission(Permission.ViewInbox), async (req, 
           : `Payment received (${pType})`,
         amount: p.amount as number,
         detail: isExtension
-          ? `${p.settlement_status === 'pending' ? 'Unpaid' : 'Paid'} — ${p.settlement_ref ?? ''}`
+          ? `${
+              p.settlement_status === 'pending'
+                ? 'Unpaid'
+                : p.settlement_status === 'absorbed'
+                  ? 'Paid via settlement'
+                  : 'Paid'
+            } — ${p.settlement_ref ?? ''}`
           : (p.settlement_ref ? `Ref: ${p.settlement_ref}` : undefined),
       });
     }
@@ -364,6 +395,7 @@ router.post('/:id/settle', requirePermission(Permission.EditOrders), validateBod
   finalPaymentAccountId: z.string().nullable().optional(),
   finalPaymentAmount: z.number().optional(),
   isCardPayment: z.boolean().optional(),
+  cardFeeSurchargeDelta: z.number().nonnegative().optional(),
   settlementRef: z.string().nullable().optional(),
 })), async (req, res, next) => {
   try {

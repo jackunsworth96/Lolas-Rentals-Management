@@ -12,7 +12,7 @@ export function escapeIlike(value: string): string {
 }
 
 export function extDayCount(msA: number, msB: number): number {
-  return Math.max(1, Math.round((msB - msA) / 86400000));
+  return Math.max(1, Math.ceil((msB - msA) / 86400000));
 }
 
 // ── Extension resolver types ──
@@ -25,6 +25,7 @@ export type ExtensionInputs = {
   isPaid: boolean;
   paymentMethodId: string;
   emailErrorLabel: string;
+  ninePmAddonId?: number;
   deps: {
     bookingPort: unknown;
     configRepo: {
@@ -143,9 +144,15 @@ export async function resolveExtensionForRaw(args: ExtensionInputs): Promise<Ext
       p_ext_description:   `Extension (raw order ${row.id as string}): ${extDays} day${extDays !== 1 ? 's' : ''}`,
     });
 
-  if (rpcErr) throw new Error(`Extend RPC failed: ${rpcErr.message}`);
+  if (rpcErr) {
+    console.error('[extend-raw] RPC network error:', rpcErr.message, { rawOrderId: row.id as string, extDays });
+    return { kind: 'error', reason: `Extension failed — database error: ${rpcErr.message}. Please try again or contact us on WhatsApp.` };
+  }
   const extResult = rpcResult as { success: boolean; error?: string };
-  if (!extResult.success) throw new Error(extResult.error ?? 'Extend failed');
+  if (!extResult.success) {
+    console.error('[extend-raw] RPC returned failure:', extResult.error, { rawOrderId: row.id as string, extDays });
+    return { kind: 'error', reason: extResult.error ?? 'Extension failed. Please try again or contact us on WhatsApp.' };
+  }
 
   void (async () => {
     try {
@@ -155,7 +162,7 @@ export async function resolveExtensionForRaw(args: ExtensionInputs): Promise<Ext
           dateStyle: 'medium',
           timeStyle: 'short',
         });
-      const extDaysRaw = Math.max(1, Math.round(
+      const extDaysRaw = Math.max(1, Math.ceil(
         (newDropoff.getTime() - currentDropoff.getTime()) / (1000 * 60 * 60 * 24),
       ));
       await sendEmail({
@@ -254,11 +261,18 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
     let extensionCost = 0;
 
     if (modelId) {
-      const quote = await computeQuote({ configRepo: deps.configRepo as never }, {
-        storeId, vehicleModelId: modelId,
-        pickupDatetime: item.dropoff_datetime as string, dropoffDatetime: newDropoffDatetime,
-        pickupLocationId: locId, dropoffLocationId: locId,
-      });
+      let quote: Awaited<ReturnType<typeof computeQuote>>;
+      try {
+        quote = await computeQuote({ configRepo: deps.configRepo as never }, {
+          storeId, vehicleModelId: modelId,
+          pickupDatetime: item.dropoff_datetime as string, dropoffDatetime: newDropoffDatetime,
+          pickupLocationId: locId, dropoffLocationId: locId,
+        });
+      } catch (quoteErr) {
+        const msg = quoteErr instanceof Error ? quoteErr.message : String(quoteErr);
+        console.error('[extend-active] computeQuote failed:', msg, { storeId, modelId, extDays, dropoff: item.dropoff_datetime, newDropoff: newDropoffDatetime });
+        return { kind: 'error', reason: `Unable to calculate extension cost (${msg}). Please contact us on WhatsApp.` };
+      }
 
       let dailyRate: number;
       if (overrideDailyRate !== undefined) {
@@ -294,7 +308,23 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
       }
     }
 
-    const totalDelta = extensionCost + addonDelta;
+    // ── 9PM late-return add-on (optional, one-time fee from catalog) ──
+    let ninePmCost = 0;
+    let ninePmAddonRow: { id: number; name: string; price_one_time: number } | null = null;
+    if (args.ninePmAddonId) {
+      const { data: addonCatalog } = await sb
+        .from('addons')
+        .select('id, name, price_one_time')
+        .eq('id', args.ninePmAddonId)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (addonCatalog) {
+        ninePmAddonRow = addonCatalog as { id: number; name: string; price_one_time: number };
+        ninePmCost = Number(ninePmAddonRow.price_one_time ?? 0);
+      }
+    }
+
+    const totalDelta = extensionCost + addonDelta + ninePmCost;
     const paymentId = crypto.randomUUID();
     const journalTxId = crypto.randomUUID();
     const now = new Date();
@@ -308,7 +338,7 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
         p_order_item_id:     item.id as string,
         p_new_dropoff:       newDropoffDatetime,
         p_new_days:          newDays,
-        p_addon_updates:     JSON.stringify(addonUpdates),
+        p_addon_updates:     addonUpdates,
         p_total_delta:       totalDelta,
         p_payment_id:        paymentId,
         p_store_id:          storeId,
@@ -328,9 +358,31 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
         p_ext_description:   `Extension: order ${ord.id} (${oldDays}→${newDays} days)`,
       });
 
-    if (rpcErr) throw new Error(`Extend RPC failed: ${rpcErr.message}`);
+    if (rpcErr) {
+      console.error('[extend-active] RPC network error:', rpcErr.message, { orderId: ord.id, itemId: item.id as string, extDays, totalDelta, storeId });
+      return { kind: 'error', reason: `Extension failed — database error: ${rpcErr.message}. Please try again or contact us on WhatsApp.` };
+    }
     const extResult = rpcResult as { success: boolean; error?: string };
-    if (!extResult.success) throw new Error(extResult.error ?? 'Extend failed');
+    if (!extResult.success) {
+      console.error('[extend-active] RPC returned failure:', extResult.error, { orderId: ord.id, itemId: item.id as string, extDays, newDays, totalDelta, storeId });
+      return { kind: 'error', reason: extResult.error ?? 'Extension failed. Please try again or contact us on WhatsApp.' };
+    }
+
+    // Insert 9PM addon row after the atomic RPC so financial records are consistent
+    if (ninePmAddonRow && ninePmCost > 0) {
+      await sb.from('order_addons').insert({
+        id: crypto.randomUUID(),
+        order_id: ord.id,
+        addon_name: ninePmAddonRow.name,
+        addon_price: ninePmCost,
+        addon_type: 'one_time',
+        quantity: 1,
+        total_amount: ninePmCost,
+        store_id: storeId,
+      });
+    }
+
+    const totalExtensionCost = extensionCost + ninePmCost;
 
     void (async () => {
       try {
@@ -348,7 +400,7 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
             orderReference,
             newDropoffDatetime: formatManila(newDropoffDatetime),
             extensionDays: newDays - oldDays,
-            extensionCost,
+            extensionCost: totalExtensionCost,
             whatsappNumber: process.env.WHATSAPP_NUMBER ?? '639XXXXXXXXX',
           }),
         });
@@ -357,7 +409,7 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
       }
     })();
 
-    return { kind: 'success', extensionDays: newDays - oldDays, extensionCost, newDropoffDatetime };
+    return { kind: 'success', extensionDays: newDays - oldDays, extensionCost: totalExtensionCost, newDropoffDatetime };
   }
 
   return { kind: 'not_found' };

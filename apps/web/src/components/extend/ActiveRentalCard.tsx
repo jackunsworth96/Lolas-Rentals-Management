@@ -37,7 +37,7 @@ export function ActiveRentalCard({ vehicleModelName, pickupLocationName, current
   return (
     <section className="animate-card-enter overflow-hidden rounded-4xl border-4 border-gold-brand/20 bg-cream-brand shadow-[0_10px_30px_-5px_rgba(26,122,110,0.1)]">
       {/* Vehicle image — taller on mobile, more contained in the desktop sidebar */}
-      <div className="flex max-h-48 items-center justify-center overflow-hidden bg-sand-brand lg:max-h-40">
+      <div className="flex max-h-48 items-center justify-center overflow-hidden bg-white lg:max-h-40">
         {imgSrc ? (
           <img src={imgSrc} alt={vehicleModelName} className="max-h-48 w-full object-contain lg:max-h-40" />
         ) : (

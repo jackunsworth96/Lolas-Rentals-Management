@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Modal } from '../common/Modal.js';
 import type { EnrichedOrder } from '../../types/api.js';
 import { useToast } from '../../hooks/useToast.js';
+import { usePaymentMethods } from '../../api/config.js';
 import { useOrderDetail } from './useOrderDetail.js';
 import { OrderDetailSummaryTab } from './OrderDetailSummaryTab.js';
 import { OrderDetailPaymentsTab } from './OrderDetailPaymentsTab.js';
@@ -10,6 +11,7 @@ import { OrderDetailVehiclesTab } from './OrderDetailVehiclesTab.js';
 import { OrderDetailAddonsTab } from './OrderDetailAddonsTab.js';
 import { OrderDetailHistoryTab } from './OrderDetailHistoryTab.js';
 import { OrderDetailTransferTab } from './OrderDetailTransferTab.js';
+import { OrderDetailExtensionsTab } from './OrderDetailExtensionsTab.js';
 
 function moneyAmount(val: unknown): number {
   if (val == null) return 0;
@@ -26,12 +28,13 @@ interface OrderDetailModalProps {
   enrichedData?: EnrichedOrder;
 }
 
-type TabKey = 'summary' | 'payments' | 'vehicles' | 'addons' | 'transfer' | 'history';
+type TabKey = 'summary' | 'payments' | 'vehicles' | 'addons' | 'extensions' | 'transfer' | 'history';
 
 export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = false, enrichedData }: OrderDetailModalProps) {
   const [tab, setTab] = useState<TabKey>('summary');
   const { toasts, pushToast } = useToast();
   const { order, loading, items, payments, orderAddons, swaps, history } = useOrderDetail(orderId);
+  const { data: paymentMethods = [] } = usePaymentMethods() as { data: Array<{ id: string; name: string }> | undefined };
 
   if (!open) return null;
   if (loading || !order) {
@@ -50,11 +53,14 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
   const total = enrichedData?.finalTotal ?? moneyAmount(order.finalTotal);
   const totalPaid = enrichedData?.totalPaid ?? payments.reduce((s, p) => s + (p.amount ?? 0), 0);
 
+  const extensionCount = payments.filter((p) => p.paymentType === 'extension').length;
+
   const tabs: { key: TabKey; label: string }[] = [
     { key: 'summary', label: 'Summary' },
     { key: 'payments', label: `Payments (${payments.length})` },
     { key: 'vehicles', label: `Vehicles (${items.length})` },
     { key: 'addons', label: `Add-ons (${orderAddons.length})` },
+    { key: 'extensions', label: `Extensions (${extensionCount})` },
     { key: 'transfer', label: 'Transfer' },
     { key: 'history', label: 'History' },
   ];
@@ -110,6 +116,10 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
             items={items}
             canAct={canAct}
           />
+        )}
+
+        {tab === 'extensions' && (
+          <OrderDetailExtensionsTab history={history} payments={payments} paymentMethods={paymentMethods} />
         )}
 
         {tab === 'transfer' && (

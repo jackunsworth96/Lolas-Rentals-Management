@@ -1,6 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './client.js';
 
+/** Poll every 30 s so the backoffice picks up customer-initiated changes (e.g. extensions). */
+const LIST_POLL_MS = 30_000;
+/** Poll every 20 s while an order detail modal is open. */
+const DETAIL_POLL_MS = 20_000;
+
 export function useOrders(storeId: string, status?: string) {
   const params = new URLSearchParams({ storeId });
   if (status) params.set('status', status);
@@ -8,6 +13,7 @@ export function useOrders(storeId: string, status?: string) {
     queryKey: ['orders', storeId, status],
     queryFn: () => api.get(`/orders?${params}`),
     enabled: !!storeId,
+    refetchInterval: LIST_POLL_MS,
   });
 }
 
@@ -18,6 +24,7 @@ export function useEnrichedOrders(storeId: string, status?: string) {
     queryKey: ['orders', 'enriched', storeId, status],
     queryFn: () => api.get(`/orders/enriched?${params}`),
     enabled: !!storeId,
+    refetchInterval: LIST_POLL_MS,
   });
 }
 
@@ -26,6 +33,7 @@ export function useOrder(id: string) {
     queryKey: ['orders', id],
     queryFn: () => api.get(`/orders/${id}`),
     enabled: !!id,
+    refetchInterval: DETAIL_POLL_MS,
   });
 }
 
@@ -34,6 +42,7 @@ export function useOrderItems(orderId: string) {
     queryKey: ['orders', orderId, 'items'],
     queryFn: () => api.get(`/orders/${orderId}/items`),
     enabled: !!orderId,
+    refetchInterval: DETAIL_POLL_MS,
   });
 }
 
@@ -42,6 +51,7 @@ export function useOrderPayments(orderId: string) {
     queryKey: ['orders', orderId, 'payments'],
     queryFn: () => api.get(`/orders/${orderId}/payments`),
     enabled: !!orderId,
+    refetchInterval: DETAIL_POLL_MS,
   });
 }
 
@@ -50,6 +60,7 @@ export function useOrderHistory(orderId: string) {
     queryKey: ['orders', orderId, 'history'],
     queryFn: () => api.get(`/orders/${orderId}/history`),
     enabled: !!orderId,
+    refetchInterval: DETAIL_POLL_MS,
   });
 }
 
@@ -58,6 +69,7 @@ export function useOrderAddons(orderId: string) {
     queryKey: ['orders', orderId, 'addons'],
     queryFn: () => api.get(`/orders/${orderId}/addons`),
     enabled: !!orderId,
+    refetchInterval: DETAIL_POLL_MS,
   });
 }
 

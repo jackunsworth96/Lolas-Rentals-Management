@@ -1,4 +1,6 @@
 import { useState, useMemo } from 'react';
+import { formatCurrency } from '../../utils/currency.js';
+import iconNinePm from '../../assets/Basket/9PM Return Icon.svg';
 
 interface Props {
   currentDropoff: string;
@@ -6,6 +8,9 @@ interface Props {
   selectedTime: string;
   onSelectDate: (iso: string) => void;
   onSelectTime: (time: string) => void;
+  ninePmAddon?: { id: number; name: string; price: number } | null;
+  ninePmSelected: boolean;
+  onToggleNinePm: () => void;
 }
 
 function generateTimeSlots(): { value: string; label: string }[] {
@@ -32,12 +37,14 @@ function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month + 1, 0).getDate();
 }
 
-function formatLongDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+function shortMonthDay(date: Date): string {
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-export function ExtendCalendar({ currentDropoff, selectedDate, selectedTime, onSelectDate, onSelectTime }: Props) {
+export function ExtendCalendar({
+  currentDropoff, selectedDate, selectedTime, onSelectDate, onSelectTime,
+  ninePmAddon, ninePmSelected, onToggleNinePm,
+}: Props) {
   const dropoffDate = useMemo(() => new Date(currentDropoff), [currentDropoff]);
   const [viewYear, setViewYear] = useState(dropoffDate.getFullYear());
   const [viewMonth, setViewMonth] = useState(dropoffDate.getMonth());
@@ -47,98 +54,180 @@ export function ExtendCalendar({ currentDropoff, selectedDate, selectedTime, onS
   const monthLabel = new Date(viewYear, viewMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
   function prevMonth() {
-    if (viewMonth === 0) { setViewYear(viewYear - 1); setViewMonth(11); }
-    else setViewMonth(viewMonth - 1);
+    if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); }
+    else setViewMonth(m => m - 1);
   }
   function nextMonth() {
-    if (viewMonth === 11) { setViewYear(viewYear + 1); setViewMonth(0); }
-    else setViewMonth(viewMonth + 1);
+    if (viewMonth === 11) { setViewYear(y => y + 1); setViewMonth(0); }
+    else setViewMonth(m => m + 1);
   }
 
   function handleDayClick(day: number) {
     const clicked = new Date(viewYear, viewMonth, day);
     if (clicked <= dropoffDate) return;
-    // Build YYYY-MM-DD from local date components — toISOString() converts to UTC
-    // which shifts the date back by UTC+8, causing a consistent off-by-one in Manila.
     const iso = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     onSelectDate(iso);
   }
 
-  const selectedDateObj = selectedDate ? new Date(selectedDate) : null;
-  const additionalDays = selectedDateObj
-    ? Math.max(1, Math.ceil((selectedDateObj.getTime() - dropoffDate.getTime()) / 86400000))
+  const selectedDateObj = selectedDate ? (() => { const [y, mo, d] = selectedDate.split('-').map(Number); return new Date(y, mo - 1, d); })() : null;
+  const effectiveTime = ninePmSelected ? '21:00' : selectedTime;
+  const selectedDateTimeMs = selectedDate
+    ? new Date(`${selectedDate}T${effectiveTime}:00+08:00`).getTime()
+    : null;
+  const additionalDays = selectedDateTimeMs != null
+    ? Math.max(1, Math.ceil((selectedDateTimeMs - dropoffDate.getTime()) / 86400000))
     : 0;
 
-  const dayHeaders = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  const dayHeaders = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   return (
-    <section className="rounded-4xl bg-cream-brand p-6 shadow-[0_10px_30px_-5px_rgba(26,122,110,0.1)] sm:p-8">
-      <h2 className="mb-6 flex items-center gap-3 font-headline text-xl font-black text-teal-brand sm:mb-8 sm:text-2xl">
-        <span className="text-xl">📅</span>
-        Select New Return Date
-      </h2>
-
-      <div className="rounded-3xl bg-white/50 p-4 sm:p-6">
-        <div className="mb-6 flex items-center justify-between">
-          <p className="text-lg font-black text-charcoal-brand">{monthLabel}</p>
-          <div className="flex gap-2">
-            <button onClick={prevMonth} className="rounded-full p-2 transition-colors hover:bg-sand-brand" type="button">◀</button>
-            <button onClick={nextMonth} className="rounded-full p-2 transition-colors hover:bg-sand-brand" type="button">▶</button>
+    <div className="space-y-4">
+      {/* ── Calendar card ── */}
+      <div className="rounded-2xl border border-sand-brand bg-white p-5 shadow-sm">
+        {/* Header */}
+        <div className="mb-4 flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-brand/10 text-xl">📅</span>
+            <div>
+              <p className="font-headline text-base font-black text-charcoal-brand leading-tight">Select New Return Date</p>
+              <p className="text-xs text-charcoal-brand/50">Choose a date after {shortMonthDay(dropoffDate)}</p>
+            </div>
+          </div>
+          <div className="flex gap-1">
+            <button
+              onClick={prevMonth}
+              type="button"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-sand-brand bg-white text-charcoal-brand/60 transition-colors hover:bg-sand-brand hover:text-charcoal-brand"
+            >
+              ‹
+            </button>
+            <button
+              onClick={nextMonth}
+              type="button"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-sand-brand bg-white text-charcoal-brand/60 transition-colors hover:bg-sand-brand hover:text-charcoal-brand"
+            >
+              ›
+            </button>
           </div>
         </div>
 
-        <div className="mb-4 grid grid-cols-7 gap-1 text-center">
-          {dayHeaders.map((d, i) => (
-            <span key={i} className="text-[11px] font-black text-teal-brand/40">{d}</span>
+        {/* Month label */}
+        <p className="mb-3 text-center text-base font-black text-charcoal-brand">{monthLabel}</p>
+
+        {/* Day headers */}
+        <div className="mb-2 grid grid-cols-7 gap-1">
+          {dayHeaders.map((d) => (
+            <span key={d} className="text-center text-[11px] font-bold uppercase tracking-wide text-charcoal-brand/40">{d}</span>
           ))}
         </div>
 
+        {/* Date grid */}
         <div className="grid grid-cols-7 gap-1">
-          {Array.from({ length: firstDayOfWeek }).map((_, i) => <div key={`e${i}`} className="h-10" />)}
+          {Array.from({ length: firstDayOfWeek }).map((_, i) => <div key={`e${i}`} className="aspect-square" />)}
           {Array.from({ length: daysInMonth }).map((_, i) => {
             const day = i + 1;
             const cellDate = new Date(viewYear, viewMonth, day);
             const isDropoff = sameDay(cellDate, dropoffDate);
-            const isSelected = selectedDateObj && sameDay(cellDate, selectedDateObj);
-            const isPast = cellDate <= dropoffDate;
+            const isSelected = selectedDateObj != null && sameDay(cellDate, selectedDateObj);
+            const isPast = cellDate < dropoffDate;
 
-            let cls = 'h-10 flex items-center justify-center rounded-full font-bold transition-all duration-150 text-sm ';
-            if (isSelected) cls += 'bg-gold-brand text-charcoal-brand font-black cursor-pointer relative';
-            else if (isDropoff) cls += 'bg-teal-brand/10 text-teal-brand font-black';
-            else if (isPast) cls += 'text-charcoal-brand/20';
-            else cls += 'text-charcoal-brand hover:bg-sand-brand cursor-pointer';
+            let cls = 'aspect-square flex items-center justify-center rounded-xl text-sm font-bold transition-all duration-150 relative ';
+            if (isSelected) {
+              cls += 'bg-teal-brand text-white font-black shadow-sm cursor-pointer';
+            } else if (isDropoff) {
+              cls += 'bg-amber-400 text-white font-black cursor-default';
+            } else if (isPast) {
+              cls += 'text-charcoal-brand/25 cursor-default';
+            } else {
+              cls += 'text-charcoal-brand hover:bg-teal-brand/10 hover:text-teal-brand cursor-pointer';
+            }
 
             return (
-              <button key={day} type="button" onClick={() => handleDayClick(day)} disabled={isPast && !isDropoff} className={cls}>
+              <button
+                key={day}
+                type="button"
+                onClick={() => handleDayClick(day)}
+                disabled={isPast || isDropoff}
+                className={cls}
+              >
                 {day}
-                {isSelected && <span className="absolute bottom-1 h-1 w-1 rounded-full bg-charcoal-brand" />}
+                {isDropoff && (
+                  <span className="absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-white/70" />
+                )}
               </button>
             );
           })}
         </div>
-      </div>
 
-      {/* Time selector */}
-      <div className="mt-6">
-        <label className="ml-2 text-xs font-bold uppercase tracking-widest text-teal-brand">New Return Time</label>
-        <div className="relative mt-2">
-          <select
-            value={selectedTime}
-            onChange={(e) => onSelectTime(e.target.value)}
-            className="w-full appearance-none rounded-full bg-sand-brand px-6 py-3 pr-10 font-medium text-charcoal-brand outline-none transition-all duration-200 focus:ring-2 focus:ring-teal-brand"
-          >
-            {TIME_SLOTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
-          <span className="pointer-events-none absolute right-4 top-3.5 text-charcoal-brand/50">▾</span>
+        {/* Legend */}
+        <div className="mt-4 flex items-center justify-center gap-5 border-t border-sand-brand pt-3">
+          <span className="flex items-center gap-1.5 text-xs text-charcoal-brand/60">
+            <span className="h-3 w-3 rounded-sm bg-amber-400" />
+            Current return
+          </span>
+          <span className="flex items-center gap-1.5 text-xs text-charcoal-brand/60">
+            <span className="h-3 w-3 rounded-sm bg-teal-brand" />
+            New return
+          </span>
         </div>
       </div>
 
-      {selectedDate && (
-        <p className="mt-6 text-center text-sm font-bold italic text-teal-brand">
-          New Return: {formatLongDate(selectedDate)} at {TIME_SLOTS.find(s => s.value === selectedTime)?.label ?? selectedTime}{' '}
-          ({additionalDays} Additional Day{additionalDays !== 1 ? 's' : ''})
-        </p>
-      )}
-    </section>
+      {/* ── Return time grid ── */}
+      <div className="rounded-2xl border border-sand-brand bg-white p-5 shadow-sm">
+        <p className="mb-3 text-xs font-black uppercase tracking-widest text-charcoal-brand/50">Return Time</p>
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
+          {TIME_SLOTS.map((s) => {
+            const isActive = s.value === selectedTime;
+            return (
+              <button
+                key={s.value}
+                type="button"
+                onClick={() => onSelectTime(s.value)}
+                className={`rounded-xl border px-2 py-2.5 text-center text-sm font-bold transition-all duration-150 ${
+                  isActive
+                    ? 'border-teal-brand bg-teal-brand text-white shadow-sm'
+                    : 'border-sand-brand bg-white text-charcoal-brand hover:border-teal-brand/40 hover:bg-teal-brand/5'
+                }`}
+              >
+                {s.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* 9PM toggle — only when 4:45 PM is selected and addon exists */}
+        {selectedTime === '16:45' && ninePmAddon && (
+          <button
+            type="button"
+            onClick={onToggleNinePm}
+            className={`mt-3 flex w-full items-center gap-3 rounded-xl border-2 px-4 py-3 text-left transition-all ${
+              ninePmSelected
+                ? 'border-teal-brand bg-teal-brand/8 text-teal-brand'
+                : 'border-dashed border-sand-brand bg-white text-charcoal-brand hover:border-teal-brand/40'
+            }`}
+          >
+            <img src={iconNinePm} alt="" className="h-7 w-7 shrink-0 object-contain" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-black">9PM Late Return</p>
+              <p className="text-xs opacity-70">Return at 9:00 PM instead of 4:45 PM</p>
+            </div>
+            <span className="shrink-0 text-sm font-black text-teal-brand">+{formatCurrency(ninePmAddon.price)}</span>
+            <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
+              ninePmSelected ? 'border-teal-brand bg-teal-brand' : 'border-charcoal-brand/30'
+            }`}>
+              {ninePmSelected && <span className="text-[10px] font-black text-white">✓</span>}
+            </div>
+          </button>
+        )}
+
+        {selectedDate && (
+          <p className="mt-3 text-center text-xs font-bold text-teal-brand/80">
+            New return: {selectedDateObj?.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}{' '}
+            at {ninePmSelected ? '9:00 PM' : (TIME_SLOTS.find(s => s.value === selectedTime)?.label ?? selectedTime)}
+            {' '}·{' '}{additionalDays} Additional Day{additionalDays !== 1 ? 's' : ''}
+          </p>
+        )}
+      </div>
+    </div>
   );
 }

@@ -31,6 +31,7 @@ export interface CashupSummary {
     cardSales: TransactionRow[];
     gcashSales: TransactionRow[];
     bankTransfer: TransactionRow[];
+    pendingExtensions: TransactionRow[];
     depositsHeld: DepositsHeldGroup[];
     miscSales: {
       cash: MiscSaleRow[];
@@ -51,6 +52,7 @@ export interface CashupSummary {
     cardSalesTotal: number;
     gcashSalesTotal: number;
     bankTransferTotal: number;
+    pendingExtensionsTotal: number;
     depositsHeldTotal: number;
     miscCashTotal: number;
     miscCardTotal: number;

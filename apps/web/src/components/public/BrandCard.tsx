@@ -56,7 +56,7 @@ export function BrandCard({
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: 'easeOut' }}
-        style={{ height: '100%', animation: 'borderPulse 2.4s ease-in-out infinite' }}
+        style={{ height: '100%' }}
       >
         {inner}
       </motion.div>

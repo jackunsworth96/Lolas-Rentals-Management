@@ -155,22 +155,33 @@ const BorderGlow = ({
   }, [animated]);
 
   if (isTouch) {
+    const ringWidth = 2;
+    const innerRadius = Math.max(0, borderRadius - ringWidth);
     return (
       <div
         style={{
           borderRadius: `${borderRadius}px`,
-          background: backgroundColor,
-          padding: '1.5px',
-          animation: 'borderPulse 3s ease-in-out infinite',
+          padding: `${ringWidth}px`,
           height: '100%',
+          boxSizing: 'border-box',
+          /* Full-perimeter gold ring (same fill on inner + padding used to look invisible before). */
+          background: `linear-gradient(
+            145deg,
+            rgba(252, 188, 90, 0.95) 0%,
+            rgba(245, 166, 35, 0.78) 45%,
+            rgba(252, 188, 90, 0.62) 55%,
+            rgba(252, 188, 90, 0.92) 100%
+          )`,
+          animation: 'touchRingPulse 3s ease-in-out infinite',
           ...style,
         }}
       >
         <div
           style={{
-            borderRadius: `${borderRadius - 2}px`,
+            borderRadius: `${innerRadius}px`,
             background: backgroundColor,
             height: '100%',
+            minHeight: '100%',
           }}
         >
           {children}

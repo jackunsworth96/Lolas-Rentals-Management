@@ -144,10 +144,12 @@ router.get(
       const cardSalesTx: unknown[] = [];
       const gcashSalesTx: unknown[] = [];
       const bankTransferTx: unknown[] = [];
+      const pendingExtensionsTx: unknown[] = [];
       let cashSalesTotal = 0;
       let cardSalesTotal = 0;
       let gcashSalesTotal = 0;
       let bankTransferTotal = 0;
+      let pendingExtensionsTotal = 0;
 
       // Deposits held buckets (by method, but shown together)
       const depositsHeldByMethod: Record<string, { label: string; rows: unknown[]; total: number }> = {};
@@ -189,6 +191,22 @@ router.get(
         };
 
         const isDeposit = DEPOSIT_TYPES.has(paymentType);
+
+        // Unpaid extension IOUs — customer hasn't paid yet, no cash received.
+        // Keep them separate so cashup isn't inflated; staff can see what to collect.
+        const isUnpaidExtension = paymentType === 'extension' && p.settlement_status === 'pending';
+        if (isUnpaidExtension) {
+          pendingExtensionsTx.push(row);
+          pendingExtensionsTotal += amount;
+          continue;
+        }
+        // Absorbed extensions — IOUs that were rolled into a final settlement
+        // payment. The cash is captured by the settlement payment row, not here,
+        // so skip to avoid double-counting.
+        const isAbsorbedExtension = paymentType === 'extension' && p.settlement_status === 'absorbed';
+        if (isAbsorbedExtension) {
+          continue;
+        }
 
         if (isDeposit) {
           // Skip deposits for completed orders — deposit has been refunded or applied on settlement
@@ -379,6 +397,7 @@ router.get(
             cardSales: cardSalesTx,
             gcashSales: gcashSalesTx,
             bankTransfer: bankTransferTx,
+            pendingExtensions: pendingExtensionsTx,
             depositsHeld: Object.values(depositsHeldByMethod),
             miscSales: {
               cash: miscCashTx,
@@ -398,6 +417,7 @@ router.get(
             cardSalesTotal,
             gcashSalesTotal,
             bankTransferTotal,
+            pendingExtensionsTotal,
             depositsHeldTotal,
             miscCashTotal,
             miscCardTotal,

@@ -55,6 +55,8 @@ export interface EnrichedOrder {
   finalTotal: number;
   balanceDue: number;
   totalPaid: number;
+  /** Sum of extension IOUs (payments with type 'extension' + settlement_status 'pending'). */
+  pendingExtensionsTotal?: number;
   securityDeposit: number;
   cardFeeSurcharge: number;
   status: string;

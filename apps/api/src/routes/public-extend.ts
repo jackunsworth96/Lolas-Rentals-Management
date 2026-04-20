@@ -41,6 +41,26 @@ function getDayBracketLabel(days: number): string {
   return '7+ day rate';
 }
 
+// ── Public addon catalog (no auth — only returns id, name, price_one_time for active addons) ──
+
+router.get('/addons', async (req, res, next) => {
+  try {
+    const { storeId } = req.query as { storeId?: string };
+    if (!storeId) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'storeId is required' } });
+      return;
+    }
+    const sb = getSupabaseClient();
+    const { data, error } = await sb
+      .from('addons')
+      .select('id, name, addon_type, price_one_time')
+      .eq('store_id', storeId)
+      .eq('is_active', true);
+    if (error) throw new Error(`Addon lookup failed: ${error.message}`);
+    res.json({ success: true, data: data ?? [] });
+  } catch (err) { next(err); }
+});
+
 // ── Lookup ──
 
 router.post('/lookup', extendLookupLimiter, validateBody(ExtendLookupRequestSchema), async (req, res, next) => {
@@ -84,7 +104,7 @@ router.post('/lookup', extendLookupLimiter, validateBody(ExtendLookupRequestSche
     if (custIds.length > 0) {
       const { data: orderRows, error: oErr } = await sb
         .from('orders')
-        .select('id, order_date, status, customer_id, booking_token')
+        .select('id, order_date, status, customer_id, booking_token, final_total')
         .in('customer_id', custIds)
         .eq('status', 'active')
         .eq('booking_token', orderReference);
@@ -131,7 +151,7 @@ router.post('/lookup', extendLookupLimiter, validateBody(ExtendLookupRequestSche
               storeId,
               currentDropoffDatetime: item.dropoff_datetime as string,
               pickupLocationName: (locs as { name: string }[] | null)?.[0]?.name ?? 'General Luna',
-              originalTotal: 0,
+              originalTotal: Number((ord as Record<string, unknown>).final_total ?? 0),
               rentalDays: days,
             },
           },
@@ -273,10 +293,11 @@ router.get('/preview', extendLookupLimiter, async (req, res, next) => {
 
 router.post('/confirm', extendConfirmLimiter, validateBody(PublicExtendConfirmSchema), async (req, res, next) => {
   try {
-    const { orderReference, email, newDropoffDatetime } = req.body as {
+    const { orderReference, email, newDropoffDatetime, ninePmAddonId } = req.body as {
       orderReference: string;
       email: string;
       newDropoffDatetime: string;
+      ninePmAddonId?: number;
     };
     const trimmedEmail = email.trim().toLowerCase();
     const deps = req.app.locals.deps;
@@ -301,26 +322,9 @@ router.post('/confirm', extendConfirmLimiter, validateBody(PublicExtendConfirmSc
       return;
     }
 
-    // Public path: never paid, no override, payment method always 'pending'.
-    const rawOutcome = await resolveExtensionForRaw({
-      orderReference,
-      trimmedEmail,
-      newDropoffDatetime,
-      overrideDailyRate: undefined,
-      isPaid: false,
-      paymentMethodId: 'pending',
-      emailErrorLabel: '[extend-email] Raw path error:',
-      deps,
-    });
-    if (rawOutcome.kind === 'error') {
-      res.json({ success: true, data: { success: false, reason: rawOutcome.reason } });
-      return;
-    }
-    if (rawOutcome.kind === 'success') {
-      res.json({ success: true, data: { success: true, newDropoffDatetime: rawOutcome.newDropoffDatetime, extensionCost: rawOutcome.extensionCost } });
-      return;
-    }
-
+    // Try active (orders table) first — an activated order always has an
+    // orders_raw row with status 'processed', so checking raw first would
+    // write to the wrong table and leave the backoffice out of sync.
     const activeOutcome = await resolveExtensionForActive({
       orderReference,
       trimmedEmail,
@@ -329,6 +333,7 @@ router.post('/confirm', extendConfirmLimiter, validateBody(PublicExtendConfirmSc
       isPaid: false,
       paymentMethodId: 'pending',
       emailErrorLabel: '[extend-email] Active path error:',
+      ninePmAddonId,
       deps,
     });
     if (activeOutcome.kind === 'error') {
@@ -345,6 +350,26 @@ router.post('/confirm', extendConfirmLimiter, validateBody(PublicExtendConfirmSc
           extensionDays: activeOutcome.extensionDays,
         },
       });
+      return;
+    }
+
+    // Fall back to raw path (booking made on website but not yet activated).
+    const rawOutcome = await resolveExtensionForRaw({
+      orderReference,
+      trimmedEmail,
+      newDropoffDatetime,
+      overrideDailyRate: undefined,
+      isPaid: false,
+      paymentMethodId: 'pending',
+      emailErrorLabel: '[extend-email] Raw path error:',
+      deps,
+    });
+    if (rawOutcome.kind === 'error') {
+      res.json({ success: true, data: { success: false, reason: rawOutcome.reason } });
+      return;
+    }
+    if (rawOutcome.kind === 'success') {
+      res.json({ success: true, data: { success: true, newDropoffDatetime: rawOutcome.newDropoffDatetime, extensionCost: rawOutcome.extensionCost } });
       return;
     }
 

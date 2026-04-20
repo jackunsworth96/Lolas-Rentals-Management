@@ -31,8 +31,21 @@ export interface SettleOrderInput {
   refundAccountId: string;
   finalPaymentMethodId?: string | null;
   finalPaymentAccountId?: string | null;
+  /**
+   * Inclusive of card surcharge when the final payment method is a card.
+   * See `cardFeeSurchargeDelta` for the surcharge portion.
+   */
   finalPaymentAmount?: number;
   isCardPayment?: boolean;
+  /**
+   * Peso amount of the card-fee surcharge that should be bumped on
+   * `orders.final_total` + `orders.card_fee_surcharge` at settle time.
+   * Only set when `isCardPayment` is true and the underlying payment
+   * method has a non-zero surcharge percent. The caller is responsible
+   * for pre-computing this so the `finalPaymentAmount` above is the
+   * inclusive (grossed-up) figure charged to the customer.
+   */
+  cardFeeSurchargeDelta?: number;
   settlementRef?: string | null;
 }
 
@@ -62,12 +75,41 @@ export async function settleOrder(
     orderItemRepo.findByOrderId(order.id),
   ]);
 
-  const totalPayments = payments.reduce(
+  // ── Payment categorisation ──
+  // • Deposits live against `orders.security_deposit`, not `final_total` — summing
+  //   them into `totalPayments` would make the balance look overpaid.
+  // • Pending extension IOUs represent amounts owed that haven't been collected
+  //   yet; they must NOT count as payments received.
+  // • Absorbed extensions are IOUs that were rolled into a previous settlement —
+  //   the cash was captured by the final-payment row, not the extension row.
+  const pendingExtensions = payments.filter(
+    (p) => p.paymentType === 'extension' && p.settlementStatus === 'pending',
+  );
+  const paidNonDepositPayments = payments.filter((p) => {
+    if (p.paymentType === 'deposit') return false;
+    if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return false;
+    return true;
+  });
+
+  const rentalPaid = paidNonDepositPayments.reduce(
+    (sum, p) => sum.add(Money.php(p.amount)),
+    Money.zero(),
+  );
+  const pendingExtensionsTotal = pendingExtensions.reduce(
     (sum, p) => sum.add(Money.php(p.amount)),
     Money.zero(),
   );
 
-  const balanceBeforeDeposit = order.calculateBalanceDue(totalPayments);
+  // Balance = rental/addon/extension charges not yet paid.
+  //   (a) final_total − rentalPaid         — works when migration 091 has bumped final_total
+  //   (b) pendingExtensionsTotal           — fallback if final_total is stale
+  // Use the greater so the calc is resilient either way.
+  const balanceFromFinalTotal = order.calculateBalanceDue(rentalPaid);
+  const balanceBeforeDeposit =
+    balanceFromFinalTotal.toNumber() >= pendingExtensionsTotal.toNumber()
+      ? balanceFromFinalTotal
+      : pendingExtensionsTotal;
+
   const { amountApplied, refund } = calculateRefundableDeposit(
     order.securityDeposit,
     balanceBeforeDeposit,
@@ -203,10 +245,26 @@ export async function settleOrder(
 
   // Compute the post-settlement balance locally so we can
   // stamp it on orders.balance_due inside the same RPC call.
-  const paymentsAfter = finalPayment
-    ? totalPayments.add(Money.php(finalPayment.amount))
-    : totalPayments;
-  const finalBalanceDue = order.finalTotal.subtract(paymentsAfter);
+  // Include the final_payment + the deposit_applied + the
+  // absorbed pending extensions (all of which count toward the
+  // rental side of the ledger). Deposits paid pre-settlement are
+  // intentionally excluded because they're tracked separately.
+  //
+  // When a card surcharge is applied at settlement, orders.final_total
+  // is bumped by the surcharge delta (inside the RPC). We must mirror
+  // that bump locally so finalBalanceDue reflects the post-update
+  // total — otherwise the balance would go negative by the surcharge.
+  const absorbedExtensionTotal = pendingExtensionsTotal;
+  const surchargeDelta =
+    input.isCardPayment && input.cardFeeSurchargeDelta && input.cardFeeSurchargeDelta > 0
+      ? Money.php(input.cardFeeSurchargeDelta)
+      : Money.zero();
+  const paymentsAfter = rentalPaid
+    .add(amountApplied)
+    .add(absorbedExtensionTotal)
+    .add(finalPayment ? Money.php(finalPayment.amount) : Money.zero());
+  const adjustedFinalTotal = order.finalTotal.add(surchargeDelta);
+  const finalBalanceDue = adjustedFinalTotal.subtract(paymentsAfter);
 
   const fleetReleases = orderItems.map((item) => ({
     vehicle_id: item.vehicleId,
@@ -258,6 +316,8 @@ export async function settleOrder(
     p_journal_period: journalPeriod,
     p_journal_date: journalDate,
     p_journal_legs: legs.map(serialiseLeg),
+    p_absorbed_extension_payment_ids: pendingExtensions.map((p) => p.id),
+    p_card_fee_surcharge_delta: surchargeDelta.toNumber(),
   });
 
   if (rpcErr) {
@@ -281,5 +341,8 @@ export async function settleOrder(
     balanceAfterDeposit: balanceAfterDeposit.toNumber(),
     finalPaymentCollected: finalPayment?.amount ?? 0,
     finalBalanceDue: finalBalanceDue.toNumber(),
+    absorbedExtensionsCount: pendingExtensions.length,
+    absorbedExtensionsTotal: absorbedExtensionTotal.toNumber(),
+    cardFeeSurchargeApplied: surchargeDelta.toNumber(),
   };
 }

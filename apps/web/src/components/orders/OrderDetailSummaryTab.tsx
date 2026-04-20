@@ -300,16 +300,31 @@ export function OrderDetailSummaryTab({
   const isSettleFinalCard = settleFinalSurcharge > 0;
 
   // ── Derived totals ──
-  // Unpaid extensions are stored as 'pending' payment rows (IOU) — exclude
-  // them from totalPaid so balance_due reflects the unpaid extension amount.
+  // Rules:
+  //  • `final_total` = rental + addons + surcharge. Does NOT include deposit
+  //    (deposit is tracked separately on `orders.security_deposit`).
+  //  • `totalPaid` should reflect only payments toward rental — excluding
+  //    deposit payments (held separately) and pending extension IOUs (no cash
+  //    received yet).
+  //  • Balance = greater of `final_total − totalPaid` and the pending
+  //    extension IOU total — the latter acts as a resilient fallback when
+  //    `final_total` hasn't been bumped by the extension RPC (migration 091).
   const total = enrichedData?.finalTotal ?? moneyAmount(order.finalTotal);
-  const totalPaid =
-    enrichedData?.totalPaid ??
+  const totalPaid = payments.reduce((s, p) => {
+    if (p.paymentType === 'deposit') return s;
+    // 'pending' → IOU not yet collected. 'absorbed' → rolled into the
+    // settlement payment row (captured there, not here). Either way skip.
+    if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return s;
+    return s + (p.amount ?? 0);
+  }, 0);
+  const pendingExtensionsTotal =
+    enrichedData?.pendingExtensionsTotal ??
     payments.reduce((s, p) => {
-      const isUnpaidExtension = p.paymentType === 'extension' && p.settlementStatus === 'pending';
-      return isUnpaidExtension ? s : s + (p.amount ?? 0);
+      const isPending = p.paymentType === 'extension' && p.settlementStatus === 'pending';
+      return isPending ? s + (p.amount ?? 0) : s;
     }, 0);
-  const balance = Math.max(0, total - totalPaid);
+  const balanceFromFinalTotal = Math.max(0, total - totalPaid);
+  const balance = Math.max(balanceFromFinalTotal, pendingExtensionsTotal);
   const hasExtension =
     enrichedData?.hasExtension ?? payments.some((p) => p.paymentType === 'extension');
 
@@ -329,7 +344,24 @@ export function OrderDetailSummaryTab({
   const statusVal = (order.status as { value?: string } | undefined)?.value ?? order.status;
 
   const itemsList = items;
-  const rentalSubtotal = itemsList.reduce((sum, i) => sum + (i.rentalRate ?? 0) * (i.rentalDaysCount ?? 0), 0);
+  // Rental subtotal = original rate × originally-booked days. Extensions are
+  // modelled separately so the breakdown stays transparent: you can see what
+  // the base rental cost vs what was added through extensions.
+  const extensionCharges = payments.reduce((s, p) => {
+    if (p.paymentType !== 'extension') return s;
+    // 'pending' (unpaid IOU), 'absorbed' (rolled into settlement), null (paid).
+    // Include them all — they are real charges regardless of collection status.
+    return s + (p.amount ?? 0);
+  }, 0);
+  const rentalBaseSubtotal = itemsList.reduce(
+    (sum, i) => sum + (i.rentalRate ?? 0) * (i.rentalDaysCount ?? 0),
+    0,
+  );
+  // If final_total > base + addons + surcharge + deposit, the difference is
+  // attributable to extensions (or back-office adjustments). When extensions
+  // have been booked the rentalDaysCount includes extended days — so we must
+  // subtract the extension charges to isolate the ORIGINAL rental subtotal.
+  const rentalSubtotal = Math.max(0, rentalBaseSubtotal - extensionCharges);
   const addonTotal = orderAddons.reduce((sum, a) => sum + (a.totalAmount ?? 0), 0);
 
   const handleSettle = (e: React.FormEvent) => {
@@ -341,10 +373,48 @@ export function OrderDetailSummaryTab({
     const remainingAfterDeposit = Math.max(0, balance - depositApplied);
     const needsFinalPayment = remainingAfterDeposit > 0;
 
+    // Grosses up the customer-facing figure by the card surcharge %
+    // so Lola's stops silently absorbing the 5% card fee on card
+    // settlements. When the final method is cash/bank this is a no-op.
+    const cardFeeSurchargeDelta = needsFinalPayment && isSettleFinalCard
+      ? Math.round(remainingAfterDeposit * (settleFinalSurcharge / 100) * 100) / 100
+      : 0;
+    const inclusiveFinalPaymentAmount = needsFinalPayment
+      ? Math.round((remainingAfterDeposit + cardFeeSurchargeDelta) * 100) / 100
+      : 0;
+
     if (depositRefund > 0 && !effectiveRefundAccountId.trim()) return;
 
     if (needsFinalPayment && !settleFinalMethodId) return;
     if (needsFinalPayment && !isSettleFinalCard && !settleFinalAccountId) return;
+
+    // Safety net: surface outstanding balance to the operator before committing.
+    // The button text already shows the amount, but a second explicit confirmation
+    // guards against accidental settlement when the customer hasn't paid the
+    // extension/final balance yet.
+    if (balance > 0) {
+      const parts: string[] = [];
+      parts.push(`Balance Due: ${formatCurrency(balance)}`);
+      if (pendingExtensionsTotal > 0) parts.push(`Unpaid Extensions: ${formatCurrency(pendingExtensionsTotal)}`);
+      if (securityDeposit > 0) parts.push(`Security Deposit Held: ${formatCurrency(securityDeposit)}`);
+      if (depositApplied > 0) parts.push(`Deposit Applied: ${formatCurrency(depositApplied)}`);
+      if (remainingAfterDeposit > 0) {
+        if (cardFeeSurchargeDelta > 0) {
+          parts.push(`Card surcharge (${settleFinalSurcharge}%): ${formatCurrency(cardFeeSurchargeDelta)}`);
+          parts.push(`Card to Collect NOW: ${formatCurrency(inclusiveFinalPaymentAmount)}`);
+        } else {
+          parts.push(`Cash/Bank to Collect NOW: ${formatCurrency(remainingAfterDeposit)}`);
+        }
+      }
+
+      const collectAmount = remainingAfterDeposit > 0
+        ? inclusiveFinalPaymentAmount
+        : balance;
+      const confirmed = window.confirm(
+        `⚠ OUTSTANDING BALANCE\n\n${parts.join('\n')}\n\nHave you collected the remaining ${formatCurrency(collectAmount)} from the customer?\n\nClick OK to proceed with settlement, or Cancel to collect payment first.`,
+      );
+      if (!confirmed) return;
+    }
 
     settleOrder.mutate(
       {
@@ -355,8 +425,9 @@ export function OrderDetailSummaryTab({
         refundAccountId: depositRefund > 0 ? effectiveRefundAccountId : settleRefundAccountId,
         finalPaymentMethodId: needsFinalPayment ? settleFinalMethodId : null,
         finalPaymentAccountId: needsFinalPayment && !isSettleFinalCard ? settleFinalAccountId : null,
-        finalPaymentAmount: needsFinalPayment ? remainingAfterDeposit : undefined,
+        finalPaymentAmount: needsFinalPayment ? inclusiveFinalPaymentAmount : undefined,
         isCardPayment: needsFinalPayment ? isSettleFinalCard : undefined,
+        cardFeeSurchargeDelta: cardFeeSurchargeDelta > 0 ? cardFeeSurchargeDelta : undefined,
         settlementRef: needsFinalPayment && isSettleFinalCard ? (settleFinalRef || null) : null,
       },
       { onSuccess: () => onClose() },
@@ -563,6 +634,12 @@ export function OrderDetailSummaryTab({
               <span className="text-gray-600">Rental subtotal</span>
               <span>{formatCurrency(rentalSubtotal)}</span>
             </div>
+            {extensionCharges > 0 && (
+              <div className="flex justify-between px-4 py-2">
+                <span className="text-gray-600">Extensions</span>
+                <span>{formatCurrency(extensionCharges)}</span>
+              </div>
+            )}
             {addonTotal > 0 && (
               <div className="flex justify-between px-4 py-2">
                 <span className="text-gray-600">Add-ons</span>
@@ -586,9 +663,15 @@ export function OrderDetailSummaryTab({
               <span>{formatCurrency(total)}</span>
             </div>
             <div className="flex justify-between px-4 py-2">
-              <span className="text-gray-600">Payments received</span>
+              <span className="text-gray-600">Payments received (rental)</span>
               <span className="text-green-600">−{formatCurrency(totalPaid)}</span>
             </div>
+            {pendingExtensionsTotal > 0 && (
+              <div className="flex justify-between px-4 py-2 bg-amber-50">
+                <span className="font-medium text-amber-800">Unpaid extensions (IOU)</span>
+                <span className="font-bold text-amber-800">+{formatCurrency(pendingExtensionsTotal)}</span>
+              </div>
+            )}
             <div className="flex justify-between px-4 py-2 font-semibold">
               <span>Balance due</span>
               <span className={balance > 0 ? 'text-red-600' : 'text-green-600'}>{formatCurrency(balance)}</span>
@@ -752,6 +835,14 @@ export function OrderDetailSummaryTab({
                 const remainingAfterDeposit = Math.max(0, balance - depositApplied);
                 const isFullyPaid = remainingAfterDeposit <= 0 && depositRefund <= 0;
 
+                // Surcharge preview — only shown once a card method is selected.
+                const cardSurchargePreview = remainingAfterDeposit > 0 && isSettleFinalCard
+                  ? Math.round(remainingAfterDeposit * (settleFinalSurcharge / 100) * 100) / 100
+                  : 0;
+                const inclusivePreview = remainingAfterDeposit > 0
+                  ? Math.round((remainingAfterDeposit + cardSurchargePreview) * 100) / 100
+                  : 0;
+
                 const refundReady = depositRefund <= 0 || (!!settleRefundMethodId && !!effectiveRefundAccountId.trim());
                 const finalPayReady = remainingAfterDeposit <= 0 || (!!settleFinalMethodId && (isSettleFinalCard || !!settleFinalAccountId));
                 const settleReady = !!settleDepositAccountId && !!settleReceivableAccountId && refundReady && finalPayReady;
@@ -765,9 +856,15 @@ export function OrderDetailSummaryTab({
                         <span className="font-medium">{formatCurrency(total)}</span>
                       </div>
                       <div className="flex justify-between px-4 py-2.5">
-                        <span className="text-gray-600">Total Paid</span>
+                        <span className="text-gray-600">Total Paid (rental)</span>
                         <span className="font-medium text-green-600">{formatCurrency(totalPaid)}</span>
                       </div>
+                      {pendingExtensionsTotal > 0 && (
+                        <div className="flex justify-between px-4 py-2.5 bg-amber-50">
+                          <span className="font-medium text-amber-800">Unpaid Extensions</span>
+                          <span className="font-bold text-amber-800">{formatCurrency(pendingExtensionsTotal)}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between px-4 py-2.5">
                         <span className="font-medium text-gray-900">Balance Due</span>
                         <span className={`font-bold ${balance > 0 ? 'text-red-600' : 'text-green-600'}`}>{formatCurrency(Math.max(0, balance))}</span>
@@ -776,6 +873,52 @@ export function OrderDetailSummaryTab({
                         <div className="flex justify-between px-4 py-2.5">
                           <span className="text-gray-600">Security Deposit Held</span>
                           <span className="font-medium">{formatCurrency(securityDeposit)}</span>
+                        </div>
+                      )}
+                      {depositApplied > 0 && (
+                        <div className="flex justify-between px-4 py-2.5 bg-teal-50">
+                          <span
+                            className="font-medium text-teal-900"
+                            title="Portion of the held deposit that will be applied against the outstanding balance"
+                          >
+                            Deposit Applied
+                          </span>
+                          <span className="font-bold text-teal-900">
+                            −{formatCurrency(depositApplied)}
+                          </span>
+                        </div>
+                      )}
+                      {remainingAfterDeposit > 0 && (
+                        <div className="flex justify-between px-4 py-2.5">
+                          <span className="text-gray-600">
+                            Remaining to Collect{isSettleFinalCard ? ' (before fee)' : ''}
+                          </span>
+                          <span className="font-medium">
+                            {formatCurrency(remainingAfterDeposit)}
+                          </span>
+                        </div>
+                      )}
+                      {cardSurchargePreview > 0 && (
+                        <div className="flex justify-between px-4 py-2.5">
+                          <span
+                            className="text-gray-600"
+                            title="Card processing fee grossed up onto the amount collected"
+                          >
+                            Card surcharge ({settleFinalSurcharge}%)
+                          </span>
+                          <span className="font-medium">
+                            +{formatCurrency(cardSurchargePreview)}
+                          </span>
+                        </div>
+                      )}
+                      {cardSurchargePreview > 0 && (
+                        <div className="flex justify-between px-4 py-2.5 bg-blue-50">
+                          <span className="font-medium text-blue-900">
+                            Card Total to Charge
+                          </span>
+                          <span className="font-bold text-blue-900">
+                            {formatCurrency(inclusivePreview)}
+                          </span>
                         </div>
                       )}
                       {depositRefund > 0 && (
@@ -798,6 +941,14 @@ export function OrderDetailSummaryTab({
                       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
                         <p className="text-sm font-medium text-amber-900">
                           Final payment of {formatCurrency(remainingAfterDeposit)} required
+                          {cardSurchargePreview > 0 && (
+                            <>
+                              {' '}— charge customer{' '}
+                              <span className="font-bold">{formatCurrency(inclusivePreview)}</span>{' '}
+                              (incl. {settleFinalSurcharge}% card fee of{' '}
+                              {formatCurrency(cardSurchargePreview)})
+                            </>
+                          )}
                         </p>
                         <div className="flex flex-col sm:flex-row sm:flex-wrap items-end gap-3">
                           <label className="block">
@@ -869,7 +1020,25 @@ export function OrderDetailSummaryTab({
                         disabled={settleOrder.isPending || !settleReady}
                         className="w-full rounded-lg bg-green-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
                       >
-                        {settleOrder.isPending ? 'Settling...' : remainingAfterDeposit > 0 ? `Settle Order — Collect ${formatCurrency(remainingAfterDeposit)}` : 'Settle Order'}
+                        {(() => {
+                          if (settleOrder.isPending) return 'Settling...';
+                          if (remainingAfterDeposit > 0) {
+                            if (cardSurchargePreview > 0) {
+                              return `Settle Order — Collect ${formatCurrency(inclusivePreview)} (incl. ${settleFinalSurcharge}% card fee)`;
+                            }
+                            return `Settle Order — Collect ${formatCurrency(remainingAfterDeposit)}`;
+                          }
+                          if (depositApplied > 0 && depositRefund > 0) {
+                            return `Settle Order — Apply ${formatCurrency(depositApplied)} Deposit & Refund ${formatCurrency(depositRefund)}`;
+                          }
+                          if (depositApplied > 0) {
+                            return `Settle Order — Apply ${formatCurrency(depositApplied)} Deposit`;
+                          }
+                          if (depositRefund > 0) {
+                            return `Settle Order — Refund ${formatCurrency(depositRefund)} Deposit`;
+                          }
+                          return 'Settle Order';
+                        })()}
                       </button>
                     </form>
                     {settleOrder.error && <p className="text-sm text-red-600">{(settleOrder.error as Error).message}</p>}

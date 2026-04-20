@@ -78,7 +78,6 @@ export function PageLayout({
   const floralParallaxLocked = useRef<number | null>(null);
   const [floralShift, setFloralShift] = useState(0);
   const [showBackTop, setShowBackTop] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
 
   useEffect(() => {
     if (title) document.title = title;
@@ -90,15 +89,6 @@ export function PageLayout({
     };
     window.addEventListener('scroll', onScroll);
     return () => window.removeEventListener('scroll', onScroll);
-  }, []);
-
-  // Hide back-to-top when the chat widget is open (they share the same bottom-right corner).
-  useEffect(() => {
-    const observer = new MutationObserver(() => {
-      setChatOpen(document.body.classList.contains('chat-open'));
-    });
-    observer.observe(document.body, { attributeFilter: ['class'] });
-    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
@@ -341,16 +331,16 @@ export function PageLayout({
 
       <button
         onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-        className="fixed bottom-6 right-6 z-50 md:hidden flex items-center justify-center w-11 h-11 rounded-full bg-teal-brand text-white shadow-md transition-opacity duration-300"
+        className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 md:hidden flex items-center justify-center h-8 w-8 rounded-full bg-teal-brand text-white shadow-md transition-opacity duration-300"
         style={{
-          opacity: showBackTop && !chatOpen ? 1 : 0,
-          pointerEvents: showBackTop && !chatOpen ? 'auto' : 'none',
+          opacity: showBackTop ? 1 : 0,
+          pointerEvents: showBackTop ? 'auto' : 'none',
         }}
         aria-label="Back to top"
       >
         <svg
-          width="16"
-          height="16"
+          width="12"
+          height="12"
           viewBox="0 0 16 16"
           fill="none"
           stroke="currentColor"

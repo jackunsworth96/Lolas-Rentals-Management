@@ -572,6 +572,12 @@ export default function CashupPage() {
                 color="teal"
               />
             )}
+            {(summary.transactions.pendingExtensions?.length ?? 0) > 0 && (
+              <PendingExtensionsSection
+                rows={summary.transactions.pendingExtensions}
+                total={summary.totals.pendingExtensionsTotal ?? 0}
+              />
+            )}
             <TransactionSection
               title="Bank Transfers"
               icon="🏛️"
@@ -907,6 +913,45 @@ function SummaryCard({
         {formatCurrency(value)}
       </p>
       {subtitle && <p className="mt-0.5 text-[10px] text-gray-400">{subtitle}</p>}
+    </div>
+  );
+}
+
+function PendingExtensionsSection({ rows, total }: { rows: TransactionRow[]; total: number }) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-amber-200 border-l-4 border-l-amber-400 bg-amber-50">
+      <div className="flex items-center justify-between border-b border-amber-100 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span>⏳</span>
+          <div>
+            <h3 className="text-sm font-semibold text-amber-900">Pending Extensions</h3>
+            <p className="text-[10px] text-amber-700">Not yet collected — remind customers to pay</p>
+          </div>
+          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">
+            Info only
+          </span>
+        </div>
+        <span className="text-sm font-bold text-amber-900">{formatCurrency(total)}</span>
+      </div>
+      <div className="max-h-60 overflow-y-auto">
+        {rows.map((tx) => (
+          <div key={tx.id} className="flex items-center justify-between border-b border-amber-50 px-4 py-2 last:border-b-0">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-amber-900">
+                {tx.customerName ?? 'Customer'}
+              </p>
+              <p className="text-xs text-amber-700">
+                Extension{tx.settlementRef ? ` · ${tx.settlementRef}` : ''}
+                {tx.createdAt && ` · ${formatTime(tx.createdAt)}`}
+              </p>
+            </div>
+            <span className="ml-3 whitespace-nowrap text-sm font-medium text-amber-900">
+              {formatCurrency(tx.amount)}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

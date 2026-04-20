@@ -14,14 +14,17 @@ interface Props {
   transferRoute?: string | null;
   transferPrice?: number;
   charityDonation?: number;
+  calendarUrl?: string | null;
 }
 
-function formatDatetime(iso: string): string {
+function formatDate(iso: string): string {
   if (!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    + ', '
-    + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function formatTime(iso: string): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
 export function RentalSummaryCard({
@@ -30,109 +33,123 @@ export function RentalSummaryCard({
   dropoffDatetime,
   rentalDays,
   grandTotal,
-  customerEmail,
   addonNames,
   transferType,
   flightNumber,
   transferRoute,
   transferPrice = 0,
   charityDonation = 0,
+  calendarUrl,
 }: Props) {
   return (
-    <div className="w-full rounded-[2.5rem] bg-cream-brand p-6 text-left shadow-[0_20px_40px_rgba(0,0,0,0.08)]">
-      <h3 className="font-headline mb-5 text-2xl font-extrabold text-teal-brand">Rental Summary</h3>
+    <div className="flex h-full w-full flex-col rounded-2xl bg-white p-6 shadow-sm text-left">
 
-      <div className="space-y-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="font-lato text-xl font-extrabold text-charcoal-brand">{vehicleModelName}</p>
-          </div>
-          <span className="font-lato rounded-full bg-gold-brand px-3 py-1 text-[10px] font-black uppercase tracking-widest text-charcoal-brand">
-            Confirmed
-          </span>
+      {/* Header label */}
+      <p className="mb-4 text-xs font-black uppercase tracking-widest text-charcoal-brand/50 font-lato">
+        Rental Summary
+      </p>
+
+      {/* Vehicle name + badge */}
+      <div className="mb-1 flex items-start justify-between gap-2">
+        <p className="font-lato text-xl font-extrabold text-charcoal-brand leading-tight">{vehicleModelName}</p>
+        <span className="shrink-0 rounded-full bg-gold-brand px-3 py-1 text-[10px] font-black uppercase tracking-widest text-charcoal-brand">
+          Confirmed
+        </span>
+      </div>
+      <p className="mb-5 text-sm text-charcoal-brand/50 font-lato">Lola's Rentals Store</p>
+
+      {/* What's included */}
+      <div className="mb-5">
+        <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-charcoal-brand/50 font-lato">
+          What's Included
+        </p>
+        <div className="rounded-xl border border-charcoal-brand/8 bg-sand-brand/30 px-3 py-4">
+          <RentalIncludedIconsGrid variant="card" showOptionals={false} />
         </div>
+      </div>
 
-        <div className="rounded-2xl border border-teal-brand/15 bg-sand-brand/50 px-3 py-4">
-          <RentalIncludedIconsGrid variant="card" showOptionals />
+      {/* Pickup / dropoff */}
+      <div className="mb-1 grid grid-cols-2 gap-4 border-t border-charcoal-brand/8 pt-5">
+        <div>
+          <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-charcoal-brand/50 font-lato">
+            Pick Up
+          </p>
+          <p className="font-lato text-base font-extrabold text-charcoal-brand leading-tight">{formatDate(pickupDatetime)}</p>
+          <p className="font-lato text-sm font-bold text-charcoal-brand/60">{formatTime(pickupDatetime)}</p>
         </div>
+        <div className="border-l border-charcoal-brand/8 pl-4">
+          <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-charcoal-brand/50 font-lato">
+            Drop Off
+          </p>
+          <p className="font-lato text-base font-extrabold text-charcoal-brand leading-tight">{formatDate(dropoffDatetime)}</p>
+          <p className="font-lato text-sm font-bold text-charcoal-brand/60">{formatTime(dropoffDatetime)}</p>
+        </div>
+      </div>
 
-        <div className="grid grid-cols-2 gap-3 rounded-2xl bg-sand-brand/30 p-4">
-          <div>
-            <p className="font-lato mb-1 text-[10px] font-black uppercase tracking-wider text-charcoal-brand/50">
-              Pick Up
-            </p>
-            <p className="font-lato text-sm font-bold text-charcoal-brand">{formatDatetime(pickupDatetime)}</p>
-          </div>
-          <div className="border-l border-charcoal-brand/10 pl-4">
-            <p className="font-lato mb-1 text-[10px] font-black uppercase tracking-wider text-charcoal-brand/50">
-              Drop Off
-            </p>
-            <p className="font-lato text-sm font-bold text-charcoal-brand">{formatDatetime(dropoffDatetime)}</p>
+      {/* Add to Calendar link */}
+      {calendarUrl && (
+        <a
+          href={calendarUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mb-4 inline-flex items-center gap-1.5 text-xs font-bold text-gold-brand hover:underline font-lato"
+        >
+          <span>📅</span> + Add to Calendar
+        </a>
+      )}
+
+      {/* Add-ons */}
+      {addonNames.length > 0 && (
+        <div className="mb-4">
+          <p className="mb-1.5 text-[10px] font-black uppercase tracking-wider text-charcoal-brand/50 font-lato">Add-ons</p>
+          <div className="flex flex-wrap gap-2">
+            {addonNames.map((n) => (
+              <span key={n} className="rounded-full bg-teal-brand/10 px-3 py-1 text-xs font-bold text-teal-brand font-lato">
+                {n}
+              </span>
+            ))}
           </div>
         </div>
+      )}
 
+      {/* Transfer */}
+      {transferType && (
+        <div className="mb-4 rounded-xl border-l-4 border-gold-brand bg-gold-brand/10 p-4 space-y-1">
+          <p className="text-xs font-black uppercase tracking-wider text-charcoal-brand/60 font-lato">
+            Transfer —{' '}
+            {transferType === 'shared' ? 'Shared Airport Van' : transferType === 'tuktuk' ? 'Private TukTuk' : 'Private Airport Van'}
+          </p>
+          {flightNumber && <p className="text-sm font-bold text-charcoal-brand font-lato">Flight: {flightNumber}</p>}
+          {transferRoute && <p className="text-sm font-bold text-charcoal-brand font-lato">Route: {transferRoute}</p>}
+          {transferPrice > 0 && (
+            <p className="text-sm font-bold text-charcoal-brand font-lato">Transfer Total: {formatCurrency(transferPrice)}</p>
+          )}
+        </div>
+      )}
+
+      {/* Charity */}
+      {charityDonation > 0 && (
+        <div className="mb-4 flex items-center justify-between rounded-xl bg-teal-brand/5 px-4 py-3">
+          <span className="text-sm font-bold text-teal-brand font-lato">Donation to Be Pawsitive 🐾</span>
+          <span className="text-sm font-bold text-teal-brand font-lato">{formatCurrency(charityDonation)}</span>
+        </div>
+      )}
+
+      {/* Rental days + Grand Total — pinned to bottom */}
+      <div className="mt-auto border-t border-charcoal-brand/8 pt-4">
         {rentalDays > 0 && (
-          <p className="font-lato text-xs font-bold text-charcoal-brand/50">
+          <p className="mb-3 text-xs font-bold text-charcoal-brand/50 font-lato">
             {rentalDays} day{rentalDays !== 1 ? 's' : ''} rental
           </p>
         )}
-
-        {addonNames.length > 0 && (
-          <div className="space-y-1">
-            <p className="font-lato text-[10px] font-black uppercase tracking-wider text-charcoal-brand/50">Add-ons</p>
-            <div className="flex flex-wrap gap-2">
-              {addonNames.map((n) => (
-                <span key={n} className="font-lato rounded-full bg-teal-brand/10 px-3 py-1 text-xs font-bold text-teal-brand">
-                  {n}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {transferType && (
-          <div className="rounded-2xl border-l-4 border-gold-brand bg-gold-brand/10 p-4 space-y-1">
-            <p className="font-lato text-xs font-black uppercase tracking-wider text-charcoal-brand/60">
-              Transfer —{' '}
-              {transferType === 'shared'
-                ? 'Shared Airport Van'
-                : transferType === 'tuktuk'
-                  ? 'Private TukTuk'
-                  : 'Private Airport Van'}
-            </p>
-            {flightNumber && (
-              <p className="font-lato text-sm font-bold text-charcoal-brand">Flight: {flightNumber}</p>
-            )}
-            {transferRoute && (
-              <p className="font-lato text-sm font-bold text-charcoal-brand">Route: {transferRoute}</p>
-            )}
-            {transferPrice > 0 && (
-              <p className="font-lato text-sm font-bold text-charcoal-brand">
-                Transfer Total: {formatCurrency(transferPrice)}
-              </p>
-            )}
-          </div>
-        )}
-
-        {charityDonation > 0 && (
-          <div className="flex items-center justify-between rounded-2xl bg-teal-brand/5 px-4 py-3">
-            <span className="font-lato text-sm font-bold text-teal-brand">Donation to Be Pawsitive 🐾</span>
-            <span className="font-lato text-sm font-bold text-teal-brand">{formatCurrency(charityDonation)}</span>
-          </div>
-        )}
-
-        <div className="border-t border-charcoal-brand/10 pt-4">
-          <p className="font-lato mb-1 text-xs font-bold text-charcoal-brand/50">Grand Total</p>
-          <p className="font-headline text-3xl font-black text-teal-brand">
+        <div className="flex items-end justify-between gap-4">
+          <p className="text-xs font-black uppercase tracking-widest text-charcoal-brand/50 font-lato">Grand Total</p>
+          <p className="font-headline text-4xl font-black text-charcoal-brand">
             {formatCurrency(grandTotal)}
           </p>
         </div>
-
-        <div className="flex items-center gap-2 text-charcoal-brand/40">
-          <span className="text-teal-brand">✅</span>
-          <p className="font-lato text-[10px] italic">Receipt sent to {customerEmail}</p>
-        </div>
       </div>
+
     </div>
   );
 }

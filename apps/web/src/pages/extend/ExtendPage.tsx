@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { api, ApiError } from '../../api/client.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import { PrimaryCtaButton } from '../../components/public/PrimaryCtaButton.js';
@@ -11,12 +12,14 @@ import { BookingLookupForm } from '../../components/extend/BookingLookupForm.js'
 import { ActiveRentalCard } from '../../components/extend/ActiveRentalCard.js';
 import { ExtendCalendar } from '../../components/extend/ExtendCalendar.js';
 import { ExtensionSummary } from '../../components/extend/ExtensionSummary.js';
-import { RentalIncludedIconsGrid } from '../../components/public/RentalIncludedIconsGrid.js';
+import { useCustomerPawCardSavings } from '../../api/paw-card.js';
+import { isNinePmReturnAddonName } from '../../components/basket/AddOnsSection.js';
+import { formatCurrency } from '../../utils/currency.js';
+import iconPawCard from '../../assets/Home/Paw Card Icon.svg';
 
 import lolaVideo from '../../assets/Checkout_Lola.mp4';
 import { WHATSAPP_URL } from '../../config/contact.js';
 import { phoneIcon } from '../../components/public/customerContactIcons.js';
-import { formatCurrency } from '../../utils/currency.js';
 
 interface OrderData {
   orderReference: string;
@@ -71,6 +74,29 @@ export default function ExtendPage() {
   const [confirmedDropoff, setConfirmedDropoff] = useState('');
   const [confirmedBalance, setConfirmedBalance] = useState(0);
   const [lookupEmail, setLookupEmail] = useState('');
+  const [ninePmSelected, setNinePmSelected] = useState(false);
+
+  // Fetch addon catalog once we know the store, to find the 9PM addon.
+  // Use retry: false + throwOnError: false so a missing endpoint (old server) fails silently.
+  const { data: addonsRaw } = useQuery<Array<{ id: number; name: string; addon_type: string; price_one_time: number }>>({
+    queryKey: ['public-extend-addons', order?.storeId ?? ''],
+    queryFn: () => api.get(`/public/extend/addons?storeId=${encodeURIComponent(order!.storeId)}`),
+    enabled: !!order?.storeId,
+    retry: false,
+    throwOnError: false,
+  });
+  const ninePmAddonRaw = addonsRaw?.find((a) => isNinePmReturnAddonName(a.name)) ?? null;
+  const ninePmAddon = ninePmAddonRaw
+    ? { id: ninePmAddonRaw.id, name: ninePmAddonRaw.name, price: ninePmAddonRaw.price_one_time }
+    : null;
+
+  const { data: pawCardData } = useCustomerPawCardSavings(lookupEmail || undefined);
+
+  // When time picker changes, deselect 9PM if they move away from 4:45 PM
+  const handleSelectTime = useCallback((time: string) => {
+    setSelectedTime(time);
+    if (time !== '16:45') setNinePmSelected(false);
+  }, []);
 
   const handleLookup = useCallback(async (email: string, orderReference: string) => {
     setLookupLoading(true); setLookupError(null); setLookupEmail(email);
@@ -88,12 +114,15 @@ export default function ExtendPage() {
     finally { setLookupLoading(false); }
   }, []);
 
+  // effectiveTime: when 9PM is selected, use 21:00 for both preview and confirm
+  const effectiveTime = ninePmSelected ? '21:00' : selectedTime;
+
   // Call the same /public/extend/preview endpoint used by the backoffice, so
   // the customer sees the *capped* extension cost (never higher than the
   // original daily rate) — not the raw bracket rate from /public/booking/quote.
   useEffect(() => {
     if (!order || !selectedDate || !lookupEmail) { setExtensionCost(null); return; }
-    const newDropoff = `${selectedDate}T${selectedTime}:00+08:00`;
+    const newDropoff = `${selectedDate}T${effectiveTime}:00+08:00`;
     let cancelled = false;
     setQuoteLoading(true);
     setExtensionCost(null);
@@ -115,21 +144,29 @@ export default function ExtendPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [order, selectedDate, selectedTime, lookupEmail]);
+  }, [order, selectedDate, effectiveTime, lookupEmail]);
 
-  // Use Math.round to match server logic (extDayCount in public-extend-helpers.ts)
+  // Use Math.ceil + full datetime (matching server's extDayCount) for accurate day label
   const extensionDays = selectedDate && order
-    ? Math.max(1, Math.round((new Date(selectedDate).getTime() - new Date(order.currentDropoffDatetime).getTime()) / 86400000))
+    ? Math.max(1, Math.ceil(
+        (new Date(`${selectedDate}T${effectiveTime}:00+08:00`).getTime() - new Date(order.currentDropoffDatetime).getTime()) / 86400000
+      ))
     : 0;
 
   async function handleConfirm() {
     if (!order || !selectedDate) return;
     setConfirmLoading(true);
-    const newDropoff = `${selectedDate}T${selectedTime}:00+08:00`;
+    const newDropoff = `${selectedDate}T${effectiveTime}:00+08:00`;
     try {
+      const body: Record<string, unknown> = {
+        orderReference: order.orderReference,
+        email: lookupEmail,
+        newDropoffDatetime: newDropoff,
+      };
+      if (ninePmSelected && ninePmAddon) body.ninePmAddonId = ninePmAddon.id;
       const res = await api.post<{ success: boolean; newDropoffDatetime?: string; extensionCost?: number; reason?: string }>(
         '/public/extend/confirm',
-        { orderReference: order.orderReference, email: lookupEmail, newDropoffDatetime: newDropoff },
+        body,
       );
       if (res.success) {
         setConfirmedDropoff(res.newDropoffDatetime ?? newDropoff);
@@ -149,7 +186,7 @@ export default function ExtendPage() {
 
   function handleReset() {
     setPageState('lookup'); setOrder(null); setSelectedDate(null);
-    setExtensionCost(null); setLookupError(null);
+    setExtensionCost(null); setLookupError(null); setNinePmSelected(false);
   }
 
   return (
@@ -159,22 +196,24 @@ export default function ExtendPage() {
         description="Extend your Lola's Rentals scooter or motorbike rental on Siargao."
         noIndex={true}
       />
-      {/* Page header — shown in full on mobile; shorter on desktop when content is already visible */}
-      <PageHeader
-        eyebrow="Need More Time?"
-        headingMain="Extend Your"
-        headingAccent="Rental"
-        subheading="Loving Siargao? We get it. Extend your rental in just a few clicks."
-        fitAboveFold
-        className="px-4 pb-3 pt-8 text-center sm:px-6 sm:pb-6 sm:pt-16 lg:pb-8 lg:pt-14"
-      />
+      {/* Page header — hidden on the confirmation screen, shown for lookup/rental steps */}
+      {pageState !== 'confirmed' && (
+        <PageHeader
+          eyebrow="Need More Time?"
+          headingMain="Extend Your"
+          headingAccent="Rental"
+          subheading="Loving Siargao? We get it. Extend your rental in just a few clicks."
+          fitAboveFold
+          className="px-4 pb-3 pt-8 text-center sm:px-6 sm:pb-6 sm:pt-16 lg:pb-8 lg:pt-14"
+        />
+      )}
 
       {/* Main content — narrow on mobile, widens on desktop */}
       <div className="relative mx-auto max-w-lg px-4 pb-12 pt-2 sm:max-w-2xl sm:px-6 lg:max-w-5xl lg:px-8">
 
         {pageState === 'confirmed' ? (
-          <div className="mx-auto max-w-xl">
-            <ConfirmedView dropoff={confirmedDropoff} balance={confirmedBalance} />
+          <div className="mx-auto max-w-md">
+            <ConfirmedView dropoff={confirmedDropoff} balance={confirmedBalance} orderRef={order?.orderReference ?? ''} />
           </div>
         ) : (
           <>
@@ -215,9 +254,7 @@ export default function ExtendPage() {
                       />
                     </FadeUpSection>
                     <FadeUpSection>
-                      <div className="rounded-2xl border border-teal-brand/15 bg-sand-brand/50 px-3 py-4">
-                        <RentalIncludedIconsGrid variant="card" />
-                      </div>
+                      <PawCardWidget savings={pawCardData} />
                     </FadeUpSection>
                   </div>
 
@@ -229,7 +266,10 @@ export default function ExtendPage() {
                         selectedDate={selectedDate}
                         selectedTime={selectedTime}
                         onSelectDate={setSelectedDate}
-                        onSelectTime={setSelectedTime}
+                        onSelectTime={handleSelectTime}
+                        ninePmAddon={ninePmAddon}
+                        ninePmSelected={ninePmSelected}
+                        onToggleNinePm={() => setNinePmSelected((v) => !v)}
                       />
                     </FadeUpSection>
 
@@ -240,10 +280,11 @@ export default function ExtendPage() {
                           extensionCost={extensionCost}
                           extensionDays={extensionDays}
                           originalDays={order.rentalDays}
-                          newReturnDisplay={formatNewReturn(selectedDate, selectedTime)}
+                          newReturnDisplay={formatNewReturn(selectedDate, effectiveTime)}
                           loading={confirmLoading || quoteLoading}
                           onConfirm={handleConfirm}
                           onCancel={handleReset}
+                          ninePmCost={ninePmSelected && ninePmAddon ? ninePmAddon.price : undefined}
                         />
                       </FadeUpSection>
                     )}
@@ -283,73 +324,170 @@ export default function ExtendPage() {
   );
 }
 
-function ConfirmedView({ dropoff, balance }: { dropoff: string; balance: number }) {
+function PawCardWidget({ savings }: { savings?: { hasPawCard: boolean; totalSaved: number; entryCount: number } }) {
+  const hasSaved = savings?.hasPawCard && (savings.totalSaved ?? 0) > 0;
+
+  if (hasSaved) {
+    return (
+      <div className="flex items-start gap-3 rounded-2xl border border-teal-brand/15 bg-sand-brand/50 px-4 py-4">
+        <img src={iconPawCard} alt="Paw Card" className="mt-0.5 h-8 w-8 shrink-0 object-contain" />
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-widest text-teal-brand">Your Paw Card Savings</p>
+          <p className="mt-0.5 text-2xl font-black text-teal-brand">{formatCurrency(savings!.totalSaved)}</p>
+          <p className="mt-0.5 text-xs font-semibold text-charcoal-brand/60">
+            saved across {savings!.entryCount} visit{savings!.entryCount !== 1 ? 's' : ''} with your Paw Card
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-start gap-3 rounded-2xl border border-teal-brand/15 bg-sand-brand/50 px-4 py-4">
+      <img src={iconPawCard} alt="Paw Card" className="mt-0.5 h-8 w-8 shrink-0 object-contain" />
+      <div>
+        <p className="text-[11px] font-black uppercase tracking-widest text-teal-brand">Paw Card</p>
+        <p className="mt-0.5 text-sm font-bold text-charcoal-brand">Start saving with every rental</p>
+        <p className="mt-0.5 text-xs font-semibold text-charcoal-brand/60">
+          Ask us about the Paw Card at pickup to earn discounts on future rentals.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmedView({ dropoff, balance, orderRef }: { dropoff: string; balance: number; orderRef: string }) {
+  const [copied, setCopied] = useState(false);
+
   // dropoff is a naive local datetime string (e.g. "2026-04-21T16:45:00") — no UTC conversion needed
   const d = new Date(dropoff);
   const dateFormatted = d.toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   });
   const timeFormatted = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+  // Google Calendar link for the return date
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const gcalStamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
+  const gcalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent("Return to Lola's Rentals")}&dates=${gcalStamp}/${gcalStamp}&details=${encodeURIComponent(`Return your vehicle to Lola's Rentals. Ref: ${orderRef}`)}&location=${encodeURIComponent("Lola's Rentals, Siargao")}`;
+
+  async function handleCopy() {
+    await navigator.clipboard.writeText(orderRef);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
   return (
     <FadeUpSection>
-      <div className="space-y-8 text-center">
+      <div className="mx-auto max-w-sm space-y-5 pb-8">
+
+        {/* ── Hero: badge + heading ── */}
+        <div className="flex flex-col items-center gap-3 pt-10 text-center">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-teal-brand/30 bg-teal-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-teal-brand">
+            ✓ Extension Confirmed
+          </span>
+          <h1 className="font-headline text-4xl font-black text-charcoal-brand">You&apos;re all set!</h1>
+          <p className="text-sm text-charcoal-brand/60">Your return date has been updated.</p>
+        </div>
+
+        {/* ── Lola mascot ── */}
         <div className="flex justify-center">
-          <div className="relative pb-2">
-            <div
-              className="flex h-40 w-40 items-center justify-center overflow-hidden rounded-full animate-extend-lola-gentle"
-            >
-              <video
-                src={lolaVideo}
-                autoPlay
-                loop
-                muted
-                playsInline
-                className="h-full w-full object-cover"
-                style={{ mixBlendMode: 'multiply' }}
-              />
-            </div>
+          <div className="flex h-36 w-36 items-center justify-center overflow-hidden rounded-full border-4 border-gold-brand/50 bg-gold-brand/20">
+            <video
+              src={lolaVideo}
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="h-full w-full object-cover"
+            />
           </div>
         </div>
-        <style>{`
-          @keyframes extendLolaGentle {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-4px); }
-          }
-          .animate-extend-lola-gentle {
-            animation: extendLolaGentle 4s ease-in-out infinite;
-          }
-        `}</style>
-        <p className="font-lato mx-auto max-w-xl text-base font-semibold leading-relaxed text-charcoal-brand md:text-lg">
-          Extension confirmed! Your new return date/time has been updated. Please come by our store to settle the outstanding balance within the next 24hrs during our opening hours of 9AM - 5PM.
-        </p>
-        <div className="rounded-4xl bg-cream-brand p-8 shadow-[0_10px_30px_-5px_rgba(26,122,110,0.1)]">
-          <p className="font-lato text-[10px] font-black uppercase tracking-widest text-teal-brand/60">New Return Date &amp; Time</p>
-          <p className="font-lato mt-2 text-2xl font-black text-teal-brand">{dateFormatted}</p>
-          <p className="font-lato mt-1 text-lg font-bold text-teal-brand/70">{timeFormatted}</p>
-          {balance > 0 && (
-            <div className="mt-6 border-t-2 border-sand-brand pt-6">
-              <p className="font-lato text-[10px] font-black uppercase tracking-widest text-gold-brand/60">Extension Cost</p>
-              <p className="font-lato mt-1 text-3xl font-black text-gold-brand">{formatCurrency(balance)}</p>
-              <p className="font-lato mt-2 text-xs font-semibold text-charcoal-brand/60">
-                Added to any outstanding balance on your booking.
-              </p>
+
+        {/* ── Action required card (only when balance is outstanding) ── */}
+        {balance > 0 && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+            <div className="flex gap-3">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-500 text-sm text-white">
+                🔔
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-black text-red-700">Action required within 24 hours</p>
+                <p className="mt-1 text-xs leading-relaxed text-red-600">
+                  Please visit our store to settle the outstanding balance of{' '}
+                  <span className="font-black">{formatCurrency(balance)}</span>{' '}
+                  during opening hours: <span className="font-bold">9AM – 5PM</span>.
+                </p>
+              </div>
+            </div>
+            <a
+              href={WHATSAPP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-green-500 px-4 py-2.5 text-sm font-black text-white transition-colors hover:bg-green-600"
+            >
+              <img src={phoneIcon} alt="" className="h-4 w-4 shrink-0 object-contain" />
+              Message Lola&apos;s Team
+            </a>
+          </div>
+        )}
+
+        {/* ── Return date + extension cost card ── */}
+        <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
+          {/* Return date/time */}
+          <p className="text-[10px] font-black uppercase tracking-widest text-charcoal-brand/40">New Return Date &amp; Time</p>
+          <p className="mt-1.5 text-2xl font-black text-charcoal-brand">{dateFormatted}</p>
+          <p className="mt-0.5 text-lg font-black text-gold-brand">{timeFormatted}</p>
+          <a
+            href={gcalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-charcoal-brand/70 transition-colors hover:border-gray-300 hover:bg-gray-50"
+          >
+            📅 Add to Calendar
+          </a>
+
+          <div className="my-4 border-t border-gray-100" />
+
+          {/* Extension cost */}
+          <p className="text-[10px] font-black uppercase tracking-widest text-charcoal-brand/40">Extension Cost</p>
+          <p className="mt-1.5 text-3xl font-black text-charcoal-brand">{formatCurrency(balance)}</p>
+          <p className="mt-1 text-xs text-charcoal-brand/50">Added to outstanding balance on your booking.</p>
+
+          {/* Extension ref */}
+          {orderRef && (
+            <div className="mt-4 flex items-center justify-between rounded-xl bg-sand-brand/60 px-4 py-2.5">
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-widest text-charcoal-brand/40">Extension Ref</p>
+                <p className="mt-0.5 font-mono text-sm font-bold text-charcoal-brand">{orderRef}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleCopy()}
+                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-charcoal-brand transition-colors hover:bg-gray-50"
+              >
+                {copied ? '✓ Copied' : '⎘ Copy'}
+              </button>
             </div>
           )}
         </div>
-        <div className="space-y-3">
-          <Link to="/book/reserve">
-            <PrimaryCtaButton className="flex min-h-[44px] w-full items-center justify-center gap-2 py-5 text-lg">Back to Browse</PrimaryCtaButton>
-          </Link>
-          <a
-            href={WHATSAPP_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-lato inline-flex items-center justify-center gap-2 text-sm font-bold text-teal-brand underline transition-opacity hover:opacity-80"
-          >
-            <img src={phoneIcon} alt="" className="h-4 w-4 shrink-0 object-contain" width={16} height={16} />
-            Need help? Chat with Lola&apos;s Team
-          </a>
-        </div>
+
+        {/* ── CTA buttons ── */}
+        <Link to="/book/reserve" className="block">
+          <PrimaryCtaButton className="flex min-h-[52px] w-full items-center justify-center gap-2 py-4 text-base">
+            ‹ Back to Browse
+          </PrimaryCtaButton>
+        </Link>
+        <a
+          href={WHATSAPP_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-center gap-2 text-sm font-semibold text-charcoal-brand/60 transition-colors hover:text-teal-brand"
+        >
+          <img src={phoneIcon} alt="" className="h-4 w-4 shrink-0 object-contain" />
+          Need help? Chat with Lola&apos;s Team
+        </a>
+
       </div>
     </FadeUpSection>
   );

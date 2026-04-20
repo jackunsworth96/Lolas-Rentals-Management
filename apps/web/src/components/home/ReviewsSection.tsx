@@ -43,7 +43,7 @@ function initialsFromName(name: string): string {
 }
 
 const reviewsTrackClassName =
-  'flex gap-6 overflow-x-auto snap-x snap-mandatory [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden pl-6 pr-6 md:pl-0 md:pr-0 md:grid md:grid-cols-3 md:overflow-visible md:snap-none';
+  'flex gap-6 overflow-x-auto snap-x snap-mandatory [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden py-4 pl-6 pr-6 md:py-0 md:pl-0 md:pr-0 md:grid md:grid-cols-3 md:overflow-visible md:snap-none';
 
 const reviewCardSlotClassName =
   'w-[85vw] max-w-[340px] shrink-0 snap-start md:w-72 md:max-w-none md:shrink md:snap-none';

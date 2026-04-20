@@ -6,7 +6,6 @@ import { formatPhpNumber } from '../../utils/currency.js';
 import { hasBookingDatetimeWithTime } from '../../utils/booking-datetime.js';
 import { BrandCard } from '../public/BrandCard.js';
 import basketIcon from '../../assets/Buttons/basket icon.svg';
-import helmetIcon from '../../assets/Home/Helmet Icon.svg';
 
 const VEHICLE_NAME_MAP: Record<string, string> = {
   'Honda Beat': 'Scooter Honda Beat 110cc',
@@ -216,15 +215,6 @@ export function VehicleCard({
             <div className="absolute left-4 top-4 flex gap-2">
               <span className={`font-lato inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider shadow-sm ${isUnavailable ? 'bg-charcoal-brand/10 text-charcoal-brand/60' : 'bg-teal-brand text-white'}`}>
                 {scarcityUrgencyCopy(isUnavailable ? 0 : availableCount)}
-                {!isUnavailable && (
-                  <img
-                    src={helmetIcon}
-                    alt=""
-                    className="w-5 h-5 inline-block ml-1 object-contain"
-                    width={20}
-                    height={20}
-                  />
-                )}
               </span>
             </div>
           )}
