@@ -56,7 +56,7 @@ router.post('/lookup', extendLookupLimiter, validateBody(ExtendLookupRequestSche
       .select('id')
       .eq('order_reference', orderReference)
       .ilike('customer_email', escapeIlike(trimmedEmail))
-      .in('status', ['unprocessed', 'processed']);
+      .in('status', ['unprocessed']);
 
     if (rawErr) throw new Error(`orders_raw lookup failed: ${rawErr.message}`);
 
@@ -164,7 +164,7 @@ router.get('/preview', extendLookupLimiter, async (req, res, next) => {
       .select('id')
       .eq('order_reference', orderReference)
       .ilike('customer_email', escapeIlike(trimmedEmail))
-      .in('status', ['unprocessed', 'processed']);
+      .in('status', ['unprocessed']);
 
     if (rawRows && rawRows.length > 0) {
       res.status(400).json({
@@ -280,7 +280,7 @@ router.post('/confirm', extendConfirmLimiter, validateBody(PublicExtendConfirmSc
       .select('id')
       .eq('order_reference', orderReference)
       .ilike('customer_email', escapeIlike(trimmedEmail))
-      .in('status', ['unprocessed', 'processed']);
+      .in('status', ['unprocessed']);
     if (rawMatches && rawMatches.length > 0) {
       res.status(400).json({
         success: false,
