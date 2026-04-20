@@ -158,46 +158,75 @@ export default function ExtendPage() {
         description="Extend your Lola's Rentals scooter or motorbike rental on Siargao."
         noIndex={true}
       />
+      {/* Page header — shown in full on mobile; shorter on desktop when content is already visible */}
       <PageHeader
         eyebrow="Need More Time?"
         headingMain="Extend Your"
         headingAccent="Rental"
         subheading="Loving Siargao? We get it. Extend your rental in just a few clicks."
         fitAboveFold
-        className="px-4 pb-3 pt-8 text-center sm:px-6 sm:pb-6 sm:pt-20"
+        className="px-4 pb-3 pt-8 text-center sm:px-6 sm:pb-6 sm:pt-16 lg:pb-8 lg:pt-14"
       />
-      <div className="relative mx-auto max-w-3xl overflow-hidden px-3 pb-3 pt-2 sm:px-4 sm:pb-4 sm:pt-8">
-        <div className="relative z-10">
 
-          {pageState === 'confirmed' ? (
-          <ConfirmedView dropoff={confirmedDropoff} balance={confirmedBalance} />
+      {/* Main content — narrow on mobile, widens on desktop */}
+      <div className="relative mx-auto max-w-lg px-4 pb-12 pt-2 sm:max-w-2xl sm:px-6 lg:max-w-5xl lg:px-8">
+
+        {pageState === 'confirmed' ? (
+          <div className="mx-auto max-w-xl">
+            <ConfirmedView dropoff={confirmedDropoff} balance={confirmedBalance} />
+          </div>
         ) : (
-          <div className="space-y-6">
+          <>
             {pageState === 'lookup' && (
               <FadeUpSection>
-                <BookingLookupForm loading={lookupLoading} onSubmit={handleLookup} error={lookupError} onFound={() => {}} onNotFound={() => {}} />
+                {/* Centred, reasonably constrained on all screen sizes */}
+                <div className="mx-auto max-w-lg">
+                  <BookingLookupForm loading={lookupLoading} onSubmit={handleLookup} error={lookupError} onFound={() => {}} onNotFound={() => {}} />
+                </div>
               </FadeUpSection>
             )}
+
             {pageState === 'rental' && order && (
               <>
                 <PawDivider size="sm" opacity={0.1} />
+
                 {firstNameOf(order.customerName) && (
                   <FadeUpSection>
-                    <p className="font-headline text-2xl font-black text-charcoal-brand sm:text-3xl">
+                    <p className="mb-6 font-headline text-2xl font-black text-charcoal-brand sm:text-3xl lg:mb-8 lg:text-4xl">
                       Welcome, {firstNameOf(order.customerName)}!
                     </p>
                   </FadeUpSection>
                 )}
-                <div className="md:flex md:items-start md:gap-8">
-                  <div className="md:w-1/2">
+
+                {/*
+                  Mobile  → stacked vertically
+                  Desktop → fixed-width vehicle sidebar (left) + fluid calendar/summary (right)
+                */}
+                <div className="lg:grid lg:grid-cols-[340px_1fr] lg:items-start lg:gap-10">
+
+                  {/* ── Left column: vehicle card, sticky on desktop ── */}
+                  <div className="lg:sticky lg:top-24">
                     <FadeUpSection>
-                      <ActiveRentalCard vehicleModelName={order.vehicleModelName} pickupLocationName={order.pickupLocationName} currentDropoffDatetime={order.currentDropoffDatetime} />
+                      <ActiveRentalCard
+                        vehicleModelName={order.vehicleModelName}
+                        pickupLocationName={order.pickupLocationName}
+                        currentDropoffDatetime={order.currentDropoffDatetime}
+                      />
                     </FadeUpSection>
                   </div>
-                  <div className="mt-6 space-y-6 md:mt-0 md:w-1/2">
+
+                  {/* ── Right column: calendar + summary ── */}
+                  <div className="mt-6 space-y-6 lg:mt-0">
                     <FadeUpSection>
-                      <ExtendCalendar currentDropoff={order.currentDropoffDatetime} selectedDate={selectedDate} selectedTime={selectedTime} onSelectDate={setSelectedDate} onSelectTime={setSelectedTime} />
+                      <ExtendCalendar
+                        currentDropoff={order.currentDropoffDatetime}
+                        selectedDate={selectedDate}
+                        selectedTime={selectedTime}
+                        onSelectDate={setSelectedDate}
+                        onSelectTime={setSelectedTime}
+                      />
                     </FadeUpSection>
+
                     {selectedDate && (
                       <FadeUpSection>
                         <ExtensionSummary
@@ -214,12 +243,13 @@ export default function ExtendPage() {
                     )}
                   </div>
                 </div>
+
                 {lookupError && (
                   <div
                     className={
                       lookupError === ORDER_NOT_ACTIVE_CUSTOMER_MESSAGE
-                        ? 'rounded-2xl bg-sand-brand px-3 py-2 text-xs font-bold text-charcoal-brand/70 sm:px-4 sm:py-3 sm:text-sm'
-                        : 'rounded-2xl bg-red-50 px-5 py-4 text-sm font-bold text-red-700'
+                        ? 'mt-6 rounded-2xl bg-sand-brand px-3 py-2 text-xs font-bold text-charcoal-brand/70 sm:px-4 sm:py-3 sm:text-sm'
+                        : 'mt-6 rounded-2xl bg-red-50 px-5 py-4 text-sm font-bold text-red-700'
                     }
                   >
                     {lookupError}{' '}
@@ -240,9 +270,8 @@ export default function ExtendPage() {
                 )}
               </>
             )}
-          </div>
-          )}
-        </div>
+          </>
+        )}
       </div>
     </PageLayout>
   );

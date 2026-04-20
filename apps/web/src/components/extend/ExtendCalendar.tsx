@@ -72,13 +72,13 @@ export function ExtendCalendar({ currentDropoff, selectedDate, selectedTime, onS
   const dayHeaders = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
   return (
-    <section className="rounded-4xl bg-cream-brand p-8 shadow-[0_10px_30px_-5px_rgba(26,122,110,0.1)]">
-      <h2 className="mb-8 flex items-center gap-3 font-headline text-2xl font-black text-teal-brand">
+    <section className="rounded-4xl bg-cream-brand p-6 shadow-[0_10px_30px_-5px_rgba(26,122,110,0.1)] sm:p-8">
+      <h2 className="mb-6 flex items-center gap-3 font-headline text-xl font-black text-teal-brand sm:mb-8 sm:text-2xl">
         <span className="text-xl">📅</span>
         Select New Return Date
       </h2>
 
-      <div className="rounded-3xl bg-white/50 p-6">
+      <div className="rounded-3xl bg-white/50 p-4 sm:p-6">
         <div className="mb-6 flex items-center justify-between">
           <p className="text-lg font-black text-charcoal-brand">{monthLabel}</p>
           <div className="flex gap-2">

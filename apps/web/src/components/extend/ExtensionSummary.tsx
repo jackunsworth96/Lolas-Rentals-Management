@@ -26,8 +26,8 @@ export function ExtensionSummary({
   const updatedTotal = originalTotal + extCost;
 
   return (
-    <section className="relative overflow-hidden rounded-4xl bg-cream-brand p-8 shadow-[0_10px_30px_-5px_rgba(26,122,110,0.1)]">
-      <h2 className="mb-8 font-headline text-2xl font-black text-teal-brand">Summary of Charges</h2>
+    <section className="relative overflow-hidden rounded-4xl bg-cream-brand p-6 shadow-[0_10px_30px_-5px_rgba(26,122,110,0.1)] sm:p-8">
+      <h2 className="mb-6 font-headline text-xl font-black text-teal-brand sm:mb-8 sm:text-2xl">Summary of Charges</h2>
 
       <div className="space-y-5">
         <div className="flex items-center justify-between">
