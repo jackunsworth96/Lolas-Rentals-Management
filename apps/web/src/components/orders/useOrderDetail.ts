@@ -67,6 +67,8 @@ export type OrderDetail = {
   cardFeeSurcharge?: unknown;
   paymentMethodId?: string;
   webNotes?: string;
+  /** Human-readable ref (e.g. LR-0419-15C7); API may return camelCase from GET /orders/:id */
+  bookingToken?: string | null;
   booking_token?: string;
   balance_due?: unknown;
 };
