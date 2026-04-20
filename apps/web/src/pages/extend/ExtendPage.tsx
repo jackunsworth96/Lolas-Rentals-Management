@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api, ApiError } from '../../api/client.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
@@ -12,7 +12,6 @@ import { ActiveRentalCard } from '../../components/extend/ActiveRentalCard.js';
 import { ExtendCalendar } from '../../components/extend/ExtendCalendar.js';
 import { ExtensionSummary } from '../../components/extend/ExtensionSummary.js';
 
-import { DEFAULT_STORE_ID } from '@lolas/shared';
 import lolaVideo from '../../assets/Checkout_Lola.mp4';
 import { WHATSAPP_URL } from '../../config/contact.js';
 import { phoneIcon } from '../../components/public/customerContactIcons.js';
@@ -20,6 +19,7 @@ import { formatCurrency } from '../../utils/currency.js';
 
 interface OrderData {
   orderReference: string;
+  customerName?: string | null;
   vehicleModelName: string;
   vehicleModelId: string;
   storeId: string;
@@ -27,6 +27,14 @@ interface OrderData {
   pickupLocationName: string;
   originalTotal: number;
   rentalDays: number;
+}
+
+function firstNameOf(name: string | null | undefined): string {
+  if (!name) return '';
+  const trimmed = name.trim();
+  if (!trimmed) return '';
+  const first = trimmed.split(/\s+/)[0];
+  return first.charAt(0).toUpperCase() + first.slice(1);
 }
 
 type PageState = 'lookup' | 'rental' | 'confirmed';
@@ -62,17 +70,6 @@ export default function ExtendPage() {
   const [confirmedDropoff, setConfirmedDropoff] = useState('');
   const [confirmedBalance, setConfirmedBalance] = useState(0);
   const [lookupEmail, setLookupEmail] = useState('');
-  const defaultLocId = useRef<number | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    api.get<Array<{ id: number }>>(`/public/booking/locations?storeId=${DEFAULT_STORE_ID}`)
-      .then((locs) => {
-        if (!cancelled && locs.length > 0) defaultLocId.current = locs[0].id;
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
 
   const handleLookup = useCallback(async (email: string, orderReference: string) => {
     setLookupLoading(true); setLookupError(null); setLookupEmail(email);
@@ -90,19 +87,26 @@ export default function ExtendPage() {
     finally { setLookupLoading(false); }
   }, []);
 
+  // Call the same /public/extend/preview endpoint used by the backoffice, so
+  // the customer sees the *capped* extension cost (never higher than the
+  // original daily rate) — not the raw bracket rate from /public/booking/quote.
   useEffect(() => {
-    if (!order || !selectedDate) { setExtensionCost(null); return; }
-    const locId = defaultLocId.current ?? 1;
+    if (!order || !selectedDate || !lookupEmail) { setExtensionCost(null); return; }
     const newDropoff = `${selectedDate}T${selectedTime}:00`;
     let cancelled = false;
     setQuoteLoading(true);
     setExtensionCost(null);
     (async () => {
       try {
-        const q = await api.get<{ rentalSubtotal: number }>(
-          `/public/booking/quote?storeId=${order.storeId}&vehicleModelId=${order.vehicleModelId}&pickupDatetime=${encodeURIComponent(order.currentDropoffDatetime)}&dropoffDatetime=${encodeURIComponent(newDropoff)}&pickupLocationId=${locId}&dropoffLocationId=${locId}`,
+        const params = new URLSearchParams({
+          orderReference: order.orderReference,
+          email: lookupEmail,
+          newDropoffDatetime: newDropoff,
+        });
+        const q = await api.get<{ extensionTotal: number; dailyRate: number; extensionDays: number; bracketLabel: string }>(
+          `/public/extend/preview?${params.toString()}`,
         );
-        if (!cancelled) setExtensionCost(q.rentalSubtotal);
+        if (!cancelled) setExtensionCost(q.extensionTotal);
       } catch {
         if (!cancelled) setExtensionCost(null);
       } finally {
@@ -110,10 +114,11 @@ export default function ExtendPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [order, selectedDate, selectedTime]);
+  }, [order, selectedDate, selectedTime, lookupEmail]);
 
+  // Use Math.round to match server logic (extDayCount in public-extend-helpers.ts)
   const extensionDays = selectedDate && order
-    ? Math.max(1, Math.ceil((new Date(selectedDate).getTime() - new Date(order.currentDropoffDatetime).getTime()) / 86400000))
+    ? Math.max(1, Math.round((new Date(selectedDate).getTime() - new Date(order.currentDropoffDatetime).getTime()) / 86400000))
     : 0;
 
   async function handleConfirm() {
@@ -176,26 +181,39 @@ export default function ExtendPage() {
             {pageState === 'rental' && order && (
               <>
                 <PawDivider size="sm" opacity={0.1} />
-                <FadeUpSection>
-                  <ActiveRentalCard vehicleModelName={order.vehicleModelName} pickupLocationName={order.pickupLocationName} currentDropoffDatetime={order.currentDropoffDatetime} />
-                </FadeUpSection>
-                <FadeUpSection>
-                  <ExtendCalendar currentDropoff={order.currentDropoffDatetime} selectedDate={selectedDate} selectedTime={selectedTime} onSelectDate={setSelectedDate} onSelectTime={setSelectedTime} />
-                </FadeUpSection>
-                {selectedDate && (
+                {firstNameOf(order.customerName) && (
                   <FadeUpSection>
-                    <ExtensionSummary
-                      originalTotal={order.originalTotal}
-                      extensionCost={extensionCost}
-                      extensionDays={extensionDays}
-                      originalDays={order.rentalDays}
-                      newReturnDisplay={formatNewReturn(selectedDate, selectedTime)}
-                      loading={confirmLoading || quoteLoading}
-                      onConfirm={handleConfirm}
-                      onCancel={handleReset}
-                    />
+                    <p className="font-headline text-2xl font-black text-charcoal-brand sm:text-3xl">
+                      Welcome, {firstNameOf(order.customerName)}!
+                    </p>
                   </FadeUpSection>
                 )}
+                <div className="md:flex md:items-start md:gap-8">
+                  <div className="md:w-1/2">
+                    <FadeUpSection>
+                      <ActiveRentalCard vehicleModelName={order.vehicleModelName} pickupLocationName={order.pickupLocationName} currentDropoffDatetime={order.currentDropoffDatetime} />
+                    </FadeUpSection>
+                  </div>
+                  <div className="mt-6 space-y-6 md:mt-0 md:w-1/2">
+                    <FadeUpSection>
+                      <ExtendCalendar currentDropoff={order.currentDropoffDatetime} selectedDate={selectedDate} selectedTime={selectedTime} onSelectDate={setSelectedDate} onSelectTime={setSelectedTime} />
+                    </FadeUpSection>
+                    {selectedDate && (
+                      <FadeUpSection>
+                        <ExtensionSummary
+                          originalTotal={order.originalTotal}
+                          extensionCost={extensionCost}
+                          extensionDays={extensionDays}
+                          originalDays={order.rentalDays}
+                          newReturnDisplay={formatNewReturn(selectedDate, selectedTime)}
+                          loading={confirmLoading || quoteLoading}
+                          onConfirm={handleConfirm}
+                          onCancel={handleReset}
+                        />
+                      </FadeUpSection>
+                    )}
+                  </div>
+                </div>
                 {lookupError && (
                   <div
                     className={
@@ -243,8 +261,7 @@ function ConfirmedView({ dropoff, balance }: { dropoff: string; balance: number 
         <div className="flex justify-center">
           <div className="relative pb-2">
             <div
-              className="flex h-40 w-40 items-center justify-center overflow-hidden rounded-full"
-              style={{ animation: 'bounce 3s ease-in-out infinite' }}
+              className="flex h-40 w-40 items-center justify-center overflow-hidden rounded-full animate-extend-lola-gentle"
             >
               <video
                 src={lolaVideo}
@@ -258,6 +275,15 @@ function ConfirmedView({ dropoff, balance }: { dropoff: string; balance: number 
             </div>
           </div>
         </div>
+        <style>{`
+          @keyframes extendLolaGentle {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-4px); }
+          }
+          .animate-extend-lola-gentle {
+            animation: extendLolaGentle 4s ease-in-out infinite;
+          }
+        `}</style>
         <p className="font-lato mx-auto max-w-xl text-base font-semibold leading-relaxed text-charcoal-brand md:text-lg">
           Extension confirmed! Your new return date/time has been updated. Please come by our store to settle the outstanding balance within the next 24hrs during our opening hours of 9AM - 5PM.
         </p>
@@ -267,8 +293,11 @@ function ConfirmedView({ dropoff, balance }: { dropoff: string; balance: number 
           <p className="font-lato mt-1 text-lg font-bold text-teal-brand/70">{timeFormatted}</p>
           {balance > 0 && (
             <div className="mt-6 border-t-2 border-sand-brand pt-6">
-              <p className="font-lato text-[10px] font-black uppercase tracking-widest text-gold-brand/60">Balance Due</p>
+              <p className="font-lato text-[10px] font-black uppercase tracking-widest text-gold-brand/60">Extension Cost</p>
               <p className="font-lato mt-1 text-3xl font-black text-gold-brand">{formatCurrency(balance)}</p>
+              <p className="font-lato mt-2 text-xs font-semibold text-charcoal-brand/60">
+                Added to any outstanding balance on your booking.
+              </p>
             </div>
           )}
         </div>

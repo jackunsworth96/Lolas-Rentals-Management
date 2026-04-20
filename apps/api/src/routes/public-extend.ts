@@ -73,9 +73,13 @@ router.post('/lookup', extendLookupLimiter, validateBody(ExtendLookupRequestSche
 
     // 2. Check processed orders via orders + customers
     const { data: custRows, error: cErr } = await sb
-      .from('customers').select('id').ilike('email', escapeIlike(trimmedEmail)).limit(10);
+      .from('customers').select('id, name').ilike('email', escapeIlike(trimmedEmail)).limit(10);
     if (cErr) throw new Error(`customer lookup failed: ${cErr.message}`);
     const custIds = (custRows ?? []).map((c: { id: string }) => c.id).filter(Boolean);
+    const custNameById = new Map<string, string>();
+    for (const c of (custRows ?? []) as Array<{ id: string; name?: string | null }>) {
+      if (c.name) custNameById.set(c.id, c.name);
+    }
 
     if (custIds.length > 0) {
       const { data: orderRows, error: oErr } = await sb
@@ -121,6 +125,7 @@ router.post('/lookup', extendLookupLimiter, validateBody(ExtendLookupRequestSche
             found: true,
             order: {
               orderReference,
+              customerName: custNameById.get(ord.customer_id as string) ?? null,
               vehicleModelName: modelName,
               vehicleModelId: modelId,
               storeId,

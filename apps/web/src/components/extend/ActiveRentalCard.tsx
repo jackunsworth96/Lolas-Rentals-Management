@@ -18,8 +18,11 @@ function resolveImage(modelName: string): string | null {
   return null;
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  const dateLabel = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const timeLabel = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return `${dateLabel} at ${timeLabel}`;
 }
 
 interface Props {
@@ -33,11 +36,11 @@ export function ActiveRentalCard({ vehicleModelName, pickupLocationName, current
 
   return (
     <section className="animate-card-enter overflow-hidden rounded-4xl border-4 border-gold-brand/20 bg-cream-brand shadow-[0_10px_30px_-5px_rgba(26,122,110,0.1)]">
-      <div className="aspect-video overflow-hidden bg-sand-brand">
+      <div className="flex max-h-48 items-center justify-center overflow-hidden bg-sand-brand">
         {imgSrc ? (
-          <img src={imgSrc} alt={vehicleModelName} className="h-full w-full object-cover" />
+          <img src={imgSrc} alt={vehicleModelName} className="max-h-48 w-full object-contain" />
         ) : (
-          <div className="flex h-full w-full items-center justify-center">
+          <div className="flex h-32 w-full items-center justify-center">
             <span className="text-5xl opacity-20">🏍️</span>
           </div>
         )}
@@ -58,7 +61,7 @@ export function ActiveRentalCard({ vehicleModelName, pickupLocationName, current
         <div className="grid grid-cols-2 gap-4 border-t-2 border-sand-brand pt-6">
           <div className="space-y-1">
             <p className="text-[10px] font-black uppercase tracking-widest text-teal-brand/60">Current Return</p>
-            <p className="text-xl font-black italic text-teal-brand">{formatDate(currentDropoffDatetime)}</p>
+            <p className="text-lg font-black italic text-teal-brand">{formatDateTime(currentDropoffDatetime)}</p>
           </div>
           <div className="space-y-1 text-right">
             <p className="text-[10px] font-black uppercase tracking-widest text-teal-brand/60">Status</p>

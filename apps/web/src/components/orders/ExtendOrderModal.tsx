@@ -183,7 +183,26 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
       );
 
       if (res.success) {
-        await qc.invalidateQueries({ queryKey: ['orders'] });
+        // Invalidate every query that powers Active Orders list + the Order Detail modal
+        // tabs (order, items, payments, addons, swaps, history, enriched). Query keys all
+        // start with ['orders', ...] (see apps/web/src/api/orders.ts) so a prefix-invalidate
+        // covers them; we also target specific keys to make it explicit and ensure both
+        // active and inactive detail tabs refetch on next mount.
+        const orderId = enrichedData.id;
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: ['orders'] }),
+          qc.invalidateQueries({ queryKey: ['orders', 'enriched'] }),
+          ...(orderId
+            ? [
+                qc.invalidateQueries({ queryKey: ['orders', orderId] }),
+                qc.invalidateQueries({ queryKey: ['orders', orderId, 'items'] }),
+                qc.invalidateQueries({ queryKey: ['orders', orderId, 'payments'] }),
+                qc.invalidateQueries({ queryKey: ['orders', orderId, 'addons'] }),
+                qc.invalidateQueries({ queryKey: ['orders', orderId, 'swaps'] }),
+                qc.invalidateQueries({ queryKey: ['orders', orderId, 'history'] }),
+              ]
+            : []),
+        ]);
         setSuccessResult({
           datetime: res.newDropoffDatetime ?? newDropoffDatetime,
           extensionCost: res.extensionCost ?? Math.round(effectiveRate * previewData.extensionDays * 100) / 100,

@@ -912,7 +912,10 @@ export function OrderDetailSummaryTab({
         onClose={() => setShowMayaModal(false)}
         orderId={order.id ?? orderId}
         orderReference={String(order.booking_token ?? orderId)}
-        balanceDue={Number(order.balance_due ?? 0)}
+        // Use the derived balance (final_total − totalPaid, excluding pending
+        // extension IOUs) rather than the stored orders.balance_due column,
+        // which can drift after paid extensions (see migration 091).
+        balanceDue={balance}
         cardSurchargePercent={cardSurchargePercent}
       />
     </>
