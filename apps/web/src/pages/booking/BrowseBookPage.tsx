@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Fragment } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
@@ -15,6 +15,7 @@ import SectionDivider from '../../components/home/SectionDivider.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import InclusionMarquee from '../../components/home/InclusionMarquee.js';
 import { ReviewsSection } from '../../components/home/ReviewsSection.js';
+import { RentalIncludedIconsGrid } from '../../components/public/RentalIncludedIconsGrid.js';
 import iconPeaceOfMind from '../../assets/Home/Peace of Mind.svg';
 import iconHelmet from '../../assets/Home/Helmet Icon.svg';
 import iconFuel from '../../assets/Home/Fuel Icon.svg';
@@ -71,17 +72,6 @@ const INCLUSION_ITEMS = [
   { icon: iconBungee,      label: 'Bungee Cord',   isUpgrade: true },
   { icon: iconDelivery,    label: 'Delivery/Collection', isUpgrade: true },
   { icon: iconNinePm,      label: 'Late Return',   isUpgrade: true },
-];
-
-/** Seven key inclusions shown in the compact strip above the vehicle grid. */
-const COMPACT_STRIP_ITEMS = [
-  { icon: iconHelmet,      label: 'Helmet' },
-  { icon: iconFuel,        label: 'Full Tank' },
-  { icon: iconSurfRack,    label: 'Surf Rack' },
-  { icon: iconPeaceOfMind, label: 'Damage Protection' },
-  { icon: iconDryBag,      label: 'Dry Bag' },
-  { icon: iconFirstAid,    label: 'First Aid' },
-  { icon: iconPawCard,     label: 'Paw Card' },
 ];
 
 interface AvailableModel {
@@ -284,25 +274,11 @@ export default function BrowseBookPage() {
           </div>
         )}
 
-        {/* ── Compact inclusions strip ── */}
+        {/* ── Included-with-rental icons (homepage “included” set only — no optional extras) ── */}
         <div className="relative z-10 mb-6">
-          <div className="rounded-2xl border border-teal-brand/20 bg-sand-brand/50 px-5 py-3">
-            <div className="flex flex-wrap items-center justify-center gap-x-1 gap-y-2">
-              {COMPACT_STRIP_ITEMS.map(({ icon, label }, i) => (
-                <Fragment key={label}>
-                  {i > 0 && (
-                    <span className="shrink-0 text-[10px] leading-none text-charcoal-brand/25" aria-hidden="true">
-                      ·
-                    </span>
-                  )}
-                  <span className="inline-flex items-center gap-1.5 font-lato text-[12px] font-semibold text-charcoal-brand/80">
-                    <img src={icon} alt="" className="h-5 w-5 shrink-0 object-contain" width={20} height={20} />
-                    {label}
-                  </span>
-                </Fragment>
-              ))}
-            </div>
-            <p className="font-lato mx-auto mt-3 max-w-xl border-t border-teal-brand/20 pt-3 text-center text-sm font-semibold leading-snug text-teal-brand sm:text-[15px]">
+          <div className="rounded-2xl border border-teal-brand/20 bg-sand-brand/50 px-4 py-4 sm:px-5">
+            <RentalIncludedIconsGrid variant="compact" showOptionals />
+            <p className="font-lato mx-auto mt-4 max-w-xl border-t border-teal-brand/20 pt-3 text-center text-sm font-semibold leading-snug text-teal-brand sm:text-[15px]">
               {showCharityTotalInTagline
                 ? `Book with us now — your rental funds animal welfare on Siargao · ₱${formatCharityTotalRaised(charityTotalRaised)} donated so far 🐾`
                 : 'Book with us now — your rental funds animal welfare on Siargao'}
