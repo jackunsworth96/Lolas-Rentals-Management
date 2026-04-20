@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Send, X } from 'lucide-react';
-import pawPrint from '../../assets/Paw Print.svg';
+import aiChatIcon from '../../assets/Buttons/ai chat icon.svg';
 import { normalizeApiBase } from '../../api/normalize-api-base.js';
 
 const API_BASE = normalizeApiBase(import.meta.env.VITE_API_URL);
@@ -260,13 +260,12 @@ export default function LolasChat() {
           type="button"
           onClick={() => setOpen(true)}
           aria-label="Open chat with Lola's Assistant"
-          className="fixed bottom-6 right-6 z-[60] flex h-14 w-14 items-center justify-center rounded-full bg-teal-brand text-white shadow-lg transition-all duration-200 hover:scale-105 active:scale-95 md:bottom-8 md:right-8 md:h-16 md:w-16"
+          className="fixed bottom-6 right-6 z-[60] flex items-center justify-center bg-transparent p-0 transition-all duration-200 hover:scale-105 active:scale-95 md:bottom-8 md:right-8"
         >
           <img
-            src={pawPrint}
+            src={aiChatIcon}
             alt=""
-            className="h-7 w-7 object-contain md:h-8 md:w-8"
-            style={{ filter: 'brightness(0) invert(1)' }}
+            className="h-14 w-14 object-contain md:h-16 md:w-16"
             aria-hidden
           />
         </button>
@@ -284,15 +283,12 @@ export default function LolasChat() {
           {/* Header */}
           <div className="flex items-start justify-between gap-3 border-b border-charcoal-brand/10 bg-cream-brand px-5 pb-3 pt-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-teal-brand">
-                <img
-                  src={pawPrint}
-                  alt=""
-                  className="h-5 w-5 object-contain"
-                  style={{ filter: 'brightness(0) invert(1)' }}
-                  aria-hidden
-                />
-              </div>
+              <img
+                src={aiChatIcon}
+                alt=""
+                className="h-10 w-10 shrink-0 object-contain"
+                aria-hidden
+              />
               <div className="leading-tight">
                 <p className="font-headline text-lg font-bold text-charcoal-brand">
                   Lola&apos;s Assistant 🐾
