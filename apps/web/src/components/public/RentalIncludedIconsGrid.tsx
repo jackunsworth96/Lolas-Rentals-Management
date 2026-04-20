@@ -5,16 +5,11 @@ interface Props {
   variant?: 'card' | 'compact';
   /** Show "What's included" heading (default true for card) */
   showHeading?: boolean;
-  /** Also render the optional add-on icons below a divider */
+  /** Also render the optional add-on icons (no fade, single line on desktop) */
   showOptionals?: boolean;
   className?: string;
 }
 
-/**
- * Grid of standard inclusions. When showOptionals is true a second row of
- * optional add-on icons (seat cloth, damage protection, etc.) is shown
- * below a divider with a lighter label style.
- */
 export function RentalIncludedIconsGrid({
   variant = 'card',
   showHeading,
@@ -26,11 +21,70 @@ export function RentalIncludedIconsGrid({
 
   const iconCls = `object-contain ${isCompact ? 'h-7 w-7 sm:h-8 sm:w-8' : 'h-8 w-8'}`;
   const itemCls = `flex flex-col items-center gap-1.5 ${isCompact ? 'w-[3.75rem] sm:w-[4.25rem]' : 'w-[4.5rem]'}`;
-  const labelCls = `font-lato text-center font-semibold leading-tight ${isCompact ? 'text-[9px] sm:text-[10px]' : 'text-[10px]'}`;
-  const rowCls = isCompact
-    ? 'flex flex-wrap justify-center gap-x-2 gap-y-3 sm:gap-x-3'
-    : 'flex flex-wrap justify-center gap-x-3 gap-y-4 sm:gap-x-4';
+  const labelCls = `font-lato text-center font-semibold leading-tight text-charcoal-brand/85 ${
+    isCompact ? 'text-[9px] sm:text-[10px]' : 'text-[10px]'
+  }`;
 
+  const allItems = showOptionals
+    ? [...HOME_INCLUDED_RENTAL_ITEMS, ...HOME_OPTIONAL_ADDON_ITEMS]
+    : HOME_INCLUDED_RENTAL_ITEMS;
+
+  const includedCount = HOME_INCLUDED_RENTAL_ITEMS.length;
+
+  if (showOptionals) {
+    return (
+      <div className={className}>
+        {showTitle && (
+          <p
+            className={`font-lato mb-2 text-center font-black uppercase tracking-wider text-charcoal-brand/50 ${
+              isCompact ? 'text-[9px]' : 'text-[10px]'
+            }`}
+          >
+            What&apos;s included
+          </p>
+        )}
+
+        {/* Mobile: two wrapped rows with a divider between included and add-ons */}
+        <div className="sm:hidden">
+          <div className="flex flex-wrap justify-center gap-x-2 gap-y-3">
+            {HOME_INCLUDED_RENTAL_ITEMS.map(({ icon, label }) => (
+              <div key={label} className={itemCls}>
+                <img src={icon} alt="" className={iconCls} width={32} height={32} />
+                <span className={labelCls}>{label}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mx-auto my-3 max-w-xs border-t border-teal-brand/15" />
+          <div className="flex flex-wrap justify-center gap-x-2 gap-y-3">
+            {HOME_OPTIONAL_ADDON_ITEMS.map(({ icon, label }) => (
+              <div key={label} className={itemCls}>
+                <img src={icon} alt="" className={iconCls} width={32} height={32} />
+                <span className={labelCls}>{label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Desktop: all 11 in one line */}
+        <div className="hidden sm:flex sm:flex-wrap sm:justify-center sm:gap-x-3 sm:gap-y-3">
+          {allItems.map(({ icon, label }, i) => (
+            <div key={label} className="relative flex flex-col items-center gap-1.5 w-[4.25rem]">
+              {/* subtle divider before the first optional item */}
+              {i === includedCount && (
+                <span className="absolute -left-[7px] top-1 h-8 w-px bg-teal-brand/20" aria-hidden />
+              )}
+              <img src={icon} alt="" className="h-8 w-8 object-contain" width={32} height={32} />
+              <span className="font-lato text-center text-[10px] font-semibold leading-tight text-charcoal-brand/85">
+                {label}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  /* Default (no optionals) — original behaviour */
   return (
     <div className={className}>
       {showTitle && (
@@ -42,40 +96,20 @@ export function RentalIncludedIconsGrid({
           What&apos;s included
         </p>
       )}
-
-      {/* Included items */}
-      <div className={rowCls}>
+      <div
+        className={
+          isCompact
+            ? 'flex flex-wrap justify-center gap-x-2 gap-y-3 sm:gap-x-3'
+            : 'flex flex-wrap justify-center gap-x-3 gap-y-4 sm:gap-x-4'
+        }
+      >
         {HOME_INCLUDED_RENTAL_ITEMS.map(({ icon, label }) => (
           <div key={label} className={itemCls}>
             <img src={icon} alt="" className={iconCls} width={32} height={32} />
-            <span className={`${labelCls} text-charcoal-brand/85`}>{label}</span>
+            <span className={labelCls}>{label}</span>
           </div>
         ))}
       </div>
-
-      {/* Optional add-ons row */}
-      {showOptionals && (
-        <>
-          <div className={`mx-auto my-3 border-t border-teal-brand/15 ${isCompact ? 'max-w-xs' : 'max-w-sm'}`} />
-          {showTitle && (
-            <p
-              className={`font-lato mb-2 text-center font-black uppercase tracking-wider text-charcoal-brand/35 ${
-                isCompact ? 'text-[9px]' : 'text-[10px]'
-              }`}
-            >
-              Available add-ons
-            </p>
-          )}
-          <div className={rowCls}>
-            {HOME_OPTIONAL_ADDON_ITEMS.map(({ icon, label }) => (
-              <div key={label} className={itemCls}>
-                <img src={icon} alt="" className={`${iconCls} opacity-70`} width={32} height={32} />
-                <span className={`${labelCls} text-charcoal-brand/55`}>{label}</span>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
     </div>
   );
 }
