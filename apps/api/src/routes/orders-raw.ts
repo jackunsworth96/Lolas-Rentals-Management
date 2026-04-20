@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { logger } from '../lib/logger.js';
+import { publicWebOriginFromEnv } from '../lib/public-web-url.js';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { Permission, resolveStoreFromSource, resolveSourceFromStore } from '@lolas/shared';
@@ -402,7 +403,7 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
             timeStyle: 'short',
           });
 
-        const waiverUrl = `${process.env.WEB_URL ?? 'https://lolasrentals.com'}/waiver/${orderReference}`;
+        const waiverUrl = `${publicWebOriginFromEnv(process.env.WEB_URL)}/waiver/${orderReference}`;
         const whatsappNumber = process.env.WHATSAPP_NUMBER ?? '639XXXXXXXXX';
 
         // Customer confirmation

@@ -8,6 +8,7 @@ import { validateBody } from '../middleware/validate.js';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { sendEmail, waiverConfirmationHtml } from '../services/email.js';
+import { normalizePublicWebOrigin } from '../lib/public-web-url.js';
 
 const waiverLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -106,8 +107,8 @@ waiverRouter.post(
         return;
       }
 
-      const base = (process.env.WEB_URL ?? '').replace(/\/$/, '');
-      if (!base) {
+      const rawWeb = process.env.WEB_URL;
+      if (!rawWeb?.trim()) {
         res.status(500).json({
           success: false,
           error: { code: 'CONFIG_ERROR', message: 'WEB_URL is not configured' },
@@ -115,6 +116,7 @@ waiverRouter.post(
         return;
       }
 
+      const base = normalizePublicWebOrigin(rawWeb);
       res.json({
         url: `${base}/waiver/${encodeURIComponent(orderReference)}`,
       });

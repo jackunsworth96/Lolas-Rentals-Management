@@ -12,6 +12,7 @@ import {
 } from '../../services/email.js';
 import { getSupabaseClient } from '../../adapters/supabase/client.js';
 import { formatManilaDate } from '../../utils/manila-date.js';
+import { publicWebOriginFromEnv } from '../../lib/public-web-url.js';
 
 function formatManilaDateTime(iso: string): string {
   return new Date(iso).toLocaleString('en-PH', {
@@ -269,7 +270,8 @@ export async function submitDirectBooking(
 
     const charityDonation = input.charityDonation ?? 0;
 
-    const waiverUrl = `${process.env.WEB_URL ?? 'https://lolasrentals.com'}/waiver/${orderReference}`;
+    const webBase = publicWebOriginFromEnv(process.env.WEB_URL);
+    const waiverUrl = `${webBase}/waiver/${orderReference}`;
     const whatsappNumber = process.env.WHATSAPP_NUMBER ?? '639XXXXXXXXX';
 
     // ── Customer confirmation ──────────────────────────────────────────────
@@ -297,7 +299,7 @@ export async function submitDirectBooking(
         transferAmount: 0,
         waiverUrl,
         whatsappNumber,
-        cancelUrl: `${process.env.WEB_URL ?? 'https://lolasrentals.com'}/book/cancel/${orderReference}?token=${cancellationToken}`,
+        cancelUrl: `${webBase}/book/cancel/${orderReference}?token=${cancellationToken}`,
       }),
     });
 

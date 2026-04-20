@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { sendEmail, waiverReminderHtml } from '../services/email.js';
+import { publicWebOriginFromEnv } from '../lib/public-web-url.js';
 
 export function startWaiverReminderJob(): void {
   // Run every hour at :00
@@ -106,7 +107,7 @@ export function startWaiverReminderJob(): void {
             })
           : 'Tomorrow';
 
-        const waiverUrl = `${process.env.WEB_URL ?? 'https://lolasrentals.com'}/waiver/${token}`;
+        const waiverUrl = `${publicWebOriginFromEnv(process.env.WEB_URL)}/waiver/${token}`;
         const whatsappNumber = process.env.WHATSAPP_NUMBER ?? '639XXXXXXXXX';
 
         void sendEmail({
