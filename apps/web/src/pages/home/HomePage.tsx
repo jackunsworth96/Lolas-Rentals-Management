@@ -1,6 +1,7 @@
 import { AnimatedHeading } from '../../components/public/AnimatedHeading.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
+import LolasChat from '../../components/chat/LolasChat.js';
 import { SEO } from '../../components/seo/SEO.js';
 import SectionDivider from '../../components/home/SectionDivider.js';
 import { FleetPreviewSection } from '../../components/home/FleetPreviewSection.js';
@@ -1077,6 +1078,8 @@ export default function HomePage() {
       </div>
 
       <ReviewsSection />
+
+      <LolasChat />
     </PageLayout>
   );
 }
