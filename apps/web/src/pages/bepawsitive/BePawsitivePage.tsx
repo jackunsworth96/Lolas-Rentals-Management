@@ -428,7 +428,7 @@ export default function BePawsitivePage() {
             transform: 'translateX(-50%)',
             width: isMobile ? '80%' : '46%',
             height: '96%',
-            background: `linear-gradient(to bottom, #3a9e88 0%, #2d8a77 40%, ${C.teal} 100%)`,
+            background: `linear-gradient(to top, ${C.teal} 0%, #2d8a77 40%, #3a9e88 100%)`,
             borderRadius: '50% 50% 0 0 / 28% 28% 0 0',
             pointerEvents: 'none',
             zIndex: 0,
