@@ -24,10 +24,7 @@ if (!_env.success) {
   process.exit(1);
 }
 
-initSentry();
-
 import * as Sentry from '@sentry/node';
-import { initSentry } from './lib/sentry.js';
 import express, { type Request, type Response } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -143,6 +140,11 @@ app.locals.deps = {
 
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok' });
+});
+
+/** Render / load balancers often probe `/` — avoid noisy 404s in logs. */
+app.get('/', (_req: Request, res: Response) => {
+  res.json({ status: 'ok', service: '@lolas/api' });
 });
 
 app.use('/api/public/reviews', publicLimiter, publicReviewsRoutes);

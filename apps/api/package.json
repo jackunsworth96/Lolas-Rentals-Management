@@ -5,9 +5,9 @@
   "type": "module",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "npx tsx watch src/server.ts",
+    "dev": "npx tsx watch --import ./src/instrument.ts ./src/server.ts",
     "build": "tsc --build --force",
-    "start": "node dist/server.js",
+    "start": "node --import ./dist/instrument.js ./dist/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "seed": "npx tsx scripts/seed-users.ts",
