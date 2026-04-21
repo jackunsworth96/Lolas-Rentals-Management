@@ -16,6 +16,7 @@ import runPhoto8 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 
 // About section extra photos
 import nadinePhoto from '../../assets/Be Pawsitive/Run 2025/nadine.png';
 import runnerDabbingPhoto from '../../assets/Be Pawsitive/Run 2025/runner dabbing.png';
+import roadMapImg from '../../assets/Be Pawsitive/Run 2025/road map.png';
 
 // Collab logos
 import aquaFlaskLogo from '../../assets/Be Pawsitive/Run 2025/Aqua Flask.svg';
@@ -361,6 +362,8 @@ export default function BePawsitivePage() {
   const { ref: registerBtnRef,  animStyle: registerBtnAnim  } = useFadeIn(200, 'up');
   const { ref: donorCtrRef,     animStyle: donorCtrAnim     } = useFadeIn(0,   'scale');
   const { ref: commitHeadRef,   animStyle: commitHeadAnim   } = useFadeIn(0,   'up');
+  const { ref: routeTextRef,    animStyle: routeTextAnim    } = useFadeIn(0,   'left');
+  const { ref: routeMapRef,     animStyle: routeMapAnim     } = useFadeIn(150, 'right');
 
   // Parade config — tuktuk far-left, all sizes +40%, tuktuk white-bg removed via multiply
   const paradeItems = [
@@ -1350,6 +1353,138 @@ export default function BePawsitivePage() {
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ================================================================
+          5b. THE ROUTE
+          ================================================================ */}
+      <section style={{ background: '#162f47', padding: secPad, color: 'white' }}>
+        <div
+          style={{
+            maxWidth: 1100,
+            margin: '0 auto',
+            display: 'flex',
+            flexDirection: isMobile ? 'column' : 'row',
+            gap: isMobile ? 36 : 64,
+            alignItems: 'center',
+          }}
+        >
+          {/* Left — copy */}
+          <div ref={routeTextRef} style={{ flex: 1, minWidth: 0, ...routeTextAnim }}>
+            <SectionEyebrow text="The Route" color={C.amberLight} />
+            <h3
+              style={{
+                fontFamily: BEBAS,
+                fontSize: 'clamp(2rem, 4vw, 3.2rem)',
+                color: 'white',
+                letterSpacing: '0.03em',
+                lineHeight: 1,
+                marginBottom: 20,
+              }}
+            >
+              Two Distances. One Cause.
+            </h3>
+            <p
+              style={{
+                fontFamily: NUNITO,
+                fontSize: 15,
+                lineHeight: 1.8,
+                color: 'rgba(255,255,255,0.7)',
+                marginBottom: 28,
+              }}
+            >
+              The AquaFlask × Be Pawsitive Run 2026 offers two race distances — 5km and 10km —
+              catering to all fitness levels and experience.
+            </p>
+
+            {[
+              {
+                label: '5KM',
+                title: 'Perfect for families, casual runners, and first-timers.',
+                desc: 'The route winds through scenic areas of Siargao, offering an enjoyable challenge at your own pace.',
+              },
+              {
+                label: '10KM',
+                title: 'For seasoned runners seeking more distance and terrain.',
+                desc: 'The longer route covers a greater stretch of the island, ideal for those looking to push their speed and endurance while supporting the cause.',
+              },
+            ].map((d, i) => (
+              <FadeCard
+                key={d.label}
+                delay={i * 120}
+                from="up"
+                style={{
+                  background: 'rgba(255,255,255,0.07)',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  borderRadius: 16,
+                  padding: '16px 20px',
+                  marginBottom: 12,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+                  <div
+                    style={{
+                      fontFamily: BEBAS,
+                      fontSize: 28,
+                      color: C.amber,
+                      letterSpacing: '0.06em',
+                      lineHeight: 1.1,
+                      flexShrink: 0,
+                      minWidth: 56,
+                    }}
+                  >
+                    {d.label}
+                  </div>
+                  <div>
+                    <div
+                      style={{
+                        fontFamily: NUNITO,
+                        fontSize: 14,
+                        fontWeight: 700,
+                        color: 'white',
+                        marginBottom: 4,
+                      }}
+                    >
+                      {d.title}
+                    </div>
+                    <div
+                      style={{
+                        fontFamily: NUNITO,
+                        fontSize: 13,
+                        color: 'rgba(255,255,255,0.6)',
+                        lineHeight: 1.65,
+                      }}
+                    >
+                      {d.desc}
+                    </div>
+                  </div>
+                </div>
+              </FadeCard>
+            ))}
+          </div>
+
+          {/* Right — road map image */}
+          <div
+            ref={routeMapRef}
+            style={{
+              flexShrink: 0,
+              width: isMobile ? '100%' : 380,
+              ...routeMapAnim,
+            }}
+          >
+            <img
+              src={roadMapImg}
+              alt="AquaFlask × Be Pawsitive Run 2026 route map"
+              style={{
+                width: '100%',
+                height: 'auto',
+                display: 'block',
+                borderRadius: 20,
+                boxShadow: '0 4px 32px rgba(0,0,0,0.35)',
+              }}
+            />
           </div>
         </div>
       </section>
