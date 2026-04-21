@@ -445,37 +445,33 @@ export default function BePawsitivePage() {
           }}
         />
 
-        {/* Wave 1 — large decorative wave, left side */}
-        <img
-          src={wave1Img}
-          alt=""
-          style={{
-            position: 'absolute',
-            left: isMobile ? '-10%' : '-4%',
-            bottom: isMobile ? '8%' : '12%',
-            width: isMobile ? '65%' : '50%',
-            maxWidth: 560,
-            pointerEvents: 'none',
-            zIndex: 0,
-            opacity: 0.92,
-            filter: 'drop-shadow(0 8px 24px rgba(0,0,0,0.18))',
-          }}
-        />
-
-        {/* Wave 2 — layered behind wave 1, slightly higher */}
+        {/* Wave 2 — background layer, partially off-screen bottom-left */}
         <img
           src={wave2Img}
           alt=""
           style={{
             position: 'absolute',
-            left: isMobile ? '-18%' : '-8%',
-            bottom: isMobile ? '18%' : '24%',
-            width: isMobile ? '58%' : '44%',
-            maxWidth: 500,
+            left: isMobile ? '-15%' : '-6%',
+            bottom: isMobile ? '-5%' : '-8%',
+            width: isMobile ? '70%' : '34%',
             pointerEvents: 'none',
             zIndex: 0,
-            opacity: 0.7,
-            filter: 'drop-shadow(0 4px 16px rgba(0,0,0,0.12))',
+            opacity: 0.65,
+          }}
+        />
+
+        {/* Wave 1 — foreground layer, bottom-left corner */}
+        <img
+          src={wave1Img}
+          alt=""
+          style={{
+            position: 'absolute',
+            left: isMobile ? '-8%' : '-2%',
+            bottom: isMobile ? '-10%' : '-12%',
+            width: isMobile ? '80%' : '38%',
+            pointerEvents: 'none',
+            zIndex: 0,
+            opacity: 0.9,
           }}
         />
 
