@@ -274,49 +274,7 @@ export function PageLayout({
               <p className="text-sm leading-relaxed text-charcoal-brand/60">
                 © 2026 Lola&apos;s Rentals and Tours Inc. | Built in-house
               </p>
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm font-semibold text-charcoal-brand/70">Opening Hours</p>
-              <p className="text-sm text-charcoal-brand/60">9:00 AM – 5:00 PM · Mon–Sun</p>
-              <p className="text-sm text-charcoal-brand/60">Tourism Rd, Catangnan,</p>
-              <p className="text-sm text-charcoal-brand/60">General Luna, Siargao</p>
-            </div>
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-x-12 gap-y-4">
-                <Link to="/book/repairs" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
-                  Island Safety
-                </Link>
-                <Link to="/book/bepawsitive" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
-                  Be Pawsitive NGO
-                </Link>
-                <a
-                  href="https://wa.me/639694443413"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand"
-                >
-                  Contact Us
-                </a>
-                <Link to="/book/privacy" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
-                  Privacy
-                </Link>
-                <Link
-                  to="/book/waiver-agreement"
-                  className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand"
-                >
-                  Waiver Agreement
-                </Link>
-                <Link to="/refund-policy" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
-                  Refund Policy
-                </Link>
-                <Link
-                  to="/peace-of-mind"
-                  className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand"
-                >
-                  Peace of Mind Cover
-                </Link>
-              </div>
-              <div className="flex items-center gap-5">
+              <div className="flex items-center gap-5 pt-1">
                 <a
                   href="https://instagram.com/lolasrentals"
                   target="_blank"
@@ -345,6 +303,46 @@ export function PageLayout({
                   <img src={locationIcon} alt="" className="h-7 w-7 object-contain" width={28} height={28} />
                 </a>
               </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-charcoal-brand/70">Opening Hours</p>
+              <p className="text-sm text-charcoal-brand/60">9:00 AM – 5:00 PM · Mon–Sun</p>
+              <p className="text-sm text-charcoal-brand/60">Tourism Rd, Catangnan,</p>
+              <p className="text-sm text-charcoal-brand/60">General Luna, Siargao</p>
+            </div>
+            <div className="grid grid-cols-2 gap-x-12 gap-y-4">
+              <Link to="/book/repairs" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
+                Island Safety
+              </Link>
+              <Link to="/book/bepawsitive" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
+                Be Pawsitive NGO
+              </Link>
+              <a
+                href="https://wa.me/639694443413"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand"
+              >
+                Contact Us
+              </a>
+              <Link to="/book/privacy" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
+                Privacy
+              </Link>
+              <Link
+                to="/book/waiver-agreement"
+                className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand"
+              >
+                Waiver Agreement
+              </Link>
+              <Link to="/refund-policy" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
+                Refund Policy
+              </Link>
+              <Link
+                to="/peace-of-mind"
+                className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand"
+              >
+                Peace of Mind Cover
+              </Link>
             </div>
           </div>
         </footer>
