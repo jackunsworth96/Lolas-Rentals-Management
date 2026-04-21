@@ -13,6 +13,7 @@ import {
 import { getSupabaseClient } from '../../adapters/supabase/client.js';
 import { formatManilaDate } from '../../utils/manila-date.js';
 import { publicWebOriginFromEnv } from '../../lib/public-web-url.js';
+import { sendTelegramAlert } from '../../lib/telegram.js';
 
 function formatManilaDateTime(iso: string): string {
   return new Date(iso).toLocaleString('en-PH', {
@@ -344,6 +345,17 @@ export async function submitDirectBooking(
         grandTotal,
       }),
     });
+
+    const pickupFmt = formatManilaDateTime(input.pickupDatetime);
+    const dropoffFmt = formatManilaDateTime(input.dropoffDatetime);
+    void sendTelegramAlert(
+      `🛵 <b>New Booking!</b>\n` +
+        `Reference: ${escapeHtml(orderReference)}\n` +
+        `Customer: ${escapeHtml(input.customerName)}\n` +
+        `Vehicle: ${escapeHtml(vehicleName)}\n` +
+        `Dates: ${escapeHtml(pickupFmt)} → ${escapeHtml(dropoffFmt)}\n` +
+        `Total: ₱${grandTotal.toLocaleString('en-PH')}`,
+    );
   })();
 
   return { ...result, serverQuote: webQuoteRaw, charityDonation: input.charityDonation ?? 0, cancellationToken: result.cancellationToken };
