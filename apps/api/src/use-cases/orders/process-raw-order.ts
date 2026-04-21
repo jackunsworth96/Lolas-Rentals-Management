@@ -71,6 +71,15 @@ export interface ProcessRawOrderInput {
   depositLiabilityAccountId?: string | null;
   isCardPayment?: boolean;
   settlementRef?: string | null;
+  /**
+   * When true the transfer fee is excluded from finalTotal / balance_due.
+   * Use this when the customer has agreed to pay the driver directly — the
+   * Transfer record is still created and linked, but the money never flows
+   * through Lola's books so staff should not collect it at the counter.
+   */
+  excludeTransferFromBalance?: boolean;
+  /** Accommodation/hotel name to attach to the transfer record. Takes precedence over payload.accommodation_name. */
+  transferAccommodation?: string | null;
 }
 
 export async function processRawOrder(
@@ -140,8 +149,34 @@ export async function processRawOrder(
     return sum + v.rentalRate * days + v.pickupFee + v.dropoffFee - v.discount;
   }, 0);
   const addonTotal = input.addons.reduce((sum, a) => sum + a.totalAmount, 0);
-  const finalTotal = rentalTotal + addonTotal + input.cardFeeSurcharge;
   const charityAmount = Number(rawOrder.charity_donation ?? 0);
+
+  // Transfer amount is stored on `raw_orders.transfer_amount` (direct bookings)
+  // or inside the JSON `payload.transfer_amount` (WooCommerce webhooks). Extract
+  // it here so it can be included in finalTotal — the customer owes the transfer
+  // fee and it must be reflected in balance_due alongside the rental charges.
+  const rawPayload =
+    typeof rawOrder.payload === 'object' && rawOrder.payload !== null
+      ? (rawOrder.payload as Record<string, unknown>)
+      : {};
+  const transferAmountRaw =
+    rawPayload.transfer_amount !== undefined
+      ? rawPayload.transfer_amount
+      : (rawOrder as { transfer_amount?: number | null }).transfer_amount;
+  const transferAmount = Number(transferAmountRaw ?? 0);
+
+  // Pure rental income (does not include transfer or charity — those have
+  // dedicated journal legs so they must NOT be double-counted here).
+  const rentalIncomeTotal = rentalTotal + addonTotal + input.cardFeeSurcharge;
+
+  // When the customer pays the driver directly we exclude the transfer fee from
+  // the order's financial obligation so staff don't try to collect it at the counter.
+  // The Transfer record is still created and linked for ops purposes.
+  const transferBillable =
+    input.excludeTransferFromBalance ? 0 : transferAmount;
+
+  // finalTotal = everything the customer owes = what balance_due is measured against.
+  const finalTotal = rentalIncomeTotal + charityAmount + transferBillable;
 
   // Previous pre-activation payments (e.g. deposit paid at
   // /collect-payment) also reduce the remaining balance. Pull them
@@ -161,7 +196,10 @@ export async function processRawOrder(
     !!input.paymentMethodId &&
     !!input.receivableAccountId &&
     (input.isCardPayment || !!input.paymentAccountId);
-  const rentalAmount = finalTotal;
+  // The rental payment row records what was collected at activation for the
+  // rental + addons + surcharge only. Transfer and charity are collected
+  // as part of the overall balance — they are not split out as separate payments.
+  const rentalAmount = rentalIncomeTotal;
   const willCreateDepositPayment =
     input.securityDeposit > 0 &&
     !!input.depositMethodId &&
@@ -359,13 +397,20 @@ export async function processRawOrder(
   // ── 8. Build ALL journal legs in one concatenated array. ──
   const journalLegs: Array<Record<string, unknown>> = [];
 
-  // (a) Activation: receivable ↔ rental income for the full order total.
-  if (finalTotal > 0 && input.receivableAccountId && input.incomeAccountId) {
+  // (a) Activation: receivable ↔ rental income for the rental/addon/surcharge portion.
+  //
+  // We debit AR only for rentalIncomeTotal here. The charity and transfer portions
+  // of finalTotal each have their own dedicated AR-debit legs below ((d) and (e))
+  // so that the income account is never overstated by non-rental revenue.
+  //
+  // Total AR debits across all legs = rentalIncomeTotal + charityAmount + transferBillable
+  //                                 = finalTotal  ✓
+  if (rentalIncomeTotal > 0 && input.receivableAccountId && input.incomeAccountId) {
     const activationLegs: JournalLeg[] = [
       {
         entryId: crypto.randomUUID(),
         accountId: input.receivableAccountId,
-        debit: Money.php(finalTotal),
+        debit: Money.php(rentalIncomeTotal),
         credit: Money.zero(),
         description: `Order ${orderId} activation`,
         referenceType: 'order',
@@ -375,7 +420,7 @@ export async function processRawOrder(
         entryId: crypto.randomUUID(),
         accountId: input.incomeAccountId,
         debit: Money.zero(),
-        credit: Money.php(finalTotal),
+        credit: Money.php(rentalIncomeTotal),
         description: `Order ${orderId} rental income`,
         referenceType: 'order',
         referenceId: orderId,
@@ -496,6 +541,32 @@ export async function processRawOrder(
     }
   }
 
+  // (e) Transfer legs — DR AR + CR Income when the transfer is billed through Lola's.
+  // Skipped when the customer pays the driver directly (excludeTransferFromBalance).
+  if (transferBillable > 0 && input.receivableAccountId && input.incomeAccountId) {
+    const transferLegs: JournalLeg[] = [
+      {
+        entryId: crypto.randomUUID(),
+        accountId: input.receivableAccountId,
+        debit: Money.php(transferBillable),
+        credit: Money.zero(),
+        description: `Order ${orderId} transfer fee receivable`,
+        referenceType: 'order',
+        referenceId: orderId,
+      },
+      {
+        entryId: crypto.randomUUID(),
+        accountId: input.incomeAccountId,
+        debit: Money.zero(),
+        credit: Money.php(transferBillable),
+        description: `Order ${orderId} transfer fee income`,
+        referenceType: 'order',
+        referenceId: orderId,
+      },
+    ];
+    for (const leg of transferLegs) journalLegs.push(serialiseLeg(leg));
+  }
+
   // ── 9. Build transfer payload (link-existing or create-new). ─
   let transferRow: Record<string, unknown> | null = null;
   if (rawOrder.transfer_type && rawOrder.transfer_route) {
@@ -543,20 +614,27 @@ export async function processRawOrder(
             .toISOString()
             .split('T')[0]
         : formatManilaDate();
-      const payload =
-        typeof rawOrder.payload === 'object' && rawOrder.payload !== null
-          ? (rawOrder.payload as Record<string, unknown>)
-          : {};
+      // rawPayload and transferAmount are already extracted at the top of step 5.
       const paxCount =
-        'transfer_pax_count' in payload
-          ? Number(payload.transfer_pax_count ?? 1)
+        'transfer_pax_count' in rawPayload
+          ? Number(rawPayload.transfer_pax_count ?? 1)
           : 1;
-      const pl = payload as { transfer_amount?: unknown };
-      const transferAmount = Number(
-        pl.transfer_amount !== undefined && pl.transfer_amount !== null
-          ? pl.transfer_amount
-          : (rawOrder as { transfer_amount?: number | null }).transfer_amount ?? 0,
-      );
+
+      // Prefer the value explicitly passed from the BookingModal (staff can edit
+      // it in the summary step). Fall back to payload.accommodation_name which
+      // is submitted automatically from the customer-facing basket.
+      const accommodationName =
+        typeof input.transferAccommodation === 'string' && input.transferAccommodation.trim()
+          ? input.transferAccommodation.trim()
+          : typeof rawPayload.accommodation_name === 'string' && rawPayload.accommodation_name.trim()
+            ? rawPayload.accommodation_name.trim()
+            : null;
+
+      // When the customer pays the driver directly the transfer is already
+      // financially settled — mark it collected so staff don't chase it.
+      const driverDirectPayment = input.excludeTransferFromBalance === true;
+      const transferPaymentStatus = driverDirectPayment ? 'Paid' : 'Pending';
+
       const fresh = Transfer.create({
         id: crypto.randomUUID(),
         orderId,
@@ -569,12 +647,12 @@ export async function processRawOrder(
         flightTime: (rawOrder.flight_arrival_time as string | null) ?? null,
         paxCount,
         vanType: rawOrder.transfer_type as string,
-        accommodation: null,
+        accommodation: accommodationName,
         status: 'Pending',
         opsNotes: null,
         totalPrice: Money.php(transferAmount),
         paymentMethod: null,
-        paymentStatus: 'Pending',
+        paymentStatus: transferPaymentStatus,
         driverFee: null,
         netProfit: null,
         driverPaidStatus: null,
@@ -603,6 +681,9 @@ export async function processRawOrder(
         total_price: fresh.totalPrice.toNumber(),
         payment_method: fresh.paymentMethod,
         payment_status: fresh.paymentStatus,
+        // When the driver collected the payment, stamp collected_at now so the
+        // Transfers page immediately shows the row as settled.
+        collected_at: driverDirectPayment ? nowIso : null,
         driver_fee: fresh.driverFee?.toNumber() ?? null,
         net_profit: fresh.netProfit?.toNumber() ?? null,
         driver_paid_status: fresh.driverPaidStatus,

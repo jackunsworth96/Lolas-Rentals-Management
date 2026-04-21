@@ -223,6 +223,10 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const [collectPaymentNote, setCollectPaymentNote] = useState('');
   const [settlementRef, setSettlementRef] = useState('');
   const [waiveDeposit, setWaiveDeposit] = useState(false);
+  const [transferPaidByCustomer, setTransferPaidByCustomer] = useState(false);
+  const [transferAccommodation, setTransferAccommodation] = useState(
+    () => String((rawOrder.payload as Record<string, unknown> | null)?.accommodation_name ?? ''),
+  );
   const [preActivationMethodId, setPreActivationMethodId] = useState('');
   const [preActivationRef, setPreActivationRef] = useState('');
   const [preActivationAmount, setPreActivationAmount] = useState<number | ''>('');
@@ -467,7 +471,21 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const cardSurchargeAmount = (!waiveCardFee && surchargePercent > 0)
     ? Math.round(subtotalBeforeSurcharge * surchargePercent) / 100
     : 0;
-  const finalTotal = subtotalBeforeSurcharge + cardSurchargeAmount;
+
+  // Transfer fee is billable when the customer has NOT agreed to pay the driver directly.
+  const transferBillable =
+    isDirect && !transferPaidByCustomer
+      ? Number(
+          rawOrder.transfer_amount ??
+          (rawOrder.payload as Record<string, unknown> | null)?.transfer_amount ??
+          0,
+        )
+      : 0;
+
+  const charityAmount = Number(rawOrder.charity_donation ?? 0);
+
+  // Card surcharge applies to rental+addons only, not to transfer or charity.
+  const finalTotal = subtotalBeforeSurcharge + cardSurchargeAmount + transferBillable + charityAmount;
 
   const stepIndex = STEPS.findIndex((s) => s.key === step);
   const canGoNext = stepIndex < STEPS.length - 1;
@@ -627,6 +645,8 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
       depositLiabilityAccountId: depositLiabilityAccountId || null,
       isCardPayment: surchargePercent > 0,
       settlementRef: surchargePercent > 0 ? (settlementRef || null) : null,
+      excludeTransferFromBalance: transferPaidByCustomer,
+      transferAccommodation: transferAccommodation.trim() || null,
     };
   }
 
@@ -635,6 +655,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const transferAmountMissing =
     !!rawOrder.transfer_type &&
     rawOrder.transfer_type !== '' &&
+    !transferPaidByCustomer &&
     (!rawOrder.transfer_amount || rawOrder.transfer_amount === 0);
 
   async function handleActivate() {
@@ -819,10 +840,40 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                         <dd className="font-medium">{rawOrder.web_payment_method ?? 'Not specified'}</dd>
                       </div>
                       {rawOrder.transfer_type && (
-                        <div className="flex justify-between">
-                          <dt className="text-gray-500">Transfer</dt>
-                          <dd className="font-medium capitalize">{rawOrder.transfer_type}{rawOrder.transfer_route ? ` — ${rawOrder.transfer_route}` : ''}</dd>
-                        </div>
+                        <>
+                          <div className="flex justify-between">
+                            <dt className="text-gray-500">Transfer</dt>
+                            <dd className="font-medium capitalize">{rawOrder.transfer_type}{rawOrder.transfer_route ? ` — ${rawOrder.transfer_route}` : ''}</dd>
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <label htmlFor="transfer-accommodation" className="shrink-0 text-sm text-gray-500">
+                              Accommodation
+                            </label>
+                            <input
+                              id="transfer-accommodation"
+                              type="text"
+                              placeholder="Hotel / villa name…"
+                              value={transferAccommodation}
+                              onChange={(e) => setTransferAccommodation(e.target.value)}
+                              className="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-right text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                            <input
+                              id="transfer-paid-by-customer"
+                              type="checkbox"
+                              className="mt-0.5 h-4 w-4 shrink-0 accent-amber-600"
+                              checked={transferPaidByCustomer}
+                              onChange={(e) => setTransferPaidByCustomer(e.target.checked)}
+                            />
+                            <label htmlFor="transfer-paid-by-customer" className="cursor-pointer leading-snug">
+                              <span className="font-semibold">Customer pays driver directly</span>
+                              <span className="block text-amber-700">
+                                Tick this if the transfer fee is settled between the customer and the driver — it will be excluded from the balance due.
+                              </span>
+                            </label>
+                          </div>
+                        </>
                       )}
                       {rawOrder.flight_number && (
                         <div className="flex justify-between">

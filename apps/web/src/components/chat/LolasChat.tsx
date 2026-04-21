@@ -68,7 +68,7 @@ function WhatsAppButton({ label = '💬 Chat with us on WhatsApp' }: { label?: s
 
 // ── Draggable launcher position ──────────────────────────────────────────────
 
-const SNAP_MARGIN = 16; // px from the viewport edge when snapped
+const SNAP_MARGIN = 28; // px from the viewport edge when snapped
 
 interface Pos { x: number; y: number }
 

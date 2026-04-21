@@ -138,6 +138,14 @@ export class Transfer {
     });
   }
 
+  withAccommodation(accommodation: string | null): Transfer {
+    return Transfer.create({
+      ...(this as unknown as TransferProps),
+      accommodation,
+      updatedAt: new Date(),
+    });
+  }
+
   withStatus(status: string): Transfer {
     return Transfer.create({
       ...(this as unknown as TransferProps),

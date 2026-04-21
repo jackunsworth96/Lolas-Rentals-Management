@@ -75,6 +75,19 @@ export function PageLayout({
   const { pathname } = useLocation();
   const basketCount = useBookingStore((s) => s.basket.length);
 
+  // Flash the basket icon (bounce + gold highlight) whenever an item is added.
+  const [basketFlash, setBasketFlash] = useState(false);
+  const prevBasketCount = useRef(basketCount);
+  useEffect(() => {
+    if (basketCount > prevBasketCount.current) {
+      setBasketFlash(true);
+      const t = window.setTimeout(() => setBasketFlash(false), 2000);
+      prevBasketCount.current = basketCount;
+      return () => window.clearTimeout(t);
+    }
+    prevBasketCount.current = basketCount;
+  }, [basketCount]);
+
   const floralParallaxLocked = useRef<number | null>(null);
   const [floralShift, setFloralShift] = useState(0);
   const [showBackTop, setShowBackTop] = useState(false);
@@ -195,11 +208,21 @@ export function PageLayout({
             <Link
               to="/book/basket"
               aria-label="Basket"
-              className="relative flex min-h-[44px] min-w-[44px] items-center justify-center text-charcoal-brand transition-opacity duration-300 hover:opacity-75"
+              className={`relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-charcoal-brand transition-colors duration-300 hover:opacity-75 ${
+                basketFlash
+                  ? 'bg-gold-brand/30 ring-2 ring-gold-brand/60'
+                  : 'bg-transparent'
+              }`}
             >
-              <img src={basketIcon} alt="" className="h-[1.65rem] w-[1.65rem] object-contain" width={27} height={27} />
+              <img
+                src={basketIcon}
+                alt=""
+                className={`h-[1.65rem] w-[1.65rem] object-contain ${basketFlash ? 'animate-basket-bounce' : ''}`}
+                width={27}
+                height={27}
+              />
               {basketCount > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-gold-brand text-[10px] font-black text-charcoal-brand">
+                <span className={`absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-gold-brand text-[10px] font-black text-charcoal-brand ${basketFlash ? 'animate-badge-pop' : ''}`}>
                   {basketCount}
                 </span>
               )}
@@ -247,9 +270,7 @@ export function PageLayout({
         <footer className="w-full border-t border-sand-brand bg-cream-brand pb-32 pt-16 md:pb-16">
           <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-12 px-6 md:flex-row">
             <div className="max-w-xs space-y-4">
-              <span className="font-headline text-2xl font-black italic text-teal-brand">
-                Lola&apos;s Rentals
-              </span>
+              <img src={logo} alt="Lola's Rentals" className="h-12 w-auto object-contain" />
               <p className="text-sm leading-relaxed text-charcoal-brand/60">
                 © 2026 Lola&apos;s Rentals and Tours Inc. | Built in-house
               </p>

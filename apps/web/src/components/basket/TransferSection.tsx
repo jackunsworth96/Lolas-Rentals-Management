@@ -223,7 +223,10 @@ export function TransferSection({ transfer, onTransferChange, errors }: Props) {
             )}
           </div>
           <div>
-            <label className={LABEL_CLS}>Flight Arrival Time</label>
+            <label className={LABEL_CLS}>
+              Flight Arrival Time{' '}
+              <span className="font-normal normal-case text-charcoal-brand/50">(Philippine Time)</span>
+            </label>
             <input
               type="datetime-local"
               value={transfer.flightArrivalTime}

@@ -29,6 +29,7 @@ import { budgetRoutes } from './budget.js';
 import mayaRouter from './maya.js';
 import { waiverRouter } from './public-waiver.js';
 import { chatRouter } from './chat.js';
+import { devToolsRoutes } from './dev-tools.js';
 import { loginLimiter, publicLimiter, apiLimiter } from '../middleware/rate-limit.js';
 
 const routes = Router();
@@ -68,5 +69,6 @@ routes.use('/public/waiver', waiverRouter);
 routes.use('/budget', budgetRoutes);
 routes.use('/payments/maya', mayaRouter);
 routes.use('/public/chat', chatRouter);
+routes.use('/dev-tools', devToolsRoutes);
 
 export { routes };

@@ -6,6 +6,7 @@ import {
   useTransferSummary,
   notifyDriver,
   updatePickupTime,
+  updateAccommodation,
   cancelTransfer,
   moneyAmount,
   type TransferRow,
@@ -96,6 +97,8 @@ export default function TransfersPage() {
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [savingPickupTimeId, setSavingPickupTimeId] = useState<string | null>(null);
   const [savedPickupTimeId, setSavedPickupTimeId] = useState<string | null>(null);
+  const [savingAccommodationId, setSavingAccommodationId] = useState<string | null>(null);
+  const [savedAccommodationId, setSavedAccommodationId] = useState<string | null>(null);
 
   async function handlePickupTimeChange(t: TransferRow, value: string) {
     setSavingPickupTimeId(t.id);
@@ -108,6 +111,21 @@ export default function TransfersPage() {
       pushToast('Failed to save pickup time', 'error');
     } finally {
       setSavingPickupTimeId(null);
+    }
+  }
+
+  async function handleAccommodationChange(t: TransferRow, value: string) {
+    setSavingAccommodationId(t.id);
+    setSavedAccommodationId(null);
+    try {
+      await updateAccommodation(t.id, value.trim() || null);
+      await queryClient.invalidateQueries({ queryKey: ['transfers'] });
+      setSavedAccommodationId(t.id);
+      setTimeout(() => setSavedAccommodationId((prev) => (prev === t.id ? null : prev)), 2000);
+    } catch {
+      pushToast('Failed to save accommodation', 'error');
+    } finally {
+      setSavingAccommodationId(null);
     }
   }
 
@@ -623,6 +641,21 @@ export default function TransfersPage() {
                                 className="rounded border border-gray-300 px-2 py-1 text-sm disabled:opacity-50"
                               />
                               {savedPickupTimeId === t.id && (
+                                <span className="text-green-600 font-medium">Saved</span>
+                              )}
+                            </label>
+                            <label className="flex items-center gap-2 text-xs text-gray-600">
+                              <span className="font-medium whitespace-nowrap">Accommodation</span>
+                              <input
+                                type="text"
+                                key={t.id}
+                                defaultValue={t.accommodation ?? ''}
+                                placeholder="Hotel / villa…"
+                                disabled={savingAccommodationId === t.id}
+                                onBlur={(e) => handleAccommodationChange(t, e.target.value)}
+                                className="w-44 rounded border border-gray-300 px-2 py-1 text-sm disabled:opacity-50"
+                              />
+                              {savedAccommodationId === t.id && (
                                 <span className="text-green-600 font-medium">Saved</span>
                               )}
                             </label>

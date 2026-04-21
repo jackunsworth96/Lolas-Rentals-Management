@@ -16,6 +16,8 @@ import navAbout from '../../assets/nav-buttons/Nav About.svg';
 import navPawCard from '../../assets/nav-buttons/Nav Paw Card.svg';
 import navExtend from '../../assets/nav-buttons/Nav Extend.svg';
 import navPartners from '../../assets/nav-buttons/Nav Partners.svg';
+import lolaLogo from '../../assets/Hero/logo-lola-rentals-1.svg';
+import { instaIcon, phoneIcon, locationIcon } from '../public/customerContactIcons.js';
 import './BubbleMenu.css';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -128,6 +130,21 @@ export default function TopNav({ items, rightSlot }: TopNavProps) {
         style={{ backgroundColor: '#f1e6d6' }}
       >
 
+        {/* Logo — far left */}
+        <Link
+          to="/book"
+          aria-label="Lola's Rentals home"
+          className="absolute left-3 top-1/2 z-10 -translate-y-1/2 md:left-5"
+        >
+          <img
+            src={lolaLogo}
+            alt="Lola's Rentals"
+            className="h-9 w-auto object-contain md:h-10"
+            draggable={false}
+          />
+        </Link>
+
+        {/* Menu paw — centred */}
         <button
           type="button"
           aria-label={menuOpen ? 'Close menu' : 'Open menu'}
@@ -144,11 +161,35 @@ export default function TopNav({ items, rightSlot }: TopNavProps) {
           />
         </button>
 
-        {rightSlot && (
-          <div className="absolute right-4 top-1/2 -translate-y-1/2">
-            {rightSlot}
-          </div>
-        )}
+        {/* Location + Phone — far right */}
+        <div className="absolute right-3 top-1/2 z-10 flex -translate-y-1/2 items-center gap-1 md:right-5 md:gap-2">
+          <a
+            href="https://maps.google.com/?q=Tourism+Rd+Catangnan+General+Luna+Siargao"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Find us on Google Maps"
+            className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-charcoal-brand/10"
+          >
+            <img src={locationIcon} alt="" className="h-5 w-5 object-contain" aria-hidden />
+          </a>
+          <a
+            href="tel:09694443413"
+            aria-label="Call Lola's Rentals"
+            className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-charcoal-brand/10"
+          >
+            <img src={phoneIcon} alt="" className="h-5 w-5 object-contain" aria-hidden />
+          </a>
+          <a
+            href="https://instagram.com/lolasrentals"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Lola's Rentals on Instagram"
+            className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-charcoal-brand/10"
+          >
+            <img src={instaIcon} alt="" className="h-5 w-5 object-contain" aria-hidden />
+          </a>
+          {rightSlot && <div>{rightSlot}</div>}
+        </div>
       </header>
 
       <AnimatePresence>

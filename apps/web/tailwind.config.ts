@@ -92,6 +92,14 @@ export default {
               '0 0 22px 6px rgba(252, 188, 90, 0.38), 0 0 8px 2px rgba(252, 188, 90, 0.2)',
           },
         },
+        'basket-bounce': {
+          '0%':   { transform: 'scale(1)   rotate(0deg)' },
+          '20%':  { transform: 'scale(1.35) rotate(-12deg)' },
+          '40%':  { transform: 'scale(1.25) rotate(10deg)' },
+          '60%':  { transform: 'scale(1.15) rotate(-6deg)' },
+          '80%':  { transform: 'scale(1.05) rotate(3deg)' },
+          '100%': { transform: 'scale(1)   rotate(0deg)' },
+        },
       },
       animationDuration: {
         '8s': '8s',
@@ -119,6 +127,7 @@ export default {
         'cloud-medium-delay': 'cloudDriftLegacy 18s linear 9s infinite',
         'scooter-drive': 'scooterDrive 12s linear infinite',
         'gold-glow-pulse': 'gold-glow-pulse 2.4s ease-in-out infinite',
+        'basket-bounce': 'basket-bounce 0.55s ease-out',
       },
     },
   },

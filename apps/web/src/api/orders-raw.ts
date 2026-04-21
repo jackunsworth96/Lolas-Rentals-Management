@@ -70,6 +70,8 @@ export interface ProcessRawOrderPayload {
   depositLiabilityAccountId?: string | null;
   isCardPayment?: boolean;
   settlementRef?: string | null;
+  excludeTransferFromBalance?: boolean;
+  transferAccommodation?: string | null;
 }
 
 export function useProcessRawOrder() {

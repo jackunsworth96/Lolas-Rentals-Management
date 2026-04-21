@@ -27,6 +27,7 @@ const MiscSalesPage = lazy(() => import('./pages/misc-sales/MiscSalesPage.js'));
 const MerchandisePage = lazy(() => import('./pages/merchandise/MerchandisePage.js'));
 const LostOpportunityPage = lazy(() => import('./pages/lost-opportunity/LostOpportunityPage.js'));
 const SettingsPage = lazy(() => import('./pages/settings/SettingsPage.js'));
+const DevToolsPage = lazy(() => import('./pages/dev/DevToolsPage.js'));
 const PawCardPage = lazy(() => import('./pages/paw-card/PawCardPage.js'));
 const PawCardPartnersPage = lazy(() => import('./pages/paw-card/PawCardPartnersPage.js'));
 const BrowseBookPage = lazy(() => import('./pages/booking/BrowseBookPage.js'));
@@ -129,6 +130,7 @@ export function AppRouter() {
             <Route path="lost-opportunity" element={<LostOpportunityPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="ui-errors" element={<UIErrorsPage />} />
+            <Route path="dev-tools" element={<DevToolsPage />} />
             <Route path="directory" element={<DirectoryPage />} />
           </Route>
           <Route path="*" element={<NotFoundPage />} />

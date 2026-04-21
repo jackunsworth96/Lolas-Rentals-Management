@@ -59,6 +59,41 @@ function sortAccountsInGroup(accounts: AccountBalanceItem[]): AccountBalanceItem
   );
 }
 
+interface RolledUpAccount {
+  key: string;
+  accountName: string;
+  accountType: string;
+  debitTotal: number;
+  creditTotal: number;
+  balance: number;
+  storeCount: number;
+}
+
+function rollupByName(accounts: AccountBalanceItem[]): RolledUpAccount[] {
+  const map = new Map<string, RolledUpAccount>();
+  for (const acct of accounts) {
+    const key = `${acct.accountType}::${acct.accountName}`;
+    const existing = map.get(key);
+    if (existing) {
+      existing.debitTotal += acct.debitTotal;
+      existing.creditTotal += acct.creditTotal;
+      existing.balance += acct.balance;
+      existing.storeCount += 1;
+    } else {
+      map.set(key, {
+        key,
+        accountName: acct.accountName,
+        accountType: acct.accountType,
+        debitTotal: acct.debitTotal,
+        creditTotal: acct.creditTotal,
+        balance: acct.balance,
+        storeCount: 1,
+      });
+    }
+  }
+  return [...map.values()].sort((a, b) => a.accountName.localeCompare(b.accountName));
+}
+
 export default function AccountsPage() {
   const navigate = useNavigate();
   const [storeId, setStoreId] = useState('all');
@@ -359,13 +394,19 @@ function AccountTypeGroup({
   const creditNormal = ['Liability', 'Income', 'Equity'].includes(group.type);
   const groupDisplayBalance = creditNormal ? -group.netBalance : group.netBalance;
 
+  const rolledUp = useMemo(
+    () => (isAllStores ? rollupByName(group.accounts) : null),
+    [isAllStores, group.accounts],
+  );
+  const rowCount = rolledUp ? rolledUp.length : group.accounts.length;
+
   return (
     <div className="rounded-lg bg-white shadow-sm overflow-hidden">
       {/* Group header */}
       <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
         <div className="flex items-center gap-3">
           <Badge color={color as 'blue' | 'red' | 'green' | 'gray' | 'purple'}>{group.type}</Badge>
-          <span className="text-sm text-gray-500">{group.accounts.length} account{group.accounts.length !== 1 ? 's' : ''}</span>
+          <span className="text-sm text-gray-500">{rowCount} account{rowCount !== 1 ? 's' : ''}</span>
         </div>
         <div className="flex items-center gap-6 text-sm">
           <span className="text-gray-500">Debits: <span className="font-medium text-gray-900">{formatCurrency(group.totalDebit)}</span></span>
@@ -390,44 +431,64 @@ function AccountTypeGroup({
           </tr>
         </thead>
         <tbody>
-          {group.accounts.map((acct) => {
-            const { value: bal, color: balColor } = displayBalance(acct.balance, acct.accountType);
-            const hasActivity = acct.debitTotal > 0 || acct.creditTotal > 0;
-            const rowKey = `${acct.accountId}-${acct.storeId ?? ''}`;
-            return (
-              <tr
-                key={rowKey}
-                onClick={() => onAccountClick(acct.accountId)}
-                className={`border-b border-gray-50 hover:bg-gray-50 transition cursor-pointer ${
-                  !hasActivity ? 'opacity-50' : ''
-                }`}
-              >
-                <td className="px-4 py-2.5 text-gray-900">
-                  <span className="inline-flex flex-wrap items-center gap-x-1">
-                    <span>{acct.accountName}</span>
-                    {isAllStores && acct.storeId && acct.storeId !== COMPANY_STORE_ID && (
-                      <span className="ml-2 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-teal-50 text-teal-700">
-                        {acct.storeId === 'store-lolas'
-                          ? "Lola's"
-                          : acct.storeId === 'store-bass'
-                            ? 'Bass'
-                            : acct.storeId}
+          {rolledUp
+            ? rolledUp.map((acct) => {
+                const { value: bal, color: balColor } = displayBalance(acct.balance, acct.accountType);
+                const hasActivity = acct.debitTotal > 0 || acct.creditTotal > 0;
+                return (
+                  <tr
+                    key={acct.key}
+                    className={`border-b border-gray-50 transition ${!hasActivity ? 'opacity-50' : ''}`}
+                  >
+                    <td className="px-4 py-2.5 text-gray-900">
+                      <span className="inline-flex flex-wrap items-center gap-x-1">
+                        <span>{acct.accountName}</span>
+                        {acct.storeCount > 1 && (
+                          <span className="ml-2 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-gray-100 text-gray-500">
+                            {acct.storeCount} stores
+                          </span>
+                        )}
                       </span>
-                    )}
-                  </span>
-                </td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">
-                  {acct.debitTotal > 0 ? formatCurrency(acct.debitTotal) : '—'}
-                </td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">
-                  {acct.creditTotal > 0 ? formatCurrency(acct.creditTotal) : '—'}
-                </td>
-                <td className={`px-4 py-2.5 text-right tabular-nums font-medium ${balColor}`}>
-                  {hasActivity ? formatCurrency(bal) : '—'}
-                </td>
-              </tr>
-            );
-          })}
+                    </td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">
+                      {acct.debitTotal > 0 ? formatCurrency(acct.debitTotal) : '—'}
+                    </td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">
+                      {acct.creditTotal > 0 ? formatCurrency(acct.creditTotal) : '—'}
+                    </td>
+                    <td className={`px-4 py-2.5 text-right tabular-nums font-medium ${balColor}`}>
+                      {hasActivity ? formatCurrency(bal) : '—'}
+                    </td>
+                  </tr>
+                );
+              })
+            : group.accounts.map((acct) => {
+                const { value: bal, color: balColor } = displayBalance(acct.balance, acct.accountType);
+                const hasActivity = acct.debitTotal > 0 || acct.creditTotal > 0;
+                const rowKey = `${acct.accountId}-${acct.storeId ?? ''}`;
+                return (
+                  <tr
+                    key={rowKey}
+                    onClick={() => onAccountClick(acct.accountId)}
+                    className={`border-b border-gray-50 hover:bg-gray-50 transition cursor-pointer ${
+                      !hasActivity ? 'opacity-50' : ''
+                    }`}
+                  >
+                    <td className="px-4 py-2.5 text-gray-900">
+                      <span>{acct.accountName}</span>
+                    </td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">
+                      {acct.debitTotal > 0 ? formatCurrency(acct.debitTotal) : '—'}
+                    </td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">
+                      {acct.creditTotal > 0 ? formatCurrency(acct.creditTotal) : '—'}
+                    </td>
+                    <td className={`px-4 py-2.5 text-right tabular-nums font-medium ${balColor}`}>
+                      {hasActivity ? formatCurrency(bal) : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
         </tbody>
       </table>
     </div>

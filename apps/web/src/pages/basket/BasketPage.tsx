@@ -49,6 +49,19 @@ function todayDate(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/**
+ * datetime-local inputs produce a naive "YYYY-MM-DDTHH:mm" string with no
+ * timezone. Flight arrival times are always in Philippine time (UTC+8), so we
+ * pin the offset before the value is sent to the API. This mirrors the same
+ * fix applied to pickupDatetime / dropoffDatetime.
+ */
+function toManilaDatetime(naive: string): string {
+  if (!naive) return naive;
+  if (naive.includes('+') || naive.endsWith('Z')) return naive;
+  // datetime-local gives HH:mm (16 chars); add :00 seconds + offset
+  return naive.length === 16 ? `${naive}:00+08:00` : `${naive}+08:00`;
+}
+
 function rentalDaysFromDates(pickup: string, dropoff: string): number {
   if (!pickup || !dropoff) return 1;
   const ms = new Date(dropoff).getTime() - new Date(pickup).getTime();
@@ -490,7 +503,9 @@ export default function BasketPage() {
             addonIds: allAddonIds.length > 0 ? allAddonIds : undefined,
             transferType: transfer?.transferType ?? null,
             flightNumber: transfer?.flightNumber || undefined,
-            flightArrivalTime: transfer?.flightArrivalTime || undefined,
+            flightArrivalTime: transfer?.flightArrivalTime
+              ? toManilaDatetime(transfer.flightArrivalTime)
+              : undefined,
             transferRoute: transfer?.transferRoute || undefined,
             // Additional transfer fields (Zod strips unknown fields silently)
             transferRouteId: transfer?.transferRouteId ?? undefined,
@@ -835,8 +850,8 @@ export default function BasketPage() {
             )}
           </div>
 
-          {/* ── RIGHT COLUMN (summary + payment) — below main on mobile, sidebar on lg ── */}
-          <div className="order-2">
+          {/* ── RIGHT COLUMN (summary + payment) — below main on mobile, sticky sidebar on lg ── */}
+          <div className="order-2 lg:sticky lg:top-20 lg:self-start">
             <OrderSummaryPanel
               basket={basket} rentalDays={rentalDays} selectedAddonIds={selectedAddonIds} addons={standardAddons}
               transfer={transfer} pickupFee={pickupFee} dropoffFee={dropoffFee} vehicleCount={vehicleCount}

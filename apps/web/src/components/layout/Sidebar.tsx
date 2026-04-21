@@ -48,11 +48,11 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Operations',
     items: [
       { label: 'Dashboard', path: '/dashboard', perm: null, icon: LayoutDashboard },
+      { label: 'To Do', path: '/todo', perm: 'can_view_todo', icon: ListTodo },
       { label: 'Inbox', path: '/orders/inbox', perm: 'can_view_inbox', icon: Inbox },
       { label: 'Active', path: '/orders/active', perm: 'can_view_active', icon: Car },
       { label: 'Completed', path: '/orders/completed', perm: 'can_view_completed', icon: CheckSquare },
       { label: 'Transfers', path: '/transfers', perm: 'can_view_transfers', icon: Plane },
-      { label: 'To Do', path: '/todo', perm: 'can_view_todo', icon: ListTodo },
       { label: 'Lost Opportunity', path: '/lost-opportunity', perm: 'can_view_lostopportunity', icon: AlertCircle },
     ],
   },
@@ -94,6 +94,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'UI Errors', path: '/ui-errors', perm: 'can_view_uierrors', icon: AlertTriangle },
       { label: 'Settings', path: '/settings', perm: 'can_edit_settings', icon: Settings },
+      { label: 'Dev Tools', path: '/dev-tools', perm: 'can_edit_settings', icon: Wrench },
     ],
   },
 ];

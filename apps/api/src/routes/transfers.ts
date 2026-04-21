@@ -17,6 +17,10 @@ const PickupTimeBodySchema = z.object({
   pickupTime: z.string().regex(/^\d{2}:\d{2}$/).nullable(),
 });
 
+const AccommodationBodySchema = z.object({
+  accommodation: z.string().max(500).nullable(),
+});
+
 const router = Router();
 router.use(authenticate);
 
@@ -191,6 +195,25 @@ router.patch('/:id/pickup-time', requirePermission(Permission.EditTransfers), va
     }
 
     const updated = existing.withPickupTime(pickupTime);
+    await transferRepo.save(updated);
+    const refreshed = await transferRepo.findById(id);
+    res.json({ success: true, data: refreshed });
+  } catch (err) { next(err); }
+});
+
+router.patch('/:id/accommodation', requirePermission(Permission.EditTransfers), validateBody(AccommodationBodySchema), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = String(req.params.id);
+    const { accommodation } = req.body as { accommodation: string | null };
+    const transferRepo = req.app.locals.deps.transferRepo;
+
+    const existing = await transferRepo.findById(id);
+    if (!existing) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Transfer not found' } });
+      return;
+    }
+
+    const updated = existing.withAccommodation(accommodation);
     await transferRepo.save(updated);
     const refreshed = await transferRepo.findById(id);
     res.json({ success: true, data: refreshed });

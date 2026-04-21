@@ -163,6 +163,10 @@ export function updatePickupTime(id: string, pickupTime: string | null): Promise
   return api.patch(`/transfers/${id}/pickup-time`, { pickupTime });
 }
 
+export function updateAccommodation(id: string, accommodation: string | null): Promise<TransferRow> {
+  return api.patch(`/transfers/${id}/accommodation`, { accommodation });
+}
+
 export async function cancelTransfer(id: string): Promise<void> {
   await api.delete(`/transfers/${id}`);
 }

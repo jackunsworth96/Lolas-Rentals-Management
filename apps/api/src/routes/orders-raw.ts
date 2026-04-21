@@ -579,6 +579,8 @@ const processBodySchema = z.object({
   depositLiabilityAccountId: z.string().nullable().optional(),
   isCardPayment: z.boolean().optional(),
   settlementRef: z.string().nullable().optional(),
+  excludeTransferFromBalance: z.boolean().optional().default(false),
+  transferAccommodation: z.string().max(500).nullable().optional(),
 });
 
 router.post('/:id/process', requirePermission(Permission.EditOrders), async (req, res, next) => {
@@ -674,6 +676,8 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
       depositLiabilityAccountId: body.depositLiabilityAccountId ?? null,
       isCardPayment: body.isCardPayment ?? false,
       settlementRef: body.settlementRef ?? null,
+      excludeTransferFromBalance: body.excludeTransferFromBalance ?? false,
+      transferAccommodation: body.transferAccommodation ?? null,
     });
 
     res.json({ success: true, data: result });

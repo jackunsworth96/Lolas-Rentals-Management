@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AnimatedHeading } from '../../components/public/AnimatedHeading.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { SEO } from '../../components/seo/SEO.js';
+
+// Run photos
 import runPhoto1 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 092746.png';
 import runPhoto2 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 092806.png';
 import runPhoto3 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 092829.png';
@@ -11,11 +12,25 @@ import runPhoto5 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 
 import runPhoto6 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 092926.png';
 import runPhoto7 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 092945.png';
 import runPhoto8 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 092959.png';
-import runPhoto9 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 093428.png';
-import animalDivider from '../../assets/Be Pawsitive/Run 2025/Lola.Cat.Illustrations/animal divider.svg';
+
+// About section extra photos
+import nadinePhoto from '../../assets/Be Pawsitive/Run 2025/nadine.png';
+import runnerDabbingPhoto from '../../assets/Be Pawsitive/Run 2025/runner dabbing.png';
+
+// Collab logos
+import aquaFlaskLogo from '../../assets/Be Pawsitive/Run 2025/Aqua Flask.svg';
+import bpIconLogo from '../../assets/Be Pawsitive/Run 2025/Be Pawsitive Icon Logo.svg';
+
+// Animal illustrations (parade)
+import animal82 from '../../assets/Be Pawsitive/Run 2025/Lola.Cat.Illustrations/82.svg';
+import animal83 from '../../assets/Be Pawsitive/Run 2025/Lola.Cat.Illustrations/83.svg';
+import animal84 from '../../assets/Be Pawsitive/Run 2025/Lola.Cat.Illustrations/84.svg';
+import animal85 from '../../assets/Be Pawsitive/Run 2025/Lola.Cat.Illustrations/85.svg';
+import animal86 from '../../assets/Be Pawsitive/Run 2025/Lola.Cat.Illustrations/86.svg';
+import animal87 from '../../assets/Be Pawsitive/Run 2025/Lola.Cat.Illustrations/87.svg';
 
 // ---------------------------------------------------------------------------
-// CountUp hook — animates a number from 0 → target when trigger flips true
+// CountUp hook
 // ---------------------------------------------------------------------------
 function useCountUp(target: number, duration = 1800, trigger: boolean): number {
   const [count, setCount] = useState(0);
@@ -38,13 +53,208 @@ function useCountUp(target: number, duration = 1800, trigger: boolean): number {
 }
 
 // ---------------------------------------------------------------------------
-// Font shorthands (Tailwind v3 does not emit CSS vars for font families)
+// Line-work icon components
 // ---------------------------------------------------------------------------
-const FONT_HEADLINE = '"Alegreya Sans", ui-sans-serif, system-ui, sans-serif';
-const FONT_BODY = 'Lato, Nunito, sans-serif';
+function IconClock({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="8" cy="8" r="6.5" />
+      <polyline points="8,4.5 8,8 10.5,9.5" />
+    </svg>
+  );
+}
+
+function IconTicket({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 6a1.5 1.5 0 0 0 0 4v2a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2a1.5 1.5 0 0 0 0-4V4a1 1 0 0 0-1-1H2a1 1 0 0 0-1 1v2z" />
+      <line x1="5.5" y1="3" x2="5.5" y2="13" strokeDasharray="2 2" />
+    </svg>
+  );
+}
+
+function IconBolt({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="9.5,1.5 4,8.5 8,8.5 6.5,14.5 12,7.5 8,7.5 9.5,1.5" />
+    </svg>
+  );
+}
+
+function IconCalendar({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="3.5" width="12" height="10.5" rx="1.5" />
+      <line x1="2" y1="6.5" x2="14" y2="6.5" />
+      <line x1="5.5" y1="2" x2="5.5" y2="5" />
+      <line x1="10.5" y1="2" x2="10.5" y2="5" />
+    </svg>
+  );
+}
+
+function IconStethoscope({ size = 22 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3.5 4.5a1.2 1.2 0 0 1 2.4 0v1.8a2.1 2.1 0 0 0 4.2 0V4.5a1.2 1.2 0 0 1 2.4 0" />
+      <path d="M8 6.3v2.2a3.8 3.8 0 0 0 3.8 3.8h.3a1.4 1.4 0 1 0 0-2.8h-.6" />
+      <circle cx="12.6" cy="10.8" r="1.25" />
+    </svg>
+  );
+}
+
+function IconSyringe({ size = 22 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4.2 11.8 9.2 6.8a1 1 0 0 1 1.4 0l.6.6a1 1 0 0 1 0 1.4l-5 5" />
+      <line x1="2.5" y1="13.5" x2="4.2" y2="11.8" />
+      <line x1="11.2" y1="5.8" x2="13.5" y2="3.5" />
+    </svg>
+  );
+}
+
+function IconHouseCommunity({ size = 22 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2.5 7.5 8 2.5l5.5 5v6.5a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V7.5z" />
+      <path d="M6.5 14.5v-4h3v4" />
+      <circle cx="11.8" cy="5.2" r="0.85" />
+      <circle cx="13.6" cy="6.6" r="0.65" />
+    </svg>
+  );
+}
 
 // ---------------------------------------------------------------------------
-// Page
+// Design tokens
+// ---------------------------------------------------------------------------
+const C = {
+  cream: '#ede5d8',
+  creamDark: '#e0d5c3',
+  navy: '#1a3f5c',
+  amber: '#fcbc5a',
+  amberLight: '#fcbc5a',
+  amberBg: '#fdf3e0',
+  bpBlue: '#1b5faa',
+  bpBlueDark: '#154d8a',
+  teal: '#2a7a6a',
+  tealDark: '#1f5e50',
+  muted: '#8a7f74',
+  border: '#ddd4c4',
+  text: '#2a2018',
+};
+
+const PACIFICO = '"Pacifico", cursive';
+const BEBAS = '"Bebas Neue", "Alegreya Sans", sans-serif';
+const NUNITO = '"Nunito", "Lato", sans-serif';
+
+// ---------------------------------------------------------------------------
+// CSS keyframes injected once
+// ---------------------------------------------------------------------------
+const KEYFRAMES = `
+  @keyframes bp-float {
+    0%, 100% { transform: translateY(0px); }
+    50%       { transform: translateY(-6px); }
+  }
+  @keyframes bp-sunburst-rotate {
+    from { transform: rotate(0deg) scale(1.8); }
+    to   { transform: rotate(360deg) scale(1.8); }
+  }
+  @keyframes bp-pulse-glow {
+    0%, 100% { box-shadow: 0 4px 12px rgba(252,188,90,0.4); }
+    50%       { box-shadow: 0 4px 28px rgba(252,188,90,0.8), 0 0 48px rgba(252,188,90,0.3); }
+  }
+  .bp-hero-register { animation: bp-pulse-glow 2.4s ease-in-out infinite; }
+  .bp-float-0 { animation: bp-float 3s ease-in-out infinite 0s; }
+  .bp-float-1 { animation: bp-float 3s ease-in-out infinite 0.4s; }
+  .bp-float-2 { animation: bp-float 3s ease-in-out infinite 0.8s; }
+  .bp-float-3 { animation: bp-float 3s ease-in-out infinite 1.2s; }
+  .bp-float-4 { animation: bp-float 3s ease-in-out infinite 1.6s; }
+  .bp-float-5 { animation: bp-float 3s ease-in-out infinite 2.0s; }
+  .bp-primary-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(232,160,32,0.45) !important; }
+  .bp-outline-btn:hover { transform: translateY(-1px); background: rgba(255,255,255,0.1) !important; }
+  .bp-navy-btn:hover { transform: translateY(-1px); }
+`;
+
+// ---------------------------------------------------------------------------
+// Reusable label above section headings
+// ---------------------------------------------------------------------------
+function SectionEyebrow({ text, color = C.bpBlue, centered = false }: { text: string; color?: string; centered?: boolean }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        marginBottom: 14,
+        justifyContent: centered ? 'center' : 'flex-start',
+        width: '100%',
+      }}
+    >
+      <span
+        style={{
+          fontFamily: NUNITO,
+          fontSize: 11,
+          fontWeight: 800,
+          textTransform: 'uppercase',
+          letterSpacing: '0.14em',
+          color,
+        }}
+      >
+        {text}
+      </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Scroll-triggered fade-in — hook for named elements
+// ---------------------------------------------------------------------------
+function useFadeIn(delay = 0, from: 'up' | 'left' | 'right' | 'scale' = 'up') {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([e]) => { if (e.isIntersecting) { setVisible(true); obs.disconnect(); } },
+      { threshold: 0.08 },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+  const t: Record<string, string> = {
+    up:    'translateY(26px)',
+    left:  'translateX(-26px)',
+    right: 'translateX(26px)',
+    scale: 'scale(0.93)',
+  };
+  return {
+    ref,
+    animStyle: {
+      opacity: visible ? 1 : 0,
+      transform: visible ? 'none' : t[from],
+      transition: `opacity 0.7s ease ${delay}ms, transform 0.7s ease ${delay}ms`,
+    } as React.CSSProperties,
+  };
+}
+
+// Wrapper component — safe to use inside .map() (own observer per instance)
+function FadeCard({
+  delay = 0,
+  from = 'up' as 'up' | 'left' | 'right' | 'scale',
+  style: passedStyle,
+  children,
+}: {
+  delay?: number;
+  from?: 'up' | 'left' | 'right' | 'scale';
+  style?: React.CSSProperties;
+  children: React.ReactNode;
+}) {
+  const { ref, animStyle } = useFadeIn(delay, from);
+  return <div ref={ref} style={{ ...passedStyle, ...animStyle }}>{children}</div>;
+}
+
+// ---------------------------------------------------------------------------
+// Page component
 // ---------------------------------------------------------------------------
 export default function BePawsitivePage() {
   const [statsInView, setStatsInView] = useState(false);
@@ -56,76 +266,66 @@ export default function BePawsitivePage() {
   const statsRef = useRef<HTMLDivElement>(null);
   const donationRef = useRef<HTMLDivElement>(null);
 
-  // Responsive breakpoint listener
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // IntersectionObserver — stats strip (section 2)
   useEffect(() => {
     const el = statsRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setStatsInView(true);
-          observer.disconnect();
-        }
-      },
+      ([entry]) => { if (entry.isIntersecting) { setStatsInView(true); observer.disconnect(); } },
       { threshold: 0.25 },
     );
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
 
-  // IntersectionObserver — donation counter (section 5)
   useEffect(() => {
     const el = donationRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setDonationInView(true);
-          observer.disconnect();
-        }
-      },
+      ([entry]) => { if (entry.isIntersecting) { setDonationInView(true); observer.disconnect(); } },
       { threshold: 0.25 },
     );
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
 
-  // CountUp values
-  const animalsFixed = useCountUp(1601, 1800, statsInView);
-  const vaccinated = useCountUp(2746, 1800, statsInView);
-  const eventsCount = useCountUp(4, 1200, statsInView);
-  const locationsCount = useCountUp(2, 1000, statsInView);
-  const donation = useCountUp(282995, 2200, donationInView);
+  const animalsFixed   = useCountUp(1601,   1800, statsInView);
+  const vaccinated     = useCountUp(2746,   1800, statsInView);
+  const eventsCount    = useCountUp(4,      1200, statsInView);
+  const locationsCount = useCountUp(2,      1000, statsInView);
+  const donation       = useCountUp(282995, 2200, donationInView);
 
-  const sectionPad = isMobile ? '48px 20px' : '80px 24px';
-  const stripPad = isMobile ? '48px 20px' : '48px 24px';
+  const secPad  = isMobile ? '64px 20px' : '80px 48px';
 
-  // ── Shared label style for stat strips ──────────────────────────────────
-  const statLabelStyle: React.CSSProperties = {
-    fontSize: '0.95rem',
-    color: 'rgba(255,255,255,0.88)',
-    marginTop: 8,
-    textTransform: 'uppercase',
-    letterSpacing: '0.06em',
-    fontFamily: FONT_BODY,
-  };
-  const statNumStyle: React.CSSProperties = {
-    fontFamily: FONT_HEADLINE,
-    fontSize: 'clamp(2.4rem, 4vw, 3.2rem)',
-    color: 'white',
-    fontWeight: 700,
-    lineHeight: 1,
-  };
+  // Scroll-triggered animation hooks
+  const { ref: photoColRef,     animStyle: photoColAnim     } = useFadeIn(0,   'left');
+  const { ref: aboutTextRef,    animStyle: aboutTextAnim    } = useFadeIn(150, 'right');
+  const { ref: funRunHeaderRef, animStyle: funRunHeaderAnim } = useFadeIn(0,   'up');
+  const { ref: logoBadgeRef,    animStyle: logoBadgeAnim    } = useFadeIn(200, 'scale');
+  const { ref: whenWhereRef,    animStyle: whenWhereAnim    } = useFadeIn(0,   'up');
+  const { ref: regFeesRef,      animStyle: regFeesAnim      } = useFadeIn(100, 'up');
+  const { ref: registerBtnRef,  animStyle: registerBtnAnim  } = useFadeIn(200, 'up');
+  const { ref: donorCtrRef,     animStyle: donorCtrAnim     } = useFadeIn(0,   'scale');
+  const { ref: commitHeadRef,   animStyle: commitHeadAnim   } = useFadeIn(0,   'up');
+
+  // Parade config — tuktuk far-left, all sizes +40%, tuktuk white-bg removed via multiply
+  const paradeItems = [
+    { src: animal87, height: 160, blend: true  },  // tuktuk +30%
+    { src: animal82, height: 90,  blend: false },  // cat +15%
+    { src: animal84, height: 109, blend: false },
+    { src: animal83, height: 116, blend: false },
+    { src: animal85, height: 116, blend: false },
+    { src: animal86, height: 97,  blend: false },
+  ];
 
   return (
-    <PageLayout fullBleed title="Be Pawsitive | Lola's Rentals">
+    <PageLayout fullBleed title="Be Pawsitive | Lola's Rentals" showFloralLeft={false} showFloralRight={false}>
+      <style>{KEYFRAMES}</style>
       <SEO
         title="Be Pawsitive — Lola's Rentals x Siargao Animal Welfare"
         description="Every rental at Lola's supports Be Pawsitive, Siargao's animal welfare NGO. Spaying, neutering and vaccinating street animals on the island. Join the movement."
@@ -133,676 +333,1214 @@ export default function BePawsitivePage() {
       />
 
       {/* ================================================================
-          SECTION 1 — HERO
+          1. HERO — sunburst + centered story-first layout
           ================================================================ */}
       <section
         style={{
-          minHeight: '60vh',
-          background: 'linear-gradient(135deg, #397dbe 0%, #2d6aa8 60%, #1a4f8a 100%)',
+          position: 'relative',
+          overflow: 'hidden',
+          background: C.bpBlue,
+          minHeight: '62vh',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
           textAlign: 'center',
-          padding: sectionPad,
+          padding: isMobile ? '80px 24px 100px' : '90px 32px 110px',
         }}
       >
-        {/* Collab badge */}
-        <span
+        {/* Sunburst rays — slow clockwise rotation */}
+        <div
           style={{
-            display: 'inline-block',
-            border: '1px solid rgba(255,255,255,0.4)',
-            padding: '6px 16px',
-            borderRadius: 100,
-            fontSize: 13,
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            color: 'white',
-            marginBottom: 24,
-            fontFamily: FONT_BODY,
+            position: 'absolute',
+            top: '-50%',
+            left: '-50%',
+            width: '200%',
+            height: '200%',
+            backgroundImage:
+              'repeating-conic-gradient(from 0deg at 50% 50%, #1b6faa 0deg 9deg, #28b87a 9deg 18deg)',
+            opacity: 0.55,
+            pointerEvents: 'none',
+            animation: 'bp-sunburst-rotate 90s linear infinite',
+            transformOrigin: '50% 50%',
           }}
-        >
-          Lola&apos;s Rentals × Be Pawsitive
-        </span>
-
-        <h1
+        />
+        {/* Vignette */}
+        <div
           style={{
-            fontFamily: FONT_HEADLINE,
-            fontSize: 'clamp(2.2rem, 5vw, 3.8rem)',
-            color: 'white',
-            marginBottom: 20,
-            lineHeight: 1.15,
-            maxWidth: 720,
+            position: 'absolute',
+            inset: 0,
+            background:
+              'radial-gradient(ellipse 70% 60% at 50% 30%, transparent 30%, rgba(20,55,110,0.45) 100%)',
+            pointerEvents: 'none',
           }}
-          aria-label="Running for a Pawsitive Future"
-        >
-          <AnimatedHeading
-            text="Running for a"
-            tag="span"
-            delay={20}
-            className="block"
-            style={{ color: 'white' }}
-          />
-          <AnimatedHeading
-            text="Pawsitive Future"
-            tag="span"
-            delay={20}
-            className="block italic"
-            style={{ color: '#FCBC5A' }}
-          />
-        </h1>
+        />
 
-        <p
-          style={{
-            fontFamily: FONT_BODY,
-            fontSize: 'clamp(1rem, 2vw, 1.2rem)',
-            maxWidth: 640,
-            margin: '0 auto 36px',
-            lineHeight: 1.7,
-            opacity: 0.92,
-            color: 'white',
-          }}
-        >
-          Be Pawsitive is a Siargao-based animal welfare organisation dedicated to spaying, neutering,
-          and vaccinating street animals across the island. Every rental booked with Lola&apos;s helps
-          fund their life-changing work.
-        </p>
-
-        <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
-          <a
-            href="https://raceroster.com/events/2026/116269/aquaflask-be-pawsitive-run-2026"
-            target="_blank"
-            rel="noopener noreferrer"
+        {/* Content */}
+        <div style={{ position: 'relative', zIndex: 1, maxWidth: 640 }}>
+          {/* Eyebrow pill */}
+          <span
             style={{
-              background: '#72b36d',
+              display: 'inline-block',
+              border: '1px solid rgba(255,255,255,0.45)',
+              background: 'rgba(255,255,255,0.12)',
+              padding: '6px 18px',
+              borderRadius: 99,
+              fontFamily: NUNITO,
+              fontSize: 11,
+              fontWeight: 800,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
               color: 'white',
-              padding: '14px 28px',
-              borderRadius: 8,
-              fontWeight: 700,
-              fontSize: '1rem',
-              textDecoration: 'none',
-              fontFamily: FONT_BODY,
+              marginBottom: 28,
             }}
           >
-            Register for the Fun Run
-          </a>
-          <a
-            href="#lolas-contribution"
+            Lola&apos;s Rentals × Be Pawsitive
+          </span>
+
+          <h1 style={{ margin: '0 0 22px', lineHeight: 1.1 }}>
+            <span
+              style={{
+                display: 'block',
+                fontFamily: PACIFICO,
+                fontSize: 'clamp(2rem, 5vw, 3.6rem)',
+                color: 'white',
+                fontWeight: 400,
+              }}
+            >
+              Running for a
+            </span>
+            <span
+              style={{
+                display: 'block',
+                fontFamily: PACIFICO,
+                fontSize: 'clamp(2rem, 5vw, 3.6rem)',
+                color: C.amber,
+                fontWeight: 400,
+              }}
+            >
+              Pawsitive Future
+            </span>
+          </h1>
+
+          {/* Event date chip */}
+          <div
             style={{
-              background: 'transparent',
-              color: 'white',
-              border: '2px solid white',
-              padding: '14px 28px',
-              borderRadius: 8,
-              fontWeight: 600,
-              fontSize: '1rem',
-              textDecoration: 'none',
-              fontFamily: FONT_BODY,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              background: 'rgba(252,188,90,0.18)',
+              border: '1px solid rgba(252,188,90,0.45)',
+              borderRadius: 99,
+              padding: '6px 16px',
+              marginBottom: 20,
+              fontFamily: NUNITO,
+              fontSize: 13,
+              fontWeight: 800,
+              color: C.amber,
+              letterSpacing: '0.06em',
             }}
           >
-            How Lola&apos;s Contributes
-          </a>
+            <IconCalendar size={15} /> Sunday, June 7, 2026 · Harana Surf Resort
+          </div>
+
+          <p
+            style={{
+              fontFamily: NUNITO,
+              fontSize: 16,
+              lineHeight: 1.75,
+              color: 'rgba(255,255,255,0.82)',
+              maxWidth: 700,
+              margin: '0 auto 36px',
+              textAlign: 'center',
+            }}
+          >
+            Be Pawsitive is a Siargao-based animal welfare organisation dedicated to spaying,
+            neutering, and vaccinating street animals across the island. Every rental booked with
+            Lola&apos;s helps fund their life-changing work.
+          </p>
+
+          <div style={{ display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap', alignItems: 'center' }}>
+            <a
+              href="https://raceroster.com/events/2026/116269/aquaflask-be-pawsitive-run-2026"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bp-primary-btn bp-hero-register"
+              style={{
+                background: C.amber,
+                color: 'white',
+                padding: '16px 32px',
+                borderRadius: 12,
+                fontFamily: NUNITO,
+                fontSize: 17,
+                fontWeight: 900,
+                textDecoration: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 10,
+                transition: 'transform 0.15s',
+              }}
+            >
+              <IconBolt size={18} /> Register for the Fun Run
+            </a>
+            <a
+              href="#lolas-contribution"
+              className="bp-outline-btn"
+              style={{
+                background: 'transparent',
+                color: 'white',
+                border: '1.5px solid rgba(255,255,255,0.6)',
+                padding: '15px 26px',
+                borderRadius: 12,
+                fontFamily: NUNITO,
+                fontSize: 15,
+                fontWeight: 700,
+                textDecoration: 'none',
+                transition: 'transform 0.15s, background 0.15s',
+              }}
+            >
+              How Lola&apos;s Contributes
+            </a>
+          </div>
+        </div>
+
+        {/* Teal wave into stats bar */}
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            lineHeight: 0,
+            pointerEvents: 'none',
+          }}
+        >
+          <svg
+            viewBox="0 0 1200 56"
+            preserveAspectRatio="none"
+            style={{ display: 'block', width: '100%', height: 56 }}
+          >
+            <path d="M0,28 C300,56 900,0 1200,28 L1200,56 L0,56 Z" fill={C.teal} />
+          </svg>
         </div>
       </section>
 
       {/* ================================================================
-          SECTION 2 — IMPACT STATS STRIP
+          2. STATS BAR
           ================================================================ */}
       <section
         ref={statsRef}
         style={{
-          background: '#72b36d',
-          padding: stripPad,
-          display: 'flex',
-          justifyContent: 'center',
-          flexWrap: 'wrap',
-          gap: 48,
+          background: C.teal,
+          padding: isMobile ? '32px 20px' : '32px 48px',
+          marginTop: -4,
+          position: 'relative',
+          zIndex: 1,
         }}
       >
-        {/* Animals Fixed */}
-        <div style={{ textAlign: 'center' }}>
-          <div style={statNumStyle}>{animalsFixed.toLocaleString()}+</div>
-          <div style={statLabelStyle}>Animals Fixed</div>
-        </div>
-
-        {/* Vaccinated */}
-        <div style={{ textAlign: 'center' }}>
-          <div style={statNumStyle}>{vaccinated.toLocaleString()}+</div>
-          <div style={statLabelStyle}>Vaccinated</div>
-        </div>
-
-        {/* Annual Events */}
-        <div style={{ textAlign: 'center' }}>
-          <div style={statNumStyle}>{eventsCount}</div>
-          <div style={statLabelStyle}>Annual Events</div>
-        </div>
-
-        {/* Locations */}
-        <div style={{ textAlign: 'center' }}>
-          <div style={statNumStyle}>{locationsCount}</div>
-          <div style={statLabelStyle}>Locations in 2026</div>
-          <div
-            style={{
-              fontSize: '0.8rem',
-              color: 'rgba(255,255,255,0.7)',
-              marginTop: 4,
-              fontFamily: FONT_BODY,
-            }}
-          >
-            Santa Fe &amp; Dapa
-          </div>
-        </div>
-      </section>
-
-      {/* ================================================================
-          SECTION 3 — MISSION STORY
-          ================================================================ */}
-      <section style={{ background: '#f1e6d6', padding: sectionPad }}>
-        <div style={{ maxWidth: 800, margin: '0 auto', textAlign: 'left' }}>
-          <p
-            style={{
-              color: '#397dbe',
-              fontSize: '0.85rem',
-              fontWeight: 700,
-              textTransform: 'uppercase',
-              letterSpacing: '0.1em',
-              marginBottom: 12,
-              fontFamily: FONT_BODY,
-            }}
-          >
-            About Be Pawsitive
-          </p>
-          <h2
-            style={{
-              fontFamily: FONT_HEADLINE,
-              fontSize: 'clamp(1.8rem, 3vw, 2.6rem)',
-              color: '#397dbe',
-              marginBottom: 24,
-              lineHeight: 1.2,
-            }}
-          >
-            Every Animal Deserves a Chance
-          </h2>
-
+        <div
+          style={{
+            maxWidth: 900,
+            margin: '0 auto',
+            display: 'grid',
+            gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
+            gap: isMobile ? '28px 16px' : 0,
+            textAlign: 'center',
+          }}
+        >
           {[
-            `Be Pawsitive is a SEC-registered animal welfare organisation based on Siargao Island, Philippines. Founded on a simple belief — that every stray animal deserves love, care, and a healthy life — the organisation runs spay, neuter, and vaccination programmes across the island to control the stray population and prevent unnecessary suffering.`,
-            `Each year, Be Pawsitive hosts free spay and neuter events in partnership with volunteer veterinarians, reaching communities across Siargao. Their most recent event in March 2026, held across Santa Fe and Dapa, saw 481 animals fixed and 723 vaccinated — making it one of their biggest events yet. The impact compounds: every animal spayed or neutered prevents hundreds of future strays from entering the cycle.`,
-            `Lola's Rentals has been a proud sponsor of Be Pawsitive since the beginning. It's why Lola herself — our rescue, now pampered pooch — is at the heart of everything we do. And it's why every vehicle in our fleet is named after an animal that's been through the programme.`,
-          ].map((para, i) => (
-            <p
-              key={i}
-              style={{
-                color: '#363737',
-                lineHeight: 1.8,
-                fontSize: '1.05rem',
-                marginBottom: 20,
-                fontFamily: FONT_BODY,
-              }}
-            >
-              {para}
-            </p>
+            { num: `${animalsFixed.toLocaleString()}+`, label: 'Animals Fixed' },
+            { num: `${vaccinated.toLocaleString()}+`, label: 'Vaccinated' },
+            { num: String(eventsCount), label: 'Annual Events' },
+            { num: String(locationsCount), label: 'Locations in 2026', sub: 'Santa Fe & Dapa' },
+          ].map((s, i) => (
+            <FadeCard key={s.label} delay={i * 120} from="up">
+              <div
+                style={{
+                  fontFamily: BEBAS,
+                  fontSize: 52,
+                  color: 'white',
+                  lineHeight: 1,
+                  letterSpacing: '0.02em',
+                  textAlign: 'center',
+                }}
+              >
+                {s.num}
+              </div>
+              <div
+                style={{
+                  fontFamily: NUNITO,
+                  fontSize: 11,
+                  fontWeight: 800,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.12em',
+                  color: 'rgba(255,255,255,0.7)',
+                  marginTop: 6,
+                  textAlign: 'center',
+                }}
+              >
+                {s.label}
+              </div>
+              {s.sub && (
+                <div
+                  style={{
+                    fontFamily: NUNITO,
+                    fontSize: 11,
+                    color: 'rgba(255,255,255,0.5)',
+                    marginTop: 3,
+                    textAlign: 'center',
+                  }}
+                >
+                  {s.sub}
+                </div>
+              )}
+            </FadeCard>
           ))}
         </div>
       </section>
 
       {/* ================================================================
-          SECTION 4 — AQUAFLASK FUN RUN
+          3. ABOUT BE PAWSITIVE
           ================================================================ */}
-      <section id="fun-run" style={{ background: '#397dbe', padding: sectionPad, color: 'white' }}>
-        <div style={{ maxWidth: 960, margin: '0 auto' }}>
-          {/* Event badge */}
-          <span
-            style={{
-              background: 'rgba(255,255,255,0.15)',
-              border: '1px solid rgba(255,255,255,0.3)',
-              padding: '6px 16px',
-              borderRadius: 100,
-              fontSize: '0.8rem',
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              display: 'inline-block',
-              marginBottom: 24,
-              fontFamily: FONT_BODY,
-            }}
-          >
-            Annual Event · June 7, 2026
-          </span>
+      <section
+        style={{
+          background: C.cream,
+          padding: isMobile ? '64px 20px 34px' : '80px 48px 42px',
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 1100,
+            margin: '0 auto',
+            display: 'flex',
+            flexDirection: isMobile ? 'column' : 'row',
+            gap: isMobile ? 40 : 60,
+            alignItems: 'stretch',
+          }}
+        >
+          {/* Photo column */}
+          {!isMobile && (
+            <div ref={photoColRef} style={{ flex: '0 0 auto', width: 320, display: 'flex', flexDirection: 'column', gap: 12, ...photoColAnim }}>
+              {/* Large top photo — fixed height */}
+              <div
+                style={{
+                  borderRadius: 16,
+                  overflow: 'hidden',
+                  height: 230,
+                  flexShrink: 0,
+                  boxShadow: '0 2px 16px rgba(0,0,0,0.07)',
+                }}
+              >
+                <img
+                  src={runPhoto1}
+                  alt="Be Pawsitive vet team at work"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                />
+              </div>
 
-          <h2
-            style={{
-              fontFamily: FONT_HEADLINE,
-              fontSize: 'clamp(1.8rem, 3.5vw, 2.8rem)',
-              color: 'white',
-              marginBottom: 16,
-              lineHeight: 1.2,
-            }}
-          >
-            AquaFlask × Be Pawsitive Run 2026
-          </h2>
+              {/* Row 1 — fills remaining space equally */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, flex: 1, minHeight: 0 }}>
+                {[runPhoto2, runPhoto3].map((src, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      borderRadius: 12,
+                      overflow: 'hidden',
+                      boxShadow: '0 2px 16px rgba(0,0,0,0.07)',
+                    }}
+                  >
+                    <img
+                      src={src}
+                      alt={`Be Pawsitive event photo ${i + 1}`}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    />
+                  </div>
+                ))}
+              </div>
 
-          <p
-            style={{
-              fontFamily: FONT_BODY,
-              fontSize: '1.05rem',
-              lineHeight: 1.7,
-              maxWidth: 680,
-              opacity: 0.92,
-              marginBottom: 48,
-            }}
-          >
-            Siargao&apos;s most exciting charity run returns for its third year. Lace up, hit the
-            road, and run for the animals. Join us on June 7th at Harana Surf Resort — with Nadine
-            Lustre &amp; Christophe Bariou as official ambassadors.
-          </p>
+              {/* Row 2 — Nadine + runner dabbing, fills remaining space equally */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, flex: 1, minHeight: 0 }}>
+                {[
+                  { src: nadinePhoto, alt: 'Nadine Lustre at the Be Pawsitive Fun Run' },
+                  { src: runnerDabbingPhoto, alt: 'Runner dabbing at the finish line' },
+                ].map(({ src, alt }) => (
+                  <div
+                    key={alt}
+                    style={{
+                      borderRadius: 12,
+                      overflow: 'hidden',
+                      boxShadow: '0 2px 16px rgba(0,0,0,0.07)',
+                    }}
+                  >
+                    <img
+                      src={src}
+                      alt={alt}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
-          {/* Two-column layout */}
+          {/* Text column */}
+          <div ref={aboutTextRef} style={{ flex: 1, minWidth: 0, ...aboutTextAnim }}>
+            <SectionEyebrow text="About Be Pawsitive" />
+            <h2
+              style={{
+                fontFamily: PACIFICO,
+                fontSize: 'clamp(1.8rem, 3vw, 2.8rem)',
+                color: C.navy,
+                fontWeight: 400,
+                lineHeight: 1.25,
+                marginBottom: 24,
+              }}
+            >
+              Every Animal Deserves a Chance
+            </h2>
+
+            <p
+              style={{
+                fontFamily: NUNITO,
+                fontSize: 15,
+                lineHeight: 1.8,
+                color: C.text,
+                marginBottom: 18,
+              }}
+            >
+              Be Pawsitive is a SEC-registered animal welfare organisation based on Siargao Island.
+              Founded on a simple belief — that every stray animal deserves love, care, and a healthy
+              life — the organisation runs spay, neuter, and vaccination programmes across the island.
+            </p>
+
+            {/* Pull quote */}
+            <blockquote
+              style={{
+                borderLeft: `4px solid ${C.amber}`,
+                borderRadius: '0 12px 12px 0',
+                background: C.amberBg,
+                padding: '16px 20px',
+                margin: '0 0 18px',
+                fontFamily: NUNITO,
+                fontSize: 15,
+                fontStyle: 'italic',
+                color: C.text,
+                lineHeight: 1.7,
+              }}
+            >
+              &ldquo;Every animal spayed or neutered prevents hundreds of future strays from entering
+              the cycle.&rdquo;
+            </blockquote>
+
+            <p
+              style={{
+                fontFamily: NUNITO,
+                fontSize: 15,
+                lineHeight: 1.8,
+                color: C.text,
+                marginBottom: 32,
+              }}
+            >
+              Lola&apos;s Rentals has been a proud sponsor since the beginning. It&apos;s why
+              Lola herself — our rescue, now pampered pooch — is at the heart of everything we do.
+              Every vehicle in our fleet is named after an animal that&apos;s been through the
+              programme.
+            </p>
+
+            {/* Programme cards */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+                gap: 12,
+              }}
+            >
+              {[
+                { Icon: IconStethoscope, title: 'Spay & Neuter', desc: 'Free surgical procedures for stray and community-owned animals across the island.' },
+                { Icon: IconSyringe, title: 'Vaccination', desc: 'Core vaccines administered at outreach events in Santa Fe, Dapa, and surrounding barangays.' },
+                { Icon: IconHouseCommunity, title: 'Community Outreach', desc: 'Education and awareness programmes helping communities care for animals responsibly.' },
+              ].map((card, i) => {
+                const IconCmp = card.Icon;
+                return (
+                <FadeCard
+                  key={card.title}
+                  delay={i * 100}
+                  from="scale"
+                  style={{
+                    background: 'white',
+                    border: `1px solid ${C.border}`,
+                    borderRadius: 16,
+                    padding: 20,
+                    boxShadow: '0 2px 16px rgba(0,0,0,0.07)',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 12,
+                      background: C.amberBg,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginBottom: 12,
+                      color: C.navy,
+                    }}
+                  >
+                    <IconCmp size={22} />
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: NUNITO,
+                      fontSize: 14,
+                      fontWeight: 800,
+                      color: C.navy,
+                      marginBottom: 6,
+                    }}
+                  >
+                    {card.title}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: NUNITO,
+                      fontSize: 13,
+                      color: C.muted,
+                      lineHeight: 1.65,
+                    }}
+                  >
+                    {card.desc}
+                  </div>
+                </FadeCard>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ================================================================
+          4. ANIMAL PARADE DIVIDER
+          ================================================================ */}
+      <div style={{ background: C.cream, paddingBottom: 16 }}>
+        <div
+          style={{
+            maxWidth: 1200,
+            margin: '0 auto',
+            display: 'flex',
+            alignItems: 'flex-end',
+            justifyContent: isMobile ? 'center' : 'space-around',
+            flexWrap: isMobile ? 'wrap' : 'nowrap',
+            gap: isMobile ? 4 : 0,
+            rowGap: isMobile ? 2 : 0,
+            padding: isMobile ? '5px 8px 0' : '5px 32px 0',
+          }}
+        >
+          {paradeItems.map((item, i) => (
+            <img
+              key={i}
+              src={item.src}
+              alt=""
+              aria-hidden="true"
+              className={`bp-float-${i}`}
+              style={{
+                height: isMobile ? Math.round(item.height * 0.5) : item.height,
+                width: 'auto',
+                display: 'block',
+                mixBlendMode: item.blend ? 'multiply' : 'normal',
+              }}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* ================================================================
+          5. AQUAFLASK × BE PAWSITIVE RUN 2026
+          ================================================================ */}
+      <section id="fun-run" style={{ background: C.navy, padding: secPad, color: 'white' }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+          {/* Section header row — text left, collab logos right */}
           <div
             style={{
               display: 'flex',
               flexDirection: isMobile ? 'column' : 'row',
-              gap: 48,
-              alignItems: 'flex-start',
+              alignItems: isMobile ? 'flex-start' : 'center',
+              justifyContent: 'space-between',
+              gap: 32,
+              marginBottom: 48,
             }}
           >
-            {/* ── LEFT: Event detail cards ── */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              {/* Card 1 — When & Where */}
+            {/* Left: dateline + headline + sub-copy */}
+            <div ref={funRunHeaderRef} style={{ flex: 1, minWidth: 0, ...funRunHeaderAnim }}>
+              {/* Dateline with decorative lines (lines hidden on narrow viewports — nowrap would overflow) */}
               <div
                 style={{
-                  background: 'rgba(255,255,255,0.12)',
-                  borderRadius: 12,
-                  padding: 24,
-                  marginBottom: 16,
-                  fontFamily: FONT_BODY,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 16,
+                  marginBottom: 20,
+                  justifyContent: isMobile ? 'center' : 'flex-start',
                 }}
               >
-                <h3
+                {!isMobile && <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.2)' }} />}
+                <span
                   style={{
-                    fontFamily: FONT_HEADLINE,
-                    fontSize: '1.15rem',
-                    marginBottom: 12,
-                    color: 'white',
+                    fontFamily: BEBAS,
+                    fontSize: isMobile ? 12 : 14,
+                    color: C.amberLight,
+                    letterSpacing: isMobile ? '0.12em' : '0.25em',
+                    whiteSpace: isMobile ? 'normal' : 'nowrap',
+                    textAlign: isMobile ? 'center' : 'left',
+                    lineHeight: 1.35,
                   }}
                 >
-                  When &amp; Where
-                </h3>
+                  ANNUAL EVENT · SUNDAY, JUNE 7, 2026 · HARANA SURF RESORT
+                </span>
+                {!isMobile && <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.2)' }} />}
+              </div>
+
+              {/* Bebas Neue headline */}
+              <h2
+                style={{
+                  fontFamily: BEBAS,
+                  fontSize: 'clamp(3rem, 6vw, 5.5rem)',
+                  lineHeight: 0.95,
+                  color: 'white',
+                  marginBottom: 20,
+                  letterSpacing: '0.02em',
+                }}
+              >
+                AquaFlask{' '}
+                <span style={{ color: C.amber }}>×</span>
+                <br />
+                Be Pawsitive
+                <br />
+                Run 2026
+              </h2>
+
+              <p
+                style={{
+                  fontFamily: NUNITO,
+                  fontSize: 15,
+                  lineHeight: 1.7,
+                  color: 'rgba(255,255,255,0.7)',
+                  maxWidth: 560,
+                  margin: 0,
+                }}
+              >
+                Siargao&apos;s most exciting charity run returns for its third year. Lace up, hit
+                the road, and run for the animals. With Nadine Lustre &amp; Christophe Bariou as
+                official ambassadors.
+              </p>
+            </div>
+
+            {/* Right: two logo cards with × between */}
+            {!isMobile && (
+              <div
+                ref={logoBadgeRef}
+                style={{
+                  flexShrink: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 16,
+                  ...logoBadgeAnim,
+                }}
+              >
+                <div
+                  style={{
+                    width: 200,
+                    height: 200,
+                    borderRadius: 20,
+                    overflow: 'hidden',
+                    flexShrink: 0,
+                  }}
+                >
+                  <img
+                    src={aquaFlaskLogo}
+                    alt="AquaFlask"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  />
+                </div>
+
+                <span
+                  style={{
+                    fontFamily: BEBAS,
+                    fontSize: 48,
+                    color: C.amber,
+                    lineHeight: 1,
+                    userSelect: 'none',
+                    flexShrink: 0,
+                  }}
+                >
+                  ×
+                </span>
+
+                <div
+                  style={{
+                    width: 200,
+                    height: 200,
+                    borderRadius: 20,
+                    overflow: 'hidden',
+                    flexShrink: 0,
+                  }}
+                >
+                  <img
+                    src={bpIconLogo}
+                    alt="Be Pawsitive"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Two-column grid */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr' : '1.1fr 1fr',
+              gap: 40,
+              alignItems: 'start',
+            }}
+          >
+            {/* LEFT — Event detail cards */}
+            <div>
+              {/* When & Where */}
+              <div
+                ref={whenWhereRef}
+                style={{
+                  background: 'rgba(255,255,255,0.1)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  backdropFilter: 'blur(4px)',
+                  borderRadius: 16,
+                  padding: '20px 24px',
+                  marginBottom: 12,
+                  ...whenWhereAnim,
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    marginBottom: 14,
+                  }}
+                >
+                  <IconClock size={15} />
+                  <span
+                    style={{
+                      fontFamily: NUNITO,
+                      fontSize: 11,
+                      fontWeight: 800,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.12em',
+                      color: 'rgba(255,255,255,0.6)',
+                    }}
+                  >
+                    When &amp; Where
+                  </span>
+                </div>
                 {[
                   ['Date', 'Sunday, June 7th 2026'],
                   ['Start Line', 'Harana Surf Resort'],
                   ['5K Start', '5:40 AM'],
                   ['10K Start', '5:30 AM'],
-                ].map(([label, value]) => (
-                  <p key={label} style={{ margin: '4px 0', fontSize: '0.95rem', opacity: 0.9 }}>
-                    <strong>{label}:</strong> {value}
-                  </p>
+                  ['Packet Pick-up', 'June 5–6, 10AM–4PM'],
+                ].map(([k, v]) => (
+                  <div
+                    key={k}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'baseline',
+                      padding: '5px 0',
+                      borderBottom: '1px solid rgba(255,255,255,0.08)',
+                      fontFamily: NUNITO,
+                      fontSize: 14,
+                    }}
+                  >
+                    <span style={{ color: 'rgba(255,255,255,0.55)' }}>{k}</span>
+                    <span style={{ color: 'white', fontWeight: 600, textAlign: 'right', maxWidth: '55%' }}>{v}</span>
+                  </div>
                 ))}
-                <p style={{ margin: '8px 0 4px', fontSize: '0.95rem', opacity: 0.9 }}>
-                  <strong>Packet Pick-up:</strong> June 5th &amp; 6th, 10AM–4PM
-                </p>
-                <p style={{ margin: '4px 0', fontSize: '0.9rem', opacity: 0.75 }}>
-                  Harana Surf Resort
-                </p>
               </div>
 
-              {/* Card 2 — Registration Fees */}
+              {/* Registration Fees */}
               <div
+                ref={regFeesRef}
                 style={{
-                  background: 'rgba(255,255,255,0.12)',
-                  borderRadius: 12,
-                  padding: 24,
-                  marginBottom: 16,
-                  fontFamily: FONT_BODY,
+                  background: 'rgba(255,255,255,0.1)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  backdropFilter: 'blur(4px)',
+                  borderRadius: 16,
+                  padding: '20px 24px',
+                  marginBottom: 20,
+                  ...regFeesAnim,
                 }}
               >
-                <h3
+                <div
                   style={{
-                    fontFamily: FONT_HEADLINE,
-                    fontSize: '1.15rem',
-                    marginBottom: 12,
-                    color: 'white',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    marginBottom: 14,
                   }}
                 >
-                  Registration Fees
-                </h3>
-                <p style={{ margin: '4px 0', fontSize: '1rem', opacity: 0.9 }}>
-                  <strong>₱1,200</strong> — 5K
-                </p>
-                <p style={{ margin: '4px 0', fontSize: '1rem', opacity: 0.9 }}>
-                  <strong>₱1,500</strong> — 10K
-                </p>
-                <p
+                  <IconTicket size={15} />
+                  <span
+                    style={{
+                      fontFamily: NUNITO,
+                      fontSize: 11,
+                      fontWeight: 800,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.12em',
+                      color: 'rgba(255,255,255,0.6)',
+                    }}
+                  >
+                    Registration Fees
+                  </span>
+                </div>
+                {[
+                  ['5K', '₱1,200'],
+                  ['10K', '₱1,500'],
+                ].map(([k, v]) => (
+                  <div
+                    key={k}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      padding: '5px 0',
+                      borderBottom: '1px solid rgba(255,255,255,0.08)',
+                      fontFamily: NUNITO,
+                      fontSize: 14,
+                    }}
+                  >
+                    <span style={{ color: 'rgba(255,255,255,0.55)' }}>{k}</span>
+                    <span style={{ color: 'white', fontWeight: 700 }}>{v}</span>
+                  </div>
+                ))}
+                <div
                   style={{
-                    margin: '12px 0 0',
-                    fontSize: '0.85rem',
-                    opacity: 0.75,
+                    marginTop: 12,
+                    fontFamily: NUNITO,
+                    fontSize: 12,
+                    color: 'rgba(255,255,255,0.5)',
                     lineHeight: 1.6,
                   }}
                 >
-                  Cash registrations at All About Coco, Lola&apos;s Rentals, or Harana Surf Resort
-                </p>
+                  Cash reg. at All About Coco, Lola&apos;s Rentals, Harana Surf Resort
+                </div>
               </div>
 
-              {/* Card 3 — Awards */}
-              <div
+              {/* Register CTA */}
+              <a
+                ref={registerBtnRef as unknown as React.RefObject<HTMLAnchorElement>}
+                href="https://raceroster.com/events/2026/116269/aquaflask-be-pawsitive-run-2026"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bp-primary-btn"
                 style={{
-                  background: 'rgba(255,255,255,0.12)',
+                  display: 'flex',
+                  ...registerBtnAnim,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 10,
+                  width: '100%',
+                  textAlign: 'center',
+                  background: C.amber,
+                  color: 'white',
+                  padding: '18px 24px',
                   borderRadius: 12,
-                  padding: 24,
-                  fontFamily: FONT_BODY,
+                  fontFamily: NUNITO,
+                  fontSize: 18,
+                  fontWeight: 900,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  textDecoration: 'none',
+                  boxShadow: '0 4px 12px rgba(252,188,90,0.4)',
+                  transition: 'transform 0.15s, box-shadow 0.15s',
+                  boxSizing: 'border-box',
                 }}
               >
-                <h3
-                  style={{
-                    fontFamily: FONT_HEADLINE,
-                    fontSize: '1.15rem',
-                    marginBottom: 12,
-                    color: 'white',
-                  }}
-                >
-                  Awards
-                </h3>
-                <p style={{ margin: 0, fontSize: '0.95rem', opacity: 0.9, lineHeight: 1.6 }}>
-                  Top 3 finishers (male &amp; female) in both 5K and 10K categories receive prizes.
-                  Plus Instagram story prizes — tag{' '}
-                  <strong>@bepawsitive.siargao</strong> for a chance to win!
-                </p>
-              </div>
+                <IconBolt size={20} /> Register Now — June 7 →
+              </a>
             </div>
 
-            {/* ── RIGHT: Runner stats + gallery + CTA ── */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <h3
+            {/* RIGHT — Stats + photo grid */}
+            <div>
+              {/* Prev-year stat pills */}
+              <div
                 style={{
-                  fontSize: '1.4rem',
-                  fontFamily: FONT_HEADLINE,
-                  color: 'white',
-                  marginBottom: 24,
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: 10,
+                  marginBottom: 16,
                 }}
               >
-                Join the Movement
-              </h3>
-
-              {/* Placeholder runner stats */}
-              <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
                 {[
-                  { num: '453+', sub: '2025 Fun Run', label: 'Runners' },
-                  { num: '307+', sub: '2024 Fun Run', label: 'Runners' },
-                  { num: '₱488,000', sub: 'Raised in 2024', label: 'Donated' },
-                ].map((s) => (
-                  <div
+                  { num: '453+', label: '2025 Fun Run' },
+                  { num: '307+', label: '2024 Fun Run' },
+                  { num: '₱488K', label: 'Raised in 2024' },
+                ].map((s, i) => (
+                  <FadeCard
                     key={s.label}
+                    delay={i * 80}
+                    from="up"
                     style={{
-                      flex: 1,
-                      minWidth: 90,
                       background: 'rgba(255,255,255,0.1)',
-                      borderRadius: 8,
-                      padding: 16,
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      backdropFilter: 'blur(4px)',
+                      borderRadius: 12,
+                      padding: '14px 10px',
                       textAlign: 'center',
                     }}
                   >
                     <div
                       style={{
-                        fontSize: '1.8rem',
-                        fontWeight: 700,
-                        fontFamily: FONT_HEADLINE,
-                        lineHeight: 1.1,
+                        fontFamily: BEBAS,
+                        fontSize: 28,
                         color: 'white',
+                        lineHeight: 1,
+                        letterSpacing: '0.02em',
                       }}
                     >
                       {s.num}
                     </div>
                     <div
                       style={{
-                        fontSize: '0.8rem',
-                        opacity: 0.8,
-                        marginTop: 4,
-                        fontFamily: FONT_BODY,
+                        fontFamily: NUNITO,
+                        fontSize: 10,
+                        fontWeight: 700,
                         textTransform: 'uppercase',
-                        letterSpacing: '0.04em',
-                        color: 'white',
+                        letterSpacing: '0.08em',
+                        color: 'rgba(255,255,255,0.55)',
+                        marginTop: 4,
                       }}
                     >
-                      {s.sub}
+                      {s.label}
                     </div>
-                  </div>
+                  </FadeCard>
                 ))}
               </div>
 
-              {/* Fun run photos — swap src values when better photos are available */}
+              {/* Photo grid — first cell spans 2 cols */}
               <div
                 style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(3, 1fr)',
                   gap: 8,
-                  marginTop: 16,
+                  marginBottom: 16,
                 }}
               >
-                {[runPhoto1, runPhoto2, runPhoto3, runPhoto4, runPhoto5, runPhoto6, runPhoto7, runPhoto8, runPhoto9].map((src, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      borderRadius: 8,
-                      overflow: 'hidden',
-                      height: 140,
-                      background: 'rgba(255,255,255,0.1)',
-                    }}
-                  >
+                <FadeCard delay={0} from="scale" style={{ gridColumn: 'span 2', borderRadius: 12, overflow: 'hidden', height: 220 }}>
+                  <img
+                    src={runPhoto4}
+                    alt="Fun Run 2025 — main event"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  />
+                </FadeCard>
+                <FadeCard delay={80} from="scale" style={{ borderRadius: 12, overflow: 'hidden', height: 220 }}>
+                  <img
+                    src={runPhoto5}
+                    alt="Fun Run 2025"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  />
+                </FadeCard>
+                {[runPhoto6, runPhoto7, runPhoto8].map((src, i) => (
+                  <FadeCard key={i} delay={(i + 2) * 80} from="scale" style={{ borderRadius: 12, overflow: 'hidden', height: 110 }}>
                     <img
                       src={src}
-                      alt={`Siargao fun run 2025 photo ${i + 1}`}
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                        display: 'block',
-                      }}
+                      alt={`Fun Run 2025 photo ${i + 2}`}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                     />
-                  </div>
+                  </FadeCard>
                 ))}
               </div>
 
-              <a
-                href="https://raceroster.com/events/2026/116269/aquaflask-be-pawsitive-run-2026"
-                target="_blank"
-                rel="noopener noreferrer"
+              {/* Ambassador strip */}
+              <div
                 style={{
-                  background: '#72b36d',
-                  color: 'white',
-                  padding: '16px 32px',
-                  borderRadius: 8,
-                  fontSize: '1.1rem',
-                  fontWeight: 700,
-                  display: 'block',
-                  textAlign: 'center',
-                  marginTop: 32,
-                  width: '100%',
-                  textDecoration: 'none',
-                  fontFamily: FONT_BODY,
-                  boxSizing: 'border-box',
+                  borderTop: '1px solid rgba(255,255,255,0.12)',
+                  paddingTop: 14,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  flexWrap: 'wrap',
                 }}
               >
-                Register Now — raceroster.com
-              </a>
+                <span
+                  style={{
+                    fontFamily: NUNITO,
+                    fontSize: 11,
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.12em',
+                    color: 'rgba(255,255,255,0.45)',
+                    marginRight: 4,
+                  }}
+                >
+                  Official Ambassadors
+                </span>
+                {['Nadine Lustre', 'Christophe Bariou'].map((name) => (
+                  <div
+                    key={name}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      background: 'rgba(255,255,255,0.1)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: 99,
+                      padding: '5px 12px 5px 6px',
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: '50%',
+                        background: C.amber,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span
+                      style={{
+                        fontFamily: NUNITO,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: 'white',
+                      }}
+                    >
+                      {name}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
       </section>
 
       {/* ================================================================
-          SECTION 5 — LOLA'S CONTRIBUTION
+          6. EVERY RENTAL WAGS A TAIL
           ================================================================ */}
-      <section id="lolas-contribution" style={{ background: 'white', padding: sectionPad, paddingBottom: 280, position: 'relative', overflow: 'hidden' }}>
-        <div ref={donationRef} style={{ maxWidth: 800, margin: '0 auto', textAlign: 'center' }}>
-          <p
-            style={{
-              color: '#00577C',
-              fontSize: '0.85rem',
-              fontWeight: 700,
-              textTransform: 'uppercase',
-              letterSpacing: '0.1em',
-              marginBottom: 12,
-              fontFamily: FONT_BODY,
-            }}
-          >
-            Our Commitment
-          </p>
-          <h2
-            style={{
-              fontFamily: FONT_HEADLINE,
-              fontSize: 'clamp(1.8rem, 3vw, 2.6rem)',
-              color: '#363737',
-              marginBottom: 24,
-              lineHeight: 1.2,
-            }}
-          >
-            Every Rental Wags a Tail
-          </h2>
-          <p
-            style={{
-              color: '#363737',
-              lineHeight: 1.8,
-              fontSize: '1.05rem',
-              marginBottom: 40,
-              fontFamily: FONT_BODY,
-            }}
-          >
-            Lola&apos;s Rentals matches every peso saved by Paw Card holders at partner
-            establishments — peso for peso — as a direct donation to Be Pawsitive. No admin fees, no
-            markup. Every centavo goes to funding spay, neuter, and vaccination events across
-            Siargao.
-          </p>
-
-          {/* Donation counter */}
-          <p
-            style={{
-              fontSize: '0.9rem',
-              color: '#666',
-              textTransform: 'uppercase',
-              letterSpacing: '0.06em',
-              marginBottom: 8,
-              fontFamily: FONT_BODY,
-            }}
-          >
-            Total Donated to Date
-          </p>
-          <div
-            style={{
-              fontFamily: FONT_HEADLINE,
-              fontSize: 'clamp(2.8rem, 5vw, 4rem)',
-              color: '#00577C',
-              fontWeight: 700,
-              lineHeight: 1,
-              marginBottom: 12,
-            }}
-          >
-            ₱{donation.toLocaleString()}
+      <section
+        id="lolas-contribution"
+        style={{ background: '#e8f2ef', padding: secPad, paddingBottom: isMobile ? 'calc(64px + 2rem)' : 'calc(80px + 2rem)', marginBottom: '-2rem' }}
+      >
+        <div
+          ref={donationRef}
+          style={{ maxWidth: 800, margin: '0 auto', textAlign: 'center' }}
+        >
+          <div ref={commitHeadRef} style={commitHeadAnim}>
+            <SectionEyebrow text="Our Commitment" color={C.navy} centered />
+            <h2
+              style={{
+                fontFamily: PACIFICO,
+                fontSize: 'clamp(1.8rem, 3.5vw, 3rem)',
+                color: C.navy,
+                fontWeight: 400,
+                lineHeight: 1.2,
+                marginBottom: 20,
+              }}
+            >
+              Every Rental Wags a Tail
+            </h2>
           </div>
           <p
             style={{
-              color: '#666',
-              fontSize: '0.9rem',
-              marginBottom: 40,
-              fontFamily: FONT_BODY,
+              fontFamily: NUNITO,
+              fontSize: 15,
+              lineHeight: 1.8,
+              color: C.text,
+              maxWidth: 600,
+              margin: '0 auto 40px',
             }}
           >
-            and counting — updated as our customers keep saving.
+            Lola&apos;s Rentals matches every peso saved by Paw Card holders at partner
+            establishments — peso for peso — as a direct donation to Be Pawsitive. No admin fees,
+            no markup. Every centavo goes to funding spay, neuter, and vaccination events across
+            Siargao.
           </p>
 
-          <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <Link
-              to="/book/paw-card"
+          {/* How-it-works cards */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+              gap: 14,
+              marginBottom: 36,
+              textAlign: 'left',
+            }}
+          >
+            {[
+              {
+                n: 1,
+                title: 'You Rent, We Give',
+                desc: 'Every booking automatically contributes a portion directly to Be Pawsitive. No extra steps needed.',
+              },
+              {
+                n: 2,
+                title: 'Paw Card Savings',
+                desc: 'Savings you earn at partner establishments are matched peso-for-peso by Lola\'s as a donation.',
+              },
+              {
+                n: 3,
+                title: '100% Direct',
+                desc: 'Zero admin fees. Every centavo goes straight to funding spay, neuter, and vaccination events.',
+              },
+            ].map((c, i) => (
+              <FadeCard
+                key={c.n}
+                delay={i * 100}
+                from="scale"
+                style={{
+                  background: 'white',
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 16,
+                  padding: 24,
+                  boxShadow: '0 2px 16px rgba(0,0,0,0.07)',
+                }}
+              >
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: '50%',
+                    background: C.bpBlue,
+                    color: 'white',
+                    fontFamily: NUNITO,
+                    fontSize: 15,
+                    fontWeight: 800,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginBottom: 12,
+                  }}
+                >
+                  {c.n}
+                </div>
+                <div
+                  style={{
+                    fontFamily: NUNITO,
+                    fontSize: 14,
+                    fontWeight: 800,
+                    color: C.navy,
+                    marginBottom: 6,
+                  }}
+                >
+                  {c.title}
+                </div>
+                <div
+                  style={{
+                    fontFamily: NUNITO,
+                    fontSize: 15,
+                    color: C.muted,
+                    lineHeight: 1.65,
+                  }}
+                >
+                  {c.desc}
+                </div>
+              </FadeCard>
+            ))}
+          </div>
+
+          {/* Donation counter */}
+          <div
+            ref={donorCtrRef}
+            style={{
+              background: C.bpBlue,
+              borderRadius: 20,
+              padding: isMobile ? '28px 24px' : '32px 40px',
+              display: 'inline-block',
+              minWidth: isMobile ? 'auto' : 360,
+              marginBottom: 36,
+              boxShadow: '0 2px 16px rgba(0,0,0,0.07)',
+              ...donorCtrAnim,
+            }}
+          >
+            <div
               style={{
-                background: '#00577C',
-                color: 'white',
-                padding: '14px 28px',
-                borderRadius: 8,
-                fontWeight: 700,
-                textDecoration: 'none',
-                fontFamily: FONT_BODY,
-                fontSize: '1rem',
+                fontFamily: NUNITO,
+                fontSize: 11,
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                letterSpacing: '0.14em',
+                color: 'rgba(255,255,255,0.6)',
+                marginBottom: 10,
               }}
             >
-              Paw Card Login
+              Total Donated to Date
+            </div>
+            <div
+              style={{
+                fontFamily: BEBAS,
+                fontSize: 'clamp(4rem, 7vw, 5.5rem)',
+                color: 'white',
+                lineHeight: 1,
+                letterSpacing: '0.02em',
+              }}
+            >
+              <span style={{ color: C.amberLight }}>₱</span>
+              {donation.toLocaleString()}
+            </div>
+            <div
+              style={{
+                fontFamily: NUNITO,
+                fontSize: 12,
+                color: 'rgba(255,255,255,0.5)',
+                marginTop: 8,
+              }}
+            >
+              and counting — updated as our customers keep saving
+            </div>
+          </div>
+
+          {/* CTAs */}
+          <div style={{ display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <Link
+              to="/book/paw-card"
+              className="bp-primary-btn"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                background: C.amber,
+                color: 'white',
+                padding: '13px 26px',
+                borderRadius: 12,
+                fontFamily: NUNITO,
+                fontSize: 14,
+                fontWeight: 800,
+                textDecoration: 'none',
+                boxShadow: '0 4px 12px rgba(232,160,32,0.35)',
+                transition: 'transform 0.15s, box-shadow 0.15s',
+              }}
+            >
+              🐾 Paw Card Login
             </Link>
             <a
               href="https://www.be-pawsitive.org/donate"
               target="_blank"
               rel="noopener noreferrer"
+              className="bp-navy-btn"
               style={{
+                display: 'inline-block',
                 background: 'transparent',
-                color: '#00577C',
-                border: '2px solid #00577C',
-                padding: '14px 28px',
-                borderRadius: 8,
-                fontWeight: 600,
+                color: C.navy,
+                border: `1.5px solid ${C.navy}`,
+                padding: '13px 26px',
+                borderRadius: 12,
+                fontFamily: NUNITO,
+                fontSize: 14,
+                fontWeight: 700,
                 textDecoration: 'none',
-                fontFamily: FONT_BODY,
-                fontSize: '1rem',
+                transition: 'transform 0.15s',
               }}
             >
               Donate Directly
             </a>
           </div>
         </div>
-
-        {/* Animal divider — runs edge to edge at bottom of section */}
-        <div style={{
-          position: 'absolute',
-          bottom: -4,
-          left: -1,
-          right: -1,
-          lineHeight: 0,
-          fontSize: 0,
-        }}>
-          <img
-            src={animalDivider}
-            alt=""
-            aria-hidden="true"
-            style={{
-              width: '100%',
-              display: 'block',
-            }}
-          />
-        </div>
-      </section>
-
-      {/* ================================================================
-          SECTION 6 — FOLLOW BANNER
-          ================================================================ */}
-      <section
-        style={{
-          background: 'linear-gradient(135deg, #72b36d, #5a9e55)',
-          padding: stripPad,
-          textAlign: 'center',
-        }}
-      >
-        <p
-          style={{
-            color: 'white',
-            fontSize: '1.2rem',
-            fontWeight: 600,
-            marginBottom: 16,
-            fontFamily: FONT_BODY,
-          }}
-        >
-          Follow Be Pawsitive on Instagram
-        </p>
-        <a
-          href="https://www.instagram.com/bepawsitive.siargao/"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            color: 'white',
-            fontSize: '1.5rem',
-            fontWeight: 700,
-            fontFamily: FONT_HEADLINE,
-            textDecoration: 'none',
-            borderBottom: '2px solid rgba(255,255,255,0.5)',
-            paddingBottom: 2,
-          }}
-        >
-          @bepawsitive.siargao
-        </a>
       </section>
 
     </PageLayout>

@@ -194,7 +194,7 @@ export default function InboxPage() {
       key: 'total',
       header: 'Web Quote',
       render: (r: RawOrder) => {
-        const total = extractTotal(r.payload ?? {});
+        const total = r.web_quote_raw ?? extractTotal(r.payload ?? {});
         return total > 0 ? formatCurrency(total) : '—';
       },
     },
