@@ -177,6 +177,42 @@ const KEYFRAMES = `
 // ---------------------------------------------------------------------------
 // Reusable label above section headings
 // ---------------------------------------------------------------------------
+function AmbassadorPill({ name }: { name: string }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        background: 'rgba(255,255,255,0.1)',
+        border: '1px solid rgba(255,255,255,0.15)',
+        borderRadius: 99,
+        padding: '5px 12px 5px 6px',
+      }}
+    >
+      <div
+        style={{
+          width: 24,
+          height: 24,
+          borderRadius: '50%',
+          background: C.amber,
+          flexShrink: 0,
+        }}
+      />
+      <span
+        style={{
+          fontFamily: NUNITO,
+          fontSize: 13,
+          fontWeight: 600,
+          color: 'white',
+        }}
+      >
+        {name}
+      </span>
+    </div>
+  );
+}
+
 function SectionEyebrow({ text, color = C.bpBlue, centered = false }: { text: string; color?: string; centered?: boolean }) {
   return (
     <div
@@ -1262,9 +1298,10 @@ export default function BePawsitivePage() {
                   borderTop: '1px solid rgba(255,255,255,0.12)',
                   paddingTop: 14,
                   display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  flexWrap: 'wrap',
+                  alignItems: isMobile ? 'stretch' : 'center',
+                  flexDirection: isMobile ? 'column' : 'row',
+                  gap: isMobile ? 12 : 12,
+                  flexWrap: isMobile ? 'nowrap' : 'wrap',
                 }}
               >
                 <span
@@ -1275,45 +1312,32 @@ export default function BePawsitivePage() {
                     textTransform: 'uppercase',
                     letterSpacing: '0.12em',
                     color: 'rgba(255,255,255,0.45)',
-                    marginRight: 4,
+                    marginRight: isMobile ? 0 : 4,
                   }}
                 >
                   Official Ambassadors
                 </span>
-                {['Nadine Lustre', 'Christophe Bariou'].map((name) => (
+                {isMobile ? (
                   <div
-                    key={name}
                     style={{
                       display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      background: 'rgba(255,255,255,0.1)',
-                      border: '1px solid rgba(255,255,255,0.15)',
-                      borderRadius: 99,
-                      padding: '5px 12px 5px 6px',
+                      flexDirection: 'column',
+                      gap: 10,
+                      width: '100%',
                     }}
                   >
-                    <div
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: '50%',
-                        background: C.amber,
-                        flexShrink: 0,
-                      }}
-                    />
-                    <span
-                      style={{
-                        fontFamily: NUNITO,
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: 'white',
-                      }}
-                    >
-                      {name}
-                    </span>
+                    <div style={{ alignSelf: 'flex-end' }}>
+                      <AmbassadorPill name="Christophe Bariou" />
+                    </div>
+                    <div style={{ alignSelf: 'flex-start' }}>
+                      <AmbassadorPill name="Nadine Lustre" />
+                    </div>
                   </div>
-                ))}
+                ) : (
+                  ['Nadine Lustre', 'Christophe Bariou'].map((name) => (
+                    <AmbassadorPill key={name} name={name} />
+                  ))
+                )}
               </div>
             </div>
           </div>
