@@ -18,9 +18,6 @@ import nadinePhoto from '../../assets/Be Pawsitive/Run 2025/nadine.png';
 import runnerDabbingPhoto from '../../assets/Be Pawsitive/Run 2025/runner dabbing.png';
 import roadMapImg from '../../assets/Be Pawsitive/Run 2025/road map.png';
 
-// Hero wave overlays
-import wave1Img from '../../assets/Be Pawsitive/Run 2025/wave1.png';
-import wave2Img from '../../assets/Be Pawsitive/Run 2025/wave2.png';
 
 // Collab logos
 import aquaFlaskLogo from '../../assets/Be Pawsitive/Run 2025/Aqua Flask.svg';
@@ -405,13 +402,7 @@ export default function BePawsitivePage() {
           padding: isMobile ? '80px 24px 100px' : '90px 32px 110px',
         }}
       >
-        {/* Sunburst rays — focal point at upper-right (the sun position) */}
-        {/*
-          The div is 200×200% of the section, offset -50%/-50% so it covers all edges.
-          The section's point (78%, 22%) maps to div coordinates (89%, 61%).
-          Both the conic-gradient origin and transformOrigin are set to that point
-          so rays radiate from — and rotation pivots around — the sun disc.
-        */}
+        {/* Sunburst rays — centred, slow clockwise rotation */}
         <div
           style={{
             position: 'absolute',
@@ -420,58 +411,28 @@ export default function BePawsitivePage() {
             width: '200%',
             height: '200%',
             backgroundImage:
-              'repeating-conic-gradient(from 0deg at 89% 61%, #1b6faa 0deg 9deg, #28b87a 9deg 18deg)',
+              'repeating-conic-gradient(from 0deg at 50% 50%, #1b6faa 0deg 9deg, #28b87a 9deg 18deg)',
             opacity: 0.55,
             pointerEvents: 'none',
             animation: 'bp-sunburst-rotate 90s linear infinite',
-            transformOrigin: '89% 61%',
+            transformOrigin: '50% 50%',
           }}
         />
 
-        {/* Sun disc — sits at the ray origin to hide the harsh convergence point */}
+        {/* Arch — teal dome that the text content sits inside */}
         <div
           style={{
             position: 'absolute',
-            top: '22%',
-            left: '78%',
-            transform: 'translate(-50%, -50%)',
-            width: isMobile ? 120 : 190,
-            height: isMobile ? 120 : 190,
-            borderRadius: '50%',
-            background: 'radial-gradient(circle, #fde68a 0%, #fcbc5a 55%, #f59e0b 100%)',
-            boxShadow: '0 0 60px 20px rgba(252,188,90,0.35)',
+            bottom: 0,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: isMobile ? '92%' : '58%',
+            height: '96%',
+            background: C.teal,
+            borderRadius: '50% 50% 0 0 / 28% 28% 0 0',
             pointerEvents: 'none',
             zIndex: 0,
-          }}
-        />
-
-        {/* Wave 2 — background layer, partially off-screen bottom-left */}
-        <img
-          src={wave2Img}
-          alt=""
-          style={{
-            position: 'absolute',
-            left: isMobile ? '-15%' : '-6%',
-            bottom: isMobile ? '-5%' : '-8%',
-            width: isMobile ? '70%' : '34%',
-            pointerEvents: 'none',
-            zIndex: 0,
-            opacity: 0.65,
-          }}
-        />
-
-        {/* Wave 1 — foreground layer, bottom-left corner */}
-        <img
-          src={wave1Img}
-          alt=""
-          style={{
-            position: 'absolute',
-            left: isMobile ? '-8%' : '-2%',
-            bottom: isMobile ? '-10%' : '-12%',
-            width: isMobile ? '80%' : '38%',
-            pointerEvents: 'none',
-            zIndex: 0,
-            opacity: 0.9,
+            opacity: 0.93,
           }}
         />
 
