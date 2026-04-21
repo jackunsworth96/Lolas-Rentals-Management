@@ -1340,8 +1340,8 @@ export default function BePawsitivePage() {
                       width: '100%',
                     }}
                   >
-                    <AmbassadorPill name="Christophe Bariou" />
                     <AmbassadorPill name="Nadine Lustre" />
+                    <AmbassadorPill name="Christophe Bariou" />
                   </div>
                 ) : (
                   ['Nadine Lustre', 'Christophe Bariou'].map((name) => (
