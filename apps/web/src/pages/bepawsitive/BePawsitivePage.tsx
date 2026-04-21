@@ -419,22 +419,6 @@ export default function BePawsitivePage() {
           }}
         />
 
-        {/* Arch — teal dome that the text content sits inside */}
-        <div
-          style={{
-            position: 'absolute',
-            bottom: 0,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            width: isMobile ? '80%' : '46%',
-            height: '96%',
-            background: `linear-gradient(to bottom, rgba(42,122,106,0) 0%, rgba(42,122,106,0.55) 30%, ${C.teal} 70%)`,
-            borderRadius: '50% 50% 0 0 / 28% 28% 0 0',
-            pointerEvents: 'none',
-            zIndex: 0,
-          }}
-        />
-
         {/* Vignette */}
         <div
           style={{
