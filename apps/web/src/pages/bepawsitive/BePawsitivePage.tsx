@@ -177,6 +177,14 @@ const KEYFRAMES = `
 // ---------------------------------------------------------------------------
 // Reusable label above section headings
 // ---------------------------------------------------------------------------
+function IconStarOutline({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round">
+      <path d="M12 2.5l2.8 6.9h7.2l-5.75 4.45 2.2 7.15L12 16.9l-6.45 4.1 2.2-7.15L2 9.4h7.2L12 2.5z" />
+    </svg>
+  );
+}
+
 function AmbassadorPill({ name }: { name: string }) {
   return (
     <div
@@ -190,15 +198,20 @@ function AmbassadorPill({ name }: { name: string }) {
         padding: '5px 12px 5px 6px',
       }}
     >
-      <div
+      <span
         style={{
           width: 24,
           height: 24,
-          borderRadius: '50%',
-          background: C.amber,
           flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: C.amber,
         }}
-      />
+        aria-hidden
+      >
+        <IconStarOutline size={19} />
+      </span>
       <span
         style={{
           fontFamily: NUNITO,
@@ -1322,16 +1335,13 @@ export default function BePawsitivePage() {
                     style={{
                       display: 'flex',
                       flexDirection: 'column',
+                      alignItems: 'flex-start',
                       gap: 10,
                       width: '100%',
                     }}
                   >
-                    <div style={{ alignSelf: 'flex-end' }}>
-                      <AmbassadorPill name="Christophe Bariou" />
-                    </div>
-                    <div style={{ alignSelf: 'flex-start' }}>
-                      <AmbassadorPill name="Nadine Lustre" />
-                    </div>
+                    <AmbassadorPill name="Christophe Bariou" />
+                    <AmbassadorPill name="Nadine Lustre" />
                   </div>
                 ) : (
                   ['Nadine Lustre', 'Christophe Bariou'].map((name) => (
