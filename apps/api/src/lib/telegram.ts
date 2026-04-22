@@ -2,9 +2,10 @@
  * Optional env:
  *   TELEGRAM_BOT_TOKEN       — bot auth token (one bot handles all channels)
  *   TELEGRAM_CHAT_ID         — default personal/owner chat (fallback)
- *   TELEGRAM_OPS_CHAT_ID     — Lola's Ops channel (order lifecycle events)
- *   TELEGRAM_FLEET_CHAT_ID   — Lola's Fleet channel (vehicle status changes)
- *   TELEGRAM_DAILY_CHAT_ID   — Lola's Daily Updates channel (morning summary)
+ *   TELEGRAM_OPS_CHAT_ID         — Lola's Ops channel (order lifecycle events)
+ *   TELEGRAM_FLEET_CHAT_ID       — Lola's Fleet channel (vehicle status changes)
+ *   TELEGRAM_DAILY_CHAT_ID       — Lola's Daily Updates channel (morning summary)
+ *   TELEGRAM_MAINTENANCE_CHAT_ID — Lola's Maintenance channel (jobs & inspections)
  *
  * When the bot token or a given chat id is unset, alerts targeting that
  * channel are silently skipped. Failures never throw — callers can treat
@@ -12,13 +13,14 @@
  */
 import { logger } from './logger.js';
 
-export function getTelegramChatId(kind: 'default' | 'ops' | 'fleet' | 'daily'): string | undefined {
+export function getTelegramChatId(kind: 'default' | 'ops' | 'fleet' | 'daily' | 'maintenance'): string | undefined {
   switch (kind) {
-    case 'ops':   return process.env.TELEGRAM_OPS_CHAT_ID;
-    case 'fleet': return process.env.TELEGRAM_FLEET_CHAT_ID;
-    case 'daily': return process.env.TELEGRAM_DAILY_CHAT_ID;
+    case 'ops':         return process.env.TELEGRAM_OPS_CHAT_ID;
+    case 'fleet':       return process.env.TELEGRAM_FLEET_CHAT_ID;
+    case 'daily':       return process.env.TELEGRAM_DAILY_CHAT_ID;
+    case 'maintenance': return process.env.TELEGRAM_MAINTENANCE_CHAT_ID;
     case 'default':
-    default:      return process.env.TELEGRAM_CHAT_ID;
+    default:            return process.env.TELEGRAM_CHAT_ID;
   }
 }
 

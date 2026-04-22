@@ -433,11 +433,12 @@ router.put('/:id', requirePermission(Permission.EditFleet), validateBody(z.objec
     const result = await updateVehicle({ fleetRepo: req.app.locals.deps.fleetRepo }, { vehicleId, ...req.body });
     res.json({ success: true, data: result });
 
-    // Fleet channel Telegram alert — only fire when a vehicle leaves the
-    // available pool (oldStatus === 'Available' AND newStatus !== 'Available').
+    // Fleet channel Telegram alerts — fired on significant status transitions.
     // Transitions between two non-available statuses are intentionally silent.
     const newStatus = result.status;
+
     if (oldStatus === 'Available' && newStatus !== 'Available') {
+      // Vehicle left the available pool → out-of-service alert.
       void (async () => {
         try {
           let modelName = '—';
@@ -464,7 +465,37 @@ router.put('/:id', requirePermission(Permission.EditFleet), validateBody(z.objec
             getTelegramChatId('fleet'),
           );
         } catch (tgErr) {
-          console.error('[fleet-telegram] notify error:', tgErr);
+          console.error('[fleet-telegram] out-of-service notify error:', tgErr);
+        }
+      })();
+    } else if (oldStatus !== null && oldStatus !== 'Available' && newStatus === 'Available') {
+      // Vehicle returned to the available pool → back-in-service alert.
+      void (async () => {
+        try {
+          let modelName = '—';
+          if (result.modelId) {
+            const sb = getSupabaseClient();
+            const { data: model } = await sb
+              .from('vehicle_models')
+              .select('name')
+              .eq('id', result.modelId)
+              .maybeSingle();
+            if (model && typeof (model as { name?: string }).name === 'string') {
+              modelName = (model as { name: string }).name;
+            }
+          }
+          const plate = result.plateNumber ?? result.name ?? vehicleId;
+          const updatedBy = req.user?.username ?? 'unknown';
+          await sendTelegramAlert(
+            `🟢 <b>Vehicle Back in Service</b>\n` +
+              `Vehicle: ${escapeHtml(plate)} — ${escapeHtml(modelName)}\n` +
+              `Status: Available ✅\n` +
+              `Store: ${escapeHtml(result.storeId)}\n` +
+              `Updated by: ${escapeHtml(updatedBy)}`,
+            getTelegramChatId('fleet'),
+          );
+        } catch (tgErr) {
+          console.error('[fleet-telegram] back-in-service notify error:', tgErr);
         }
       })();
     }

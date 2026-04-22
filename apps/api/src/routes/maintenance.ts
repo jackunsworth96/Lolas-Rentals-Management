@@ -11,7 +11,8 @@ import {
 } from '@lolas/shared';
 import type { MaintenanceRecord } from '@lolas/domain';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
-import { sendEmail, maintenanceLogHtml, NOTIFICATION_EMAIL } from '../services/email.js';
+import { sendEmail, maintenanceLogHtml, escapeHtml, NOTIFICATION_EMAIL } from '../services/email.js';
+import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
 
 function toDto(r: MaintenanceRecord) {
   return {
@@ -74,17 +75,51 @@ router.post('/', requirePermission(Permission.EditMaintenance), validateBody(Log
       fleet: req.app.locals.deps.fleetRepo,
     });
 
-    // Fire-and-forget tamper-evident maintenance log email.
+    // Fire-and-forget tamper-evident maintenance log email + Maintenance channel alert.
     void (async () => {
       try {
         const sb = getSupabaseClient();
         const { data: vehicle } = await sb
           .from('fleet')
-          .select('plate_number, engine_number, chassis_number')
+          .select('plate_number, engine_number, chassis_number, model_id, store_id')
           .eq('id', result.assetId)
           .maybeSingle();
 
-        const v = vehicle as { plate_number?: string; engine_number?: string; chassis_number?: string } | null;
+        const v = vehicle as {
+          plate_number?: string;
+          engine_number?: string;
+          chassis_number?: string;
+          model_id?: string | null;
+          store_id?: string | null;
+        } | null;
+
+        // Resolve model name for the Telegram alert.
+        let modelName = '—';
+        if (v?.model_id) {
+          const { data: mdl } = await sb
+            .from('vehicle_models')
+            .select('name')
+            .eq('id', v.model_id)
+            .maybeSingle();
+          if (mdl && typeof (mdl as { name?: string }).name === 'string') {
+            modelName = (mdl as { name: string }).name;
+          }
+        }
+
+        const plate = v?.plate_number ?? result.vehicleName ?? result.assetId;
+        const loggedBy = req.user?.username ?? 'unknown';
+        const rawNotes = result.issueDescription ?? '';
+        const truncatedNotes = rawNotes.length > 100 ? `${rawNotes.slice(0, 100)}…` : rawNotes;
+        const storeLabel = v?.store_id ?? result.storeId;
+
+        void sendTelegramAlert(
+          `🔩 <b>Maintenance Logged</b>\n` +
+            `Vehicle: ${escapeHtml(plate)} — ${escapeHtml(modelName)}\n` +
+            `Type: ${escapeHtml(truncatedNotes || '—')}\n` +
+            `Logged by: ${escapeHtml(loggedBy)}\n` +
+            `Store: ${escapeHtml(storeLabel)}`,
+          getTelegramChatId('maintenance'),
+        );
 
         void sendEmail({
           to: NOTIFICATION_EMAIL,

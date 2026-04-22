@@ -37,6 +37,7 @@ import { waiverRouter } from './routes/public-waiver.js';
 import { startWaiverReminderJob } from './jobs/waiver-reminder.js';
 import { startPostRentalEmailJob } from './jobs/post-rental-email.js';
 import { startDailySummaryJob } from './jobs/daily-summary.js';
+import { startFleetSummaryJob } from './jobs/fleet-summary.js';
 import { publicLimiter } from './middleware/rate-limit.js';
 import { authenticate } from './middleware/authenticate.js';
 import inspectionRouter from './routes/inspections.js';
@@ -178,6 +179,7 @@ if (process.env.NODE_ENV !== 'test') {
     startWaiverReminderJob();
     startPostRentalEmailJob();
     startDailySummaryJob();
+    startFleetSummaryJob();
   });
 }
 

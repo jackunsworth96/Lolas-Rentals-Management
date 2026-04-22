@@ -6,7 +6,8 @@ import { validateBody } from '../middleware/validate.js';
 import { Permission } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { logMaintenance } from '../use-cases/maintenance/log-maintenance.js';
-import { sendEmail, inspectionLogHtml } from '../services/email.js';
+import { sendEmail, inspectionLogHtml, escapeHtml } from '../services/email.js';
+import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
 
 const router = Router();
 
@@ -278,6 +279,42 @@ router.post(
       }
 
       res.status(201).json({ success: true, data: { inspectionId } });
+
+      // Fire-and-forget Maintenance channel Telegram alert.
+      void (async () => {
+        try {
+          let plateNumber = '—';
+          if (body.vehicleId) {
+            const { data: veh } = await sb
+              .from('fleet')
+              .select('plate_number')
+              .eq('id', body.vehicleId)
+              .maybeSingle();
+            if (veh && typeof (veh as { plate_number?: string }).plate_number === 'string') {
+              plateNumber = (veh as { plate_number: string }).plate_number;
+            }
+          }
+          const vehicleLabel = `${plateNumber} — ${body.vehicleName ?? '—'}`;
+          const issueItems = body.results
+            .filter((r) => r.result !== 'accepted')
+            .map((r) => r.itemName)
+            .slice(0, 5);
+          const rawNotes = body.damageNotes ?? (issueItems.length > 0 ? issueItems.join(', ') : null);
+          const truncatedNotes = rawNotes && rawNotes.length > 100 ? `${rawNotes.slice(0, 100)}…` : (rawNotes ?? '—');
+          const loggedBy = req.user?.username ?? 'unknown';
+          await sendTelegramAlert(
+            `📋 <b>Inspection Logged</b>\n` +
+              `Vehicle: ${escapeHtml(vehicleLabel)}\n` +
+              `Result: ${escapeHtml('completed')}\n` +
+              `Notes: ${escapeHtml(truncatedNotes)}\n` +
+              `Logged by: ${escapeHtml(loggedBy)}\n` +
+              `Store: ${escapeHtml(body.storeId)}`,
+            getTelegramChatId('maintenance'),
+          );
+        } catch (tgErr) {
+          console.error('[inspection-telegram] notify error:', tgErr);
+        }
+      })();
 
       const INSPECTION_LOG_EMAIL =
         process.env.MAINTENANCE_LOG_EMAIL ?? process.env.NOTIFICATION_EMAIL;
