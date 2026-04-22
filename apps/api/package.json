@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "npx tsx watch --import ./src/instrument.ts ./src/server.ts",
+    "dev": "npx tsx watch ./src/dev-server.ts",
     "build": "tsc --build --force",
     "start": "node --import ./dist/instrument.js ./dist/server.js",
     "test": "vitest run",

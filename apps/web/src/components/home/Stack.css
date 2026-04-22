@@ -1,9 +1,20 @@
+.stack-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+}
+
 .stack-container {
   position: relative;
   width: 100%;
-  height: 100%;
+  /* Extra vertical room so peeking cards above don't clip */
+  height: calc(100% - 48px);
   perspective: 600px;
+  overflow: visible;
 }
+
 .card-rotate {
   position: absolute;
   width: 100%;
@@ -16,6 +27,8 @@
   height: 100%;
   cursor: pointer;
 }
+
+/* All cards */
 .card {
   border-radius: 1rem;
   overflow: hidden;
@@ -24,10 +37,24 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow:
-    0 4px 20px rgba(0, 0, 0, 0.1),
-    0 0 28px rgba(252, 188, 90, 0.22);
 }
+
+/* Front (top) card — prominent shadow */
+.card-top {
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.18),
+    0 2px 8px rgba(0, 0, 0, 0.10),
+    0 0 0 2px rgba(255, 255, 255, 0.9);
+}
+
+/* Cards behind — visible coloured border so edges clearly show */
+.card-behind {
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.12),
+    0 0 0 3px rgba(252, 188, 90, 0.70),
+    0 0 0 5px rgba(255, 255, 255, 0.55);
+}
+
 .card img {
   pointer-events: none;
   user-select: none;
@@ -38,4 +65,38 @@
   height: 100%;
   object-fit: cover;
   pointer-events: none;
+}
+
+/* ── Dot indicators ──────────────────────────────────────── */
+.stack-dots {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  align-items: center;
+  justify-content: center;
+}
+.stack-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(0, 87, 124, 0.18);
+  transition: background 0.3s ease, transform 0.3s ease;
+  flex-shrink: 0;
+}
+.stack-dot-active {
+  background: #00577C;
+  transform: scale(1.35);
+}
+
+/* ── Tap hint ────────────────────────────────────────────── */
+.stack-hint {
+  margin-top: 6px;
+  font-family: Lato, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #00577C;
+  opacity: 0.55;
+  user-select: none;
 }

@@ -11,6 +11,7 @@ import logo from '../../assets/Lolas Original Logo.svg';
 import flowerLeft from '../../assets/Flower Left.svg';
 import flowerRight from '../../assets/Flower Right.svg';
 import basketIcon from '../../assets/Buttons/basket icon.svg';
+import footerDesign from '../../assets/Footer/footer design.svg';
 
 export interface PageLayoutProps {
   children: ReactNode;
@@ -267,9 +268,16 @@ export function PageLayout({
           floralScrollFreezeRef ? 'relative z-[48]' : elevateFlorals ? 'relative z-[35]' : ''
         }
       >
-        <footer className="w-full border-t border-sand-brand bg-cream-brand pb-32 pt-16 md:pb-16">
-          <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-12 px-6 md:flex-row">
-            <div className="max-w-xs space-y-4">
+        <div className="relative leading-[0]">
+          <img
+            src={footerDesign}
+            alt=""
+            className="w-full object-cover object-bottom"
+            aria-hidden="true"
+          />
+          <footer className="absolute inset-0 pointer-events-none">
+            {/* Left column — logo, copyright, social icons */}
+            <div className="pointer-events-auto absolute bottom-[18%] left-6 max-w-xs space-y-4">
               <img src={logo} alt="Lola's Rentals" className="h-12 w-auto object-contain" />
               <p className="text-sm leading-relaxed text-charcoal-brand/60">
                 © 2026 Lola&apos;s Rentals and Tours Inc. | Built in-house
@@ -304,48 +312,52 @@ export function PageLayout({
                 </a>
               </div>
             </div>
-            <div className="space-y-2">
-              <p className="text-sm font-semibold text-charcoal-brand/70">Opening Hours</p>
-              <p className="text-sm text-charcoal-brand/60">9:00 AM – 5:00 PM · Mon–Sun</p>
-              <p className="text-sm text-charcoal-brand/60">Tourism Rd, Catangnan,</p>
-              <p className="text-sm text-charcoal-brand/60">General Luna, Siargao</p>
+
+            {/* Right columns — opening hours + page links */}
+            <div className="pointer-events-auto absolute bottom-[12%] right-6 flex flex-col gap-12 md:flex-row md:items-start">
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-charcoal-brand/70">Opening Hours</p>
+                <p className="text-sm text-charcoal-brand/60">9:00 AM – 5:00 PM · Mon–Sun</p>
+                <p className="text-sm text-charcoal-brand/60">Tourism Rd, Catangnan,</p>
+                <p className="text-sm text-charcoal-brand/60">General Luna, Siargao</p>
+              </div>
+              <div className="grid grid-cols-2 gap-x-12 gap-y-4">
+                <Link to="/book/repairs" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
+                  Island Safety
+                </Link>
+                <Link to="/book/bepawsitive" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
+                  Be Pawsitive NGO
+                </Link>
+                <a
+                  href="https://wa.me/639694443413"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand"
+                >
+                  Contact Us
+                </a>
+                <Link to="/book/privacy" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
+                  Privacy
+                </Link>
+                <Link
+                  to="/book/waiver-agreement"
+                  className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand"
+                >
+                  Waiver Agreement
+                </Link>
+                <Link to="/refund-policy" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
+                  Refund Policy
+                </Link>
+                <Link
+                  to="/peace-of-mind"
+                  className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand"
+                >
+                  Peace of Mind Cover
+                </Link>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-x-12 gap-y-4">
-              <Link to="/book/repairs" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
-                Island Safety
-              </Link>
-              <Link to="/book/bepawsitive" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
-                Be Pawsitive NGO
-              </Link>
-              <a
-                href="https://wa.me/639694443413"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand"
-              >
-                Contact Us
-              </a>
-              <Link to="/book/privacy" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
-                Privacy
-              </Link>
-              <Link
-                to="/book/waiver-agreement"
-                className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand"
-              >
-                Waiver Agreement
-              </Link>
-              <Link to="/refund-policy" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">
-                Refund Policy
-              </Link>
-              <Link
-                to="/peace-of-mind"
-                className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand"
-              >
-                Peace of Mind Cover
-              </Link>
-            </div>
-          </div>
-        </footer>
+          </footer>
+        </div>
       </FadeUpSection>
 
       <button

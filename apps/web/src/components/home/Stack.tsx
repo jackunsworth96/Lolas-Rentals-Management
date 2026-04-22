@@ -18,6 +18,8 @@ interface StackProps {
   pauseOnHover?: boolean;
   mobileClickOnly?: boolean;
   mobileBreakpoint?: number;
+  showDots?: boolean;
+  showHint?: boolean;
 }
 
 interface CardItem {
@@ -101,6 +103,8 @@ export default function Stack({
   pauseOnHover = false,
   mobileClickOnly = false,
   mobileBreakpoint = 768,
+  showDots = false,
+  showHint = false,
 }: StackProps) {
   const [cardItems, setCardItems] = useState<CardItem[]>(() =>
     cards.map((content, i) => ({ id: i, content })),
@@ -149,51 +153,81 @@ export default function Stack({
 
   const disableDrag = mobileClickOnly && isMobile;
 
-  return (
-    <div
-      className="stack-container"
-      onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => setHovering(false)}
-    >
-      {cardItems.map((card, index) => {
-        const isTop = index === 0;
-        const rotation = randomRotation
-          ? (rotationsRef.current[card.id] ?? 0)
-          : 0;
+  const activeId = cardItems[0]?.id ?? 0;
 
-        return (
-          <motion.div
-            key={card.id}
-            style={{
-              position: 'absolute',
-              width: '100%',
-              height: '100%',
-              zIndex: cardItems.length - index,
-            }}
-            animate={{
-              scale: 1 - index * 0.06,
-              y: index * -10,
-              rotate: rotation,
-              opacity: index < 4 ? 1 : 0,
-            }}
-            transition={{
-              type: 'spring',
-              stiffness: animationConfig.stiffness,
-              damping: animationConfig.damping,
-            }}
-          >
-            <CardRotate
-              onSendToBack={() => {
-                if (isTop || sendToBackOnClick) sendToBack(card.id);
+  // Stable x-offsets per card id: alternating left/right so cards peek from both sides
+  const xOffsetsRef = useRef<number[]>(
+    cards.map((_, i) => (i % 2 === 0 ? 1 : -1) * (6 + (i % 3) * 3)),
+  );
+
+  return (
+    <div className="stack-wrapper">
+      <div
+        className="stack-container"
+        onMouseEnter={() => setHovering(true)}
+        onMouseLeave={() => setHovering(false)}
+      >
+        {cardItems.map((card, index) => {
+          const isTop = index === 0;
+          const rotation = randomRotation
+            ? (rotationsRef.current[card.id] ?? 0)
+            : 0;
+          const xPeek = index === 0 ? 0 : (xOffsetsRef.current[card.id] ?? 0) * index;
+
+          return (
+            <motion.div
+              key={card.id}
+              style={{
+                position: 'absolute',
+                width: '100%',
+                height: '100%',
+                zIndex: cardItems.length - index,
               }}
-              sensitivity={sensitivity}
-              disableDrag={!isTop || disableDrag}
+              animate={{
+                scale: 1 - index * 0.055,
+                y: index * -18,
+                x: xPeek,
+                rotate: rotation,
+                opacity: index < 5 ? 1 : 0,
+              }}
+              transition={{
+                type: 'spring',
+                stiffness: animationConfig.stiffness,
+                damping: animationConfig.damping,
+              }}
             >
-              <div className="card">{card.content}</div>
-            </CardRotate>
-          </motion.div>
-        );
-      })}
+              <CardRotate
+                onSendToBack={() => {
+                  if (isTop || sendToBackOnClick) sendToBack(card.id);
+                }}
+                sensitivity={sensitivity}
+                disableDrag={!isTop || disableDrag}
+              >
+                <div className={`card${isTop ? ' card-top' : ' card-behind'}`}>
+                  {card.content}
+                </div>
+              </CardRotate>
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {/* Dot indicators */}
+      {showDots && cards.length > 1 && (
+        <div className="stack-dots" aria-hidden="true">
+          {cards.map((_, i) => (
+            <div
+              key={i}
+              className={`stack-dot${i === activeId ? ' stack-dot-active' : ''}`}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Tap hint */}
+      {showHint && (
+        <p className="stack-hint">Tap to cycle ›</p>
+      )}
     </div>
   );
 }

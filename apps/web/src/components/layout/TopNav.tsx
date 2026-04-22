@@ -18,6 +18,7 @@ import navExtend from '../../assets/nav-buttons/Nav Extend.svg';
 import navPartners from '../../assets/nav-buttons/Nav Partners.svg';
 import lolaLogo from '../../assets/Hero/logo-lola-rentals-1.svg';
 import { instaIcon, phoneIcon, locationIcon } from '../public/customerContactIcons.js';
+import { GOOGLE_MAPS_PLACE_URL } from '../../config/maps.js';
 import './BubbleMenu.css';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -164,7 +165,7 @@ export default function TopNav({ items, rightSlot }: TopNavProps) {
         {/* Location + Phone — far right */}
         <div className="absolute right-3 top-1/2 z-10 flex -translate-y-1/2 items-center gap-1 md:right-5 md:gap-2">
           <a
-            href="https://maps.google.com/?q=Tourism+Rd+Catangnan+General+Luna+Siargao"
+            href={GOOGLE_MAPS_PLACE_URL}
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Find us on Google Maps"

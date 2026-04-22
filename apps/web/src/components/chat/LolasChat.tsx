@@ -72,18 +72,36 @@ const SNAP_MARGIN = 28; // px from the viewport edge when snapped
 
 interface Pos { x: number; y: number }
 
-function loadPos(): Pos | null {
+// Position stored as fractions of viewport dimensions so that zoom/resize
+// always keeps the button proportionally anchored to the same corner.
+interface PosRatio { rx: number; ry: number }
+
+function ratioToPixels(rx: number, ry: number): Pos {
+  return {
+    x: Math.round(rx * window.innerWidth),
+    y: Math.round(ry * window.innerHeight),
+  };
+}
+
+function pixelsToRatio(x: number, y: number): PosRatio {
+  return {
+    rx: x / window.innerWidth,
+    ry: y / window.innerHeight,
+  };
+}
+
+function loadPosRatio(): PosRatio | null {
   try {
-    const raw = localStorage.getItem('lolas-chat-pos');
+    const raw = sessionStorage.getItem('lolas-chat-pos-ratio');
     if (!raw) return null;
-    return JSON.parse(raw) as Pos;
+    return JSON.parse(raw) as PosRatio;
   } catch {
     return null;
   }
 }
 
-function savePos(pos: Pos) {
-  try { localStorage.setItem('lolas-chat-pos', JSON.stringify(pos)); } catch { /* noop */ }
+function savePosRatio(ratio: PosRatio) {
+  try { sessionStorage.setItem('lolas-chat-pos-ratio', JSON.stringify(ratio)); } catch { /* noop */ }
 }
 
 function clampToViewport(x: number, y: number, btnSize: number): Pos {
@@ -109,19 +127,36 @@ function useDraggable(btnSize: number) {
     y: window.innerHeight - btnSize - SNAP_MARGIN * 4,
   });
 
-  const [pos, setPos] = useState<Pos>(() => loadPos() ?? defaultPos());
+  const [pos, setPos] = useState<Pos>(() => {
+    const ratio = loadPosRatio();
+    if (!ratio) return defaultPos();
+    return clampToViewport(ratioToPixels(ratio.rx, ratio.ry).x, ratioToPixels(ratio.rx, ratio.ry).y, btnSize);
+  });
   const dragging = useRef(false);
   const hasDragged = useRef(false);
   const startPointer = useRef<Pos>({ x: 0, y: 0 });
   const startPos = useRef<Pos>({ x: 0, y: 0 });
 
-  // Re-clamp on resize
+  // Re-anchor on resize and zoom — recompute pixel position from stored ratio
+  // so the button stays in the same relative corner of the viewport.
   useEffect(() => {
-    function onResize() {
-      setPos((p) => clampToViewport(p.x, p.y, btnSize));
+    function onViewportChange() {
+      const ratio = loadPosRatio();
+      if (ratio) {
+        const { x, y } = ratioToPixels(ratio.rx, ratio.ry);
+        setPos(clampToViewport(x, y, btnSize));
+      } else {
+        setPos(defaultPos());
+      }
     }
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    window.addEventListener('resize', onViewportChange);
+    // visualViewport fires on pinch-zoom and browser zoom on mobile/desktop
+    window.visualViewport?.addEventListener('resize', onViewportChange);
+    return () => {
+      window.removeEventListener('resize', onViewportChange);
+      window.visualViewport?.removeEventListener('resize', onViewportChange);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [btnSize]);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
@@ -153,7 +188,7 @@ function useDraggable(btnSize: number) {
     if (moved) {
       const snapped = snapToEdge(startPos.current.x + dx, startPos.current.y + dy, btnSize);
       setPos(snapped);
-      savePos(snapped);
+      savePosRatio(pixelsToRatio(snapped.x, snapped.y));
     }
   }, [btnSize]);
 

@@ -196,24 +196,20 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
     }
 
     // 6. Build order_items
+    // Keys must be camelCase to match what activate_order_atomic reads via item->>'key'.
     const orderItems = [{
       id: orderItemId,
-      store_id: body.storeId,
-      order_id: orderId,
-      vehicle_id: body.vehicleId,
-      vehicle_name: body.vehicleName,
-      pickup_datetime: body.pickupDatetime,
-      dropoff_datetime: body.dropoffDatetime,
-      rental_days_count: rentalDaysCount,
-      pickup_location: pickupLocation,
-      dropoff_location: dropoffLocation,
-      pickup_fee: body.pickupFee,
-      dropoff_fee: body.dropoffFee,
-      rental_rate: body.dailyRate,
-      helmet_numbers: body.helmetNumbers ?? null,
-      discount: 0,
-      ops_notes: body.staffNotes ?? null,
-      return_condition: null,
+      vehicleModelId: body.vehicleModelId,
+      vehicleId: body.vehicleId,
+      vehicleName: body.vehicleName,
+      dailyRate: body.dailyRate,
+      rentalDays: rentalDaysCount,
+      subtotal: body.dailyRate * rentalDaysCount,
+      pickupDatetime: body.pickupDatetime,
+      dropoffDatetime: body.dropoffDatetime,
+      pickupLocationId: body.pickupLocationId ? String(body.pickupLocationId) : null,
+      dropoffLocationId: body.dropoffLocationId ? String(body.dropoffLocationId) : null,
+      orderReference: orderReference,
     }];
 
     // 7. Build order_addons

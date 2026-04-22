@@ -9,7 +9,6 @@ interface ResetSummary {
   vehicle_swaps: number;
   maya_checkouts: number;
   card_settlements: number;
-  order_payments: number;
   payments: number;
   journal_entries: number;
   transfers: number;

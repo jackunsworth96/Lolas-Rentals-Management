@@ -778,7 +778,7 @@ export default function HomePage() {
               className="relative z-0 max-lg:mb-4"
               style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}
             >
-              <div style={{ width: 340, height: 420 }}>
+              <div style={{ width: 340, height: 460 }}>
                 <Stack
                   randomRotation={true}
                   sensitivity={200}
@@ -794,6 +794,8 @@ export default function HomePage() {
                   autoplay={true}
                   autoplayDelay={2500}
                   pauseOnHover={true}
+                  showDots={true}
+                  showHint={true}
                 />
               </div>
             </div>

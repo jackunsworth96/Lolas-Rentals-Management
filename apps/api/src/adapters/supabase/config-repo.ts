@@ -177,17 +177,33 @@ export function createConfigRepo(): ConfigRepository {
 
     getFleetStatuses: () => selectAll<FleetStatus>('fleet_statuses'),
     async getExpenseCategories(storeId: string): Promise<ExpenseCategory[]> {
+      // Fetch valid active account IDs for this store explicitly rather than
+      // relying on PostgREST !inner join behaviour, which can silently fall back
+      // to a LEFT JOIN when the FK relationship isn't resolvable, allowing
+      // categories with orphaned/non-existent account IDs to leak through and
+      // later cause FK violations when posting journal entries.
+      const { data: accountRows, error: acctError } = await sb()
+        .from('chart_of_accounts')
+        .select('id')
+        .in('store_id', [storeId, 'company'])
+        .eq('is_active', true);
+      if (acctError) throw new Error(`Failed to fetch accounts for expense categories: ${acctError.message}`);
+      const validAccountIds = new Set((accountRows ?? []).map((a: { id: string }) => a.id));
+
       const { data, error } = await sb()
         .from('expense_categories')
-        .select('*, chart_of_accounts!inner(store_id)')
-        .eq('is_active', true)
-        .in('chart_of_accounts.store_id', [storeId, 'company']);
+        .select('*')
+        .eq('is_active', true);
       if (error) throw new Error(`Failed to fetch expense_categories: ${error.message}`);
-      return (data ?? []).map((r) => {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { chart_of_accounts: _coa, ...rest } = r as Record<string, unknown> & { chart_of_accounts: unknown };
-        return snakeToCamel(rest) as unknown as ExpenseCategory;
-      });
+
+      return (data ?? [])
+        .filter((r: Record<string, unknown>) => {
+          const accountId = r.account_id as string | null | undefined;
+          // Include categories with no account (accountId is null/empty) OR
+          // categories whose account actually exists and is active for this store.
+          return !accountId || validAccountIds.has(accountId);
+        })
+        .map((r) => snakeToCamel(r) as unknown as ExpenseCategory);
     },
     getTaskCategories: () => selectAllActive<TaskCategory>('task_categories'),
     getTransferRoutes: (storeId) => selectWhereActive<TransferRoute>('transfer_routes', 'store_id', storeId),

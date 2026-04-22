@@ -50,11 +50,17 @@ function formatReturnDatetime(dt: string): string {
 }
 
 function minDate(currentDropoff: string): string {
+  if (!currentDropoff) return new Date().toISOString().slice(0, 10);
   return currentDropoff.slice(0, 10);
 }
 
 function defaultNewDate(currentDropoff: string): string {
-  const d = new Date(currentDropoff);
+  const d = currentDropoff ? new Date(currentDropoff) : new Date();
+  if (isNaN(d.getTime())) {
+    const fallback = new Date();
+    fallback.setDate(fallback.getDate() + 1);
+    return fallback.toISOString().slice(0, 10);
+  }
   d.setDate(d.getDate() + 1);
   return d.toISOString().slice(0, 10);
 }

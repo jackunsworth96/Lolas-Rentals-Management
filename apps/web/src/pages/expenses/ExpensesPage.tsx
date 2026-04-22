@@ -205,7 +205,14 @@ export default function ExpensesPage() {
     setField('category', catName);
     const cat = activeCategories.find((c) => c.name === catName);
     const acctId = cat?.accountId ?? cat?.account_id ?? '';
-    if (acctId) setField('expenseAccountId', acctId);
+    // Only auto-fill if the account actually exists in the valid expense
+    // accounts list for this store — prevents submitting an orphaned account ID
+    // that would cause a journal_entries FK violation on the server.
+    if (acctId && expenseAccounts.some((a) => a.id === acctId)) {
+      setField('expenseAccountId', acctId);
+    } else {
+      setField('expenseAccountId', '');
+    }
   }
 
   const isCashAdvance =
