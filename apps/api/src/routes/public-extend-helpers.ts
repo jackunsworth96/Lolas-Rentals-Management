@@ -2,8 +2,9 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { computeQuote } from '../use-cases/booking/compute-quote.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
 import { resolveStoreAccounts } from '../adapters/supabase/maintenance-expense-rpc.js';
-import { sendEmail, extendConfirmationHtml } from '../services/email.js';
-import { formatManilaDate } from '../utils/manila-date.js';
+import { sendEmail, extendConfirmationHtml, escapeHtml } from '../services/email.js';
+import { formatManilaDate, formatManilaDateTime } from '../utils/manila-date.js';
+import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
 
 // ── Shared helpers (exported for reuse by the main route file) ──
 
@@ -383,6 +384,25 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
     }
 
     const totalExtensionCost = extensionCost + ninePmCost;
+
+    // Fire-and-forget Ops channel Telegram alert. Look up the customer name
+    // from the orders row — never block the response path on this.
+    void (async () => {
+      try {
+        const { data: cust } = await sb.from('customers').select('name').eq('id', ord.customer_id).maybeSingle();
+        const customerName = (cust as { name?: string } | null)?.name ?? trimmedEmail;
+        await sendTelegramAlert(
+          `🔄 <b>Rental Extended</b>\n` +
+            `Reference: ${escapeHtml(orderReference)}\n` +
+            `Customer: ${escapeHtml(customerName)}\n` +
+            `New return: ${escapeHtml(formatManilaDateTime(newDropoffDatetime))}\n` +
+            `Extension cost: ₱${totalExtensionCost.toLocaleString('en-PH')}`,
+          getTelegramChatId('ops'),
+        );
+      } catch (tgErr) {
+        console.error('[extend-active] Telegram notify error:', tgErr);
+      }
+    })();
 
     void (async () => {
       try {

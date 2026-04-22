@@ -6,6 +6,8 @@ import { Permission } from '@lolas/shared';
 import { z } from 'zod';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { formatManilaDate } from '../utils/manila-date.js';
+import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
+import { escapeHtml } from '../services/email.js';
 
 const router = Router();
 router.use(authenticate);
@@ -419,9 +421,53 @@ router.put('/:id', requirePermission(Permission.EditFleet), validateBody(z.objec
   storeId: z.string().optional(), modelId: z.string().nullable().optional(),
 })), async (req, res, next) => {
   try {
+    const vehicleId = req.params.id as string;
+    // Capture old status before the update so we can detect the specific
+    // transition Available → non-Available without a second full refetch.
+    const priorVehicle = req.body?.status !== undefined
+      ? await req.app.locals.deps.fleetRepo.findById(vehicleId)
+      : null;
+    const oldStatus = priorVehicle?.status ?? null;
+
     const { updateVehicle } = await import('../use-cases/fleet/update-vehicle.js');
-    const result = await updateVehicle({ fleetRepo: req.app.locals.deps.fleetRepo }, { vehicleId: req.params.id, ...req.body });
+    const result = await updateVehicle({ fleetRepo: req.app.locals.deps.fleetRepo }, { vehicleId, ...req.body });
     res.json({ success: true, data: result });
+
+    // Fleet channel Telegram alert — only fire when a vehicle leaves the
+    // available pool (oldStatus === 'Available' AND newStatus !== 'Available').
+    // Transitions between two non-available statuses are intentionally silent.
+    const newStatus = result.status;
+    if (oldStatus === 'Available' && newStatus !== 'Available') {
+      void (async () => {
+        try {
+          let modelName = '—';
+          if (result.modelId) {
+            const sb = getSupabaseClient();
+            const { data: model } = await sb
+              .from('vehicle_models')
+              .select('name')
+              .eq('id', result.modelId)
+              .maybeSingle();
+            if (model && typeof (model as { name?: string }).name === 'string') {
+              modelName = (model as { name: string }).name;
+            }
+          }
+          const plate = result.plateNumber ?? result.name ?? vehicleId;
+          const updatedBy = req.user?.username ?? 'unknown';
+          await sendTelegramAlert(
+            `🔧 <b>Vehicle Out of Service</b>\n` +
+              `Vehicle: ${escapeHtml(plate)} — ${escapeHtml(modelName)}\n` +
+              `Status: ${escapeHtml(newStatus)}\n` +
+              `Store: ${escapeHtml(result.storeId)}\n` +
+              `Updated by: ${escapeHtml(updatedBy)}\n` +
+              `⚠️ Please action promptly to return to circulation.`,
+            getTelegramChatId('fleet'),
+          );
+        } catch (tgErr) {
+          console.error('[fleet-telegram] notify error:', tgErr);
+        }
+      })();
+    }
   } catch (err) { next(err); }
 });
 

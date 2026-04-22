@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import rateLimit from 'express-rate-limit';
-import { sendEmail, bookingCancellationHtml } from '../services/email.js';
+import { sendEmail, bookingCancellationHtml, escapeHtml } from '../services/email.js';
+import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
 import { SubmitDirectBookingRequestSchema, type SubmitDirectBookingInput } from '@lolas/shared';
 import { validateQuery, validateBody } from '../middleware/validate.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
@@ -320,6 +321,7 @@ router.patch('/cancel/:orderReference', cancelLimiter, async (req, res, next) =>
         const { data: order } = await sb2
           .from('orders_raw')
           .select(`
+            customer_name,
             customer_email,
             vehicle_model_id,
             pickup_datetime,
@@ -328,6 +330,15 @@ router.patch('/cancel/:orderReference', cancelLimiter, async (req, res, next) =>
           `)
           .eq('order_reference', orderReference)
           .single();
+
+        // Fire-and-forget Ops channel Telegram alert (public self-service cancel).
+        void sendTelegramAlert(
+          `❌ <b>Order Cancelled</b>\n` +
+            `Reference: ${escapeHtml(orderReference)}\n` +
+            `Customer: ${escapeHtml(order?.customer_name ?? '—')}\n` +
+            `Reason: customer_request`,
+          getTelegramChatId('ops'),
+        );
 
         if (!order?.customer_email) return;
 

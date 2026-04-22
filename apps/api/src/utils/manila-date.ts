@@ -18,3 +18,18 @@ export function formatManilaTime(date: Date = new Date()): string {
 export function formatManilaPeriod(date: Date = new Date()): string {
   return formatManilaDate(date).slice(0, 7);
 }
+
+/**
+ * Returns a human-readable Manila datetime, e.g. "Apr 22, 2026, 3:45 PM".
+ * Accepts an ISO string, a Date, or nullish (falls back to empty string).
+ */
+export function formatManilaDateTime(value: string | Date | null | undefined): string {
+  if (value == null || value === '') return '';
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('en-PH', {
+    timeZone: 'Asia/Manila',
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}

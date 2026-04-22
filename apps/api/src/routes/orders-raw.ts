@@ -8,8 +8,9 @@ import { Permission, resolveStoreFromSource, resolveSourceFromStore } from '@lol
 import { supabase } from '../adapters/supabase/client.js';
 import { resolveCharityPayableAccount } from '../adapters/supabase/maintenance-expense-rpc.js';
 import { processRawOrder, type ProcessRawOrderDeps } from '../use-cases/orders/process-raw-order.js';
-import { sendEmail, bookingConfirmationHtml, bookingCancellationHtml, walkInStaffAlertHtml, NOTIFICATION_EMAIL } from '../services/email.js';
-import { formatManilaDate } from '../utils/manila-date.js';
+import { sendEmail, bookingConfirmationHtml, bookingCancellationHtml, walkInStaffAlertHtml, escapeHtml, NOTIFICATION_EMAIL } from '../services/email.js';
+import { formatManilaDate, formatManilaDateTime } from '../utils/manila-date.js';
+import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
 
 /** GET list / GET :id — explicit columns; excludes payload (V10-11). */
 const ORDERS_RAW_INBOX_COLUMNS =
@@ -389,6 +390,18 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       data: { orderId, orderReference, customerId },
     });
 
+    // 17a. Fire-and-forget Ops channel Telegram alert
+    void sendTelegramAlert(
+      `✅ <b>Order Activated</b>\n` +
+        `Reference: ${escapeHtml(orderReference)}\n` +
+        `Customer: ${escapeHtml(body.customerName)}\n` +
+        `Vehicle: ${escapeHtml(body.vehicleName)}\n` +
+        `Pickup: ${escapeHtml(formatManilaDateTime(body.pickupDatetime))}\n` +
+        `Return: ${escapeHtml(formatManilaDateTime(body.dropoffDatetime))}\n` +
+        `Store: ${escapeHtml(body.storeId)}`,
+      getTelegramChatId('ops'),
+    );
+
     // 17. Fire-and-forget booking confirmation email
     void (async () => {
       try {
@@ -677,6 +690,26 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
     });
 
     res.json({ success: true, data: result });
+
+    // Fire-and-forget Ops channel Telegram alert. Skip on idempotent retries
+    // (alreadyProcessed) so the owner isn't pinged twice for the same order.
+    if (!result.alreadyProcessed) {
+      const firstAssignment = body.vehicleAssignments[0];
+      const vehicleLabel = firstAssignment?.vehicleName ?? 'Vehicle';
+      const pickupFmt = formatManilaDateTime(firstAssignment?.pickupDatetime);
+      const dropoffFmt = formatManilaDateTime(firstAssignment?.dropoffDatetime);
+      const bookingToken = result.order.bookingToken ?? String(req.params.id ?? '');
+      void sendTelegramAlert(
+        `✅ <b>Order Activated</b>\n` +
+          `Reference: ${escapeHtml(bookingToken)}\n` +
+          `Customer: ${escapeHtml(body.customer.name)}\n` +
+          `Vehicle: ${escapeHtml(vehicleLabel)}\n` +
+          `Pickup: ${escapeHtml(pickupFmt)}\n` +
+          `Return: ${escapeHtml(dropoffFmt)}\n` +
+          `Store: ${escapeHtml(body.storeId)}`,
+        getTelegramChatId('ops'),
+      );
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const stack = err instanceof Error ? err.stack : undefined;
@@ -845,6 +878,16 @@ router.patch('/:id/cancel', requirePermission(Permission.CancelOrders), async (r
           `)
           .eq('id', id)
           .single();
+
+        // Fire-and-forget Ops channel Telegram alert (independent of email — runs
+        // even if the cancelled booking has no customer_email on file).
+        void sendTelegramAlert(
+          `❌ <b>Order Cancelled</b>\n` +
+            `Reference: ${escapeHtml(order?.order_reference ?? id)}\n` +
+            `Customer: ${escapeHtml(order?.customer_name ?? '—')}` +
+            (parsed.data.reason ? `\nReason: ${escapeHtml(parsed.data.reason)}` : ''),
+          getTelegramChatId('ops'),
+        );
 
         if (!order?.customer_email) return;
 

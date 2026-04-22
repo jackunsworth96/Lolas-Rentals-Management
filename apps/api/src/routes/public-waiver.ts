@@ -7,8 +7,10 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { validateBody } from '../middleware/validate.js';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
-import { sendEmail, waiverConfirmationHtml } from '../services/email.js';
+import { sendEmail, waiverConfirmationHtml, escapeHtml } from '../services/email.js';
 import { normalizePublicWebOrigin } from '../lib/public-web-url.js';
+import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
+import { formatManilaDateTime } from '../utils/manila-date.js';
 
 const waiverLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -227,6 +229,15 @@ waiverRouter.post('/:orderReference/sign', validateBody(WaiverSignBodySchema), a
     if (insErr) throw new Error(`waivers insert failed: ${insErr.message}`);
 
     const row = inserted as { id: string; agreed_at: string };
+
+    // Fire-and-forget Ops channel Telegram alert.
+    void sendTelegramAlert(
+      `📋 <b>Waiver Signed</b>\n` +
+        `Reference: ${escapeHtml(orderReference)}\n` +
+        `Customer: ${escapeHtml(body.driverName)}\n` +
+        `Signed at: ${escapeHtml(formatManilaDateTime(row.agreed_at))}`,
+      getTelegramChatId('ops'),
+    );
 
     // Fire-and-forget confirmation email — never block the response.
     void (async () => {
