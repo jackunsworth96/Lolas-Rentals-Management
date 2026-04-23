@@ -7,7 +7,7 @@ import { ExtendOrderModal } from './ExtendOrderModal.js';
 import { InspectionModal } from './InspectionModal.js';
 import { MayaPaymentModal } from './MayaPaymentModal.js';
 import { useInspectionByOrder } from '../../api/inspections.js';
-import { useCollectPayment, useSettleOrder, useSwapVehicle } from '../../api/orders.js';
+import { useCollectPayment, useSettleOrder, useSwapVehicle, useUpdateDropoffNote } from '../../api/orders.js';
 import { useFleet } from '../../api/fleet.js';
 import { usePaymentMethods, useChartOfAccounts, useFleetStatuses } from '../../api/config.js';
 import { formatCurrency } from '../../utils/currency.js';
@@ -92,7 +92,15 @@ export function OrderDetailSummaryTab({
   const collectPaymentMut = useCollectPayment();
   const settleOrder = useSettleOrder();
   const swapVehicle = useSwapVehicle();
+  const updateDropoffNote = useUpdateDropoffNote();
   const routing = usePaymentRouting();
+
+  const [dropoffNote, setDropoffNote] = useState(order.dropoffLocationNote ?? '');
+  const [dropoffNoteEditing, setDropoffNoteEditing] = useState(false);
+
+  useEffect(() => {
+    setDropoffNote(order.dropoffLocationNote ?? '');
+  }, [order.dropoffLocationNote]);
 
   const customerEmailForPaw = useMemo(
     () =>
@@ -709,6 +717,61 @@ export function OrderDetailSummaryTab({
             <dd className="mt-1 rounded bg-sand-brand p-2 text-sm">{order.webNotes}</dd>
           </div>
         )}
+
+        {/* ── Dropoff meeting point ── */}
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-charcoal-brand/60">Dropoff meeting point</span>
+            {!dropoffNoteEditing && canEditOrders && (
+              <button
+                type="button"
+                onClick={() => setDropoffNoteEditing(true)}
+                className="text-xs text-teal-brand hover:underline"
+              >
+                {dropoffNote ? 'Edit' : 'Add'}
+              </button>
+            )}
+          </div>
+          {dropoffNoteEditing ? (
+            <div className="mt-1 flex gap-2">
+              <input
+                type="text"
+                value={dropoffNote}
+                onChange={(e) => setDropoffNote(e.target.value)}
+                placeholder="e.g. Bravo Resort, General Luna"
+                maxLength={500}
+                className="flex-1 rounded border border-gray-300 px-2 py-1 text-sm focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand"
+              />
+              <button
+                type="button"
+                disabled={updateDropoffNote.isPending}
+                onClick={() => {
+                  updateDropoffNote.mutate(
+                    { id: orderId, note: dropoffNote.trim() || null },
+                    { onSuccess: () => setDropoffNoteEditing(false) },
+                  );
+                }}
+                className="rounded bg-teal-brand px-3 py-1 text-sm text-white hover:bg-teal-brand/90 disabled:opacity-50"
+              >
+                {updateDropoffNote.isPending ? 'Saving…' : 'Save'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setDropoffNote(order.dropoffLocationNote ?? ''); setDropoffNoteEditing(false); }}
+                className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <p className="mt-0.5 text-sm">
+              {dropoffNote || <span className="italic text-charcoal-brand/40">Not set</span>}
+            </p>
+          )}
+          {updateDropoffNote.error && (
+            <p className="mt-1 text-xs text-red-600">{(updateDropoffNote.error as Error).message}</p>
+          )}
+        </div>
 
         {/* ── Action sections (only for active orders) ── */}
         {canAct && (

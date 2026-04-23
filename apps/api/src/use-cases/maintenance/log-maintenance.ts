@@ -16,6 +16,7 @@ import { formatManilaDate } from '../../utils/manila-date.js';
 export interface LogMaintenanceInput {
   assetId: string;
   issueDescription: string;
+  status?: 'Reported' | 'In Progress' | 'Completed';
   mechanic: string | null;
   odometer: number | null;
   employeeId: string | null;
@@ -61,7 +62,7 @@ export async function logMaintenance(
     id: randomUUID(),
     assetId: input.assetId,
     vehicleName: vehicle.name,
-    status: 'Reported',
+    status: input.status ?? 'Reported',
     downtimeTracked,
     downtimeStart: downtimeTracked ? downtimeStart : null,
     downtimeEnd: null,

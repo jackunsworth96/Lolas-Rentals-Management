@@ -13,6 +13,7 @@ import type { MaintenanceRecord } from '@lolas/domain';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { sendEmail, maintenanceLogHtml, escapeHtml, NOTIFICATION_EMAIL, INTERNAL_FROM_EMAIL } from '../services/email.js';
 import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
+import { formatManilaDateTime } from '../utils/manila-date.js';
 
 function toDto(r: MaintenanceRecord) {
   return {
@@ -106,18 +107,23 @@ router.post('/', requirePermission(Permission.EditMaintenance), validateBody(Log
           }
         }
 
-        const plate = v?.plate_number ?? result.vehicleName ?? result.assetId;
+        const plate = v?.plate_number ?? result.assetId;
+        const vehicleName = result.vehicleName ?? plate;
         const loggedBy = req.user?.username ?? 'unknown';
         const rawNotes = result.issueDescription ?? '';
         const truncatedNotes = rawNotes.length > 100 ? `${rawNotes.slice(0, 100)}…` : rawNotes;
         const storeLabel = v?.store_id ?? result.storeId;
+        const statusLabel = result.status ?? 'Reported';
+        const timestamp = formatManilaDateTime(new Date());
 
         void sendTelegramAlert(
           `🔩 <b>Maintenance Logged</b>\n` +
-            `Vehicle: ${escapeHtml(plate)} — ${escapeHtml(modelName)}\n` +
-            `Type: ${escapeHtml(truncatedNotes || '—')}\n` +
-            `Logged by: ${escapeHtml(loggedBy)}\n` +
-            `Store: ${escapeHtml(storeLabel)}`,
+            `🚲 Vehicle: ${escapeHtml(vehicleName)} (${escapeHtml(modelName)}) — ${escapeHtml(plate)}\n` +
+            `📋 Issue: ${escapeHtml(truncatedNotes || '—')}\n` +
+            `🔖 Status: ${escapeHtml(statusLabel)}\n` +
+            `👤 Logged by: ${escapeHtml(loggedBy)}\n` +
+            `🏪 Store: ${escapeHtml(storeLabel)}\n` +
+            `🕐 ${escapeHtml(timestamp)}`,
           getTelegramChatId('maintenance'),
         );
 
@@ -158,10 +164,67 @@ router.post('/', requirePermission(Permission.EditMaintenance), validateBody(Log
 router.put('/:id', requirePermission(Permission.EditMaintenance), validateBody(SaveMaintenanceRequestSchema), async (req, res, next) => {
   try {
     const { saveMaintenance } = await import('../use-cases/maintenance/save-maintenance.js');
+
+    // Capture the previous status before saving so we can detect a change.
+    const existing = await req.app.locals.deps.maintenanceRepo.findById(req.params.id as string);
+    const previousStatus = existing?.status;
+
     const result = await saveMaintenance(req.params.id as string, req.body, {
       maintenance: req.app.locals.deps.maintenanceRepo,
       fleet: req.app.locals.deps.fleetRepo,
     });
+
+    // Fire-and-forget Telegram alert only when the status actually changed.
+    const newStatus = req.body.status as string | undefined;
+    if (newStatus && newStatus !== previousStatus) {
+      void (async () => {
+        try {
+          const sb = getSupabaseClient();
+          const { data: vehicle } = await sb
+            .from('fleet')
+            .select('plate_number, model_id, store_id')
+            .eq('id', result.assetId)
+            .maybeSingle();
+
+          const v = vehicle as {
+            plate_number?: string;
+            model_id?: string | null;
+            store_id?: string | null;
+          } | null;
+
+          let modelName = '—';
+          if (v?.model_id) {
+            const { data: mdl } = await sb
+              .from('vehicle_models')
+              .select('name')
+              .eq('id', v.model_id)
+              .maybeSingle();
+            if (mdl && typeof (mdl as { name?: string }).name === 'string') {
+              modelName = (mdl as { name: string }).name;
+            }
+          }
+
+          const plate = v?.plate_number ?? result.assetId;
+          const vehicleName = result.vehicleName ?? plate;
+          const updatedBy = req.user?.username ?? 'unknown';
+          const storeLabel = v?.store_id ?? result.storeId;
+          const timestamp = formatManilaDateTime(new Date());
+
+          void sendTelegramAlert(
+            `🔄 <b>Maintenance Status Updated</b>\n` +
+              `🚲 Vehicle: ${escapeHtml(vehicleName)} (${escapeHtml(modelName)}) — ${escapeHtml(plate)}\n` +
+              `🔖 Status: ${escapeHtml(previousStatus ?? '—')} → <b>${escapeHtml(newStatus)}</b>\n` +
+              `👤 Updated by: ${escapeHtml(updatedBy)}\n` +
+              `🏪 Store: ${escapeHtml(storeLabel)}\n` +
+              `🕐 ${escapeHtml(timestamp)}`,
+            getTelegramChatId('maintenance'),
+          );
+        } catch (tgErr) {
+          console.error('[maintenance] Telegram status-update error:', tgErr);
+        }
+      })();
+    }
+
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });

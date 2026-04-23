@@ -220,7 +220,24 @@ router.get('/:id', requirePermission(Permission.ViewInbox), async (req, res, nex
       const em = (c as { email?: string } | null)?.email?.trim();
       customerEmail = em || null;
     }
-    res.json({ success: true, data: { ...base, customerEmail } });
+    const { data: noteRow } = await supabase
+      .from('orders')
+      .select('dropoff_location_note')
+      .eq('id', req.params.id)
+      .maybeSingle();
+    const dropoffLocationNote = (noteRow as { dropoff_location_note?: string | null } | null)?.dropoff_location_note ?? null;
+    res.json({ success: true, data: { ...base, customerEmail, dropoffLocationNote } });
+  } catch (err) { next(err); }
+});
+
+router.patch('/:id/dropoff-note', requirePermission(Permission.EditOrders), validateBody(z.object({ note: z.string().max(500).nullable() })), async (req, res, next) => {
+  try {
+    const { error } = await supabase
+      .from('orders')
+      .update({ dropoff_location_note: (req.body as { note: string | null }).note })
+      .eq('id', req.params.id);
+    if (error) throw new Error(error.message);
+    res.json({ success: true });
   } catch (err) { next(err); }
 });
 

@@ -610,6 +610,7 @@ const processBodySchema = z.object({
   settlementRef: z.string().nullable().optional(),
   excludeTransferFromBalance: z.boolean().optional().default(false),
   transferAccommodation: z.string().max(500).nullable().optional(),
+  dropoffLocationNote: z.string().max(500).nullable().optional(),
 });
 
 router.post('/:id/process', requirePermission(Permission.EditOrders), async (req, res, next) => {
@@ -708,6 +709,14 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
       excludeTransferFromBalance: body.excludeTransferFromBalance ?? false,
       transferAccommodation: body.transferAccommodation ?? null,
     });
+
+    // Persist the optional dropoff meeting-point note on the created order.
+    if (body.dropoffLocationNote && result.order?.id) {
+      await supabase
+        .from('orders')
+        .update({ dropoff_location_note: body.dropoffLocationNote })
+        .eq('id', result.order.id as string);
+    }
 
     res.json({ success: true, data: result });
 

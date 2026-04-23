@@ -5,6 +5,7 @@ export const MaintenanceStatusEnum = z.enum(['Reported', 'In Progress', 'Complet
 export const LogMaintenanceRequestSchema = z.object({
   assetId: z.string(),
   issueDescription: z.string().min(1),
+  status: MaintenanceStatusEnum.optional(),
   mechanic: z.string().nullable().default(null),
   odometer: z.number().nullable().default(null),
   employeeId: z.string().nullable().default(null),

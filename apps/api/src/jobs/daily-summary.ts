@@ -4,45 +4,163 @@ import { formatManilaDate, formatManilaDateTime } from '../utils/manila-date.js'
 import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
 import { escapeHtml } from '../services/email.js';
 
-/**
- * Daily operations snapshot posted to TELEGRAM_DAILY_CHAT_ID every morning
- * at 07:00 Manila time. Gives the owner a one-shot overview without needing
- * to open the backoffice.
- *
- * Everything in this job is best-effort: query errors are logged and the
- * partial summary is still sent where possible, so a single bad table
- * never silences the whole post.
- */
-export function startDailySummaryJob(): void {
-  cron.schedule(
-    '0 7 * * *',
-    () => {
-      void runDailySummary();
-    },
-    { timezone: 'Asia/Manila' },
-  );
-  console.log('[daily-summary] Job scheduled (07:00 Asia/Manila)');
+// ─── Shared helpers ────────────────────────────────────────────────────────
+
+function manilaHour(isoString: string): number {
+  return new Date(
+    new Date(isoString).toLocaleString('en-US', { timeZone: 'Asia/Manila' }),
+  ).getHours();
 }
 
-export async function runDailySummary(): Promise<void> {
-  console.log('[daily-summary] Running...');
+function formatBalanceLine(balanceDue: number | string | null): string {
+  const n = Number(balanceDue ?? 0);
+  if (n <= 0) return '';
+  return ` — Balance: ₱${n.toLocaleString('en-PH')}`;
+}
+
+function formatDropoffTime(isoString: string): string {
+  return new Date(isoString).toLocaleTimeString('en-PH', {
+    timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit', hour12: true,
+  });
+}
+
+function buildDateWindow(dateStr: string) {
+  return {
+    start: `${dateStr}T00:00:00+08:00`,
+    end: `${dateStr}T23:59:59.999+08:00`,
+  };
+}
+
+// ─── Types ─────────────────────────────────────────────────────────────────
+
+type ReturningRow = {
+  order_id: string;
+  vehicle_name: string | null;
+  dropoff_datetime: string;
+  dropoff_location: string | null;
+};
+
+type OrderMeta = {
+  customer_id: string;
+  booking_token: string | null;
+  balance_due: number | null;
+  dropoff_location_note: string | null;
+};
+
+// ─── Shared query: returning orders for a given date window ────────────────
+
+async function fetchReturnsForDate(dateStr: string): Promise<{
+  lines: Array<{
+    ref: string;
+    name: string;
+    vehicle: string;
+    time: string;
+    location: string;
+    note: string | null;
+    balanceDue: number;
+    hour: number;
+  }>;
+}> {
+  const sb = getSupabaseClient();
+  const { start, end } = buildDateWindow(dateStr);
+
+  const { data: items, error: itemsErr } = await sb
+    .from('order_items')
+    .select('order_id, vehicle_name, dropoff_datetime, dropoff_location')
+    .gte('dropoff_datetime', start)
+    .lte('dropoff_datetime', end);
+
+  if (itemsErr) throw new Error(itemsErr.message);
+
+  const rows = (items ?? []) as ReturningRow[];
+  const orderIds = [...new Set(rows.map((r) => r.order_id))];
+  if (orderIds.length === 0) return { lines: [] };
+
+  const { data: orders } = await sb
+    .from('orders')
+    .select('id, customer_id, booking_token, balance_due, dropoff_location_note, status')
+    .in('id', orderIds)
+    .eq('status', 'active');
+
+  const orderMap = new Map<string, OrderMeta>();
+  for (const o of (orders ?? []) as Array<{ id: string; customer_id: string; booking_token: string | null; balance_due: number | null; dropoff_location_note: string | null }>) {
+    orderMap.set(o.id, {
+      customer_id: o.customer_id,
+      booking_token: o.booking_token,
+      balance_due: o.balance_due,
+      dropoff_location_note: o.dropoff_location_note,
+    });
+  }
+
+  const custIds = [...new Set([...orderMap.values()].map((o) => o.customer_id).filter(Boolean))];
+  const custNameMap = new Map<string, string>();
+  if (custIds.length > 0) {
+    const { data: custs } = await sb.from('customers').select('id, name').in('id', custIds);
+    for (const c of (custs ?? []) as Array<{ id: string; name: string | null }>) {
+      custNameMap.set(c.id, c.name ?? '—');
+    }
+  }
+
+  const lines = rows
+    .filter((r) => orderMap.has(r.order_id))
+    .sort((a, b) => (a.dropoff_datetime < b.dropoff_datetime ? -1 : 1))
+    .map((r) => {
+      const meta = orderMap.get(r.order_id)!;
+      return {
+        ref: meta.booking_token ?? '—',
+        name: custNameMap.get(meta.customer_id) ?? '—',
+        vehicle: r.vehicle_name ?? '—',
+        time: formatDropoffTime(r.dropoff_datetime),
+        location: r.dropoff_location ?? 'Lola\'s Rentals',
+        note: meta.dropoff_location_note ?? null,
+        balanceDue: Number(meta.balance_due ?? 0),
+        hour: manilaHour(r.dropoff_datetime),
+      };
+    });
+
+  return { lines };
+}
+
+function formatReturnLine(r: { ref: string; name: string; vehicle: string; time: string; location: string; note: string | null; balanceDue: number }): string {
+  const locPart = r.note
+    ? `${escapeHtml(r.location)} (${escapeHtml(r.note)})`
+    : escapeHtml(r.location);
+  const balancePart = formatBalanceLine(r.balanceDue);
+  return `• ${escapeHtml(r.ref)} — ${escapeHtml(r.name)} — ${escapeHtml(r.vehicle)} — ${escapeHtml(r.time)}\n  📍 ${locPart}${balancePart}`;
+}
+
+// ─── 7 AM morning briefing ─────────────────────────────────────────────────
+
+export function startDailySummaryJob(): void {
+  // Morning briefing: active counts + today's returns (with 9 PM called out)
+  cron.schedule(
+    '0 7 * * *',
+    () => { void runMorningSummary(); },
+    { timezone: 'Asia/Manila' },
+  );
+
+  // End-of-day snapshot: tonight's 9 PM count + tomorrow's returns + availability
+  cron.schedule(
+    '0 18 * * *',
+    () => { void runEveningSnapshot(); },
+    { timezone: 'Asia/Manila' },
+  );
+
+  console.log('[daily-summary] Jobs scheduled (07:00 morning + 18:00 evening, Asia/Manila)');
+}
+
+export async function runMorningSummary(): Promise<void> {
+  console.log('[daily-summary] Running morning summary...');
   try {
     const chatId = getTelegramChatId('daily');
     if (!chatId) {
-      console.warn('[daily-summary] TELEGRAM_DAILY_CHAT_ID missing — skipping summary');
+      console.warn('[daily-summary] TELEGRAM_DAILY_CHAT_ID missing — skipping morning summary');
       return;
     }
 
     const sb = getSupabaseClient();
-    const todayStr = formatManilaDate();                                 // YYYY-MM-DD (Manila)
-    const tomorrowDate = new Date(`${todayStr}T00:00:00+08:00`);
-    tomorrowDate.setUTCDate(tomorrowDate.getUTCDate() + 1);
-    const tomorrowStr = formatManilaDate(tomorrowDate);
-
-    const todayStart    = `${todayStr}T00:00:00+08:00`;
-    const todayEnd      = `${todayStr}T23:59:59.999+08:00`;
-    const tomorrowStart = `${tomorrowStr}T00:00:00+08:00`;
-    const tomorrowEnd   = `${tomorrowStr}T23:59:59.999+08:00`;
+    const todayStr = formatManilaDate();
+    const timestamp = formatManilaDateTime(new Date());
 
     // 1. Active orders count + outstanding balances
     let activeCount = 0;
@@ -53,7 +171,7 @@ export async function runDailySummary(): Promise<void> {
         .select('id, balance_due')
         .eq('status', 'active');
       if (error) throw new Error(error.message);
-      const rows = (activeOrders ?? []) as Array<{ id: string; balance_due: number | string | null }>;
+      const rows = (activeOrders ?? []) as Array<{ balance_due: number | string | null }>;
       activeCount = rows.length;
       outstandingBalance = rows.reduce((sum, r) => sum + Number(r.balance_due ?? 0), 0);
     } catch (err) {
@@ -73,66 +191,96 @@ export async function runDailySummary(): Promise<void> {
       console.error('[daily-summary] inbox count query failed:', err);
     }
 
-    // 3. Orders returning today (Manila)
-    type ReturningRow = {
-      order_id: string;
-      vehicle_name: string | null;
-      dropoff_datetime: string;
-    };
-    let returningLines: string[] = [];
+    // 3. Today's returns (all) + 9 PM called out separately
+    let allReturnLines: string[] = [];
+    let eveningReturnLines: string[] = [];
+    let eveningCount = 0;
     try {
-      const { data: items, error: itemsErr } = await sb
-        .from('order_items')
-        .select('order_id, vehicle_name, dropoff_datetime')
-        .gte('dropoff_datetime', todayStart)
-        .lte('dropoff_datetime', todayEnd);
-      if (itemsErr) throw new Error(itemsErr.message);
-
-      const rows = (items ?? []) as ReturningRow[];
-      const orderIds = [...new Set(rows.map((r) => r.order_id))];
-
-      let activeOrderMap = new Map<string, { customer_id: string; booking_token: string | null }>();
-      if (orderIds.length > 0) {
-        const { data: orders } = await sb
-          .from('orders')
-          .select('id, customer_id, booking_token, status')
-          .in('id', orderIds)
-          .eq('status', 'active');
-        for (const o of (orders ?? []) as Array<{ id: string; customer_id: string; booking_token: string | null }>) {
-          activeOrderMap.set(o.id, { customer_id: o.customer_id, booking_token: o.booking_token });
-        }
-      }
-
-      const custIds = [...new Set([...activeOrderMap.values()].map((o) => o.customer_id).filter(Boolean))];
-      const custNameMap = new Map<string, string>();
-      if (custIds.length > 0) {
-        const { data: custs } = await sb.from('customers').select('id, name').in('id', custIds);
-        for (const c of (custs ?? []) as Array<{ id: string; name: string | null }>) {
-          custNameMap.set(c.id, c.name ?? '—');
-        }
-      }
-
-      returningLines = rows
-        .filter((r) => activeOrderMap.has(r.order_id))
-        .sort((a, b) => (a.dropoff_datetime < b.dropoff_datetime ? -1 : 1))
-        .map((r) => {
-          const meta = activeOrderMap.get(r.order_id)!;
-          const ref = meta.booking_token ?? '—';
-          const name = custNameMap.get(meta.customer_id) ?? '—';
-          const vehicle = r.vehicle_name ?? '—';
-          const time = new Date(r.dropoff_datetime).toLocaleTimeString('en-PH', {
-            timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit', hour12: true,
-          });
-          return `• ${escapeHtml(ref)} — ${escapeHtml(name)} — ${escapeHtml(vehicle)} — ${escapeHtml(time)}`;
-        });
+      const { lines } = await fetchReturnsForDate(todayStr);
+      allReturnLines = lines.map(formatReturnLine);
+      const eveningReturns = lines.filter((r) => r.hour >= 21);
+      eveningCount = eveningReturns.length;
+      eveningReturnLines = eveningReturns.map(formatReturnLine);
     } catch (err) {
       console.error('[daily-summary] returning-today query failed:', err);
     }
 
-    // 4. Tomorrow's availability by vehicle model
-    //    Pool = vehicles with status in ('Available','Active').
-    //    Rented tomorrow = distinct vehicle_id in order_items that overlap
-    //    tomorrow's Manila day window, on an active order.
+    const divider = '━━━━━━━━━━━━━━━━━━━━━━━━━';
+    const dayHeader = formatManilaDateTime(new Date()).split(',').slice(0, 2).join(',');
+
+    const returningSection = allReturnLines.length > 0
+      ? allReturnLines.join('\n')
+      : '• None scheduled';
+
+    const eveningSection = eveningReturnLines.length > 0
+      ? eveningReturnLines.join('\n')
+      : '• None';
+
+    const message =
+      `🌅 <b>Good morning! Lola's Daily Briefing</b>\n` +
+      `📅 ${escapeHtml(dayHeader)}\n` +
+      `${divider}\n` +
+      `🛵 Active rentals: ${activeCount}\n` +
+      `📥 Inbox (unprocessed): ${inboxCount}\n` +
+      `💰 Outstanding balances: ₱${outstandingBalance.toLocaleString('en-PH')}\n` +
+      `${divider}\n` +
+      `<b>Returns today:</b>\n` +
+      `${returningSection}\n` +
+      `${divider}\n` +
+      `<b>🌙 9 PM returns tonight (${eveningCount}):</b>\n` +
+      `${eveningSection}\n` +
+      `${divider}\n` +
+      `🕐 ${escapeHtml(timestamp)}\n` +
+      `Have a great day! 🐾`;
+
+    await sendTelegramAlert(message, chatId);
+    console.log('[daily-summary] Morning summary sent');
+  } catch (err) {
+    console.error('[daily-summary] Morning job error:', err);
+  }
+}
+
+// ─── 6 PM end-of-day snapshot ──────────────────────────────────────────────
+
+export async function runEveningSnapshot(): Promise<void> {
+  console.log('[daily-summary] Running evening snapshot...');
+  try {
+    const chatId = getTelegramChatId('daily');
+    if (!chatId) {
+      console.warn('[daily-summary] TELEGRAM_DAILY_CHAT_ID missing — skipping evening snapshot');
+      return;
+    }
+
+    const sb = getSupabaseClient();
+    const todayStr = formatManilaDate();
+    const tomorrowDate = new Date(`${todayStr}T00:00:00+08:00`);
+    tomorrowDate.setUTCDate(tomorrowDate.getUTCDate() + 1);
+    const tomorrowStr = formatManilaDate(tomorrowDate);
+    const timestamp = formatManilaDateTime(new Date());
+
+    // 1. Tonight's 9 PM returns — final confirmed count
+    let eveningCount = 0;
+    let eveningLines: string[] = [];
+    try {
+      const { lines } = await fetchReturnsForDate(todayStr);
+      const eveningReturns = lines.filter((r) => r.hour >= 21);
+      eveningCount = eveningReturns.length;
+      eveningLines = eveningReturns.map(formatReturnLine);
+    } catch (err) {
+      console.error('[daily-summary] tonight 9pm query failed:', err);
+    }
+
+    // 2. Tomorrow's returns (with location + note + balance)
+    let tomorrowReturnLines: string[] = [];
+    try {
+      const { lines } = await fetchReturnsForDate(tomorrowStr);
+      tomorrowReturnLines = lines.map(formatReturnLine);
+    } catch (err) {
+      console.error('[daily-summary] tomorrow returns query failed:', err);
+    }
+
+    // 3. Tomorrow's availability by vehicle model
+    const { start: tomorrowStart, end: tomorrowEnd } = buildDateWindow(tomorrowStr);
     let availabilityLines: string[] = [];
     try {
       const { data: models, error: modelsErr } = await sb
@@ -146,7 +294,6 @@ export async function runDailySummary(): Promise<void> {
         .in('status', ['Available', 'Active']);
       if (fleetErr) throw new Error(fleetErr.message);
 
-      // Rented tomorrow
       const { data: itemsTomorrow } = await sb
         .from('order_items')
         .select('vehicle_id, order_id, pickup_datetime, dropoff_datetime')
@@ -173,10 +320,9 @@ export async function runDailySummary(): Promise<void> {
         }
       }
 
-      // Group fleet by model
       const totalByModel = new Map<string, number>();
       const rentedByModel = new Map<string, number>();
-      for (const v of (fleet ?? []) as Array<{ id: string; model_id: string | null; status: string }>) {
+      for (const v of (fleet ?? []) as Array<{ id: string; model_id: string | null }>) {
         if (!v.model_id) continue;
         totalByModel.set(v.model_id, (totalByModel.get(v.model_id) ?? 0) + 1);
         if (rentedVehicleIds.has(v.id)) {
@@ -202,12 +348,14 @@ export async function runDailySummary(): Promise<void> {
       console.error('[daily-summary] availability query failed:', err);
     }
 
-    // ── Format message ──
-    const dayHeader = formatManilaDateTime(new Date()).split(',').slice(0, 2).join(',');
     const divider = '━━━━━━━━━━━━━━━━━━━━━━━━━';
 
-    const returningSection = returningLines.length > 0
-      ? returningLines.join('\n')
+    const eveningSection = eveningLines.length > 0
+      ? eveningLines.join('\n')
+      : '• None';
+
+    const tomorrowReturnsSection = tomorrowReturnLines.length > 0
+      ? tomorrowReturnLines.join('\n')
       : '• None scheduled';
 
     const availabilitySection = availabilityLines.length > 0
@@ -215,24 +363,26 @@ export async function runDailySummary(): Promise<void> {
       : '• No model data';
 
     const message =
-      `🌅 <b>Good morning! Lola's Daily Summary</b>\n` +
-      `📅 ${escapeHtml(dayHeader)}\n` +
+      `🌆 <b>Lola's End-of-Day Snapshot</b>\n` +
       `${divider}\n` +
-      `🛵 Active rentals: ${activeCount}\n` +
-      `📥 Inbox (unprocessed): ${inboxCount}\n` +
-      `💰 Outstanding balances: ₱${outstandingBalance.toLocaleString('en-PH')}\n` +
+      `<b>🌙 9 PM returns tonight — final count: ${eveningCount}</b>\n` +
+      `${eveningSection}\n` +
       `${divider}\n` +
-      `<b>Returning today:</b>\n` +
-      `${returningSection}\n` +
+      `<b>Returns tomorrow:</b>\n` +
+      `${tomorrowReturnsSection}\n` +
       `${divider}\n` +
       `<b>Tomorrow's availability:</b>\n` +
       `${availabilitySection}\n` +
       `${divider}\n` +
-      `Have a great day! 🐾`;
+      `🕐 ${escapeHtml(timestamp)}\n` +
+      `Good evening! 🐾`;
 
     await sendTelegramAlert(message, chatId);
-    console.log('[daily-summary] Sent');
+    console.log('[daily-summary] Evening snapshot sent');
   } catch (err) {
-    console.error('[daily-summary] Job error:', err);
+    console.error('[daily-summary] Evening job error:', err);
   }
 }
+
+// Keep the old export name so anything that imported runDailySummary still compiles.
+export { runMorningSummary as runDailySummary };

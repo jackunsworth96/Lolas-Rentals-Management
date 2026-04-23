@@ -156,6 +156,7 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
       {
         assetId,
         issueDescription: issueDescription.trim(),
+        status,
         mechanic: mechanic.trim() || null,
         odometer: odometer === '' ? null : Number(odometer),
         storeId,
@@ -228,6 +229,14 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="km" />
             </label>
           </div>
+
+          <label className="block">
+            <span className="text-sm font-medium text-gray-700">Status</span>
+            <select value={status} onChange={(e) => setStatus(e.target.value)}
+              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </label>
 
           <label className="block">
             <span className="text-sm font-medium text-gray-700">Issue description *</span>

@@ -72,6 +72,7 @@ export interface ProcessRawOrderPayload {
   settlementRef?: string | null;
   excludeTransferFromBalance?: boolean;
   transferAccommodation?: string | null;
+  dropoffLocationNote?: string | null;
 }
 
 export function useProcessRawOrder() {

@@ -71,6 +71,7 @@ export type OrderDetail = {
   bookingToken?: string | null;
   booking_token?: string;
   balance_due?: unknown;
+  dropoffLocationNote?: string | null;
 };
 
 /**

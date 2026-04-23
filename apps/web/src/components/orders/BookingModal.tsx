@@ -230,6 +230,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const [preActivationMethodId, setPreActivationMethodId] = useState('');
   const [preActivationRef, setPreActivationRef] = useState('');
   const [preActivationAmount, setPreActivationAmount] = useState<number | ''>('');
+  const [dropoffLocationNote, setDropoffLocationNote] = useState('');
 
   const { data: vehicleModels } = useVehicleModels() as { data: Array<{ id: string; name: string }> | undefined };
   const { data: fleet } = useFleet(storeId) as { data: Array<Record<string, unknown>> | undefined };
@@ -268,6 +269,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     setPreActivationMethodId('');
     setPreActivationRef('');
     setPreActivationAmount('');
+    setDropoffLocationNote('');
 
     let pickup = '';
     let dropoff = '';
@@ -647,6 +649,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
       settlementRef: surchargePercent > 0 ? (settlementRef || null) : null,
       excludeTransferFromBalance: transferPaidByCustomer,
       transferAccommodation: transferAccommodation.trim() || null,
+      dropoffLocationNote: dropoffLocationNote.trim() || null,
     };
   }
 
@@ -1565,6 +1568,24 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Dropoff meeting point */}
+            <div className="rounded-lg border border-gray-200 p-4">
+              <label className="block">
+                <span className="text-sm font-medium text-gray-700">Dropoff meeting point</span>
+                <p className="text-xs text-gray-500 mb-1">
+                  Only needed when the dropoff is not the store — e.g. "Bravo Resort" for a General Luna return.
+                </p>
+                <input
+                  type="text"
+                  value={dropoffLocationNote}
+                  onChange={(e) => setDropoffLocationNote(e.target.value)}
+                  placeholder="e.g. Bravo Resort"
+                  maxLength={500}
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </label>
             </div>
 
             {!receivableAccount && !incomeAccount && (

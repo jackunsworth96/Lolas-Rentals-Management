@@ -142,6 +142,17 @@ export function useSwapVehicle() {
   });
 }
 
+export function useUpdateDropoffNote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, note }: { id: string; note: string | null }) =>
+      api.patch(`/orders/${id}/dropoff-note`, { note }),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: ['orders', id] });
+    },
+  });
+}
+
 export function useCreateMayaCheckout() {
   return useMutation({
     mutationFn: (params: { orderId: string; amountPHP: number; description?: string }) =>
