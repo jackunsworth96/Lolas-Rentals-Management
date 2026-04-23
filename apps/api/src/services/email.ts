@@ -1,10 +1,11 @@
 // Required env vars:
 // RESEND_API_KEY            — from resend.com dashboard
-// NOTIFICATION_EMAIL        — where to send internal staff alerts
-// NOTIFICATION_EMAIL_FROM   — verified sender domain
-//   (e.g. noreply@lolasrentals.com)
-//   Must be a verified domain in Resend dashboard,
-//   or use onboarding@resend.dev for testing
+// NOTIFICATION_EMAIL        — where to send internal staff alerts (your inbox)
+// EMAIL_FROM_CUSTOMER       — verified sender for customer-facing emails
+//   (e.g. hello@lolasrentals.com)
+// EMAIL_FROM_INTERNAL       — verified sender for internal/legal records
+//   (e.g. maintenance@lolasrentals.com)
+//   Both must be on a verified domain in Resend dashboard.
 // WHATSAPP_NUMBER           — E.164 digits only, no +, e.g. 639XXXXXXXXX
 // WEB_URL                   — public web root, e.g. https://lolasrentals.com
 
@@ -36,19 +37,24 @@ function getResend(): Resend {
   return resendClient;
 }
 
-export const FROM_EMAIL =
-  process.env.NOTIFICATION_EMAIL_FROM ?? 'noreply@lolasrentals.com';
+export const CUSTOMER_FROM_EMAIL =
+  process.env.EMAIL_FROM_CUSTOMER ?? 'hello@lolasrentals.com';
+
+export const INTERNAL_FROM_EMAIL =
+  process.env.EMAIL_FROM_INTERNAL ?? 'maintenance@lolasrentals.com';
 
 export const NOTIFICATION_EMAIL =
   process.env.NOTIFICATION_EMAIL ?? 'jack@lolasrentals.com';
 
 export async function sendEmail({
   to,
+  from,
   subject,
   html,
   text,
 }: {
   to: string | string[];
+  from?: string;
   subject: string;
   html: string;
   text?: string;
@@ -59,7 +65,7 @@ export async function sendEmail({
   }
   try {
     await getResend().emails.send({
-      from: FROM_EMAIL,
+      from: from ?? CUSTOMER_FROM_EMAIL,
       to: Array.isArray(to) ? to : [to],
       subject,
       html,

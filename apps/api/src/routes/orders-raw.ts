@@ -8,7 +8,7 @@ import { Permission, resolveStoreFromSource, resolveSourceFromStore } from '@lol
 import { supabase } from '../adapters/supabase/client.js';
 import { resolveCharityPayableAccount } from '../adapters/supabase/maintenance-expense-rpc.js';
 import { processRawOrder, type ProcessRawOrderDeps } from '../use-cases/orders/process-raw-order.js';
-import { sendEmail, bookingConfirmationHtml, bookingCancellationHtml, walkInStaffAlertHtml, escapeHtml, NOTIFICATION_EMAIL } from '../services/email.js';
+import { sendEmail, bookingConfirmationHtml, bookingCancellationHtml, walkInStaffAlertHtml, escapeHtml, NOTIFICATION_EMAIL, INTERNAL_FROM_EMAIL } from '../services/email.js';
 import { formatManilaDate, formatManilaDateTime } from '../utils/manila-date.js';
 import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
 
@@ -391,16 +391,35 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
     });
 
     // 17a. Fire-and-forget Ops channel Telegram alert
-    void sendTelegramAlert(
-      `✅ <b>Order Activated</b>\n` +
-        `Reference: ${escapeHtml(orderReference)}\n` +
-        `Customer: ${escapeHtml(body.customerName)}\n` +
-        `Vehicle: ${escapeHtml(body.vehicleName)}\n` +
-        `Pickup: ${escapeHtml(formatManilaDateTime(body.pickupDatetime))}\n` +
-        `Return: ${escapeHtml(formatManilaDateTime(body.dropoffDatetime))}\n` +
-        `Store: ${escapeHtml(body.storeId)}`,
-      getTelegramChatId('ops'),
-    );
+    {
+      const addonLines = orderAddons.length > 0
+        ? '\n<b>Add-ons:</b>\n' + orderAddons.map((a) =>
+            `  • ${escapeHtml(String(a.addon_name))}: ₱${Number(a.total_amount).toLocaleString('en-PH')}`
+          ).join('\n')
+        : '';
+      const transferLines = (body.pickupFee > 0 || body.dropoffFee > 0)
+        ? '\n<b>Transfer:</b>' +
+          (body.pickupFee > 0 ? `\n  • Pickup: ₱${body.pickupFee.toLocaleString('en-PH')}` : '') +
+          (body.dropoffFee > 0 ? `\n  • Return: ₱${body.dropoffFee.toLocaleString('en-PH')}` : '')
+        : '';
+      const charityLine = charityAmount > 0
+        ? `\n🐾 <b>Charity:</b> ₱${charityAmount.toLocaleString('en-PH')}`
+        : '';
+      void sendTelegramAlert(
+        `✅ <b>Order Activated</b>\n` +
+          `Reference: ${escapeHtml(orderReference)}\n` +
+          `Customer: ${escapeHtml(body.customerName)}\n` +
+          `Vehicle: ${escapeHtml(body.vehicleName)}\n` +
+          `Pickup: ${escapeHtml(formatManilaDateTime(body.pickupDatetime))} — ${escapeHtml(pickupLocation)}\n` +
+          `Return: ${escapeHtml(formatManilaDateTime(body.dropoffDatetime))} — ${escapeHtml(dropoffLocation)}\n` +
+          `💰 <b>Total: ₱${body.grandTotal.toLocaleString('en-PH')}</b>` +
+          addonLines +
+          transferLines +
+          charityLine +
+          `\nStore: ${escapeHtml(body.storeId)}`,
+        getTelegramChatId('ops'),
+      );
+    }
 
     // 17. Fire-and-forget booking confirmation email
     void (async () => {
@@ -444,6 +463,7 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
         // Staff alert
         void sendEmail({
           to: NOTIFICATION_EMAIL,
+          from: INTERNAL_FROM_EMAIL,
           subject: `🐾 New Walk-in — ${orderReference} — ${body.customerName}`,
           html: walkInStaffAlertHtml({
             customerName: body.customerName,
@@ -698,15 +718,35 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
       const vehicleLabel = firstAssignment?.vehicleName ?? 'Vehicle';
       const pickupFmt = formatManilaDateTime(firstAssignment?.pickupDatetime);
       const dropoffFmt = formatManilaDateTime(firstAssignment?.dropoffDatetime);
+      const pickupLoc = firstAssignment?.pickupLocation ?? 'Store';
+      const dropoffLoc = firstAssignment?.dropoffLocation ?? 'Store';
       const bookingToken = result.order.bookingToken ?? String(req.params.id ?? '');
+      const totalPickupFee = body.vehicleAssignments.reduce((s, v) => s + (v.pickupFee ?? 0), 0);
+      const totalDropoffFee = body.vehicleAssignments.reduce((s, v) => s + (v.dropoffFee ?? 0), 0);
+      const addonLines = body.addons.length > 0
+        ? '\n<b>Add-ons:</b>\n' + body.addons.map((a) =>
+            `  • ${escapeHtml(a.addonName)}: ₱${a.totalAmount.toLocaleString('en-PH')}`
+          ).join('\n')
+        : '';
+      const transferLines = (totalPickupFee > 0 || totalDropoffFee > 0)
+        ? '\n<b>Transfer:</b>' +
+          (totalPickupFee > 0 ? `\n  • Pickup: ₱${totalPickupFee.toLocaleString('en-PH')}` : '') +
+          (totalDropoffFee > 0 ? `\n  • Return: ₱${totalDropoffFee.toLocaleString('en-PH')}` : '')
+        : '';
+      const totalLine = body.webQuoteRaw != null
+        ? `\n💰 <b>Total: ₱${body.webQuoteRaw.toLocaleString('en-PH')}</b>`
+        : '';
       void sendTelegramAlert(
         `✅ <b>Order Activated</b>\n` +
           `Reference: ${escapeHtml(bookingToken)}\n` +
           `Customer: ${escapeHtml(body.customer.name)}\n` +
           `Vehicle: ${escapeHtml(vehicleLabel)}\n` +
-          `Pickup: ${escapeHtml(pickupFmt)}\n` +
-          `Return: ${escapeHtml(dropoffFmt)}\n` +
-          `Store: ${escapeHtml(body.storeId)}`,
+          `Pickup: ${escapeHtml(pickupFmt)} — ${escapeHtml(pickupLoc)}\n` +
+          `Return: ${escapeHtml(dropoffFmt)} — ${escapeHtml(dropoffLoc)}` +
+          totalLine +
+          addonLines +
+          transferLines +
+          `\nStore: ${escapeHtml(body.storeId)}`,
         getTelegramChatId('ops'),
       );
     }

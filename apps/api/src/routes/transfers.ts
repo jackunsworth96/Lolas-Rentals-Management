@@ -98,7 +98,7 @@ router.post('/:id/notify-driver', requirePermission(Permission.EditTransfers), a
       return;
     }
 
-    const { sendEmail, driverNotificationHtml } = await import('../services/email.js');
+    const { sendEmail, driverNotificationHtml, INTERNAL_FROM_EMAIL } = await import('../services/email.js');
 
     const cut = transfer.routeDriverCut ?? 0;
     const driverCut = transfer.routePricingType === 'per_head'
@@ -129,6 +129,7 @@ router.post('/:id/notify-driver', requirePermission(Permission.EditTransfers), a
 
     await sendEmail({
       to: driverEmail,
+      from: INTERNAL_FROM_EMAIL,
       subject: `Transfer job — ${transfer.customerName} — ${transfer.route}`,
       html,
     });

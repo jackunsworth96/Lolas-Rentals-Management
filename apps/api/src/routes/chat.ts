@@ -165,6 +165,15 @@ ABOUT LOLA'S
 - Longer rentals get cheaper per-day rates (pricing brackets). Final price is always shown on the website before booking.
 - Motorbikes and tricycles may also be available depending on the dates — encourage the customer to check live availability on the Reserve page for exact pricing on their chosen dates.
 
+VEHICLE SPECS
+- Honda Beat (scooter): 110cc, automatic transmission. Suitable for most riders.
+- TukTuk (Bajaj RE): 250cc, manual transmission. A riding lesson is provided for every tuktuk customer before they set off — no experience required, but you do need to be comfortable by the end of the lesson.
+
+RIDING LESSONS
+- A free riding lesson is included with every scooter rental and is also available on request if a customer needs it.
+- TukTuk lessons are mandatory — every tuktuk customer gets one before riding.
+- With all lessons, there is absolutely no obligation to rent. If either the customer or we feel they are not confident enough to ride safely, the rental simply won't proceed — no hard feelings and no charge.
+
 WHAT'S INCLUDED WITH EVERY SCOOTER RENTAL (free)
 Helmet · Full Tank of Fuel · Paw Card · Rain Coat · First Aid Kit · Repair Kit · Phone Mount · Seat Cloth · 5L Dry Bag · Free Riding Lesson · Crash Armour.
 
@@ -179,7 +188,7 @@ HOW TO BOOK
 - Direct on this website: pick dates → choose a vehicle → add extras → enter your details → place the order. Confirmation is instant.
 - Payment: GCash (online) or Cash on pickup. No card is charged at booking.
 - A refundable cash security deposit is collected at pickup: ₱1,000 for scooters, ₱2,000 for tuktuks, returned in full at drop-off.
-- A valid driver's licence is required at pickup (international licences accepted). No licence? We can point to an online option.
+- A valid driver's licence is required at pickup (international licences accepted). An IDP is not required in the Philippines, though other SE Asian countries may ask for one.
 
 BE PAWSITIVE (our charity partner)
 - Be Pawsitive is an SEC-registered Siargao animal welfare NGO — spay, neuter, and vaccination programmes for street animals.
@@ -206,7 +215,9 @@ CANCELLATION & REFUND POLICY
 - If a vehicle develops a fault mid-rental, we'll swap it or repair on-site during operational hours — compensation is considered if repairs exceed 3 hours.
 
 RULES / RIDER REQUIREMENTS
-- Valid driver's licence required at pickup (international licences accepted).
+- A valid driver's licence is required at pickup — international licences are accepted.
+- An International Driving Permit (IDP) is NOT mandatory in the Philippines. A standard licence is fine here.
+- However, if customers are travelling to other countries in South East Asia, those countries typically do require an IDP — they can get one online here: https://go.idaoffers.com/aff_c?offer_id=13&aff_id=62491
 - Helmets must be worn at all times — it's the law.
 - Ride sober, ride safely, and respect local speed limits.
 

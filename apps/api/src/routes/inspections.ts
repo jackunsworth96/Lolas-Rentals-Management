@@ -6,7 +6,7 @@ import { validateBody } from '../middleware/validate.js';
 import { Permission } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { logMaintenance } from '../use-cases/maintenance/log-maintenance.js';
-import { sendEmail, inspectionLogHtml, escapeHtml } from '../services/email.js';
+import { sendEmail, inspectionLogHtml, escapeHtml, INTERNAL_FROM_EMAIL } from '../services/email.js';
 import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
 
 const router = Router();
@@ -363,6 +363,7 @@ router.post(
 
             await sendEmail({
               to: INSPECTION_LOG_EMAIL,
+              from: INTERNAL_FROM_EMAIL,
               subject: `🔍 Inspection — ${body.vehicleName ?? 'Vehicle'} — ${body.orderReference} — ${loggedAt}`,
               html: inspectionLogHtml({
                 inspectionId,

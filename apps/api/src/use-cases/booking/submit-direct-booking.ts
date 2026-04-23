@@ -9,11 +9,12 @@ import {
   bookingStaffAlertHtml,
   escapeHtml,
   NOTIFICATION_EMAIL,
+  INTERNAL_FROM_EMAIL,
 } from '../../services/email.js';
 import { getSupabaseClient } from '../../adapters/supabase/client.js';
 import { formatManilaDate } from '../../utils/manila-date.js';
 import { publicWebOriginFromEnv } from '../../lib/public-web-url.js';
-import { sendTelegramAlert } from '../../lib/telegram.js';
+import { getTelegramChatId, sendTelegramAlert } from '../../lib/telegram.js';
 
 function formatManilaDateTime(iso: string): string {
   return new Date(iso).toLocaleString('en-PH', {
@@ -327,6 +328,7 @@ export async function submitDirectBooking(
 
     void sendEmail({
       to: NOTIFICATION_EMAIL,
+      from: INTERNAL_FROM_EMAIL,
       subject: `🐾 New Booking — ${orderReference} — ${input.customerName}`,
       html: bookingStaffAlertHtml({
         customerName: input.customerName,
@@ -355,6 +357,7 @@ export async function submitDirectBooking(
         `Vehicle: ${escapeHtml(vehicleName)}\n` +
         `Dates: ${escapeHtml(pickupFmt)} → ${escapeHtml(dropoffFmt)}\n` +
         `Total: ₱${grandTotal.toLocaleString('en-PH')}`,
+      getTelegramChatId('ops'),
     );
   })();
 

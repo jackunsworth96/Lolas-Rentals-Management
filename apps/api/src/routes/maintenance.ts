@@ -11,7 +11,7 @@ import {
 } from '@lolas/shared';
 import type { MaintenanceRecord } from '@lolas/domain';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
-import { sendEmail, maintenanceLogHtml, escapeHtml, NOTIFICATION_EMAIL } from '../services/email.js';
+import { sendEmail, maintenanceLogHtml, escapeHtml, NOTIFICATION_EMAIL, INTERNAL_FROM_EMAIL } from '../services/email.js';
 import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
 
 function toDto(r: MaintenanceRecord) {
@@ -123,6 +123,7 @@ router.post('/', requirePermission(Permission.EditMaintenance), validateBody(Log
 
         void sendEmail({
           to: NOTIFICATION_EMAIL,
+          from: INTERNAL_FROM_EMAIL,
           subject: `🔧 Maintenance Logged — ${result.vehicleName ?? result.assetId}`,
           html: maintenanceLogHtml(
             {
