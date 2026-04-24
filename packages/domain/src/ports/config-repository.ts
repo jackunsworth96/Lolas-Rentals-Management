@@ -36,6 +36,7 @@ export interface PaymentMethod {
   isDepositEligible: boolean;
   isActive: boolean;
   surchargePercent: number;
+  showOnCustomerWebsite: boolean;
 }
 
 export interface VehicleModel {

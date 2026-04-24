@@ -43,6 +43,7 @@ export function RentalSummaryCard({
   calendarUrl,
 }: Props) {
   const { t } = useTranslation();
+  const isTuktuk = vehicleModelName.toLowerCase().includes('tuktuk') || vehicleModelName.toLowerCase().includes('tuk tuk');
   return (
     <div className="flex h-full w-full flex-col rounded-2xl bg-white p-6 shadow-sm text-left">
 
@@ -60,15 +61,17 @@ export function RentalSummaryCard({
       </div>
       <p className="mb-5 text-sm text-charcoal-brand/50 font-lato">Lola's Rentals Store</p>
 
-      {/* What's included */}
-      <div className="mb-5">
-        <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-charcoal-brand/50 font-lato">
-          {t('browse.whatsIncluded')}
-        </p>
-        <div className="rounded-xl border border-charcoal-brand/8 bg-sand-brand/30 px-3 py-4">
-          <RentalIncludedIconsGrid variant="card" showOptionals={false} />
+      {/* What's included — only shown for scooters, not tuktuks */}
+      {!isTuktuk && (
+        <div className="mb-5">
+          <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-charcoal-brand/50 font-lato">
+            {t('browse.whatsIncluded')}
+          </p>
+          <div className="rounded-xl border border-charcoal-brand/8 bg-sand-brand/30 px-3 py-4">
+            <RentalIncludedIconsGrid variant="card" showOptionals={false} />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Pickup / dropoff */}
       <div className="mb-1 grid grid-cols-2 gap-4 border-t border-charcoal-brand/8 pt-5">

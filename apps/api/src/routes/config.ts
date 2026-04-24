@@ -108,12 +108,12 @@ router.get('/payment-methods', async (req, res, next) => {
   try { res.json({ success: true, data: await req.app.locals.deps.configRepo.getPaymentMethods() }); } catch (e) { next(e); }
 });
 router.post('/payment-methods', edit, validateBody(z.object({
-  id: z.string().min(1), name: z.string().min(1), isDepositEligible: z.boolean().optional(), isActive: z.boolean().optional(), surchargePercent: z.number().min(0).max(100).optional(),
+  id: z.string().min(1), name: z.string().min(1), isDepositEligible: z.boolean().optional(), isActive: z.boolean().optional(), surchargePercent: z.number().min(0).max(100).optional(), showOnCustomerWebsite: z.boolean().optional(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.savePaymentMethod(req.body); res.json({ success: true }); } catch (e) { next(e); }
 });
 router.put('/payment-methods/:id', edit, validateBody(z.object({
-  name: z.string().min(1), isDepositEligible: z.boolean().optional(), isActive: z.boolean().optional(), surchargePercent: z.number().min(0).max(100).optional(),
+  name: z.string().min(1), isDepositEligible: z.boolean().optional(), isActive: z.boolean().optional(), surchargePercent: z.number().min(0).max(100).optional(), showOnCustomerWebsite: z.boolean().optional(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.savePaymentMethod({ id: req.params.id, ...req.body }); res.json({ success: true }); } catch (e) { next(e); }
 });
