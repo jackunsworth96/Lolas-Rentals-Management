@@ -6,6 +6,7 @@ import {
 import { Link, useLocation } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { LanguageSwitcher } from '../ui/LanguageSwitcher.js';
 
 import menuPaw from '../../assets/Menu_Paw_Clean.png';
 import navHome from '../../assets/nav-buttons/Nav Home.svg';
@@ -162,7 +163,7 @@ export default function TopNav({ items, rightSlot }: TopNavProps) {
           />
         </button>
 
-        {/* Location + Phone — far right */}
+        {/* Location + Phone + Language — far right */}
         <div className="absolute right-3 top-1/2 z-10 flex -translate-y-1/2 items-center gap-1 md:right-5 md:gap-2">
           <a
             href={GOOGLE_MAPS_PLACE_URL}
@@ -189,6 +190,7 @@ export default function TopNav({ items, rightSlot }: TopNavProps) {
           >
             <img src={instaIcon} alt="" className="h-5 w-5 object-contain" aria-hidden />
           </a>
+          <LanguageSwitcher />
           {rightSlot && <div>{rightSlot}</div>}
         </div>
       </header>

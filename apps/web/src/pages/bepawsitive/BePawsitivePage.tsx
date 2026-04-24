@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { SEO } from '../../components/seo/SEO.js';
@@ -308,6 +309,7 @@ function FadeCard({
 // Page component
 // ---------------------------------------------------------------------------
 export default function BePawsitivePage() {
+  const { t } = useTranslation();
   const [statsInView, setStatsInView] = useState(false);
   const [donationInView, setDonationInView] = useState(false);
   const [isMobile, setIsMobile] = useState(
@@ -462,7 +464,7 @@ export default function BePawsitivePage() {
                 fontWeight: 400,
               }}
             >
-              Running for a
+              {t('bePawsitive.heroLine1')}
             </span>
             <span
               style={{
@@ -473,7 +475,7 @@ export default function BePawsitivePage() {
                 fontWeight: 400,
               }}
             >
-              Pawsitive Future
+              {t('bePawsitive.heroLine2')}
             </span>
           </h1>
 
@@ -495,7 +497,7 @@ export default function BePawsitivePage() {
               letterSpacing: '0.06em',
             }}
           >
-            <IconCalendar size={15} /> Sunday, June 7, 2026 · Harana Surf Resort
+            <IconCalendar size={15} /> {t('bePawsitive.eventDate')}
           </div>
 
           <p
@@ -509,9 +511,7 @@ export default function BePawsitivePage() {
               textAlign: 'center',
             }}
           >
-            Be Pawsitive is a Siargao-based animal welfare organisation dedicated to spaying,
-            neutering, and vaccinating street animals across the island. Every rental booked with
-            Lola&apos;s helps fund their life-changing work.
+            {t('bePawsitive.heroCopy')}
           </p>
 
           <div style={{ display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -535,7 +535,7 @@ export default function BePawsitivePage() {
                 transition: 'transform 0.15s',
               }}
             >
-              <IconBolt size={18} /> Register for the Fun Run
+              <IconBolt size={18} /> {t('bePawsitive.registerFunRun')}
             </a>
             <a
               href="#lolas-contribution"
@@ -553,7 +553,7 @@ export default function BePawsitivePage() {
                 transition: 'transform 0.15s, background 0.15s',
               }}
             >
-              How Lola&apos;s Contributes
+              {t('bePawsitive.howLolaContributes')}
             </a>
           </div>
         </div>
@@ -603,10 +603,10 @@ export default function BePawsitivePage() {
           }}
         >
           {[
-            { num: `${animalsFixed.toLocaleString()}+`, label: 'Animals Fixed' },
-            { num: `${vaccinated.toLocaleString()}+`, label: 'Vaccinated' },
-            { num: String(eventsCount), label: 'Annual Events' },
-            { num: String(locationsCount), label: 'Locations in 2026', sub: 'Santa Fe & Dapa' },
+            { num: `${animalsFixed.toLocaleString()}+`, label: t('bePawsitive.statsAnimalsFixed') },
+            { num: `${vaccinated.toLocaleString()}+`, label: t('bePawsitive.statsVaccinated') },
+            { num: String(eventsCount), label: t('bePawsitive.statsAnnualEvents') },
+            { num: String(locationsCount), label: t('bePawsitive.statsLocations'), sub: t('bePawsitive.statsSub') },
           ].map((s, i) => (
             <FadeCard key={s.label} delay={i * 120} from="up">
               <div
@@ -739,7 +739,7 @@ export default function BePawsitivePage() {
 
           {/* Text column */}
           <div ref={aboutTextRef} style={{ flex: 1, minWidth: 0, ...aboutTextAnim }}>
-            <SectionEyebrow text="About Be Pawsitive" />
+            <SectionEyebrow text={t('bePawsitive.aboutEyebrow')} />
             <h2
               style={{
                 fontFamily: PACIFICO,
@@ -750,7 +750,7 @@ export default function BePawsitivePage() {
                 marginBottom: 24,
               }}
             >
-              Every Animal Deserves a Chance
+              {t('bePawsitive.aboutHeading')}
             </h2>
 
             <p
@@ -762,9 +762,7 @@ export default function BePawsitivePage() {
                 marginBottom: 18,
               }}
             >
-              Be Pawsitive is a SEC-registered animal welfare organisation based on Siargao Island.
-              Founded on a simple belief — that every stray animal deserves love, care, and a healthy
-              life — the organisation runs spay, neuter, and vaccination programmes across the island.
+              {t('bePawsitive.aboutBody1')}
             </p>
 
             {/* Pull quote */}
@@ -782,8 +780,7 @@ export default function BePawsitivePage() {
                 lineHeight: 1.7,
               }}
             >
-              &ldquo;Every animal spayed or neutered prevents hundreds of future strays from entering
-              the cycle.&rdquo;
+              {t('bePawsitive.aboutQuote')}
             </blockquote>
 
             <p
@@ -795,10 +792,7 @@ export default function BePawsitivePage() {
                 marginBottom: 32,
               }}
             >
-              Lola&apos;s Rentals has been a proud sponsor since the beginning. It&apos;s why
-              Lola herself — our rescue, now pampered pooch — is at the heart of everything we do.
-              Every vehicle in our fleet is named after an animal that&apos;s been through the
-              programme.
+              {t('bePawsitive.aboutBody2')}
             </p>
 
             {/* Programme cards */}
@@ -810,9 +804,9 @@ export default function BePawsitivePage() {
               }}
             >
               {[
-                { Icon: IconStethoscope, title: 'Spay & Neuter', desc: 'Free surgical procedures for stray and community-owned animals across the island.' },
-                { Icon: IconSyringe, title: 'Vaccination', desc: 'Core vaccines administered at outreach events in Santa Fe, Dapa, and surrounding barangays.' },
-                { Icon: IconHouseCommunity, title: 'Community Outreach', desc: 'Education and awareness programmes helping communities care for animals responsibly.' },
+                { Icon: IconStethoscope, title: t('bePawsitive.progSpayTitle'), desc: t('bePawsitive.progSpayDesc') },
+                { Icon: IconSyringe, title: t('bePawsitive.progVaxTitle'), desc: t('bePawsitive.progVaxDesc') },
+                { Icon: IconHouseCommunity, title: t('bePawsitive.progCommunityTitle'), desc: t('bePawsitive.progCommunityDesc') },
               ].map((card, i) => {
                 const IconCmp = card.Icon;
                 return (
@@ -947,7 +941,7 @@ export default function BePawsitivePage() {
                     lineHeight: 1.35,
                   }}
                 >
-                  ANNUAL EVENT · SUNDAY, JUNE 7, 2026 · HARANA SURF RESORT
+                  {t('bePawsitive.annualEventDateline')}
                 </span>
                 {!isMobile && <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.2)' }} />}
               </div>
@@ -981,9 +975,7 @@ export default function BePawsitivePage() {
                   margin: 0,
                 }}
               >
-                Siargao&apos;s most exciting charity run returns for its third year. Lace up, hit
-                the road, and run for the animals. With Nadine Lustre &amp; Christophe Bariou as
-                official ambassadors.
+                {t('bePawsitive.funRunDesc')}
               </p>
             </div>
 
@@ -1090,15 +1082,15 @@ export default function BePawsitivePage() {
                       color: 'rgba(255,255,255,0.6)',
                     }}
                   >
-                    When &amp; Where
+                    {t('bePawsitive.whenWhere')}
                   </span>
                 </div>
                 {[
-                  ['Date', 'Sunday, June 7th 2026'],
-                  ['Start Line', 'Harana Surf Resort'],
-                  ['5K Start', '5:40 AM'],
-                  ['10K Start', '5:30 AM'],
-                  ['Packet Pick-up', 'June 5–6, 10AM–4PM'],
+                  [t('bePawsitive.eventDetailDate'), t('bePawsitive.eventDetailDateVal')],
+                  [t('bePawsitive.eventDetailStart'), t('bePawsitive.eventDetailStartVal')],
+                  [t('bePawsitive.eventDetail5kStart'), t('bePawsitive.eventDetail5kStartVal')],
+                  [t('bePawsitive.eventDetail10kStart'), t('bePawsitive.eventDetail10kStartVal')],
+                  [t('bePawsitive.eventDetailPacket'), t('bePawsitive.eventDetailPacketVal')],
                 ].map(([k, v]) => (
                   <div
                     key={k}
@@ -1150,7 +1142,7 @@ export default function BePawsitivePage() {
                       color: 'rgba(255,255,255,0.6)',
                     }}
                   >
-                    Registration Fees
+                    {t('bePawsitive.registrationFees')}
                   </span>
                 </div>
                 {[
@@ -1181,7 +1173,7 @@ export default function BePawsitivePage() {
                     lineHeight: 1.6,
                   }}
                 >
-                  Cash reg. at All About Coco, Lola&apos;s Rentals, Harana Surf Resort
+                  {t('bePawsitive.cashReg')}
                 </div>
               </div>
 
@@ -1215,7 +1207,7 @@ export default function BePawsitivePage() {
                   boxSizing: 'border-box',
                 }}
               >
-                <IconBolt size={20} /> Register Now — June 7 →
+                <IconBolt size={20} /> {t('bePawsitive.registerNow')}
               </a>
             </div>
 
@@ -1231,9 +1223,9 @@ export default function BePawsitivePage() {
                 }}
               >
                 {[
-                  { num: '453+', label: '2025 Fun Run' },
-                  { num: '307+', label: '2024 Fun Run' },
-                  { num: '₱488K', label: 'Raised in 2024' },
+                  { num: '453+', label: t('bePawsitive.funRun2025') },
+                  { num: '307+', label: t('bePawsitive.funRun2024') },
+                  { num: '₱488K', label: t('bePawsitive.raised2024') },
                 ].map((s, i) => (
                   <FadeCard
                     key={s.label}
@@ -1375,7 +1367,7 @@ export default function BePawsitivePage() {
         >
           {/* Left — copy */}
           <div ref={routeTextRef} style={{ flex: 1, minWidth: 0, ...routeTextAnim }}>
-            <SectionEyebrow text="The Route" color={C.amberLight} />
+            <SectionEyebrow text={t('bePawsitive.theRoute')} color={C.amberLight} />
             <h3
               style={{
                 fontFamily: BEBAS,
@@ -1386,7 +1378,7 @@ export default function BePawsitivePage() {
                 marginBottom: 20,
               }}
             >
-              Two Distances. One Cause.
+              {t('bePawsitive.twoDistances')}
             </h3>
             <p
               style={{
@@ -1397,20 +1389,19 @@ export default function BePawsitivePage() {
                 marginBottom: 28,
               }}
             >
-              The AquaFlask × Be Pawsitive Run 2026 offers two race distances — 5km and 10km —
-              catering to all fitness levels and experience.
+              {t('bePawsitive.routeDesc')}
             </p>
 
             {[
               {
                 label: '5KM',
-                title: 'Perfect for families, casual runners, and first-timers.',
-                desc: 'The route winds through scenic areas of Siargao, offering an enjoyable challenge at your own pace.',
+                title: t('bePawsitive.route5kTitle'),
+                desc: t('bePawsitive.route5kDesc'),
               },
               {
                 label: '10KM',
-                title: 'For seasoned runners seeking more distance and terrain.',
-                desc: 'The longer route covers a greater stretch of the island, ideal for those looking to push their speed and endurance while supporting the cause.',
+                title: t('bePawsitive.route10kTitle'),
+                desc: t('bePawsitive.route10kDesc'),
               },
             ].map((d, i) => (
               <FadeCard
@@ -1503,7 +1494,7 @@ export default function BePawsitivePage() {
           style={{ maxWidth: 800, margin: '0 auto', textAlign: 'center' }}
         >
           <div ref={commitHeadRef} style={commitHeadAnim}>
-            <SectionEyebrow text="Our Commitment" color={C.navy} centered />
+            <SectionEyebrow text={t('bePawsitive.ourCommitment')} color={C.navy} centered />
             <h2
               style={{
                 fontFamily: PACIFICO,
@@ -1514,7 +1505,7 @@ export default function BePawsitivePage() {
                 marginBottom: 20,
               }}
             >
-              Every Rental Wags a Tail
+              {t('bePawsitive.commitmentHeading')}
             </h2>
           </div>
           <p
@@ -1527,10 +1518,7 @@ export default function BePawsitivePage() {
               margin: '0 auto 40px',
             }}
           >
-            Lola&apos;s Rentals matches every peso saved by Paw Card holders at partner
-            establishments — peso for peso — as a direct donation to Be Pawsitive. No admin fees,
-            no markup. Every centavo goes to funding spay, neuter, and vaccination events across
-            Siargao.
+            {t('bePawsitive.commitmentDesc')}
           </p>
 
           {/* How-it-works cards */}
@@ -1546,18 +1534,18 @@ export default function BePawsitivePage() {
             {[
               {
                 n: 1,
-                title: 'You Rent, We Give',
-                desc: 'Every booking automatically contributes a portion directly to Be Pawsitive. No extra steps needed.',
+                title: t('bePawsitive.card1Title'),
+                desc: t('bePawsitive.card1Desc'),
               },
               {
                 n: 2,
-                title: 'Paw Card Savings',
-                desc: 'Savings you earn at partner establishments are matched peso-for-peso by Lola\'s as a donation.',
+                title: t('bePawsitive.card2Title'),
+                desc: t('bePawsitive.card2Desc'),
               },
               {
                 n: 3,
-                title: '100% Direct',
-                desc: 'Zero admin fees. Every centavo goes straight to funding spay, neuter, and vaccination events.',
+                title: t('bePawsitive.card3Title'),
+                desc: t('bePawsitive.card3Desc'),
               },
             ].map((c, i) => (
               <FadeCard
@@ -1640,7 +1628,7 @@ export default function BePawsitivePage() {
                 marginBottom: 10,
               }}
             >
-              Total Donated to Date
+              {t('bePawsitive.totalDonated')}
             </div>
             <div
               style={{
@@ -1662,7 +1650,7 @@ export default function BePawsitivePage() {
                 marginTop: 8,
               }}
             >
-              and counting — updated as our customers keep saving
+              {t('bePawsitive.andCounting')}
             </div>
           </div>
 
@@ -1687,7 +1675,7 @@ export default function BePawsitivePage() {
                 transition: 'transform 0.15s, box-shadow 0.15s',
               }}
             >
-              🐾 Paw Card Login
+              🐾 {t('bePawsitive.pawCardLogin')}
             </Link>
             <a
               href="https://www.be-pawsitive.org/donate"
@@ -1708,7 +1696,7 @@ export default function BePawsitivePage() {
                 transition: 'transform 0.15s',
               }}
             >
-              Donate Directly
+              {t('bePawsitive.donateDirectly')}
             </a>
           </div>
         </div>

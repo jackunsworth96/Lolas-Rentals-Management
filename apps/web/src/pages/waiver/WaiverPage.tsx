@@ -6,6 +6,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
 import { CheckCircle2 } from 'lucide-react';
 import lolasLogo from '../../assets/Lolas Original Logo.svg';
@@ -150,14 +151,21 @@ function SignaturePad({ canvasRef, onDrawingChange }: SignaturePadProps) {
           if (drawing.current) endStroke(e);
         }}
       />
-      <button
-        type="button"
-        className="mt-2 font-lato text-sm text-teal-brand underline underline-offset-2"
-        onClick={clear}
-      >
-        Clear signature
-      </button>
+      <ClearSignatureButton onClear={clear} />
     </div>
+  );
+}
+
+function ClearSignatureButton({ onClear }: { onClear: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      className="mt-2 font-lato text-sm text-teal-brand underline underline-offset-2"
+      onClick={onClear}
+    >
+      {t('waiver.clearSignature')}
+    </button>
   );
 }
 
@@ -187,6 +195,7 @@ export default function WaiverPage() {
   const [passengerHasInk, setPassengerHasInk] = useState([false, false, false, false]);
 
   const [alreadySignedOnLoad, setAlreadySignedOnLoad] = useState(false);
+  const { t } = useTranslation();
 
   const setPassengerInk = (index: number, has: boolean) => {
     setPassengerHasInk((prev) => {
@@ -201,7 +210,7 @@ export default function WaiverPage() {
     async function load() {
       if (!orderReference) {
         setLoading(false);
-        setError('Missing booking reference.');
+        setError(t('waiver.missingRef'));
         return;
       }
       setLoading(true);
@@ -223,7 +232,7 @@ export default function WaiverPage() {
       } catch (err) {
         if (!cancelled)
           setError(
-            err instanceof Error ? err.message : 'Something went wrong loading your booking. Please try again.',
+            err instanceof Error ? err.message : t('waiver.loadingError'),
           );
       } finally {
         if (!cancelled) setLoading(false);
@@ -256,7 +265,7 @@ export default function WaiverPage() {
         if (side === 'front') setLicenceFrontUrl(url);
         else setLicenceBackUrl(url);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Upload failed');
+        setError(err instanceof Error ? err.message : t('waiver.uploadFailed'));
       }
     })();
   };
@@ -264,11 +273,11 @@ export default function WaiverPage() {
   const submitWaiver = async () => {
     if (!orderReference || !licenceFrontUrl || !signatureCanvasRef.current) return;
     if (!driverEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(driverEmail.trim())) {
-      setError('A valid email address is required');
+      setError(t('waiver.emailRequired'));
       return;
     }
     if (isCanvasBlank(signatureCanvasRef.current)) {
-      setError('Please add your signature.');
+      setError(t('waiver.signatureRequired'));
       return;
     }
     setSubmitting(true);
@@ -296,7 +305,7 @@ export default function WaiverPage() {
       setAlreadySignedOnLoad(false);
       setStep(3);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not submit waiver.');
+      setError(err instanceof Error ? err.message : t('waiver.submitError'));
     } finally {
       setSubmitting(false);
     }
@@ -305,7 +314,7 @@ export default function WaiverPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-cream-brand flex items-center justify-center px-4">
-        <div className="font-lato text-charcoal-brand/80">Loading your booking…</div>
+        <div className="font-lato text-charcoal-brand/80">{t('waiver.loading')}</div>
       </div>
     );
   }
@@ -321,7 +330,7 @@ export default function WaiverPage() {
   if (!orderData) {
     return (
       <div className="min-h-screen bg-cream-brand flex flex-col items-center justify-center gap-4 px-6">
-        <p className="font-lato text-charcoal-brand text-center max-w-md">{error || 'Booking not found.'}</p>
+        <p className="font-lato text-charcoal-brand text-center max-w-md">{error || t('waiver.notFound')}</p>
       </div>
     );
   }
@@ -344,36 +353,43 @@ export default function WaiverPage() {
               />
             </div>
             <h1 className="font-headline text-2xl sm:text-3xl text-teal-brand text-center mb-2">
-              Sign your waiver
+              {t('waiver.signYourWaiver')}
             </h1>
             <p className="font-lato text-sm text-charcoal-brand/80 text-center mb-6">
-              Booking <span className="font-semibold">{orderData.orderReference}</span>
+              {t('waiver.booking')} <span className="font-semibold">{orderData.orderReference}</span>
             </p>
 
             <div className={`${cardClass} mb-6`}>
-              <h2 className="font-headline text-lg text-teal-brand mb-3">Booking summary</h2>
+              <h2 className="font-headline text-lg text-teal-brand mb-3">{t('waiver.bookingSummary')}</h2>
               <dl className="font-lato text-sm text-charcoal-brand space-y-2">
                 <div>
-                  <dt className="text-charcoal-brand/60">Customer</dt>
+                  <dt className="text-charcoal-brand/60">{t('waiver.customer')}</dt>
                   <dd className="font-medium">{orderData.customerName}</dd>
                 </div>
                 <div>
-                  <dt className="text-charcoal-brand/60">Vehicle</dt>
+                  <dt className="text-charcoal-brand/60">{t('waiver.vehicle')}</dt>
                   <dd className="font-medium">{orderData.vehicleModelName}</dd>
                 </div>
                 <div>
-                  <dt className="text-charcoal-brand/60">Pickup</dt>
+                  <dt className="text-charcoal-brand/60">{t('waiver.pickup')}</dt>
                   <dd>{formatPickupDatetimeManila(orderData.pickupDatetime)}</dd>
                 </div>
                 <div>
-                  <dt className="text-charcoal-brand/60">Dropoff</dt>
+                  <dt className="text-charcoal-brand/60">{t('waiver.dropoff')}</dt>
                   <dd>{formatPickupDatetimeManila(orderData.dropoffDatetime)}</dd>
                 </div>
               </dl>
             </div>
 
             <div className={`${cardClass} mb-6`}>
-              <h2 className="font-headline text-lg text-teal-brand mb-3">Terms &amp; waiver</h2>
+              <h2 className="font-headline text-lg text-teal-brand mb-3">{t('waiver.termsAndWaiver')}</h2>
+
+              {/* Legal notice — translated per the user's language */}
+              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                <p className="font-lato text-sm text-amber-800">{t('waiver.legalNotice')}</p>
+              </div>
+
+              {/* Waiver body stays in English for legal reasons */}
               <div className="max-h-96 overflow-y-auto rounded-lg border border-charcoal-brand/10 bg-cream-brand/50 p-4 mb-4">
                 <WaiverSigningTermsContent />
               </div>
@@ -381,7 +397,7 @@ export default function WaiverPage() {
               <div className="space-y-4">
                 <div>
                   <label className="font-lato text-sm font-medium text-charcoal-brand block mb-1">
-                    Full name <span className="text-red-600">*</span>
+                    {t('waiver.fullName')} <span className="text-red-600">*</span>
                   </label>
                   <input
                     className={inputClass}
@@ -392,7 +408,7 @@ export default function WaiverPage() {
                 </div>
                 <div>
                   <label className="font-lato text-sm font-medium text-charcoal-brand block mb-1">
-                    Email <span className="text-red-600">*</span>
+                    {t('waiver.email')} <span className="text-red-600">*</span>
                   </label>
                   <input
                     type="email"
@@ -404,7 +420,7 @@ export default function WaiverPage() {
                 </div>
                 <div>
                   <label className="font-lato text-sm font-medium text-charcoal-brand block mb-1">
-                    WhatsApp number
+                    {t('waiver.whatsappNumber')}
                   </label>
                   <input
                     type="tel"
@@ -423,7 +439,7 @@ export default function WaiverPage() {
                   checked={agreedToTerms}
                   onChange={(e) => setAgreedToTerms(e.target.checked)}
                 />
-                <span>I have read and agree to all terms and conditions above</span>
+                <span>{t('waiver.agreeTerms')}</span>
               </label>
 
               <button
@@ -432,7 +448,7 @@ export default function WaiverPage() {
                 disabled={!agreedToTerms || !driverName.trim()}
                 onClick={() => setStep(2)}
               >
-                Continue to Sign →
+                {t('waiver.continueToSign')}
               </button>
             </div>
           </>
@@ -445,18 +461,18 @@ export default function WaiverPage() {
               className="font-lato text-sm text-teal-brand mb-2"
               onClick={() => setStep(1)}
             >
-              ← Back to terms
+              {t('waiver.backToTerms')}
             </button>
-            <h1 className="font-headline text-2xl text-teal-brand">Licence &amp; signature</h1>
+            <h1 className="font-headline text-2xl text-teal-brand">{t('waiver.licenceAndSig')}</h1>
 
             <div className={cardClass}>
-              <h2 className="font-headline text-lg text-teal-brand mb-1">Driving licence</h2>
-              <p className="font-lato text-sm text-charcoal-brand mb-1">Upload a photo of your driving licence</p>
-              <p className="font-lato text-xs text-charcoal-brand/70 mb-4">Required for legal compliance</p>
+              <h2 className="font-headline text-lg text-teal-brand mb-1">{t('waiver.drivingLicence')}</h2>
+              <p className="font-lato text-sm text-charcoal-brand mb-1">{t('waiver.uploadPhoto')}</p>
+              <p className="font-lato text-xs text-charcoal-brand/70 mb-4">{t('waiver.legalCompliance')}</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block">
-                    <span className={`${goldCtaClass} w-full text-sm py-2.5 cursor-pointer`}>Licence Front</span>
+                    <span className={`${goldCtaClass} w-full text-sm py-2.5 cursor-pointer`}>{t('waiver.licenceFront')}</span>
                     <input
                       type="file"
                       accept="image/*"
@@ -475,7 +491,7 @@ export default function WaiverPage() {
                 </div>
                 <div>
                   <label className="block">
-                    <span className={`${goldCtaClass} w-full text-sm py-2.5 cursor-pointer`}>Licence Back</span>
+                    <span className={`${goldCtaClass} w-full text-sm py-2.5 cursor-pointer`}>{t('waiver.licenceBack')}</span>
                     <input
                       type="file"
                       accept="image/*"
@@ -496,18 +512,18 @@ export default function WaiverPage() {
             </div>
 
             <div className={cardClass}>
-              <h2 className="font-headline text-lg text-teal-brand mb-3">Sign below</h2>
+              <h2 className="font-headline text-lg text-teal-brand mb-3">{t('waiver.signBelow')}</h2>
               <SignaturePad canvasRef={signatureCanvasRef} onDrawingChange={setDriverHasSignature} />
             </div>
 
             <div className={cardClass}>
-              <h2 className="font-headline text-lg text-teal-brand mb-1">Additional passenger signatures</h2>
+              <h2 className="font-headline text-lg text-teal-brand mb-1">{t('waiver.passengerSigs')}</h2>
               <p className="font-lato text-xs text-charcoal-brand/70 mb-4">
-                (optional) If other passengers are riding, they must also sign below
+                {t('waiver.passengerOptional')}
               </p>
               {Array.from({ length: passengerSlots }, (_, i) => (
                 <div key={i} className="mb-6 last:mb-0">
-                  <p className="font-lato text-sm text-charcoal-brand mb-2">Passenger {i + 1}</p>
+                  <p className="font-lato text-sm text-charcoal-brand mb-2">{t('waiver.passenger', { n: i + 1 })}</p>
                   <SignaturePad
                     canvasRef={passengerRefsList[i]}
                     onDrawingChange={(has) => setPassengerInk(i, has)}
@@ -520,7 +536,7 @@ export default function WaiverPage() {
                   className="font-lato text-sm text-teal-brand underline underline-offset-2"
                   onClick={() => setPassengerSlots((s) => s + 1)}
                 >
-                  Add passenger
+                  {t('waiver.addPassenger')}
                 </button>
               ) : null}
             </div>
@@ -537,7 +553,7 @@ export default function WaiverPage() {
               disabled={submitting || !licenceFrontUrl || !driverHasSignature}
               onClick={() => void submitWaiver()}
             >
-              {submitting ? 'Submitting…' : 'Submit Waiver'}
+              {submitting ? t('waiver.submitting') : t('waiver.submitWaiver')}
             </button>
           </div>
         )}
@@ -552,29 +568,27 @@ export default function WaiverPage() {
             </div>
             {alreadySignedOnLoad ? (
               <>
-                <h1 className="font-headline text-2xl sm:text-3xl text-teal-brand mb-3">Already signed</h1>
+                <h1 className="font-headline text-2xl sm:text-3xl text-teal-brand mb-3">{t('waiver.alreadySigned')}</h1>
                 <p className="font-lato text-charcoal-brand mb-6">
-                  You have already completed your waiver for this booking. See you soon!
+                  {t('waiver.alreadySignedBody')}
                 </p>
               </>
             ) : (
               <>
-                <h1 className="font-headline text-2xl sm:text-3xl text-teal-brand mb-3">Waiver Signed!</h1>
+                <h1 className="font-headline text-2xl sm:text-3xl text-teal-brand mb-3">{t('waiver.waiverSigned')}</h1>
                 <p className="font-lato text-charcoal-brand mb-6">
-                  Thank you {driverName.trim() || orderData.customerName}. Your waiver has been submitted for your
-                  booking <span className="font-semibold">{orderReference}</span>.
+                  {t('waiver.waiverSignedBody', { name: driverName.trim() || orderData.customerName })} <span className="font-semibold">{orderReference}</span>.
                 </p>
               </>
             )}
             <div className="w-full bg-sand-brand/50 rounded-lg p-4 text-left font-lato text-sm text-charcoal-brand">
-              Please show this screen to our team when you arrive. Your booking reference is:{' '}
-              <span className="font-bold">{orderReference}</span>
+              {t('waiver.showScreen')} <span className="font-bold">{orderReference}</span>
             </div>
             <Link
               to="/book"
               className={`${goldCtaClass} mt-8 w-full max-w-xs no-underline`}
             >
-              Return home
+              {t('waiver.returnHome')}
             </Link>
           </div>
         )}

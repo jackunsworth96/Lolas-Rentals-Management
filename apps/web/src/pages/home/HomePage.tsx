@@ -794,7 +794,7 @@ export default function HomePage() {
                   autoplay={true}
                   autoplayDelay={2500}
                   pauseOnHover={true}
-                  showDots={true}
+                  showDots={false}
                   showHint={true}
                 />
               </div>

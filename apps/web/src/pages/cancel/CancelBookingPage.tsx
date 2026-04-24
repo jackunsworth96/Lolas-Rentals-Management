@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { SEO } from '../../components/seo/SEO.js';
@@ -18,40 +19,41 @@ function apiBase(): string {
   return base || '/api';
 }
 
-function errorDisplay(err: ErrorInfo) {
-  switch (err.code) {
-    case 'ALREADY_PROCESSED':
-      return {
-        icon: '⚠️',
-        title: 'Already Processed',
-        body: 'This booking has already been processed and cannot be cancelled.',
-      };
-    case 'INVALID_TOKEN':
-    case 'UNAUTHORIZED':
-      return {
-        icon: '🔒',
-        title: 'Invalid Link',
-        body: 'Invalid cancellation link. Please use the link from your booking confirmation email.',
-      };
-    case 'NOT_FOUND':
-      return {
-        icon: '🔍',
-        title: 'Not Found',
-        body: 'Booking not found.',
-      };
-    default:
-      return {
-        icon: '❌',
-        title: 'Something Went Wrong',
-        body: 'Something went wrong. Please contact us on WhatsApp.',
-      };
-  }
-}
-
 export default function CancelBookingPage() {
   const { orderReference } = useParams<{ orderReference: string }>();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
+  const { t } = useTranslation();
+
+  function errorDisplay(err: ErrorInfo) {
+    switch (err.code) {
+      case 'ALREADY_PROCESSED':
+        return {
+          icon: '⚠️',
+          title: t('cancel.errors.alreadyProcessedTitle'),
+          body: t('cancel.errors.alreadyProcessedBody'),
+        };
+      case 'INVALID_TOKEN':
+      case 'UNAUTHORIZED':
+        return {
+          icon: '🔒',
+          title: t('cancel.errors.invalidLinkTitle'),
+          body: t('cancel.errors.invalidLinkBody'),
+        };
+      case 'NOT_FOUND':
+        return {
+          icon: '🔍',
+          title: t('cancel.errors.notFoundTitle'),
+          body: t('cancel.errors.notFoundBody'),
+        };
+      default:
+        return {
+          icon: '❌',
+          title: t('cancel.errors.defaultTitle'),
+          body: t('cancel.errors.defaultBody'),
+        };
+    }
+  }
 
   const [phase, setPhase] = useState<CancelPhase>(!token ? 'error' : 'confirming');
   const [error, setError] = useState<ErrorInfo | null>(
@@ -82,10 +84,10 @@ export default function CancelBookingPage() {
     <>
       <SEO
         noIndex
-        title="Cancel Booking | Lola's Rentals"
-        description="Confirm cancellation of your Lola's Rentals vehicle booking in Siargao."
+        title={t('cancel.pageTitle')}
+        description={t('cancel.seoDescription')}
       />
-    <PageLayout title="Cancel Booking | Lola's Rentals" showFloralRight={false}>
+    <PageLayout title={t('cancel.pageTitle')} showFloralRight={false}>
       <div className="mx-auto flex min-h-[60vh] max-w-md flex-col items-center justify-center px-4 text-center">
 
         {/* ── STATE 1: Confirming ── */}
@@ -93,12 +95,10 @@ export default function CancelBookingPage() {
           <>
             <span className="mb-4 text-5xl">🗓️</span>
             <h2 className="mb-2 font-headline text-3xl font-black text-charcoal-brand">
-              Cancel Booking
+              {t('cancel.title')}
             </h2>
-            <p
-              className="mb-1 font-lato text-xs font-bold uppercase tracking-widest text-charcoal-brand/50"
-            >
-              Reference
+            <p className="mb-1 font-lato text-xs font-bold uppercase tracking-widest text-charcoal-brand/50">
+              {t('cancel.reference')}
             </p>
             <p
               className="mb-6 font-lato text-2xl font-black text-charcoal-brand"
@@ -108,7 +108,7 @@ export default function CancelBookingPage() {
             </p>
             <div className="mb-8 rounded-xl border border-red-200 bg-red-50 px-5 py-4">
               <p className="font-lato text-sm font-semibold text-red-700">
-                This action cannot be undone. Your booking will be permanently cancelled.
+                {t('cancel.cannotUndo')}
               </p>
             </div>
             <button
@@ -116,14 +116,14 @@ export default function CancelBookingPage() {
               onClick={handleCancel}
               className="mb-3 w-full rounded-xl bg-teal-brand py-4 font-headline text-lg font-black text-white shadow-md transition-all duration-300 hover:brightness-110 active:scale-[0.98]"
             >
-              Yes, Cancel My Booking
+              {t('cancel.confirmCancel')}
             </button>
             <button
               type="button"
               onClick={() => window.history.back()}
               className="w-full rounded-xl border-2 border-charcoal-brand/20 bg-white py-4 font-headline text-lg font-black text-charcoal-brand transition-all duration-300 hover:bg-sand-brand"
             >
-              Keep My Booking
+              {t('cancel.keepBooking')}
             </button>
           </>
         )}
@@ -133,7 +133,7 @@ export default function CancelBookingPage() {
           <>
             <div className="mb-6 h-12 w-12 animate-spin rounded-full border-4 border-teal-brand border-t-transparent" />
             <p className="font-lato text-sm text-charcoal-brand/60">
-              Cancelling your booking…
+              {t('cancel.cancelling')}
             </p>
           </>
         )}
@@ -143,10 +143,10 @@ export default function CancelBookingPage() {
           <>
             <span className="mb-4 text-5xl">✅</span>
             <h2 className="mb-2 font-headline text-3xl font-black text-charcoal-brand">
-              Booking Cancelled
+              {t('cancel.cancelled')}
             </h2>
             <p className="mb-1 font-lato text-xs font-bold uppercase tracking-widest text-charcoal-brand/50">
-              Reference
+              {t('cancel.reference')}
             </p>
             <p
               className="mb-6 font-lato text-xl font-black text-charcoal-brand/60"
@@ -155,13 +155,13 @@ export default function CancelBookingPage() {
               {orderReference}
             </p>
             <p className="mb-8 font-lato text-sm leading-relaxed text-charcoal-brand/60">
-              Your booking has been cancelled. A confirmation email has been sent to your inbox.
+              {t('cancel.cancelledBody')}
             </p>
             <Link
               to="/"
               className="w-full rounded-xl bg-teal-brand py-4 text-center font-headline text-lg font-black text-white shadow-md transition-all duration-300 hover:brightness-110"
             >
-              Back to Home
+              {t('cancel.backToHome')}
             </Link>
           </>
         )}
@@ -185,14 +185,14 @@ export default function CancelBookingPage() {
                   rel="noopener noreferrer"
                   className="mb-4 inline-flex items-center gap-2 rounded-xl bg-[#25D366] px-6 py-3 font-lato font-bold text-white shadow-md transition-all duration-300 hover:brightness-110"
                 >
-                  💬 Chat with Lola's Team
+                  {t('cancel.chatWithTeam')}
                 </a>
               )}
               <Link
                 to="/"
                 className="font-lato text-sm font-semibold text-teal-brand underline decoration-2 underline-offset-4 transition-opacity hover:opacity-80"
               >
-                Back to Home
+                {t('cancel.backToHome')}
               </Link>
             </>
           );

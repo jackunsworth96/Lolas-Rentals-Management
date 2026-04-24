@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
@@ -55,24 +56,27 @@ function formatCharityTotalRaised(n: number): string {
 /** Public reserve/browse page only — does not replace API store id or location row names. */
 const RESERVE_PAGE_STORE_DISPLAY_NAME = "Lola's Rentals Siargao";
 
-const INCLUSION_ITEMS = [
-  { icon: iconHelmet,      label: 'Helmet' },
-  { icon: iconFuel,        label: 'Full Tank' },
-  { icon: iconPawCard,     label: 'Paw Card' },
-  { icon: iconCoat,        label: 'Rain Coat' },
-  { icon: iconFirstAid,    label: 'First Aid' },
-  { icon: iconRepairKit,   label: 'Repair Kit' },
-  { icon: iconPhoneMount,  label: 'Phone Mount' },
-  { icon: iconCloth,       label: 'Seat Cloth' },
-  { icon: iconDryBag,      label: '5L Dry Bag' },
-  { icon: iconLesson,      label: 'Riding Lesson' },
-  { icon: iconCrashGuard,  label: 'Crash Armour' },
-  { icon: iconPeaceOfMind, label: 'Peace of Mind', isUpgrade: true },
-  { icon: iconSurfRack,    label: 'Surf Rack',     isUpgrade: true },
-  { icon: iconBungee,      label: 'Bungee Cord',   isUpgrade: true },
-  { icon: iconDelivery,    label: 'Delivery/Collection', isUpgrade: true },
-  { icon: iconNinePm,      label: 'Late Return',   isUpgrade: true },
-];
+function useInclusionItems() {
+  const { t } = useTranslation();
+  return [
+    { icon: iconHelmet,      label: t('browse.items.helmet') },
+    { icon: iconFuel,        label: t('browse.items.fullTank') },
+    { icon: iconPawCard,     label: t('browse.items.pawCard') },
+    { icon: iconCoat,        label: t('browse.items.rainCoat') },
+    { icon: iconFirstAid,    label: t('browse.items.firstAid') },
+    { icon: iconRepairKit,   label: t('browse.items.repairKit') },
+    { icon: iconPhoneMount,  label: t('browse.items.phoneMount') },
+    { icon: iconCloth,       label: t('browse.items.seatCloth') },
+    { icon: iconDryBag,      label: t('browse.items.dryBag') },
+    { icon: iconLesson,      label: t('browse.items.ridingLesson') },
+    { icon: iconCrashGuard,  label: t('browse.items.crashArmour') },
+    { icon: iconPeaceOfMind, label: t('browse.items.peaceOfMind'), isUpgrade: true },
+    { icon: iconSurfRack,    label: t('browse.items.surfRack'),     isUpgrade: true },
+    { icon: iconBungee,      label: t('browse.items.bungeeCord'),   isUpgrade: true },
+    { icon: iconDelivery,    label: t('browse.items.deliveryCollection'), isUpgrade: true },
+    { icon: iconNinePm,      label: t('browse.items.lateReturn'),   isUpgrade: true },
+  ];
+}
 
 interface AvailableModel {
   modelId: string;
@@ -87,6 +91,8 @@ interface QuoteData {
 }
 
 export default function BrowseBookPage() {
+  const { t } = useTranslation();
+  const INCLUSION_ITEMS = useInclusionItems();
   const storeId = useBookingStore((s) => s.storeId);
   const pickupDatetime = useBookingStore((s) => s.pickupDatetime);
   const dropoffDatetime = useBookingStore((s) => s.dropoffDatetime);
@@ -179,7 +185,7 @@ export default function BrowseBookPage() {
             );
             if (!cancelled) newQuotes[m.modelId] = q;
           } catch {
-            if (!cancelled) pushToast(`Failed to load price for ${m.modelName}`, 'error');
+            if (!cancelled) pushToast(t('browse.failedPrice', { name: m.modelName }), 'error');
           }
         }),
       );
@@ -203,11 +209,11 @@ export default function BrowseBookPage() {
         for (const item of basket) {
           if (!serverIds.has(item.holdId)) {
             removeFromBasket(item.holdId);
-            pushToast(`${item.modelName} hold expired`, 'error');
+            pushToast(t('browse.holdExpired', { name: item.modelName }), 'error');
           }
         }
       } catch {
-        pushToast('Could not verify your holds — check your connection', 'error');
+        pushToast(t('browse.verifyHoldsError'), 'error');
       }
     }, 30_000);
     return () => clearInterval(interval);
@@ -252,7 +258,7 @@ export default function BrowseBookPage() {
           />
           {isSearched && (
             <p className="font-lato mt-2 text-center text-xs italic text-charcoal-brand/60">
-              Our vehicles fill up fast — secure yours now
+              {t('browse.vehiclesFillFast')}
             </p>
           )}
         </section>
@@ -266,7 +272,7 @@ export default function BrowseBookPage() {
                   expiresAt={item.expiresAt}
                   onExpired={() => {
                     removeFromBasket(item.holdId);
-                    pushToast(`${item.modelName} hold expired`, 'error');
+                    pushToast(t('browse.holdExpired', { name: item.modelName }), 'error');
                   }}
                 />
               </div>
@@ -280,8 +286,8 @@ export default function BrowseBookPage() {
             <RentalIncludedIconsGrid variant="compact" showOptionals />
             <p className="font-lato mx-auto mt-4 max-w-xl border-t border-teal-brand/20 pt-3 text-center text-sm font-semibold leading-snug text-teal-brand sm:text-[15px]">
               {showCharityTotalInTagline
-                ? `Book with us now — your rental funds animal welfare on Siargao · ₱${formatCharityTotalRaised(charityTotalRaised)} donated so far 🐾`
-                : 'Book with us now — your rental funds animal welfare on Siargao'}
+                ? t('browse.charityTagline', { amount: formatCharityTotalRaised(charityTotalRaised) })
+                : t('browse.charityTaglineSimple')}
             </p>
           </div>
         </div>
@@ -315,7 +321,7 @@ export default function BrowseBookPage() {
                 fontWeight: 700,
               }}
             >
-              Every Scooter Rental
+              {t('browse.everyScooterRental')}
             </p>
             <h2
               className="font-headline font-bold"
@@ -327,7 +333,7 @@ export default function BrowseBookPage() {
                 lineHeight: 1.2,
               }}
             >
-              What&apos;s Included
+              {t('browse.whatsIncluded')}
             </h2>
             <p
               className="font-lato"
@@ -340,8 +346,7 @@ export default function BrowseBookPage() {
                 margin: '0 auto 20px',
               }}
             >
-              We&apos;re nerds for functionality, ensuring every rental is packed with the island essentials you need
-              for total convenience.
+              {t('browse.inclusionsSubtitle')}
             </p>
             <div
               className="font-lato flex flex-wrap items-center justify-center gap-x-10 gap-y-3"
@@ -349,11 +354,11 @@ export default function BrowseBookPage() {
             >
               <span className="inline-flex items-center gap-2 text-[13px] font-semibold text-teal-brand">
                 <img src={tickIcon} alt="" className="h-5 w-5 shrink-0 object-contain" width={20} height={20} />
-                Included
+                {t('browse.included')}
               </span>
               <span className="inline-flex items-center gap-2 text-[13px] font-medium text-charcoal-brand/75">
                 <img src={pesoIcon} alt="" className="h-5 w-5 shrink-0 object-contain" width={20} height={20} />
-                Optional extra
+                {t('browse.optionalExtra')}
               </span>
             </div>
           </div>

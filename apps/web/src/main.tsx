@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { HelmetProvider } from 'react-helmet-async';
 import * as Sentry from '@sentry/react';
 import { App } from './App.js';
+import './i18n.js';
 import './index.css';
 
 if (import.meta.env.VITE_SENTRY_DSN) {

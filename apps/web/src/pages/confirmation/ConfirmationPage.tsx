@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Check, Clipboard, FileSignature, CalendarPlus } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -41,6 +42,7 @@ function makeGoogleCalendarUrl(title: string, start: string, end: string): strin
 }
 
 export default function ConfirmationPage() {
+  const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
   const { reference } = useParams<{ reference?: string }>();
@@ -92,7 +94,7 @@ export default function ConfirmationPage() {
 
   if (loading) {
     return (
-      <PageLayout title="Loading... | Lola's Rentals" showFloralRight={false}>
+      <PageLayout title={t('confirmation.loadingTitle')} showFloralRight={false}>
         <div className="flex min-h-[60vh] items-center justify-center px-4">
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-teal-brand border-t-transparent" />
         </div>
@@ -102,12 +104,12 @@ export default function ConfirmationPage() {
 
   if (fetchError || (!state && !reference)) {
     return (
-      <PageLayout title="Booking Not Found | Lola's Rentals" showFloralRight={false}>
+      <PageLayout title={t('confirmation.notFoundTitle')} showFloralRight={false}>
         <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 text-center">
-          <h2 className="mb-4 font-headline text-3xl font-black text-charcoal-brand">Booking not found</h2>
-          <p className="mb-8 text-charcoal-brand/60">We could not find a booking with that reference.</p>
+          <h2 className="mb-4 font-headline text-3xl font-black text-charcoal-brand">{t('confirmation.bookingNotFound')}</h2>
+          <p className="mb-8 text-charcoal-brand/60">{t('confirmation.couldNotFind')}</p>
           <PrimaryCtaButton type="button" onClick={() => navigate('/book/reserve')} className="px-10 py-4 font-bold">
-            Browse Vehicles
+            {t('confirmation.browseVehicles')}
           </PrimaryCtaButton>
         </div>
       </PageLayout>
@@ -132,9 +134,9 @@ export default function ConfirmationPage() {
   const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(`Hi Lola's! My booking ref is ${refDisplay}`)}`;
 
   return (
-    <PageLayout title="Booking Confirmed | Lola's Rentals" showFloralRight={false}>
+    <PageLayout title={t('confirmation.pageTitle')} showFloralRight={false}>
       <SEO
-        title="Booking Confirmed | Lola's Rentals"
+        title={t('confirmation.pageTitle')}
         description="Your Lola's Rentals booking is confirmed."
         noIndex={true}
       />
@@ -154,8 +156,8 @@ export default function ConfirmationPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
               <div>
-                <p className="font-semibold text-green-800 font-lato">Payment received!</p>
-                <p className="text-sm text-green-700 font-lato">Your card payment was successful. Your booking is confirmed.</p>
+                <p className="font-semibold text-green-800 font-lato">{t('confirmation.paymentReceived')}</p>
+                <p className="text-sm text-green-700 font-lato">{t('confirmation.paymentSuccess')}</p>
               </div>
             </div>
           )}
@@ -165,10 +167,10 @@ export default function ConfirmationPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
               <div>
-                <p className="font-semibold text-red-800 font-lato">Payment {paymentStatus === 'cancelled' ? 'cancelled' : 'failed'}</p>
+                <p className="font-semibold text-red-800 font-lato">{paymentStatus === 'cancelled' ? t('confirmation.paymentCancelled') : t('confirmation.paymentFailed')}</p>
                 <p className="text-sm text-red-700 font-lato">
-                  Your booking is still confirmed but payment was not completed.{' '}
-                  <a href={WHATSAPP_URL} className="underline font-medium">Contact us on WhatsApp</a> to arrange payment.
+                  {t('confirmation.paymentNotCompleted')}{' '}
+                  <a href={WHATSAPP_URL} className="underline font-medium">{t('confirmation.contactOnWhatsapp')}</a> to arrange payment.
                 </p>
               </div>
             </div>
@@ -200,21 +202,21 @@ export default function ConfirmationPage() {
                 }}
               >
                 <span>✓</span>
-                <span className="font-lato uppercase tracking-widest">Booking Confirmed</span>
+                <span className="font-lato uppercase tracking-widest">{t('confirmation.bookingConfirmed')}</span>
               </div>
 
               {/* Headline */}
               <h1 className="mb-2 font-headline text-5xl font-black leading-tight tracking-tight text-teal-brand sm:text-6xl">
-                See you in Siargao.
+                {t('confirmation.seeYouInSiargao')}
               </h1>
               <p className="mb-6 text-charcoal-brand/60 font-lato">
-                Your scooter is reserved and ready for you.
+                {t('confirmation.scooterReady')}
               </p>
 
               {/* Reference number */}
               <div className="mb-4 flex flex-col items-center">
                 <span className="mb-2 text-[10px] font-black uppercase tracking-widest text-charcoal-brand/50 font-lato">
-                  Your Reference Number
+                  {t('confirmation.yourReference')}
                 </span>
                 <div className="flex items-center gap-2">
                   <span
@@ -233,12 +235,12 @@ export default function ConfirmationPage() {
                     type="button"
                     onClick={handleCopy}
                     className="relative flex h-9 w-9 items-center justify-center rounded-full bg-white/70 text-charcoal-brand/60 transition-all hover:bg-white active:scale-90"
-                    title="Copy reference"
+                    title={t('common.copyRef')}
                   >
                     {copied ? <Check className="h-4 w-4" strokeWidth={2.5} /> : <Clipboard className="h-4 w-4" strokeWidth={2} />}
                     {copied && (
                       <span className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-teal-brand px-3 py-1 text-[10px] font-bold text-white shadow-md">
-                        Copied!
+                        {t('common.copied')}
                       </span>
                     )}
                   </button>
@@ -248,14 +250,14 @@ export default function ConfirmationPage() {
               {/* Receipt sent */}
               <p className="flex items-center gap-1.5 text-sm font-bold text-charcoal-brand/50 font-lato">
                 <Check className="h-4 w-4 text-teal-brand" strokeWidth={2.5} />
-                Receipt sent to <span className="text-charcoal-brand">{state.customerEmail}</span>
+                {t('confirmation.receiptSentTo')} <span className="text-charcoal-brand">{state.customerEmail}</span>
               </p>
 
               {/* Scroll prompt — nudges users toward the waiver section below */}
               <motion.button
                 type="button"
                 onClick={() => window.scrollBy({ top: window.innerHeight * 0.75, behavior: 'smooth' })}
-                aria-label="Scroll down to complete your waiver"
+                aria-label={t('confirmation.scrollToWaiver')}
                 animate={{ y: [0, 8, 0] }}
                 transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
                 whileHover={{ scale: 1.15 }}
@@ -275,7 +277,7 @@ export default function ConfirmationPage() {
                 }}
               >
                 <span className="font-lato" style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-                  Complete your waiver below
+                  {t('confirmation.completeWaiverBelow')}
                 </span>
                 <svg
                   width="24"
@@ -302,7 +304,7 @@ export default function ConfirmationPage() {
               <FadeUpSection>
                 <div className="rounded-2xl bg-white p-6 shadow-sm">
                   <p className="mb-4 text-xs font-black uppercase tracking-widest text-charcoal-brand/50 font-lato">
-                    Quick Actions
+                    {t('confirmation.quickActions')}
                   </p>
 
                   {/* Deposit reminder */}
@@ -310,7 +312,7 @@ export default function ConfirmationPage() {
                     <div className="mb-4 flex items-start gap-3 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
                       <span className="text-lg">💰</span>
                       <p className="text-xs font-semibold leading-relaxed text-amber-800 font-lato">
-                        A refundable security deposit is required at pickup — ₱1,000 for scooters, ₱2,000 for tuktuks.
+                        {t('confirmation.depositReminder')}
                       </p>
                     </div>
                   )}
@@ -323,10 +325,10 @@ export default function ConfirmationPage() {
                         className="mb-1 flex w-full items-center justify-center gap-2 rounded-xl bg-gold-brand py-3 px-5 font-lato text-sm font-black text-charcoal-brand shadow-sm transition-all hover:brightness-105 active:scale-[0.98]"
                       >
                         <FileSignature size={16} className="shrink-0" />
-                        Complete Your Waiver
+                        {t('confirmation.completeYourWaiver')}
                       </Link>
                       <p className="mb-4 text-center text-[11px] text-charcoal-brand/50 font-lato">
-                        Takes 2 minutes · saves time at pickup
+                        {t('confirmation.waiverSubtext')}
                       </p>
                     </>
                   )}
@@ -341,7 +343,7 @@ export default function ConfirmationPage() {
                     <svg viewBox="0 0 24 24" width={16} height={16} fill="currentColor" aria-hidden className="shrink-0">
                       <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
                     </svg>
-                    Send Booking Ref via WhatsApp
+                    {t('confirmation.sendRefWhatsapp')}
                   </a>
 
                   {/* Add to Calendar */}
@@ -353,7 +355,7 @@ export default function ConfirmationPage() {
                       className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-charcoal-brand/15 bg-white py-3 px-5 font-lato text-sm font-black text-charcoal-brand transition-all hover:border-teal-brand/30 hover:bg-teal-brand/5 active:scale-[0.98]"
                     >
                       <CalendarPlus size={16} className="shrink-0" />
-                      Add to Calendar
+                      {t('common.addToCalendar')}
                     </a>
                   )}
                 </div>
@@ -374,9 +376,9 @@ export default function ConfirmationPage() {
                     />
                   </div>
                   <div>
-                    <p className="font-headline text-base font-black text-charcoal-brand">The Lola team is ready!</p>
+                    <p className="font-headline text-base font-black text-charcoal-brand">{t('confirmation.lolaTeamReady')}</p>
                     <p className="mt-1 text-sm text-charcoal-brand/60 font-lato leading-snug">
-                      We'll have your scooter fuelled, helmeted, and waiting.
+                      {t('confirmation.scooterFuelled')}
                     </p>
                   </div>
                 </div>
@@ -387,10 +389,10 @@ export default function ConfirmationPage() {
                 <FadeUpSection>
                   <div className="rounded-2xl bg-teal-brand/10 px-5 py-4 text-center">
                     <p className="font-headline text-base font-bold text-teal-brand">
-                      Thank you for your ₱{(state.charityDonation ?? 0).toLocaleString()} donation to Be Pawsitive 🐾
+                      {t('confirmation.charityThanks', { amount: (state.charityDonation ?? 0).toLocaleString() })} 🐾
                     </p>
                     <p className="font-lato mt-1 text-sm text-charcoal-brand/60">
-                      You're helping animals on Siargao!
+                      {t('confirmation.helpingAnimals')}
                     </p>
                   </div>
                 </FadeUpSection>
@@ -421,7 +423,7 @@ export default function ConfirmationPage() {
           <FadeUpSection>
             <div className="mt-10">
               <h2 className="mb-5 flex items-center gap-2 font-headline text-2xl font-black text-charcoal-brand">
-                <span className="text-xl">⏱</span> What to do next
+                <span className="text-xl">⏱</span> {t('confirmation.whatToDoNext')}
               </h2>
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
 
@@ -429,16 +431,16 @@ export default function ConfirmationPage() {
                 <div className="relative rounded-2xl bg-white p-4 shadow-sm">
                   <div className="mb-3 flex items-center justify-between">
                     <span className="flex h-7 w-7 items-center justify-center rounded-full bg-charcoal-brand text-xs font-black text-white">1</span>
-                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-amber-600">Do Now</span>
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-amber-600">{t('confirmation.doNow')}</span>
                   </div>
                   <span className="mb-2 block text-2xl">📋</span>
-                  <p className="mb-1 font-headline text-sm font-black text-charcoal-brand leading-tight">Complete Your Waiver</p>
+                  <p className="mb-1 font-headline text-sm font-black text-charcoal-brand leading-tight">{t('confirmation.completeYourWaiver')}</p>
                   <p className="mb-3 text-xs text-charcoal-brand/60 font-lato leading-relaxed">
-                    Fill out your rental waiver online before you arrive. Saves you time at pickup.
+                    {t('confirmation.waiverDescription')}
                   </p>
                   {state.orderReferences?.[0] && (
                     <Link to={`/waiver/${state.orderReferences[0]}`} className="text-xs font-bold text-gold-brand hover:underline">
-                      Start waiver →
+                      {t('confirmation.startWaiver')}
                     </Link>
                   )}
                 </div>
@@ -449,9 +451,9 @@ export default function ConfirmationPage() {
                     <span className="flex h-7 w-7 items-center justify-center rounded-full bg-charcoal-brand text-xs font-black text-white">2</span>
                   </div>
                   <img src={locationIcon} alt="" className="mb-2 h-8 w-8 object-contain" />
-                  <p className="mb-1 font-headline text-sm font-black text-charcoal-brand leading-tight">Find Us</p>
+                  <p className="mb-1 font-headline text-sm font-black text-charcoal-brand leading-tight">{t('confirmation.findUs')}</p>
                   <p className="mb-3 text-xs text-charcoal-brand/60 font-lato leading-relaxed">
-                    Tourism Rd, Catangnan, General Luna. Look for Lola's shack on the backroad.
+                    {t('confirmation.findUsDescription')}
                   </p>
                   <a
                     href="https://maps.google.com/?q=Tourism+Rd+Catangnan+General+Luna+Siargao"
@@ -459,7 +461,7 @@ export default function ConfirmationPage() {
                     rel="noopener noreferrer"
                     className="text-xs font-bold text-gold-brand hover:underline"
                   >
-                    Get directions →
+                    {t('confirmation.getDirections')}
                   </a>
                 </div>
 
@@ -469,9 +471,9 @@ export default function ConfirmationPage() {
                     <span className="flex h-7 w-7 items-center justify-center rounded-full bg-charcoal-brand text-xs font-black text-white">3</span>
                   </div>
                   <span className="mb-2 block text-2xl">🛵</span>
-                  <p className="mb-1 font-headline text-sm font-black text-charcoal-brand leading-tight">Pick Up Your Scooter</p>
+                  <p className="mb-1 font-headline text-sm font-black text-charcoal-brand leading-tight">{t('confirmation.pickUpYourScooter')}</p>
                   <p className="mb-3 text-xs text-charcoal-brand/60 font-lato leading-relaxed">
-                    Show your reference number and a valid ID. We'll brief you on the bike.
+                    {t('confirmation.pickupInstructions')}
                   </p>
                   {state.pickupDatetime && (
                     <p className="text-xs font-bold text-teal-brand">
@@ -487,11 +489,11 @@ export default function ConfirmationPage() {
                     <span className="flex h-7 w-7 items-center justify-center rounded-full bg-teal-brand text-xs font-black text-white">4</span>
                   </div>
                   <span className="mb-2 block text-2xl">🏄</span>
-                  <p className="mb-1 font-headline text-sm font-black text-charcoal-brand leading-tight">Explore Siargao!</p>
+                  <p className="mb-1 font-headline text-sm font-black text-charcoal-brand leading-tight">{t('confirmation.exploreSiargao')}</p>
                   <p className="mb-3 text-xs text-charcoal-brand/60 font-lato leading-relaxed">
-                    Cloud 9, Sugba Lagoon, Magpupungko — the island is yours.
+                    {t('confirmation.exploreDescription')}
                   </p>
-                  <span className="text-xs font-bold text-teal-brand">Enjoy 🔥</span>
+                  <span className="text-xs font-bold text-teal-brand">{t('confirmation.enjoy')}</span>
                 </div>
 
               </div>
@@ -504,15 +506,15 @@ export default function ConfirmationPage() {
               <div className="mt-5 rounded-2xl bg-white/60 px-5 py-4 flex items-start gap-3">
                 <span className="text-xl">🪪</span>
                 <p className="text-sm text-charcoal-brand/70 font-lato leading-relaxed">
-                  <strong className="text-charcoal-brand">Bring your licence.</strong>{' '}
-                  Please have a valid driver's licence at pickup. International licences accepted.{' '}
+                  <strong className="text-charcoal-brand">{t('confirmation.bringLicence')}</strong>{' '}
+                  {t('confirmation.licenceNote')}{' '}
                   <a
                     href="https://go.idaoffers.com/aff_c?offer_id=13&aff_id=62491"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="font-medium text-teal-brand hover:underline"
                   >
-                    Get yours online →
+                    {t('confirmation.getYoursOnline')}
                   </a>
                 </p>
               </div>
@@ -526,10 +528,10 @@ export default function ConfirmationPage() {
               onClick={() => navigate('/book')}
               className="mb-4 inline-block min-h-[44px] rounded-full bg-white/70 px-8 font-headline text-base font-black text-charcoal-brand shadow-sm transition-all hover:bg-white active:scale-95"
             >
-              Back to Home
+              {t('common.backToHome')}
             </button>
             <p className="font-lato text-sm font-bold text-charcoal-brand/60">
-              Need help?{' '}
+              {t('common.needHelp')}{' '}
               <a
                 href={WHATSAPP_URL}
                 target="_blank"
@@ -537,7 +539,7 @@ export default function ConfirmationPage() {
                 className="inline-flex items-center gap-1.5 text-teal-brand underline decoration-2 underline-offset-4 transition-opacity hover:opacity-80"
               >
                 <img src={phoneIcon} alt="" className="h-4 w-4 shrink-0 object-contain" />
-                Chat with Lola's Team
+                {t('common.chatWithLolaTeam')}
               </a>
             </p>
           </div>

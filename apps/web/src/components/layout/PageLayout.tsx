@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useBookingStore } from '../../stores/bookingStore.js';
 import { FadeUpSection } from '../public/FadeUpSection.js';
 import TopNav from './TopNav.js';
@@ -12,6 +13,7 @@ import flowerLeft from '../../assets/Flower Left.svg';
 import flowerRight from '../../assets/Flower Right.svg';
 import basketIcon from '../../assets/Buttons/basket icon.svg';
 import footerDesign from '../../assets/Footer/footer design.svg';
+import footerDesignMobile from '../../assets/Footer/footer design mobile.svg';
 
 export interface PageLayoutProps {
   children: ReactNode;
@@ -40,23 +42,26 @@ export interface PageLayoutProps {
   unclipLeftFloral?: boolean;
 }
 
-const NAV_ITEMS = [
-  { label: 'Home', href: '/book' },
-  { label: 'Reserve', href: '/book/reserve' },
-  { label: 'Transfers', href: '/book/transfers' },
-  { label: 'Repairs', href: '/book/repairs' },
-  { label: 'About', href: '/book/about' },
-  {
-    label: 'My Rental',
-    href: '/book/paw-card',
-    isDropdown: true,
-    dropdownItems: [
-      { label: 'Log Paw Card Savings', href: '/book/paw-card' },
-      { label: 'Partner Discounts', href: '/paw-card/partners' },
-      { label: 'Extend My Rental', href: '/book/extend' },
-    ],
-  },
-];
+function useNavItems() {
+  const { t } = useTranslation();
+  return [
+    { label: t('nav.home'), href: '/book' },
+    { label: t('nav.reserve'), href: '/book/reserve' },
+    { label: t('nav.transfers'), href: '/book/transfers' },
+    { label: t('nav.repairs'), href: '/book/repairs' },
+    { label: t('nav.about'), href: '/book/about' },
+    {
+      label: t('nav.myRental'),
+      href: '/book/paw-card',
+      isDropdown: true,
+      dropdownItems: [
+        { label: t('nav.pawCardSavings'), href: '/book/paw-card' },
+        { label: t('nav.partnerDiscounts'), href: '/paw-card/partners' },
+        { label: t('nav.extendRental'), href: '/book/extend' },
+      ],
+    },
+  ];
+}
 
 
 
@@ -74,6 +79,8 @@ export function PageLayout({
   unclipLeftFloral = false,
 }: PageLayoutProps) {
   const { pathname } = useLocation();
+  const { t } = useTranslation();
+  const navItems = useNavItems();
   const basketCount = useBookingStore((s) => s.basket.length);
 
   // Flash the basket icon (bounce + gold highlight) whenever an item is added.
@@ -203,7 +210,7 @@ export function PageLayout({
       <TopNav
         logo={logo}
         logoAlt="Lola's Rentals"
-        items={NAV_ITEMS}
+        items={navItems}
         rightSlot={
           showBasketIcon ? (
             <Link
@@ -268,17 +275,66 @@ export function PageLayout({
           floralScrollFreezeRef ? 'relative z-[48]' : elevateFlorals ? 'relative z-[35]' : ''
         }
       >
-        {/* SVG illustration + desktop overlaid footer */}
-        <div className="relative leading-[0]">
+        {/* Mobile: mobile-optimised SVG + overlaid footer */}
+        <div className="relative leading-[0] md:hidden">
+          <img
+            src={footerDesignMobile}
+            alt=""
+            className="w-full object-cover"
+            aria-hidden="true"
+          />
+          <footer className="absolute inset-0 pointer-events-none">
+            <div className="pointer-events-auto absolute bottom-[8%] left-0 right-0 px-5 flex flex-col gap-3">
+              {/* Logo + social icons row */}
+              <div className="flex items-center justify-between">
+                <Link to="/book" aria-label="Lola's Rentals home" className="inline-block">
+                  <img
+                    src={logo}
+                    alt="Lola's Rentals"
+                    className="h-8 w-auto object-contain"
+                    draggable={false}
+                  />
+                </Link>
+                <div className="flex items-center gap-4">
+                  <a href="https://instagram.com/lolasrentals" target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="inline-flex text-charcoal-brand/80 transition-opacity hover:opacity-90">
+                    <img src={instaIcon} alt="" className="h-6 w-6 object-contain" width={24} height={24} />
+                  </a>
+                  <a href="https://wa.me/639694443413" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp" className="inline-flex text-charcoal-brand/80 transition-opacity hover:opacity-90">
+                    <img src={phoneIcon} alt="" className="h-6 w-6 object-contain" width={24} height={24} />
+                  </a>
+                  <a href={GOOGLE_MAPS_PLACE_URL} target="_blank" rel="noopener noreferrer" aria-label="Google Maps" className="inline-flex text-charcoal-brand/80 transition-opacity hover:opacity-90">
+                    <img src={locationIcon} alt="" className="h-6 w-6 object-contain" width={24} height={24} />
+                  </a>
+                </div>
+              </div>
+
+              {/* Page links */}
+              <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                <Link to="/book/repairs" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.islandSafety')}</Link>
+                <Link to="/book/bepawsitive" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.bePawsitiveNgo')}</Link>
+                <a href="https://wa.me/639694443413" target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.contactUs')}</a>
+                <Link to="/book/privacy" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.privacy')}</Link>
+                <Link to="/book/waiver-agreement" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.waiverAgreement')}</Link>
+                <Link to="/refund-policy" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.refundPolicy')}</Link>
+                <Link to="/peace-of-mind" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.peaceOfMindCover')}</Link>
+              </div>
+
+              <p className="text-[10px] leading-relaxed text-charcoal-brand/50">
+                {t('footer.copyright')}
+              </p>
+            </div>
+          </footer>
+        </div>
+
+        {/* Desktop: desktop SVG + overlaid footer */}
+        <div className="relative leading-[0] hidden md:block">
           <img
             src={footerDesign}
             alt=""
             className="w-full object-cover object-bottom"
             aria-hidden="true"
           />
-
-          {/* Desktop footer — absolutely positioned over the SVG, hidden on mobile */}
-          <footer className="absolute inset-0 hidden pointer-events-none md:block">
+          <footer className="absolute inset-0 pointer-events-none">
             {/* Left column — logo, copyright, social icons */}
             <div className="pointer-events-auto absolute bottom-[18%] left-6 max-w-xs space-y-4">
               <Link to="/book" aria-label="Lola's Rentals home" className="inline-block">
@@ -290,7 +346,7 @@ export function PageLayout({
                 />
               </Link>
               <p className="text-sm leading-relaxed text-charcoal-brand/60">
-                © 2026 Lola&apos;s Rentals and Tours Inc. | Built in-house
+                {t('footer.copyright')}
               </p>
               <div className="flex items-center gap-5 pt-1">
                 <a
@@ -326,74 +382,23 @@ export function PageLayout({
             {/* Right columns — opening hours + page links */}
             <div className="pointer-events-auto absolute bottom-[12%] right-6 flex items-start gap-12">
               <div className="space-y-2">
-                <p className="text-sm font-semibold text-charcoal-brand/70">Opening Hours</p>
-                <p className="text-sm text-charcoal-brand/60">9:00 AM – 5:00 PM · Mon–Sun</p>
-                <p className="text-sm text-charcoal-brand/60">Tourism Rd, Catangnan,</p>
-                <p className="text-sm text-charcoal-brand/60">General Luna, Siargao</p>
+                <p className="text-sm font-semibold text-charcoal-brand/70">{t('footer.openingHours')}</p>
+                <p className="text-sm text-charcoal-brand/60">{t('footer.hours')}</p>
+                <p className="text-sm text-charcoal-brand/60">{t('footer.address1')}</p>
+                <p className="text-sm text-charcoal-brand/60">{t('footer.address2')}</p>
               </div>
               <div className="grid grid-cols-2 gap-x-12 gap-y-4">
-                <Link to="/book/repairs" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">Island Safety</Link>
-                <Link to="/book/bepawsitive" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">Be Pawsitive NGO</Link>
-                <a href="https://wa.me/639694443413" target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">Contact Us</a>
-                <Link to="/book/privacy" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">Privacy</Link>
-                <Link to="/book/waiver-agreement" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">Waiver Agreement</Link>
-                <Link to="/refund-policy" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">Refund Policy</Link>
-                <Link to="/peace-of-mind" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">Peace of Mind Cover</Link>
+                <Link to="/book/repairs" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.islandSafety')}</Link>
+                <Link to="/book/bepawsitive" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.bePawsitiveNgo')}</Link>
+                <a href="https://wa.me/639694443413" target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.contactUs')}</a>
+                <Link to="/book/privacy" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.privacy')}</Link>
+                <Link to="/book/waiver-agreement" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.waiverAgreement')}</Link>
+                <Link to="/refund-policy" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.refundPolicy')}</Link>
+                <Link to="/peace-of-mind" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.peaceOfMindCover')}</Link>
               </div>
             </div>
           </footer>
         </div>
-
-        {/* Mobile footer — flows naturally below the SVG, only shown on mobile */}
-        <footer className="md:hidden w-full bg-[#f1e6d6] px-6 pb-10 pt-8">
-          {/* Logo row */}
-          <div className="flex items-start justify-between gap-4">
-            <Link to="/book" aria-label="Lola's Rentals home" className="inline-block">
-              <img
-                src={logo}
-                alt="Lola's Rentals"
-                className="h-9 w-auto object-contain md:h-10"
-                draggable={false}
-              />
-            </Link>
-            <div className="flex items-center gap-4">
-              <a href="https://instagram.com/lolasrentals" target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="inline-flex text-charcoal-brand/80 transition-opacity hover:opacity-90">
-                <img src={instaIcon} alt="" className="h-7 w-7 object-contain" width={28} height={28} />
-              </a>
-              <a href="https://wa.me/639694443413" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp" className="inline-flex text-charcoal-brand/80 transition-opacity hover:opacity-90">
-                <img src={phoneIcon} alt="" className="h-7 w-7 object-contain" width={28} height={28} />
-              </a>
-              <a href={GOOGLE_MAPS_PLACE_URL} target="_blank" rel="noopener noreferrer" aria-label="Google Maps" className="inline-flex text-charcoal-brand/80 transition-opacity hover:opacity-90">
-                <img src={locationIcon} alt="" className="h-7 w-7 object-contain" width={28} height={28} />
-              </a>
-            </div>
-          </div>
-
-          <p className="mt-3 text-xs leading-relaxed text-charcoal-brand/60">
-            © 2026 Lola&apos;s Rentals and Tours Inc. | Built in-house
-          </p>
-
-          <hr className="my-6 border-charcoal-brand/10" />
-
-          {/* Opening hours + links side by side */}
-          <div className="flex flex-wrap gap-x-8 gap-y-6">
-            <div className="space-y-1.5">
-              <p className="text-xs font-semibold text-charcoal-brand/70">Opening Hours</p>
-              <p className="text-xs text-charcoal-brand/60">9:00 AM – 5:00 PM · Mon–Sun</p>
-              <p className="text-xs text-charcoal-brand/60">Tourism Rd, Catangnan,</p>
-              <p className="text-xs text-charcoal-brand/60">General Luna, Siargao</p>
-            </div>
-            <div className="grid grid-cols-2 gap-x-8 gap-y-3">
-              <Link to="/book/repairs" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">Island Safety</Link>
-              <Link to="/book/bepawsitive" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">Be Pawsitive NGO</Link>
-              <a href="https://wa.me/639694443413" target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">Contact Us</a>
-              <Link to="/book/privacy" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">Privacy</Link>
-              <Link to="/book/waiver-agreement" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">Waiver Agreement</Link>
-              <Link to="/refund-policy" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">Refund Policy</Link>
-              <Link to="/peace-of-mind" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">Peace of Mind Cover</Link>
-            </div>
-          </div>
-        </footer>
       </FadeUpSection>
 
       <button

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, ApiError } from '../../api/client.js';
@@ -62,6 +63,7 @@ function formatNewReturn(date: string, time: string): string {
 }
 
 export default function ExtendPage() {
+  const { t } = useTranslation();
   const [pageState, setPageState] = useState<PageState>('lookup');
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
@@ -103,12 +105,12 @@ export default function ExtendPage() {
     try {
       const res = await api.post<{ found: boolean; order?: OrderData }>('/public/extend/lookup', { email, orderReference });
       if (res.found && res.order) { setOrder(res.order); setPageState('rental'); }
-      else setLookupError("We couldn't find that booking. Double-check your reference or contact us on WhatsApp for help.");
+      else setLookupError(t('extend.lookupNotFound'));
     } catch (err) {
       if (err instanceof ApiError && err.code === 'ORDER_NOT_ACTIVE') {
-        setLookupError(ORDER_NOT_ACTIVE_CUSTOMER_MESSAGE);
+        setLookupError(t('extend.notActiveError'));
       } else {
-        setLookupError("Something went wrong. Please try again or contact us on WhatsApp for help.");
+        setLookupError(t('extend.lookupError'));
       }
     }
     finally { setLookupLoading(false); }
@@ -173,13 +175,13 @@ export default function ExtendPage() {
         setConfirmedBalance(res.extensionCost ?? extensionCost ?? 0);
         setPageState('confirmed');
       } else {
-        setLookupError(res.reason ?? 'Extension failed. Please try again.');
+        setLookupError(res.reason ?? t('extend.extensionFailed'));
       }
     } catch (err) {
       if (err instanceof ApiError && err.code === 'ORDER_NOT_ACTIVE') {
-        setLookupError(ORDER_NOT_ACTIVE_CUSTOMER_MESSAGE);
+        setLookupError(t('extend.notActiveError'));
       } else {
-        setLookupError('Something went wrong. Please try again.');
+        setLookupError(t('extend.somethingWrong'));
       }
     } finally { setConfirmLoading(false); }
   }
@@ -190,19 +192,19 @@ export default function ExtendPage() {
   }
 
   return (
-    <PageLayout title="Extend My Rental | Lola's Rentals" fullBleed>
+    <PageLayout title={t('extend.pageTitle')} fullBleed>
       <SEO
-        title="Extend Your Rental | Lola's Rentals"
-        description="Extend your Lola's Rentals scooter or motorbike rental on Siargao."
+        title={t('extend.seoTitle')}
+        description={t('extend.seoDescription')}
         noIndex={true}
       />
       {/* Page header — hidden on the confirmation screen, shown for lookup/rental steps */}
       {pageState !== 'confirmed' && (
         <PageHeader
-          eyebrow="Need More Time?"
-          headingMain="Extend Your"
-          headingAccent="Rental"
-          subheading="Loving Siargao? We get it. Extend your rental in just a few clicks."
+          eyebrow={t('extend.eyebrow')}
+          headingMain={t('extend.headingMain')}
+          headingAccent={t('extend.headingAccent')}
+          subheading={t('extend.subheading')}
           fitAboveFold
           className="px-4 pb-3 pt-8 text-center sm:px-6 sm:pb-6 sm:pt-16 lg:pb-8 lg:pt-14"
         />
@@ -233,7 +235,7 @@ export default function ExtendPage() {
                 {firstNameOf(order.customerName) && (
                   <FadeUpSection>
                     <p className="mb-6 font-headline text-2xl font-black text-charcoal-brand sm:text-3xl lg:mb-8 lg:text-4xl">
-                      Welcome, {firstNameOf(order.customerName)}!
+                      {t('extend.welcome', { name: firstNameOf(order.customerName) })}
                     </p>
                   </FadeUpSection>
                 )}
@@ -311,7 +313,7 @@ export default function ExtendPage() {
                       }
                     >
                       <img src={phoneIcon} alt="" className="h-3.5 w-3.5 shrink-0 object-contain" width={14} height={14} />
-                      WhatsApp us
+                      {t('extend.whatsappUs')}
                     </a>
                   </div>
                 )}
@@ -325,6 +327,7 @@ export default function ExtendPage() {
 }
 
 function PawCardWidget({ savings }: { savings?: { hasPawCard: boolean; totalSaved: number; entryCount: number } }) {
+  const { t } = useTranslation();
   const hasSaved = savings?.hasPawCard && (savings.totalSaved ?? 0) > 0;
 
   if (hasSaved) {
@@ -332,10 +335,10 @@ function PawCardWidget({ savings }: { savings?: { hasPawCard: boolean; totalSave
       <div className="flex items-start gap-3 rounded-2xl border border-teal-brand/15 bg-sand-brand/50 px-4 py-4">
         <img src={iconPawCard} alt="Paw Card" className="mt-0.5 h-8 w-8 shrink-0 object-contain" />
         <div>
-          <p className="text-[11px] font-black uppercase tracking-widest text-teal-brand">Your Paw Card Savings</p>
+          <p className="text-[11px] font-black uppercase tracking-widest text-teal-brand">{t('extend.pawCardSavings')}</p>
           <p className="mt-0.5 text-2xl font-black text-teal-brand">{formatCurrency(savings!.totalSaved)}</p>
           <p className="mt-0.5 text-xs font-semibold text-charcoal-brand/60">
-            saved across {savings!.entryCount} visit{savings!.entryCount !== 1 ? 's' : ''} with your Paw Card
+            {t(savings!.entryCount === 1 ? 'extend.savedAcross' : 'extend.savedAcross_other', { count: savings!.entryCount })}
           </p>
         </div>
       </div>
@@ -346,10 +349,10 @@ function PawCardWidget({ savings }: { savings?: { hasPawCard: boolean; totalSave
     <div className="flex items-start gap-3 rounded-2xl border border-teal-brand/15 bg-sand-brand/50 px-4 py-4">
       <img src={iconPawCard} alt="Paw Card" className="mt-0.5 h-8 w-8 shrink-0 object-contain" />
       <div>
-        <p className="text-[11px] font-black uppercase tracking-widest text-teal-brand">Paw Card</p>
-        <p className="mt-0.5 text-sm font-bold text-charcoal-brand">Start saving with every rental</p>
+        <p className="text-[11px] font-black uppercase tracking-widest text-teal-brand">{t('extend.pawCard')}</p>
+        <p className="mt-0.5 text-sm font-bold text-charcoal-brand">{t('extend.startSaving')}</p>
         <p className="mt-0.5 text-xs font-semibold text-charcoal-brand/60">
-          Ask us about the Paw Card at pickup to earn discounts on future rentals.
+          {t('extend.askAboutPawCard')}
         </p>
       </div>
     </div>
@@ -357,6 +360,7 @@ function PawCardWidget({ savings }: { savings?: { hasPawCard: boolean; totalSave
 }
 
 function ConfirmedView({ dropoff, balance, orderRef }: { dropoff: string; balance: number; orderRef: string }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
   // dropoff is a naive local datetime string (e.g. "2026-04-21T16:45:00") — no UTC conversion needed
@@ -384,10 +388,10 @@ function ConfirmedView({ dropoff, balance, orderRef }: { dropoff: string; balanc
         {/* ── Hero: badge + heading ── */}
         <div className="flex flex-col items-center gap-3 pt-10 text-center">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-teal-brand/30 bg-teal-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-teal-brand">
-            ✓ Extension Confirmed
+            {t('extend.confirmed')}
           </span>
-          <h1 className="font-headline text-4xl font-black text-charcoal-brand">You&apos;re all set!</h1>
-          <p className="text-sm text-charcoal-brand/60">Your return date has been updated.</p>
+          <h1 className="font-headline text-4xl font-black text-charcoal-brand">{t('extend.allSet')}</h1>
+          <p className="text-sm text-charcoal-brand/60">{t('extend.returnUpdated')}</p>
         </div>
 
         {/* ── Lola mascot ── */}
@@ -412,11 +416,9 @@ function ConfirmedView({ dropoff, balance, orderRef }: { dropoff: string; balanc
                 🔔
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-black text-red-700">Action required within 24 hours</p>
+                <p className="text-sm font-black text-red-700">{t('extend.actionRequired')}</p>
                 <p className="mt-1 text-xs leading-relaxed text-red-600">
-                  Please visit our store to settle the outstanding balance of{' '}
-                  <span className="font-black">{formatCurrency(balance)}</span>{' '}
-                  during opening hours: <span className="font-bold">9AM – 5PM</span>.
+                  {t('extend.settleBalance', { amount: formatCurrency(balance) })}
                 </p>
               </div>
             </div>
@@ -427,7 +429,7 @@ function ConfirmedView({ dropoff, balance, orderRef }: { dropoff: string; balanc
               className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-green-500 px-4 py-2.5 text-sm font-black text-white transition-colors hover:bg-green-600"
             >
               <img src={phoneIcon} alt="" className="h-4 w-4 shrink-0 object-contain" />
-              Message Lola&apos;s Team
+              {t('extend.messageTeam')}
             </a>
           </div>
         )}
@@ -435,7 +437,7 @@ function ConfirmedView({ dropoff, balance, orderRef }: { dropoff: string; balanc
         {/* ── Return date + extension cost card ── */}
         <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
           {/* Return date/time */}
-          <p className="text-[10px] font-black uppercase tracking-widest text-charcoal-brand/40">New Return Date &amp; Time</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-charcoal-brand/40">{t('extend.newReturnDate')}</p>
           <p className="mt-1.5 text-2xl font-black text-charcoal-brand">{dateFormatted}</p>
           <p className="mt-0.5 text-lg font-black text-gold-brand">{timeFormatted}</p>
           <a
@@ -444,21 +446,21 @@ function ConfirmedView({ dropoff, balance, orderRef }: { dropoff: string; balanc
             rel="noopener noreferrer"
             className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-charcoal-brand/70 transition-colors hover:border-gray-300 hover:bg-gray-50"
           >
-            📅 Add to Calendar
+            {t('extend.addToCalendar')}
           </a>
 
           <div className="my-4 border-t border-gray-100" />
 
           {/* Extension cost */}
-          <p className="text-[10px] font-black uppercase tracking-widest text-charcoal-brand/40">Extension Cost</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-charcoal-brand/40">{t('extend.extensionCost')}</p>
           <p className="mt-1.5 text-3xl font-black text-charcoal-brand">{formatCurrency(balance)}</p>
-          <p className="mt-1 text-xs text-charcoal-brand/50">Added to outstanding balance on your booking.</p>
+          <p className="mt-1 text-xs text-charcoal-brand/50">{t('extend.addedToBalance')}</p>
 
           {/* Extension ref */}
           {orderRef && (
             <div className="mt-4 flex items-center justify-between rounded-xl bg-sand-brand/60 px-4 py-2.5">
               <div>
-                <p className="text-[9px] font-black uppercase tracking-widest text-charcoal-brand/40">Extension Ref</p>
+                <p className="text-[9px] font-black uppercase tracking-widest text-charcoal-brand/40">{t('extend.extensionRef')}</p>
                 <p className="mt-0.5 font-mono text-sm font-bold text-charcoal-brand">{orderRef}</p>
               </div>
               <button
@@ -466,7 +468,7 @@ function ConfirmedView({ dropoff, balance, orderRef }: { dropoff: string; balanc
                 onClick={() => void handleCopy()}
                 className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-charcoal-brand transition-colors hover:bg-gray-50"
               >
-                {copied ? '✓ Copied' : '⎘ Copy'}
+                {copied ? t('extend.copiedRef') : t('extend.copyRef')}
               </button>
             </div>
           )}
@@ -475,7 +477,7 @@ function ConfirmedView({ dropoff, balance, orderRef }: { dropoff: string; balanc
         {/* ── CTA buttons ── */}
         <Link to="/book/reserve" className="block">
           <PrimaryCtaButton className="flex min-h-[52px] w-full items-center justify-center gap-2 py-4 text-base">
-            ‹ Back to Browse
+            {t('extend.backToBrowse')}
           </PrimaryCtaButton>
         </Link>
         <a
@@ -485,7 +487,7 @@ function ConfirmedView({ dropoff, balance, orderRef }: { dropoff: string; balanc
           className="flex items-center justify-center gap-2 text-sm font-semibold text-charcoal-brand/60 transition-colors hover:text-teal-brand"
         >
           <img src={phoneIcon} alt="" className="h-4 w-4 shrink-0 object-contain" />
-          Need help? Chat with Lola&apos;s Team
+          {t('extend.needHelp')}
         </a>
 
       </div>

@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AnimatedHeading } from '../../components/public/AnimatedHeading.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { SEO } from '../../components/seo/SEO.js';
@@ -10,6 +11,7 @@ import separator3 from '../../assets/About Us Page/separator-3.svg';
 
 export default function AboutPage() {
   const gallerySectionRef = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation();
 
   return (
     <PageLayout title="About Us | Lola's Rentals" fullBleed floralScrollFreezeRef={gallerySectionRef}>
@@ -41,21 +43,21 @@ export default function AboutPage() {
             className="mb-3 font-lato font-bold uppercase tracking-widest text-white/70"
             style={{ fontSize: 11 }}
           >
-            Siargao Island
+            {t('about.siargaoIsland')}
           </p>
           <h1
             className="font-headline font-black !text-white"
             style={{ fontSize: 'clamp(32px, 5vw, 56px)', lineHeight: 1.1 }}
-            aria-label="A Small Island Business With a Big Heart"
+            aria-label={`${t('about.headingPart1')} ${t('about.headingPart2')}`}
           >
             <AnimatedHeading
-              text="A Small Island Business"
+              text={t('about.headingPart1')}
               tag="span"
               className="!text-white"
             />
             {' '}
             <AnimatedHeading
-              text="With a Big Heart"
+              text={t('about.headingPart2')}
               tag="span"
               delay={20}
               className="italic text-gold-brand"
@@ -65,7 +67,7 @@ export default function AboutPage() {
             className="mx-auto mt-4 max-w-xl font-lato text-white/80"
             style={{ fontSize: 18, lineHeight: 1.6 }}
           >
-            Born on Siargao, built around community.
+            {t('about.subtitle')}
           </p>
         </div>
       </div>

@@ -1,21 +1,28 @@
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { WaiverLegalContent } from '../../components/waiver/WaiverLegalContent.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 
 export default function WaiverAgreementPage() {
+  const { t } = useTranslation();
   return (
     <PageLayout title="Rental Agreement & Waiver | Lola's Rentals">
       <article className="mx-auto max-w-2xl px-4 py-12">
         <FadeUpSection onlyAnimateOnMobile>
           <h1 className="mb-2 font-headline text-3xl font-black text-teal-brand md:text-4xl">
-            Rental Agreement &amp; Waiver
+            {t('waiverAgreement.title')}
           </h1>
           <p className="mb-6 font-lato text-sm text-charcoal-brand/60">
-            This is the full text of our rental agreement and waiver for your reference. To sign a waiver for your
-            booking, use the link you received after booking (or ask our team).
+            {t('waiverAgreement.subtitle')}
           </p>
         </FadeUpSection>
+
+        {/* Legal notice shown in user's language; body text stays in English */}
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="font-lato text-sm text-amber-800">{t('waiver.legalNotice')}</p>
+        </div>
+
         <div className="rounded-xl border border-charcoal-brand/10 bg-white p-5 md:p-6">
           <WaiverLegalContent />
         </div>
@@ -24,7 +31,7 @@ export default function WaiverAgreementPage() {
             to="/book"
             className="font-lato text-sm font-semibold text-teal-brand underline-offset-2 hover:underline"
           >
-            ← Back to home
+            {t('waiverAgreement.backToHome')}
           </Link>
         </p>
       </article>

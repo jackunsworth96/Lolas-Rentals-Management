@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { api } from '../../api/client.js';
 import { formatCurrency } from '../../utils/currency.js';
@@ -13,6 +14,7 @@ interface TransferRoute {
 }
 
 export default function PublicBookingPage() {
+  const { t } = useTranslation();
   const { token } = useParams<{ token: string }>();
   const [storeName, setStoreName] = useState('');
   const [routes, setRoutes] = useState<TransferRoute[]>([]);
@@ -40,7 +42,7 @@ export default function PublicBookingPage() {
       setRoutes(routesData as TransferRoute[]);
       setStoreName((storeData as { name: string })?.name ?? '');
     }).catch(() => {
-      setError('This booking link is not valid or has been disabled. Please ask the rental shop for a new link.');
+      setError(t('transfer.invalidLink'));
     }).finally(() => setLoading(false));
   }, [token]);
 
@@ -57,7 +59,7 @@ export default function PublicBookingPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
-    if (!selectedRoute) { setError('Please select a route'); return; }
+    if (!selectedRoute) { setError(t('transfer.selectRouteError')); return; }
     setSubmitting(true);
     try {
       const result = await api.post<{ id: string }>('/public/transfer-booking', {
@@ -77,7 +79,7 @@ export default function PublicBookingPage() {
       setBookingRef(result.id?.slice(0, 8).toUpperCase() ?? '');
       setSubmitted(true);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Booking failed. Please try again.');
+      setError(err instanceof Error ? err.message : t('transfer.bookingFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -89,7 +91,7 @@ export default function PublicBookingPage() {
 
   if (loading) {
     return (
-      <PageLayout title="Transfer Booking | Lola's Rentals" showFloralRight={false}>
+      <PageLayout title={t('transfer.pageTitle')} showFloralRight={false}>
         <div className="flex min-h-[60vh] items-center justify-center px-4">
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-teal-brand border-t-transparent" />
         </div>
@@ -99,12 +101,12 @@ export default function PublicBookingPage() {
 
   if (!token || (error && routes.length === 0)) {
     return (
-      <PageLayout title="Transfer Booking | Lola's Rentals" showFloralRight={false}>
+      <PageLayout title={t('transfer.pageTitle')} showFloralRight={false}>
         <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 text-center">
           <div className="mb-4 text-4xl">🚐</div>
-          <h2 className="font-headline text-2xl font-bold text-charcoal-brand mb-2">Invalid booking link</h2>
+          <h2 className="font-headline text-2xl font-bold text-charcoal-brand mb-2">{t('transfer.invalidLink')}</h2>
           <p className="text-charcoal-brand/70 text-sm max-w-sm">
-            {error || 'This booking link is not valid. Please contact the rental shop for a new link.'}
+            {error || t('transfer.invalidLinkContact')}
           </p>
         </div>
       </PageLayout>
@@ -113,21 +115,21 @@ export default function PublicBookingPage() {
 
   if (submitted) {
     return (
-      <PageLayout title="Booking Confirmed | Lola's Rentals" showFloralRight={false}>
+      <PageLayout title={t('transfer.confirmedTitle')} showFloralRight={false}>
         <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 text-center">
           <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-teal-brand/10">
             <svg className="h-10 w-10 text-teal-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h2 className="font-headline text-3xl font-bold text-teal-brand mb-2">Booking Confirmed!</h2>
+          <h2 className="font-headline text-3xl font-bold text-teal-brand mb-2">{t('transfer.bookingConfirmed')}</h2>
           {bookingRef && (
             <p className="mb-2 text-sm text-charcoal-brand/60 font-lato">
-              Reference: <span className="font-mono font-semibold text-charcoal-brand">{bookingRef}</span>
+              {t('transfer.reference')} <span className="font-mono font-semibold text-charcoal-brand">{bookingRef}</span>
             </p>
           )}
           <p className="text-charcoal-brand/70 text-sm max-w-sm font-lato">
-            Your transfer has been booked.{storeName ? ` ${storeName} will be in touch to confirm the details.` : ''}
+            {t('transfer.transferBooked')}{storeName ? ` ${t('transfer.storeWillContact', { store: storeName })}` : ''}
           </p>
         </div>
       </PageLayout>
@@ -135,12 +137,12 @@ export default function PublicBookingPage() {
   }
 
   return (
-    <PageLayout title="Transfer Booking | Lola's Rentals" showFloralRight={false}>
+    <PageLayout title={t('transfer.pageTitle')} showFloralRight={false}>
       <div className="mx-auto max-w-2xl px-4 py-10">
 
         <div className="mb-8 text-center">
           <h1 className="font-headline text-4xl font-black text-teal-brand mb-2">
-            Book a Transfer
+            {t('transfer.bookATransfer')}
           </h1>
           {storeName && (
             <p className="text-charcoal-brand/70 font-lato text-sm">{storeName}</p>
@@ -150,11 +152,11 @@ export default function PublicBookingPage() {
         <form onSubmit={handleSubmit} className="space-y-6">
 
           <div className="rounded-2xl bg-sand-brand p-6 space-y-4">
-            <h2 className="font-headline text-xl font-bold text-charcoal-brand">Your Transfer</h2>
+            <h2 className="font-headline text-xl font-bold text-charcoal-brand">{t('transfer.yourTransfer')}</h2>
 
             <div>
               <label className={labelClass}>
-                Route <span className="text-red-500">*</span>
+                {t('transfer.route')} <span className="text-red-500">*</span>
               </label>
               <select
                 value={selectedRouteId}
@@ -162,11 +164,11 @@ export default function PublicBookingPage() {
                 required
                 className={inputClass}
               >
-                <option value="">Select a route…</option>
+                <option value="">{t('transfer.selectRoute')}</option>
                 {routes.map((r) => (
                   <option key={r.id} value={String(r.id)}>
                     {r.route}{r.vanType ? ` — ${r.vanType}` : ''}{' '}
-                    ({formatCurrency(r.price)}{r.pricingType === 'per_head' ? '/person' : ''})
+                    ({formatCurrency(r.price)}{r.pricingType === 'per_head' ? t('transfer.perPerson') : ''})
                   </option>
                 ))}
               </select>
@@ -175,7 +177,7 @@ export default function PublicBookingPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className={labelClass}>
-                  Service Date <span className="text-red-500">*</span>
+                  {t('transfer.serviceDate')} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="date"
@@ -188,7 +190,7 @@ export default function PublicBookingPage() {
               </div>
               <div>
                 <label className={labelClass}>
-                  Passengers <span className="text-red-500">*</span>
+                  {t('transfer.passengers')} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="number"
@@ -203,7 +205,7 @@ export default function PublicBookingPage() {
             </div>
 
             <div>
-              <label className={labelClass}>Flight Time</label>
+              <label className={labelClass}>{t('transfer.flightTime')}</label>
               <input
                 type="time"
                 value={flightTime}
@@ -211,13 +213,13 @@ export default function PublicBookingPage() {
                 className={inputClass}
               />
               <p className="mt-1 text-xs text-charcoal-brand/50 font-lato">
-                If applicable — helps us time your pickup
+                {t('transfer.flightTimeHint')}
               </p>
             </div>
 
             {selectedRoute && (
               <div className="rounded-xl bg-teal-brand/10 border border-teal-brand/20 px-4 py-3 flex items-center justify-between">
-                <span className="text-sm font-medium text-teal-brand font-lato">Total</span>
+                <span className="text-sm font-medium text-teal-brand font-lato">{t('transfer.total')}</span>
                 <span className="text-xl font-bold text-teal-brand font-headline">
                   {formatCurrency(totalPrice)}
                 </span>
@@ -226,11 +228,11 @@ export default function PublicBookingPage() {
           </div>
 
           <div className="rounded-2xl bg-sand-brand p-6 space-y-4">
-            <h2 className="font-headline text-xl font-bold text-charcoal-brand">Your Details</h2>
+            <h2 className="font-headline text-xl font-bold text-charcoal-brand">{t('transfer.yourDetails')}</h2>
 
             <div>
               <label className={labelClass}>
-                Full Name <span className="text-red-500">*</span>
+                {t('transfer.fullName')} <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
@@ -244,7 +246,7 @@ export default function PublicBookingPage() {
 
             <div>
               <label className={labelClass}>
-                WhatsApp / Contact Number <span className="text-red-500">*</span>
+                {t('transfer.whatsappContact')} <span className="text-red-500">*</span>
               </label>
               <input
                 type="tel"
@@ -257,7 +259,7 @@ export default function PublicBookingPage() {
             </div>
 
             <div>
-              <label className={labelClass}>Email</label>
+              <label className={labelClass}>{t('transfer.email')}</label>
               <input
                 type="email"
                 value={customerEmail}
@@ -268,23 +270,23 @@ export default function PublicBookingPage() {
             </div>
 
             <div>
-              <label className={labelClass}>Accommodation / Drop-off</label>
+              <label className={labelClass}>{t('transfer.accommodation')}</label>
               <input
                 type="text"
                 value={accommodation}
                 onChange={(e) => setAccommodation(e.target.value)}
-                placeholder="e.g. Harana Surf Resort"
+                placeholder={t('transfer.accommodationPlaceholder')}
                 className={inputClass}
               />
             </div>
 
             <div>
-              <label className={labelClass}>Notes for the driver</label>
+              <label className={labelClass}>{t('transfer.driverNotes')}</label>
               <textarea
                 value={opsNotes}
                 onChange={(e) => setOpsNotes(e.target.value)}
                 rows={3}
-                placeholder="Any special requests or information…"
+                placeholder={t('transfer.driverNotesPlaceholder')}
                 className={inputClass}
               />
             </div>
@@ -301,7 +303,7 @@ export default function PublicBookingPage() {
             disabled={submitting}
             className="w-full rounded-xl bg-teal-brand px-6 py-3.5 text-base font-bold text-white font-lato hover:bg-teal-700 disabled:opacity-50 transition-colors"
           >
-            {submitting ? 'Booking…' : 'Confirm Transfer Booking'}
+            {submitting ? t('transfer.booking') : t('transfer.confirmBooking')}
           </button>
 
         </form>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -31,6 +32,7 @@ const PARTNER_LOGOS = Object.entries(_logoRaw)
   .map(([, url]) => ({ icon: url, label: '' }));
 
 export default function PawCardPage() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const [pawAccess, setPawAccess] = useState<PawCardAccess | null>(null);
   const [searchParams] = useSearchParams();
@@ -50,10 +52,10 @@ export default function PawCardPage() {
   const customerIdForSubmit = pawAccess?.customerId ?? pawAccess?.email ?? '';
 
   return (
-    <PageLayout title="Paw Card | Lola's Rentals" showFloralLeft={false} showFloralRight={false} fullBleed>
+    <PageLayout title={t('pawCard.pageTitle')} showFloralLeft={false} showFloralRight={false} fullBleed>
       <SEO
-        title="Paw Card | Lola's Rentals Siargao"
-        description="Join the Siargao Paw Card loyalty programme — discounts at 70+ island businesses."
+        title={t('pawCard.seoTitle')}
+        description={t('pawCard.seoDescription')}
         canonical="/book/paw-card"
       />
 
@@ -69,7 +71,7 @@ export default function PawCardPage() {
               visible: { transition: { staggerChildren: 0.04 } },
             }}
           >
-            {"Welcome back, ".split('').map((char, i) => (
+            {t('pawCard.welcomeBack').split('').map((char, i) => (
               <motion.span
                 key={i}
                 variants={{
@@ -88,7 +90,7 @@ export default function PawCardPage() {
                   hidden: { opacity: 0, y: 20 },
                   visible: {
                     opacity: 1, y: 0,
-                    transition: { duration: 0.4, ease: 'easeOut', delay: "Welcome back, ".length * 0.04 + i * 0.04 },
+                    transition: { duration: 0.4, ease: 'easeOut', delay: t('pawCard.welcomeBack').length * 0.04 + i * 0.04 },
                   },
                 }}
                 style={{ display: 'inline-block', whiteSpace: char === ' ' ? 'pre' : 'normal' }}
@@ -104,7 +106,7 @@ export default function PawCardPage() {
                   hidden: { opacity: 0, y: 20 },
                   visible: {
                     opacity: 1, y: 0,
-                    transition: { duration: 0.4, ease: 'easeOut', delay: ("Welcome back, ".length + displayFirstName.length) * 0.04 + i * 0.04 },
+                    transition: { duration: 0.4, ease: 'easeOut', delay: (t('pawCard.welcomeBack').length + displayFirstName.length) * 0.04 + i * 0.04 },
                   },
                 }}
                 style={{ display: 'inline-block' }}
@@ -118,10 +120,10 @@ export default function PawCardPage() {
 
       {/* ── Page heading ── */}
       <PageHeader
-        eyebrow="Paw Card Community"
-        headingMain="Log Your"
-        headingAccent="Savings"
-        subheading="Every peso saved at our partner businesses goes toward spay, neuter and vaccination initiatives for animals on Siargao."
+        eyebrow={t('pawCard.eyebrow')}
+        headingMain={t('pawCard.headingMain')}
+        headingAccent={t('pawCard.headingAccent')}
+        subheading={t('pawCard.subheading')}
         className="px-6 pt-20 pb-6 text-center"
       />
 
@@ -146,7 +148,7 @@ export default function PawCardPage() {
             }}
             className="font-lato text-xs text-charcoal-brand/50 underline underline-offset-2 hover:text-charcoal-brand transition-colors"
           >
-            Log out
+            {t('pawCard.logOut')}
           </button>
         </div>
       )}
@@ -167,7 +169,7 @@ export default function PawCardPage() {
           to="/paw-card/partners"
           className="inline-flex items-center gap-2 font-lato text-sm font-medium text-teal-brand hover:text-teal-brand/80 transition-colors group"
         >
-          View all partner discounts
+          {t('pawCard.viewPartners')}
           <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
         </Link>
       </div>
