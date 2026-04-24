@@ -38,6 +38,14 @@ export interface TransferProps {
   routePricingType?: 'fixed' | 'per_head' | null;
   /** Scheduled pickup time in HH:MM format, stored as Postgres time. */
   pickupTime?: string | null;
+  /** Upper bound of the pickup window in HH:MM format (shared van only). */
+  pickupTimeEnd?: string | null;
+  /** Telegram message_id returned after posting to the driver channel. */
+  telegramMessageId?: string | null;
+  /** Whether the driver has tapped the Confirm button in Telegram. */
+  driverConfirmed?: boolean;
+  /** Timestamp when the driver tapped Confirm. */
+  driverConfirmedAt?: Date | null;
 }
 
 export class Transfer {
@@ -71,6 +79,10 @@ export class Transfer {
   readonly routeDriverCut: number | null;
   readonly routePricingType: 'fixed' | 'per_head' | null;
   readonly pickupTime: string | null;
+  readonly pickupTimeEnd: string | null;
+  readonly telegramMessageId: string | null;
+  readonly driverConfirmed: boolean;
+  readonly driverConfirmedAt: Date | null;
 
   private constructor(props: TransferProps) {
     this.id = props.id;
@@ -103,6 +115,10 @@ export class Transfer {
     this.routeDriverCut = props.routeDriverCut ?? null;
     this.routePricingType = props.routePricingType ?? null;
     this.pickupTime = props.pickupTime ?? null;
+    this.pickupTimeEnd = props.pickupTimeEnd ?? null;
+    this.telegramMessageId = props.telegramMessageId ?? null;
+    this.driverConfirmed = props.driverConfirmed ?? false;
+    this.driverConfirmedAt = props.driverConfirmedAt ?? null;
   }
 
   static create(props: TransferProps): Transfer {
@@ -150,6 +166,30 @@ export class Transfer {
     return Transfer.create({
       ...(this as unknown as TransferProps),
       status,
+      updatedAt: new Date(),
+    });
+  }
+
+  /** Called after successfully posting to Telegram. Stores the message ID and calculated pickup window. */
+  withTelegramSent(messageId: string, pickupTime: string, pickupTimeEnd: string | null): Transfer {
+    return Transfer.create({
+      ...(this as unknown as TransferProps),
+      telegramMessageId: messageId,
+      pickupTime,
+      pickupTimeEnd,
+      updatedAt: new Date(),
+    });
+  }
+
+  /** Called when flight time is amended. Resets driver confirmation and updates pickup window. */
+  withFlightTimeAmended(flightTime: string, pickupTime: string, pickupTimeEnd: string | null): Transfer {
+    return Transfer.create({
+      ...(this as unknown as TransferProps),
+      flightTime,
+      pickupTime,
+      pickupTimeEnd,
+      driverConfirmed: false,
+      driverConfirmedAt: null,
       updatedAt: new Date(),
     });
   }

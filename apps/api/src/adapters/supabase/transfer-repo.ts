@@ -32,6 +32,10 @@ const TransferRowSchema = z.object({
   collected_at: z.string().nullable(),
   collected_amount: z.number().nullable(),
   pickup_time: z.string().nullable(),
+  pickup_time_end: z.string().nullable(),
+  telegram_message_id: z.string().nullable(),
+  driver_confirmed: z.boolean().nullable(),
+  driver_confirmed_at: z.string().nullable(),
 });
 
 type RouteInfo = { driverCut: number | null; pricingType: 'fixed' | 'per_head' | null };
@@ -66,6 +70,10 @@ function toRow(t: Transfer) {
     collected_at: t.collectedAt?.toISOString() ?? null,
     collected_amount: t.collectedAmount,
     pickup_time: t.pickupTime,
+    pickup_time_end: t.pickupTimeEnd,
+    telegram_message_id: t.telegramMessageId,
+    driver_confirmed: t.driverConfirmed,
+    driver_confirmed_at: t.driverConfirmedAt?.toISOString() ?? null,
   };
 }
 
@@ -106,6 +114,10 @@ function toDomain(raw: unknown, routeInfo?: RouteInfo): Transfer {
     routeDriverCut: routeInfo?.driverCut ?? null,
     routePricingType: routeInfo?.pricingType ?? null,
     pickupTime: row.pickup_time,
+    pickupTimeEnd: row.pickup_time_end,
+    telegramMessageId: row.telegram_message_id,
+    driverConfirmed: row.driver_confirmed ?? false,
+    driverConfirmedAt: row.driver_confirmed_at ? new Date(row.driver_confirmed_at) : null,
   });
 }
 

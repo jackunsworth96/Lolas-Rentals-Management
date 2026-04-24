@@ -143,6 +143,41 @@ router.post('/transfer-booking', bookingLimiter, validateBody(PublicBookingSchem
         console.error('[transfer-email]', err);
       }
     })();
+
+    void (async () => {
+      try {
+        const { calculatePickupTime, inferDirection } = await import('../transfers/pickup-time.js');
+        const { notifyNewTransfer } = await import('../telegram/telegram.service.js');
+
+        if (!result.flightTime) return;
+
+        const direction = inferDirection(result.route);
+        const pickup = calculatePickupTime(direction, result.vanType, result.flightTime, result.serviceDate);
+        const messageId = await notifyNewTransfer({
+          id: result.id,
+          customerName: result.customerName,
+          contactNumber: result.contactNumber,
+          route: result.route,
+          serviceDate: result.serviceDate,
+          flightTime: result.flightTime,
+          vanType: result.vanType,
+          paxCount: result.paxCount,
+          accommodation: result.accommodation,
+          pickupTime: pickup.from,
+          pickupTimeEnd: pickup.to,
+        });
+
+        if (messageId) {
+          const transferRepo = req.app.locals.deps.transferRepo;
+          const refreshed = await transferRepo.findById(result.id);
+          if (refreshed) {
+            await transferRepo.save(refreshed.withTelegramSent(messageId, pickup.from, pickup.to));
+          }
+        }
+      } catch (err) {
+        console.error('[transfer-telegram]', err);
+      }
+    })();
   } catch (err) { next(err); }
 });
 
@@ -230,6 +265,41 @@ router.post('/public-transfer-booking', bookingLimiter, validateBody(PublicTrans
         });
       } catch (err) {
         console.error('[transfer-email]', err);
+      }
+    })();
+
+    void (async () => {
+      try {
+        const { calculatePickupTime, inferDirection } = await import('../transfers/pickup-time.js');
+        const { notifyNewTransfer } = await import('../telegram/telegram.service.js');
+
+        if (!result.flightTime) return;
+
+        const direction = inferDirection(result.route);
+        const pickup = calculatePickupTime(direction, result.vanType, result.flightTime, result.serviceDate);
+        const messageId = await notifyNewTransfer({
+          id: result.id,
+          customerName: result.customerName,
+          contactNumber: result.contactNumber,
+          route: result.route,
+          serviceDate: result.serviceDate,
+          flightTime: result.flightTime,
+          vanType: result.vanType,
+          paxCount: result.paxCount,
+          accommodation: result.accommodation,
+          pickupTime: pickup.from,
+          pickupTimeEnd: pickup.to,
+        });
+
+        if (messageId) {
+          const transferRepo = req.app.locals.deps.transferRepo;
+          const refreshed = await transferRepo.findById(result.id);
+          if (refreshed) {
+            await transferRepo.save(refreshed.withTelegramSent(messageId, pickup.from, pickup.to));
+          }
+        }
+      } catch (err) {
+        console.error('[transfer-telegram]', err);
       }
     })();
   } catch (err) { next(err); }

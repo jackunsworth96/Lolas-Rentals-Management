@@ -21,6 +21,10 @@ const AccommodationBodySchema = z.object({
   accommodation: z.string().max(500).nullable(),
 });
 
+const FlightTimeBodySchema = z.object({
+  flightTime: z.string().min(1),
+});
+
 const router = Router();
 router.use(authenticate);
 
@@ -58,6 +62,43 @@ router.post('/', requirePermission(Permission.EditTransfers), validateBody(Creat
     const { createTransfer } = await import('../use-cases/transfers/create-transfer.js');
     const result = await createTransfer(req.body, { transfers: req.app.locals.deps.transferRepo });
     res.status(201).json({ success: true, data: result });
+
+    // Fire-and-forget: calculate pickup time and notify driver channel.
+    void (async () => {
+      try {
+        const { calculatePickupTime, inferDirection } = await import('../transfers/pickup-time.js');
+        const { notifyNewTransfer } = await import('../telegram/telegram.service.js');
+
+        if (!result.flightTime) return;
+
+        const direction = inferDirection(result.route);
+        const pickup = calculatePickupTime(direction, result.vanType, result.flightTime, result.serviceDate);
+        const messageId = await notifyNewTransfer({
+          id: result.id,
+          customerName: result.customerName,
+          contactNumber: result.contactNumber,
+          route: result.route,
+          serviceDate: result.serviceDate,
+          flightTime: result.flightTime,
+          vanType: result.vanType,
+          paxCount: result.paxCount,
+          accommodation: result.accommodation,
+          pickupTime: pickup.from,
+          pickupTimeEnd: pickup.to,
+        });
+
+        if (messageId) {
+          const refreshed = await req.app.locals.deps.transferRepo.findById(result.id);
+          if (refreshed) {
+            await req.app.locals.deps.transferRepo.save(
+              refreshed.withTelegramSent(messageId, pickup.from, pickup.to),
+            );
+          }
+        }
+      } catch (err) {
+        console.error('[transfers] Telegram notification failed:', err);
+      }
+    })();
   } catch (err) { next(err); }
 });
 
@@ -199,6 +240,61 @@ router.patch('/:id/pickup-time', requirePermission(Permission.EditTransfers), va
     await transferRepo.save(updated);
     const refreshed = await transferRepo.findById(id);
     res.json({ success: true, data: refreshed });
+  } catch (err) { next(err); }
+});
+
+router.patch('/:id/flight-time', requirePermission(Permission.EditTransfers), validateBody(FlightTimeBodySchema), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = String(req.params.id);
+    const { flightTime } = req.body as { flightTime: string };
+    const transferRepo = req.app.locals.deps.transferRepo;
+
+    const existing = await transferRepo.findById(id);
+    if (!existing) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Transfer not found' } });
+      return;
+    }
+
+    const { calculatePickupTime, inferDirection } = await import('../transfers/pickup-time.js');
+    const direction = inferDirection(existing.route);
+    const pickup = calculatePickupTime(direction, existing.vanType, flightTime, existing.serviceDate);
+
+    const oldPickupDisplay = existing.pickupTime
+      ? (existing.pickupTimeEnd ? `${existing.pickupTime}–${existing.pickupTimeEnd}` : existing.pickupTime)
+      : '(none)';
+
+    const updated = existing.withFlightTimeAmended(flightTime, pickup.from, pickup.to);
+    await transferRepo.save(updated);
+    const refreshed = await transferRepo.findById(id);
+    res.json({ success: true, data: refreshed });
+
+    // Fire-and-forget: send amendment alert to driver channel.
+    void (async () => {
+      try {
+        const { notifyAmendedTransfer } = await import('../telegram/telegram.service.js');
+        const messageId = await notifyAmendedTransfer(
+          {
+            id: updated.id,
+            customerName: updated.customerName,
+            contactNumber: updated.contactNumber,
+            route: updated.route,
+            serviceDate: updated.serviceDate,
+            flightTime: updated.flightTime,
+            vanType: updated.vanType,
+            paxCount: updated.paxCount,
+            accommodation: updated.accommodation,
+            pickupTime: pickup.from,
+            pickupTimeEnd: pickup.to,
+          },
+          oldPickupDisplay,
+        );
+        if (messageId && refreshed) {
+          await transferRepo.save(refreshed.withTelegramSent(messageId, pickup.from, pickup.to));
+        }
+      } catch (err) {
+        console.error('[transfers] Amendment Telegram notification failed:', err);
+      }
+    })();
   } catch (err) { next(err); }
 });
 
