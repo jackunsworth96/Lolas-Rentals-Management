@@ -118,12 +118,12 @@ router.post('/', requirePermission(Permission.EditMaintenance), validateBody(Log
 
         void sendTelegramAlert(
           `🔩 <b>Maintenance Logged</b>\n` +
-            `🚲 Vehicle: ${escapeHtml(vehicleName)} (${escapeHtml(modelName)}) — ${escapeHtml(plate)}\n` +
-            `📋 Issue: ${escapeHtml(truncatedNotes || '—')}\n` +
-            `🔖 Status: ${escapeHtml(statusLabel)}\n` +
-            `👤 Logged by: ${escapeHtml(loggedBy)}\n` +
-            `🏪 Store: ${escapeHtml(storeLabel)}\n` +
-            `🕐 ${escapeHtml(timestamp)}`,
+            `Vehicle: ${escapeHtml(vehicleName)} (${escapeHtml(modelName)}) — ${escapeHtml(plate)}\n` +
+            `Issue: ${escapeHtml(truncatedNotes || '—')}\n` +
+            `Status: ${escapeHtml(statusLabel)}\n` +
+            `Logged by: ${escapeHtml(loggedBy)}\n` +
+            `Store: ${escapeHtml(storeLabel)}\n` +
+            `${escapeHtml(timestamp)}`,
           getTelegramChatId('maintenance'),
         );
 
@@ -212,11 +212,11 @@ router.put('/:id', requirePermission(Permission.EditMaintenance), validateBody(S
 
           void sendTelegramAlert(
             `🔄 <b>Maintenance Status Updated</b>\n` +
-              `🚲 Vehicle: ${escapeHtml(vehicleName)} (${escapeHtml(modelName)}) — ${escapeHtml(plate)}\n` +
-              `🔖 Status: ${escapeHtml(previousStatus ?? '—')} → <b>${escapeHtml(newStatus)}</b>\n` +
-              `👤 Updated by: ${escapeHtml(updatedBy)}\n` +
-              `🏪 Store: ${escapeHtml(storeLabel)}\n` +
-              `🕐 ${escapeHtml(timestamp)}`,
+              `Vehicle: ${escapeHtml(vehicleName)} (${escapeHtml(modelName)}) — ${escapeHtml(plate)}\n` +
+              `Status: ${escapeHtml(previousStatus ?? '—')} → <b>${escapeHtml(newStatus)}</b>\n` +
+              `Updated by: ${escapeHtml(updatedBy)}\n` +
+              `Store: ${escapeHtml(storeLabel)}\n` +
+              `${escapeHtml(timestamp)}`,
             getTelegramChatId('maintenance'),
           );
         } catch (tgErr) {

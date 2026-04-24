@@ -339,11 +339,11 @@ router.post(
             const loggedBy = req.user?.username ?? 'unknown';
             await sendTelegramAlert(
               `🔩 <b>Maintenance Logged</b>\n` +
-                `🚲 Vehicle: ${escapeHtml(vehicleLabel)}\n` +
-                `📋 Issues:\n${escapeHtml(issueLines)}\n` +
-                `📎 From Inspection: ${escapeHtml(body.orderReference)}\n` +
-                `👤 Logged by: ${escapeHtml(loggedBy)}\n` +
-                `🏪 Store: ${escapeHtml(body.storeId)}`,
+                `Vehicle: ${escapeHtml(vehicleLabel)}\n` +
+                `Issues:\n${escapeHtml(issueLines)}\n` +
+                `From Inspection: ${escapeHtml(body.orderReference)}\n` +
+                `Logged by: ${escapeHtml(loggedBy)}\n` +
+                `Store: ${escapeHtml(body.storeId)}`,
               getTelegramChatId('maintenance'),
             );
           } catch (tgErr) {

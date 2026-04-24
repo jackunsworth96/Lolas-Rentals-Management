@@ -219,21 +219,20 @@ export async function runMorningSummary(): Promise<void> {
       : '• None';
 
     const message =
-      `🌅 <b>Good morning! Lola's Daily Briefing</b>\n` +
-      `📅 ${escapeHtml(dayHeader)}\n` +
+      `🌅 <b>Good morning — Lola's Daily Briefing</b>\n` +
+      `${escapeHtml(dayHeader)}\n` +
       `${divider}\n` +
-      `🛵 Active rentals: ${activeCount}\n` +
-      `📥 Inbox (unprocessed): ${inboxCount}\n` +
-      `💰 Outstanding balances: ₱${outstandingBalance.toLocaleString('en-PH')}\n` +
+      `Active rentals: ${activeCount}\n` +
+      `Inbox (unprocessed): ${inboxCount}\n` +
+      `Outstanding balances: ₱${outstandingBalance.toLocaleString('en-PH')}\n` +
       `${divider}\n` +
       `<b>Returns today:</b>\n` +
       `${returningSection}\n` +
       `${divider}\n` +
-      `<b>🌙 9 PM returns tonight (${eveningCount}):</b>\n` +
+      `<b>9 PM returns tonight (${eveningCount}):</b>\n` +
       `${eveningSection}\n` +
       `${divider}\n` +
-      `🕐 ${escapeHtml(timestamp)}\n` +
-      `Have a great day! 🐾`;
+      `${escapeHtml(timestamp)}`;
 
     await sendTelegramAlert(message, chatId);
     console.log('[daily-summary] Morning summary sent');
@@ -293,6 +292,7 @@ export async function runEveningSnapshot(): Promise<void> {
       const { data: fleet, error: fleetErr } = await sb
         .from('fleet')
         .select('id, model_id, status')
+        .eq('store_id', 'store-lolas')
         .in('status', ['Available', 'Active']);
       if (fleetErr) throw new Error(fleetErr.message);
 
@@ -367,17 +367,16 @@ export async function runEveningSnapshot(): Promise<void> {
     const message =
       `🌆 <b>Lola's End-of-Day Snapshot</b>\n` +
       `${divider}\n` +
-      `<b>🌙 9 PM returns tonight — final count: ${eveningCount}</b>\n` +
+      `<b>9 PM returns tonight — final count: ${eveningCount}</b>\n` +
       `${eveningSection}\n` +
       `${divider}\n` +
       `<b>Returns tomorrow:</b>\n` +
       `${tomorrowReturnsSection}\n` +
       `${divider}\n` +
-      `<b>Tomorrow's availability:</b>\n` +
+      `<b>Tomorrow's availability (Lola's Rentals):</b>\n` +
       `${availabilitySection}\n` +
       `${divider}\n` +
-      `🕐 ${escapeHtml(timestamp)}\n` +
-      `Good evening! 🐾`;
+      `${escapeHtml(timestamp)}`;
 
     await sendTelegramAlert(message, chatId);
     console.log('[daily-summary] Evening snapshot sent');

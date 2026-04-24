@@ -510,15 +510,17 @@ router.put('/:id', requirePermission(Permission.EditFleet), validateBody(z.objec
               modelName = (model as { name: string }).name;
             }
           }
-          const plate = result.plateNumber ?? result.name ?? vehicleId;
+          const vehicleLabel = result.plateNumber && result.name && result.name !== result.plateNumber
+            ? `${escapeHtml(result.name)} (${escapeHtml(result.plateNumber)})`
+            : escapeHtml(result.plateNumber ?? result.name ?? vehicleId);
           const updatedBy = req.user?.username ?? 'unknown';
           await sendTelegramAlert(
             `🔧 <b>Vehicle Out of Service</b>\n` +
-              `Vehicle: ${escapeHtml(plate)} — ${escapeHtml(modelName)}\n` +
+              `Vehicle: ${vehicleLabel} — ${escapeHtml(modelName)}\n` +
               `Status: ${escapeHtml(newStatus)}\n` +
               `Store: ${escapeHtml(result.storeId)}\n` +
               `Updated by: ${escapeHtml(updatedBy)}\n` +
-              `⚠️ Please action promptly to return to circulation.`,
+              `Please action promptly to return to circulation.`,
             getTelegramChatId('fleet'),
           );
         } catch (tgErr) {
@@ -541,12 +543,14 @@ router.put('/:id', requirePermission(Permission.EditFleet), validateBody(z.objec
               modelName = (model as { name: string }).name;
             }
           }
-          const plate = result.plateNumber ?? result.name ?? vehicleId;
+          const vehicleLabel = result.plateNumber && result.name && result.name !== result.plateNumber
+            ? `${escapeHtml(result.name)} (${escapeHtml(result.plateNumber)})`
+            : escapeHtml(result.plateNumber ?? result.name ?? vehicleId);
           const updatedBy = req.user?.username ?? 'unknown';
           await sendTelegramAlert(
             `🟢 <b>Vehicle Back in Service</b>\n` +
-              `Vehicle: ${escapeHtml(plate)} — ${escapeHtml(modelName)}\n` +
-              `Status: Available ✅\n` +
+              `Vehicle: ${vehicleLabel} — ${escapeHtml(modelName)}\n` +
+              `Status: Available\n` +
               `Store: ${escapeHtml(result.storeId)}\n` +
               `Updated by: ${escapeHtml(updatedBy)}`,
             getTelegramChatId('fleet'),

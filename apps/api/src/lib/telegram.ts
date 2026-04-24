@@ -142,22 +142,60 @@ export async function sendTelegramMessage(
 
 /**
  * Dismisses the loading spinner on a Telegram inline button after the driver taps it.
+ * Pass `text` to show a brief toast notification to the tapper.
  * Fire-and-forget — never throws.
  */
-export async function answerCallbackQuery(callbackQueryId: string): Promise<void> {
+export async function answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) return;
 
   try {
+    const payload: Record<string, unknown> = { callback_query_id: callbackQueryId };
+    if (text) payload.text = text;
     await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ callback_query_id: callbackQueryId }),
+      body: JSON.stringify(payload),
     });
   } catch (err) {
     logger.warn(
       { err: err instanceof Error ? err.message : String(err) },
       'answerCallbackQuery request failed',
+    );
+  }
+}
+
+/**
+ * Replaces the inline keyboard on an existing message.
+ * Pass `replyMarkup: { inline_keyboard: [] }` to remove all buttons.
+ * Fire-and-forget — never throws.
+ */
+export async function editMessageReplyMarkup(
+  chatId: string,
+  messageId: string,
+  replyMarkup: InlineKeyboardMarkup | { inline_keyboard: never[] },
+): Promise<void> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return;
+
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/editMessageReplyMarkup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        message_id: messageId,
+        reply_markup: replyMarkup,
+      }),
+    });
+    if (!res.ok) {
+      const raw = await res.text().catch(() => '');
+      logger.warn({ httpStatus: res.status, body: raw.slice(0, 200) }, 'editMessageReplyMarkup failed');
+    }
+  } catch (err) {
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      'editMessageReplyMarkup request failed',
     );
   }
 }

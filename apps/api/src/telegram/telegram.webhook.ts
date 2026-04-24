@@ -12,7 +12,7 @@
 
 import { Router, type Request, type Response } from 'express';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
-import { answerCallbackQuery } from '../lib/telegram.js';
+import { answerCallbackQuery, editMessageReplyMarkup } from '../lib/telegram.js';
 import { logger } from '../lib/logger.js';
 
 const router = Router();
@@ -28,6 +28,13 @@ router.post('/', async (req: Request, res: Response) => {
 
     const callbackQueryId = String(callbackQuery.id ?? '');
     const data = String(callbackQuery.data ?? '');
+
+    // Extract the originating message so we can edit it after processing.
+    const message = callbackQuery.message as Record<string, unknown> | undefined;
+    const messageId = message ? String((message.message_id as number | undefined) ?? '') : '';
+    const chatId = message
+      ? String(((message.chat as Record<string, unknown> | undefined)?.id) ?? '')
+      : '';
 
     const match = data.match(/^confirm_transfer_(.+)$/);
     if (!match) {
@@ -50,12 +57,23 @@ router.post('/', async (req: Request, res: Response) => {
 
     if (error) {
       logger.warn({ transferId, error: error.message }, 'telegram.webhook: failed to update driver_confirmed');
-    } else {
-      logger.info({ transferId }, 'telegram.webhook: driver confirmed transfer');
+      // Still dismiss the spinner even on failure.
+      void answerCallbackQuery(callbackQueryId, 'Something went wrong — please try again.');
+      return;
     }
 
-    // Dismiss the loading spinner on the button.
-    void answerCallbackQuery(callbackQueryId);
+    logger.info({ transferId }, 'telegram.webhook: driver confirmed transfer');
+
+    // Replace the Confirm button with a static "Confirmed" label so the driver
+    // gets clear visual feedback and cannot accidentally tap it again.
+    if (chatId && messageId) {
+      void editMessageReplyMarkup(chatId, messageId, {
+        inline_keyboard: [[{ text: '✅ Confirmed', callback_data: 'noop' }]],
+      });
+    }
+
+    // Show a brief toast notification to the driver who tapped.
+    void answerCallbackQuery(callbackQueryId, 'Confirmed!');
   } catch (err) {
     logger.warn(
       { err: err instanceof Error ? err.message : String(err) },

@@ -47,6 +47,7 @@ export async function runFleetSummary(): Promise<void> {
       const { data, error } = await sb
         .from('fleet')
         .select('id, name, plate_number, model_id, store_id, status, updated_at')
+        .eq('store_id', 'store-lolas')
         .order('name');
       if (error) throw new Error(error.message);
       fleetRows = (data ?? []) as FleetRow[];
@@ -90,6 +91,9 @@ export async function runFleetSummary(): Promise<void> {
     // ── 2. Out-of-service lines with days out ────────────────────────────────
     const oosLines = outOfServiceVehicles.map((v) => {
       const plate = v.plate_number ?? v.name;
+      const vehicleLabel = v.plate_number && v.name && v.name !== v.plate_number
+        ? `${escapeHtml(v.name)} (${escapeHtml(v.plate_number)})`
+        : escapeHtml(plate);
       const model = v.model_id ? (modelNameMap.get(v.model_id) ?? '—') : '—';
       let daysOut = '—';
       if (v.updated_at) {
@@ -97,7 +101,7 @@ export async function runFleetSummary(): Promise<void> {
         const days = Math.floor(msOut / (1000 * 60 * 60 * 24));
         daysOut = days === 1 ? '1 day' : `${days} days`;
       }
-      return `• ${escapeHtml(plate)} — ${escapeHtml(model)} — ${escapeHtml(v.status)} — ${escapeHtml(daysOut)}`;
+      return `• ${vehicleLabel} — ${escapeHtml(model)} — ${escapeHtml(v.status)} — ${escapeHtml(daysOut)}`;
     });
 
     // ── 3. Today's revenue from payments ─────────────────────────────────────
@@ -123,19 +127,18 @@ export async function runFleetSummary(): Promise<void> {
       : '• All vehicles in service ✅';
 
     const message =
-      `🛵 <b>Fleet End-of-Day Report</b>\n` +
-      `📅 ${escapeHtml(dayHeader)}\n` +
+      `🛵 <b>Fleet End-of-Day Report — ${escapeHtml(dayHeader)}</b>\n` +
       `${divider}\n` +
-      `📊 <b>Utilisation</b>\n` +
+      `<b>Utilisation (Lola's Rentals)</b>\n` +
       `In Use: ${inUseCount} bikes\n` +
       `Available: ${availableCount} bikes\n` +
       `Out of Service: ${outOfServiceCount} bikes\n` +
       `Utilisation rate: ${utilisationPct}%\n` +
       `${divider}\n` +
-      `🔧 <b>Out of Service</b>\n` +
+      `<b>Out of Service</b>\n` +
       `${oosSection}\n` +
       `${divider}\n` +
-      `💰 <b>Revenue Today: ₱${revenueToday.toLocaleString('en-PH')}</b>\n` +
+      `<b>Revenue Today: ₱${revenueToday.toLocaleString('en-PH')}</b>\n` +
       `${divider}`;
 
     await sendTelegramAlert(message, chatId);
