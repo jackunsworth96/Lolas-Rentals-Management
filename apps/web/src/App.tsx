@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, MutationCache } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 import { AppRouter } from './router.js';
 import { ErrorBoundary } from './components/common/ErrorBoundary.js';
@@ -20,7 +20,6 @@ export function App() {
   const queryClient = useMemo(
     () =>
       new QueryClient({
-        queryCache: new QueryCache({ onError: triggerBetaError }),
         mutationCache: new MutationCache({ onError: triggerBetaError }),
         defaultOptions: {
           queries: { staleTime: 30_000, retry: 1 },
