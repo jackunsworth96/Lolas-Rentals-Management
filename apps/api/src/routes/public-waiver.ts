@@ -75,12 +75,63 @@ async function fetchOrdersRawByReference(orderReference: string) {
       'order_reference, customer_name, customer_email, vehicle_model_id, pickup_datetime, dropoff_datetime, store_id, status',
     )
     .eq('order_reference', orderReference)
-    .in('status', ['unprocessed', 'processed', 'activated'])
+    .in('status', ['unprocessed', 'processed'])
     .limit(1)
     .maybeSingle();
 
   if (error) throw new Error(`orders_raw lookup failed: ${error.message}`);
   return data as Record<string, unknown> | null;
+}
+
+/**
+ * Fallback for orders created via walk-in-direct, which bypass orders_raw entirely
+ * and are stored directly in the orders + order_items + customers tables.
+ */
+async function fetchDirectOrderByBookingToken(bookingToken: string) {
+  const sb = getSupabaseClient();
+  const { data: orderRow, error: orderErr } = await sb
+    .from('orders')
+    .select('id, store_id, customer_id, status, booking_token')
+    .eq('booking_token', bookingToken)
+    .not('status', 'in', '("cancelled","completed")')
+    .limit(1)
+    .maybeSingle();
+
+  if (orderErr) throw new Error(`orders lookup failed: ${orderErr.message}`);
+  if (!orderRow) return null;
+
+  const row = orderRow as { id: string; store_id: string; customer_id: string | null; status: string; booking_token: string };
+
+  const [custResult, itemResult] = await Promise.all([
+    row.customer_id
+      ? sb.from('customers').select('name, email').eq('id', row.customer_id).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    sb
+      .from('order_items')
+      .select('vehicle_name, pickup_datetime, dropoff_datetime')
+      .eq('order_id', row.id)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  if (custResult.error) throw new Error(`customers lookup failed: ${custResult.error.message}`);
+  if (itemResult.error) throw new Error(`order_items lookup failed: ${itemResult.error.message}`);
+
+  const cust = custResult.data as { name?: string; email?: string | null } | null;
+  const item = itemResult.data as { vehicle_name?: string | null; pickup_datetime?: string | null; dropoff_datetime?: string | null } | null;
+
+  return {
+    order_reference: row.booking_token,
+    customer_name: cust?.name ?? '',
+    customer_email: cust?.email ?? null,
+    vehicle_model_id: null,
+    vehicle_name_direct: item?.vehicle_name ?? null,
+    pickup_datetime: item?.pickup_datetime ?? null,
+    dropoff_datetime: item?.dropoff_datetime ?? null,
+    store_id: row.store_id,
+    status: row.status,
+  };
 }
 
 async function fetchVehicleModelName(modelId: string | null | undefined): Promise<string> {
@@ -94,6 +145,12 @@ async function fetchVehicleModelName(modelId: string | null | undefined): Promis
 const waiverRouter = Router();
 waiverRouter.use(waiverLimiter);
 
+async function resolveOrder(orderReference: string) {
+  const raw = await fetchOrdersRawByReference(orderReference);
+  if (raw) return raw;
+  return fetchDirectOrderByBookingToken(orderReference);
+}
+
 // Register before /:orderReference so "send-link" is not captured as a reference.
 waiverRouter.post(
   '/send-link',
@@ -103,7 +160,7 @@ waiverRouter.post(
   async (req, res, next) => {
     try {
       const { orderReference } = req.body as z.infer<typeof SendLinkBodySchema>;
-      const order = await fetchOrdersRawByReference(orderReference);
+      const order = await resolveOrder(orderReference);
       if (!order) {
         res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found' } });
         return;
@@ -132,7 +189,7 @@ waiverRouter.post(
 waiverRouter.get('/:orderReference', async (req, res, next) => {
   try {
     const orderReference = routeParamString(req.params.orderReference);
-    const order = await fetchOrdersRawByReference(orderReference);
+    const order = await resolveOrder(orderReference);
     if (!order) {
       res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found' } });
       return;
@@ -151,7 +208,10 @@ waiverRouter.get('/:orderReference', async (req, res, next) => {
     const waiver = (waiverRows?.[0] ?? null) as { status?: string; agreed_at?: string } | null;
     const isSigned = waiver?.status === 'signed';
 
-    const vehicleModelName = await fetchVehicleModelName(order.vehicle_model_id as string | undefined);
+    const orderWithDirect = order as typeof order & { vehicle_name_direct?: string | null };
+    const vehicleModelName = orderWithDirect.vehicle_name_direct
+      ? String(orderWithDirect.vehicle_name_direct)
+      : await fetchVehicleModelName(order.vehicle_model_id as string | undefined);
 
     res.json({
       success: true,
@@ -176,7 +236,7 @@ waiverRouter.post('/:orderReference/sign', validateBody(WaiverSignBodySchema), a
     const orderReference = routeParamString(req.params.orderReference);
     const body = req.body as z.infer<typeof WaiverSignBodySchema>;
 
-    const order = await fetchOrdersRawByReference(orderReference);
+    const order = await resolveOrder(orderReference);
     if (!order) {
       res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found' } });
       return;
@@ -296,7 +356,7 @@ waiverRouter.post('/:orderReference/upload-licence', (req, res, next) => {
 
     try {
       const orderReference = routeParamString(req.params.orderReference);
-      const order = await fetchOrdersRawByReference(orderReference);
+      const order = await resolveOrder(orderReference);
       if (!order) {
         res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found' } });
         return;
