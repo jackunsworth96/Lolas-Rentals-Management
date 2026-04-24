@@ -275,54 +275,52 @@ export function PageLayout({
           floralScrollFreezeRef ? 'relative z-[48]' : elevateFlorals ? 'relative z-[35]' : ''
         }
       >
-        {/* Mobile: mobile-optimised SVG + overlaid footer */}
-        <div className="relative leading-[0] md:hidden">
+        {/* Mobile: mobile-optimised SVG illustration, then footer content below */}
+        <div className="md:hidden">
           <img
             src={footerDesignMobile}
             alt=""
-            className="w-full object-cover"
+            className="w-full object-cover leading-[0] block"
             aria-hidden="true"
           />
-          <footer className="absolute inset-0 pointer-events-none">
-            <div className="pointer-events-auto absolute bottom-[8%] left-0 right-0 px-5 flex flex-col gap-3">
-              {/* Logo + social icons row */}
-              <div className="flex items-center justify-between">
-                <Link to="/book" aria-label="Lola's Rentals home" className="inline-block">
-                  <img
-                    src={logo}
-                    alt="Lola's Rentals"
-                    className="h-8 w-auto object-contain"
-                    draggable={false}
-                  />
-                </Link>
-                <div className="flex items-center gap-4">
-                  <a href="https://instagram.com/lolasrentals" target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="inline-flex text-charcoal-brand/80 transition-opacity hover:opacity-90">
-                    <img src={instaIcon} alt="" className="h-6 w-6 object-contain" width={24} height={24} />
-                  </a>
-                  <a href="https://wa.me/639694443413" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp" className="inline-flex text-charcoal-brand/80 transition-opacity hover:opacity-90">
-                    <img src={phoneIcon} alt="" className="h-6 w-6 object-contain" width={24} height={24} />
-                  </a>
-                  <a href={GOOGLE_MAPS_PLACE_URL} target="_blank" rel="noopener noreferrer" aria-label="Google Maps" className="inline-flex text-charcoal-brand/80 transition-opacity hover:opacity-90">
-                    <img src={locationIcon} alt="" className="h-6 w-6 object-contain" width={24} height={24} />
-                  </a>
-                </div>
+          <footer className="w-full bg-[#f1e6d6] px-5 pb-10 pt-6">
+            {/* Logo + social icons row */}
+            <div className="flex items-center justify-between">
+              <Link to="/book" aria-label="Lola's Rentals home" className="inline-block">
+                <img
+                  src={logo}
+                  alt="Lola's Rentals"
+                  className="h-8 w-auto object-contain"
+                  draggable={false}
+                />
+              </Link>
+              <div className="flex items-center gap-4">
+                <a href="https://instagram.com/lolasrentals" target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="inline-flex text-charcoal-brand/80 transition-opacity hover:opacity-90">
+                  <img src={instaIcon} alt="" className="h-6 w-6 object-contain" width={24} height={24} />
+                </a>
+                <a href="https://wa.me/639694443413" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp" className="inline-flex text-charcoal-brand/80 transition-opacity hover:opacity-90">
+                  <img src={phoneIcon} alt="" className="h-6 w-6 object-contain" width={24} height={24} />
+                </a>
+                <a href={GOOGLE_MAPS_PLACE_URL} target="_blank" rel="noopener noreferrer" aria-label="Google Maps" className="inline-flex text-charcoal-brand/80 transition-opacity hover:opacity-90">
+                  <img src={locationIcon} alt="" className="h-6 w-6 object-contain" width={24} height={24} />
+                </a>
               </div>
-
-              {/* Page links */}
-              <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-                <Link to="/book/repairs" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.islandSafety')}</Link>
-                <Link to="/book/bepawsitive" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.bePawsitiveNgo')}</Link>
-                <a href="https://wa.me/639694443413" target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.contactUs')}</a>
-                <Link to="/book/privacy" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.privacy')}</Link>
-                <Link to="/book/waiver-agreement" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.waiverAgreement')}</Link>
-                <Link to="/refund-policy" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.refundPolicy')}</Link>
-                <Link to="/peace-of-mind" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.peaceOfMindCover')}</Link>
-              </div>
-
-              <p className="text-[10px] leading-relaxed text-charcoal-brand/50">
-                {t('footer.copyright')}
-              </p>
             </div>
+
+            {/* Page links */}
+            <div className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3">
+              <Link to="/book/repairs" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.islandSafety')}</Link>
+              <Link to="/book/bepawsitive" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.bePawsitiveNgo')}</Link>
+              <a href="https://wa.me/639694443413" target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.contactUs')}</a>
+              <Link to="/book/privacy" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.privacy')}</Link>
+              <Link to="/book/waiver-agreement" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.waiverAgreement')}</Link>
+              <Link to="/refund-policy" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.refundPolicy')}</Link>
+              <Link to="/peace-of-mind" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.peaceOfMindCover')}</Link>
+            </div>
+
+            <p className="mt-5 text-[10px] leading-relaxed text-charcoal-brand/50">
+              {t('footer.copyright')}
+            </p>
           </footer>
         </div>
 
