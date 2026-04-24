@@ -68,8 +68,8 @@ function relativePickupLabel(serviceDate: string, pickupTime: string): string {
 /** Core detail block shared by all three message types. */
 function detailBlock(t: TransferForTemplate): string {
   const dateStr  = escapeHtml(formatServiceDate(t.serviceDate));
-  const vanStr   = escapeHtml(formatVanType(t.vanType));
   const route    = escapeHtml(t.route);
+  const name     = escapeHtml(t.customerName);
   const pax      = t.paxCount;
   const phone    = escapeHtml(t.contactNumber ?? '—');
   const address  = escapeHtml(t.accommodation ?? '—');
@@ -80,6 +80,7 @@ function detailBlock(t: TransferForTemplate): string {
 
   return (
     `${dateStr} | ${route}\n` +
+    `Customer: ${name}\n` +
     `Flight time: ${flightStr}\n` +
     `Pickup: <b>${pickup}</b>\n` +
     `Address: ${address}\n` +

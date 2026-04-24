@@ -72,11 +72,10 @@ function addMinutes(date: Date, minutes: number): Date {
  * Rules:
  *  - **inbound**: pickup = exact arrival time (no offset). The driver meets
  *    the customer at the airport after the plane lands.
- *  - **outbound + shared_van**: pickup window from (flightTime − 120 min) to
- *    (flightTime − 90 min). The shared van collects multiple passengers so it
- *    leaves earlier with a wider window.
+ *  - **outbound + shared_van**: pickup window from (flightTime − 170 min) to
+ *    (flightTime − 140 min). e.g. flight 12:50 → pickup 10:00–10:30.
  *  - **outbound + private_van | tuktuk**: single pickup time of
- *    (flightTime − 90 min). Private vehicles don't need the extra buffer.
+ *    (flightTime − 140 min). e.g. flight 12:50 → pickup 10:30.
  *
  * @param direction  - 'inbound' or 'outbound'
  * @param vanType    - raw van_type value from the database (e.g. 'shared_van',
@@ -98,14 +97,15 @@ export function calculatePickupTime(
     return { from: formatPHT(flightDate), to: null };
   }
 
-  // Outbound: shared van gets a 30-minute window starting 2 hours before.
+  // Outbound: shared van — 30-minute window starting 2h50min before the flight.
+  // e.g. flight at 12:50 → pickup window 10:00–10:30.
   if (vanType === 'shared_van') {
-    const windowStart = addMinutes(flightDate, -120);
-    const windowEnd   = addMinutes(flightDate, -90);
+    const windowStart = addMinutes(flightDate, -170);
+    const windowEnd   = addMinutes(flightDate, -140);
     return { from: formatPHT(windowStart), to: formatPHT(windowEnd) };
   }
 
-  // Outbound: private van and tuktuk — single time 90 minutes before.
-  const pickupTime = addMinutes(flightDate, -90);
+  // Outbound: private van and tuktuk — single time 2h20min before.
+  const pickupTime = addMinutes(flightDate, -140);
   return { from: formatPHT(pickupTime), to: null };
 }
