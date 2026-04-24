@@ -6,6 +6,7 @@ import { Badge } from '../../components/common/Badge.js';
 import { BookingModal } from '../../components/orders/BookingModal.js';
 import { CancelOrderModal } from '../../components/orders/CancelOrderModal.js';
 import { WalkInBookingModal } from '../../components/orders/WalkInBookingModal.js';
+import { ReserveForLaterModal } from '../../components/orders/ReserveForLaterModal.js';
 import { formatDateTime, formatPickupDatetimeManila } from '../../utils/date.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { extractPickupDate } from '../../utils/raw-order-payload.js';
@@ -68,6 +69,10 @@ function isDirect(r: RawOrder): boolean {
   return r.booking_channel === 'direct';
 }
 
+function isWalkIn(r: RawOrder): boolean {
+  return r.booking_channel === 'walk_in';
+}
+
 export default function InboxPage() {
   const [storeFilter, setStoreFilter] = useState<string>('');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
@@ -106,6 +111,7 @@ export default function InboxPage() {
   const [selectedOrder, setSelectedOrder] = useState<RawOrder | null>(null);
   const [cancelOrder, setCancelOrder] = useState<RawOrder | null>(null);
   const [walkInOpen, setWalkInOpen] = useState(false);
+  const [reserveForLaterOpen, setReserveForLaterOpen] = useState(false);
 
   const canEditOrders = useAuthStore((s) => s.hasPermission('can_edit_orders'));
 
@@ -122,7 +128,7 @@ export default function InboxPage() {
 
     const target = dateFilter === 'today' ? todayStr : tomorrowStr;
     return all.filter((order) => {
-      if (isDirect(order)) {
+      if (isDirect(order) || isWalkIn(order)) {
         return order.pickup_datetime ? order.pickup_datetime.slice(0, 10) === target : false;
       }
       const pickupDate = extractPickupDate(order.payload ?? {});
@@ -151,7 +157,8 @@ export default function InboxPage() {
         return (
           <div className="flex items-center gap-1.5">
             <Badge color={s.color}>{s.text}</Badge>
-            {isDirect(r) && <Badge color="green">Direct</Badge>}
+            {isDirect(r) && !isWalkIn(r) && <Badge color="green">Direct</Badge>}
+            {isWalkIn(r) && <Badge color="teal">Walk-in</Badge>}
           </div>
         );
       },
@@ -162,10 +169,10 @@ export default function InboxPage() {
       render: (r: RawOrder) => (
         <div>
           <div className="font-medium text-gray-900">
-            {isDirect(r) ? (r.customer_name ?? '—') : extractCustomerName(r.payload ?? {})}
+            {(isDirect(r) || isWalkIn(r)) ? (r.customer_name ?? '—') : extractCustomerName(r.payload ?? {})}
           </div>
           <div className="text-sm text-gray-500">
-            {isDirect(r) ? (r.customer_email ?? '—') : extractEmail(r.payload ?? {})}
+            {(isDirect(r) || isWalkIn(r)) ? (r.customer_email ?? r.customer_mobile ?? '—') : extractEmail(r.payload ?? {})}
           </div>
         </div>
       ),
@@ -174,7 +181,7 @@ export default function InboxPage() {
       key: 'pickup',
       header: 'Pickup',
       render: (r: RawOrder) => {
-        if (isDirect(r)) {
+        if (isDirect(r) || isWalkIn(r)) {
           return (
             <span className="text-sm text-gray-600">
               {r.pickup_datetime ? formatPickupDatetimeManila(r.pickup_datetime) : '—'}
@@ -188,7 +195,7 @@ export default function InboxPage() {
     {
       key: 'items',
       header: 'Items',
-      render: (r: RawOrder) => isDirect(r) ? 1 : (extractItemCount(r.payload ?? {}) || '—'),
+      render: (r: RawOrder) => (isDirect(r) || isWalkIn(r)) ? 1 : (extractItemCount(r.payload ?? {}) || '—'),
     },
     {
       key: 'total',
@@ -202,7 +209,7 @@ export default function InboxPage() {
       key: 'order_number',
       header: 'Order Ref',
       render: (r: RawOrder) =>
-        isDirect(r)
+        (isDirect(r) || isWalkIn(r))
           ? (r.order_reference ?? '—')
           : extractField(r.payload ?? {}, 'number', 'id', 'order_key'),
     },
@@ -253,13 +260,22 @@ export default function InboxPage() {
             </span>
           )}
           {canEditOrders && (
-            <button
-              type="button"
-              onClick={() => setWalkInOpen(true)}
-              className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700 whitespace-nowrap"
-            >
-              + Walk-in Booking
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setReserveForLaterOpen(true)}
+                className="rounded-lg border border-teal-600 px-4 py-2 text-sm font-medium text-teal-700 transition-colors hover:bg-teal-50 whitespace-nowrap"
+              >
+                + Reserve for Later
+              </button>
+              <button
+                type="button"
+                onClick={() => setWalkInOpen(true)}
+                className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700 whitespace-nowrap"
+              >
+                + Reserve Now
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -374,6 +390,11 @@ export default function InboxPage() {
       <WalkInBookingModal
         open={walkInOpen}
         onClose={() => setWalkInOpen(false)}
+      />
+
+      <ReserveForLaterModal
+        open={reserveForLaterOpen}
+        onClose={() => setReserveForLaterOpen(false)}
       />
     </div>
   );

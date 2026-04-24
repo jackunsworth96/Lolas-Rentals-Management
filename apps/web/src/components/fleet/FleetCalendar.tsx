@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback, memo } from 'react';
 import { useFleetCalendar } from '../../api/fleet.js';
 import { OrderDetailModal } from '../orders/OrderDetailModal.js';
+import surfRackIcon from '../../assets/Home/Surf Rack Icon.svg';
 
 interface CalendarBooking {
   orderId: string;
@@ -9,6 +10,8 @@ interface CalendarBooking {
   customerName: string;
   pickupDatetime: string;
   dropoffDatetime: string;
+  /** Present only when the booking has been extended; holds the original end date. */
+  originalDropoffDatetime?: string | null;
   status: 'active' | 'due-soon' | 'overdue' | 'confirmed' | 'completed';
 }
 
@@ -20,6 +23,7 @@ interface CalendarVehicle {
   storeId: string;
   storeName: string;
   status: string;
+  surfRack: boolean;
   bookings: CalendarBooking[];
 }
 
@@ -124,6 +128,8 @@ interface GanttBookingBarProps {
   left: number;
   width: number;
   storeId: string;
+  rangeFrom: Date;
+  daysCount: number;
   onBookingClick: (orderId: string, storeId: string) => void;
 }
 const GanttBookingBar = memo(function GanttBookingBar({
@@ -131,19 +137,57 @@ const GanttBookingBar = memo(function GanttBookingBar({
   left,
   width,
   storeId,
+  rangeFrom,
+  daysCount,
   onBookingClick,
 }: GanttBookingBarProps) {
   const colors = STATUS_COLORS[b.status] ?? STATUS_COLORS.active;
+
+  const isExtended = Boolean(b.originalDropoffDatetime);
+  const originalEndDay = isExtended
+    ? Math.min(daysCount, daysBetween(rangeFrom, new Date(b.originalDropoffDatetime!)) + 1)
+    : null;
+  const startDay = Math.max(0, daysBetween(rangeFrom, new Date(b.pickupDatetime)));
+  const originalWidth = isExtended && originalEndDay !== null
+    ? Math.max(0, (originalEndDay - startDay) * DAY_WIDTH - 4)
+    : null;
+  const extensionLeft = isExtended && originalWidth !== null ? left + 2 + originalWidth : null;
+  const extensionWidth = isExtended && originalWidth !== null ? width - originalWidth : null;
+
+  const tooltipText = `${b.customerName} · ${b.orderReference ?? b.orderId}\n${new Date(b.pickupDatetime).toLocaleDateString()} → ${new Date(b.dropoffDatetime).toLocaleDateString()}${isExtended ? `\nExtended from ${new Date(b.originalDropoffDatetime!).toLocaleDateString()}` : ''}\nStatus: ${b.status}`;
+
   return (
-    <button
-      type="button"
-      onClick={() => onBookingClick(b.orderId, storeId)}
-      className={`absolute top-1 z-10 flex items-center rounded border px-1.5 text-[10px] font-medium truncate cursor-pointer hover:opacity-80 transition-opacity ${colors.bg} ${colors.border} ${colors.text}`}
-      style={{ left: left + 2, width, height: ROW_HEIGHT - 8 }}
-      title={`${b.customerName} · ${b.orderReference ?? b.orderId}\n${new Date(b.pickupDatetime).toLocaleDateString()} → ${new Date(b.dropoffDatetime).toLocaleDateString()}\nStatus: ${b.status}`}
-    >
-      {b.customerName}
-    </button>
+    <>
+      {/* Main booking bar (original period, or full bar if not extended) */}
+      <button
+        type="button"
+        onClick={() => onBookingClick(b.orderId, storeId)}
+        className={`absolute top-1 z-10 flex items-center border px-1.5 text-[10px] font-medium truncate cursor-pointer hover:opacity-80 transition-opacity ${colors.bg} ${colors.border} ${colors.text} ${isExtended ? 'rounded-l' : 'rounded'}`}
+        style={{ left: left + 2, width: isExtended && originalWidth !== null ? originalWidth : width, height: ROW_HEIGHT - 8 }}
+        title={tooltipText}
+      >
+        {b.customerName}
+      </button>
+
+      {/* Extension segment — striped right-hand portion */}
+      {isExtended && extensionLeft !== null && extensionWidth !== null && extensionWidth > 0 && (
+        <button
+          type="button"
+          onClick={() => onBookingClick(b.orderId, storeId)}
+          className={`absolute top-1 z-10 flex items-center rounded-r border-t border-r border-b border-dashed px-1 text-[10px] font-medium truncate cursor-pointer hover:opacity-80 transition-opacity ${colors.bg} ${colors.border} ${colors.text}`}
+          style={{
+            left: extensionLeft,
+            width: extensionWidth,
+            height: ROW_HEIGHT - 8,
+            opacity: 0.65,
+            backgroundImage: `repeating-linear-gradient(135deg, transparent, transparent 3px, rgba(0,0,0,0.06) 3px, rgba(0,0,0,0.06) 6px)`,
+          }}
+          title={tooltipText}
+        >
+          +{Math.round(extensionWidth / DAY_WIDTH)}d
+        </button>
+      )}
+    </>
   );
 });
 
@@ -183,6 +227,8 @@ const GanttVehicleRow = memo(function GanttVehicleRow({
             left={left}
             width={width}
             storeId={v.storeId}
+            rangeFrom={rangeFrom}
+            daysCount={days.length}
             onBookingClick={onBookingClick}
           />
         );
@@ -342,6 +388,13 @@ export function FleetCalendar({ storeId }: Props) {
             <span className="text-gray-600">{label}</span>
           </span>
         ))}
+        <span className="flex items-center gap-1.5">
+          <span
+            className="inline-block h-3 w-3 rounded-sm border border-dashed border-green-400 bg-green-100"
+            style={{ backgroundImage: 'repeating-linear-gradient(135deg, transparent, transparent 2px, rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px)' }}
+          />
+          <span className="text-gray-600">Extended</span>
+        </span>
       </div>
 
       {/* Gantt area */}
@@ -366,7 +419,12 @@ export function FleetCalendar({ storeId }: Props) {
                   style={{ height: ROW_HEIGHT }}
                 >
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-medium text-gray-900">{v.vehicleName}</div>
+                    <div className="flex items-center gap-1 truncate">
+                      <span className="text-sm font-medium text-gray-900">{v.vehicleName}</span>
+                      {v.surfRack && (
+                        <img src={surfRackIcon} className="h-4 w-4 shrink-0" alt="Surf rack" title="Surf rack" />
+                      )}
+                    </div>
                     <div className="truncate text-[10px] text-gray-400">{v.modelName}</div>
                   </div>
                 </div>
@@ -456,7 +514,7 @@ export function FleetCalendar({ storeId }: Props) {
 
       {/* Today marker legend */}
       <div className="border-t border-gray-200 px-2 py-2 text-[10px] text-gray-400">
-        Blue column = today · Hover any booking bar for details · Click to open order
+        Blue column = today · Striped tail = extended booking · Hover any bar for details · Click to open order
       </div>
 
       {selectedOrderId && (

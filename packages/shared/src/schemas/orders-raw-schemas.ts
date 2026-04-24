@@ -36,6 +36,8 @@ export interface OrdersRawRow {
   customer_email: string | null;
   customer_mobile: string | null;
   vehicle_model_id: string | null;
+  /** Specific fleet unit held by a walk-in reservation (migration 103). Null for website/direct orders. */
+  vehicle_id: string | null;
   pickup_datetime: string | null;
   dropoff_datetime: string | null;
   pickup_location_id: number | null;

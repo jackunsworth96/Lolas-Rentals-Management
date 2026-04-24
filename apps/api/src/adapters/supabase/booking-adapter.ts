@@ -109,7 +109,22 @@ export function createBookingAdapter(): BookingPort {
         trackDrop(row.vehicle_model_id, row.dropoff_datetime);
       }
 
-      // 5. Active holds (no handover buffer on holds — they block by exact time)
+      // 5. Unprocessed walk-in reservations — block the exact vehicle_id
+      const { data: walkInRows, error: walkInErr } = await sb
+        .from('orders_raw').select('vehicle_id, dropoff_datetime')
+        .eq('store_id', storeId).eq('booking_channel', 'walk_in').eq('status', 'unprocessed')
+        .not('vehicle_id', 'is', null)
+        .lt('pickup_datetime', dropoffDatetime)
+        .gt('dropoff_datetime', pickupBuffered);
+      if (walkInErr) throw new Error(`orders_raw walk-in overlap query failed: ${walkInErr.message}`);
+
+      for (const row of (walkInRows ?? []) as { vehicle_id: string; dropoff_datetime: string }[]) {
+        bookedVehicleIds.add(row.vehicle_id);
+        const mid = vehicleToModel.get(row.vehicle_id);
+        if (mid) trackDrop(mid, row.dropoff_datetime);
+      }
+
+      // 6. Active holds (no handover buffer on holds — they block by exact time)
       const nowIso = new Date().toISOString();
       const { data: holdRows, error: holdErr } = await sb
         .from('booking_holds').select('vehicle_model_id, dropoff_datetime')
@@ -123,7 +138,7 @@ export function createBookingAdapter(): BookingPort {
         trackDrop(row.vehicle_model_id, row.dropoff_datetime);
       }
 
-      // 6. Aggregate: available = total fleet - booked - direct reservations - holds
+      // 7. Aggregate: available = total fleet - booked (incl. walk-in holds) - direct reservations - holds
       const modelIds = [...fleetByModel.keys()];
       if (modelIds.length === 0) return [];
 

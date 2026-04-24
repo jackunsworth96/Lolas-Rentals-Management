@@ -258,6 +258,7 @@ router.post(
       }
 
       const odometer = parseOdometer(body.kmReading);
+      const maintenanceItems = body.results.filter((r) => r.logMaintenance && !!body.vehicleId);
       for (const r of body.results) {
         if (!r.logMaintenance || !body.vehicleId) continue;
         const record = await logMaintenance(
@@ -316,6 +317,41 @@ router.post(
         }
       })();
 
+      // Fire-and-forget Maintenance channel Telegram alert when checklist items triggered maintenance logs.
+      if (maintenanceItems.length > 0) {
+        void (async () => {
+          try {
+            let plateNumber = '—';
+            if (body.vehicleId) {
+              const { data: veh } = await sb
+                .from('fleet')
+                .select('plate_number')
+                .eq('id', body.vehicleId)
+                .maybeSingle();
+              if (veh && typeof (veh as { plate_number?: string }).plate_number === 'string') {
+                plateNumber = (veh as { plate_number: string }).plate_number;
+              }
+            }
+            const vehicleLabel = `${plateNumber} — ${body.vehicleName ?? '—'}`;
+            const issueLines = maintenanceItems
+              .map((r) => `• ${r.itemName}: ${r.result}${r.notes ? ` — ${r.notes}` : ''}`)
+              .join('\n');
+            const loggedBy = req.user?.username ?? 'unknown';
+            await sendTelegramAlert(
+              `🔩 <b>Maintenance Logged</b>\n` +
+                `🚲 Vehicle: ${escapeHtml(vehicleLabel)}\n` +
+                `📋 Issues:\n${escapeHtml(issueLines)}\n` +
+                `📎 From Inspection: ${escapeHtml(body.orderReference)}\n` +
+                `👤 Logged by: ${escapeHtml(loggedBy)}\n` +
+                `🏪 Store: ${escapeHtml(body.storeId)}`,
+              getTelegramChatId('maintenance'),
+            );
+          } catch (tgErr) {
+            console.error('[inspection-maintenance-telegram] notify error:', tgErr);
+          }
+        })();
+      }
+
       const INSPECTION_LOG_EMAIL =
         process.env.MAINTENANCE_LOG_EMAIL ?? process.env.NOTIFICATION_EMAIL;
 
@@ -342,6 +378,18 @@ router.post(
                 plateNumber = (vehicle as Record<string, unknown>).plate_number as string ?? 'Not recorded';
                 engineNumber = (vehicle as Record<string, unknown>).engine_number as string ?? 'Not recorded';
                 chassisNumber = (vehicle as Record<string, unknown>).chassis_number as string ?? 'Not recorded';
+              }
+            }
+
+            let loggedByName: string | undefined;
+            if (req.user?.employeeId) {
+              const { data: emp } = await sb
+                .from('employees')
+                .select('full_name')
+                .eq('id', req.user.employeeId)
+                .maybeSingle();
+              if (emp && typeof (emp as { full_name?: string }).full_name === 'string') {
+                loggedByName = (emp as { full_name: string }).full_name;
               }
             }
 
@@ -378,6 +426,7 @@ router.post(
                 hasCustomerSignature: !!(body.customerSignatureUrl),
                 storeId: body.storeId,
                 loggedAt,
+                loggedByName,
                 results: body.results.map((r) => ({
                   itemName: r.itemName,
                   result: r.result,

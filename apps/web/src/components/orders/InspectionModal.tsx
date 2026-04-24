@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client.js';
 import type { AvailableVehicle } from '../../api/fleet.js';
 import type { InspectionItem } from '../../api/inspections.js';
@@ -61,6 +62,7 @@ export function InspectionModal({
   preAssignedVehicleName,
   orderItemId,
 }: InspectionModalProps) {
+  const queryClient = useQueryClient();
   const [items, setItems] = useState<InspectionItem[]>([]);
   const [results, setResults] = useState<Record<string, InspectionResult>>({});
   const [vehicleId, setVehicleId] = useState('');
@@ -301,6 +303,7 @@ export function InspectionModal({
         customerSignatureUrl: sigDataUrl,
         results: resultsArray,
       });
+      void queryClient.invalidateQueries({ queryKey: ['fleet'] });
       onComplete();
       onClose();
     } catch (err) {

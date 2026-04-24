@@ -188,7 +188,7 @@ function emptyVehicleRow(): VehicleRow {
 
 export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: BookingModalProps) {
   const storeId = storeIdFromSource(rawOrder.source);
-  const isDirect = rawOrder.booking_channel === 'direct';
+  const isDirect = rawOrder.booking_channel === 'direct' || rawOrder.booking_channel === 'walk_in';
   const payload = rawOrder.payload ?? {};
 
   const billing = useMemo(() => {

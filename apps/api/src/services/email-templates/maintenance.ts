@@ -154,6 +154,7 @@ export function inspectionLogHtml({
   hasCustomerSignature,
   storeId,
   loggedAt,
+  loggedByName,
   results,
   contentHash,
 }: {
@@ -169,6 +170,7 @@ export function inspectionLogHtml({
   hasCustomerSignature: boolean;
   storeId: string;
   loggedAt: string;
+  loggedByName?: string;
   results: Array<{
     itemName: string;
     result: string;
@@ -241,6 +243,11 @@ export function inspectionLogHtml({
               <td style="padding: 7px 0; color: #64748b;">Store</td>
               <td style="padding: 7px 0; color: #1e293b;">${escapeHtml(storeId)}</td>
             </tr>
+            ${loggedByName ? `
+            <tr>
+              <td style="padding: 7px 0; color: #64748b;">Inspected By</td>
+              <td style="padding: 7px 0; font-weight: 600; color: #1e293b;">${escapeHtml(loggedByName)}</td>
+            </tr>` : ''}
           </table>
         </div>
 

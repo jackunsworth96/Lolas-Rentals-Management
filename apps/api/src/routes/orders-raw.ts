@@ -14,7 +14,7 @@ import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
 
 /** GET list / GET :id — explicit columns; excludes payload (V10-11). */
 const ORDERS_RAW_INBOX_COLUMNS =
-  'id, order_reference, status, customer_name, customer_email, customer_mobile, pickup_datetime, dropoff_datetime, store_id, vehicle_model_id, charity_donation, transfer_type, transfer_route, flight_arrival_time, transfer_pax_count, transfer_amount, cancellation_token_used, created_at, updated_at, source, booking_channel, pickup_location_id, dropoff_location_id, addon_ids, web_payment_method, flight_number, web_quote_raw';
+  'id, order_reference, status, customer_name, customer_email, customer_mobile, pickup_datetime, dropoff_datetime, store_id, vehicle_model_id, vehicle_id, charity_donation, transfer_type, transfer_route, flight_arrival_time, transfer_pax_count, transfer_amount, cancellation_token_used, created_at, updated_at, source, booking_channel, pickup_location_id, dropoff_location_id, addon_ids, web_payment_method, flight_number, web_quote_raw';
 
 function generateWalkInReference(source: string): string {
   const prefix = source === 'bass' ? 'BB' : 'LR';
@@ -89,6 +89,114 @@ router.post('/walk-in', requirePermission(Permission.EditOrders), async (req, re
     if (error) throw new Error(error.message);
 
     res.status(201).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/* ────────────────────────────────────────────────────────────
+   POST /walk-in-reserved
+   Creates a walk-in reservation that stays in the inbox
+   (orders_raw, status=unprocessed) with a specific vehicle_id
+   so availability queries can hold that exact unit.
+   Used when a customer walks in and pays only a deposit for a
+   future date — full activation happens later via the inbox.
+   ──────────────────────────────────────────────────────────── */
+
+const walkInReservedBodySchema = z.object({
+  customerName: z.string().min(1),
+  customerMobile: z.string().min(1),
+  customerEmail: z.string().email().optional(),
+  storeId: z.string().min(1),
+  vehicleId: z.string().min(1),
+  vehicleModelId: z.string().min(1),
+  vehicleName: z.string().optional(),
+  pickupDatetime: z.string().min(1),
+  dropoffDatetime: z.string().min(1),
+  pickupLocationId: z.number().int().positive().optional(),
+  dropoffLocationId: z.number().int().positive().optional(),
+  depositAmount: z.number().min(0).default(0),
+  depositMethod: z.enum(['cash', 'gcash', 'card', 'bank_transfer']).optional(),
+  grandTotal: z.number().min(0).optional(),
+  rentalDays: z.number().int().min(1).optional(),
+  dailyRate: z.number().min(0).optional(),
+  staffNotes: z.string().optional(),
+});
+
+router.post('/walk-in-reserved', requirePermission(Permission.EditOrders), async (req, res, next) => {
+  try {
+    const parsed = walkInReservedBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid request body', details: parsed.error.flatten() },
+      });
+      return;
+    }
+
+    const body = parsed.data;
+    const source = resolveSourceFromStore(body.storeId);
+    const orderReference = await uniqueWalkInReference(source);
+
+    const payload: Record<string, unknown> = {
+      deposit_amount: body.depositAmount,
+      ...(body.depositMethod ? { deposit_method: body.depositMethod } : {}),
+      ...(body.grandTotal != null ? { grand_total: body.grandTotal } : {}),
+      ...(body.rentalDays != null ? { rental_days: body.rentalDays } : {}),
+      ...(body.dailyRate != null ? { daily_rate: body.dailyRate } : {}),
+      ...(body.staffNotes ? { staff_notes: body.staffNotes } : {}),
+    };
+
+    const { data, error } = await supabase
+      .from('orders_raw')
+      .insert({
+        source,
+        booking_channel: 'walk_in',
+        status: 'unprocessed',
+        customer_name: body.customerName,
+        customer_email: body.customerEmail ?? null,
+        customer_mobile: body.customerMobile,
+        vehicle_model_id: body.vehicleModelId,
+        vehicle_id: body.vehicleId,
+        store_id: body.storeId,
+        pickup_datetime: body.pickupDatetime,
+        dropoff_datetime: body.dropoffDatetime,
+        pickup_location_id: body.pickupLocationId ?? null,
+        dropoff_location_id: body.dropoffLocationId ?? null,
+        order_reference: orderReference,
+        web_quote_raw: body.grandTotal ?? null,
+        payload,
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    // Fire-and-forget Telegram alert to ops channel
+    {
+      const depositLine = body.depositAmount > 0
+        ? `\n💵 <b>Deposit:</b> ₱${body.depositAmount.toLocaleString('en-PH')}` +
+          (body.depositMethod ? ` (${body.depositMethod})` : '')
+        : '';
+      const totalLine = body.grandTotal != null
+        ? `\n💰 <b>Est. Total:</b> ₱${body.grandTotal.toLocaleString('en-PH')}`
+        : '';
+      void sendTelegramAlert(
+        `📋 <b>Walk-in Reserved (Pending)</b>\n` +
+          `Reference: ${escapeHtml(orderReference)}\n` +
+          `Customer: ${escapeHtml(body.customerName)}` +
+          (body.customerMobile ? ` · ${escapeHtml(body.customerMobile)}` : '') + '\n' +
+          `Vehicle: ${escapeHtml(body.vehicleName ?? body.vehicleModelId)}\n` +
+          `Pickup: ${escapeHtml(formatManilaDateTime(body.pickupDatetime))}\n` +
+          `Return: ${escapeHtml(formatManilaDateTime(body.dropoffDatetime))}` +
+          totalLine +
+          depositLine +
+          `\nStore: ${escapeHtml(body.storeId)}`,
+        getTelegramChatId('ops'),
+      );
+    }
+
+    res.status(201).json({ success: true, data, orderReference });
   } catch (err) {
     next(err);
   }

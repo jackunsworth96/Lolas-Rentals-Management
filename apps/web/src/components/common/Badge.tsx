@@ -1,4 +1,4 @@
-type Color = 'gray' | 'blue' | 'green' | 'yellow' | 'amber' | 'red' | 'purple';
+type Color = 'gray' | 'blue' | 'green' | 'yellow' | 'amber' | 'red' | 'purple' | 'teal';
 
 const COLOR_CLASSES: Record<Color, string> = {
   gray: 'bg-gray-100 text-gray-700',
@@ -8,6 +8,7 @@ const COLOR_CLASSES: Record<Color, string> = {
   amber: 'bg-amber-100 text-amber-800',
   red: 'bg-red-100 text-red-700',
   purple: 'bg-purple-100 text-purple-700',
+  teal: 'bg-teal-100 text-teal-700',
 };
 
 interface BadgeProps {

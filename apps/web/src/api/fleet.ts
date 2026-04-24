@@ -94,6 +94,7 @@ export interface AvailableVehicle {
   modelId: string;
   storeId: string;
   status: string;
+  surfRack: boolean;
 }
 
 export function useAvailableVehicles(

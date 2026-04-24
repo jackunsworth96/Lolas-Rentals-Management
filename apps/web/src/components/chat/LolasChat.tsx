@@ -9,7 +9,7 @@ const WHATSAPP_URL =
   "https://wa.me/639694443413?text=Hi%20Lola's%20Rentals%2C%20I%20have%20a%20question%20about%20renting%20a%20scooter";
 
 const OPENING_MESSAGE =
-  "Hey there! 🐾 I'm Lola's Assistant. Ask me anything about renting on Siargao — pricing, what's included, transfers, or anything else!";
+  "Hey there! 🐾 I'm Lolo, Lola's assistant. Ask me anything about renting on Siargao — pricing, what's included, transfers, or anything else!";
 
 const HANDOFF_TOKEN = 'WHATSAPP_HANDOFF';
 
@@ -102,7 +102,7 @@ function renderInline(text: string): React.ReactNode {
 
 function TypingDots() {
   return (
-    <span className="inline-flex items-center gap-1" aria-label="Lola's Assistant is typing">
+      <span className="inline-flex items-center gap-1" aria-label="Lolo is typing">
       <span className="h-2 w-2 animate-bounce rounded-full bg-teal-brand [animation-delay:-0.3s]" />
       <span className="h-2 w-2 animate-bounce rounded-full bg-teal-brand [animation-delay:-0.15s]" />
       <span className="h-2 w-2 animate-bounce rounded-full bg-teal-brand" />
@@ -254,7 +254,7 @@ function useDraggable(btnSize: number) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-const BUBBLE_MESSAGE = "Hey! I'm Lola's assistant — I can quickly answer most questions here 🐾";
+const BUBBLE_MESSAGE = "Hey! I'm Lolo — I can quickly answer most questions here 🐾";
 const BUBBLE_DISMISS_MS = 7000;
 
 export default function LolasChat() {
@@ -501,7 +501,7 @@ export default function LolasChat() {
                 setOpen(true);
               }
             }}
-            aria-label="Open chat with Lola's Assistant"
+            aria-label="Open chat with Lolo, Lola's Assistant"
             style={{ left: pos.x, top: pos.y, touchAction: 'none' }}
             className="fixed z-[60] flex h-16 w-16 cursor-grab items-center justify-center bg-transparent p-0 transition-transform duration-150 active:cursor-grabbing active:scale-95 select-none"
           >
@@ -533,7 +533,7 @@ export default function LolasChat() {
         return (
         <div
           role="dialog"
-          aria-label="Lola's Assistant chat"
+          aria-label="Lolo chat"
           className="fixed inset-x-0 bottom-0 z-[60] flex max-h-[calc(100dvh-0.75rem)] flex-col overflow-hidden rounded-t-3xl bg-sand-brand pb-[env(safe-area-inset-bottom,0px)] shadow-2xl ring-1 ring-charcoal-brand/10
                      h-[min(72dvh,28rem)]
                      md:inset-auto md:rounded-3xl md:pb-0"
@@ -561,10 +561,10 @@ export default function LolasChat() {
               />
               <div className="leading-tight">
                 <p className="font-headline text-lg font-bold text-charcoal-brand">
-                  Lola&apos;s Assistant 🐾
+                  Lolo 🐾
                 </p>
                 <p className="font-lato text-xs text-charcoal-brand/60">
-                  Ask me anything about your rental
+                  Lola's AI assistant — ask me anything
                 </p>
               </div>
             </div>

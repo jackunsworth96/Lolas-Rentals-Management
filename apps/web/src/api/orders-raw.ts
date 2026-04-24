@@ -193,3 +193,35 @@ export function useCreateWalkInDirect() {
     },
   });
 }
+
+export interface WalkInReservedPayload {
+  customerName: string;
+  customerMobile: string;
+  customerEmail?: string;
+  storeId: string;
+  vehicleId: string;
+  vehicleModelId: string;
+  vehicleName?: string;
+  pickupDatetime: string;
+  dropoffDatetime: string;
+  pickupLocationId?: number;
+  dropoffLocationId?: number;
+  depositAmount: number;
+  depositMethod?: 'cash' | 'gcash' | 'card' | 'bank_transfer';
+  grandTotal?: number;
+  rentalDays?: number;
+  dailyRate?: number;
+  staffNotes?: string;
+}
+
+export function useCreateWalkInReserved() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: WalkInReservedPayload) =>
+      api.post<RawOrder>('/orders-raw/walk-in-reserved', body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['orders-raw'] });
+      qc.invalidateQueries({ queryKey: ['fleet'] });
+    },
+  });
+}

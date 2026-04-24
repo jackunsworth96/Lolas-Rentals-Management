@@ -254,9 +254,13 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
     }
 
     let modelId = '';
+    let vehicleName = '';
     if (item.vehicle_id) {
-      const { data: veh } = await sb.from('fleet').select('model_id').eq('id', item.vehicle_id as string).single();
-      if (veh) modelId = (veh as { model_id: string }).model_id;
+      const { data: veh } = await sb.from('fleet').select('model_id, name').eq('id', item.vehicle_id as string).single();
+      if (veh) {
+        modelId = (veh as { model_id: string; name: string }).model_id;
+        vehicleName = (veh as { model_id: string; name: string }).name;
+      }
     }
 
     if (modelId) {
@@ -414,6 +418,7 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
           `🔄 <b>Rental Extended</b>\n` +
             `Reference: ${escapeHtml(displayRef)}\n` +
             `Customer: ${escapeHtml(customerName)}\n` +
+            `Vehicle: ${escapeHtml(vehicleName || '—')}\n` +
             `New return: ${escapeHtml(formatManilaDateTime(newDropoffDatetime))}\n` +
             `Extension cost: ₱${totalExtensionCost.toLocaleString('en-PH')}`,
           getTelegramChatId('ops'),

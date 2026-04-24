@@ -5,6 +5,7 @@ import { useCreateWalkInDirect } from '../../api/orders-raw.js';
 import { useLocations, useAddons } from '../../api/config.js';
 import { useAvailableVehicles } from '../../api/fleet.js';
 import { useUIStore } from '../../stores/ui-store.js';
+import surfRackIcon from '../../assets/Home/Surf Rack Icon.svg';
 
 interface Props {
   open: boolean;
@@ -593,29 +594,39 @@ export function WalkInBookingModal({ open, onClose }: Props) {
                 <p className="font-lato text-sm text-amber-600">No vehicles available for selected dates.</p>
               ) : (
                 <>
-                  <label className="block">
+                  <div>
                     <span className={LABEL_CLS}>Available vehicle <span className="text-red-500">*</span></span>
-                    <select
-                      required
-                      value={selectedVehicleId}
-                      onChange={(e) => {
-                        const id = e.target.value;
-                        setSelectedVehicleId(id);
-                        const v = availableVehicles.find((v) => v.id === id);
-                        setVehicleModelId(v?.modelId ?? '');
-                        setSelectedAddonIds({});
-                        setQuote(null);
-                      }}
-                      className={SELECT_CLS}
-                    >
-                      <option value="">Select vehicle…</option>
+                    <div className="mt-1 max-h-44 overflow-y-auto rounded-lg border border-gray-300 divide-y divide-gray-100">
                       {[...availableVehicles]
                         .sort((a, b) => a.name.localeCompare(b.name))
                         .map((v) => (
-                          <option key={v.id} value={v.id}>{v.name}</option>
+                          <label
+                            key={v.id}
+                            className={`flex cursor-pointer items-center gap-3 px-3 py-2 transition-colors hover:bg-gray-50 ${selectedVehicleId === v.id ? 'bg-teal-50' : ''}`}
+                          >
+                            <input
+                              type="radio"
+                              className="sr-only"
+                              name="walk-in-vehicle"
+                              value={v.id}
+                              checked={selectedVehicleId === v.id}
+                              onChange={() => {
+                                setSelectedVehicleId(v.id);
+                                setVehicleModelId(v.modelId ?? '');
+                                setSelectedAddonIds({});
+                                setQuote(null);
+                              }}
+                            />
+                            <span className={`flex-1 font-lato text-sm ${selectedVehicleId === v.id ? 'font-semibold text-teal-800' : 'text-gray-800'}`}>
+                              {v.name}
+                            </span>
+                            {v.surfRack && (
+                              <img src={surfRackIcon} className="h-5 w-5 shrink-0" alt="Surf rack" title="Has surf rack" />
+                            )}
+                          </label>
                         ))}
-                    </select>
-                  </label>
+                    </div>
+                  </div>
                   <label className="mt-3 block">
                     <span className={LABEL_CLS}>
                       Helmet numbers

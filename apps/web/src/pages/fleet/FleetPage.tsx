@@ -6,6 +6,7 @@ import { useUIStore } from '../../stores/ui-store.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 import { Table } from '../../components/common/Table.js';
 import { Badge } from '../../components/common/Badge.js';
+import surfRackIcon from '../../assets/Home/Surf Rack Icon.svg';
 import { VehicleModal } from '../../components/fleet/VehicleModal.js';
 import { AddVehicleModal } from '../../components/fleet/AddVehicleModal.js';
 import { AssetManagementModal } from '../../components/fleet/AssetManagementModal.js';
@@ -92,7 +93,14 @@ export default function FleetPage() {
     {
       key: 'surfRack',
       header: 'Surf rack',
-      render: (r: VehicleSummary) => (r.surfRack ? 'Yes' : '—'),
+      render: (r: VehicleSummary) => r.surfRack
+        ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-0.5">
+            <img src={surfRackIcon} className="h-4 w-4 shrink-0" alt="" />
+            <span className="text-xs font-medium text-blue-700">Surf rack</span>
+          </span>
+        )
+        : <span className="text-gray-400">—</span>,
     },
     {
       key: 'actions',
@@ -223,7 +231,11 @@ export default function FleetPage() {
                 <dt>ORCR expiry</dt>
                 <dd>{v.orcrExpiryDate ? formatDate(v.orcrExpiryDate) : '—'}</dd>
                 <dt>Surf rack</dt>
-                <dd>{v.surfRack ? 'Yes' : '—'}</dd>
+                <dd>
+                  {v.surfRack
+                    ? <img src={surfRackIcon} className="h-5 w-5" alt="Surf rack" title="Surf rack" />
+                    : '—'}
+                </dd>
               </dl>
               <div className="mt-2 flex gap-3">
                 <button

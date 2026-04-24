@@ -120,7 +120,7 @@ router.get('/calendar', requirePermission(Permission.ViewFleet), validateQuery(z
     const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
 
     // 1. Load fleet vehicles
-    let fleetQuery = sb.from('fleet').select('id, name, model_id, plate_number, store_id, status').order('name');
+    let fleetQuery = sb.from('fleet').select('id, name, model_id, plate_number, store_id, status, surf_rack').order('name');
     if (storeId && storeId !== 'all') fleetQuery = fleetQuery.eq('store_id', storeId);
     const { data: fleetRows, error: fleetErr } = await fleetQuery;
     if (fleetErr) throw new Error(`Fleet query failed: ${fleetErr.message}`);
@@ -140,12 +140,13 @@ router.get('/calendar', requirePermission(Permission.ViewFleet), validateQuery(z
       vehicle_name: string | null;
       pickup_datetime: string;
       dropoff_datetime: string;
+      original_dropoff_datetime: string | null;
     };
     let itemRows: OrderItemRow[] = [];
     if (vehicleIds.length > 0) {
       const { data, error } = await sb
         .from('order_items')
-        .select('id, order_id, vehicle_id, vehicle_name, pickup_datetime, dropoff_datetime')
+        .select('id, order_id, vehicle_id, vehicle_name, pickup_datetime, dropoff_datetime, original_dropoff_datetime')
         .in('vehicle_id', vehicleIds)
         .lte('pickup_datetime', `${to}T23:59:59`)
         .gte('dropoff_datetime', `${from}T00:00:00`);
@@ -225,7 +226,7 @@ router.get('/calendar', requirePermission(Permission.ViewFleet), validateQuery(z
       itemsByVehicle.set(item.vehicle_id, list);
     }
 
-    const vehicles = (fleetRows ?? []).map((v: { id: string; name: string; model_id: string | null; plate_number: string | null; store_id: string; status: string }) => {
+    const vehicles = (fleetRows ?? []).map((v: { id: string; name: string; model_id: string | null; plate_number: string | null; store_id: string; status: string; surf_rack: boolean | null }) => {
       const vItems = itemsByVehicle.get(v.id) ?? [];
       return {
         vehicleId: v.id,
@@ -235,6 +236,7 @@ router.get('/calendar', requirePermission(Permission.ViewFleet), validateQuery(z
         storeId: v.store_id,
         storeName: storeMap.get(v.store_id) ?? v.store_id,
         status: v.status,
+        surfRack: v.surf_rack ?? false,
         bookings: vItems.map((item) => {
           const orderStatus = orderMap.get(item.order_id)?.status ?? 'active';
           const custId = orderMap.get(item.order_id)?.customer_id;
@@ -259,16 +261,17 @@ router.get('/calendar', requirePermission(Permission.ViewFleet), validateQuery(z
             customerName: custId ? (custMap.get(custId) ?? '—') : '—',
             pickupDatetime: item.pickup_datetime,
             dropoffDatetime: item.dropoff_datetime,
+            originalDropoffDatetime: item.original_dropoff_datetime ?? null,
             status: calStatus,
           };
         }),
       };
     });
 
-    // 6. Load unassigned bookings from orders_raw
+    // 6. Load orders_raw rows in the date window (unassigned + walk-in reserved)
     let rawQuery = sb
       .from('orders_raw')
-      .select('id, order_reference, customer_name, vehicle_model_id, store_id, pickup_datetime, dropoff_datetime, status')
+      .select('id, order_reference, customer_name, vehicle_model_id, vehicle_id, booking_channel, store_id, pickup_datetime, dropoff_datetime, status')
       .in('status', ['unprocessed', 'processed'])
       .lte('pickup_datetime', `${to}T23:59:59`)
       .gte('dropoff_datetime', `${from}T00:00:00`);
@@ -276,10 +279,47 @@ router.get('/calendar', requirePermission(Permission.ViewFleet), validateQuery(z
     const { data: rawRows, error: rawErr } = await rawQuery;
     if (rawErr) throw new Error(`orders_raw query failed: ${rawErr.message}`);
 
-    const unassignedBookings = (rawRows ?? []).map((r: Record<string, unknown>) => ({
+    // Walk-in reserved rows have a specific vehicle_id — inject them into the vehicle's bookings.
+    // Everything else (no vehicle_id) goes into unassignedBookings.
+    const walkInReservedByVehicle = new Map<string, Array<Record<string, unknown>>>();
+    const unassignedRawRows: Array<Record<string, unknown>> = [];
+
+    for (const r of (rawRows ?? []) as Array<Record<string, unknown>>) {
+      const vid = r.vehicle_id as string | null;
+      const channel = r.booking_channel as string | null;
+      if (vid && channel === 'walk_in') {
+        const list = walkInReservedByVehicle.get(vid) ?? [];
+        list.push(r);
+        walkInReservedByVehicle.set(vid, list);
+      } else {
+        unassignedRawRows.push(r);
+      }
+    }
+
+    // Append walk-in reserved entries to each vehicle's bookings array
+    const vehiclesWithReserved = vehicles.map((v) => {
+      const reserved = walkInReservedByVehicle.get(v.vehicleId) ?? [];
+      const reservedBookings = reserved.map((r) => ({
+        orderId: null,
+        orderItemId: null,
+        orderReference: r.order_reference as string | null,
+        customerName: (r.customer_name as string) ?? '—',
+        pickupDatetime: r.pickup_datetime as string,
+        dropoffDatetime: r.dropoff_datetime as string,
+        originalDropoffDatetime: null,
+        status: 'pending' as const,
+        rawOrderId: r.id as string,
+      }));
+      return {
+        ...v,
+        bookings: [...v.bookings, ...reservedBookings],
+      };
+    });
+
+    const unassignedBookings = unassignedRawRows.map((r) => ({
       rawOrderId: r.id as string,
       orderReference: r.order_reference as string | null,
-      customerName: r.customer_name as string ?? '—',
+      customerName: (r.customer_name as string) ?? '—',
       vehicleModelName: modelMap.get(r.vehicle_model_id as string) ?? '—',
       storeId: r.store_id as string,
       pickupDatetime: r.pickup_datetime as string,
@@ -289,7 +329,7 @@ router.get('/calendar', requirePermission(Permission.ViewFleet), validateQuery(z
 
     res.json({
       success: true,
-      data: { vehicles, unassignedBookings, dateRange: { from, to } },
+      data: { vehicles: vehiclesWithReserved, unassignedBookings, dateRange: { from, to } },
     });
   } catch (err) { next(err); }
 });
@@ -343,7 +383,7 @@ router.get(
       // 1. Fetch all active fleet vehicles for the store
       const { data: fleetRows, error: fleetErr } = await sb
         .from('fleet')
-        .select('id, name, model_id, status, store_id')
+        .select('id, name, model_id, status, store_id, surf_rack')
         .eq('store_id', storeId)
         .not('status', 'in', '("Sold","Maintenance","Inactive")');
       if (fleetErr) throw new Error(`Fleet query failed: ${fleetErr.message}`);
@@ -364,8 +404,24 @@ router.get(
         bookedVehicleIds.add(row.vehicle_id);
       }
 
+      // 3b. Also exclude vehicles held by unprocessed walk-in reservations
+      const { data: reservedRows, error: reservedErr } = await sb
+        .from('orders_raw')
+        .select('vehicle_id')
+        .eq('store_id', storeId)
+        .eq('booking_channel', 'walk_in')
+        .eq('status', 'unprocessed')
+        .not('vehicle_id', 'is', null)
+        .lt('pickup_datetime', dropoffDatetime)
+        .gt('dropoff_datetime', pickupDatetime);
+      if (reservedErr) throw new Error(`Walk-in reserved query failed: ${reservedErr.message}`);
+
+      for (const row of (reservedRows ?? []) as Array<{ vehicle_id: string }>) {
+        bookedVehicleIds.add(row.vehicle_id);
+      }
+
       // 4. Filter fleet to only vehicles not in the booked set
-      type FleetRow = { id: string; name: string; model_id: string | null; status: string; store_id: string };
+      type FleetRow = { id: string; name: string; model_id: string | null; status: string; store_id: string; surf_rack: boolean | null };
       const availableVehicles = ((fleetRows ?? []) as FleetRow[]).filter(
         (v) => !bookedVehicleIds.has(v.id),
       );
@@ -379,6 +435,7 @@ router.get(
           modelId: v.model_id,
           status: v.status,
           storeId: v.store_id,
+          surfRack: v.surf_rack ?? false,
         })),
       });
     } catch (err) {
