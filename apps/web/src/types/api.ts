@@ -68,6 +68,10 @@ export interface EnrichedOrder {
   inspectionStatus?: 'pending' | 'completed';
   /** True when the order has at least one `payments.payment_type = 'extension'` row. */
   hasExtension?: boolean;
+  /** Primary order_item vehicle — used to pre-populate the inspection form. */
+  primaryVehicleId?: string | null;
+  primaryVehicleName?: string | null;
+  primaryOrderItemId?: string | null;
 }
 
 export interface MaintenanceRecordSummary {

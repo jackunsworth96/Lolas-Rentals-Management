@@ -45,11 +45,11 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
 
     const orderIds = (orders ?? []).map((o: Record<string, unknown>) => o.id as string);
 
-    let itemsByOrder = new Map<string, Array<{ vehicle_name: string; dropoff_datetime: string }>>();
+    let itemsByOrder = new Map<string, Array<{ id: string; vehicle_id: string; vehicle_name: string; dropoff_datetime: string }>>();
     if (orderIds.length > 0) {
       const { data: items, error: itemsErr } = await sb
         .from('order_items')
-        .select('order_id, vehicle_name, dropoff_datetime')
+        .select('id, order_id, vehicle_id, vehicle_name, dropoff_datetime')
         .in('order_id', orderIds);
       if (itemsErr) throw new Error(`enriched items query failed: ${itemsErr.message}`);
       for (const item of (items ?? [])) {
@@ -154,6 +154,7 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
       const customer = o.customers as { name: string; mobile: string | null; email: string | null } | null;
       const items = itemsByOrder.get(o.id as string) ?? [];
       const vehicleNames = items.map((i) => i.vehicle_name).filter(Boolean).join(', ');
+      const primaryItem = items[0] ?? null;
       const returnDatetime = items.reduce<string | null>((latest, i) => {
         if (!i.dropoff_datetime) return latest;
         return !latest || i.dropoff_datetime > latest ? i.dropoff_datetime : latest;
@@ -202,6 +203,9 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
         waiverSignedAt: waiverData?.agreed_at ?? null,
         inspectionStatus,
         hasExtension,
+        primaryVehicleId: primaryItem?.vehicle_id ?? null,
+        primaryVehicleName: primaryItem?.vehicle_name ?? null,
+        primaryOrderItemId: primaryItem?.id ?? null,
       };
     });
 

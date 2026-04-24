@@ -48,8 +48,19 @@ export default function ActivePage() {
   const [selectedOrder, setSelectedOrder] = useState<EnrichedOrder | null>(null);
   const [inspectionOrderId, setInspectionOrderId] = useState<string | null>(null);
   const [inspectionOrderRef, setInspectionOrderRef] = useState('');
+  const [inspectionVehicleId, setInspectionVehicleId] = useState<string | null>(null);
+  const [inspectionVehicleName, setInspectionVehicleName] = useState<string | null>(null);
+  const [inspectionOrderItemId, setInspectionOrderItemId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
+
+  function openInspection(r: EnrichedOrder) {
+    setInspectionOrderId(r.id);
+    setInspectionOrderRef(r.bookingToken ?? r.wooOrderId ?? r.id);
+    setInspectionVehicleId(r.primaryVehicleId ?? null);
+    setInspectionVehicleName(r.primaryVehicleName ?? null);
+    setInspectionOrderItemId(r.primaryOrderItemId ?? null);
+  }
 
   const filtered = useMemo(() => {
     let list = orders ?? [];
@@ -191,8 +202,7 @@ export default function ActivePage() {
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            setInspectionOrderId(r.id);
-            setInspectionOrderRef(r.bookingToken ?? r.wooOrderId ?? r.id);
+            openInspection(r);
           }}
           className="font-lato text-xs font-medium px-3 py-1.5 rounded-lg border border-teal-brand text-teal-brand hover:bg-teal-brand/5 transition-colors"
         >
@@ -333,10 +343,7 @@ export default function ActivePage() {
                   <div className="border-t border-gray-100 px-4 py-3">
                     <button
                       type="button"
-                      onClick={() => {
-                        setInspectionOrderId(r.id);
-                        setInspectionOrderRef(r.bookingToken ?? r.wooOrderId ?? r.id);
-                      }}
+                      onClick={() => openInspection(r)}
                       className="w-full py-2.5 rounded-lg border border-teal-brand text-teal-brand font-medium text-sm transition-colors hover:bg-teal-brand/5 active:bg-teal-brand/10"
                     >
                       {inspectionStatus === 'completed' ? 'View / Edit Inspection' : 'Start Inspection'}
@@ -379,6 +386,9 @@ export default function ActivePage() {
           orderReference={inspectionOrderRef}
           storeId={storeId}
           employeeName={currentUser?.username ?? 'Staff'}
+          preAssignedVehicleId={inspectionVehicleId ?? undefined}
+          preAssignedVehicleName={inspectionVehicleName ?? undefined}
+          orderItemId={inspectionOrderItemId ?? undefined}
           onComplete={() => {
             setInspectionOrderId(null);
             void refetchOrders();

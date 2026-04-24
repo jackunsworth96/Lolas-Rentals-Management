@@ -18,6 +18,11 @@ interface InspectionModalProps {
   storeId: string;
   employeeName: string;
   onComplete: () => void;
+  /** Vehicle already assigned to this order — pre-populates the select field. */
+  preAssignedVehicleId?: string;
+  preAssignedVehicleName?: string;
+  /** order_items.id — required to call swap-vehicle if the vehicle is changed. */
+  orderItemId?: string;
 }
 
 const RESULT_BUTTONS: Record<
@@ -52,6 +57,9 @@ export function InspectionModal({
   storeId,
   employeeName,
   onComplete,
+  preAssignedVehicleId,
+  preAssignedVehicleName,
+  orderItemId,
 }: InspectionModalProps) {
   const [items, setItems] = useState<InspectionItem[]>([]);
   const [results, setResults] = useState<Record<string, InspectionResult>>({});
@@ -88,8 +96,8 @@ export function InspectionModal({
     if (!open) return;
 
     setResults({});
-    setVehicleId('');
-    setVehicleName('');
+    setVehicleId(preAssignedVehicleId ?? '');
+    setVehicleName(preAssignedVehicleName ?? '');
     setKmReading('');
     setDamageNotes('');
     setDamageLogMaintenance(false);
@@ -99,6 +107,11 @@ export function InspectionModal({
     setItems([]);
     setAvailableVehicles([]);
 
+    if (preAssignedVehicleName) {
+      const t = preAssignedVehicleName.toLowerCase();
+      setVehicleType(t.includes('tuk') ? 'tuktuk' : 'scooter');
+    }
+
     const now = new Date().toISOString();
     const future = new Date(Date.now() + 86_400_000).toISOString();
     api
@@ -106,7 +119,23 @@ export function InspectionModal({
         `/fleet/available?storeId=${storeId}&pickupDatetime=${encodeURIComponent(now)}&dropoffDatetime=${encodeURIComponent(future)}`,
       )
       .then((data) => {
-        setAvailableVehicles(Array.isArray(data) ? data : []);
+        const list: AvailableVehicle[] = Array.isArray(data) ? data : [];
+        // The pre-assigned vehicle is already Active/rented so it won't appear
+        // in the available list. Add it at the top so it's always selectable.
+        if (
+          preAssignedVehicleId &&
+          preAssignedVehicleName &&
+          !list.some((v) => v.id === preAssignedVehicleId)
+        ) {
+          list.unshift({
+            id: preAssignedVehicleId,
+            name: preAssignedVehicleName,
+            modelId: '',
+            storeId,
+            status: 'Active',
+          });
+        }
+        setAvailableVehicles(list);
       })
       .catch((err: unknown) => console.error('Vehicles error:', err));
 
@@ -245,6 +274,21 @@ export function InspectionModal({
 
     setSubmitting(true);
     try {
+      // If the vehicle was changed from the pre-assigned one, record a swap first
+      // so fleet availability and the order record stay consistent.
+      if (
+        vehicleId &&
+        preAssignedVehicleId &&
+        orderItemId &&
+        vehicleId !== preAssignedVehicleId
+      ) {
+        await api.post(`/orders/${orderId}/swap-vehicle`, {
+          orderItemId,
+          newVehicleId: vehicleId,
+          reason: 'Changed at inspection',
+        });
+      }
+
       await api.post('/inspections', {
         orderId,
         orderReference,
@@ -333,8 +377,15 @@ export function InspectionModal({
 
         {/* Section 2 — Vehicle + KM */}
         <div className="space-y-3">
-          <label className="block">
-            <span className="font-lato text-sm font-semibold text-charcoal-brand">Select vehicle</span>
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="font-lato text-sm font-semibold text-charcoal-brand">Vehicle</span>
+              {preAssignedVehicleId && vehicleId && vehicleId !== preAssignedVehicleId && (
+                <span className="font-lato text-xs text-amber-600 font-medium">
+                  ⚠ Changed from assigned vehicle — will be swapped on submit
+                </span>
+              )}
+            </div>
             <select
               value={vehicleId}
               onChange={(e) => {
@@ -343,20 +394,19 @@ export function InspectionModal({
                 setVehicleName(v?.name ?? '');
                 if (v) {
                   const isTuktuk = v.name.toLowerCase().includes('tuk');
-                  const detectedType = isTuktuk ? 'tuktuk' : 'scooter';
-                  setVehicleType(detectedType);
+                  setVehicleType(isTuktuk ? 'tuktuk' : 'scooter');
                 }
               }}
-              className="mt-1.5 block w-full rounded-lg border border-charcoal-brand/20 bg-white px-3 py-2.5 text-sm font-lato text-charcoal-brand focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand appearance-none"
+              className="block w-full rounded-lg border border-charcoal-brand/20 bg-white px-3 py-2.5 text-sm font-lato text-charcoal-brand focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand appearance-none"
             >
               <option value="">— Select vehicle —</option>
               {availableVehicles.map((v) => (
                 <option key={v.id} value={v.id}>
-                  {v.name}
+                  {v.name}{v.id === preAssignedVehicleId ? ' (assigned)' : ''}
                 </option>
               ))}
             </select>
-          </label>
+          </div>
 
           <label className="block">
             <span className="font-lato text-sm font-semibold text-charcoal-brand">KM reading</span>
