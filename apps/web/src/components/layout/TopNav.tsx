@@ -6,8 +6,6 @@ import {
 import { Link, useLocation } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { LanguageSwitcher } from '../ui/LanguageSwitcher.js';
-
 import menuPaw from '../../assets/Menu_Paw_Clean.png';
 import navHome from '../../assets/nav-buttons/Nav Home.svg';
 import navReserve from '../../assets/nav-buttons/Nav Reserve.svg';
@@ -190,7 +188,6 @@ export default function TopNav({ items, rightSlot }: TopNavProps) {
           >
             <img src={instaIcon} alt="" className="h-5 w-5 object-contain" aria-hidden />
           </a>
-          <LanguageSwitcher />
           {rightSlot && <div>{rightSlot}</div>}
         </div>
       </header>

@@ -254,7 +254,7 @@ function useDraggable(btnSize: number) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-const BUBBLE_MESSAGE = "Hey! I'm Lolo — I can quickly answer most questions here 🐾";
+const BUBBLE_MESSAGE = "Hey, I'm Lola's Assistant - Lolo! I can quickly answer most questions here 🐾";
 const BUBBLE_DISMISS_MS = 7000;
 
 export default function LolasChat() {
