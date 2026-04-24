@@ -9,6 +9,10 @@ export interface AvailabilityQuery {
   storeId: string;
   pickupDatetime: string;
   dropoffDatetime: string;
+  /** When set, holds belonging to this session are excluded from the count.
+   * Used during order submission so the customer's own hold is not counted
+   * against their own booking. */
+  excludeSessionToken?: string;
 }
 
 export interface HoldRow {

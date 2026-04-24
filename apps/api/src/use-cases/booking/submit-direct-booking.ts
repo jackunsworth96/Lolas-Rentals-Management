@@ -88,11 +88,14 @@ export async function submitDirectBooking(
     );
   }
 
-  // 2. Re-run availability as a final race-condition guard
+  // 2. Re-run availability as a final race-condition guard.
+  // Exclude the current session's own hold so it is not counted against the
+  // customer's own booking (they legitimately hold a reservation via step 1).
   const available = await bookingPort.checkAvailability({
     storeId: input.storeId,
     pickupDatetime: input.pickupDatetime,
     dropoffDatetime: input.dropoffDatetime,
+    excludeSessionToken: input.sessionToken,
   });
 
   const match = available.find((m) => m.modelId === input.vehicleModelId);

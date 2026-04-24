@@ -38,7 +38,7 @@ export function createBookingAdapter(): BookingPort {
 
   return {
     async checkAvailability(query: AvailabilityQuery): Promise<AvailableModel[]> {
-      const { storeId, pickupDatetime, dropoffDatetime } = query;
+      const { storeId, pickupDatetime, dropoffDatetime, excludeSessionToken } = query;
 
       const BUFFER_MS = 30 * 60 * 1000;
       const pickupBuffered = new Date(new Date(pickupDatetime).getTime() - BUFFER_MS).toISOString();
@@ -124,12 +124,18 @@ export function createBookingAdapter(): BookingPort {
         if (mid) trackDrop(mid, row.dropoff_datetime);
       }
 
-      // 6. Active holds (no handover buffer on holds — they block by exact time)
+      // 6. Active holds (no handover buffer on holds — they block by exact time).
+      // Holds belonging to excludeSessionToken are skipped so a customer's own hold
+      // is not counted against their own order submission.
       const nowIso = new Date().toISOString();
-      const { data: holdRows, error: holdErr } = await sb
+      let holdsQuery = sb
         .from('booking_holds').select('vehicle_model_id, dropoff_datetime')
         .eq('store_id', storeId).gt('expires_at', nowIso)
         .lt('pickup_datetime', dropoffDatetime).gt('dropoff_datetime', pickupDatetime);
+      if (excludeSessionToken) {
+        holdsQuery = holdsQuery.neq('session_token', excludeSessionToken);
+      }
+      const { data: holdRows, error: holdErr } = await holdsQuery;
       if (holdErr) throw new Error(`booking_holds overlap query failed: ${holdErr.message}`);
 
       const holdsByModel = new Map<string, number>();
