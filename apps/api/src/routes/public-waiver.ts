@@ -8,7 +8,7 @@ import { validateBody } from '../middleware/validate.js';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { sendEmail, waiverConfirmationHtml, escapeHtml } from '../services/email.js';
-import { normalizePublicWebOrigin } from '../lib/public-web-url.js';
+import { normalizePublicWebOrigin, publicWebOriginFromEnv } from '../lib/public-web-url.js';
 import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
 import { formatManilaDateTime } from '../utils/manila-date.js';
 
@@ -255,6 +255,7 @@ waiverRouter.post('/:orderReference/sign', validateBody(WaiverSignBodySchema), a
           }),
           hasLicence: !!(body.licenceFrontUrl),
           whatsappNumber: process.env.WHATSAPP_NUMBER ?? '639XXXXXXXXX',
+          waiverAgreementUrl: `${publicWebOriginFromEnv(process.env.WEB_URL)}/book/waiver-agreement`,
         }),
       });
     })();

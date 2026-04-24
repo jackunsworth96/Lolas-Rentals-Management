@@ -12,6 +12,21 @@ export function escapeIlike(value: string): string {
   return value.replace(/[%_\\]/g, '\\$&');
 }
 
+/** Accepts LR/BB references with or without dashes (e.g. LR0423BE36 ↔ LR-0423-BE36). */
+export function orderReferenceLookupVariants(input: string): string[] {
+  const trimmed = input.trim();
+  if (!trimmed) return [];
+  const variants = new Set<string>();
+  variants.add(trimmed);
+  const upper = trimmed.toUpperCase();
+  variants.add(upper);
+  const compact = upper.replace(/-/g, '').replace(/\s+/g, '');
+  if (compact) variants.add(compact);
+  const m = compact.match(/^(LR|BB)(\d{4})([A-F0-9]{4})$/);
+  if (m) variants.add(`${m[1]}-${m[2]}-${m[3]}`);
+  return [...variants].filter(Boolean);
+}
+
 export function extDayCount(msA: number, msB: number): number {
   return Math.max(1, Math.ceil((msB - msA) / 86400000));
 }
@@ -60,17 +75,19 @@ export async function resolveExtensionForRaw(args: ExtensionInputs): Promise<Ext
 
   const sb = getSupabaseClient();
   const newDropoff = new Date(newDropoffDatetime);
+  const refVariants = orderReferenceLookupVariants(orderReference);
 
   const { data: rawRows } = await sb
     .from('orders_raw')
-    .select('id, vehicle_model_id, store_id, dropoff_datetime, pickup_datetime, payload')
-    .eq('order_reference', orderReference)
+    .select('id, order_reference, vehicle_model_id, store_id, dropoff_datetime, pickup_datetime, payload')
+    .in('order_reference', refVariants)
     .ilike('customer_email', escapeIlike(trimmedEmail))
     .in('status', ['unprocessed', 'processed']);
 
   if (!rawRows || rawRows.length === 0) return { kind: 'not_found' };
 
   const row = rawRows[0] as Record<string, unknown>;
+  const displayRef = (row.order_reference as string) || orderReference;
   const currentDropoff = new Date(row.dropoff_datetime as string);
 
   if (newDropoff <= currentDropoff) {
@@ -168,10 +185,10 @@ export async function resolveExtensionForRaw(args: ExtensionInputs): Promise<Ext
       ));
       await sendEmail({
         to: trimmedEmail,
-        subject: `Rental Extended — ${orderReference} | Lola's Rentals`,
+        subject: `Rental Extended — ${displayRef} | Lola's Rentals`,
         html: extendConfirmationHtml({
           customerName: trimmedEmail.split('@')[0],
-          orderReference,
+          orderReference: displayRef,
           newDropoffDatetime: formatManila(newDropoffDatetime),
           extensionDays: extDaysRaw,
           extensionCost,
@@ -206,6 +223,7 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
 
   const sb = getSupabaseClient();
   const newDropoff = new Date(newDropoffDatetime);
+  const refVariants = orderReferenceLookupVariants(orderReference);
 
   const { data: custRows } = await sb
     .from('customers').select('id').ilike('email', escapeIlike(trimmedEmail)).limit(10);
@@ -218,9 +236,10 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
     .select('id, customer_id, store_id, booking_token')
     .in('customer_id', custIds)
     .eq('status', 'active')
-    .eq('booking_token', orderReference);
+    .in('booking_token', refVariants);
 
-  for (const ord of (orderRows ?? []) as Array<{ id: string; customer_id: string; store_id: string }>) {
+  for (const ord of (orderRows ?? []) as Array<{ id: string; customer_id: string; store_id: string; booking_token: string | null }>) {
+    const displayRef = ord.booking_token || orderReference;
     const { data: items } = await sb
       .from('order_items')
       .select('id, vehicle_id, pickup_datetime, dropoff_datetime, store_id, rental_days_count, rental_rate, pickup_fee, dropoff_fee, discount')
@@ -393,7 +412,7 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
         const customerName = (cust as { name?: string } | null)?.name ?? trimmedEmail;
         await sendTelegramAlert(
           `🔄 <b>Rental Extended</b>\n` +
-            `Reference: ${escapeHtml(orderReference)}\n` +
+            `Reference: ${escapeHtml(displayRef)}\n` +
             `Customer: ${escapeHtml(customerName)}\n` +
             `New return: ${escapeHtml(formatManilaDateTime(newDropoffDatetime))}\n` +
             `Extension cost: ₱${totalExtensionCost.toLocaleString('en-PH')}`,
@@ -414,10 +433,10 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
           });
         await sendEmail({
           to: trimmedEmail,
-          subject: `Rental Extended — ${orderReference} | Lola's Rentals`,
+          subject: `Rental Extended — ${displayRef} | Lola's Rentals`,
           html: extendConfirmationHtml({
             customerName: trimmedEmail.split('@')[0],
-            orderReference,
+            orderReference: displayRef,
             newDropoffDatetime: formatManila(newDropoffDatetime),
             extensionDays: newDays - oldDays,
             extensionCost: totalExtensionCost,

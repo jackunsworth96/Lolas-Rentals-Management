@@ -218,9 +218,9 @@ export function PageLayout({
               <img
                 src={basketIcon}
                 alt=""
-                className={`h-[1.65rem] w-[1.65rem] object-contain ${basketFlash ? 'animate-basket-bounce' : ''}`}
-                width={27}
-                height={27}
+                className={`h-8 w-8 object-contain ${basketFlash ? 'animate-basket-bounce' : ''}`}
+                width={32}
+                height={32}
               />
               {basketCount > 0 && (
                 <span className={`absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-gold-brand text-[10px] font-black text-charcoal-brand ${basketFlash ? 'animate-badge-pop' : ''}`}>
@@ -281,7 +281,14 @@ export function PageLayout({
           <footer className="absolute inset-0 hidden pointer-events-none md:block">
             {/* Left column — logo, copyright, social icons */}
             <div className="pointer-events-auto absolute bottom-[18%] left-6 max-w-xs space-y-4">
-              <img src={logo} alt="Lola's Rentals" className="h-12 w-auto object-contain" />
+              <Link to="/book" aria-label="Lola's Rentals home" className="inline-block">
+                <img
+                  src={logo}
+                  alt="Lola's Rentals"
+                  className="h-9 w-auto object-contain md:h-10"
+                  draggable={false}
+                />
+              </Link>
               <p className="text-sm leading-relaxed text-charcoal-brand/60">
                 © 2026 Lola&apos;s Rentals and Tours Inc. | Built in-house
               </p>
@@ -341,7 +348,14 @@ export function PageLayout({
         <footer className="md:hidden w-full bg-[#f1e6d6] px-6 pb-10 pt-8">
           {/* Logo row */}
           <div className="flex items-start justify-between gap-4">
-            <img src={logo} alt="Lola's Rentals" className="h-10 w-auto object-contain" />
+            <Link to="/book" aria-label="Lola's Rentals home" className="inline-block">
+              <img
+                src={logo}
+                alt="Lola's Rentals"
+                className="h-9 w-auto object-contain md:h-10"
+                draggable={false}
+              />
+            </Link>
             <div className="flex items-center gap-4">
               <a href="https://instagram.com/lolasrentals" target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="inline-flex text-charcoal-brand/80 transition-opacity hover:opacity-90">
                 <img src={instaIcon} alt="" className="h-7 w-7 object-contain" width={28} height={28} />

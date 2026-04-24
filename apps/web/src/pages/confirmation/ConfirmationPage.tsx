@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Check, Clipboard, FileSignature, CalendarPlus } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { api } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
 import { RentalSummaryCard } from '../../components/confirmation/RentalSummaryCard.js';
@@ -249,6 +250,47 @@ export default function ConfirmationPage() {
                 <Check className="h-4 w-4 text-teal-brand" strokeWidth={2.5} />
                 Receipt sent to <span className="text-charcoal-brand">{state.customerEmail}</span>
               </p>
+
+              {/* Scroll prompt — nudges users toward the waiver section below */}
+              <motion.button
+                type="button"
+                onClick={() => window.scrollBy({ top: window.innerHeight * 0.75, behavior: 'smooth' })}
+                aria-label="Scroll down to complete your waiver"
+                animate={{ y: [0, 8, 0] }}
+                transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+                whileHover={{ scale: 1.15 }}
+                whileTap={{ scale: 0.92 }}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 4,
+                  marginTop: 32,
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#00577C',
+                  opacity: 0.7,
+                  padding: 0,
+                }}
+              >
+                <span className="font-lato" style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                  Complete your waiver below
+                </span>
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </motion.button>
             </div>
           </FadeUpSection>
 

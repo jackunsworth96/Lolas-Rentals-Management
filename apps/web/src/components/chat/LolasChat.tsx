@@ -43,6 +43,63 @@ function stripHandoffToken(text: string): { text: string; handoff: boolean } {
   return { text: cleaned, handoff: true };
 }
 
+/**
+ * Renders a string that may contain basic markdown (bold, italic, inline-code)
+ * into React elements. Each paragraph (blank-line-separated block) is its own
+ * <p>; newlines within a block become <br />.
+ */
+function renderMarkdown(text: string): React.ReactNode {
+  // Split into paragraphs on blank lines, then render each paragraph's inline spans.
+  const paragraphs = text.split(/\n{2,}/);
+
+  return paragraphs.map((para, pi) => {
+    // Split the paragraph into lines so we can insert <br /> between them.
+    const lines = para.split('\n');
+
+    const renderedLines = lines.map((line, li) => (
+      <span key={li}>
+        {renderInline(line)}
+        {li < lines.length - 1 && <br />}
+      </span>
+    ));
+
+    return (
+      <p key={pi} className={pi > 0 ? 'mt-2' : undefined}>
+        {renderedLines}
+      </p>
+    );
+  });
+}
+
+/** Converts inline markdown tokens (**bold**, *italic*, `code`) into spans. */
+function renderInline(text: string): React.ReactNode {
+  // Pattern: **bold**, *italic*, `code`
+  const INLINE = /(\*\*(.+?)\*\*|\*(.+?)\*|`([^`]+)`)/g;
+  const parts: React.ReactNode[] = [];
+  let last = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = INLINE.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index));
+
+    if (match[2] !== undefined) {
+      parts.push(<strong key={match.index} className="font-bold">{match[2]}</strong>);
+    } else if (match[3] !== undefined) {
+      parts.push(<em key={match.index}>{match[3]}</em>);
+    } else if (match[4] !== undefined) {
+      parts.push(
+        <code key={match.index} className="rounded bg-charcoal-brand/10 px-1 py-0.5 font-mono text-xs">
+          {match[4]}
+        </code>,
+      );
+    }
+    last = match.index + match[0].length;
+  }
+
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
 function TypingDots() {
   return (
     <span className="inline-flex items-center gap-1" aria-label="Lola's Assistant is typing">
@@ -124,7 +181,7 @@ function snapToEdge(x: number, y: number, btnSize: number): Pos {
 function useDraggable(btnSize: number) {
   const defaultPos = (): Pos => ({
     x: window.innerWidth - btnSize - SNAP_MARGIN,
-    y: window.innerHeight - btnSize - SNAP_MARGIN * 4,
+    y: window.innerHeight - btnSize - SNAP_MARGIN,
   });
 
   const [pos, setPos] = useState<Pos>(() => {
@@ -197,15 +254,26 @@ function useDraggable(btnSize: number) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+const BUBBLE_MESSAGE = "Hey! I'm Lola's assistant — I can quickly answer most questions here 🐾";
+const BUBBLE_DISMISS_MS = 7000;
+
 export default function LolasChat() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [waitingForFirstToken, setWaitingForFirstToken] = useState(false);
+  const [showBubble, setShowBubble] = useState(true);
 
   const BTN_SIZE = 64; // matches h-16/w-16 (4rem)
   const { pos, hasDragged, onPointerDown, onPointerMove, onPointerUp } = useDraggable(BTN_SIZE);
+
+  // Auto-dismiss the greeting bubble after a few seconds.
+  useEffect(() => {
+    if (!showBubble) return;
+    const t = window.setTimeout(() => setShowBubble(false), BUBBLE_DISMISS_MS);
+    return () => window.clearTimeout(t);
+  }, [showBubble]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -382,27 +450,70 @@ export default function LolasChat() {
     <>
       {/* Floating launcher button — draggable, snaps to nearest side */}
       {!open && (
-        <button
-          type="button"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={(e) => {
-            onPointerUp(e);
-            // Only fire the open action when the button wasn't dragged
-            if (!hasDragged.current) setOpen(true);
-          }}
-          aria-label="Open chat with Lola's Assistant"
-          style={{ left: pos.x, top: pos.y, touchAction: 'none' }}
-          className="fixed z-[60] flex h-16 w-16 cursor-grab items-center justify-center bg-transparent p-0 transition-transform duration-150 active:cursor-grabbing active:scale-95 select-none"
-        >
-          <img
-            src={aiChatIcon}
-            alt=""
-            className="h-full w-full object-contain"
-            aria-hidden
-            draggable={false}
-          />
-        </button>
+        <>
+          {/* Greeting speech bubble */}
+          {showBubble && (
+            <div
+              style={{
+                position: 'fixed',
+                left: Math.max(8, Math.min(pos.x - 200 + BTN_SIZE / 2, window.innerWidth - 232)),
+                top: pos.y - 88,
+                zIndex: 59,
+              }}
+              className="animate-in fade-in slide-in-from-bottom-2 duration-300"
+            >
+              <div className="relative w-56 rounded-2xl rounded-br-sm bg-white px-4 py-3 shadow-lg ring-1 ring-charcoal-brand/10">
+                <p className="font-lato pr-5 text-sm leading-snug text-charcoal-brand">
+                  {BUBBLE_MESSAGE}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowBubble(false)}
+                  aria-label="Dismiss"
+                  className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full text-charcoal-brand/40 transition-colors hover:bg-charcoal-brand/10 hover:text-charcoal-brand"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+                {/* Tail pointing down-right toward the chat button */}
+                <span
+                  aria-hidden
+                  className="absolute -bottom-2 right-4 h-0 w-0"
+                  style={{
+                    borderLeft: '8px solid transparent',
+                    borderRight: '0px solid transparent',
+                    borderTop: '8px solid white',
+                    filter: 'drop-shadow(0 1px 0 rgba(0,0,0,0.06))',
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={(e) => {
+              onPointerUp(e);
+              // Only fire the open action when the button wasn't dragged
+              if (!hasDragged.current) {
+                setShowBubble(false);
+                setOpen(true);
+              }
+            }}
+            aria-label="Open chat with Lola's Assistant"
+            style={{ left: pos.x, top: pos.y, touchAction: 'none' }}
+            className="fixed z-[60] flex h-16 w-16 cursor-grab items-center justify-center bg-transparent p-0 transition-transform duration-150 active:cursor-grabbing active:scale-95 select-none"
+          >
+            <img
+              src={aiChatIcon}
+              alt=""
+              className="h-full w-full object-contain"
+              aria-hidden
+              draggable={false}
+            />
+          </button>
+        </>
       )}
 
       {/* Chat panel — mobile: slide-up sheet; desktop: floats near the icon */}
@@ -492,13 +603,15 @@ export default function LolasChat() {
                     >
                       {isAssistantTyping ? (
                         <TypingDots />
+                      ) : isUser ? (
+                        <p className="whitespace-pre-wrap">{msg.content}</p>
                       ) : (
-                        <p className="whitespace-pre-wrap">
-                          {msg.content}
-                          {!isUser && msg.streaming && msg.content.length > 0 && (
+                        <div className="space-y-0">
+                          {renderMarkdown(msg.content)}
+                          {msg.streaming && msg.content.length > 0 && (
                             <span className="ml-0.5 inline-block h-3 w-1 animate-pulse bg-teal-brand/60 align-middle" />
                           )}
-                        </p>
+                        </div>
                       )}
                       {!isUser && !msg.streaming && (msg.handoff || msg.errored) && (
                         <WhatsAppButton />

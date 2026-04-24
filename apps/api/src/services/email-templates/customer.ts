@@ -272,12 +272,14 @@ export function waiverConfirmationHtml({
   signedAt,
   hasLicence,
   whatsappNumber,
+  waiverAgreementUrl,
 }: {
   driverName: string;
   orderReference: string;
   signedAt: string;
   hasLicence: boolean;
   whatsappNumber: string;
+  waiverAgreementUrl: string;
 }): string {
   return `
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
@@ -333,6 +335,11 @@ export function waiverConfirmationHtml({
             <li>You accept responsibility for the vehicle during the rental period</li>
             <li>You understand the terms and conditions of Lola's Rentals</li>
           </ul>
+          <p style="margin: 16px 0 0; text-align: center; font-size: 14px;">
+            <a href="${escapeHtml(waiverAgreementUrl)}" style="color: #FCBC5A; font-weight: 700; text-decoration: underline;">
+              View the full waiver agreement
+            </a>
+          </p>
         </div>
 
         <div style="background: #FCBC5A; border-radius: 12px; padding: 16px; text-align: center; margin: 24px 0;">

@@ -10,6 +10,7 @@ import { checkAvailability } from '../use-cases/booking/check-availability.js';
 import {
   escapeIlike,
   extDayCount,
+  orderReferenceLookupVariants,
   resolveExtensionForRaw,
   resolveExtensionForActive,
 } from './public-extend-helpers.js';
@@ -68,13 +69,14 @@ router.post('/lookup', extendLookupLimiter, validateBody(ExtendLookupRequestSche
     const { email, orderReference } = req.body as { email: string; orderReference: string };
     const trimmedEmail = email.trim().toLowerCase();
     const sb = getSupabaseClient();
+    const refVariants = orderReferenceLookupVariants(orderReference);
 
     // 1. Block extensions on raw (unactivated) bookings — the rental
     // hasn't started yet, so there is nothing to extend.
     const { data: rawRows, error: rawErr } = await sb
       .from('orders_raw')
       .select('id')
-      .eq('order_reference', orderReference)
+      .in('order_reference', refVariants)
       .ilike('customer_email', escapeIlike(trimmedEmail))
       .in('status', ['unprocessed']);
 
@@ -107,7 +109,7 @@ router.post('/lookup', extendLookupLimiter, validateBody(ExtendLookupRequestSche
         .select('id, order_date, status, customer_id, booking_token, final_total')
         .in('customer_id', custIds)
         .eq('status', 'active')
-        .eq('booking_token', orderReference);
+        .in('booking_token', refVariants);
       if (oErr) throw new Error(`orders lookup failed: ${oErr.message}`);
 
       for (const ord of (orderRows ?? []) as Array<Record<string, unknown>>) {
@@ -144,7 +146,7 @@ router.post('/lookup', extendLookupLimiter, validateBody(ExtendLookupRequestSche
           data: {
             found: true,
             order: {
-              orderReference,
+              orderReference: (ord.booking_token as string) || orderReference,
               customerName: custNameById.get(ord.customer_id as string) ?? null,
               vehicleModelName: modelName,
               vehicleModelId: modelId,
@@ -182,12 +184,13 @@ router.get('/preview', extendLookupLimiter, async (req, res, next) => {
     const trimmedEmail = email.trim().toLowerCase();
     const sb = getSupabaseClient();
     const newDropoff = new Date(newDropoffDatetime);
+    const refVariants = orderReferenceLookupVariants(orderReference);
 
     // ── Block extensions on raw (unactivated) bookings ──
     const { data: rawRows } = await sb
       .from('orders_raw')
       .select('id')
-      .eq('order_reference', orderReference)
+      .in('order_reference', refVariants)
       .ilike('customer_email', escapeIlike(trimmedEmail))
       .in('status', ['unprocessed']);
 
@@ -212,7 +215,7 @@ router.get('/preview', extendLookupLimiter, async (req, res, next) => {
         .select('id, customer_id, store_id, booking_token')
         .in('customer_id', custIds)
         .eq('status', 'active')
-        .eq('booking_token', orderReference);
+        .in('booking_token', refVariants);
 
       for (const ord of (orderRows ?? []) as Array<{ id: string; customer_id: string; store_id: string }>) {
         const { data: items } = await sb
@@ -305,10 +308,11 @@ router.post('/confirm', extendConfirmLimiter, validateBody(PublicExtendConfirmSc
     // Block extensions on raw (unactivated) bookings — the rental hasn't
     // started yet, so there is nothing to extend.
     const sb = getSupabaseClient();
+    const refVariants = orderReferenceLookupVariants(orderReference);
     const { data: rawMatches } = await sb
       .from('orders_raw')
       .select('id')
-      .eq('order_reference', orderReference)
+      .in('order_reference', refVariants)
       .ilike('customer_email', escapeIlike(trimmedEmail))
       .in('status', ['unprocessed']);
     if (rawMatches && rawMatches.length > 0) {
