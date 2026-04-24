@@ -88,4 +88,47 @@ router.post(
   },
 );
 
+/**
+ * POST /api/dev-tools/reset-by-email
+ *
+ * Deletes all orders (and related financial / operational data) that belong to:
+ *   - customers whose email matches the supplied address (case-insensitive), OR
+ *   - customers whose name contains "TEST" (case-insensitive)
+ *
+ * Also removes orphaned orders_raw rows that match on customer_email or
+ * customer_name, and deletes the matching test customer records themselves.
+ *
+ * Body: { "email": "jackunsworth96@gmail.com" }
+ *       (email is optional — omitting it still cleans up TEST-named customers)
+ *
+ * Requires the EditSettings (can_edit_settings) permission — admin-only.
+ */
+router.post(
+  '/reset-by-email',
+  requirePermission(Permission.EditSettings),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { email } = req.body as { email?: string };
+
+      const supabase = getSupabaseClient();
+
+      const { data, error } = await supabase.rpc('cleanup_bookings_by_email_or_test', {
+        p_email: email?.trim() ?? null,
+      });
+
+      if (error) {
+        res.status(500).json({
+          success: false,
+          error: { code: 'CLEANUP_FAILED', message: error.message },
+        });
+        return;
+      }
+
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 export const devToolsRoutes = router;

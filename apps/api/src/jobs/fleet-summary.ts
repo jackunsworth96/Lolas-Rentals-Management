@@ -1,4 +1,3 @@
-import cron from 'node-cron';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { formatManilaDate, formatManilaDateTime } from '../utils/manila-date.js';
 import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
@@ -13,14 +12,10 @@ import { escapeHtml } from '../services/email.js';
  * remaining sections are still sent, so one bad table never silences the post.
  */
 export function startFleetSummaryJob(): void {
-  cron.schedule(
-    '0 18 * * *',
-    () => {
-      void runFleetSummary();
-    },
-    { timezone: 'Asia/Manila' },
-  );
-  console.log('[fleet-summary] Job scheduled (18:00 Asia/Manila)');
+  // Fleet summary is now fired by evening-trigger.ts — either immediately when
+  // cash-up is reconciled, or at 18:00 Manila as a fallback. No standalone cron
+  // is needed here.
+  console.log('[fleet-summary] Managed by evening-trigger (cash-up reconciled or 18:00 fallback)');
 }
 
 export async function runFleetSummary(): Promise<void> {
