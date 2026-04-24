@@ -449,7 +449,8 @@ router.delete('/users/:id', edit, async (req, res, next) => {
 });
 
 // ── Payment Routing Rules ──
-router.get('/payment-routing', edit, async (req, res, next) => {
+// GET is readable by anyone who can record expenses — only PUT requires full settings access.
+router.get('/payment-routing', requirePermission(Permission.EditExpenses), async (req, res, next) => {
   try {
     const routingRepo = req.app.locals.deps.paymentRoutingRepo;
     const rules = await routingRepo.findAll();

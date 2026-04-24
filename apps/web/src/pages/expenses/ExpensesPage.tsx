@@ -688,6 +688,11 @@ export default function ExpensesPage() {
                       <option key={m.id} value={m.id}>{m.name}</option>
                     ))}
                   </select>
+                  {form.paymentMethodId && !form.cashAccountId && (
+                    <p className="mt-1 text-xs text-red-600">
+                      No account is configured for this payment method. Ask an admin to set up payment routing in Settings.
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -788,6 +793,7 @@ export default function ExpensesPage() {
                   parseFloat(form.amount) <= 0 ||
                   !form.expenseAccountId ||
                   (!form.isUnpaid && !form.paymentMethodId) ||
+                  (!form.isUnpaid && !!form.paymentMethodId && !form.cashAccountId) ||
                   (isCashAdvance && !form.employeeId)
                 }
               >
