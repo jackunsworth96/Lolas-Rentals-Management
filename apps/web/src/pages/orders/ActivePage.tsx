@@ -210,7 +210,8 @@ export default function ActivePage() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+      {/* Header */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold text-gray-900">Active Orders</h1>
           {!isLoading && (
@@ -220,23 +221,21 @@ export default function ActivePage() {
           )}
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Search customer, mobile, vehicle..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-72 rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-            <svg className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </div>
+        <div className="relative w-full sm:w-72">
+          <input
+            type="text"
+            placeholder="Search customer, mobile, vehicle..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          <svg className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
         </div>
       </div>
 
-      <div className="mb-4 flex gap-2">
+      <div className="mb-4 flex gap-2 flex-wrap">
         {dateFilters.map((f) => (
           <button
             key={f.key}
@@ -255,13 +254,110 @@ export default function ActivePage() {
       {isLoading ? (
         <div className="py-12 text-center text-gray-500">Loading...</div>
       ) : (
-        <Table
-          columns={columns}
-          data={filtered}
-          keyFn={(r: EnrichedOrder) => r.id}
-          onRowClick={(r: EnrichedOrder) => setSelectedOrder(r)}
-          emptyMessage="No active orders"
-        />
+        <>
+          {/* Mobile card layout */}
+          <div className="md:hidden space-y-3">
+            {filtered.length === 0 && (
+              <div className="py-12 text-center text-sm text-gray-500">No active orders</div>
+            )}
+            {filtered.map((r) => {
+              const refText = r.bookingToken ?? r.wooOrderId ?? r.id.slice(0, 8);
+              const inspectionStatus = r.inspectionStatus ?? 'pending';
+              const waiverStatus = r.waiverStatus ?? 'pending';
+              const returnColor = returnDateColor(r.returnDatetime);
+              const returnLabel = formatReturnDate(r.returnDatetime);
+
+              return (
+                <div
+                  key={r.id}
+                  className="bg-white rounded-xl border border-gray-200 overflow-hidden"
+                >
+                  {/* Card top — tap to open order detail */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedOrder(r)}
+                    className="w-full text-left px-4 pt-4 pb-3"
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div>
+                        <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Order</p>
+                        <p className="font-semibold text-gray-900">{refText}</p>
+                      </div>
+                      <Badge color={r.status === 'confirmed' ? 'green' : 'blue'}>
+                        {r.status === 'confirmed' ? 'Confirmed' : 'Active'}
+                      </Badge>
+                    </div>
+
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{r.customerName}</p>
+                        {r.customerMobile && (
+                          <p className="text-xs text-gray-500">{r.customerMobile}</p>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        {waiverStatus === 'signed' ? (
+                          <span className="inline-flex items-center rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">Waiver ✓</span>
+                        ) : waiverStatus === 'expired' ? (
+                          <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-600">Waiver expired</span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">Waiver ⚠</span>
+                        )}
+                        {inspectionStatus === 'completed' && (
+                          <span className="inline-flex items-center rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">Inspection ✓</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">{r.vehicleNames}</span>
+                      <span className={
+                        returnColor === 'red' ? 'font-medium text-red-600 text-xs'
+                        : returnColor === 'yellow' ? 'font-medium text-amber-600 text-xs'
+                        : 'text-gray-500 text-xs'
+                      }>
+                        Return: {returnLabel}
+                        {r.hasExtension && <span className="ml-1 text-teal-700">(Ext.)</span>}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between mt-1.5">
+                      <span className="text-xs text-gray-500">Total: <span className="font-medium text-gray-800">{formatCurrency(r.finalTotal)}</span></span>
+                      {r.balanceDue > 0 && (
+                        <span className="text-xs font-medium text-red-600">Balance: {formatCurrency(r.balanceDue)}</span>
+                      )}
+                    </div>
+                  </button>
+
+                  {/* Inspection button — full-width, easy to tap */}
+                  <div className="border-t border-gray-100 px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInspectionOrderId(r.id);
+                        setInspectionOrderRef(r.bookingToken ?? r.wooOrderId ?? r.id);
+                      }}
+                      className="w-full py-2.5 rounded-lg border border-teal-brand text-teal-brand font-medium text-sm transition-colors hover:bg-teal-brand/5 active:bg-teal-brand/10"
+                    >
+                      {inspectionStatus === 'completed' ? 'View / Edit Inspection' : 'Start Inspection'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Desktop table layout */}
+          <div className="hidden md:block">
+            <Table
+              columns={columns}
+              data={filtered}
+              keyFn={(r: EnrichedOrder) => r.id}
+              onRowClick={(r: EnrichedOrder) => setSelectedOrder(r)}
+              emptyMessage="No active orders"
+            />
+          </div>
+        </>
       )}
 
       {selectedOrder && (
