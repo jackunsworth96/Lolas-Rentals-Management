@@ -420,11 +420,15 @@ router.get('/locations', validateQuery(LocationsQuerySchema), async (req, res, n
 router.get('/payment-methods', async (req, res, next) => {
   try {
     const methods = await req.app.locals.deps.configRepo.getPaymentMethods();
-    const publicMethods = methods.map((m: { id: string; name: string; surchargePercent?: number }) => ({
-      id: m.id,
-      name: m.name,
-      surchargePercent: m.surchargePercent ?? 0,
-    }));
+    const publicMethods = methods
+      .filter((m: { id: string; name: string; surchargePercent?: number; showOnCustomerWebsite?: boolean }) =>
+        m.showOnCustomerWebsite !== false,
+      )
+      .map((m: { id: string; name: string; surchargePercent?: number }) => ({
+        id: m.id,
+        name: m.name,
+        surchargePercent: m.surchargePercent ?? 0,
+      }));
     res.json({ success: true, data: publicMethods });
   } catch (err) {
     next(err);
@@ -570,6 +574,49 @@ router.get('/transfer-routes', validateQuery(TransferRoutesQuerySchema), async (
     const { storeId } = req.query as { storeId: string };
     const routes = await req.app.locals.deps.configRepo.getTransferRoutes(storeId);
     res.json({ success: true, data: routes });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── POST /feedback (public — no auth) ────────────────────────────────────────
+
+const feedbackLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  message: { success: false, error: { code: 'RATE_LIMIT', message: 'Too many feedback submissions. Please try again later.' } },
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+});
+
+const FeedbackSchema = z.object({
+  orderReference: z.string().min(1).max(50),
+  rating: z.number().int().min(1).max(5),
+  comment: z.string().max(1000).optional(),
+  customerName: z.string().max(100).optional(),
+  vehicleModelName: z.string().max(100).optional(),
+});
+
+router.post('/feedback', feedbackLimiter, validateBody(FeedbackSchema), async (req, res, next) => {
+  try {
+    const { orderReference, rating, comment, customerName, vehicleModelName } = req.body as z.infer<typeof FeedbackSchema>;
+
+    const filledStar = '⭐';
+    const emptyStar = '✩';
+    const stars = filledStar.repeat(rating) + emptyStar.repeat(5 - rating);
+
+    const lines: string[] = [
+      `📝 <b>New Booking Feedback</b>`,
+      `Reference: <code>${escapeHtml(orderReference)}</code>`,
+    ];
+    if (customerName) lines.push(`Customer: ${escapeHtml(customerName)}`);
+    if (vehicleModelName) lines.push(`Vehicle: ${escapeHtml(vehicleModelName)}`);
+    lines.push(`Rating: ${stars} (${rating}/5)`);
+    if (comment?.trim()) lines.push(`\n💬 "${escapeHtml(comment.trim())}"`);
+
+    void sendTelegramAlert(lines.join('\n'), getTelegramChatId('feedback'));
+
+    res.json({ success: true });
   } catch (err) {
     next(err);
   }

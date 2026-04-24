@@ -14,13 +14,14 @@
  */
 import { logger } from './logger.js';
 
-export function getTelegramChatId(kind: 'default' | 'ops' | 'fleet' | 'daily' | 'maintenance' | 'driver'): string | undefined {
+export function getTelegramChatId(kind: 'default' | 'ops' | 'fleet' | 'daily' | 'maintenance' | 'driver' | 'feedback'): string | undefined {
   switch (kind) {
     case 'ops':         return process.env.TELEGRAM_OPS_CHAT_ID;
     case 'fleet':       return process.env.TELEGRAM_FLEET_CHAT_ID;
     case 'daily':       return process.env.TELEGRAM_DAILY_CHAT_ID;
     case 'maintenance': return process.env.TELEGRAM_MAINTENANCE_CHAT_ID;
     case 'driver':      return process.env.TELEGRAM_DRIVER_CHAT_ID;
+    case 'feedback':    return process.env.TELEGRAM_FEEDBACK_CHAT_ID;
     case 'default':
     default:            return process.env.TELEGRAM_CHAT_ID;
   }

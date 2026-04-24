@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { api } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
 import { RentalSummaryCard } from '../../components/confirmation/RentalSummaryCard.js';
+import { BookingFeedbackForm } from '../../components/confirmation/BookingFeedbackForm.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import { PrimaryCtaButton } from '../../components/public/PrimaryCtaButton.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
@@ -520,6 +521,17 @@ export default function ConfirmationPage() {
               </div>
             </FadeUpSection>
           )}
+
+          {/* ── Feedback ── */}
+          <FadeUpSection>
+            <div className="mt-8">
+              <BookingFeedbackForm
+                orderReference={state.orderReferences[0]}
+                customerName={state.customerName}
+                vehicleModelName={state.vehicleModelName}
+              />
+            </div>
+          </FadeUpSection>
 
           {/* ── Footer ── */}
           <div className="mt-8 pb-12 text-center">
