@@ -80,8 +80,6 @@ export function OrderDetailSummaryTab({
   const [extendOpen, setExtendOpen] = useState(false);
   const [inspectionModalOpen, setInspectionModalOpen] = useState(false);
   const [showMayaModal, setShowMayaModal] = useState(false);
-  const [sendingWaiverLink, setSendingWaiverLink] = useState(false);
-
   // ── Data / config queries ──
   const { data: vehicles = [] } = useFleet(storeId);
   const { data: paymentMethods = [] } = usePaymentMethods() as { data: Array<{ id: string; name: string; surchargePercent?: number; surcharge_percent?: number; isActive?: boolean; is_active?: boolean }> | undefined };
@@ -457,38 +455,10 @@ export function OrderDetailSummaryTab({
     );
   };
 
-  const sendWaiverLinkToClipboard = async () => {
-    if (!orderRefForWaiver || sendingWaiverLink) return;
-    const token = useAuthStore.getState().token;
-    if (!token) {
-      pushToast('You must be signed in to send a waiver link.', 'error');
-      return;
-    }
-    setSendingWaiverLink(true);
-    try {
-      const res = await fetch(`${waiverFetchApiBase()}/public/waiver/send-link`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ orderReference: orderRefForWaiver }),
-      });
-      const json = (await res.json().catch(() => ({}))) as { url?: string; data?: { url?: string }; error?: { message?: string }; success?: boolean };
-      if (!res.ok) {
-        throw new Error(json?.error?.message ?? `Request failed (${res.status})`);
-      }
-      const url = json?.data?.url ?? json?.url;
-      if (!url || typeof url !== 'string') {
-        throw new Error('No waiver URL returned');
-      }
-      await navigator.clipboard.writeText(url);
-      pushToast('Waiver link copied to clipboard', 'success');
-    } catch (e) {
-      pushToast(e instanceof Error ? e.message : 'Could not copy waiver link', 'error');
-    } finally {
-      setSendingWaiverLink(false);
-    }
+  const openWaiver = () => {
+    if (!orderRefForWaiver) return;
+    const url = `${window.location.origin}/waiver/${encodeURIComponent(orderRefForWaiver)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -536,11 +506,10 @@ export function OrderDetailSummaryTab({
                       {orderRefForWaiver && canEditOrders ? (
                         <button
                           type="button"
-                          disabled={sendingWaiverLink}
-                          onClick={() => void sendWaiverLinkToClipboard()}
-                          className="mt-3 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-sand-brand disabled:opacity-50"
+                          onClick={openWaiver}
+                          className="mt-3 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-sand-brand"
                         >
-                          {sendingWaiverLink ? 'Working…' : 'Send waiver link'}
+                          Start waiver
                         </button>
                       ) : !orderRefForWaiver ? (
                         <p className="mt-2 text-xs text-charcoal-brand/60">No booking reference on this order.</p>

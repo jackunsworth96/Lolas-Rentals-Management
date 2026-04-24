@@ -113,6 +113,10 @@ export function PaymentRoutingTab() {
     () => storeAccounts.filter((a) => (a.accountType ?? a.account_type) === 'Asset'),
     [storeAccounts],
   );
+  const liabilityAccounts = useMemo(
+    () => storeAccounts.filter((a) => (a.accountType ?? a.account_type) === 'Liability'),
+    [storeAccounts],
+  );
   const expenseAccounts = useMemo(
     () => storeAccounts.filter((a) => (a.accountType ?? a.account_type) === 'Expense'),
     [storeAccounts],
@@ -333,9 +337,20 @@ export function PaymentRoutingTab() {
                         className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
                       >
                         <option value="">— Select account —</option>
-                        {assetAccounts.map((a) => (
-                          <option key={a.id} value={a.id}>{a.name}</option>
-                        ))}
+                        {assetAccounts.length > 0 && (
+                          <optgroup label="Asset">
+                            {assetAccounts.map((a) => (
+                              <option key={a.id} value={a.id}>{a.name}</option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {liabilityAccounts.length > 0 && (
+                          <optgroup label="Liability">
+                            {liabilityAccounts.map((a) => (
+                              <option key={a.id} value={a.id}>{a.name}</option>
+                            ))}
+                          </optgroup>
+                        )}
                       </select>
                     </td>
                     <td className="px-4 py-3">
@@ -366,13 +381,16 @@ export function PaymentRoutingTab() {
       <div className="mt-6 rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">
         <p className="font-medium">How this works</p>
         <ul className="mt-2 list-inside list-disc space-y-1 text-blue-700">
-          <li><strong>Received Into</strong> — the asset account where money lands (e.g. Cash Drawer, GCash Account, Card Receivable)</li>
+          <li><strong>Received Into</strong> — the account where money lands (typically an Asset e.g. Cash Drawer, GCash, Union Bank — or a Liability for pre-paid clearing)</li>
           <li><strong>Card Settlement Account</strong> — the bank account where card payments settle (e.g. Union Bank) — only for card methods</li>
           <li><strong>Default Cash Account</strong> — used as the default "paid from" in expenses</li>
           <li><strong>Card Fee Expense</strong> — the expense account for card processing fees during settlement matching</li>
         </ul>
         <p className="mt-2 text-blue-600">
           Income accounts are resolved by context: rental income for orders, category-mapped income for misc sales, route income for transfers.
+        </p>
+        <p className="mt-2 text-blue-600">
+          <strong>Pre-paid orders:</strong> Set the <em>Pre-paid (Prior System)</em> payment method to route into <em>Customer Deposits Received</em> (Liability). When a pre-paid order activates, this clears the liability instead of crediting the bank a second time.
         </p>
       </div>
     </div>

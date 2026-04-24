@@ -23,6 +23,7 @@ import {
   AlertTriangle,
   Settings,
   UserSearch,
+  PenLine,
   type LucideIcon,
 } from 'lucide-react';
 import { useUIStore } from '../../stores/ui-store.js';
@@ -71,6 +72,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Budget', path: '/budget', perm: 'can_view_accounts', icon: BarChart2 },
       { label: 'Card Settlements', path: '/card-settlements', perm: 'can_view_cardsettlements', icon: CreditCard },
       { label: 'Cash Up', path: '/cashup', perm: 'can_view_cashup', icon: Calculator },
+      { label: 'Journal Entry', path: '/journal', perm: 'can_edit_accounts', icon: PenLine },
       { label: 'Expenses', path: '/expenses', perm: 'can_view_expenses', icon: Receipt },
       { label: 'Misc Sales', path: '/misc-sales', perm: 'can_view_miscsales', icon: ShoppingBag },
     ],
