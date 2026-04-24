@@ -22,6 +22,7 @@ import {
   BookOpen,
   AlertTriangle,
   Settings,
+  UserSearch,
   type LucideIcon,
 } from 'lucide-react';
 import { useUIStore } from '../../stores/ui-store.js';
@@ -85,6 +86,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Business',
     items: [
+      { label: 'Customers', path: '/customers', perm: null, icon: UserSearch },
       { label: 'Merchandise', path: '/merchandise', perm: 'can_view_miscsales', icon: Package },
       { label: 'Directory', path: '/directory', perm: null, icon: BookOpen },
     ],

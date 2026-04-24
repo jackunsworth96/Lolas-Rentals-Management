@@ -58,10 +58,10 @@ export class SupabaseCustomerRepository implements CustomerRepository {
       .from('customers')
       .select('*')
       .ilike('email', escaped)
-      .maybeSingle();
+      .limit(1);
 
     if (error) throw new Error(`findByEmail failed: ${error.message}`);
-    return data ? rowToCustomer(data as CustomerRow) : null;
+    return data && data.length > 0 ? rowToCustomer(data[0] as CustomerRow) : null;
   }
 
   async findByMobile(mobile: string): Promise<Customer | null> {
@@ -70,10 +70,10 @@ export class SupabaseCustomerRepository implements CustomerRepository {
       .from('customers')
       .select('*')
       .ilike('mobile', mobile)
-      .maybeSingle();
+      .limit(1);
 
     if (error) throw new Error(`findByMobile failed: ${error.message}`);
-    return data ? rowToCustomer(data as CustomerRow) : null;
+    return data && data.length > 0 ? rowToCustomer(data[0] as CustomerRow) : null;
   }
 
   async search(storeId: string, query: string): Promise<Customer[]> {
