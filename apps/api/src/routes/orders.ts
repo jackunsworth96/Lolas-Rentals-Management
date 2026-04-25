@@ -94,6 +94,14 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
           // final_total — counting them here would mask unpaid rental charges.
           // Pending extension IOUs are excluded because no cash was received yet.
           if (p.payment_type === 'deposit') continue;
+          // Refunds represent money returned to the customer — subtract from net received.
+          if (p.payment_type === 'refund') {
+            paymentsByOrder.set(
+              p.order_id,
+              (paymentsByOrder.get(p.order_id) ?? 0) - Number(p.amount ?? 0),
+            );
+            continue;
+          }
           paymentsByOrder.set(
             p.order_id,
             (paymentsByOrder.get(p.order_id) ?? 0) + Number(p.amount ?? 0),
@@ -496,6 +504,22 @@ router.post('/:id/swap-vehicle', requirePermission(Permission.EditOrders), valid
     const result = await swapVehicle(req.app.locals.deps, {
       orderId: req.params.id, employeeId: req.user!.employeeId, ...req.body,
     });
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+router.post('/:id/refund', requirePermission(Permission.EditOrders), validateBody(z.object({
+  amount: z.number().positive(),
+  refundMethodId: z.string(),
+  refundAccountId: z.string(),
+  receivableAccountId: z.string(),
+  reason: z.string().max(500).nullable().optional(),
+  cancelOrder: z.boolean().optional(),
+  transactionDate: z.string(),
+})), async (req, res, next) => {
+  try {
+    const { refundOrder } = await import('../use-cases/orders/refund-order.js');
+    const result = await refundOrder(req.app.locals.deps, { orderId: req.params.id, ...req.body });
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });

@@ -37,11 +37,14 @@ export function OrderDetailPaymentsTab({ payments, totalPaid }: OrderDetailPayme
         <tbody>
           {payments.map((p, idx) => {
             const isExt = p.paymentType === 'extension';
+            const isRefund = p.paymentType === 'refund';
             return (
-              <tr key={idx} className={`border-b hover:bg-sand-brand ${isExt ? 'bg-amber-50' : ''}`}>
+              <tr key={idx} className={`border-b hover:bg-sand-brand ${isExt ? 'bg-amber-50' : ''} ${isRefund ? 'bg-red-50' : ''}`}>
                 <td className="py-2 pr-4">{formatDate(p.transactionDate)}</td>
                 <td className="py-2 pr-4">
-                  {isExt ? (
+                  {isRefund ? (
+                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">Refund</span>
+                  ) : isExt ? (
                     <span className="inline-flex items-center gap-1.5">
                       <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Extension</span>
                       <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${p.settlementStatus === 'pending' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
@@ -52,7 +55,9 @@ export function OrderDetailPaymentsTab({ payments, totalPaid }: OrderDetailPayme
                     <span className="capitalize">{p.paymentType ?? 'rental'}</span>
                   )}
                 </td>
-                <td className="py-2 pr-4 font-medium">{formatCurrency(p.amount)}</td>
+                <td className={`py-2 pr-4 font-medium ${isRefund ? 'text-red-700' : ''}`}>
+                  {isRefund ? `−${formatCurrency(p.amount)}` : formatCurrency(p.amount)}
+                </td>
                 <td className="py-2 pr-4">{isExt && p.paymentMethodId === 'pending' ? '—' : (pmLookup.get(p.paymentMethodId)?.name ?? p.paymentMethodId)}</td>
                 <td className="py-2 text-charcoal-brand/60">{p.settlementRef ?? '—'}</td>
               </tr>

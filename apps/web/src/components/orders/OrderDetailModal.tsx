@@ -51,7 +51,10 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
   const canAct = isActive && !readOnly;
 
   const total = enrichedData?.finalTotal ?? moneyAmount(order.finalTotal);
-  const totalPaid = enrichedData?.totalPaid ?? payments.reduce((s, p) => s + (p.amount ?? 0), 0);
+  const totalPaid = enrichedData?.totalPaid ?? payments.reduce((s, p) => {
+    if (p.paymentType === 'refund') return s - (p.amount ?? 0);
+    return s + (p.amount ?? 0);
+  }, 0);
 
   const extensionCount = payments.filter((p) => p.paymentType === 'extension').length;
 

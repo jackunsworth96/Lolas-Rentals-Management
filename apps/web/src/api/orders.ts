@@ -142,6 +142,16 @@ export function useSwapVehicle() {
   });
 }
 
+export function useRefundOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string } & Record<string, unknown>) => api.post(`/orders/${id}/refund`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['orders'] });
+    },
+  });
+}
+
 export function useUpdateDropoffNote() {
   const qc = useQueryClient();
   return useMutation({

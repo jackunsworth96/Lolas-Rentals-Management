@@ -7,7 +7,7 @@ import { ExtendOrderModal } from './ExtendOrderModal.js';
 import { InspectionModal } from './InspectionModal.js';
 import { MayaPaymentModal } from './MayaPaymentModal.js';
 import { useInspectionByOrder } from '../../api/inspections.js';
-import { useCollectPayment, useSettleOrder, useSwapVehicle, useUpdateDropoffNote } from '../../api/orders.js';
+import { useCollectPayment, useRefundOrder, useSettleOrder, useSwapVehicle, useUpdateDropoffNote } from '../../api/orders.js';
 import { useFleet } from '../../api/fleet.js';
 import { usePaymentMethods, useChartOfAccounts, useFleetStatuses } from '../../api/config.js';
 import { formatCurrency } from '../../utils/currency.js';
@@ -66,6 +66,13 @@ export function OrderDetailSummaryTab({
   const [swapNewVehicleId, setSwapNewVehicleId] = useState('');
   const [swapReason, setSwapReason] = useState('');
 
+  // ── Issue refund state ──
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundMethodId, setRefundMethodId] = useState('');
+  const [refundAccountId, setRefundAccountId] = useState('');
+  const [refundReason, setRefundReason] = useState('');
+  const [refundCancelOrder, setRefundCancelOrder] = useState(false);
+
   // ── Settle order state ──
   const [settlementDate, setSettlementDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [settleDepositAccountId, setSettleDepositAccountId] = useState('');
@@ -88,6 +95,7 @@ export function OrderDetailSummaryTab({
   const { data: fleetStatuses = [] } = useFleetStatuses() as { data: Array<{ id: string; name: string; isRentable?: boolean; is_rentable?: boolean }> | undefined };
 
   const collectPaymentMut = useCollectPayment();
+  const refundOrderMut = useRefundOrder();
   const settleOrder = useSettleOrder();
   const swapVehicle = useSwapVehicle();
   const updateDropoffNote = useUpdateDropoffNote();
@@ -225,6 +233,13 @@ export function OrderDetailSummaryTab({
   useEffect(() => {
     if (routedSettleFinalAcct && !settleFinalAccountId) setSettleFinalAccountId(routedSettleFinalAcct);
   }, [routedSettleFinalAcct, settleFinalAccountId]);
+
+  // Auto-fill refund account from routing rules when a refund method is chosen.
+  const routedRefundAcct = routing.getReceivedInto(storeId, refundMethodId);
+  useEffect(() => {
+    if (routedRefundAcct) setRefundAccountId(routedRefundAcct);
+    else setRefundAccountId('');
+  }, [routedRefundAcct]);
   useEffect(() => {
     if (settleDepositAccountId) return;
     if (routedDepositLiability) {
@@ -301,6 +316,39 @@ export function OrderDetailSummaryTab({
     );
   };
 
+  const handleRefund = (e: React.FormEvent) => {
+    e.preventDefault();
+    const amt = Number(refundAmount);
+    if (!amt || amt <= 0 || !refundMethodId || !refundAccountId || !defaultReceivableId) return;
+    if (refundCancelOrder && !window.confirm(
+      `This will issue a ${formatCurrency(amt)} refund and CANCEL the order. Are you sure?`,
+    )) return;
+    refundOrderMut.mutate(
+      {
+        id: orderId,
+        amount: amt,
+        refundMethodId,
+        refundAccountId,
+        receivableAccountId: defaultReceivableId,
+        reason: refundReason.trim() || null,
+        cancelOrder: refundCancelOrder,
+        transactionDate: new Date().toISOString().slice(0, 10),
+      },
+      {
+        onSuccess: () => {
+          setRefundAmount('');
+          setRefundMethodId('');
+          setRefundAccountId('');
+          setRefundReason('');
+          setRefundCancelOrder(false);
+          if (refundCancelOrder) onClose();
+          else pushToast('Refund recorded successfully.', 'success');
+        },
+        onError: (err) => pushToast((err as Error).message, 'error'),
+      },
+    );
+  };
+
   const settleFinalPM = settleFinalMethodId ? pmLookup.get(settleFinalMethodId) : null;
   const settleFinalSurcharge = settleFinalPM ? Number(settleFinalPM.surchargePercent ?? settleFinalPM.surcharge_percent ?? 0) : 0;
   const isSettleFinalCard = settleFinalSurcharge > 0;
@@ -321,6 +369,8 @@ export function OrderDetailSummaryTab({
     // 'pending' → IOU not yet collected. 'absorbed' → rolled into the
     // settlement payment row (captured there, not here). Either way skip.
     if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return s;
+    // Refunds reduce the net amount received from the customer.
+    if (p.paymentType === 'refund') return s - (p.amount ?? 0);
     return s + (p.amount ?? 0);
   }, 0);
   const pendingExtensionsTotal =
@@ -885,6 +935,97 @@ export function OrderDetailSummaryTab({
                 </button>
               </form>
               {swapVehicle.error && <p className="mt-2 text-sm text-red-600">{(swapVehicle.error as Error).message}</p>}
+            </section>
+
+            {/* ─── ISSUE REFUND ─── */}
+            <section>
+              <h3 className="mb-3 font-medium text-gray-900">Issue Refund</h3>
+              <p className="mb-3 text-sm text-charcoal-brand/60">
+                Record a cash refund to the customer (e.g. early return due to accident). Optionally cancel the order at the same time.
+              </p>
+              <form onSubmit={handleRefund} className="space-y-3">
+                <div className="flex flex-col sm:flex-row sm:flex-wrap items-end gap-4">
+                  <label className="block">
+                    <span className="text-sm text-gray-600">Refund Amount</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      value={refundAmount}
+                      onChange={(e) => setRefundAmount(e.target.value)}
+                      required
+                      placeholder={totalPaid > 0 ? String(Math.max(0, totalPaid)) : '0'}
+                      className="mt-1 block w-full sm:w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-red-400 focus:outline-none focus:ring-1 focus:ring-red-400"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-sm text-gray-600">Refund via</span>
+                    <select
+                      value={refundMethodId}
+                      onChange={(e) => { setRefundMethodId(e.target.value); setRefundAccountId(''); }}
+                      required
+                      className="mt-1 block w-full sm:w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-red-400 focus:outline-none focus:ring-1 focus:ring-red-400"
+                    >
+                      <option value="">Select method</option>
+                      {activePaymentMethods.map((pm) => (
+                        <option key={pm.id} value={pm.id}>{pm.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  {refundMethodId && !routedRefundAcct && (
+                    <label className="block">
+                      <span className="text-sm text-gray-600">From Account</span>
+                      <select
+                        value={refundAccountId}
+                        onChange={(e) => setRefundAccountId(e.target.value)}
+                        required
+                        className="mt-1 block w-full sm:w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-red-400 focus:outline-none focus:ring-1 focus:ring-red-400"
+                      >
+                        <option value="">Select account</option>
+                        {refundAccountOptions.map((a) => (
+                          <option key={String(a.id)} value={String(a.id)}>{String(a.name)}</option>
+                        ))}
+                      </select>
+                      <p className="mt-1 text-xs text-amber-600">No routing rule — select manually</p>
+                    </label>
+                  )}
+                  <label className="block flex-1 min-w-[160px]">
+                    <span className="text-sm text-gray-600">Reason</span>
+                    <input
+                      type="text"
+                      value={refundReason}
+                      onChange={(e) => setRefundReason(e.target.value)}
+                      placeholder="e.g. minor accident — customer unsafe to drive"
+                      maxLength={500}
+                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-red-400 focus:outline-none focus:ring-1 focus:ring-red-400"
+                    />
+                  </label>
+                </div>
+                <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={refundCancelOrder}
+                    onChange={(e) => setRefundCancelOrder(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-400"
+                  />
+                  Cancel order after refund
+                </label>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="submit"
+                    disabled={refundOrderMut.isPending}
+                    className="w-full sm:w-auto rounded-lg bg-red-600 px-5 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {refundOrderMut.isPending ? 'Processing…' : 'Issue Refund'}
+                  </button>
+                  {refundCancelOrder && (
+                    <span className="text-xs font-medium text-red-600">Order will be cancelled</span>
+                  )}
+                </div>
+                {refundOrderMut.error && (
+                  <p className="text-sm text-red-600">{(refundOrderMut.error as Error).message}</p>
+                )}
+              </form>
             </section>
 
             {/* ─── SETTLE ORDER ─── */}
