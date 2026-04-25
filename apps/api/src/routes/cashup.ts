@@ -397,10 +397,10 @@ router.get(
       type TodayOrder = {
         id: string;
         woo_order_id: string | null;
-        customers: { name: string } | null;
+        customers: { name: string }[] | null;
         order_items: Array<{ id: string; vehicle_name: string | null; discount: number | null }> | null;
       };
-      const todayOrders = (discountItemsRes.data ?? []) as TodayOrder[];
+      const todayOrders = (discountItemsRes.data ?? []) as unknown as TodayOrder[];
       const discountRows: Array<{
         id: string;
         vehicleName: string | null;
@@ -419,7 +419,7 @@ router.get(
             amount,
             orderId: order.id,
             orderRef: order.woo_order_id,
-            customerName: order.customers?.name ?? null,
+            customerName: Array.isArray(order.customers) ? (order.customers[0]?.name ?? null) : (order.customers?.name ?? null),
           });
         }
       }
