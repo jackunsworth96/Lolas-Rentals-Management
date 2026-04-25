@@ -419,7 +419,7 @@ router.get(
             amount,
             orderId: order.id,
             orderRef: order.woo_order_id,
-            customerName: Array.isArray(order.customers) ? (order.customers[0]?.name ?? null) : (order.customers?.name ?? null),
+            customerName: order.customers?.[0]?.name ?? null,
           });
         }
       }
