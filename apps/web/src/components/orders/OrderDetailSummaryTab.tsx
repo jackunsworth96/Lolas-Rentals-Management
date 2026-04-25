@@ -549,11 +549,22 @@ export function OrderDetailSummaryTab({
                 ) : (
                   <div className="mt-2">
                     <p className="text-sm text-gray-600">No inspection on record</p>
+                    {canStartInspection && waiverStatus !== 'signed' && orderRefForWaiver && (
+                      <a
+                        href={`${window.location.origin}/waiver/${encodeURIComponent(orderRefForWaiver)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100"
+                      >
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                        Sign Waiver ↗
+                      </a>
+                    )}
                     {canStartInspection && (
                       <button
                         type="button"
                         onClick={() => setInspectionModalOpen(true)}
-                        className="mt-3 w-full rounded-lg border border-teal-brand bg-white px-3 py-2 text-sm font-medium text-teal-brand hover:bg-teal-50"
+                        className="mt-2 w-full rounded-lg border border-teal-brand bg-white px-3 py-2 text-sm font-medium text-teal-brand hover:bg-teal-50"
                       >
                         Start Inspection
                       </button>

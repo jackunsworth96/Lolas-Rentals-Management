@@ -191,6 +191,13 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const isDirect = rawOrder.booking_channel === 'direct' || rawOrder.booking_channel === 'walk_in';
   const payload = rawOrder.payload ?? {};
 
+  const waiverRef = isDirect
+    ? (rawOrder.order_reference ?? null)
+    : (String(payload.number ?? payload.id ?? '') || null);
+  const waiverUrl = waiverRef
+    ? `${window.location.origin}/waiver/${encodeURIComponent(waiverRef)}`
+    : null;
+
   const billing = useMemo(() => {
     if (isDirect) {
       return {
@@ -209,6 +216,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
 
   const [step, setStep] = useState<Step>('review');
   const [customer, setCustomer] = useState<CustomerData>(billing);
+  const [waiverCopied, setWaiverCopied] = useState(false);
   const [vehicles, setVehicles] = useState<VehicleRow[]>([emptyVehicleRow()]);
   const [selectedAddons, setSelectedAddons] = useState<AddonRow[]>([]);
   const [securityDeposit, setSecurityDeposit] = useState<number | ''>('');
@@ -1008,6 +1016,43 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                 )}
               </div>
             </div>
+
+            {/* Waiver link */}
+            {waiverUrl && (
+              <div className="rounded-lg border border-teal-200 bg-teal-50 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="font-medium text-teal-900">Customer Waiver</h3>
+                    <p className="mt-0.5 text-xs text-teal-700">
+                      Send this link to the customer or open it on their device to complete the waiver.
+                    </p>
+                    <p className="mt-1 truncate text-xs font-mono text-teal-800 opacity-70">{waiverUrl}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(waiverUrl).then(() => {
+                          setWaiverCopied(true);
+                          setTimeout(() => setWaiverCopied(false), 2000);
+                        });
+                      }}
+                      className="rounded-lg border border-teal-400 bg-white px-3 py-1.5 text-xs font-medium text-teal-700 transition-colors hover:bg-teal-50"
+                    >
+                      {waiverCopied ? 'Copied!' : 'Copy Link'}
+                    </button>
+                    <a
+                      href={waiverUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-teal-700"
+                    >
+                      Open Waiver ↗
+                    </a>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Pre-activation card payment */}
             <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">

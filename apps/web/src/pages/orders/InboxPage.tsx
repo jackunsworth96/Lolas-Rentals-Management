@@ -246,14 +246,15 @@ export default function InboxPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-start justify-between gap-4">
+      {/* Header */}
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Order Inbox</h1>
           <p className="mt-1 text-sm text-gray-500">
             New orders from the website — review and process into active bookings.
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           {totalCount > 0 && (
             <span className="inline-flex items-center rounded-full bg-yellow-100 px-3 py-1 text-sm font-medium text-yellow-800">
               {totalCount} unprocessed
@@ -281,15 +282,18 @@ export default function InboxPage() {
       </div>
 
       {/* Search bar */}
-      <div className="mb-3 flex items-center gap-2">
-        <div className="relative flex-1 max-w-sm">
+      <div className="mb-3">
+        <div className="relative w-full sm:max-w-sm">
           <input
             type="text"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search by order ID, name, vehicle, phone or email"
-            className="w-full rounded-lg border border-gray-300 py-2 pl-3 pr-8 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-8 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
+          <svg className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
           {searchInput && (
             <button
               onClick={() => { setSearchInput(''); setSearchQuery(''); }}
@@ -321,7 +325,7 @@ export default function InboxPage() {
 
         <div className="h-6 w-px bg-gray-200" />
 
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           <span className="mr-1 text-sm font-medium text-gray-700">Arriving:</span>
           {([
             { key: 'all', label: 'All' },
@@ -331,7 +335,7 @@ export default function InboxPage() {
             <button
               key={f.key}
               onClick={() => setDateFilter(f.key)}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+              className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
                 dateFilter === f.key
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -349,13 +353,103 @@ export default function InboxPage() {
         )}
       </div>
 
-      <Table
-        columns={columns}
-        data={filteredOrders}
-        keyFn={(r: RawOrder) => r.id}
-        onRowClick={(r: RawOrder) => setSelectedOrder(r)}
-        emptyMessage="No new orders from the website"
-      />
+      {/* Mobile card layout */}
+      <div className="md:hidden space-y-3">
+        {filteredOrders.length === 0 && (
+          <div className="py-12 text-center text-sm text-gray-500">No new orders from the website</div>
+        )}
+        {filteredOrders.map((r) => {
+          const orderRef = (isDirect(r) || isWalkIn(r))
+            ? (r.order_reference ?? '—')
+            : extractField(r.payload ?? {}, 'number', 'id', 'order_key');
+          const customerName = (isDirect(r) || isWalkIn(r))
+            ? (r.customer_name ?? '—')
+            : extractCustomerName(r.payload ?? {});
+          const contactInfo = (isDirect(r) || isWalkIn(r))
+            ? (r.customer_email ?? r.customer_mobile ?? '—')
+            : extractEmail(r.payload ?? {});
+          const pickup = (isDirect(r) || isWalkIn(r))
+            ? (r.pickup_datetime ? formatPickupDatetimeManila(r.pickup_datetime) : '—')
+            : (extractPickupDate(r.payload ?? {}) ?? '—');
+          const total = r.web_quote_raw ?? extractTotal(r.payload ?? {});
+          const itemCount = (isDirect(r) || isWalkIn(r)) ? 1 : (extractItemCount(r.payload ?? {}) || 0);
+          const s = sourceLabel(r.source);
+
+          return (
+            <div
+              key={r.id}
+              className="bg-white rounded-xl border border-gray-200 overflow-hidden"
+            >
+              {/* Tappable top section — opens BookingModal */}
+              <button
+                type="button"
+                onClick={() => setSelectedOrder(r)}
+                className="w-full text-left px-4 pt-4 pb-3"
+              >
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div>
+                    <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Order</p>
+                    <p className="font-semibold text-gray-900">{orderRef}</p>
+                  </div>
+                  <Badge color={r.status === 'unprocessed' ? 'yellow' : r.status === 'processed' ? 'green' : 'gray'}>
+                    {r.status}
+                  </Badge>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                  <Badge color={s.color}>{s.text}</Badge>
+                  {isDirect(r) && !isWalkIn(r) && <Badge color="green">Direct</Badge>}
+                  {isWalkIn(r) && <Badge color="teal">Walk-in</Badge>}
+                </div>
+
+                <div className="mb-2">
+                  <p className="text-sm font-medium text-gray-900">{customerName}</p>
+                  <p className="text-xs text-gray-500">{contactInfo}</p>
+                </div>
+
+                <div className="flex items-center justify-between text-xs text-gray-500">
+                  <span>Pickup: <span className="text-gray-700">{pickup}</span></span>
+                  {itemCount > 0 && <span>{itemCount} {itemCount === 1 ? 'item' : 'items'}</span>}
+                </div>
+
+                {total > 0 && (
+                  <div className="mt-1.5 text-xs text-gray-500">
+                    Quote: <span className="font-medium text-gray-800">{formatCurrency(total)}</span>
+                  </div>
+                )}
+
+                <div className="mt-1.5 text-xs text-gray-400">
+                  Received: {r.created_at ? formatDateTime(r.created_at) : '—'}
+                </div>
+              </button>
+
+              {/* Cancel action — only if permitted */}
+              {canEditOrders && (
+                <div className="border-t border-gray-100 px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => setCancelOrder(r)}
+                    className="w-full py-2.5 rounded-lg border border-red-200 text-red-600 font-medium text-sm transition-colors hover:bg-red-50 active:bg-red-100"
+                  >
+                    Cancel Order
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Desktop table layout */}
+      <div className="hidden md:block">
+        <Table
+          columns={columns}
+          data={filteredOrders}
+          keyFn={(r: RawOrder) => r.id}
+          onRowClick={(r: RawOrder) => setSelectedOrder(r)}
+          emptyMessage="No new orders from the website"
+        />
+      </div>
 
       {selectedOrder && (
         <BookingModal
