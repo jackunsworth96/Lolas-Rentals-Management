@@ -794,12 +794,16 @@ router.get('/summary', authenticate, async (req, res, next) => {
     // cashupStatus: 'open' if any store has an unsubmitted reconciliation today,
     //               'closed' if all present records are locked, null if none started
     const cashupRows = (cashupResult.data ?? []) as Array<{ store_id: string; is_locked: boolean }>;
+    // For a single-store view, closed = that store's row is locked.
+    // For the combined view, closed = every active store has a locked row (not just
+    // every row that happens to exist), so one store reconciling early doesn't
+    // make the dashboard report the other store as done.
     const cashupStatus: 'open' | 'closed' | null =
       cashupRows.length === 0
         ? null
-        : cashupRows.every((r) => r.is_locked)
-          ? 'closed'
-          : 'open';
+        : storeFilter
+          ? (cashupRows.every((r) => r.is_locked) ? 'closed' : 'open')
+          : (cashupRows.filter((r) => r.is_locked).length === storeIds.length ? 'closed' : 'open');
 
     const pendingInboxCount: number = pendingTasksResult.count ?? 0;
     const upcomingTransfersCount: number = upcomingTransfersResult.count ?? 0;

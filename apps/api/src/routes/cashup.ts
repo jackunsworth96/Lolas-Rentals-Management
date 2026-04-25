@@ -740,12 +740,12 @@ router.post(
       );
       res.json({ success: true, data: result });
 
-      // Fire-and-forget: send the evening Telegram notifications now that cash-up
-      // is reconciled. The trigger deduplicates so only the first call per day
-      // actually fires; subsequent stores reconciling on the same day are no-ops.
-      // Falls back to the 18:00 cron if this is never called.
-      const { triggerEveningNotifications } = await import('../jobs/evening-trigger.js');
-      void triggerEveningNotifications('cashup');
+      // Only trigger evening Telegram for Lola's Rentals — Bass Bikes has its own
+      // separate automation that is not yet configured.
+      if (req.body.storeId === 'store-lolas') {
+        const { triggerEveningNotifications } = await import('../jobs/evening-trigger.js');
+        void triggerEveningNotifications('cashup');
+      }
     } catch (err) {
       next(err);
     }
