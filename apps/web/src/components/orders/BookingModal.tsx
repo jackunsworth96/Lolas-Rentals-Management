@@ -637,7 +637,14 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
         })),
       securityDeposit: Number(securityDeposit) || 0,
       webQuoteRaw: webQuote || null,
-      webNotes: isDirect ? null : ((payload.customer_note as string) ?? null),
+      webNotes: isDirect
+        ? (() => {
+            const parts: string[] = [];
+            if (rawOrder.customer_company?.trim()) parts.push(`Company: ${rawOrder.customer_company.trim()}`);
+            if (rawOrder.customer_extra_comments?.trim()) parts.push(rawOrder.customer_extra_comments.trim());
+            return parts.length > 0 ? parts.join('\n\n') : null;
+          })()
+        : ((payload.customer_note as string) ?? null),
       receivableAccountId: (receivableAccount?.id as string) ?? '',
       incomeAccountId: (incomeAccount?.id as string) ?? '',
       paymentMethodId: paymentMethodId || null,
@@ -913,6 +920,30 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                           <dd className="font-medium text-right">
                             {String((rawOrder.payload as Record<string, unknown> | null)?.accommodation_name)}
                           </dd>
+                        </div>
+                      )}
+                      {isDirect && rawOrder.customer_company && (
+                        <div className="flex justify-between gap-2">
+                          <dt className="shrink-0 text-gray-500">Company</dt>
+                          <dd className="font-medium text-right">{rawOrder.customer_company}</dd>
+                        </div>
+                      )}
+                      {isDirect && rawOrder.customer_extra_comments && (
+                        <div>
+                          <dt className="text-gray-500">Extra Comments</dt>
+                          <dd className="mt-1 rounded bg-yellow-50 p-2 text-gray-700 whitespace-pre-wrap">{rawOrder.customer_extra_comments}</dd>
+                        </div>
+                      )}
+                      {isDirect && rawOrder.pickup_location_address && (
+                        <div className="flex justify-between gap-2">
+                          <dt className="shrink-0 text-gray-500">Pickup address</dt>
+                          <dd className="font-medium text-right">{rawOrder.pickup_location_address}</dd>
+                        </div>
+                      )}
+                      {isDirect && rawOrder.dropoff_location_address && (
+                        <div className="flex justify-between gap-2">
+                          <dt className="shrink-0 text-gray-500">Return address</dt>
+                          <dd className="font-medium text-right">{rawOrder.dropoff_location_address}</dd>
                         </div>
                       )}
                     </>

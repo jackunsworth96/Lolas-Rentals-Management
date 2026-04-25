@@ -303,6 +303,11 @@ export function createBookingAdapter(): BookingPort {
             input.transferAmount != null && input.transferAmount > 0
               ? input.transferAmount
               : null,
+          customer_company: input.company?.trim() || null,
+          customer_extra_comments: input.extraComments?.trim() || null,
+          pickup_location_address: input.pickupLocationAddress?.trim() || null,
+          dropoff_location_address: input.dropoffLocationAddress?.trim() || null,
+          device_type: input.deviceType ?? null,
         })
         .select('id, order_reference, cancellation_token')
         .single();

@@ -171,12 +171,24 @@ export function OrderSummaryPanel({
 
         {/* Line items */}
         <div className="space-y-2">
-          <Row label={`Vehicle Subtotal (${rentalDays} Day${rentalDays !== 1 ? 's' : ''})`} amount={vehicleSubtotal} />
+          {basket.map((b) => (
+            <Row
+              key={b.holdId}
+              label={`${b.modelName} × ${rentalDays} day${rentalDays !== 1 ? 's' : ''}`}
+              amount={b.dailyRate * rentalDays}
+            />
+          ))}
           {pickupFee > 0 && (
-            <Row label={vehicleCount > 1 ? `Delivery Fee (×${vehicleCount})` : 'Delivery Fee'} amount={pickupFee} />
+            <Row
+              label={vehicleCount > 1 ? `Pick-up fee (×${vehicleCount})` : 'Pick-up fee'}
+              amount={pickupFee}
+            />
           )}
           {dropoffFee > 0 && (
-            <Row label={vehicleCount > 1 ? `Collection Fee (×${vehicleCount})` : 'Collection Fee'} amount={dropoffFee} />
+            <Row
+              label={vehicleCount > 1 ? `Return fee (×${vehicleCount})` : 'Return fee'}
+              amount={dropoffFee}
+            />
           )}
           {addonsTotal > 0 && <Row label="Add-ons Total" amount={addonsTotal} />}
           {transferFee > 0 && <Row label="Transfer Fee" amount={transferFee} />}
@@ -300,9 +312,9 @@ export function OrderSummaryPanel({
 
 function Row({ label, amount }: { label: string; amount: number }) {
   return (
-    <div className="flex items-baseline justify-between">
-      <span className="text-[13px] text-charcoal-brand/60">{label}</span>
-      <span className="text-[14px] font-medium text-charcoal-brand">{formatCurrency(amount)}</span>
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="min-w-0 text-[13px] text-charcoal-brand/60">{label}</span>
+      <span className="shrink-0 text-[14px] font-medium text-charcoal-brand">{formatCurrency(amount)}</span>
     </div>
   );
 }

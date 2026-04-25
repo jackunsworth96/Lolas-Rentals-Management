@@ -61,6 +61,16 @@ export interface DirectBookingInsert {
   transferPaxCount?: number | null;
   /** Guest accommodation note; persisted on orders_raw.payload.accommodation_name when no DB column. */
   accommodationName?: string | null;
+  /** Company name provided by the customer (optional). */
+  company?: string | null;
+  /** Extra comments / notes from the customer (optional). */
+  extraComments?: string | null;
+  /** Customer's exact address for a delivery pickup when a non-store location is selected. */
+  pickupLocationAddress?: string | null;
+  /** Customer's exact address for a collection return when a non-store location is selected. */
+  dropoffLocationAddress?: string | null;
+  /** Device type detected from the User-Agent header at submission time. */
+  deviceType?: 'mobile' | 'desktop' | null;
 }
 
 export interface DirectBookingResult {

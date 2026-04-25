@@ -69,6 +69,11 @@ export interface StoreMetrics {
     wooCommerce: number;
     total: number;
   } | null;
+  deviceSplit: {
+    mobile: number;
+    desktop: number;
+    total: number;
+  } | null;
 }
 
 export interface DashboardSummary {

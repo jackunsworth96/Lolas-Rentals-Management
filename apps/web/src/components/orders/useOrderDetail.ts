@@ -72,6 +72,10 @@ export type OrderDetail = {
   booking_token?: string;
   balance_due?: unknown;
   dropoffLocationNote?: string | null;
+  /** Customer's exact pickup address when a non-store delivery location was selected. */
+  pickupLocationAddress?: string | null;
+  /** Customer's exact return address when a non-store collection location was selected. */
+  dropoffLocationAddress?: string | null;
 };
 
 /**

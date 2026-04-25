@@ -742,6 +742,25 @@ export function OrderDetailSummaryTab({
           )}
         </div>
 
+        {/* ── Pickup / return addresses (set when non-store location chosen at booking) ── */}
+        {(order.pickupLocationAddress || order.dropoffLocationAddress) && (
+          <div className="space-y-2 rounded-lg border border-gray-200 p-4 text-sm">
+            <h4 className="text-xs font-medium uppercase tracking-wide text-charcoal-brand/60">Delivery / Collection Addresses</h4>
+            {order.pickupLocationAddress && (
+              <div>
+                <span className="text-charcoal-brand/60">Pickup address: </span>
+                <span className="font-medium">{order.pickupLocationAddress}</span>
+              </div>
+            )}
+            {order.dropoffLocationAddress && (
+              <div>
+                <span className="text-charcoal-brand/60">Return address: </span>
+                <span className="font-medium">{order.dropoffLocationAddress}</span>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── Action sections (only for active orders) ── */}
         {canAct && (
           <div className="mt-6 space-y-6 border-t border-gray-200 pt-6">

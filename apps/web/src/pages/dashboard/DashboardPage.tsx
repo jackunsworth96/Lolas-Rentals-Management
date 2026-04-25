@@ -296,6 +296,37 @@ export default function DashboardPage() {
         </section>
       )}
 
+      {/* SECTION — Today's Bookings by Device */}
+      {metrics?.deviceSplit != null && metrics.deviceSplit.total > 0 && (
+        <section>
+          <SectionHeading>Today's Bookings by Device</SectionHeading>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+            <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Mobile</p>
+              <p className="mt-1 text-2xl font-semibold text-gray-900">{metrics.deviceSplit.mobile}</p>
+              {metrics.deviceSplit.total > 0 && (
+                <p className="mt-1 text-sm text-gray-400">
+                  {Math.round((metrics.deviceSplit.mobile / metrics.deviceSplit.total) * 100)}%
+                </p>
+              )}
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Desktop / Web</p>
+              <p className="mt-1 text-2xl font-semibold text-gray-900">{metrics.deviceSplit.desktop}</p>
+              {metrics.deviceSplit.total > 0 && (
+                <p className="mt-1 text-sm text-gray-400">
+                  {Math.round((metrics.deviceSplit.desktop / metrics.deviceSplit.total) * 100)}%
+                </p>
+              )}
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Tracked Today</p>
+              <p className="mt-1 text-2xl font-semibold text-gray-900">{metrics.deviceSplit.total}</p>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* SECTION 2 — 9PM Returns */}
       {metrics != null && <section>
         <SectionHeading>9PM Returns</SectionHeading>

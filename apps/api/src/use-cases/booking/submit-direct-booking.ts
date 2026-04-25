@@ -70,6 +70,7 @@ export interface SubmitDirectBookingResult {
 export async function submitDirectBooking(
   deps: SubmitDirectBookingDeps,
   input: SubmitDirectBookingInput,
+  context?: { deviceType?: 'mobile' | 'desktop' },
 ): Promise<SubmitDirectBookingResult> {
   const { bookingPort } = deps;
 
@@ -183,6 +184,11 @@ export async function submitDirectBooking(
     transferAmount: input.transferAmount ?? null,
     transferPaxCount: input.transferPaxCount ?? null,
     accommodationName: input.accommodationName?.trim() || null,
+    company: input.company?.trim() || null,
+    extraComments: input.extraComments?.trim() || null,
+    pickupLocationAddress: input.pickupLocationAddress?.trim() || null,
+    dropoffLocationAddress: input.dropoffLocationAddress?.trim() || null,
+    deviceType: context?.deviceType ?? null,
   });
 
   // 6. Clean up the hold (best-effort; booking is already persisted).
@@ -353,12 +359,25 @@ export async function submitDirectBooking(
 
     const pickupFmt = formatManilaDateTime(input.pickupDatetime);
     const dropoffFmt = formatManilaDateTime(input.dropoffDatetime);
+    const pickupLocationLine = input.pickupLocationAddress?.trim()
+      ? `Delivery: ${escapeHtml(pickupLocation)} — ${escapeHtml(input.pickupLocationAddress.trim())}`
+      : `Delivery: ${escapeHtml(pickupLocation)}`;
+    const dropoffLocationLine = input.dropoffLocationAddress?.trim()
+      ? `Collection: ${escapeHtml(dropoffLocation)} — ${escapeHtml(input.dropoffLocationAddress.trim())}`
+      : `Collection: ${escapeHtml(dropoffLocation)}`;
+    const addonsTelegramLine =
+      addons.length > 0
+        ? `\nAdd-ons: ${addons.map((a) => `${escapeHtml(a.name)} (₱${a.price.toLocaleString('en-PH')})`).join(', ')}`
+        : '';
     void sendTelegramAlert(
       `🛵 <b>New Booking!</b>\n` +
         `Reference: ${escapeHtml(orderReference)}\n` +
         `Customer: ${escapeHtml(input.customerName)}\n` +
         `Vehicle: ${escapeHtml(vehicleName)}\n` +
         `Dates: ${escapeHtml(pickupFmt)} → ${escapeHtml(dropoffFmt)}\n` +
+        `${pickupLocationLine}\n` +
+        `${dropoffLocationLine}` +
+        `${addonsTelegramLine}\n` +
         `Total: ₱${grandTotal.toLocaleString('en-PH')}`,
       getTelegramChatId('ops'),
     );

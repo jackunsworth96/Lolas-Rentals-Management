@@ -37,6 +37,10 @@ export interface RenterInfo {
   nationality: string;
   /** Optional — sent as payload.accommodation_name on submit. */
   accommodationName?: string;
+  /** Optional company name. */
+  company?: string;
+  /** Optional extra comments / notes from the customer. */
+  extraComments?: string;
 }
 
 export type PaymentMethodId = string;

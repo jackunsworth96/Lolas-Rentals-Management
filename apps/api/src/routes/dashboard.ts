@@ -150,6 +150,11 @@ interface StoreMetrics {
     wooCommerce: number;
     total: number;
   } | null;
+  deviceSplit: {
+    mobile: number;
+    desktop: number;
+    total: number;
+  } | null;
 }
 
 function emptyMetrics(financial: boolean): StoreMetrics {
@@ -173,6 +178,7 @@ function emptyMetrics(financial: boolean): StoreMetrics {
     revenueThisMonth: financial ? [] : null,
     tomorrowAvailable: 0,
     bookingSourceSplit: null,
+    deviceSplit: null,
   };
 }
 
@@ -269,7 +275,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
 
       sb
         .from('orders_raw')
-        .select('source, booking_channel, store_id')
+        .select('source, booking_channel, store_id, device_type')
         .gte('created_at', `${manilaDate}T00:00:00+08:00`)
         .lt('created_at', `${manilaDate}T23:59:59.999+08:00`)
         .then((r) => ({ key: 'bookingSourceData' as const, ...r })),
@@ -599,6 +605,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
       let revenueTrend: RevenueTrendRow[] | null = null;
       let revenueThisMonth: RevenueTrendRow[] | null = null;
       let bookingSourceSplit: StoreMetrics['bookingSourceSplit'] = null;
+      let deviceSplit: StoreMetrics['deviceSplit'] = null;
 
       const balanceData = dataMap.get('cashBalances') ?? [];
       const balanceMap = new Map<string, { name: string; debit: number; credit: number }>();
@@ -627,6 +634,8 @@ router.get('/summary', authenticate, async (req, res, next) => {
       let bDirectWeb = 0;
       let bWalkIn = 0;
       let bWooCommerce = 0;
+      let dMobile = 0;
+      let dDesktop = 0;
       for (const row of storeBookingRows) {
         const source = row.source as string | null;
         const channel = row.booking_channel as string | null;
@@ -637,12 +646,20 @@ router.get('/summary', authenticate, async (req, res, next) => {
         } else if ((source === 'lolas' || source === 'bass') && (channel === null || channel === 'woo')) {
           bWooCommerce++;
         }
+        const dt = row.device_type as string | null;
+        if (dt === 'mobile') dMobile++;
+        else if (dt === 'desktop') dDesktop++;
       }
       bookingSourceSplit = {
         directWeb: bDirectWeb,
         walkIn: bWalkIn,
         wooCommerce: bWooCommerce,
         total: storeBookingRows.length,
+      };
+      deviceSplit = {
+        mobile: dMobile,
+        desktop: dDesktop,
+        total: dMobile + dDesktop,
       };
 
       if (canViewFinancial) {
@@ -761,6 +778,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
         revenueThisMonth,
         tomorrowAvailable,
         bookingSourceSplit,
+        deviceSplit,
       };
     }
 

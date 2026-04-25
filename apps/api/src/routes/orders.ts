@@ -230,7 +230,23 @@ router.get('/:id', requirePermission(Permission.ViewInbox), async (req, res, nex
       .eq('id', req.params.id)
       .maybeSingle();
     const dropoffLocationNote = (noteRow as { dropoff_location_note?: string | null } | null)?.dropoff_location_note ?? null;
-    res.json({ success: true, data: { ...base, customerEmail, dropoffLocationNote } });
+
+    // Look up pickup/dropoff addresses from orders_raw using the booking_token link
+    let pickupLocationAddress: string | null = null;
+    let dropoffLocationAddress: string | null = null;
+    const bookingToken = base.bookingToken as string | null ?? null;
+    if (bookingToken) {
+      const { data: rawRow } = await supabase
+        .from('orders_raw')
+        .select('pickup_location_address, dropoff_location_address')
+        .eq('order_reference', bookingToken)
+        .maybeSingle();
+      const typed = rawRow as { pickup_location_address?: string | null; dropoff_location_address?: string | null } | null;
+      pickupLocationAddress = typed?.pickup_location_address ?? null;
+      dropoffLocationAddress = typed?.dropoff_location_address ?? null;
+    }
+
+    res.json({ success: true, data: { ...base, customerEmail, dropoffLocationNote, pickupLocationAddress, dropoffLocationAddress } });
   } catch (err) { next(err); }
 });
 

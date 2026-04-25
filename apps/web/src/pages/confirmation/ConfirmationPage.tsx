@@ -47,7 +47,7 @@ export default function ConfirmationPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const { reference } = useParams<{ reference?: string }>();
-  const clearBasket = useBookingStore((s) => s.clearBasket);
+  const resetBookingSession = useBookingStore((s) => s.resetBookingSession);
 
   const basketHadTukRef = useRef<boolean | null>(null);
   if (basketHadTukRef.current === null) {
@@ -65,7 +65,7 @@ export default function ConfirmationPage() {
   const [fetchError, setFetchError] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => { clearBasket(); }, [clearBasket]);
+  useEffect(() => { resetBookingSession(); }, [resetBookingSession]);
 
   useEffect(() => {
     if (state) return;

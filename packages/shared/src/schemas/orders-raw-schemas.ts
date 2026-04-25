@@ -56,6 +56,16 @@ export interface OrdersRawRow {
   updated_at: string;
   /** Server-computed quote persisted at booking time (migration 089). Null for legacy rows. */
   web_quote_raw: number | null;
+  /** Company name provided by the customer at checkout (optional). */
+  customer_company: string | null;
+  /** Extra comments / notes provided by the customer at checkout (optional). */
+  customer_extra_comments: string | null;
+  /** Customer's exact address for a delivery pickup (e.g. resort name). Null when store pickup. */
+  pickup_location_address: string | null;
+  /** Customer's exact address for a collection return (e.g. resort name). Null when store return. */
+  dropoff_location_address: string | null;
+  /** Device type detected from the User-Agent at booking time (migration 110). Null for legacy rows. */
+  device_type: 'mobile' | 'desktop' | null;
 }
 
 /**
@@ -90,6 +100,14 @@ export const SubmitDirectBookingRequestSchema = z.object({
   transferPaxCount: z.number().int().positive().optional(),
   /** Where the guest is staying (optional). Stored in `orders_raw.payload.accommodation_name` until a dedicated column exists. */
   accommodationName: z.string().max(500).optional(),
+  /** Company name provided by the customer (optional). */
+  company: z.string().max(200).optional(),
+  /** Extra comments / notes from the customer (optional). */
+  extraComments: z.string().max(2000).optional(),
+  /** Customer's exact address for a delivery pickup when a non-store location is selected. */
+  pickupLocationAddress: z.string().max(500).optional(),
+  /** Customer's exact address for a collection return when a non-store location is selected. */
+  dropoffLocationAddress: z.string().max(500).optional(),
 });
 
 export type SubmitDirectBookingInput = z.infer<typeof SubmitDirectBookingRequestSchema>;

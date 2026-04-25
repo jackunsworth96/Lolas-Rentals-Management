@@ -99,23 +99,33 @@ export default function BasketPage() {
   const dropoffLocationId = useBookingStore((s) => s.dropoffLocationId);
   const sessionToken = useBookingStore((s) => s.sessionToken);
   const clearBasket = useBookingStore((s) => s.clearBasket);
+  const resetBookingSession = useBookingStore((s) => s.resetBookingSession);
   const updateBasketRate = useBookingStore((s) => s.updateBasketRate);
   const replaceBasketHold = useBookingStore((s) => s.replaceBasketHold);
   const setDates = useBookingStore((s) => s.setDates);
+  const setLocations = useBookingStore((s) => s.setLocations);
 
   const rentalDays = rentalDaysFromDates(pickupDatetime, dropoffDatetime);
 
   const [priceChanged, setPriceChanged] = useState(false);
   const lastQuotedDatesRef = useRef({ pickup: '', dropoff: '' });
 
-  // ── Change Dates ──
+  // ── Change Dates & Locations ──
   const [changingDates, setChangingDates] = useState(false);
   const [newPickupDate, setNewPickupDate] = useState('');
   const [newPickupTime, setNewPickupTime] = useState('09:15');
   const [newDropoffDate, setNewDropoffDate] = useState('');
   const [newDropoffTime, setNewDropoffTime] = useState('09:15');
+  const [newPickupLocationId, setNewPickupLocationId] = useState<number | null>(null);
+  const [newDropoffLocationId, setNewDropoffLocationId] = useState<number | null>(null);
+  const [newPickupLocationAddress, setNewPickupLocationAddress] = useState('');
+  const [newDropoffLocationAddress, setNewDropoffLocationAddress] = useState('');
   const [dateChangeError, setDateChangeError] = useState('');
   const [dateChangeLoading, setDateChangeLoading] = useState(false);
+
+  // Address inputs for non-store locations (set from basket page main view)
+  const [pickupLocationAddress, setPickupLocationAddress] = useState('');
+  const [dropoffLocationAddress, setDropoffLocationAddress] = useState('');
 
   async function swapHold(
     item: BasketItem,
@@ -179,8 +189,15 @@ export default function BasketPage() {
       return;
     }
 
-    // All holds swapped — commit dates globally
+    // All holds swapped — commit dates, locations, and addresses globally
     setDates(pickup, dropoff);
+    setLocations(newPickupLocationId, newDropoffLocationId);
+    const pickedPickupLoc = locations.find((l) => l.id === newPickupLocationId);
+    const pickedDropoffLoc = locations.find((l) => l.id === newDropoffLocationId);
+    setPickupLocationAddress(pickedPickupLoc?.locationType === 'store' ? '' : newPickupLocationAddress);
+    setDropoffLocationAddress(pickedDropoffLoc?.locationType === 'store' ? '' : newDropoffLocationAddress);
+    // Reset quote cache so refreshQuotes always re-fetches after any change
+    lastQuotedDatesRef.current = { pickup: '', dropoff: '' };
     setChangingDates(false);
     setDateChangeError('');
     setDateChangeLoading(false);
@@ -279,6 +296,8 @@ export default function BasketPage() {
     phone: '',
     nationality: '',
     accommodationName: '',
+    company: '',
+    extraComments: '',
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [transferErrors, setTransferErrors] = useState<Record<string, string>>({});
@@ -288,7 +307,7 @@ export default function BasketPage() {
   const [paymentMethodError, setPaymentMethodError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [charityDonation, setCharityDonation] = useState(0);
-  type LocFee = { id: number; deliveryCost: number; collectionCost: number };
+  type LocFee = { id: number; name: string; deliveryCost: number; collectionCost: number; locationType: string | null };
   const [locations, setLocations] = useState<LocFee[]>([]);
   const vehicleCount = basket.length || 1;
   const pickupFeePerVehicle = locations.find((l) => l.id === pickupLocationId)?.deliveryCost ?? 0;
@@ -397,8 +416,16 @@ export default function BasketPage() {
       .then((data) => setAddons(data))
       .catch(() => pushToast('Failed to load add-ons. Please refresh the page.', 'error'))
       .finally(() => setAddonsLoading(false));
-    api.get<Array<{ id: number; deliveryCost: number; collectionCost: number }>>(`/public/booking/locations?storeId=${storeId}`)
-      .then((data) => setLocations(data))
+    api.get<Array<{ id: number; name: string; deliveryCost: number; collectionCost: number; locationType: string | null }>>(`/public/booking/locations?storeId=${storeId}`)
+      .then((data) => {
+        // Ensure store-type location always appears first
+        const sorted = [...data].sort((a, b) => {
+          const aIsStore = a.locationType === 'store' ? 0 : 1;
+          const bIsStore = b.locationType === 'store' ? 0 : 1;
+          return aIsStore - bIsStore;
+        });
+        setLocations(sorted);
+      })
       .catch(() => pushToast('Failed to load delivery locations. Fees may be inaccurate.', 'error'));
     api.get<PaymentMethodOption[]>('/public/booking/payment-methods')
       .then((data) =>
@@ -517,6 +544,18 @@ export default function BasketPage() {
             ...(renter.accommodationName?.trim()
               ? { accommodationName: renter.accommodationName.trim() }
               : {}),
+            ...(renter.company?.trim()
+              ? { company: renter.company.trim() }
+              : {}),
+            ...(renter.extraComments?.trim()
+              ? { extraComments: renter.extraComments.trim() }
+              : {}),
+            ...(pickupLocationAddress.trim()
+              ? { pickupLocationAddress: pickupLocationAddress.trim() }
+              : {}),
+            ...(dropoffLocationAddress.trim()
+              ? { dropoffLocationAddress: dropoffLocationAddress.trim() }
+              : {}),
           },
         );
         orderRefs.push(result.orderReference);
@@ -540,7 +579,7 @@ export default function BasketPage() {
       const grandTotal = baseTotal + surchargeAmount;
       // Persist email for confirmation page refresh/bookmark recovery
       sessionStorage.setItem(`confirm_email_${orderRefs[0]}`, renter.email.trim());
-      clearBasket();
+      resetBookingSession();
       const confirmState = {
         orderReferences: orderRefs, customerName: renter.fullName.trim(), customerEmail: renter.email.trim(),
         vehicleModelName: basket[0]?.modelName ?? '', pickupDatetime, dropoffDatetime, pickupLocationId, rentalDays,
@@ -676,25 +715,29 @@ export default function BasketPage() {
                       setNewPickupTime(TIME_SLOTS.find((s) => s.value === pt) ? pt : '09:15');
                       setNewDropoffDate(dd);
                       setNewDropoffTime(TIME_SLOTS.find((s) => s.value === dt) ? dt : '09:15');
+                      setNewPickupLocationId(pickupLocationId);
+                      setNewDropoffLocationId(dropoffLocationId);
+                      setNewPickupLocationAddress(pickupLocationAddress);
+                      setNewDropoffLocationAddress(dropoffLocationAddress);
                       setDateChangeError('');
                       setChangingDates(true);
                     }}
                     className="font-lato text-xs font-semibold text-teal-brand underline underline-offset-2 transition-opacity hover:opacity-70"
                   >
-                    Change dates
+                    Change dates &amp; locations
                   </button>
                 )}
               </div>
 
-              {/* Date change panel */}
+              {/* Date & location change panel */}
               {changingDates && (
                 <div className="mb-5 rounded-lg border border-teal-brand/20 bg-sand-brand/40 p-4 space-y-4">
-                  <p className="font-lato text-sm font-semibold text-charcoal-brand">Select new dates</p>
+                  <p className="font-lato text-sm font-semibold text-charcoal-brand">Update dates &amp; locations</p>
 
-                  {/* Pick-up row */}
+                  {/* Pick-up date row */}
                   <div className="space-y-1.5">
                     <label className="font-lato text-[11px] font-bold uppercase tracking-wide text-charcoal-brand/55">
-                      Pick-up
+                      Pick-up date
                     </label>
                     <div className="flex gap-2">
                       <input
@@ -721,10 +764,54 @@ export default function BasketPage() {
                     </div>
                   </div>
 
-                  {/* Return row */}
+                  {/* Pick-up location row */}
+                  {locations.length > 0 && (
+                    <div className="space-y-1.5">
+                      <label className="font-lato text-[11px] font-bold uppercase tracking-wide text-charcoal-brand/55">
+                        Pick-up location
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={newPickupLocationId ?? ''}
+                          onChange={(e) => {
+                            const id = Number(e.target.value);
+                            setNewPickupLocationId(id);
+                            const loc = locations.find((l) => l.id === id);
+                            if (loc?.locationType === 'store') setNewPickupLocationAddress('');
+                          }}
+                          className="w-full appearance-none rounded-lg border border-charcoal-brand/15 bg-white px-3 py-2 font-lato text-sm text-charcoal-brand outline-none focus:ring-2 focus:ring-teal-brand"
+                        >
+                          <option value="">Select location…</option>
+                          {locations.map((l) => (
+                            <option key={l.id} value={l.id}>{l.name}</option>
+                          ))}
+                        </select>
+                        <span className="pointer-events-none absolute right-2.5 top-2.5 text-charcoal-brand/40 text-xs">▾</span>
+                      </div>
+                      {newPickupLocationId != null && (locations.find((l) => l.id === newPickupLocationId)?.deliveryCost ?? 0) > 0 && (
+                        <p className="font-lato text-[11px] font-semibold text-teal-brand">
+                          Delivery fee: ₱{(locations.find((l) => l.id === newPickupLocationId)!.deliveryCost).toLocaleString()}
+                        </p>
+                      )}
+                      {newPickupLocationId != null && locations.find((l) => l.id === newPickupLocationId)?.locationType !== 'store' && (
+                        <div className="mt-1">
+                          <input
+                            type="text"
+                            value={newPickupLocationAddress}
+                            onChange={(e) => setNewPickupLocationAddress(e.target.value)}
+                            placeholder="Enter your exact address (e.g. Kermit Resort, Cloud 9)"
+                            maxLength={500}
+                            className="w-full rounded-lg border border-charcoal-brand/15 bg-white px-3 py-2 font-lato text-sm text-charcoal-brand placeholder:text-charcoal-brand/30 outline-none focus:ring-2 focus:ring-teal-brand"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Return date row */}
                   <div className="space-y-1.5">
                     <label className="font-lato text-[11px] font-bold uppercase tracking-wide text-charcoal-brand/55">
-                      Return
+                      Return date
                     </label>
                     <div className="flex gap-2">
                       <input
@@ -745,6 +832,50 @@ export default function BasketPage() {
                       </select>
                     </div>
                   </div>
+
+                  {/* Return location row */}
+                  {locations.length > 0 && (
+                    <div className="space-y-1.5">
+                      <label className="font-lato text-[11px] font-bold uppercase tracking-wide text-charcoal-brand/55">
+                        Return location
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={newDropoffLocationId ?? ''}
+                          onChange={(e) => {
+                            const id = Number(e.target.value);
+                            setNewDropoffLocationId(id);
+                            const loc = locations.find((l) => l.id === id);
+                            if (loc?.locationType === 'store') setNewDropoffLocationAddress('');
+                          }}
+                          className="w-full appearance-none rounded-lg border border-charcoal-brand/15 bg-white px-3 py-2 font-lato text-sm text-charcoal-brand outline-none focus:ring-2 focus:ring-teal-brand"
+                        >
+                          <option value="">Select location…</option>
+                          {locations.map((l) => (
+                            <option key={l.id} value={l.id}>{l.name}</option>
+                          ))}
+                        </select>
+                        <span className="pointer-events-none absolute right-2.5 top-2.5 text-charcoal-brand/40 text-xs">▾</span>
+                      </div>
+                      {newDropoffLocationId != null && (locations.find((l) => l.id === newDropoffLocationId)?.collectionCost ?? 0) > 0 && (
+                        <p className="font-lato text-[11px] font-semibold text-teal-brand">
+                          Collection fee: ₱{(locations.find((l) => l.id === newDropoffLocationId)!.collectionCost).toLocaleString()}
+                        </p>
+                      )}
+                      {newDropoffLocationId != null && locations.find((l) => l.id === newDropoffLocationId)?.locationType !== 'store' && (
+                        <div className="mt-1">
+                          <input
+                            type="text"
+                            value={newDropoffLocationAddress}
+                            onChange={(e) => setNewDropoffLocationAddress(e.target.value)}
+                            placeholder="Enter your exact address (e.g. Kermit Resort, Cloud 9)"
+                            maxLength={500}
+                            className="w-full rounded-lg border border-charcoal-brand/15 bg-white px-3 py-2 font-lato text-sm text-charcoal-brand placeholder:text-charcoal-brand/30 outline-none focus:ring-2 focus:ring-teal-brand"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Error */}
                   {dateChangeError && (
@@ -767,7 +898,7 @@ export default function BasketPage() {
                     </button>
                     <button
                       type="button"
-                      disabled={dateChangeLoading || !newPickupDate || !newDropoffDate}
+                      disabled={dateChangeLoading || !newPickupDate || !newDropoffDate || (locations.length > 0 && (!newPickupLocationId || !newDropoffLocationId))}
                       onClick={() => { void handleChangeDates(); }}
                       className="flex-[2] rounded-[6px] border-2 border-charcoal-brand bg-gold-brand font-lato text-xs font-extrabold uppercase tracking-[0.05em] text-charcoal-brand transition-all duration-150 disabled:pointer-events-none disabled:opacity-40"
                       style={{ padding: '10px 16px', boxShadow: dateChangeLoading || !newPickupDate || !newDropoffDate ? 'none' : '3px 3px 0 #363737' }}
@@ -777,10 +908,61 @@ export default function BasketPage() {
                           <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-charcoal-brand border-t-transparent" />
                           Checking…
                         </span>
-                      ) : 'Confirm new dates'}
+                      ) : 'Confirm changes'}
                     </button>
                   </div>
                 </div>
+              )}
+
+              {/* Location addresses — shown when not changing dates and a non-store location is selected */}
+              {!changingDates && locations.length > 0 && (
+                (() => {
+                  const pickupLoc = locations.find((l) => l.id === pickupLocationId);
+                  const dropoffLoc = locations.find((l) => l.id === dropoffLocationId);
+                  const needsPickupAddr = pickupLoc && pickupLoc.locationType !== 'store';
+                  const needsDropoffAddr = dropoffLoc && dropoffLoc.locationType !== 'store';
+                  if (!needsPickupAddr && !needsDropoffAddr) return null;
+                  return (
+                    <div className="mb-4 space-y-3 rounded-lg border border-teal-brand/20 bg-sand-brand/30 p-4">
+                      {needsPickupAddr && (
+                        <div className="space-y-1">
+                          <label className="font-lato text-[11px] font-bold uppercase tracking-wide text-charcoal-brand/55">
+                            Pick-up address
+                          </label>
+                          <p className="font-lato text-xs text-charcoal-brand/50">
+                            You've selected <span className="font-semibold">{pickupLoc.name}</span> — please enter your exact pick-up address.
+                          </p>
+                          <input
+                            type="text"
+                            value={pickupLocationAddress}
+                            onChange={(e) => setPickupLocationAddress(e.target.value)}
+                            placeholder="e.g. Kermit Resort, Cloud 9, General Luna"
+                            maxLength={500}
+                            className="w-full rounded-lg border border-charcoal-brand/15 bg-white px-3 py-2 font-lato text-sm text-charcoal-brand placeholder:text-charcoal-brand/30 outline-none focus:ring-2 focus:ring-teal-brand"
+                          />
+                        </div>
+                      )}
+                      {needsDropoffAddr && (
+                        <div className="space-y-1">
+                          <label className="font-lato text-[11px] font-bold uppercase tracking-wide text-charcoal-brand/55">
+                            Return address
+                          </label>
+                          <p className="font-lato text-xs text-charcoal-brand/50">
+                            You've selected <span className="font-semibold">{dropoffLoc.name}</span> — please enter your exact return address.
+                          </p>
+                          <input
+                            type="text"
+                            value={dropoffLocationAddress}
+                            onChange={(e) => setDropoffLocationAddress(e.target.value)}
+                            placeholder="e.g. Kermit Resort, Cloud 9, General Luna"
+                            maxLength={500}
+                            className="w-full rounded-lg border border-charcoal-brand/15 bg-white px-3 py-2 font-lato text-sm text-charcoal-brand placeholder:text-charcoal-brand/30 outline-none focus:ring-2 focus:ring-teal-brand"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()
               )}
 
               <div className="space-y-4">

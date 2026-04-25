@@ -28,6 +28,7 @@ interface BookingState {
   updateBasketRate: (holdId: string, dailyRate: number, securityDeposit?: number) => void;
   replaceBasketHold: (oldHoldId: string, newHold: Pick<BasketItem, 'holdId' | 'expiresAt'>) => void;
   clearBasket: () => void;
+  resetBookingSession: () => void;
   triggerSearch: () => void;
 }
 
@@ -83,6 +84,19 @@ export const useBookingStore = create<BookingState>((set) => ({
     })),
 
   clearBasket: () => set({ basket: [] }),
+
+  resetBookingSession: () => {
+    const newToken = crypto.randomUUID();
+    localStorage.setItem('lolas_booking_session', newToken);
+    set({
+      basket: [],
+      pickupDatetime: '',
+      dropoffDatetime: '',
+      pickupLocationId: null,
+      dropoffLocationId: null,
+      sessionToken: newToken,
+    });
+  },
 
   triggerSearch: () => set((s) => ({ searchTrigger: s.searchTrigger + 1 })),
 }));

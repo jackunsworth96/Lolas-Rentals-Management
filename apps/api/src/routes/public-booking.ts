@@ -212,8 +212,16 @@ const submitLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+function detectDeviceType(userAgent: string | undefined): 'mobile' | 'desktop' {
+  if (!userAgent) return 'desktop';
+  return /Mobile|Android|iPhone|iPad|iPod|BlackBerry|Windows Phone|Opera Mini|IEMobile/i.test(userAgent)
+    ? 'mobile'
+    : 'desktop';
+}
+
 router.post('/submit', submitLimiter, validateBody(SubmitDirectBookingRequestSchema), async (req, res, next) => {
   try {
+    const deviceType = detectDeviceType(req.headers['user-agent']);
     const result: SubmitDirectBookingResult = await submitDirectBooking(
       {
         bookingPort: req.app.locals.deps.bookingPort,
@@ -221,6 +229,7 @@ router.post('/submit', submitLimiter, validateBody(SubmitDirectBookingRequestSch
         transferRepo: req.app.locals.deps.transferRepo,
       },
       req.body as SubmitDirectBookingInput,
+      { deviceType },
     );
 
     res.status(201).json({

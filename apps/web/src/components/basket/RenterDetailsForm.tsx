@@ -138,6 +138,29 @@ export function RenterDetailsForm({ info, onChange, errors }: Props) {
           className={INPUT_CLS}
         />
       </div>
+
+      <div>
+        <label className={LABEL_CLS}>Company (optional)</label>
+        <input
+          type="text"
+          value={info.company ?? ''}
+          onChange={(e) => update('company', e.target.value)}
+          placeholder="Your company or organisation"
+          autoComplete="organization"
+          className={INPUT_CLS}
+        />
+      </div>
+
+      <div className="md:col-span-2">
+        <label className={LABEL_CLS}>Extra Comments (optional)</label>
+        <textarea
+          value={info.extraComments ?? ''}
+          onChange={(e) => update('extraComments', e.target.value)}
+          placeholder="Anything else you'd like us to know…"
+          rows={3}
+          className="w-full rounded-lg border border-charcoal-brand/[0.15] bg-white px-3 py-2 text-[13px] text-charcoal-brand placeholder:text-charcoal-brand/30 focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand transition-colors resize-none"
+        />
+      </div>
     </div>
   );
 }
