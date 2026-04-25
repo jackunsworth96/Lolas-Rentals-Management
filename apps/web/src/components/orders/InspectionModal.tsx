@@ -109,10 +109,10 @@ export function InspectionModal({
     setItems([]);
     setAvailableVehicles([]);
 
-    if (preAssignedVehicleName) {
-      const t = preAssignedVehicleName.toLowerCase();
-      setVehicleType(t.includes('tuk') ? 'tuktuk' : 'scooter');
-    }
+    const derivedType: 'scooter' | 'tuktuk' = preAssignedVehicleName?.toLowerCase().includes('tuk')
+      ? 'tuktuk'
+      : 'scooter';
+    setVehicleType(derivedType);
 
     const now = new Date().toISOString();
     const future = new Date(Date.now() + 86_400_000).toISOString();

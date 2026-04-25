@@ -1130,6 +1130,9 @@ export function OrderDetailSummaryTab({
             orderReference={enrichedData?.bookingToken ?? enrichedData?.wooOrderId ?? orderId}
             storeId={storeId}
             employeeName={authUser?.username ?? 'Staff'}
+            preAssignedVehicleId={enrichedData?.primaryVehicleId ?? null}
+            preAssignedVehicleName={enrichedData?.primaryVehicleName ?? null}
+            orderItemId={enrichedData?.primaryOrderItemId ?? null}
             onComplete={() => {
               void refetchInspection();
               void queryClient.invalidateQueries({ queryKey: ['orders', 'enriched'] });
