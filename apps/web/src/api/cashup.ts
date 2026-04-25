@@ -20,6 +20,15 @@ export interface CharityDonationRow {
   createdAt: string;
 }
 
+export interface DiscountRow {
+  id: string;
+  vehicleName: string | null;
+  amount: number;
+  orderId: string;
+  orderRef: string | null;
+  customerName: string | null;
+}
+
 export interface CashupSummary {
   openingFloat: {
     amount: number;
@@ -43,6 +52,7 @@ export interface CashupSummary {
     bankDeposits: DepositRow[];
     transfersIn: TransferRow[];
     transfersOut: TransferRow[];
+    discounts: DiscountRow[];
   };
   charityDonations: CharityDonationRow[];
   totals: {
@@ -64,6 +74,7 @@ export interface CashupSummary {
     interStoreIn: number;
     interStoreOut: number;
     charityDonationsTotal: number;
+    discountsTotal: number;
   };
   expectedCash: number;
   stores: StoreInfo[];

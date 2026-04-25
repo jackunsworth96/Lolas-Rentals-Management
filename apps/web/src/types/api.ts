@@ -72,6 +72,8 @@ export interface EnrichedOrder {
   primaryVehicleId?: string | null;
   primaryVehicleName?: string | null;
   primaryOrderItemId?: string | null;
+  /** Sum of all per-vehicle discounts on this order. Zero if no discount was applied. */
+  totalDiscount?: number;
 }
 
 export interface MaintenanceRecordSummary {

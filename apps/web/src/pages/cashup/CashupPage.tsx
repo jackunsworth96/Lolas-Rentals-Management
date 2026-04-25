@@ -15,6 +15,7 @@ import {
   type DepositsHeldGroup,
   type TransferRow,
   type CharityDonationRow,
+  type DiscountRow,
 } from '../../api/cashup.js';
 import { BeforeCloseModal } from '../../components/cashup/BeforeCloseModal.js';
 import { DenominationCounter } from '../../components/cashup/DenominationCounter.js';
@@ -497,6 +498,9 @@ export default function CashupPage() {
                 subtitle={`In ${formatCurrency(summary.totals.interStoreIn)} / Out ${formatCurrency(summary.totals.interStoreOut)}`}
               />
             )}
+            {(summary.totals.discountsTotal ?? 0) > 0 && (
+              <SummaryCard label="Discounts Given" value={summary.totals.discountsTotal} color="orange" subtitle="Info only" />
+            )}
             <SummaryCard label="Expected Cash" value={expectedCashSales} color="indigo" subtitle="Sales only" />
           </div>
 
@@ -602,6 +606,12 @@ export default function CashupPage() {
               <CharityDonationsSection
                 donations={summary.charityDonations ?? []}
                 total={summary.totals.charityDonationsTotal}
+              />
+            )}
+            {(summary.totals.discountsTotal ?? 0) > 0 && (
+              <DiscountsSection
+                discounts={summary.transactions.discounts ?? []}
+                total={summary.totals.discountsTotal ?? 0}
               />
             )}
           </div>
@@ -894,6 +904,7 @@ function SummaryCard({
     cyan: 'text-cyan-700',
     teal: 'text-teal-700',
     violet: 'text-violet-700',
+    orange: 'text-orange-700',
   };
   const badgeMap: Record<string, string> = {
     amber: 'bg-amber-100 text-amber-700',
@@ -1358,6 +1369,54 @@ function CharityDonationsSection({
               </div>
               <span className="ml-3 whitespace-nowrap text-sm font-medium text-teal-700">
                 {formatCurrency(d.amount)}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DiscountsSection({
+  discounts,
+  total,
+}: {
+  discounts: DiscountRow[];
+  total: number;
+}) {
+  return (
+    <div className="rounded-lg border border-orange-200 border-l-4 border-l-orange-500 bg-white">
+      <div className="flex items-center justify-between border-b border-orange-100 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span>🏷️</span>
+          <div>
+            <h3 className="text-sm font-semibold text-orange-900">Discounts Given</h3>
+            <p className="text-[10px] text-orange-700">Reduces revenue — already reflected in payment amounts</p>
+          </div>
+          <span className="rounded bg-orange-100 px-1.5 py-0.5 text-[10px] text-orange-700">
+            Info only
+          </span>
+        </div>
+        <span className="text-sm font-bold text-orange-700">-{formatCurrency(total)}</span>
+      </div>
+      <div className="max-h-60 overflow-y-auto">
+        {discounts.length === 0 ? (
+          <p className="px-4 py-3 text-sm text-gray-400">No discounts</p>
+        ) : (
+          discounts.map((d) => (
+            <div key={d.id} className="flex items-center justify-between border-b border-orange-50 px-4 py-2 last:border-b-0">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-gray-800">
+                  {d.customerName ?? 'Customer'}
+                  {d.orderRef && <span className="ml-1 text-xs text-gray-400">#{d.orderRef}</span>}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {d.vehicleName ?? 'Vehicle'}
+                </p>
+              </div>
+              <span className="ml-3 whitespace-nowrap text-sm font-medium text-orange-700">
+                -{formatCurrency(d.amount)}
               </span>
             </div>
           ))

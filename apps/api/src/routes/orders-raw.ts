@@ -840,6 +840,7 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
       const bookingToken = result.order.bookingToken ?? String(req.params.id ?? '');
       const totalPickupFee = body.vehicleAssignments.reduce((s, v) => s + (v.pickupFee ?? 0), 0);
       const totalDropoffFee = body.vehicleAssignments.reduce((s, v) => s + (v.dropoffFee ?? 0), 0);
+      const totalDiscount = body.vehicleAssignments.reduce((s, v) => s + (v.discount ?? 0), 0);
       const addonLines = body.addons.length > 0
         ? '\n<b>Add-ons:</b>\n' + body.addons.map((a) =>
             `  • ${escapeHtml(a.addonName)}: ₱${a.totalAmount.toLocaleString('en-PH')}`
@@ -850,9 +851,11 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
           (totalPickupFee > 0 ? `\n  • Pickup: ₱${totalPickupFee.toLocaleString('en-PH')}` : '') +
           (totalDropoffFee > 0 ? `\n  • Return: ₱${totalDropoffFee.toLocaleString('en-PH')}` : '')
         : '';
-      const totalLine = body.webQuoteRaw != null
-        ? `\n💰 <b>Total: ₱${body.webQuoteRaw.toLocaleString('en-PH')}</b>`
+      const discountLine = totalDiscount > 0
+        ? `\n🏷️ <b>Discount: -₱${totalDiscount.toLocaleString('en-PH')}</b>`
         : '';
+      const actualTotal = result.order.finalTotal.toNumber();
+      const totalLine = `\n💰 <b>Total: ₱${actualTotal.toLocaleString('en-PH')}</b>`;
       void sendTelegramAlert(
         `✅ <b>Order Activated</b>\n` +
           `Reference: ${escapeHtml(bookingToken)}\n` +
@@ -860,6 +863,7 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
           `Vehicle: ${escapeHtml(vehicleLabel)}\n` +
           `Pickup: ${escapeHtml(pickupFmt)} — ${escapeHtml(pickupLoc)}\n` +
           `Return: ${escapeHtml(dropoffFmt)} — ${escapeHtml(dropoffLoc)}` +
+          discountLine +
           totalLine +
           addonLines +
           transferLines +

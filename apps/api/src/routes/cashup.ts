@@ -24,7 +24,7 @@ router.get(
       const { storeId, date } = req.query as { storeId: string; date: string };
       const sb = getSupabaseClient();
 
-      const [paymentsRes, expensesRes, depositsRes, transfersRes, miscSalesRes, reconRes, prevReconRes, storesRes, charityRes, completedOrdersRes] =
+      const [paymentsRes, expensesRes, depositsRes, transfersRes, miscSalesRes, reconRes, prevReconRes, storesRes, charityRes, completedOrdersRes, discountItemsRes] =
         await Promise.all([
           sb
             .from('payments')
@@ -86,7 +86,10 @@ router.get(
             .limit(1)
             .maybeSingle(),
 
-          sb.from('stores').select('id, name, default_float_amount'),
+          sb.from('stores')
+            .select('id, name, default_float_amount')
+            .eq('is_active', true)
+            .neq('id', 'company'),
 
           sb
             .from('journal_entries')
@@ -102,6 +105,12 @@ router.get(
             .select('id')
             .eq('store_id', storeId)
             .eq('status', 'completed'),
+
+          sb
+            .from('orders')
+            .select('id, woo_order_id, customers!customer_id(name), order_items!order_id(id, vehicle_name, discount)')
+            .eq('store_id', storeId)
+            .eq('order_date', date),
         ]);
 
       if (paymentsRes.error)
@@ -122,6 +131,8 @@ router.get(
         throw new Error(`Charity donations query failed: ${charityRes.error.message}`);
       if (completedOrdersRes.error)
         throw new Error(`Completed orders query failed: ${completedOrdersRes.error.message}`);
+      if (discountItemsRes.error)
+        throw new Error(`Today orders (discount) query failed: ${discountItemsRes.error.message}`);
 
       const payments = (paymentsRes.data ?? []) as Record<string, unknown>[];
       const expenses = (expensesRes.data ?? []) as Record<string, unknown>[];
@@ -382,6 +393,38 @@ router.get(
       }));
       const charityDonationsTotal = charityDonationRows.reduce((s, r) => s + r.amount, 0);
 
+      // Discounts given today — flatten order_items with discount > 0 from today's orders
+      type TodayOrder = {
+        id: string;
+        woo_order_id: string | null;
+        customers: { name: string } | null;
+        order_items: Array<{ id: string; vehicle_name: string | null; discount: number | null }> | null;
+      };
+      const todayOrders = (discountItemsRes.data ?? []) as TodayOrder[];
+      const discountRows: Array<{
+        id: string;
+        vehicleName: string | null;
+        amount: number;
+        orderId: string;
+        orderRef: string | null;
+        customerName: string | null;
+      }> = [];
+      for (const order of todayOrders) {
+        for (const item of (order.order_items ?? [])) {
+          const amount = Number(item.discount ?? 0);
+          if (amount <= 0) continue;
+          discountRows.push({
+            id: item.id,
+            vehicleName: item.vehicle_name,
+            amount,
+            orderId: order.id,
+            orderRef: order.woo_order_id,
+            customerName: order.customers?.name ?? null,
+          });
+        }
+      }
+      const discountsTotal = discountRows.reduce((s, r) => s + r.amount, 0);
+
       const recon = reconRes.data;
 
       res.json({
@@ -409,6 +452,7 @@ router.get(
             bankDeposits: depositRows,
             transfersIn: transferInRows,
             transfersOut: transferOutRows,
+            discounts: discountRows,
           },
           totals: {
             cashSalesTotal,
@@ -430,6 +474,7 @@ router.get(
             interStoreIn,
             interStoreOut,
             charityDonationsTotal,
+            discountsTotal,
           },
           charityDonations: charityDonationRows,
           expectedCash,

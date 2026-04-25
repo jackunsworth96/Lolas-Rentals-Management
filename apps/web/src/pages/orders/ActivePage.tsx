@@ -174,7 +174,19 @@ export default function ActivePage() {
     {
       key: 'finalTotal',
       header: 'Total',
-      render: (r: EnrichedOrder) => formatCurrency(r.finalTotal),
+      render: (r: EnrichedOrder) => (
+        <div className="flex flex-col items-start gap-0.5">
+          <span>{formatCurrency(r.finalTotal)}</span>
+          {(r.totalDiscount ?? 0) > 0 && (
+            <span
+              title={`Includes a ${formatCurrency(r.totalDiscount!)} discount`}
+              className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-medium text-orange-700"
+            >
+              -{formatCurrency(r.totalDiscount!)} disc.
+            </span>
+          )}
+        </div>
+      ),
     },
     {
       key: 'balanceDue',

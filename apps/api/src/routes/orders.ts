@@ -45,11 +45,11 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
 
     const orderIds = (orders ?? []).map((o: Record<string, unknown>) => o.id as string);
 
-    let itemsByOrder = new Map<string, Array<{ id: string; vehicle_id: string; vehicle_name: string; dropoff_datetime: string }>>();
+    let itemsByOrder = new Map<string, Array<{ id: string; vehicle_id: string; vehicle_name: string; dropoff_datetime: string; discount: number }>>();
     if (orderIds.length > 0) {
       const { data: items, error: itemsErr } = await sb
         .from('order_items')
-        .select('id, order_id, vehicle_id, vehicle_name, dropoff_datetime')
+        .select('id, order_id, vehicle_id, vehicle_name, dropoff_datetime, discount')
         .in('order_id', orderIds);
       if (itemsErr) throw new Error(`enriched items query failed: ${itemsErr.message}`);
       for (const item of (items ?? [])) {
@@ -162,6 +162,8 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
       const totalPaid = paymentsByOrder.get(o.id as string) ?? 0;
       const pendingExtensionsTotal = pendingExtensionsByOrder.get(o.id as string) ?? 0;
 
+      const totalDiscount = items.reduce((sum, i) => sum + Number(i.discount ?? 0), 0);
+
       const finalTotalNum = Number(o.final_total ?? 0);
       const totalPaidNum = totalPaid;
       // Balance = rental/addon charges not yet paid. Use max of:
@@ -206,6 +208,7 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
         primaryVehicleId: primaryItem?.vehicle_id ?? null,
         primaryVehicleName: primaryItem?.vehicle_name ?? null,
         primaryOrderItemId: primaryItem?.id ?? null,
+        totalDiscount,
       };
     });
 
