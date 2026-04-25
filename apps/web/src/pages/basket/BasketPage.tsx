@@ -308,7 +308,7 @@ export default function BasketPage() {
   const [submitting, setSubmitting] = useState(false);
   const [charityDonation, setCharityDonation] = useState(0);
   type LocFee = { id: number; name: string; deliveryCost: number; collectionCost: number; locationType: string | null };
-  const [locations, setLocations] = useState<LocFee[]>([]);
+  const [locations, setLocationList] = useState<LocFee[]>([]);
   const vehicleCount = basket.length || 1;
   const pickupFeePerVehicle = locations.find((l) => l.id === pickupLocationId)?.deliveryCost ?? 0;
   const dropoffFeePerVehicle = locations.find((l) => l.id === dropoffLocationId)?.collectionCost ?? 0;
@@ -424,7 +424,7 @@ export default function BasketPage() {
           const bIsStore = b.locationType === 'store' ? 0 : 1;
           return aIsStore - bIsStore;
         });
-        setLocations(sorted);
+        setLocationList(sorted);
       })
       .catch(() => pushToast('Failed to load delivery locations. Fees may be inaccurate.', 'error'));
     api.get<PaymentMethodOption[]>('/public/booking/payment-methods')
