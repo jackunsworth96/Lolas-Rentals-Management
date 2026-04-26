@@ -375,6 +375,15 @@ export function OrderDetailSummaryTab({
     }, 0);
   const balanceFromFinalTotal = Math.max(0, total - totalPaid);
   const balance = Math.max(balanceFromFinalTotal, pendingExtensionsTotal);
+
+  // For completed/cancelled orders the settle RPC writes the authoritative
+  // balance back to orders.balance_due (often negative, meaning fully cleared).
+  // Using that stored value avoids a misleading "Balance due" when a refund was
+  // issued before settling — the payment-derived balance overstates the debt.
+  // For active orders we keep the live payment-derived figure.
+  const displayBalance = isActive
+    ? balance
+    : Math.max(0, moneyAmount(order.balanceDue));
   const hasExtension =
     enrichedData?.hasExtension ?? payments.some((p) => p.paymentType === 'extension');
 
@@ -716,7 +725,7 @@ export function OrderDetailSummaryTab({
             )}
             <div className="flex justify-between px-4 py-2 font-semibold">
               <span>Balance due</span>
-              <span className={balance > 0 ? 'text-red-600' : 'text-green-600'}>{formatCurrency(balance)}</span>
+              <span className={displayBalance > 0 ? 'text-red-600' : 'text-green-600'}>{formatCurrency(displayBalance)}</span>
             </div>
           </div>
         </div>
