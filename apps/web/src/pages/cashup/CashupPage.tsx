@@ -475,60 +475,109 @@ export default function CashupPage() {
             </div>
           )}
 
-          {/* Summary cards */}
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 xl:grid-cols-8">
-            <SummaryCard
-              label="Opening Float"
-              value={summary.openingFloat.amount}
-              badge={
-                summary.openingFloat.source === 'none'
-                  ? 'No prior'
-                  : summary.openingFloat.source === 'override'
-                    ? 'Override'
-                    : 'Prev. close'
-              }
-              badgeColor={summary.openingFloat.source === 'override' ? 'amber' : 'gray'}
-            />
-            <SummaryCard label="Cash Sales" value={summary.totals.cashSalesTotal} color="green" subtitle="Income" />
-            {(summary.totals.miscSalesTotal ?? 0) > 0 && (
-              <SummaryCard label="Misc Sales" value={summary.totals.miscSalesTotal} color="emerald" subtitle={`Cash ${formatCurrency(summary.totals.miscCashTotal ?? 0)}`} />
+          {/* Summary: auto-fit grid avoids empty "holes" in the last row; Expected spans full width */}
+          <div className="space-y-5">
+            <div>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                Opening &amp; sales
+              </p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(min(100%,11.5rem),1fr))]">
+                <SummaryCard
+                  label="Opening Float"
+                  value={summary.openingFloat.amount}
+                  badge={
+                    summary.openingFloat.source === 'none'
+                      ? 'No prior'
+                      : summary.openingFloat.source === 'override'
+                        ? 'Override'
+                        : 'Prev. close'
+                  }
+                  badgeColor={summary.openingFloat.source === 'override' ? 'amber' : 'gray'}
+                />
+                <SummaryCard label="Cash Sales" value={summary.totals.cashSalesTotal} color="green" subtitle="Income" />
+                {(summary.totals.miscSalesTotal ?? 0) > 0 && (
+                  <SummaryCard
+                    label="Misc Sales"
+                    value={summary.totals.miscSalesTotal}
+                    color="emerald"
+                    subtitle={`Cash ${formatCurrency(summary.totals.miscCashTotal ?? 0)}`}
+                  />
+                )}
+                <SummaryCard label="GCash Sales" value={summary.totals.gcashSalesTotal} color="teal" subtitle="Income" />
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                Deposits, bank &amp; day costs
+              </p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(min(100%,11.5rem),1fr))]">
+                <SummaryCard
+                  label="Deposits Held"
+                  value={summary.totals.depositsHeldTotal}
+                  color="cyan"
+                  subtitle="Liability — all methods"
+                />
+                <SummaryCard label="Cash Deposited" value={summary.totals.depositTotal} color="blue" subtitle="To bank" />
+                {(summary.totals.interStoreIn > 0 || summary.totals.interStoreOut > 0) && (
+                  <SummaryCard
+                    label="Transfers"
+                    value={summary.totals.interStoreIn - summary.totals.interStoreOut}
+                    color="violet"
+                    subtitle={`In ${formatCurrency(summary.totals.interStoreIn)} / Out ${formatCurrency(summary.totals.interStoreOut)}`}
+                  />
+                )}
+                <SummaryCard label="Expenses" value={summary.totals.expenseTotal} color="red" subtitle="All methods" />
+              </div>
+            </div>
+
+            {((summary.totals.refundTotal ?? 0) > 0 ||
+              (summary.totals.depositReturnTotal ?? 0) > 0 ||
+              (summary.totals.discountsTotal ?? 0) > 0) && (
+              <div>
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Outflows &amp; notes</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(min(100%,11.5rem),1fr))]">
+                  {(summary.totals.refundTotal ?? 0) > 0 && (
+                    <SummaryCard
+                      label="Refunds Out"
+                      value={summary.totals.refundTotal}
+                      color="red"
+                      subtitle={
+                        (summary.totals.cashRefundTotal ?? 0) < (summary.totals.refundTotal ?? 0)
+                          ? `Cash ${formatCurrency(summary.totals.cashRefundTotal ?? 0)}`
+                          : 'Manual refund payments'
+                      }
+                    />
+                  )}
+                  {(summary.totals.depositReturnTotal ?? 0) > 0 && (
+                    <SummaryCard
+                      label="Deposit Returns"
+                      value={summary.totals.depositReturnTotal}
+                      color="orange"
+                      subtitle="Completed order deposits"
+                    />
+                  )}
+                  {(summary.totals.discountsTotal ?? 0) > 0 && (
+                    <SummaryCard
+                      label="Discounts Given"
+                      value={summary.totals.discountsTotal}
+                      color="orange"
+                      subtitle="Info only"
+                    />
+                  )}
+                </div>
+              </div>
             )}
-            <SummaryCard label="GCash Sales" value={summary.totals.gcashSalesTotal} color="teal" subtitle="Income" />
-            <SummaryCard label="Deposits Held" value={summary.totals.depositsHeldTotal} color="cyan" subtitle="Liability — all methods" />
-            <SummaryCard label="Expenses" value={summary.totals.expenseTotal} color="red" subtitle="All methods" />
-            <SummaryCard label="Cash Deposited" value={summary.totals.depositTotal} color="blue" />
-            {(summary.totals.interStoreIn > 0 || summary.totals.interStoreOut > 0) && (
+
+            <div className="border-t border-gray-200 pt-1">
               <SummaryCard
-                label="Transfers"
-                value={summary.totals.interStoreIn - summary.totals.interStoreOut}
-                color="violet"
-                subtitle={`In ${formatCurrency(summary.totals.interStoreIn)} / Out ${formatCurrency(summary.totals.interStoreOut)}`}
+                label="Expected Cash"
+                value={expectedCashSales}
+                color="indigo"
+                subtitle="Target for the main till (excludes the deposit envelope)"
+                className="border-indigo-200 ring-1 ring-indigo-100"
               />
-            )}
-            {(summary.totals.refundTotal ?? 0) > 0 && (
-              <SummaryCard
-                label="Refunds Out"
-                value={summary.totals.refundTotal}
-                color="red"
-                subtitle={
-                  (summary.totals.cashRefundTotal ?? 0) < (summary.totals.refundTotal ?? 0)
-                    ? `Cash ${formatCurrency(summary.totals.cashRefundTotal ?? 0)}`
-                    : 'Manual refund payments'
-                }
-              />
-            )}
-            {(summary.totals.depositReturnTotal ?? 0) > 0 && (
-              <SummaryCard
-                label="Deposit Returns"
-                value={summary.totals.depositReturnTotal}
-                color="orange"
-                subtitle="Completed order deposits"
-              />
-            )}
-            {(summary.totals.discountsTotal ?? 0) > 0 && (
-              <SummaryCard label="Discounts Given" value={summary.totals.discountsTotal} color="orange" subtitle="Info only" />
-            )}
-            <SummaryCard label="Expected Cash" value={expectedCashSales} color="indigo" subtitle="Sales only" />
+            </div>
           </div>
 
           {/* Transaction sections */}
@@ -926,6 +975,7 @@ function SummaryCard({
   badge,
   badgeColor,
   subtitle,
+  className,
 }: {
   label: string;
   value: number;
@@ -933,6 +983,7 @@ function SummaryCard({
   badge?: string;
   badgeColor?: string;
   subtitle?: string;
+  className?: string;
 }) {
   const colorMap: Record<string, string> = {
     green: 'text-green-700',
@@ -950,7 +1001,9 @@ function SummaryCard({
     gray: 'bg-gray-100 text-gray-600',
   };
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
+    <div
+      className={['rounded-lg border border-gray-200 bg-white p-4', className].filter(Boolean).join(' ')}
+    >
       <div className="flex items-center gap-2">
         <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
         {badge && (
