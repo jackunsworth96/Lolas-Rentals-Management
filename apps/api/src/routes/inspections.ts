@@ -18,27 +18,33 @@ const ITEM_TYPES = [
   'accepted_issue_declined',
 ] as const;
 
-const CreateInspectionBodySchema = z.object({
-  orderId: z.string().min(1),
-  orderReference: z.string().min(1),
-  storeId: z.string().min(1),
-  vehicleId: z.string().optional(),
-  vehicleName: z.string().optional(),
-  kmReading: z.string().optional(),
-  damageNotes: z.string().optional(),
-  helmetNumbers: z.string().optional(),
-  customerSignatureUrl: z.string().optional(),
-  results: z.array(
-    z.object({
-      inspectionItemId: z.string().uuid().optional(),
-      itemName: z.string().min(1),
-      result: z.enum(['accepted', 'issue_noted', 'na', 'declined']),
-      qty: z.number().int().optional(),
-      notes: z.string().optional(),
-      logMaintenance: z.boolean().default(false),
-    }),
-  ),
-});
+const CreateInspectionBodySchema = z
+  .object({
+    orderId: z.string().min(1).optional(),
+    orderReference: z.string().min(1).optional(),
+    customerId: z.string().min(1).optional(),
+    storeId: z.string().min(1),
+    vehicleId: z.string().optional(),
+    vehicleName: z.string().optional(),
+    kmReading: z.string().optional(),
+    damageNotes: z.string().optional(),
+    helmetNumbers: z.string().optional(),
+    customerSignatureUrl: z.string().optional(),
+    results: z.array(
+      z.object({
+        inspectionItemId: z.string().uuid().optional(),
+        itemName: z.string().min(1),
+        result: z.enum(['accepted', 'issue_noted', 'na', 'declined']),
+        qty: z.number().int().optional(),
+        notes: z.string().optional(),
+        logMaintenance: z.boolean().default(false),
+      }),
+    ),
+  })
+  .refine((d) => d.orderId || d.customerId, {
+    message: 'Either orderId or customerId is required',
+    path: ['orderId'],
+  });
 
 const CreateInspectionItemBodySchema = z.object({
   name: z.string().min(1),
@@ -77,7 +83,8 @@ function toInspectionDto(row: Record<string, unknown>) {
   return {
     id: row.id,
     orderId: row.order_id ?? null,
-    orderReference: row.order_reference,
+    orderReference: row.order_reference ?? null,
+    customerId: row.customer_id ?? null,
     storeId: row.store_id,
     vehicleId: row.vehicle_id ?? null,
     vehicleName: row.vehicle_name ?? null,
@@ -194,23 +201,27 @@ router.post(
     const createdMaintenanceIds: string[] = [];
 
     try {
-      const { data: existing, error: exErr } = await sb
-        .from('inspections')
-        .select('id')
-        .eq('order_id', body.orderId)
-        .maybeSingle();
-      if (exErr) throw new Error(exErr.message);
-      if (existing) {
-        res.status(409).json({
-          success: false,
-          error: { code: 'CONFLICT', message: 'Inspection already exists for this order' },
-        });
-        return;
+      // Duplicate check only applies when orderId is provided (booking-linked inspections).
+      if (body.orderId) {
+        const { data: existing, error: exErr } = await sb
+          .from('inspections')
+          .select('id')
+          .eq('order_id', body.orderId)
+          .maybeSingle();
+        if (exErr) throw new Error(exErr.message);
+        if (existing) {
+          res.status(409).json({
+            success: false,
+            error: { code: 'CONFLICT', message: 'Inspection already exists for this order' },
+          });
+          return;
+        }
       }
 
-      const inspectionRow = {
-        order_id: body.orderId,
-        order_reference: body.orderReference,
+      const inspectionRow: Record<string, unknown> = {
+        order_id: body.orderId ?? null,
+        order_reference: body.orderReference ?? null,
+        customer_id: body.customerId ?? null,
         store_id: body.storeId,
         vehicle_id: body.vehicleId ?? null,
         vehicle_name: body.vehicleName ?? null,
@@ -270,7 +281,7 @@ router.post(
             employeeId: req.user?.employeeId ?? null,
             storeId: body.storeId,
             downtimeStart: null,
-            notes: `Auto-logged from inspection ${body.orderReference}`,
+                notes: `Auto-logged from inspection ${body.orderReference ?? body.customerId ?? inspectionId}`,
             partsCost: 0,
             laborCost: 0,
           },
@@ -304,12 +315,14 @@ router.post(
           const truncatedNotes = rawNotes && rawNotes.length > 100 ? `${rawNotes.slice(0, 100)}…` : (rawNotes ?? '—');
           const loggedBy = req.user?.username ?? 'unknown';
           await sendTelegramAlert(
-            `📋 <b>Inspection Logged</b>\n` +
+              `📋 <b>Inspection Logged</b>\n` +
               `Vehicle: ${escapeHtml(vehicleLabel)}\n` +
               `Result: ${escapeHtml('completed')}\n` +
               `Notes: ${escapeHtml(truncatedNotes)}\n` +
               `Logged by: ${escapeHtml(loggedBy)}\n` +
-              `Store: ${escapeHtml(body.storeId)}`,
+              `Store: ${escapeHtml(body.storeId)}` +
+              (body.orderReference ? `\nRef: ${escapeHtml(body.orderReference)}` : '') +
+              (!body.orderReference && body.customerId ? `\nPre-booking (customer: ${escapeHtml(body.customerId)})` : ''),
             getTelegramChatId('maintenance'),
           );
         } catch (tgErr) {
@@ -341,7 +354,7 @@ router.post(
               `🔩 <b>Maintenance Logged</b>\n` +
                 `Vehicle: ${escapeHtml(vehicleLabel)}\n` +
                 `Issues:\n${escapeHtml(issueLines)}\n` +
-                `From Inspection: ${escapeHtml(body.orderReference)}\n` +
+                `From Inspection: ${escapeHtml(body.orderReference ?? inspectionId ?? '')}\n` +
                 `Logged by: ${escapeHtml(loggedBy)}\n` +
                 `Store: ${escapeHtml(body.storeId)}`,
               getTelegramChatId('maintenance'),
@@ -412,10 +425,10 @@ router.post(
             await sendEmail({
               to: INSPECTION_LOG_EMAIL,
               from: INTERNAL_FROM_EMAIL,
-              subject: `🔍 Inspection — ${body.vehicleName ?? 'Vehicle'} — ${body.orderReference} — ${loggedAt}`,
+              subject: `🔍 Inspection — ${body.vehicleName ?? 'Vehicle'} — ${body.orderReference ?? 'PRE-BOOKING'} — ${loggedAt}`,
               html: inspectionLogHtml({
                 inspectionId,
-                orderReference: body.orderReference,
+                orderReference: body.orderReference ?? 'Pre-booking check-in',
                 vehicleName: body.vehicleName ?? 'Unknown',
                 plateNumber,
                 engineNumber,

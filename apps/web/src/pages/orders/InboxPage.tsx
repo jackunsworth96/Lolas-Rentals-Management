@@ -7,6 +7,7 @@ import { BookingModal } from '../../components/orders/BookingModal.js';
 import { CancelOrderModal } from '../../components/orders/CancelOrderModal.js';
 import { WalkInBookingModal } from '../../components/orders/WalkInBookingModal.js';
 import { ReserveForLaterModal } from '../../components/orders/ReserveForLaterModal.js';
+import { CheckInModal } from '../../components/orders/CheckInModal.js';
 import { formatDateTime, formatPickupDatetimeManila } from '../../utils/date.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { extractPickupDate } from '../../utils/raw-order-payload.js';
@@ -112,6 +113,7 @@ export default function InboxPage() {
   const [cancelOrder, setCancelOrder] = useState<RawOrder | null>(null);
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [reserveForLaterOpen, setReserveForLaterOpen] = useState(false);
+  const [checkInOpen, setCheckInOpen] = useState(false);
 
   const canEditOrders = useAuthStore((s) => s.hasPermission('can_edit_orders'));
 
@@ -245,16 +247,16 @@ export default function InboxPage() {
   ];
 
   return (
-    <div>
+    <div className="min-w-0 max-w-full">
       {/* Header */}
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
+      <div className="mb-6 flex min-w-0 flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-gray-900">Order Inbox</h1>
           <p className="mt-1 text-sm text-gray-500">
             New orders from the website — review and process into active bookings.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3 sm:shrink-0">
           {totalCount > 0 && (
             <span className="inline-flex items-center rounded-full bg-yellow-100 px-3 py-1 text-sm font-medium text-yellow-800">
               {totalCount} unprocessed
@@ -262,6 +264,13 @@ export default function InboxPage() {
           )}
           {canEditOrders && (
             <>
+              <button
+                type="button"
+                onClick={() => setCheckInOpen(true)}
+                className="rounded-lg border border-amber-500 px-4 py-2 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-50 whitespace-nowrap"
+              >
+                Quick Check-In
+              </button>
               <button
                 type="button"
                 onClick={() => setReserveForLaterOpen(true)}
@@ -480,6 +489,11 @@ export default function InboxPage() {
           </button>
         </div>
       )}
+
+      <CheckInModal
+        open={checkInOpen}
+        onClose={() => setCheckInOpen(false)}
+      />
 
       <WalkInBookingModal
         open={walkInOpen}

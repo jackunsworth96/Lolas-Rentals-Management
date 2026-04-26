@@ -142,7 +142,72 @@ async function fetchVehicleModelName(modelId: string | null | undefined): Promis
   return (data as { name?: string } | null)?.name ?? 'Vehicle';
 }
 
+const StaffCheckInWaiverBodySchema = z.object({
+  customerId: z.string().min(1),
+  storeId: z.string().min(1),
+  driverName: z.string().min(1),
+  driverEmail: z.string().email().optional(),
+  driverMobile: z.string().optional(),
+  agreedToTerms: z.boolean().refine((v) => v === true),
+  driverSignatureDataUrl: z.string().min(1),
+});
+
 const waiverRouter = Router();
+
+// Staff-only route: captures a waiver before a booking exists.
+// Registered before the rate limiter so authenticated staff are not throttled.
+waiverRouter.post(
+  '/checkin',
+  authenticate,
+  requirePermission(Permission.EditOrders),
+  validateBody(StaffCheckInWaiverBodySchema),
+  async (req, res, next) => {
+    try {
+      const body = req.body as z.infer<typeof StaffCheckInWaiverBodySchema>;
+      const sb = getSupabaseClient();
+
+      const { data: inserted, error: insErr } = await sb
+        .from('waivers')
+        .insert({
+          customer_id: body.customerId,
+          store_id: body.storeId,
+          driver_name: body.driverName,
+          driver_email: body.driverEmail ?? null,
+          driver_mobile: body.driverMobile ?? null,
+          agreed_to_terms: true,
+          agreed_at: new Date().toISOString(),
+          ip_address: req.ip ?? null,
+          user_agent: typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : null,
+          driver_signature_url: body.driverSignatureDataUrl,
+          passenger_signatures: [],
+          status: 'signed',
+        })
+        .select('id, agreed_at')
+        .single();
+
+      if (insErr) throw new Error(`waivers insert failed: ${insErr.message}`);
+
+      const row = inserted as { id: string; agreed_at: string };
+
+      void sendTelegramAlert(
+        `📋 <b>Pre-Booking Waiver Captured</b>\n` +
+          `Customer ID: ${escapeHtml(body.customerId)}\n` +
+          `Name: ${escapeHtml(body.driverName)}\n` +
+          `Captured at: ${escapeHtml(formatManilaDateTime(row.agreed_at))}\n` +
+          `By: ${escapeHtml(req.user?.username ?? 'unknown')}`,
+        getTelegramChatId('ops'),
+      );
+
+      res.status(201).json({
+        success: true,
+        data: { waiverId: row.id, signedAt: row.agreed_at },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 waiverRouter.use(waiverLimiter);
 
 async function resolveOrder(orderReference: string) {

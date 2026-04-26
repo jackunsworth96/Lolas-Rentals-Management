@@ -80,6 +80,12 @@ export interface ProcessRawOrderInput {
   excludeTransferFromBalance?: boolean;
   /** Accommodation/hotel name to attach to the transfer record. Takes precedence over payload.accommodation_name. */
   transferAccommodation?: string | null;
+  /**
+   * When provided and less than rentalIncomeTotal, the payment created at
+   * activation is recorded for this amount only. The difference becomes
+   * balance_due so staff can collect the remainder later.
+   */
+  partialPaymentAmount?: number;
 }
 
 export async function processRawOrder(
@@ -199,7 +205,13 @@ export async function processRawOrder(
   // The rental payment row records what was collected at activation for the
   // rental + addons + surcharge only. Transfer and charity are collected
   // as part of the overall balance — they are not split out as separate payments.
-  const rentalAmount = rentalIncomeTotal;
+  // When a partial amount is requested (e.g. customer pays now and settles the
+  // Peace of Mind addon later), use that instead so balance_due reflects what
+  // remains outstanding.
+  const rentalAmount =
+    input.partialPaymentAmount !== undefined && input.partialPaymentAmount < rentalIncomeTotal
+      ? input.partialPaymentAmount
+      : rentalIncomeTotal;
   const willCreateDepositPayment =
     input.securityDeposit > 0 &&
     !!input.depositMethodId &&
@@ -745,6 +757,26 @@ export async function processRawOrder(
     throw new Error(
       `process_raw_order_atomic succeeded but order ${orderId} could not be reloaded`,
     );
+  }
+
+  // ── 12. Auto-link pre-booking waivers and inspections. ───
+  // If staff captured a waiver or inspection before the booking existed
+  // (via the Quick Check-In flow), those records have customer_id set but
+  // no order_reference / order_id. Link them now that the order is confirmed.
+  const bookingToken = rawOrder.order_reference as string | null;
+  if (bookingToken && customer.id) {
+    await Promise.all([
+      supabase
+        .from('waivers')
+        .update({ order_reference: bookingToken })
+        .eq('customer_id', customer.id)
+        .is('order_reference', null),
+      supabase
+        .from('inspections')
+        .update({ order_id: orderId, order_reference: bookingToken })
+        .eq('customer_id', customer.id)
+        .is('order_id', null),
+    ]);
   }
 
   if (!wasNew) {

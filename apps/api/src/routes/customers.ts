@@ -7,6 +7,19 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 const router = Router();
 router.use(authenticate);
 
+function toCustomerDto(row: Record<string, unknown>) {
+  return {
+    id: row.id,
+    storeId: row.store_id,
+    name: row.name,
+    email: row.email ?? null,
+    mobile: row.mobile ?? null,
+    totalSpent: Number(row.total_spent ?? 0),
+    notes: row.notes ?? null,
+    blacklisted: row.blacklisted ?? false,
+  };
+}
+
 const ListQuerySchema = z.object({
   storeId: z.string().min(1),
   q: z.string().optional(),
@@ -69,6 +82,20 @@ router.get('/:id', async (req, res, next) => {
       };
     });
 
+    // Compute real totals across ALL orders (not just the 20 returned above).
+    const { data: statsRows, error: statsErr } = await sb
+      .from('orders')
+      .select('final_total, status')
+      .eq('customer_id', id);
+
+    if (statsErr) throw new Error(`orders stats query failed: ${statsErr.message}`);
+
+    const allOrders = statsRows ?? [];
+    const totalBookings = allOrders.length;
+    const totalSpent = allOrders
+      .filter((o) => o.status !== 'Cancelled')
+      .reduce((sum, o) => sum + Number(o.final_total ?? 0), 0);
+
     // Paw Card savings
     let pawCardSavings = 0;
     let pawCardEntryCount = 0;
@@ -89,7 +116,7 @@ router.get('/:id', async (req, res, next) => {
     res.json({
       success: true,
       data: {
-        customer,
+        customer: { ...customer, totalSpent, totalBookings },
         orders,
         pawCard: {
           totalSaved: pawCardSavings,
@@ -127,6 +154,88 @@ router.patch('/:id', validateBody(PatchBodySchema), async (req, res, next) => {
 
     await customerRepo.save(updated);
     res.json({ success: true, data: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /customers/lookup-or-create — finds a customer by email or creates one.
+// Used by the pre-booking check-in flow so staff can capture waivers and
+// inspections before a booking exists.
+const LookupOrCreateBodySchema = z.object({
+  email: z.string().email(),
+  name: z.string().min(1),
+  mobile: z.string().optional(),
+  storeId: z.string().min(1),
+});
+
+router.post('/lookup-or-create', validateBody(LookupOrCreateBodySchema), async (req, res, next) => {
+  try {
+    const { email, name, mobile, storeId } = req.body as z.infer<typeof LookupOrCreateBodySchema>;
+    const sb = getSupabaseClient();
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const { data: existing, error: findErr } = await sb
+      .from('customers')
+      .select('*')
+      .eq('store_id', storeId)
+      .ilike('email', normalizedEmail)
+      .maybeSingle();
+
+    if (findErr) throw new Error(findErr.message);
+
+    if (existing) {
+      res.json({ success: true, data: { customer: toCustomerDto(existing as Record<string, unknown>), isNew: false } });
+      return;
+    }
+
+    const { data: created, error: insErr } = await sb
+      .from('customers')
+      .insert({
+        id: crypto.randomUUID(),
+        store_id: storeId,
+        name: name.trim(),
+        email: normalizedEmail,
+        mobile: mobile?.trim() ?? null,
+        total_spent: 0,
+        blacklisted: false,
+      })
+      .select('*')
+      .single();
+
+    if (insErr) throw new Error(insErr.message);
+    res.status(201).json({ success: true, data: { customer: toCustomerDto(created as Record<string, unknown>), isNew: true } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /customers/:id/pending-checkin — returns waivers and inspections captured
+// for this customer before a booking was linked (order_reference / order_id is null).
+router.get('/:id/pending-checkin', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const sb = getSupabaseClient();
+
+    const [{ data: waivers, error: wErr }, { data: inspections, error: iErr }] = await Promise.all([
+      sb
+        .from('waivers')
+        .select('id, driver_name, driver_email, status, created_at')
+        .eq('customer_id', id)
+        .is('order_reference', null)
+        .order('created_at', { ascending: false }),
+      sb
+        .from('inspections')
+        .select('id, vehicle_name, order_reference, status, created_at')
+        .eq('customer_id', id)
+        .is('order_id', null)
+        .order('created_at', { ascending: false }),
+    ]);
+
+    if (wErr) throw new Error(wErr.message);
+    if (iErr) throw new Error(iErr.message);
+
+    res.json({ success: true, data: { waivers: waivers ?? [], inspections: inspections ?? [] } });
   } catch (err) {
     next(err);
   }

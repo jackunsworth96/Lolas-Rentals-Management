@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { Search, X, Save, AlertTriangle, PawPrint, ShoppingBag } from 'lucide-react';
+import { Search, X, Save, AlertTriangle, PawPrint, ShoppingBag, ClipboardList, FileSignature } from 'lucide-react';
 import {
   useCustomers,
   useCustomer,
   useUpdateCustomer,
+  useCustomerPendingCheckin,
   type CustomerSummary,
 } from '../../api/customers.js';
 import { useStores } from '../../api/config.js';
@@ -39,11 +40,14 @@ interface CustomerDetailPanelProps {
 
 function CustomerDetailPanel({ customerId, onClose, onSaved }: CustomerDetailPanelProps) {
   const { data, isLoading } = useCustomer(customerId);
+  const { data: pendingCheckin } = useCustomerPendingCheckin(customerId);
   const updateCustomer = useUpdateCustomer();
 
   const customer = data?.customer ?? null;
   const orders = data?.orders ?? [];
   const pawCard = data?.pawCard ?? null;
+  const pendingWaivers = pendingCheckin?.waivers ?? [];
+  const pendingInspections = pendingCheckin?.inspections ?? [];
 
   const [form, setForm] = useState({
     name: '',
@@ -255,7 +259,7 @@ function CustomerDetailPanel({ customerId, onClose, onSaved }: CustomerDetailPan
                 </h3>
                 <div className="grid grid-cols-2 gap-3">
                   <Stat label="Total Spent" value={formatPhp(customer.totalSpent)} />
-                  <Stat label="Bookings" value={String(orders.length)} />
+                  <Stat label="Bookings" value={String(customer.totalBookings ?? orders.length)} />
                   {pawCard && (
                     <>
                       <Stat
@@ -307,6 +311,52 @@ function CustomerDetailPanel({ customerId, onClose, onSaved }: CustomerDetailPan
                   </div>
                 )}
               </section>
+
+              {/* Pending check-in activity — waivers/inspections not yet linked to a booking */}
+              {(pendingWaivers.length > 0 || pendingInspections.length > 0) && (
+                <section className="px-6 py-5">
+                  <h3 className="mb-1 text-sm font-semibold uppercase tracking-wider text-amber-600">
+                    Pending Check-In Activity
+                  </h3>
+                  <p className="mb-4 text-xs text-gray-500">
+                    Captured before a booking was created. Will auto-link when a booking is processed.
+                  </p>
+                  <div className="space-y-2">
+                    {pendingWaivers.map((w) => (
+                      <div
+                        key={w.id}
+                        className="flex items-center gap-3 rounded-lg border border-amber-100 bg-amber-50 px-4 py-3"
+                      >
+                        <FileSignature className="h-4 w-4 shrink-0 text-amber-600" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-gray-900">{w.driver_name}</p>
+                          <p className="text-xs text-gray-500">
+                            Waiver signed · {formatDate(w.created_at)}
+                          </p>
+                        </div>
+                        <Badge color="yellow">{w.status}</Badge>
+                      </div>
+                    ))}
+                    {pendingInspections.map((i) => (
+                      <div
+                        key={i.id}
+                        className="flex items-center gap-3 rounded-lg border border-amber-100 bg-amber-50 px-4 py-3"
+                      >
+                        <ClipboardList className="h-4 w-4 shrink-0 text-amber-600" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-gray-900">
+                            {i.vehicle_name ?? 'Vehicle not specified'}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            Inspection · {formatDate(i.created_at)}
+                          </p>
+                        </div>
+                        <Badge color="yellow">{i.status}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
             </div>
           )}
         </div>

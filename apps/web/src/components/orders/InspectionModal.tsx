@@ -14,8 +14,12 @@ interface InspectionResult {
 interface InspectionModalProps {
   open: boolean;
   onClose: () => void;
-  orderId: string;
-  orderReference: string;
+  /** Required when capturing an inspection linked to an existing booking. */
+  orderId?: string | null;
+  /** Required when capturing an inspection linked to an existing booking. */
+  orderReference?: string | null;
+  /** Required when capturing an inspection before a booking exists (check-in flow). */
+  customerId?: string | null;
   storeId: string;
   employeeName: string;
   onComplete: () => void;
@@ -24,6 +28,8 @@ interface InspectionModalProps {
   preAssignedVehicleName?: string;
   /** order_items.id — required to call swap-vehicle if the vehicle is changed. */
   orderItemId?: string;
+  /** Called after a successful submission with the vehicle that was selected. */
+  onVehicleAssigned?: (vehicleId: string, vehicleName: string) => void;
 }
 
 const RESULT_BUTTONS: Record<
@@ -55,12 +61,14 @@ export function InspectionModal({
   onClose,
   orderId,
   orderReference,
+  customerId,
   storeId,
   employeeName,
   onComplete,
   preAssignedVehicleId,
   preAssignedVehicleName,
   orderItemId,
+  onVehicleAssigned,
 }: InspectionModalProps) {
   const queryClient = useQueryClient();
   const [items, setItems] = useState<InspectionItem[]>([]);
@@ -276,9 +284,9 @@ export function InspectionModal({
 
     setSubmitting(true);
     try {
-      // If the vehicle was changed from the pre-assigned one, record a swap first
-      // so fleet availability and the order record stay consistent.
+      // Only swap vehicle when the inspection is linked to an existing booking.
       if (
+        orderId &&
         vehicleId &&
         preAssignedVehicleId &&
         orderItemId &&
@@ -292,8 +300,8 @@ export function InspectionModal({
       }
 
       await api.post('/inspections', {
-        orderId,
-        orderReference,
+        ...(orderId ? { orderId, orderReference } : {}),
+        ...(customerId ? { customerId } : {}),
         storeId,
         vehicleId: vehicleId || undefined,
         vehicleName: vehicleName || undefined,
@@ -304,6 +312,9 @@ export function InspectionModal({
         results: resultsArray,
       });
       void queryClient.invalidateQueries({ queryKey: ['fleet'] });
+      if (vehicleId && vehicleName) {
+        onVehicleAssigned?.(vehicleId, vehicleName);
+      }
       onComplete();
       onClose();
     } catch (err) {
