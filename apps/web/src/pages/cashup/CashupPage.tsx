@@ -505,12 +505,24 @@ export default function CashupPage() {
                 subtitle={`In ${formatCurrency(summary.totals.interStoreIn)} / Out ${formatCurrency(summary.totals.interStoreOut)}`}
               />
             )}
-            {((summary.totals.refundTotal ?? 0) + (summary.totals.depositReturnTotal ?? 0)) > 0 && (
+            {(summary.totals.refundTotal ?? 0) > 0 && (
               <SummaryCard
                 label="Refunds Out"
-                value={(summary.totals.refundTotal ?? 0) + (summary.totals.depositReturnTotal ?? 0)}
+                value={summary.totals.refundTotal}
                 color="red"
-                subtitle="Cash paid back"
+                subtitle={
+                  (summary.totals.cashRefundTotal ?? 0) < (summary.totals.refundTotal ?? 0)
+                    ? `Cash ${formatCurrency(summary.totals.cashRefundTotal ?? 0)}`
+                    : 'Manual refund payments'
+                }
+              />
+            )}
+            {(summary.totals.depositReturnTotal ?? 0) > 0 && (
+              <SummaryCard
+                label="Deposit Returns"
+                value={summary.totals.depositReturnTotal}
+                color="orange"
+                subtitle="Completed order deposits"
               />
             )}
             {(summary.totals.discountsTotal ?? 0) > 0 && (
