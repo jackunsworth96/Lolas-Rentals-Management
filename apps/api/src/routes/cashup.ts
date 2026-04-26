@@ -14,6 +14,14 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 const router = Router();
 router.use(authenticate);
 
+function customerNameFromJoin(
+  c: { name: string } | { name: string }[] | null | undefined,
+): string | null {
+  if (c == null) return null;
+  if (Array.isArray(c)) return c[0]?.name ?? null;
+  return c.name ?? null;
+}
+
 // ── GET /summary — single aggregation endpoint for the Cash Up page ──
 router.get(
   '/summary',
@@ -351,10 +359,15 @@ router.get(
           .from('orders')
           .select('id, booking_token, customers!customer_id(name)')
           .in('id', depositRefundOrderIds);
-        for (const o of (depositRefundOrders ?? []) as { id: string; booking_token: string | null; customers: { name: string } | null }[]) {
+        const rows = (depositRefundOrders ?? []) as unknown as Array<{
+          id: string;
+          booking_token: string | null;
+          customers: { name: string } | { name: string }[] | null;
+        }>;
+        for (const o of rows) {
           depositRefundOrderMap.set(o.id, {
             bookingToken: o.booking_token ?? null,
-            customerName: (o.customers as { name: string } | null)?.name ?? null,
+            customerName: customerNameFromJoin(o.customers),
           });
         }
       }
