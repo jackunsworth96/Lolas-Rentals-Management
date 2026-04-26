@@ -71,7 +71,6 @@ export function OrderDetailSummaryTab({
   const [refundMethodId, setRefundMethodId] = useState('');
   const [refundAccountId, setRefundAccountId] = useState('');
   const [refundReason, setRefundReason] = useState('');
-  const [refundCancelOrder, setRefundCancelOrder] = useState(false);
 
   // ── Settle order state ──
   const [settlementDate, setSettlementDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -320,9 +319,6 @@ export function OrderDetailSummaryTab({
     e.preventDefault();
     const amt = Number(refundAmount);
     if (!amt || amt <= 0 || !refundMethodId || !refundAccountId || !defaultReceivableId) return;
-    if (refundCancelOrder && !window.confirm(
-      `This will issue a ${formatCurrency(amt)} refund and CANCEL the order. Are you sure?`,
-    )) return;
     refundOrderMut.mutate(
       {
         id: orderId,
@@ -331,7 +327,7 @@ export function OrderDetailSummaryTab({
         refundAccountId,
         receivableAccountId: defaultReceivableId,
         reason: refundReason.trim() || null,
-        cancelOrder: refundCancelOrder,
+        cancelOrder: false,
         transactionDate: new Date().toISOString().slice(0, 10),
       },
       {
@@ -340,9 +336,7 @@ export function OrderDetailSummaryTab({
           setRefundMethodId('');
           setRefundAccountId('');
           setRefundReason('');
-          setRefundCancelOrder(false);
-          if (refundCancelOrder) onClose();
-          else pushToast('Refund recorded successfully.', 'success');
+          pushToast('Refund recorded successfully.', 'success');
         },
         onError: (err) => pushToast((err as Error).message, 'error'),
       },
@@ -424,9 +418,19 @@ export function OrderDetailSummaryTab({
     e.preventDefault();
     if (!settlementDate || !settleDepositAccountId || !settleReceivableAccountId) return;
 
-    const depositApplied = Math.min(securityDeposit, Math.max(0, balance));
-    const depositRefund = Math.max(0, securityDeposit - Math.max(0, balance));
-    const remainingAfterDeposit = Math.max(0, balance - depositApplied);
+    // Mirror the backend settle-order RPC: refund payments are included as positive
+    // amounts in rentalPaid, which can push balance negative (fully overpaid after
+    // refund), resulting in the full deposit being returned to the customer.
+    const settleRentalPaidH = payments.reduce((s, p) => {
+      if (p.paymentType === 'deposit') return s;
+      if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return s;
+      return s + (p.amount ?? 0);
+    }, 0);
+    const settleBalanceH = Math.max(0, total - settleRentalPaidH);
+
+    const depositApplied = Math.min(securityDeposit, settleBalanceH);
+    const depositRefund = Math.max(0, securityDeposit - settleBalanceH);
+    const remainingAfterDeposit = Math.max(0, settleBalanceH - depositApplied);
     const needsFinalPayment = remainingAfterDeposit > 0;
 
     // Grosses up the customer-facing figure by the card surcharge %
@@ -448,9 +452,9 @@ export function OrderDetailSummaryTab({
     // The button text already shows the amount, but a second explicit confirmation
     // guards against accidental settlement when the customer hasn't paid the
     // extension/final balance yet.
-    if (balance > 0) {
+    if (settleBalanceH > 0) {
       const parts: string[] = [];
-      parts.push(`Balance Due: ${formatCurrency(balance)}`);
+      parts.push(`Balance Due: ${formatCurrency(settleBalanceH)}`);
       if (pendingExtensionsTotal > 0) parts.push(`Unpaid Extensions: ${formatCurrency(pendingExtensionsTotal)}`);
       if (securityDeposit > 0) parts.push(`Security Deposit Held: ${formatCurrency(securityDeposit)}`);
       if (depositApplied > 0) parts.push(`Deposit Applied: ${formatCurrency(depositApplied)}`);
@@ -465,7 +469,7 @@ export function OrderDetailSummaryTab({
 
       const collectAmount = remainingAfterDeposit > 0
         ? inclusiveFinalPaymentAmount
-        : balance;
+        : settleBalanceH;
       const confirmed = window.confirm(
         `⚠ OUTSTANDING BALANCE\n\n${parts.join('\n')}\n\nHave you collected the remaining ${formatCurrency(collectAmount)} from the customer?\n\nClick OK to proceed with settlement, or Cancel to collect payment first.`,
       );
@@ -1001,15 +1005,6 @@ export function OrderDetailSummaryTab({
                     />
                   </label>
                 </div>
-                <label className="flex items-center gap-2 text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={refundCancelOrder}
-                    onChange={(e) => setRefundCancelOrder(e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-400"
-                  />
-                  Cancel order after refund
-                </label>
                 <div className="flex items-center gap-3">
                   <button
                     type="submit"
@@ -1018,9 +1013,6 @@ export function OrderDetailSummaryTab({
                   >
                     {refundOrderMut.isPending ? 'Processing…' : 'Issue Refund'}
                   </button>
-                  {refundCancelOrder && (
-                    <span className="text-xs font-medium text-red-600">Order will be cancelled</span>
-                  )}
                 </div>
                 {refundOrderMut.error && (
                   <p className="text-sm text-red-600">{(refundOrderMut.error as Error).message}</p>
@@ -1033,9 +1025,27 @@ export function OrderDetailSummaryTab({
               <h3 className="mb-3 font-medium text-gray-900">Settle Order</h3>
 
               {(() => {
-                const depositApplied = Math.min(securityDeposit, Math.max(0, balance));
-                const depositRefund = Math.max(0, securityDeposit - Math.max(0, balance));
-                const remainingAfterDeposit = Math.max(0, balance - depositApplied);
+                // Refunds (Issue Refund payments) represent a price reduction, not
+                // an additional cash receipt. The backend settle-order RPC includes
+                // refund rows as positive "paid" amounts, which inflates rentalPaid
+                // above finalTotal and produces a negative balance → full deposit
+                // returned. We mirror that logic here so the preview matches reality.
+                const refundsTotal = payments.reduce(
+                  (s, p) => (p.paymentType === 'refund' ? s + (p.amount ?? 0) : s),
+                  0,
+                );
+                // settleBalance uses the same formula as the backend: add refunds
+                // as positive received payments, which reduces effective balance.
+                const settleRentalPaid = payments.reduce((s, p) => {
+                  if (p.paymentType === 'deposit') return s;
+                  if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return s;
+                  return s + (p.amount ?? 0);
+                }, 0);
+                const settleBalance = Math.max(0, total - settleRentalPaid);
+
+                const depositApplied = Math.min(securityDeposit, settleBalance);
+                const depositRefund = Math.max(0, securityDeposit - settleBalance);
+                const remainingAfterDeposit = Math.max(0, settleBalance - depositApplied);
                 const isFullyPaid = remainingAfterDeposit <= 0 && depositRefund <= 0;
 
                 // Surcharge preview — only shown once a card method is selected.
@@ -1062,6 +1072,17 @@ export function OrderDetailSummaryTab({
                         <span className="text-gray-600">Total Paid (rental)</span>
                         <span className="font-medium text-green-600">{formatCurrency(totalPaid)}</span>
                       </div>
+                      {refundsTotal > 0 && (
+                        <div className="flex justify-between px-4 py-2.5 bg-orange-50">
+                          <span
+                            className="font-medium text-orange-800"
+                            title="Refund issued reduces the effective balance owed — the deposit is not used to cover refunded amounts"
+                          >
+                            Refunds Issued
+                          </span>
+                          <span className="font-bold text-orange-800">−{formatCurrency(refundsTotal)}</span>
+                        </div>
+                      )}
                       {pendingExtensionsTotal > 0 && (
                         <div className="flex justify-between px-4 py-2.5 bg-amber-50">
                           <span className="font-medium text-amber-800">Unpaid Extensions</span>
@@ -1070,7 +1091,7 @@ export function OrderDetailSummaryTab({
                       )}
                       <div className="flex justify-between px-4 py-2.5">
                         <span className="font-medium text-gray-900">Balance Due</span>
-                        <span className={`font-bold ${balance > 0 ? 'text-red-600' : 'text-green-600'}`}>{formatCurrency(Math.max(0, balance))}</span>
+                        <span className={`font-bold ${settleBalance > 0 ? 'text-red-600' : 'text-green-600'}`}>{formatCurrency(settleBalance)}</span>
                       </div>
                       {securityDeposit > 0 && (
                         <div className="flex justify-between px-4 py-2.5">
