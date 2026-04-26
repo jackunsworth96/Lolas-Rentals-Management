@@ -24,7 +24,7 @@ router.get(
       const { storeId, date } = req.query as { storeId: string; date: string };
       const sb = getSupabaseClient();
 
-      const [paymentsRes, expensesRes, depositsRes, transfersRes, miscSalesRes, reconRes, prevReconRes, storesRes, charityRes, completedOrdersRes, discountItemsRes] =
+      const [paymentsRes, expensesRes, depositsRes, transfersRes, miscSalesRes, reconRes, prevReconRes, storesRes, charityRes, completedOrdersRes, discountItemsRes, refundJournalRes] =
         await Promise.all([
           sb
             .from('payments')
@@ -111,6 +111,19 @@ router.get(
             .select('id, woo_order_id, customers!customer_id(name), order_items!order_id(id, vehicle_name, discount)')
             .eq('store_id', storeId)
             .eq('order_date', date),
+
+          // Deposit returns written by settle_order_atomic (journal only, no payments row).
+          // Credit legs only — these represent cash leaving the till back to the customer.
+          // We filter out any whose reference_id matches a manual-refund payment ID after
+          // the payments loop runs, to prevent double-counting with payment_type='refund' rows.
+          sb
+            .from('journal_entries')
+            .select('id, description, credit, date, created_at, reference_id, account_id')
+            .eq('store_id', storeId)
+            .eq('date', date)
+            .eq('reference_type', 'refund')
+            .gt('credit', 0)
+            .order('created_at', { ascending: true }),
         ]);
 
       if (paymentsRes.error)
@@ -133,6 +146,8 @@ router.get(
         throw new Error(`Completed orders query failed: ${completedOrdersRes.error.message}`);
       if (discountItemsRes.error)
         throw new Error(`Today orders (discount) query failed: ${discountItemsRes.error.message}`);
+      if (refundJournalRes.error)
+        throw new Error(`Refund journal entries query failed: ${refundJournalRes.error.message}`);
 
       const payments = (paymentsRes.data ?? []) as Record<string, unknown>[];
       const expenses = (expensesRes.data ?? []) as Record<string, unknown>[];
@@ -146,6 +161,7 @@ router.get(
 
       const completedOrders = (completedOrdersRes.data ?? []) as { id: string }[];
       const completedOrderIds = new Set(completedOrders.map((o) => o.id));
+      const refundJournalEntries = (refundJournalRes.data ?? []) as Record<string, unknown>[];
 
       const GCASH_IDS = new Set(['gcash', 'paymaya']);
       const DEPOSIT_TYPES = new Set(['deposit', 'security_deposit']);
@@ -161,6 +177,15 @@ router.get(
       let gcashSalesTotal = 0;
       let bankTransferTotal = 0;
       let pendingExtensionsTotal = 0;
+
+      // Refund outflow buckets (manual refunds via Issue Refund — payments rows)
+      const refundTx: unknown[] = [];
+      let cashRefundTotal = 0;
+      let cardRefundTotal = 0;
+      let gcashRefundTotal = 0;
+      let bankRefundTotal = 0;
+      // Track payment IDs so we can exclude their journal entries from deposit-return totals
+      const refundPaymentIds = new Set<string>();
 
       // Deposits held buckets (by method, but shown together)
       const depositsHeldByMethod: Record<string, { label: string; rows: unknown[]; total: number }> = {};
@@ -202,6 +227,19 @@ router.get(
         };
 
         const isDeposit = DEPOSIT_TYPES.has(paymentType);
+        const isRefund = paymentType === 'refund';
+
+        // Manual refunds — cash paid OUT to the customer. Track as outflow, not income.
+        if (isRefund) {
+          refundPaymentIds.add(String(p.id));
+          refundTx.push(row);
+          const cat = resolveMethodCategory(methodKey);
+          if (cat === 'cash') cashRefundTotal += amount;
+          else if (cat === 'card') cardRefundTotal += amount;
+          else if (cat === 'gcash') gcashRefundTotal += amount;
+          else bankRefundTotal += amount;
+          continue;
+        }
 
         // Unpaid extension IOUs — customer hasn't paid yet, no cash received.
         // Keep them separate so cashup isn't inflated; staff can see what to collect.
@@ -297,6 +335,21 @@ router.get(
         }
       }
 
+      // Deposit returns written by settle_order_atomic (journal-only, no payments row).
+      // Exclude entries whose reference_id matches a manual-refund payment ID to prevent
+      // double-counting with the payment_type='refund' rows handled above.
+      const depositReturnRows = refundJournalEntries
+        .filter((j) => !refundPaymentIds.has(String(j.reference_id)))
+        .map((j) => ({
+          id: j.id,
+          amount: Number(j.credit ?? 0),
+          description: j.description,
+          accountId: j.account_id,
+          referenceId: j.reference_id,
+          createdAt: j.created_at,
+        }));
+      const depositReturnTotal = depositReturnRows.reduce((s, r) => s + r.amount, 0);
+
       // Only cash deposits affect the physical till
       const cashDepositsHeldTotal = depositsHeldByMethod['Cash']?.total ?? 0;
 
@@ -379,10 +432,11 @@ router.get(
         openingSource = prev.overridden_by ? 'override' : 'previous_day';
       }
 
-      // Only cash-method payments affect the physical till
+      // Only cash-method payments affect the physical till.
+      // Subtract cash refunds (manual Issue Refund) and deposit returns (settle flow).
       const totalCashIn = cashSalesTotal + cashDepositsHeldTotal + miscCashTotal;
       const expectedCash =
-        openingAmount + totalCashIn + interStoreIn - cashExpenseTotal - depositTotal - interStoreOut;
+        openingAmount + totalCashIn + interStoreIn - cashExpenseTotal - depositTotal - interStoreOut - cashRefundTotal - depositReturnTotal;
 
       const charityDonationRows = charityEntries.map((c) => ({
         id: c.id,
@@ -397,7 +451,7 @@ router.get(
       type TodayOrder = {
         id: string;
         woo_order_id: string | null;
-        customers: { name: string }[] | null;
+        customers: { name: string } | null;
         order_items: Array<{ id: string; vehicle_name: string | null; discount: number | null }> | null;
       };
       const todayOrders = (discountItemsRes.data ?? []) as unknown as TodayOrder[];
@@ -419,7 +473,7 @@ router.get(
             amount,
             orderId: order.id,
             orderRef: order.woo_order_id,
-            customerName: order.customers?.[0]?.name ?? null,
+            customerName: order.customers?.name ?? null,
           });
         }
       }
@@ -453,6 +507,8 @@ router.get(
             transfersIn: transferInRows,
             transfersOut: transferOutRows,
             discounts: discountRows,
+            refunds: refundTx,
+            depositReturns: depositReturnRows,
           },
           totals: {
             cashSalesTotal,
@@ -475,6 +531,12 @@ router.get(
             interStoreOut,
             charityDonationsTotal,
             discountsTotal,
+            cashRefundTotal,
+            cardRefundTotal,
+            gcashRefundTotal,
+            bankRefundTotal,
+            refundTotal: cashRefundTotal + cardRefundTotal + gcashRefundTotal + bankRefundTotal,
+            depositReturnTotal,
           },
           charityDonations: charityDonationRows,
           expectedCash,

@@ -1,17 +1,23 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { Search, X, Save, AlertTriangle, PawPrint, ShoppingBag, ClipboardList, FileSignature } from 'lucide-react';
+import { Search, X, Save, AlertTriangle, PawPrint, ShoppingBag, ClipboardList, FileSignature, Download, Mail, ChevronDown, ChevronUp } from 'lucide-react';
 import {
   useCustomers,
   useCustomer,
   useUpdateCustomer,
   useCustomerPendingCheckin,
+  useCustomerDocuments,
+  useSendCustomerDocument,
   type CustomerSummary,
+  type CustomerDocument,
+  type CustomerDocumentWaiver,
+  type CustomerDocumentInspection,
 } from '../../api/customers.js';
 import { useStores } from '../../api/config.js';
 import { useUIStore } from '../../stores/ui-store.js';
 import { Table } from '../../components/common/Table.js';
 import { Badge } from '../../components/common/Badge.js';
 import { formatDate } from '../../utils/date.js';
+import { OrderDetailModal } from '../../components/orders/OrderDetailModal.js';
 
 const STATUS_COLOR: Record<string, 'green' | 'blue' | 'yellow' | 'gray' | 'red'> = {
   active: 'blue',
@@ -41,6 +47,8 @@ interface CustomerDetailPanelProps {
 function CustomerDetailPanel({ customerId, onClose, onSaved }: CustomerDetailPanelProps) {
   const { data, isLoading } = useCustomer(customerId);
   const { data: pendingCheckin } = useCustomerPendingCheckin(customerId);
+  const { data: documents = [] } = useCustomerDocuments(customerId);
+  const sendDocument = useSendCustomerDocument();
   const updateCustomer = useUpdateCustomer();
 
   const customer = data?.customer ?? null;
@@ -48,6 +56,9 @@ function CustomerDetailPanel({ customerId, onClose, onSaved }: CustomerDetailPan
   const pawCard = data?.pawCard ?? null;
   const pendingWaivers = pendingCheckin?.waivers ?? [];
   const pendingInspections = pendingCheckin?.inspections ?? [];
+
+  const [orderModalId, setOrderModalId] = useState<string | null>(null);
+  const [orderModalStoreId, setOrderModalStoreId] = useState<string>('');
 
   const [form, setForm] = useState({
     name: '',
@@ -59,6 +70,9 @@ function CustomerDetailPanel({ customerId, onClose, onSaved }: CustomerDetailPan
   const [dirty, setDirty] = useState(false);
   const [confirmBlacklist, setConfirmBlacklist] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [expandedDocId, setExpandedDocId] = useState<string | null>(null);
+  const [emailSentId, setEmailSentId] = useState<string | null>(null);
+  const [emailErrorId, setEmailErrorId] = useState<string | null>(null);
 
   useEffect(() => {
     if (customer) {
@@ -287,15 +301,23 @@ function CustomerDetailPanel({ customerId, onClose, onSaved }: CustomerDetailPan
                 ) : (
                   <div className="space-y-2">
                     {orders.map((order) => (
-                      <div
+                      <button
                         key={order.id}
-                        className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3"
+                        type="button"
+                        onClick={() => {
+                          setOrderModalId(order.id);
+                          setOrderModalStoreId(order.storeId);
+                        }}
+                        className="w-full rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-left transition-colors hover:border-teal-200 hover:bg-teal-50"
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-gray-500">{formatDate(order.orderDate)}</span>
-                          <Badge color={STATUS_COLOR[order.status] ?? 'gray'}>
-                            {order.status}
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge color={STATUS_COLOR[order.status] ?? 'gray'}>
+                              {order.status}
+                            </Badge>
+                            <span className="text-xs text-teal-600">View →</span>
+                          </div>
                         </div>
                         <p className="mt-1 text-sm font-medium text-gray-900">{order.vehicleNames}</p>
                         <div className="mt-1 flex items-center gap-3 text-xs text-gray-500">
@@ -306,7 +328,7 @@ function CustomerDetailPanel({ customerId, onClose, onSaved }: CustomerDetailPan
                             </span>
                           )}
                         </div>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -357,11 +379,271 @@ function CustomerDetailPanel({ customerId, onClose, onSaved }: CustomerDetailPan
                   </div>
                 </section>
               )}
+
+              {/* Documents timeline */}
+              <section className="px-6 py-5">
+                <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-gray-400">
+                  Documents {documents.length > 0 && `(${documents.length})`}
+                </h3>
+                {documents.length === 0 ? (
+                  <p className="text-sm text-gray-400">No documents on file.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {documents.map((doc) => {
+                      const isWaiver = doc.type === 'waiver';
+                      const isExpanded = expandedDocId === doc.id;
+                      const ref = doc.orderReference ?? 'Pre-booking';
+                      const label = isWaiver
+                        ? `Waiver — ${(doc as CustomerDocumentWaiver).driverName}`
+                        : `Inspection — ${(doc as CustomerDocumentInspection).vehicleName ?? 'Vehicle'}`;
+                      const isSending = sendDocument.isPending && sendDocument.variables?.documentId === doc.id;
+                      const sent = emailSentId === doc.id;
+                      const sendErr = emailErrorId === doc.id;
+
+                      return (
+                        <div key={doc.id} className="overflow-hidden rounded-lg border border-gray-100">
+                          {/* Row header */}
+                          <button
+                            type="button"
+                            onClick={() => setExpandedDocId(isExpanded ? null : doc.id)}
+                            className="flex w-full items-center gap-3 bg-gray-50 px-4 py-3 text-left hover:bg-gray-100 transition-colors"
+                          >
+                            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${isWaiver ? 'bg-purple-100' : 'bg-amber-100'}`}>
+                              {isWaiver
+                                ? <FileSignature className="h-4 w-4 text-purple-600" />
+                                : <ClipboardList className="h-4 w-4 text-amber-600" />}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium text-gray-900">{label}</p>
+                              <p className="text-xs text-gray-500">{ref} · {formatDate(doc.createdAt)}</p>
+                            </div>
+                            <Badge color={doc.status === 'signed' || doc.status === 'completed' ? 'green' : 'yellow'}>
+                              {doc.status}
+                            </Badge>
+                            {isExpanded
+                              ? <ChevronUp className="h-4 w-4 shrink-0 text-gray-400" />
+                              : <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" />}
+                          </button>
+
+                          {/* Expanded content */}
+                          {isExpanded && (
+                            <div className="border-t border-gray-100 bg-white px-4 py-4 space-y-4">
+                              {isWaiver ? (
+                                <WaiverDocDetail doc={doc as CustomerDocumentWaiver} />
+                              ) : (
+                                <InspectionDocDetail doc={doc as CustomerDocumentInspection} />
+                              )}
+
+                              {/* Action buttons */}
+                              <div className="flex flex-wrap gap-2 border-t border-gray-100 pt-3">
+                                <button
+                                  type="button"
+                                  onClick={() => downloadDocument(doc)}
+                                  className="flex items-center gap-1.5 rounded-md border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                                >
+                                  <Download className="h-3.5 w-3.5" />
+                                  Download / Print
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isSending}
+                                  onClick={async () => {
+                                    setEmailSentId(null);
+                                    setEmailErrorId(null);
+                                    try {
+                                      await sendDocument.mutateAsync({
+                                        customerId: customerId!,
+                                        type: doc.type,
+                                        documentId: doc.id,
+                                      });
+                                      setEmailSentId(doc.id);
+                                    } catch {
+                                      setEmailErrorId(doc.id);
+                                    }
+                                  }}
+                                  className="flex items-center gap-1.5 rounded-md border border-teal-200 px-3 py-1.5 text-xs font-medium text-teal-700 hover:bg-teal-50 transition-colors disabled:opacity-50"
+                                >
+                                  <Mail className="h-3.5 w-3.5" />
+                                  {isSending ? 'Sending…' : 'Email to Customer'}
+                                </button>
+                                {sent && <span className="flex items-center text-xs text-teal-600">Sent</span>}
+                                {sendErr && <span className="flex items-center text-xs text-red-600">Send failed</span>}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
             </div>
           )}
         </div>
       </div>
+
+      {orderModalId && orderModalStoreId && (
+        <OrderDetailModal
+          open={!!orderModalId}
+          onClose={() => { setOrderModalId(null); setOrderModalStoreId(''); }}
+          orderId={orderModalId}
+          storeId={orderModalStoreId}
+          readOnly
+        />
+      )}
     </>
+  );
+}
+
+// ── Document helpers ───────────────────────────────────────────────────────
+
+function resultBadge(result: string): string {
+  if (result === 'accepted') return '✅ Accepted';
+  if (result === 'issue_noted') return '⚠️ Issue Noted';
+  if (result === 'na') return '— N/A';
+  return result;
+}
+
+function downloadDocument(doc: CustomerDocument) {
+  const ref = doc.orderReference ?? 'Pre-booking';
+  const date = new Date(doc.createdAt).toLocaleString('en-PH', {
+    timeZone: 'Asia/Manila',
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+
+  let html = '';
+  if (doc.type === 'waiver') {
+    const w = doc as CustomerDocumentWaiver;
+    const sigImg = w.driverSignatureUrl
+      ? `<div style="margin:16px 0"><p style="font-size:13px;color:#6b7280;margin:0 0 8px">Driver Signature</p><img src="${w.driverSignatureUrl}" alt="Signature" style="max-width:320px;border:1px solid #e5e7eb;border-radius:8px" /></div>`
+      : '';
+    const licenceLinks = [
+      w.licenceFrontUrl ? `<a href="${w.licenceFrontUrl}" target="_blank">Licence Front ↗</a>` : '',
+      w.licenceBackUrl ? `<a href="${w.licenceBackUrl}" target="_blank">Licence Back ↗</a>` : '',
+    ].filter(Boolean).join('&emsp;');
+
+    html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Rental Waiver — ${ref}</title>
+<style>body{font-family:sans-serif;max-width:720px;margin:40px auto;color:#111;padding:0 24px}h1{color:#0d9488}table{width:100%;border-collapse:collapse}td{padding:10px 4px;border-bottom:1px solid #f3f4f6;font-size:14px}td:first-child{color:#6b7280;width:160px}a{color:#0d9488}@media print{body{margin:0}}</style>
+</head><body>
+<h1>Rental Waiver</h1>
+<p style="color:#6b7280;font-size:13px">Reference: ${ref}</p>
+<table>
+<tr><td>Driver</td><td><strong>${w.driverName}</strong></td></tr>
+<tr><td>Email</td><td>${w.driverEmail ?? '—'}</td></tr>
+<tr><td>Mobile</td><td>${w.driverMobile ?? '—'}</td></tr>
+<tr><td>Agreed At</td><td>${w.agreedAt ? new Date(w.agreedAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' }) : '—'}</td></tr>
+<tr><td>Status</td><td>${w.status}</td></tr>
+</table>
+${sigImg}
+${licenceLinks ? `<p style="margin-top:16px;font-size:14px">Licence Images: ${licenceLinks}</p>` : ''}
+<p style="margin-top:32px;font-size:12px;color:#9ca3af">Printed from Lola's Rentals on ${date}</p>
+</body></html>`;
+  } else {
+    const i = doc as CustomerDocumentInspection;
+    const sigImg = i.customerSignatureUrl
+      ? `<div style="margin:16px 0"><p style="font-size:13px;color:#6b7280;margin:0 0 8px">Customer Signature</p><img src="${i.customerSignatureUrl}" alt="Signature" style="max-width:320px;border:1px solid #e5e7eb;border-radius:8px" /></div>`
+      : '';
+    const resultRows = i.results
+      .map((r) => `<tr><td>${r.itemName}</td><td>${resultBadge(r.result)}${r.notes ? ` — ${r.notes}` : ''}</td></tr>`)
+      .join('');
+
+    html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Inspection Report — ${ref}</title>
+<style>body{font-family:sans-serif;max-width:720px;margin:40px auto;color:#111;padding:0 24px}h1{color:#0d9488}table{width:100%;border-collapse:collapse}td{padding:10px 4px;border-bottom:1px solid #f3f4f6;font-size:14px}td:first-child{color:#6b7280;width:160px}@media print{body{margin:0}}</style>
+</head><body>
+<h1>Vehicle Inspection Report</h1>
+<p style="color:#6b7280;font-size:13px">Reference: ${ref}</p>
+<table>
+<tr><td>Vehicle</td><td><strong>${i.vehicleName ?? '—'}</strong></td></tr>
+<tr><td>KM Reading</td><td>${i.kmReading ?? '—'}</td></tr>
+<tr><td>Helmet Numbers</td><td>${i.helmetNumbers ?? '—'}</td></tr>
+<tr><td>Damage Notes</td><td>${i.damageNotes || 'None noted'}</td></tr>
+<tr><td>Inspected At</td><td>${date}</td></tr>
+<tr><td>Status</td><td>${i.status}</td></tr>
+</table>
+${sigImg}
+${i.results.length > 0 ? `<h2 style="margin-top:32px;font-size:16px">Checklist</h2><table><tr style="background:#f9fafb"><td style="font-weight:600">Item</td><td style="font-weight:600">Result</td></tr>${resultRows}</table>` : ''}
+<p style="margin-top:32px;font-size:12px;color:#9ca3af">Printed from Lola's Rentals on ${date}</p>
+</body></html>`;
+  }
+
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank');
+  if (win) win.focus();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+function WaiverDocDetail({ doc }: { doc: CustomerDocumentWaiver }) {
+  return (
+    <div className="space-y-3 text-sm">
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div><span className="text-gray-500">Driver</span><p className="font-medium text-gray-900 mt-0.5">{doc.driverName}</p></div>
+        <div><span className="text-gray-500">Email</span><p className="font-medium text-gray-900 mt-0.5 break-all">{doc.driverEmail ?? '—'}</p></div>
+        <div><span className="text-gray-500">Mobile</span><p className="font-medium text-gray-900 mt-0.5">{doc.driverMobile ?? '—'}</p></div>
+        <div><span className="text-gray-500">Agreed At</span><p className="font-medium text-gray-900 mt-0.5">{doc.agreedAt ? formatDate(doc.agreedAt) : '—'}</p></div>
+      </div>
+      {doc.driverSignatureUrl && (
+        <div>
+          <p className="text-xs text-gray-500 mb-1">Signature</p>
+          <img src={doc.driverSignatureUrl} alt="Driver signature" className="max-w-xs rounded-lg border border-gray-200" />
+        </div>
+      )}
+      {(doc.licenceFrontUrl || doc.licenceBackUrl) && (
+        <div className="flex flex-wrap gap-2">
+          {doc.licenceFrontUrl && (
+            <a href={doc.licenceFrontUrl} target="_blank" rel="noreferrer" className="text-xs text-teal-600 hover:underline">
+              Licence Front ↗
+            </a>
+          )}
+          {doc.licenceBackUrl && (
+            <a href={doc.licenceBackUrl} target="_blank" rel="noreferrer" className="text-xs text-teal-600 hover:underline">
+              Licence Back ↗
+            </a>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InspectionDocDetail({ doc }: { doc: CustomerDocumentInspection }) {
+  const issues = doc.results.filter((r) => r.result !== 'accepted' && r.result !== 'na');
+  const passed = doc.results.filter((r) => r.result === 'accepted').length;
+
+  return (
+    <div className="space-y-3 text-sm">
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div><span className="text-gray-500">Vehicle</span><p className="font-medium text-gray-900 mt-0.5">{doc.vehicleName ?? '—'}</p></div>
+        <div><span className="text-gray-500">KM Reading</span><p className="font-medium text-gray-900 mt-0.5">{doc.kmReading ?? '—'}</p></div>
+        <div><span className="text-gray-500">Helmets</span><p className="font-medium text-gray-900 mt-0.5">{doc.helmetNumbers ?? '—'}</p></div>
+        <div><span className="text-gray-500">Checklist</span><p className="font-medium text-gray-900 mt-0.5">{passed}/{doc.results.length} passed</p></div>
+      </div>
+      {doc.damageNotes && (
+        <div className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+          <strong>Damage / Notes:</strong> {doc.damageNotes}
+        </div>
+      )}
+      {issues.length > 0 && (
+        <div>
+          <p className="text-xs text-gray-500 mb-1.5">Issues noted ({issues.length})</p>
+          <div className="space-y-1">
+            {issues.map((r, idx) => (
+              <div key={idx} className="flex items-start gap-2 text-xs">
+                <span className="shrink-0 text-amber-600">⚠</span>
+                <span><strong>{r.itemName}</strong>{r.notes ? ` — ${r.notes}` : ''}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {doc.customerSignatureUrl && (
+        <div>
+          <p className="text-xs text-gray-500 mb-1">Customer Signature</p>
+          <img src={doc.customerSignatureUrl} alt="Customer signature" className="max-w-xs rounded-lg border border-gray-200" />
+        </div>
+      )}
+    </div>
   );
 }
 

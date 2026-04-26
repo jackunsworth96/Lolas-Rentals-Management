@@ -101,6 +101,20 @@ export async function refundOrder(
 
   if (rpcErr) throw new Error(`collect_payment_atomic RPC failed: ${rpcErr.message}`);
 
+  // Keep orders.balance_due accurate for reporting — a refund means the business
+  // paid cash out, so the outstanding balance grows back. Reading then writing is
+  // acceptable here because refunds are manual, non-concurrent operations.
+  const { data: freshOrder } = await supabase
+    .from('orders')
+    .select('balance_due')
+    .eq('id', order.id)
+    .single();
+  const newBalance = Math.max(0, Number(freshOrder?.balance_due ?? 0) + refundAmount.toNumber());
+  await supabase
+    .from('orders')
+    .update({ balance_due: newBalance })
+    .eq('id', order.id);
+
   if (input.cancelOrder) {
     const { error: cancelErr } = await supabase
       .from('orders')

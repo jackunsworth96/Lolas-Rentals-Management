@@ -73,6 +73,9 @@ export interface ProcessRawOrderPayload {
   excludeTransferFromBalance?: boolean;
   transferAccommodation?: string | null;
   dropoffLocationNote?: string | null;
+  /** When set, only this amount is recorded as the rental payment at activation.
+   * The difference between finalTotal and this amount becomes balance_due. */
+  partialPaymentAmount?: number;
 }
 
 export function useProcessRawOrder() {

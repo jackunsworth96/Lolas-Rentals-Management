@@ -29,6 +29,28 @@ export interface DiscountRow {
   customerName: string | null;
 }
 
+export interface RefundRow {
+  id: string;
+  paymentType: string;
+  amount: number;
+  methodId: string;
+  settlementRef: string | null;
+  settlementStatus: string | null;
+  customerName: string | null;
+  wooOrderId: string | null;
+  orderId: string | null;
+  createdAt: string;
+}
+
+export interface DepositReturnRow {
+  id: string;
+  amount: number;
+  description: string | null;
+  accountId: string | null;
+  referenceId: string | null;
+  createdAt: string;
+}
+
 export interface CashupSummary {
   openingFloat: {
     amount: number;
@@ -53,6 +75,8 @@ export interface CashupSummary {
     transfersIn: TransferRow[];
     transfersOut: TransferRow[];
     discounts: DiscountRow[];
+    refunds: RefundRow[];
+    depositReturns: DepositReturnRow[];
   };
   charityDonations: CharityDonationRow[];
   totals: {
@@ -75,6 +99,12 @@ export interface CashupSummary {
     interStoreOut: number;
     charityDonationsTotal: number;
     discountsTotal: number;
+    cashRefundTotal: number;
+    cardRefundTotal: number;
+    gcashRefundTotal: number;
+    bankRefundTotal: number;
+    refundTotal: number;
+    depositReturnTotal: number;
   };
   expectedCash: number;
   stores: StoreInfo[];

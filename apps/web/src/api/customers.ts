@@ -36,6 +36,7 @@ export interface CustomerSummary {
 
 export interface CustomerOrder {
   id: string;
+  storeId: string;
   orderDate: string;
   status: string;
   finalTotal: number;
@@ -101,5 +102,77 @@ export function useLookupOrCreateCustomer() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['customers'] });
     },
+  });
+}
+
+// ── Customer Documents ──────────────────────────────────────────────────────
+
+export interface InspectionResultItem {
+  itemName: string;
+  result: 'accepted' | 'issue_noted' | 'na' | 'declined';
+  qty: number | null;
+  notes: string | null;
+  logMaintenance: boolean;
+}
+
+export interface CustomerDocumentWaiver {
+  id: string;
+  type: 'waiver';
+  orderReference: string | null;
+  driverName: string;
+  driverEmail: string | null;
+  driverMobile: string | null;
+  agreedAt: string | null;
+  licenceFrontUrl: string | null;
+  licenceBackUrl: string | null;
+  driverSignatureUrl: string | null;
+  passengerSignatures: string[];
+  status: string;
+  createdAt: string;
+}
+
+export interface CustomerDocumentInspection {
+  id: string;
+  type: 'inspection';
+  orderReference: string | null;
+  orderId: string | null;
+  vehicleName: string | null;
+  kmReading: string | null;
+  damageNotes: string | null;
+  helmetNumbers: string | null;
+  customerSignatureUrl: string | null;
+  status: string;
+  createdAt: string;
+  results: InspectionResultItem[];
+}
+
+export type CustomerDocument = CustomerDocumentWaiver | CustomerDocumentInspection;
+
+export function useCustomerDocuments(customerId: string | null) {
+  return useQuery<CustomerDocument[]>({
+    queryKey: ['customer-documents', customerId],
+    queryFn: () => api.get(`/customers/${customerId}/documents`),
+    enabled: !!customerId,
+  });
+}
+
+export function useSendCustomerDocument() {
+  return useMutation({
+    mutationFn: ({
+      customerId,
+      type,
+      documentId,
+      recipientEmail,
+    }: {
+      customerId: string;
+      type: 'waiver' | 'inspection';
+      documentId: string;
+      recipientEmail?: string;
+    }) =>
+      api.post<{ sent: boolean; to: string }>(`/customers/${customerId}/documents/email`, {
+        type,
+        documentId,
+        recipientEmail,
+      }),
   });
 }

@@ -3,8 +3,6 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { formatManilaDate, formatManilaDateTime } from '../utils/manila-date.js';
 import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
 import { escapeHtml } from '../services/email.js';
-import { triggerEveningNotifications } from './evening-trigger.js';
-
 // ─── Shared helpers ────────────────────────────────────────────────────────
 
 function manilaHour(isoString: string): number {
@@ -140,15 +138,7 @@ export function startDailySummaryJob(): void {
     { timezone: 'Asia/Manila' },
   );
 
-  // End-of-day fallback: fires at 18:00 only if cash-up was never reconciled.
-  // The primary trigger is POST /cashup/reconcile via evening-trigger.ts.
-  cron.schedule(
-    '0 18 * * *',
-    () => { void triggerEveningNotifications('fallback'); },
-    { timezone: 'Asia/Manila' },
-  );
-
-  console.log('[daily-summary] Jobs scheduled (07:00 morning + 18:00 fallback, Asia/Manila)');
+  console.log('[daily-summary] Jobs scheduled (07:00 morning, Asia/Manila) — evening report fires on cash-up only');
 }
 
 export async function runMorningSummary(): Promise<void> {
@@ -365,7 +355,7 @@ export async function runEveningSnapshot(): Promise<void> {
       : '• No model data';
 
     const message =
-      `🌆 <b>Lola's End-of-Day Snapshot</b>\n` +
+      `🌅 <b>Lola's End-of-Day Snapshot</b>\n` +
       `${divider}\n` +
       `<b>9 PM returns tonight — final count: ${eveningCount}</b>\n` +
       `${eveningSection}\n` +

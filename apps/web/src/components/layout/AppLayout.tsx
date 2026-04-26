@@ -15,12 +15,21 @@ export function AppLayout() {
   useTaskRealtime(employeeId);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
+    <div className="flex h-screen w-full min-w-0 overflow-hidden bg-gray-50">
       <MidayLostOpportunityBanner storeId={selectedStoreId ?? ''} />
       <Sidebar />
-      <div className={`flex flex-1 flex-col transition-all ${sidebarOpen ? 'ml-52' : 'ml-0 md:ml-16'}`}>
+      {/*
+        min-w-0: flex item default is min-width:auto (content size) — without this,
+        wide tables/headers force the main column past the viewport. Individual pages
+        use overflow-x-auto on their own scroll containers (e.g. Table component).
+      */}
+      <div
+        className={`flex min-w-0 flex-1 flex-col transition-all ${
+          sidebarOpen ? 'ml-52' : 'ml-0 md:ml-16'
+        }`}
+      >
         <Header />
-        <main className="flex-1 overflow-y-auto p-3 sm:p-6">
+        <main className="min-w-0 flex-1 overflow-y-auto p-3 sm:p-6">
           <Outlet />
         </main>
       </div>

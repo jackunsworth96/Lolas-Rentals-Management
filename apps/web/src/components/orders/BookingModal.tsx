@@ -15,6 +15,8 @@ import { formatCurrency } from '../../utils/currency.js';
 import { formatPickupDatetimeManila } from '../../utils/date.js';
 import { usePaymentRouting } from '../../hooks/use-payment-routing.js';
 import { resolveStoreFromSource } from '@lolas/shared';
+import { InspectionModal } from './InspectionModal.js';
+import { useAuthStore } from '../../stores/auth-store.js';
 
 // ── AM/PM datetime helpers ──
 
@@ -190,6 +192,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const storeId = storeIdFromSource(rawOrder.source);
   const isDirect = rawOrder.booking_channel === 'direct' || rawOrder.booking_channel === 'walk_in';
   const payload = rawOrder.payload ?? {};
+  const employeeName = useAuthStore((s) => s.user?.username ?? 'Staff');
 
   const waiverRef = isDirect
     ? (rawOrder.order_reference ?? null)
@@ -215,6 +218,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     : Number(payload.total ?? payload.order_total ?? payload.web_quote ?? 0) || 0;
 
   const [step, setStep] = useState<Step>('review');
+  const [inspectionOpen, setInspectionOpen] = useState(false);
   const [customer, setCustomer] = useState<CustomerData>(billing);
   const [waiverCopied, setWaiverCopied] = useState(false);
   const [vehicles, setVehicles] = useState<VehicleRow[]>([emptyVehicleRow()]);
@@ -238,6 +242,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const [preActivationMethodId, setPreActivationMethodId] = useState('');
   const [preActivationRef, setPreActivationRef] = useState('');
   const [preActivationAmount, setPreActivationAmount] = useState<number | ''>('');
+  const [collectNowAmount, setCollectNowAmount] = useState<number | ''>('');
   const [dropoffLocationNote, setDropoffLocationNote] = useState('');
 
   const { data: vehicleModels } = useVehicleModels() as { data: Array<{ id: string; name: string }> | undefined };
@@ -277,6 +282,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     setPreActivationMethodId('');
     setPreActivationRef('');
     setPreActivationAmount('');
+    setCollectNowAmount('');
     setDropoffLocationNote('');
 
     let pickup = '';
@@ -497,6 +503,10 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   // Card surcharge applies to rental+addons only, not to transfer or charity.
   const finalTotal = subtotalBeforeSurcharge + cardSurchargeAmount + transferBillable + charityAmount;
 
+  // Partial-payment support: how much to collect at activation (defaults to full total).
+  const effectiveCollectNow = collectNowAmount === '' ? finalTotal : Number(collectNowAmount);
+  const previewBalanceDue = paymentMethodId ? Math.max(0, finalTotal - effectiveCollectNow) : finalTotal;
+
   const stepIndex = STEPS.findIndex((s) => s.key === step);
   const canGoNext = stepIndex < STEPS.length - 1;
   const canGoBack = stepIndex > 0;
@@ -665,6 +675,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
       excludeTransferFromBalance: transferPaidByCustomer,
       transferAccommodation: transferAccommodation.trim() || null,
       dropoffLocationNote: dropoffLocationNote.trim() || null,
+      partialPaymentAmount: (paymentMethodId && effectiveCollectNow < finalTotal) ? effectiveCollectNow : undefined,
     };
   }
 
@@ -743,6 +754,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const stepTitle = `Process Order — ${STEPS[stepIndex].label} (${stepIndex + 1}/${STEPS.length})`;
 
   return (
+    <>
     <Modal open={open} onClose={onClose} title={stepTitle} size="xl">
       <div className="min-h-[400px]">
         {/* Step indicator */}
@@ -1132,6 +1144,19 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                 Check Settings &gt; Fleet Statuses to ensure status categories are configured correctly.
               </div>
             )}
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setInspectionOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-teal-600 px-3 py-1.5 text-sm font-medium text-teal-700 transition-colors hover:bg-teal-50"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+                Open Inspection
+              </button>
+            </div>
 
             {vehicles.map((v, i) => {
               const pickupParts = splitDatetime(v.pickupDatetime);
@@ -1538,6 +1563,35 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
               </div>
             </div>
 
+            {paymentMethodId && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                <label className="block">
+                  <span className="text-sm font-medium text-gray-700">Amount to collect now</span>
+                  <p className="text-xs text-gray-500 mb-1">
+                    Leave blank to collect the full total. Reduce if the customer is paying part now and will settle the rest later.
+                  </p>
+                  <input
+                    type="number"
+                    min={0}
+                    max={finalTotal}
+                    step={1}
+                    value={collectNowAmount}
+                    onChange={(e) => setCollectNowAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder={String(finalTotal)}
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                </label>
+                {previewBalanceDue > 0 && (
+                  <p className="mt-2 text-sm font-medium text-amber-700">
+                    Balance due after activation: {formatCurrency(previewBalanceDue)}
+                  </p>
+                )}
+                {previewBalanceDue === 0 && collectNowAmount !== '' && (
+                  <p className="mt-2 text-xs text-green-700">Full amount collected — no balance due.</p>
+                )}
+              </div>
+            )}
+
             {(paymentMethodId || Number(securityDeposit) > 0) && (
               <div className="grid grid-cols-2 gap-4">
                 {surchargePercent > 0 ? (
@@ -1730,5 +1784,19 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
         )}
       </div>
     </Modal>
+
+    <InspectionModal
+      open={inspectionOpen}
+      onClose={() => setInspectionOpen(false)}
+      orderId={rawOrder.id}
+      orderReference={waiverRef ?? rawOrder.id}
+      storeId={storeId}
+      employeeName={employeeName}
+      onComplete={() => setInspectionOpen(false)}
+      onVehicleAssigned={(vehicleId) => {
+        updateVehicle(0, { vehicleId });
+      }}
+    />
+    </>
   );
 }

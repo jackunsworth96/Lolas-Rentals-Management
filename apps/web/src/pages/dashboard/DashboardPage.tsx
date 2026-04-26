@@ -287,10 +287,9 @@ export default function DashboardPage() {
       {metrics?.bookingSourceSplit != null && (
         <section>
           <SectionHeading>Today's Bookings by Source</SectionHeading>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
             <StatCard label="Direct / Online" value={String(metrics.bookingSourceSplit.directWeb)} />
             <StatCard label="Walk-in" value={String(metrics.bookingSourceSplit.walkIn)} />
-            <StatCard label="WooCommerce" value={String(metrics.bookingSourceSplit.wooCommerce)} />
             <StatCard label="Total Today" value={String(metrics.bookingSourceSplit.total)} />
           </div>
         </section>

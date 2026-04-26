@@ -12,10 +12,15 @@ import { escapeHtml } from '../services/email.js';
  * remaining sections are still sent, so one bad table never silences the post.
  */
 export function startFleetSummaryJob(): void {
-  // Fleet summary is now fired by evening-trigger.ts — either immediately when
-  // cash-up is reconciled, or at 18:00 Manila as a fallback. No standalone cron
-  // is needed here.
-  console.log('[fleet-summary] Managed by evening-trigger (cash-up reconciled or 18:00 fallback)');
+  // Fleet summary is fired by evening-trigger.ts when cash-up is reconciled.
+  // No standalone cron — cash-up is the only trigger.
+  console.log('[fleet-summary] Managed by evening-trigger (fires on cash-up reconciliation)');
+}
+
+/** Returns true if the model name looks like a tuktuk (Bajaj RE, TVS King, etc.) */
+function isTuktukModel(name: string): boolean {
+  const lower = name.toLowerCase();
+  return lower.includes('bajaj') || lower.includes('tuktuk') || lower.includes('tuk-tuk') || lower.includes('tuk tuk') || lower.includes('tvs');
 }
 
 export async function runFleetSummary(): Promise<void> {
@@ -74,7 +79,7 @@ export async function runFleetSummary(): Promise<void> {
 
     // Count statuses (exclude Sold/Closed as they are permanently off-fleet)
     const EXCLUDED_STATUSES = new Set(['Sold', 'Closed']);
-    const activeVehicles   = fleetRows.filter((v) => !EXCLUDED_STATUSES.has(v.status) && v.status === 'Active');
+    const activeVehicles = fleetRows.filter((v) => !EXCLUDED_STATUSES.has(v.status) && v.status === 'Active');
     const availableVehicles = fleetRows.filter((v) => v.status === 'Available');
     const outOfServiceVehicles = fleetRows.filter(
       (v) => !EXCLUDED_STATUSES.has(v.status) && v.status !== 'Active' && v.status !== 'Available',
@@ -82,11 +87,17 @@ export async function runFleetSummary(): Promise<void> {
 
     const totalRentable = activeVehicles.length + availableVehicles.length + outOfServiceVehicles.length;
     const inUseCount = activeVehicles.length;
-    const availableCount = availableVehicles.length;
     const outOfServiceCount = outOfServiceVehicles.length;
     const utilisationPct = totalRentable > 0
       ? Math.round((inUseCount / totalRentable) * 100)
       : 0;
+
+    // Split available + in-use counts by vehicle type
+    const modelName = (v: FleetRow) => v.model_id ? (modelNameMap.get(v.model_id) ?? '') : '';
+    const beatsInUse      = activeVehicles.filter((v) => !isTuktukModel(modelName(v))).length;
+    const tuktuksInUse    = activeVehicles.filter((v) => isTuktukModel(modelName(v))).length;
+    const beatsAvailable   = availableVehicles.filter((v) => !isTuktukModel(modelName(v))).length;
+    const tuktuksAvailable = availableVehicles.filter((v) => isTuktukModel(modelName(v))).length;
 
     // ── 2. Out-of-service lines with days out ────────────────────────────────
     const oosLines = outOfServiceVehicles.map((v) => {
@@ -130,9 +141,9 @@ export async function runFleetSummary(): Promise<void> {
       `🛵 <b>Fleet End-of-Day Report — ${escapeHtml(dayHeader)}</b>\n` +
       `${divider}\n` +
       `<b>Utilisation (Lola's Rentals)</b>\n` +
-      `In Use: ${inUseCount} bikes\n` +
-      `Available: ${availableCount} bikes\n` +
-      `Out of Service: ${outOfServiceCount} bikes\n` +
+      `Honda Beats — In Use: ${beatsInUse} | Available: ${beatsAvailable}\n` +
+      `Bajaj RE Tuktuks — In Use: ${tuktuksInUse} | Available: ${tuktuksAvailable}\n` +
+      `Out of Service: ${outOfServiceCount}\n` +
       `Utilisation rate: ${utilisationPct}%\n` +
       `${divider}\n` +
       `<b>Out of Service</b>\n` +

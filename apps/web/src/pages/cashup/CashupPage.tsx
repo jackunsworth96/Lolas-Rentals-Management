@@ -16,6 +16,8 @@ import {
   type TransferRow,
   type CharityDonationRow,
   type DiscountRow,
+  type RefundRow,
+  type DepositReturnRow,
 } from '../../api/cashup.js';
 import { BeforeCloseModal } from '../../components/cashup/BeforeCloseModal.js';
 import { DenominationCounter } from '../../components/cashup/DenominationCounter.js';
@@ -128,7 +130,10 @@ export default function CashupPage() {
   const tillTotal = useMemo(() => denomSum(tillDenoms), [tillDenoms]);
   const depEnvTotal = useMemo(() => denomSum(depEnvDenoms), [depEnvDenoms]);
 
-  // Expected figures split (includes cash misc sales in till calculation)
+  // Expected figures split (includes cash misc sales in till calculation).
+  // Subtract cash refunds (manual Issue Refund payments) and deposit returns
+  // (settle-flow deposit refunds recorded as journal entries) — both represent
+  // cash leaving the till and must reduce the expected count.
   const expectedCashSales = summary
     ? summary.openingFloat.amount +
       summary.totals.cashSalesTotal +
@@ -136,7 +141,9 @@ export default function CashupPage() {
       summary.totals.interStoreIn -
       summary.totals.expenseTotal -
       summary.totals.depositTotal -
-      summary.totals.interStoreOut
+      summary.totals.interStoreOut -
+      (summary.totals.cashRefundTotal ?? 0) -
+      (summary.totals.depositReturnTotal ?? 0)
     : 0;
   const expectedDepositsHeld = summary
     ? summary.totals.cashDepositsHeldTotal
@@ -498,6 +505,14 @@ export default function CashupPage() {
                 subtitle={`In ${formatCurrency(summary.totals.interStoreIn)} / Out ${formatCurrency(summary.totals.interStoreOut)}`}
               />
             )}
+            {((summary.totals.refundTotal ?? 0) + (summary.totals.depositReturnTotal ?? 0)) > 0 && (
+              <SummaryCard
+                label="Refunds Out"
+                value={(summary.totals.refundTotal ?? 0) + (summary.totals.depositReturnTotal ?? 0)}
+                color="red"
+                subtitle="Cash paid back"
+              />
+            )}
             {(summary.totals.discountsTotal ?? 0) > 0 && (
               <SummaryCard label="Discounts Given" value={summary.totals.discountsTotal} color="orange" subtitle="Info only" />
             )}
@@ -602,6 +617,18 @@ export default function CashupPage() {
               expenses={summary.transactions.expenses}
               total={summary.totals.expenseTotal}
             />
+            {(summary.totals.refundTotal ?? 0) > 0 && (
+              <RefundsSection
+                refunds={(summary.transactions.refunds ?? []) as RefundRow[]}
+                total={summary.totals.refundTotal ?? 0}
+              />
+            )}
+            {(summary.totals.depositReturnTotal ?? 0) > 0 && (
+              <DepositReturnsSection
+                returns={(summary.transactions.depositReturns ?? []) as DepositReturnRow[]}
+                total={summary.totals.depositReturnTotal ?? 0}
+              />
+            )}
             {(summary.totals.charityDonationsTotal ?? 0) > 0 && (
               <CharityDonationsSection
                 donations={summary.charityDonations ?? []}
@@ -1417,6 +1444,95 @@ function DiscountsSection({
               </div>
               <span className="ml-3 whitespace-nowrap text-sm font-medium text-orange-700">
                 -{formatCurrency(d.amount)}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RefundsSection({
+  refunds,
+  total,
+}: {
+  refunds: RefundRow[];
+  total: number;
+}) {
+  return (
+    <div className="rounded-lg border border-red-200 border-l-4 border-l-red-500 bg-white">
+      <div className="flex items-center justify-between border-b border-red-100 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span>↩️</span>
+          <div>
+            <h3 className="text-sm font-semibold text-red-900">Refunds Issued</h3>
+            <p className="text-[10px] text-red-700">Cash paid back to customers — reduces till</p>
+          </div>
+        </div>
+        <span className="text-sm font-bold text-red-700">-{formatCurrency(total)}</span>
+      </div>
+      <div className="max-h-60 overflow-y-auto">
+        {refunds.length === 0 ? (
+          <p className="px-4 py-3 text-sm text-gray-400">No refunds today</p>
+        ) : (
+          refunds.map((r) => (
+            <div key={r.id} className="flex items-center justify-between border-b border-red-50 px-4 py-2 last:border-b-0">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-gray-800">
+                  {r.customerName ?? 'Customer'}
+                </p>
+                <p className="text-xs text-gray-500 capitalize">
+                  {r.paymentType} · {r.methodId}
+                  {r.createdAt && ` · ${formatTime(r.createdAt)}`}
+                </p>
+              </div>
+              <span className="ml-3 whitespace-nowrap text-sm font-medium text-red-700">
+                -{formatCurrency(r.amount)}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DepositReturnsSection({
+  returns: depositReturns,
+  total,
+}: {
+  returns: DepositReturnRow[];
+  total: number;
+}) {
+  return (
+    <div className="rounded-lg border border-amber-200 border-l-4 border-l-amber-500 bg-white">
+      <div className="flex items-center justify-between border-b border-amber-100 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span>🔓</span>
+          <div>
+            <h3 className="text-sm font-semibold text-amber-900">Deposit Returns</h3>
+            <p className="text-[10px] text-amber-700">Deposits refunded at order settlement — reduces till</p>
+          </div>
+        </div>
+        <span className="text-sm font-bold text-amber-700">-{formatCurrency(total)}</span>
+      </div>
+      <div className="max-h-60 overflow-y-auto">
+        {depositReturns.length === 0 ? (
+          <p className="px-4 py-3 text-sm text-gray-400">No deposit returns today</p>
+        ) : (
+          depositReturns.map((r) => (
+            <div key={r.id} className="flex items-center justify-between border-b border-amber-50 px-4 py-2 last:border-b-0">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-gray-800">
+                  {r.description ?? 'Deposit return'}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {r.createdAt && formatTime(r.createdAt)}
+                </p>
+              </div>
+              <span className="ml-3 whitespace-nowrap text-sm font-medium text-amber-700">
+                -{formatCurrency(r.amount)}
               </span>
             </div>
           ))

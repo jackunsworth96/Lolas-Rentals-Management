@@ -719,6 +719,7 @@ const processBodySchema = z.object({
   excludeTransferFromBalance: z.boolean().optional().default(false),
   transferAccommodation: z.string().max(500).nullable().optional(),
   dropoffLocationNote: z.string().max(500).nullable().optional(),
+  partialPaymentAmount: z.number().min(0).optional(),
 });
 
 router.post('/:id/process', requirePermission(Permission.EditOrders), async (req, res, next) => {
@@ -816,6 +817,7 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
       settlementRef: body.settlementRef ?? null,
       excludeTransferFromBalance: body.excludeTransferFromBalance ?? false,
       transferAccommodation: body.transferAccommodation ?? null,
+      partialPaymentAmount: body.partialPaymentAmount,
     });
 
     // Persist the optional dropoff meeting-point note on the created order.
