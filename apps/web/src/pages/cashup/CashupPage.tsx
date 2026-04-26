@@ -1525,7 +1525,8 @@ function DepositReturnsSection({
             <div key={r.id} className="flex items-center justify-between border-b border-amber-50 px-4 py-2 last:border-b-0">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-gray-800">
-                  {r.description ?? 'Deposit return'}
+                  {r.bookingToken ?? r.referenceId ?? 'Deposit return'}
+                  {r.customerName && <span className="ml-1 font-normal text-gray-600">— {r.customerName}</span>}
                 </p>
                 <p className="text-xs text-gray-500">
                   {r.createdAt && formatTime(r.createdAt)}

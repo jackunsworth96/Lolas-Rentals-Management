@@ -48,6 +48,8 @@ export interface DepositReturnRow {
   description: string | null;
   accountId: string | null;
   referenceId: string | null;
+  bookingToken: string | null;
+  customerName: string | null;
   createdAt: string;
 }
 

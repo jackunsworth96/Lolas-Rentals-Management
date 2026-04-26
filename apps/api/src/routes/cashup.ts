@@ -338,16 +338,42 @@ router.get(
       // Deposit returns written by settle_order_atomic (journal-only, no payments row).
       // Exclude entries whose reference_id matches a manual-refund payment ID to prevent
       // double-counting with the payment_type='refund' rows handled above.
-      const depositReturnRows = refundJournalEntries
-        .filter((j) => !refundPaymentIds.has(String(j.reference_id)))
-        .map((j) => ({
-          id: j.id,
-          amount: Number(j.credit ?? 0),
-          description: j.description,
-          accountId: j.account_id,
-          referenceId: j.reference_id,
-          createdAt: j.created_at,
-        }));
+      const filteredRefundJournalEntries = refundJournalEntries
+        .filter((j) => !refundPaymentIds.has(String(j.reference_id)));
+
+      // Enrich with booking_token + customer name for display on the cash-up page.
+      const depositRefundOrderIds = [...new Set(
+        filteredRefundJournalEntries.map((j) => String(j.reference_id)).filter(Boolean),
+      )];
+      const depositRefundOrderMap = new Map<string, { bookingToken: string | null; customerName: string | null }>();
+      if (depositRefundOrderIds.length > 0) {
+        const { data: depositRefundOrders } = await sb
+          .from('orders')
+          .select('id, booking_token, customers!customer_id(name)')
+          .in('id', depositRefundOrderIds);
+        for (const o of (depositRefundOrders ?? []) as { id: string; booking_token: string | null; customers: { name: string } | null }[]) {
+          depositRefundOrderMap.set(o.id, {
+            bookingToken: o.booking_token ?? null,
+            customerName: (o.customers as { name: string } | null)?.name ?? null,
+          });
+        }
+      }
+
+      const depositReturnRows = filteredRefundJournalEntries
+        .map((j) => {
+          const orderId = String(j.reference_id ?? '');
+          const orderInfo = depositRefundOrderMap.get(orderId);
+          return {
+            id: j.id,
+            amount: Number(j.credit ?? 0),
+            description: j.description,
+            accountId: j.account_id,
+            referenceId: j.reference_id,
+            bookingToken: orderInfo?.bookingToken ?? null,
+            customerName: orderInfo?.customerName ?? null,
+            createdAt: j.created_at,
+          };
+        });
       const depositReturnTotal = depositReturnRows.reduce((s, r) => s + r.amount, 0);
 
       // Only cash deposits affect the physical till
