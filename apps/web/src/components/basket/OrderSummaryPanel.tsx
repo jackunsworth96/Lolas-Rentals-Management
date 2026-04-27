@@ -99,7 +99,7 @@ export function OrderSummaryPanel({
 
   const addonsTotal = addons
     .filter((a) => selectedAddonIds.has(Number(a.id)))
-    .reduce((sum, a) => sum + addonCost(a, rentalDays), 0);
+    .reduce((sum, a) => sum + addonCost(a, rentalDays), 0) * vehicleCount;
 
   const transferFee = transfer?.totalPrice ?? 0;
 
@@ -190,7 +190,7 @@ export function OrderSummaryPanel({
               amount={dropoffFee}
             />
           )}
-          {addonsTotal > 0 && <Row label="Add-ons Total" amount={addonsTotal} />}
+          {addonsTotal > 0 && <Row label={vehicleCount > 1 ? `Add-ons Total (×${vehicleCount})` : 'Add-ons Total'} amount={addonsTotal} />}
           {transferFee > 0 && <Row label="Transfer Fee" amount={transferFee} />}
           {surchargeAmount > 0 && (
             <Row label={`Card Surcharge (${surchargePercent}%)`} amount={surchargeAmount} />

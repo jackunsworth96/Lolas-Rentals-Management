@@ -373,8 +373,8 @@ export default function BasketPage() {
     () =>
       addons
         .filter((a) => selectedAddonIds.has(Number(a.id)))
-        .map((a) => ({ name: a.name, total: addonLineTotal(a, rentalDays) })),
-    [addons, selectedAddonIds, rentalDays],
+        .map((a) => ({ name: a.name, total: addonLineTotal(a, rentalDays) * vehicleCount })),
+    [addons, selectedAddonIds, rentalDays, vehicleCount],
   );
 
   const reviewSheetTransfer = useMemo(() => {
@@ -390,7 +390,7 @@ export default function BasketPage() {
     const vehicleSubtotal = basket.reduce((s, b) => s + b.dailyRate * rentalDays, 0);
     const addonsTotal = addons
       .filter((a) => selectedAddonIds.has(Number(a.id)))
-      .reduce((s, a) => s + addonLineTotal(a, rentalDays), 0);
+      .reduce((s, a) => s + addonLineTotal(a, rentalDays), 0) * basket.length;
     const transferFee = transfer?.totalPrice ?? 0;
     const subtotalBeforeSurcharge =
       vehicleSubtotal + addonsTotal + transferFee + pickupFee + dropoffFee;
@@ -591,7 +591,7 @@ export default function BasketPage() {
       const submittedAddonIds = new Set(allAddonIds);
       const selAddons = addons.filter((a) => submittedAddonIds.has(Number(a.id)));
       const clientTotal = basket.reduce((s, b) => s + b.dailyRate * rentalDays, 0)
-        + selAddons.reduce((s, a) => s + (a.addonType === 'per_day' ? a.pricePerDay * rentalDays : a.priceOneTime), 0)
+        + selAddons.reduce((s, a) => s + (a.addonType === 'per_day' ? a.pricePerDay * rentalDays : a.priceOneTime), 0) * basket.length
         + (transfer?.totalPrice ?? 0)
         + pickupFee + dropoffFee;
       const baseTotal = serverTotal > 0 ? serverTotal : clientTotal;
