@@ -286,8 +286,8 @@ interface ChatSessionPayload {
 /** Fire-and-forget upsert — never throws, never blocks the response. */
 function logChatSession(payload: ChatSessionPayload): void {
   const sb = getSupabaseClient();
-  sb.from('chat_sessions')
-    .upsert(
+  void Promise.resolve(
+    sb.from('chat_sessions').upsert(
       {
         session_id:        payload.session_id,
         store_id:          STORE_ID,
@@ -299,13 +299,12 @@ function logChatSession(payload: ChatSessionPayload): void {
         ended_at:          payload.ended_at ?? null,
       },
       { onConflict: 'session_id' },
-    )
-    .then(({ error }) => {
-      if (error) logger.warn({ err: error }, 'chat_sessions upsert failed');
-    })
-    .catch((err: unknown) => {
-      logger.warn({ err }, 'chat_sessions upsert threw');
-    });
+    ),
+  ).then(({ error }) => {
+    if (error) logger.warn({ err: error }, 'chat_sessions upsert failed');
+  }).catch((err: unknown) => {
+    logger.warn({ err }, 'chat_sessions upsert threw');
+  });
 }
 
 // ── Router ────────────────────────────────────────────────────────────────────
