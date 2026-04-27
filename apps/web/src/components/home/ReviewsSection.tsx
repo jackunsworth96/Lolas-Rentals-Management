@@ -43,7 +43,7 @@ function initialsFromName(name: string): string {
 }
 
 const reviewsTrackClassName =
-  'flex gap-6 overflow-x-auto snap-x snap-mandatory [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden py-4 pl-6 pr-6';
+  'flex gap-6 overflow-x-auto snap-x snap-mandatory [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden py-4 pl-8 pr-8 md:pl-12 md:pr-12';
 
 const reviewCardSlotClassName =
   'w-[80vw] max-w-[340px] shrink-0 snap-start';

@@ -265,7 +265,8 @@ export default function LolasChat() {
   const [waitingForFirstToken, setWaitingForFirstToken] = useState(false);
   const [showBubble, setShowBubble] = useState(true);
 
-  const BTN_SIZE = 64; // matches h-16/w-16 (4rem)
+  /** Launcher hit area + drag math; was 64px (h-16), +10% for visibility */
+  const BTN_SIZE = 64 * 1.1;
   const { pos, hasDragged, onPointerDown, onPointerMove, onPointerUp } = useDraggable(BTN_SIZE);
 
   // Auto-dismiss the greeting bubble after a few seconds.
@@ -502,8 +503,8 @@ export default function LolasChat() {
               }
             }}
             aria-label="Open chat with Lolo, Lola's Assistant"
-            style={{ left: pos.x, top: pos.y, touchAction: 'none' }}
-            className="fixed z-[60] flex h-16 w-16 cursor-grab items-center justify-center bg-transparent p-0 transition-transform duration-150 active:cursor-grabbing active:scale-95 select-none"
+            style={{ left: pos.x, top: pos.y, touchAction: 'none', width: BTN_SIZE, height: BTN_SIZE }}
+            className="fixed z-[60] flex cursor-grab items-center justify-center bg-transparent p-0 transition-transform duration-150 active:cursor-grabbing active:scale-95 select-none"
           >
             <img
               src={aiChatIcon}
@@ -556,7 +557,7 @@ export default function LolasChat() {
               <img
                 src={aiChatIcon}
                 alt=""
-                className="h-10 w-10 shrink-0 object-contain"
+                className="h-12 w-12 shrink-0 object-contain"
                 aria-hidden
               />
               <div className="leading-tight">
