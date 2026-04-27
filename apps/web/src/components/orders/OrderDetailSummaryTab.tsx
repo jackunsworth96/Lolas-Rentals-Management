@@ -281,7 +281,7 @@ export function OrderDetailSummaryTab({
   }, [fleetStatuses]);
 
   const availableVehicles = useMemo(
-    () => (vehicles as Array<Record<string, unknown>>).filter((v) =>
+    () => vehicles.filter((v) =>
       rentableStatusSet.has(String(v.status ?? '').toLowerCase()),
     ),
     [vehicles, rentableStatusSet],

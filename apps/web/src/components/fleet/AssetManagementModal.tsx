@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Modal } from '../common/Modal.js';
 import { useVehicle, useRecordPurchase, useRecordSale, useBatchDepreciation } from '../../api/fleet.js';
-import { useChartOfAccounts } from '../../api/config.js';
+import { useChartOfAccounts, useStores } from '../../api/config.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { formatDate } from '../../utils/date.js';
 
@@ -14,6 +14,7 @@ interface AssetManagementModalProps {
 export function AssetManagementModal({ open, onClose, vehicleId }: AssetManagementModalProps) {
   const { data: vehicle, isLoading } = useVehicle(vehicleId);
   const { data: accounts = [] } = useChartOfAccounts();
+  const { data: stores = [] } = useStores({ includeCompany: true });
   const recordPurchase = useRecordPurchase();
   const recordSale = useRecordSale();
   const batchDepreciation = useBatchDepreciation();
@@ -33,6 +34,8 @@ export function AssetManagementModal({ open, onClose, vehicleId }: AssetManageme
   const [saleAccDepreciationAccountId, setSaleAccDepreciationAccountId] = useState('');
   const [gainLossAccountId, setGainLossAccountId] = useState('');
 
+  const currentPeriod = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const [depreciationPeriod, setDepreciationPeriod] = useState(currentPeriod);
   const [depreciationAccountId, setDepreciationAccountId] = useState('');
   const [accumulatedAccountId, setAccumulatedAccountId] = useState('');
 
@@ -73,9 +76,14 @@ export function AssetManagementModal({ open, onClose, vehicleId }: AssetManageme
 
   const handleBatchDepreciation = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!depreciationAccountId || !accumulatedAccountId) return;
+    if (!depreciationAccountId || !accumulatedAccountId || !vehicle) return;
     batchDepreciation.mutate(
-      { vehicleIds: [vehicleId], depreciationAccountId, accumulatedAccountId },
+      {
+        storeId: vehicle.storeId,
+        period: depreciationPeriod,
+        depreciationExpenseAccountId: depreciationAccountId,
+        accDepreciationAccountId: accumulatedAccountId,
+      },
       { onSuccess: () => onClose() },
     );
   };
@@ -89,8 +97,31 @@ export function AssetManagementModal({ open, onClose, vehicleId }: AssetManageme
     );
   }
 
-  const accList = accounts as Array<{ id: string; name: string; type?: string; accountType?: string }>;
+  const accList = accounts as Array<{ id: string; name: string; storeId?: string | null; type?: string; accountType?: string }>;
+  const storeList = stores as Array<{ id: string; name: string }>;
   const accType = (a: (typeof accList)[0]) => a.type ?? a.accountType ?? '';
+
+  // Build a filtered + labelled account list for this vehicle's store.
+  // Rule: show accounts belonging to this vehicle's store, OR shared accounts
+  // (storeId null / 'company'). If two accounts end up with the same name
+  // after filtering, append the store name in parentheses to disambiguate.
+  const vehicleStoreId = vehicle?.storeId ?? null;
+  const labelledAccounts = useMemo(() => {
+    const relevant = accList.filter((a) => {
+      const sid = a.storeId ?? null;
+      return sid === null || sid === 'company' || sid === vehicleStoreId;
+    });
+    const nameCount = new Map<string, number>();
+    for (const a of relevant) nameCount.set(a.name, (nameCount.get(a.name) ?? 0) + 1);
+    const storeName = (sid: string | null | undefined) =>
+      storeList.find((s) => s.id === sid)?.name ?? sid ?? '';
+    return relevant.map((a) => ({
+      ...a,
+      label: (nameCount.get(a.name) ?? 0) > 1
+        ? `${a.name} (${storeName(a.storeId)})`
+        : a.name,
+    }));
+  }, [accList, storeList, vehicleStoreId]);
 
   return (
     <Modal open onClose={onClose} title={`Asset — ${vehicle.name}`} size="lg">
@@ -139,14 +170,14 @@ export function AssetManagementModal({ open, onClose, vehicleId }: AssetManageme
               <span className="text-sm text-gray-600">Fixed asset account</span>
               <select value={fixedAssetAccountId} onChange={(e) => setFixedAssetAccountId(e.target.value)} required className="mt-1 block w-40 rounded border px-2 py-1.5 text-sm">
                 <option value="">Select</option>
-                {accList.filter((a) => (accType(a) || '').toLowerCase() === 'asset').map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                {labelledAccounts.filter((a) => (accType(a) || '').toLowerCase() === 'asset').map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
               </select>
             </label>
             <label className="block">
               <span className="text-sm text-gray-600">Cash account</span>
               <select value={cashAccountId} onChange={(e) => setCashAccountId(e.target.value)} required className="mt-1 block w-40 rounded border px-2 py-1.5 text-sm">
                 <option value="">Select</option>
-                {accList.filter((a) => (accType(a) || '').toLowerCase() === 'asset').map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                {labelledAccounts.filter((a) => (accType(a) || '').toLowerCase() === 'asset').map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
               </select>
             </label>
             <button type="submit" disabled={recordPurchase.isPending} className="self-end rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50">Record purchase</button>
@@ -169,28 +200,28 @@ export function AssetManagementModal({ open, onClose, vehicleId }: AssetManageme
               <span className="text-sm text-gray-600">Cash account</span>
               <select value={saleCashAccountId} onChange={(e) => setSaleCashAccountId(e.target.value)} required className="mt-1 block w-40 rounded border px-2 py-1.5 text-sm">
                 <option value="">Select</option>
-                {accList.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                {labelledAccounts.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
               </select>
             </label>
             <label className="block">
               <span className="text-sm text-gray-600">Fixed asset account</span>
               <select value={saleFixedAssetAccountId} onChange={(e) => setSaleFixedAssetAccountId(e.target.value)} required className="mt-1 block w-40 rounded border px-2 py-1.5 text-sm">
                 <option value="">Select</option>
-                {accList.filter((a) => (accType(a) || '').toLowerCase() === 'asset').map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                {labelledAccounts.filter((a) => (accType(a) || '').toLowerCase() === 'asset').map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
               </select>
             </label>
             <label className="block">
               <span className="text-sm text-gray-600">Accumulated depreciation account</span>
               <select value={saleAccDepreciationAccountId} onChange={(e) => setSaleAccDepreciationAccountId(e.target.value)} required className="mt-1 block w-40 rounded border px-2 py-1.5 text-sm">
                 <option value="">Select</option>
-                {accList.filter((a) => (accType(a) || '').toLowerCase() === 'asset').map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                {labelledAccounts.filter((a) => (accType(a) || '').toLowerCase() === 'asset').map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
               </select>
             </label>
             <label className="block">
               <span className="text-sm text-gray-600">Gain/loss account</span>
               <select value={gainLossAccountId} onChange={(e) => setGainLossAccountId(e.target.value)} required className="mt-1 block w-40 rounded border px-2 py-1.5 text-sm">
                 <option value="">Select</option>
-                {accList.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                {labelledAccounts.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
               </select>
             </label>
             <button type="submit" disabled={recordSale.isPending} className="self-end rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50">Record sale</button>
@@ -199,20 +230,31 @@ export function AssetManagementModal({ open, onClose, vehicleId }: AssetManageme
         </section>
 
         <section className="border-t border-gray-200 pt-4">
-          <h3 className="mb-3 font-medium text-gray-900">Run depreciation (this vehicle)</h3>
+          <h3 className="mb-1 font-medium text-gray-900">Run depreciation</h3>
+          <p className="mb-3 text-xs text-gray-500">Posts one month of depreciation for all eligible vehicles in this store.</p>
           <form onSubmit={handleBatchDepreciation} className="flex flex-wrap items-end gap-4">
+            <label className="block">
+              <span className="text-sm text-gray-600">Period</span>
+              <input
+                type="month"
+                value={depreciationPeriod}
+                onChange={(e) => setDepreciationPeriod(e.target.value)}
+                required
+                className="mt-1 block rounded border px-2 py-1.5 text-sm"
+              />
+            </label>
             <label className="block">
               <span className="text-sm text-gray-600">Depreciation expense account</span>
               <select value={depreciationAccountId} onChange={(e) => setDepreciationAccountId(e.target.value)} required className="mt-1 block w-48 rounded border px-2 py-1.5 text-sm">
                 <option value="">Select</option>
-                {accList.filter((a) => (accType(a) || '').toLowerCase() === 'expense').map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                {labelledAccounts.filter((a) => (accType(a) || '').toLowerCase() === 'expense').map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
               </select>
             </label>
             <label className="block">
               <span className="text-sm text-gray-600">Accumulated depreciation account</span>
               <select value={accumulatedAccountId} onChange={(e) => setAccumulatedAccountId(e.target.value)} required className="mt-1 block w-48 rounded border px-2 py-1.5 text-sm">
                 <option value="">Select</option>
-                {accList.filter((a) => (accType(a) || '').toLowerCase() === 'asset').map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                {labelledAccounts.filter((a) => (accType(a) || '').toLowerCase() === 'asset').map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
               </select>
             </label>
             <button type="submit" disabled={batchDepreciation.isPending} className="rounded bg-green-600 px-4 py-1.5 text-sm text-white hover:bg-green-700 disabled:opacity-50">

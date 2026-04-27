@@ -27,6 +27,14 @@ function vehicleToDto(v: any) {
     currentMileage: v.currentMileage,
     orcrExpiryDate: v.orcrExpiryDate,
     surfRack: v.surfRack,
+    purchasePrice: v.purchasePrice ?? null,
+    purchaseDate: v.purchaseDate ?? null,
+    usefulLifeMonths: v.usefulLifeMonths ?? null,
+    salvageValue: v.salvageValue ?? 0,
+    accumulatedDepreciation: v.accumulatedDepreciation ?? 0,
+    bookValue: v.bookValue ?? 0,
+    totalBikeCost: v.totalBikeCost ?? 0,
+    setUpCosts: v.setUpCosts ?? 0,
   };
 }
 
@@ -587,7 +595,10 @@ router.post('/sale', requirePermission(Permission.EditFleet), validateBody(z.obj
 });
 
 router.post('/depreciation', requirePermission(Permission.EditFleet), validateBody(z.object({
-  vehicleIds: z.array(z.string()).min(1), depreciationAccountId: z.string(), accumulatedAccountId: z.string(),
+  storeId: z.string().min(1),
+  period: z.string().regex(/^\d{4}-\d{2}$/, 'period must be YYYY-MM'),
+  depreciationExpenseAccountId: z.string().min(1),
+  accDepreciationAccountId: z.string().min(1),
 })), async (req, res, next) => {
   try {
     const { batchDepreciation } = await import('../use-cases/fleet/batch-depreciation.js');

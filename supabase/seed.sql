@@ -103,7 +103,10 @@ VALUES
   ('BANK-UNION-BANK-store-lolas',  'Union Bank',                'Asset',     'company', true),
   ('BANK-BDO-store-lolas',         'BDO Bank',                  'Asset',     'company', true),
   ('NEW-VEHICLE-FUND-store-lolas', 'New Vehicle Fund',          'Asset',     'company', true),
-  ('CASH-LOLA',                    'Cash (Lola)',                'Asset',     'company', true)
+  ('CASH-LOLA',                    'Cash (Lola)',                'Asset',     'company', true),
+  -- migration 117: opening balance (charity held cash + equity offset)
+  ('CASH-CHARITY-WALLET',         'Charity wallet (held cash)', 'Asset',     'company', true),
+  ('OPENING-BALANCE-EQUITY',     'Opening balance equity',     'Equity',    'company', true)
 ON CONFLICT (id) DO NOTHING;
 
 COMMIT;

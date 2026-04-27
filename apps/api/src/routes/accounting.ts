@@ -8,6 +8,7 @@ import {
   TransferFundsRequestSchema,
 } from '@lolas/shared';
 import { z } from 'zod';
+import { getSupabaseClient } from '../adapters/supabase/client.js';
 
 const router = Router();
 router.use(authenticate);
@@ -25,24 +26,29 @@ router.get('/balances', requirePermission(Permission.ViewAccounts), validateQuer
   } catch (err) { next(err); }
 });
 
-function halfMonthRange(month: string, half: '1' | '2'): { from: string; to: string } {
+type HalfPeriod = '1' | '2' | 'full';
+
+function halfMonthRange(month: string, half: HalfPeriod): { from: string; to: string } {
   const [year, m] = month.split('-').map(Number);
+  const lastDay = new Date(year, m, 0).getDate();
   if (half === '1') {
     return { from: `${month}-01`, to: `${month}-15` };
   }
-  const lastDay = new Date(year, m, 0).getDate();
-  return { from: `${month}-16`, to: `${month}-${lastDay}` };
+  if (half === 'full') {
+    return { from: `${month}-01`, to: `${month}-${String(lastDay).padStart(2, '0')}` };
+  }
+  return { from: `${month}-16`, to: `${month}-${String(lastDay).padStart(2, '0')}` };
 }
 
 const BalancesV2QuerySchema = z.object({
   storeId: z.string(),
   month: z.string().regex(/^\d{4}-\d{2}$/),
-  half: z.enum(['1', '2']),
+  half: z.enum(['1', '2', 'full']),
 });
 
 router.get('/balances-v2', requirePermission(Permission.ViewAccounts), validateQuery(BalancesV2QuerySchema), async (req, res, next) => {
   try {
-    const { storeId, month, half } = req.query as { storeId: string; month: string; half: '1' | '2' };
+    const { storeId, month, half } = req.query as { storeId: string; month: string; half: HalfPeriod };
     const { from, to } = halfMonthRange(month, half);
 
     const configRepo = req.app.locals.deps.configRepo;
@@ -139,6 +145,20 @@ router.post('/transfer', requirePermission(Permission.EditAccounts), validateBod
       { accounting: req.app.locals.deps.accountingPort },
     );
     res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+router.get('/last-depreciation', requirePermission(Permission.ViewAccounts), async (req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+    const { data } = await sb
+      .from('journal_entries')
+      .select('date')
+      .eq('reference_type', 'depreciation')
+      .order('date', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    res.json({ success: true, data: { date: (data as { date?: string } | null)?.date ?? null } });
   } catch (err) { next(err); }
 });
 

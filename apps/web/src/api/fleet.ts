@@ -1,11 +1,25 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './client.js';
+import type { VehicleSummary } from '../types/api.js';
 
 export function useFleet(storeId: string) {
-  return useQuery({
+  return useQuery<VehicleSummary[]>({
     queryKey: ['fleet', storeId],
-    queryFn: () => api.get(`/fleet?storeId=${encodeURIComponent(storeId || 'all')}`),
+    queryFn: () => api.get<VehicleSummary[]>(`/fleet?storeId=${encodeURIComponent(storeId || 'all')}`),
     enabled: true,
+  });
+}
+
+export function useFleetBookValueSummary() {
+  return useQuery<{ totalBookValue: number; activeCount: number }>({
+    queryKey: ['fleet-book-value-summary'],
+    queryFn: async () => {
+      const vehicles = await api.get<VehicleSummary[]>('/fleet?storeId=all');
+      const active = vehicles.filter((v) => v.status !== 'Sold');
+      const totalBookValue = active.reduce((sum, v) => sum + (v.bookValue ?? 0), 0);
+      return { totalBookValue, activeCount: active.length };
+    },
+    staleTime: 60_000,
   });
 }
 

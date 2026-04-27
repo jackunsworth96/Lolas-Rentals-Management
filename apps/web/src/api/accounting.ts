@@ -36,7 +36,7 @@ export interface BalancesV2Response {
   summary: BalanceSummaryGroup[];
 }
 
-export function useBalancesV2(storeId: string, month: string, half: '1' | '2') {
+export function useBalancesV2(storeId: string, month: string, half: '1' | '2' | 'full') {
   const params = new URLSearchParams({ storeId, month, half });
   return useQuery<BalancesV2Response>({
     queryKey: ['balances-v2', storeId, month, half],
@@ -116,5 +116,13 @@ export function usePostOwnerDrawings() {
       qc.invalidateQueries({ queryKey: ['balances-v2'] });
       qc.invalidateQueries({ queryKey: ['journal-entries'] });
     },
+  });
+}
+
+export function useLastDepreciationDate() {
+  return useQuery<{ date: string | null }>({
+    queryKey: ['last-depreciation-date'],
+    queryFn: () => api.get<{ date: string | null }>('/accounting/last-depreciation'),
+    staleTime: 5 * 60_000,
   });
 }

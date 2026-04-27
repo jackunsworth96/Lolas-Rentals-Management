@@ -187,6 +187,11 @@ export class SupabaseFleetRepository implements FleetRepository {
     if (error) throw new Error(`updateStatus failed: ${error.message}`);
   }
 
+  /**
+   * @deprecated — superseded by post_batch_depreciation RPC (migration 119).
+   * Bare UPDATE outside a transaction left the fleet table and journal
+   * out of sync if the subsequent journal insert failed. Use the RPC.
+   */
   async updateDepreciation(
     vehicleId: string,
     accumulatedDepreciation: number,

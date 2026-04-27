@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useFleet, useFleetSync } from '../../api/fleet.js';
 import { useStores, useVehicleModels } from '../../api/config.js';
@@ -13,7 +13,26 @@ import { AssetManagementModal } from '../../components/fleet/AssetManagementModa
 import { ServiceHistoryModal } from '../../components/fleet/ServiceHistoryModal.js';
 import { FleetCalendar } from '../../components/fleet/FleetCalendar.js';
 import { formatDate } from '../../utils/date.js';
+import { formatCurrency } from '../../utils/currency.js';
 import type { VehicleSummary } from '../../types/api.js';
+
+function calcMonthlyDep(v: VehicleSummary): number {
+  if (!v.usefulLifeMonths || v.usefulLifeMonths <= 0) return 0;
+  const totalCost = v.totalBikeCost ?? 0;
+  const salvage = v.salvageValue ?? 0;
+  const bookVal = v.bookValue ?? 0;
+  if (bookVal <= salvage) return 0;
+  return Math.max(0, (totalCost - salvage) / v.usefulLifeMonths);
+}
+
+function bookValueColor(v: VehicleSummary): string {
+  if (v.purchasePrice == null) return 'text-gray-900';
+  if (v.purchasePrice === 0) return 'text-gray-900';
+  const bv = v.bookValue ?? 0;
+  if (bv <= v.purchasePrice * 0.10) return 'text-red-600';
+  if (bv >= v.purchasePrice * 0.75) return 'text-green-600';
+  return 'text-gray-900';
+}
 
 const STATUS_COLOR: Record<string, 'green' | 'blue' | 'yellow' | 'gray' | 'red'> = {
   Available: 'green',
@@ -46,10 +65,7 @@ export default function FleetPage() {
   const [serviceHistoryVehicle, setServiceHistoryVehicle] = useState<{ id: string; name: string; storeId: string } | null>(null);
 
   const storeIdForApi = fleetStoreFilter === 'all' || !fleetStoreFilter ? 'all' : fleetStoreFilter;
-  const { data: vehicles, isLoading } = useFleet(storeIdForApi) as {
-    data: VehicleSummary[] | undefined;
-    isLoading: boolean;
-  };
+  const { data: vehicles, isLoading } = useFleet(storeIdForApi);
   const { data: stores = [] } = useStores();
   const { data: models = [] } = useVehicleModels();
   const syncFleet = useFleetSync();
@@ -72,6 +88,18 @@ export default function FleetPage() {
 
   const statusColor = (s: string) => STATUS_COLOR[s] ?? 'gray';
   const getStoreName = (id: string) => storeList.find((s) => s.id === id)?.name ?? id;
+
+  const fleetSummary = useMemo(() => {
+    const totalFleetCost = filtered.reduce((sum, v) => {
+      const cost = v.purchasePrice ?? v.totalBikeCost ?? 0;
+      return sum + cost;
+    }, 0);
+    const totalBookValue = filtered.reduce((sum, v) => sum + (v.bookValue ?? 0), 0);
+    const totalMonthlyDep = filtered.reduce((sum, v) => sum + calcMonthlyDep(v), 0);
+    return { totalFleetCost, totalBookValue, totalMonthlyDep };
+  }, [filtered]);
+
+  const canViewAccounts = hasPermission('can_view_accounts');
 
   const columns = [
     { key: 'name', header: 'Vehicle' },
@@ -102,6 +130,50 @@ export default function FleetPage() {
         )
         : <span className="text-gray-400">—</span>,
     },
+    ...(canViewAccounts ? [
+      {
+        key: 'bookValue',
+        header: 'Book Value',
+        render: (r: VehicleSummary) => {
+          if (r.purchasePrice == null || r.purchaseDate == null) {
+            return <span className="text-xs text-gray-400">No data</span>;
+          }
+          const fullyDep = (r.bookValue ?? 0) <= (r.salvageValue ?? 0);
+          if (fullyDep) {
+            return <span className="text-xs text-gray-400">Fully dep.</span>;
+          }
+          return (
+            <span className={`font-lato tabular-nums text-sm ${bookValueColor(r)}`}>
+              {formatCurrency(r.bookValue ?? 0)}
+            </span>
+          );
+        },
+      },
+      {
+        key: 'monthlyDep',
+        header: 'Monthly Dep.',
+        render: (r: VehicleSummary) => {
+          if (r.purchasePrice == null || r.purchaseDate == null) {
+            return <span className="text-xs text-gray-400">No data</span>;
+          }
+          const dep = calcMonthlyDep(r);
+          if (dep === 0) {
+            return <span className="font-lato tabular-nums text-sm text-gray-400">₱0.00</span>;
+          }
+          return <span className="font-lato tabular-nums text-sm text-gray-700">{formatCurrency(dep)}</span>;
+        },
+      },
+      {
+        key: 'purchasePrice',
+        header: 'Purchase Price',
+        render: (r: VehicleSummary) => {
+          if (r.purchasePrice == null || r.purchaseDate == null) {
+            return <span className="text-xs text-gray-400">No data</span>;
+          }
+          return <span className="font-lato tabular-nums text-sm text-gray-700">{formatCurrency(r.purchasePrice)}</span>;
+        },
+      },
+    ] as typeof columns : []),
     {
       key: 'actions',
       header: '',
@@ -196,6 +268,29 @@ export default function FleetPage() {
           </button>
         </div>
       </div>
+
+      {viewMode === 'list' && filtered.length > 0 && hasPermission('can_view_accounts') && (
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Total Fleet Cost</p>
+            <p className="mt-1 font-lato text-xl font-bold tabular-nums text-gray-800">
+              {formatCurrency(fleetSummary.totalFleetCost)}
+            </p>
+          </div>
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Total Book Value</p>
+            <p className="mt-1 font-lato text-xl font-bold tabular-nums text-gray-800">
+              {formatCurrency(fleetSummary.totalBookValue)}
+            </p>
+          </div>
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Total Monthly Depreciation</p>
+            <p className="mt-1 font-lato text-xl font-bold tabular-nums text-gray-800">
+              {formatCurrency(fleetSummary.totalMonthlyDep)}
+            </p>
+          </div>
+        </div>
+      )}
 
       {viewMode === 'list' && (
         <Table

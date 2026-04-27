@@ -10,6 +10,7 @@ const ActivePage = lazy(() => import('./pages/orders/ActivePage.js'));
 const CompletedPage = lazy(() => import('./pages/orders/CompletedPage.js'));
 const FleetPage = lazy(() => import('./pages/fleet/FleetPage.js'));
 const UtilizationDashboard = lazy(() => import('./pages/fleet/UtilizationDashboard.js'));
+const AssetRegisterPage = lazy(() => import('./pages/fleet/AssetRegisterPage.js'));
 const MaintenancePage = lazy(() => import('./pages/maintenance/MaintenancePage.js'));
 const TransfersPage = lazy(() => import('./pages/transfers/TransfersPage.js'));
 const PublicBookingPage = lazy(() => import('./pages/transfers/PublicBookingPage.js'));
@@ -64,6 +65,12 @@ function RequireFleetBookValue({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function RequireAccounts({ children }: { children: React.ReactNode }) {
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  if (!hasPermission('can_view_accounts')) return <Navigate to="/fleet" replace />;
+  return <>{children}</>;
+}
+
 const Loading = () => (
   <div className="flex h-screen items-center justify-center">
     <div className="h-8 w-8 animate-spin rounded-full border-4 border-teal-brand border-t-transparent" />
@@ -113,6 +120,14 @@ export function AppRouter() {
                 <RequireFleetBookValue>
                   <UtilizationDashboard />
                 </RequireFleetBookValue>
+              }
+            />
+            <Route
+              path="fleet/asset-register"
+              element={
+                <RequireAccounts>
+                  <AssetRegisterPage />
+                </RequireAccounts>
               }
             />
             <Route path="maintenance" element={<MaintenancePage />} />
