@@ -39,7 +39,42 @@ router.get('/', validateQuery(ListQuerySchema), async (req, res, next) => {
   try {
     const { storeId, q = '' } = req.query as { storeId: string; q?: string };
     const customers = await req.app.locals.deps.customerRepo.search(storeId, q);
-    res.json({ success: true, data: customers });
+
+    if (customers.length === 0) {
+      res.json({ success: true, data: [] });
+      return;
+    }
+
+    // Enrich with live order stats so totalSpent and active-rental status are accurate
+    const sb = getSupabaseClient();
+    const customerIds = customers.map((c) => c.id);
+    const { data: orderRows, error: ordersErr } = await sb
+      .from('orders')
+      .select('customer_id, final_total, status')
+      .in('customer_id', customerIds);
+
+    if (ordersErr) throw new Error(`orders enrichment failed: ${ordersErr.message}`);
+
+    const ACTIVE_STATUSES = new Set(['active', 'confirmed']);
+    const statsByCustomer = new Map<string, { totalSpent: number; hasActiveOrder: boolean }>();
+    for (const o of orderRows ?? []) {
+      const cid = o.customer_id as string;
+      const s = statsByCustomer.get(cid) ?? { totalSpent: 0, hasActiveOrder: false };
+      if ((o.status as string) !== 'Cancelled') s.totalSpent += Number(o.final_total ?? 0);
+      if (ACTIVE_STATUSES.has((o.status as string)?.toLowerCase())) s.hasActiveOrder = true;
+      statsByCustomer.set(cid, s);
+    }
+
+    const enriched = customers.map((c) => {
+      const stats = statsByCustomer.get(c.id);
+      return {
+        ...c,
+        totalSpent: stats?.totalSpent ?? 0,
+        hasActiveOrder: stats?.hasActiveOrder ?? false,
+      };
+    });
+
+    res.json({ success: true, data: enriched });
   } catch (err) {
     next(err);
   }

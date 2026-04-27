@@ -6,7 +6,7 @@ import { SEO } from '../../components/seo/SEO.js';
 import { PawDivider } from '../../components/layout/PawDivider.js';
 import { BrandStorySection } from '../../components/about/BrandStorySection.js';
 import { PawsitiveGallery } from '../../components/about/PawsitiveGallery.js';
-import groupPic from '../../assets/About Us Page/Be Pawsitive Gallery/group_pic.jpeg';
+import { CloudinaryImage } from '../../components/ui/CloudinaryImage.js';
 import separator3 from '../../assets/About Us Page/separator-3.svg';
 
 export default function AboutPage() {
@@ -23,8 +23,8 @@ export default function AboutPage() {
 
       {/* ── Hero ── group_pic full-bleed with text overlay */}
       <div className="relative w-full overflow-hidden" style={{ height: 'clamp(420px, 65vh, 780px)' }}>
-        <img
-          src={groupPic}
+        <CloudinaryImage
+          publicId="group_pic_nyangd"
           alt="The Lola's Rentals team"
           className="h-full w-full animate-page-fade-in object-cover"
           style={{ objectPosition: 'center 20%' }}

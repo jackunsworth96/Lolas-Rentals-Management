@@ -1,5 +1,5 @@
 import { FadeUpSection } from '../public/FadeUpSection.js';
-import lolaClaireTuktuk from '../../assets/About Us Page/Lola_Claire_tuktuk.jpeg';
+import { CloudinaryImage } from '../ui/CloudinaryImage.js';
 
 export function BrandStorySection() {
   return (
@@ -73,8 +73,8 @@ export function BrandStorySection() {
                   boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
                 }}
               >
-                <img
-                  src={lolaClaireTuktuk}
+                <CloudinaryImage
+                  publicId="Lola_Claire_tuktuk_st63vw"
                   alt="Lola and Claire on the tuktuk"
                   className="h-full w-full object-cover transition-transform duration-[3000ms] ease-out group-hover:scale-[1.03]"
                 />

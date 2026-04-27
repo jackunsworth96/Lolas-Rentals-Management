@@ -1,22 +1,6 @@
 import { locationIcon } from '../public/customerContactIcons.js';
-import hondaBeatImg from '../../assets/Honda Beat Image.png';
-import tukTukImg from '../../assets/TukTuk Image.png';
-
-const MODEL_IMAGES: Record<string, string> = {
-  'honda beat': hondaBeatImg,
-  'honda-beat': hondaBeatImg,
-  tuktuk: tukTukImg,
-  'tuk-tuk': tukTukImg,
-  'tuk tuk': tukTukImg,
-};
-
-function resolveImage(modelName: string): string | null {
-  const lower = modelName.toLowerCase();
-  for (const [key, src] of Object.entries(MODEL_IMAGES)) {
-    if (lower.includes(key)) return src;
-  }
-  return null;
-}
+import { resolvePublicId } from '../../utils/vehicle-images.js';
+import { CloudinaryImage } from '../ui/CloudinaryImage.js';
 
 function formatDateTime(iso: string): string {
   const d = new Date(iso);
@@ -32,14 +16,14 @@ interface Props {
 }
 
 export function ActiveRentalCard({ vehicleModelName, pickupLocationName, currentDropoffDatetime }: Props) {
-  const imgSrc = resolveImage(vehicleModelName);
+  const publicId = resolvePublicId(vehicleModelName);
 
   return (
     <section className="animate-card-enter overflow-hidden rounded-4xl border-4 border-gold-brand/20 bg-cream-brand shadow-[0_10px_30px_-5px_rgba(26,122,110,0.1)]">
       {/* Vehicle image — taller on mobile, more contained in the desktop sidebar */}
       <div className="flex max-h-48 items-center justify-center overflow-hidden bg-white lg:max-h-40">
-        {imgSrc ? (
-          <img src={imgSrc} alt={vehicleModelName} className="max-h-48 w-full object-contain lg:max-h-40" />
+        {publicId ? (
+          <CloudinaryImage publicId={publicId} alt={vehicleModelName} className="max-h-48 w-full object-contain lg:max-h-40" />
         ) : (
           <div className="flex h-28 w-full items-center justify-center">
             <span className="text-5xl opacity-20">🏍️</span>

@@ -3,7 +3,8 @@ import { CalendarDays } from 'lucide-react';
 import { api } from '../../api/client.js';
 import { useBookingStore, type BasketItem } from '../../stores/bookingStore.js';
 import { HoldCountdown } from '../booking/HoldCountdown.js';
-import { resolveImage } from '../../utils/vehicle-images.js';
+import { resolvePublicId } from '../../utils/vehicle-images.js';
+import { CloudinaryImage } from '../ui/CloudinaryImage.js';
 import { formatCurrency } from '../../utils/currency.js';
 
 interface Props {
@@ -19,7 +20,7 @@ export function BasketVehicleCard({ item, rentalDays, pickupLabel, dropoffLabel,
   const sessionToken = useBookingStore((s) => s.sessionToken);
   const removeFromBasket = useBookingStore((s) => s.removeFromBasket);
 
-  const imgSrc = resolveImage(item.modelName);
+  const publicId = resolvePublicId(item.modelName);
   const subtotal = item.dailyRate * rentalDays;
 
   async function handleRemove() {
@@ -34,9 +35,9 @@ export function BasketVehicleCard({ item, rentalDays, pickupLabel, dropoffLabel,
   return (
     <div className="min-w-0 max-w-full overflow-hidden rounded-xl border border-charcoal-brand/10 bg-white animate-card-enter">
       <div className="relative aspect-[16/9] w-full min-h-0 min-w-0 max-h-48 overflow-hidden rounded-lg bg-white md:max-h-none md:rounded-none">
-        {imgSrc ? (
-          <img
-            src={imgSrc}
+        {publicId ? (
+          <CloudinaryImage
+            publicId={publicId}
             alt={item.modelName}
             className="absolute left-1/2 top-1/2 max-h-full max-w-full -translate-x-1/2 -translate-y-1/2 object-contain object-center"
           />

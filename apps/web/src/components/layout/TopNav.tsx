@@ -7,14 +7,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import menuPaw from '../../assets/Menu_Paw_Clean.png';
-import navHome from '../../assets/nav-buttons/Nav Home.svg';
-import navReserve from '../../assets/nav-buttons/Nav Reserve.svg';
-import navTransfers from '../../assets/nav-buttons/Nav Transfers.svg';
-import navRepairs from '../../assets/nav-buttons/Nav Repairs.svg';
-import navAbout from '../../assets/nav-buttons/Nav About.svg';
-import navPawCard from '../../assets/nav-buttons/Nav Paw Card.svg';
-import navExtend from '../../assets/nav-buttons/Nav Extend.svg';
-import navPartners from '../../assets/nav-buttons/Nav Partners.svg';
+import { CloudinaryImage } from '../ui/CloudinaryImage.js';
 import lolaLogo from '../../assets/Hero/logo-lola-rentals-1.svg';
 import { instaIcon, phoneIcon, locationIcon } from '../public/customerContactIcons.js';
 import { GOOGLE_MAPS_PLACE_URL } from '../../config/maps.js';
@@ -44,22 +37,22 @@ interface TopNavProps {
 
 interface NavBubbleItem {
   label: string;
-  iconSrc?: string;
+  iconPublicId?: string;
   href: string;
   isSub: boolean;
 }
 
-// ── Per-route SVG (full graphic is the control; no separate pill chrome) ─────
+// ── Per-route Cloudinary public ID (full graphic is the control; no separate pill chrome) ─────
 
-const NAV_SVG_BY_HREF: Record<string, string> = {
-  '/book': navHome,
-  '/book/reserve': navReserve,
-  '/book/transfers': navTransfers,
-  '/book/repairs': navRepairs,
-  '/book/about': navAbout,
-  '/book/paw-card': navPawCard,
-  '/paw-card/partners': navPartners,
-  '/book/extend': navExtend,
+const NAV_CLOUDINARY_BY_HREF: Record<string, string> = {
+  '/book': 'Nav_Home_xrpdbm',
+  '/book/reserve': 'Nav_Reserve_dcjxey',
+  '/book/transfers': 'Nav_Transfers_a2ylr1',
+  '/book/repairs': 'Nav_Repairs_j2bdcx',
+  '/book/about': 'Nav_About_cp48yb',
+  '/book/paw-card': 'Nav_Paw_Card_xa1znf',
+  '/paw-card/partners': 'Nav_Partners_rpd2eg',
+  '/book/extend': 'Nav_Extend_sbrjgg',
 };
 
 function buildNavBubbleItems(items: NavItem[]): NavBubbleItem[] {
@@ -71,7 +64,7 @@ function buildNavBubbleItems(items: NavItem[]): NavBubbleItem[] {
           label: sub.label,
           href: sub.href,
           isSub: true,
-          iconSrc: NAV_SVG_BY_HREF[sub.href],
+          iconPublicId: NAV_CLOUDINARY_BY_HREF[sub.href],
         });
       }
     } else {
@@ -79,7 +72,7 @@ function buildNavBubbleItems(items: NavItem[]): NavBubbleItem[] {
         label: item.label,
         href: item.href,
         isSub: false,
-        iconSrc: NAV_SVG_BY_HREF[item.href],
+        iconPublicId: NAV_CLOUDINARY_BY_HREF[item.href],
       });
     }
   }
@@ -234,9 +227,10 @@ export default function TopNav({ items, rightSlot }: TopNavProps) {
                     className={`nav-svg-link${isActive(entry.href) ? ' nav-svg-link--active' : ''}`}
                     onClick={() => setMenuOpen(false)}
                   >
-                    {entry.iconSrc ? (
-                      <img
-                        src={entry.iconSrc}
+                    {entry.iconPublicId ? (
+                      <CloudinaryImage
+                        publicId={entry.iconPublicId}
+                        plugins={[]}
                         alt=""
                         className="nav-svg-link__img"
                         width={280}

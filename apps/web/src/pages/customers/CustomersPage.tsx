@@ -727,8 +727,10 @@ export default function CustomersPage() {
       render: (r: CustomerSummary) =>
         r.blacklisted ? (
           <Badge color="red">Blacklisted</Badge>
-        ) : (
+        ) : r.hasActiveOrder ? (
           <Badge color="green">Active</Badge>
+        ) : (
+          <Badge color="gray">Inactive</Badge>
         ),
     },
   ];

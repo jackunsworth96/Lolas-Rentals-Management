@@ -33,7 +33,7 @@ type TabKey = 'summary' | 'payments' | 'vehicles' | 'addons' | 'extensions' | 't
 export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = false, enrichedData }: OrderDetailModalProps) {
   const [tab, setTab] = useState<TabKey>('summary');
   const { toasts, pushToast } = useToast();
-  const { order, loading, items, payments, orderAddons, swaps, history } = useOrderDetail(orderId);
+  const { order, loading, items, payments, orderAddons, swaps, history, helmetSwaps } = useOrderDetail(orderId);
   const { data: paymentMethods = [] } = usePaymentMethods() as { data: Array<{ id: string; name: string }> | undefined };
 
   if (!open) return null;
@@ -107,6 +107,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
             orderId={orderId}
             items={items}
             swaps={swaps}
+            helmetSwaps={helmetSwaps}
             canAct={canAct}
           />
         )}

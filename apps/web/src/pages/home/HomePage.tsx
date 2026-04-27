@@ -39,17 +39,16 @@ import tickIcon from '../../assets/Home/Tick Icon.svg';
 import pesoIcon from '../../assets/Home/Peso Icon.svg';
 import pawDivider from '../../assets/Paw Divider.svg';
 import lolasLogo from '../../assets/Lolas Original Logo.svg';
-const bePawImages = (Object.entries(
-  import.meta.glob('../../assets/Be Pawsitive/*.png', {
-    eager: true,
-    import: 'default',
-  })
-) as [string, string][])
-  .sort(([a], [b]) => {
-    const n = (p: string) => parseInt(p.match(/(\d+)\.png$/)?.[1] ?? '0', 10);
-    return n(a) - n(b);
-  })
-  .map(([, url]) => url);
+import { CloudinaryImage } from '../../components/ui/CloudinaryImage.js';
+
+const BE_PAW_PUBLIC_IDS = [
+  '1_q903kw', '2_ppjkhm', '3_hgnjpm', '4_fpx4je', '5_ittwb7', '6_klj8zq',
+  '7_rcpxhw', '8_d5zxti', '9_q80ncx', '10_vhulyr', '11_ymbnen', '12_xlgwhy',
+  '13_gugu92', '14_svkea8', '15_ussejg', '16_i5tjci', '17_jyquip', '18_cxkofj',
+  '19_k8a2dm', '20_vzajao', '21_qr7rd7', '22_amab1z', '23_dvvjgq', '24_fd47tv',
+  '25_acqfde', '26_pamvyd', '27_p9c1yg', '28_dm49i6', '29_b15s72', '30_smef1w',
+  '31_vzjory', '32_k4iacn',
+];
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -783,10 +782,10 @@ export default function HomePage() {
                   randomRotation={true}
                   sensitivity={200}
                   sendToBackOnClick={true}
-                  cards={bePawImages.map((src, i) => (
-                    <img
+                  cards={BE_PAW_PUBLIC_IDS.map((id, i) => (
+                    <CloudinaryImage
                       key={i}
-                      src={src}
+                      publicId={id}
                       alt={`Be Pawsitive animal ${i + 1}`}
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     />

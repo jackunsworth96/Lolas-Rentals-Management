@@ -12,6 +12,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@cloudinary/react": "^1.14.4",
+    "@cloudinary/url-gen": "^1.22.0",
     "@lolas/shared": "*",
     "@sentry/react": "^10.49.0",
     "@supabase/supabase-js": "^2.49.0",

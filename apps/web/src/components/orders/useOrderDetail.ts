@@ -5,6 +5,7 @@ import {
   useOrderAddons,
   useOrderSwaps,
   useOrderHistory,
+  useHelmetSwaps,
 } from '../../api/orders.js';
 
 export type OrderItem = {
@@ -18,6 +19,7 @@ export type OrderItem = {
   pickupFee?: number;
   dropoffFee?: number;
   discount?: number;
+  helmetNumbers?: string | null;
 };
 
 export type OrderPayment = {
@@ -37,6 +39,15 @@ export type OrderAddon = {
   addonType: 'per_day' | 'one_time';
   quantity: number;
   totalAmount: number;
+};
+
+export type HelmetSwap = {
+  id: string;
+  orderItemId: string;
+  oldHelmetNumbers: string;
+  newHelmetNumbers: string;
+  reason?: string | null;
+  createdAt: string;
 };
 
 export type OrderSwap = {
@@ -97,6 +108,7 @@ export function useOrderDetail(orderId: string) {
   const { data: orderAddons = [] } = useOrderAddons(orderId) as { data: OrderAddon[] | undefined };
   const { data: swaps = [] } = useOrderSwaps(orderId) as { data: OrderSwap[] | undefined };
   const { data: history = [] } = useOrderHistory(orderId) as { data: OrderHistoryEvent[] | undefined };
+  const { data: helmetSwaps = [] } = useHelmetSwaps(orderId) as { data: HelmetSwap[] | undefined };
 
   return {
     order,
@@ -108,5 +120,6 @@ export function useOrderDetail(orderId: string) {
     orderAddons,
     swaps,
     history,
+    helmetSwaps,
   };
 }

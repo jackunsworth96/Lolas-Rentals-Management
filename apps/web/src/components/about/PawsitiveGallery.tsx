@@ -3,6 +3,7 @@ import { FadeUpSection } from '../public/FadeUpSection.js';
 import lolasLogo from '../../assets/Lolas Original Logo.svg';
 import bePawsitiveLogo from '../../assets/Be Pawsitive (blue).svg';
 import CountUp from '../home/CountUp.js';
+import { CloudinaryImage } from '../ui/CloudinaryImage.js';
 
 // ─── Rotating subheadline ────────────────────────────────────────────────────
 
@@ -130,25 +131,32 @@ function AnimalCounters() {
   );
 }
 
-// Dynamically import every image in the Be Pawsitive Gallery folder at build time.
-// Vite resolves static-asset imports to their hashed URL strings.
-const rawModules = import.meta.glob('../../assets/About Us Page/Be Pawsitive Gallery/*', {
-  eager: true,
-  import: 'default',
-}) as Record<string, string>;
-
-// Sort by filename for a consistent, alphabetical order across builds.
-// Keep the path key alongside the URL so caption overrides can match by filename.
-// Exclude images used elsewhere on the page so they don't appear twice.
-const GALLERY_EXCLUDE = new Set(['Lola_Claire_tuktuk.jpeg', 'group_pic.jpeg']);
-
-const galleryEntries: Array<{ key: string; url: string }> = Object.entries(rawModules)
-  .sort(([a], [b]) => a.localeCompare(b))
-  .map(([key, url]) => ({ key, url }))
-  .filter(({ key }) => {
-    const filename = key.split('/').pop() ?? '';
-    return !GALLERY_EXCLUDE.has(filename);
-  });
+const GALLERY_PUBLIC_IDS = [
+  'IMG_1088-Migliorato-NR_qnovun', 'IMG_1095-Migliorato-NR_lngzkk',
+  'IMG_1072-Migliorato-NR_hocc27', 'IMG_0940-Migliorato-NR_sqegxp',
+  'IMG_1412-Migliorato-NR_fg9cxw', 'IMG_0863-Migliorato-NR_njfw2h',
+  'IMG_1323-Migliorato-NR_zaamq8', 'IMG_0837-Migliorato-NR_bmpagc',
+  'IMG_1373-Migliorato-NR_bhrhbc', 'IMG_1300-Migliorato-NR_v6asei',
+  'IMG_0804-Migliorato-NR_ndkjiu', 'IMG_1342-Migliorato-NR_1_ep4zwx',
+  'IMG_0857-Migliorato-NR_h9a5zp', 'IMG_1306-Migliorato-NR_pql4fy',
+  'IMG_1488-Migliorato-NR_ofwgrq', 'IMG_1214-Migliorato-NR_svkdsa',
+  'IMG_0889-Migliorato-NR_nehxln', 'IMG_0961-Migliorato-NR_nd0zcl',
+  'IMG_1524-Migliorato-NR_tvvwbz', 'IMG_1451-Migliorato-NR_ev8quy',
+  'IMG_0997-Migliorato-NR_kzlmi1', 'IMG_1502-Migliorato-NR_n0gcl8',
+  'IMG_0924-Migliorato-NR_otiluk', 'IMG_1405-Migliorato-NR_bpbesd',
+  'IMG_1329-Migliorato-NR_cm3ttb', 'IMG_1636-Migliorato-NR_obhaxu',
+  'IMG_1208-Migliorato-NR_kt7jul', 'IMG_1353-Migliorato-NR_1_j9fzkr',
+  'IMG_1523-Migliorato-NR_ti6on2', 'IMG_1536-Migliorato-NR_diymso',
+  'IMG_1050-Migliorato-NR_baqfxh', 'IMG_0989-Migliorato-NR_1_lctn4k',
+  'IMG_1118-Migliorato-NR_2_c90ts1', 'IMG_1274-Migliorato-NR_fzfq0q',
+  'IMG_1189-Migliorato-NR_1_fhtsre', 'IMG_1429-Migliorato-NR_ikqmny',
+  'IMG_1602-Migliorato-NR_cuea7h', 'IMG_1563-Migliorato-NR_eggfzq',
+  'IMG_1023-Migliorato-NR_1_ol5rrs', 'IMG_1554-Migliorato-NR_dugdhn',
+  'IMG_1549-Migliorato-NR_ggwsnk', 'IMG_1273-Migliorato-NR_teosq7',
+  'IMG_1239-Migliorato-NR_xqqtda', 'IMG_1640-Migliorato-NR_1_iqr0wp',
+  'IMG_1517-Migliorato-NR_kljzuf', 'IMG_1622-Migliorato-NR_yvqjrh',
+  'WhatsApp_Image_2026-04-07_at_6.13.04_PM_zlhu03',
+];
 
 const CAPTIONS = [
   'Every life counts.',
@@ -159,25 +167,24 @@ const CAPTIONS = [
   'This is why we ride.',
 ];
 
-// Pin a specific caption to a specific image by its filename.
+// Pin a specific caption to a specific image by its Cloudinary public ID.
 // All other images fall back to the cycling CAPTIONS array above.
 const CAPTION_OVERRIDES: Record<string, string> = {
-  'IMG_1342-Migliorato-NR_1.JPG': 'Lola, always vibing.',
+  'IMG_1342-Migliorato-NR_1_ep4zwx': 'Lola, always vibing.',
 };
 
-function captionFor(pathKey: string, index: number): string {
-  const filename = pathKey.split('/').pop() ?? '';
-  return CAPTION_OVERRIDES[filename] ?? CAPTIONS[index % CAPTIONS.length];
+function captionFor(publicId: string, index: number): string {
+  return CAPTION_OVERRIDES[publicId] ?? CAPTIONS[index % CAPTIONS.length];
 }
 
 // ─── Single gallery item ────────────────────────────────────────────────────
 
 interface GalleryItemProps {
-  src: string;
+  publicId: string;
   alt: string;
 }
 
-function GalleryItem({ src, alt }: GalleryItemProps) {
+function GalleryItem({ publicId, alt }: GalleryItemProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
 
@@ -214,10 +221,9 @@ function GalleryItem({ src, alt }: GalleryItemProps) {
       {/* Overflow hidden on the wrapper so the zoom stays clipped */}
       <div className="group relative overflow-hidden">
         {/* Slow zoom on hover — 3s ease as specified */}
-        <img
-          src={src}
+        <CloudinaryImage
+          publicId={publicId}
           alt={alt}
-          loading="lazy"
           decoding="async"
           className="block w-full object-cover transition-transform duration-[3000ms] ease-out group-hover:scale-[1.03]"
         />
@@ -294,8 +300,8 @@ export function PawsitiveGallery() {
         className="columns-2 md:columns-3 lg:columns-4"
         style={{ columnGap: 2, backgroundColor: '#111' }}
       >
-        {galleryEntries.map(({ key, url }, i) => (
-          <GalleryItem key={url} src={url} alt={captionFor(key, i)} />
+        {GALLERY_PUBLIC_IDS.map((publicId, i) => (
+          <GalleryItem key={publicId} publicId={publicId} alt={captionFor(publicId, i)} />
         ))}
       </div>
     </>

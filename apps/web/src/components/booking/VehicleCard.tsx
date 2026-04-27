@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { api } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
-import { resolveImage } from '../../utils/vehicle-images.js';
+import { resolvePublicId } from '../../utils/vehicle-images.js';
+import { CloudinaryImage } from '../ui/CloudinaryImage.js';
 import { formatPhpNumber } from '../../utils/currency.js';
 import { hasBookingDatetimeWithTime } from '../../utils/booking-datetime.js';
 import { BrandCard } from '../public/BrandCard.js';
@@ -113,7 +114,7 @@ export function VehicleCard({
   const basketItems = basket.filter((b) => b.vehicleModelId === modelId);
   const count = basketItems.length;
   const displayName = VEHICLE_NAME_MAP[modelName] ?? modelName;
-  const imgSrc = resolveImage(modelName);
+  const publicId = resolvePublicId(modelName);
 
   const maxQuantityReached =
     count >= 1 && availableCount > 0 && count >= availableCount;
@@ -200,9 +201,9 @@ export function VehicleCard({
     >
       <div className="group flex h-full flex-col overflow-hidden rounded-[22px] bg-[#FAF6F0]">
         <div className="relative h-40 w-full overflow-hidden rounded-t-[22px] bg-white">
-          {imgSrc ? (
-            <img
-              src={imgSrc}
+          {publicId ? (
+            <CloudinaryImage
+              publicId={publicId}
               alt={displayName}
               className="h-full w-full object-contain p-2 transition-transform duration-500 group-hover:scale-105"
             />

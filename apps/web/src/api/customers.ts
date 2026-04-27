@@ -32,6 +32,7 @@ export interface CustomerSummary {
   totalBookings?: number;
   notes: string | null;
   blacklisted: boolean;
+  hasActiveOrder?: boolean;
 }
 
 export interface CustomerOrder {

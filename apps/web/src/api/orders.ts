@@ -101,6 +101,24 @@ export function useOrderSwaps(orderId: string) {
   });
 }
 
+export function useHelmetSwaps(orderId: string) {
+  return useQuery({
+    queryKey: ['orders', orderId, 'helmet-swaps'],
+    queryFn: () => api.get(`/orders/${orderId}/helmet-swaps`),
+    enabled: !!orderId,
+    refetchInterval: DETAIL_POLL_MS,
+  });
+}
+
+export function useSwapHelmet() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, itemId, ...body }: { id: string; itemId: string } & Record<string, unknown>) =>
+      api.post(`/orders/${id}/items/${itemId}/swap-helmet`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['orders'] }),
+  });
+}
+
 export function useActivateOrder() {
   const qc = useQueryClient();
   return useMutation({

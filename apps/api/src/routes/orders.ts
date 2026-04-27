@@ -405,6 +405,63 @@ router.get('/:id/swaps', requirePermission(Permission.ViewInbox), async (req, re
   } catch (err) { next(err); }
 });
 
+router.get('/:id/helmet-swaps', requirePermission(Permission.ViewInbox), async (req, res, next) => {
+  try {
+    const { data, error } = await supabase
+      .from('helmet_swaps')
+      .select('*')
+      .eq('order_id', req.params.id)
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(`Failed to fetch helmet swaps: ${error.message}`);
+    const swaps = (data ?? []).map((r: Record<string, unknown>) => ({
+      id: r.id,
+      orderId: r.order_id,
+      orderItemId: r.order_item_id,
+      storeId: r.store_id,
+      oldHelmetNumbers: r.old_helmet_numbers,
+      newHelmetNumbers: r.new_helmet_numbers,
+      reason: r.reason,
+      employeeId: r.employee_id,
+      createdAt: r.created_at,
+    }));
+    res.json({ success: true, data: swaps });
+  } catch (err) { next(err); }
+});
+
+router.post('/:id/items/:itemId/swap-helmet', requirePermission(Permission.EditOrders), validateBody(z.object({
+  newHelmetNumbers: z.string().min(1),
+  reason: z.string().optional(),
+})), async (req, res, next) => {
+  try {
+    const { orderItemRepo } = req.app.locals.deps;
+    const { newHelmetNumbers, reason } = req.body as { newHelmetNumbers: string; reason?: string };
+    const orderId = req.params.id;
+    const orderItemId = req.params.itemId;
+
+    const items = await orderItemRepo.findByOrderId(orderId);
+    const item = items.find((i: { id: string }) => i.id === orderItemId);
+    if (!item) throw new Error(`Order item ${orderItemId} not found`);
+
+    const oldHelmetNumbers = item.helmetNumbers ?? '';
+
+    await orderItemRepo.save({ ...item, helmetNumbers: newHelmetNumbers });
+
+    const { error } = await supabase.from('helmet_swaps').insert({
+      id: crypto.randomUUID(),
+      order_id: orderId,
+      order_item_id: orderItemId,
+      store_id: item.storeId,
+      old_helmet_numbers: oldHelmetNumbers,
+      new_helmet_numbers: newHelmetNumbers,
+      reason: reason ?? null,
+      employee_id: req.user!.employeeId,
+    });
+    if (error) throw new Error(`Failed to record helmet swap: ${error.message}`);
+
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 router.post('/:id/activate', requirePermission(Permission.EditOrders), validateBody(z.object({
   vehicleAssignments: z.array(z.object({
     id: z.string(), vehicleId: z.string(), vehicleName: z.string(),
