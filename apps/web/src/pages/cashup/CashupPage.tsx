@@ -131,9 +131,10 @@ export default function CashupPage() {
   const depEnvTotal = useMemo(() => denomSum(depEnvDenoms), [depEnvDenoms]);
 
   // Expected figures split (includes cash misc sales in till calculation).
-  // Subtract cash refunds (manual Issue Refund payments) and deposit returns
-  // (settle-flow deposit refunds recorded as journal entries) — both represent
-  // cash leaving the till and must reduce the expected count.
+  // Cash refunds (manual Issue Refund payments) represent cash leaving the main
+  // till and must reduce the expected count there. Deposit returns, however,
+  // come from the deposit envelope (not the main till), so they reduce the
+  // expected deposit envelope balance, not the main till.
   const expectedCashSales = summary
     ? summary.openingFloat.amount +
       summary.totals.cashSalesTotal +
@@ -142,11 +143,10 @@ export default function CashupPage() {
       summary.totals.expenseTotal -
       summary.totals.depositTotal -
       summary.totals.interStoreOut -
-      (summary.totals.cashRefundTotal ?? 0) -
-      (summary.totals.depositReturnTotal ?? 0)
+      (summary.totals.cashRefundTotal ?? 0)
     : 0;
   const expectedDepositsHeld = summary
-    ? summary.totals.cashDepositsHeldTotal
+    ? summary.totals.cashDepositsHeldTotal - (summary.totals.depositReturnTotal ?? 0)
     : 0;
   const tillVariance = tillTotal - expectedCashSales;
   const depVariance = depEnvTotal - expectedDepositsHeld;
