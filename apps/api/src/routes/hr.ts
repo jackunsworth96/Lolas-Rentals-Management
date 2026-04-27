@@ -10,6 +10,8 @@ import {
   TimesheetQuerySchema,
   CreateEmployeeRequestSchema,
   UpdateEmployeeRequestSchema,
+  GrantCashAdvanceRequestSchema,
+  CashAdvanceQuerySchema,
 } from '@lolas/shared';
 import { Employee as EmployeeEntity } from '@lolas/domain';
 import { supabase } from '../adapters/supabase/client.js';
@@ -289,5 +291,59 @@ router.delete('/employees/:id', requirePermission(Permission.ManageEmployees), a
     res.json({ success: true, data: { id: existing.id, status: 'Inactive' } });
   } catch (err) { next(err); }
 });
+
+// ── POST /cash-advances — grant a cash advance to an employee ──
+router.post(
+  '/cash-advances',
+  requirePermission(Permission.ManageEmployees),
+  validateBody(GrantCashAdvanceRequestSchema),
+  async (req, res, next) => {
+    try {
+      const { grantCashAdvance } = await import('../use-cases/hr/grant-cash-advance.js');
+      const result = await grantCashAdvance(req.body, {
+        expenses: req.app.locals.deps.expenseRepo,
+      });
+      res.status(201).json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ── GET /cash-advances — list active advances for an employee ──
+router.get(
+  '/cash-advances',
+  requirePermission(Permission.ViewTimesheets),
+  validateQuery(CashAdvanceQuerySchema),
+  async (req, res, next) => {
+    try {
+      const { employeeId } = req.query as { employeeId: string; storeId: string };
+      const { data, error } = await supabase
+        .from('cash_advance_schedules')
+        .select('id, employee_id, expense_id, total_amount, granted_date, deduction_per_period, remaining_balance, start_date')
+        .eq('employee_id', employeeId)
+        .gt('remaining_balance', 0)
+        .order('granted_date', { ascending: false });
+
+      if (error) throw new Error(`Failed to fetch cash advance schedules: ${error.message}`);
+
+      const schedules = (data ?? []).map((r: Record<string, unknown>) => ({
+        id: r.id,
+        employeeId: r.employee_id,
+        expenseId: r.expense_id ?? null,
+        totalAmount: Number(r.total_amount ?? 0),
+        grantedDate: r.granted_date,
+        deductionPerPeriod: Number(r.deduction_per_period ?? 0),
+        remainingBalance: Number(r.remaining_balance ?? 0),
+        startDate: r.start_date,
+        repaymentType: 'installments',
+      }));
+
+      res.json({ success: true, data: schedules });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 export { router as hrRoutes };

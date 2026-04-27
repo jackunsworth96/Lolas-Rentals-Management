@@ -5,9 +5,11 @@ import {
   useCreateEmployee,
   useSaveEmployee,
   useDeactivateEmployee,
+  useCashAdvances,
   type EmployeeRow,
 } from '../../api/hr.js';
 import { useLeaveConfig } from '../../api/config.js';
+import { GrantCashAdvanceModal } from './GrantCashAdvanceModal.js';
 
 function nextResetLabel(resetMonth: number, resetDay: number): string {
   const monthName = new Date(2000, Math.max(0, resetMonth - 1), 1).toLocaleString('en', { month: 'long' });
@@ -136,6 +138,7 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
     employee ? employeeToForm(employee) : blankForm(),
   );
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
+  const [showGrantAdvance, setShowGrantAdvance] = useState(false);
 
   const createMut = useCreateEmployee();
   const saveMut = useSaveEmployee();
@@ -144,6 +147,13 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
   const leaveStoreId = ((form.storeIds as string[]) ?? [])[0] ?? employee?.storeIds?.[0] ?? employee?.storeId ?? '';
   const { data: leaveConfig, isFetched: leaveCfgFetched } = useLeaveConfig(
     leaveStoreId || undefined,
+  );
+
+  // Cash advance schedules (installment-type) for this employee
+  const advanceStoreId = employee?.storeId ?? leaveStoreId ?? '';
+  const { data: cashAdvanceSchedules = [] } = useCashAdvances(
+    employee?.id ?? '',
+    advanceStoreId,
   );
 
   /** Apply store defaults once per store selection so staff can override without being overwritten. */
@@ -696,8 +706,75 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
 
             {tab === 'financial' && (
               <div className="space-y-4">
+                {/* Cash Advances section */}
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-gray-800">Cash Advances</h3>
+                    {employee && employee.status === 'Active' && (
+                      <button
+                        type="button"
+                        onClick={() => setShowGrantAdvance(true)}
+                        className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100 transition-colors"
+                      >
+                        Grant Advance
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Lump-sum balance (deducted at end-of-month) */}
+                  {(employee?.currentCashAdvance ?? 0) > 0 && (
+                    <div className="mb-2 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                      <div>
+                        <p className="text-xs font-medium text-amber-800">Lump-sum outstanding</p>
+                        <p className="text-[11px] text-amber-600">Deducted on next end-of-month payroll run</p>
+                      </div>
+                      <span className="text-sm font-bold text-amber-800">
+                        {formatCurrency(employee?.currentCashAdvance ?? 0)}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Installment schedules */}
+                  {cashAdvanceSchedules.length > 0 ? (
+                    <div className="space-y-2">
+                      {cashAdvanceSchedules.map((sched) => {
+                        const paid = sched.totalAmount - sched.remainingBalance;
+                        const pct = sched.totalAmount > 0 ? (paid / sched.totalAmount) * 100 : 0;
+                        return (
+                          <div key={sched.id} className="rounded-lg border border-blue-100 bg-white p-3">
+                            <div className="mb-1 flex items-start justify-between gap-2">
+                              <div>
+                                <p className="text-xs font-medium text-gray-800">
+                                  {formatCurrency(sched.totalAmount)} advance
+                                </p>
+                                <p className="text-[11px] text-gray-500">
+                                  Granted {sched.grantedDate} · {formatCurrency(sched.deductionPerPeriod)}/period
+                                </p>
+                              </div>
+                              <span className="shrink-0 text-sm font-semibold text-blue-700">
+                                {formatCurrency(sched.remainingBalance)} left
+                              </span>
+                            </div>
+                            <div className="h-1.5 overflow-hidden rounded-full bg-gray-200">
+                              <div
+                                className="h-full rounded-full bg-blue-500 transition-all"
+                                style={{ width: `${Math.min(100, pct)}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    (employee?.currentCashAdvance ?? 0) === 0 && (
+                      <p className="text-xs text-gray-400">No outstanding advances.</p>
+                    )
+                  )}
+                </div>
+
+                {/* Other read-only payroll figures */}
                 <p className="text-xs text-gray-500">
-                  These values are managed by payroll and are read-only here.
+                  The values below are managed automatically by payroll.
                 </p>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -707,9 +784,9 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
                     </div>
                   </div>
                   <div>
-                    <label className={labelCls}>Current Cash Advance</label>
+                    <label className={labelCls}>Available Balance</label>
                     <div className={readOnlyCls}>
-                      {formatCurrency(employee?.currentCashAdvance ?? 0)}
+                      {formatCurrency(employee?.availableBalance ?? 0)}
                     </div>
                   </div>
                 </div>
@@ -725,12 +802,6 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
                     <div className={readOnlyCls}>
                       {formatCurrency(employee?.bikeAllowanceAccrued ?? 0)}
                     </div>
-                  </div>
-                </div>
-                <div>
-                  <label className={labelCls}>Available Balance</label>
-                  <div className={readOnlyCls}>
-                    {formatCurrency(employee?.availableBalance ?? 0)}
                   </div>
                 </div>
               </div>
@@ -784,6 +855,18 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
             </div>
           </div>
         </form>
+
+        {/* Grant Cash Advance modal — opened from Financial tab */}
+        {showGrantAdvance && employee && (
+          <GrantCashAdvanceModal
+            open={showGrantAdvance}
+            onClose={() => setShowGrantAdvance(false)}
+            employeeId={employee.id}
+            employeeName={employee.fullName}
+            storeId={employee.storeId ?? leaveStoreId}
+            employees={[{ id: employee.id, fullName: employee.fullName }]}
+          />
+        )}
 
         {/* Deactivation confirm overlay */}
         {showDeactivateConfirm && (

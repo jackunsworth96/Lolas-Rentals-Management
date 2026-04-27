@@ -6,6 +6,7 @@ import { Badge } from '../../components/common/Badge.js';
 import { Button } from '../../components/common/Button.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { EmployeeModal } from '../../components/hr/EmployeeModal.js';
+import { GrantCashAdvanceModal } from '../../components/hr/GrantCashAdvanceModal.js';
 
 export default function EmployeesPage() {
   const { data: employees = [], isLoading } = useAllEmployees();
@@ -16,6 +17,7 @@ export default function EmployeesPage() {
   const [filterStatus, setFilterStatus] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeRow | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [advanceTarget, setAdvanceTarget] = useState<EmployeeRow | null>(null);
 
   const storeLookup = useMemo(
     () => new Map(stores.map((s) => [s.id, s.name])),
@@ -38,7 +40,20 @@ export default function EmployeesPage() {
   }, [employees, filterStore, filterStatus, search]);
 
   const columns = [
-    { key: 'fullName', header: 'Full Name' },
+    {
+      key: 'fullName',
+      header: 'Full Name',
+      render: (r: EmployeeRow) => (
+        <div>
+          <span className="font-medium text-gray-900">{r.fullName}</span>
+          {r.currentCashAdvance > 0 && (
+            <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+              {formatCurrency(r.currentCashAdvance)} advance
+            </span>
+          )}
+        </div>
+      ),
+    },
     { key: 'role', header: 'Role', render: (r: EmployeeRow) => r.role ?? '—' },
     {
       key: 'storeId',
@@ -68,15 +83,48 @@ export default function EmployeesPage() {
       header: 'Start Date',
       render: (r: EmployeeRow) => r.startDate ?? '—',
     },
+    {
+      key: 'actions',
+      header: '',
+      render: (r: EmployeeRow) =>
+        r.status === 'Active' ? (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setAdvanceTarget(r);
+            }}
+            className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100 transition-colors"
+          >
+            Grant Advance
+          </button>
+        ) : null,
+    },
   ];
+
+  // Determine the storeId to pass to the advance modal.
+  // Use the employee's primary store, falling back to the filter or first store.
+  const advanceStoreId =
+    advanceTarget?.storeId ??
+    filterStore ??
+    stores[0]?.id ??
+    '';
 
   return (
     <div className="mx-auto max-w-7xl">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-gray-900">Employees</h1>
-        <Button size="sm" onClick={() => setShowCreate(true)}>
-          Add Employee
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setAdvanceTarget({} as EmployeeRow)}
+          >
+            Grant Cash Advance
+          </Button>
+          <Button size="sm" onClick={() => setShowCreate(true)}>
+            Add Employee
+          </Button>
+        </div>
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -138,6 +186,17 @@ export default function EmployeesPage() {
           onClose={() => setSelectedEmployee(null)}
         />
       )}
+
+      {/* Grant Cash Advance modal — opened from the page-level button (no pre-fill)
+          or from a row-level button (employee pre-filled) */}
+      <GrantCashAdvanceModal
+        open={!!advanceTarget}
+        onClose={() => setAdvanceTarget(null)}
+        employeeId={advanceTarget?.id}
+        employeeName={advanceTarget?.fullName}
+        storeId={advanceStoreId}
+        employees={employees.filter((e) => e.status === 'Active')}
+      />
     </div>
   );
 }

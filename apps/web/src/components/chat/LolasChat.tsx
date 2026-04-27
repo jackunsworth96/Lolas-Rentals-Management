@@ -601,7 +601,7 @@ export default function LolasChat() {
                 className="fixed z-[60]"
                 style={{ left: clampedLeft, top: pos.y - 44, pointerEvents: 'none' }}
               >
-                <TypewriterTooltip text="Hi, I'm Lolo 🐾" visible={isHovered} />
+                <TypewriterTooltip text="Hi, I'm Lolo 🐾" visible={isHovered && !showBubble} />
               </div>
             );
           })()}

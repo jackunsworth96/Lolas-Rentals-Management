@@ -767,9 +767,18 @@ export default function ExpensesPage() {
 
               {/* Cash advance notice */}
               {isCashAdvance && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                  This expense will be tracked as a cash advance and fed into
-                  payroll deductions for the linked employee.
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 space-y-1">
+                  <p className="font-medium">Use the dedicated Cash Advance flow instead.</p>
+                  <p>
+                    Go to <strong>HR → Employees</strong>, find the staff member, open their
+                    profile and click <strong>Grant Advance</strong> — or use the{' '}
+                    <strong>Grant Cash Advance</strong> button at the top of the Employees page.
+                    This sets up the payroll deduction automatically.
+                  </p>
+                  <p>
+                    Recording a "Cash Advance" expense here will create the accounting entry
+                    but will <strong>not</strong> set up any payroll deduction.
+                  </p>
                 </div>
               )}
             </div>

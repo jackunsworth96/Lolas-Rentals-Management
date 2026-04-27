@@ -232,6 +232,54 @@ export function useRunPayroll() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['timesheets'] });
       qc.invalidateQueries({ queryKey: ['payroll'] });
+      qc.invalidateQueries({ queryKey: ['employees'] });
+    },
+  });
+}
+
+// ─── Cash Advances ───────────────────────────────────────────────────────────
+
+export interface CashAdvanceScheduleRow {
+  id: string;
+  employeeId: string;
+  expenseId: string | null;
+  totalAmount: number;
+  grantedDate: string;
+  deductionPerPeriod: number;
+  remainingBalance: number;
+  startDate: string;
+  repaymentType: 'installments';
+}
+
+export interface GrantCashAdvancePayload {
+  storeId: string;
+  employeeId: string;
+  amount: number;
+  date: string;
+  repaymentType: 'lump-sum' | 'installments';
+  periods?: number;
+  expenseAccountId: string;
+  cashAccountId: string;
+  description?: string;
+}
+
+export function useCashAdvances(employeeId: string, storeId: string) {
+  return useQuery<CashAdvanceScheduleRow[]>({
+    queryKey: ['cash-advances', employeeId],
+    queryFn: () => api.get(`/hr/cash-advances?employeeId=${employeeId}&storeId=${storeId}`),
+    enabled: !!employeeId && !!storeId,
+  });
+}
+
+export function useGrantCashAdvance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: GrantCashAdvancePayload) =>
+      api.post<{ expenseId: string; scheduleId: string | null }>('/hr/cash-advances', body),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['employees'] });
+      qc.invalidateQueries({ queryKey: ['cash-advances', variables.employeeId] });
+      qc.invalidateQueries({ queryKey: ['expenses'] });
     },
   });
 }

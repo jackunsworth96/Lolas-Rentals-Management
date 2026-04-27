@@ -43,3 +43,22 @@ export const TimesheetQuerySchema = z.object({
 });
 
 export type TimesheetQuery = z.infer<typeof TimesheetQuerySchema>;
+
+export const GrantCashAdvanceRequestSchema = z.object({
+  storeId: z.string(),
+  employeeId: z.string(),
+  amount: z.number().positive(),
+  date: z.string(),
+  repaymentType: z.enum(['lump-sum', 'installments']),
+  periods: z.number().int().min(2).optional(),
+  expenseAccountId: z.string(),
+  cashAccountId: z.string(),
+  description: z.string().optional(),
+});
+
+export type GrantCashAdvanceRequest = z.infer<typeof GrantCashAdvanceRequestSchema>;
+
+export const CashAdvanceQuerySchema = z.object({
+  employeeId: z.string(),
+  storeId: z.string(),
+});

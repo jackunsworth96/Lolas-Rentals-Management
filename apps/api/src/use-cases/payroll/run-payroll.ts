@@ -11,6 +11,7 @@ import {
 import type { PayslipBreakdown } from '@lolas/domain';
 import { formatManilaDate } from '../../utils/manila-date.js';
 import { resolvePayrollAccounts } from '../../adapters/supabase/config-repo.js';
+import { getSupabaseClient } from '../../adapters/supabase/client.js';
 
 // Payroll journal entries are always posted to the company store.
 const PAYROLL_JOURNAL_STORE = 'store-lolas';
@@ -233,10 +234,75 @@ export async function runPayroll(
     );
   }
 
+  // Post-payroll: clear / reduce cash advance balances for employees whose
+  // advances were actually deducted this run.
+  await settleCashAdvances(payslips, input.isEndOfMonth);
+
   return {
     payslips,
     totalNetPay: Math.round(totalNetPay * 100) / 100,
     totalGrossPay: Math.round(totalGrossPay * 100) / 100,
     employeeCount: payslips.length,
   };
+}
+
+/**
+ * After a successful payroll run, clear lump-sum balances (end-of-month)
+ * and reduce remaining_balance on installment schedules (mid-month).
+ *
+ * Failures are non-fatal: the payroll has already been committed, so we
+ * log errors rather than throwing, to avoid misleading the caller.
+ */
+async function settleCashAdvances(
+  payslips: PayslipBreakdown[],
+  isEndOfMonth: boolean,
+): Promise<void> {
+  const sb = getSupabaseClient();
+
+  const deducted = payslips.filter((p) => p.cashAdvanceDeduction > 0);
+  if (deducted.length === 0) return;
+
+  for (const payslip of deducted) {
+    try {
+      if (isEndOfMonth) {
+        // Clear the lump-sum field on the employee record
+        await sb.rpc('clear_cash_advance', { p_employee_id: payslip.employeeId });
+      } else {
+        // Reduce remaining_balance on any active schedule rows for this employee
+        const { data: schedules } = await sb
+          .from('cash_advance_schedules')
+          .select('id, remaining_balance, deduction_per_period')
+          .eq('employee_id', payslip.employeeId)
+          .gt('remaining_balance', 0);
+
+        if (!schedules || schedules.length === 0) continue;
+
+        let leftToSettle = payslip.cashAdvanceDeduction;
+
+        for (const sched of schedules as Array<{
+          id: string;
+          remaining_balance: number;
+          deduction_per_period: number;
+        }>) {
+          if (leftToSettle <= 0) break;
+
+          const deductNow = Math.min(leftToSettle, sched.deduction_per_period, sched.remaining_balance);
+          const newBalance = Math.round((sched.remaining_balance - deductNow) * 100) / 100;
+
+          await sb
+            .from('cash_advance_schedules')
+            .update({ remaining_balance: newBalance })
+            .eq('id', sched.id);
+
+          leftToSettle -= deductNow;
+        }
+      }
+    } catch (err) {
+      // Non-fatal — payroll is already committed
+      console.error(
+        `[settleCashAdvances] Failed to settle advance for employee ${payslip.employeeId}:`,
+        err,
+      );
+    }
+  }
 }
