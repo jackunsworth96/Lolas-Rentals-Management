@@ -1050,4 +1050,69 @@ router.get('/availability-detail', async (req, res, next) => {
   }
 });
 
+// ── GET /basket-abandonment ───────────────────────────────────────────────────
+router.get('/basket-abandonment', async (req, res, next) => {
+  try {
+    const user = (req as unknown as { user?: { permissions?: string[] } }).user;
+    if (!user?.permissions?.includes(Permission.ViewDashboard)) {
+      res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Access denied.' } });
+      return;
+    }
+
+    const storeId = req.query.storeId as string | undefined;
+    const from = req.query.from as string | undefined;
+    const to = req.query.to as string | undefined;
+
+    const sb = getSupabaseClient();
+
+    // Default window: last 30 days in Manila time
+    const manilaOffset = 8 * 60 * 60 * 1000;
+    const now = new Date();
+    const defaultTo = new Date(now.getTime() + manilaOffset);
+    const defaultFrom = new Date(defaultTo.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const fromIso = from ?? defaultFrom.toISOString();
+    const toIso = to ?? defaultTo.toISOString();
+
+    let query = sb
+      .from('booking_sessions')
+      .select('basket_viewed_at, renter_details_started_at, submitted_at, created_at')
+      .gte('created_at', fromIso)
+      .lte('created_at', toIso);
+
+    if (storeId && storeId !== 'all') {
+      query = query.eq('store_id', storeId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+
+    const rows = (data ?? []) as Array<{
+      basket_viewed_at: string | null;
+      renter_details_started_at: string | null;
+      submitted_at: string | null;
+      created_at: string;
+    }>;
+
+    const abandonThreshold = 3 * 60 * 60 * 1000; // 3 hours
+    const total = rows.length;
+    const basketViewed = rows.filter((r) => r.basket_viewed_at !== null).length;
+    const renterStarted = rows.filter((r) => r.renter_details_started_at !== null).length;
+    const converted = rows.filter((r) => r.submitted_at !== null).length;
+    const abandoned = rows.filter(
+      (r) =>
+        r.submitted_at === null &&
+        now.getTime() - new Date(r.created_at).getTime() > abandonThreshold,
+    ).length;
+    const conversionRate = total > 0 ? Math.round((converted / total) * 1000) / 10 : 0;
+
+    res.json({
+      success: true,
+      data: { total, basketViewed, renterStarted, converted, abandoned, conversionRate },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export { router as dashboardRoutes, queryCharityImpact, CHARITY_OPENING_BALANCE };

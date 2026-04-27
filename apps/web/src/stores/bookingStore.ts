@@ -10,6 +10,42 @@ export interface BasketItem {
   expiresAt: string;
 }
 
+export interface RenterDetails {
+  fullName: string;
+  email: string;
+  phone: string;
+  nationality: string;
+  accommodationName: string;
+  company: string;
+  extraComments: string;
+}
+
+const RENTER_DETAILS_KEY = 'lolas_renter_details';
+
+const EMPTY_RENTER_DETAILS: RenterDetails = {
+  fullName: '',
+  email: '',
+  phone: '',
+  nationality: '',
+  accommodationName: '',
+  company: '',
+  extraComments: '',
+};
+
+function loadRenterDetails(): RenterDetails {
+  try {
+    const stored = localStorage.getItem(RENTER_DETAILS_KEY);
+    if (stored) return { ...EMPTY_RENTER_DETAILS, ...(JSON.parse(stored) as Partial<RenterDetails>) };
+  } catch { /* ignore parse errors */ }
+  return { ...EMPTY_RENTER_DETAILS };
+}
+
+function saveRenterDetails(details: RenterDetails): void {
+  try {
+    localStorage.setItem(RENTER_DETAILS_KEY, JSON.stringify(details));
+  } catch { /* ignore storage errors */ }
+}
+
 interface BookingState {
   storeId: string;
   pickupDatetime: string;
@@ -19,6 +55,7 @@ interface BookingState {
   sessionToken: string;
   basket: BasketItem[];
   searchTrigger: number;
+  renterDetails: RenterDetails;
 
   setDates: (pickup: string, dropoff: string) => void;
   setStore: (storeId: string) => void;
@@ -30,6 +67,8 @@ interface BookingState {
   clearBasket: () => void;
   resetBookingSession: () => void;
   triggerSearch: () => void;
+  setRenterDetails: (details: RenterDetails) => void;
+  clearRenterDetails: () => void;
 }
 
 function getOrCreateSessionToken(): string {
@@ -50,6 +89,7 @@ export const useBookingStore = create<BookingState>((set) => ({
   sessionToken: getOrCreateSessionToken(),
   basket: [],
   searchTrigger: 0,
+  renterDetails: loadRenterDetails(),
 
   setDates: (pickup, dropoff) =>
     set({ pickupDatetime: pickup, dropoffDatetime: dropoff }),
@@ -88,6 +128,7 @@ export const useBookingStore = create<BookingState>((set) => ({
   resetBookingSession: () => {
     const newToken = crypto.randomUUID();
     localStorage.setItem('lolas_booking_session', newToken);
+    localStorage.removeItem(RENTER_DETAILS_KEY);
     set({
       basket: [],
       pickupDatetime: '',
@@ -95,8 +136,19 @@ export const useBookingStore = create<BookingState>((set) => ({
       pickupLocationId: null,
       dropoffLocationId: null,
       sessionToken: newToken,
+      renterDetails: { ...EMPTY_RENTER_DETAILS },
     });
   },
 
   triggerSearch: () => set((s) => ({ searchTrigger: s.searchTrigger + 1 })),
+
+  setRenterDetails: (details) => {
+    saveRenterDetails(details);
+    set({ renterDetails: details });
+  },
+
+  clearRenterDetails: () => {
+    localStorage.removeItem(RENTER_DETAILS_KEY);
+    set({ renterDetails: { ...EMPTY_RENTER_DETAILS } });
+  },
 }));

@@ -4,6 +4,7 @@ import { useAuthStore } from '../../stores/auth-store.js';
 import {
   useDashboardSummary,
   useCharityImpact,
+  useBasketAbandonmentSummary,
   type StoreMetrics,
   type AddonRevenueRow,
   type CashBalanceRow,
@@ -111,6 +112,7 @@ export default function DashboardPage() {
   const canViewLostOpp = hasPermission('can_view_lostopportunity');
 
   const { data: charityImpact } = useCharityImpact();
+  const { data: basketAbandon } = useBasketAbandonmentSummary(selectedStoreId || undefined);
 
   const [selectedReturn, setSelectedReturn] = useState<NinePmVehicle | null>(null);
   const [showAvailability, setShowAvailability] = useState(false);
@@ -322,6 +324,78 @@ export default function DashboardPage() {
               <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Tracked Today</p>
               <p className="mt-1 text-2xl font-semibold text-gray-900">{metrics.deviceSplit.total}</p>
             </div>
+          </div>
+        </section>
+      )}
+
+      {/* SECTION — Basket Abandonment Summary */}
+      {canViewFinancial && basketAbandon != null && (
+        <section>
+          <SectionHeading>Basket Abandonment (Last 30 Days)</SectionHeading>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <StatCard
+              label="Sessions Started"
+              value={String(basketAbandon.total)}
+              sub="vehicles added to basket"
+            />
+            <StatCard
+              label="Converted"
+              value={String(basketAbandon.converted)}
+              sub="completed a booking"
+            />
+            <StatCard
+              label="Abandoned"
+              value={String(basketAbandon.abandoned)}
+              sub="left without booking"
+            />
+            <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Conversion Rate</p>
+              <p className="mt-1 text-2xl font-semibold text-gray-900">{basketAbandon.conversionRate}%</p>
+              <p className="mt-0.5 text-xs text-gray-400">basket → booking</p>
+            </div>
+          </div>
+
+          {/* Funnel breakdown */}
+          <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white p-5">
+            <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-500">Checkout Funnel</p>
+            {(() => {
+              const stages = [
+                { label: 'Hold Created', count: basketAbandon.total },
+                { label: 'Basket Viewed', count: basketAbandon.basketViewed },
+                { label: 'Details Started', count: basketAbandon.renterStarted },
+                { label: 'Booking Confirmed', count: basketAbandon.converted },
+              ];
+              const maxCount = stages[0].count || 1;
+              return (
+                <div className="space-y-3">
+                  {stages.map((stage, idx) => {
+                    const widthPct = Math.round((stage.count / maxCount) * 100);
+                    const dropOff = idx > 0 && stages[idx - 1].count > 0
+                      ? Math.round(((stages[idx - 1].count - stage.count) / stages[idx - 1].count) * 100)
+                      : null;
+                    return (
+                      <div key={stage.label}>
+                        <div className="mb-1 flex items-center justify-between text-xs text-gray-500">
+                          <span className="font-medium text-gray-700">{stage.label}</span>
+                          <span className="flex items-center gap-3">
+                            {dropOff !== null && dropOff > 0 && (
+                              <span className="text-red-500">−{dropOff}% drop-off</span>
+                            )}
+                            <span className="font-semibold text-gray-900">{stage.count}</span>
+                          </span>
+                        </div>
+                        <div className="h-2 w-full rounded-full bg-gray-100">
+                          <div
+                            className="h-2 rounded-full bg-[#00577C] transition-all duration-300"
+                            style={{ width: `${widthPct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         </section>
       )}

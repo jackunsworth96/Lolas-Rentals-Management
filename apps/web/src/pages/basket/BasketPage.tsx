@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client.js';
-import { useBookingStore, type BasketItem } from '../../stores/bookingStore.js';
+import { useBookingStore, type BasketItem, type RenterDetails } from '../../stores/bookingStore.js';
 import { useToast } from '../../hooks/useToast.js';
 import { BasketVehicleCard } from '../../components/basket/BasketVehicleCard.js';
 import { AddOnsSection, isNinePmReturnAddonName } from '../../components/basket/AddOnsSection.js';
@@ -104,6 +104,9 @@ export default function BasketPage() {
   const replaceBasketHold = useBookingStore((s) => s.replaceBasketHold);
   const setDates = useBookingStore((s) => s.setDates);
   const setLocations = useBookingStore((s) => s.setLocations);
+  const storedRenterDetails = useBookingStore((s) => s.renterDetails);
+  const setRenterDetailsInStore = useBookingStore((s) => s.setRenterDetails);
+  const clearRenterDetails = useBookingStore((s) => s.clearRenterDetails);
 
   const rentalDays = rentalDaysFromDates(pickupDatetime, dropoffDatetime);
 
@@ -290,15 +293,26 @@ export default function BasketPage() {
     return () => window.clearTimeout(t);
   }, [ninePmRemovedNotice]);
   const [transfer, setTransfer] = useState<TransferDetails | null>(null);
-  const [renter, setRenter] = useState<RenterInfo>({
-    fullName: '',
-    email: '',
-    phone: '',
-    nationality: '',
-    accommodationName: '',
-    company: '',
-    extraComments: '',
-  });
+  const [renter, setRenterRaw] = useState<RenterInfo>(storedRenterDetails);
+  const renterDetailsStartedRef = useRef(false);
+  const sessionPingDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function setRenter(info: RenterInfo) {
+    setRenterRaw(info);
+    setRenterDetailsInStore(info as RenterDetails);
+
+    const hasContent = Object.values(info).some((v) => typeof v === 'string' && v.trim().length > 0);
+    if (hasContent && !renterDetailsStartedRef.current) {
+      renterDetailsStartedRef.current = true;
+      void api.patch('/public/booking/session', { sessionToken, renterDetailsStarted: true }).catch(() => {});
+    }
+
+    if (sessionPingDebounceRef.current) clearTimeout(sessionPingDebounceRef.current);
+    sessionPingDebounceRef.current = setTimeout(() => {
+      void api.patch('/public/booking/session', { sessionToken, renterDetails: info }).catch(() => {});
+    }, 2000);
+  }
+
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [transferErrors, setTransferErrors] = useState<Record<string, string>>({});
   const [helmetCount, setHelmetCount] = useState(1);
@@ -334,6 +348,14 @@ export default function BasketPage() {
   useEffect(() => {
     if (isMdUp && reviewSheetOpen) setReviewSheetOpen(false);
   }, [isMdUp, reviewSheetOpen]);
+
+  useEffect(() => {
+    void api.patch('/public/booking/session', { sessionToken, basketViewed: true }).catch(() => {});
+    return () => {
+      if (sessionPingDebounceRef.current) clearTimeout(sessionPingDebounceRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const reviewSheetItems = useMemo(
     () =>
@@ -580,6 +602,7 @@ export default function BasketPage() {
       // Persist email for confirmation page refresh/bookmark recovery
       sessionStorage.setItem(`confirm_email_${orderRefs[0]}`, renter.email.trim());
       resetBookingSession();
+      clearRenterDetails();
       const confirmState = {
         orderReferences: orderRefs, customerName: renter.fullName.trim(), customerEmail: renter.email.trim(),
         vehicleModelName: basket[0]?.modelName ?? '', pickupDatetime, dropoffDatetime, pickupLocationId, rentalDays,

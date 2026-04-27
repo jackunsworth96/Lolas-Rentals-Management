@@ -141,15 +141,17 @@ const CreateHoldBodySchema = z.object({
 
 router.post('/hold', holdLimiter, validateBody(CreateHoldBodySchema), async (req, res, next) => {
   try {
+    const { vehicleModelId, storeId, pickupDatetime, dropoffDatetime, sessionToken } = req.body as {
+      vehicleModelId: string;
+      storeId: string;
+      pickupDatetime: string;
+      dropoffDatetime: string;
+      sessionToken: string;
+    };
+
     const hold = await createHold(
       { bookingPort: req.app.locals.deps.bookingPort },
-      req.body as {
-        vehicleModelId: string;
-        storeId: string;
-        pickupDatetime: string;
-        dropoffDatetime: string;
-        sessionToken: string;
-      },
+      { vehicleModelId, storeId, pickupDatetime, dropoffDatetime, sessionToken },
     );
 
     res.status(201).json({
@@ -160,6 +162,39 @@ router.post('/hold', holdLimiter, validateBody(CreateHoldBodySchema), async (req
         expiresAt: hold.expiresAt,
       },
     });
+
+    void (async () => {
+      try {
+        const { getSupabaseClient } = await import('../adapters/supabase/client.js');
+        const sb = getSupabaseClient();
+        const deviceType = detectDeviceType(req.headers['user-agent']);
+
+        const { data: existing } = await sb
+          .from('booking_sessions')
+          .select('basket_items')
+          .eq('session_token', sessionToken)
+          .maybeSingle();
+
+        const currentItems: string[] = Array.isArray(existing?.basket_items) ? existing.basket_items as string[] : [];
+        const updatedItems = currentItems.includes(vehicleModelId)
+          ? currentItems
+          : [...currentItems, vehicleModelId];
+
+        await sb.from('booking_sessions').upsert(
+          {
+            session_token: sessionToken,
+            store_id: storeId,
+            pickup_datetime: pickupDatetime,
+            dropoff_datetime: dropoffDatetime,
+            basket_items: updatedItems,
+            device_type: deviceType,
+          },
+          { onConflict: 'session_token' },
+        );
+      } catch (err) {
+        console.error('[booking_sessions] hold upsert failed:', err);
+      }
+    })();
   } catch (err) {
     next(err);
   }
@@ -202,6 +237,62 @@ router.get('/hold/:sessionToken', async (req, res, next) => {
   }
 });
 
+// ── Session tracking ──
+
+const sessionLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 60,
+  message: { success: false, error: { code: 'RATE_LIMIT', message: 'Too many session updates.' } },
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+});
+
+const UpdateSessionBodySchema = z.object({
+  sessionToken: z.string().min(20),
+  basketViewed: z.boolean().optional(),
+  renterDetailsStarted: z.boolean().optional(),
+  renterDetails: z
+    .object({
+      fullName: z.string().optional(),
+      email: z.string().optional(),
+      phone: z.string().optional(),
+      nationality: z.string().optional(),
+      accommodationName: z.string().optional(),
+      company: z.string().optional(),
+      extraComments: z.string().optional(),
+    })
+    .optional(),
+});
+
+router.patch('/session', sessionLimiter, validateBody(UpdateSessionBodySchema), async (req, res, next) => {
+  try {
+    const { sessionToken, basketViewed, renterDetailsStarted, renterDetails } =
+      req.body as z.infer<typeof UpdateSessionBodySchema>;
+
+    const updates: Record<string, unknown> = {};
+    if (basketViewed) updates.basket_viewed_at = new Date().toISOString();
+    if (renterDetailsStarted) updates.renter_details_started_at = new Date().toISOString();
+    if (renterDetails !== undefined) updates.renter_details = renterDetails;
+
+    if (Object.keys(updates).length === 0) {
+      res.json({ success: true });
+      return;
+    }
+
+    const { getSupabaseClient } = await import('../adapters/supabase/client.js');
+    const sb = getSupabaseClient();
+
+    await sb
+      .from('booking_sessions')
+      .update(updates)
+      .eq('session_token', sessionToken);
+
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── Submit ──
 
 const submitLimiter = rateLimit({
@@ -222,13 +313,14 @@ function detectDeviceType(userAgent: string | undefined): 'mobile' | 'desktop' {
 router.post('/submit', submitLimiter, validateBody(SubmitDirectBookingRequestSchema), async (req, res, next) => {
   try {
     const deviceType = detectDeviceType(req.headers['user-agent']);
+    const body = req.body as SubmitDirectBookingInput;
     const result: SubmitDirectBookingResult = await submitDirectBooking(
       {
         bookingPort: req.app.locals.deps.bookingPort,
         configRepo: req.app.locals.deps.configRepo,
         transferRepo: req.app.locals.deps.transferRepo,
       },
-      req.body as SubmitDirectBookingInput,
+      body,
       { deviceType },
     );
 
@@ -241,6 +333,22 @@ router.post('/submit', submitLimiter, validateBody(SubmitDirectBookingRequestSch
         charityDonation: result.charityDonation,
       },
     });
+
+    void (async () => {
+      try {
+        const sessionToken = (body as Record<string, unknown>).sessionToken as string | undefined;
+        if (!sessionToken) return;
+        const { getSupabaseClient } = await import('../adapters/supabase/client.js');
+        const sb = getSupabaseClient();
+        await sb
+          .from('booking_sessions')
+          .update({ submitted_at: new Date().toISOString() })
+          .eq('session_token', sessionToken)
+          .is('submitted_at', null);
+      } catch (err) {
+        console.error('[booking_sessions] submit update failed:', err);
+      }
+    })();
   } catch (err) {
     next(err);
   }

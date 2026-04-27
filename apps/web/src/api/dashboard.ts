@@ -114,3 +114,25 @@ export function useCharityImpact() {
     staleTime: 5 * 60_000,
   });
 }
+
+export interface BasketAbandonmentSummary {
+  total: number;
+  basketViewed: number;
+  renterStarted: number;
+  converted: number;
+  abandoned: number;
+  conversionRate: number;
+}
+
+export function useBasketAbandonmentSummary(storeId?: string, from?: string, to?: string) {
+  const params = new URLSearchParams();
+  if (storeId && storeId !== 'all') params.set('storeId', storeId);
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return useQuery<BasketAbandonmentSummary>({
+    queryKey: ['dashboard', 'basket-abandonment', storeId, from, to],
+    queryFn: () => api.get<BasketAbandonmentSummary>(`/dashboard/basket-abandonment${qs}`),
+    staleTime: 5 * 60_000,
+  });
+}
