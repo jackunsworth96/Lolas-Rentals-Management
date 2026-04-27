@@ -136,3 +136,40 @@ export function useBasketAbandonmentSummary(storeId?: string, from?: string, to?
     staleTime: 5 * 60_000,
   });
 }
+
+export interface ChatSessionsByDay {
+  date: string;
+  sessions: number;
+}
+
+export interface ChatPageOriginRow {
+  page: string;
+  count: number;
+}
+
+export interface ChatDeviceRow {
+  device: string;
+  count: number;
+}
+
+export interface ChatSummary {
+  total: number;
+  handoffs: number;
+  handoffRate: number;
+  avgMessages: number;
+  sessionsByDay: ChatSessionsByDay[];
+  byPageOrigin: ChatPageOriginRow[];
+  byDevice: ChatDeviceRow[];
+}
+
+export function useChatSummary(from?: string, to?: string) {
+  const params = new URLSearchParams();
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return useQuery<ChatSummary>({
+    queryKey: ['dashboard', 'chat-summary', from, to],
+    queryFn: () => api.get<ChatSummary>(`/dashboard/chat-summary${qs}`),
+    staleTime: 5 * 60_000,
+  });
+}

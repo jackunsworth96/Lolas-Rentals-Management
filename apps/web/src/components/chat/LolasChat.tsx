@@ -100,6 +100,45 @@ function renderInline(text: string): React.ReactNode {
   return parts;
 }
 
+function TypewriterTooltip({ text, visible }: { text: string; visible: boolean }) {
+  const [displayed, setDisplayed] = useState('');
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      setShow(true);
+      setDisplayed('');
+      let i = 0;
+      const interval = setInterval(() => {
+        i++;
+        setDisplayed(text.slice(0, i));
+        if (i >= text.length) clearInterval(interval);
+      }, 45);
+      return () => clearInterval(interval);
+    } else {
+      const t = setTimeout(() => {
+        setShow(false);
+        setDisplayed('');
+      }, 150);
+      return () => clearTimeout(t);
+    }
+  }, [visible, text]);
+
+  if (!show) return null;
+
+  return (
+    <div
+      className="pointer-events-none whitespace-nowrap rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-charcoal-brand shadow-md ring-1 ring-charcoal-brand/10 transition-opacity duration-150"
+      style={{ opacity: visible ? 1 : 0 }}
+    >
+      {displayed}
+      {displayed.length < text.length && (
+        <span className="ml-0.5 inline-block h-3 w-0.5 animate-pulse bg-teal-brand align-middle" />
+      )}
+    </div>
+  );
+}
+
 function TypingDots() {
   return (
       <span className="inline-flex items-center gap-1" aria-label="Lolo is typing">
@@ -257,6 +296,29 @@ function useDraggable(btnSize: number) {
 const BUBBLE_MESSAGE = "Hey, I'm Lola's Assistant - Lolo! I can quickly answer most questions here 🐾";
 const BUBBLE_DISMISS_MS = 7000;
 
+// ── Analytics helpers ─────────────────────────────────────────────────────────
+
+function newSessionId(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+function getPageOrigin(): string {
+  const path = window.location.pathname;
+  if (path === '/' || path === '') return 'home';
+  if (path.includes('browse') || path.includes('reserve')) return 'browse';
+  if (path.includes('basket')) return 'basket';
+  if (path.includes('confirm')) return 'confirmation';
+  if (path.includes('transfer')) return 'transfers';
+  return path.replace(/^\//, '').split('/')[0] || 'other';
+}
+
+function getDeviceType(): 'mobile' | 'desktop' {
+  return /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? 'mobile' : 'desktop';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function LolasChat() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -264,10 +326,16 @@ export default function LolasChat() {
   const [sending, setSending] = useState(false);
   const [waitingForFirstToken, setWaitingForFirstToken] = useState(false);
   const [showBubble, setShowBubble] = useState(true);
+  const [isHovered, setIsHovered] = useState(false);
 
   /** Launcher hit area + drag math; was 64px (h-16), +10% for visibility */
   const BTN_SIZE = 64 * 1.1;
   const { pos, hasDragged, onPointerDown, onPointerMove, onPointerUp } = useDraggable(BTN_SIZE);
+
+  // Analytics session — created once per panel open, persists until close.
+  const sessionIdRef = useRef<string | null>(null);
+  const pageOriginRef = useRef<string>('other');
+  const deviceTypeRef = useRef<'mobile' | 'desktop'>('desktop');
 
   // Auto-dismiss the greeting bubble after a few seconds.
   useEffect(() => {
@@ -280,9 +348,12 @@ export default function LolasChat() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Seed the opening message once when the panel is first opened.
+  // Seed the opening message and initialise analytics session on first open.
   useEffect(() => {
     if (open && messages.length === 0) {
+      sessionIdRef.current = newSessionId();
+      pageOriginRef.current = getPageOrigin();
+      deviceTypeRef.current = getDeviceType();
       setMessages([
         { id: makeId(), role: 'assistant', content: OPENING_MESSAGE },
       ]);
@@ -305,6 +376,31 @@ export default function LolasChat() {
 
   // Cancel any in-flight request on unmount.
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  /** Send a session-end ping so the API can store the final transcript. */
+  function sendSessionEnd(finalMessages: ChatMessage[]) {
+    if (!sessionIdRef.current) return;
+    const history = finalMessages
+      .filter((m) => m.content.length > 0)
+      .map((m) => ({ role: m.role, content: m.content }));
+    navigator.sendBeacon(
+      `${API_BASE}/public/chat`,
+      JSON.stringify({
+        messages: history,
+        session_id: sessionIdRef.current,
+        page_origin: pageOriginRef.current,
+        device_type: deviceTypeRef.current,
+        ended: true,
+        ended_at: new Date().toISOString(),
+      }),
+    );
+    sessionIdRef.current = null;
+  }
+
+  function handleClose() {
+    sendSessionEnd(messages);
+    setOpen(false);
+  }
 
   async function handleSend() {
     const text = input.trim();
@@ -342,7 +438,12 @@ export default function LolasChat() {
       const response = await fetch(`${API_BASE}/public/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: historyForApi }),
+        body: JSON.stringify({
+          messages: historyForApi,
+          session_id: sessionIdRef.current ?? undefined,
+          page_origin: pageOriginRef.current,
+          device_type: deviceTypeRef.current,
+        }),
         signal: controller.signal,
       });
 
@@ -490,6 +591,21 @@ export default function LolasChat() {
             </div>
           )}
 
+          {/* Hover tooltip — positioned above the launcher button, clamped to viewport */}
+          {(() => {
+            const tooltipW = 140; // approximate pill width for "Hi, I'm Lolo 🐾"
+            const centeredLeft = pos.x + BTN_SIZE / 2 - tooltipW / 2;
+            const clampedLeft = Math.max(8, Math.min(centeredLeft, window.innerWidth - tooltipW - 8));
+            return (
+              <div
+                className="fixed z-[60]"
+                style={{ left: clampedLeft, top: pos.y - 44, pointerEvents: 'none' }}
+              >
+                <TypewriterTooltip text="Hi, I'm Lolo 🐾" visible={isHovered} />
+              </div>
+            );
+          })()}
+
           <button
             type="button"
             onPointerDown={onPointerDown}
@@ -502,9 +618,11 @@ export default function LolasChat() {
                 setOpen(true);
               }
             }}
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
             aria-label="Open chat with Lolo, Lola's Assistant"
             style={{ left: pos.x, top: pos.y, touchAction: 'none', width: BTN_SIZE, height: BTN_SIZE }}
-            className="fixed z-[60] flex cursor-grab items-center justify-center bg-transparent p-0 transition-transform duration-150 active:cursor-grabbing active:scale-95 select-none"
+            className="fixed z-[60] flex cursor-grab items-center justify-center bg-transparent p-0 transition-transform duration-200 hover:scale-110 active:cursor-grabbing active:scale-95 select-none"
           >
             <img
               src={aiChatIcon}
@@ -571,7 +689,7 @@ export default function LolasChat() {
             </div>
             <button
               type="button"
-              onClick={() => setOpen(false)}
+              onClick={handleClose}
               aria-label="Close chat"
               className="flex h-8 w-8 items-center justify-center rounded-full text-charcoal-brand/60 transition-colors hover:bg-charcoal-brand/5 hover:text-charcoal-brand"
             >

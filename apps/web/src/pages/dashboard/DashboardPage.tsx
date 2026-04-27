@@ -5,6 +5,7 @@ import {
   useDashboardSummary,
   useCharityImpact,
   useBasketAbandonmentSummary,
+  useChatSummary,
   type StoreMetrics,
   type AddonRevenueRow,
   type CashBalanceRow,
@@ -18,6 +19,8 @@ import { AvailabilityDetailModal } from '../../components/dashboard/Availability
 import { formatCurrency } from '../../utils/currency.js';
 import {
   ResponsiveContainer,
+  AreaChart,
+  Area,
   BarChart,
   Bar,
   XAxis,
@@ -113,6 +116,7 @@ export default function DashboardPage() {
 
   const { data: charityImpact } = useCharityImpact();
   const { data: basketAbandon } = useBasketAbandonmentSummary(selectedStoreId || undefined);
+  const { data: chatSummary } = useChatSummary();
 
   const [selectedReturn, setSelectedReturn] = useState<NinePmVehicle | null>(null);
   const [showAvailability, setShowAvailability] = useState(false);
@@ -823,6 +827,129 @@ export default function DashboardPage() {
         storeId={selectedStoreId}
         date={tomorrowDate}
       />
+
+      {/* SECTION — Lolo Chat Analytics */}
+      {canViewFinancial && chatSummary && (
+        <section>
+          <SectionHeading>Lolo Chat Analytics (last 30 days)</SectionHeading>
+
+          {/* KPI row */}
+          <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <StatCard
+              label="Total Sessions"
+              value={String(chatSummary.total)}
+              sub="Chat panels opened"
+            />
+            <StatCard
+              label="Avg Messages"
+              value={String(chatSummary.avgMessages)}
+              sub="Per session"
+            />
+            <StatCard
+              label="WhatsApp Handoffs"
+              value={String(chatSummary.handoffs)}
+              sub="Lolo couldn't fully answer"
+            />
+            <StatCard
+              label="Handoff Rate"
+              value={`${chatSummary.handoffRate}%`}
+              sub={chatSummary.handoffRate > 20 ? 'Review system prompt' : 'Healthy'}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            {/* Sessions over time */}
+            <div className="rounded-2xl bg-white p-6 shadow-sm">
+              <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                Sessions per Day
+              </h3>
+              {chatSummary.sessionsByDay.length === 0 ? (
+                <p className="py-8 text-center text-sm text-gray-400">No sessions yet</p>
+              ) : (
+                <div className="h-48 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={chatSummary.sessionsByDay}>
+                      <defs>
+                        <linearGradient id="chatGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#00577C" stopOpacity={0.15} />
+                          <stop offset="95%" stopColor="#00577C" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 10 }}
+                        tickFormatter={(v: string) => v.slice(5)}
+                      />
+                      <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
+                      <Tooltip
+                        formatter={(value: number) => [value, 'Sessions']}
+                        labelFormatter={(label: string) => `Date: ${label}`}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="sessions"
+                        stroke="#00577C"
+                        strokeWidth={2}
+                        fill="url(#chatGrad)"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+
+            {/* Page origin breakdown */}
+            <div className="rounded-2xl bg-white p-6 shadow-sm">
+              <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                Where Chats Start
+              </h3>
+              {chatSummary.byPageOrigin.length === 0 ? (
+                <p className="py-8 text-center text-sm text-gray-400">No data yet</p>
+              ) : (
+                <div className="h-48 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chatSummary.byPageOrigin} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                      <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10 }} />
+                      <YAxis
+                        type="category"
+                        dataKey="page"
+                        tick={{ fontSize: 11 }}
+                        width={80}
+                        tickFormatter={(v: string) =>
+                          v.charAt(0).toUpperCase() + v.slice(1)
+                        }
+                      />
+                      <Tooltip formatter={(value: number) => [value, 'Sessions']} />
+                      <Bar dataKey="count" fill="#FCBC5A" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Device split — small inline pills */}
+          {chatSummary.byDevice.length > 0 && (
+            <div className="mt-4 flex flex-wrap gap-3">
+              {chatSummary.byDevice.map(({ device, count }) => (
+                <div
+                  key={device}
+                  className="flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-1.5 text-sm shadow-sm"
+                >
+                  <span className="font-medium capitalize text-gray-700">{device}</span>
+                  <span className="text-gray-400">·</span>
+                  <span className="font-semibold text-gray-900">{count}</span>
+                  <span className="text-xs text-gray-400">
+                    ({chatSummary.total > 0 ? Math.round((count / chatSummary.total) * 100) : 0}%)
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* SECTION — Be Pawsitive Impact */}
       {charityImpact && (

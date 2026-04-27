@@ -1115,4 +1115,98 @@ router.get('/basket-abandonment', async (req, res, next) => {
   }
 });
 
+// ── GET /chat-summary ─────────────────────────────────────────────────────────
+router.get('/chat-summary', async (req, res, next) => {
+  try {
+    const user = (req as unknown as { user?: { permissions?: string[] } }).user;
+    if (!user?.permissions?.includes(Permission.ViewDashboard)) {
+      res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Access denied.' } });
+      return;
+    }
+
+    const sb = getSupabaseClient();
+
+    // Default window: last 30 days in Manila time
+    const manilaOffset = 8 * 60 * 60 * 1000;
+    const now = new Date();
+    const defaultTo = new Date(now.getTime() + manilaOffset);
+    const defaultFrom = new Date(defaultTo.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const fromIso = (req.query.from as string | undefined) ?? defaultFrom.toISOString();
+    const toIso   = (req.query.to   as string | undefined) ?? defaultTo.toISOString();
+
+    const { data, error } = await sb
+      .from('chat_sessions')
+      .select('started_at, ended_at, page_origin, message_count, handoff_triggered, device_type')
+      .gte('created_at', fromIso)
+      .lte('created_at', toIso)
+      .order('created_at', { ascending: true });
+
+    if (error) throw new Error(error.message);
+
+    const rows = (data ?? []) as Array<{
+      started_at:        string;
+      ended_at:          string | null;
+      page_origin:       string | null;
+      message_count:     number;
+      handoff_triggered: boolean;
+      device_type:       string | null;
+    }>;
+
+    const total       = rows.length;
+    const handoffs    = rows.filter((r) => r.handoff_triggered).length;
+    const handoffRate = total > 0 ? Math.round((handoffs / total) * 1000) / 10 : 0;
+
+    const avgMessages =
+      total > 0
+        ? Math.round((rows.reduce((s, r) => s + r.message_count, 0) / total) * 10) / 10
+        : 0;
+
+    // Sessions by day (Manila date)
+    const byDayMap = new Map<string, number>();
+    for (const r of rows) {
+      const d = new Date(new Date(r.started_at).getTime() + manilaOffset)
+        .toISOString()
+        .slice(0, 10);
+      byDayMap.set(d, (byDayMap.get(d) ?? 0) + 1);
+    }
+    const sessionsByDay = [...byDayMap.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, sessions]) => ({ date, sessions }));
+
+    // Page origin breakdown
+    const originMap = new Map<string, number>();
+    for (const r of rows) {
+      const origin = r.page_origin ?? 'unknown';
+      originMap.set(origin, (originMap.get(origin) ?? 0) + 1);
+    }
+    const byPageOrigin = [...originMap.entries()]
+      .sort(([, a], [, b]) => b - a)
+      .map(([page, count]) => ({ page, count }));
+
+    // Device split
+    const deviceMap = new Map<string, number>();
+    for (const r of rows) {
+      const d = r.device_type ?? 'unknown';
+      deviceMap.set(d, (deviceMap.get(d) ?? 0) + 1);
+    }
+    const byDevice = [...deviceMap.entries()].map(([device, count]) => ({ device, count }));
+
+    res.json({
+      success: true,
+      data: {
+        total,
+        handoffs,
+        handoffRate,
+        avgMessages,
+        sessionsByDay,
+        byPageOrigin,
+        byDevice,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export { router as dashboardRoutes, queryCharityImpact, CHARITY_OPENING_BALANCE };

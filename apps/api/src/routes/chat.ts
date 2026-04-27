@@ -27,6 +27,12 @@ const ChatBodySchema = z.object({
       }),
     )
     .max(10),
+  /** Optional analytics context — ignored if absent. */
+  session_id:   z.string().uuid().optional(),
+  page_origin:  z.string().max(64).optional(),
+  device_type:  z.enum(['mobile', 'desktop']).optional(),
+  ended:        z.boolean().optional(),
+  ended_at:     z.string().optional(),
 });
 
 // ── Live pricing cache ────────────────────────────────────────────────────────
@@ -265,6 +271,43 @@ Airport Transfers (IAO / Sayak Airport ↔ General Luna, both directions):
 - Private TukTuk: ₱1,800 flat
 Customers can add a transfer in the basket when booking a rental, or book a standalone transfer from the Transfers page.`;
 
+// ── Analytics logging ─────────────────────────────────────────────────────────
+
+interface ChatSessionPayload {
+  session_id:        string;
+  page_origin?:      string;
+  device_type?:      string;
+  message_count:     number;
+  handoff_triggered: boolean;
+  messages:          Array<{ role: string; content: string }>;
+  ended_at?:         string;
+}
+
+/** Fire-and-forget upsert — never throws, never blocks the response. */
+function logChatSession(payload: ChatSessionPayload): void {
+  const sb = getSupabaseClient();
+  sb.from('chat_sessions')
+    .upsert(
+      {
+        session_id:        payload.session_id,
+        store_id:          STORE_ID,
+        page_origin:       payload.page_origin ?? null,
+        device_type:       payload.device_type ?? null,
+        message_count:     payload.message_count,
+        handoff_triggered: payload.handoff_triggered,
+        messages:          payload.messages,
+        ended_at:          payload.ended_at ?? null,
+      },
+      { onConflict: 'session_id' },
+    )
+    .then(({ error }) => {
+      if (error) logger.warn({ err: error }, 'chat_sessions upsert failed');
+    })
+    .catch((err: unknown) => {
+      logger.warn({ err }, 'chat_sessions upsert threw');
+    });
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 
 const router = Router();
@@ -274,6 +317,24 @@ router.post('/', chatLimiter, async (req, res, next) => {
     const parsed = ChatBodySchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ success: false, error: 'Invalid request body' });
+      return;
+    }
+
+    const { session_id, page_origin, device_type, ended, ended_at, messages: msgList } = parsed.data;
+
+    // Session-end ping: frontend signals the conversation is closed.
+    // Log the final state and return early — no need to hit Anthropic.
+    if (ended && session_id) {
+      logChatSession({
+        session_id,
+        page_origin,
+        device_type,
+        message_count: msgList.length,
+        handoff_triggered: msgList.some((m) => m.role === 'assistant' && m.content.includes('WHATSAPP_HANDOFF')),
+        messages: msgList,
+        ended_at: ended_at ?? new Date().toISOString(),
+      });
+      res.json({ success: true });
       return;
     }
 
@@ -339,6 +400,20 @@ router.post('/', chatLimiter, async (req, res, next) => {
         res.end();
       }
     });
+
+    // Log the session state after each exchange. The assistant reply hasn't
+    // streamed yet so we log the user messages only; the frontend sends a
+    // separate "ended" ping with the full transcript when the panel closes.
+    if (session_id) {
+      logChatSession({
+        session_id,
+        page_origin,
+        device_type,
+        message_count: msgList.length,
+        handoff_triggered: false,
+        messages: msgList,
+      });
+    }
   } catch (err) {
     next(err);
   }
