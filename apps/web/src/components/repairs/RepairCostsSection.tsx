@@ -116,9 +116,43 @@ export function RepairCostsSection() {
         ))}
       </div>
 
-      <p className="font-lato mx-auto mt-8 max-w-2xl text-center text-sm text-charcoal-brand/60">
-        Costs are estimates. Final charges depend on actual damage assessment at return.
-      </p>
+      <div className="mt-10 rounded-2xl border border-charcoal-brand/10 bg-sand-brand/40 px-6 py-6 md:px-8">
+        <h3 className="font-headline mb-4 text-lg font-bold text-charcoal-brand md:text-xl">How Damage Charges Work</h3>
+        <ul className="font-lato space-y-3 text-sm leading-relaxed text-charcoal-brand/85">
+          <li className="flex gap-3">
+            <span className="mt-0.5 shrink-0 font-medium text-teal-brand">①</span>
+            <span>
+              For damage requiring bodywork or repainting, charges depend on the extent of the panel affected and will be quoted individually. We will always discuss this with you before any work begins.
+            </span>
+          </li>
+          <li className="flex gap-3">
+            <span className="mt-0.5 shrink-0 font-medium text-teal-brand">②</span>
+            <span>
+              Where damage falls outside our standard price list, all parts are charged at cost — prices are published on our website so you can verify them yourself.
+            </span>
+          </li>
+          <li className="flex gap-3">
+            <span className="mt-0.5 shrink-0 font-medium text-teal-brand">③</span>
+            <span>
+              Crash guards are only charged for full replacement if the guard has genuinely lost its protective function. Cosmetic wear is not charged. A repolish, where sufficient, is charged at{' '}
+              <strong className="font-semibold text-charcoal-brand">₱500</strong>.
+            </span>
+          </li>
+          <li className="flex gap-3">
+            <span className="mt-0.5 shrink-0 font-medium text-teal-brand">④</span>
+            <span>
+              A minimum call-out fee of <strong className="font-semibold text-charcoal-brand">₱200</strong> applies if you need us to come to you. If the distance warrants it, an additional{' '}
+              <strong className="font-semibold text-charcoal-brand">₱20</strong> per km applies for any amount beyond the ₱200 minimum.
+            </span>
+          </li>
+          <li className="flex gap-3">
+            <span className="mt-0.5 shrink-0 font-medium text-teal-brand">⑥</span>
+            <span>
+              In the event of a total write-off, the vehicle must be restored to its original condition regardless of cost. The renter is liable for all parts and labour required to bring the vehicle back to the standard it was rented out in, even if the total repair cost exceeds the market value of the vehicle itself. An out-of-service fee also applies for every day the vehicle is unavailable to our fleet while awaiting parts or repair.
+            </span>
+          </li>
+        </ul>
+      </div>
     </section>
   );
 }
