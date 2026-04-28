@@ -7,8 +7,25 @@ export const ExtendLookupRequestSchema = z.object({
 
 export type ExtendLookupRequest = z.infer<typeof ExtendLookupRequestSchema>;
 
+export interface ExtendLookupOrderAddon {
+  addonName: string;
+  addonPrice: number;
+  addonType: 'per_day' | 'one_time';
+  quantity: number;
+  totalAmount: number;
+}
+
+export interface ExtendLookupLocation {
+  id: number;
+  name: string;
+  deliveryCost: number;
+  collectionCost: number;
+  locationType: string | null;
+}
+
 export interface ExtendLookupOrder {
   orderReference: string;
+  customerName?: string | null;
   vehicleModelName: string;
   vehicleModelId: string;
   storeId: string;
@@ -16,6 +33,10 @@ export interface ExtendLookupOrder {
   pickupLocationName: string;
   originalTotal: number;
   rentalDays: number;
+  currentOrderAddons: ExtendLookupOrderAddon[];
+  currentDropoffLocationId: number | null;
+  currentDropoffFee: number;
+  availableLocations: ExtendLookupLocation[];
 }
 
 export type ExtendLookupResponse =
@@ -27,6 +48,9 @@ export const PublicExtendConfirmSchema = z.object({
   email: z.string().email(),
   newDropoffDatetime: z.string().min(1),
   ninePmAddonId: z.number().int().positive().optional(),
+  newOneTimeAddonIds: z.array(z.number().int().positive()).optional(),
+  newDropoffLocationId: z.number().int().positive().optional(),
+  newDropoffLocationAddress: z.string().max(500).optional(),
 });
 
 export const StaffExtendConfirmSchema = PublicExtendConfirmSchema.extend({
@@ -34,6 +58,7 @@ export const StaffExtendConfirmSchema = PublicExtendConfirmSchema.extend({
   paymentStatus: z.enum(['paid', 'unpaid']).optional(),
   paymentMethod: z.string().optional(),
   paymentAccountId: z.string().optional(),
+  newPerDayAddonIds: z.array(z.number().int().positive()).optional(),
 });
 
 export const ExtendConfirmRequestSchema = StaffExtendConfirmSchema;

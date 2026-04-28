@@ -11,11 +11,11 @@ function formatDateTime(iso: string): string {
 
 interface Props {
   vehicleModelName: string;
-  pickupLocationName: string;
+  returnLocationName: string;
   currentDropoffDatetime: string;
 }
 
-export function ActiveRentalCard({ vehicleModelName, pickupLocationName, currentDropoffDatetime }: Props) {
+export function ActiveRentalCard({ vehicleModelName, returnLocationName, currentDropoffDatetime }: Props) {
   const publicId = resolvePublicId(vehicleModelName);
 
   return (
@@ -39,7 +39,7 @@ export function ActiveRentalCard({ vehicleModelName, pickupLocationName, current
           <h3 className="mt-2 font-headline text-2xl font-black text-charcoal-brand lg:mt-3 lg:text-3xl">{vehicleModelName}</h3>
           <p className="mt-1 flex items-center gap-1.5 text-sm font-semibold text-charcoal-brand/70">
             <img src={locationIcon} alt="" className="h-4 w-4 shrink-0 object-contain" width={16} height={16} />
-            {pickupLocationName}
+            {returnLocationName}
           </p>
         </div>
 

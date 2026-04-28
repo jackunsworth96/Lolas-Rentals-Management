@@ -13,6 +13,8 @@ import { BookingLookupForm } from '../../components/extend/BookingLookupForm.js'
 import { ActiveRentalCard } from '../../components/extend/ActiveRentalCard.js';
 import { ExtendCalendar } from '../../components/extend/ExtendCalendar.js';
 import { ExtensionSummary } from '../../components/extend/ExtensionSummary.js';
+import { ExtendAddOnsSection } from '../../components/extend/ExtendAddOnsSection.js';
+import { ExtendLocationPicker } from '../../components/extend/ExtendLocationPicker.js';
 import { useCustomerPawCardSavings } from '../../api/paw-card.js';
 import { isNinePmReturnAddonName } from '../../components/basket/AddOnsSection.js';
 import { formatCurrency } from '../../utils/currency.js';
@@ -21,6 +23,22 @@ import iconPawCard from '../../assets/Home/Paw Card Icon.svg';
 import lolaVideo from '../../assets/Checkout_Lola.mp4';
 import { WHATSAPP_URL } from '../../config/contact.js';
 import { phoneIcon } from '../../components/public/customerContactIcons.js';
+
+interface CurrentOrderAddon {
+  addonName: string;
+  addonPrice: number;
+  addonType: 'per_day' | 'one_time';
+  quantity: number;
+  totalAmount: number;
+}
+
+interface AvailableLocation {
+  id: number;
+  name: string;
+  deliveryCost: number;
+  collectionCost: number;
+  locationType: string | null;
+}
 
 interface OrderData {
   orderReference: string;
@@ -32,6 +50,10 @@ interface OrderData {
   pickupLocationName: string;
   originalTotal: number;
   rentalDays: number;
+  currentOrderAddons: CurrentOrderAddon[];
+  currentDropoffLocationId: number | null;
+  currentDropoffFee: number;
+  availableLocations: AvailableLocation[];
 }
 
 function firstNameOf(name: string | null | undefined): string {
@@ -50,7 +72,6 @@ const ORDER_NOT_ACTIVE_CUSTOMER_MESSAGE =
   "Your booking hasn't been activated yet — extensions are only available once your rental has started. Please contact us if you need to make changes to your booking.";
 
 function formatNewReturn(date: string, time: string): string {
-  // Parse YYYY-MM-DD as local midnight to avoid UTC shift in Manila (UTC+8)
   const [y, m, d] = date.split('-').map(Number);
   const dateLabel = new Date(y, m - 1, d).toLocaleDateString('en-US', {
     weekday: 'short', month: 'short', day: 'numeric',
@@ -78,8 +99,12 @@ export default function ExtendPage() {
   const [lookupEmail, setLookupEmail] = useState('');
   const [ninePmSelected, setNinePmSelected] = useState(false);
 
-  // Fetch addon catalog once we know the store, to find the 9PM addon.
-  // Use retry: false + throwOnError: false so a missing endpoint (old server) fails silently.
+  // New state for add-ons and location
+  const [selectedAddonIds, setSelectedAddonIds] = useState<number[]>([]);
+  const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
+  const [locationAddress, setLocationAddress] = useState('');
+
+  // Fetch addon catalog once we know the store (for the add-ons section toggle)
   const { data: addonsRaw } = useQuery<Array<{ id: number; name: string; addon_type: string; price_one_time: number }>>({
     queryKey: ['public-extend-addons', order?.storeId ?? ''],
     queryFn: () => api.get(`/public/extend/addons?storeId=${encodeURIComponent(order!.storeId)}`),
@@ -87,6 +112,8 @@ export default function ExtendPage() {
     retry: false,
     throwOnError: false,
   });
+
+  // Identify the 9PM addon from catalog (still kept for ExtendCalendar compatibility)
   const ninePmAddonRaw = addonsRaw?.find((a) => isNinePmReturnAddonName(a.name)) ?? null;
   const ninePmAddon = ninePmAddonRaw
     ? { id: ninePmAddonRaw.id, name: ninePmAddonRaw.name, price: ninePmAddonRaw.price_one_time }
@@ -94,34 +121,47 @@ export default function ExtendPage() {
 
   const { data: pawCardData } = useCustomerPawCardSavings(lookupEmail || undefined);
 
-  // When time picker changes, deselect 9PM if they move away from 4:45 PM
   const handleSelectTime = useCallback((time: string) => {
     setSelectedTime(time);
     if (time !== '16:45') setNinePmSelected(false);
   }, []);
 
+  const handleToggleAddon = useCallback((id: number) => {
+    // If it's the 9PM addon, route through ninePmSelected for backward compat
+    if (ninePmAddon && id === ninePmAddon.id) {
+      setNinePmSelected((v) => !v);
+      return;
+    }
+    setSelectedAddonIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  }, [ninePmAddon]);
+
   const handleLookup = useCallback(async (email: string, orderReference: string) => {
     setLookupLoading(true); setLookupError(null); setLookupEmail(email);
     try {
       const res = await api.post<{ found: boolean; order?: OrderData }>('/public/extend/lookup', { email, orderReference });
-      if (res.found && res.order) { setOrder(res.order); setPageState('rental'); }
-      else setLookupError(t('extend.lookupNotFound'));
+      if (res.found && res.order) {
+        setOrder(res.order);
+        setSelectedLocationId(null);
+        setLocationAddress('');
+        setSelectedAddonIds([]);
+        setNinePmSelected(false);
+        setPageState('rental');
+      } else {
+        setLookupError(t('extend.lookupNotFound'));
+      }
     } catch (err) {
       if (err instanceof ApiError && err.code === 'ORDER_NOT_ACTIVE') {
         setLookupError(t('extend.notActiveError'));
       } else {
         setLookupError(t('extend.lookupError'));
       }
-    }
-    finally { setLookupLoading(false); }
-  }, []);
+    } finally { setLookupLoading(false); }
+  }, [t]);
 
-  // effectiveTime: when 9PM is selected, use 21:00 for both preview and confirm
   const effectiveTime = ninePmSelected ? '21:00' : selectedTime;
 
-  // Call the same /public/extend/preview endpoint used by the backoffice, so
-  // the customer sees the *capped* extension cost (never higher than the
-  // original daily rate) — not the raw bracket rate from /public/booking/quote.
   useEffect(() => {
     if (!order || !selectedDate || !lookupEmail) { setExtensionCost(null); return; }
     const newDropoff = `${selectedDate}T${effectiveTime}:00+08:00`;
@@ -148,12 +188,40 @@ export default function ExtendPage() {
     return () => { cancelled = true; };
   }, [order, selectedDate, effectiveTime, lookupEmail]);
 
-  // Use Math.ceil + full datetime (matching server's extDayCount) for accurate day label
   const extensionDays = selectedDate && order
     ? Math.max(1, Math.ceil(
         (new Date(`${selectedDate}T${effectiveTime}:00+08:00`).getTime() - new Date(order.currentDropoffDatetime).getTime()) / 86400000
       ))
     : 0;
+
+  // Compute per-day addon delta client-side.
+  // Derive the actual per-day rate from total_amount / originalRentalDays to handle
+  // bookings where quantity stores rental days rather than a unit count.
+  const perDayAddonDelta = order
+    ? order.currentOrderAddons
+        .filter((a) => a.addonType === 'per_day')
+        .reduce((sum, a) => {
+          const perDayRate = order.rentalDays > 0 ? a.totalAmount / order.rentalDays : a.addonPrice;
+          return sum + Math.round(perDayRate * extensionDays * 100) / 100;
+        }, 0)
+    : 0;
+
+  // New add-on lines for summary (excluding 9PM which is handled separately)
+  const newAddonLines = (addonsRaw ?? [])
+    .filter((ca) => selectedAddonIds.includes(ca.id) && ca.id !== (ninePmAddon?.id ?? -1))
+    .map((ca) => ({ name: ca.name, cost: Number(ca.price_one_time ?? 0) }));
+
+  // Location delta
+  const currentDropoffFee = order?.currentDropoffFee ?? 0;
+  const selectedLocData = order?.availableLocations.find((l) => l.id === selectedLocationId);
+  const locationDelta = selectedLocData != null
+    ? Math.round((Number(selectedLocData.collectionCost) - currentDropoffFee) * 100) / 100
+    : 0;
+  const newLocationName = selectedLocData?.name;
+
+  // Effective return location name for the card (selected > current > fallback)
+  const currentDropoffLocName = order?.availableLocations.find((l) => l.id === order.currentDropoffLocationId)?.name;
+  const effectiveReturnLocationName = selectedLocData?.name ?? currentDropoffLocName ?? order?.pickupLocationName ?? '';
 
   async function handleConfirm() {
     if (!order || !selectedDate) return;
@@ -166,13 +234,18 @@ export default function ExtendPage() {
         newDropoffDatetime: newDropoff,
       };
       if (ninePmSelected && ninePmAddon) body.ninePmAddonId = ninePmAddon.id;
+      if (selectedAddonIds.length > 0) body.newOneTimeAddonIds = selectedAddonIds.filter((id) => id !== (ninePmAddon?.id ?? -1));
+      if (selectedLocationId != null && selectedLocationId !== order.currentDropoffLocationId) {
+        body.newDropoffLocationId = selectedLocationId;
+        if (locationAddress.trim()) body.newDropoffLocationAddress = locationAddress.trim();
+      }
       const res = await api.post<{ success: boolean; newDropoffDatetime?: string; extensionCost?: number; reason?: string }>(
         '/public/extend/confirm',
         body,
       );
       if (res.success) {
         setConfirmedDropoff(res.newDropoffDatetime ?? newDropoff);
-        setConfirmedBalance(res.extensionCost ?? extensionCost ?? 0);
+        setConfirmedBalance(res.extensionCost ?? (extensionCost ?? 0) + (ninePmSelected && ninePmAddon ? ninePmAddon.price : 0) + perDayAddonDelta + newAddonLines.reduce((s, a) => s + a.cost, 0) + locationDelta);
         setPageState('confirmed');
       } else {
         setLookupError(res.reason ?? t('extend.extensionFailed'));
@@ -189,6 +262,7 @@ export default function ExtendPage() {
   function handleReset() {
     setPageState('lookup'); setOrder(null); setSelectedDate(null);
     setExtensionCost(null); setLookupError(null); setNinePmSelected(false);
+    setSelectedAddonIds([]); setSelectedLocationId(null); setLocationAddress('');
   }
 
   return (
@@ -198,7 +272,6 @@ export default function ExtendPage() {
         description={t('extend.seoDescription')}
         noIndex={true}
       />
-      {/* Page header — hidden on the confirmation screen, shown for lookup/rental steps */}
       {pageState !== 'confirmed' && (
         <PageHeader
           eyebrow={t('extend.eyebrow')}
@@ -210,7 +283,6 @@ export default function ExtendPage() {
         />
       )}
 
-      {/* Main content — narrow on mobile, widens on desktop */}
       <div className="relative mx-auto max-w-lg px-4 pb-12 pt-2 sm:max-w-2xl sm:px-6 lg:max-w-5xl lg:px-8">
 
         {pageState === 'confirmed' ? (
@@ -221,7 +293,6 @@ export default function ExtendPage() {
           <>
             {pageState === 'lookup' && (
               <FadeUpSection>
-                {/* Centred, reasonably constrained on all screen sizes */}
                 <div className="mx-auto max-w-lg">
                   <BookingLookupForm loading={lookupLoading} onSubmit={handleLookup} error={lookupError} onFound={() => {}} onNotFound={() => {}} />
                 </div>
@@ -240,18 +311,14 @@ export default function ExtendPage() {
                   </FadeUpSection>
                 )}
 
-                {/*
-                  Mobile  → stacked vertically
-                  Desktop → fixed-width vehicle sidebar (left) + fluid calendar/summary (right)
-                */}
                 <div className="lg:grid lg:grid-cols-[340px_1fr] lg:items-start lg:gap-10">
 
-                  {/* ── Left column: vehicle card, sticky on desktop ── */}
+                  {/* ── Left column: vehicle card + Paw Card, sticky on desktop ── */}
                   <div className="space-y-4 lg:sticky lg:top-24">
                     <FadeUpSection>
                       <ActiveRentalCard
                         vehicleModelName={order.vehicleModelName}
-                        pickupLocationName={order.pickupLocationName}
+                        returnLocationName={effectiveReturnLocationName}
                         currentDropoffDatetime={order.currentDropoffDatetime}
                       />
                     </FadeUpSection>
@@ -260,7 +327,7 @@ export default function ExtendPage() {
                     </FadeUpSection>
                   </div>
 
-                  {/* ── Right column: calendar + summary ── */}
+                  {/* ── Right column: calendar, add-ons, location, summary ── */}
                   <div className="mt-6 space-y-6 lg:mt-0">
                     <FadeUpSection>
                       <ExtendCalendar
@@ -269,11 +336,40 @@ export default function ExtendPage() {
                         selectedTime={selectedTime}
                         onSelectDate={setSelectedDate}
                         onSelectTime={handleSelectTime}
-                        ninePmAddon={ninePmAddon}
                         ninePmSelected={ninePmSelected}
-                        onToggleNinePm={() => setNinePmSelected((v) => !v)}
                       />
                     </FadeUpSection>
+
+                    {/* Add-ons section (shown once a date is selected so extension days are known) */}
+                    {selectedDate && (addonsRaw ?? []).length > 0 && (
+                      <FadeUpSection>
+                        <ExtendAddOnsSection
+                          currentOrderAddons={order.currentOrderAddons}
+                          catalogAddons={addonsRaw ?? []}
+                          selectedAddonIds={selectedAddonIds}
+                          ninePmSelected={ninePmSelected}
+                          extensionDays={extensionDays}
+                          originalRentalDays={order.rentalDays}
+                          selectedTime={selectedTime}
+                          onToggleAddon={handleToggleAddon}
+                        />
+                      </FadeUpSection>
+                    )}
+
+                    {/* Location picker */}
+                    {order.availableLocations.length > 1 && (
+                      <FadeUpSection>
+                        <ExtendLocationPicker
+                          availableLocations={order.availableLocations}
+                          currentDropoffLocationId={order.currentDropoffLocationId}
+                          currentDropoffFee={order.currentDropoffFee}
+                          selectedLocationId={selectedLocationId}
+                          locationAddress={locationAddress}
+                          onSelectLocation={setSelectedLocationId}
+                          onChangeAddress={setLocationAddress}
+                        />
+                      </FadeUpSection>
+                    )}
 
                     {selectedDate && (
                       <FadeUpSection>
@@ -287,6 +383,10 @@ export default function ExtendPage() {
                           onConfirm={handleConfirm}
                           onCancel={handleReset}
                           ninePmCost={ninePmSelected && ninePmAddon ? ninePmAddon.price : undefined}
+                          perDayAddonDelta={perDayAddonDelta > 0 ? perDayAddonDelta : undefined}
+                          newAddons={newAddonLines.length > 0 ? newAddonLines : undefined}
+                          locationDelta={locationDelta !== 0 ? locationDelta : undefined}
+                          newLocationName={newLocationName}
                         />
                       </FadeUpSection>
                     )}
@@ -363,14 +463,12 @@ function ConfirmedView({ dropoff, balance, orderRef }: { dropoff: string; balanc
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
-  // dropoff is a naive local datetime string (e.g. "2026-04-21T16:45:00") — no UTC conversion needed
   const d = new Date(dropoff);
   const dateFormatted = d.toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   });
   const timeFormatted = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
-  // Google Calendar link for the return date
   const pad = (n: number) => String(n).padStart(2, '0');
   const gcalStamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
   const gcalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent("Return to Lola's Rentals")}&dates=${gcalStamp}/${gcalStamp}&details=${encodeURIComponent(`Return your vehicle to Lola's Rentals. Ref: ${orderRef}`)}&location=${encodeURIComponent("Lola's Rentals, Siargao")}`;
@@ -385,7 +483,6 @@ function ConfirmedView({ dropoff, balance, orderRef }: { dropoff: string; balanc
     <FadeUpSection>
       <div className="mx-auto max-w-sm space-y-5 pb-8">
 
-        {/* ── Hero: badge + heading ── */}
         <div className="flex flex-col items-center gap-3 pt-10 text-center">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-teal-brand/30 bg-teal-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-teal-brand">
             {t('extend.confirmed')}
@@ -394,7 +491,6 @@ function ConfirmedView({ dropoff, balance, orderRef }: { dropoff: string; balanc
           <p className="text-sm text-charcoal-brand/60">{t('extend.returnUpdated')}</p>
         </div>
 
-        {/* ── Lola mascot ── */}
         <div className="flex justify-center">
           <div className="flex h-36 w-36 items-center justify-center overflow-hidden rounded-full border-4 border-gold-brand/50 bg-gold-brand/20">
             <video
@@ -408,7 +504,6 @@ function ConfirmedView({ dropoff, balance, orderRef }: { dropoff: string; balanc
           </div>
         </div>
 
-        {/* ── Action required card (only when balance is outstanding) ── */}
         {balance > 0 && (
           <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
             <div className="flex gap-3">
@@ -434,9 +529,7 @@ function ConfirmedView({ dropoff, balance, orderRef }: { dropoff: string; balanc
           </div>
         )}
 
-        {/* ── Return date + extension cost card ── */}
         <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100">
-          {/* Return date/time */}
           <p className="text-[10px] font-black uppercase tracking-widest text-charcoal-brand/40">{t('extend.newReturnDate')}</p>
           <p className="mt-1.5 text-2xl font-black text-charcoal-brand">{dateFormatted}</p>
           <p className="mt-0.5 text-lg font-black text-gold-brand">{timeFormatted}</p>
@@ -451,12 +544,10 @@ function ConfirmedView({ dropoff, balance, orderRef }: { dropoff: string; balanc
 
           <div className="my-4 border-t border-gray-100" />
 
-          {/* Extension cost */}
           <p className="text-[10px] font-black uppercase tracking-widest text-charcoal-brand/40">{t('extend.extensionCost')}</p>
           <p className="mt-1.5 text-3xl font-black text-charcoal-brand">{formatCurrency(balance)}</p>
           <p className="mt-1 text-xs text-charcoal-brand/50">{t('extend.addedToBalance')}</p>
 
-          {/* Extension ref */}
           {orderRef && (
             <div className="mt-4 flex items-center justify-between rounded-xl bg-sand-brand/60 px-4 py-2.5">
               <div>
@@ -474,7 +565,6 @@ function ConfirmedView({ dropoff, balance, orderRef }: { dropoff: string; balanc
           )}
         </div>
 
-        {/* ── CTA buttons ── */}
         <Link to="/book/reserve" className="block">
           <PrimaryCtaButton className="flex min-h-[52px] w-full items-center justify-center gap-2 py-4 text-base">
             {t('extend.backToBrowse')}

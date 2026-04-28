@@ -1,6 +1,4 @@
 import { useState, useMemo } from 'react';
-import { formatCurrency } from '../../utils/currency.js';
-import iconNinePm from '../../assets/Basket/9PM Return Icon.svg';
 
 interface Props {
   currentDropoff: string;
@@ -8,9 +6,7 @@ interface Props {
   selectedTime: string;
   onSelectDate: (iso: string) => void;
   onSelectTime: (time: string) => void;
-  ninePmAddon?: { id: number; name: string; price: number } | null;
   ninePmSelected: boolean;
-  onToggleNinePm: () => void;
 }
 
 function generateTimeSlots(): { value: string; label: string }[] {
@@ -43,7 +39,7 @@ function shortMonthDay(date: Date): string {
 
 export function ExtendCalendar({
   currentDropoff, selectedDate, selectedTime, onSelectDate, onSelectTime,
-  ninePmAddon, ninePmSelected, onToggleNinePm,
+  ninePmSelected,
 }: Props) {
   const dropoffDate = useMemo(() => new Date(currentDropoff), [currentDropoff]);
   const [viewYear, setViewYear] = useState(dropoffDate.getFullYear());
@@ -87,7 +83,11 @@ export function ExtendCalendar({
         {/* Header */}
         <div className="mb-4 flex items-start justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-brand/10 text-xl">📅</span>
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-brand/10 text-teal-brand">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor" className="h-5 w-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+              </svg>
+            </span>
             <div>
               <p className="font-headline text-base font-black text-charcoal-brand leading-tight">Select New Return Date</p>
               <p className="text-xs text-charcoal-brand/50">Choose a date after {shortMonthDay(dropoffDate)}</p>
@@ -194,31 +194,6 @@ export function ExtendCalendar({
             );
           })}
         </div>
-
-        {/* 9PM toggle — only when 4:45 PM is selected and addon exists */}
-        {selectedTime === '16:45' && ninePmAddon && (
-          <button
-            type="button"
-            onClick={onToggleNinePm}
-            className={`mt-3 flex w-full items-center gap-3 rounded-xl border-2 px-4 py-3 text-left transition-all ${
-              ninePmSelected
-                ? 'border-teal-brand bg-teal-brand/8 text-teal-brand'
-                : 'border-dashed border-sand-brand bg-white text-charcoal-brand hover:border-teal-brand/40'
-            }`}
-          >
-            <img src={iconNinePm} alt="" className="h-7 w-7 shrink-0 object-contain" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-black">9PM Late Return</p>
-              <p className="text-xs opacity-70">Return at 9:00 PM instead of 4:45 PM</p>
-            </div>
-            <span className="shrink-0 text-sm font-black text-teal-brand">+{formatCurrency(ninePmAddon.price)}</span>
-            <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
-              ninePmSelected ? 'border-teal-brand bg-teal-brand' : 'border-charcoal-brand/30'
-            }`}>
-              {ninePmSelected && <span className="text-[10px] font-black text-white">✓</span>}
-            </div>
-          </button>
-        )}
 
         {selectedDate && (
           <p className="mt-3 text-center text-xs font-bold text-teal-brand/80">

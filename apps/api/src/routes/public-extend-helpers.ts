@@ -42,6 +42,10 @@ export type ExtensionInputs = {
   paymentMethodId: string;
   emailErrorLabel: string;
   ninePmAddonId?: number;
+  newOneTimeAddonIds?: number[];
+  newPerDayAddonIds?: number[];
+  newDropoffLocationId?: number;
+  newDropoffLocationAddress?: string;
   deps: {
     bookingPort: unknown;
     configRepo: {
@@ -219,6 +223,10 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
     paymentMethodId,
     emailErrorLabel,
     deps,
+    newOneTimeAddonIds,
+    newPerDayAddonIds,
+    newDropoffLocationId,
+    newDropoffLocationAddress,
   } = args;
 
   const sb = getSupabaseClient();
@@ -242,7 +250,7 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
     const displayRef = ord.booking_token || orderReference;
     const { data: items } = await sb
       .from('order_items')
-      .select('id, vehicle_id, pickup_datetime, dropoff_datetime, store_id, rental_days_count, rental_rate, pickup_fee, dropoff_fee, discount')
+      .select('id, vehicle_id, pickup_datetime, dropoff_datetime, store_id, rental_days_count, rental_rate, pickup_fee, dropoff_fee, discount, dropoff_location_id')
       .eq('order_id', ord.id).not('pickup_datetime', 'is', null);
 
     const item = (items ?? [])[0] as Record<string, unknown> | undefined;
@@ -325,8 +333,14 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
         .eq('order_id', ord.id);
       for (const addon of (addons ?? []) as Array<Record<string, unknown>>) {
         if ((addon.addon_type as string) === 'per_day') {
-          const newTotal = Number(addon.addon_price ?? 0) * Number(addon.quantity ?? 1) * newDays;
-          addonDelta += newTotal - Number(addon.total_amount ?? 0);
+          const oldTotal = Number(addon.total_amount ?? 0);
+          // Derive the actual per-day rate from total_amount / oldDays.
+          // Some booking paths store quantity = rentalDays (not units), so using
+          // addon_price * quantity * newDays would double-count the days.
+          // Dividing by oldDays is safe and consistent regardless of how quantity was stored.
+          const perDayRate = oldDays > 0 ? oldTotal / oldDays : Number(addon.addon_price ?? 0);
+          const newTotal = Math.round(perDayRate * newDays * 100) / 100;
+          addonDelta += newTotal - oldTotal;
           addonUpdates.push({ id: addon.id as string, new_total: newTotal });
         }
       }
@@ -348,7 +362,62 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
       }
     }
 
-    const totalDelta = extensionCost + addonDelta + ninePmCost;
+    // ── New one-time add-ons chosen during extension (catalog IDs) ──
+    type CatalogAddonRow = { id: number; name: string; price_one_time: number; addon_type: string };
+    const newOneTimeRows: CatalogAddonRow[] = [];
+    let newOneTimeCost = 0;
+    const allNewOneTimeIds = [
+      ...(newOneTimeAddonIds ?? []),
+      // ninePmAddonId is handled separately above; don't double-count
+    ].filter((id) => id !== args.ninePmAddonId);
+    if (allNewOneTimeIds.length > 0) {
+      const { data: catalogRows } = await sb
+        .from('addons')
+        .select('id, name, price_one_time, addon_type')
+        .in('id', allNewOneTimeIds)
+        .eq('is_active', true)
+        .eq('addon_type', 'one_time');
+      for (const row of (catalogRows ?? []) as CatalogAddonRow[]) {
+        newOneTimeRows.push(row);
+        newOneTimeCost += Number(row.price_one_time ?? 0);
+      }
+    }
+
+    // ── New per-day add-ons (staff only) charged for extension days ──
+    type PerDayCatalogRow = { id: number; name: string; price_per_day: number; addon_type: string };
+    const newPerDayRows: PerDayCatalogRow[] = [];
+    let newPerDayCost = 0;
+    if (newPerDayAddonIds && newPerDayAddonIds.length > 0) {
+      const { data: pdRows } = await sb
+        .from('addons')
+        .select('id, name, price_per_day, addon_type')
+        .in('id', newPerDayAddonIds)
+        .eq('is_active', true)
+        .eq('addon_type', 'per_day');
+      for (const row of (pdRows ?? []) as PerDayCatalogRow[]) {
+        newPerDayRows.push(row);
+        newPerDayCost += Math.round(Number(row.price_per_day ?? 0) * extDays * 100) / 100;
+      }
+    }
+
+    // ── Location change: compute delta from original dropoff fee ──
+    let locationDelta = 0;
+    let newLocationCollectionCost = 0;
+    if (newDropoffLocationId) {
+      const { data: locRow } = await sb
+        .from('locations')
+        .select('collection_cost')
+        .eq('id', newDropoffLocationId)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (locRow) {
+        newLocationCollectionCost = Number((locRow as { collection_cost: number }).collection_cost ?? 0);
+        const currentDropoffFee = Number(item.dropoff_fee ?? 0);
+        locationDelta = Math.round((newLocationCollectionCost - currentDropoffFee) * 100) / 100;
+      }
+    }
+
+    const totalDelta = extensionCost + addonDelta + ninePmCost + newOneTimeCost + newPerDayCost + locationDelta;
     const paymentId = crypto.randomUUID();
     const journalTxId = crypto.randomUUID();
     const now = new Date();
@@ -392,7 +461,9 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
       return { kind: 'error', reason: extResult.error ?? 'Extension failed. Please try again or contact us on WhatsApp.' };
     }
 
-    // Insert 9PM addon row after the atomic RPC so financial records are consistent
+    // ── Post-RPC inserts / updates (fire sequentially, non-blocking on errors) ──
+
+    // Insert 9PM addon row
     if (ninePmAddonRow && ninePmCost > 0) {
       await sb.from('order_addons').insert({
         id: crypto.randomUUID(),
@@ -406,7 +477,58 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
       });
     }
 
-    const totalExtensionCost = extensionCost + ninePmCost;
+    // Insert new one-time add-on rows
+    for (const row of newOneTimeRows) {
+      const price = Number(row.price_one_time ?? 0);
+      await sb.from('order_addons').insert({
+        id: crypto.randomUUID(),
+        order_id: ord.id,
+        addon_name: row.name,
+        addon_price: price,
+        addon_type: 'one_time',
+        quantity: 1,
+        total_amount: price,
+        store_id: storeId,
+      });
+    }
+
+    // Insert new per-day add-on rows (charged for extension days only)
+    for (const row of newPerDayRows) {
+      const pricePerDay = Number(row.price_per_day ?? 0);
+      const total = Math.round(pricePerDay * extDays * 100) / 100;
+      await sb.from('order_addons').insert({
+        id: crypto.randomUUID(),
+        order_id: ord.id,
+        addon_name: row.name,
+        addon_price: pricePerDay,
+        addon_type: 'per_day',
+        quantity: extDays,
+        total_amount: total,
+        store_id: storeId,
+      });
+    }
+
+    // Update order_items dropoff location + fee if location changed
+    if (newDropoffLocationId) {
+      await sb
+        .from('order_items')
+        .update({ dropoff_location_id: String(newDropoffLocationId), dropoff_fee: newLocationCollectionCost })
+        .eq('id', item.id as string);
+
+      // Best-effort update on orders_raw (may not exist for walk-in orders)
+      if (newDropoffLocationAddress || newDropoffLocationId) {
+        const refVariants = orderReferenceLookupVariants(ord.booking_token ?? orderReference);
+        await sb
+          .from('orders_raw')
+          .update({
+            dropoff_location_id: newDropoffLocationId,
+            ...(newDropoffLocationAddress ? { dropoff_location_address: newDropoffLocationAddress } : {}),
+          })
+          .in('order_reference', refVariants);
+      }
+    }
+
+    const totalExtensionCost = extensionCost + ninePmCost + newOneTimeCost + newPerDayCost + locationDelta;
 
     // Fire-and-forget Ops channel Telegram alert. Look up the customer name
     // from the orders row — never block the response path on this.
@@ -414,13 +536,18 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
       try {
         const { data: cust } = await sb.from('customers').select('name').eq('id', ord.customer_id).maybeSingle();
         const customerName = (cust as { name?: string } | null)?.name ?? trimmedEmail;
+        const extraLines: string[] = [];
+        if (newOneTimeRows.length > 0) extraLines.push(`Add-ons: ${newOneTimeRows.map((r) => r.name).join(', ')}`);
+        if (newPerDayRows.length > 0) extraLines.push(`Per-day add-ons: ${newPerDayRows.map((r) => r.name).join(', ')}`);
+        if (newDropoffLocationId) extraLines.push(`Location change → ID ${newDropoffLocationId}${newDropoffLocationAddress ? ` (${newDropoffLocationAddress})` : ''}`);
         await sendTelegramAlert(
           `🔄 <b>Rental Extended</b>\n` +
             `Reference: ${escapeHtml(displayRef)}\n` +
             `Customer: ${escapeHtml(customerName)}\n` +
             `Vehicle: ${escapeHtml(vehicleName || '—')}\n` +
             `New return: ${escapeHtml(formatManilaDateTime(newDropoffDatetime))}\n` +
-            `Extension cost: ₱${totalExtensionCost.toLocaleString('en-PH')}`,
+            `Extension cost: ₱${totalExtensionCost.toLocaleString('en-PH')}` +
+            (extraLines.length > 0 ? `\n${extraLines.map((l) => escapeHtml(l)).join('\n')}` : ''),
           getTelegramChatId('ops'),
         );
       } catch (tgErr) {

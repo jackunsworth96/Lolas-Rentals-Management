@@ -1,6 +1,11 @@
 import { PrimaryCtaButton } from '../public/PrimaryCtaButton.js';
 import { formatCurrency } from '../../utils/currency.js';
 
+export interface NewAddonLine {
+  name: string;
+  cost: number;
+}
+
 interface Props {
   originalTotal: number;
   extensionCost: number | null;
@@ -11,6 +16,14 @@ interface Props {
   onConfirm: () => void;
   onCancel: () => void;
   ninePmCost?: number;
+  /** Delta from per-day add-on recalculation (positive = extra charge) */
+  perDayAddonDelta?: number;
+  /** New one-time add-ons being added */
+  newAddons?: NewAddonLine[];
+  /** Location change delta (positive = extra, negative = credit) */
+  locationDelta?: number;
+  /** Name of the new location if changed */
+  newLocationName?: string;
 }
 
 export function ExtensionSummary({
@@ -23,10 +36,18 @@ export function ExtensionSummary({
   onConfirm,
   onCancel,
   ninePmCost,
+  perDayAddonDelta,
+  newAddons,
+  locationDelta,
+  newLocationName,
 }: Props) {
   const extCost = extensionCost ?? 0;
   const ninePm = ninePmCost ?? 0;
-  const totalBalance = extCost + ninePm;
+  const addonDelta = perDayAddonDelta ?? 0;
+  const locDelta = locationDelta ?? 0;
+  const addOnsCost = (newAddons ?? []).reduce((s, a) => s + a.cost, 0);
+
+  const totalBalance = extCost + ninePm + addonDelta + addOnsCost + locDelta;
   const updatedTotal = originalTotal + totalBalance;
 
   return (
@@ -51,7 +72,7 @@ export function ExtensionSummary({
           <span className="text-sm font-black text-charcoal-brand">{formatCurrency(originalTotal)}</span>
         </div>
 
-        {/* Extension cost */}
+        {/* Extension rental cost */}
         <div className="mb-2 flex items-center justify-between gap-2">
           <span className="text-sm font-bold text-teal-brand">
             Extension ({extensionDays} Extra Day{extensionDays !== 1 ? 's' : ''})
@@ -63,11 +84,43 @@ export function ExtensionSummary({
           )}
         </div>
 
-        {/* 9PM addon */}
+        {/* Per-day add-on adjustment */}
+        {addonDelta !== 0 && (
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-sm font-bold text-charcoal-brand/60">
+              Add-on adjustment ({extensionDays} day{extensionDays !== 1 ? 's' : ''})
+            </span>
+            <span className={`text-sm font-black ${addonDelta > 0 ? 'text-charcoal-brand' : 'text-teal-brand'}`}>
+              {addonDelta > 0 ? '' : '−'}{formatCurrency(Math.abs(addonDelta))}
+            </span>
+          </div>
+        )}
+
+        {/* 9PM addon (legacy path kept for backward compat) */}
         {ninePm > 0 && (
           <div className="mb-2 flex items-center justify-between gap-2">
             <span className="text-sm font-bold text-charcoal-brand/60">9PM Late Return</span>
             <span className="text-sm font-black text-charcoal-brand">{formatCurrency(ninePm)}</span>
+          </div>
+        )}
+
+        {/* New one-time add-ons */}
+        {(newAddons ?? []).map((addon) => (
+          <div key={addon.name} className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-sm font-bold text-charcoal-brand/60">{addon.name}</span>
+            <span className="text-sm font-black text-charcoal-brand">{formatCurrency(addon.cost)}</span>
+          </div>
+        ))}
+
+        {/* Location change */}
+        {locDelta !== 0 && (
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-sm font-bold text-charcoal-brand/60">
+              {newLocationName ? `Return: ${newLocationName}` : 'Location change'}
+            </span>
+            <span className={`text-sm font-black ${locDelta > 0 ? 'text-charcoal-brand' : 'text-teal-brand'}`}>
+              {locDelta > 0 ? `+${formatCurrency(locDelta)}` : `−${formatCurrency(Math.abs(locDelta))} credit`}
+            </span>
           </div>
         )}
 
@@ -83,8 +136,12 @@ export function ExtensionSummary({
 
           {/* Balance due — right, gold highlight */}
           <div className="min-w-0 rounded-xl bg-amber-50 px-4 py-2 text-right">
-            <p className="text-[10px] font-black uppercase tracking-widest text-amber-600">Balance Due</p>
-            <p className="text-2xl font-black leading-tight text-amber-500">{formatCurrency(totalBalance)}</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-amber-600">
+              {totalBalance < 0 ? 'Credit' : 'Balance Due'}
+            </p>
+            <p className={`text-2xl font-black leading-tight ${totalBalance < 0 ? 'text-teal-brand' : 'text-amber-500'}`}>
+              {totalBalance < 0 ? `−${formatCurrency(Math.abs(totalBalance))}` : formatCurrency(totalBalance)}
+            </p>
           </div>
         </div>
       </div>

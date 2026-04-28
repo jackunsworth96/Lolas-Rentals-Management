@@ -55,8 +55,8 @@ router.get('/addons', async (req, res, next) => {
     const { data, error } = await sb
       .from('addons')
       .select('id, name, addon_type, price_one_time')
-      .eq('store_id', storeId)
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .or(`store_id.eq.${storeId},store_id.is.null`);
     if (error) throw new Error(`Addon lookup failed: ${error.message}`);
     res.json({ success: true, data: data ?? [] });
   } catch (err) { next(err); }
@@ -115,7 +115,7 @@ router.post('/lookup', extendLookupLimiter, validateBody(ExtendLookupRequestSche
       for (const ord of (orderRows ?? []) as Array<Record<string, unknown>>) {
         const { data: items } = await sb
           .from('order_items')
-          .select('vehicle_id, pickup_datetime, dropoff_datetime, store_id, rental_days_count')
+          .select('vehicle_id, pickup_datetime, dropoff_datetime, store_id, rental_days_count, pickup_location_id, dropoff_location_id, dropoff_fee')
           .eq('order_id', ord.id as string)
           .not('pickup_datetime', 'is', null);
 
@@ -139,7 +139,43 @@ router.post('/lookup', extendLookupLimiter, validateBody(ExtendLookupRequestSche
         const dropoff = new Date(item.dropoff_datetime as string);
         const days = (item.rental_days_count as number) ?? Math.max(1, Math.ceil((dropoff.getTime() - pickup.getTime()) / 86400000));
 
-        const { data: locs } = await sb.from('locations').select('name').eq('store_id', storeId).limit(1);
+        // Fetch all active locations for the store (matching config-repo: includes store_id=null global locs)
+        const { data: allLocs } = await sb
+          .from('locations')
+          .select('id, name, delivery_cost, collection_cost, location_type')
+          .eq('is_active', true)
+          .or(`store_id.eq.${storeId},store_id.is.null`)
+          .order('name');
+
+        const locsArr = (allLocs ?? []) as Array<{ id: number; name: string; delivery_cost: number; collection_cost: number; location_type: string | null }>;
+        const locsById = new Map(locsArr.map((l) => [l.id, l]));
+
+        // Resolve pickup location name from actual pickup_location_id on the order item
+        const pickupLocId = item.pickup_location_id != null ? Number(item.pickup_location_id) : null;
+        const pickupLocationName = (pickupLocId != null ? locsById.get(pickupLocId)?.name : null) ?? 'General Luna';
+
+        // Resolve current dropoff location. Some older orders have dropoff_location_id = null
+        // (location wasn't recorded at activation). In that case, fall back to the store location
+        // (collection_cost = 0, location_type = 'store') so the picker shows a sensible default.
+        const rawDropoffLocId = item.dropoff_location_id != null ? Number(item.dropoff_location_id) : null;
+        const storeLoc = locsArr.find(
+          (l) => Number(l.collection_cost) === 0 && (l.location_type === 'store' || l.location_type === null),
+        );
+        const currentDropoffLocationId = rawDropoffLocId ?? storeLoc?.id ?? null;
+
+        // Fetch existing order add-ons
+        const { data: orderAddons } = await sb
+          .from('order_addons')
+          .select('addon_name, addon_price, addon_type, quantity, total_amount')
+          .eq('order_id', ord.id as string);
+
+        const currentOrderAddons = ((orderAddons ?? []) as Array<Record<string, unknown>>).map((a) => ({
+          addonName: a.addon_name as string,
+          addonPrice: Number(a.addon_price ?? 0),
+          addonType: (a.addon_type as 'per_day' | 'one_time') ?? 'one_time',
+          quantity: Number(a.quantity ?? 1),
+          totalAmount: Number(a.total_amount ?? 0),
+        }));
 
         res.json({
           success: true,
@@ -152,9 +188,19 @@ router.post('/lookup', extendLookupLimiter, validateBody(ExtendLookupRequestSche
               vehicleModelId: modelId,
               storeId,
               currentDropoffDatetime: item.dropoff_datetime as string,
-              pickupLocationName: (locs as { name: string }[] | null)?.[0]?.name ?? 'General Luna',
+              pickupLocationName,
               originalTotal: Number((ord as Record<string, unknown>).final_total ?? 0),
               rentalDays: days,
+              currentOrderAddons,
+              currentDropoffLocationId,
+              currentDropoffFee: Number(item.dropoff_fee ?? 0),
+              availableLocations: locsArr.map((l) => ({
+                id: l.id,
+                name: l.name,
+                deliveryCost: Number(l.delivery_cost ?? 0),
+                collectionCost: Number(l.collection_cost ?? 0),
+                locationType: l.location_type ?? null,
+              })),
             },
           },
         });
@@ -296,11 +342,17 @@ router.get('/preview', extendLookupLimiter, async (req, res, next) => {
 
 router.post('/confirm', extendConfirmLimiter, validateBody(PublicExtendConfirmSchema), async (req, res, next) => {
   try {
-    const { orderReference, email, newDropoffDatetime, ninePmAddonId } = req.body as {
+    const {
+      orderReference, email, newDropoffDatetime, ninePmAddonId,
+      newOneTimeAddonIds, newDropoffLocationId, newDropoffLocationAddress,
+    } = req.body as {
       orderReference: string;
       email: string;
       newDropoffDatetime: string;
       ninePmAddonId?: number;
+      newOneTimeAddonIds?: number[];
+      newDropoffLocationId?: number;
+      newDropoffLocationAddress?: string;
     };
     const trimmedEmail = email.trim().toLowerCase();
     const deps = req.app.locals.deps;
@@ -338,6 +390,9 @@ router.post('/confirm', extendConfirmLimiter, validateBody(PublicExtendConfirmSc
       paymentMethodId: 'pending',
       emailErrorLabel: '[extend-email] Active path error:',
       ninePmAddonId,
+      newOneTimeAddonIds,
+      newDropoffLocationId,
+      newDropoffLocationAddress,
       deps,
     });
     if (activeOutcome.kind === 'error') {
@@ -399,6 +454,10 @@ staffRouter.post(
         overrideDailyRate,
         paymentStatus,
         paymentMethod,
+        newOneTimeAddonIds,
+        newPerDayAddonIds,
+        newDropoffLocationId,
+        newDropoffLocationAddress,
       } = req.body as {
         orderReference: string;
         email: string;
@@ -407,6 +466,10 @@ staffRouter.post(
         paymentStatus?: 'paid' | 'unpaid';
         paymentMethod?: string;
         paymentAccountId?: string;
+        newOneTimeAddonIds?: number[];
+        newPerDayAddonIds?: number[];
+        newDropoffLocationId?: number;
+        newDropoffLocationAddress?: string;
       };
 
       const isPaid = paymentStatus === 'paid';
@@ -442,6 +505,10 @@ staffRouter.post(
         isPaid,
         paymentMethodId: effectivePaymentMethodId,
         emailErrorLabel: '[extend-email] Staff active path error:',
+        newOneTimeAddonIds,
+        newPerDayAddonIds,
+        newDropoffLocationId,
+        newDropoffLocationAddress,
         deps,
       });
       if (activeOutcome.kind === 'error') {

@@ -513,7 +513,7 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       const charityLine = charityAmount > 0
         ? `\n🐾 <b>Charity:</b> ₱${charityAmount.toLocaleString('en-PH')}`
         : '';
-      void sendTelegramAlert(
+      const walkinActivatedMsg =
         `✅ <b>Order Activated</b>\n` +
           `Reference: ${escapeHtml(orderReference)}\n` +
           `Customer: ${escapeHtml(body.customerName)}\n` +
@@ -524,9 +524,9 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
           addonLines +
           transferLines +
           charityLine +
-          `\nStore: ${escapeHtml(body.storeId)}`,
-        getTelegramChatId('ops'),
-      );
+          `\nStore: ${escapeHtml(body.storeId)}`;
+      void sendTelegramAlert(walkinActivatedMsg, getTelegramChatId('ops'));
+      void sendTelegramAlert(walkinActivatedMsg, getTelegramChatId('paid_orders'));
     }
 
     // 17. Fire-and-forget booking confirmation email
@@ -858,7 +858,7 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
         : '';
       const actualTotal = result.order.finalTotal.toNumber();
       const totalLine = `\n💰 <b>Total: ₱${actualTotal.toLocaleString('en-PH')}</b>`;
-      void sendTelegramAlert(
+      const onlineActivatedMsg =
         `✅ <b>Order Activated</b>\n` +
           `Reference: ${escapeHtml(bookingToken)}\n` +
           `Customer: ${escapeHtml(body.customer.name)}\n` +
@@ -869,9 +869,9 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
           totalLine +
           addonLines +
           transferLines +
-          `\nStore: ${escapeHtml(body.storeId)}`,
-        getTelegramChatId('ops'),
-      );
+          `\nStore: ${escapeHtml(body.storeId)}`;
+      void sendTelegramAlert(onlineActivatedMsg, getTelegramChatId('ops'));
+      void sendTelegramAlert(onlineActivatedMsg, getTelegramChatId('paid_orders'));
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

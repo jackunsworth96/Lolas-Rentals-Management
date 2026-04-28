@@ -1,12 +1,13 @@
 /**
  * Optional env:
- *   TELEGRAM_BOT_TOKEN           — bot auth token (one bot handles all channels)
- *   TELEGRAM_CHAT_ID             — default personal/owner chat (fallback)
- *   TELEGRAM_OPS_CHAT_ID         — Lola's Ops channel (order lifecycle events)
- *   TELEGRAM_FLEET_CHAT_ID       — Lola's Fleet channel (vehicle status changes)
- *   TELEGRAM_DAILY_CHAT_ID       — Lola's Daily Updates channel (morning summary)
- *   TELEGRAM_MAINTENANCE_CHAT_ID — Lola's Maintenance channel (jobs & inspections)
- *   TELEGRAM_DRIVER_CHAT_ID      — Driver channel for transfer notifications
+ *   TELEGRAM_BOT_TOKEN              — bot auth token (one bot handles all channels)
+ *   TELEGRAM_CHAT_ID                — default personal/owner chat (fallback)
+ *   TELEGRAM_OPS_CHAT_ID            — Lola's Ops channel (order lifecycle events)
+ *   TELEGRAM_FLEET_CHAT_ID          — Lola's Fleet channel (vehicle status changes)
+ *   TELEGRAM_DAILY_CHAT_ID          — Lola's Daily Updates channel (morning summary)
+ *   TELEGRAM_MAINTENANCE_CHAT_ID    — Lola's Maintenance channel (jobs & inspections)
+ *   TELEGRAM_DRIVER_CHAT_ID         — Driver channel for transfer notifications
+ *   TELEGRAM_PAID_ORDERS_CHAT_ID    — Lola's Paid Orders channel (order activated events)
  *
  * When the bot token or a given chat id is unset, alerts targeting that
  * channel are silently skipped. Failures never throw — callers can treat
@@ -14,16 +15,17 @@
  */
 import { logger } from './logger.js';
 
-export function getTelegramChatId(kind: 'default' | 'ops' | 'fleet' | 'daily' | 'maintenance' | 'driver' | 'feedback'): string | undefined {
+export function getTelegramChatId(kind: 'default' | 'ops' | 'fleet' | 'daily' | 'maintenance' | 'driver' | 'feedback' | 'paid_orders'): string | undefined {
   switch (kind) {
-    case 'ops':         return process.env.TELEGRAM_OPS_CHAT_ID;
-    case 'fleet':       return process.env.TELEGRAM_FLEET_CHAT_ID;
-    case 'daily':       return process.env.TELEGRAM_DAILY_CHAT_ID;
-    case 'maintenance': return process.env.TELEGRAM_MAINTENANCE_CHAT_ID;
-    case 'driver':      return process.env.TELEGRAM_DRIVER_CHAT_ID;
-    case 'feedback':    return process.env.TELEGRAM_FEEDBACK_CHAT_ID;
+    case 'ops':          return process.env.TELEGRAM_OPS_CHAT_ID;
+    case 'fleet':        return process.env.TELEGRAM_FLEET_CHAT_ID;
+    case 'daily':        return process.env.TELEGRAM_DAILY_CHAT_ID;
+    case 'maintenance':  return process.env.TELEGRAM_MAINTENANCE_CHAT_ID;
+    case 'driver':       return process.env.TELEGRAM_DRIVER_CHAT_ID;
+    case 'feedback':     return process.env.TELEGRAM_FEEDBACK_CHAT_ID;
+    case 'paid_orders':  return process.env.TELEGRAM_PAID_ORDERS_CHAT_ID;
     case 'default':
-    default:            return process.env.TELEGRAM_CHAT_ID;
+    default:             return process.env.TELEGRAM_CHAT_ID;
   }
 }
 
