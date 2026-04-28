@@ -283,7 +283,7 @@ export function PageLayout({
             className="w-full object-cover leading-[0] block"
             aria-hidden="true"
           />
-          <footer className="w-full bg-[#f1e6d6] px-5 pb-10 pt-6">
+          <footer className="w-full bg-[#f1e6d6] px-5 pb-28 pt-6">
             {/* Logo + social icons row */}
             <div className="flex items-center justify-between">
               <Link to="/book" aria-label="Lola's Rentals home" className="inline-block">
@@ -401,7 +401,7 @@ export function PageLayout({
 
       <button
         onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-        className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 md:hidden flex items-center justify-center h-8 w-8 rounded-full bg-teal-brand text-white shadow-md transition-opacity duration-300"
+        className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-1/2 z-50 -translate-x-1/2 md:hidden flex items-center justify-center h-10 w-10 rounded-full bg-teal-brand text-white shadow-md transition-opacity duration-300"
         style={{
           opacity: showBackTop ? 1 : 0,
           pointerEvents: showBackTop ? 'auto' : 'none',

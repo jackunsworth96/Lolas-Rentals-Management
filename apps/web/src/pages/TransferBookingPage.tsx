@@ -99,12 +99,24 @@ function vanTypeLabel(v: VanType): string {
   return 'Private Van';
 }
 
+/** First leg of route (handles "A → B", "A -> B", and "A to B"). */
+function firstRouteSegment(routeStr: string): string {
+  const normalized = routeStr.trim();
+  const byArrow = normalized.split(/\s*(?:→|->)\s*/).map((s) => s.trim()).filter(Boolean);
+  if (byArrow.length >= 2) return byArrow[0] ?? '';
+  const byTo = normalized.split(/\s+to\s+/i).map((s) => s.trim()).filter(Boolean);
+  if (byTo.length >= 2) return byTo[0] ?? '';
+  return normalized;
+}
+
 function routeCardMeta(routeStr: string): { Icon: typeof PlaneTakeoff; label: string; sub: string } {
-  const first = routeStr.split(/→|->/).map((s) => s.trim().toLowerCase())[0] ?? '';
-  const outbound = first.includes('luna') || first.includes('general luna');
-  return outbound
-    ? { Icon: PlaneTakeoff, label: routeStr, sub: 'Departing Siargao' }
-    : { Icon: PlaneLanding, label: routeStr, sub: 'Arriving in Siargao' };
+  const origin = firstRouteSegment(routeStr).toLowerCase();
+  const fromAirport =
+    /\b(iao|sayak)\b/.test(origin) ||
+    (origin.includes('airport') && !/\b(luna|general|cloud)\b/.test(origin));
+  return fromAirport
+    ? { Icon: PlaneLanding, label: routeStr, sub: 'Arriving in Siargao' }
+    : { Icon: PlaneTakeoff, label: routeStr, sub: 'Departing Siargao' };
 }
 
 const cardBase = 'rounded-2xl p-6 border-2 cursor-pointer transition-colors';

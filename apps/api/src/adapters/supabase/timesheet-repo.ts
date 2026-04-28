@@ -75,12 +75,16 @@ export function createTimesheetRepo(): TimesheetRepository {
     },
 
     async save(timesheet) {
-      const { error } = await sb.from('timesheets').upsert(toRow(timesheet));
+      const { error } = await sb
+        .from('timesheets')
+        .upsert(toRow(timesheet), { onConflict: 'employee_id,date' });
       if (error) throw new Error(`Failed to save timesheet: ${error.message}`);
     },
 
     async saveMany(timesheets) {
-      const { error } = await sb.from('timesheets').upsert(timesheets.map(toRow));
+      const { error } = await sb
+        .from('timesheets')
+        .upsert(timesheets.map(toRow), { onConflict: 'employee_id,date' });
       if (error) throw new Error(`Failed to save timesheets: ${error.message}`);
     },
 

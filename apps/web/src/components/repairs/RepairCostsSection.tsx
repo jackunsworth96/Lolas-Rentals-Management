@@ -65,8 +65,16 @@ function CostColumn({
               <table className="w-full border-collapse text-left">
                 <thead>
                   <tr className="bg-teal-brand text-white">
-                    <th className="px-4 py-3 font-headline text-sm font-bold md:px-5 md:text-base">Item</th>
-                    <th className="px-4 py-3 text-right font-headline text-sm font-bold md:px-5 md:text-base">
+                    <th
+                      scope="col"
+                      className="px-4 py-3 font-sans text-sm font-bold text-white md:px-5 md:text-base"
+                    >
+                      Item
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-4 py-3 text-right font-sans text-sm font-bold text-white md:px-5 md:text-base"
+                    >
                       Cost
                     </th>
                   </tr>
