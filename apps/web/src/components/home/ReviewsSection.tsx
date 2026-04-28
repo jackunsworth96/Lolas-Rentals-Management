@@ -43,7 +43,7 @@ function initialsFromName(name: string): string {
 }
 
 const reviewsTrackClassName =
-  'flex gap-6 overflow-x-auto snap-x snap-mandatory [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden px-6 py-4 md:px-12';
+  'flex gap-6 overflow-x-auto snap-x snap-mandatory [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden py-4';
 
 const reviewCardSlotClassName =
   'w-[80vw] max-w-[340px] shrink-0 snap-start';
@@ -113,45 +113,43 @@ export function ReviewsSection() {
           </p>
         </div>
 
-        <div className="-mx-6">
-          {showSkeleton ? (
-            <div className={reviewsTrackClassName}>
-              {[0, 1, 2].map((i) => (
-                <div key={i} className={reviewCardSlotClassName}>
-                  <div className="h-48 animate-pulse rounded-4xl bg-gray-200/80" />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className={reviewsTrackClassName}>
-              {rows.map((r) => (
-                <div key={r.key} className={reviewCardSlotClassName}>
-                  <BrandCard className="h-full">
-                    <div className="flex h-full min-h-[220px] flex-col p-8">
-                      <div className="mb-4 flex gap-0.5">
-                        {Array.from({ length: r.starRating }).map((_, i) => (
-                          <span key={i} className="text-xl text-gold-brand">
-                            ⭐
-                          </span>
-                        ))}
+        {showSkeleton ? (
+          <div className={reviewsTrackClassName}>
+            {[0, 1, 2].map((i) => (
+              <div key={i} className={reviewCardSlotClassName}>
+                <div className="h-48 animate-pulse rounded-4xl bg-gray-200/80" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className={reviewsTrackClassName}>
+            {rows.map((r) => (
+              <div key={r.key} className={reviewCardSlotClassName}>
+                <BrandCard className="h-full">
+                  <div className="flex h-full min-h-[220px] flex-col p-8">
+                    <div className="mb-4 flex gap-0.5">
+                      {Array.from({ length: r.starRating }).map((_, i) => (
+                        <span key={i} className="text-xl text-gold-brand">
+                          ⭐
+                        </span>
+                      ))}
+                    </div>
+                    <ReviewQuote text={r.text} />
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sand-brand text-sm font-black text-teal-brand">
+                        {r.initials}
                       </div>
-                      <ReviewQuote text={r.text} />
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sand-brand text-sm font-black text-teal-brand">
-                          {r.initials}
-                        </div>
-                        <div>
-                          <h6 className="font-lato text-sm font-bold text-charcoal-brand">{r.name}</h6>
-                          <p className="font-lato text-[10px] font-black uppercase text-charcoal-brand/50">{r.role}</p>
-                        </div>
+                      <div>
+                        <h6 className="font-lato text-sm font-bold text-charcoal-brand">{r.name}</h6>
+                        <p className="font-lato text-[10px] font-black uppercase text-charcoal-brand/50">{r.role}</p>
                       </div>
                     </div>
-                  </BrandCard>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                  </div>
+                </BrandCard>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );
