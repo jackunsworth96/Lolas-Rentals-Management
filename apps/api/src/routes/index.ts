@@ -31,6 +31,7 @@ import { waiverRouter } from './public-waiver.js';
 import { chatRouter } from './chat.js';
 import { devToolsRoutes } from './dev-tools.js';
 import { customerRoutes } from './customers.js';
+import { unsubscribeRouter } from './unsubscribe.js';
 import { loginLimiter, publicLimiter, apiLimiter } from '../middleware/rate-limit.js';
 import { telegramWebhookRouter } from '../telegram/telegram.webhook.js';
 
@@ -73,6 +74,7 @@ routes.use('/payments/maya', mayaRouter);
 routes.use('/public/chat', chatRouter);
 routes.use('/dev-tools', devToolsRoutes);
 routes.use('/customers', customerRoutes);
+routes.use('/unsubscribe', unsubscribeRouter);
 routes.use('/public/telegram', telegramWebhookRouter);
 
 export { routes };

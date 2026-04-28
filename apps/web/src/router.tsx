@@ -41,6 +41,7 @@ const TransferBookingPage = lazy(() => import('./pages/TransferBookingPage.js'))
 const RepairsPage = lazy(() => import('./pages/repairs/RepairsPage.js'));
 const AboutPage = lazy(() => import('./pages/about/AboutPage.js'));
 const PrivacyPage = lazy(() => import('./pages/privacy/PrivacyPage.js'));
+const TermsPage = lazy(() => import('./pages/terms/TermsPage.js'));
 const UIErrorsPage = lazy(() => import('./pages/ui-errors/UIErrorsPage.js'));
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage.js'));
 const DirectoryPage = lazy(() => import('./pages/directory/DirectoryPage.js'));
@@ -52,6 +53,7 @@ const BePawsitivePage = lazy(() => import('./pages/bepawsitive/BePawsitivePage.j
 const CancelBookingPage = lazy(() => import('./pages/cancel/CancelBookingPage.js'));
 const NotFoundPage = lazy(() => import('./pages/not-found/NotFoundPage.js'));
 const CustomersPage = lazy(() => import('./pages/customers/CustomersPage.js'));
+const UnsubscribePage = lazy(() => import('./pages/unsubscribe/UnsubscribePage.js'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
@@ -99,6 +101,7 @@ export function AppRouter() {
           <Route path="/book/repairs" element={<RepairsPage />} />
           <Route path="/book/about" element={<AboutPage />} />
           <Route path="/book/privacy" element={<PrivacyPage />} />
+          <Route path="/book/terms" element={<TermsPage />} />
           <Route path="/book/waiver-agreement" element={<WaiverAgreementPage />} />
           <Route path="/book/transfer/:token" element={<PublicBookingPage />} />
           <Route path="/waiver/:orderReference" element={<WaiverPage />} />
@@ -106,6 +109,7 @@ export function AppRouter() {
           <Route path="/peace-of-mind" element={<PeaceOfMindPage />} />
           <Route path="/book/bepawsitive" element={<BePawsitivePage />} />
           <Route path="/book/cancel/:orderReference" element={<CancelBookingPage />} />
+          <Route path="/unsubscribe" element={<UnsubscribePage />} />
 
           {/* Backoffice routes — protected */}
           <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>

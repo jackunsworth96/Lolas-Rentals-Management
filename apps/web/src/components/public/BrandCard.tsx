@@ -7,11 +7,20 @@ const springCfg = { damping: 30, stiffness: 100, mass: 2 };
 const ROTATE_AMP = 8;
 const SCALE_HOVER = 1.03;
 
+/** Scale hover when tilt is off: soft ease, no bounce — reads as a light accent */
+const HOVER_GROW_TRANSITION = {
+  type: 'tween' as const,
+  duration: 0.42,
+  ease: [0.22, 1, 0.36, 1] as [number, number, number, number],
+};
+
 interface BrandCardProps {
   children: ReactNode;
   className?: string;
   glowColor?: string;
   disableTilt?: boolean;
+  /** When tilt is disabled, optional scale on hover (non-touch pointers only). Ignored without `disableTilt`. */
+  hoverScale?: number;
 }
 
 export function BrandCard({
@@ -19,6 +28,7 @@ export function BrandCard({
   className,
   glowColor = '252 188 90',
   disableTilt = false,
+  hoverScale,
 }: BrandCardProps) {
   const isTouch = useIsTouchDevice();
   const ref = useRef<HTMLDivElement>(null);
@@ -51,12 +61,18 @@ export function BrandCard({
   );
 
   if (isTouch || disableTilt) {
+    const showHoverGrow = disableTilt && !isTouch && hoverScale != null && hoverScale > 1;
     return (
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: 'easeOut' }}
         style={{ height: '100%' }}
+        whileHover={showHoverGrow ? { scale: hoverScale } : undefined}
+        transition={{
+          opacity: { duration: 0.4, ease: 'easeOut' },
+          y: { duration: 0.4, ease: 'easeOut' },
+          scale: HOVER_GROW_TRANSITION,
+        }}
       >
         {inner}
       </motion.div>

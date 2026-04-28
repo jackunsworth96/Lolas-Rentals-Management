@@ -24,10 +24,10 @@ export default function RepairsPage() {
 
       <RepairCostsSection />
 
-      <PawDivider />
+      <PawDivider className="py-[0.9rem]" />
       <section
         aria-label="Island safety tips and emergency contacts"
-        className="mx-auto flex max-w-7xl flex-col gap-12 px-6 py-6"
+        className="mx-auto flex max-w-7xl flex-col gap-12 px-6 pb-6 pt-[0.675rem]"
       >
         <SafetyTipsSection />
         <EmergencyContactsSection />

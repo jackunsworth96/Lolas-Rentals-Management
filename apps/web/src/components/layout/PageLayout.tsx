@@ -314,6 +314,7 @@ export function PageLayout({
               <a href="https://wa.me/639694443413" target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.contactUs')}</a>
               <Link to="/book/privacy" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.privacy')}</Link>
               <Link to="/book/waiver-agreement" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.waiverAgreement')}</Link>
+              <Link to="/book/terms" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">Terms &amp; Conditions</Link>
               <Link to="/refund-policy" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.refundPolicy')}</Link>
               <Link to="/peace-of-mind" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.peaceOfMindCover')}</Link>
             </div>
@@ -391,6 +392,7 @@ export function PageLayout({
                 <a href="https://wa.me/639694443413" target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.contactUs')}</a>
                 <Link to="/book/privacy" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.privacy')}</Link>
                 <Link to="/book/waiver-agreement" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.waiverAgreement')}</Link>
+                <Link to="/book/terms" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">Terms &amp; Conditions</Link>
                 <Link to="/refund-policy" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.refundPolicy')}</Link>
                 <Link to="/peace-of-mind" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.peaceOfMindCover')}</Link>
               </div>

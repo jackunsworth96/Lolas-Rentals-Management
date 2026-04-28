@@ -161,6 +161,14 @@ export function RenterDetailsForm({ info, onChange, errors }: Props) {
           className="w-full rounded-lg border border-charcoal-brand/[0.15] bg-white px-3 py-2 text-[13px] text-charcoal-brand placeholder:text-charcoal-brand/30 focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand transition-colors resize-none"
         />
       </div>
+
+      <p className="md:col-span-2 text-[11px] leading-snug text-charcoal-brand/45">
+        By booking, you agree to our{' '}
+        <a href="/book/privacy" target="_blank" rel="noopener noreferrer" className="underline hover:text-charcoal-brand/70 transition-colors">
+          Privacy Policy
+        </a>
+        .
+      </p>
     </div>
   );
 }

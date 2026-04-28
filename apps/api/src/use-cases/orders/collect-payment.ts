@@ -51,6 +51,33 @@ export async function collectPayment(
   const order = await orderRepo.findById(input.orderId);
   if (!order) throw new Error(`Order ${input.orderId} not found`);
 
+  // Fetch existing payments before inserting the new one so we can decide
+  // whether to absorb any pending extension IOUs in the same transaction.
+  const existingPayments = await paymentRepo.findByOrderId(order.id);
+
+  // Compute the net rental-cash already received (mirrors the display formula:
+  // exclude deposits, exclude pending/absorbed extension IOUs, subtract refunds).
+  const paidBefore = existingPayments.reduce((sum, p) => {
+    if (p.paymentType === 'deposit') return sum;
+    if (p.paymentType === 'extension' &&
+        (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return sum;
+    if (p.paymentType === 'refund') return sum - p.amount;
+    return sum + p.amount;
+  }, 0);
+
+  // After this payment, check whether the full rental obligation is covered.
+  const finalTotalNum = order.finalTotal.toNumber();
+  const newTotalPaid = paidBefore + input.amount;
+
+  // Collect IDs of pending extension IOUs to absorb — only when the payment
+  // clears the balance (newTotalPaid ≥ finalTotal). If the customer still owes
+  // money after this payment, leave the IOUs pending so staff are reminded.
+  const iouIdsToAbsorb: string[] = newTotalPaid >= finalTotalNum
+    ? existingPayments
+        .filter((p) => p.paymentType === 'extension' && p.settlementStatus === 'pending')
+        .map((p) => p.id)
+    : [];
+
   const paymentAmount = Money.php(input.amount);
   const paymentId = crypto.randomUUID();
 
@@ -102,22 +129,23 @@ export async function collectPayment(
   const journalDate = input.transactionDate;
   const journalPeriod = journalDate.slice(0, 7);
 
-  // Single atomic RPC: payment row + journal legs in one DB transaction.
+  // Single atomic RPC: payment row + journal legs + optional IOU absorption.
   const { error: rpcErr } = await supabase.rpc('collect_payment_atomic', {
-    p_payment_id:             paymentId,
-    p_order_id:               order.id,
-    p_store_id:               order.storeId,
-    p_amount:                 paymentAmount.toNumber(),
-    p_payment_method_id:      input.paymentMethodId,
-    p_account_id:             payment.accountId,
-    p_transaction_date:       input.transactionDate,
-    p_customer_id:            order.customerId,
-    p_payment_type:           input.paymentType,
-    p_journal_transaction_id: journalTransactionId,
-    p_journal_period:         journalPeriod,
-    p_journal_date:           journalDate,
-    p_journal_legs:           legs.map(serialiseLeg),
-    p_notes:                  null,
+    p_payment_id:                   paymentId,
+    p_order_id:                     order.id,
+    p_store_id:                     order.storeId,
+    p_amount:                       paymentAmount.toNumber(),
+    p_payment_method_id:            input.paymentMethodId,
+    p_account_id:                   payment.accountId,
+    p_transaction_date:             input.transactionDate,
+    p_customer_id:                  order.customerId,
+    p_payment_type:                 input.paymentType,
+    p_journal_transaction_id:       journalTransactionId,
+    p_journal_period:               journalPeriod,
+    p_journal_date:                 journalDate,
+    p_journal_legs:                 legs.map(serialiseLeg),
+    p_notes:                        null,
+    p_absorbed_extension_iou_ids:   iouIdsToAbsorb.length > 0 ? iouIdsToAbsorb : null,
   });
   if (rpcErr) throw new Error(`collect_payment_atomic RPC failed: ${rpcErr.message}`);
 

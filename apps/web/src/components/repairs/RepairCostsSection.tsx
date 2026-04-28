@@ -44,7 +44,7 @@ function CostColumn({
   isError: boolean;
 }) {
   return (
-    <BrandCard glowColor="40 96 67" className="h-full">
+    <BrandCard glowColor="40 96 67" disableTilt hoverScale={1.008} className="h-full">
       <div className="rounded-[22px] bg-[#FAF6F0] p-6 md:p-8">
           <h3 className="font-headline text-xl font-black text-teal-brand md:text-2xl">{title}</h3>
           <div className="relative mx-auto mt-4 flex h-36 max-w-[220px] items-center justify-center md:h-40">
@@ -108,7 +108,7 @@ export function RepairCostsSection() {
   });
 
   return (
-    <section className="mx-auto max-w-5xl px-4 pb-8 md:px-6">
+    <section className="mx-auto max-w-5xl px-4 pb-[0.9rem] md:px-6">
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-8">
         {COLUMNS.map((col, i) => (
           <CostColumn

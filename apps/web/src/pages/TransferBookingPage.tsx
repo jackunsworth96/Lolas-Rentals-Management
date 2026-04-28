@@ -670,6 +670,14 @@ export default function TransferBookingPage() {
                 {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : null}
                 {isSubmitting ? 'Submitting...' : 'Confirm Booking'}
               </PrimaryCtaButton>
+
+              <p className="font-lato text-xs text-charcoal-brand/50">
+                By booking, you agree to our{' '}
+                <a href="/book/privacy" target="_blank" rel="noopener noreferrer" className="underline hover:text-charcoal-brand/70 transition-colors">
+                  Privacy Policy
+                </a>
+                .
+              </p>
             </div>
           </FadeUpSection>
         )}

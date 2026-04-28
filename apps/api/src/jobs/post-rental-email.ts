@@ -2,6 +2,8 @@ import cron from 'node-cron';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { sendEmail, postRentalThankYouHtml } from '../services/email.js';
 import { formatManilaDate } from '../utils/manila-date.js';
+import { generateUnsubscribeToken } from '../utils/unsubscribe-token.js';
+import { publicWebOriginFromEnv } from '../lib/public-web-url.js';
 
 export function startPostRentalEmailJob(): void {
   // Run every hour at :30
@@ -46,12 +48,17 @@ export function startPostRentalEmailJob(): void {
         // Resolve customer
         const { data: customer } = await sb
           .from('customers')
-          .select('email, name')
+          .select('email, name, email_opt_out')
           .eq('id', order.customer_id)
           .maybeSingle();
 
         if (!(customer as { email?: string } | null)?.email) continue;
-        const c = customer as { email: string; name?: string };
+        const c = customer as { email: string; name?: string; email_opt_out?: boolean };
+
+        if (c.email_opt_out) {
+          console.log(`[post-rental-email] Skipping post-rental email — customer opted out: ${order.customer_id as string}`);
+          continue;
+        }
 
         // Resolve order items (pickup/dropoff dates + vehicle model)
         const { data: items } = await sb
@@ -113,6 +120,10 @@ export function startPostRentalEmailJob(): void {
             timeStyle: 'short',
           });
 
+        const unsubscribeToken = generateUnsubscribeToken(order.customer_id as string);
+        const webBase = publicWebOriginFromEnv(process.env.WEB_URL);
+        const unsubscribeUrl = `${webBase}/unsubscribe?token=${unsubscribeToken}`;
+
         void sendEmail({
           to: c.email,
           subject: `Thank you for riding with Lola's 🐾 — ${(order.booking_token as string | null) ?? order.id}`,
@@ -127,6 +138,7 @@ export function startPostRentalEmailJob(): void {
             pawCardSavings,
             pawCardEstablishments,
             whatsappNumber: process.env.WHATSAPP_NUMBER ?? '639XXXXXXXXX',
+            unsubscribeUrl,
           }),
         });
 

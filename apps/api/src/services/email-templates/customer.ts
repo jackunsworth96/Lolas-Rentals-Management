@@ -254,8 +254,13 @@ export function bookingConfirmationHtml({
         <p style="margin: 0 0 4px; font-size: 12px; color: #999;">
           Lola's Rentals &amp; Tours Inc. — Siargao Island, Philippines
         </p>
-        <p style="margin: 0; font-size: 11px; color: #bbb;">
+        <p style="margin: 0 0 4px; font-size: 11px; color: #bbb;">
           This is an automated confirmation. Please do not reply to this email.
+        </p>
+        <p style="margin: 0; font-size: 11px; color: #bbb;">
+          For questions about your data or to request access, correction, or deletion, contact us at
+          <a href="mailto:hello@lolasrentals.com" style="color: #bbb;">hello@lolasrentals.com</a>
+          or WhatsApp +63 969 444 3413.
         </p>
       </div>
 
@@ -357,7 +362,10 @@ export function waiverConfirmationHtml({
 
         <p style="color: #999; font-size: 12px; text-align: center; margin-top: 32px;">
           Lola's Rentals &amp; Tours Inc. — Siargao Island, Philippines<br/>
-          This is an automated confirmation. Please do not reply to this email.
+          This is an automated confirmation. Please do not reply to this email.<br/>
+          <span style="color: #bbb;">For questions about your data or to request access, correction, or deletion, contact us at
+          <a href="mailto:hello@lolasrentals.com" style="color: #bbb;">hello@lolasrentals.com</a>
+          or WhatsApp +63 969 444 3413.</span>
         </p>
 
       </div>
@@ -437,7 +445,10 @@ export function waiverReminderHtml({
 
         <p style="color: #999; font-size: 12px; text-align: center; margin-top: 32px;">
           Lola's Rentals &amp; Tours Inc. — Siargao Island, Philippines<br/>
-          This is an automated reminder. Please do not reply to this email.
+          This is an automated reminder. Please do not reply to this email.<br/>
+          <span style="color: #bbb;">For questions about your data or to request access, correction, or deletion, contact us at
+          <a href="mailto:hello@lolasrentals.com" style="color: #bbb;">hello@lolasrentals.com</a>
+          or WhatsApp +63 969 444 3413.</span>
         </p>
 
       </div>
@@ -456,6 +467,7 @@ export function postRentalThankYouHtml({
   pawCardSavings,
   pawCardEstablishments,
   whatsappNumber,
+  unsubscribeUrl,
 }: {
   customerName: string;
   orderReference: string;
@@ -467,6 +479,7 @@ export function postRentalThankYouHtml({
   pawCardSavings: number;
   pawCardEstablishments: Array<{ name: string; saved: number }>;
   whatsappNumber: string;
+  unsubscribeUrl?: string;
 }): string {
   const effectiveDailyRate = rentalDays > 0 ? Math.round(totalPaid / rentalDays) : totalPaid;
 
@@ -619,8 +632,19 @@ export function postRentalThankYouHtml({
 
         <p style="color: #999; font-size: 12px; text-align: center; margin-top: 32px;">
           Lola's Rentals &amp; Tours Inc. — Siargao Island, Philippines<br/>
-          This is an automated message. Please do not reply to this email.
+          This is an automated message. Please do not reply to this email.<br/>
+          <span style="color: #bbb;">For questions about your data or to request access, correction, or deletion, contact us at
+          <a href="mailto:hello@lolasrentals.com" style="color: #bbb;">hello@lolasrentals.com</a>
+          or WhatsApp +63 969 444 3413.</span>
         </p>
+
+        ${unsubscribeUrl ? `
+        <p style="color: #bbb; font-size: 11px; text-align: center; margin-top: 12px;">
+          Don't want follow-up emails?
+          <a href="${escapeHtml(unsubscribeUrl)}" style="color: #bbb; text-decoration: underline;">
+            Unsubscribe in one click
+          </a>
+        </p>` : ''}
 
       </div>
     </div>
@@ -720,7 +744,10 @@ export function extendConfirmationHtml({
 
         <p style="color: #999; font-size: 12px; text-align: center; margin-top: 32px;">
           Lola's Rentals &amp; Tours Inc. — Siargao Island, Philippines<br/>
-          This is an automated confirmation. Please do not reply to this email.
+          This is an automated confirmation. Please do not reply to this email.<br/>
+          <span style="color: #bbb;">For questions about your data or to request access, correction, or deletion, contact us at
+          <a href="mailto:hello@lolasrentals.com" style="color: #bbb;">hello@lolasrentals.com</a>
+          or WhatsApp +63 969 444 3413.</span>
         </p>
 
       </div>
@@ -861,7 +888,10 @@ export function bookingCancellationHtml({
           Lola's Rentals &amp; Tours Inc. —
           Siargao Island, Philippines<br/>
           This is an automated message.
-          Please do not reply to this email.
+          Please do not reply to this email.<br/>
+          <span style="color: #bbb;">For questions about your data or to request access, correction, or deletion, contact us at
+          <a href="mailto:hello@lolasrentals.com" style="color: #bbb;">hello@lolasrentals.com</a>
+          or WhatsApp +63 969 444 3413.</span>
         </p>
       </div>
     </div>
@@ -934,7 +964,10 @@ export function transferBookingConfirmationHtml({
         </div>
         <p style="color: #999; font-size: 12px; text-align: center; margin-top: 32px;">
           Lola's Rentals &amp; Tours Inc. — Siargao Island, Philippines<br/>
-          This is an automated message. Please do not reply to this email.
+          This is an automated message. Please do not reply to this email.<br/>
+          <span style="color: #bbb;">For questions about your data or to request access, correction, or deletion, contact us at
+          <a href="mailto:hello@lolasrentals.com" style="color: #bbb;">hello@lolasrentals.com</a>
+          or WhatsApp +63 969 444 3413.</span>
         </p>
       </div>
     </div>

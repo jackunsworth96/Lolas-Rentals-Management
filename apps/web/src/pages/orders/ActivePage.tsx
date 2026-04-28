@@ -209,18 +209,22 @@ export default function ActivePage() {
     {
       key: 'inspection',
       header: '',
-      render: (r: EnrichedOrder) => (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            openInspection(r);
-          }}
-          className="font-lato text-xs font-medium px-3 py-1.5 rounded-lg border border-teal-brand text-teal-brand hover:bg-teal-brand/5 transition-colors"
-        >
-          Inspection
-        </button>
-      ),
+      render: (r: EnrichedOrder) => {
+        const inspectionStatus = r.inspectionStatus ?? 'pending';
+        if (inspectionStatus === 'completed') return null;
+        return (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              openInspection(r);
+            }}
+            className="font-lato text-xs font-medium px-3 py-1.5 rounded-lg border border-teal-brand text-teal-brand hover:bg-teal-brand/5 transition-colors"
+          >
+            Inspection
+          </button>
+        );
+      },
     },
   ];
 
@@ -351,16 +355,17 @@ export default function ActivePage() {
                     </div>
                   </button>
 
-                  {/* Inspection button — full-width, easy to tap */}
-                  <div className="border-t border-gray-100 px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => openInspection(r)}
-                      className="w-full py-2.5 rounded-lg border border-teal-brand text-teal-brand font-medium text-sm transition-colors hover:bg-teal-brand/5 active:bg-teal-brand/10"
-                    >
-                      {inspectionStatus === 'completed' ? 'View / Edit Inspection' : 'Start Inspection'}
-                    </button>
-                  </div>
+                  {inspectionStatus !== 'completed' && (
+                    <div className="border-t border-gray-100 px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => openInspection(r)}
+                        className="w-full py-2.5 rounded-lg border border-teal-brand text-teal-brand font-medium text-sm transition-colors hover:bg-teal-brand/5 active:bg-teal-brand/10"
+                      >
+                        Start Inspection
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}
