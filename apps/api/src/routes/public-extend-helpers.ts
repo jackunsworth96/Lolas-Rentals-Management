@@ -324,12 +324,13 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
     const oldDays = (item.rental_days_count as number) ?? extDayCount(pickup.getTime(), currentDropoff.getTime());
     const newDays = extDayCount(pickup.getTime(), newDropoff.getTime());
 
-    const addonUpdates: Array<{ id: string; new_total: number }> = [];
+    type AddonUpdate = { id: string; new_total: number; name: string; delta: number };
+    const addonUpdates: AddonUpdate[] = [];
     let addonDelta = 0;
     if (oldDays !== newDays) {
       const { data: addons } = await sb
         .from('order_addons')
-        .select('id, addon_type, addon_price, quantity, total_amount')
+        .select('id, addon_name, addon_type, addon_price, quantity, total_amount')
         .eq('order_id', ord.id);
       for (const addon of (addons ?? []) as Array<Record<string, unknown>>) {
         if ((addon.addon_type as string) === 'per_day') {
@@ -340,8 +341,9 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
           // Dividing by oldDays is safe and consistent regardless of how quantity was stored.
           const perDayRate = oldDays > 0 ? oldTotal / oldDays : Number(addon.addon_price ?? 0);
           const newTotal = Math.round(perDayRate * newDays * 100) / 100;
-          addonDelta += newTotal - oldTotal;
-          addonUpdates.push({ id: addon.id as string, new_total: newTotal });
+          const delta = Math.round((newTotal - oldTotal) * 100) / 100;
+          addonDelta += delta;
+          addonUpdates.push({ id: addon.id as string, new_total: newTotal, name: addon.addon_name as string, delta });
         }
       }
     }
@@ -528,7 +530,10 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
       }
     }
 
-    const totalExtensionCost = extensionCost + ninePmCost + newOneTimeCost + newPerDayCost + locationDelta;
+    // addonDelta = per-day addon adjustment for extended days (e.g. Peace of Mind × extra days).
+    // It is already included in totalDelta (sent to the RPC) and must also be included
+    // in totalExtensionCost so the return value, Telegram, and email all reflect the full charge.
+    const totalExtensionCost = extensionCost + addonDelta + ninePmCost + newOneTimeCost + newPerDayCost + locationDelta;
 
     // Fire-and-forget Ops channel Telegram alert. Look up the customer name
     // from the orders row — never block the response path on this.
@@ -537,8 +542,24 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
         const { data: cust } = await sb.from('customers').select('name').eq('id', ord.customer_id).maybeSingle();
         const customerName = (cust as { name?: string } | null)?.name ?? trimmedEmail;
         const extraLines: string[] = [];
-        if (newOneTimeRows.length > 0) extraLines.push(`Add-ons: ${newOneTimeRows.map((r) => r.name).join(', ')}`);
-        if (newPerDayRows.length > 0) extraLines.push(`Per-day add-ons: ${newPerDayRows.map((r) => r.name).join(', ')}`);
+        // Existing per-day addon adjustments (e.g. Peace of Mind for extension days)
+        if (addonUpdates.length > 0) {
+          for (const u of addonUpdates) {
+            if (u.delta !== 0) {
+              extraLines.push(`${u.name}: +₱${u.delta.toLocaleString('en-PH')} (extended days adjustment)`);
+            }
+          }
+        }
+        if (ninePmAddonRow) extraLines.push(`${ninePmAddonRow.name}: +₱${ninePmCost.toLocaleString('en-PH')}`);
+        if (newOneTimeRows.length > 0) {
+          for (const r of newOneTimeRows) extraLines.push(`${r.name}: +₱${Number(r.price_one_time ?? 0).toLocaleString('en-PH')}`);
+        }
+        if (newPerDayRows.length > 0) {
+          for (const r of newPerDayRows) {
+            const cost = Math.round(Number(r.price_per_day ?? 0) * extDays * 100) / 100;
+            extraLines.push(`${r.name}: +₱${cost.toLocaleString('en-PH')} (${extDays} day${extDays !== 1 ? 's' : ''})`);
+          }
+        }
         if (newDropoffLocationId) extraLines.push(`Location change → ID ${newDropoffLocationId}${newDropoffLocationAddress ? ` (${newDropoffLocationAddress})` : ''}`);
         await sendTelegramAlert(
           `🔄 <b>Rental Extended</b>\n` +

@@ -117,14 +117,11 @@ export function bookingConfirmationHtml({
   return `
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; background: #FAF6F0;">
 
-      <!-- FIX 1 — Styled text header (no external image dependency) -->
-      <div style="background: #00577C; padding: 36px 32px; text-align: center;">
-        <h1 style="color: white; margin: 0; font-size: 36px; font-weight: 900; letter-spacing: -1px;">
-          Lola's<span style="color: #FCBC5A;">*</span> Rentals
-        </h1>
-        <p style="color: rgba(255,255,255,0.7); margin: 6px 0 0; font-size: 13px; letter-spacing: 2px; text-transform: uppercase;">
-          Siargao Island · Est. 2023
-        </p>
+      <div style="background: #00577C; padding: 32px; text-align: center;">
+        <img src="https://res.cloudinary.com/dk3c78pro/image/upload/f_png,w_220/v1777351847/Lolas_Original_Logo_tnqhii.svg"
+             alt="Lola's Rentals"
+             width="220"
+             style="display: block; margin: 0 auto; height: auto;" />
       </div>
 
       <!-- Body -->
@@ -285,12 +282,10 @@ export function waiverConfirmationHtml({
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
 
       <div style="background: #00577C; padding: 32px; text-align: center;">
-        <h1 style="color: white; margin: 0; font-size: 32px; font-weight: 900;">
-          Lola's<span style="color: #FCBC5A;">*</span> Rentals
-        </h1>
-        <p style="color: rgba(255,255,255,0.7); margin: 4px 0 0; font-size: 13px; letter-spacing: 2px; text-transform: uppercase;">
-          Siargao Island · Est. 2023
-        </p>
+        <img src="https://res.cloudinary.com/dk3c78pro/image/upload/f_png,w_220/v1777351847/Lolas_Original_Logo_tnqhii.svg"
+             alt="Lola's Rentals"
+             width="220"
+             style="display: block; margin: 0 auto; height: auto;" />
       </div>
 
       <div style="padding: 32px; background: #FAF6F0;">
@@ -387,12 +382,10 @@ export function waiverReminderHtml({
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
 
       <div style="background: #00577C; padding: 32px; text-align: center;">
-        <h1 style="color: white; margin: 0; font-size: 32px; font-weight: 900;">
-          Lola's<span style="color: #FCBC5A;">*</span> Rentals
-        </h1>
-        <p style="color: rgba(255,255,255,0.7); margin: 4px 0 0; font-size: 13px; letter-spacing: 2px; text-transform: uppercase;">
-          Siargao Island · Est. 2023
-        </p>
+        <img src="https://res.cloudinary.com/dk3c78pro/image/upload/f_png,w_220/v1777351847/Lolas_Original_Logo_tnqhii.svg"
+             alt="Lola's Rentals"
+             width="220"
+             style="display: block; margin: 0 auto; height: auto;" />
       </div>
 
       <div style="padding: 32px; background: #FAF6F0;">
@@ -522,12 +515,10 @@ export function postRentalThankYouHtml({
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
 
       <div style="background: #00577C; padding: 32px; text-align: center;">
-        <h1 style="color: white; margin: 0; font-size: 32px; font-weight: 900;">
-          Lola's<span style="color: #FCBC5A;">*</span> Rentals
-        </h1>
-        <p style="color: rgba(255,255,255,0.7); margin: 4px 0 0; font-size: 13px; letter-spacing: 2px; text-transform: uppercase;">
-          Siargao Island · Est. 2023
-        </p>
+        <img src="https://res.cloudinary.com/dk3c78pro/image/upload/f_png,w_220/v1777351847/Lolas_Original_Logo_tnqhii.svg"
+             alt="Lola's Rentals"
+             width="220"
+             style="display: block; margin: 0 auto; height: auto;" />
       </div>
 
       <div style="padding: 32px; background: #FAF6F0;">
@@ -677,12 +668,10 @@ export function extendConfirmationHtml({
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
 
       <div style="background: #00577C; padding: 32px; text-align: center;">
-        <h1 style="color: white; margin: 0; font-size: 32px; font-weight: 900;">
-          Lola's<span style="color: #FCBC5A;">*</span> Rentals
-        </h1>
-        <p style="color: rgba(255,255,255,0.7); margin: 4px 0 0; font-size: 13px; letter-spacing: 2px; text-transform: uppercase;">
-          Siargao Island · Est. 2023
-        </p>
+        <img src="https://res.cloudinary.com/dk3c78pro/image/upload/f_png,w_220/v1777351847/Lolas_Original_Logo_tnqhii.svg"
+             alt="Lola's Rentals"
+             width="220"
+             style="display: block; margin: 0 auto; height: auto;" />
       </div>
 
       <div style="padding: 32px; background: #FAF6F0;">
@@ -756,19 +745,11 @@ export function bookingCancellationHtml({
     <div style="font-family: sans-serif;
       max-width: 600px; margin: 0 auto;">
 
-      <div style="background: #00577C;
-        padding: 32px; text-align: center;">
-        <h1 style="color: white; margin: 0;
-          font-size: 32px; font-weight: 900;">
-          Lola's<span style="color: #FCBC5A;">*</span>
-          Rentals
-        </h1>
-        <p style="color: rgba(255,255,255,0.7);
-          margin: 4px 0 0; font-size: 13px;
-          letter-spacing: 2px;
-          text-transform: uppercase;">
-          Siargao Island · Est. 2023
-        </p>
+      <div style="background: #00577C; padding: 32px; text-align: center;">
+        <img src="https://res.cloudinary.com/dk3c78pro/image/upload/f_png,w_220/v1777351847/Lolas_Original_Logo_tnqhii.svg"
+             alt="Lola's Rentals"
+             width="220"
+             style="display: block; margin: 0 auto; height: auto;" />
       </div>
 
       <div style="padding: 32px;

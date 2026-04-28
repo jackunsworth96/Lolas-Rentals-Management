@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "seed": "npx tsx scripts/seed-users.ts",
+    "email:test": "npx tsx scripts/send-test-email.ts",
     "migrate:sheets": "npx tsx scripts/migrate-sheets-to-supabase.ts",
     "import:fleet": "npx tsx scripts/import-fleet-csv.ts"
   },

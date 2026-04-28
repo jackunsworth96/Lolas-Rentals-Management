@@ -287,7 +287,23 @@ export default function ExtendPage() {
 
         {pageState === 'confirmed' ? (
           <div className="mx-auto max-w-md">
-            <ConfirmedView dropoff={confirmedDropoff} balance={confirmedBalance} orderRef={order?.orderReference ?? ''} />
+            <ConfirmedView
+              dropoff={confirmedDropoff}
+              balance={confirmedBalance}
+              orderRef={order?.orderReference ?? ''}
+              returnLocationName={effectiveReturnLocationName || undefined}
+              perDayAddonDelta={perDayAddonDelta > 0 ? perDayAddonDelta : undefined}
+              perDayAddonLines={order?.currentOrderAddons
+                .filter((a) => a.addonType === 'per_day')
+                .map((a) => ({
+                  name: a.addonName,
+                  delta: Math.round((a.totalAmount / Math.max(1, order.rentalDays)) * extensionDays * 100) / 100,
+                })) ?? []}
+              newAddonLines={newAddonLines}
+              ninePmCost={ninePmSelected && ninePmAddon ? ninePmAddon.price : undefined}
+              locationDelta={locationDelta !== 0 ? locationDelta : undefined}
+              extensionRentalCost={extensionCost ?? undefined}
+            />
           </div>
         ) : (
           <>
@@ -459,7 +475,29 @@ function PawCardWidget({ savings }: { savings?: { hasPawCard: boolean; totalSave
   );
 }
 
-function ConfirmedView({ dropoff, balance, orderRef }: { dropoff: string; balance: number; orderRef: string }) {
+function ConfirmedView({
+  dropoff,
+  balance,
+  orderRef,
+  returnLocationName,
+  perDayAddonDelta,
+  perDayAddonLines,
+  newAddonLines,
+  ninePmCost,
+  locationDelta,
+  extensionRentalCost,
+}: {
+  dropoff: string;
+  balance: number;
+  orderRef: string;
+  returnLocationName?: string;
+  perDayAddonDelta?: number;
+  perDayAddonLines?: Array<{ name: string; delta: number }>;
+  newAddonLines?: Array<{ name: string; cost: number }>;
+  ninePmCost?: number;
+  locationDelta?: number;
+  extensionRentalCost?: number;
+}) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
@@ -533,6 +571,15 @@ function ConfirmedView({ dropoff, balance, orderRef }: { dropoff: string; balanc
           <p className="text-[10px] font-black uppercase tracking-widest text-charcoal-brand/40">{t('extend.newReturnDate')}</p>
           <p className="mt-1.5 text-2xl font-black text-charcoal-brand">{dateFormatted}</p>
           <p className="mt-0.5 text-lg font-black text-gold-brand">{timeFormatted}</p>
+          {returnLocationName && (
+            <p className="mt-1.5 flex items-center gap-1.5 text-sm font-semibold text-charcoal-brand/70">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor" className="h-4 w-4 shrink-0">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
+              </svg>
+              {returnLocationName}
+            </p>
+          )}
           <a
             href={gcalUrl}
             target="_blank"
@@ -545,6 +592,49 @@ function ConfirmedView({ dropoff, balance, orderRef }: { dropoff: string; balanc
           <div className="my-4 border-t border-gray-100" />
 
           <p className="text-[10px] font-black uppercase tracking-widest text-charcoal-brand/40">{t('extend.extensionCost')}</p>
+
+          {/* Cost breakdown */}
+          {(extensionRentalCost != null || perDayAddonDelta != null || (newAddonLines && newAddonLines.length > 0) || ninePmCost != null || locationDelta != null) && (
+            <div className="mt-2 mb-3 space-y-1">
+              {extensionRentalCost != null && (
+                <div className="flex justify-between text-sm text-charcoal-brand/70">
+                  <span>Rental extension</span>
+                  <span className="font-semibold">{formatCurrency(extensionRentalCost)}</span>
+                </div>
+              )}
+              {perDayAddonDelta != null && perDayAddonLines && perDayAddonLines.map((a) => a.delta > 0 && (
+                <div key={a.name} className="flex justify-between text-sm text-charcoal-brand/70">
+                  <span>{a.name}</span>
+                  <span className="font-semibold">+{formatCurrency(a.delta)}</span>
+                </div>
+              ))}
+              {ninePmCost != null && (
+                <div className="flex justify-between text-sm text-charcoal-brand/70">
+                  <span>9PM Late Return</span>
+                  <span className="font-semibold">+{formatCurrency(ninePmCost)}</span>
+                </div>
+              )}
+              {newAddonLines && newAddonLines.map((a) => (
+                <div key={a.name} className="flex justify-between text-sm text-charcoal-brand/70">
+                  <span>{a.name}</span>
+                  <span className="font-semibold">+{formatCurrency(a.cost)}</span>
+                </div>
+              ))}
+              {locationDelta != null && locationDelta !== 0 && (
+                <div className="flex justify-between text-sm text-charcoal-brand/70">
+                  <span>Collection fee {locationDelta > 0 ? 'added' : 'credit'}</span>
+                  <span className={`font-semibold ${locationDelta < 0 ? 'text-teal-brand' : ''}`}>
+                    {locationDelta > 0 ? '+' : ''}{formatCurrency(locationDelta)}
+                  </span>
+                </div>
+              )}
+              <div className="border-t border-gray-100 pt-1 flex justify-between text-sm font-black text-charcoal-brand">
+                <span>Total</span>
+                <span>{formatCurrency(balance)}</span>
+              </div>
+            </div>
+          )}
+
           <p className="mt-1.5 text-3xl font-black text-charcoal-brand">{formatCurrency(balance)}</p>
           <p className="mt-1 text-xs text-charcoal-brand/50">{t('extend.addedToBalance')}</p>
 

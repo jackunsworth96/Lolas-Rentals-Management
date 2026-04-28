@@ -5,6 +5,8 @@ import { validateBody, validateQuery } from '../middleware/validate.js';
 import { Permission } from '@lolas/shared';
 import { z } from 'zod';
 import { supabase } from '../adapters/supabase/client.js';
+import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
+import { escapeHtml } from '../services/email.js';
 
 const router = Router();
 router.use(authenticate);
@@ -519,6 +521,46 @@ router.post('/:id/payment', requirePermission(Permission.EditOrders), validateBo
     const { collectPayment } = await import('../use-cases/orders/collect-payment.js');
     const result = await collectPayment(req.app.locals.deps, { orderId: req.params.id, ...req.body });
     res.json({ success: true, data: result });
+
+    void (async () => {
+      try {
+        const { data: orderRow } = await supabase
+          .from('orders')
+          .select('final_total, booking_token, customers!customer_id(name)')
+          .eq('id', req.params.id)
+          .single();
+        const { data: itemRows } = await supabase
+          .from('order_items')
+          .select('vehicle_name')
+          .eq('order_id', req.params.id)
+          .limit(1);
+
+        const customerName = (orderRow?.customers as { name?: string } | null)?.name ?? 'Unknown';
+        const vehicleName = itemRows?.[0]?.vehicle_name ?? 'Unknown';
+        const finalTotal = orderRow?.final_total ?? 0;
+        const amountPaid: number = req.body.amount;
+        const balanceDue = result.balanceDue.toNumber();
+
+        const paidOrdersMsg =
+          `💳 <b>Payment Received</b>\n` +
+          `<b>${escapeHtml(customerName)}</b>\n` +
+          `${escapeHtml(vehicleName)}\n` +
+          `💰 <b>Total: ₱${Number(finalTotal).toLocaleString('en-PH')}</b>`;
+
+        const opsMsg =
+          `💳 <b>Payment Recorded (Back Office)</b>\n` +
+          `Customer: ${escapeHtml(customerName)}\n` +
+          `Vehicle: ${escapeHtml(vehicleName)}\n` +
+          `Amount Paid: ₱${amountPaid.toLocaleString('en-PH')}\n` +
+          `Balance Due: ₱${balanceDue.toLocaleString('en-PH')}\n` +
+          `Order Total: ₱${Number(finalTotal).toLocaleString('en-PH')}`;
+
+        void sendTelegramAlert(paidOrdersMsg, getTelegramChatId('paid_orders'));
+        void sendTelegramAlert(opsMsg, getTelegramChatId('ops'));
+      } catch {
+        // fire-and-forget — never block the response
+      }
+    })();
   } catch (err) { next(err); }
 });
 

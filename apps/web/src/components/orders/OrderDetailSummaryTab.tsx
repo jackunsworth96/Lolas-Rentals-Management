@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Phone, MessageCircle } from 'lucide-react';
 import { Badge } from '../common/Badge.js';
+import { Modal } from '../common/Modal.js';
+import { Button } from '../common/Button.js';
 import { ExtendOrderModal } from './ExtendOrderModal.js';
 import { InspectionModal } from './InspectionModal.js';
 import { MayaPaymentModal } from './MayaPaymentModal.js';
@@ -86,6 +88,9 @@ export function OrderDetailSummaryTab({
   const [extendOpen, setExtendOpen] = useState(false);
   const [inspectionModalOpen, setInspectionModalOpen] = useState(false);
   const [showMayaModal, setShowMayaModal] = useState(false);
+  const [showRefundConfirm, setShowRefundConfirm] = useState(false);
+  // ── Refs ──
+  const settleRef = useRef<HTMLElement>(null);
   // ── Data / config queries ──
   const { data: vehicles = [] } = useFleet(storeId);
   const { data: paymentMethods = [] } = usePaymentMethods() as { data: Array<{ id: string; name: string; surchargePercent?: number; surcharge_percent?: number; isActive?: boolean; is_active?: boolean }> | undefined };
@@ -319,6 +324,12 @@ export function OrderDetailSummaryTab({
     e.preventDefault();
     const amt = Number(refundAmount);
     if (!amt || amt <= 0 || !refundMethodId || !refundAccountId || !defaultReceivableId) return;
+    setShowRefundConfirm(true);
+  };
+
+  const handleRefundConfirmed = () => {
+    const amt = Number(refundAmount);
+    if (!amt || amt <= 0 || !refundMethodId || !refundAccountId || !defaultReceivableId) return;
     refundOrderMut.mutate(
       {
         id: orderId,
@@ -332,13 +343,17 @@ export function OrderDetailSummaryTab({
       },
       {
         onSuccess: () => {
+          setShowRefundConfirm(false);
           setRefundAmount('');
           setRefundMethodId('');
           setRefundAccountId('');
           setRefundReason('');
           pushToast('Refund recorded successfully.', 'success');
         },
-        onError: (err) => pushToast((err as Error).message, 'error'),
+        onError: (err) => {
+          setShowRefundConfirm(false);
+          pushToast((err as Error).message, 'error');
+        },
       },
     );
   };
@@ -383,7 +398,7 @@ export function OrderDetailSummaryTab({
   // For active orders we keep the live payment-derived figure.
   const displayBalance = isActive
     ? balance
-    : Math.max(0, moneyAmount(order.balanceDue));
+    : Math.max(0, moneyAmount(order.balance_due));
   const hasExtension =
     enrichedData?.hasExtension ?? payments.some((p) => p.paymentType === 'extension');
 
@@ -422,6 +437,48 @@ export function OrderDetailSummaryTab({
   // subtract the extension charges to isolate the ORIGINAL rental subtotal.
   const rentalSubtotal = Math.max(0, rentalBaseSubtotal - extensionCharges);
   const addonTotal = orderAddons.reduce((sum, a) => sum + (a.totalAmount ?? 0), 0);
+
+  // Per-day addon adjustments for extended days (e.g. Peace of Mind × extra days).
+  // These are included in final_total (via the extension totalDelta RPC param) but are
+  // NOT recorded as extension payment rows — they adjust order_addons.total_amount instead.
+  // We surface them as the residual: total − rental − extensions − addons − deposit − surcharge.
+  const explicitTotal = rentalSubtotal + extensionCharges + addonTotal + securityDeposit + surcharge;
+  const addonExtensionAdjustment = Math.round((total - explicitTotal) * 100) / 100;
+
+  // ── Late return & duration ──
+  const nowMs = Date.now();
+  const returnMs = returnDatetime ? new Date(returnDatetime).getTime() : null;
+  const isOverdue = isActive && returnMs !== null && nowMs > returnMs;
+  const overdueDays = isOverdue && returnMs !== null
+    ? Math.floor((nowMs - returnMs) / (1000 * 60 * 60 * 24))
+    : 0;
+
+  const pickupMs = itemsList[0]?.pickupDatetime
+    ? new Date(itemsList[0].pickupDatetime).getTime()
+    : null;
+  const totalRentalDays = itemsList[0]?.rentalDaysCount ?? null;
+  const daysElapsed =
+    pickupMs !== null && Number.isFinite(pickupMs)
+      ? Math.max(1, Math.floor((nowMs - pickupMs) / (1000 * 60 * 60 * 24)) + 1)
+      : null;
+  const showDuration =
+    daysElapsed !== null &&
+    totalRentalDays !== null &&
+    totalRentalDays > 0 &&
+    daysElapsed > 0;
+
+  // ── Jump-to-Settle visibility ──
+  // Show only when rental balance is fully paid and there is a deposit to return.
+  const showJumpToSettle = canAct && balance === 0 && securityDeposit > 0;
+
+  const handleJumpToSettle = () => {
+    settleRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  // ── Over-payment guard ──
+  // Only block when balance > 0; allow recording when balance is already 0
+  // (operator may need to record an additional deposit or tip).
+  const isOverPayment = paymentAmount !== '' && Number(paymentAmount) > balance && balance > 0;
 
   const handleSettle = (e: React.FormEvent) => {
     e.preventDefault();
@@ -527,13 +584,49 @@ export function OrderDetailSummaryTab({
   return (
     <>
       <div className="space-y-5">
+        {/* Jump-to-Settle shortcut — shown when balance is clear and deposit awaits return */}
+        {showJumpToSettle && (
+          <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-4 py-2.5">
+            <p className="text-sm font-medium text-green-800">
+              Balance settled — deposit of {formatCurrency(securityDeposit)} ready to return.
+            </p>
+            <button
+              type="button"
+              onClick={handleJumpToSettle}
+              className="ml-4 shrink-0 rounded-lg border border-green-300 bg-white px-3 py-1.5 text-xs font-medium text-green-800 hover:bg-green-100"
+            >
+              Jump to Settle ↓
+            </button>
+          </div>
+        )}
+
         {/* Customer & Vehicle header */}
         <div className="rounded-lg bg-sand-brand p-4">
           <div className="flex flex-wrap gap-6">
             <div className="min-w-0 max-w-md">
               <div className="text-xs font-medium uppercase text-charcoal-brand/60">Customer</div>
               <div className="text-base font-semibold text-gray-900">{customerName}</div>
-              {customerMobile && <div className="text-sm text-charcoal-brand/60">{customerMobile}</div>}
+              {customerMobile && (
+                <div className="mt-0.5 flex items-center gap-3">
+                  <a
+                    href={`tel:${customerMobile}`}
+                    className="flex items-center gap-1 text-sm text-charcoal-brand/60 hover:text-teal-brand"
+                  >
+                    <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    {customerMobile}
+                  </a>
+                  <a
+                    href={`https://wa.me/${customerMobile.replace(/^\+/, '').replace(/[\s-]/g, '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-sm text-green-700 hover:text-green-800"
+                    title="Open in WhatsApp"
+                  >
+                    <MessageCircle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    <span className="text-xs font-medium">WhatsApp</span>
+                  </a>
+                </div>
+              )}
               {customerEmailForPaw && <div className="text-sm text-charcoal-brand/60">{customerEmailForPaw}</div>}
               {pawCardSavings?.hasPawCard && (
                 <div className="mt-2 rounded-md border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs text-teal-900">
@@ -647,7 +740,7 @@ export function OrderDetailSummaryTab({
               <div>
                 <div className="text-xs font-medium uppercase text-charcoal-brand/60">Return date</div>
                 <div className="flex items-center gap-2">
-                  <div className="text-base font-semibold text-gray-900">
+                  <div className={`text-base font-semibold ${isOverdue ? 'text-red-700' : 'text-gray-900'}`}>
                     {new Date(returnDatetime).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                   </div>
                   {hasExtension && (
@@ -659,6 +752,12 @@ export function OrderDetailSummaryTab({
                     </span>
                   )}
                 </div>
+                {showDuration && (
+                  <div className={`mt-1 text-xs font-medium ${isOverdue ? 'text-red-600' : 'text-charcoal-brand/60'}`}>
+                    Day {Math.min(daysElapsed!, totalRentalDays!)} of {totalRentalDays}
+                    {isOverdue ? ' (overdue)' : ''}
+                  </div>
+                )}
               </div>
             )}
             <div className="ml-auto flex items-center gap-2">
@@ -669,6 +768,11 @@ export function OrderDetailSummaryTab({
                 >
                   Extended
                 </span>
+              )}
+              {isOverdue && (
+                <Badge color="red" className="text-sm">
+                  Overdue — due {overdueDays === 0 ? 'today' : `${overdueDays} day${overdueDays === 1 ? '' : 's'} ago`}
+                </Badge>
               )}
               <Badge color={statusVal === 'active' ? 'blue' : statusVal === 'completed' ? 'green' : 'gray'} className="text-sm">
                 {String(statusVal)}
@@ -687,7 +791,7 @@ export function OrderDetailSummaryTab({
             </div>
             {extensionCharges > 0 && (
               <div className="flex justify-between px-4 py-2">
-                <span className="text-gray-600">Extensions</span>
+                <span className="text-gray-600">Extensions (rental)</span>
                 <span>{formatCurrency(extensionCharges)}</span>
               </div>
             )}
@@ -695,6 +799,14 @@ export function OrderDetailSummaryTab({
               <div className="flex justify-between px-4 py-2">
                 <span className="text-gray-600">Add-ons</span>
                 <span>{formatCurrency(addonTotal)}</span>
+              </div>
+            )}
+            {extensionCharges > 0 && addonExtensionAdjustment > 0.005 && (
+              <div className="flex justify-between px-4 py-2">
+                <span className="text-gray-600" title="Per-day add-ons adjusted for extended rental days (e.g. Peace of Mind)">
+                  Add-on adjustments (ext.)
+                </span>
+                <span>{formatCurrency(addonExtensionAdjustment)}</span>
               </div>
             )}
             {securityDeposit > 0 && (
@@ -848,7 +960,7 @@ export function OrderDetailSummaryTab({
                     <span className="text-sm text-gray-600">Amount</span>
                     <input type="number" step="0.01" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} required
                       placeholder={balance > 0 ? String(balance) : '0'}
-                      className="mt-1 block w-full sm:w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                      className={`mt-1 block w-full sm:w-32 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${isOverPayment ? 'border-red-400 focus:border-red-400 focus:ring-red-400' : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'}`} />
                   </label>
                   <label className="block">
                     <span className="text-sm text-gray-600">Method</span>
@@ -877,11 +989,16 @@ export function OrderDetailSummaryTab({
                       <p className="mt-1 text-xs text-amber-600">No routing rule — select manually</p>
                     </label>
                   )}
-                  <button type="submit" disabled={collectPaymentMut.isPending}
+                  <button type="submit" disabled={collectPaymentMut.isPending || isOverPayment}
                     className="w-full sm:w-auto rounded-lg bg-teal-brand px-5 py-2 text-sm font-medium text-white hover:bg-teal-brand/90 disabled:opacity-50">
                     {collectPaymentMut.isPending ? 'Saving...' : 'Record Payment'}
                   </button>
                 </div>
+                {isOverPayment && (
+                  <p className="text-sm font-medium text-red-600">
+                    Amount exceeds balance due of {formatCurrency(balance)}
+                  </p>
+                )}
                 {collectPaymentMut.error && <p className="text-sm text-red-600">{(collectPaymentMut.error as Error).message}</p>}
               </form>
             </section>
@@ -951,26 +1068,40 @@ export function OrderDetailSummaryTab({
             </section>
 
             {/* ─── ISSUE REFUND ─── */}
-            <section>
-              <h3 className="mb-3 font-medium text-gray-900">Issue Refund</h3>
-              <p className="mb-3 text-sm text-charcoal-brand/60">
-                Record a cash refund to the customer (e.g. early return due to accident). Optionally cancel the order at the same time.
+            <section className="rounded-lg border border-red-200 bg-red-50 p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-red-600" aria-hidden />
+                <h3 className="font-medium text-red-900">Issue Refund</h3>
+              </div>
+              <p className="mb-3 text-sm text-red-800/70">
+                Record a cash refund to the customer (e.g. early return due to accident). A journal entry is created immediately and cannot be undone.
               </p>
               <form onSubmit={handleRefund} className="space-y-3">
                 <div className="flex flex-col sm:flex-row sm:flex-wrap items-end gap-4">
-                  <label className="block">
+                  <div className="block">
                     <span className="text-sm text-gray-600">Refund Amount</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      value={refundAmount}
-                      onChange={(e) => setRefundAmount(e.target.value)}
-                      required
-                      placeholder={totalPaid > 0 ? String(Math.max(0, totalPaid)) : '0'}
-                      className="mt-1 block w-full sm:w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-red-400 focus:outline-none focus:ring-1 focus:ring-red-400"
-                    />
-                  </label>
+                    <div className="mt-1 flex items-center gap-2">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        value={refundAmount}
+                        onChange={(e) => setRefundAmount(e.target.value)}
+                        required
+                        placeholder="0.00"
+                        className="block w-full sm:w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-red-400 focus:outline-none focus:ring-1 focus:ring-red-400"
+                      />
+                      {totalPaid > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setRefundAmount(String(Math.max(0, totalPaid)))}
+                          className="whitespace-nowrap rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                        >
+                          Use full amount ({formatCurrency(Math.max(0, totalPaid))})
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   <label className="block">
                     <span className="text-sm text-gray-600">Refund via</span>
                     <select
@@ -1014,15 +1145,14 @@ export function OrderDetailSummaryTab({
                     />
                   </label>
                 </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="submit"
-                    disabled={refundOrderMut.isPending}
-                    className="w-full sm:w-auto rounded-lg bg-red-600 px-5 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                  >
-                    {refundOrderMut.isPending ? 'Processing…' : 'Issue Refund'}
-                  </button>
-                </div>
+                <Button
+                  type="submit"
+                  variant="danger"
+                  disabled={refundOrderMut.isPending}
+                  loading={refundOrderMut.isPending}
+                >
+                  {refundOrderMut.isPending ? 'Processing…' : 'Issue Refund'}
+                </Button>
                 {refundOrderMut.error && (
                   <p className="text-sm text-red-600">{(refundOrderMut.error as Error).message}</p>
                 )}
@@ -1030,7 +1160,7 @@ export function OrderDetailSummaryTab({
             </section>
 
             {/* ─── SETTLE ORDER ─── */}
-            <section>
+            <section ref={settleRef as React.RefObject<HTMLElement>}>
               <h3 className="mb-3 font-medium text-gray-900">Settle Order</h3>
 
               {(() => {
@@ -1273,6 +1403,17 @@ export function OrderDetailSummaryTab({
                           return 'Settle Order';
                         })()}
                       </button>
+                      {!settleReady && !settleOrder.isPending && (
+                        <p className="mt-2 text-xs text-amber-700">
+                          {!settleDepositAccountId || !settleReceivableAccountId
+                            ? 'Accounting accounts not configured — contact admin.'
+                            : depositRefund > 0 && !settleRefundMethodId
+                            ? 'Select a deposit refund method to continue.'
+                            : remainingAfterDeposit > 0 && !settleFinalMethodId
+                            ? 'Select a payment method for the remaining balance.'
+                            : 'Complete all required fields to settle.'}
+                        </p>
+                      )}
                     </form>
                     {settleOrder.error && <p className="text-sm text-red-600">{(settleOrder.error as Error).message}</p>}
                   </div>
@@ -1282,6 +1423,58 @@ export function OrderDetailSummaryTab({
           </div>
         )}
       </div>
+
+      {/* ─── Refund confirmation dialog ─── */}
+      {showRefundConfirm && createPortal(
+        <Modal
+          open={showRefundConfirm}
+          onClose={() => setShowRefundConfirm(false)}
+          title="Confirm Refund"
+          size="sm"
+        >
+          <div className="space-y-4">
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+              <p className="font-semibold">This action cannot be undone.</p>
+              <p className="mt-0.5">A journal entry will be created immediately upon confirmation.</p>
+            </div>
+            <dl className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <dt className="text-charcoal-brand/60">Refund amount</dt>
+                <dd className="font-semibold">{formatCurrency(Number(refundAmount))}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-charcoal-brand/60">Method</dt>
+                <dd className="font-medium">{pmLookup.get(refundMethodId)?.name ?? refundMethodId}</dd>
+              </div>
+              {refundReason.trim() && (
+                <div className="flex justify-between gap-4">
+                  <dt className="text-charcoal-brand/60">Reason</dt>
+                  <dd className="text-right font-medium">{refundReason.trim()}</dd>
+                </div>
+              )}
+            </dl>
+            <div className="flex gap-3">
+              <Button
+                variant="secondary"
+                className="flex-1"
+                onClick={() => setShowRefundConfirm(false)}
+                disabled={refundOrderMut.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                className="flex-1"
+                onClick={handleRefundConfirmed}
+                loading={refundOrderMut.isPending}
+              >
+                {refundOrderMut.isPending ? 'Processing…' : 'Confirm Refund'}
+              </Button>
+            </div>
+          </div>
+        </Modal>,
+        document.body,
+      )}
 
       {/* ─── Extend modal (rendered here so it stacks above the detail modal) ─── */}
       {enrichedData && (

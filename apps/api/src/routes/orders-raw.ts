@@ -525,8 +525,13 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
           transferLines +
           charityLine +
           `\nStore: ${escapeHtml(body.storeId)}`;
+      const walkinPaidOrdersMsg =
+        `💳 <b>Order Paid</b>\n` +
+          `<b>${escapeHtml(body.customerName)}</b>\n` +
+          `${escapeHtml(body.vehicleName)}\n` +
+          `💰 <b>Total: ₱${body.grandTotal.toLocaleString('en-PH')}</b>`;
       void sendTelegramAlert(walkinActivatedMsg, getTelegramChatId('ops'));
-      void sendTelegramAlert(walkinActivatedMsg, getTelegramChatId('paid_orders'));
+      void sendTelegramAlert(walkinPaidOrdersMsg, getTelegramChatId('paid_orders'));
     }
 
     // 17. Fire-and-forget booking confirmation email
@@ -870,8 +875,13 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
           addonLines +
           transferLines +
           `\nStore: ${escapeHtml(body.storeId)}`;
+      const onlinePaidOrdersMsg =
+        `💳 <b>Order Paid</b>\n` +
+          `<b>${escapeHtml(body.customer.name)}</b>\n` +
+          `${escapeHtml(vehicleLabel)}\n` +
+          `💰 <b>Total: ₱${actualTotal.toLocaleString('en-PH')}</b>`;
       void sendTelegramAlert(onlineActivatedMsg, getTelegramChatId('ops'));
-      void sendTelegramAlert(onlineActivatedMsg, getTelegramChatId('paid_orders'));
+      void sendTelegramAlert(onlinePaidOrdersMsg, getTelegramChatId('paid_orders'));
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
