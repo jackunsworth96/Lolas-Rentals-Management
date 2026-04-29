@@ -60,7 +60,7 @@ export default function UnsubscribePage() {
                 </p>
                 <Link
                   to="/book"
-                  className="inline-block rounded-full bg-teal-brand px-8 py-3 font-headline font-bold text-white shadow-md transition-all hover:opacity-90"
+                  className="inline-block rounded-full bg-teal-brand px-8 py-3 font-headline font-bold !text-white shadow-md transition-all hover:opacity-90"
                 >
                   Back to Homepage
                 </Link>
@@ -78,7 +78,7 @@ export default function UnsubscribePage() {
                 </p>
                 <Link
                   to="/book"
-                  className="inline-block rounded-full bg-teal-brand px-8 py-3 font-headline font-bold text-white shadow-md transition-all hover:opacity-90"
+                  className="inline-block rounded-full bg-teal-brand px-8 py-3 font-headline font-bold !text-white shadow-md transition-all hover:opacity-90"
                 >
                   Back to Homepage
                 </Link>

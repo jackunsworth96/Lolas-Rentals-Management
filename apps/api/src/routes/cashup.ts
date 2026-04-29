@@ -32,7 +32,7 @@ router.get(
       const { storeId, date } = req.query as { storeId: string; date: string };
       const sb = getSupabaseClient();
 
-      const [paymentsRes, expensesRes, depositsRes, transfersRes, miscSalesRes, reconRes, prevReconRes, storesRes, charityRes, completedOrdersRes, discountItemsRes, refundJournalRes] =
+      const [paymentsRes, expensesRes, depositsRes, transfersRes, miscSalesRes, reconRes, prevReconRes, storesRes, charityRes, completedOrdersRes, discountItemsRes, refundJournalRes, transferIncomeRes] =
         await Promise.all([
           sb
             .from('payments')
@@ -132,6 +132,16 @@ router.get(
             .eq('reference_type', 'refund')
             .gt('credit', 0)
             .order('created_at', { ascending: true }),
+
+          // Debit legs from transfer booking payments (cash/GCash collected from customers)
+          sb
+            .from('journal_entries')
+            .select('id, description, debit, date, created_at, reference_id, account_id, chart_of_accounts!account_id(name)')
+            .eq('store_id', storeId)
+            .eq('date', date)
+            .eq('reference_type', 'transfer')
+            .gt('debit', 0)
+            .order('created_at', { ascending: true }),
         ]);
 
       if (paymentsRes.error)
@@ -156,6 +166,8 @@ router.get(
         throw new Error(`Today orders (discount) query failed: ${discountItemsRes.error.message}`);
       if (refundJournalRes.error)
         throw new Error(`Refund journal entries query failed: ${refundJournalRes.error.message}`);
+      if (transferIncomeRes.error)
+        throw new Error(`Transfer income query failed: ${transferIncomeRes.error.message}`);
 
       const payments = (paymentsRes.data ?? []) as Record<string, unknown>[];
       const expenses = (expensesRes.data ?? []) as Record<string, unknown>[];
@@ -170,6 +182,7 @@ router.get(
       const completedOrders = (completedOrdersRes.data ?? []) as { id: string }[];
       const completedOrderIds = new Set(completedOrders.map((o) => o.id));
       const refundJournalEntries = (refundJournalRes.data ?? []) as Record<string, unknown>[];
+      const transferIncomeEntries = (transferIncomeRes.data ?? []) as Record<string, unknown>[];
 
       const GCASH_IDS = new Set(['gcash', 'paymaya']);
       const DEPOSIT_TYPES = new Set(['deposit', 'security_deposit']);
@@ -459,6 +472,56 @@ router.get(
         } else if (credit > 0) {
           transferOutRows.push(row);
           interStoreOut += credit;
+        }
+      }
+
+      // Transfer booking income — cash/GCash collected from transfer customers.
+      // These are journal debit legs (no payments row), so we process them separately
+      // and merge into the same cash/gcash/card/bank sales buckets so they appear on
+      // the cashup page and contribute to expectedCash.
+      if (transferIncomeEntries.length > 0) {
+        const transferRefIds = [...new Set(
+          transferIncomeEntries.map((e) => String(e.reference_id)).filter(Boolean),
+        )];
+        const transferCustomerMap = new Map<string, string>();
+        const { data: transferRows } = await sb
+          .from('transfers')
+          .select('id, customer_name')
+          .in('id', transferRefIds);
+        for (const t of (transferRows ?? []) as { id: string; customer_name: string }[]) {
+          transferCustomerMap.set(t.id, t.customer_name ?? '');
+        }
+
+        for (const e of transferIncomeEntries) {
+          const acct = e.chart_of_accounts as { name: string } | null;
+          const amount = Number(e.debit ?? 0);
+          const refId = String(e.reference_id ?? '');
+          const row = {
+            id: e.id,
+            paymentType: 'transfer',
+            amount,
+            methodId: acct?.name ?? '',
+            settlementRef: null,
+            settlementStatus: null,
+            customerName: transferCustomerMap.get(refId) ?? null,
+            wooOrderId: null,
+            orderId: null,
+            createdAt: e.created_at,
+          };
+          const cat = accountMethodCategory(acct?.name ?? '');
+          if (cat === 'cash') {
+            cashSalesTx.push(row);
+            cashSalesTotal += amount;
+          } else if (cat === 'gcash') {
+            gcashSalesTx.push(row);
+            gcashSalesTotal += amount;
+          } else if (cat === 'card') {
+            cardSalesTx.push(row);
+            cardSalesTotal += amount;
+          } else {
+            bankTransferTx.push(row);
+            bankTransferTotal += amount;
+          }
         }
       }
 

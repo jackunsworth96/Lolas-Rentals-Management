@@ -108,7 +108,7 @@ export default function PrivacyPage() {
         <div className="mt-12 border-t border-charcoal-brand/10 pt-8 text-center">
           <Link
             to="/book"
-            className="inline-block rounded-full bg-teal-brand px-8 py-3 font-headline font-bold text-white shadow-md transition-all hover:opacity-90"
+            className="inline-block rounded-full bg-teal-brand px-8 py-3 font-headline font-bold !text-white shadow-md transition-all hover:opacity-90"
           >
             {t('privacy.backToHome')}
           </Link>

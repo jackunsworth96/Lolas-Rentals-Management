@@ -70,12 +70,12 @@ function legToRow(
 }
 
 export class SupabaseAccountingRepository implements AccountingPort {
-  async createTransaction(legs: JournalLeg[], storeId: string): Promise<JournalTransaction> {
+  async createTransaction(legs: JournalLeg[], storeId: string, date?: string): Promise<JournalTransaction> {
     const sb = getSupabaseClient();
 
     const txId = crypto.randomUUID();
-    const date = formatManilaDate();
-    const period = date.slice(0, 7);
+    const resolvedDate = date ?? formatManilaDate();
+    const period = resolvedDate.slice(0, 7);
 
     const firstLeg = legs[0];
     if (!firstLeg) throw new Error('Transaction must have at least one leg');
@@ -83,14 +83,14 @@ export class SupabaseAccountingRepository implements AccountingPort {
     const tx = JTEntity.create({
       transactionId: txId,
       period,
-      date,
+      date: resolvedDate,
       storeId,
       legs,
       createdBy: null,
     });
 
     const rows = legs.map((leg) =>
-      legToRow(leg, txId, period, date, storeId, null),
+      legToRow(leg, txId, period, resolvedDate, storeId, null),
     );
 
     const { error } = await sb.from('journal_entries').insert(rows);

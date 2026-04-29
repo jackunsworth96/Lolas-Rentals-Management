@@ -58,7 +58,7 @@ export async function recordTransferPayment(
     },
   ];
 
-  await deps.accounting.createTransaction(legs, transfer.storeId);
+  await deps.accounting.createTransaction(legs, transfer.storeId, input.date);
 
   const paymentStatus = transfer.derivePaymentStatus(amount);
 

@@ -38,7 +38,7 @@ export function QuickTipsCard({ pickupLocationName }: Props) {
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10">
           <span className="text-xl">💡</span>
         </div>
-        <h3 className="font-headline text-xl font-extrabold text-white">Quick Tips</h3>
+        <h3 className="font-headline text-xl font-extrabold !text-white">Quick Tips</h3>
       </div>
 
       <ul className="flex flex-col gap-4 md:flex-row md:flex-wrap md:justify-center md:gap-8">

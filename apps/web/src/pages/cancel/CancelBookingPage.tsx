@@ -114,7 +114,7 @@ export default function CancelBookingPage() {
             <button
               type="button"
               onClick={handleCancel}
-              className="mb-3 w-full rounded-xl bg-teal-brand py-4 font-headline text-lg font-black text-white shadow-md transition-all duration-300 hover:brightness-110 active:scale-[0.98]"
+              className="mb-3 w-full rounded-xl bg-teal-brand py-4 font-headline text-lg font-black !text-white shadow-md transition-all duration-300 hover:brightness-110 active:scale-[0.98]"
             >
               {t('cancel.confirmCancel')}
             </button>
@@ -159,7 +159,7 @@ export default function CancelBookingPage() {
             </p>
             <Link
               to="/"
-              className="w-full rounded-xl bg-teal-brand py-4 text-center font-headline text-lg font-black text-white shadow-md transition-all duration-300 hover:brightness-110"
+              className="w-full rounded-xl bg-teal-brand py-4 text-center font-headline text-lg font-black !text-white shadow-md transition-all duration-300 hover:brightness-110"
             >
               {t('cancel.backToHome')}
             </Link>

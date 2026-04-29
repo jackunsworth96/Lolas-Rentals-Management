@@ -446,6 +446,7 @@ export async function processRawOrder(
   // until the batch is reconciled.
   if (
     willCreateRentalPayment &&
+    rentalAmount > 0 &&
     !input.isCardPayment &&
     rentalPaymentId &&
     input.paymentAccountId &&

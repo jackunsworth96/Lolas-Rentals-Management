@@ -35,7 +35,7 @@ export interface BalanceSummary {
 }
 
 export interface AccountingPort {
-  createTransaction(legs: JournalLeg[], storeId: string): Promise<JournalTransaction>;
+  createTransaction(legs: JournalLeg[], storeId: string, date?: string): Promise<JournalTransaction>;
   findByAccount(accountId: string, period?: string): Promise<JournalEntry[]>;
   findByAccountDateRange(accountId: string, from: string, to: string): Promise<JournalEntry[]>;
   findByReference(referenceType: string, referenceId: string): Promise<JournalEntry[]>;
