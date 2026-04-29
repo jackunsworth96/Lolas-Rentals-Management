@@ -139,7 +139,8 @@ router.get('/establishments', async (req, res, next) => {
         is_favourite,
         is_high_value,
         time_of_day,
-        discount_code
+        discount_code,
+        cloudinary_public_id
       `)
       .eq('is_active', true)
       .order('name');

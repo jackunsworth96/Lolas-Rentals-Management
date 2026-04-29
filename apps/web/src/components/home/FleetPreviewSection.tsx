@@ -307,13 +307,16 @@ export function FleetPreviewSection() {
                     <span style={{ fontSize: 64, opacity: 0.3 }}>🛵</span>
                   )}
                   {/* Price badge */}
-                  <div style={{
-                    position: 'absolute', bottom: 10, right: 10,
-                    backgroundColor: 'rgba(255,255,255,0.95)',
-                    borderRadius: 9999, padding: '3px 10px',
-                    fontSize: 11, fontWeight: 700, color: '#00577C',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                  }}>
+                  <div
+                    className="font-lato"
+                    style={{
+                      position: 'absolute', bottom: 10, right: 10,
+                      backgroundColor: 'rgba(255,255,255,0.95)',
+                      borderRadius: 9999, padding: '3px 10px',
+                      fontSize: 11, fontWeight: 700, color: '#00577C',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                    }}
+                  >
                     {loading ? '...' : v.price ?? 'See pricing'}
                   </div>
                 </div>

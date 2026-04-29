@@ -227,7 +227,7 @@ export function VehicleCard({
             <div className="ml-3 shrink-0 text-right">
               {dailyRate != null ? (
                 <p className="text-lg leading-tight">
-                  <span className="font-headline font-bold text-teal-brand">
+                  <span className="font-lato font-bold text-teal-brand">
                     ₱{formatPhpNumber(dailyRate)}
                   </span>
                   <span
@@ -244,7 +244,7 @@ export function VehicleCard({
 
           {securityDeposit != null && securityDeposit > 0 && (
             <p className="font-lato mb-4 text-xs text-charcoal-brand/50">
-              <span className="font-headline font-bold">
+              <span className="font-bold">
                 ₱{formatPhpNumber(securityDeposit)}
               </span>
               {' '}refundable deposit

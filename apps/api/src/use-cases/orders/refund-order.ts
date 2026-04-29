@@ -1,5 +1,6 @@
 import {
   type OrderRepository,
+  type PaymentRepository,
   type JournalLeg,
   Money,
 } from '@lolas/domain';
@@ -7,6 +8,7 @@ import { supabase } from '../../adapters/supabase/client.js';
 
 export interface RefundOrderDeps {
   orderRepo: OrderRepository;
+  paymentRepo: PaymentRepository;
 }
 
 export interface RefundOrderInput {
@@ -42,7 +44,7 @@ export async function refundOrder(
   deps: RefundOrderDeps,
   input: RefundOrderInput,
 ) {
-  const { orderRepo } = deps;
+  const { orderRepo, paymentRepo } = deps;
 
   const order = await orderRepo.findById(input.orderId);
   if (!order) throw new Error(`Order ${input.orderId} not found`);
@@ -101,19 +103,22 @@ export async function refundOrder(
 
   if (rpcErr) throw new Error(`collect_payment_atomic RPC failed: ${rpcErr.message}`);
 
-  // Keep orders.balance_due accurate for reporting — a refund means the business
-  // paid cash out, so the outstanding balance grows back. Reading then writing is
-  // acceptable here because refunds are manual, non-concurrent operations.
-  const { data: freshOrder } = await supabase
-    .from('orders')
-    .select('balance_due')
-    .eq('id', order.id)
-    .single();
-  const newBalance = Math.max(0, Number(freshOrder?.balance_due ?? 0) + refundAmount.toNumber());
-  await supabase
-    .from('orders')
-    .update({ balance_due: newBalance })
-    .eq('id', order.id);
+  // Recompute balance_due from the full payments list using the same filtering
+  // as collectPayment and settle-order so the stored value is always consistent:
+  //   • deposits excluded (tracked against security_deposit, not final_total)
+  //   • pending/absorbed extension IOUs excluded (amounts owed, not received)
+  //   • refunds subtracted (reduce net cash collected)
+  const allPayments = await paymentRepo.findByOrderId(order.id);
+  const totalPaid = allPayments.reduce((sum, p) => {
+    if (p.paymentType === 'deposit') return sum;
+    if (p.paymentType === 'extension' &&
+        (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return sum;
+    if (p.paymentType === 'refund') return sum.subtract(Money.php(p.amount));
+    return sum.add(Money.php(p.amount));
+  }, Money.zero());
+
+  order.applyPayments(totalPaid);
+  await orderRepo.save(order);
 
   if (input.cancelOrder) {
     const { error: cancelErr } = await supabase

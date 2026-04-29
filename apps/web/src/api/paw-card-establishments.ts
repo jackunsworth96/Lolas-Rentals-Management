@@ -18,6 +18,7 @@ export interface PawCardEstablishment {
   is_high_value: boolean;
   time_of_day?: string | null;
   discount_code?: string | null;
+  cloudinary_public_id?: string | null;
 }
 
 export function usePublicEstablishments() {

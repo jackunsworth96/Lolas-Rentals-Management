@@ -174,10 +174,17 @@ export async function collectPayment(
   }
 
   const allPayments = await paymentRepo.findByOrderId(order.id);
-  const totalPaid = allPayments.reduce(
-    (sum, p) => sum.add(Money.php(p.amount)),
-    Money.zero(),
-  );
+  // Mirror the same filtering used by the active-orders route and settle-order:
+  // deposits are held against security_deposit (not final_total), pending/absorbed
+  // extension IOUs represent amounts owed (not cash received), and refunds reduce
+  // the net amount collected.
+  const totalPaid = allPayments.reduce((sum, p) => {
+    if (p.paymentType === 'deposit') return sum;
+    if (p.paymentType === 'extension' &&
+        (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return sum;
+    if (p.paymentType === 'refund') return sum.subtract(Money.php(p.amount));
+    return sum.add(Money.php(p.amount));
+  }, Money.zero());
 
   order.applyPayments(totalPaid);
   await orderRepo.save(order);

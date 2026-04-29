@@ -13,23 +13,96 @@ import { SEO } from '../../components/seo/SEO.js';
 import { PageHeader } from '../../components/public/PageHeader.js';
 import BorderGlow from '../../components/home/BorderGlow.js';
 import InclusionMarquee from '../../components/home/InclusionMarquee.js';
+import { cld } from '../../lib/cloudinary.js';
+import { format, quality } from '@cloudinary/url-gen/actions/delivery';
+import { auto as autoFormat } from '@cloudinary/url-gen/qualifiers/format';
+import { auto as autoQuality } from '@cloudinary/url-gen/qualifiers/quality';
 
 import separatorSvg from '../../assets/Original Assests/separator.svg';
 import flower4 from '../../assets/Original Assests/flower-4.svg';
 import aboutUsLowerRight from '../../assets/Original Assests/about-us-lower-right.svg';
 
-// Eagerly load all partner logo URLs via Vite glob import
-const _logoRaw = import.meta.glob(
-  '../../assets/paw_card_partner_logos/*.svg',
-  { eager: true, as: 'url' },
-) as Record<string, string>;
-
-const PARTNER_LOGOS = Object.entries(_logoRaw)
-  .sort(([a], [b]) => {
-    const n = (p: string) => parseInt(p.match(/(\d+)\.svg$/)?.[1] ?? '0', 10);
-    return n(a) - n(b);
-  })
-  .map(([, url]) => ({ icon: url, label: '' }));
+const PARTNER_LOGOS = [
+  'amon_vn1zcu',
+  'aruga-wellness-spa_ke20rl',
+  'asgard_h2puqu',
+  'backside-burger_aagq80',
+  'bamboo-surf-caf_hkgoke',
+  'bar-ciao_lqt3wf',
+  'basta_pm5vm5',
+  'bawud-t-s_w1z7es',
+  'big-mama-laundry_slkpcf',
+  'big-mama-laundry-caf_dpioh4',
+  'b-nay_fct2ja',
+  'boost-shop_risksa',
+  'brunch-spot_pnqkuu',
+  'cat-gun_d1qpdf',
+  'coastal-grounds_jicvyc',
+  'cocopelli_tp590y',
+  'cumin_mmhogw',
+  'dao-chow_esghhl',
+  'e-foil-siargao_bh2kzv',
+  'el-chapo-s_f8ckvp',
+  'eskate-siargao_yh33d8',
+  'fin-fin_t20ars',
+  'food-lab_vazpsf',
+  'goodies_jbevlu',
+  'good-times-coffee_wfb4o8',
+  'grwnd_b27ero',
+  'gwapitos_ax0ks1',
+  'haole_osupjy',
+  'happiness-beach-bar_wlld8k',
+  'happiness-restro_zc5vh6',
+  'happy-islanders_pvtdp7',
+  'kanaloa_cmcicx',
+  'kanin-baboy_c6hs0k',
+  'kolekbibo_x9yf58',
+  'kudo-surf_tmmw0f',
+  'la-mesa_gbii20',
+  'las-barricas_sakc8e',
+  'lokal-experience_d1qbgy',
+  'lokal-hub_lwwy8d',
+  'love-coco_e5kfqa',
+  'low-tide_elw0bl',
+  'lunares_jnq4ss',
+  'manu_umjgcu',
+  'mao-mao-surf_egcehp',
+  'marmalade_fjvvlh',
+  'masala_lms9sn',
+  'mujo_sj7uxv',
+  'nattribu_npmuhy',
+  'noods_sclb7x',
+  'oeyart-tattoo-studio_roxujo',
+  'outer-cafe_ykizor',
+  'ozen-freediving_twgsu5',
+  'padel-palms_mihcws',
+  'prime-fit-gym_jaskbe',
+  'saint-thomas-coffee_wbwt7y',
+  'sanabowl_zyf7te',
+  'secreto_lurv7d',
+  'shado-surf_likdyi',
+  'shanti-shanty_mwymra',
+  'siago-beach-resort_kzo0ay',
+  'siargao-bed-and-brew_szggh5',
+  'siargao-hawker_rawz7p',
+  'siargao-wakepark_h6uevd',
+  'sibol_hgdc4c',
+  'sunset-coffee-roasters_ame9ry',
+  'taw-hay-fitness_pu7ues',
+  'the-extension_xd5ape',
+  'the-phone-hospital_yyalhd',
+  'tiburon_gw1lmg',
+  'tiki-hut_kfjwtq',
+  'ver-de_kumi9x',
+  'vissla_nck7yj',
+  'wild_jdp8xg',
+  'x-pizza_qdwcka',
+  'yogi_mcpzyn',
+  'yoh_qbytxc',
+].map((publicId) => ({
+  icon: cld.image(publicId).delivery(format(autoFormat())).delivery(quality(autoQuality())).toURL(),
+  label: '',
+}));
 
 export default function PawCardPage() {
   const { t } = useTranslation();

@@ -7,6 +7,7 @@ import TopNav from './TopNav.js';
 import ClickSpark from '../home/ClickSpark.js';
 import { instaIcon, phoneIcon, locationIcon } from '../public/customerContactIcons.js';
 import { GOOGLE_MAPS_PLACE_URL } from '../../config/maps.js';
+import { CookieNotice } from '../common/CookieNotice.js';
 
 import logo from '../../assets/Lolas Original Logo.svg';
 import flowerLeft from '../../assets/Flower Left.svg';
@@ -425,6 +426,8 @@ export function PageLayout({
       </button>
 
       <ClickSpark sparkColor="#FCBC5A" sparkSize={10} sparkRadius={14} sparkCount={8} duration={400} easing="ease-out" extraScale={1} />
+
+      <CookieNotice />
 
     </div>
   );
