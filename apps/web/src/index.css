@@ -488,6 +488,18 @@ body {
   line-height: 1;
 }
 
+/* Peso SVG beside CountUp — size to digit cap-height, not full em-square (SVG was overpowering numerals). */
+.be-pawsitive-meter-peso {
+  width: auto;
+  flex-shrink: 0;
+  height: 0.76em;
+}
+@supports (height: 1cap) {
+  .be-pawsitive-meter-peso {
+    height: 1cap;
+  }
+}
+
 /* =============================================================================
    BRAND HEADING AUTO-COLORS
    Applies teal to all .font-headline elements. Override with inline styles

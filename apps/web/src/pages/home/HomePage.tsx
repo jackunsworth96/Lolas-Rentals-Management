@@ -807,13 +807,11 @@ export default function HomePage() {
             >
               {/* Counter */}
               <div className="w-full max-w-[min(100%,380px)]" style={{ marginBottom: 4 }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, justifyContent: 'center' }}>
+                <div className="count-up-text inline-flex flex-wrap items-baseline justify-center gap-x-[0.28em]">
                   <img
                     src={pesoSignMark}
                     alt=""
-                    width={72}
-                    height={72}
-                    className="h-[clamp(48px,6vw,72px)] w-auto shrink-0 basis-auto [vertical-align:baseline]"
+                    className="be-pawsitive-meter-peso"
                     aria-hidden
                   />
                   <BePawsitiveMeter />
