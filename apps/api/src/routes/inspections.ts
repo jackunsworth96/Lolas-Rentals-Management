@@ -201,8 +201,25 @@ router.post(
     const createdMaintenanceIds: string[] = [];
 
     try {
-      // Duplicate check only applies when orderId is provided (booking-linked inspections).
+      // Validate orderId and check for duplicates when a booking-linked inspection is submitted.
       if (body.orderId) {
+        const { data: order, error: orderErr } = await sb
+          .from('orders')
+          .select('id')
+          .eq('id', body.orderId)
+          .maybeSingle();
+        if (orderErr) throw new Error(orderErr.message);
+        if (!order) {
+          res.status(422).json({
+            success: false,
+            error: {
+              code: 'ORDER_NOT_FOUND',
+              message: 'The booking linked to this inspection no longer exists. It may have been cancelled or removed.',
+            },
+          });
+          return;
+        }
+
         const { data: existing, error: exErr } = await sb
           .from('inspections')
           .select('id')
