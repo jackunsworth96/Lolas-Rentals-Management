@@ -38,6 +38,7 @@ import bepawsitiveLogo from '../../assets/Be Pawsitive (blue).svg';
 import tickIcon from '../../assets/Home/Tick Icon.svg';
 import pesoIcon from '../../assets/Home/Peso Icon.svg';
 import pawDivider from '../../assets/Paw Divider.svg';
+import pesoSignMark from '../../assets/Peso Sign.svg';
 import lolasLogo from '../../assets/Lolas Original Logo.svg';
 import { CloudinaryImage } from '../../components/ui/CloudinaryImage.js';
 
@@ -806,18 +807,15 @@ export default function HomePage() {
             >
               {/* Counter */}
               <div className="w-full max-w-[min(100%,380px)]" style={{ marginBottom: 4 }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, justifyContent: 'center' }}>
-                  <span
-                    style={{
-                      fontSize: 'clamp(48px, 6vw, 72px)',
-                      fontWeight: 800,
-                      color: '#00577C',
-                      fontFamily: 'Alegreya Sans, sans-serif',
-                      lineHeight: 1,
-                    }}
-                  >
-                    ₱
-                  </span>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, justifyContent: 'center' }}>
+                  <img
+                    src={pesoSignMark}
+                    alt=""
+                    width={72}
+                    height={72}
+                    className="h-[clamp(48px,6vw,72px)] w-auto shrink-0 basis-auto [vertical-align:baseline]"
+                    aria-hidden
+                  />
                   <BePawsitiveMeter />
                 </div>
                 <p
