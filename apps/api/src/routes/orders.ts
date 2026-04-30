@@ -503,6 +503,7 @@ router.post('/:id/settle', requirePermission(Permission.EditOrders), validateBod
   finalPaymentAmount: z.number().optional(),
   isCardPayment: z.boolean().optional(),
   cardFeeSurchargeDelta: z.number().nonnegative().optional(),
+  returnChargesDelta: z.number().nonnegative().optional(),
   settlementRef: z.string().nullable().optional(),
 })), async (req, res, next) => {
   try {

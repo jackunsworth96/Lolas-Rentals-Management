@@ -53,6 +53,17 @@ export interface DepositReturnRow {
   createdAt: string;
 }
 
+export interface DepositAppliedRow {
+  id: string;
+  amount: number;
+  description: string | null;
+  accountId: string | null;
+  referenceId: string | null;
+  bookingToken: string | null;
+  customerName: string | null;
+  createdAt: string;
+}
+
 export interface CashupSummary {
   openingFloat: {
     amount: number;
@@ -79,6 +90,7 @@ export interface CashupSummary {
     discounts: DiscountRow[];
     refunds: RefundRow[];
     depositReturns: DepositReturnRow[];
+    depositApplied: DepositAppliedRow[];
   };
   charityDonations: CharityDonationRow[];
   totals: {
@@ -107,6 +119,7 @@ export interface CashupSummary {
     bankRefundTotal: number;
     refundTotal: number;
     depositReturnTotal: number;
+    depositAppliedTotal: number;
   };
   expectedCash: number;
   stores: StoreInfo[];

@@ -32,7 +32,7 @@ router.get(
       const { storeId, date } = req.query as { storeId: string; date: string };
       const sb = getSupabaseClient();
 
-      const [paymentsRes, expensesRes, depositsRes, transfersRes, miscSalesRes, reconRes, prevReconRes, storesRes, charityRes, completedOrdersRes, discountItemsRes, refundJournalRes, transferIncomeRes] =
+      const [paymentsRes, expensesRes, depositsRes, transfersRes, miscSalesRes, reconRes, prevReconRes, storesRes, charityRes, completedOrdersRes, discountItemsRes, refundJournalRes, transferIncomeRes, depositAppliedRes] =
         await Promise.all([
           sb
             .from('payments')
@@ -108,11 +108,16 @@ router.get(
             .gt('credit', 0)
             .order('created_at', { ascending: true }),
 
+          // Only exclude deposits for orders settled BEFORE the queried date.
+          // Same-day settle: the deposit was received today so it must remain
+          // visible in cashDepositsHeldTotal. null settled_at on a completed
+          // order is treated as a legacy/historical row — exclude those too.
           sb
             .from('orders')
             .select('id')
             .eq('store_id', storeId)
-            .eq('status', 'completed'),
+            .eq('status', 'completed')
+            .or(`settled_at.lt.${date}T00:00:00+08:00,settled_at.is.null`),
 
           sb
             .from('orders')
@@ -142,6 +147,20 @@ router.get(
             .eq('reference_type', 'transfer')
             .gt('debit', 0)
             .order('created_at', { ascending: true }),
+
+          // Deposit-applied legs written by settle_order_atomic.
+          // Credit legs only — these represent the deposit portion that cleared the
+          // rental balance (receivable account). No cash changes hands on settlement
+          // day for this leg; it is fetched purely for display so staff can see which
+          // portion of the deposit funded the rental rather than being returned.
+          sb
+            .from('journal_entries')
+            .select('id, description, credit, date, created_at, reference_id, account_id')
+            .eq('store_id', storeId)
+            .eq('date', date)
+            .eq('reference_type', 'deposit')
+            .gt('credit', 0)
+            .order('created_at', { ascending: true }),
         ]);
 
       if (paymentsRes.error)
@@ -168,6 +187,8 @@ router.get(
         throw new Error(`Refund journal entries query failed: ${refundJournalRes.error.message}`);
       if (transferIncomeRes.error)
         throw new Error(`Transfer income query failed: ${transferIncomeRes.error.message}`);
+      if (depositAppliedRes.error)
+        throw new Error(`Deposit-applied journal query failed: ${depositAppliedRes.error.message}`);
 
       const payments = (paymentsRes.data ?? []) as Record<string, unknown>[];
       const expenses = (expensesRes.data ?? []) as Record<string, unknown>[];
@@ -183,6 +204,7 @@ router.get(
       const completedOrderIds = new Set(completedOrders.map((o) => o.id));
       const refundJournalEntries = (refundJournalRes.data ?? []) as Record<string, unknown>[];
       const transferIncomeEntries = (transferIncomeRes.data ?? []) as Record<string, unknown>[];
+      const depositAppliedEntries = (depositAppliedRes.data ?? []) as Record<string, unknown>[];
 
       const GCASH_IDS = new Set(['gcash', 'paymaya']);
       const DEPOSIT_TYPES = new Set(['deposit', 'security_deposit']);
@@ -402,6 +424,45 @@ router.get(
         });
       const depositReturnTotal = depositReturnRows.reduce((s, r) => s + r.amount, 0);
 
+      // Enrich deposit-applied entries with booking token + customer name.
+      const depositAppliedOrderIds = [...new Set(
+        depositAppliedEntries.map((j) => String(j.reference_id)).filter(Boolean),
+      )];
+      const depositAppliedOrderMap = new Map<string, { bookingToken: string | null; customerName: string | null }>();
+      if (depositAppliedOrderIds.length > 0) {
+        const { data: depositAppliedOrders } = await sb
+          .from('orders')
+          .select('id, booking_token, customers!customer_id(name)')
+          .in('id', depositAppliedOrderIds);
+        const appliedRows = (depositAppliedOrders ?? []) as unknown as Array<{
+          id: string;
+          booking_token: string | null;
+          customers: { name: string } | { name: string }[] | null;
+        }>;
+        for (const o of appliedRows) {
+          depositAppliedOrderMap.set(o.id, {
+            bookingToken: o.booking_token ?? null,
+            customerName: customerNameFromJoin(o.customers),
+          });
+        }
+      }
+
+      const depositAppliedRows = depositAppliedEntries.map((j) => {
+        const orderId = String(j.reference_id ?? '');
+        const orderInfo = depositAppliedOrderMap.get(orderId);
+        return {
+          id: j.id,
+          amount: Number(j.credit ?? 0),
+          description: j.description,
+          accountId: j.account_id,
+          referenceId: j.reference_id,
+          bookingToken: orderInfo?.bookingToken ?? null,
+          customerName: orderInfo?.customerName ?? null,
+          createdAt: j.created_at,
+        };
+      });
+      const depositAppliedTotal = depositAppliedRows.reduce((s, r) => s + r.amount, 0);
+
       // Only cash deposits affect the physical till
       const cashDepositsHeldTotal = depositsHeldByMethod['Cash']?.total ?? 0;
 
@@ -611,6 +672,7 @@ router.get(
             discounts: discountRows,
             refunds: refundTx,
             depositReturns: depositReturnRows,
+            depositApplied: depositAppliedRows,
           },
           totals: {
             cashSalesTotal,
@@ -639,6 +701,7 @@ router.get(
             bankRefundTotal,
             refundTotal: cashRefundTotal + cardRefundTotal + gcashRefundTotal + bankRefundTotal,
             depositReturnTotal,
+            depositAppliedTotal,
           },
           charityDonations: charityDonationRows,
           expectedCash,

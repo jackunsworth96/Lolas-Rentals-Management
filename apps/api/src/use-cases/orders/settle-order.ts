@@ -46,6 +46,14 @@ export interface SettleOrderInput {
    * inclusive (grossed-up) figure charged to the customer.
    */
   cardFeeSurchargeDelta?: number;
+  /**
+   * Peso amount of fuel, condition, or other return-time charges assessed
+   * at the point of settlement. Bumped onto `orders.final_total` and
+   * `orders.return_charges` atomically in the RPC. The balance-before-
+   * deposit calculation adds this delta so the deposit cascade (applied /
+   * refund) and any remaining-to-collect amount all reflect the true debt.
+   */
+  returnChargesDelta?: number;
   settlementRef?: string | null;
 }
 
@@ -100,11 +108,18 @@ export async function settleOrder(
     Money.zero(),
   );
 
+  const returnChargesDelta =
+    input.returnChargesDelta && input.returnChargesDelta > 0
+      ? Money.php(input.returnChargesDelta)
+      : Money.zero();
+
   // Balance = rental/addon/extension charges not yet paid.
   //   (a) final_total − rentalPaid         — works when migration 091 has bumped final_total
   //   (b) pendingExtensionsTotal           — fallback if final_total is stale
   // Use the greater so the calc is resilient either way.
-  const balanceFromFinalTotal = order.calculateBalanceDue(rentalPaid);
+  // Return charges increase what the customer owes before the deposit is applied,
+  // so they are added here rather than after the deposit cascade.
+  const balanceFromFinalTotal = order.calculateBalanceDue(rentalPaid).add(returnChargesDelta);
   const balanceBeforeDeposit =
     balanceFromFinalTotal.toNumber() >= pendingExtensionsTotal.toNumber()
       ? balanceFromFinalTotal
@@ -263,7 +278,7 @@ export async function settleOrder(
     .add(amountApplied)
     .add(absorbedExtensionTotal)
     .add(finalPayment ? Money.php(finalPayment.amount) : Money.zero());
-  const adjustedFinalTotal = order.finalTotal.add(surchargeDelta);
+  const adjustedFinalTotal = order.finalTotal.add(surchargeDelta).add(returnChargesDelta);
   const finalBalanceDue = adjustedFinalTotal.subtract(paymentsAfter);
 
   const fleetReleases = orderItems.map((item) => ({
@@ -318,6 +333,7 @@ export async function settleOrder(
     p_journal_legs: legs.map(serialiseLeg),
     p_absorbed_extension_payment_ids: pendingExtensions.map((p) => p.id),
     p_card_fee_surcharge_delta: surchargeDelta.toNumber(),
+    p_return_charges_delta: returnChargesDelta.toNumber(),
   });
 
   if (rpcErr) {
@@ -344,5 +360,6 @@ export async function settleOrder(
     absorbedExtensionsCount: pendingExtensions.length,
     absorbedExtensionsTotal: absorbedExtensionTotal.toNumber(),
     cardFeeSurchargeApplied: surchargeDelta.toNumber(),
+    returnChargesApplied: returnChargesDelta.toNumber(),
   };
 }

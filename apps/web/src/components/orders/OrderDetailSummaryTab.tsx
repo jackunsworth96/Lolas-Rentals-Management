@@ -83,6 +83,7 @@ export function OrderDetailSummaryTab({
   const [settleFinalMethodId, setSettleFinalMethodId] = useState('');
   const [settleFinalAccountId, setSettleFinalAccountId] = useState('');
   const [settleFinalRef, setSettleFinalRef] = useState('');
+  const [returnCharges, setReturnCharges] = useState('');
 
   // ── Modal open/close ──
   const [extendOpen, setExtendOpen] = useState(false);
@@ -484,6 +485,8 @@ export function OrderDetailSummaryTab({
     e.preventDefault();
     if (!settlementDate || !settleDepositAccountId || !settleReceivableAccountId) return;
 
+    const returnChargesAmount = Math.max(0, Number(returnCharges) || 0);
+
     // Mirror the backend settle-order RPC: refund payments are included as positive
     // amounts in rentalPaid, which can push balance negative (fully overpaid after
     // refund), resulting in the full deposit being returned to the customer.
@@ -492,7 +495,8 @@ export function OrderDetailSummaryTab({
       if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return s;
       return s + (p.amount ?? 0);
     }, 0);
-    const settleBalanceH = Math.max(0, total - settleRentalPaidH);
+    // Return charges increase the balance before the deposit is applied.
+    const settleBalanceH = Math.max(0, total + returnChargesAmount - settleRentalPaidH);
 
     const depositApplied = Math.min(securityDeposit, settleBalanceH);
     const depositRefund = Math.max(0, securityDeposit - settleBalanceH);
@@ -520,6 +524,7 @@ export function OrderDetailSummaryTab({
     // extension/final balance yet.
     if (settleBalanceH > 0) {
       const parts: string[] = [];
+      if (returnChargesAmount > 0) parts.push(`Return Charges: +${formatCurrency(returnChargesAmount)}`);
       parts.push(`Balance Due: ${formatCurrency(settleBalanceH)}`);
       if (pendingExtensionsTotal > 0) parts.push(`Unpaid Extensions: ${formatCurrency(pendingExtensionsTotal)}`);
       if (securityDeposit > 0) parts.push(`Security Deposit Held: ${formatCurrency(securityDeposit)}`);
@@ -554,6 +559,7 @@ export function OrderDetailSummaryTab({
         finalPaymentAmount: needsFinalPayment ? inclusiveFinalPaymentAmount : undefined,
         isCardPayment: needsFinalPayment ? isSettleFinalCard : undefined,
         cardFeeSurchargeDelta: cardFeeSurchargeDelta > 0 ? cardFeeSurchargeDelta : undefined,
+        returnChargesDelta: returnChargesAmount > 0 ? returnChargesAmount : undefined,
         settlementRef: needsFinalPayment && isSettleFinalCard ? (settleFinalRef || null) : null,
       },
       { onSuccess: () => onClose() },
@@ -1164,6 +1170,8 @@ export function OrderDetailSummaryTab({
               <h3 className="mb-3 font-medium text-gray-900">Settle Order</h3>
 
               {(() => {
+                const returnChargesAmount = Math.max(0, Number(returnCharges) || 0);
+
                 // Refunds (Issue Refund payments) represent a price reduction, not
                 // an additional cash receipt. The backend settle-order RPC includes
                 // refund rows as positive "paid" amounts, which inflates rentalPaid
@@ -1175,12 +1183,13 @@ export function OrderDetailSummaryTab({
                 );
                 // settleBalance uses the same formula as the backend: add refunds
                 // as positive received payments, which reduces effective balance.
+                // Return charges increase the balance before the deposit is applied.
                 const settleRentalPaid = payments.reduce((s, p) => {
                   if (p.paymentType === 'deposit') return s;
                   if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return s;
                   return s + (p.amount ?? 0);
                 }, 0);
-                const settleBalance = Math.max(0, total - settleRentalPaid);
+                const settleBalance = Math.max(0, total + returnChargesAmount - settleRentalPaid);
 
                 const depositApplied = Math.min(securityDeposit, settleBalance);
                 const depositRefund = Math.max(0, securityDeposit - settleBalance);
@@ -1201,12 +1210,54 @@ export function OrderDetailSummaryTab({
 
                 return (
                   <div className="space-y-4">
+                    {/* Return charges input */}
+                    <div className="rounded-lg border border-gray-200 bg-white p-4">
+                      <label className="block">
+                        <span className="text-sm font-medium text-gray-700">Return Charges (optional)</span>
+                        <p className="mt-0.5 text-xs text-gray-500">
+                          Fuel shortage, damage, or other charges assessed at return — added to the balance before deposit is applied
+                        </p>
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className="text-sm text-gray-500">₱</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={returnCharges}
+                            onChange={(e) => setReturnCharges(e.target.value)}
+                            placeholder="0.00"
+                            className="block w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand"
+                          />
+                          {returnChargesAmount > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setReturnCharges('')}
+                              className="text-xs text-gray-400 hover:text-gray-600"
+                            >
+                              Clear
+                            </button>
+                          )}
+                          {returnChargesAmount > 0 && (
+                            <span className="text-sm font-medium text-red-700">
+                              +{formatCurrency(returnChargesAmount)} added to balance
+                            </span>
+                          )}
+                        </div>
+                      </label>
+                    </div>
+
                     {/* Settlement summary */}
                     <div className="rounded-lg border border-gray-200 divide-y divide-sand-brand text-sm">
                       <div className="flex justify-between px-4 py-2.5">
                         <span className="text-gray-600">Order Total</span>
                         <span className="font-medium">{formatCurrency(total)}</span>
                       </div>
+                      {returnChargesAmount > 0 && (
+                        <div className="flex justify-between px-4 py-2.5 bg-red-50">
+                          <span className="font-medium text-red-800">Return Charges</span>
+                          <span className="font-bold text-red-800">+{formatCurrency(returnChargesAmount)}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between px-4 py-2.5">
                         <span className="text-gray-600">Total Paid (rental)</span>
                         <span className="font-medium text-green-600">{formatCurrency(totalPaid)}</span>

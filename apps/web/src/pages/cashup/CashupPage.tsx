@@ -18,6 +18,7 @@ import {
   type DiscountRow,
   type RefundRow,
   type DepositReturnRow,
+  type DepositAppliedRow,
 } from '../../api/cashup.js';
 import { BeforeCloseModal } from '../../components/cashup/BeforeCloseModal.js';
 import { DenominationCounter } from '../../components/cashup/DenominationCounter.js';
@@ -533,6 +534,7 @@ export default function CashupPage() {
 
             {((summary.totals.refundTotal ?? 0) > 0 ||
               (summary.totals.depositReturnTotal ?? 0) > 0 ||
+              (summary.totals.depositAppliedTotal ?? 0) > 0 ||
               (summary.totals.discountsTotal ?? 0) > 0) && (
               <div>
                 <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Outflows &amp; notes</p>
@@ -555,6 +557,16 @@ export default function CashupPage() {
                       value={summary.totals.depositReturnTotal}
                       color="orange"
                       subtitle="Completed order deposits"
+                    />
+                  )}
+                  {(summary.totals.depositAppliedTotal ?? 0) > 0 && (
+                    <SummaryCard
+                      label="Deposit to Rental"
+                      value={summary.totals.depositAppliedTotal}
+                      color="orange"
+                      subtitle="Deposit covered rental balance"
+                      badge="Info only"
+                      badgeColor="gray"
                     />
                   )}
                   {(summary.totals.discountsTotal ?? 0) > 0 && (
@@ -688,6 +700,12 @@ export default function CashupPage() {
               <DepositReturnsSection
                 returns={(summary.transactions.depositReturns ?? []) as DepositReturnRow[]}
                 total={summary.totals.depositReturnTotal ?? 0}
+              />
+            )}
+            {(summary.totals.depositAppliedTotal ?? 0) > 0 && (
+              <DepositAppliedSection
+                rows={(summary.transactions.depositApplied ?? []) as DepositAppliedRow[]}
+                total={summary.totals.depositAppliedTotal ?? 0}
               />
             )}
             {(summary.totals.charityDonationsTotal ?? 0) > 0 && (
@@ -1599,6 +1617,54 @@ function DepositReturnsSection({
               </div>
               <span className="ml-3 whitespace-nowrap text-sm font-medium text-amber-700">
                 -{formatCurrency(r.amount)}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DepositAppliedSection({
+  rows,
+  total,
+}: {
+  rows: DepositAppliedRow[];
+  total: number;
+}) {
+  return (
+    <div className="rounded-lg border border-amber-100 border-l-4 border-l-amber-400 bg-white">
+      <div className="flex items-center justify-between border-b border-amber-50 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span>🧾</span>
+          <div>
+            <h3 className="text-sm font-semibold text-amber-900">Deposit Applied to Rental</h3>
+            <p className="text-[10px] text-amber-700">Deposit covered the rental balance — no new cash received</p>
+          </div>
+          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">
+            Info only
+          </span>
+        </div>
+        <span className="text-sm font-bold text-amber-700">{formatCurrency(total)}</span>
+      </div>
+      <div className="max-h-60 overflow-y-auto">
+        {rows.length === 0 ? (
+          <p className="px-4 py-3 text-sm text-gray-400">No deposit applications today</p>
+        ) : (
+          rows.map((r) => (
+            <div key={r.id} className="flex items-center justify-between border-b border-amber-50 px-4 py-2 last:border-b-0">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-gray-800">
+                  {r.bookingToken ?? r.referenceId ?? 'Deposit applied'}
+                  {r.customerName && <span className="ml-1 font-normal text-gray-600">— {r.customerName}</span>}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {r.createdAt && formatTime(r.createdAt)}
+                </p>
+              </div>
+              <span className="ml-3 whitespace-nowrap text-sm font-medium text-amber-700">
+                {formatCurrency(r.amount)}
               </span>
             </div>
           ))
