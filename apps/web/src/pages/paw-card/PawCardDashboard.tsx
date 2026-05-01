@@ -6,6 +6,7 @@ import discountCard from '../../assets/Discount Card.svg';
 import pawPrint from '../../assets/Paw Print.svg';
 import lolaFace from '../../assets/Lola Face Icon.svg';
 import handOnHeart from '../../assets/Hand on Heart.svg';
+import pesoSignMark from '../../assets/Peso Sign.svg';
 import {
   sumAmountSaved,
   rowsForUser,
@@ -44,7 +45,16 @@ export function PawCardDashboard({ accessEmail, displayFullName }: Props) {
     queryKey: ['paw-card', 'leaderboard', leaderboardPeriod, userKey],
     queryFn: () => {
       const q = new URLSearchParams({ email, period: leaderboardPeriod });
-      return api.get<SavingsRow[]>(`/public/paw-card/entries?${q}`);
+      return api.get<SavingsRow[]>(`/public/paw-card/leaderboard?${q}`);
+    },
+    enabled: !!email,
+  });
+
+  const communityQuery = useQuery({
+    queryKey: ['paw-card', 'leaderboard', 'all', userKey],
+    queryFn: () => {
+      const q = new URLSearchParams({ email, period: 'all' });
+      return api.get<SavingsRow[]>(`/public/paw-card/leaderboard?${q}`);
     },
     enabled: !!email,
   });
@@ -53,8 +63,8 @@ export function PawCardDashboard({ accessEmail, displayFullName }: Props) {
   const myRows = useMemo(() => rowsForUser(allRows, email), [allRows, email]);
   const myTotal = useMemo(() => sumAmountSaved(myRows), [myRows]);
   const communityTotal = useMemo(
-    () => sumAmountSaved(allRows) + HISTORICAL_DONATIONS,
-    [allRows],
+    () => sumAmountSaved(communityQuery.data ?? []) + HISTORICAL_DONATIONS,
+    [communityQuery.data],
   );
   const recent = useMemo(() => {
     const mine = [...myRows].sort(
@@ -109,9 +119,14 @@ export function PawCardDashboard({ accessEmail, displayFullName }: Props) {
                 <h4 className="font-headline text-xs font-bold uppercase tracking-wider" style={{ color: '#3e4946' }}>My Total Savings</h4>
               </div>
               <p className="font-headline text-4xl font-black mt-2" style={{ color: '#1A7A6E' }}>
-                {dashLoading
-                  ? '…'
-                  : <>₱<CountUp to={myTotal} from={0} separator="," startWhen={!dashLoading} /></>}
+                {dashLoading ? (
+                  '…'
+                ) : (
+                  <span className="inline-flex flex-wrap items-baseline gap-x-[0.28em]">
+                    <img src={pesoSignMark} alt="" className="be-pawsitive-meter-peso" aria-hidden />
+                    <CountUp to={myTotal} from={0} separator="," startWhen={!dashLoading} />
+                  </span>
+                )}
               </p>
               <p className="mt-3 text-sm" style={{ color: '#3e4946' }}>
                 {dashLoading ? 'Loading visits…' : `${myRows.length} visit${myRows.length !== 1 ? 's' : ''} logged`}
@@ -133,9 +148,19 @@ export function PawCardDashboard({ accessEmail, displayFullName }: Props) {
               </div>
               <div className="relative z-10">
                 <p className="font-headline text-4xl font-black mt-2 mb-1" style={{ color: '#ffffff' }}>
-                  {dashLoading
-                    ? '…'
-                    : <>₱<CountUp to={Math.round(myTotal)} from={0} separator="," startWhen={!dashLoading} /></>}
+                  {dashLoading ? (
+                    '…'
+                  ) : (
+                    <span className="inline-flex flex-wrap items-baseline gap-x-[0.28em]">
+                      <img
+                        src={pesoSignMark}
+                        alt=""
+                        className="be-pawsitive-meter-peso brightness-0 invert"
+                        aria-hidden
+                      />
+                      <CountUp to={Math.round(myTotal)} from={0} separator="," startWhen={!dashLoading} />
+                    </span>
+                  )}
                 </p>
                 <p className="text-xs" style={{ color: '#ffffff', opacity: 0.7 }}>
                   Every peso you save, Lola&apos;s donates the same to Be Pawsitive NGO.
@@ -157,9 +182,19 @@ export function PawCardDashboard({ accessEmail, displayFullName }: Props) {
                 <img src={handOnHeart} alt="" className="w-8 h-8 mb-2 bg-transparent" />
                 <h4 className="font-headline text-xs font-bold uppercase tracking-wider">Community Total</h4>
                 <p className="font-headline text-4xl font-black mt-2">
-                  {dashLoading
-                    ? '…'
-                    : <>₱<CountUp to={Math.round(communityTotal)} from={0} separator="," startWhen={!dashLoading} /></>}
+                  {dashLoading ? (
+                    '…'
+                  ) : (
+                    <span className="inline-flex flex-wrap items-baseline gap-x-[0.28em]">
+                      <img
+                        src={pesoSignMark}
+                        alt=""
+                        className="be-pawsitive-meter-peso brightness-0"
+                        aria-hidden
+                      />
+                      <CountUp to={Math.round(communityTotal)} from={0} separator="," startWhen={!dashLoading} />
+                    </span>
+                  )}
                 </p>
               </div>
               <div className="mt-8 pt-6 border-t" style={{ borderColor: 'rgba(39,25,0,0.1)' }}>

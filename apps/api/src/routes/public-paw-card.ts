@@ -118,6 +118,44 @@ router.get('/rental-orders', lookupLimiter, validateQuery(RentalOrdersQuerySchem
   }
 });
 
+const LeaderboardQuerySchema = z.object({
+  email: z.string().email(),
+  period: z.enum(['month', 'all']),
+});
+
+/**
+ * Returns ALL users' entries for the given period (no email filter).
+ * The requesting email is only used to verify the caller has Paw Card access.
+ * Raw rows are returned so the client can aggregate/anonymise them.
+ */
+router.get('/leaderboard', lookupLimiter, validateQuery(LeaderboardQuerySchema), async (req, res, next) => {
+  try {
+    const { email, period } = req.query as { email: string; period: 'month' | 'all' };
+    const access = await lookupPawCardPublicAccess(
+      { customerRepo: req.app.locals.deps.customerRepo },
+      { email },
+    );
+    if (!access.found) {
+      res.status(403).json({
+        success: false,
+        error: { code: 'FORBIDDEN', message: 'Email not recognised for Paw Card access.' },
+      });
+      return;
+    }
+
+    const sb = getSupabaseClient();
+    let q = sb.from('paw_card_entries').select('id, created_at, full_name, email, amount_saved');
+    if (period === 'month') {
+      q = q.gte('created_at', startOfCurrentMonthIso());
+    }
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    res.json({ success: true, data: data ?? [] });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/establishments', async (req, res, next) => {
   try {
     const sb = getSupabaseClient();
