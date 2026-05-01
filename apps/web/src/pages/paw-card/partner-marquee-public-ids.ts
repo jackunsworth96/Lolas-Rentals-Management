@@ -10,7 +10,7 @@
  */
 export function outerCafeMarqueePublicId(): string {
   const v = import.meta.env.VITE_OUTER_CAFE_LOGO_ID as string | undefined;
-  return v != null && String(v).trim() !== '' ? String(v).trim() : 'outer-cafe_ykizor';
+  return v != null && String(v).trim() !== '' ? String(v).trim() : 'outer-cafe_2_zxrcnb';
 }
 
 /** Prefer env override for Outer Cafe partner rows when name matches (DB may still point at a dead Cloudinary id). */
