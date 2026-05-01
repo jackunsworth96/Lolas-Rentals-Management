@@ -37,6 +37,8 @@ export interface TransferRow {
   routePricingType: 'fixed' | 'per_head' | null;
   /** Scheduled pickup time in HH:MM format; null if not yet set. */
   pickupTime: string | null;
+  /** End of pickup window for shared vans in HH:MM format; null for point-in-time transfers. */
+  pickupTimeEnd: string | null;
 }
 
 export function moneyAmount(val: { amount: number } | number | null | undefined): number {

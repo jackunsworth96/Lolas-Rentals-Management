@@ -21,17 +21,19 @@ router.post('/', async (req: Request, res: Response) => {
   // Always respond 200 immediately so Telegram does not retry.
   res.sendStatus(200);
 
+  let callbackQueryId = '';
+
   try {
     const body = req.body as Record<string, unknown>;
     const callbackQuery = body.callback_query as Record<string, unknown> | undefined;
     if (!callbackQuery) return;
 
-    const callbackQueryId = String(callbackQuery.id ?? '');
+    callbackQueryId = String(callbackQuery.id ?? '');
     const data = String(callbackQuery.data ?? '');
 
     // Extract the originating message so we can edit it after processing.
     const message = callbackQuery.message as Record<string, unknown> | undefined;
-    const messageId = message ? String((message.message_id as number | undefined) ?? '') : '';
+    const rawMessageId = (message?.message_id as number | undefined) ?? 0;
     const chatId = message
       ? String(((message.chat as Record<string, unknown> | undefined)?.id) ?? '')
       : '';
@@ -66,8 +68,9 @@ router.post('/', async (req: Request, res: Response) => {
 
     // Replace the Confirm button with a static "Confirmed" label so the driver
     // gets clear visual feedback and cannot accidentally tap it again.
-    if (chatId && messageId) {
-      void editMessageReplyMarkup(chatId, messageId, {
+    // message_id must be passed as an integer to the Telegram API.
+    if (chatId && rawMessageId) {
+      void editMessageReplyMarkup(chatId, String(rawMessageId), {
         inline_keyboard: [[{ text: '✅ Confirmed', callback_data: 'noop' }]],
       });
     }
@@ -79,6 +82,9 @@ router.post('/', async (req: Request, res: Response) => {
       { err: err instanceof Error ? err.message : String(err) },
       'telegram.webhook: unhandled error',
     );
+    // Always answer the callback query so Telegram clears the loading spinner,
+    // even when an unexpected error occurs.
+    if (callbackQueryId) void answerCallbackQuery(callbackQueryId);
   }
 });
 

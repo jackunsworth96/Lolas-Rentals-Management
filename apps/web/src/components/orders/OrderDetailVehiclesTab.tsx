@@ -60,24 +60,27 @@ export function OrderDetailVehiclesTab({ orderId, items, swaps, helmetSwaps, can
                           </button>
                         )}
                       </div>
-                      {i.helmetNumbers && (
-                        <div className="mt-1.5 flex items-center gap-2 text-sm text-gray-600">
-                          <span>Helmets: <span className="font-medium text-gray-800">{i.helmetNumbers}</span></span>
-                          {canAct && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSwappingHelmetItemId(i.id);
-                                setNewHelmetNumbers(i.helmetNumbers ?? '');
-                                setHelmetSwapReason('');
-                              }}
-                              className="text-xs font-medium text-teal-brand hover:text-teal-brand/80"
-                            >
-                              Swap
-                            </button>
-                          )}
-                        </div>
-                      )}
+                      <div className="mt-1.5 flex items-center gap-2 text-sm text-gray-600">
+                        <span>
+                          Helmets:{' '}
+                          <span className="font-medium text-gray-800">
+                            {i.helmetNumbers || '—'}
+                          </span>
+                        </span>
+                        {canAct && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSwappingHelmetItemId(i.id);
+                              setNewHelmetNumbers(i.helmetNumbers ?? '');
+                              setHelmetSwapReason('');
+                            }}
+                            className="text-xs font-medium text-teal-brand hover:text-teal-brand/80"
+                          >
+                            {i.helmetNumbers ? 'Swap' : 'Assign'}
+                          </button>
+                        )}
+                      </div>
                     </>
                   ) : swappingHelmetItemId === i.id ? (
                     <div className="mt-3 space-y-3 rounded-lg bg-sand-brand p-3">

@@ -84,6 +84,7 @@ export function OrderDetailSummaryTab({
   const [settleFinalAccountId, setSettleFinalAccountId] = useState('');
   const [settleFinalRef, setSettleFinalRef] = useState('');
   const [returnCharges, setReturnCharges] = useState('');
+  const [returnChargesNote, setReturnChargesNote] = useState('');
 
   // ── Modal open/close ──
   const [extendOpen, setExtendOpen] = useState(false);
@@ -524,7 +525,10 @@ export function OrderDetailSummaryTab({
     // extension/final balance yet.
     if (settleBalanceH > 0) {
       const parts: string[] = [];
-      if (returnChargesAmount > 0) parts.push(`Return Charges: +${formatCurrency(returnChargesAmount)}`);
+      if (returnChargesAmount > 0) {
+        const noteLabel = returnChargesNote.trim() ? ` (${returnChargesNote.trim()})` : '';
+        parts.push(`Return Charges${noteLabel}: +${formatCurrency(returnChargesAmount)}`);
+      }
       parts.push(`Balance Due: ${formatCurrency(settleBalanceH)}`);
       if (pendingExtensionsTotal > 0) parts.push(`Unpaid Extensions: ${formatCurrency(pendingExtensionsTotal)}`);
       if (securityDeposit > 0) parts.push(`Security Deposit Held: ${formatCurrency(securityDeposit)}`);
@@ -560,6 +564,7 @@ export function OrderDetailSummaryTab({
         isCardPayment: needsFinalPayment ? isSettleFinalCard : undefined,
         cardFeeSurchargeDelta: cardFeeSurchargeDelta > 0 ? cardFeeSurchargeDelta : undefined,
         returnChargesDelta: returnChargesAmount > 0 ? returnChargesAmount : undefined,
+        returnChargesNote: returnChargesAmount > 0 && returnChargesNote.trim() ? returnChargesNote.trim() : undefined,
         settlementRef: needsFinalPayment && isSettleFinalCard ? (settleFinalRef || null) : null,
       },
       { onSuccess: () => onClose() },
@@ -742,6 +747,20 @@ export function OrderDetailSummaryTab({
                 <div className="text-base font-semibold text-gray-900">{vehicleNames}</div>
               </div>
             )}
+            {(() => {
+              const allHelmets = items
+                .map((i) => i.helmetNumbers)
+                .filter(Boolean)
+                .join(', ');
+              return (
+                <div>
+                  <div className="text-xs font-medium uppercase text-charcoal-brand/60">Helmets</div>
+                  <div className={`text-base font-semibold ${allHelmets ? 'text-gray-900' : 'text-charcoal-brand/40'}`}>
+                    {allHelmets || '—'}
+                  </div>
+                </div>
+              );
+            })()}
             {returnDatetime && (
               <div>
                 <div className="text-xs font-medium uppercase text-charcoal-brand/60">Return date</div>
@@ -1211,39 +1230,56 @@ export function OrderDetailSummaryTab({
                 return (
                   <div className="space-y-4">
                     {/* Return charges input */}
-                    <div className="rounded-lg border border-gray-200 bg-white p-4">
-                      <label className="block">
+                    <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
+                      <div>
                         <span className="text-sm font-medium text-gray-700">Return Charges (optional)</span>
                         <p className="mt-0.5 text-xs text-gray-500">
                           Fuel shortage, damage, or other charges assessed at return — added to the balance before deposit is applied
                         </p>
-                        <div className="mt-2 flex items-center gap-2">
-                          <span className="text-sm text-gray-500">₱</span>
+                      </div>
+                      <div className="flex flex-wrap items-end gap-3">
+                        <label className="block">
+                          <span className="text-xs text-gray-500">Amount</span>
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className="text-sm text-gray-500">₱</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={returnCharges}
+                              onChange={(e) => setReturnCharges(e.target.value)}
+                              placeholder="0.00"
+                              className="block w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand"
+                            />
+                          </div>
+                        </label>
+                        <label className="block flex-1 min-w-[180px]">
+                          <span className="text-xs text-gray-500">Label / reason</span>
                           <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={returnCharges}
-                            onChange={(e) => setReturnCharges(e.target.value)}
-                            placeholder="0.00"
-                            className="block w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand"
+                            type="text"
+                            value={returnChargesNote}
+                            onChange={(e) => setReturnChargesNote(e.target.value)}
+                            placeholder="e.g. Fuel shortage, Damage"
+                            maxLength={200}
+                            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand"
                           />
-                          {returnChargesAmount > 0 && (
-                            <button
-                              type="button"
-                              onClick={() => setReturnCharges('')}
-                              className="text-xs text-gray-400 hover:text-gray-600"
-                            >
-                              Clear
-                            </button>
-                          )}
-                          {returnChargesAmount > 0 && (
-                            <span className="text-sm font-medium text-red-700">
-                              +{formatCurrency(returnChargesAmount)} added to balance
-                            </span>
-                          )}
-                        </div>
-                      </label>
+                        </label>
+                        {returnChargesAmount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => { setReturnCharges(''); setReturnChargesNote(''); }}
+                            className="text-xs text-gray-400 hover:text-gray-600 pb-2"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      {returnChargesAmount > 0 && (
+                        <p className="text-sm font-medium text-red-700">
+                          +{formatCurrency(returnChargesAmount)} added to balance
+                          {returnChargesNote.trim() && <span className="font-normal text-red-600"> — {returnChargesNote.trim()}</span>}
+                        </p>
+                      )}
                     </div>
 
                     {/* Settlement summary */}
@@ -1254,7 +1290,12 @@ export function OrderDetailSummaryTab({
                       </div>
                       {returnChargesAmount > 0 && (
                         <div className="flex justify-between px-4 py-2.5 bg-red-50">
-                          <span className="font-medium text-red-800">Return Charges</span>
+                          <span className="font-medium text-red-800">
+                            Return Charges
+                            {returnChargesNote.trim() && (
+                              <span className="ml-1 font-normal text-red-700">({returnChargesNote.trim()})</span>
+                            )}
+                          </span>
                           <span className="font-bold text-red-800">+{formatCurrency(returnChargesAmount)}</span>
                         </div>
                       )}

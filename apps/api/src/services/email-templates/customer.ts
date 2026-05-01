@@ -922,7 +922,7 @@ export function transferBookingConfirmationHtml({
     <div style="font-family: 'Lato', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #FAF6F0; padding: 32px 16px;">
       <div style="background: white; border-radius: 16px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
         <div style="text-align: center; margin-bottom: 24px;">
-          <h1 style="font-family: 'Alegreya Sans', serif; color: #00577C; font-size: 28px; margin: 0;">
+          <h1 style="font-family: 'Alegreya Sans', Arial, sans-serif; color: #00577C; font-size: 28px; margin: 0;">
             Transfer Booking Confirmed
           </h1>
           <p style="color: #363737; margin-top: 8px;">Thank you, ${escapeHtml(customerName)}!</p>
@@ -1059,7 +1059,7 @@ export function transferPickupConfirmationHtml({
     <div style="font-family: 'Lato', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #FAF6F0; padding: 32px 16px;">
       <div style="background: white; border-radius: 16px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
         <div style="text-align: center; margin-bottom: 24px;">
-          <h1 style="font-family: 'Alegreya Sans', serif; color: #00577C; font-size: 28px; margin: 0;">
+          <h1 style="font-family: 'Alegreya Sans', Arial, sans-serif; color: #00577C; font-size: 28px; margin: 0;">
             Your Pickup Time
           </h1>
           <p style="color: #363737; margin-top: 8px;">Hi ${escapeHtml(customerName)}, here are your pickup details.</p>

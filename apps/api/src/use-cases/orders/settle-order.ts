@@ -54,6 +54,11 @@ export interface SettleOrderInput {
    * refund) and any remaining-to-collect amount all reflect the true debt.
    */
   returnChargesDelta?: number;
+  /**
+   * Free-text label describing what the return charge is for,
+   * e.g. "Fuel shortage", "Damage". Stored in orders.return_charges_note.
+   */
+  returnChargesNote?: string | null;
   settlementRef?: string | null;
 }
 
@@ -334,6 +339,7 @@ export async function settleOrder(
     p_absorbed_extension_payment_ids: pendingExtensions.map((p) => p.id),
     p_card_fee_surcharge_delta: surchargeDelta.toNumber(),
     p_return_charges_delta: returnChargesDelta.toNumber(),
+    p_return_charges_note: input.returnChargesNote ?? null,
   });
 
   if (rpcErr) {

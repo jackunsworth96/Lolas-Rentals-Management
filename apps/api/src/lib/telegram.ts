@@ -203,7 +203,7 @@ export async function editMessageReplyMarkup(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
-        message_id: messageId,
+        message_id: parseInt(messageId, 10),
         reply_markup: replyMarkup,
       }),
     });

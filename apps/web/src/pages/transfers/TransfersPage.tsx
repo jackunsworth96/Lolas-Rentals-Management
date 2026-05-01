@@ -426,7 +426,7 @@ export default function TransfersPage() {
                 </p>
                 {t.pickupTime && (
                   <p className="mt-0.5 font-lato text-xs font-medium text-teal-brand">
-                    ⏰ Pickup: {t.pickupTime}
+                    ⏰ Pickup: {t.pickupTime}{t.pickupTimeEnd ? `–${t.pickupTimeEnd}` : ''}
                   </p>
                 )}
 
@@ -534,7 +534,10 @@ export default function TransfersPage() {
                         )}
                       </td>
                       <td className="whitespace-nowrap px-3 py-3 text-sm text-gray-900">
-                        {t.pickupTime ?? <span className="text-gray-400">—</span>}
+                        {t.pickupTime
+                        ? `${t.pickupTime}${t.pickupTimeEnd ? `–${t.pickupTimeEnd}` : ''}`
+                        : <span className="text-gray-400">—</span>
+                      }
                       </td>
                       <td className="px-3 py-3 text-sm font-medium text-gray-900">{t.customerName}</td>
                       <td className="px-3 py-3 text-sm text-gray-600">{t.contactNumber ?? '—'}</td>

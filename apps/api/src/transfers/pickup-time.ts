@@ -52,7 +52,7 @@ export interface PickupTimeResult {
  */
 export function inferDirection(route: string): TransferDirection {
   const firstSegment = route
-    .split(/→|->/)
+    .split(/→|->|\bto\b/i)
     .map((s) => s.trim().toLowerCase())[0] ?? '';
   return firstSegment.includes('iao') || firstSegment.includes('airport')
     ? 'inbound'
