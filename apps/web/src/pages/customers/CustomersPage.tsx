@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { Search, X, Save, AlertTriangle, PawPrint, ShoppingBag, ClipboardList, FileSignature, Download, Mail, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, X, Save, AlertTriangle, PawPrint, ShoppingBag, ClipboardList, FileSignature, Download, Mail, ChevronDown, ChevronUp, CheckCircle } from 'lucide-react';
 import {
   useCustomers,
   useCustomer,
@@ -11,6 +11,7 @@ import {
   type CustomerDocument,
   type CustomerDocumentWaiver,
   type CustomerDocumentInspection,
+  type CustomerCascadeResult,
 } from '../../api/customers.js';
 import { useStores } from '../../api/config.js';
 import { useUIStore } from '../../stores/ui-store.js';
@@ -70,6 +71,7 @@ function CustomerDetailPanel({ customerId, onClose, onSaved }: CustomerDetailPan
   const [dirty, setDirty] = useState(false);
   const [confirmBlacklist, setConfirmBlacklist] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [cascadeResult, setCascadeResult] = useState<CustomerCascadeResult | null>(null);
   const [expandedDocId, setExpandedDocId] = useState<string | null>(null);
   const [emailSentId, setEmailSentId] = useState<string | null>(null);
   const [emailErrorId, setEmailErrorId] = useState<string | null>(null);
@@ -85,6 +87,7 @@ function CustomerDetailPanel({ customerId, onClose, onSaved }: CustomerDetailPan
       });
       setDirty(false);
       setSaveError(null);
+      setCascadeResult(null);
     }
   }, [customer]);
 
@@ -96,8 +99,9 @@ function CustomerDetailPanel({ customerId, onClose, onSaved }: CustomerDetailPan
   async function handleSave() {
     if (!customerId || !customer) return;
     setSaveError(null);
+    setCascadeResult(null);
     try {
-      await updateCustomer.mutateAsync({
+      const result = await updateCustomer.mutateAsync({
         id: customerId,
         name: form.name.trim(),
         email: form.email.trim() || null,
@@ -106,9 +110,14 @@ function CustomerDetailPanel({ customerId, onClose, onSaved }: CustomerDetailPan
         blacklisted: form.blacklisted,
       });
       setDirty(false);
+      // Show cascade summary only when contact details actually changed
+      if (result?.cascaded && (result.cascaded.emailChanged || result.cascaded.mobileChanged || result.cascaded.nameChanged)) {
+        setCascadeResult(result.cascaded);
+      }
       onSaved();
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Save failed');
+      const msg = err instanceof Error ? err.message : 'Save failed';
+      setSaveError(msg.includes('EMAIL_CONFLICT') ? 'That email is already used by another customer.' : msg);
     }
   }
 
@@ -263,6 +272,29 @@ function CustomerDetailPanel({ customerId, onClose, onSaved }: CustomerDetailPan
                     <Save className="h-4 w-4" />
                     {updateCustomer.isPending ? 'Saving…' : 'Save Changes'}
                   </button>
+                )}
+
+                {cascadeResult && !dirty && (
+                  <div className="mt-3 rounded-md border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800">
+                    <div className="flex items-center gap-2 font-medium">
+                      <CheckCircle className="h-4 w-4 shrink-0 text-teal-600" />
+                      Profile updated and synced across all records
+                    </div>
+                    <ul className="mt-1.5 ml-6 list-disc space-y-0.5 text-xs text-teal-700">
+                      {cascadeResult.emailChanged && (
+                        <li>Email updated on {cascadeResult.ordersRawUpdated + cascadeResult.transfersUpdated} booking{cascadeResult.ordersRawUpdated + cascadeResult.transfersUpdated !== 1 ? 's' : ''}{cascadeResult.pawCardUpdated > 0 ? ` and ${cascadeResult.pawCardUpdated} Paw Card entr${cascadeResult.pawCardUpdated !== 1 ? 'ies' : 'y'}` : ''}</li>
+                      )}
+                      {cascadeResult.mobileChanged && !cascadeResult.emailChanged && (
+                        <li>Mobile updated on linked bookings and transfers</li>
+                      )}
+                      {cascadeResult.nameChanged && (
+                        <li>Name updated on linked bookings</li>
+                      )}
+                      {!cascadeResult.emailChanged && !cascadeResult.mobileChanged && !cascadeResult.nameChanged && (
+                        <li>Other profile fields saved</li>
+                      )}
+                    </ul>
+                  </div>
                 )}
               </section>
 

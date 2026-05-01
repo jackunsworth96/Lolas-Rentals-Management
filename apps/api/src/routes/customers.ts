@@ -168,6 +168,9 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // PATCH /customers/:id
+// Cascades email/mobile/name changes to orders_raw, paw_card_entries and
+// transfers so that automations and Paw Card login continue working after
+// a contact-detail correction.
 router.patch('/:id', validateBody(PatchBodySchema), async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -180,17 +183,56 @@ router.patch('/:id', validateBody(PatchBodySchema), async (req, res, next) => {
     }
 
     const body = req.body as z.infer<typeof PatchBodySchema>;
+
+    // Build the complete updated object (merge patch onto existing).
     const updated = {
       ...existing,
-      ...(body.name !== undefined && { name: body.name }),
-      ...(body.email !== undefined && { email: body.email }),
-      ...(body.mobile !== undefined && { mobile: body.mobile }),
-      ...(body.notes !== undefined && { notes: body.notes }),
+      ...(body.name      !== undefined && { name: body.name }),
+      ...(body.email     !== undefined && { email: body.email }),
+      ...(body.mobile    !== undefined && { mobile: body.mobile }),
+      ...(body.notes     !== undefined && { notes: body.notes }),
       ...(body.blacklisted !== undefined && { blacklisted: body.blacklisted }),
     };
 
-    await customerRepo.save(updated);
-    res.json({ success: true, data: updated });
+    // Use the cascade RPC so email/mobile/name changes propagate to every
+    // table that stores a denormalised copy.
+    const sb = getSupabaseClient();
+    const { data: rpcResult, error: rpcErr } = await sb.rpc(
+      'cascade_customer_contact_update',
+      {
+        p_customer_id:     id,
+        p_new_name:        updated.name,
+        p_new_email:       updated.email ?? null,
+        p_new_mobile:      updated.mobile ?? null,
+        p_new_notes:       updated.notes ?? null,
+        p_new_blacklisted: updated.blacklisted,
+      },
+    );
+
+    if (rpcErr) {
+      if (rpcErr.message.includes('EMAIL_CONFLICT')) {
+        res.status(409).json({
+          success: false,
+          error: {
+            code: 'EMAIL_CONFLICT',
+            message: 'That email address is already used by another customer.',
+          },
+        });
+        return;
+      }
+      throw new Error(`cascade_customer_contact_update failed: ${rpcErr.message}`);
+    }
+
+    const cascaded = rpcResult as {
+      emailChanged: boolean;
+      mobileChanged: boolean;
+      nameChanged: boolean;
+      ordersRawUpdated: number;
+      pawCardUpdated: number;
+      transfersUpdated: number;
+    };
+
+    res.json({ success: true, data: { customer: updated, cascaded } });
   } catch (err) {
     next(err);
   }
