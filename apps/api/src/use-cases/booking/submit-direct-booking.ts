@@ -216,6 +216,7 @@ export async function submitDirectBooking(
           customerType: 'Online',
           route: input.transferRoute,
           flightTime: input.flightArrivalTime ?? null,
+          flightNumber: input.flightNumber ?? null,
           paxCount: input.transferPaxCount ?? 1,
           vanType: input.transferType,
           accommodation: null,
