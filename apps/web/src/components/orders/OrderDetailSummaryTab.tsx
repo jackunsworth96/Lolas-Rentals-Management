@@ -143,7 +143,6 @@ export function OrderDetailSummaryTab({
 
   const orderStatusStr = String((order?.status as { value?: string } | undefined)?.value ?? order?.status ?? '');
   const isActive = !!order && orderStatusStr === 'active';
-  const canAct = isActive && !readOnly;
   /** Handover inspection is allowed for active and confirmed rentals (matches Active orders list). */
   const canStartInspection =
     !readOnly && (orderStatusStr === 'active' || orderStatusStr === 'confirmed');
@@ -466,9 +465,8 @@ export function OrderDetailSummaryTab({
     ? Math.floor((nowMs - returnMs) / (1000 * 60 * 60 * 24))
     : 0;
 
-  const pickupMs = itemsList[0]?.pickupDatetime
-    ? new Date(itemsList[0].pickupDatetime).getTime()
-    : null;
+  const primaryPickupDatetime = itemsList[0]?.pickupDatetime ?? null;
+  const pickupMs = primaryPickupDatetime ? new Date(primaryPickupDatetime).getTime() : null;
   const totalRentalDays = itemsList[0]?.rentalDaysCount ?? null;
   const daysElapsed =
     pickupMs !== null && Number.isFinite(pickupMs)
@@ -790,6 +788,14 @@ export function OrderDetailSummaryTab({
                 </button>
               )}
             </div>
+            {primaryPickupDatetime && (
+              <div>
+                <div className="text-xs font-medium uppercase text-charcoal-brand/60">Pickup date</div>
+                <div className="text-base font-semibold text-gray-900">
+                  {new Date(primaryPickupDatetime).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </div>
+              </div>
+            )}
             {returnDatetime && (
               <div>
                 <div className="text-xs font-medium uppercase text-charcoal-brand/60">Return date</div>
