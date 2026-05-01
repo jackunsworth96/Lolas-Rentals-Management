@@ -166,16 +166,44 @@ export async function sendTelegramMessage(
  */
 export async function answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) return;
+  if (!token) {
+    logger.error(
+      {},
+      'answerCallbackQuery skipped: TELEGRAM_BOT_TOKEN unset — inline Telegram buttons stay in loading state',
+    );
+    return;
+  }
+  if (!callbackQueryId) {
+    logger.warn({}, 'answerCallbackQuery skipped: empty callback_query_id');
+    return;
+  }
 
   try {
     const payload: Record<string, unknown> = { callback_query_id: callbackQueryId };
     if (text) payload.text = text;
-    await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+    const res = await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+    const raw = await res.text();
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw) as unknown;
+    } catch {
+      parsed = { parseError: true, raw: raw.slice(0, 400) };
+    }
+    const ok =
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      'ok' in parsed &&
+      (parsed as { ok: boolean }).ok === true;
+    if (!res.ok || !ok) {
+      logger.warn(
+        { httpStatus: res.status, telegram: parsed },
+        'answerCallbackQuery failed — button may keep spinning',
+      );
+    }
   } catch (err) {
     logger.warn(
       { err: err instanceof Error ? err.message : String(err) },
