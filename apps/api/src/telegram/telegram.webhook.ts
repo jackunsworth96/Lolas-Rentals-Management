@@ -10,9 +10,16 @@
  * caused inline buttons to spin forever on hosts that tear down the request
  * right after the response (and still races on long-lived Node).
  *
- * One-time webhook registration (run manually after deploy):
+ * Webhook URL must respond with 200 directly — Telegram does not follow redirects.
+ * Do not use the marketing site apex (e.g. lolasrentals.com) if it 301s to www;
+ * use the API host instead, e.g. https://api.lolasrentals.com/api/public/telegram
+ * or your Render URL https://<service>.onrender.com/api/public/telegram
+ *
+ * One-time registration. Bash:
  *   curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
- *     -d "url=https://<render-backend>.onrender.com/api/public/telegram"
+ *     -d "url=https://api.lolasrentals.com/api/public/telegram"
+ * Windows PowerShell (use curl.exe):
+ *   curl.exe -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" -d "url=https://api.lolasrentals.com/api/public/telegram"
  */
 
 import { Router, type Request, type Response } from 'express';

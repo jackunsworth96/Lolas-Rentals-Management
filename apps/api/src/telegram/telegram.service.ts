@@ -10,9 +10,7 @@
  *   private_van → TELEGRAM_VAN_CHAT_ID
  *   (fallback)  → TELEGRAM_DRIVER_CHAT_ID (backward compatible when van/tuktuk IDs unset)
  *
- * Webhook setup (one-time, run manually):
- *   curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
- *     -d "url=https://<render-backend>.onrender.com/api/public/telegram"
+ * Webhook URL must not return 301 — use API host (e.g. api.lolasrentals.com) or Render URL, not a domain that redirects. See telegram.webhook.ts.
  */
 
 import { getTelegramChatId, sendTelegramMessage } from '../lib/telegram.js';

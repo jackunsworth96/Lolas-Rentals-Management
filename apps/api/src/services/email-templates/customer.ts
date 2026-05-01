@@ -907,6 +907,10 @@ export function transferBookingConfirmationHtml({
   flightTime,
   totalPrice,
   whatsappNumber,
+  pickupTime = null,
+  pickupTimeEnd = null,
+  direction = null,
+  accommodation = null,
 }: {
   customerName: string;
   serviceDate: string;
@@ -916,8 +920,60 @@ export function transferBookingConfirmationHtml({
   flightTime?: string | null;
   totalPrice: number;
   whatsappNumber: string;
+  pickupTime?: string | null;
+  pickupTimeEnd?: string | null;
+  direction?: 'inbound' | 'outbound' | null;
+  accommodation?: string | null;
 }): string {
   const formatPrice = (n: number) => `₱${n.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
+
+  const vanLabel =
+    vanType === 'shared_van'  ? 'Shared Van'  :
+    vanType === 'private_van' ? 'Private Van' :
+    vanType === 'tuktuk'      ? 'Tuk-tuk'     :
+    vanType ?? null;
+
+  const pickupDisplay = pickupTimeEnd
+    ? `${escapeHtml(pickupTime!)}–${escapeHtml(pickupTimeEnd)}`
+    : pickupTime ? escapeHtml(pickupTime) : null;
+
+  const pickupHeading = direction === 'inbound'
+    ? 'Your driver will meet you at the arrivals hall'
+    : (pickupTimeEnd ? 'Your pickup window' : 'Your pickup time');
+
+  const pickupLocation = direction === 'inbound'
+    ? 'IAO Arrivals Hall'
+    : accommodation ? escapeHtml(accommodation) : 'your accommodation';
+
+  const flightChangeNote = direction === 'outbound' && pickupDisplay
+    ? `<div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 10px; padding: 16px; margin-bottom: 24px;">
+        <p style="margin: 0; font-size: 14px; color: #856404; font-weight: 600;">
+          ⚠️ If your flight time changes, contact us immediately
+        </p>
+        <p style="margin: 8px 0 0; font-size: 13px; color: #856404;">
+          WhatsApp us at
+          <a href="https://wa.me/${escapeHtml(whatsappNumber)}" style="color: #856404; font-weight: 700;">+63 969 444 3413</a>
+          so we can update your pickup time. Do not wait — late notice may mean we cannot adjust.
+        </p>
+      </div>`
+    : '';
+
+  const routeParts = route.split(/→|->/).map((s) => s.trim());
+  const destination = routeParts[routeParts.length - 1] ?? route;
+
+  const pickupSection = pickupDisplay ? `
+        <div style="background: #00577C; border-radius: 12px; padding: 24px; margin-bottom: 24px; text-align: center;">
+          <p style="color: rgba(255,255,255,0.8); font-size: 13px; margin: 0 0 6px;">${escapeHtml(pickupHeading)}</p>
+          <p style="color: white; font-size: 36px; font-weight: 700; margin: 0; letter-spacing: 1px;">
+            ${pickupDisplay}
+          </p>
+          <p style="color: rgba(255,255,255,0.8); font-size: 13px; margin: 8px 0 0;">
+            ${escapeHtml(serviceDate)} — ${escapeHtml(destination)}
+          </p>
+          ${direction !== 'inbound' ? `<p style="color: rgba(255,255,255,0.7); font-size: 12px; margin: 6px 0 0;">Pickup from: ${pickupLocation}</p>` : ''}
+        </div>
+        ${flightChangeNote}` : '';
+
   return `
     <div style="font-family: 'Lato', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #FAF6F0; padding: 32px 16px;">
       <div style="background: white; border-radius: 16px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
@@ -927,6 +983,7 @@ export function transferBookingConfirmationHtml({
           </h1>
           <p style="color: #363737; margin-top: 8px;">Thank you, ${escapeHtml(customerName)}!</p>
         </div>
+        ${pickupSection}
         <div style="background: #f1e6d6; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
@@ -941,9 +998,9 @@ export function transferBookingConfirmationHtml({
               <td style="padding: 6px 0; color: #666; font-size: 14px;">Passengers</td>
               <td style="padding: 6px 0; font-weight: 600; color: #363737; text-align: right;">${paxCount}</td>
             </tr>
-            ${vanType ? `<tr>
-              <td style="padding: 6px 0; color: #666; font-size: 14px;">Van Type</td>
-              <td style="padding: 6px 0; font-weight: 600; color: #363737; text-align: right;">${escapeHtml(vanType)}</td>
+            ${vanLabel ? `<tr>
+              <td style="padding: 6px 0; color: #666; font-size: 14px;">Vehicle</td>
+              <td style="padding: 6px 0; font-weight: 600; color: #363737; text-align: right;">${escapeHtml(vanLabel)}</td>
             </tr>` : ''}
             ${flightTime ? `<tr>
               <td style="padding: 6px 0; color: #666; font-size: 14px;">Flight Time</td>

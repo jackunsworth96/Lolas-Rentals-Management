@@ -147,6 +147,8 @@ export default function TransferBookingPage() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isConfirmed, setIsConfirmed] = useState(false);
+  const [confirmedPickupTime, setConfirmedPickupTime] = useState<string | null>(null);
+  const [confirmedPickupTimeEnd, setConfirmedPickupTimeEnd] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
@@ -206,7 +208,7 @@ export default function TransferBookingPage() {
     setSubmitError(null);
 
     try {
-      await api.post('/public/public-transfer-booking', {
+      const resp = await api.post<{ pickupTime?: string | null; pickupTimeEnd?: string | null }>('/public/public-transfer-booking', {
         customerName: customerName.trim(),
         contactNumber: contactNumber.trim(),
         customerEmail: customerEmail.trim() || null,
@@ -221,6 +223,8 @@ export default function TransferBookingPage() {
         opsNotes: opsNotes.trim() || null,
         storeId: TRANSFER_STORE_ID,
       });
+      setConfirmedPickupTime(resp?.pickupTime ?? null);
+      setConfirmedPickupTimeEnd(resp?.pickupTimeEnd ?? null);
       setIsConfirmed(true);
     } catch (err: unknown) {
       setSubmitError(err instanceof Error ? err.message : 'Something went wrong. Please try again or WhatsApp us directly.');
@@ -243,6 +247,8 @@ export default function TransferBookingPage() {
     setFlightTime('');
     setOpsNotes('');
     setIsConfirmed(false);
+    setConfirmedPickupTime(null);
+    setConfirmedPickupTimeEnd(null);
     setSubmitError(null);
     setFieldErrors({});
   }
@@ -262,9 +268,15 @@ export default function TransferBookingPage() {
               <div className="mt-8 w-full rounded-2xl border border-charcoal-brand/10 bg-sand-brand p-5">
                 <div className="space-y-3 text-left font-lato text-sm">
                   <Row label="Route" value={route ?? ''} />
-                  <Row label="Van Type" value={vanSelection.displayName} />
+                  <Row label="Vehicle" value={vanSelection.displayName} />
                   <Row label="Date" value={serviceDate} />
-                  <Row label="Time" value={flightTime} />
+                  <Row label="Flight Time" value={flightTime} />
+                  {confirmedPickupTime && (
+                    <Row
+                      label="Pick Up Time"
+                      value={confirmedPickupTimeEnd ? `${confirmedPickupTime}–${confirmedPickupTimeEnd}` : confirmedPickupTime}
+                    />
+                  )}
                   <Row label="Passengers" value={String(paxCount)} />
                   <div className="border-t border-charcoal-brand/10 pt-3">
                     <div className="flex items-center justify-between">
