@@ -13,10 +13,7 @@ import { SEO } from '../../components/seo/SEO.js';
 import { PageHeader } from '../../components/public/PageHeader.js';
 import BorderGlow from '../../components/home/BorderGlow.js';
 import InclusionMarquee from '../../components/home/InclusionMarquee.js';
-import { cld } from '../../lib/cloudinary.js';
-import { format, quality } from '@cloudinary/url-gen/actions/delivery';
-import { auto as autoFormat } from '@cloudinary/url-gen/qualifiers/format';
-import { auto as autoQuality } from '@cloudinary/url-gen/qualifiers/quality';
+import { partnerMarqueeImageUrl } from '../../lib/cloudinary.js';
 
 import separatorSvg from '../../assets/Original Assests/separator.svg';
 import flower4 from '../../assets/Original Assests/flower-4.svg';
@@ -52,7 +49,6 @@ const PARTNER_LOGOS = [
   'gwapitos_ax0ks1',
   'haole_osupjy',
   'happiness-beach-bar_wlld8k',
-  'happiness-restro_zc5vh6',
   'happy-islanders_pvtdp7',
   'kanaloa_cmcicx',
   'kanin-baboy_c6hs0k',
@@ -98,11 +94,17 @@ const PARTNER_LOGOS = [
   'wild_jdp8xg',
   'x-pizza_qdwcka',
   'yogi_mcpzyn',
+  'happiness-restro_zc5vh6',
   'yoh_qbytxc',
-].map((publicId) => ({
-  icon: cld.image(publicId).delivery(format(autoFormat())).delivery(quality(autoQuality())).toURL(),
-  label: '',
-}));
+].map((publicId) => {
+  let label = '';
+  if (publicId === 'happiness-beach-bar_wlld8k') label = 'Beach bar';
+  if (publicId === 'happiness-restro_zc5vh6') label = 'Restaurant';
+  return {
+    icon: partnerMarqueeImageUrl(publicId),
+    label,
+  };
+});
 
 export default function PawCardPage() {
   const { t } = useTranslation();

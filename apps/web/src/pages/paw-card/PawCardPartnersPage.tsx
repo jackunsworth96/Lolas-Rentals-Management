@@ -20,10 +20,7 @@ import {
   type PawCardEstablishment,
 } from '../../api/paw-card-establishments.js';
 import { CloudinaryImage } from '../../components/ui/CloudinaryImage.js';
-import { cld } from '../../lib/cloudinary.js';
-import { format, quality } from '@cloudinary/url-gen/actions/delivery';
-import { auto as autoFormat } from '@cloudinary/url-gen/qualifiers/format';
-import { auto as autoQuality } from '@cloudinary/url-gen/qualifiers/quality';
+import { PARTNER_LOGO_CACHE_BUST, partnerMarqueeImageUrl } from '../../lib/cloudinary.js';
 import pawPrintAsset from '../../assets/Paw Print.svg';
 
 function useInView(threshold = 0.1) {
@@ -78,7 +75,6 @@ const CLOUDINARY_PARTNER_IDS = [
   'gwapitos_ax0ks1',
   'haole_osupjy',
   'happiness-beach-bar_wlld8k',
-  'happiness-restro_zc5vh6',
   'happy-islanders_pvtdp7',
   'kanaloa_cmcicx',
   'kanin-baboy_c6hs0k',
@@ -124,14 +120,11 @@ const CLOUDINARY_PARTNER_IDS = [
   'wild_jdp8xg',
   'x-pizza_qdwcka',
   'yogi_mcpzyn',
+  'happiness-restro_zc5vh6',
   'yoh_qbytxc',
 ];
 
-function partnerLogoUrl(publicId: string): string {
-  return cld.image(publicId).delivery(format(autoFormat())).delivery(quality(autoQuality())).toURL();
-}
-
-const allLogos = CLOUDINARY_PARTNER_IDS.map(partnerLogoUrl);
+const allLogos = CLOUDINARY_PARTNER_IDS.map(partnerMarqueeImageUrl);
 
 function MarqueeRow({
   logos,
@@ -643,6 +636,7 @@ export default function PawCardPartnersPage() {
                       <CloudinaryImage
                         publicId={logoPublicId}
                         alt={est.name ?? ''}
+                        cacheBust={PARTNER_LOGO_CACHE_BUST}
                         plugins={[]}
                         style={{
                           width: '100%',
@@ -895,6 +889,7 @@ const EstablishmentCard = memo(function EstablishmentCard({ establishment: e, in
               publicId={logoPublicId}
               alt={displayName}
               className="h-full w-full object-contain p-1"
+              cacheBust={PARTNER_LOGO_CACHE_BUST}
               plugins={[]}
             />
           ) : (
