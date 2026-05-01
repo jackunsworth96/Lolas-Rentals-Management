@@ -84,6 +84,7 @@ function transferToProps(t: Transfer) {
     customerType: t.customerType,
     route: t.route,
     flightTime: t.flightTime,
+    flightNumber: t.flightNumber,
     paxCount: t.paxCount,
     vanType: t.vanType,
     accommodation: t.accommodation,

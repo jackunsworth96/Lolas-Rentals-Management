@@ -4,6 +4,12 @@
  * All functions are fire-and-forget safe: errors are logged but never thrown,
  * so a failed Telegram send can never break the booking confirmation flow.
  *
+ * Channel routing by vehicle type:
+ *   tuktuk      → TELEGRAM_TUKTUK_CHAT_ID
+ *   shared_van  → TELEGRAM_VAN_CHAT_ID
+ *   private_van → TELEGRAM_VAN_CHAT_ID
+ *   (fallback)  → TELEGRAM_DRIVER_CHAT_ID (backward compatible when van/tuktuk IDs unset)
+ *
  * Webhook setup (one-time, run manually):
  *   curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
  *     -d "url=https://<render-backend>.onrender.com/api/public/telegram"
@@ -20,9 +26,17 @@ import {
 
 export type { TransferForTemplate };
 
-/** Returns the driver channel chat ID from env, or undefined if not configured. */
-export function getDriverChatId(): string | undefined {
-  return getTelegramChatId('driver');
+/**
+ * Returns the driver channel chat ID for the given vehicle type.
+ * Tuktuk bookings go to TELEGRAM_TUKTUK_CHAT_ID.
+ * All van types go to TELEGRAM_VAN_CHAT_ID.
+ * Falls back to TELEGRAM_DRIVER_CHAT_ID when the vehicle-specific IDs are unset.
+ */
+export function getDriverChatIdForVanType(vanType: string | null): string | undefined {
+  if (vanType === 'tuktuk') {
+    return getTelegramChatId('tuktuk') ?? getTelegramChatId('driver');
+  }
+  return getTelegramChatId('van') ?? getTelegramChatId('driver');
 }
 
 /** Inline keyboard with a single Confirm button bearing the transfer ID. */
@@ -35,13 +49,13 @@ function confirmKeyboard(transferId: string) {
 }
 
 /**
- * Posts a new-booking notification to the driver channel.
+ * Posts a new-booking notification to the correct driver channel.
  * Returns the Telegram message_id string, or null on failure.
  */
 export async function notifyNewTransfer(transfer: TransferForTemplate): Promise<string | null> {
-  const chatId = getDriverChatId();
+  const chatId = getDriverChatIdForVanType(transfer.vanType);
   if (!chatId) {
-    logger.warn('notifyNewTransfer skipped: TELEGRAM_DRIVER_CHAT_ID not set');
+    logger.warn('notifyNewTransfer skipped: no driver chat ID configured');
     return null;
   }
 
@@ -59,9 +73,9 @@ export async function notifyNewTransfer(transfer: TransferForTemplate): Promise<
  * Returns the Telegram message_id string, or null on failure.
  */
 export async function notifyReminderTransfer(transfer: TransferForTemplate): Promise<string | null> {
-  const chatId = getDriverChatId();
+  const chatId = getDriverChatIdForVanType(transfer.vanType);
   if (!chatId) {
-    logger.warn('notifyReminderTransfer skipped: TELEGRAM_DRIVER_CHAT_ID not set');
+    logger.warn('notifyReminderTransfer skipped: no driver chat ID configured');
     return null;
   }
 
@@ -82,9 +96,9 @@ export async function notifyAmendedTransfer(
   transfer: TransferForTemplate,
   oldPickupTime: string,
 ): Promise<string | null> {
-  const chatId = getDriverChatId();
+  const chatId = getDriverChatIdForVanType(transfer.vanType);
   if (!chatId) {
-    logger.warn('notifyAmendedTransfer skipped: TELEGRAM_DRIVER_CHAT_ID not set');
+    logger.warn('notifyAmendedTransfer skipped: no driver chat ID configured');
     return null;
   }
 

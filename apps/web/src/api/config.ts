@@ -300,3 +300,21 @@ export function useSavePaymentRouting() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['config', 'payment-routing'] }),
   });
 }
+
+export interface PickupRuleRow {
+  id: number;
+  vehicle_type: string;
+  direction: string;
+  rule_type: 'bracket' | 'offset';
+  flight_hour: number | null;
+  pickup_from: string | null;
+  pickup_to: string | null;
+  offset_mins: number | null;
+}
+
+export function usePickupRules() {
+  return useQuery({
+    queryKey: ['config', 'transfer-pickup-rules'],
+    queryFn: () => api.get<PickupRuleRow[]>('/config/transfer-pickup-rules'),
+  });
+}

@@ -973,3 +973,147 @@ export function transferBookingConfirmationHtml({
     </div>
   `;
 }
+
+/**
+ * Pickup time confirmation email sent to the customer after a transfer is
+ * confirmed and the pickup time has been calculated.
+ *
+ * Pickup time display varies by direction and vehicle type:
+ *  - outbound shared_van:  window, e.g. "08:00–08:30"
+ *  - outbound private_van: single time, e.g. "10:30"
+ *  - outbound tuktuk:      single time, e.g. "10:30"
+ *  - inbound:              exact arrival time (driver meets at IAO arrivals hall)
+ */
+export function transferPickupConfirmationHtml({
+  customerName,
+  serviceDate,
+  route,
+  vanType,
+  direction,
+  pickupTime,
+  pickupTimeEnd,
+  flightNumber,
+  flightTime,
+  accommodation,
+  whatsappNumber,
+}: {
+  customerName: string;
+  serviceDate: string;
+  route: string;
+  vanType: string | null;
+  direction: 'inbound' | 'outbound';
+  pickupTime: string;
+  pickupTimeEnd: string | null;
+  flightNumber: string | null;
+  flightTime: string | null;
+  accommodation: string | null;
+  whatsappNumber: string;
+}): string {
+  const pickupDisplay = pickupTimeEnd
+    ? `${escapeHtml(pickupTime)}–${escapeHtml(pickupTimeEnd)}`
+    : escapeHtml(pickupTime);
+
+  const vanLabel =
+    vanType === 'shared_van'  ? 'Shared Van'  :
+    vanType === 'private_van' ? 'Private Van' :
+    vanType === 'tuktuk'      ? 'Tuk-tuk'     :
+    vanType ?? 'Transfer';
+
+  // Pickup location: for outbound the customer is picked up at their
+  // accommodation; for inbound the driver meets them at the airport.
+  const pickupLocation =
+    direction === 'inbound'
+      ? 'IAO Arrivals Hall'
+      : escapeHtml(accommodation ?? 'your accommodation');
+
+  // Flight info line: "PR123 | 10:00" or just "10:00" if no flight number.
+  const flightParts: string[] = [];
+  if (flightNumber) flightParts.push(escapeHtml(flightNumber));
+  if (flightTime)   flightParts.push(escapeHtml(flightTime));
+  const flightDisplay = flightParts.join(' | ') || '—';
+
+  const flightLabel = direction === 'inbound' ? 'Flight Arrival' : 'Flight Departure';
+
+  // Derive destination from route for the time label heading.
+  const routeParts = route.split(/→|->/).map((s) => s.trim());
+  const destination = routeParts[routeParts.length - 1] ?? route;
+
+  const pickupHeading = direction === 'inbound'
+    ? 'Your driver will meet you at the arrivals hall'
+    : (pickupTimeEnd ? 'Your pickup window' : 'Your pickup time');
+
+  const flightChangeNote = direction === 'outbound'
+    ? `<div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 10px; padding: 16px; margin-bottom: 24px;">
+        <p style="margin: 0; font-size: 14px; color: #856404; font-weight: 600;">
+          ⚠️ If your flight time changes, contact us immediately
+        </p>
+        <p style="margin: 8px 0 0; font-size: 13px; color: #856404;">
+          WhatsApp us at
+          <a href="https://wa.me/${escapeHtml(whatsappNumber)}" style="color: #856404; font-weight: 700;">+63 969 444 3413</a>
+          so we can update your pickup time. Do not wait — late notice may mean we cannot adjust.
+        </p>
+      </div>`
+    : '';
+
+  return `
+    <div style="font-family: 'Lato', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #FAF6F0; padding: 32px 16px;">
+      <div style="background: white; border-radius: 16px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <h1 style="font-family: 'Alegreya Sans', serif; color: #00577C; font-size: 28px; margin: 0;">
+            Your Pickup Time
+          </h1>
+          <p style="color: #363737; margin-top: 8px;">Hi ${escapeHtml(customerName)}, here are your pickup details.</p>
+        </div>
+
+        <div style="background: #00577C; border-radius: 12px; padding: 24px; margin-bottom: 24px; text-align: center;">
+          <p style="color: rgba(255,255,255,0.8); font-size: 13px; margin: 0 0 6px;">${escapeHtml(pickupHeading)}</p>
+          <p style="color: white; font-size: 36px; font-weight: 700; margin: 0; letter-spacing: 1px;">
+            ${pickupDisplay}
+          </p>
+          <p style="color: rgba(255,255,255,0.8); font-size: 13px; margin: 8px 0 0;">
+            ${escapeHtml(serviceDate)} — ${escapeHtml(destination)}
+          </p>
+        </div>
+
+        <div style="background: #f1e6d6; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 6px 0; color: #666; font-size: 14px;">Pickup Location</td>
+              <td style="padding: 6px 0; font-weight: 600; color: #363737; text-align: right;">${pickupLocation}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #666; font-size: 14px;">Vehicle</td>
+              <td style="padding: 6px 0; font-weight: 600; color: #363737; text-align: right;">${escapeHtml(vanLabel)}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #666; font-size: 14px;">Route</td>
+              <td style="padding: 6px 0; font-weight: 600; color: #363737; text-align: right;">${escapeHtml(route)}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #666; font-size: 14px;">${escapeHtml(flightLabel)}</td>
+              <td style="padding: 6px 0; font-weight: 600; color: #363737; text-align: right;">${flightDisplay}</td>
+            </tr>
+          </table>
+        </div>
+
+        ${flightChangeNote}
+
+        <div style="text-align: center; margin-bottom: 24px;">
+          <a href="https://wa.me/${escapeHtml(whatsappNumber)}"
+             style="display: inline-block; background: #00577C; color: white; padding: 12px 28px;
+                    border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">
+            Questions? WhatsApp Us
+          </a>
+        </div>
+
+        <p style="color: #999; font-size: 12px; text-align: center; margin-top: 32px;">
+          Lola's Rentals &amp; Tours Inc. — Siargao Island, Philippines<br/>
+          This is an automated message. Please do not reply to this email.<br/>
+          <span style="color: #bbb;">For questions about your data or to request access, correction, or deletion, contact us at
+          <a href="mailto:hello@lolasrentals.com" style="color: #bbb;">hello@lolasrentals.com</a>
+          or WhatsApp +63 969 444 3413.</span>
+        </p>
+      </div>
+    </div>
+  `;
+}

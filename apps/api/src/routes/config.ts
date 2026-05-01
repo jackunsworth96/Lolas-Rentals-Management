@@ -613,4 +613,23 @@ router.delete('/reviews/:id', edit, async (req, res, next) => {
   }
 });
 
+// ── Transfer Pickup Rules (read-only) ──
+// Returns all active pickup rules. No EditSettings permission required —
+// any authenticated user can view rules (they are needed by the settings panel).
+router.get('/transfer-pickup-rules', async (req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+    const { data, error } = await sb
+      .from('transfer_pickup_rules')
+      .select('id, vehicle_type, direction, rule_type, flight_hour, pickup_from, pickup_to, offset_mins')
+      .eq('is_active', true)
+      .order('vehicle_type')
+      .order('flight_hour', { nullsFirst: false });
+    if (error) throw new Error(error.message);
+    res.json({ success: true, data: data ?? [] });
+  } catch (e) {
+    next(e);
+  }
+});
+
 export { router as configRoutes };

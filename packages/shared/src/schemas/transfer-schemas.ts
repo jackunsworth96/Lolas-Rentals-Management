@@ -8,6 +8,7 @@ export const CreateTransferRequestSchema = z.object({
   customerType: z.enum(['Walk-in', 'Online']).nullable().default(null),
   route: z.string().min(1),
   flightTime: z.string().nullable().default(null),
+  flightNumber: z.string().nullable().default(null),
   paxCount: z.number().int().positive().default(1),
   vanType: z.string().nullable().default(null),
   accommodation: z.string().nullable().default(null),

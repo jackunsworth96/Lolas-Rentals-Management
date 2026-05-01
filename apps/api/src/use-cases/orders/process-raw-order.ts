@@ -658,6 +658,7 @@ export async function processRawOrder(
         customerType: 'Online',
         route: rawOrder.transfer_route as string,
         flightTime: (rawOrder.flight_arrival_time as string | null) ?? null,
+        flightNumber: null,
         paxCount,
         vanType: rawOrder.transfer_type as string,
         accommodation: accommodationName,

@@ -5,7 +5,7 @@ import { validateBody, validateQuery } from '../middleware/validate.js';
 import { Permission } from '@lolas/shared';
 import { z } from 'zod';
 import { supabase } from '../adapters/supabase/client.js';
-import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
+import { sendTelegramAlert, sendTelegramAlertPaidOrdersStaggered, getTelegramChatId } from '../lib/telegram.js';
 import { escapeHtml } from '../services/email.js';
 
 const router = Router();
@@ -556,8 +556,8 @@ router.post('/:id/payment', requirePermission(Permission.EditOrders), validateBo
           `Balance Due: ₱${balanceDue.toLocaleString('en-PH')}\n` +
           `Order Total: ₱${Number(finalTotal).toLocaleString('en-PH')}`;
 
-        void sendTelegramAlert(paidOrdersMsg, getTelegramChatId('paid_orders'));
         void sendTelegramAlert(opsMsg, getTelegramChatId('ops'));
+        sendTelegramAlertPaidOrdersStaggered(paidOrdersMsg, getTelegramChatId('paid_orders'));
       } catch {
         // fire-and-forget — never block the response
       }

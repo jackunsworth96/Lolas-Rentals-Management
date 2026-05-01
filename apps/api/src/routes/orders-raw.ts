@@ -10,7 +10,7 @@ import { resolveCharityPayableAccount } from '../adapters/supabase/maintenance-e
 import { processRawOrder, type ProcessRawOrderDeps } from '../use-cases/orders/process-raw-order.js';
 import { sendEmail, bookingConfirmationHtml, bookingCancellationHtml, walkInStaffAlertHtml, escapeHtml, NOTIFICATION_EMAIL, INTERNAL_FROM_EMAIL } from '../services/email.js';
 import { formatManilaDate, formatManilaDateTime } from '../utils/manila-date.js';
-import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
+import { sendTelegramAlert, sendTelegramAlertPaidOrdersStaggered, getTelegramChatId } from '../lib/telegram.js';
 
 /** GET list / GET :id — explicit columns; excludes payload (V10-11). */
 const ORDERS_RAW_INBOX_COLUMNS =
@@ -531,7 +531,7 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
           `${escapeHtml(body.vehicleName)}\n` +
           `💰 <b>Total: ₱${body.grandTotal.toLocaleString('en-PH')}</b>`;
       void sendTelegramAlert(walkinActivatedMsg, getTelegramChatId('ops'));
-      void sendTelegramAlert(walkinPaidOrdersMsg, getTelegramChatId('paid_orders'));
+      sendTelegramAlertPaidOrdersStaggered(walkinPaidOrdersMsg, getTelegramChatId('paid_orders'));
     }
 
     // 17. Fire-and-forget booking confirmation email
@@ -881,7 +881,7 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
           `${escapeHtml(vehicleLabel)}\n` +
           `💰 <b>Total: ₱${actualTotal.toLocaleString('en-PH')}</b>`;
       void sendTelegramAlert(onlineActivatedMsg, getTelegramChatId('ops'));
-      void sendTelegramAlert(onlinePaidOrdersMsg, getTelegramChatId('paid_orders'));
+      sendTelegramAlertPaidOrdersStaggered(onlinePaidOrdersMsg, getTelegramChatId('paid_orders'));
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

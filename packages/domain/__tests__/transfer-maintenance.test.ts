@@ -19,6 +19,7 @@ function makeTransferProps(
     customerType: 'Walk-in',
     route: 'Airport → Hotel',
     flightTime: '14:00',
+    flightNumber: null,
     paxCount: 3,
     vanType: 'Standard',
     accommodation: null,

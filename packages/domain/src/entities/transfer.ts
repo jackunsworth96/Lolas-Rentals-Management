@@ -12,6 +12,7 @@ export interface TransferProps {
   customerType: 'Walk-in' | 'Online' | null;
   route: string;
   flightTime: string | null;
+  flightNumber: string | null;
   paxCount: number;
   vanType: string | null;
   accommodation: string | null;
@@ -58,6 +59,7 @@ export class Transfer {
   readonly customerType: 'Walk-in' | 'Online' | null;
   readonly route: string;
   readonly flightTime: string | null;
+  readonly flightNumber: string | null;
   readonly paxCount: number;
   readonly vanType: string | null;
   readonly accommodation: string | null;
@@ -94,6 +96,7 @@ export class Transfer {
     this.customerType = props.customerType;
     this.route = props.route;
     this.flightTime = props.flightTime;
+    this.flightNumber = props.flightNumber;
     this.paxCount = props.paxCount;
     this.vanType = props.vanType;
     this.accommodation = props.accommodation;

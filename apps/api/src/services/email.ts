@@ -40,6 +40,9 @@ function getResend(): Resend {
 export const CUSTOMER_FROM_EMAIL =
   process.env.EMAIL_FROM_CUSTOMER ?? 'hello@lolasrentals.com';
 
+export const BOOKINGS_FROM_EMAIL =
+  process.env.EMAIL_FROM_BOOKINGS ?? 'bookings@lolasrentals.com';
+
 export const INTERNAL_FROM_EMAIL =
   process.env.EMAIL_FROM_INTERNAL ?? 'maintenance@lolasrentals.com';
 
@@ -88,6 +91,7 @@ export {
   extendConfirmationHtml,
   bookingCancellationHtml,
   transferBookingConfirmationHtml,
+  transferPickupConfirmationHtml,
 } from './email-templates/customer.js';
 
 export {

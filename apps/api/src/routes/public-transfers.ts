@@ -109,6 +109,7 @@ router.post('/transfer-booking', bookingLimiter, validateBody(PublicBookingSchem
     const result = await createTransfer(
       {
         ...req.body,
+        flightNumber: null,
         customerType: 'Online',
         paymentMethod: null,
         bookingSource: 'online',
@@ -147,12 +148,15 @@ router.post('/transfer-booking', bookingLimiter, validateBody(PublicBookingSchem
     void (async () => {
       try {
         const { calculatePickupTime, inferDirection } = await import('../transfers/pickup-time.js');
+        const { loadPickupRules } = await import('../transfers/pickup-rules-loader.js');
         const { notifyNewTransfer } = await import('../telegram/telegram.service.js');
 
         if (!result.flightTime) return;
 
+        const rules = await loadPickupRules();
         const direction = inferDirection(result.route);
-        const pickup = calculatePickupTime(direction, result.vanType, result.flightTime, result.serviceDate);
+        const pickup = calculatePickupTime(direction, result.vanType, result.flightTime, result.serviceDate, rules);
+
         const messageId = await notifyNewTransfer({
           id: result.id,
           customerName: result.customerName,
@@ -160,6 +164,7 @@ router.post('/transfer-booking', bookingLimiter, validateBody(PublicBookingSchem
           route: result.route,
           serviceDate: result.serviceDate,
           flightTime: result.flightTime,
+          flightNumber: result.flightNumber,
           vanType: result.vanType,
           paxCount: result.paxCount,
           accommodation: result.accommodation,
@@ -172,6 +177,34 @@ router.post('/transfer-booking', bookingLimiter, validateBody(PublicBookingSchem
           const refreshed = await transferRepo.findById(result.id);
           if (refreshed) {
             await transferRepo.save(refreshed.withTelegramSent(messageId, pickup.from, pickup.to));
+          }
+        }
+        // Send pickup confirmation email to the customer.
+        const emailTo = req.body.customerEmail as string | null;
+        if (emailTo) {
+          try {
+            const { sendEmail: sendPickupEmail, transferPickupConfirmationHtml, BOOKINGS_FROM_EMAIL } = await import('../services/email.js');
+            const whatsappNumber = process.env.WHATSAPP_NUMBER ?? '639694443413';
+            await sendPickupEmail({
+              to: emailTo,
+              from: BOOKINGS_FROM_EMAIL,
+              subject: `Your pickup time — ${result.serviceDate} transfer`,
+              html: transferPickupConfirmationHtml({
+                customerName:  result.customerName,
+                serviceDate:   result.serviceDate,
+                route:         result.route,
+                vanType:       result.vanType,
+                direction,
+                pickupTime:    pickup.from,
+                pickupTimeEnd: pickup.to,
+                flightNumber:  result.flightNumber,
+                flightTime:    result.flightTime,
+                accommodation: result.accommodation,
+                whatsappNumber,
+              }),
+            });
+          } catch (emailErr) {
+            console.error('[transfer-telegram] Pickup email failed:', emailErr);
           }
         }
       } catch (err) {
@@ -229,6 +262,7 @@ router.post('/public-transfer-booking', bookingLimiter, validateBody(PublicTrans
         customerType:   'Online',
         route:          req.body.route,
         flightTime:     req.body.flightTime,
+        flightNumber:   (req.body.flightNumber as string | null) ?? null,
         paxCount:       req.body.paxCount,
         vanType:        req.body.vanType,
         accommodation:  req.body.accommodation ?? null,
@@ -271,12 +305,15 @@ router.post('/public-transfer-booking', bookingLimiter, validateBody(PublicTrans
     void (async () => {
       try {
         const { calculatePickupTime, inferDirection } = await import('../transfers/pickup-time.js');
+        const { loadPickupRules } = await import('../transfers/pickup-rules-loader.js');
         const { notifyNewTransfer } = await import('../telegram/telegram.service.js');
 
         if (!result.flightTime) return;
 
+        const rules = await loadPickupRules();
         const direction = inferDirection(result.route);
-        const pickup = calculatePickupTime(direction, result.vanType, result.flightTime, result.serviceDate);
+        const pickup = calculatePickupTime(direction, result.vanType, result.flightTime, result.serviceDate, rules);
+
         const messageId = await notifyNewTransfer({
           id: result.id,
           customerName: result.customerName,
@@ -284,6 +321,7 @@ router.post('/public-transfer-booking', bookingLimiter, validateBody(PublicTrans
           route: result.route,
           serviceDate: result.serviceDate,
           flightTime: result.flightTime,
+          flightNumber: result.flightNumber,
           vanType: result.vanType,
           paxCount: result.paxCount,
           accommodation: result.accommodation,
@@ -296,6 +334,34 @@ router.post('/public-transfer-booking', bookingLimiter, validateBody(PublicTrans
           const refreshed = await transferRepo.findById(result.id);
           if (refreshed) {
             await transferRepo.save(refreshed.withTelegramSent(messageId, pickup.from, pickup.to));
+          }
+        }
+        // Send pickup confirmation email to the customer.
+        const publicEmailTo = result.customerEmail;
+        if (publicEmailTo) {
+          try {
+            const { sendEmail: sendPickupEmail2, transferPickupConfirmationHtml, BOOKINGS_FROM_EMAIL } = await import('../services/email.js');
+            const whatsappNumber = process.env.WHATSAPP_NUMBER ?? '639694443413';
+            await sendPickupEmail2({
+              to: publicEmailTo,
+              from: BOOKINGS_FROM_EMAIL,
+              subject: `Your pickup time — ${result.serviceDate} transfer`,
+              html: transferPickupConfirmationHtml({
+                customerName:  result.customerName,
+                serviceDate:   result.serviceDate,
+                route:         result.route,
+                vanType:       result.vanType,
+                direction,
+                pickupTime:    pickup.from,
+                pickupTimeEnd: pickup.to,
+                flightNumber:  result.flightNumber,
+                flightTime:    result.flightTime,
+                accommodation: result.accommodation,
+                whatsappNumber,
+              }),
+            });
+          } catch (emailErr) {
+            console.error('[transfer-telegram] Pickup email failed:', emailErr);
           }
         }
       } catch (err) {

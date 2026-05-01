@@ -9,6 +9,7 @@ export interface CreateTransferInput {
   customerType: 'Walk-in' | 'Online' | null;
   route: string;
   flightTime: string | null;
+  flightNumber: string | null;
   paxCount: number;
   vanType: string | null;
   accommodation: string | null;
@@ -35,6 +36,7 @@ export async function createTransfer(
     customerType: input.customerType,
     route: input.route,
     flightTime: input.flightTime,
+    flightNumber: input.flightNumber,
     paxCount: input.paxCount,
     vanType: input.vanType,
     accommodation: input.accommodation,

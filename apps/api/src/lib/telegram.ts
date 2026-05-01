@@ -6,7 +6,9 @@
  *   TELEGRAM_FLEET_CHAT_ID          — Lola's Fleet channel (vehicle status changes)
  *   TELEGRAM_DAILY_CHAT_ID          — Lola's Daily Updates channel (morning summary)
  *   TELEGRAM_MAINTENANCE_CHAT_ID    — Lola's Maintenance channel (jobs & inspections)
- *   TELEGRAM_DRIVER_CHAT_ID         — Driver channel for transfer notifications
+ *   TELEGRAM_DRIVER_CHAT_ID         — Driver channel (legacy fallback)
+ *   TELEGRAM_VAN_CHAT_ID            — Van driver channel (shared & private van transfers)
+ *   TELEGRAM_TUKTUK_CHAT_ID         — Tuktuk driver channel (tuktuk transfers)
  *   TELEGRAM_PAID_ORDERS_CHAT_ID    — Lola's Paid Orders channel (order activated events)
  *
  * When the bot token or a given chat id is unset, alerts targeting that
@@ -15,13 +17,15 @@
  */
 import { logger } from './logger.js';
 
-export function getTelegramChatId(kind: 'default' | 'ops' | 'fleet' | 'daily' | 'maintenance' | 'driver' | 'feedback' | 'paid_orders'): string | undefined {
+export function getTelegramChatId(kind: 'default' | 'ops' | 'fleet' | 'daily' | 'maintenance' | 'driver' | 'van' | 'tuktuk' | 'feedback' | 'paid_orders'): string | undefined {
   switch (kind) {
     case 'ops':          return process.env.TELEGRAM_OPS_CHAT_ID;
     case 'fleet':        return process.env.TELEGRAM_FLEET_CHAT_ID;
     case 'daily':        return process.env.TELEGRAM_DAILY_CHAT_ID;
     case 'maintenance':  return process.env.TELEGRAM_MAINTENANCE_CHAT_ID;
     case 'driver':       return process.env.TELEGRAM_DRIVER_CHAT_ID;
+    case 'van':          return process.env.TELEGRAM_VAN_CHAT_ID;
+    case 'tuktuk':       return process.env.TELEGRAM_TUKTUK_CHAT_ID;
     case 'feedback':     return process.env.TELEGRAM_FEEDBACK_CHAT_ID;
     case 'paid_orders':  return process.env.TELEGRAM_PAID_ORDERS_CHAT_ID;
     case 'default':
@@ -80,6 +84,19 @@ export async function sendTelegramAlert(message: string, chatId?: string): Promi
       'Telegram sendMessage request failed',
     );
   }
+}
+
+/** When Paid Orders is sent in the same flow as Ops (or another channel), stagger so the first alert sound completes. */
+const PAID_ORDERS_TELEGRAM_STAGGER_MS = 800;
+
+/**
+ * Fire-and-forget: sends after {@link PAID_ORDERS_TELEGRAM_STAGGER_MS}. Pair with an immediate
+ * `sendTelegramAlert` to the other channel so notifications arrive sequentially on the device.
+ */
+export function sendTelegramAlertPaidOrdersStaggered(message: string, chatId?: string): void {
+  setTimeout(() => {
+    void sendTelegramAlert(message, chatId);
+  }, PAID_ORDERS_TELEGRAM_STAGGER_MS);
 }
 
 type InlineKeyboardButton = { text: string; callback_data: string };

@@ -9,8 +9,9 @@ export interface TransferForTemplate {
   customerName: string;
   contactNumber: string | null;
   route: string;
-  serviceDate: string;        // YYYY-MM-DD
-  flightTime: string | null;  // HH:MM or ISO
+  serviceDate: string;          // YYYY-MM-DD
+  flightTime: string | null;    // HH:MM or ISO
+  flightNumber: string | null;  // e.g. "PR123"
   vanType: string | null;
   paxCount: number;
   accommodation: string | null;
@@ -76,12 +77,17 @@ function detailBlock(t: TransferForTemplate): string {
   const pickup   = t.pickupTime
     ? escapeHtml(formatPickupWindow(t.pickupTime, t.pickupTimeEnd))
     : '(not calculated)';
-  const flightStr = t.flightTime ? escapeHtml(t.flightTime) : '—';
+
+  // Show flight number and time together, e.g. "PR123 | 10:00" or just "10:00".
+  const flightParts: string[] = [];
+  if (t.flightNumber) flightParts.push(escapeHtml(t.flightNumber));
+  if (t.flightTime) flightParts.push(escapeHtml(t.flightTime));
+  const flightStr = flightParts.length > 0 ? flightParts.join(' | ') : '—';
 
   return (
     `${dateStr} | ${route}\n` +
     `Customer: ${name}\n` +
-    `Flight time: ${flightStr}\n` +
+    `Flight: ${flightStr}\n` +
     `Pickup: <b>${pickup}</b>\n` +
     `Address: ${address}\n` +
     `${pax} pax | ${phone}`

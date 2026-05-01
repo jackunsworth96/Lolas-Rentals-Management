@@ -24,6 +24,7 @@ type TransferReminderRow = {
   route: string;
   service_date: string;
   flight_time: string | null;
+  flight_number: string | null;
   van_type: string | null;
   pax_count: number;
   accommodation: string | null;
@@ -45,7 +46,7 @@ async function runTransferReminderJob(): Promise<void> {
     const { data, error } = await sb
       .from('transfers')
       .select(
-        'id, customer_name, contact_number, route, service_date, flight_time, van_type, pax_count, accommodation, pickup_time, pickup_time_end',
+        'id, customer_name, contact_number, route, service_date, flight_time, flight_number, van_type, pax_count, accommodation, pickup_time, pickup_time_end',
       )
       .or('driver_confirmed.is.null,driver_confirmed.eq.false')
       .not('pickup_time', 'is', null)
@@ -70,6 +71,7 @@ async function runTransferReminderJob(): Promise<void> {
           route: row.route,
           serviceDate: row.service_date,
           flightTime: row.flight_time,
+          flightNumber: row.flight_number,
           vanType: row.van_type,
           paxCount: row.pax_count,
           accommodation: row.accommodation,

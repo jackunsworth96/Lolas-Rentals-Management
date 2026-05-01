@@ -3,9 +3,34 @@
  *
  * All times are interpreted and returned in PHT (Asia/Manila, UTC+8).
  * This module has no side effects and no imports beyond Node built-ins.
+ *
+ * Rules summary:
+ *  - inbound:              pickup = exact arrival time (driver meets at airport).
+ *  - outbound shared_van:  floor flight hour to nearest hour, look up bracket
+ *                          rule table, return the matching pickup window.
+ *  - outbound private_van: single time = flight departure − 90 min.
+ *  - outbound tuktuk:      single time = flight departure − 90 min.
  */
 
 export type TransferDirection = 'inbound' | 'outbound';
+
+/**
+ * A single row from transfer_pickup_rules, mapped to camelCase.
+ * Pass an array loaded from the database to calculatePickupTime.
+ */
+export interface PickupRule {
+  vehicleType: string;
+  direction: string;
+  ruleType: 'bracket' | 'offset';
+  /** For bracket rules: the floored PHT departure hour (0–23). */
+  flightHour: number | null;
+  /** For bracket rules: window start in "HH:MM" or "HH:MM:SS" format. */
+  pickupFrom: string | null;
+  /** For bracket rules: window end in "HH:MM" or "HH:MM:SS" format. Null = no window. */
+  pickupTo: string | null;
+  /** For offset rules: minutes relative to flight time (negative = before flight). */
+  offsetMins: number | null;
+}
 
 /**
  * Result of a pickup time calculation.
@@ -42,12 +67,9 @@ export function inferDirection(route: string): TransferDirection {
  *  - ISO 8601 / full datetime string — used as-is.
  */
 function parseFlightTime(flightTime: string, serviceDate: string): Date {
-  // If it looks like a bare time (HH:MM or H:MM), attach the service date.
   if (/^\d{1,2}:\d{2}$/.test(flightTime.trim())) {
-    // Build a PHT timestamp so arithmetic stays in the correct timezone.
     return new Date(`${serviceDate}T${flightTime.trim()}:00+08:00`);
   }
-  // Otherwise trust whatever datetime string was stored.
   return new Date(flightTime);
 }
 
@@ -61,27 +83,39 @@ function formatPHT(date: Date): string {
   }).format(date);
 }
 
+/** Extracts the hour component (0–23) of a Date in PHT using Intl.DateTimeFormat. */
+function getFlightHourPHT(date: Date): number {
+  const parts = new Intl.DateTimeFormat('en-PH', {
+    timeZone: 'Asia/Manila',
+    hour: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const hourPart = parts.find((p) => p.type === 'hour');
+  return hourPart ? parseInt(hourPart.value, 10) : 0;
+}
+
 /** Returns a new Date offset by `minutes` (negative = earlier). */
 function addMinutes(date: Date, minutes: number): Date {
   return new Date(date.getTime() + minutes * 60_000);
 }
 
 /**
+ * Strips trailing seconds from a Postgres time string so it is always "HH:MM".
+ * Postgres returns time columns as "HH:MM:SS"; this normalises to "HH:MM".
+ */
+function toHHMM(t: string): string {
+  return t.slice(0, 5);
+}
+
+/**
  * Calculates the customer pickup time for an airport transfer.
  *
- * Rules:
- *  - **inbound**: pickup = exact arrival time (no offset). The driver meets
- *    the customer at the airport after the plane lands.
- *  - **outbound + shared_van**: pickup window from (flightTime − 170 min) to
- *    (flightTime − 140 min). e.g. flight 12:50 → pickup 10:00–10:30.
- *  - **outbound + private_van | tuktuk**: single pickup time of
- *    (flightTime − 140 min). e.g. flight 12:50 → pickup 10:30.
- *
- * @param direction  - 'inbound' or 'outbound'
- * @param vanType    - raw van_type value from the database (e.g. 'shared_van',
- *                     'private_van', 'tuktuk') — may be null
- * @param flightTime - flight time string, either "HH:MM" or a full ISO string
+ * @param direction   - 'inbound' or 'outbound'
+ * @param vanType     - raw van_type value from the database, e.g. 'shared_van',
+ *                      'private_van', 'tuktuk' — may be null
+ * @param flightTime  - flight time string, either "HH:MM" or a full ISO string
  * @param serviceDate - booking date in "YYYY-MM-DD" format
+ * @param rules       - active rows from transfer_pickup_rules, loaded from DB
  * @returns PickupTimeResult with HH:MM strings in PHT
  */
 export function calculatePickupTime(
@@ -89,23 +123,48 @@ export function calculatePickupTime(
   vanType: string | null,
   flightTime: string,
   serviceDate: string,
+  rules: PickupRule[],
 ): PickupTimeResult {
   const flightDate = parseFlightTime(flightTime, serviceDate);
 
+  // Inbound: driver meets customer at IAO on arrival. No offset applied.
   if (direction === 'inbound') {
-    // Driver picks up at arrival — no offset needed.
     return { from: formatPHT(flightDate), to: null };
   }
 
-  // Outbound: shared van — 30-minute window starting 2h50min before the flight.
-  // e.g. flight at 12:50 → pickup window 10:00–10:30.
+  // Outbound shared_van: floor flight hour, look up bracket rule.
   if (vanType === 'shared_van') {
-    const windowStart = addMinutes(flightDate, -170);
-    const windowEnd   = addMinutes(flightDate, -140);
-    return { from: formatPHT(windowStart), to: formatPHT(windowEnd) };
+    const flightHour = getFlightHourPHT(flightDate);
+    const rule = rules.find(
+      (r) =>
+        r.vehicleType === 'shared_van' &&
+        r.direction === 'outbound' &&
+        r.ruleType === 'bracket' &&
+        r.flightHour === flightHour,
+    );
+
+    if (rule?.pickupFrom) {
+      return {
+        from: toHHMM(rule.pickupFrom),
+        to: rule.pickupTo ? toHHMM(rule.pickupTo) : null,
+      };
+    }
+
+    // No bracket rule found for this hour — fall back to 90-min offset.
+    const fallback = addMinutes(flightDate, -90);
+    return { from: formatPHT(fallback), to: null };
   }
 
-  // Outbound: private van and tuktuk — single time 2h20min before.
-  const pickupTime = addMinutes(flightDate, -140);
+  // Outbound private_van / tuktuk: look up offset rule.
+  const effectiveVanType = vanType ?? 'private_van';
+  const offsetRule = rules.find(
+    (r) =>
+      r.vehicleType === effectiveVanType &&
+      r.direction === 'outbound' &&
+      r.ruleType === 'offset',
+  );
+
+  const offsetMins = offsetRule?.offsetMins ?? -90;
+  const pickupTime = addMinutes(flightDate, offsetMins);
   return { from: formatPHT(pickupTime), to: null };
 }

@@ -69,6 +69,7 @@ export async function recordDriverPayment(
     customerType: transfer.customerType,
     route: transfer.route,
     flightTime: transfer.flightTime,
+    flightNumber: transfer.flightNumber,
     paxCount: transfer.paxCount,
     vanType: transfer.vanType,
     accommodation: transfer.accommodation,

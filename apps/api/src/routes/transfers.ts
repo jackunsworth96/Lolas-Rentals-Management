@@ -63,16 +63,19 @@ router.post('/', requirePermission(Permission.EditTransfers), validateBody(Creat
     const result = await createTransfer(req.body, { transfers: req.app.locals.deps.transferRepo });
     res.status(201).json({ success: true, data: result });
 
-    // Fire-and-forget: calculate pickup time and notify driver channel.
+    // Fire-and-forget: calculate pickup time, notify driver channel, email customer.
     void (async () => {
       try {
         const { calculatePickupTime, inferDirection } = await import('../transfers/pickup-time.js');
+        const { loadPickupRules } = await import('../transfers/pickup-rules-loader.js');
         const { notifyNewTransfer } = await import('../telegram/telegram.service.js');
 
         if (!result.flightTime) return;
 
+        const rules = await loadPickupRules();
         const direction = inferDirection(result.route);
-        const pickup = calculatePickupTime(direction, result.vanType, result.flightTime, result.serviceDate);
+        const pickup = calculatePickupTime(direction, result.vanType, result.flightTime, result.serviceDate, rules);
+
         const messageId = await notifyNewTransfer({
           id: result.id,
           customerName: result.customerName,
@@ -80,6 +83,7 @@ router.post('/', requirePermission(Permission.EditTransfers), validateBody(Creat
           route: result.route,
           serviceDate: result.serviceDate,
           flightTime: result.flightTime,
+          flightNumber: result.flightNumber,
           vanType: result.vanType,
           paxCount: result.paxCount,
           accommodation: result.accommodation,
@@ -95,8 +99,36 @@ router.post('/', requirePermission(Permission.EditTransfers), validateBody(Creat
             );
           }
         }
+
+        // Send pickup confirmation email to the customer.
+        if (result.customerEmail) {
+          try {
+            const { sendEmail, transferPickupConfirmationHtml, BOOKINGS_FROM_EMAIL } = await import('../services/email.js');
+            const whatsappNumber = process.env.WHATSAPP_NUMBER ?? '639694443413';
+            await sendEmail({
+              to: result.customerEmail,
+              from: BOOKINGS_FROM_EMAIL,
+              subject: `Your pickup time — ${result.serviceDate} transfer`,
+              html: transferPickupConfirmationHtml({
+                customerName: result.customerName,
+                serviceDate:  result.serviceDate,
+                route:        result.route,
+                vanType:      result.vanType,
+                direction,
+                pickupTime:   pickup.from,
+                pickupTimeEnd: pickup.to,
+                flightNumber: result.flightNumber,
+                flightTime:   result.flightTime,
+                accommodation: result.accommodation,
+                whatsappNumber,
+              }),
+            });
+          } catch (emailErr) {
+            console.error('[transfers] Pickup email failed:', emailErr);
+          }
+        }
       } catch (err) {
-        console.error('[transfers] Telegram notification failed:', err);
+        console.error('[transfers] Post-create notification failed:', err);
       }
     })();
   } catch (err) { next(err); }
@@ -256,8 +288,10 @@ router.patch('/:id/flight-time', requirePermission(Permission.EditTransfers), va
     }
 
     const { calculatePickupTime, inferDirection } = await import('../transfers/pickup-time.js');
+    const { loadPickupRules } = await import('../transfers/pickup-rules-loader.js');
+    const rules = await loadPickupRules();
     const direction = inferDirection(existing.route);
-    const pickup = calculatePickupTime(direction, existing.vanType, flightTime, existing.serviceDate);
+    const pickup = calculatePickupTime(direction, existing.vanType, flightTime, existing.serviceDate, rules);
 
     const oldPickupDisplay = existing.pickupTime
       ? (existing.pickupTimeEnd ? `${existing.pickupTime}–${existing.pickupTimeEnd}` : existing.pickupTime)
@@ -280,6 +314,7 @@ router.patch('/:id/flight-time', requirePermission(Permission.EditTransfers), va
             route: updated.route,
             serviceDate: updated.serviceDate,
             flightTime: updated.flightTime,
+            flightNumber: updated.flightNumber,
             vanType: updated.vanType,
             paxCount: updated.paxCount,
             accommodation: updated.accommodation,

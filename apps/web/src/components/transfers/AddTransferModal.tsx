@@ -31,6 +31,7 @@ export function AddTransferModal({ open, onClose, storeId }: Props) {
 
   const [serviceDate, setServiceDate] = useState('');
   const [flightTime, setFlightTime] = useState('');
+  const [flightNumber, setFlightNumber] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [contactNumber, setContactNumber] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
@@ -53,6 +54,7 @@ export function AddTransferModal({ open, onClose, storeId }: Props) {
     if (open) {
       setServiceDate(new Date().toISOString().slice(0, 10));
       setFlightTime('');
+      setFlightNumber('');
       setCustomerName('');
       setContactNumber('');
       setCustomerEmail('');
@@ -114,6 +116,7 @@ export function AddTransferModal({ open, onClose, storeId }: Props) {
         customerType,
         route: selectedRoute?.route ?? '',
         flightTime: flightTime.trim() || null,
+        flightNumber: flightNumber.trim() || null,
         paxCount,
         vanType: vanType.trim() || null,
         accommodation: accommodation.trim() || null,
@@ -234,6 +237,16 @@ export function AddTransferModal({ open, onClose, storeId }: Props) {
                 type="time"
                 value={flightTime}
                 onChange={(e) => setFlightTime(e.target.value)}
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-gray-600">Flight Number</span>
+              <input
+                type="text"
+                value={flightNumber}
+                onChange={(e) => setFlightNumber(e.target.value)}
+                placeholder="e.g. PR123"
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
               />
             </label>
