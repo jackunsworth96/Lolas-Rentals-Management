@@ -51,6 +51,20 @@ export interface CustomerPawCard {
   hasPawCard: boolean;
 }
 
+export interface CustomerCascadeResult {
+  emailChanged: boolean;
+  mobileChanged: boolean;
+  nameChanged: boolean;
+  ordersRawUpdated: number;
+  pawCardUpdated: number;
+  transfersUpdated: number;
+}
+
+export interface UpdateCustomerResult {
+  customer: CustomerSummary;
+  cascaded: CustomerCascadeResult;
+}
+
 export interface CustomerDetail {
   customer: CustomerSummary;
   orders: CustomerOrder[];
@@ -79,7 +93,7 @@ export function useUpdateCustomer() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...body }: { id: string } & Record<string, unknown>) =>
-      api.patch(`/customers/${id}`, body),
+      api.patch<UpdateCustomerResult>(`/customers/${id}`, body),
     onSuccess: (_data, variables) => {
       void qc.invalidateQueries({ queryKey: ['customers'] });
       void qc.invalidateQueries({ queryKey: ['customer', variables.id] });
