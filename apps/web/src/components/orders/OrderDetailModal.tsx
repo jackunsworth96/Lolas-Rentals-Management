@@ -93,6 +93,8 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
             items={items}
             payments={payments}
             orderAddons={orderAddons}
+            helmetSwaps={helmetSwaps}
+            canAct={canAct}
             onClose={onClose}
             pushToast={pushToast}
           />

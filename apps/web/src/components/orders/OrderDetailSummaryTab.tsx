@@ -9,7 +9,7 @@ import { ExtendOrderModal } from './ExtendOrderModal.js';
 import { InspectionModal } from './InspectionModal.js';
 import { MayaPaymentModal } from './MayaPaymentModal.js';
 import { useInspectionByOrder } from '../../api/inspections.js';
-import { useCollectPayment, useRefundOrder, useSettleOrder, useSwapVehicle, useUpdateDropoffNote } from '../../api/orders.js';
+import { useCollectPayment, useRefundOrder, useSettleOrder, useSwapHelmet, useSwapVehicle, useUpdateDropoffNote } from '../../api/orders.js';
 import { useFleet } from '../../api/fleet.js';
 import { usePaymentMethods, useChartOfAccounts, useFleetStatuses } from '../../api/config.js';
 import { formatCurrency } from '../../utils/currency.js';
@@ -18,7 +18,7 @@ import { formatDate, formatDateTime } from '../../utils/date.js';
 import { useCustomerPawCardSavings } from '../../api/paw-card.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 import type { EnrichedOrder } from '../../types/api.js';
-import type { OrderAddon, OrderDetail, OrderItem, OrderPayment } from './useOrderDetail.js';
+import type { HelmetSwap, OrderAddon, OrderDetail, OrderItem, OrderPayment } from './useOrderDetail.js';
 
 function waiverFetchApiBase(): string {
   const raw = (import.meta.env.VITE_API_URL as string | undefined)?.trim() || '/api';
@@ -42,6 +42,8 @@ interface OrderDetailSummaryTabProps {
   items: OrderItem[];
   payments: OrderPayment[];
   orderAddons: OrderAddon[];
+  helmetSwaps: HelmetSwap[];
+  canAct: boolean;
   onClose: () => void;
   pushToast: (msg: string, type: 'success' | 'error') => void;
 }
@@ -55,6 +57,8 @@ export function OrderDetailSummaryTab({
   items,
   payments,
   orderAddons,
+  helmetSwaps,
+  canAct,
   onClose,
   pushToast,
 }: OrderDetailSummaryTabProps) {
@@ -86,6 +90,12 @@ export function OrderDetailSummaryTab({
   const [returnCharges, setReturnCharges] = useState('');
   const [returnChargesNote, setReturnChargesNote] = useState('');
 
+  // ── Helmet swap state ──
+  const [swappingHelmetItemId, setSwappingHelmetItemId] = useState<string | null>(null);
+  const [newHelmetNumbers, setNewHelmetNumbers] = useState('');
+  const [helmetSwapReason, setHelmetSwapReason] = useState('');
+  const [showHelmetHistory, setShowHelmetHistory] = useState(false);
+
   // ── Modal open/close ──
   const [extendOpen, setExtendOpen] = useState(false);
   const [inspectionModalOpen, setInspectionModalOpen] = useState(false);
@@ -104,6 +114,7 @@ export function OrderDetailSummaryTab({
   const refundOrderMut = useRefundOrder();
   const settleOrder = useSettleOrder();
   const swapVehicle = useSwapVehicle();
+  const swapHelmetMut = useSwapHelmet();
   const updateDropoffNote = useUpdateDropoffNote();
   const routing = usePaymentRouting();
 
@@ -747,20 +758,38 @@ export function OrderDetailSummaryTab({
                 <div className="text-base font-semibold text-gray-900">{vehicleNames}</div>
               </div>
             )}
-            {(() => {
-              const allHelmets = items
-                .map((i) => i.helmetNumbers)
-                .filter(Boolean)
-                .join(', ');
-              return (
-                <div>
-                  <div className="text-xs font-medium uppercase text-charcoal-brand/60">Helmets</div>
-                  <div className={`text-base font-semibold ${allHelmets ? 'text-gray-900' : 'text-charcoal-brand/40'}`}>
-                    {allHelmets || '—'}
-                  </div>
+            <div>
+              <div className="text-xs font-medium uppercase text-charcoal-brand/60">Helmets</div>
+              {items.map((i) => (
+                <div key={i.id} className="mt-0.5 flex items-center gap-2">
+                  <span className={`text-base font-semibold ${i.helmetNumbers ? 'text-gray-900' : 'text-charcoal-brand/40'}`}>
+                    {i.helmetNumbers || '—'}
+                  </span>
+                  {canAct && swappingHelmetItemId !== i.id && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSwappingHelmetItemId(i.id);
+                        setNewHelmetNumbers(i.helmetNumbers ?? '');
+                        setHelmetSwapReason('');
+                      }}
+                      className="text-xs font-medium text-teal-brand hover:text-teal-brand/80"
+                    >
+                      {i.helmetNumbers ? 'Edit' : 'Assign'}
+                    </button>
+                  )}
                 </div>
-              );
-            })()}
+              ))}
+              {helmetSwaps.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowHelmetHistory((v) => !v)}
+                  className="mt-1 text-xs text-charcoal-brand/50 hover:text-charcoal-brand underline-offset-2 hover:underline"
+                >
+                  {showHelmetHistory ? 'Hide history' : `History (${helmetSwaps.length})`}
+                </button>
+              )}
+            </div>
             {returnDatetime && (
               <div>
                 <div className="text-xs font-medium uppercase text-charcoal-brand/60">Return date</div>
@@ -805,6 +834,106 @@ export function OrderDetailSummaryTab({
             </div>
           </div>
         </div>
+
+        {/* ── Inline helmet swap form ── */}
+        {swappingHelmetItemId && (() => {
+          const item = items.find((i) => i.id === swappingHelmetItemId);
+          if (!item) return null;
+          return (
+            <div className="rounded-lg border border-teal-200 bg-teal-50 p-4 space-y-3">
+              <p className="text-sm font-medium text-teal-900">
+                {item.helmetNumbers ? 'Update helmet numbers' : 'Assign helmet numbers'}
+                {items.length > 1 && <span className="ml-1 font-normal text-teal-700">— {item.vehicleName}</span>}
+              </p>
+              {item.helmetNumbers && (
+                <p className="text-xs text-teal-700">
+                  Current: <span className="font-medium">{item.helmetNumbers}</span>
+                </p>
+              )}
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="block">
+                  <span className="text-xs font-medium text-teal-800">
+                    {item.helmetNumbers ? 'New helmet numbers' : 'Helmet numbers'}
+                  </span>
+                  <input
+                    type="text"
+                    value={newHelmetNumbers}
+                    onChange={(e) => setNewHelmetNumbers(e.target.value)}
+                    placeholder="e.g. H34, H35"
+                    className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand"
+                  />
+                </label>
+                <label className="block flex-1 min-w-[160px]">
+                  <span className="text-xs font-medium text-teal-800">Reason (optional)</span>
+                  <input
+                    type="text"
+                    value={helmetSwapReason}
+                    onChange={(e) => setHelmetSwapReason(e.target.value)}
+                    placeholder="e.g. Defective strap"
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand"
+                  />
+                </label>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={swapHelmetMut.isPending || !newHelmetNumbers.trim()}
+                  onClick={() => {
+                    swapHelmetMut.mutate(
+                      { id: orderId, itemId: swappingHelmetItemId, newHelmetNumbers: newHelmetNumbers.trim(), reason: helmetSwapReason.trim() || undefined },
+                      {
+                        onSuccess: () => {
+                          setSwappingHelmetItemId(null);
+                          setShowHelmetHistory(true);
+                        },
+                      },
+                    );
+                  }}
+                  className="rounded-lg bg-teal-brand px-4 py-1.5 text-sm font-medium text-white hover:bg-teal-brand/90 disabled:opacity-50"
+                >
+                  {swapHelmetMut.isPending ? 'Saving…' : 'Save'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSwappingHelmetItemId(null)}
+                  className="rounded-lg border border-gray-300 px-4 py-1.5 text-sm text-gray-600 hover:bg-sand-brand"
+                >
+                  Cancel
+                </button>
+              </div>
+              {swapHelmetMut.error && (
+                <p className="text-sm text-red-600">{(swapHelmetMut.error as Error).message}</p>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ── Helmet swap history ── */}
+        {showHelmetHistory && helmetSwaps.length > 0 && (
+          <div className="rounded-lg border border-gray-200 bg-white p-4">
+            <h4 className="mb-2 text-xs font-medium uppercase tracking-wide text-charcoal-brand/60">Helmet History</h4>
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-charcoal-brand/60 text-xs">
+                  <th className="pb-1.5 pr-4">Date</th>
+                  <th className="pb-1.5 pr-4">From</th>
+                  <th className="pb-1.5 pr-4">To</th>
+                  <th className="pb-1.5">Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {helmetSwaps.map((s) => (
+                  <tr key={s.id} className="border-b last:border-0">
+                    <td className="py-1.5 pr-4 text-charcoal-brand/60 text-xs">{formatDateTime(s.createdAt)}</td>
+                    <td className="py-1.5 pr-4 text-red-600">{s.oldHelmetNumbers || '—'}</td>
+                    <td className="py-1.5 pr-4 text-green-700 font-medium">{s.newHelmetNumbers || '—'}</td>
+                    <td className="py-1.5 text-charcoal-brand/60">{s.reason ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* Pricing breakdown */}
         <div>
