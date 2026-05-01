@@ -21,6 +21,10 @@ import {
 } from '../../api/paw-card-establishments.js';
 import { CloudinaryImage } from '../../components/ui/CloudinaryImage.js';
 import { PARTNER_LOGO_CACHE_BUST, partnerMarqueeImageUrl } from '../../lib/cloudinary.js';
+import {
+  PARTNER_MARQUEE_CLOUDINARY_IDS,
+  resolveEstablishmentCloudinaryId,
+} from './partner-marquee-public-ids.js';
 import pawPrintAsset from '../../assets/Paw Print.svg';
 
 function useInView(threshold = 0.1) {
@@ -44,87 +48,7 @@ function useInView(threshold = 0.1) {
   return { ref, inView };
 }
 
-/** All partner Cloudinary public IDs — drives the decorative marquee. */
-const CLOUDINARY_PARTNER_IDS = [
-  'amon_vn1zcu',
-  'aruga-wellness-spa_ke20rl',
-  'asgard_h2puqu',
-  'backside-burger_aagq80',
-  'bamboo-surf-caf_hkgoke',
-  'bar-ciao_lqt3wf',
-  'basta_pm5vm5',
-  'bawud-t-s_w1z7es',
-  'big-mama-laundry_slkpcf',
-  'big-mama-laundry-caf_dpioh4',
-  'b-nay_fct2ja',
-  'boost-shop_risksa',
-  'brunch-spot_pnqkuu',
-  'cat-gun_d1qpdf',
-  'coastal-grounds_jicvyc',
-  'cocopelli_tp590y',
-  'cumin_mmhogw',
-  'dao-chow_esghhl',
-  'e-foil-siargao_bh2kzv',
-  'el-chapo-s_f8ckvp',
-  'eskate-siargao_yh33d8',
-  'fin-fin_t20ars',
-  'food-lab_vazpsf',
-  'goodies_jbevlu',
-  'good-times-coffee_wfb4o8',
-  'grwnd_b27ero',
-  'gwapitos_ax0ks1',
-  'haole_osupjy',
-  'happiness-beach-bar_wlld8k',
-  'happy-islanders_pvtdp7',
-  'kanaloa_cmcicx',
-  'kanin-baboy_c6hs0k',
-  'kolekbibo_x9yf58',
-  'kudo-surf_tmmw0f',
-  'la-mesa_gbii20',
-  'las-barricas_sakc8e',
-  'lokal-experience_d1qbgy',
-  'lokal-hub_lwwy8d',
-  'love-coco_e5kfqa',
-  'low-tide_elw0bl',
-  'lunares_jnq4ss',
-  'manu_umjgcu',
-  'mao-mao-surf_egcehp',
-  'marmalade_fjvvlh',
-  'masala_lms9sn',
-  'mujo_sj7uxv',
-  'nattribu_npmuhy',
-  'noods_sclb7x',
-  'oeyart-tattoo-studio_roxujo',
-  'outer-cafe_ykizor',
-  'ozen-freediving_twgsu5',
-  'padel-palms_mihcws',
-  'prime-fit-gym_jaskbe',
-  'saint-thomas-coffee_wbwt7y',
-  'sanabowl_zyf7te',
-  'secreto_lurv7d',
-  'shado-surf_likdyi',
-  'shanti-shanty_mwymra',
-  'siago-beach-resort_kzo0ay',
-  'siargao-bed-and-brew_szggh5',
-  'siargao-hawker_rawz7p',
-  'siargao-wakepark_h6uevd',
-  'sibol_hgdc4c',
-  'sunset-coffee-roasters_ame9ry',
-  'taw-hay-fitness_pu7ues',
-  'the-extension_xd5ape',
-  'the-phone-hospital_yyalhd',
-  'tiburon_gw1lmg',
-  'tiki-hut_kfjwtq',
-  'ver-de_kumi9x',
-  'vissla_nck7yj',
-  'wild_jdp8xg',
-  'x-pizza_qdwcka',
-  'yogi_mcpzyn',
-  'happiness-restro_zc5vh6',
-  'yoh_qbytxc',
-];
-
-const allLogos = CLOUDINARY_PARTNER_IDS.map(partnerMarqueeImageUrl);
+const allLogos = [...PARTNER_MARQUEE_CLOUDINARY_IDS].map(partnerMarqueeImageUrl);
 
 function MarqueeRow({
   logos,
@@ -543,7 +467,7 @@ export default function PawCardPartnersPage() {
             }}
           >
             {topEstablishments.map((est, index) => {
-              const logoPublicId = est.cloudinary_public_id ?? null;
+              const logoPublicId = resolveEstablishmentCloudinaryId(est.cloudinary_public_id, est.name ?? '');
 
               const isFirstPlace = index === 0;
 
@@ -825,7 +749,7 @@ const EstablishmentCard = memo(function EstablishmentCard({ establishment: e, in
   const [hovered, setHovered] = useState(false);
   const displayName = e.name ?? '';
   const initials = getInitials(e.name);
-  const logoPublicId = e.cloudinary_public_id ?? null;
+  const logoPublicId = resolveEstablishmentCloudinaryId(e.cloudinary_public_id, displayName);
   const categoryLabel = CATEGORY_MAP[e.category] ?? e.category;
   const stagger = (index % 3) * 0.1;
 

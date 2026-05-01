@@ -13,7 +13,7 @@ export const cld = new Cloudinary({
  * Bump this when partner logos are replaced in Cloudinary (same public ID) so
  * browsers and intermediaries fetch the new file instead of a stale cache.
  */
-export const PARTNER_LOGO_CACHE_BUST = '2';
+export const PARTNER_LOGO_CACHE_BUST = '3';
 
 export function buildCloudinaryImageUrl(publicId: string, cacheBust?: string): string {
   const base = cld
