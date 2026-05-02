@@ -1,8 +1,10 @@
 {
+  "id": "/customer",
   "name": "Lola's Rentals & Tours",
   "short_name": "Lola's Rentals",
   "description": "Rent scooters, motorbikes, tuktuks and tricycles on Siargao Island.",
   "start_url": "/book",
+  "scope": "/book",
   "display": "standalone",
   "orientation": "portrait",
   "theme_color": "#f1e6d6",
