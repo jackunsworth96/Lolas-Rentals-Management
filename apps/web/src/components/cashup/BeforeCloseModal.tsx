@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useLateReturnsCheck, useUpsertLateReturnAssignment } from '../../api/cashup.js';
 import { useEmployees, type EmployeeRow } from '../../api/hr.js';
 import { useCreateLostOpportunity, type LostOpportunityRow } from '../../api/lost-opportunity.js';
-import { useTasks, useSubmitTask, type TaskRow } from '../../api/todo.js';
+import { useTasks, useCloseTask, type TaskRow } from '../../api/todo.js';
 
 interface Props {
   storeId: string;
@@ -148,18 +148,18 @@ export function BeforeCloseModal({ storeId, date, onProceed, onCancel }: Props) 
   );
 
   const [acknowledgedTasks, setAcknowledgedTasks] = useState(false);
-  const [submittedTaskIds, setSubmittedTaskIds] = useState<Set<string>>(new Set());
-  const submitTask = useSubmitTask();
+  const [closedTaskIds, setClosedTaskIds] = useState<Set<string>>(new Set());
+  const closeTask = useCloseTask();
 
   const allTasksDone =
     openTodayTasks.length === 0 ||
-    openTodayTasks.every((t) => submittedTaskIds.has(t.id)) ||
+    openTodayTasks.every((t) => closedTaskIds.has(t.id)) ||
     acknowledgedTasks;
 
-  function handleSubmitTask(id: string) {
-    submitTask.mutate(id, {
+  function handleCloseTask(id: string) {
+    closeTask.mutate(id, {
       onSuccess: () =>
-        setSubmittedTaskIds((prev) => new Set(prev).add(id)),
+        setClosedTaskIds((prev) => new Set(prev).add(id)),
     });
   }
 
@@ -373,7 +373,7 @@ export function BeforeCloseModal({ storeId, date, onProceed, onCancel }: Props) 
               <div className="space-y-3">
                 <ul className="space-y-2">
                   {openTodayTasks.map((task) => {
-                    const isDone = submittedTaskIds.has(task.id);
+                    const isDone = closedTaskIds.has(task.id);
                     return (
                       <li
                         key={task.id}
@@ -407,8 +407,8 @@ export function BeforeCloseModal({ storeId, date, onProceed, onCancel }: Props) 
                         ) : (
                           <button
                             type="button"
-                            onClick={() => handleSubmitTask(task.id)}
-                            disabled={submitTask.isPending}
+                            onClick={() => handleCloseTask(task.id)}
+                            disabled={closeTask.isPending}
                             className="shrink-0 rounded-lg border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                           >
                             Mark complete
@@ -418,7 +418,7 @@ export function BeforeCloseModal({ storeId, date, onProceed, onCancel }: Props) 
                     );
                   })}
                 </ul>
-                {!openTodayTasks.every((t) => submittedTaskIds.has(t.id)) &&
+                {!openTodayTasks.every((t) => closedTaskIds.has(t.id)) &&
                   !acknowledgedTasks && (
                     <button
                       type="button"

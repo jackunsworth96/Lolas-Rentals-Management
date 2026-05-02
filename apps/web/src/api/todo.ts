@@ -148,6 +148,14 @@ export function useSubmitTask() {
   });
 }
 
+export function useCloseTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<TaskRow>(`/todo/${id}/close`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['todo'] }),
+  });
+}
+
 export function useVerifyTask() {
   const qc = useQueryClient();
   return useMutation({

@@ -157,6 +157,17 @@ router.post('/:id/submit', view, async (req: Request, res: Response, next: NextF
   } catch (err) { next(err); }
 });
 
+router.post('/:id/close', manage, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { closeTask } = await import('../use-cases/todo/close-task.js');
+    const result = await closeTask(
+      { taskId: req.params.id as string, managerId: req.user!.employeeId },
+      { todo: req.app.locals.deps.todoRepo },
+    );
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
 router.post('/:id/verify', manage, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { verifyTask } = await import('../use-cases/todo/verify-task.js');
