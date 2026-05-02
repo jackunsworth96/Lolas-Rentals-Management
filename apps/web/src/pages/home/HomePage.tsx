@@ -64,6 +64,7 @@ import cloud1 from '../../assets/Hero/cloud-left-to-right-1.svg';
 import cloud2 from '../../assets/Hero/cloud-left-to-right-2.svg';
 import cloud3 from '../../assets/Hero/cloud-left-to-right-3.svg';
 import { useIsTouchDevice } from '../../hooks/useIsTouchDevice.js';
+import { useIsMobile } from '../../hooks/useIsMobile.js';
 
 /** Same sand as `sand-brand` in tailwind.config — inlined here so hero matches section bands without class/CSS drift. */
 const HOME_SAND = '#f1e6d6';
@@ -476,31 +477,49 @@ function HeroSection() {
             href={LOLAS_GOOGLE_REVIEWS_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-1.5 rounded-full border border-charcoal-brand/10 bg-white/70 px-4 py-2.5 shadow-[0_4px_20px_rgba(54,55,55,0.06)] backdrop-blur-sm transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[0_6px_24px_rgba(54,55,55,0.09)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-brand sm:gap-x-4 sm:px-5 sm:py-3"
+            className="inline-flex max-w-full flex-col items-center gap-1.5 rounded-full border border-charcoal-brand/10 bg-white/70 px-4 py-2 shadow-[0_4px_20px_rgba(54,55,55,0.06)] backdrop-blur-sm transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[0_6px_24px_rgba(54,55,55,0.09)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-brand sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-1.5 sm:px-5 sm:py-3"
             aria-label={`${roundedCustomers.toLocaleString()}+  explorers — 5.0 on Google Reviews (opens in new tab)`}
           >
-            <p className="shrink-0 text-left text-xs leading-tight text-charcoal-brand sm:text-sm" style={{ margin: 0 }}>
-              <span className="font-extrabold text-teal-brand" aria-hidden="true">
-                <CountUp
-                  key={roundedCustomers}
-                  to={roundedCustomers}
-                  from={countUpFrom}
-                  duration={2.2}
-                  delay={0.7}
-                  separator=","
-                  className="font-extrabold text-teal-brand"
-                />+
-              </span>
-              <span className="font-medium"> explorers</span>
-            </p>
-            <div className="flex shrink-0 items-center gap-0.5 border-x border-charcoal-brand/10 px-2 sm:px-3" aria-hidden="true">
-              {[0, 1, 2, 3, 4].map((i) => (
-                <svg key={i} width={17} height={17} viewBox="0 0 24 24" fill="#FCBC5A" className="sm:h-[18px] sm:w-[18px]">
-                  <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
-                </svg>
-              ))}
+            <div className="flex w-full max-w-full items-center justify-center gap-x-2.5 sm:contents">
+              <p
+                className="min-w-0 shrink text-center text-xs leading-tight text-charcoal-brand sm:shrink-0 sm:text-left sm:text-sm"
+                style={{ margin: 0 }}
+              >
+                <span className="font-extrabold text-teal-brand" aria-hidden="true">
+                  <CountUp
+                    key={roundedCustomers}
+                    to={roundedCustomers}
+                    from={countUpFrom}
+                    duration={2.2}
+                    delay={0.7}
+                    separator=","
+                    className="font-extrabold text-teal-brand"
+                  />+
+                </span>
+                <span className="font-medium"> explorers</span>
+              </p>
+              <div
+                className="flex shrink-0 items-center gap-0.5 px-0 sm:border-x sm:border-charcoal-brand/10 sm:px-3"
+                aria-hidden="true"
+              >
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <svg
+                    key={i}
+                    width={15}
+                    height={15}
+                    viewBox="0 0 24 24"
+                    fill="#FCBC5A"
+                    className="sm:h-[18px] sm:w-[18px]"
+                  >
+                    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+                  </svg>
+                ))}
+              </div>
             </div>
-            <p className="shrink-0 text-xs font-medium leading-tight text-charcoal-brand sm:text-sm" style={{ margin: 0 }}>
+            <p
+              className="w-full shrink-0 whitespace-nowrap text-center text-xs font-medium leading-tight text-charcoal-brand sm:w-auto sm:text-left sm:text-sm"
+              style={{ margin: 0 }}
+            >
               <span className="font-extrabold text-teal-brand">5.0</span>
               <span className="text-charcoal-brand/40" aria-hidden="true">
                 {' '}
@@ -636,6 +655,7 @@ const PAW_CARD_STEPPER_STEPS = 4;
 export default function HomePage() {
   const [pawCardStep, setPawCardStep] = useState(1);
   const prefersReducedMotion = useReducedMotion();
+  const isMobile = useIsMobile();
 
   const inclusionListVariants = {
     hidden: {},
@@ -662,6 +682,26 @@ export default function HomePage() {
         y: -4,
         boxShadow: '0 14px 32px rgba(54, 55, 55, 0.11)',
         transition: { duration: 0.22, ease: 'easeOut' as const },
+      };
+
+  /** Per-card fade-up as each box enters the viewport (single-column mobile). */
+  const inclusionCardScrollUp = {
+    initial: { opacity: prefersReducedMotion ? 1 : 0, y: prefersReducedMotion ? 0 : 24 },
+    whileInView: { opacity: 1, y: 0 },
+    viewport: { once: true, amount: 0.32, margin: '0px 0px -6% 0px' },
+    transition: {
+      duration: prefersReducedMotion ? 0 : 0.5,
+      ease: [0.22, 1, 0.36, 1] as [number, number, number, number],
+    },
+  };
+
+  const inclusionGridMotionProps = isMobile
+    ? {}
+    : {
+        variants: inclusionListVariants,
+        initial: 'hidden' as const,
+        whileInView: 'show' as const,
+        viewport: { once: true, amount: 0.12, margin: '0px 0px -10% 0px' },
       };
 
   return (
@@ -857,15 +897,12 @@ export default function HomePage() {
 
             <motion.div
               className="grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5"
-              variants={inclusionListVariants}
-              initial="hidden"
-              whileInView="show"
-              viewport={{ once: true, amount: 0.12, margin: '0px 0px -10% 0px' }}
+              {...inclusionGridMotionProps}
             >
 
               {/* ── Safety — teal-brand #00577C ── */}
               <motion.div
-                variants={inclusionCardVariants}
+                {...(isMobile ? inclusionCardScrollUp : { variants: inclusionCardVariants })}
                 className="flex flex-col rounded-2xl bg-white p-6 shadow-sm transition-shadow duration-300 ease-out"
                 style={{ borderTop: '4px solid #00577C' }}
                 whileHover={inclusionCardHover}
@@ -895,7 +932,7 @@ export default function HomePage() {
 
               {/* ── Convenience — gold-brand #FCBC5A ── */}
               <motion.div
-                variants={inclusionCardVariants}
+                {...(isMobile ? inclusionCardScrollUp : { variants: inclusionCardVariants })}
                 className="flex flex-col rounded-2xl bg-white p-6 shadow-sm transition-shadow duration-300 ease-out"
                 style={{ borderTop: '4px solid #FCBC5A' }}
                 whileHover={inclusionCardHover}
@@ -927,7 +964,7 @@ export default function HomePage() {
 
               {/* ── Backup — brand-500 #d68035 ── */}
               <motion.div
-                variants={inclusionCardVariants}
+                {...(isMobile ? inclusionCardScrollUp : { variants: inclusionCardVariants })}
                 className="flex flex-col rounded-2xl bg-white p-6 shadow-sm transition-shadow duration-300 ease-out"
                 style={{ borderTop: '4px solid #d68035' }}
                 whileHover={inclusionCardHover}
@@ -956,7 +993,7 @@ export default function HomePage() {
 
               {/* ── And More — charcoal-brand #363737 ── */}
               <motion.div
-                variants={inclusionCardVariants}
+                {...(isMobile ? inclusionCardScrollUp : { variants: inclusionCardVariants })}
                 className="flex flex-col rounded-2xl bg-white p-6 shadow-sm transition-shadow duration-300 ease-out"
                 style={{ borderTop: '4px solid #363737' }}
                 whileHover={inclusionCardHover}
@@ -985,7 +1022,7 @@ export default function HomePage() {
 
               {/* ── Add-ons — brand-600 #c8672a (dashed, optional) ── */}
               <motion.div
-                variants={inclusionCardVariants}
+                {...(isMobile ? inclusionCardScrollUp : { variants: inclusionCardVariants })}
                 className="flex flex-col rounded-2xl bg-white p-6 shadow-sm transition-shadow duration-300 ease-out"
                 style={{ borderTop: '4px dashed #c8672a' }}
                 whileHover={inclusionCardHover}
