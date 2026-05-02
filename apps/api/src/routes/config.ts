@@ -413,9 +413,16 @@ router.get('/employees', async (req, res, next) => {
     const results = await Promise.all(
       stores.map((s: { id: string }) => req.app.locals.deps.employeeRepo.findByStore(s.id)),
     );
-    const employees = results.flat().map((e: { id: string; fullName: string; storeId: string | null }) => ({
-      id: e.id, fullName: e.fullName, storeId: e.storeId,
-    }));
+    const seen = new Set<string>();
+    const employees = results.flat()
+      .filter((e: { id: string }) => {
+        if (seen.has(e.id)) return false;
+        seen.add(e.id);
+        return true;
+      })
+      .map((e: { id: string; fullName: string; storeId: string | null }) => ({
+        id: e.id, fullName: e.fullName, storeId: e.storeId,
+      }));
     res.json({ success: true, data: employees });
   } catch (e) { next(e); }
 });
