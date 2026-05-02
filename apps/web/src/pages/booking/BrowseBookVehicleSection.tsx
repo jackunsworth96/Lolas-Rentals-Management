@@ -10,6 +10,7 @@ interface AvailableModel {
   modelName: string;
   availableCount: number;
   nextAvailablePickup?: string;
+  holdExpiresAt?: string;
 }
 
 interface QuoteData {
@@ -51,6 +52,11 @@ export function BrowseBookVehicleSection({
   const allUnavailable = useMemo(() => {
     if (pricedModels.length === 0) return false;
     return pricedModels.every((m) => m.availableCount === 0);
+  }, [pricedModels]);
+
+  const allHoldOnly = useMemo(() => {
+    if (pricedModels.length === 0) return false;
+    return pricedModels.every((m) => m.availableCount === 0 && !!m.holdExpiresAt);
   }, [pricedModels]);
 
   if (!isSearched) return null;
@@ -110,16 +116,24 @@ export function BrowseBookVehicleSection({
               {allUnavailable && (
                 <div className="mb-8 rounded-3xl border-2 border-gold-brand/30 bg-gold-brand/10 px-6 py-5 text-center">
                   <p className="mb-2 font-headline text-lg font-bold text-charcoal-brand">
-                    All vehicles are booked for your selected dates
+                    {allHoldOnly
+                      ? 'These vehicles are currently in other customers\u2019 baskets'
+                      : 'All vehicles are booked for your selected dates'}
                   </p>
-                  <div className="mb-3 space-y-1">
-                    {pricedModels.filter((m) => m.nextAvailablePickup).map((m) => (
-                      <p key={m.modelId} className="text-sm text-charcoal-brand/80">
-                        The next available <span className="font-bold">{m.modelName}</span> is from{' '}
-                        <span className="font-bold text-teal-brand">{formatNextDate(m.nextAvailablePickup!)}</span>
-                      </p>
-                    ))}
-                  </div>
+                  {allHoldOnly ? (
+                    <p className="mb-3 text-sm text-charcoal-brand/70">
+                      They may become available again shortly if those customers don't proceed with their booking. Check back in a few minutes.
+                    </p>
+                  ) : (
+                    <div className="mb-3 space-y-1">
+                      {pricedModels.filter((m) => m.nextAvailablePickup).map((m) => (
+                        <p key={m.modelId} className="text-sm text-charcoal-brand/80">
+                          The next available <span className="font-bold">{m.modelName}</span> is from{' '}
+                          <span className="font-bold text-teal-brand">{formatNextDate(m.nextAvailablePickup!)}</span>
+                        </p>
+                      ))}
+                    </div>
+                  )}
                   <p className="text-sm text-charcoal-brand/70">
                     You could also check our sister store{' '}
                     <a
@@ -148,6 +162,7 @@ export function BrowseBookVehicleSection({
                       dailyRate={quotes[m.modelId]?.dailyRate ?? null}
                       securityDeposit={quotes[m.modelId]?.securityDeposit ?? null}
                       nextAvailablePickup={m.nextAvailablePickup}
+                      holdExpiresAt={m.holdExpiresAt}
                       onToast={pushToast}
                     />
                   </div>

@@ -87,6 +87,7 @@ export const CreateEmployeeRequestSchema = z.object({
   sssDeductionAmt: z.number().nonnegative().default(0),
   philhealthDeductionAmt: z.number().nonnegative().default(0),
   pagibigDeductionAmt: z.number().nonnegative().default(0),
+  telegramUserId: z.string().nullable().optional(),
 });
 
 export type CreateEmployeeRequest = z.infer<typeof CreateEmployeeRequestSchema>;

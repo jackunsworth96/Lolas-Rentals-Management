@@ -6,7 +6,6 @@ import { SEO } from '../../components/seo/SEO.js';
 import SectionDivider from '../../components/home/SectionDivider.js';
 import { FleetPreviewSection } from '../../components/home/FleetPreviewSection.js';
 import TiltedCard from '../../components/home/TiltedCard.js';
-import InclusionMarquee from '../../components/home/InclusionMarquee.js';
 import iconCommunity from '../../assets/Hand on Heart.svg';
 import iconPeaceOfMind from '../../assets/Home/Peace of Mind.svg';
 import iconHelmet from '../../assets/Home/Helmet Icon.svg';
@@ -35,12 +34,12 @@ import stepIcon2 from '../../assets/Step_2_How_Paw_Card_Works_-_Store_Icon.svg';
 import stepIcon3 from '../../assets/Step_3_How_Paw_Card_Works_Calculator_Icon.svg';
 import stepIcon4 from '../../assets/Step_4_How_Paw_Card_Works_-_Lola_Cartoon_Icon.svg';
 import bepawsitiveLogo from '../../assets/Be Pawsitive (blue).svg';
-import tickIcon from '../../assets/Home/Tick Icon.svg';
-import pesoIcon from '../../assets/Home/Peso Icon.svg';
 import pawDivider from '../../assets/Paw Divider.svg';
 import pesoSignMark from '../../assets/Peso Sign.svg';
 import lolasLogo from '../../assets/Lolas Original Logo.svg';
 import { CloudinaryImage } from '../../components/ui/CloudinaryImage.js';
+import { PesoSign } from '../../components/ui/PesoSign.js';
+import { normalizeApiBase } from '../../api/normalize-api-base.js';
 
 const BE_PAW_PUBLIC_IDS = [
   '1_q903kw', '2_ppjkhm', '3_hgnjpm', '4_fpx4je', '5_ittwb7', '6_klj8zq',
@@ -50,7 +49,7 @@ const BE_PAW_PUBLIC_IDS = [
   '25_acqfde', '26_pamvyd', '27_p9c1yg', '28_dm49i6', '29_b15s72', '30_smef1w',
   '31_vzjory', '32_k4iacn',
 ];
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   motion,
@@ -69,11 +68,46 @@ import { useIsTouchDevice } from '../../hooks/useIsTouchDevice.js';
 /** Same sand as `sand-brand` in tailwind.config — inlined here so hero matches section bands without class/CSS drift. */
 const HOME_SAND = '#f1e6d6';
 
+/** Google knowledge panel / reviews entry point for Lola's Rentals (opens in new tab from hero trust pill). */
+const LOLAS_GOOGLE_REVIEWS_URL =
+  'https://www.google.com/search?gs_ssp=eJzj4tVP1zc0LLbMsiyIzyszYLRSNagwNjYwMbA0MDCzTDFJTjJJsTKoMLFINLBINTO3NLQwNbE0T_LizcnPSSxWKErNK0nMKQYAj74TwQ&q=lolas+rentals&rlz=1C1VDKB_en-GBGB1005GB1005&oq=&gs_lcrp=EgZjaHJvbWUqDwgAEC4YJxivARjHARjqAjIPCAAQLhgnGK8BGMcBGOoCMgkIARAjGCcY6gIyCQgCECMYJxjqAjIJCAMQIxgnGOoCMgkIBBAjGCcY6gIyCQgFECMYJxjqAjIJCAYQRRg7GMIDMgkIBxBFGDsYwgPSAQg3OTJqMGoxNagCCLACAfEFJ5Hm-gIi2tLxBSeR5voCItrS&sourceid=chrome&ie=UTF-8';
+
 function HeroSection() {
   const prefersReducedMotion = useReducedMotion();
   const shouldAnimate = !prefersReducedMotion;
   const isTouchDevice = useIsTouchDevice();
   const heroRef = useRef<HTMLElement>(null);
+
+  // ── Live order count (matches DB total; rounds display by 25; poll refreshes) ──
+  const ORDER_COUNT_FLOOR = 6300;
+  const DISPLAY_ROUND_STEP = 25;
+  const ORDER_COUNT_POLL_MS = 2 * 60 * 1000;
+  const [totalOrders, setTotalOrders] = useState<number>(ORDER_COUNT_FLOOR);
+
+  const fetchOrderCount = useCallback(() => {
+    const apiBase = normalizeApiBase(import.meta.env.VITE_API_URL as string | undefined);
+    fetch(`${apiBase}/public/stats/order-count`)
+      .then((r) => r.json())
+      .then((json) => {
+        const count = json?.data?.totalOrders;
+        if (typeof count === 'number' && !Number.isNaN(count) && count >= 0) {
+          setTotalOrders(Math.max(ORDER_COUNT_FLOOR, count));
+        }
+      })
+      .catch(() => { /* keep last value */ });
+  }, []);
+
+  useEffect(() => {
+    fetchOrderCount();
+    const id = setInterval(fetchOrderCount, ORDER_COUNT_POLL_MS);
+    return () => clearInterval(id);
+  }, [fetchOrderCount]);
+
+  const roundedCustomers = Math.floor(totalOrders / DISPLAY_ROUND_STEP) * DISPLAY_ROUND_STEP;
+  const countUpFrom = Math.max(
+    ORDER_COUNT_FLOOR - 10 * DISPLAY_ROUND_STEP,
+    roundedCustomers - 10 * DISPLAY_ROUND_STEP,
+  );
 
   // ── Per-cloud independent motion values ──────────────────
   // Each cloud has its own raw input and spring config so they
@@ -391,18 +425,18 @@ function HeroSection() {
             lineHeight: 1.15,
             marginBottom: 24,
           }}
-          aria-label="Siargao's Most Trusted Rental — Book in 2 Minutes"
+          aria-label="Siargao Scooter & TukTuk Rentals Without The Sketchy Experience"
         >
           <AnimatedHeading
-            text="Siargao's Most Trusted Rental"
+            text="Siargao Scooter & TukTuk Rentals"
             tag="span"
             className="block text-teal-brand"
             delay={20}
           />
           <AnimatedHeading
-            text="Book in 2 Minutes"
+            text="Without The Sketchy Experience"
             tag="span"
-            className="block italic text-gold-brand"
+            className="block italic font-extrabold text-gold-brand"
             delay={20}
           />
         </h1>
@@ -419,13 +453,58 @@ function HeroSection() {
             textAlign: 'center',
             maxWidth: 560,
             lineHeight: 1.6,
-            margin: '0 auto 40px',
+            margin: '0 auto 24px',
           }}
         >
-          Explore Siargao, support our street dogs and cats.
-          <br />
-          Every rental funds vital spay and neuter clinics.
+          Safe bikes. Transparent pricing. No funny business.
         </motion.p>
+
+        {/* Trust — review count + Google */}
+        <motion.div
+          className="font-lato"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: 'easeOut', delay: 0.58 }}
+          style={{
+            marginBottom: 28,
+            display: 'flex',
+            justifyContent: 'center',
+            width: '100%',
+          }}
+        >
+          <a
+            href={LOLAS_GOOGLE_REVIEWS_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-1.5 rounded-full border border-charcoal-brand/10 bg-white/70 px-4 py-2.5 shadow-[0_4px_20px_rgba(54,55,55,0.06)] backdrop-blur-sm transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[0_6px_24px_rgba(54,55,55,0.09)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-brand sm:gap-x-4 sm:px-5 sm:py-3"
+            aria-label={`${roundedCustomers.toLocaleString()}+ customers — trusted by many, read on Google (opens in new tab)`}
+          >
+            <p className="shrink-0 text-left text-xs leading-tight text-charcoal-brand sm:text-sm" style={{ margin: 0 }}>
+              <span className="font-extrabold text-teal-brand" aria-hidden="true">
+                <CountUp
+                  key={roundedCustomers}
+                  to={roundedCustomers}
+                  from={countUpFrom}
+                  duration={2.2}
+                  delay={0.7}
+                  separator=","
+                  className="font-extrabold text-teal-brand"
+                />+
+              </span>
+              <span className="font-medium"> customers</span>
+            </p>
+            <div className="flex shrink-0 items-center gap-0.5 border-x border-charcoal-brand/10 px-2 sm:px-3" aria-hidden="true">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <svg key={i} width={17} height={17} viewBox="0 0 24 24" fill="#FCBC5A" className="sm:h-[18px] sm:w-[18px]">
+                  <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+                </svg>
+              ))}
+            </div>
+            <p className="shrink-0 text-xs font-medium leading-tight text-charcoal-brand sm:text-sm" style={{ margin: 0 }}>
+              trusted by many
+            </p>
+          </a>
+        </motion.div>
 
         {/* CTA Button */}
         <motion.div
@@ -510,6 +589,34 @@ const PAW_CARD_STEPPER_STEPS = 4;
 
 export default function HomePage() {
   const [pawCardStep, setPawCardStep] = useState(1);
+  const prefersReducedMotion = useReducedMotion();
+
+  const inclusionListVariants = {
+    hidden: {},
+    show: {
+      transition: {
+        staggerChildren: prefersReducedMotion ? 0 : 0.09,
+        delayChildren: prefersReducedMotion ? 0 : 0.05,
+      },
+    },
+  };
+
+  const inclusionCardVariants = {
+    hidden: { opacity: prefersReducedMotion ? 1 : 0, y: prefersReducedMotion ? 0 : 16 },
+    show: {
+      opacity: 1,
+      y: 0,
+      transition: { duration: prefersReducedMotion ? 0 : 0.44, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
+    },
+  };
+
+  const inclusionCardHover = prefersReducedMotion
+    ? undefined
+    : {
+        y: -4,
+        boxShadow: '0 14px 32px rgba(54, 55, 55, 0.11)',
+        transition: { duration: 0.22, ease: 'easeOut' as const },
+      };
 
   return (
     <PageLayout
@@ -578,103 +685,6 @@ export default function HomePage() {
       </div>
 
       <FadeUpSection>
-        <FleetPreviewSection />
-      </FadeUpSection>
-
-      <div style={{ marginTop: -2, marginBottom: -2 }}>
-        <SectionDivider variant="bold" />
-      </div>
-
-      <FadeUpSection>
-        <section style={{ backgroundColor: HOME_SAND, padding: '64px 5%' }}>
-          <div style={{ maxWidth: 1280, margin: '0 auto' }}>
-            <p
-              className="font-lato"
-              style={{
-                textAlign: 'center',
-                fontSize: 13,
-                textTransform: 'uppercase',
-                letterSpacing: '0.1em',
-                color: '#00577C',
-                marginBottom: 12,
-                fontWeight: 700,
-              }}
-            >
-              Every Scooter Rental
-            </p>
-            <h2
-              className="font-headline font-bold"
-              style={{
-                textAlign: 'center',
-                fontSize: 'clamp(32px, 5vw, 42px)',
-                color: '#363737',
-                marginBottom: 16,
-                lineHeight: 1.2,
-              }}
-            >
-              What&apos;s Included
-            </h2>
-            <p
-              className="font-lato"
-              style={{
-                textAlign: 'center',
-                fontSize: 16,
-                color: '#363737',
-                opacity: 0.7,
-                maxWidth: 560,
-                margin: '0 auto 20px',
-              }}
-            >
-              We&apos;re nerds for functionality, ensuring every rental is packed with the island essentials you need
-              for total convenience.
-            </p>
-            <div
-              className="font-lato flex flex-wrap items-center justify-center gap-x-10 gap-y-3"
-              style={{ marginBottom: 40 }}
-            >
-              <span className="inline-flex items-center gap-2 text-[13px] font-semibold text-teal-brand">
-                <img src={tickIcon} alt="" className="h-5 w-5 shrink-0 object-contain" width={20} height={20} />
-                Included
-              </span>
-              <span className="inline-flex items-center gap-2 text-[13px] font-medium text-charcoal-brand/75">
-                <img src={pesoIcon} alt="" className="h-5 w-5 shrink-0 object-contain" width={20} height={20} />
-                Optional extra
-              </span>
-            </div>
-          </div>
-          <InclusionMarquee
-            iconSize={86}
-            knockOutIconWhiteMatte={false}
-            includedBadgeSrc={tickIcon}
-            optionalBadgeSrc={pesoIcon}
-            items={[
-              { icon: iconHelmet,      label: 'Helmet' },
-              { icon: iconFuel,        label: 'Full Tank' },
-              { icon: iconPawCard,     label: 'Paw Card' },
-              { icon: iconCoat,        label: 'Rain Coat' },
-              { icon: iconFirstAid,    label: 'First Aid' },
-              { icon: iconRepairKit,   label: 'Repair Kit' },
-              { icon: iconPhoneMount,  label: 'Phone Mount' },
-              { icon: iconCloth,       label: 'Seat Cloth' },
-              { icon: iconDryBag,      label: '5L Dry Bag' },
-              { icon: iconLesson,      label: 'Riding Lesson' },
-              { icon: iconCrashGuard,  label: 'Crash Armour' },
-              { icon: iconPeaceOfMind, label: 'Peace of Mind', isUpgrade: true },
-              { icon: iconSurfRack,    label: 'Surf Rack',     isUpgrade: true },
-              { icon: iconBungee,      label: 'Bungee Cord',   isUpgrade: true },
-              { icon: iconDelivery,    label: 'Delivery/Collection', isUpgrade: true },
-              { icon: iconNinePm,      label: 'Late Return',   isUpgrade: true },
-            ]}
-            speed={45}
-          />
-        </section>
-      </FadeUpSection>
-
-      <div style={{ marginTop: -2, marginBottom: -2 }}>
-        <SectionDivider variant="dash" flip />
-      </div>
-
-      <FadeUpSection>
         <section
           style={{
             backgroundColor: HOME_SAND,
@@ -718,7 +728,19 @@ export default function HomePage() {
               <TiltedCard
                 icon={iconCommunity}
                 title="Rooted in Community"
-                body="Every rental directly funds spay, neuter and vaccination clinics for Siargao's street animals through our Be Pawsitive partnership. We're not just a rental — we're part of the island."
+                body={
+                  <>
+                    Every rental directly funds spay, neuter and vaccination clinics for Siargao&apos;s street animals
+                    through our{' '}
+                    <Link
+                      to="/book/bepawsitive"
+                      className="font-semibold text-[#00577C] underline decoration-[#00577C]/35 underline-offset-2 transition-colors hover:text-teal-brand hover:decoration-teal-brand/50"
+                    >
+                      Be Pawsitive
+                    </Link>{' '}
+                    partnership. We&apos;re not just a rental — we&apos;re part of the island.
+                  </>
+                }
               />
               <TiltedCard
                 icon={iconPeaceOfMind}
@@ -733,6 +755,213 @@ export default function HomePage() {
             </div>
           </div>
         </section>
+      </FadeUpSection>
+
+      <div style={{ marginTop: -2, marginBottom: -2 }}>
+        <SectionDivider variant="bold" />
+      </div>
+
+      <FadeUpSection>
+        <section style={{ backgroundColor: HOME_SAND, padding: '64px 5%' }}>
+          <div style={{ maxWidth: 1280, margin: '0 auto' }}>
+            <p
+              className="font-lato"
+              style={{
+                textAlign: 'center',
+                fontSize: 13,
+                textTransform: 'uppercase',
+                letterSpacing: '0.1em',
+                color: '#00577C',
+                marginBottom: 12,
+                fontWeight: 700,
+              }}
+            >
+              What&apos;s Included
+            </p>
+            <h2
+              className="font-headline font-bold"
+              style={{
+                textAlign: 'center',
+                fontSize: 'clamp(28px, 4vw, 38px)',
+                color: '#363737',
+                lineHeight: 1.2,
+                maxWidth: 540,
+                margin: '0 auto 56px',
+              }}
+            >
+              Everything You Need For A Safe, Hassle-Free Ride
+            </h2>
+
+            <motion.div
+              className="grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5"
+              variants={inclusionListVariants}
+              initial="hidden"
+              whileInView="show"
+              viewport={{ once: true, amount: 0.12, margin: '0px 0px -10% 0px' }}
+            >
+
+              {/* ── Safety — teal-brand #00577C ── */}
+              <motion.div
+                variants={inclusionCardVariants}
+                className="flex flex-col rounded-2xl bg-white p-6 shadow-sm transition-shadow duration-300 ease-out"
+                style={{ borderTop: '4px solid #00577C' }}
+                whileHover={inclusionCardHover}
+              >
+                <span className="mb-5 inline-flex items-center gap-1.5 font-lato text-[10px] font-bold uppercase tracking-widest" style={{ color: '#00577C' }}>
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" stroke="#00577C" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  Safety
+                </span>
+                <ul className="flex-1 space-y-3">
+                  {[
+                    { icon: iconHelmet,     label: 'Helmet' },
+                    { icon: iconFirstAid,   label: 'First Aid Kit' },
+                    { icon: iconCrashGuard, label: 'Crash Armour' },
+                  ].map((item) => (
+                    <li key={item.label} className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: '#E8F3F8' }}>
+                        <img src={item.icon} alt="" className="mix-blend-multiply" style={{ width: 26, height: 26, objectFit: 'contain' }} />
+                      </div>
+                      <span className="font-lato text-sm font-medium" style={{ color: '#363737' }}>{item.label}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-5 font-lato text-xs leading-relaxed" style={{ color: '#363737', opacity: 0.55 }}>
+                  You&apos;re protected before you even start the engine.
+                </p>
+              </motion.div>
+
+              {/* ── Convenience — gold-brand #FCBC5A ── */}
+              <motion.div
+                variants={inclusionCardVariants}
+                className="flex flex-col rounded-2xl bg-white p-6 shadow-sm transition-shadow duration-300 ease-out"
+                style={{ borderTop: '4px solid #FCBC5A' }}
+                whileHover={inclusionCardHover}
+              >
+                <span className="mb-5 inline-flex items-center gap-1.5 font-lato text-[10px] font-bold uppercase tracking-widest" style={{ color: '#c8672a' }}>
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="4.5" stroke="#c8672a" strokeWidth="1.6"/><path d="M6 3.5v2.75l1.5 1" stroke="#c8672a" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                  Convenience
+                </span>
+                <ul className="flex-1 space-y-3">
+                  {[
+                    { icon: iconPhoneMount, label: 'Phone Mount' },
+                    { icon: iconFuel,       label: 'Full Tank' },
+                    { icon: iconCoat,       label: 'Rain Coat' },
+                    { icon: iconCloth,      label: 'Seat Cloth' },
+                    { icon: iconDryBag,     label: '5L Dry Bag' },
+                  ].map((item) => (
+                    <li key={item.label} className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: '#FEF6E7' }}>
+                        <img src={item.icon} alt="" className="mix-blend-multiply" style={{ width: 26, height: 26, objectFit: 'contain' }} />
+                      </div>
+                      <span className="font-lato text-sm font-medium" style={{ color: '#363737' }}>{item.label}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-5 font-lato text-xs leading-relaxed" style={{ color: '#363737', opacity: 0.55 }}>
+                  Everything pre-sorted so you can just go.
+                </p>
+              </motion.div>
+
+              {/* ── Backup — brand-500 #d68035 ── */}
+              <motion.div
+                variants={inclusionCardVariants}
+                className="flex flex-col rounded-2xl bg-white p-6 shadow-sm transition-shadow duration-300 ease-out"
+                style={{ borderTop: '4px solid #d68035' }}
+                whileHover={inclusionCardHover}
+              >
+                <span className="mb-5 inline-flex items-center gap-1.5 font-lato text-[10px] font-bold uppercase tracking-widest" style={{ color: '#d68035' }}>
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1.5C4 1.5 2.5 3 2.5 5c0 2.5 3.5 5.5 3.5 5.5S9.5 7.5 9.5 5c0-2-1.5-3.5-3.5-3.5z" stroke="#d68035" strokeWidth="1.4" strokeLinejoin="round"/></svg>
+                  Backup
+                </span>
+                <ul className="flex-1 space-y-3">
+                  {[
+                    { icon: iconRepairKit,   label: 'Puncture Kit' },
+                    { icon: iconPeaceOfMind, label: 'Damage Cover' },
+                  ].map((item) => (
+                    <li key={item.label} className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: '#FDF1E4' }}>
+                        <img src={item.icon} alt="" className="mix-blend-multiply" style={{ width: 26, height: 26, objectFit: 'contain' }} />
+                      </div>
+                      <span className="font-lato text-sm font-medium" style={{ color: '#363737' }}>{item.label}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-5 font-lato text-xs leading-relaxed" style={{ color: '#363737', opacity: 0.55 }}>
+                  If something goes wrong, we&apos;re always reachable.
+                </p>
+              </motion.div>
+
+              {/* ── And More — charcoal-brand #363737 ── */}
+              <motion.div
+                variants={inclusionCardVariants}
+                className="flex flex-col rounded-2xl bg-white p-6 shadow-sm transition-shadow duration-300 ease-out"
+                style={{ borderTop: '4px solid #363737' }}
+                whileHover={inclusionCardHover}
+              >
+                <span className="mb-5 inline-flex items-center gap-1.5 font-lato text-[10px] font-bold uppercase tracking-widest" style={{ color: '#363737' }}>
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="2" cy="6" r="1.2" fill="#363737"/><circle cx="6" cy="6" r="1.2" fill="#363737"/><circle cx="10" cy="6" r="1.2" fill="#363737"/></svg>
+                  And More
+                </span>
+                <ul className="flex-1 space-y-3">
+                  {[
+                    { icon: iconPawCard, label: 'Paw Card' },
+                    { icon: iconLesson,  label: 'Riding Lesson' },
+                  ].map((item) => (
+                    <li key={item.label} className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: '#F0F0F0' }}>
+                        <img src={item.icon} alt="" className="mix-blend-multiply" style={{ width: 26, height: 26, objectFit: 'contain' }} />
+                      </div>
+                      <span className="font-lato text-sm font-medium" style={{ color: '#363737' }}>{item.label}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-5 font-lato text-xs leading-relaxed" style={{ color: '#363737', opacity: 0.55 }}>
+                  Little things that make a big difference.
+                </p>
+              </motion.div>
+
+              {/* ── Add-ons — brand-600 #c8672a (dashed, optional) ── */}
+              <motion.div
+                variants={inclusionCardVariants}
+                className="flex flex-col rounded-2xl bg-white p-6 shadow-sm transition-shadow duration-300 ease-out"
+                style={{ borderTop: '4px dashed #c8672a' }}
+                whileHover={inclusionCardHover}
+              >
+                <span className="mb-5 inline-flex items-center gap-1.5 font-lato text-[10px] font-bold uppercase tracking-widest" style={{ color: '#c8672a' }}>
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 2v8M2 6h8" stroke="#c8672a" strokeWidth="1.8" strokeLinecap="round"/></svg>
+                  Add-ons
+                </span>
+                <ul className="flex-1 space-y-3">
+                  {[
+                    { icon: iconSurfRack, label: 'Surf Rack' },
+                    { icon: iconBungee,   label: 'Bungee Cord' },
+                    { icon: iconDelivery, label: 'Delivery' },
+                    { icon: iconNinePm,   label: 'Late Return' },
+                  ].map((item) => (
+                    <li key={item.label} className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: '#FCF0E8' }}>
+                        <img src={item.icon} alt="" className="mix-blend-multiply" style={{ width: 26, height: 26, objectFit: 'contain' }} />
+                      </div>
+                      <span className="font-lato text-sm font-medium" style={{ color: '#363737' }}>{item.label}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-5 font-lato text-xs leading-relaxed" style={{ color: '#363737', opacity: 0.55 }}>
+                  Add what you need at checkout.
+                </p>
+              </motion.div>
+
+            </motion.div>
+          </div>
+        </section>
+      </FadeUpSection>
+
+      <div style={{ marginTop: -2, marginBottom: -2 }}>
+        <SectionDivider variant="bold" />
+      </div>
+
+      <FadeUpSection>
+        <FleetPreviewSection />
       </FadeUpSection>
 
       <div style={{ marginTop: -2, marginBottom: -2 }}>
@@ -840,7 +1069,7 @@ export default function HomePage() {
                 for Siargao&apos;s street animals through our Be Pawsitive partnership.
               </p>
               <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.7, opacity: 0.65, marginBottom: 28, maxWidth: 380 }}>
-                It costs just ₱800 to spay or neuter a stray. Every booking makes a difference.
+                It costs just <PesoSign />800 to spay or neuter a stray. Every booking makes a difference.
               </p>
 
               {/* CTA */}
@@ -1012,7 +1241,7 @@ export default function HomePage() {
                   </h4>
                   <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.6, opacity: 0.8 }}>
                     Every peso you save is matched by Lola&apos;s Rentals as a donation
-                    to Be Pawsitive — up to ₱100,000 per year.
+                    to Be Pawsitive — up to <PesoSign />100,000 per year.
                   </p>
                 </div>
               </Step>

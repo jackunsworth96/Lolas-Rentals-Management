@@ -2,8 +2,9 @@ import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { api } from '../../api/client.js';
-import { formatCurrency } from '../../utils/currency.js';
+import { formatCurrency, formatPhpNumber } from '../../utils/currency.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
+import { PesoSign } from '../../components/ui/PesoSign.js';
 
 interface TransferRoute {
   id: number;
@@ -78,6 +79,7 @@ export default function PublicBookingPage() {
       });
       setBookingRef(result.id?.slice(0, 8).toUpperCase() ?? '');
       setSubmitted(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t('transfer.bookingFailed'));
     } finally {
@@ -221,7 +223,7 @@ export default function PublicBookingPage() {
               <div className="rounded-xl bg-teal-brand/10 border border-teal-brand/20 px-4 py-3 flex items-center justify-between">
                 <span className="text-sm font-medium text-teal-brand font-lato">{t('transfer.total')}</span>
                 <span className="text-xl font-bold text-teal-brand font-headline">
-                  {formatCurrency(totalPrice)}
+                  <PesoSign />{formatPhpNumber(totalPrice)}
                 </span>
               </div>
             )}

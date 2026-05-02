@@ -26,6 +26,7 @@ import { Router, type Request, type Response } from 'express';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { answerCallbackQuery, editMessageReplyMarkup } from '../lib/telegram.js';
 import { logger } from '../lib/logger.js';
+import { telegramCompleteTask } from '../use-cases/todo/telegram-complete-task.js';
 
 const router = Router();
 
@@ -50,15 +51,59 @@ router.post('/', async (req: Request, res: Response) => {
       ? String(((message.chat as Record<string, unknown> | undefined)?.id) ?? '')
       : '';
 
-    const match = data.match(/^confirm_transfer_(.+)$/);
-    if (!match) {
-      // Not a transfer confirmation — still answer so Telegram clears any spinner.
+    const transferMatch = data.match(/^confirm_transfer_(.+)$/);
+    const taskMatch = data.match(/^complete_task_(.+)$/);
+
+    if (!transferMatch && !taskMatch) {
+      // Not a recognised action — still answer so Telegram clears any spinner.
       await answerCallbackQuery(callbackQueryId);
       res.sendStatus(200);
       return;
     }
 
-    const transferId = match[1];
+    // ── Task completion via Telegram ──
+    if (taskMatch) {
+      const taskId = taskMatch[1];
+      const fromId = String(
+        (callbackQuery.from as Record<string, unknown> | undefined)?.id ?? '',
+      );
+
+      const result = await telegramCompleteTask({ taskId, telegramUserId: fromId });
+
+      if (!result.ok) {
+        const toastMessages: Record<string, string> = {
+          not_assignee: 'This task is not assigned to you.',
+          already_done: 'This task is already marked as done.',
+          task_not_found: 'Task not found.',
+          employee_not_found: 'Your Telegram account is not linked to a staff profile.',
+          db_error: 'Something went wrong — please try again.',
+        };
+        await answerCallbackQuery(callbackQueryId, toastMessages[result.reason] ?? 'Something went wrong.');
+        res.sendStatus(200);
+        return;
+      }
+
+      await answerCallbackQuery(callbackQueryId, '✅ Marked as done!');
+
+      // Replace the inline button with a static "Done" indicator
+      if (chatId && rawMessageId) {
+        await editMessageReplyMarkup(chatId, String(rawMessageId), {
+          inline_keyboard: [[{ text: '✅ Done — awaiting verification', callback_data: 'noop' }]],
+        });
+      }
+
+      res.sendStatus(200);
+      return;
+    }
+
+    // ── Transfer confirmation (existing behaviour) ──
+    if (!transferMatch) {
+      await answerCallbackQuery(callbackQueryId);
+      res.sendStatus(200);
+      return;
+    }
+
+    const transferId = transferMatch[1];
     const sb = getSupabaseClient();
 
     const { error } = await sb

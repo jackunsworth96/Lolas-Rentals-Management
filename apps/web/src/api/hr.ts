@@ -54,6 +54,7 @@ export interface EmployeeRow {
   sssDeductionAmt: number;
   philhealthDeductionAmt: number;
   pagibigDeductionAmt: number;
+  telegramUserId: string | null;
 }
 
 export function useTimesheets(storeId: string, periodStart: string, periodEnd: string) {

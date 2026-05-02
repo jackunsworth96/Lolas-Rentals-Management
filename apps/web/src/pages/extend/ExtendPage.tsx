@@ -17,7 +17,8 @@ import { ExtendAddOnsSection } from '../../components/extend/ExtendAddOnsSection
 import { ExtendLocationPicker } from '../../components/extend/ExtendLocationPicker.js';
 import { useCustomerPawCardSavings } from '../../api/paw-card.js';
 import { isNinePmReturnAddonName } from '../../components/basket/AddOnsSection.js';
-import { formatCurrency } from '../../utils/currency.js';
+import { formatPhpNumber } from '../../utils/currency.js';
+import { PesoSign } from '../../components/ui/PesoSign.js';
 import iconPawCard from '../../assets/Home/Paw Card Icon.svg';
 
 import lolaVideo from '../../assets/Checkout_Lola.mp4';
@@ -452,7 +453,7 @@ function PawCardWidget({ savings }: { savings?: { hasPawCard: boolean; totalSave
         <img src={iconPawCard} alt="Paw Card" className="mt-0.5 h-8 w-8 shrink-0 object-contain" />
         <div>
           <p className="text-[11px] font-black uppercase tracking-widest text-teal-brand">{t('extend.pawCardSavings')}</p>
-          <p className="mt-0.5 text-2xl font-black text-teal-brand">{formatCurrency(savings!.totalSaved)}</p>
+          <p className="mt-0.5 text-2xl font-black text-teal-brand"><PesoSign />{formatPhpNumber(savings!.totalSaved)}</p>
           <p className="mt-0.5 text-xs font-semibold text-charcoal-brand/60">
             {t(savings!.entryCount === 1 ? 'extend.savedAcross' : 'extend.savedAcross_other', { count: savings!.entryCount })}
           </p>
@@ -599,43 +600,43 @@ function ConfirmedView({
               {extensionRentalCost != null && (
                 <div className="flex justify-between text-sm text-charcoal-brand/70">
                   <span>Rental extension</span>
-                  <span className="font-semibold">{formatCurrency(extensionRentalCost)}</span>
+                  <span className="font-semibold"><PesoSign />{formatPhpNumber(extensionRentalCost)}</span>
                 </div>
               )}
               {perDayAddonDelta != null && perDayAddonLines && perDayAddonLines.map((a) => a.delta > 0 && (
                 <div key={a.name} className="flex justify-between text-sm text-charcoal-brand/70">
                   <span>{a.name}</span>
-                  <span className="font-semibold">+{formatCurrency(a.delta)}</span>
+                  <span className="font-semibold">+<PesoSign />{formatPhpNumber(a.delta)}</span>
                 </div>
               ))}
               {ninePmCost != null && (
                 <div className="flex justify-between text-sm text-charcoal-brand/70">
                   <span>9PM Late Return</span>
-                  <span className="font-semibold">+{formatCurrency(ninePmCost)}</span>
+                  <span className="font-semibold">+<PesoSign />{formatPhpNumber(ninePmCost)}</span>
                 </div>
               )}
               {newAddonLines && newAddonLines.map((a) => (
                 <div key={a.name} className="flex justify-between text-sm text-charcoal-brand/70">
                   <span>{a.name}</span>
-                  <span className="font-semibold">+{formatCurrency(a.cost)}</span>
+                  <span className="font-semibold">+<PesoSign />{formatPhpNumber(a.cost)}</span>
                 </div>
               ))}
               {locationDelta != null && locationDelta !== 0 && (
                 <div className="flex justify-between text-sm text-charcoal-brand/70">
                   <span>Collection fee {locationDelta > 0 ? 'added' : 'credit'}</span>
                   <span className={`font-semibold ${locationDelta < 0 ? 'text-teal-brand' : ''}`}>
-                    {locationDelta > 0 ? '+' : ''}{formatCurrency(locationDelta)}
+                    {locationDelta > 0 ? '+' : ''}<PesoSign />{formatPhpNumber(locationDelta)}
                   </span>
                 </div>
               )}
               <div className="border-t border-gray-100 pt-1 flex justify-between text-sm font-black text-charcoal-brand">
                 <span>Total</span>
-                <span>{formatCurrency(balance)}</span>
+                <span><PesoSign />{formatPhpNumber(balance)}</span>
               </div>
             </div>
           )}
 
-          <p className="mt-1.5 text-3xl font-black text-charcoal-brand">{formatCurrency(balance)}</p>
+          <p className="mt-1.5 text-3xl font-black text-charcoal-brand"><PesoSign />{formatPhpNumber(balance)}</p>
           <p className="mt-1 text-xs text-charcoal-brand/50">{t('extend.addedToBalance')}</p>
 
           {orderRef && (

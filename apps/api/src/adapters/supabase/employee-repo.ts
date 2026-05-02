@@ -16,6 +16,7 @@ interface EmployeeRow {
   start_date: string | null;
   probation_end_date: string | null;
   rate_type: string | null;
+  telegram_user_id: string | null;
   basic_rate: number;
   overtime_rate: number;
   nine_pm_bonus_rate: number;
@@ -58,6 +59,7 @@ function rowToEmployee(row: EmployeeRow): Employee {
     startDate: row.start_date ?? null,
     probationEndDate: row.probation_end_date ?? null,
     rateType: row.rate_type ?? null,
+    telegramUserId: row.telegram_user_id ?? null,
     basicRate: row.basic_rate ?? 0,
     overtimeRate: row.overtime_rate ?? 0,
     ninePmBonusRate: row.nine_pm_bonus_rate ?? 0,
@@ -99,6 +101,7 @@ function employeeToRow(employee: Employee): Record<string, unknown> {
     start_date: employee.startDate,
     probation_end_date: employee.probationEndDate,
     rate_type: employee.rateType,
+    telegram_user_id: employee.telegramUserId,
     basic_rate: employee.basicRate,
     overtime_rate: employee.overtimeRate,
     nine_pm_bonus_rate: employee.ninePmBonusRate,

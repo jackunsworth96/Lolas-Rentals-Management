@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { PageLayout } from '../../components/layout/PageLayout.js';
+import { PesoSign } from '../../components/ui/PesoSign.js';
 import { SEO } from '../../components/seo/SEO.js';
 import {
   usePublicEstablishments,
@@ -846,10 +847,10 @@ const EstablishmentCard = memo(function EstablishmentCard({ establishment: e, in
           {(e.saving_solo != null || e.saving_group != null) && (
             <span className="flex items-center gap-1">
               <User className="w-3 h-3 flex-shrink-0" />
-              <span>{e.saving_solo != null ? `₱${e.saving_solo}` : '—'}</span>
+              <span>{e.saving_solo != null ? <><PesoSign />{e.saving_solo}</> : '—'}</span>
               <span className="text-charcoal-brand/30 mx-0.5">|</span>
               <Users className="w-3 h-3 flex-shrink-0" />
-              <span>{e.saving_group != null ? `₱${e.saving_group}` : '—'}</span>
+              <span>{e.saving_group != null ? <><PesoSign />{e.saving_group}</> : '—'}</span>
             </span>
           )}
           {e.google_rating != null && (
@@ -896,7 +897,7 @@ const EstablishmentCard = memo(function EstablishmentCard({ establishment: e, in
             {e.is_high_value && (
               <span className="flex items-center gap-1 bg-amber-50 text-amber-600 text-xs px-2 py-0.5 rounded-full">
                 <PiggyBank className="w-3 h-3 flex-shrink-0" />
-                Save ₱100+
+                Save <PesoSign />100+
               </span>
             )}
             {e.time_of_day && (

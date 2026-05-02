@@ -155,6 +155,7 @@ router.post('/employees', requirePermission(Permission.ManageEmployees), validat
       sssDeductionAmt: body.sssDeductionAmt ?? 0,
       philhealthDeductionAmt: body.philhealthDeductionAmt ?? 0,
       pagibigDeductionAmt: body.pagibigDeductionAmt ?? 0,
+      telegramUserId: body.telegramUserId ?? null,
       createdAt: now,
       updatedAt: now,
     });
@@ -216,6 +217,7 @@ router.put('/employees/:id', requirePermission(Permission.ManageEmployees), vali
       sssDeductionAmt: body.sssDeductionAmt ?? existing.sssDeductionAmt,
       philhealthDeductionAmt: body.philhealthDeductionAmt ?? existing.philhealthDeductionAmt,
       pagibigDeductionAmt: body.pagibigDeductionAmt ?? existing.pagibigDeductionAmt,
+      telegramUserId: body.telegramUserId !== undefined ? body.telegramUserId : existing.telegramUserId,
       createdAt: existing.createdAt,
       updatedAt: new Date(),
     });
@@ -282,6 +284,7 @@ router.delete('/employees/:id', requirePermission(Permission.ManageEmployees), a
         sssDeductionAmt: existing.sssDeductionAmt,
         philhealthDeductionAmt: existing.philhealthDeductionAmt,
         pagibigDeductionAmt: existing.pagibigDeductionAmt,
+        telegramUserId: existing.telegramUserId,
         createdAt: existing.createdAt,
         updatedAt: new Date(),
       }),

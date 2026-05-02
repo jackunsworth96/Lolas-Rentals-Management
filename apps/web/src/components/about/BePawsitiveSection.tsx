@@ -1,5 +1,6 @@
 import { FadeUpSection } from '../public/FadeUpSection.js';
 import { PrimaryCtaButton } from '../public/PrimaryCtaButton.js';
+import { PesoSign } from '../ui/PesoSign.js';
 import lolaPawPrint from '../../assets/Lola a Paw Print.svg';
 
 export function BePawsitiveSection() {
@@ -20,7 +21,7 @@ export function BePawsitiveSection() {
             </h3>
             <p className="text-xl leading-relaxed text-charcoal-brand/80">
               Since October 2022, Lola&apos;s Rentals has donated{' '}
-              <span className="font-bold text-teal-brand">₱282,995</span> to Be Pawsitive — a local NGO spaying and
+              <span className="font-bold text-teal-brand"><PesoSign />282,995</span> to Be Pawsitive — a local NGO spaying and
               neutering stray animals on Siargao. Every rental contributes.
             </p>
             <div className="flex justify-center md:justify-start">

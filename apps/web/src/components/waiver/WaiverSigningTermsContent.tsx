@@ -1,3 +1,5 @@
+import { PesoSign } from '../ui/PesoSign.js';
+
 /**
  * Full rental agreement & waiver text shown in the public signing flow (WaiverPage step 1).
  * Wording must match legal copy — do not summarise.
@@ -38,8 +40,8 @@ export function WaiverSigningTermsContent() {
       </p>
       <p className="font-lato text-sm text-charcoal-brand/70 leading-relaxed mb-2">
         Buyer has acknowledged Republic Act No. 10054 Section 7 — an act mandating all motorcycle riders to wear
-        standard protective motorcycle helmets while driving. Penalties from government officials range from ₱1,500 to
-        ₱10,000 plus confiscation of the driver&apos;s license.
+        standard protective motorcycle helmets while driving. Penalties from government officials range from <PesoSign />1,500 to
+        <PesoSign />10,000 plus confiscation of the driver&apos;s license.
       </p>
       <p className="font-lato text-sm text-charcoal-brand/70 leading-relaxed mb-2">
         If the company is called out for safety or government violations, the deposit will be forfeited in full.
@@ -174,7 +176,7 @@ export function WaiverSigningTermsContent() {
       <h4 className="font-lato font-semibold text-charcoal-brand text-sm mt-4 mb-1">TYRE CHECK</h4>
       <p className="font-lato text-sm text-charcoal-brand/70 leading-relaxed mb-2">
         The buyer is responsible for frequently checking the tyre pressure and ensuring it is always firm to press. In
-        the event of a cracked tyre due to low pressure, the buyer will be charged ₱1,500 for a replacement.
+        the event of a cracked tyre due to low pressure, the buyer will be charged <PesoSign />1,500 for a replacement.
       </p>
 
       <h4 className="font-lato font-semibold text-charcoal-brand text-sm mt-4 mb-1">EXISTING DAMAGES</h4>
@@ -234,10 +236,10 @@ export function WaiverSigningTermsContent() {
       </p>
       <ul className="list-disc pl-5 space-y-1 mb-2">
         <li className="font-lato text-sm text-charcoal-brand/70">
-          A fee of ₱150 will apply for each bar/line under full for Honda Beats.
+          A fee of <PesoSign />150 will apply for each bar/line under full for Honda Beats.
         </li>
         <li className="font-lato text-sm text-charcoal-brand/70">
-          A fee of ₱200 will apply for each bar/line under full for the TVS TukTuk.
+          A fee of <PesoSign />200 will apply for each bar/line under full for the TVS TukTuk.
         </li>
       </ul>
 
@@ -268,7 +270,7 @@ export function WaiverSigningTermsContent() {
 
       <h4 className="font-lato font-semibold text-charcoal-brand text-sm mt-4 mb-1">CALL OUT CHARGE</h4>
       <p className="font-lato text-sm text-charcoal-brand/70 leading-relaxed mb-2">
-        A call-out charge of ₱15 per KM applies when the Buyer is at fault, with a minimum charge of ₱200. The charge is
+        A call-out charge of <PesoSign />15 per KM applies when the Buyer is at fault, with a minimum charge of <PesoSign />200. The charge is
         waived if Lola&apos;s Rentals is at fault.
       </p>
 

@@ -6,6 +6,7 @@ import { CloudinaryImage } from '../ui/CloudinaryImage.js';
 import { formatPhpNumber } from '../../utils/currency.js';
 import { hasBookingDatetimeWithTime } from '../../utils/booking-datetime.js';
 import { BrandCard } from '../public/BrandCard.js';
+import { PesoSign } from '../ui/PesoSign.js';
 import basketIcon from '../../assets/Buttons/basket icon.svg';
 
 const VEHICLE_NAME_MAP: Record<string, string> = {
@@ -51,11 +52,16 @@ function formatNextAvailableWeekdayDayMonth(iso: string): string {
 }
 
 /** Urgent scarcity line for low stock (browse grid badge). */
-function scarcityUrgencyCopy(availableCount: number): string {
-  if (availableCount <= 0) return 'Unavailable';
+function scarcityUrgencyCopy(availableCount: number, isHoldOnly?: boolean): string {
+  if (availableCount <= 0) return isHoldOnly ? 'In a basket' : 'Unavailable';
   if (availableCount === 1) return 'Last one available!';
   if (availableCount === 2) return 'Only 2 left!';
   return 'Limited availability';
+}
+
+/** Returns the number of whole minutes until an ISO timestamp, minimum 1. */
+function minutesUntil(iso: string): number {
+  return Math.max(1, Math.ceil((new Date(iso).getTime() - Date.now()) / 60000));
 }
 
 interface VehicleCardProps {
@@ -65,6 +71,7 @@ interface VehicleCardProps {
   dailyRate: number | null;
   securityDeposit: number | null;
   nextAvailablePickup?: string;
+  holdExpiresAt?: string;
   onToast: (msg: string, type: 'success' | 'error') => void;
 }
 
@@ -93,6 +100,7 @@ export function VehicleCard({
   dailyRate,
   securityDeposit,
   nextAvailablePickup,
+  holdExpiresAt,
   onToast,
 }: VehicleCardProps) {
   const [addLoading, setAddLoading] = useState(false);
@@ -110,6 +118,7 @@ export function VehicleCard({
   const dropoffDatetime = useBookingStore((s) => s.dropoffDatetime);
 
   const isUnavailable = availableCount === 0 && !!nextAvailablePickup;
+  const isHoldOnly = availableCount === 0 && !!holdExpiresAt;
 
   const basketItems = basket.filter((b) => b.vehicleModelId === modelId);
   const count = basketItems.length;
@@ -197,7 +206,7 @@ export function VehicleCard({
   return (
     <BrandCard
       glowColor="36 96 67"
-      className={`animate-card-enter ${isUnavailable ? 'opacity-70' : ''}`}
+      className={`animate-card-enter ${isUnavailable || isHoldOnly ? 'opacity-70' : ''}`}
     >
       <div className="group flex h-full flex-col overflow-hidden rounded-[22px] bg-[#FAF6F0]">
         <div className="relative h-40 w-full overflow-hidden rounded-t-[22px] bg-white">
@@ -212,10 +221,10 @@ export function VehicleCard({
               <span className="text-4xl opacity-30">🏍️</span>
             </div>
           )}
-          {(isUnavailable || availableCount <= 5) && (
+          {(isUnavailable || isHoldOnly || availableCount <= 5) && (
             <div className="absolute left-4 top-4 flex gap-2">
-              <span className={`font-lato inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider shadow-sm ${isUnavailable ? 'bg-charcoal-brand/10 text-charcoal-brand/60' : 'bg-teal-brand text-white'}`}>
-                {scarcityUrgencyCopy(isUnavailable ? 0 : availableCount)}
+              <span className={`font-lato inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider shadow-sm ${(isUnavailable || isHoldOnly) ? 'bg-charcoal-brand/10 text-charcoal-brand/60' : 'bg-teal-brand text-white'}`}>
+                {scarcityUrgencyCopy(isUnavailable || isHoldOnly ? 0 : availableCount, isHoldOnly)}
               </span>
             </div>
           )}
@@ -228,7 +237,7 @@ export function VehicleCard({
               {dailyRate != null ? (
                 <p className="text-lg leading-tight">
                   <span className="font-lato font-bold text-teal-brand">
-                    ₱{formatPhpNumber(dailyRate)}
+                    <PesoSign />{formatPhpNumber(dailyRate)}
                   </span>
                   <span
                     className="font-headline text-xs font-bold text-charcoal-brand/60"
@@ -245,14 +254,32 @@ export function VehicleCard({
           {securityDeposit != null && securityDeposit > 0 && (
             <p className="font-lato mb-4 text-xs text-charcoal-brand/50">
               <span className="font-bold">
-                ₱{formatPhpNumber(securityDeposit)}
+                <PesoSign />{formatPhpNumber(securityDeposit)}
               </span>
               {' '}refundable deposit
             </p>
           )}
 
           <div className="mt-auto pt-4">
-            {isUnavailable ? (
+            {isHoldOnly ? (
+              <div className="flex flex-col items-center gap-2 rounded-2xl border-2 border-gold-brand/40 bg-gold-brand/10 px-4 py-4 text-center">
+                <p className="font-lato text-sm font-bold text-charcoal-brand">
+                  In another customer's basket
+                </p>
+                <p className="font-lato text-xs text-charcoal-brand/70">
+                  Check back in ~{minutesUntil(holdExpiresAt!)} min — it'll be free if they don't book.
+                </p>
+                {nextAvailablePickup && (
+                  <button
+                    type="button"
+                    onClick={handleNextAvailable}
+                    className="font-lato mt-1 text-[11px] font-semibold text-teal-brand underline underline-offset-2 hover:text-teal-brand/70"
+                  >
+                    Or jump to next confirmed availability ({formatNextAvailableDate(nextAvailablePickup)})
+                  </button>
+                )}
+              </div>
+            ) : isUnavailable ? (
               <button
                 type="button"
                 onClick={handleNextAvailable}

@@ -13,6 +13,7 @@ export interface EmployeeProps {
   startDate: string | null;
   probationEndDate: string | null;
   rateType: string | null;
+  telegramUserId?: string | null;
   basicRate: number;
   overtimeRate: number;
   ninePmBonusRate: number;
@@ -53,6 +54,7 @@ export class Employee {
   readonly startDate: string | null;
   readonly probationEndDate: string | null;
   readonly rateType: string | null;
+  readonly telegramUserId: string | null;
   readonly basicRate: number;
   readonly overtimeRate: number;
   readonly ninePmBonusRate: number;
@@ -93,6 +95,7 @@ export class Employee {
     this.startDate = props.startDate;
     this.probationEndDate = props.probationEndDate;
     this.rateType = props.rateType;
+    this.telegramUserId = props.telegramUserId ?? null;
     this.basicRate = props.basicRate;
     this.overtimeRate = props.overtimeRate;
     this.ninePmBonusRate = props.ninePmBonusRate;

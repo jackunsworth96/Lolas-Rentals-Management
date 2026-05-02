@@ -129,7 +129,7 @@ export function createBookingAdapter(): BookingPort {
       // is not counted against their own order submission.
       const nowIso = new Date().toISOString();
       let holdsQuery = sb
-        .from('booking_holds').select('vehicle_model_id, dropoff_datetime')
+        .from('booking_holds').select('vehicle_model_id, dropoff_datetime, expires_at')
         .eq('store_id', storeId).gt('expires_at', nowIso)
         .lt('pickup_datetime', dropoffDatetime).gt('dropoff_datetime', pickupDatetime);
       if (excludeSessionToken) {
@@ -139,9 +139,13 @@ export function createBookingAdapter(): BookingPort {
       if (holdErr) throw new Error(`booking_holds overlap query failed: ${holdErr.message}`);
 
       const holdsByModel = new Map<string, number>();
-      for (const row of (holdRows ?? []) as { vehicle_model_id: string; dropoff_datetime: string }[]) {
+      // Earliest hold expiry per model — used to tell the customer how long to wait
+      const minHoldExpiry = new Map<string, string>();
+      for (const row of (holdRows ?? []) as { vehicle_model_id: string; dropoff_datetime: string; expires_at: string }[]) {
         holdsByModel.set(row.vehicle_model_id, (holdsByModel.get(row.vehicle_model_id) ?? 0) + 1);
         trackDrop(row.vehicle_model_id, row.dropoff_datetime);
+        const prev = minHoldExpiry.get(row.vehicle_model_id);
+        if (!prev || row.expires_at < prev) minHoldExpiry.set(row.vehicle_model_id, row.expires_at);
       }
 
       // 7. Aggregate: available = total fleet - booked (incl. walk-in holds) - direct reservations - holds
@@ -162,6 +166,8 @@ export function createBookingAdapter(): BookingPort {
         let available = vehicleIds.size;
         for (const vid of vehicleIds) { if (bookedVehicleIds.has(vid)) available--; }
         available -= directReservedByModel.get(modelId) ?? 0;
+        // Capture availability before holds so we can detect hold-only blocking
+        const confirmedAvailable = available;
         available -= holdsByModel.get(modelId) ?? 0;
         available = Math.max(0, available);
 
@@ -169,6 +175,12 @@ export function createBookingAdapter(): BookingPort {
         if (available === 0) {
           const drop = minDropoff.get(modelId);
           if (drop) entry.nextAvailablePickup = new Date(new Date(drop).getTime() + BUFFER_MS).toISOString();
+          // If confirmed bookings leave stock free but holds consume it all, surface the
+          // earliest hold expiry so the frontend can show "in another customer's basket"
+          if (confirmedAvailable > 0) {
+            const exp = minHoldExpiry.get(modelId);
+            if (exp) entry.holdExpiresAt = exp;
+          }
         }
         results.push(entry);
       }

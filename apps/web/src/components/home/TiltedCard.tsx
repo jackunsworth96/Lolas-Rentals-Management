@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { motion, useMotionValue, useSpring } from 'framer-motion';
 import { useIsTouchDevice } from '../../hooks/useIsTouchDevice.js';
 
@@ -11,7 +11,7 @@ const TILE_SHADOW_HOVER =
 interface TiltedCardProps {
   icon: string;
   title: string;
-  body: string;
+  body: ReactNode;
   rotateAmplitude?: number;
   scaleOnHover?: number;
 }
@@ -33,7 +33,7 @@ export default function TiltedCard({
   const rotateY = useSpring(useMotionValue(0), springValues);
   const scale = useSpring(1, springValues);
 
-  function handleMouse(e: React.MouseEvent<HTMLDivElement>) {
+  function handleMouse(e: MouseEvent<HTMLDivElement>) {
     if (!ref.current) return;
     const rect = ref.current.getBoundingClientRect();
     const offsetX = e.clientX - rect.left - rect.width / 2;

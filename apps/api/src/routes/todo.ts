@@ -14,6 +14,9 @@ import {
   type TodoQuery,
 } from '@lolas/shared';
 import { z } from 'zod';
+import { getTelegramChatId, sendTelegramAlert, sendTelegramMessage } from '../lib/telegram.js';
+import { getSupabaseClient } from '../adapters/supabase/client.js';
+import { logger } from '../lib/logger.js';
 
 const router = Router();
 router.use(authenticate);
@@ -89,6 +92,9 @@ router.post('/', manage, validateBody(CreateTaskRequestSchema), async (req: Requ
       { todo: req.app.locals.deps.todoRepo },
     );
     res.status(201).json({ success: true, data: result });
+
+    // Fire-and-forget Telegram notifications after the response is sent
+    void sendTaskTelegramNotifications(result);
   } catch (err) { next(err); }
 });
 
@@ -223,3 +229,86 @@ router.post('/:id/seen', view, async (req: Request, res: Response, next: NextFun
 });
 
 export { router as todoRoutes };
+
+/**
+ * Sends two Telegram notifications when a task is created:
+ *  1. A read-only broadcast to the To Do channel so the whole team sees it.
+ *  2. A private DM to the assignee (if they have a telegram_user_id) with
+ *     an inline "Mark Done" button — only they can confirm it.
+ *
+ * The DM message_id is stored on the task row so the webhook can later
+ * edit it (replace the button with a ✅ indicator).
+ *
+ * Fire-and-forget — never throws.
+ */
+async function sendTaskTelegramNotifications(task: {
+  id: string;
+  title: string;
+  assignedToName: string | null;
+  assignedTo: string;
+  priority: string;
+  dueDate: string | null;
+}): Promise<void> {
+  try {
+    const priorityLabel = task.priority === 'Urgent' ? '🔴 Urgent' :
+      task.priority === 'High' ? '🟠 High' :
+      task.priority === 'Medium' ? '🟡 Medium' : '🟢 Low';
+
+    const dueLine = task.dueDate ? `\nDue: ${task.dueDate}` : '';
+    const assigneeName = task.assignedToName ?? 'Unknown';
+
+    // 1. Channel post — awareness only, no action buttons
+    const todoChatId = getTelegramChatId('todo');
+    if (todoChatId) {
+      const channelMsg =
+        `📋 <b>New Task</b>\n` +
+        `For: ${assigneeName}\n` +
+        `${task.title}${dueLine}\n` +
+        `Priority: ${priorityLabel}`;
+      await sendTelegramAlert(channelMsg, todoChatId);
+    }
+
+    // 2. DM to assignee with Mark Done button
+    const sb = getSupabaseClient();
+    const { data: empRow, error } = await sb
+      .from('employees')
+      .select('telegram_user_id')
+      .eq('id', task.assignedTo)
+      .maybeSingle();
+
+    if (error) {
+      logger.warn({ err: error.message }, 'sendTaskTelegramNotifications: employee lookup failed');
+      return;
+    }
+
+    const assigneeTelegramId = empRow?.telegram_user_id as string | null | undefined;
+    if (!assigneeTelegramId) return;
+
+    const dmMsg =
+      `📋 <b>You've been assigned a task</b>\n\n` +
+      `<b>${task.title}</b>${dueLine}\n` +
+      `Priority: ${priorityLabel}\n\n` +
+      `Tap the button below once you've completed it.`;
+
+    const dmMessageId = await sendTelegramMessage(dmMsg, assigneeTelegramId, {
+      inline_keyboard: [[
+        { text: '✅ Mark as Done', callback_data: `complete_task_${task.id}` },
+      ]],
+    });
+
+    if (dmMessageId) {
+      const { error: updateErr } = await sb
+        .from('todo_tasks')
+        .update({ todo_telegram_message_id: `${assigneeTelegramId}:${dmMessageId}` })
+        .eq('id', task.id);
+      if (updateErr) {
+        logger.warn({ err: updateErr.message }, 'sendTaskTelegramNotifications: failed to store message id');
+      }
+    }
+  } catch (err) {
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      'sendTaskTelegramNotifications: unhandled error',
+    );
+  }
+}

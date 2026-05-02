@@ -9,7 +9,9 @@
  *   TELEGRAM_DRIVER_CHAT_ID         — Driver channel (legacy fallback)
  *   TELEGRAM_VAN_CHAT_ID            — Van driver channel (shared & private van transfers)
  *   TELEGRAM_TUKTUK_CHAT_ID         — Tuktuk driver channel (tuktuk transfers)
+ *   TELEGRAM_FEEDBACK_CHAT_ID       — Feedback channel
  *   TELEGRAM_PAID_ORDERS_CHAT_ID    — Lola's Paid Orders channel (order activated events)
+ *   TELEGRAM_TODO_CHAT_ID           — To Do channel (team task visibility board)
  *
  * When the bot token or a given chat id is unset, alerts targeting that
  * channel are silently skipped. Failures never throw — callers can treat
@@ -17,7 +19,7 @@
  */
 import { logger } from './logger.js';
 
-export function getTelegramChatId(kind: 'default' | 'ops' | 'fleet' | 'daily' | 'maintenance' | 'driver' | 'van' | 'tuktuk' | 'feedback' | 'paid_orders'): string | undefined {
+export function getTelegramChatId(kind: 'default' | 'ops' | 'fleet' | 'daily' | 'maintenance' | 'driver' | 'van' | 'tuktuk' | 'feedback' | 'paid_orders' | 'todo'): string | undefined {
   switch (kind) {
     case 'ops':          return process.env.TELEGRAM_OPS_CHAT_ID;
     case 'fleet':        return process.env.TELEGRAM_FLEET_CHAT_ID;
@@ -28,6 +30,7 @@ export function getTelegramChatId(kind: 'default' | 'ops' | 'fleet' | 'daily' | 
     case 'tuktuk':       return process.env.TELEGRAM_TUKTUK_CHAT_ID;
     case 'feedback':     return process.env.TELEGRAM_FEEDBACK_CHAT_ID;
     case 'paid_orders':  return process.env.TELEGRAM_PAID_ORDERS_CHAT_ID;
+    case 'todo':         return process.env.TELEGRAM_TODO_CHAT_ID;
     case 'default':
     default:             return process.env.TELEGRAM_CHAT_ID;
   }

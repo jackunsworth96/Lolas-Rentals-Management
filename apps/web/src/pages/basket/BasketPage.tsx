@@ -17,6 +17,7 @@ import LolasChat from '../../components/chat/LolasChat.js';
 import type { Addon, TransferDetails, RenterInfo, PaymentMethodOption } from '../../components/basket/basket-types.js';
 
 import pawPrint from '../../assets/Paw Print.svg';
+import { PesoSign } from '../../components/ui/PesoSign.js';
 import { hasBookingDatetimeWithTime } from '../../utils/booking-datetime.js';
 
 interface QuoteResponse {
@@ -813,7 +814,7 @@ export default function BasketPage() {
                       </div>
                       {newPickupLocationId != null && (locations.find((l) => l.id === newPickupLocationId)?.deliveryCost ?? 0) > 0 && (
                         <p className="font-lato text-[11px] font-semibold text-teal-brand">
-                          Delivery fee: ₱{(locations.find((l) => l.id === newPickupLocationId)!.deliveryCost).toLocaleString()}
+                          Delivery fee: <PesoSign />{(locations.find((l) => l.id === newPickupLocationId)!.deliveryCost).toLocaleString()}
                         </p>
                       )}
                       {newPickupLocationId != null && locations.find((l) => l.id === newPickupLocationId)?.locationType !== 'store' && (
@@ -882,7 +883,7 @@ export default function BasketPage() {
                       </div>
                       {newDropoffLocationId != null && (locations.find((l) => l.id === newDropoffLocationId)?.collectionCost ?? 0) > 0 && (
                         <p className="font-lato text-[11px] font-semibold text-teal-brand">
-                          Collection fee: ₱{(locations.find((l) => l.id === newDropoffLocationId)!.collectionCost).toLocaleString()}
+                          Collection fee: <PesoSign />{(locations.find((l) => l.id === newDropoffLocationId)!.collectionCost).toLocaleString()}
                         </p>
                       )}
                       {newDropoffLocationId != null && locations.find((l) => l.id === newDropoffLocationId)?.locationType !== 'store' && (

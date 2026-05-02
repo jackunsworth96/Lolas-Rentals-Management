@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { SEO } from '../../components/seo/SEO.js';
+import { PesoSign } from '../../components/ui/PesoSign.js';
 
 // Run photos
 import runPhoto1 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 092746.png';
@@ -1146,11 +1147,11 @@ export default function BePawsitivePage() {
                   </span>
                 </div>
                 {[
-                  ['5K', '₱1,200'],
-                  ['10K', '₱1,500'],
-                ].map(([k, v]) => (
+                  { dist: '5K', amount: '1,200' },
+                  { dist: '10K', amount: '1,500' },
+                ].map(({ dist, amount }) => (
                   <div
-                    key={k}
+                    key={dist}
                     style={{
                       display: 'flex',
                       justifyContent: 'space-between',
@@ -1160,8 +1161,8 @@ export default function BePawsitivePage() {
                       fontSize: 14,
                     }}
                   >
-                    <span style={{ color: 'rgba(255,255,255,0.55)' }}>{k}</span>
-                    <span style={{ color: 'white', fontWeight: 700 }}>{v}</span>
+                    <span style={{ color: 'rgba(255,255,255,0.55)' }}>{dist}</span>
+                    <span style={{ color: 'white', fontWeight: 700 }}><PesoSign />{amount}</span>
                   </div>
                 ))}
                 <div
@@ -1223,9 +1224,9 @@ export default function BePawsitivePage() {
                 }}
               >
                 {[
-                  { num: '453+', label: t('bePawsitive.funRun2025') },
-                  { num: '307+', label: t('bePawsitive.funRun2024') },
-                  { num: '₱488K', label: t('bePawsitive.raised2024') },
+                  { num: '453+', label: t('bePawsitive.funRun2025'), pesoPrefix: false },
+                  { num: '307+', label: t('bePawsitive.funRun2024'), pesoPrefix: false },
+                  { num: '488K', label: t('bePawsitive.raised2024'), pesoPrefix: true },
                 ].map((s, i) => (
                   <FadeCard
                     key={s.label}
@@ -1249,7 +1250,7 @@ export default function BePawsitivePage() {
                         letterSpacing: '0.02em',
                       }}
                     >
-                      {s.num}
+                      {s.pesoPrefix && <PesoSign style={{ height: '0.75em', verticalAlign: '-0.05em' }} />}{s.num}
                     </div>
                     <div
                       style={{
@@ -1639,7 +1640,7 @@ export default function BePawsitivePage() {
                 letterSpacing: '0.02em',
               }}
             >
-              <span style={{ color: C.amberLight }}>₱</span>
+              <PesoSign style={{ color: C.amberLight, height: '0.7em', verticalAlign: '-0.05em' }} />
               {donation.toLocaleString()}
             </div>
             <div

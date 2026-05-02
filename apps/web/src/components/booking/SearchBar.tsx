@@ -5,6 +5,7 @@ import { api } from '../../api/client.js';
 import { hasBookingDatetimeWithTime } from '../../utils/booking-datetime.js';
 import BorderGlow from '../home/BorderGlow.js';
 import { locationIcon } from '../public/customerContactIcons.js';
+import { PesoSign } from '../ui/PesoSign.js';
 import searchIcon from '../../assets/Original Assests/search_icon.svg';
 
 
@@ -284,8 +285,7 @@ export function SearchBar({ onSearch, searching, storeDisplayName }: SearchBarPr
             {pickupFee > 0 && (
               <p className="ml-1 text-xs font-semibold text-teal-700">
                 Delivery fee:{' '}
-                <span style={{ fontFamily: 'Lato, sans-serif' }}>₱</span>
-                {pickupFee.toLocaleString()}
+                <PesoSign />{pickupFee.toLocaleString()}
               </p>
             )}
           </div>
@@ -306,8 +306,7 @@ export function SearchBar({ onSearch, searching, storeDisplayName }: SearchBarPr
             {dropoffFee > 0 && (
               <p className="ml-1 text-xs font-semibold text-teal-700">
                 Collection fee:{' '}
-                <span style={{ fontFamily: 'Lato, sans-serif' }}>₱</span>
-                {dropoffFee.toLocaleString()}
+                <PesoSign />{dropoffFee.toLocaleString()}
               </p>
             )}
           </div>

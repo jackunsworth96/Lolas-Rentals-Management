@@ -1,6 +1,7 @@
 import { useQueries } from '@tanstack/react-query';
 import { api } from '../../api/client.js';
 import { BrandCard } from '../public/BrandCard.js';
+import { PesoSign } from '../ui/PesoSign.js';
 import hondaBeatImg from '../../assets/Honda Beat Image.svg';
 import tukTukImg from '../../assets/TukTuk Image.svg';
 
@@ -84,8 +85,7 @@ function CostColumn({
                     <tr key={`${vehicleType}-${row.item}-${i}`} className={i % 2 === 0 ? 'bg-white/80' : 'bg-sand-brand/40'}>
                       <td className="px-4 py-3 text-sm md:px-5">{row.item}</td>
                       <td className="px-4 py-3 text-right text-sm font-bold text-charcoal-brand md:px-5">
-                        <span className="font-lato">₱</span>
-                        {row.costPhp.toLocaleString('en-PH')}
+                        <PesoSign />{row.costPhp.toLocaleString('en-PH')}
                       </td>
                     </tr>
                   ))}
@@ -142,15 +142,15 @@ export function RepairCostsSection() {
           <li className="flex gap-3">
             <span className="mt-0.5 shrink-0 font-medium text-teal-brand">③</span>
             <span>
-              Crash guards are only charged for full replacement if the guard has genuinely lost its protective function. Cosmetic wear is not charged. A repolish, where sufficient, is charged at{' '}
-              <strong className="font-semibold text-charcoal-brand">₱500</strong>.
+              Crash guards are only charged for full replacement if the guard has genuinely lost its protective function. Cosmetic wear is not charged.               A repolish, where sufficient, is charged at{' '}
+              <strong className="font-semibold text-charcoal-brand"><PesoSign />500</strong>.
             </span>
           </li>
           <li className="flex gap-3">
             <span className="mt-0.5 shrink-0 font-medium text-teal-brand">④</span>
             <span>
-              A minimum call-out fee of <strong className="font-semibold text-charcoal-brand">₱200</strong> applies if you need us to come to you. If the distance warrants it, an additional{' '}
-              <strong className="font-semibold text-charcoal-brand">₱20</strong> per km applies for any amount beyond the ₱200 minimum.
+              A minimum call-out fee of <strong className="font-semibold text-charcoal-brand"><PesoSign />200</strong> applies if you need us to come to you. If the distance warrants it, an additional{' '}
+              <strong className="font-semibold text-charcoal-brand"><PesoSign />20</strong> per km applies for any amount beyond the <PesoSign />200 minimum.
             </span>
           </li>
           <li className="flex gap-3">

@@ -3,6 +3,10 @@ export interface AvailableModel {
   modelName: string;
   availableCount: number;
   nextAvailablePickup?: string;
+  /** Set when availableCount is 0 solely because active basket holds are consuming all capacity.
+   * ISO timestamp of when the earliest blocking hold expires. Absent when a confirmed
+   * booking (order_items / orders_raw) is the reason for unavailability. */
+  holdExpiresAt?: string;
 }
 
 export interface AvailabilityQuery {

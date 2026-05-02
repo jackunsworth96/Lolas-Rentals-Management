@@ -1,8 +1,10 @@
 import { Banknote, CreditCard, Landmark, Lock, Wallet } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { BasketItem } from '../../stores/bookingStore.js';
 import type { Addon, TransferDetails, PaymentMethodOption } from './basket-types.js';
-import { formatCurrency } from '../../utils/currency.js';
+import { formatPhpNumber } from '../../utils/currency.js';
+import { PesoSign } from '../ui/PesoSign.js';
 
 interface Props {
   basket: BasketItem[];
@@ -32,12 +34,12 @@ interface Props {
 
 const PM_ICON_CLASS = 'h-5 w-5 shrink-0 text-charcoal-brand/85';
 
-const CHARITY_DONATION_PRESETS: Array<{ amount: number; label?: string }> = [
+const CHARITY_DONATION_PRESETS: Array<{ amount: number; label?: ReactNode }> = [
   { amount: 0, label: 'No thanks' },
   { amount: 100 },
   { amount: 500 },
   { amount: 1000 },
-  { amount: 5000, label: '₱5,000 🐾' },
+  { amount: 5000, label: <><PesoSign />5,000 🐾</> },
 ];
 
 /** Match API ids/names (DB may use `Card` vs `card`, etc.) */
@@ -154,7 +156,7 @@ export function OrderSummaryPanel({
                         : 'border border-teal-200 bg-white text-teal-700 hover:bg-teal-50',
                   ].join(' ')}
                 >
-                  {label ?? `\u20B1${amount}`}
+                  {label ?? <><PesoSign />{amount.toLocaleString()}</>}
                 </button>
               );
             })}
@@ -202,13 +204,13 @@ export function OrderSummaryPanel({
         <div className="mt-4 border-t border-charcoal-brand/10 pt-4">
           <div className="flex items-baseline justify-between">
             <span className="text-[15px] font-medium text-charcoal-brand">Grand Total</span>
-            <span className="text-[22px] font-medium text-teal-brand">{formatCurrency(grandTotal)}</span>
+            <span className="text-[22px] font-medium text-teal-brand"><PesoSign />{formatPhpNumber(grandTotal)}</span>
           </div>
           {deposit > 0 && (
             <p className="mt-2 flex items-start gap-1.5 text-[11px] leading-relaxed text-charcoal-brand/40">
               <span>{'\u2139\uFE0F'}</span>
               <span>
-                Refundable security deposit of {formatCurrency(deposit)} collected on pickup — returned after your rental.
+                Refundable security deposit of <PesoSign />{formatPhpNumber(deposit)} collected on pickup — returned after your rental.
               </span>
             </p>
           )}
@@ -314,7 +316,7 @@ function Row({ label, amount }: { label: string; amount: number }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
       <span className="min-w-0 text-[13px] text-charcoal-brand/60">{label}</span>
-      <span className="shrink-0 text-[14px] font-medium text-charcoal-brand">{formatCurrency(amount)}</span>
+      <span className="shrink-0 text-[14px] font-medium text-charcoal-brand"><PesoSign />{formatPhpNumber(amount)}</span>
     </div>
   );
 }

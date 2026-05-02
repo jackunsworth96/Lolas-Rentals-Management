@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
+import type { ReactNode } from 'react';
 import {
   AlertTriangle,
   CloudRain,
@@ -10,8 +11,9 @@ import {
   MessageCircleQuestion,
 } from 'lucide-react';
 import { FadeUpSection } from '../public/FadeUpSection.js';
+import { PesoSign } from '../ui/PesoSign.js';
 import iconSafetyTips from '../../assets/Repairs/Safety Tips.svg';
-const TIPS: Array<{ title: string; body: string; Icon: LucideIcon }> = [
+const TIPS: Array<{ title: string; body: ReactNode; Icon: LucideIcon }> = [
   {
     Icon: AlertTriangle,
     title: 'Road Conditions',
@@ -40,7 +42,7 @@ const TIPS: Array<{ title: string; body: string; Icon: LucideIcon }> = [
   {
     Icon: Ban,
     title: "Don't Drink & Drive",
-    body: "Alcohol and island roads are a dangerous combination. Tricycles run all night — a ₱100 ride home beats a repair bill, or worse.",
+    body: <>Alcohol and island roads are a dangerous combination. Tricycles run all night — a <PesoSign />100 ride home beats a repair bill, or worse.</>,
   },
   {
     Icon: HardHat,

@@ -96,6 +96,7 @@ function blankForm(): Record<string, unknown> {
     sssDeductionAmt: 0,
     philhealthDeductionAmt: 0,
     pagibigDeductionAmt: 0,
+    telegramUserId: '',
   };
 }
 
@@ -127,6 +128,7 @@ function employeeToForm(e: EmployeeRow): Record<string, unknown> {
     sssDeductionAmt: e.sssDeductionAmt ?? 0,
     philhealthDeductionAmt: e.philhealthDeductionAmt ?? 0,
     pagibigDeductionAmt: e.pagibigDeductionAmt ?? 0,
+    telegramUserId: e.telegramUserId ?? '',
   };
 }
 
@@ -372,6 +374,29 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
                       className={inputCls}
                     />
                   </div>
+                </div>
+                <div>
+                  <label className={labelCls}>Telegram User ID</label>
+                  <input
+                    type="text"
+                    value={String(form.telegramUserId ?? '')}
+                    onChange={(e) => set('telegramUserId', e.target.value)}
+                    disabled={!editing}
+                    placeholder="e.g. 123456789"
+                    className={inputCls}
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Staff can find their ID by messaging{' '}
+                    <a
+                      href="https://t.me/userinfobot"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-blue-600 underline"
+                    >
+                      @userinfobot
+                    </a>{' '}
+                    on Telegram. Required for task DM notifications.
+                  </p>
                 </div>
               </div>
             )}

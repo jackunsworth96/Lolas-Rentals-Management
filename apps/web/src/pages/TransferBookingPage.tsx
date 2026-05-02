@@ -6,6 +6,7 @@ import { SEO } from '../components/seo/SEO.js';
 import { PageHeader } from '../components/public/PageHeader.js';
 import { PrimaryCtaButton } from '../components/public/PrimaryCtaButton.js';
 import { FadeUpSection } from '../components/public/FadeUpSection.js';
+import { PesoSign } from '../components/ui/PesoSign.js';
 import { today } from '../utils/date.js';
 import { WHATSAPP_URL } from '../config/contact.js';
 import { phoneIcon } from '../components/public/customerContactIcons.js';
@@ -226,6 +227,7 @@ export default function TransferBookingPage() {
       setConfirmedPickupTime(resp?.pickupTime ?? null);
       setConfirmedPickupTimeEnd(resp?.pickupTimeEnd ?? null);
       setIsConfirmed(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: unknown) {
       setSubmitError(err instanceof Error ? err.message : 'Something went wrong. Please try again or WhatsApp us directly.');
     } finally {
@@ -262,7 +264,7 @@ export default function TransferBookingPage() {
               <CheckCircle2 className="mb-4 text-teal-brand" size={64} />
               <h2 className="font-headline text-2xl font-black text-teal-brand">Booking Confirmed!</h2>
               <p className="mt-2 font-lato text-sm text-charcoal-brand/70">
-                We'll be in touch shortly to confirm your transfer details.
+                Your pick-up time has been automatically confirmed — see your booking summary below.
               </p>
 
               <div className="mt-8 w-full rounded-2xl border border-charcoal-brand/10 bg-sand-brand p-5">
@@ -282,7 +284,7 @@ export default function TransferBookingPage() {
                     <div className="flex items-center justify-between">
                       <span className="font-semibold text-charcoal-brand">Total</span>
                       <span className="font-headline text-xl font-bold text-teal-brand">
-                        ₱{calcTotal(vanSelection, paxCount).toLocaleString()}
+                        <PesoSign />{calcTotal(vanSelection, paxCount).toLocaleString()}
                       </span>
                     </div>
                   </div>
@@ -409,10 +411,9 @@ export default function TransferBookingPage() {
                           const selected =
                             vanSelection !== null && vanSelection.transferRouteId === opt.transferRouteId;
                           const isTukTuk = opt.vanType === 'TukTuk';
-                          const priceLine =
-                            opt.pricingType === 'per_head'
-                              ? `₱${opt.unitPrice.toLocaleString()} per person`
-                              : `₱${opt.unitPrice.toLocaleString()} total`;
+                          const priceLine = opt.pricingType === 'per_head'
+                            ? <><PesoSign />{opt.unitPrice.toLocaleString()} per person</>
+                            : <><PesoSign />{opt.unitPrice.toLocaleString()} total</>;
                           const blurb =
                             opt.vanType === 'Shared'
                               ? 'Perfect for solo travellers and couples'
@@ -528,7 +529,7 @@ export default function TransferBookingPage() {
                     </div>
                     {vanSelection?.pricingType === 'per_head' && (
                       <p className="mt-3 max-w-sm font-lato text-xs text-charcoal-brand/60">
-                        ₱{vanSelection.unitPrice.toLocaleString()} × {paxCount} passenger{paxCount !== 1 ? 's' : ''}
+                        <PesoSign />{vanSelection.unitPrice.toLocaleString()} × {paxCount} passenger{paxCount !== 1 ? 's' : ''}
                       </p>
                     )}
                   </div>
@@ -660,7 +661,7 @@ export default function TransferBookingPage() {
                     <div className="flex items-center justify-between">
                       <span className="font-semibold text-charcoal-brand">Total</span>
                       <span className="font-headline text-xl font-bold text-teal-brand">
-                        ₱{calcTotal(vanSelection, paxCount).toLocaleString()}
+                        <PesoSign />{calcTotal(vanSelection, paxCount).toLocaleString()}
                       </span>
                     </div>
                   </div>
