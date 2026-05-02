@@ -30,27 +30,17 @@ const FAVICON_LINKS: Array<{ rel: string; size: number }> = [
   { rel: 'icon', size: 512 },
 ];
 
-/** Thumb + aggressive g_auto (~25) zooms the subject vs plain c_fill (small in circle browsers). */
-const CUSTOMER_AUTO_GRAVITY = 25;
-
-function faviconTransforms(size: number, mode: 'customer' | 'backoffice'): string {
-  if (mode === 'customer') {
-    return `c_thumb,g_auto:${CUSTOMER_AUTO_GRAVITY},w_${size},h_${size}`;
-  }
+function faviconTransforms(size: number): string {
   return `c_fill,w_${size},h_${size}`;
 }
 
-function injectPngFavicons(
-  head: HTMLHeadElement,
-  imagePath: string,
-  mode: 'customer' | 'backoffice',
-) {
+function injectPngFavicons(head: HTMLHeadElement, imagePath: string) {
   FAVICON_LINKS.forEach(({ rel, size }) => {
     const link = document.createElement('link');
     link.rel = rel;
     link.type = 'image/png';
     link.setAttribute('sizes', `${size}x${size}`);
-    link.href = `${CLOUDINARY_BASE}/${faviconTransforms(size, mode)}/${imagePath}`;
+    link.href = `${CLOUDINARY_BASE}/${faviconTransforms(size)}/${imagePath}`;
     head.appendChild(link);
   });
 }
@@ -84,11 +74,7 @@ function setFaviconLinks(isBackOffice: boolean) {
   );
   existing.forEach((el) => el.remove());
 
-  injectPngFavicons(
-    head,
-    isBackOffice ? BACKOFFICE_IMAGE_PATH : CUSTOMER_IMAGE_PATH,
-    isBackOffice ? 'backoffice' : 'customer',
-  );
+  injectPngFavicons(head, isBackOffice ? BACKOFFICE_IMAGE_PATH : CUSTOMER_IMAGE_PATH);
 }
 
 /**
