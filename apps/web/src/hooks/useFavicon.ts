@@ -30,12 +30,20 @@ const FAVICON_LINKS: Array<{ rel: string; size: number }> = [
   { rel: 'icon', size: 512 },
 ];
 
-/** Lower = tighter crop (larger subject); higher = more padding. ~86 for a slightly smaller dog vs c_fill. */
-const CUSTOMER_THUMB_AGGRO = 86;
+/**
+ * Fits the mascot into ~62% of the square then pads with white so circular
+ * launcher/tab masks leave visible breathing room (matches “first favicon” feel).
+ */
+const CUSTOMER_ART_INSET_RATIO = 0.62;
+
+function customerFaviconTransform(size: number): string {
+  const inner = Math.max(1, Math.round(size * CUSTOMER_ART_INSET_RATIO));
+  return `c_fit,w_${inner},h_${inner}/c_pad,w_${size},h_${size},b_rgb:ffffff,g_center`;
+}
 
 function faviconTransforms(size: number, mode: 'customer' | 'backoffice'): string {
   if (mode === 'customer') {
-    return `c_thumb,g_auto:${CUSTOMER_THUMB_AGGRO},w_${size},h_${size}`;
+    return customerFaviconTransform(size);
   }
   return `c_fill,w_${size},h_${size}`;
 }
