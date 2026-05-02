@@ -10,11 +10,12 @@
     <meta name="robots" content="index, follow" />
     <meta name="author" content="Lola's Rentals & Tours Inc." />
 
-    <!-- Favicon: set dynamically per-route by useFavicon hook in App.tsx -->
-    <!-- Customer routes (/book/*) use the Cloudinary dog logo -->
-    <!-- Back-office routes use Cloudinary LRM tile (Creative_8_j1sv1c) -->
+    <!-- Favicon + manifest: swapped per-route by useFavicon hook in App.tsx -->
+    <!-- Customer routes (/book/*): dog logo, manifest.json, cream theme -->
+    <!-- Back-office routes (/login, /dashboard, etc.): LRM tile, manifest-backoffice.json, teal theme -->
     <link rel="icon" type="image/png" sizes="32x32" href="https://res.cloudinary.com/dk3c78pro/image/upload/c_thumb,g_auto:25,w_32,h_32/v1777723254/Lola_s_Style_Guide_Creative_7_slfvlj.png" />
-    <meta name="theme-color" content="#f5a623" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#f1e6d6" />
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />

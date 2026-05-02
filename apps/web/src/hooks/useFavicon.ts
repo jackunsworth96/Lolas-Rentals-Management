@@ -5,6 +5,9 @@ const CLOUDINARY_BASE = 'https://res.cloudinary.com/dk3c78pro/image/upload';
 const CUSTOMER_IMAGE_PATH = 'v1777723254/Lola_s_Style_Guide_Creative_7_slfvlj.png';
 const BACKOFFICE_IMAGE_PATH = 'v1777724927/Lola_s_Style_Guide_Creative_8_j1sv1c.png';
 
+const CUSTOMER_THEME_COLOR = '#f1e6d6';
+const BACKOFFICE_THEME_COLOR = '#14506e';
+
 const CUSTOMER_PATH_PREFIXES = [
   '/book',
   '/waiver',
@@ -52,6 +55,27 @@ function injectPngFavicons(
   });
 }
 
+function setManifest(isBackOffice: boolean) {
+  const head = document.head;
+  let link = head.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+  if (!link) {
+    link = document.createElement('link');
+    link.rel = 'manifest';
+    head.appendChild(link);
+  }
+  link.href = isBackOffice ? '/manifest-backoffice.json' : '/manifest.json';
+}
+
+function setThemeColor(isBackOffice: boolean) {
+  let meta = document.head.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  if (!meta) {
+    meta = document.createElement('meta');
+    meta.name = 'theme-color';
+    document.head.appendChild(meta);
+  }
+  meta.content = isBackOffice ? BACKOFFICE_THEME_COLOR : CUSTOMER_THEME_COLOR;
+}
+
 function setFaviconLinks(isBackOffice: boolean) {
   const head = document.head;
 
@@ -68,14 +92,18 @@ function setFaviconLinks(isBackOffice: boolean) {
 }
 
 /**
- * Swaps the favicon between the customer-facing logo and the back-office LRM
- * tile depending on the route. Back-office = anything that isn't
- * a /book, /waiver, or other public customer path.
+ * Swaps favicon icons, Web App Manifest, and theme-color based on whether
+ * the current route is customer-facing or back-office. This ensures Android
+ * Chrome reads the correct manifest (and therefore the correct home screen
+ * icon) when the user adds either shortcut to their home screen.
  */
 export function useFavicon() {
   const { pathname } = useLocation();
 
   useEffect(() => {
-    setFaviconLinks(isBackOfficePath(pathname));
+    const backOffice = isBackOfficePath(pathname);
+    setFaviconLinks(backOffice);
+    setManifest(backOffice);
+    setThemeColor(backOffice);
   }, [pathname]);
 }
