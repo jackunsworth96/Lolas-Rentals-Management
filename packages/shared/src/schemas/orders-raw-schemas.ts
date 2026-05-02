@@ -66,6 +66,10 @@ export interface OrdersRawRow {
   dropoff_location_address: string | null;
   /** Device type detected from the User-Agent at booking time (migration 110). Null for legacy rows. */
   device_type: 'mobile' | 'desktop' | null;
+  /** Accommodation partner slug when the booking was made via a partner referral link (migration 129). */
+  partner_ref: string | null;
+  /** Pure rental subtotal (days × daily rate) at booking time, used as commission base (migration 130). */
+  rental_value_raw: number | null;
 }
 
 /**
@@ -108,6 +112,8 @@ export const SubmitDirectBookingRequestSchema = z.object({
   pickupLocationAddress: z.string().max(500).optional(),
   /** Customer's exact address for a collection return when a non-store location is selected. */
   dropoffLocationAddress: z.string().max(500).optional(),
+  /** Accommodation partner referral slug captured from the ?ref= query param at booking entry. */
+  partnerRef: z.string().max(80).optional().nullable(),
 });
 
 export type SubmitDirectBookingInput = z.infer<typeof SubmitDirectBookingRequestSchema>;

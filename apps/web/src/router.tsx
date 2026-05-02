@@ -54,6 +54,8 @@ const CancelBookingPage = lazy(() => import('./pages/cancel/CancelBookingPage.js
 const NotFoundPage = lazy(() => import('./pages/not-found/NotFoundPage.js'));
 const CustomersPage = lazy(() => import('./pages/customers/CustomersPage.js'));
 const UnsubscribePage = lazy(() => import('./pages/unsubscribe/UnsubscribePage.js'));
+const PartnersPage = lazy(() => import('./pages/partners/PartnersPage.js'));
+const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage.js'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
@@ -155,6 +157,8 @@ export function AppRouter() {
             <Route path="dev-tools" element={<DevToolsPage />} />
             <Route path="directory" element={<DirectoryPage />} />
             <Route path="customers" element={<CustomersPage />} />
+            <Route path="partners" element={<PartnersPage />} />
+            <Route path="analytics" element={<AnalyticsPage />} />
           </Route>
           <Route path="*" element={<NotFoundPage />} />
         </Routes>

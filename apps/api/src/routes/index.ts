@@ -33,6 +33,8 @@ import { devToolsRoutes } from './dev-tools.js';
 import { customerRoutes } from './customers.js';
 import { unsubscribeRouter } from './unsubscribe.js';
 import { publicStatsRoutes } from './public-stats.js';
+import { partnerRoutes } from './partners.js';
+import { analyticsRoutes } from './analytics.js';
 import { loginLimiter, publicLimiter, apiLimiter } from '../middleware/rate-limit.js';
 import { telegramWebhookRouter } from '../telegram/telegram.webhook.js';
 
@@ -78,5 +80,7 @@ routes.use('/customers', customerRoutes);
 routes.use('/unsubscribe', unsubscribeRouter);
 routes.use('/public/telegram', telegramWebhookRouter);
 routes.use('/public/stats', publicStatsRoutes);
+routes.use('/partners', partnerRoutes);
+routes.use('/analytics', analyticsRoutes);
 
 export { routes };

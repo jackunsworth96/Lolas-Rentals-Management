@@ -189,6 +189,8 @@ export async function submitDirectBooking(
     pickupLocationAddress: input.pickupLocationAddress?.trim() || null,
     dropoffLocationAddress: input.dropoffLocationAddress?.trim() || null,
     deviceType: context?.deviceType ?? null,
+    partnerRef: input.partnerRef?.trim() || null,
+    rentalValueRaw: fullQuote?.rentalSubtotal ?? null,
   });
 
   // 6. Clean up the hold (best-effort; booking is already persisted).

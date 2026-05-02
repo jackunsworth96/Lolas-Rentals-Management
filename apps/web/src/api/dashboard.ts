@@ -179,6 +179,30 @@ export interface ChatSummary {
   byDevice: ChatDeviceRow[];
 }
 
+export interface PartnerSummaryRow {
+  partnerId: string;
+  partnerName: string;
+  slug: string;
+  totalBookings: number;
+  commissionableBookings: number;
+  commissionDue: number;
+}
+
+export interface PartnerDashboardSummary {
+  totalAttributedBookings: number;
+  totalCommission: number;
+  byPartner: PartnerSummaryRow[];
+}
+
+export function usePartnerDashboardSummary(storeId?: string) {
+  const params = storeId && storeId !== 'all' ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  return useQuery<PartnerDashboardSummary>({
+    queryKey: ['dashboard', 'partner-summary', storeId],
+    queryFn: () => api.get<PartnerDashboardSummary>(`/dashboard/partner-summary${params}`),
+    staleTime: 5 * 60_000,
+  });
+}
+
 export function useChatSummary(from?: string, to?: string) {
   const params = new URLSearchParams();
   if (from) params.set('from', from);

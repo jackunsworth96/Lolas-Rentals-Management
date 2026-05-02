@@ -75,6 +75,11 @@ export interface DirectBookingInsert {
   dropoffLocationAddress?: string | null;
   /** Device type detected from the User-Agent header at submission time. */
   deviceType?: 'mobile' | 'desktop' | null;
+  /** Accommodation partner referral slug. Stored in orders_raw.partner_ref (migration 129). */
+  partnerRef?: string | null;
+  /** Pure rental subtotal (days × daily rate) at booking time — excludes add-ons, fees, charity, transfer.
+   * Used as the commission base for percentage commissions (migration 130). */
+  rentalValueRaw?: number | null;
 }
 
 export interface DirectBookingResult {

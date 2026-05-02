@@ -320,6 +320,8 @@ export function createBookingAdapter(): BookingPort {
           pickup_location_address: input.pickupLocationAddress?.trim() || null,
           dropoff_location_address: input.dropoffLocationAddress?.trim() || null,
           device_type: input.deviceType ?? null,
+          partner_ref: input.partnerRef?.trim() || null,
+          rental_value_raw: input.rentalValueRaw ?? null,
         })
         .select('id, order_reference, cancellation_token')
         .single();

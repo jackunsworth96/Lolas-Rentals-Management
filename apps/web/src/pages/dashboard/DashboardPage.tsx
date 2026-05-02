@@ -6,6 +6,7 @@ import {
   useCharityImpact,
   useBasketAbandonmentSummary,
   useChatSummary,
+  usePartnerDashboardSummary,
   type StoreMetrics,
   type AddonRevenueRow,
   type CashBalanceRow,
@@ -118,6 +119,7 @@ export default function DashboardPage() {
   const { data: charityImpact } = useCharityImpact();
   const { data: basketAbandon } = useBasketAbandonmentSummary(selectedStoreId || undefined);
   const { data: chatSummary } = useChatSummary();
+  const { data: partnerSummary } = usePartnerDashboardSummary(selectedStoreId || undefined);
 
   const [selectedReturn, setSelectedReturn] = useState<NinePmVehicle | null>(null);
   const [showAvailability, setShowAvailability] = useState(false);
@@ -332,6 +334,56 @@ export default function DashboardPage() {
               <p className="mt-1 text-2xl font-semibold text-gray-900">{metrics.deviceSplit.total}</p>
             </div>
           </div>
+        </section>
+      )}
+
+      {/* SECTION — Partner Referrals */}
+      {partnerSummary != null && (partnerSummary.totalAttributedBookings > 0 || partnerSummary.byPartner.length > 0) && (
+        <section>
+          <div className="flex items-center justify-between">
+            <SectionHeading>Partner Referrals (This Month)</SectionHeading>
+            <a href="/partners" className="text-xs font-medium text-teal-600 hover:underline">Manage partners →</a>
+          </div>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+            <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Attributed Bookings</p>
+              <p className="mt-1 text-2xl font-semibold text-gray-900">{partnerSummary.totalAttributedBookings}</p>
+              <p className="mt-0.5 text-xs text-gray-400">via partner links this month</p>
+            </div>
+            <div className="rounded-lg border border-teal-200 bg-teal-50 p-5 shadow-sm">
+              <p className="text-xs font-medium uppercase tracking-wide text-teal-600">Commission Due (MTD)</p>
+              <p className="mt-1 text-2xl font-semibold text-teal-700">
+                ₱{partnerSummary.totalCommission.toLocaleString('en-PH', { minimumFractionDigits: 0 })}
+              </p>
+              <p className="mt-0.5 text-xs text-teal-500">commissionable advance bookings</p>
+            </div>
+          </div>
+          {partnerSummary.byPartner.length > 0 && (
+            <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 bg-gray-50">
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Partner</th>
+                    <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Bookings</th>
+                    <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Commissionable</th>
+                    <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Commission due</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {partnerSummary.byPartner.map((p) => (
+                    <tr key={p.partnerId} className="border-b border-gray-100 last:border-0">
+                      <td className="px-4 py-2.5 font-medium text-gray-900">{p.partnerName}</td>
+                      <td className="px-4 py-2.5 text-right text-gray-700">{p.totalBookings}</td>
+                      <td className="px-4 py-2.5 text-right text-gray-700">{p.commissionableBookings}</td>
+                      <td className="px-4 py-2.5 text-right font-semibold text-teal-700">
+                        ₱{p.commissionDue.toLocaleString('en-PH', { minimumFractionDigits: 0 })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       )}
 

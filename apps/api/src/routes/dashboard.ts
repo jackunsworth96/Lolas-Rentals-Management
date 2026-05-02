@@ -1237,4 +1237,119 @@ router.get('/chat-summary', async (req, res, next) => {
   }
 });
 
+// ── GET /partner-summary — partner attribution stats for dashboard ─────────────
+// Returns current-month commissionable bookings per partner, for the store filter.
+router.get('/partner-summary', async (req, res, next) => {
+  try {
+    const storeIdParam = req.query.storeId as string | undefined;
+    const storeFilter = storeIdParam && storeIdParam !== 'all' ? storeIdParam : undefined;
+    const sb = getSupabaseClient();
+
+    const manilaDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+    const monthStart = manilaDate.slice(0, 7) + '-01';
+    const nextMonthStart = (() => {
+      const [y, m] = manilaDate.slice(0, 7).split('-').map(Number);
+      return new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);
+    })();
+
+    // Fetch active partners
+    let partnersQuery = sb
+      .from('accommodation_partners')
+      .select('id, store_id, name, slug, commission_type, commission_value, advance_booking_days')
+      .eq('active', true);
+    if (storeFilter) partnersQuery = partnersQuery.eq('store_id', storeFilter);
+
+    const { data: partners, error: partnerErr } = await partnersQuery;
+    if (partnerErr) throw new Error(partnerErr.message);
+
+    if (!partners || partners.length === 0) {
+      res.json({ success: true, data: { totalAttributedBookings: 0, totalCommission: 0, byPartner: [] } });
+      return;
+    }
+
+    const slugs = (partners as { slug: string }[]).map((p) => p.slug);
+
+    // Fetch this month's attributed non-cancelled bookings from orders_raw
+    let rawQuery = sb
+      .from('orders_raw')
+      .select('partner_ref, pickup_datetime, web_quote_raw, status, created_at, store_id')
+      .in('partner_ref', slugs)
+      .neq('status', 'cancelled')
+      .gte('created_at', `${monthStart}T00:00:00+08:00`)
+      .lt('created_at', `${nextMonthStart}T00:00:00+08:00`);
+    if (storeFilter) rawQuery = rawQuery.eq('store_id', storeFilter);
+
+    const { data: rawRows, error: rawErr } = await rawQuery;
+    if (rawErr) throw new Error(rawErr.message);
+
+    // Aggregate per partner
+    type PartnerRow = {
+      id: string; store_id: string; name: string; slug: string;
+      commission_type: string; commission_value: number; advance_booking_days: number;
+    };
+    type RawRow = {
+      partner_ref: string | null; pickup_datetime: string | null;
+      web_quote_raw: number | null; status: string; created_at: string; store_id: string;
+    };
+
+    const partnerMap = new Map<string, PartnerRow>(
+      (partners as PartnerRow[]).map((p) => [p.slug, p]),
+    );
+
+    const aggMap = new Map<string, { totalBookings: number; commissionableBookings: number; commission: number }>();
+
+    for (const row of (rawRows ?? []) as RawRow[]) {
+      const slug = row.partner_ref;
+      if (!slug) continue;
+      const p = partnerMap.get(slug);
+      if (!p) continue;
+
+      if (!aggMap.has(slug)) aggMap.set(slug, { totalBookings: 0, commissionableBookings: 0, commission: 0 });
+      const agg = aggMap.get(slug)!;
+      agg.totalBookings++;
+
+      const advanceDays = row.pickup_datetime
+        ? (new Date(row.pickup_datetime).getTime() - new Date(row.created_at).getTime()) / 86_400_000
+        : null;
+
+      if (advanceDays !== null && advanceDays >= p.advance_booking_days) {
+        agg.commissionableBookings++;
+        agg.commission +=
+          p.commission_type === 'percentage'
+            ? Math.round((row.web_quote_raw ?? 0) * p.commission_value / 100 * 100) / 100
+            : p.commission_value;
+      }
+    }
+
+    const byPartner = (partners as PartnerRow[])
+      .map((p) => {
+        const agg = aggMap.get(p.slug) ?? { totalBookings: 0, commissionableBookings: 0, commission: 0 };
+        return {
+          partnerId: p.id,
+          partnerName: p.name,
+          slug: p.slug,
+          totalBookings: agg.totalBookings,
+          commissionableBookings: agg.commissionableBookings,
+          commissionDue: Math.round(agg.commission * 100) / 100,
+        };
+      })
+      .filter((p) => p.totalBookings > 0)
+      .sort((a, b) => b.commissionDue - a.commissionDue);
+
+    const totalAttributedBookings = byPartner.reduce((s, p) => s + p.totalBookings, 0);
+    const totalCommission = byPartner.reduce((s, p) => s + p.commissionDue, 0);
+
+    res.json({
+      success: true,
+      data: {
+        totalAttributedBookings,
+        totalCommission: Math.round(totalCommission * 100) / 100,
+        byPartner,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export { router as dashboardRoutes, queryCharityImpact, CHARITY_OPENING_BALANCE };

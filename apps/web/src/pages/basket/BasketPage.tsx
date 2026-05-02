@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client.js';
+import { getPartnerRef, clearPartnerRef } from '../../utils/partnerRef.js';
 import { useBookingStore, type BasketItem, type RenterDetails } from '../../stores/bookingStore.js';
 import { useToast } from '../../hooks/useToast.js';
 import { BasketVehicleCard } from '../../components/basket/BasketVehicleCard.js';
@@ -579,6 +580,7 @@ export default function BasketPage() {
             ...(dropoffLocationAddress.trim()
               ? { dropoffLocationAddress: dropoffLocationAddress.trim() }
               : {}),
+            ...(getPartnerRef() ? { partnerRef: getPartnerRef() } : {}),
           },
         );
         orderRefs.push(result.orderReference);
@@ -602,6 +604,7 @@ export default function BasketPage() {
       const grandTotal = baseTotal + surchargeAmount;
       // Persist email for confirmation page refresh/bookmark recovery
       sessionStorage.setItem(`confirm_email_${orderRefs[0]}`, renter.email.trim());
+      clearPartnerRef();
       resetBookingSession();
       clearRenterDetails();
       const confirmState = {
