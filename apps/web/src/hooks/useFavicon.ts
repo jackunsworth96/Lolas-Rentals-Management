@@ -27,13 +27,27 @@ const FAVICON_LINKS: Array<{ rel: string; size: number }> = [
   { rel: 'icon', size: 512 },
 ];
 
-function injectPngFavicons(head: HTMLHeadElement, imagePath: string) {
+/** Thumb + aggressive g_auto (~25) zooms the subject vs plain c_fill (small in circle browsers). */
+const CUSTOMER_AUTO_GRAVITY = 25;
+
+function faviconTransforms(size: number, mode: 'customer' | 'backoffice'): string {
+  if (mode === 'customer') {
+    return `c_thumb,g_auto:${CUSTOMER_AUTO_GRAVITY},w_${size},h_${size}`;
+  }
+  return `c_fill,w_${size},h_${size}`;
+}
+
+function injectPngFavicons(
+  head: HTMLHeadElement,
+  imagePath: string,
+  mode: 'customer' | 'backoffice',
+) {
   FAVICON_LINKS.forEach(({ rel, size }) => {
     const link = document.createElement('link');
     link.rel = rel;
     link.type = 'image/png';
     link.setAttribute('sizes', `${size}x${size}`);
-    link.href = `${CLOUDINARY_BASE}/c_fill,w_${size},h_${size}/${imagePath}`;
+    link.href = `${CLOUDINARY_BASE}/${faviconTransforms(size, mode)}/${imagePath}`;
     head.appendChild(link);
   });
 }
@@ -49,6 +63,7 @@ function setFaviconLinks(isBackOffice: boolean) {
   injectPngFavicons(
     head,
     isBackOffice ? BACKOFFICE_IMAGE_PATH : CUSTOMER_IMAGE_PATH,
+    isBackOffice ? 'backoffice' : 'customer',
   );
 }
 
