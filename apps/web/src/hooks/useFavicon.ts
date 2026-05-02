@@ -30,8 +30,8 @@ const FAVICON_LINKS: Array<{ rel: string; size: number }> = [
   { rel: 'icon', size: 512 },
 ];
 
-/** Lower = tighter crop (larger subject). Customer ~72 gives a bit of padding before OS circular mask. */
-const CUSTOMER_THUMB_AGGRO = 72;
+/** Lower = tighter crop (larger subject); higher = more padding. ~86 for a slightly smaller dog vs c_fill. */
+const CUSTOMER_THUMB_AGGRO = 86;
 
 function faviconTransforms(size: number, mode: 'customer' | 'backoffice'): string {
   if (mode === 'customer') {
