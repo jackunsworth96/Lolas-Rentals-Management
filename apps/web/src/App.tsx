@@ -5,6 +5,12 @@ import { AppRouter } from './router.js';
 import { ErrorBoundary } from './components/common/ErrorBoundary.js';
 import { BetaErrorBanner } from './components/common/BetaErrorBanner.js';
 import { ScrollToTop } from './components/ui/ScrollToTop.js';
+import { useFavicon } from './hooks/useFavicon.js';
+
+function FaviconSwitcher() {
+  useFavicon();
+  return null;
+}
 
 /** Set VITE_BETA_ERROR_NOTICE=true to show the WhatsApp error banner on all errors.
  *  Remove or set to false once the site is stable. */
@@ -31,6 +37,7 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <FaviconSwitcher />
         <ScrollToTop />
         <ErrorBoundary onError={triggerBetaError}>
           <AppRouter />
