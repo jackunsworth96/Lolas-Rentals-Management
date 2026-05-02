@@ -16,6 +16,7 @@ import {
 import { useLostOpportunities, type LostOpportunityRow } from '../../api/lost-opportunity.js';
 import { useStores } from '../../api/config.js';
 import { AvailabilityDetailModal } from '../../components/dashboard/AvailabilityDetailModal.js';
+import { CharityDonationsModal } from '../../components/dashboard/CharityDonationsModal.js';
 import { formatCurrency } from '../../utils/currency.js';
 import {
   ResponsiveContainer,
@@ -121,6 +122,7 @@ export default function DashboardPage() {
   const [selectedReturn, setSelectedReturn] = useState<NinePmVehicle | null>(null);
   const [showAvailability, setShowAvailability] = useState(false);
   const [showTomorrowAvailability, setShowTomorrowAvailability] = useState(false);
+  const [showCharityDonations, setShowCharityDonations] = useState(false);
 
   const metrics: StoreMetrics | null = useMemo(() => {
     if (!data?.stores) return null;
@@ -189,6 +191,7 @@ export default function DashboardPage() {
   }
 
   return (
+    <>
     <div className="space-y-8 p-6">
       <div className="flex items-center justify-between">
         <div>
@@ -969,15 +972,19 @@ export default function DashboardPage() {
               </div>
 
               {/* From bookings */}
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+              <button
+                type="button"
+                onClick={() => setShowCharityDonations(true)}
+                className="rounded-xl border border-gray-100 bg-gray-50 p-4 text-left transition-colors hover:border-teal-200 hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-400"
+              >
                 <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
                   From Customer Bookings
                 </p>
                 <p className="text-2xl font-bold text-gray-800">
                   {formatCurrency(charityImpact.bookingContributions)}
                 </p>
-                <p className="mt-1 text-xs text-gray-400">Booking charity donations</p>
-              </div>
+                <p className="mt-1 text-xs text-gray-400">Booking charity donations · click to view</p>
+              </button>
 
               {/* Pending payout */}
               <div
@@ -1037,5 +1044,11 @@ export default function DashboardPage() {
         </section>
       )}
     </div>
+
+    <CharityDonationsModal
+      open={showCharityDonations}
+      onClose={() => setShowCharityDonations(false)}
+    />
+    </>
   );
 }

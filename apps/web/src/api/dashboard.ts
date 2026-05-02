@@ -115,6 +115,23 @@ export function useCharityImpact() {
   });
 }
 
+export interface CharityDonationRow {
+  id: string;
+  customerName: string | null;
+  orderReference: string | null;
+  charityDonation: number;
+  createdAt: string;
+}
+
+export function useCharityDonations(enabled: boolean) {
+  return useQuery<CharityDonationRow[]>({
+    queryKey: ['dashboard', 'charity-donations'],
+    queryFn: () => api.get<CharityDonationRow[]>('/dashboard/charity-donations'),
+    staleTime: 2 * 60_000,
+    enabled,
+  });
+}
+
 export interface BasketAbandonmentSummary {
   total: number;
   basketViewed: number;

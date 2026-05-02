@@ -120,6 +120,7 @@ export interface CashupSummary {
     refundTotal: number;
     depositReturnTotal: number;
     depositAppliedTotal: number;
+    carryDepositsCashTotal: number;
   };
   expectedCash: number;
   stores: StoreInfo[];

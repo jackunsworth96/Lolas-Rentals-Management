@@ -202,16 +202,18 @@ export async function processRawOrder(
     !!input.paymentMethodId &&
     !!input.receivableAccountId &&
     (input.isCardPayment || !!input.paymentAccountId);
-  // The rental payment row records what was collected at activation for the
-  // rental + addons + surcharge only. Transfer and charity are collected
-  // as part of the overall balance — they are not split out as separate payments.
-  // When a partial amount is requested (e.g. customer pays now and settles the
-  // Peace of Mind addon later), use that instead so balance_due reflects what
-  // remains outstanding.
+  // The rental payment row captures everything collected at activation. When
+  // the full amount is paid (no partial specified), that includes rental,
+  // addons, surcharge, charity, and any billable transfer — all of which are
+  // part of finalTotal and therefore part of what the customer owes.
+  // Using only rentalIncomeTotal here previously left charity/transfer amounts
+  // permanently in balance_due even after full payment.
+  // When a partial payment is explicitly requested (< finalTotal), use that
+  // exact amount so balance_due reflects what genuinely remains outstanding.
   const rentalAmount =
-    input.partialPaymentAmount !== undefined && input.partialPaymentAmount < rentalIncomeTotal
+    input.partialPaymentAmount !== undefined && input.partialPaymentAmount < finalTotal
       ? input.partialPaymentAmount
-      : rentalIncomeTotal;
+      : finalTotal;
   const willCreateDepositPayment =
     input.securityDeposit > 0 &&
     !!input.depositMethodId &&
@@ -536,7 +538,7 @@ export async function processRawOrder(
           accountId: charityReceivableId,
           debit: Money.php(charityAmount),
           credit: Money.zero(),
-          description: `Order ${orderId} charity donation receivable (Be Pawsitive)`,
+          description: `${input.customer.name} charity donation receivable (Be Pawsitive)`,
           referenceType: 'order_charity',
           referenceId: orderId,
         },
@@ -545,7 +547,7 @@ export async function processRawOrder(
           accountId: charityPayableAccountId,
           debit: Money.zero(),
           credit: Money.php(charityAmount),
-          description: `Order ${orderId} charity donation payable (Be Pawsitive)`,
+          description: `${input.customer.name} charity donation payable (Be Pawsitive)`,
           referenceType: 'order_charity',
           referenceId: orderId,
         },

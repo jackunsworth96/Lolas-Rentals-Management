@@ -477,7 +477,7 @@ function HeroSection() {
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-1.5 rounded-full border border-charcoal-brand/10 bg-white/70 px-4 py-2.5 shadow-[0_4px_20px_rgba(54,55,55,0.06)] backdrop-blur-sm transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[0_6px_24px_rgba(54,55,55,0.09)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-brand sm:gap-x-4 sm:px-5 sm:py-3"
-            aria-label={`${roundedCustomers.toLocaleString()}+ customers — trusted by many, read on Google (opens in new tab)`}
+            aria-label={`${roundedCustomers.toLocaleString()}+  explorers — 5.0 on Google Reviews (opens in new tab)`}
           >
             <p className="shrink-0 text-left text-xs leading-tight text-charcoal-brand sm:text-sm" style={{ margin: 0 }}>
               <span className="font-extrabold text-teal-brand" aria-hidden="true">
@@ -491,7 +491,7 @@ function HeroSection() {
                   className="font-extrabold text-teal-brand"
                 />+
               </span>
-              <span className="font-medium"> customers</span>
+              <span className="font-medium"> explorers</span>
             </p>
             <div className="flex shrink-0 items-center gap-0.5 border-x border-charcoal-brand/10 px-2 sm:px-3" aria-hidden="true">
               {[0, 1, 2, 3, 4].map((i) => (
@@ -501,42 +501,88 @@ function HeroSection() {
               ))}
             </div>
             <p className="shrink-0 text-xs font-medium leading-tight text-charcoal-brand sm:text-sm" style={{ margin: 0 }}>
-              trusted by many
+              <span className="font-extrabold text-teal-brand">5.0</span>
+              <span className="text-charcoal-brand/40" aria-hidden="true">
+                {' '}
+                ·{' '}
+              </span>
+              Google Reviews
             </p>
           </a>
         </motion.div>
 
-        {/* CTA Button */}
+        {/* CTA + urgency — single pulse so button and line stay in sync */}
         <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: 'easeOut', delay: 0.7 }}
-          style={{ display: 'inline-block', transform: 'skewX(-4deg)' }}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            willChange: 'transform',
+          }}
+          initial={{ scale: 1 }}
+          animate={shouldAnimate ? { scale: [1, 1.022] } : { scale: 1 }}
+          transition={{
+            delay: prefersReducedMotion ? 0 : 1.35,
+            duration: 3,
+            repeat: Infinity,
+            repeatType: 'mirror',
+            ease: [0.45, 0, 0.55, 1],
+          }}
         >
           <motion.div
-            whileHover={shouldAnimate ? { x: -2, y: -2 } : {}}
-            whileTap={shouldAnimate ? { scale: 0.97 } : {}}
-            transition={{ duration: 0.15, ease: 'easeOut' }}
-            style={{ display: 'inline-block' }}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: 'easeOut', delay: 0.7 }}
+            style={{ display: 'inline-block', transform: 'skewX(-4deg)' }}
           >
-            <Link
-              to="/book/reserve"
-              className="inline-block rounded-[6px] border-2 border-charcoal-brand bg-gold-brand px-12 py-4 font-lato text-sm font-extrabold uppercase tracking-[0.05em] text-charcoal-brand transition-shadow duration-150"
-              style={{ boxShadow: '4px 4px 0 #363737' }}
-              onMouseEnter={(e) => {
-                if (!prefersReducedMotion) {
-                  (e.currentTarget as HTMLAnchorElement).style.boxShadow = '6px 6px 0 #363737';
-                }
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLAnchorElement).style.boxShadow = '4px 4px 0 #363737';
-              }}
+            <motion.div
+              whileHover={shouldAnimate ? { x: -2, y: -2 } : {}}
+              whileTap={shouldAnimate ? { scale: 0.97 } : {}}
+              transition={{ duration: 0.15, ease: 'easeOut' }}
+              style={{ display: 'inline-block' }}
             >
-              <span style={{ display: 'inline-block', transform: 'skewX(4deg)' }}>
-                Book Your Ride
-              </span>
-            </Link>
+              <Link
+                to="/book/reserve"
+                className="inline-block rounded-[6px] border-2 border-charcoal-brand bg-gold-brand px-12 py-4 font-lato text-sm font-extrabold uppercase tracking-[0.05em] text-charcoal-brand transition-shadow duration-150"
+                style={{ boxShadow: '4px 4px 0 #363737' }}
+                onMouseEnter={(e) => {
+                  if (!prefersReducedMotion) {
+                    (e.currentTarget as HTMLAnchorElement).style.boxShadow = '6px 6px 0 #363737';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLAnchorElement).style.boxShadow = '4px 4px 0 #363737';
+                }}
+              >
+                <span style={{ display: 'inline-block', transform: 'skewX(4deg)' }}>
+                  Book Your Ride
+                </span>
+              </Link>
+            </motion.div>
           </motion.div>
+
+          <motion.p
+            className="font-lato"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: 'easeOut', delay: prefersReducedMotion ? 0 : 0.82 }}
+            style={{
+              marginTop: 14,
+              marginBottom: 0,
+              paddingLeft: 16,
+              paddingRight: 16,
+              fontSize: 'clamp(11px, 3.2vw, 14px)',
+              lineHeight: 1.45,
+              fontWeight: 600,
+              color: '#363737',
+              textAlign: 'center',
+            }}
+          >
+            <span className="inline-block whitespace-nowrap">
+              Vehicles fill up fast in peak season -{' '}
+              <span className="font-extrabold text-teal-brand">secure yours now</span>
+            </span>
+          </motion.p>
         </motion.div>
 
         {/* Scroll-down arrow */}
@@ -726,6 +772,33 @@ export default function HomePage() {
               }}
             >
               <TiltedCard
+                icon={iconPawCard}
+                title="More Than Just a Rental"
+                cornerBadge={
+                  <span
+                    aria-label="Over five thousand pesos in included perks and partner savings"
+                    className="font-lato inline-flex items-center gap-0.5 rounded-full px-3 py-1.5 text-[11px] font-extrabold leading-tight shadow-md sm:text-xs"
+                    style={{
+                      background: 'linear-gradient(145deg, #FFE8BC 0%, #FCBC5A 45%, #E8A23A 100%)',
+                      color: '#063d52',
+                      boxShadow:
+                        '0 4px 14px rgba(252,188,90,0.4), 0 1px 0 rgba(255,255,255,0.55) inset',
+                      border: '1px solid rgba(0, 87, 124, 0.14)',
+                    }}
+                  >
+                    <PesoSign style={{ height: '0.92em', color: '#00577C' }} />
+                    <span className="tabular-nums tracking-tight">5000+</span>
+                    <span className="font-bold"> in perks</span>
+                  </span>
+                }
+                body="Every booking comes loaded with inclusions — helmet, rain gear, first aid kit and more. Plus our Paw Card unlocks exclusive discounts at 70+ island establishments."
+              />
+              <TiltedCard
+                icon={iconPeaceOfMind}
+                title="Always Ready for You"
+                body="Our fleet is regularly serviced and safety checked. And if anything comes up during your rental, our team is always reachable and responsive — we've got you covered."
+              />
+              <TiltedCard
                 icon={iconCommunity}
                 title="Rooted in Community"
                 body={
@@ -741,16 +814,6 @@ export default function HomePage() {
                     partnership. We&apos;re not just a rental — we&apos;re part of the island.
                   </>
                 }
-              />
-              <TiltedCard
-                icon={iconPeaceOfMind}
-                title="Always Ready for You"
-                body="Our fleet is regularly serviced and safety checked. And if anything comes up during your rental, our team is always reachable and responsive — we've got you covered."
-              />
-              <TiltedCard
-                icon={iconPawCard}
-                title="More Than Just a Rental"
-                body="Every booking comes loaded with inclusions — helmet, rain gear, first aid kit and more. Plus our Paw Card unlocks exclusive discounts at 70+ island establishments."
               />
             </div>
           </div>

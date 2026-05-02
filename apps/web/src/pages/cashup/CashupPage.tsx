@@ -486,6 +486,11 @@ export default function CashupPage() {
                 <SummaryCard
                   label="Opening Float"
                   value={summary.openingFloat.amount}
+                  subtitle={
+                    (summary.totals.carryDepositsCashTotal ?? 0) > 0
+                      ? `Adj. −${formatCurrency(summary.totals.carryDepositsCashTotal)} carry deposits → Cash Sales`
+                      : undefined
+                  }
                   badge={
                     summary.openingFloat.source === 'none'
                       ? 'No prior'
@@ -564,9 +569,9 @@ export default function CashupPage() {
                       label="Deposit to Rental"
                       value={summary.totals.depositAppliedTotal}
                       color="orange"
-                      subtitle="Deposit covered rental balance"
-                      badge="Info only"
-                      badgeColor="gray"
+                      subtitle="Counted in Cash / GCash Sales above"
+                      badge="Applied"
+                      badgeColor="green"
                     />
                   )}
                   {(summary.totals.discountsTotal ?? 0) > 0 && (

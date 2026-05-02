@@ -48,6 +48,8 @@ export interface ActivateOrderInput {
    * for all activation paths so charity is always folded into this RPC.
    */
   skipCharityPosting?: boolean;
+  /** Customer's display name, used in journal entry descriptions. */
+  customerName?: string;
 }
 
 export async function activateOrder(
@@ -136,13 +138,14 @@ export async function activateOrder(
   if (!input.skipCharityPosting && charityAmount && charityAmount.isPositive() && input.receivableAccountId) {
     const charityPayableAccountId = await resolveCharityPayableAccount(order.storeId);
     if (charityPayableAccountId) {
+      const charityLabel = input.customerName ?? `Order ${order.id}`;
       journalLegs.push(
         {
           entryId: crypto.randomUUID(),
           accountId: input.receivableAccountId,
           debit: charityAmount,
           credit: Money.zero(),
-          description: `Order ${order.id} charity donation receivable (Be Pawsitive)`,
+          description: `${charityLabel} charity donation receivable (Be Pawsitive)`,
           referenceType: 'order_charity',
           referenceId: order.id,
         },
@@ -151,7 +154,7 @@ export async function activateOrder(
           accountId: charityPayableAccountId,
           debit: Money.zero(),
           credit: charityAmount,
-          description: `Order ${order.id} charity donation payable (Be Pawsitive)`,
+          description: `${charityLabel} charity donation payable (Be Pawsitive)`,
           referenceType: 'order_charity',
           referenceId: order.id,
         },

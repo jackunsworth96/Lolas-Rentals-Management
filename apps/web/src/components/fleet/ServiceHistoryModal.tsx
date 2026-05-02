@@ -3,6 +3,7 @@ import { Badge } from '../common/Badge.js';
 import { useVehicleServiceHistory } from '../../api/maintenance.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { formatDate } from '../../utils/date.js';
+import { generateServiceHistoryPdf } from '../../utils/serviceHistoryPdf.js';
 
 interface ServiceHistoryModalProps {
   open: boolean;
@@ -29,7 +30,11 @@ interface MaintenanceRow {
   totalCost: number | { amount: number };
   downtimeStart: string | null;
   downtimeEnd: string | null;
+  totalDowntimeDays: number | null;
   odometer: number | null;
+  nextServiceDue: number | null;
+  nextServiceDueDate: string | null;
+  opsNotes: string | null;
   createdAt: string;
 }
 
@@ -87,13 +92,23 @@ export function ServiceHistoryModal({ open, onClose, vehicleId, vehicleName, sto
                     <span>Mechanic: <span className="text-gray-700">{r.mechanic}</span></span>
                   )}
                   {r.odometer != null && (
-                    <span>Odometer: <span className="text-gray-700">{r.odometer}</span></span>
+                    <span>Odometer: <span className="text-gray-700">{r.odometer.toLocaleString('en-PH')} km</span></span>
                   )}
                   {r.downtimeStart && (
                     <span>
                       Downtime: <span className="text-gray-700">
                         {formatDate(r.downtimeStart)} → {r.downtimeEnd ? formatDate(r.downtimeEnd) : 'ongoing'}
                       </span>
+                    </span>
+                  )}
+                  {r.nextServiceDueDate && (
+                    <span>
+                      Next service: <span className="text-gray-700">{formatDate(r.nextServiceDueDate)}</span>
+                    </span>
+                  )}
+                  {r.nextServiceDue != null && (
+                    <span>
+                      Next service (km): <span className="text-gray-700">{r.nextServiceDue.toLocaleString('en-PH')} km</span>
                     </span>
                   )}
                 </div>
@@ -113,11 +128,33 @@ export function ServiceHistoryModal({ open, onClose, vehicleId, vehicleName, sto
                     {moneyVal(r.laborCost) > 0 && <span>Labour: {formatCurrency(moneyVal(r.laborCost))}</span>}
                   </div>
                 )}
+
+                {r.opsNotes && (
+                  <p className="mt-2 text-xs text-gray-500">
+                    <span className="font-medium">Notes: </span>
+                    {r.opsNotes}
+                  </p>
+                )}
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {!isLoading && records.length > 0 && (
+        <div className="mt-4 flex justify-end border-t border-gray-200 pt-4">
+          <button
+            type="button"
+            onClick={() => generateServiceHistoryPdf(vehicleName, records)}
+            className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-gray-700 active:scale-95"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0-3-3m3 3 3-3M3 17v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2M7 10V7a5 5 0 0 1 10 0v3" />
+            </svg>
+            Export PDF
+          </button>
+        </div>
+      )}
     </Modal>
   );
 }

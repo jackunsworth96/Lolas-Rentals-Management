@@ -486,8 +486,14 @@ router.post('/:id/activate', requirePermission(Permission.EditOrders), validateB
 })), async (req, res, next) => {
   try {
     const { activateOrder } = await import('../use-cases/orders/activate-order.js');
+    const { data: rawOrderRow } = await supabase
+      .from('orders_raw')
+      .select('customer_name')
+      .eq('id', req.params.id)
+      .maybeSingle();
+    const customerName = (rawOrderRow as { customer_name?: string | null } | null)?.customer_name ?? undefined;
     const result = await activateOrder(req.app.locals.deps, {
-      orderId: req.params.id, employeeId: req.user!.employeeId, ...req.body,
+      orderId: req.params.id, employeeId: req.user!.employeeId, customerName, ...req.body,
     });
     res.json({ success: true, data: result });
   } catch (err) { next(err); }

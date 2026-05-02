@@ -896,6 +896,34 @@ async function queryCharityImpact(sb: ReturnType<typeof getSupabaseClient>) {
   };
 }
 
+// ── GET /charity-donations (authenticated) ────────────────────────────────────
+router.get('/charity-donations', async (req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+    const { data, error } = await sb
+      .from('orders_raw')
+      .select('id, customer_name, order_reference, charity_donation, created_at')
+      .not('charity_donation', 'is', null)
+      .gt('charity_donation', 0)
+      .order('created_at', { ascending: false })
+      .limit(200);
+
+    if (error) throw error;
+
+    const rows = (data ?? []).map((r) => ({
+      id: (r as { id: string }).id,
+      customerName: (r as { customer_name?: string | null }).customer_name ?? null,
+      orderReference: (r as { order_reference?: string | null }).order_reference ?? null,
+      charityDonation: Number((r as { charity_donation: number }).charity_donation),
+      createdAt: (r as { created_at: string }).created_at,
+    }));
+
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── GET /charity-impact (authenticated) ──────────────────────────────────────
 router.get('/charity-impact', async (req, res, next) => {
   try {

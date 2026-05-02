@@ -196,6 +196,32 @@ router.get(
       const transferEntries = (transfersRes.data ?? []) as Record<string, unknown>[];
       const miscSales = (miscSalesRes.data ?? []) as Record<string, unknown>[];
       const charityEntries = (charityRes.data ?? []) as Record<string, unknown>[];
+
+      // Enrich charity descriptions: replace UUID order ids with customer names
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const charityOrderIds = charityEntries
+        .map((c) => c.reference_id as string | null)
+        .filter((id): id is string => !!id && uuidRegex.test(id));
+      if (charityOrderIds.length > 0) {
+        const { data: rawRows } = await sb
+          .from('orders_raw')
+          .select('id, customer_name')
+          .in('id', charityOrderIds);
+        const customerByOrderId = new Map(
+          ((rawRows ?? []) as { id: string; customer_name?: string | null }[])
+            .filter((r) => r.customer_name)
+            .map((r) => [r.id, r.customer_name as string]),
+        );
+        for (const entry of charityEntries) {
+          const refId = entry.reference_id as string | null;
+          if (refId && customerByOrderId.has(refId)) {
+            const customerName = customerByOrderId.get(refId)!;
+            if (typeof entry.description === 'string') {
+              entry.description = entry.description.replace(`Order ${refId}`, customerName);
+            }
+          }
+        }
+      }
       const allStores = ((storesRes.data ?? []) as { id: string; name: string; default_float_amount: number }[]);
       const currentStore = allStores.find((s) => s.id === storeId);
       const otherStores = allStores.filter((s) => s.id !== storeId);
@@ -463,6 +489,83 @@ router.get(
       });
       const depositAppliedTotal = depositAppliedRows.reduce((s, r) => s + r.amount, 0);
 
+      // ── Reclassify prior-day carry deposits as income on settlement day ────────
+      // When a deposit collected on a PREVIOUS day is applied to the rental balance
+      // today during settlement, it stops being a held liability and becomes rental
+      // income.  We add the original payment amount into the matching sales bucket
+      // (cash → cashSalesTotal, gcash → gcashSalesTotal, etc.) and, for CASH
+      // deposits only, reduce openingAmount by the same figure later to prevent
+      // double-counting — the prior closing balance already included those cash
+      // deposits in the physical till total.
+      let carryDepositsCashTotal = 0;
+      if (depositAppliedOrderIds.length > 0) {
+        const { data: carryDepPayments, error: carryDepError } = await sb
+          .from('payments')
+          .select(
+            'id, payment_method_id, amount, order_id, created_at, customers!customer_id(name), orders!order_id(woo_order_id)',
+          )
+          .in('order_id', depositAppliedOrderIds)
+          .in('payment_type', ['deposit', 'security_deposit'])
+          .lt('transaction_date', date);
+        if (carryDepError)
+          throw new Error(`Carry-deposit reclassification query failed: ${carryDepError.message}`);
+
+        // Cap reclassification per order to the amount actually applied today.
+        // This handles partial-apply scenarios where only part of the deposit was
+        // applied to the balance and the remainder was returned to the customer.
+        const appliedByOrder = new Map<string, number>();
+        for (const e of depositAppliedEntries) {
+          const oid = String(e.reference_id ?? '');
+          appliedByOrder.set(oid, (appliedByOrder.get(oid) ?? 0) + Number(e.credit ?? 0));
+        }
+
+        const reclassifiedByOrder = new Map<string, number>();
+        for (const dep of (carryDepPayments ?? []) as Record<string, unknown>[]) {
+          const orderId = String(dep.order_id ?? '');
+          const rawMethodId = (dep.payment_method_id as string) ?? '';
+          const methodKey = rawMethodId.toLowerCase().replace(/[\s_-]/g, '');
+          const depAmount = Number(dep.amount ?? 0);
+
+          const appliedCap = appliedByOrder.get(orderId) ?? 0;
+          const alreadyReclassified = reclassifiedByOrder.get(orderId) ?? 0;
+          const toReclassify = Math.min(depAmount, appliedCap - alreadyReclassified);
+          if (toReclassify <= 0) continue;
+
+          reclassifiedByOrder.set(orderId, alreadyReclassified + toReclassify);
+
+          const cat = resolveMethodCategory(methodKey);
+          const customer = dep.customers as { name: string } | null;
+          const order = dep.orders as { woo_order_id: string | null } | null;
+          const row = {
+            id: dep.id,
+            paymentType: 'deposit_applied',
+            amount: toReclassify,
+            methodId: rawMethodId,
+            settlementRef: null,
+            settlementStatus: null,
+            customerName: customer?.name ?? null,
+            wooOrderId: order?.woo_order_id ?? null,
+            orderId: dep.order_id ?? null,
+            createdAt: dep.created_at ?? null,
+          };
+
+          if (cat === 'cash') {
+            cashSalesTx.push(row);
+            cashSalesTotal += toReclassify;
+            carryDepositsCashTotal += toReclassify;
+          } else if (cat === 'gcash') {
+            gcashSalesTx.push(row);
+            gcashSalesTotal += toReclassify;
+          } else if (cat === 'card') {
+            cardSalesTx.push(row);
+            cardSalesTotal += toReclassify;
+          } else {
+            bankTransferTx.push(row);
+            bankTransferTotal += toReclassify;
+          }
+        }
+      }
+
       // Only cash deposits affect the physical till
       const cashDepositsHeldTotal = depositsHeldByMethod['Cash']?.total ?? 0;
 
@@ -595,6 +698,10 @@ router.get(
         openingSource = prev.overridden_by ? 'override' : 'previous_day';
       }
 
+      // Cash carry-deposits are now counted in cashSalesTotal; remove them from
+      // openingAmount so they are not counted twice in expectedCash.
+      openingAmount -= carryDepositsCashTotal;
+
       // Only cash-method payments affect the physical till.
       // Subtract cash refunds (manual Issue Refund) and deposit returns (settle flow).
       const totalCashIn = cashSalesTotal + cashDepositsHeldTotal + miscCashTotal;
@@ -702,6 +809,7 @@ router.get(
             refundTotal: cashRefundTotal + cardRefundTotal + gcashRefundTotal + bankRefundTotal,
             depositReturnTotal,
             depositAppliedTotal,
+            carryDepositsCashTotal,
           },
           charityDonations: charityDonationRows,
           expectedCash,

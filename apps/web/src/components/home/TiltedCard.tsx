@@ -12,6 +12,8 @@ interface TiltedCardProps {
   icon: string;
   title: string;
   body: ReactNode;
+  /** Optional callout (e.g. value badge) — pinned top-right inside the card */
+  cornerBadge?: ReactNode;
   rotateAmplitude?: number;
   scaleOnHover?: number;
 }
@@ -22,6 +24,7 @@ export default function TiltedCard({
   icon,
   title,
   body,
+  cornerBadge,
   rotateAmplitude = 12,
   scaleOnHover = 1.04,
 }: TiltedCardProps) {
@@ -60,12 +63,18 @@ export default function TiltedCard({
         viewport={{ once: true, amount: 0.08, margin: '0px 0px -60px 0px' }}
         transition={{ duration: 0.5, ease: 'easeOut' }}
         style={{
+          position: 'relative',
           borderRadius: '14px',
           backgroundColor: '#FFFFFF',
           boxShadow: TILE_SHADOW_IDLE,
           padding: '40px',
         }}
       >
+        {cornerBadge != null ? (
+          <div style={{ position: 'absolute', top: 20, right: 20, zIndex: 1, maxWidth: 'calc(100% - 100px)' }}>
+            {cornerBadge}
+          </div>
+        ) : null}
         <img src={icon} alt="" style={{ width: 64, height: 64, marginBottom: 20, display: 'block' }} />
         <h3 className="font-headline font-bold" style={{ fontSize: 22, color: '#00577C', marginBottom: 12, lineHeight: 1.3 }}>
           {title}
@@ -93,6 +102,7 @@ export default function TiltedCard({
     >
       <motion.div
         style={{
+          position: 'relative',
           rotateX,
           rotateY,
           scale,
@@ -104,6 +114,20 @@ export default function TiltedCard({
           transition: 'box-shadow 0.3s ease',
         }}
       >
+        {cornerBadge != null ? (
+          <div
+            style={{
+              position: 'absolute',
+              top: 20,
+              right: 20,
+              zIndex: 1,
+              maxWidth: 'calc(100% - 100px)',
+              transform: 'translateZ(24px)',
+            }}
+          >
+            {cornerBadge}
+          </div>
+        ) : null}
         <img
           src={icon}
           alt=""
