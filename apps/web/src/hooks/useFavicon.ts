@@ -30,17 +30,27 @@ const FAVICON_LINKS: Array<{ rel: string; size: number }> = [
   { rel: 'icon', size: 512 },
 ];
 
-function faviconTransforms(size: number): string {
+/** Lower = tighter crop (larger subject). Customer ~72 gives a bit of padding before OS circular mask. */
+const CUSTOMER_THUMB_AGGRO = 72;
+
+function faviconTransforms(size: number, mode: 'customer' | 'backoffice'): string {
+  if (mode === 'customer') {
+    return `c_thumb,g_auto:${CUSTOMER_THUMB_AGGRO},w_${size},h_${size}`;
+  }
   return `c_fill,w_${size},h_${size}`;
 }
 
-function injectPngFavicons(head: HTMLHeadElement, imagePath: string) {
+function injectPngFavicons(
+  head: HTMLHeadElement,
+  imagePath: string,
+  mode: 'customer' | 'backoffice',
+) {
   FAVICON_LINKS.forEach(({ rel, size }) => {
     const link = document.createElement('link');
     link.rel = rel;
     link.type = 'image/png';
     link.setAttribute('sizes', `${size}x${size}`);
-    link.href = `${CLOUDINARY_BASE}/${faviconTransforms(size)}/${imagePath}`;
+    link.href = `${CLOUDINARY_BASE}/${faviconTransforms(size, mode)}/${imagePath}`;
     head.appendChild(link);
   });
 }
@@ -74,7 +84,11 @@ function setFaviconLinks(isBackOffice: boolean) {
   );
   existing.forEach((el) => el.remove());
 
-  injectPngFavicons(head, isBackOffice ? BACKOFFICE_IMAGE_PATH : CUSTOMER_IMAGE_PATH);
+  injectPngFavicons(
+    head,
+    isBackOffice ? BACKOFFICE_IMAGE_PATH : CUSTOMER_IMAGE_PATH,
+    isBackOffice ? 'backoffice' : 'customer',
+  );
 }
 
 /**
