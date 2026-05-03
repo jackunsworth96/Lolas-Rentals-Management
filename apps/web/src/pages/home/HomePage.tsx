@@ -420,8 +420,8 @@ function HeroSection() {
         />
       </motion.div>
 
-      {/* ── Hero content — centered block; scroll sits absolutely within the section ── */}
-      <div className="relative z-10 flex h-full flex-col items-center justify-center px-6 pb-16 pt-[calc(4.15rem+0.55rem)] text-center sm:pb-20 sm:pt-[calc(5rem+2cm)]">
+      {/* ── Hero content ── */}
+      <div className="relative z-10 flex h-full flex-col items-center justify-center px-6 pb-8 pt-[calc(4.15rem+0.55rem)] text-center sm:pb-14 sm:pt-[calc(5rem+2cm)]">
         {/* Headline */}
         <h1
           className="font-headline font-extrabold"
@@ -615,43 +615,6 @@ function HeroSection() {
           </motion.p>
         </motion.div>
       </div>
-
-      {/* Scroll-down arrow — absolute within section so it never affects content centering */}
-      <motion.button
-        onClick={() => window.scrollBy({ top: window.innerHeight * 0.85, behavior: 'smooth' })}
-        aria-label="Scroll down"
-        animate={shouldAnimate ? { y: [0, 8, 0] } : {}}
-        transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-        whileHover={{ scale: 1.15 }}
-        whileTap={{ scale: 0.92 }}
-        className="absolute bottom-5 left-0 right-0 z-20 mx-auto flex w-fit flex-col items-center sm:bottom-7"
-        style={{
-          gap: 4,
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          color: '#00577C',
-          opacity: 0.7,
-          padding: 0,
-        }}
-      >
-        <span className="font-lato" style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-          Scroll
-        </span>
-        <svg
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </motion.button>
 
     </section>
   );
