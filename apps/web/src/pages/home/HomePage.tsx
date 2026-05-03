@@ -196,7 +196,11 @@ function HeroSection() {
     <section
       ref={heroRef}
       className="relative z-10 overflow-visible"
-      style={{ minHeight: '560px', height: '70vh', backgroundColor: HOME_SAND }}
+      style={{
+        minHeight: isMobileFlower ? 'min(580px, 92dvh)' : '560px',
+        height: isMobileFlower ? '78vh' : '70vh',
+        backgroundColor: HOME_SAND,
+      }}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
@@ -416,16 +420,15 @@ function HeroSection() {
         />
       </motion.div>
 
-      {/* ── Hero content ─────────────────────────────────────── */}
-      <div className="relative z-10 flex h-full flex-col items-center justify-center px-6 pb-24 pt-[calc(5rem+2cm)] max-sm:pb-36 text-center">
+      {/* ── Hero content — mobile: space-between so copy sits higher & scroll anchors low (less top-heavy) ── */}
+      <div className="relative z-10 flex h-full w-full flex-col items-center justify-between px-6 pb-10 pt-[calc(4.15rem+0.55rem)] text-center max-sm:pb-14 sm:justify-center sm:pb-24 sm:pt-[calc(5rem+2cm)]">
+        <div className="flex w-full flex-shrink-0 flex-col items-center sm:w-auto">
         {/* Headline */}
         <h1
-          className="font-headline font-extrabold"
+          className="font-headline max-sm:mb-3 max-sm:text-[clamp(1.875rem,6.6vw,2.35rem)] font-extrabold sm:mb-6 sm:text-[clamp(2.25rem,5vw,3.25rem)]"
           style={{
-            fontSize: 'clamp(36px, 5vw, 52px)',
             textAlign: 'center',
             lineHeight: 1.15,
-            marginBottom: 24,
           }}
           aria-label="Siargao Scooter & TukTuk Rentals Without The Sketchy Experience"
         >
@@ -445,17 +448,15 @@ function HeroSection() {
 
         {/* Subheadline */}
         <motion.p
-          className="font-lato"
+          className="font-lato mx-auto max-sm:mb-4 max-sm:max-w-[22rem] max-sm:text-base sm:mb-6 sm:max-w-[560px] sm:text-lg"
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: 'easeOut', delay: 0.5 }}
           style={{
-            fontSize: 18,
             color: '#363737',
             textAlign: 'center',
-            maxWidth: 560,
             lineHeight: 1.6,
-            margin: '0 auto 24px',
+            margin: '0 auto',
           }}
         >
           Safe bikes. Transparent pricing. No funny business.
@@ -463,16 +464,10 @@ function HeroSection() {
 
         {/* Trust — review count + Google */}
         <motion.div
-          className="font-lato"
+          className="font-lato mb-7 flex w-full justify-center max-sm:mb-4"
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: 'easeOut', delay: 0.58 }}
-          style={{
-            marginBottom: 28,
-            display: 'flex',
-            justifyContent: 'center',
-            width: '100%',
-          }}
         >
           <a
             href={LOLAS_GOOGLE_REVIEWS_URL}
@@ -533,12 +528,9 @@ function HeroSection() {
 
         {/* CTA + urgency — single pulse so button and line stay in sync */}
         <motion.div
+          className="mt-5 flex flex-col items-center sm:mt-[1cm]"
           style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
             willChange: 'transform',
-            marginTop: '1cm',
           }}
           initial={{ scale: 1 }}
           animate={shouldAnimate ? { scale: [1, 1.022] } : { scale: 1 }}
@@ -564,7 +556,7 @@ function HeroSection() {
             >
               <Link
                 to="/book/reserve"
-                className="inline-block rounded-[6px] border-2 border-charcoal-brand bg-gold-brand px-12 py-4 font-lato text-sm font-extrabold uppercase tracking-[0.05em] text-charcoal-brand transition-shadow duration-150"
+                className="inline-block rounded-[6px] border-2 border-charcoal-brand bg-gold-brand px-10 py-3.5 font-lato text-sm font-extrabold uppercase tracking-[0.05em] text-charcoal-brand transition-shadow duration-150 sm:px-12 sm:py-4"
                 style={{ boxShadow: '4px 4px 0 #363737' }}
                 onMouseEnter={(e) => {
                   if (!prefersReducedMotion) {
@@ -609,8 +601,11 @@ function HeroSection() {
           </motion.p>
         </motion.div>
 
+        </div>
+
         {/* Scroll-down arrow */}
         <motion.button
+          className="mt-0 shrink-0 sm:mt-10"
           onClick={() => window.scrollBy({ top: window.innerHeight * 0.85, behavior: 'smooth' })}
           aria-label="Scroll down"
           animate={shouldAnimate ? { y: [0, 8, 0] } : {}}
@@ -622,7 +617,6 @@ function HeroSection() {
             flexDirection: 'column',
             alignItems: 'center',
             gap: 4,
-            marginTop: 40,
             background: 'none',
             border: 'none',
             cursor: 'pointer',

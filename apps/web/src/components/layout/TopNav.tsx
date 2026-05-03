@@ -142,13 +142,12 @@ export default function TopNav({ items, rightSlot }: TopNavProps) {
           type="button"
           aria-label={menuOpen ? 'Close menu' : 'Open menu'}
           onClick={() => setMenuOpen((o) => !o)}
-          className="absolute left-1/2 z-10 -translate-x-1/2 cursor-pointer focus:outline-none"
-          style={{ top: -20 }}
+          className="absolute left-1/2 z-10 -translate-x-1/2 cursor-pointer focus:outline-none max-md:top-[-12px] md:top-[-20px]"
         >
           <motion.img
             src={menuPaw}
             alt=""
-            className="h-auto w-[7.2rem] max-w-none drop-shadow-md"
+            className="h-auto w-[6.1rem] max-w-none drop-shadow-md md:w-[7.2rem]"
             whileHover={{ y: menuOpen ? 0 : 12 }}
             transition={{ duration: 0.28, ease: 'easeOut' }}
           />
