@@ -420,14 +420,16 @@ function HeroSection() {
         />
       </motion.div>
 
-      {/* ── Hero content ── */}
-      <div className="relative z-10 flex h-full w-full flex-col items-center justify-center px-6 pb-4 pt-[calc(4.15rem+0.55rem)] text-center sm:pb-24 sm:pt-[calc(5rem+2cm)]">
+      {/* ── Hero content — centered block; scroll sits absolutely within the section ── */}
+      <div className="relative z-10 flex h-full flex-col items-center justify-center px-6 pb-16 pt-[calc(4.15rem+0.55rem)] text-center sm:pb-20 sm:pt-[calc(5rem+2cm)]">
         {/* Headline */}
         <h1
-          className="font-headline max-sm:mb-4 max-sm:text-[clamp(1.875rem,6.6vw,2.35rem)] font-extrabold sm:mb-6 sm:text-[clamp(2.25rem,5vw,3.25rem)]"
+          className="font-headline font-extrabold"
           style={{
+            fontSize: 'clamp(1.875rem, 6.6vw, 3.25rem)',
             textAlign: 'center',
             lineHeight: 1.15,
+            marginBottom: 'clamp(12px, 2.5vw, 24px)',
           }}
           aria-label="Siargao Scooter & TukTuk Rentals Without The Sketchy Experience"
         >
@@ -447,79 +449,97 @@ function HeroSection() {
 
         {/* Subheadline */}
         <motion.p
-          className="font-lato mx-auto max-sm:mb-7 max-sm:max-w-[22rem] max-sm:text-base sm:mb-6 sm:max-w-[560px] sm:text-lg"
+          className="font-lato mx-auto max-w-[22rem] sm:max-w-[560px]"
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: 'easeOut', delay: 0.5 }}
           style={{
+            fontSize: 'clamp(15px, 3.5vw, 18px)',
             color: '#363737',
             textAlign: 'center',
             lineHeight: 1.6,
-            margin: '0 auto',
+            marginLeft: 'auto',
+            marginRight: 'auto',
+            marginBottom: 'clamp(20px, 4vw, 28px)',
           }}
         >
           Safe bikes. Transparent pricing. No funny business.
         </motion.p>
 
-        {/* Trust — review count + Google */}
+        {/* Trust — mobile: flat single row, no pill; desktop: pill */}
         <motion.div
-          className="font-lato mb-7 flex w-full justify-center max-sm:mb-8"
+          className="font-lato flex w-full justify-center"
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: 'easeOut', delay: 0.58 }}
+          style={{ marginBottom: 'clamp(24px, 5vw, 32px)' }}
         >
+          {/* Mobile — flat inline row, no pill background */}
           <a
             href={LOLAS_GOOGLE_REVIEWS_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex max-w-full flex-col items-center gap-1.5 rounded-full border border-charcoal-brand/10 bg-white/70 px-4 py-2 shadow-[0_4px_20px_rgba(54,55,55,0.06)] backdrop-blur-sm transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[0_6px_24px_rgba(54,55,55,0.09)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-brand sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-1.5 sm:px-5 sm:py-3"
-            aria-label={`${roundedCustomers.toLocaleString()}+  explorers — 5.0 on Google Reviews (opens in new tab)`}
+            className="sm:hidden flex items-center justify-center gap-2 text-xs font-medium text-charcoal-brand"
+            aria-label={`${roundedCustomers.toLocaleString()}+ explorers — 5.0 on Google Reviews (opens in new tab)`}
           >
-            <div className="flex w-full max-w-full items-center justify-center gap-x-2.5 sm:contents">
-              <p
-                className="min-w-0 shrink text-center text-xs leading-tight text-charcoal-brand sm:shrink-0 sm:text-left sm:text-sm"
-                style={{ margin: 0 }}
-              >
-                <span className="font-extrabold text-teal-brand" aria-hidden="true">
-                  <CountUp
-                    key={roundedCustomers}
-                    to={roundedCustomers}
-                    from={countUpFrom}
-                    duration={2.2}
-                    delay={0.7}
-                    separator=","
-                    className="font-extrabold text-teal-brand"
-                  />+
-                </span>
-                <span className="font-medium"> explorers</span>
-              </p>
-              <div
-                className="flex shrink-0 items-center gap-0.5 px-0 sm:border-x sm:border-charcoal-brand/10 sm:px-3"
-                aria-hidden="true"
-              >
-                {[0, 1, 2, 3, 4].map((i) => (
-                  <svg
-                    key={i}
-                    width={15}
-                    height={15}
-                    viewBox="0 0 24 24"
-                    fill="#FCBC5A"
-                    className="sm:h-[18px] sm:w-[18px]"
-                  >
-                    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
-                  </svg>
-                ))}
-              </div>
-            </div>
-            <p
-              className="w-full shrink-0 whitespace-nowrap text-center text-xs font-medium leading-tight text-charcoal-brand sm:w-auto sm:text-left sm:text-sm"
-              style={{ margin: 0 }}
-            >
+            <span>
+              <CountUp
+                key={roundedCustomers}
+                to={roundedCustomers}
+                from={countUpFrom}
+                duration={2.2}
+                delay={0.7}
+                separator=","
+                className="font-extrabold text-teal-brand"
+              />
+              <span className="font-extrabold text-teal-brand">+</span>
+              <span className="font-medium text-charcoal-brand"> explorers</span>
+            </span>
+            <span className="flex shrink-0 items-center gap-0.5" aria-hidden="true">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <svg key={i} width={13} height={13} viewBox="0 0 24 24" fill="#FCBC5A">
+                  <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+                </svg>
+              ))}
+            </span>
+            <span>
               <span className="font-extrabold text-teal-brand">5.0</span>
-              <span className="text-charcoal-brand/40" aria-hidden="true">
-                {' '}
-                ·{' '}
-              </span>
+              <span className="text-charcoal-brand/40"> · </span>
+              Google Reviews
+            </span>
+          </a>
+
+          {/* Desktop/tablet — full pill */}
+          <a
+            href={LOLAS_GOOGLE_REVIEWS_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden sm:inline-flex max-w-full flex-row flex-wrap items-center gap-x-4 gap-y-1.5 rounded-full border border-charcoal-brand/10 bg-white/70 px-5 py-3 shadow-[0_4px_20px_rgba(54,55,55,0.06)] backdrop-blur-sm transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[0_6px_24px_rgba(54,55,55,0.09)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-brand"
+            aria-label={`${roundedCustomers.toLocaleString()}+ explorers — 5.0 on Google Reviews (opens in new tab)`}
+          >
+            <p className="shrink-0 text-left text-sm leading-tight text-charcoal-brand" style={{ margin: 0 }}>
+              <CountUp
+                key={roundedCustomers}
+                to={roundedCustomers}
+                from={countUpFrom}
+                duration={2.2}
+                delay={0.7}
+                separator=","
+                className="font-extrabold text-teal-brand"
+              />
+              <span className="font-extrabold text-teal-brand">+</span>
+              <span className="font-medium"> explorers</span>
+            </p>
+            <div className="flex shrink-0 items-center gap-0.5 border-x border-charcoal-brand/10 px-3" aria-hidden="true">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <svg key={i} width={18} height={18} viewBox="0 0 24 24" fill="#FCBC5A">
+                  <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+                </svg>
+              ))}
+            </div>
+            <p className="shrink-0 whitespace-nowrap text-left text-sm font-medium leading-tight text-charcoal-brand" style={{ margin: 0 }}>
+              <span className="font-extrabold text-teal-brand">5.0</span>
+              <span className="text-charcoal-brand/40"> · </span>
               Google Reviews
             </p>
           </a>
@@ -527,10 +547,8 @@ function HeroSection() {
 
         {/* CTA + urgency — single pulse so button and line stay in sync */}
         <motion.div
-          className="mt-0 flex flex-col items-center sm:mt-[1cm]"
-          style={{
-            willChange: 'transform',
-          }}
+          className="flex flex-col items-center"
+          style={{ willChange: 'transform' }}
           initial={{ scale: 1 }}
           animate={shouldAnimate ? { scale: [1, 1.022] } : { scale: 1 }}
           transition={{
@@ -574,7 +592,7 @@ function HeroSection() {
           </motion.div>
 
           <motion.p
-            className="font-lato max-sm:max-w-[15.5rem] sm:max-w-none"
+            className="font-lato"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, ease: 'easeOut', delay: prefersReducedMotion ? 0 : 0.82 }}
@@ -593,53 +611,47 @@ function HeroSection() {
             Vehicles fill up fast in peak season
             <span className="hidden sm:inline"> - </span>
             <br className="sm:hidden" aria-hidden="true" />
-            <span className="font-extrabold text-teal-brand">
-              <span className="sm:hidden">- </span>
-              secure yours now
-            </span>
+            <span className="font-extrabold text-teal-brand">secure yours now</span>
           </motion.p>
         </motion.div>
-
-        {/* Scroll-down arrow — absolutely positioned at hero bottom, kept out of content flow */}
-        <motion.button
-          onClick={() => window.scrollBy({ top: window.innerHeight * 0.85, behavior: 'smooth' })}
-          aria-label="Scroll down"
-          animate={shouldAnimate ? { y: [0, 8, 0] } : {}}
-          transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-          whileHover={{ scale: 1.15 }}
-          whileTap={{ scale: 0.92 }}
-          className="absolute bottom-5 left-1/2 z-20 -translate-x-1/2 sm:bottom-7"
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 4,
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            color: '#00577C',
-            opacity: 0.7,
-            padding: 0,
-          }}
-        >
-          <span className="font-lato" style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-            Scroll
-          </span>
-          <svg
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </motion.button>
       </div>
+
+      {/* Scroll-down arrow — absolute within section so it never affects content centering */}
+      <motion.button
+        onClick={() => window.scrollBy({ top: window.innerHeight * 0.85, behavior: 'smooth' })}
+        aria-label="Scroll down"
+        animate={shouldAnimate ? { y: [0, 8, 0] } : {}}
+        transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+        whileHover={{ scale: 1.15 }}
+        whileTap={{ scale: 0.92 }}
+        className="absolute bottom-5 left-0 right-0 z-20 mx-auto flex w-fit flex-col items-center sm:bottom-7"
+        style={{
+          gap: 4,
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          color: '#00577C',
+          opacity: 0.7,
+          padding: 0,
+        }}
+      >
+        <span className="font-lato" style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+          Scroll
+        </span>
+        <svg
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </motion.button>
 
     </section>
   );
