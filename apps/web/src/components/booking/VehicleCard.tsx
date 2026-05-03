@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
 import { resolvePublicId } from '../../utils/vehicle-images.js';
@@ -7,14 +8,13 @@ import { formatPhpNumber } from '../../utils/currency.js';
 import { hasBookingDatetimeWithTime } from '../../utils/booking-datetime.js';
 import { BrandCard } from '../public/BrandCard.js';
 import { PesoSign } from '../ui/PesoSign.js';
-import basketIcon from '../../assets/Buttons/basket icon.svg';
+import cartIcon from '../../assets/Buttons/basket icon.svg';
 
 const VEHICLE_NAME_MAP: Record<string, string> = {
   'Honda Beat': 'Scooter Honda Beat 110cc',
   'TukTuk (RE)': 'TukTuk Bajaj RE 250cc',
   'TukTuk (TVS)': 'TukTuk TVS King 200cc',
 };
-
 
 function formatSlotTime(iso: string): string {
   const d = new Date(iso);
@@ -42,7 +42,6 @@ function formatNextAvailableDate(iso: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-/** e.g. "Mon 7 Apr" — short weekday, day, month name */
 function formatNextAvailableWeekdayDayMonth(iso: string): string {
   const d = new Date(iso);
   const weekday = d.toLocaleDateString('en-GB', { weekday: 'short' });
@@ -51,15 +50,13 @@ function formatNextAvailableWeekdayDayMonth(iso: string): string {
   return `${weekday} ${day} ${month}`;
 }
 
-/** Urgent scarcity line for low stock (browse grid badge). */
 function scarcityUrgencyCopy(availableCount: number, isHoldOnly?: boolean): string {
-  if (availableCount <= 0) return isHoldOnly ? 'In a basket' : 'Unavailable';
+  if (availableCount <= 0) return isHoldOnly ? 'In another cart' : 'Unavailable';
   if (availableCount === 1) return 'Last one available!';
   if (availableCount === 2) return 'Only 2 left!';
   return 'Limited availability';
 }
 
-/** Returns the number of whole minutes until an ISO timestamp, minimum 1. */
 function minutesUntil(iso: string): number {
   return Math.max(1, Math.ceil((new Date(iso).getTime() - Date.now()) / 60000));
 }
@@ -75,7 +72,8 @@ interface VehicleCardProps {
   onToast: (msg: string, type: 'success' | 'error') => void;
 }
 
-const GOLD_BTN: React.CSSProperties = {
+/** Base gold button styles — shadow and transition handled via CSS classes to avoid React-state re-renders on hover. */
+const GOLD_BTN_BASE: React.CSSProperties = {
   backgroundColor: '#FCBC5A',
   color: '#363737',
   border: '2px solid #363737',
@@ -84,13 +82,17 @@ const GOLD_BTN: React.CSSProperties = {
   fontSize: 14,
   letterSpacing: '0.05em',
   textTransform: 'uppercase',
-  boxShadow: '3px 3px 0 #363737',
   fontFamily: 'Lato, sans-serif',
   cursor: 'pointer',
-  transition: 'transform 0.15s ease, box-shadow 0.15s ease',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
+};
+
+/** For small stepper buttons where we keep the inline shadow (no hover state needed). */
+const GOLD_BTN_STEPPER: React.CSSProperties = {
+  ...GOLD_BTN_BASE,
+  boxShadow: '3px 3px 0 #363737',
 };
 
 export function VehicleCard({
@@ -103,10 +105,11 @@ export function VehicleCard({
   holdExpiresAt,
   onToast,
 }: VehicleCardProps) {
+  const navigate = useNavigate();
   const [addLoading, setAddLoading] = useState(false);
   const [removeLoading, setRemoveLoading] = useState(false);
   const [pressDown, setPressDown] = useState(false);
-  const [btnHovered, setBtnHovered] = useState(false);
+  const [qty, setQty] = useState(1);
   const basket = useBookingStore((s) => s.basket);
   const addToBasket = useBookingStore((s) => s.addToBasket);
   const removeFromBasket = useBookingStore((s) => s.removeFromBasket);
@@ -120,45 +123,45 @@ export function VehicleCard({
   const isUnavailable = availableCount === 0 && !!nextAvailablePickup;
   const isHoldOnly = availableCount === 0 && !!holdExpiresAt;
 
-  const basketItems = basket.filter((b) => b.vehicleModelId === modelId);
-  const count = basketItems.length;
+  const cartItems = basket.filter((b) => b.vehicleModelId === modelId);
+  const count = cartItems.length;
   const displayName = VEHICLE_NAME_MAP[modelName] ?? modelName;
   const publicId = resolvePublicId(modelName);
 
-  const maxQuantityReached =
-    count >= 1 && availableCount > 0 && count >= availableCount;
+  const maxQty = Math.max(1, availableCount - count);
+  const clampedQty = Math.min(qty, maxQty);
 
-  async function handleAddOne() {
+  async function handleAddAndProceed() {
     if (
       addLoading ||
       removeLoading ||
-      count >= availableCount ||
+      clampedQty < 1 ||
       !hasBookingDatetimeWithTime(pickupDatetime) ||
       !hasBookingDatetimeWithTime(dropoffDatetime)
-    ) {
-      return;
-    }
-    if (count === 0) {
-      setPressDown(true);
-      await new Promise((r) => setTimeout(r, 100));
-      setPressDown(false);
-      await new Promise((r) => setTimeout(r, 100));
-    }
+    ) return;
+
+    setPressDown(true);
+    await new Promise((r) => setTimeout(r, 100));
+    setPressDown(false);
+    await new Promise((r) => setTimeout(r, 100));
+
     setAddLoading(true);
     try {
-      const result = await api.post<{ holdId: string; sessionToken: string; expiresAt: string }>(
-        '/public/booking/hold',
-        { vehicleModelId: modelId, storeId, pickupDatetime, dropoffDatetime, sessionToken },
-      );
-      addToBasket({
-        holdId: result.holdId,
-        vehicleModelId: modelId,
-        modelName: displayName,
-        dailyRate: dailyRate ?? 0,
-        securityDeposit: securityDeposit ?? 0,
-        expiresAt: result.expiresAt,
-      });
-      onToast(`${displayName} added to your basket`, 'success');
+      for (let i = 0; i < clampedQty; i++) {
+        const result = await api.post<{ holdId: string; sessionToken: string; expiresAt: string }>(
+          '/public/booking/hold',
+          { vehicleModelId: modelId, storeId, pickupDatetime, dropoffDatetime, sessionToken },
+        );
+        addToBasket({
+          holdId: result.holdId,
+          vehicleModelId: modelId,
+          modelName: displayName,
+          dailyRate: dailyRate ?? 0,
+          securityDeposit: securityDeposit ?? 0,
+          expiresAt: result.expiresAt,
+        });
+      }
+      navigate('/book/basket');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to hold vehicle';
       if (msg.toLowerCase().includes('available') || msg.includes('409')) {
@@ -172,21 +175,18 @@ export function VehicleCard({
   }
 
   async function handleRemoveOne() {
-    if (removeLoading || addLoading || basketItems.length === 0) return;
-    const lastItem = basketItems[basketItems.length - 1];
+    if (removeLoading || addLoading || cartItems.length === 0) return;
+    const lastItem = cartItems[cartItems.length - 1];
     setRemoveLoading(true);
     try {
       await api.delete(`/public/booking/hold/${lastItem.holdId}`, { sessionToken });
     } catch {
-      // Non-fatal: remove from local basket regardless
+      // Non-fatal: remove from local cart regardless
     } finally {
       removeFromBasket(lastItem.holdId);
       setRemoveLoading(false);
     }
   }
-
-  const btnTransform = pressDown ? 'scale(0.95)' : btnHovered ? 'translate(-2px, -2px)' : 'none';
-  const btnShadow = btnHovered && !pressDown ? '5px 5px 0 #363737' : '3px 3px 0 #363737';
 
   function handleNextAvailable() {
     if (!nextAvailablePickup) return;
@@ -206,14 +206,17 @@ export function VehicleCard({
   return (
     <BrandCard
       glowColor="36 96 67"
+      disableTilt
       className={`animate-card-enter ${isUnavailable || isHoldOnly ? 'opacity-70' : ''}`}
     >
       <div className="group flex h-full flex-col overflow-hidden rounded-[22px] bg-[#FAF6F0]">
+        {/* Image — plugins=[] prevents AdvancedImage re-initialising on any parent re-render */}
         <div className="relative h-40 w-full overflow-hidden rounded-t-[22px] bg-white">
           {publicId ? (
             <CloudinaryImage
               publicId={publicId}
               alt={displayName}
+              plugins={[]}
               className="h-full w-full object-contain p-2 transition-transform duration-500 group-hover:scale-105"
             />
           ) : (
@@ -239,9 +242,7 @@ export function VehicleCard({
                   <span className="font-lato font-bold text-teal-brand">
                     <PesoSign />{formatPhpNumber(dailyRate)}
                   </span>
-                  <span
-                    className="font-headline text-xs font-bold text-charcoal-brand/60"
-                  >
+                  <span className="font-headline text-xs font-bold text-charcoal-brand/60">
                     /day
                   </span>
                 </p>
@@ -264,7 +265,7 @@ export function VehicleCard({
             {isHoldOnly ? (
               <div className="flex flex-col items-center gap-2 rounded-2xl border-2 border-gold-brand/40 bg-gold-brand/10 px-4 py-4 text-center">
                 <p className="font-lato text-sm font-bold text-charcoal-brand">
-                  In another customer's basket
+                  In another customer's cart
                 </p>
                 <p className="font-lato text-xs text-charcoal-brand/70">
                   Check back in ~{minutesUntil(holdExpiresAt!)} min — it'll be free if they don't book.
@@ -289,97 +290,107 @@ export function VehicleCard({
                 <span className="font-lato text-sm">{formatNextAvailableDate(nextAvailablePickup!)} at {formatSlotTime(nextAvailablePickup!)}</span>
                 <span className="font-lato text-[10px] font-bold uppercase tracking-wider text-teal-brand/60">Tap to use these dates</span>
               </button>
-            ) : count === 0 ? (
-              <button
-                type="button"
-                onClick={handleAddOne}
-                disabled={addLoading}
-                onMouseEnter={() => { if (!addLoading) setBtnHovered(true); }}
-                onMouseLeave={() => setBtnHovered(false)}
-                style={{
-                  ...GOLD_BTN,
-                  padding: '12px 0',
-                  width: '100%',
-                  boxShadow: btnShadow,
-                  transform: btnTransform,
-                  opacity: addLoading ? 0.6 : 1,
-                  cursor: addLoading ? 'not-allowed' : 'pointer',
-                  gap: 8,
-                }}
-              >
-                {addLoading
-                  ? <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[#363737] border-t-transparent" />
-                  : (
-                    <>
-                      <img
-                        src={basketIcon}
-                        alt=""
-                        className="h-[1.65rem] w-[1.65rem] shrink-0 object-contain"
-                        width={27}
-                        height={27}
-                      />
-                      <span>Add to Basket</span>
-                    </>
-                  )}
-              </button>
             ) : (
-              <div className="w-full">
-                <div className="flex w-full items-center gap-2">
-                  {/* − button */}
-                  <button
-                    type="button"
-                    onClick={handleRemoveOne}
-                    disabled={removeLoading || addLoading}
-                    style={{
-                      ...GOLD_BTN,
-                      width: 44,
-                      height: 44,
-                      flexShrink: 0,
-                      fontSize: 20,
-                      opacity: removeLoading || addLoading ? 0.5 : 1,
-                      cursor: removeLoading || addLoading ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    {removeLoading
-                      ? <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#363737] border-t-transparent" />
-                      : '−'}
-                  </button>
-
-                  {/* count label */}
-                  <div
-                    className="font-lato flex flex-1 items-center justify-center font-bold text-teal-brand"
-                    style={{ fontSize: 14, letterSpacing: '0.03em' }}
-                  >
-                    {count} in basket
+              <div className="flex flex-col gap-3">
+                {/* Quantity selector — only shown when more than 1 unit available */}
+                {availableCount > 1 && count === 0 && (
+                  <div className="flex items-center justify-between rounded-xl border border-charcoal-brand/10 bg-white px-4 py-2">
+                    <span className="font-lato text-xs font-bold uppercase tracking-wider text-charcoal-brand/50">
+                      Quantity
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        disabled={qty <= 1}
+                        onClick={() => setQty((q) => Math.max(1, q - 1))}
+                        style={{ ...GOLD_BTN_STEPPER, width: 32, height: 32, fontSize: 18, opacity: qty <= 1 ? 0.4 : 1 }}
+                      >
+                        −
+                      </button>
+                      <span className="font-lato w-5 text-center text-sm font-bold text-charcoal-brand">
+                        {clampedQty}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={clampedQty >= maxQty}
+                        onClick={() => setQty((q) => Math.min(maxQty, q + 1))}
+                        style={{ ...GOLD_BTN_STEPPER, width: 32, height: 32, fontSize: 18, opacity: clampedQty >= maxQty ? 0.4 : 1 }}
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
+                )}
 
-                  {/* + button */}
+                {/* Already in cart — show stepper to adjust */}
+                {count > 0 && (
+                  <div className="flex w-full items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleRemoveOne}
+                      disabled={removeLoading || addLoading}
+                      style={{
+                        ...GOLD_BTN_STEPPER,
+                        width: 44, height: 44, flexShrink: 0, fontSize: 20,
+                        opacity: removeLoading || addLoading ? 0.5 : 1,
+                        cursor: removeLoading || addLoading ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {removeLoading
+                        ? <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#363737] border-t-transparent" />
+                        : '−'}
+                    </button>
+                    <div className="font-lato flex flex-1 items-center justify-center font-bold text-teal-brand" style={{ fontSize: 14 }}>
+                      {count} in cart
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddAndProceed}
+                      disabled={addLoading || removeLoading || count >= availableCount}
+                      style={{
+                        ...GOLD_BTN_STEPPER,
+                        width: 44, height: 44, flexShrink: 0, fontSize: 20,
+                        opacity: addLoading || removeLoading || count >= availableCount ? 0.5 : 1,
+                        cursor: addLoading || removeLoading || count >= availableCount ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {addLoading
+                        ? <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#363737] border-t-transparent" />
+                        : '+'}
+                    </button>
+                  </div>
+                )}
+
+                {/* Add to Cart & Proceed — CSS-only hover (no React state re-render) */}
+                {count === 0 && (
                   <button
                     type="button"
-                    onClick={handleAddOne}
-                    disabled={addLoading || removeLoading || count >= availableCount}
+                    onClick={handleAddAndProceed}
+                    disabled={addLoading}
                     style={{
-                      ...GOLD_BTN,
-                      width: 44,
-                      height: 44,
-                      flexShrink: 0,
-                      fontSize: 20,
-                      opacity: addLoading || removeLoading || count >= availableCount ? 0.5 : 1,
-                      cursor: addLoading || removeLoading || count >= availableCount ? 'not-allowed' : 'pointer',
+                      ...GOLD_BTN_BASE,
+                      padding: '12px 0',
+                      width: '100%',
+                      gap: 8,
+                      opacity: addLoading ? 0.6 : 1,
+                      cursor: addLoading ? 'not-allowed' : 'pointer',
+                      transform: pressDown ? 'scale(0.95)' : undefined,
                     }}
+                    className="shadow-[3px_3px_0_#363737] transition-[box-shadow,transform] duration-150 enabled:hover:-translate-x-0.5 enabled:hover:-translate-y-0.5 enabled:hover:shadow-[5px_5px_0_#363737]"
                   >
                     {addLoading
-                      ? <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#363737] border-t-transparent" />
-                      : '+'}
+                      ? <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[#363737] border-t-transparent" />
+                      : (
+                        <>
+                          <img src={cartIcon} alt="" className="h-[1.65rem] w-[1.65rem] shrink-0 object-contain" width={27} height={27} />
+                          <span>Add to Cart &amp; Proceed</span>
+                        </>
+                      )}
                   </button>
-                </div>
-                {maxQuantityReached && (
-                  <p className="mt-1 text-center font-lato text-xs text-[#363737]/60">
-                    Maximum available quantity reached
-                  </p>
                 )}
-                {maxQuantityReached && nextAvailablePickup && (
-                  <p className="mt-0.5 text-center font-lato text-xs font-semibold text-[#00577C]">
+
+                {count > 0 && (availableCount - count) === 0 && nextAvailablePickup && (
+                  <p className="text-center font-lato text-xs font-semibold text-[#00577C]">
                     Next available: {formatNextAvailableWeekdayDayMonth(nextAvailablePickup)}
                   </p>
                 )}

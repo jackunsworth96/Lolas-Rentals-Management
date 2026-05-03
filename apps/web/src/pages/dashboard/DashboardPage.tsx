@@ -413,6 +413,18 @@ export default function DashboardPage() {
               <p className="mt-0.5 text-xs text-gray-400">basket → booking</p>
             </div>
           </div>
+          <div className="mt-4 grid grid-cols-2 gap-4">
+            <StatCard
+              label="Avg Clicks (Completed)"
+              value={basketAbandon.avgClicksCompleted != null ? String(basketAbandon.avgClicksCompleted) : '—'}
+              sub="actions to finish a booking"
+            />
+            <StatCard
+              label="Avg Clicks (Abandoned)"
+              value={basketAbandon.avgClicksAbandoned != null ? String(basketAbandon.avgClicksAbandoned) : '—'}
+              sub="actions before giving up"
+            />
+          </div>
 
           {/* Funnel breakdown */}
           <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white p-5">

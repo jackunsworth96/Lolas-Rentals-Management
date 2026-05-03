@@ -116,6 +116,7 @@ export default function PublicBookingPage() {
   }
 
   if (submitted) {
+    const confirmedRoute = selectedRoute;
     return (
       <PageLayout title={t('transfer.confirmedTitle')} showFloralRight={false}>
         <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 text-center">
@@ -130,7 +131,45 @@ export default function PublicBookingPage() {
               {t('transfer.reference')} <span className="font-mono font-semibold text-charcoal-brand">{bookingRef}</span>
             </p>
           )}
-          <p className="text-charcoal-brand/70 text-sm max-w-sm font-lato">
+
+          <div className="mt-4 w-full max-w-sm rounded-2xl border border-charcoal-brand/10 bg-sand-brand p-4 text-left space-y-2">
+            {confirmedRoute && (
+              <div className="flex justify-between text-sm font-lato">
+                <span className="text-charcoal-brand/60">{t('transfer.route')}</span>
+                <span className="font-semibold text-charcoal-brand text-right">{confirmedRoute.route}</span>
+              </div>
+            )}
+            {serviceDate && (
+              <div className="flex justify-between text-sm font-lato">
+                <span className="text-charcoal-brand/60">{t('transfer.serviceDate')}</span>
+                <span className="font-semibold text-charcoal-brand">{serviceDate}</span>
+              </div>
+            )}
+            {flightTime && (
+              <div className="flex justify-between text-sm font-lato">
+                <span className="text-charcoal-brand/60">{t('transfer.flightTime')}</span>
+                <span className="font-semibold text-charcoal-brand">{flightTime}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-sm font-lato">
+              <span className="text-charcoal-brand/60">{t('transfer.passengers')}</span>
+              <span className="font-semibold text-charcoal-brand">{paxCount}</span>
+            </div>
+            {accommodation && (
+              <div className="flex justify-between text-sm font-lato">
+                <span className="text-charcoal-brand/60">{t('transfer.accommodation')}</span>
+                <span className="font-semibold text-charcoal-brand text-right max-w-[60%]">{accommodation}</span>
+              </div>
+            )}
+            {confirmedRoute && (
+              <div className="flex justify-between text-sm font-lato border-t border-charcoal-brand/10 pt-2 mt-1">
+                <span className="font-semibold text-charcoal-brand">{t('transfer.total')}</span>
+                <span className="font-bold text-teal-brand"><PesoSign />{formatPhpNumber(totalPrice)}</span>
+              </div>
+            )}
+          </div>
+
+          <p className="mt-4 text-charcoal-brand/70 text-sm max-w-sm font-lato">
             {t('transfer.transferBooked')}{storeName ? ` ${t('transfer.storeWillContact', { store: storeName })}` : ''}
           </p>
         </div>

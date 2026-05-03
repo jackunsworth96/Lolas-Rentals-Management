@@ -10,13 +10,13 @@
   "background_color": "#14506e",
   "icons": [
     {
-      "src": "https://res.cloudinary.com/dk3c78pro/image/upload/c_fill,w_192,h_192/v1777724927/Lola_s_Style_Guide_Creative_8_j1sv1c.png",
+      "src": "https://res.cloudinary.com/dk3c78pro/image/upload/c_fit,w_92,h_92/c_pad,w_192,h_192,b_rgb:14506e,g_center,r_23/v1777724927/Lola_s_Style_Guide_Creative_8_j1sv1c.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "https://res.cloudinary.com/dk3c78pro/image/upload/c_fill,w_512,h_512/v1777724927/Lola_s_Style_Guide_Creative_8_j1sv1c.png",
+      "src": "https://res.cloudinary.com/dk3c78pro/image/upload/c_fit,w_246,h_246/c_pad,w_512,h_512,b_rgb:14506e,g_center,r_61/v1777724927/Lola_s_Style_Guide_Creative_8_j1sv1c.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

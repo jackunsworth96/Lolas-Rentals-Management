@@ -639,4 +639,51 @@ router.get('/transfer-pickup-rules', async (req, res, next) => {
   }
 });
 
+// ── Fleet Accounting Config ──
+
+router.get('/fleet-accounting-config', async (req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+    const { data, error } = await sb
+      .from('fleet_accounting_config')
+      .select('store_id, fixed_asset_account_id, acc_depreciation_account_id, depreciation_expense_account_id, gain_loss_account_id');
+    if (error) throw new Error(error.message);
+    const mapped = (data ?? []).map((r) => ({
+      storeId: r.store_id,
+      fixedAssetAccountId: r.fixed_asset_account_id ?? null,
+      accDepreciationAccountId: r.acc_depreciation_account_id ?? null,
+      depreciationExpenseAccountId: r.depreciation_expense_account_id ?? null,
+      gainLossAccountId: r.gain_loss_account_id ?? null,
+    }));
+    res.json({ success: true, data: mapped });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.put('/fleet-accounting-config/:storeId', edit, validateBody(z.object({
+  fixedAssetAccountId: z.string().nullable().optional(),
+  accDepreciationAccountId: z.string().nullable().optional(),
+  depreciationExpenseAccountId: z.string().nullable().optional(),
+  gainLossAccountId: z.string().nullable().optional(),
+})), async (req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+    const { error } = await sb
+      .from('fleet_accounting_config')
+      .upsert({
+        store_id: req.params.storeId,
+        fixed_asset_account_id: req.body.fixedAssetAccountId ?? null,
+        acc_depreciation_account_id: req.body.accDepreciationAccountId ?? null,
+        depreciation_expense_account_id: req.body.depreciationExpenseAccountId ?? null,
+        gain_loss_account_id: req.body.gainLossAccountId ?? null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'store_id' });
+    if (error) throw new Error(error.message);
+    res.json({ success: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
 export { router as configRoutes };

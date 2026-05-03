@@ -73,7 +73,7 @@ export function BrowseBookVehicleSection({
             <h2 className="font-headline text-3xl font-black tracking-tight text-teal-brand">
               Available Fleet <span className="text-gold-brand">Siargao</span>
             </h2>
-            <p className="text-sm text-charcoal-brand/60">Select your ride and add to basket</p>
+            <p className="text-sm text-charcoal-brand/60">Select your ride and add to cart</p>
           </div>
 
           {isLoading ? (
@@ -117,7 +117,7 @@ export function BrowseBookVehicleSection({
                 <div className="mb-8 rounded-3xl border-2 border-gold-brand/30 bg-gold-brand/10 px-6 py-5 text-center">
                   <p className="mb-2 font-headline text-lg font-bold text-charcoal-brand">
                     {allHoldOnly
-                      ? 'These vehicles are currently in other customers\u2019 baskets'
+                      ? 'These vehicles are currently in other customers\u2019 carts'
                       : 'All vehicles are booked for your selected dates'}
                   </p>
                   {allHoldOnly ? (

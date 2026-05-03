@@ -417,7 +417,7 @@ function HeroSection() {
       </motion.div>
 
       {/* ── Hero content ─────────────────────────────────────── */}
-      <div className="relative z-10 flex h-full flex-col items-center justify-center px-6 pb-20 pt-20 text-center">
+      <div className="relative z-10 flex h-full flex-col items-center justify-center px-6 pb-20 pt-[calc(5rem+2cm)] text-center">
         {/* Headline */}
         <h1
           className="font-headline font-extrabold"
@@ -538,6 +538,7 @@ function HeroSection() {
             flexDirection: 'column',
             alignItems: 'center',
             willChange: 'transform',
+            marginTop: '1cm',
           }}
           initial={{ scale: 1 }}
           animate={shouldAnimate ? { scale: [1, 1.022] } : { scale: 1 }}

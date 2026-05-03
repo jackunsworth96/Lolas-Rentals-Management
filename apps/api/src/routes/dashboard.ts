@@ -262,7 +262,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
 
       sb
         .from('journal_entries')
-        .select('account_id, store_id, debit, credit, chart_of_accounts!account_id(name, account_type)')
+        .select('account_id, store_id, debit, credit, chart_of_accounts!account_id(name, account_type, store_id)')
         .then((r) => ({ key: 'cashBalances' as const, ...r })),
 
       sb
@@ -610,11 +610,14 @@ router.get('/summary', authenticate, async (req, res, next) => {
       const balanceData = dataMap.get('cashBalances') ?? [];
       const balanceMap = new Map<string, { name: string; debit: number; credit: number }>();
       for (const row of balanceData) {
-        const acct = row.chart_of_accounts as { name: string; account_type: string } | null;
+        const acct = row.chart_of_accounts as { name: string; account_type: string; store_id?: string | null } | null;
         if (!acct || acct.account_type !== 'Asset') continue;
         const lowerName = acct.name.toLowerCase();
         if (!lowerName.includes('cash') && !lowerName.includes('bank') && !lowerName.includes('gcash') && !lowerName.includes('float')) continue;
-        if (sid && row.store_id !== sid) continue;
+        // Company-level accounts (shared across stores) always show their full balance —
+        // filtering them by store_id would give a misleading partial balance for a shared bank account.
+        const isCompanyAccount = !acct.store_id || acct.store_id === 'company';
+        if (sid && !isCompanyAccount && row.store_id !== sid) continue;
         const accId = row.account_id as string;
         const existing = balanceMap.get(accId) ?? { name: acct.name, debit: 0, credit: 0 };
         existing.debit += Number(row.debit ?? 0);
@@ -1104,7 +1107,7 @@ router.get('/basket-abandonment', async (req, res, next) => {
 
     let query = sb
       .from('booking_sessions')
-      .select('basket_viewed_at, renter_details_started_at, submitted_at, created_at')
+      .select('basket_viewed_at, renter_details_started_at, submitted_at, created_at, interaction_count')
       .gte('created_at', fromIso)
       .lte('created_at', toIso);
 
@@ -1120,6 +1123,7 @@ router.get('/basket-abandonment', async (req, res, next) => {
       renter_details_started_at: string | null;
       submitted_at: string | null;
       created_at: string;
+      interaction_count: number;
     }>;
 
     const abandonThreshold = 3 * 60 * 60 * 1000; // 3 hours
@@ -1134,9 +1138,25 @@ router.get('/basket-abandonment', async (req, res, next) => {
     ).length;
     const conversionRate = total > 0 ? Math.round((converted / total) * 1000) / 10 : 0;
 
+    const avgInteractions = (subset: typeof rows): number | null => {
+      const tracked = subset.filter((r) => r.interaction_count > 0);
+      if (tracked.length === 0) return null;
+      const sum = tracked.reduce((s, r) => s + r.interaction_count, 0);
+      return Math.round((sum / tracked.length) * 10) / 10;
+    };
+
+    const completedRows = rows.filter((r) => r.submitted_at !== null);
+    const abandonedRows = rows.filter(
+      (r) =>
+        r.submitted_at === null &&
+        now.getTime() - new Date(r.created_at).getTime() > abandonThreshold,
+    );
+    const avgClicksCompleted = avgInteractions(completedRows);
+    const avgClicksAbandoned = avgInteractions(abandonedRows);
+
     res.json({
       success: true,
-      data: { total, basketViewed, renterStarted, converted, abandoned, conversionRate },
+      data: { total, basketViewed, renterStarted, converted, abandoned, conversionRate, avgClicksCompleted, avgClicksAbandoned },
     });
   } catch (err) {
     next(err);

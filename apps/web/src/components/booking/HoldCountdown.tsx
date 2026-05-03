@@ -27,7 +27,7 @@ export function HoldCountdown({ expiresAt, onExpired }: HoldCountdownProps) {
   if (secondsLeft <= 0) {
     return (
       <span className="text-xs font-bold text-red-600">
-        Hold expired — please re-add to basket
+        Hold expired — please re-add to cart
       </span>
     );
   }

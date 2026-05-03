@@ -139,6 +139,8 @@ export interface BasketAbandonmentSummary {
   converted: number;
   abandoned: number;
   conversionRate: number;
+  avgClicksCompleted: number | null;
+  avgClicksAbandoned: number | null;
 }
 
 export function useBasketAbandonmentSummary(storeId?: string, from?: string, to?: string) {

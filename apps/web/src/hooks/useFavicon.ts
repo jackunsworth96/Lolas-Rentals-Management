@@ -30,22 +30,40 @@ const FAVICON_LINKS: Array<{ rel: string; size: number }> = [
   { rel: 'icon', size: 512 },
 ];
 
+/** Mascot / tab sizes: modest inset so the 16×16 / 32×32 tabs stay legible. */
+const TAB_ICON_INSET_RATIO = 0.62;
 /**
- * Fits the mascot into ~62% of the square then pads with white so circular
- * launcher/tab masks leave visible breathing room (matches “first favicon” feel).
+ * Apple touch + 192/512: smaller art so circular “add to home screen” masks
+ * do not clip (maskable safe zone).
  */
-const CUSTOMER_ART_INSET_RATIO = 0.62;
+const LAUNCHER_ICON_INSET_RATIO = 0.48;
 
-function customerFaviconTransform(size: number): string {
-  const inner = Math.max(1, Math.round(size * CUSTOMER_ART_INSET_RATIO));
-  return `c_fit,w_${inner},h_${inner}/c_pad,w_${size},h_${size},b_rgb:ffffff,g_center`;
+function cornerRadiusPx(size: number): number {
+  return Math.max(2, Math.round(size * 0.12));
+}
+
+function customerFaviconTransform(size: number, insetRatio: number): string {
+  const inner = Math.max(1, Math.round(size * insetRatio));
+  const r = cornerRadiusPx(size);
+  return `c_fit,w_${inner},h_${inner}/c_pad,w_${size},h_${size},b_rgb:ffffff,g_center,r_${r}`;
+}
+
+function backofficeFaviconTransform(size: number, insetRatio: number): string {
+  const r = cornerRadiusPx(size);
+  const inner = Math.max(1, Math.round(size * insetRatio));
+  return `c_fit,w_${inner},h_${inner}/c_pad,w_${size},h_${size},b_rgb:14506e,g_center,r_${r}`;
 }
 
 function faviconTransforms(size: number, mode: 'customer' | 'backoffice'): string {
+  const large = size >= 180;
+  const insetRatio = large ? LAUNCHER_ICON_INSET_RATIO : TAB_ICON_INSET_RATIO;
   if (mode === 'customer') {
-    return customerFaviconTransform(size);
+    return customerFaviconTransform(size, insetRatio);
   }
-  return `c_fill,w_${size},h_${size}`;
+  if (large) {
+    return backofficeFaviconTransform(size, insetRatio);
+  }
+  return `c_fill,w_${size},h_${size},r_${cornerRadiusPx(size)}`;
 }
 
 function injectPngFavicons(

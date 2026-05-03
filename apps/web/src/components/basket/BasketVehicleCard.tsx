@@ -29,7 +29,7 @@ export function BasketVehicleCard({ item, rentalDays, pickupLabel, dropoffLabel,
       await api.delete(`/public/booking/hold/${item.holdId}`, { sessionToken });
     } catch { /* hold may already be expired */ }
     removeFromBasket(item.holdId);
-    onToast(`${item.modelName} removed from basket`, 'success');
+    onToast(`${item.modelName} removed from cart`, 'success');
   }
 
   return (

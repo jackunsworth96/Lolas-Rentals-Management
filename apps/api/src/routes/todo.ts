@@ -17,6 +17,10 @@ import { z } from 'zod';
 import { getTelegramChatId, sendTelegramAlert, sendTelegramMessage } from '../lib/telegram.js';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { logger } from '../lib/logger.js';
+import { escapeHtml } from '../services/email.js';
+
+/** Telegram sendMessage text limit (HTML mode). */
+const TELEGRAM_MESSAGE_MAX_LEN = 4096;
 
 const router = Router();
 router.use(authenticate);
@@ -245,7 +249,7 @@ export { router as todoRoutes };
  * Sends two Telegram notifications when a task is created:
  *  1. A read-only broadcast to the To Do channel so the whole team sees it.
  *  2. A private DM to the assignee (if they have a telegram_user_id) with
- *     an inline "Mark Done" button — only they can confirm it.
+ *     the full task description, plus an inline "Mark Done" button — only they can confirm it.
  *
  * The DM message_id is stored on the task row so the webhook can later
  * edit it (replace the button with a ✅ indicator).
@@ -255,6 +259,7 @@ export { router as todoRoutes };
 async function sendTaskTelegramNotifications(task: {
   id: string;
   title: string;
+  description: string | null;
   assignedToName: string | null;
   assignedTo: string;
   priority: string;
@@ -295,13 +300,34 @@ async function sendTaskTelegramNotifications(task: {
     const assigneeTelegramId = empRow?.telegram_user_id as string | null | undefined;
     if (!assigneeTelegramId) return;
 
-    const dmMsg =
+    const descRaw = task.description?.trim() ?? '';
+    const titleEsc = escapeHtml(task.title);
+    const descEscFull = descRaw ? escapeHtml(descRaw) : '';
+
+    const dmHead =
       `📋 <b>You've been assigned a task</b>\n\n` +
-      `<b>${task.title}</b>${dueLine}\n` +
+      `<b>${titleEsc}</b>${dueLine}\n`;
+    const dmTail =
       `Priority: ${priorityLabel}\n\n` +
       `Tap the button below once you've completed it.`;
 
-    const dmMessageId = await sendTelegramMessage(dmMsg, assigneeTelegramId, {
+    let dmBody: string;
+    if (!descEscFull) {
+      dmBody = dmHead + dmTail;
+    } else {
+      const descBlock = `${descEscFull}\n\n`;
+      let full = dmHead + descBlock + dmTail;
+      const truncNote = '\n… (truncated)\n\n';
+      if (full.length > TELEGRAM_MESSAGE_MAX_LEN) {
+        const budget =
+          TELEGRAM_MESSAGE_MAX_LEN - dmHead.length - dmTail.length - truncNote.length;
+        const clipped = budget > 0 ? descEscFull.slice(0, budget) : '';
+        full = dmHead + clipped + truncNote + dmTail;
+      }
+      dmBody = full;
+    }
+
+    const dmMessageId = await sendTelegramMessage(dmBody, assigneeTelegramId, {
       inline_keyboard: [[
         { text: '✅ Mark as Done', callback_data: `complete_task_${task.id}` },
       ]],

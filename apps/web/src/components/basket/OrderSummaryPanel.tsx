@@ -223,7 +223,7 @@ export function OrderSummaryPanel({
             >
               Refund &amp; cancellation policy
             </a>
-            <span className="text-charcoal-brand/40"> (new tab — your basket is kept here)</span>
+            <span className="text-charcoal-brand/40"> (new tab — your cart is kept here)</span>
           </p>
         </div>
       </div>

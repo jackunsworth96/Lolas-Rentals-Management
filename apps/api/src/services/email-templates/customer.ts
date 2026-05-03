@@ -1006,6 +1006,10 @@ export function transferBookingConfirmationHtml({
               <td style="padding: 6px 0; color: #666; font-size: 14px;">Flight Time</td>
               <td style="padding: 6px 0; font-weight: 600; color: #363737; text-align: right;">${escapeHtml(flightTime)}</td>
             </tr>` : ''}
+            ${accommodation && direction !== 'inbound' ? `<tr>
+              <td style="padding: 6px 0; color: #666; font-size: 14px;">Pick-up Location</td>
+              <td style="padding: 6px 0; font-weight: 600; color: #363737; text-align: right;">${escapeHtml(accommodation)}</td>
+            </tr>` : ''}
             <tr style="border-top: 1px solid #ccc;">
               <td style="padding: 12px 0 6px; color: #363737; font-weight: 700;">Total</td>
               <td style="padding: 12px 0 6px; font-weight: 700; color: #00577C; text-align: right; font-size: 18px;">${formatPrice(totalPrice)}</td>

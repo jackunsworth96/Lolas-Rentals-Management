@@ -216,7 +216,7 @@ export function PageLayout({
           showBasketIcon ? (
             <Link
               to="/book/basket"
-              aria-label="Basket"
+              aria-label="Cart"
               className={`relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-charcoal-brand transition-colors duration-300 hover:opacity-75 ${
                 basketFlash
                   ? 'bg-gold-brand/30 ring-2 ring-gold-brand/60'

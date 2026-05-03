@@ -54,6 +54,34 @@ router.get('/model-pricing', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+router.get('/models', async (req, res, next) => {
+  try {
+    const { storeId } = req.query as { storeId?: string };
+    if (!storeId) {
+      res.status(400).json({ success: false, error: 'storeId required' });
+      return;
+    }
+    const { configRepo, fleetRepo } = req.app.locals.deps;
+    const [vehicles, models, pricingRows] = await Promise.all([
+      fleetRepo.findByStore(storeId) as Promise<Array<{ modelId: string | null }>>,
+      configRepo.getVehicleModels() as Promise<Array<{ id: string; name: string }>>,
+      configRepo.getStorePricing(storeId) as Promise<Array<{ modelId: string; dailyRate: number }>>,
+    ]);
+    // Only include models that have at least one fleet vehicle at this store
+    const storeModelIds = new Set(
+      vehicles.filter((v) => v.modelId != null).map((v) => v.modelId as string),
+    );
+    const result = models
+      .filter((m) => storeModelIds.has(m.id))
+      .map((m) => {
+        const rows = pricingRows.filter((p) => p.modelId === m.id);
+        const minRate = rows.length > 0 ? Math.min(...rows.map((r) => Number(r.dailyRate))) : null;
+        return { id: m.id, name: m.name, minDailyRate: minRate };
+      });
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
 router.get('/availability', validateQuery(AvailabilityQuerySchema), async (req, res, next) => {
   try {
     const { storeId, pickupDatetime, dropoffDatetime } = req.query as {
@@ -191,6 +219,7 @@ router.post('/hold', holdLimiter, validateBody(CreateHoldBodySchema), async (req
           },
           { onConflict: 'session_token' },
         );
+        await sb.rpc('increment_booking_interaction', { p_session_token: sessionToken });
       } catch (err) {
         console.error('[booking_sessions] hold upsert failed:', err);
       }
@@ -287,6 +316,10 @@ router.patch('/session', sessionLimiter, validateBody(UpdateSessionBodySchema), 
       .update(updates)
       .eq('session_token', sessionToken);
 
+    if (basketViewed || renterDetailsStarted) {
+      void sb.rpc('increment_booking_interaction', { p_session_token: sessionToken });
+    }
+
     res.json({ success: true });
   } catch (err) {
     next(err);
@@ -319,6 +352,7 @@ router.post('/submit', submitLimiter, validateBody(SubmitDirectBookingRequestSch
         bookingPort: req.app.locals.deps.bookingPort,
         configRepo: req.app.locals.deps.configRepo,
         transferRepo: req.app.locals.deps.transferRepo,
+        accountingPort: req.app.locals.deps.accountingPort,
       },
       body,
       { deviceType },
@@ -340,11 +374,14 @@ router.post('/submit', submitLimiter, validateBody(SubmitDirectBookingRequestSch
         if (!sessionToken) return;
         const { getSupabaseClient } = await import('../adapters/supabase/client.js');
         const sb = getSupabaseClient();
-        await sb
-          .from('booking_sessions')
-          .update({ submitted_at: new Date().toISOString() })
-          .eq('session_token', sessionToken)
-          .is('submitted_at', null);
+        await Promise.all([
+          sb
+            .from('booking_sessions')
+            .update({ submitted_at: new Date().toISOString() })
+            .eq('session_token', sessionToken)
+            .is('submitted_at', null),
+          sb.rpc('increment_booking_interaction', { p_session_token: sessionToken }),
+        ]);
       } catch (err) {
         console.error('[booking_sessions] submit update failed:', err);
       }

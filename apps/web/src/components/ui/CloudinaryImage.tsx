@@ -1,4 +1,4 @@
-import type { ComponentProps, ImgHTMLAttributes } from 'react';
+import { useMemo, type ComponentProps, type ImgHTMLAttributes } from 'react';
 import { AdvancedImage, lazyload, responsive, placeholder } from '@cloudinary/react';
 import { format, quality } from '@cloudinary/url-gen/actions/delivery';
 import { auto as autoFormat } from '@cloudinary/url-gen/qualifiers/format';
@@ -27,10 +27,14 @@ export function CloudinaryImage({
   plugins = DEFAULT_PLUGINS,
   ...rest
 }: Props) {
-  const img = cld
-    .image(publicId)
-    .delivery(format(autoFormat()))
-    .delivery(quality(autoQuality()));
+  const img = useMemo(
+    () =>
+      cld
+        .image(publicId)
+        .delivery(format(autoFormat()))
+        .delivery(quality(autoQuality())),
+    [publicId],
+  );
 
   if (cacheBust) {
     return (

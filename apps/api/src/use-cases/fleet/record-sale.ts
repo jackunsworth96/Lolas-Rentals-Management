@@ -72,7 +72,6 @@ export async function recordSale(
   };
 
   const soldVehicle = Vehicle.create(props);
-  await fleetRepo.save(soldVehicle);
 
   const legs: JournalLeg[] = [
     {
@@ -126,6 +125,10 @@ export async function recordSale(
     });
   }
 
+  // Save accounting first — if this fails, vehicle status is unchanged and the
+  // user can retry. Previously the status was saved first, leaving the vehicle
+  // as Sold with no journal entries if accounting failed.
   await accountingPort.createTransaction(legs, vehicle.storeId);
+  await fleetRepo.save(soldVehicle);
   return { vehicle: soldVehicle, profitLoss };
 }

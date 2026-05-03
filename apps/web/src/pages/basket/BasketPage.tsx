@@ -662,16 +662,16 @@ export default function BasketPage() {
       <>
         <SEO
           noIndex
-          title="Your Basket | Lola's Rentals"
+          title="Your Cart | Lola's Rentals"
           description="Review your vehicle selection and complete your Lola's Rentals booking for Siargao."
         />
-      <PageLayout title="Basket | Lola's Rentals">
+      <PageLayout title="Cart | Lola's Rentals">
         <div className="relative flex min-h-[60vh] flex-col items-center justify-center overflow-hidden px-2">
           <HeroFloatingClouds variant="functional" />
           <div className="relative z-10 flex flex-col items-center">
             <img src={pawPrint} alt="" className="mb-6 h-16 w-16 bg-transparent opacity-20 grayscale" />
-            <h2 className="mb-2 text-center font-headline text-3xl font-black text-charcoal-brand">Your basket is empty</h2>
-            <p className="font-lato mb-8 text-center text-charcoal-brand/60">Find your perfect ride and add it to your basket</p>
+            <h2 className="mb-2 text-center font-headline text-3xl font-black text-charcoal-brand">Your cart is empty</h2>
+            <p className="font-lato mb-8 text-center text-charcoal-brand/60">Find your perfect ride and add it to your cart</p>
             <button
               type="button"
               onClick={() => navigate('/book/reserve')}
@@ -712,10 +712,10 @@ export default function BasketPage() {
     <>
       <SEO
         noIndex
-        title="Your Basket | Lola's Rentals"
+        title="Your Cart | Lola's Rentals"
         description="Review your vehicle selection and complete your Lola's Rentals booking for Siargao."
       />
-    <PageLayout title="Basket | Lola's Rentals">
+    <PageLayout title="Cart | Lola's Rentals">
       <div className="relative mx-auto max-w-[1100px] px-4">
         <HeroFloatingClouds variant="functional" />
         <div className="relative z-10 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">

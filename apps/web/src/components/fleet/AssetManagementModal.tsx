@@ -1,7 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Modal } from '../common/Modal.js';
 import { useVehicle, useRecordPurchase, useRecordSale, useBatchDepreciation } from '../../api/fleet.js';
-import { useChartOfAccounts, useStores } from '../../api/config.js';
+import { useChartOfAccounts, useStores, useFleetAccountingConfig } from '../../api/config.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { formatDate } from '../../utils/date.js';
 
@@ -15,6 +15,7 @@ export function AssetManagementModal({ open, onClose, vehicleId }: AssetManageme
   const { data: vehicle, isLoading } = useVehicle(vehicleId);
   const { data: accounts = [] } = useChartOfAccounts();
   const { data: stores = [] } = useStores({ includeCompany: true });
+  const { data: fleetConfigs = [] } = useFleetAccountingConfig();
   const recordPurchase = useRecordPurchase();
   const recordSale = useRecordSale();
   const batchDepreciation = useBatchDepreciation();
@@ -38,6 +39,27 @@ export function AssetManagementModal({ open, onClose, vehicleId }: AssetManageme
   const [depreciationPeriod, setDepreciationPeriod] = useState(currentPeriod);
   const [depreciationAccountId, setDepreciationAccountId] = useState('');
   const [accumulatedAccountId, setAccumulatedAccountId] = useState('');
+
+  // Pre-populate account fields from fleet accounting config once vehicle is known
+  useEffect(() => {
+    if (!vehicle) return;
+    const cfg = fleetConfigs.find((c) => c.storeId === vehicle.storeId);
+    if (!cfg) return;
+    if (cfg.fixedAssetAccountId) {
+      setFixedAssetAccountId(cfg.fixedAssetAccountId);
+      setSaleFixedAssetAccountId(cfg.fixedAssetAccountId);
+    }
+    if (cfg.accDepreciationAccountId) {
+      setSaleAccDepreciationAccountId(cfg.accDepreciationAccountId);
+      setAccumulatedAccountId(cfg.accDepreciationAccountId);
+    }
+    if (cfg.depreciationExpenseAccountId) {
+      setDepreciationAccountId(cfg.depreciationExpenseAccountId);
+    }
+    if (cfg.gainLossAccountId) {
+      setGainLossAccountId(cfg.gainLossAccountId);
+    }
+  }, [vehicle, fleetConfigs]);
 
   const handleRecordPurchase = (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,23 +110,10 @@ export function AssetManagementModal({ open, onClose, vehicleId }: AssetManageme
     );
   };
 
-  if (!open) return null;
-  if (isLoading || !vehicle) {
-    return (
-      <Modal open onClose={onClose} title="Asset" size="md">
-        <div className="py-8 text-center text-gray-500">Loading...</div>
-      </Modal>
-    );
-  }
-
   const accList = accounts as Array<{ id: string; name: string; storeId?: string | null; type?: string; accountType?: string }>;
   const storeList = stores as Array<{ id: string; name: string }>;
   const accType = (a: (typeof accList)[0]) => a.type ?? a.accountType ?? '';
 
-  // Build a filtered + labelled account list for this vehicle's store.
-  // Rule: show accounts belonging to this vehicle's store, OR shared accounts
-  // (storeId null / 'company'). If two accounts end up with the same name
-  // after filtering, append the store name in parentheses to disambiguate.
   const vehicleStoreId = vehicle?.storeId ?? null;
   const labelledAccounts = useMemo(() => {
     const relevant = accList.filter((a) => {
@@ -122,6 +131,15 @@ export function AssetManagementModal({ open, onClose, vehicleId }: AssetManageme
         : a.name,
     }));
   }, [accList, storeList, vehicleStoreId]);
+
+  if (!open) return null;
+  if (isLoading || !vehicle) {
+    return (
+      <Modal open onClose={onClose} title="Asset" size="md">
+        <div className="py-8 text-center text-gray-500">Loading...</div>
+      </Modal>
+    );
+  }
 
   return (
     <Modal open onClose={onClose} title={`Asset — ${vehicle.name}`} size="lg">
@@ -200,7 +218,7 @@ export function AssetManagementModal({ open, onClose, vehicleId }: AssetManageme
               <span className="text-sm text-gray-600">Cash account</span>
               <select value={saleCashAccountId} onChange={(e) => setSaleCashAccountId(e.target.value)} required className="mt-1 block w-40 rounded border px-2 py-1.5 text-sm">
                 <option value="">Select</option>
-                {labelledAccounts.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
+                {labelledAccounts.filter((a) => (accType(a) || '').toLowerCase() === 'asset').map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
               </select>
             </label>
             <label className="block">
@@ -221,7 +239,7 @@ export function AssetManagementModal({ open, onClose, vehicleId }: AssetManageme
               <span className="text-sm text-gray-600">Gain/loss account</span>
               <select value={gainLossAccountId} onChange={(e) => setGainLossAccountId(e.target.value)} required className="mt-1 block w-40 rounded border px-2 py-1.5 text-sm">
                 <option value="">Select</option>
-                {labelledAccounts.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
+                {labelledAccounts.filter((a) => ['income', 'expense', 'revenue'].includes((accType(a) || '').toLowerCase())).map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
               </select>
             </label>
             <button type="submit" disabled={recordSale.isPending} className="self-end rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50">Record sale</button>

@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import type { BookingPort, ConfigRepository, TransferRepository } from '@lolas/domain';
+import type { BookingPort, ConfigRepository, TransferRepository, AccountingPort } from '@lolas/domain';
+import { Money } from '@lolas/domain';
 import type { SubmitDirectBookingInput } from '@lolas/shared';
 import { resolveSourceFromStore } from '@lolas/shared';
 import { computeQuote } from './compute-quote.js';
@@ -28,6 +29,7 @@ export interface SubmitDirectBookingDeps {
   bookingPort: BookingPort;
   configRepo: ConfigRepository;
   transferRepo: TransferRepository;
+  accountingPort?: AccountingPort;
 }
 
 function generateOrderReference(source: string): string {
@@ -192,6 +194,36 @@ export async function submitDirectBooking(
     partnerRef: input.partnerRef?.trim() || null,
     rentalValueRaw: fullQuote?.rentalSubtotal ?? null,
   });
+
+  // 5b. Auto-journal charity donation → wallet (best-effort; never blocks booking).
+  if ((input.charityDonation ?? 0) > 0 && deps.accountingPort) {
+    const donation = input.charityDonation!;
+    void deps.accountingPort.createTransaction(
+      [
+        {
+          entryId: crypto.randomUUID(),
+          accountId: 'CASH-CHARITY-WALLET',
+          debit: Money.php(donation),
+          credit: Money.zero(),
+          description: `Charity donation — ${result.orderReference}`,
+          referenceType: 'order',
+          referenceId: result.id,
+        },
+        {
+          entryId: crypto.randomUUID(),
+          accountId: 'CHARITY-PAYABLE',
+          debit: Money.zero(),
+          credit: Money.php(donation),
+          description: `Charity donation — ${result.orderReference}`,
+          referenceType: 'order',
+          referenceId: result.id,
+        },
+      ],
+      input.storeId,
+    ).catch((err: unknown) => {
+      console.error('[charity-journal] Failed to post charity wallet entry for', result.orderReference, err);
+    });
+  }
 
   // 6. Clean up the hold (best-effort; booking is already persisted).
   // Pass holdId when available so only the specific hold row is deleted,

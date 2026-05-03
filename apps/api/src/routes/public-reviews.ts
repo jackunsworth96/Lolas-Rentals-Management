@@ -21,14 +21,19 @@ function mapReviewRow(row: Record<string, unknown>) {
 
 router.get('/', async (req, res, next) => {
   try {
+    const { storeId } = req.query as { storeId?: string };
     const sb = getSupabaseClient();
-    const { data, error } = await sb
+    let query = sb
       .from('reviews')
       .select('*')
       .eq('is_active', true)
       .order('sort_order', { ascending: true })
       .order('created_at', { ascending: false })
-      .limit(10);
+      .limit(20);
+    if (storeId) {
+      query = query.eq('store_id', storeId);
+    }
+    const { data, error } = await query;
     if (error) throw new Error(error.message);
     const reviews = (data ?? []).map((r) => mapReviewRow(r as Record<string, unknown>));
     res.json({ success: true, data: reviews });

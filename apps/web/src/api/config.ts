@@ -233,6 +233,32 @@ export function useDeleteMaintenancePart() { return useDelete('maintenance-work-
 export function useSaveTaskCategory() { return useSave('task-categories', ['task-categories']); }
 export function useDeleteTaskCategory() { return useDelete('task-categories', ['task-categories']); }
 
+// ── Fleet Accounting Config ──
+
+export interface FleetAccountingConfig {
+  storeId: string;
+  fixedAssetAccountId: string | null;
+  accDepreciationAccountId: string | null;
+  depreciationExpenseAccountId: string | null;
+  gainLossAccountId: string | null;
+}
+
+export function useFleetAccountingConfig() {
+  return useQuery<FleetAccountingConfig[]>({
+    queryKey: ['config', 'fleet-accounting-config'],
+    queryFn: () => api.get('/config/fleet-accounting-config'),
+  });
+}
+
+export function useSaveFleetAccountingConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ storeId, ...body }: FleetAccountingConfig) =>
+      api.put(`/config/fleet-accounting-config/${storeId}`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['config', 'fleet-accounting-config'] }),
+  });
+}
+
 export function useSaveLeaveConfig() {
   const qc = useQueryClient();
   return useMutation({
