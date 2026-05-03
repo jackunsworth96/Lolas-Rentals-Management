@@ -197,8 +197,8 @@ function HeroSection() {
       ref={heroRef}
       className="relative z-10 overflow-visible"
       style={{
-        minHeight: isMobileFlower ? 'min(580px, 92dvh)' : '560px',
-        height: isMobileFlower ? '78vh' : '70vh',
+        minHeight: isMobileFlower ? 'min(560px, 88dvh)' : '560px',
+        height: isMobileFlower ? '72vh' : '70vh',
         backgroundColor: HOME_SAND,
       }}
       onMouseMove={handleMouseMove}
@@ -420,12 +420,11 @@ function HeroSection() {
         />
       </motion.div>
 
-      {/* ── Hero content — mobile: space-between so copy sits higher & scroll anchors low (less top-heavy) ── */}
-      <div className="relative z-10 flex h-full w-full flex-col items-center justify-between px-6 pb-10 pt-[calc(4.15rem+0.55rem)] text-center max-sm:pb-14 sm:justify-center sm:pb-24 sm:pt-[calc(5rem+2cm)]">
-        <div className="flex w-full flex-shrink-0 flex-col items-center sm:w-auto">
+      {/* ── Hero content ── */}
+      <div className="relative z-10 flex h-full w-full flex-col items-center justify-center px-6 pb-4 pt-[calc(4.15rem+0.55rem)] text-center sm:pb-24 sm:pt-[calc(5rem+2cm)]">
         {/* Headline */}
         <h1
-          className="font-headline max-sm:mb-3 max-sm:text-[clamp(1.875rem,6.6vw,2.35rem)] font-extrabold sm:mb-6 sm:text-[clamp(2.25rem,5vw,3.25rem)]"
+          className="font-headline max-sm:mb-4 max-sm:text-[clamp(1.875rem,6.6vw,2.35rem)] font-extrabold sm:mb-6 sm:text-[clamp(2.25rem,5vw,3.25rem)]"
           style={{
             textAlign: 'center',
             lineHeight: 1.15,
@@ -448,7 +447,7 @@ function HeroSection() {
 
         {/* Subheadline */}
         <motion.p
-          className="font-lato mx-auto max-sm:mb-4 max-sm:max-w-[22rem] max-sm:text-base sm:mb-6 sm:max-w-[560px] sm:text-lg"
+          className="font-lato mx-auto max-sm:mb-7 max-sm:max-w-[22rem] max-sm:text-base sm:mb-6 sm:max-w-[560px] sm:text-lg"
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: 'easeOut', delay: 0.5 }}
@@ -464,7 +463,7 @@ function HeroSection() {
 
         {/* Trust — review count + Google */}
         <motion.div
-          className="font-lato mb-7 flex w-full justify-center max-sm:mb-4"
+          className="font-lato mb-7 flex w-full justify-center max-sm:mb-8"
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: 'easeOut', delay: 0.58 }}
@@ -528,7 +527,7 @@ function HeroSection() {
 
         {/* CTA + urgency — single pulse so button and line stay in sync */}
         <motion.div
-          className="mt-5 flex flex-col items-center sm:mt-[1cm]"
+          className="mt-0 flex flex-col items-center sm:mt-[1cm]"
           style={{
             willChange: 'transform',
           }}
@@ -601,17 +600,15 @@ function HeroSection() {
           </motion.p>
         </motion.div>
 
-        </div>
-
-        {/* Scroll-down arrow */}
+        {/* Scroll-down arrow — absolutely positioned at hero bottom, kept out of content flow */}
         <motion.button
-          className="mt-0 shrink-0 sm:mt-10"
           onClick={() => window.scrollBy({ top: window.innerHeight * 0.85, behavior: 'smooth' })}
           aria-label="Scroll down"
           animate={shouldAnimate ? { y: [0, 8, 0] } : {}}
           transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
           whileHover={{ scale: 1.15 }}
           whileTap={{ scale: 0.92 }}
+          className="absolute bottom-5 left-1/2 z-20 -translate-x-1/2 sm:bottom-7"
           style={{
             display: 'flex',
             flexDirection: 'column',
