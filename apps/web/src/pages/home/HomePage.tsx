@@ -417,7 +417,7 @@ function HeroSection() {
       </motion.div>
 
       {/* ── Hero content ─────────────────────────────────────── */}
-      <div className="relative z-10 flex h-full flex-col items-center justify-center px-6 pb-20 pt-[calc(5rem+2cm)] text-center">
+      <div className="relative z-10 flex h-full flex-col items-center justify-center px-6 pb-24 pt-[calc(5rem+2cm)] max-sm:pb-36 text-center">
         {/* Headline */}
         <h1
           className="font-headline font-extrabold"
@@ -583,7 +583,7 @@ function HeroSection() {
           </motion.div>
 
           <motion.p
-            className="font-lato"
+            className="font-lato max-sm:max-w-[15.5rem] sm:max-w-none"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, ease: 'easeOut', delay: prefersReducedMotion ? 0 : 0.82 }}
@@ -599,9 +599,12 @@ function HeroSection() {
               textAlign: 'center',
             }}
           >
-            <span className="inline-block whitespace-nowrap">
-              Vehicles fill up fast in peak season -{' '}
-              <span className="font-extrabold text-teal-brand">secure yours now</span>
+            Vehicles fill up fast in peak season
+            <span className="hidden sm:inline"> - </span>
+            <br className="sm:hidden" aria-hidden="true" />
+            <span className="font-extrabold text-teal-brand">
+              <span className="sm:hidden">- </span>
+              secure yours now
             </span>
           </motion.p>
         </motion.div>
@@ -761,9 +764,8 @@ export default function HomePage() {
       <HeroSection />
 
       <div
-        className="max-lg:-mb-4 lg:-mb-[60px]"
+        className="max-lg:-mb-4 lg:-mb-[60px] max-sm:mt-5 sm:-mt-1"
         style={{
-          marginTop: -4,
           transform: 'rotate(10deg)',
           transformOrigin: 'center',
           width: '120%',
