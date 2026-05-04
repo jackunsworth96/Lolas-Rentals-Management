@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type FormEvent } from 'react';
+import { useState, useEffect, useRef, useMemo, type FormEvent } from 'react';
 import { Button } from '../common/Button.js';
 import { formatCurrency } from '../../utils/currency.js';
 import {
@@ -100,10 +100,14 @@ function blankForm(): Record<string, unknown> {
   };
 }
 
-function employeeToForm(e: EmployeeRow): Record<string, unknown> {
+function employeeToForm(e: EmployeeRow, visibleStoreIds?: Set<string>): Record<string, unknown> {
+  const allStoreIds = e.storeIds?.length ? e.storeIds : (e.storeId ? [e.storeId] : []);
+  const storeIds = visibleStoreIds
+    ? allStoreIds.filter((id) => visibleStoreIds.has(id))
+    : allStoreIds;
   return {
     fullName: e.fullName,
-    storeIds: e.storeIds?.length ? e.storeIds : (e.storeId ? [e.storeId] : []),
+    storeIds,
     role: e.role ?? '',
     status: e.status,
     birthday: e.birthday ?? '',
@@ -136,8 +140,9 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
   const isNew = !employee;
   const [tab, setTab] = useState<Tab>('personal');
   const [editing, setEditing] = useState(isNew);
+  const visibleStoreIds = useMemo(() => new Set(stores.map((s) => s.id)), [stores]);
   const [form, setForm] = useState<Record<string, unknown>>(
-    employee ? employeeToForm(employee) : blankForm(),
+    employee ? employeeToForm(employee, visibleStoreIds) : blankForm(),
   );
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
   const [showGrantAdvance, setShowGrantAdvance] = useState(false);
@@ -162,8 +167,8 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
   const leavePrefillStoreRef = useRef<string>('');
 
   useEffect(() => {
-    if (employee) setForm(employeeToForm(employee));
-  }, [employee]);
+    if (employee) setForm(employeeToForm(employee, visibleStoreIds));
+  }, [employee, visibleStoreIds]);
 
   useEffect(() => {
     if (isNew && !leaveStoreId) leavePrefillStoreRef.current = '';
@@ -866,7 +871,7 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
                       size="sm"
                       onClick={() => {
                         setEditing(false);
-                        if (employee) setForm(employeeToForm(employee));
+                        if (employee) setForm(employeeToForm(employee, visibleStoreIds));
                       }}
                     >
                       Cancel
