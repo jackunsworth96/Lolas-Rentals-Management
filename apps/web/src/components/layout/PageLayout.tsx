@@ -53,10 +53,9 @@ function useNavItems() {
     { label: t('nav.about'), href: '/book/about' },
     {
       label: t('nav.myRental'),
-      href: '/book/paw-card',
+      href: '/paw-card/partners',
       isDropdown: true,
       dropdownItems: [
-        { label: t('nav.pawCardSavings'), href: '/book/paw-card' },
         { label: t('nav.partnerDiscounts'), href: '/paw-card/partners' },
         { label: t('nav.extendRental'), href: '/book/extend' },
       ],

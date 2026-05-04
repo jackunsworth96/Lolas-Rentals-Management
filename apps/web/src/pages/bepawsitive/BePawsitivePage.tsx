@@ -1658,7 +1658,7 @@ export default function BePawsitivePage() {
           {/* CTAs */}
           <div style={{ display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap' }}>
             <Link
-              to="/book/paw-card"
+              to="/paw-card/partners"
               className="bp-primary-btn"
               style={{
                 display: 'inline-flex',

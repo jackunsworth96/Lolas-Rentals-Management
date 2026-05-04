@@ -50,8 +50,7 @@ const NAV_CLOUDINARY_BY_HREF: Record<string, string> = {
   '/book/transfers': 'Nav_Transfers_a2ylr1',
   '/book/repairs': 'Nav_Repairs_j2bdcx',
   '/book/about': 'Nav_About_cp48yb',
-  '/book/paw-card': 'Nav_Paw_Card_xa1znf',
-  '/paw-card/partners': 'Nav_Partners_rpd2eg',
+  '/paw-card/partners': 'Nav_Paw_Card_xa1znf',
   '/book/extend': 'Nav_Extend_sbrjgg',
 };
 

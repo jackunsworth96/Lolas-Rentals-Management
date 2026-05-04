@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect, Fragment, memo } from 'react';
+import { useState, useMemo, useRef, useEffect, Fragment, memo, useCallback } from 'react';
 import {
   MapPin,
   Instagram,
@@ -11,7 +11,9 @@ import {
   User,
   Trophy,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { motion } from 'framer-motion';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { PesoSign } from '../../components/ui/PesoSign.js';
 import { SEO } from '../../components/seo/SEO.js';
@@ -26,6 +28,11 @@ import {
   PARTNER_MARQUEE_CLOUDINARY_IDS,
   resolveEstablishmentCloudinaryId,
 } from './partner-marquee-public-ids.js';
+import { PawCardLoginPanel, type PawCardAccess } from './PawCardLoginPanel.js';
+import { PawCardSavingsForm } from './PawCardSavingsForm.js';
+import { PawCardDashboard } from './PawCardDashboard.js';
+import BorderGlow from '../../components/home/BorderGlow.js';
+import separatorSvg from '../../assets/Original Assests/separator.svg';
 import pawPrintAsset from '../../assets/Paw Print.svg';
 
 function useInView(threshold = 0.1) {
@@ -185,6 +192,34 @@ function groupPartnersByLetter(
 export default function PawCardPartnersPage() {
   const [activeFilter, setActiveFilter] = useState<FilterTab>('All');
   const [search, setSearch] = useState('');
+
+  const qc = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const [pawAccess, setPawAccess] = useState<PawCardAccess | null>(null);
+  const [preselectedEstablishmentId, setPreselectedEstablishmentId] = useState<string | null>(
+    searchParams.get('establishment'),
+  );
+  const pawAccessRef = useRef<PawCardAccess | null>(null);
+  useEffect(() => { pawAccessRef.current = pawAccess; }, [pawAccess]);
+
+  const displayFirstName = pawAccess?.customerName
+    ? (pawAccess.customerName.split(' ')[0] ?? pawAccess.customerName).replace(/\b\w/g, (c) => c.toUpperCase())
+    : (pawAccess?.email.split('@')[0]?.replace(/[._-]/g, ' ').trim().split(' ')[0]?.replace(/\b\w/g, (c) => c.toUpperCase()) ?? 'Member');
+
+  const displayFullName =
+    pawAccess?.customerName?.replace(/\b\w/g, (c) => c.toUpperCase())
+    ?? pawAccess?.email.split('@')[0]?.replace(/[._-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+    ?? 'Member';
+
+  const customerIdForSubmit = pawAccess?.customerId ?? pawAccess?.email ?? '';
+
+  const handleLogSaving = useCallback((id: string) => {
+    setPreselectedEstablishmentId(id);
+    const target = pawAccessRef.current
+      ? document.getElementById('paw-savings-form')
+      : document.getElementById('paw-card-login');
+    target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
 
   const { data: establishments = [], isLoading, error } = usePublicEstablishments();
   const { data: topData } = useTopEstablishments();
@@ -413,7 +448,7 @@ export default function PawCardPartnersPage() {
           </div>
 
           {/* Filter pills */}
-          <div className="flex flex-wrap justify-center gap-2">
+          <div className="flex flex-wrap justify-center gap-2 mb-6">
             {FILTER_TABS.map((tab) => (
               <button
                 key={tab}
@@ -427,6 +462,33 @@ export default function PawCardPartnersPage() {
                 {tab}
               </button>
             ))}
+          </div>
+
+          {/* Login panel / logged-in state */}
+          <div id="paw-card-login" className="mx-auto max-w-xs scroll-mt-24">
+            {!pawAccess ? (
+              <PawCardLoginPanel
+                compact
+                access={null}
+                onAccessGranted={(access) => {
+                  setPawAccess(access);
+                  setTimeout(() => {
+                    document.getElementById('paw-savings-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }, 300);
+                }}
+              />
+            ) : (
+              <p className="font-lato text-sm text-center" style={{ color: 'rgba(54,55,55,0.75)' }}>
+                Logged in as <span className="font-semibold">{displayFirstName}</span>
+                {' — '}
+                <button
+                  onClick={() => { setPawAccess(null); qc.invalidateQueries({ queryKey: ['paw-card'] }); }}
+                  className="underline underline-offset-2 hover:opacity-70 transition-opacity"
+                >
+                  log out
+                </button>
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -705,6 +767,7 @@ export default function PawCardPartnersPage() {
                           establishment={e}
                           index={index}
                           isFavourite={topNames.has((e.name ?? '').toLowerCase().trim())}
+                          onLogSaving={handleLogSaving}
                         />
                       </div>
                     );
@@ -733,6 +796,71 @@ export default function PawCardPartnersPage() {
           when redeeming.
         </p>
       </section>
+
+      {/* ── Savings form + Dashboard (logged-in only) ── */}
+      {pawAccess && (
+        <div id="paw-savings-form" className="relative isolate z-0 overflow-x-hidden scroll-mt-20">
+          <div className="pointer-events-none absolute inset-0 z-0 bg-sand-brand" aria-hidden />
+          <div className="relative z-10">
+
+            {/* Welcome animation */}
+            <div className="pt-10 pb-2 text-center">
+              <motion.div
+                className="font-headline text-3xl text-teal-brand md:text-4xl"
+                initial="hidden"
+                animate="visible"
+                variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.04 } } }}
+              >
+                {'Welcome back, '.split('').map((char, i) => (
+                  <motion.span
+                    key={i}
+                    variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } } }}
+                    style={{ display: 'inline-block', whiteSpace: char === ' ' ? 'pre' : 'normal' }}
+                  >{char}</motion.span>
+                ))}
+                {displayFirstName.split('').map((char, i) => (
+                  <motion.span
+                    key={`n-${i}`}
+                    variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut', delay: 'Welcome back, '.length * 0.04 + i * 0.04 } } }}
+                    style={{ display: 'inline-block', whiteSpace: char === ' ' ? 'pre' : 'normal' }}
+                    className="italic text-gold-brand"
+                  >{char}</motion.span>
+                ))}
+                <motion.span
+                  variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut', delay: ('Welcome back, '.length + displayFirstName.length) * 0.04 } } }}
+                  style={{ display: 'inline-block' }}
+                >!</motion.span>
+              </motion.div>
+            </div>
+
+            {/* Savings form */}
+            <section className="px-6 py-10">
+              <div className="mx-auto max-w-lg">
+                <BorderGlow backgroundColor="#ffffff" borderRadius={16} glowIntensity={0.8} className="shadow-lg">
+                  <div className="p-8">
+                    <PawCardSavingsForm
+                      accessEmail={pawAccess.email}
+                      customerIdForSubmit={customerIdForSubmit}
+                      displayFullName={displayFullName}
+                      onLogged={() => qc.invalidateQueries({ queryKey: ['paw-card'] })}
+                      preselectedEstablishmentId={preselectedEstablishmentId ?? undefined}
+                    />
+                  </div>
+                </BorderGlow>
+              </div>
+            </section>
+
+            <div style={{ width: '100%', overflow: 'hidden', lineHeight: 0, marginTop: -4, marginBottom: -4 }}>
+              <img src={separatorSvg} alt="" style={{ width: '100%', height: 'auto', display: 'block', minWidth: 800 }} />
+            </div>
+
+            <section>
+              <PawCardDashboard accessEmail={pawAccess.email} displayFullName={displayFullName} />
+            </section>
+
+          </div>
+        </div>
+      )}
     </PageLayout>
   );
 }
@@ -741,11 +869,12 @@ interface EstablishmentCardProps {
   establishment: PawCardEstablishment & { redemptionCount?: number };
   index: number;
   isFavourite?: boolean;
+  onLogSaving?: (id: string) => void;
 }
 
 // 70+ partners renders this component many times; memo prevents re-renders when
 // parent filter/search state changes but this card's own props are unchanged.
-const EstablishmentCard = memo(function EstablishmentCard({ establishment: e, index, isFavourite }: EstablishmentCardProps) {
+const EstablishmentCard = memo(function EstablishmentCard({ establishment: e, index, isFavourite, onLogSaving }: EstablishmentCardProps) {
   const { ref, inView } = useInView(0.1);
   const [hovered, setHovered] = useState(false);
   const displayName = e.name ?? '';
@@ -957,8 +1086,9 @@ const EstablishmentCard = memo(function EstablishmentCard({ establishment: e, in
           paddingTop: 12,
           borderTop: '1px solid rgba(54,55,55,0.08)',
         }}>
-          <Link
-            to={`/book/paw-card?establishment=${e.id}`}
+          <button
+            type="button"
+            onClick={() => onLogSaving?.(e.id)}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -972,18 +1102,19 @@ const EstablishmentCard = memo(function EstablishmentCard({ establishment: e, in
               fontSize: 13,
               fontWeight: 700,
               fontFamily: 'Lato, sans-serif',
-              textDecoration: 'none',
+              border: 'none',
+              cursor: 'pointer',
               transition: 'opacity 0.2s ease',
             }}
             onMouseEnter={(ev) => {
-              (ev.currentTarget as HTMLAnchorElement).style.opacity = '0.85';
+              ev.currentTarget.style.opacity = '0.85';
             }}
             onMouseLeave={(ev) => {
-              (ev.currentTarget as HTMLAnchorElement).style.opacity = '1';
+              ev.currentTarget.style.opacity = '1';
             }}
           >
             🐾 Log My Saving
-          </Link>
+          </button>
         </div>
       </div>
     </div>

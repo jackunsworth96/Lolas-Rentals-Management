@@ -77,7 +77,7 @@ export function PawCardCallout() {
       </div>
 
       <Link
-        to="/book/paw-card"
+        to="/paw-card/partners"
         style={{
           display: 'inline-flex',
           alignItems: 'center',
