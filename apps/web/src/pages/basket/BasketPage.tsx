@@ -1,7 +1,13 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client.js';
-import { getPartnerRef, clearPartnerRef } from '../../utils/partnerRef.js';
+import {
+  getPartnerRef,
+  clearPartnerRef,
+  getStoredPartnerBenefit,
+} from '../../utils/partnerRef.js';
+import { computePartnerBenefit } from '../../utils/partnerDiscount.js';
+import { PartnerBenefitBanner } from '../../components/booking/PartnerBenefitBanner.js';
 import { useBookingStore, type BasketItem, type RenterDetails } from '../../stores/bookingStore.js';
 import { useToast } from '../../hooks/useToast.js';
 import { BasketVehicleCard } from '../../components/basket/BasketVehicleCard.js';
@@ -334,6 +340,16 @@ export default function BasketPage() {
   const selectedPm = paymentMethods.find((pm) => pm.id === paymentMethodId);
   const surchargePercent = selectedPm?.surchargePercent ?? 0;
 
+  // ── Partner referral benefit (read once on mount, recompute when dates change) ──
+  const partnerBenefit = useMemo(() => getStoredPartnerBenefit(), []);
+  const vehicleSubtotalForBenefit = basket.reduce((s, b) => s + b.dailyRate * rentalDays, 0);
+  const appliedPartnerBenefit = useMemo(
+    () => computePartnerBenefit(partnerBenefit, vehicleSubtotalForBenefit, pickupDatetime),
+    [partnerBenefit, vehicleSubtotalForBenefit, pickupDatetime],
+  );
+  const partnerRentalDiscount = appliedPartnerBenefit.applied ? appliedPartnerBenefit.rentalDiscount : 0;
+  const partnerFreeDelivery = appliedPartnerBenefit.applied && appliedPartnerBenefit.freeDelivery;
+
   const [isMdUp, setIsMdUp] = useState(() =>
     typeof window !== 'undefined' ? window.matchMedia('(min-width: 768px)').matches : true,
   );
@@ -394,8 +410,11 @@ export default function BasketPage() {
       .filter((a) => selectedAddonIds.has(Number(a.id)))
       .reduce((s, a) => s + addonLineTotal(a, rentalDays), 0) * basket.length;
     const transferFee = transfer?.totalPrice ?? 0;
+    const discountedVehicleSubtotal = Math.max(0, vehicleSubtotal - partnerRentalDiscount);
+    const effPickup = partnerFreeDelivery ? 0 : pickupFee;
+    const effDropoff = partnerFreeDelivery ? 0 : dropoffFee;
     const subtotalBeforeSurcharge =
-      vehicleSubtotal + addonsTotal + transferFee + pickupFee + dropoffFee;
+      discountedVehicleSubtotal + addonsTotal + transferFee + effPickup + effDropoff;
     const surchargeAmount =
       surchargePercent > 0
         ? Math.round(subtotalBeforeSurcharge * (surchargePercent / 100) * 100) / 100
@@ -411,6 +430,8 @@ export default function BasketPage() {
     dropoffFee,
     surchargePercent,
     charityDonation,
+    partnerRentalDiscount,
+    partnerFreeDelivery,
   ]);
 
   const reviewSheetDeposit = useMemo(
@@ -1061,6 +1082,11 @@ export default function BasketPage() {
 
           {/* ── RIGHT COLUMN (summary + payment) — below main on mobile, sticky sidebar on lg ── */}
           <div className="order-2 lg:sticky lg:top-20 lg:self-start">
+            {partnerBenefit && (
+              <div className="mb-4">
+                <PartnerBenefitBanner benefit={partnerBenefit} applied={appliedPartnerBenefit} />
+              </div>
+            )}
             <OrderSummaryPanel
               basket={basket} rentalDays={rentalDays} selectedAddonIds={selectedAddonIds} addons={standardAddons}
               transfer={transfer} pickupFee={pickupFee} dropoffFee={dropoffFee} vehicleCount={vehicleCount}
@@ -1078,6 +1104,8 @@ export default function BasketPage() {
               onCharityChange={setCharityDonation}
               isMdUp={isMdUp}
               onOpenMobileReview={handleOpenMobileReview}
+              partnerBenefit={partnerBenefit}
+              partnerBenefitApplied={appliedPartnerBenefit}
             />
           </div>
         </div>

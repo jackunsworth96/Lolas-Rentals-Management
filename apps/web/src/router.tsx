@@ -55,6 +55,8 @@ const CustomersPage = lazy(() => import('./pages/customers/CustomersPage.js'));
 const UnsubscribePage = lazy(() => import('./pages/unsubscribe/UnsubscribePage.js'));
 const PartnersPage = lazy(() => import('./pages/partners/PartnersPage.js'));
 const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage.js'));
+const AffiliatesPage = lazy(() => import('./pages/affiliates/AffiliatesPage.js'));
+const AffiliatesDetailsPage = lazy(() => import('./pages/affiliates/AffiliatesDetailsPage.js'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
@@ -111,6 +113,8 @@ export function AppRouter() {
           <Route path="/book/bepawsitive" element={<BePawsitivePage />} />
           <Route path="/book/cancel/:orderReference" element={<CancelBookingPage />} />
           <Route path="/unsubscribe" element={<UnsubscribePage />} />
+          <Route path="/affiliates" element={<AffiliatesPage />} />
+          <Route path="/affiliates/details/:partnerId" element={<AffiliatesDetailsPage />} />
 
           {/* Backoffice routes — protected */}
           <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>

@@ -6,6 +6,9 @@ import { useBookingStore } from '../../stores/bookingStore.js';
 import { useToast } from '../../hooks/useToast.js';
 import { HoldCountdown } from '../../components/booking/HoldCountdown.js';
 import { VehicleCard } from '../../components/booking/VehicleCard.js';
+import { PartnerBenefitBanner } from '../../components/booking/PartnerBenefitBanner.js';
+import { getStoredPartnerBenefit } from '../../utils/partnerRef.js';
+import { computePartnerBenefit } from '../../utils/partnerDiscount.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { SEO } from '../../components/seo/SEO.js';
 import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
@@ -915,6 +918,18 @@ export default function BrowseBookPage() {
 
       <div className="relative z-10 mx-auto max-w-7xl overflow-visible px-4 pt-4">
         <HeroFloatingClouds variant="functional" />
+
+        {/* Partner referral banner — only when a ?ref= was captured */}
+        {(() => {
+          const partnerBenefit = getStoredPartnerBenefit();
+          if (!partnerBenefit) return null;
+          const applied = computePartnerBenefit(partnerBenefit, 0, pickupDatetime);
+          return (
+            <div className="mb-4">
+              <PartnerBenefitBanner benefit={partnerBenefit} applied={applied} />
+            </div>
+          );
+        })()}
 
         {/* Basket bar — always visible when items are held */}
         {basket.length > 0 && (

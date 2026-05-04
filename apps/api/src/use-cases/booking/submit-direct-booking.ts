@@ -16,6 +16,11 @@ import { getSupabaseClient } from '../../adapters/supabase/client.js';
 import { formatManilaDate } from '../../utils/manila-date.js';
 import { publicWebOriginFromEnv } from '../../lib/public-web-url.js';
 import { getTelegramChatId, sendTelegramAlert } from '../../lib/telegram.js';
+import {
+  applyPartnerBenefit,
+  isBenefitEligibleForPickup,
+  lookupActivePartnerBySlug,
+} from '../../lib/partner-benefit.js';
 
 function formatManilaDateTime(iso: string): string {
   return new Date(iso).toLocaleString('en-PH', {
@@ -112,6 +117,15 @@ export async function submitDirectBooking(
   // 3. Compute quote so the total is persisted with the order
   let webQuoteRaw: number | null = null;
   let fullQuote: Awaited<ReturnType<typeof computeQuote>> | null = null;
+  let rentalSubtotalForCommission: number | null = null;
+  let effectivePickupFee = 0;
+  let effectiveDropoffFee = 0;
+  // Resolve the partner referral against the live record so we never trust a
+  // discount the client claims. When the partner is pending/inactive/missing
+  // we drop the partnerRef entirely so the booking is treated as a normal one.
+  const validatedPartner = await lookupActivePartnerBySlug(input.partnerRef);
+  let partnerRefToPersist: string | null = validatedPartner?.slug ?? null;
+
   try {
     fullQuote = await computeQuote(
       { configRepo: deps.configRepo },
@@ -125,7 +139,33 @@ export async function submitDirectBooking(
         addonIds: input.addonIds && input.addonIds.length > 0 ? input.addonIds : undefined,
       },
     );
-    webQuoteRaw = fullQuote.grandTotalWithFees ?? fullQuote.grandTotal;
+
+    rentalSubtotalForCommission = fullQuote.rentalSubtotal;
+    effectivePickupFee = fullQuote.pickupFee;
+    effectiveDropoffFee = fullQuote.dropoffFee;
+
+    // Apply the partner benefit (discount / free delivery / combined) to the
+    // rental subtotal and location fees if the partner is eligible.
+    if (
+      validatedPartner &&
+      isBenefitEligibleForPickup(validatedPartner, input.pickupDatetime)
+    ) {
+      const benefit = applyPartnerBenefit({
+        partner: validatedPartner,
+        rentalSubtotal: fullQuote.rentalSubtotal,
+        pickupFee: fullQuote.pickupFee,
+        dropoffFee: fullQuote.dropoffFee,
+      });
+      rentalSubtotalForCommission = benefit.rentalSubtotal;
+      effectivePickupFee = benefit.pickupFee;
+      effectiveDropoffFee = benefit.dropoffFee;
+    }
+
+    webQuoteRaw =
+      rentalSubtotalForCommission +
+      effectivePickupFee +
+      effectiveDropoffFee +
+      fullQuote.addonsTotal;
   } catch {
     // Non-fatal: booking still proceeds even if quote computation fails
   }
@@ -191,8 +231,8 @@ export async function submitDirectBooking(
     pickupLocationAddress: input.pickupLocationAddress?.trim() || null,
     dropoffLocationAddress: input.dropoffLocationAddress?.trim() || null,
     deviceType: context?.deviceType ?? null,
-    partnerRef: input.partnerRef?.trim() || null,
-    rentalValueRaw: fullQuote?.rentalSubtotal ?? null,
+    partnerRef: partnerRefToPersist,
+    rentalValueRaw: rentalSubtotalForCommission ?? fullQuote?.rentalSubtotal ?? null,
   });
 
   // 5b. Auto-journal charity donation → wallet (best-effort; never blocks booking).

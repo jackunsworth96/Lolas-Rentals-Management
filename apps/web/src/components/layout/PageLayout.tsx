@@ -8,6 +8,7 @@ import ClickSpark from '../home/ClickSpark.js';
 import { instaIcon, phoneIcon, locationIcon } from '../public/customerContactIcons.js';
 import { GOOGLE_MAPS_PLACE_URL } from '../../config/maps.js';
 import { CookieNotice } from '../common/CookieNotice.js';
+import { usePartnerRefCapture } from '../../hooks/usePartnerRefCapture.js';
 
 import logo from '../../assets/Lolas Original Logo.svg';
 import flowerLeft from '../../assets/Flower Left.svg';
@@ -82,6 +83,10 @@ export function PageLayout({
   const { t } = useTranslation();
   const navItems = useNavItems();
   const basketCount = useBookingStore((s) => s.basket.length);
+
+  // Capture ?ref=<slug> (and resolve the partner benefit) on every customer
+  // page. Cached in sessionStorage so subsequent navigations don't re-fetch.
+  usePartnerRefCapture();
 
   // Flash the basket icon (bounce + gold highlight) whenever an item is added.
   const [basketFlash, setBasketFlash] = useState(false);
@@ -317,6 +322,7 @@ export function PageLayout({
               <Link to="/book/terms" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">Terms &amp; Conditions</Link>
               <Link to="/refund-policy" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.refundPolicy')}</Link>
               <Link to="/peace-of-mind" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.peaceOfMindCover')}</Link>
+              <Link to="/affiliates" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.affiliates')}</Link>
             </div>
 
             <p className="mt-5 text-[10px] leading-relaxed text-charcoal-brand/50">
@@ -395,6 +401,7 @@ export function PageLayout({
                 <Link to="/book/terms" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">Terms &amp; Conditions</Link>
                 <Link to="/refund-policy" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.refundPolicy')}</Link>
                 <Link to="/peace-of-mind" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.peaceOfMindCover')}</Link>
+                <Link to="/affiliates" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.affiliates')}</Link>
               </div>
             </div>
           </footer>

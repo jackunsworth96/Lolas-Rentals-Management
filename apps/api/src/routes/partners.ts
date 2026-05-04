@@ -1,16 +1,16 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import rateLimit from 'express-rate-limit';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { validateBody } from '../middleware/validate.js';
 import { Permission } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
-import { sendTelegramAlert } from '../lib/telegram.js';
+import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
 
 const router = Router();
-router.use(authenticate);
 
-const edit = requirePermission(Permission.EditSettings);
+// ── Slug helper ───────────────────────────────────────────────────────────────
 
 function slugify(name: string): string {
   return name
@@ -18,6 +18,22 @@ function slugify(name: string): string {
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
+}
+
+async function uniqueSlug(storeId: string, base: string): Promise<string> {
+  const sb = getSupabaseClient();
+  let slug = base;
+  let attempt = 0;
+  while (true) {
+    const { count } = await sb
+      .from('accommodation_partners')
+      .select('id', { count: 'exact', head: true })
+      .eq('store_id', storeId)
+      .eq('slug', slug);
+    if ((count ?? 0) === 0) return slug;
+    attempt++;
+    slug = `${base}-${attempt}`;
+  }
 }
 
 /**
@@ -35,6 +51,249 @@ function calcCommission(
   return Math.round(base * partner.commission_value / 100 * 100) / 100;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PUBLIC ENDPOINTS — no authentication, basic rate limiting.
+// Mounted before the authenticate middleware so they remain reachable.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const enrollLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 8,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: { code: 'RATE_LIMIT', message: 'Too many enrolment submissions. Please try again later.' },
+  },
+});
+
+const publicLookupLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 60,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: { code: 'RATE_LIMIT', message: 'Too many lookups. Please slow down.' },
+  },
+});
+
+// Public store id used for self-enrolment (Lola's Siargao).
+// New partners go into the pending queue under this store.
+const DEFAULT_ENROL_STORE_ID = 'store-lolas';
+
+const PublicEnrollSchema = z.object({
+  propertyName: z.string().min(1).max(200),
+  propertyType: z.string().max(80).optional().nullable(),
+  location: z.string().max(200).optional().nullable(),
+  roomCount: z.coerce.number().int().min(0).max(10_000).optional().nullable(),
+  contactName: z.string().min(1).max(200),
+  email: z.string().email().max(200),
+  phone: z.string().max(50).optional().nullable(),
+  telegramUsername: z.string().max(80).optional().nullable(),
+  dealChoice: z.enum(['commission', 'discount']),
+  preferredRate: z.coerce.number().min(0).max(100_000).optional().nullable(),
+});
+
+router.post('/enroll', enrollLimiter, validateBody(PublicEnrollSchema), async (req, res, next) => {
+  try {
+    const body = req.body as z.infer<typeof PublicEnrollSchema>;
+    const sb = getSupabaseClient();
+
+    const dealType = body.dealChoice === 'discount' ? 'discount' : 'commission';
+    const baseSlug = slugify(body.propertyName) || `partner-${Date.now().toString(36)}`;
+    const slug = await uniqueSlug(DEFAULT_ENROL_STORE_ID, baseSlug);
+
+    // Preferred rate captures the partner's requested commission % / discount %
+    // until staff finalise the deal during approval.
+    const numericRate = body.preferredRate != null ? Number(body.preferredRate) : 0;
+
+    const insertPayload = {
+      store_id: DEFAULT_ENROL_STORE_ID,
+      name: body.propertyName.trim(),
+      slug,
+      contact_name: body.contactName.trim(),
+      contact_email: body.email.trim(),
+      contact_whatsapp: body.phone?.trim() || null,
+      commission_type: 'percentage' as const,
+      commission_value: dealType === 'commission' ? numericRate : 0,
+      advance_booking_days: 7,
+      commission_includes_extensions: false,
+      active: false,
+      status: 'pending' as const,
+      deal_type: dealType,
+      discount_type: dealType === 'discount' ? 'percentage' : null,
+      discount_value: dealType === 'discount' ? numericRate : null,
+      free_delivery: false,
+      advance_discount_days: null,
+      notes: [
+        body.propertyType ? `Type: ${body.propertyType}` : null,
+        body.location ? `Location: ${body.location}` : null,
+        body.roomCount ? `Rooms: ${body.roomCount}` : null,
+        body.telegramUsername ? `Telegram: ${body.telegramUsername}` : null,
+        `Submitted via /affiliates`,
+      ].filter(Boolean).join('\n'),
+      telegram_chat_id: null,
+    };
+
+    const { data, error } = await sb
+      .from('accommodation_partners')
+      .insert(insertPayload)
+      .select('id, slug, deal_type, status')
+      .single();
+
+    if (error) throw new Error(`Failed to create partner: ${error.message}`);
+
+    // Fire-and-forget Telegram alert to ops so staff are notified of new applications.
+    void sendTelegramAlert(
+      [
+        `🤝 <b>New Partner Application</b>`,
+        `Property: <b>${body.propertyName}</b>${body.propertyType ? ` (${body.propertyType})` : ''}`,
+        `Location: ${body.location ?? '—'}`,
+        `Rooms: ${body.roomCount ?? '—'}`,
+        `Contact: ${body.contactName} — ${body.email}${body.phone ? ` · ${body.phone}` : ''}`,
+        `Choice: <b>${dealType === 'commission' ? 'Earn commission' : 'Discount for guests'}</b>`,
+        `Preferred rate: ${numericRate || '—'}`,
+        `Telegram: ${body.telegramUsername ?? '—'}`,
+        ``,
+        `Review in back office → /partners`,
+      ].join('\n'),
+      getTelegramChatId('ops'),
+    );
+
+    res.status(201).json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+const PublicEnrollDetailsSchema = z.object({
+  property_type: z.string().max(120).optional().nullable(),
+  room_count: z.coerce.number().int().min(0).max(10_000).optional().nullable(),
+  star_rating: z.string().max(20).optional().nullable(),
+  guest_profile: z.string().max(120).optional().nullable(),
+  avg_length_of_stay: z.string().max(80).optional().nullable(),
+  monthly_occupancy_pct: z.coerce.number().int().min(0).max(100).optional().nullable(),
+  existing_vehicle_provider: z.string().max(200).optional().nullable(),
+  estimated_vehicles_per_month: z.coerce.number().int().min(0).max(10_000).optional().nullable(),
+  peak_seasons: z.string().max(200).optional().nullable(),
+  rental_type_preference: z.string().max(120).optional().nullable(),
+  has_concierge: z.boolean().optional().nullable(),
+  wants_printed_materials: z.boolean().optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+
+router.post('/enroll/:id/details', enrollLimiter, validateBody(PublicEnrollDetailsSchema), async (req, res, next) => {
+  try {
+    const partnerId = req.params.id;
+    const body = req.body as z.infer<typeof PublicEnrollDetailsSchema>;
+    const sb = getSupabaseClient();
+
+    const { data: partner, error: partnerErr } = await sb
+      .from('accommodation_partners')
+      .select('id, status')
+      .eq('id', partnerId)
+      .single();
+
+    if (partnerErr || !partner) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Partner not found' } });
+      return;
+    }
+
+    if ((partner as { status: string }).status !== 'pending') {
+      res.status(409).json({
+        success: false,
+        error: { code: 'ALREADY_REVIEWED', message: 'This application has already been reviewed.' },
+      });
+      return;
+    }
+
+    const upsertPayload = {
+      partner_id: partnerId,
+      property_type: body.property_type ?? null,
+      room_count: body.room_count ?? null,
+      star_rating: body.star_rating ?? null,
+      guest_profile: body.guest_profile ?? null,
+      avg_length_of_stay: body.avg_length_of_stay ?? null,
+      monthly_occupancy_pct: body.monthly_occupancy_pct ?? null,
+      existing_vehicle_provider: body.existing_vehicle_provider ?? null,
+      estimated_vehicles_per_month: body.estimated_vehicles_per_month ?? null,
+      peak_seasons: body.peak_seasons ?? null,
+      rental_type_preference: body.rental_type_preference ?? null,
+      has_concierge: body.has_concierge ?? null,
+      wants_printed_materials: body.wants_printed_materials ?? null,
+      notes: body.notes ?? null,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await sb
+      .from('partner_enrollment_details')
+      .upsert(upsertPayload, { onConflict: 'partner_id' })
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to save details: ${error.message}`);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
+  try {
+    const slug = req.params.slug;
+    if (!slug || slug.length > 80 || !/^[a-z0-9-]+$/.test(slug)) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_SLUG', message: 'Invalid partner slug' },
+      });
+      return;
+    }
+    const sb = getSupabaseClient();
+    const { data, error } = await sb
+      .from('accommodation_partners')
+      .select('name, deal_type, discount_type, discount_value, free_delivery, advance_discount_days, status, active')
+      .eq('slug', slug)
+      .eq('status', 'active')
+      .eq('active', true)
+      .maybeSingle();
+
+    if (error) throw new Error(`Lookup failed: ${error.message}`);
+    if (!data) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Partner not found' },
+      });
+      return;
+    }
+
+    const row = data as {
+      name: string;
+      deal_type: 'commission' | 'discount' | 'free_delivery' | 'combined';
+      discount_type: 'percentage' | 'fixed' | null;
+      discount_value: number | null;
+      free_delivery: boolean;
+      advance_discount_days: number | null;
+    };
+
+    res.json({
+      success: true,
+      data: {
+        name: row.name,
+        dealType: row.deal_type,
+        discountType: row.discount_type,
+        discountValue: row.discount_value != null ? Number(row.discount_value) : null,
+        freeDelivery: row.free_delivery,
+        advanceDiscountDays: row.advance_discount_days,
+      },
+    });
+  } catch (err) { next(err); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTHENTICATED ENDPOINTS — staff back-office.
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.use(authenticate);
+
+const edit = requirePermission(Permission.EditSettings);
+
 const PartnerBodySchema = z.object({
   name: z.string().min(1).max(200),
   slug: z.string().min(1).max(80).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase letters, numbers, and hyphens only').optional(),
@@ -46,6 +305,12 @@ const PartnerBodySchema = z.object({
   advance_booking_days: z.number().int().min(0).max(365).optional(),
   commission_includes_extensions: z.boolean().optional(),
   active: z.boolean().optional(),
+  status: z.enum(['active', 'pending', 'rejected']).optional(),
+  deal_type: z.enum(['commission', 'discount', 'free_delivery', 'combined']).optional(),
+  discount_type: z.enum(['percentage', 'fixed']).nullable().optional(),
+  discount_value: z.number().min(0).nullable().optional(),
+  free_delivery: z.boolean().optional(),
+  advance_discount_days: z.number().int().min(0).max(365).nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
   telegram_chat_id: z.string().max(100).nullable().optional(),
   store_id: z.string().min(1),
@@ -54,7 +319,7 @@ const PartnerBodySchema = z.object({
 // ── GET / — list all partners for a store ────────────────────────────────────
 router.get('/', async (req, res, next) => {
   try {
-    const { storeId } = req.query as { storeId?: string };
+    const { storeId, status } = req.query as { storeId?: string; status?: string };
     const sb = getSupabaseClient();
 
     let query = sb
@@ -62,14 +327,28 @@ router.get('/', async (req, res, next) => {
       .select('*')
       .order('name', { ascending: true });
 
-    if (storeId) {
-      query = query.eq('store_id', storeId);
-    }
+    if (storeId) query = query.eq('store_id', storeId);
+    if (status) query = query.eq('status', status);
 
     const { data, error } = await query;
     if (error) throw new Error(`Failed to fetch partners: ${error.message}`);
 
     res.json({ success: true, data: data ?? [] });
+  } catch (err) { next(err); }
+});
+
+// ── GET /:id/enrollment-details — Step 2 details for a partner ───────────────
+router.get('/:id/enrollment-details', async (req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+    const { data, error } = await sb
+      .from('partner_enrollment_details')
+      .select('*')
+      .eq('partner_id', req.params.id)
+      .maybeSingle();
+
+    if (error) throw new Error(`Failed to fetch enrolment details: ${error.message}`);
+    res.json({ success: true, data: data ?? null });
   } catch (err) { next(err); }
 });
 
@@ -79,21 +358,8 @@ router.post('/', edit, validateBody(PartnerBodySchema), async (req, res, next) =
     const body = req.body as z.infer<typeof PartnerBodySchema>;
     const sb = getSupabaseClient();
 
-    const rawSlug = body.slug ?? slugify(body.name);
-
-    let slug = rawSlug;
-    let attempt = 0;
-    while (true) {
-      const { count } = await sb
-        .from('accommodation_partners')
-        .select('id', { count: 'exact', head: true })
-        .eq('store_id', body.store_id)
-        .eq('slug', slug);
-
-      if ((count ?? 0) === 0) break;
-      attempt++;
-      slug = `${rawSlug}-${attempt}`;
-    }
+    const baseSlug = body.slug ?? slugify(body.name);
+    const slug = await uniqueSlug(body.store_id, baseSlug);
 
     const { data, error } = await sb
       .from('accommodation_partners')
@@ -109,6 +375,12 @@ router.post('/', edit, validateBody(PartnerBodySchema), async (req, res, next) =
         advance_booking_days: body.advance_booking_days ?? 7,
         commission_includes_extensions: body.commission_includes_extensions ?? false,
         active: body.active ?? true,
+        status: body.status ?? 'active',
+        deal_type: body.deal_type ?? 'commission',
+        discount_type: body.discount_type ?? null,
+        discount_value: body.discount_value ?? null,
+        free_delivery: body.free_delivery ?? false,
+        advance_discount_days: body.advance_discount_days ?? null,
         notes: body.notes ?? null,
         telegram_chat_id: body.telegram_chat_id?.trim() || null,
       })
@@ -137,6 +409,12 @@ router.put('/:id', edit, validateBody(PartnerBodySchema.partial().extend({ store
     if (body.advance_booking_days !== undefined) updates.advance_booking_days = body.advance_booking_days;
     if (body.commission_includes_extensions !== undefined) updates.commission_includes_extensions = body.commission_includes_extensions;
     if (body.active !== undefined) updates.active = body.active;
+    if (body.status !== undefined) updates.status = body.status;
+    if (body.deal_type !== undefined) updates.deal_type = body.deal_type;
+    if (body.discount_type !== undefined) updates.discount_type = body.discount_type;
+    if (body.discount_value !== undefined) updates.discount_value = body.discount_value;
+    if (body.free_delivery !== undefined) updates.free_delivery = body.free_delivery;
+    if (body.advance_discount_days !== undefined) updates.advance_discount_days = body.advance_discount_days;
     if (body.notes !== undefined) updates.notes = body.notes;
     if (body.telegram_chat_id !== undefined) updates.telegram_chat_id = body.telegram_chat_id?.trim() || null;
 
@@ -149,6 +427,103 @@ router.put('/:id', edit, validateBody(PartnerBodySchema.partial().extend({ store
 
     if (error) throw new Error(`Failed to update partner: ${error.message}`);
     res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// ── POST /:id/approve — approve a pending partner with final terms ───────────
+const ApproveBodySchema = PartnerBodySchema.partial().omit({ store_id: true });
+
+router.post('/:id/approve', edit, validateBody(ApproveBodySchema), async (req, res, next) => {
+  try {
+    const body = req.body as z.infer<typeof ApproveBodySchema>;
+    const sb = getSupabaseClient();
+
+    const { data: existing, error: fetchErr } = await sb
+      .from('accommodation_partners')
+      .select('id, name, slug, store_id, status')
+      .eq('id', req.params.id)
+      .single();
+
+    if (fetchErr || !existing) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Partner not found' } });
+      return;
+    }
+
+    const partner = existing as { id: string; name: string; slug: string; store_id: string; status: string };
+
+    // Auto-generate a unique slug if the body did not supply one and the existing slug is missing/duplicated.
+    let slug = body.slug ?? partner.slug;
+    if (!slug) {
+      slug = await uniqueSlug(partner.store_id, slugify(body.name ?? partner.name));
+    }
+
+    const updates: Record<string, unknown> = {
+      status: 'active',
+      active: true,
+      slug,
+      updated_at: new Date().toISOString(),
+    };
+    if (body.name !== undefined) updates.name = body.name;
+    if (body.contact_name !== undefined) updates.contact_name = body.contact_name;
+    if (body.contact_email !== undefined) updates.contact_email = body.contact_email;
+    if (body.contact_whatsapp !== undefined) updates.contact_whatsapp = body.contact_whatsapp;
+    if (body.commission_type !== undefined) updates.commission_type = body.commission_type;
+    if (body.commission_value !== undefined) updates.commission_value = body.commission_value;
+    if (body.advance_booking_days !== undefined) updates.advance_booking_days = body.advance_booking_days;
+    if (body.commission_includes_extensions !== undefined) updates.commission_includes_extensions = body.commission_includes_extensions;
+    if (body.deal_type !== undefined) updates.deal_type = body.deal_type;
+    if (body.discount_type !== undefined) updates.discount_type = body.discount_type;
+    if (body.discount_value !== undefined) updates.discount_value = body.discount_value;
+    if (body.free_delivery !== undefined) updates.free_delivery = body.free_delivery;
+    if (body.advance_discount_days !== undefined) updates.advance_discount_days = body.advance_discount_days;
+    if (body.notes !== undefined) updates.notes = body.notes;
+    if (body.telegram_chat_id !== undefined) updates.telegram_chat_id = body.telegram_chat_id?.trim() || null;
+
+    const { data, error } = await sb
+      .from('accommodation_partners')
+      .update(updates)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to approve partner: ${error.message}`);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// ── POST /:id/reject — mark a pending partner rejected ───────────────────────
+const RejectBodySchema = z.object({
+  reason: z.string().max(500).optional().nullable(),
+});
+
+router.post('/:id/reject', edit, validateBody(RejectBodySchema), async (req, res, next) => {
+  try {
+    const body = req.body as z.infer<typeof RejectBodySchema>;
+    const sb = getSupabaseClient();
+
+    const { data: current } = await sb
+      .from('accommodation_partners')
+      .select('notes')
+      .eq('id', req.params.id)
+      .single();
+
+    const existingNotes = (current as { notes: string | null } | null)?.notes ?? '';
+    const rejectionLine = body.reason
+      ? `\n\n[Rejected ${new Date().toISOString().slice(0, 10)}] ${body.reason}`
+      : `\n\n[Rejected ${new Date().toISOString().slice(0, 10)}]`;
+
+    const { error } = await sb
+      .from('accommodation_partners')
+      .update({
+        status: 'rejected',
+        active: false,
+        notes: `${existingNotes}${rejectionLine}`.trim(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', req.params.id);
+
+    if (error) throw new Error(`Failed to reject partner: ${error.message}`);
+    res.json({ success: true });
   } catch (err) { next(err); }
 });
 

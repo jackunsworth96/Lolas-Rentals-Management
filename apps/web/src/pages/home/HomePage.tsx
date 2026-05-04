@@ -51,7 +51,6 @@ const BE_PAW_PUBLIC_IDS = [
 ];
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { capturePartnerRefFromUrl } from '../../utils/partnerRef.js';
 import {
   motion,
   useReducedMotion,
@@ -628,7 +627,6 @@ export default function HomePage() {
   const prefersReducedMotion = useReducedMotion();
   const isMobile = useIsMobile();
 
-  useEffect(() => { capturePartnerRefFromUrl(); }, []);
 
   const inclusionListVariants = {
     hidden: {},
