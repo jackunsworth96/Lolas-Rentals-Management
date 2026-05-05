@@ -343,6 +343,7 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
           )}
 
           {showDiscountFields && (
+            <>
             <div className="mt-4 grid grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Discount type</label>
@@ -412,6 +413,7 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
               </div>
               <p className="mt-1.5 text-[11px] text-gray-400">Leave blank to disable the early bird tier.</p>
             </div>
+            </>
           )}
 
           {form.deal_type === 'free_delivery' && (
@@ -736,6 +738,7 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
           )}
 
           {showDiscountFields && (
+            <>
             <div className="grid grid-cols-3 gap-3 mb-3">
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Discount type</label>
@@ -805,6 +808,7 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
               </div>
               <p className="mt-1.5 text-[11px] text-gray-400">Leave blank to disable the early bird tier.</p>
             </div>
+            </>
           )}
 
           {form.deal_type === 'free_delivery' && (
