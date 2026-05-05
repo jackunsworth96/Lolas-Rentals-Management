@@ -15,6 +15,7 @@ const CUSTOMER_PATH_PREFIXES = [
   '/peace-of-mind',
   '/unsubscribe',
   '/paw-card',
+  '/affiliates',
 ];
 
 function isBackOfficePath(pathname: string): boolean {

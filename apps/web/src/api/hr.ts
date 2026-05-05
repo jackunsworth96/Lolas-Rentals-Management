@@ -94,6 +94,27 @@ export function useApproveTimesheets() {
   });
 }
 
+export interface EditTimesheetPayload {
+  id: string;
+  dayType: string;
+  timeIn: string | null;
+  timeOut: string | null;
+  regularHours: number;
+  overtimeHours: number;
+  ninePmReturnsCount: number;
+  dailyNotes: string | null;
+  storeId: string;
+}
+
+export function useEditTimesheet() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: EditTimesheetPayload) =>
+      api.patch<{ id: string }>(`/hr/timesheets/${id}`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['timesheets'] }),
+  });
+}
+
 export function useSubmitLeave() {
   const qc = useQueryClient();
   return useMutation({

@@ -24,7 +24,6 @@ if (!_env.success) {
   process.exit(1);
 }
 
-import * as Sentry from '@sentry/node';
 import express, { type Request, type Response } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -169,7 +168,10 @@ app.use('/api', (req: Request, res: Response) => {
   });
 });
 
-Sentry.setupExpressErrorHandler(app);
+if (process.env.SENTRY_DSN) {
+  const Sentry = await import('@sentry/node');
+  Sentry.setupExpressErrorHandler(app);
+}
 app.use(errorHandler);
 
 const PORT = Number(process.env.PORT) || 3001;

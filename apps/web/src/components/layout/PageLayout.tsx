@@ -385,7 +385,7 @@ export function PageLayout({
             </div>
 
             {/* Right columns — opening hours + page links */}
-            <div className="pointer-events-auto absolute bottom-[12%] right-6 flex items-start gap-12">
+            <div className="pointer-events-auto absolute bottom-[10%] right-6 flex items-start gap-12">
               <div className="space-y-2">
                 <p className="text-sm font-semibold text-charcoal-brand/70">{t('footer.openingHours')}</p>
                 <p className="text-sm text-charcoal-brand/60">{t('footer.hours')}</p>

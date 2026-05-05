@@ -94,6 +94,7 @@ const EMPTY_FORM = {
   free_delivery: false,
   advance_discount_days: '' as string,
   telegram_chat_id: '',
+  logo_url: '',
   notes: '',
 };
 
@@ -123,6 +124,7 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
         free_delivery: editing.free_delivery ?? false,
         advance_discount_days: editing.advance_discount_days != null ? String(editing.advance_discount_days) : '',
         telegram_chat_id: editing.telegram_chat_id ?? '',
+        logo_url: editing.logo_url ?? '',
         notes: editing.notes ?? '',
       });
       setSlugManuallyEdited(true);
@@ -176,6 +178,7 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
       discount_value: form.deal_type === 'discount' || form.deal_type === 'combined' ? Number(form.discount_value) : null,
       free_delivery: form.deal_type === 'free_delivery' || form.deal_type === 'combined' ? true : form.free_delivery,
       advance_discount_days: advanceDiscountDaysNum,
+      logo_url: form.logo_url.trim() || null,
       notes: form.notes.trim() || null,
       telegram_chat_id: form.telegram_chat_id.trim() || null,
     };
@@ -427,6 +430,31 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
         </div>
 
         <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Partner logo URL
+            <span className="ml-1.5 text-xs font-normal text-gray-400">(Cloudinary or any CDN — shown on the guest booking page)</span>
+          </label>
+          <input
+            type="url"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+            value={form.logo_url}
+            onChange={(e) => setField('logo_url', e.target.value)}
+            placeholder="https://res.cloudinary.com/…/logo.png"
+          />
+          {form.logo_url.trim() && (
+            <div className="mt-2 flex items-center gap-2">
+              <img
+                src={form.logo_url.trim()}
+                alt="Logo preview"
+                className="h-8 max-w-[120px] rounded border border-gray-200 object-contain p-0.5"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+              />
+              <span className="text-xs text-gray-400">Preview</span>
+            </div>
+          )}
+        </div>
+
+        <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
           <textarea
             rows={2}
@@ -487,6 +515,7 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
       free_delivery: partner.free_delivery ?? false,
       advance_discount_days: partner.advance_discount_days != null ? String(partner.advance_discount_days) : '',
       telegram_chat_id: partner.telegram_chat_id ?? '',
+      logo_url: partner.logo_url ?? '',
       notes: partner.notes ?? '',
     });
     setSlugManuallyEdited(!!partner.slug);
@@ -536,6 +565,7 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
       discount_value: form.deal_type === 'discount' || form.deal_type === 'combined' ? Number(form.discount_value) : null,
       free_delivery: form.deal_type === 'free_delivery' || form.deal_type === 'combined' ? true : form.free_delivery,
       advance_discount_days: advanceDiscountDaysNum,
+      logo_url: form.logo_url.trim() || null,
       notes: form.notes.trim() || null,
       telegram_chat_id: form.telegram_chat_id.trim() || null,
     };

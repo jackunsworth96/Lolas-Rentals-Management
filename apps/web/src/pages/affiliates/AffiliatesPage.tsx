@@ -405,17 +405,24 @@ export default function AffiliatesPage() {
               </div>
             </fieldset>
 
-            <div className="flex flex-col-reverse gap-3 border-t border-charcoal-brand/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
-              <p className="font-lato text-[12px] text-charcoal-brand/55">
-                We'll review your details within 1–2 working days.
+            <div className="border-t border-charcoal-brand/10 pt-5 space-y-3">
+              <p className="font-lato text-[12px] leading-relaxed text-charcoal-brand/50">
+                We review every application personally and partner with properties that share our
+                values — genuine hospitality, care for the island, and guests who deserve the full
+                Siargao experience.
               </p>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-brand px-6 py-3 text-sm font-bold uppercase tracking-wider text-white shadow-sm transition-colors hover:bg-[#00496a] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {submitting ? 'Sending…' : <>Submit application <ArrowRight className="h-4 w-4" /></>}
-              </button>
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="font-lato text-[12px] text-charcoal-brand/40">
+                  We'll be in touch within 1–2 working days.
+                </p>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-brand px-6 py-3 text-sm font-bold uppercase tracking-wider text-white shadow-sm transition-colors hover:bg-[#00496a] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {submitting ? 'Sending…' : <>Submit application <ArrowRight className="h-4 w-4" /></>}
+                </button>
+              </div>
             </div>
           </form>
         </div>

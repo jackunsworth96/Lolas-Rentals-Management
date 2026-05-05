@@ -12,6 +12,7 @@ import {
   UpdateEmployeeRequestSchema,
   GrantCashAdvanceRequestSchema,
   CashAdvanceQuerySchema,
+  EditTimesheetRequestSchema,
 } from '@lolas/shared';
 import { Employee as EmployeeEntity } from '@lolas/domain';
 import { supabase } from '../adapters/supabase/client.js';
@@ -78,6 +79,26 @@ router.post('/timesheets/approve', requirePermission(Permission.ApproveTimesheet
     const result = await approveTimesheets(req.body, { timesheets: req.app.locals.deps.timesheetRepo });
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
+});
+
+router.patch('/timesheets/:id', requirePermission(Permission.EditTimesheets), validateBody(EditTimesheetRequestSchema), async (req, res, next) => {
+  try {
+    const { editTimesheet } = await import('../use-cases/hr/edit-timesheet.js');
+    const amendedBy = req.user!.userId;
+    const result = await editTimesheet(req.params.id, req.body, amendedBy);
+    res.json({ success: true, data: result });
+  } catch (err: unknown) {
+    const e = err as { statusCode?: number; code?: string; message?: string };
+    if (e.statusCode === 404) {
+      res.status(404).json({ success: false, error: { code: e.code, message: e.message } });
+      return;
+    }
+    if (e.statusCode === 409) {
+      res.status(409).json({ success: false, error: { code: e.code, message: e.message } });
+      return;
+    }
+    next(err);
+  }
 });
 
 router.post('/leave', requirePermission(Permission.SubmitTimesheets), validateBody(SubmitLeaveRequestSchema), async (req, res, next) => {

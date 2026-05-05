@@ -23,6 +23,7 @@ export const Permission = {
   ViewUIErrors: 'can_view_uierrors',
   ViewMiscSales: 'can_view_miscsales',
   ApproveTimesheets: 'can_approve_timesheets',
+  EditTimesheets: 'can_edit_timesheets',
   EditAccounts: 'can_edit_accounts',
   ViewPayroll: 'can_view_payroll',
   ViewAccounts: 'can_view_accounts',

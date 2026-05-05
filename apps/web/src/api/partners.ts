@@ -24,6 +24,7 @@ export interface AccommodationPartner {
   discount_value: number | null;
   free_delivery: boolean;
   advance_discount_days: number | null;
+  logo_url: string | null;
   notes: string | null;
   telegram_chat_id: string | null;
   created_at: string;
@@ -167,6 +168,7 @@ export interface PublicPartnerBenefit {
   discountValue: number | null;
   freeDelivery: boolean;
   advanceDiscountDays: number | null;
+  logoUrl: string | null;
 }
 
 export async function fetchPublicPartnerBenefit(slug: string): Promise<PublicPartnerBenefit | null> {

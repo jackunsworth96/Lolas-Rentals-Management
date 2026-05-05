@@ -62,3 +62,16 @@ export const CashAdvanceQuerySchema = z.object({
   employeeId: z.string(),
   storeId: z.string(),
 });
+
+export const EditTimesheetRequestSchema = z.object({
+  dayType: z.string().min(1),
+  timeIn: z.string().nullable(),
+  timeOut: z.string().nullable(),
+  regularHours: z.number().nonnegative(),
+  overtimeHours: z.number().nonnegative(),
+  ninePmReturnsCount: z.number().int().nonnegative(),
+  dailyNotes: z.string().nullable(),
+  storeId: z.string().min(1),
+});
+
+export type EditTimesheetRequest = z.infer<typeof EditTimesheetRequestSchema>;

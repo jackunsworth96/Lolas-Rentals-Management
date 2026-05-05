@@ -14,4 +14,4 @@ for (const dir of [monorepoRoot, apiRoot, process.cwd()]) {
   config({ path: resolve(dir, '.env') });
 }
 
-initSentry();
+await initSentry();

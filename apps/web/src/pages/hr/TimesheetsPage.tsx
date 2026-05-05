@@ -11,8 +11,11 @@ import {
 } from '../../api/hr.js';
 import { useDayTypes, useStores } from '../../api/config.js';
 import { useUIStore } from '../../stores/ui-store.js';
+import { useAuthStore } from '../../stores/auth-store.js';
 import { Badge } from '../../components/common/Badge.js';
 import { formatCurrency } from '../../utils/currency.js';
+import { EditTimesheetModal } from '../../components/hr/EditTimesheetModal.js';
+import { Permission } from '@lolas/shared';
 
 function toISODate(date: Date): string {
   return date.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
@@ -70,6 +73,8 @@ const LEAVE_DAY_TYPES = ['Holiday', 'Sick'];
 
 export default function TimesheetsPage() {
   const globalStoreId = useUIStore((s) => s.selectedStoreId) ?? '';
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canEdit = hasPermission(Permission.EditTimesheets);
   const { data: stores = [] } = useStores();
   const storeList = stores as Array<{ id: string; name: string }>;
 
@@ -105,6 +110,9 @@ export default function TimesheetsPage() {
   // ── Approval state ──
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<string>('all');
+
+  // ── Edit modal state ──
+  const [editingTimesheet, setEditingTimesheet] = useState<TimesheetRow | null>(null);
 
   // Duplicate detection
   const selectedEmployeeIds = useMemo(() => entryRows.map((r) => r.employeeId), [entryRows]);
@@ -540,6 +548,7 @@ export default function TimesheetsPage() {
                     <th className="px-3 py-2 font-medium text-gray-600 text-right">9PM</th>
                     <th className="px-3 py-2 font-medium text-gray-600">Notes</th>
                     <th className="px-3 py-2 font-medium text-gray-600">Status</th>
+                    {canEdit && <th className="px-3 py-2 w-10" />}
                   </tr>
                 </thead>
                 <tbody>
@@ -568,6 +577,21 @@ export default function TimesheetsPage() {
                       <td className="px-3 py-2">
                         <Badge color={STATUS_COLORS[t.payrollStatus] ?? 'gray'}>{t.payrollStatus}</Badge>
                       </td>
+                      {canEdit && (
+                        <td className="px-3 py-2">
+                          {t.payrollStatus === 'Pending' && (
+                            <button
+                              onClick={() => setEditingTimesheet(t)}
+                              className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-blue-600 transition"
+                              title="Edit timesheet"
+                            >
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -576,6 +600,14 @@ export default function TimesheetsPage() {
           </div>
         </>
       )}
+
+      <EditTimesheetModal
+        open={editingTimesheet !== null}
+        onClose={() => setEditingTimesheet(null)}
+        timesheet={editingTimesheet}
+        stores={storeList}
+        dayTypes={dayTypeList}
+      />
     </div>
   );
 }

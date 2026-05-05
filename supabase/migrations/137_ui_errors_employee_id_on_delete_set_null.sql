@@ -1,3 +1,4 @@
+-- 137: ui_errors.employee_id — ON DELETE SET NULL
 -- Allow deleting employees without failing on logged UI errors; keep the error rows.
 
 ALTER TABLE public.ui_errors

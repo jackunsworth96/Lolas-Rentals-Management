@@ -1,4 +1,4 @@
-import { Banknote, CreditCard, Landmark, Lock, Wallet } from 'lucide-react';
+import { Banknote, CreditCard, Gift, Hotel, Landmark, Lock, Wallet } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { BasketItem } from '../../stores/bookingStore.js';
@@ -144,18 +144,54 @@ export function OrderSummaryPanel({
           </div>
         )}
 
+        {/* ── Partner gift reveal ── */}
         {partnerBenefit && applied && (
-          <div className="mb-3 rounded-lg border border-teal-200/60 bg-teal-50 px-3 py-2 text-[12px] font-medium text-teal-800">
-            <p className="font-bold">{partnerBenefit.name} rate applied</p>
-            <p className="font-medium opacity-80">{describeBenefit(partnerBenefit)}</p>
+          <div className="mb-3 flex items-start gap-3 rounded-xl border border-teal-200/70 bg-teal-50 px-3 py-3">
+            {partnerBenefit.logoUrl ? (
+              <img
+                src={partnerBenefit.logoUrl}
+                alt={partnerBenefit.name}
+                className="mt-0.5 h-8 w-auto max-w-[72px] shrink-0 rounded object-contain"
+              />
+            ) : (
+              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-100">
+                <Hotel className="h-4 w-4 text-teal-600" aria-hidden />
+              </div>
+            )}
+            <div>
+              <p className="flex items-center gap-1.5 text-[12px] font-bold text-teal-800">
+                <Gift className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                Your {partnerBenefit.name} rate is applied
+              </p>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-teal-700/80">
+                Enjoy your exclusive discount — a little thank you for planning ahead.
+              </p>
+            </div>
           </div>
         )}
         {partnerBenefit && partnerBenefitApplied?.pendingReason === 'advance_days' && (
-          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] font-medium text-amber-800">
-            <p className="font-bold">Advance booking required for your {partnerBenefit.name} rate</p>
-            <p className="font-medium opacity-80">
-              Select a pickup date at least {partnerBenefit.advanceDiscountDays}+ days from today.
-            </p>
+          <div className="mb-3 flex items-start gap-3 rounded-xl border border-charcoal-brand/10 bg-sand-brand/40 px-3 py-3">
+            {partnerBenefit.logoUrl ? (
+              <img
+                src={partnerBenefit.logoUrl}
+                alt={partnerBenefit.name}
+                className="mt-0.5 h-8 w-auto max-w-[72px] shrink-0 rounded object-contain"
+              />
+            ) : (
+              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-charcoal-brand/10">
+                <Hotel className="h-4 w-4 text-charcoal-brand/40" aria-hidden />
+              </div>
+            )}
+            <div>
+              <p className="text-[12px] font-bold text-charcoal-brand">
+                You&apos;re booking via {partnerBenefit.name}
+              </p>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-charcoal-brand/60">
+                Your exclusive rate applies to bookings made{' '}
+                {partnerBenefit.advanceDiscountDays}+ days in advance — this one is at our standard
+                rate. We hope to see you again with more notice!
+              </p>
+            </div>
           </div>
         )}
 
@@ -207,40 +243,23 @@ export function OrderSummaryPanel({
 
         {/* Line items */}
         <div className="space-y-2">
-          {basket.map((b) => {
-            const original = b.dailyRate * rentalDays;
-            const showStrike = applied && rentalDiscount > 0;
-            // Distribute the rental discount proportionally across vehicles
-            const share = vehicleSubtotal > 0
-              ? Math.round((rentalDiscount * (original / vehicleSubtotal)) * 100) / 100
-              : 0;
-            const discounted = Math.max(0, original - share);
-            return (
-              <RowDiscountable
-                key={b.holdId}
-                label={`${b.modelName} × ${rentalDays} day${rentalDays !== 1 ? 's' : ''}`}
-                originalAmount={original}
-                amount={showStrike ? discounted : original}
-                strike={showStrike}
-              />
-            );
-          })}
+          {basket.map((b) => (
+            <Row
+              key={b.holdId}
+              label={`${b.modelName} × ${rentalDays} day${rentalDays !== 1 ? 's' : ''}`}
+              amount={b.dailyRate * rentalDays}
+            />
+          ))}
           {pickupFee > 0 && (
-            <RowDiscountable
+            <Row
               label={vehicleCount > 1 ? `Pick-up fee (×${vehicleCount})` : 'Pick-up fee'}
-              originalAmount={pickupFee}
-              amount={effectivePickupFee}
-              strike={freeDelivery}
-              freeLabel="Free"
+              amount={pickupFee}
             />
           )}
           {dropoffFee > 0 && (
-            <RowDiscountable
+            <Row
               label={vehicleCount > 1 ? `Return fee (×${vehicleCount})` : 'Return fee'}
-              originalAmount={dropoffFee}
-              amount={effectiveDropoffFee}
-              strike={freeDelivery}
-              freeLabel="Free"
+              amount={dropoffFee}
             />
           )}
           {addonsTotal > 0 && <Row label={vehicleCount > 1 ? `Add-ons Total (×${vehicleCount})` : 'Add-ons Total'} amount={addonsTotal} />}
@@ -248,7 +267,7 @@ export function OrderSummaryPanel({
           {applied && (rentalDiscount > 0 || deliveryDiscount > 0) && (
             <div className="flex items-baseline justify-between gap-3 border-t border-dashed border-teal-200 pt-2">
               <span className="min-w-0 text-[13px] font-medium text-teal-700">
-                {partnerBenefit?.name ?? 'Partner'} savings
+                {partnerBenefit?.name ?? 'Partner'} rate
               </span>
               <span className="shrink-0 text-[14px] font-semibold text-teal-700">
                 −<PesoSign />{formatPhpNumber(rentalDiscount + deliveryDiscount)}

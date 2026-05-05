@@ -144,22 +144,22 @@ router.post('/enroll', enrollLimiter, validateBody(PublicEnrollSchema), async (r
 
     if (error) throw new Error(`Failed to create partner: ${error.message}`);
 
-    // Fire-and-forget Telegram alert to ops so staff are notified of new applications.
-    void sendTelegramAlert(
-      [
-        `🤝 <b>New Partner Application</b>`,
-        `Property: <b>${body.propertyName}</b>${body.propertyType ? ` (${body.propertyType})` : ''}`,
-        `Location: ${body.location ?? '—'}`,
-        `Rooms: ${body.roomCount ?? '—'}`,
-        `Contact: ${body.contactName} — ${body.email}${body.phone ? ` · ${body.phone}` : ''}`,
-        `Choice: <b>${dealType === 'commission' ? 'Earn commission' : 'Discount for guests'}</b>`,
-        `Preferred rate: ${numericRate || '—'}`,
-        `Telegram: ${body.telegramUsername ?? '—'}`,
-        ``,
-        `Review in back office → /partners`,
-      ].join('\n'),
-      getTelegramChatId('ops'),
-    );
+    // Fire-and-forget Telegram alerts — ops channel for the team, feedback/action-required for owner review.
+    const enrollAlertLines = [
+      `🤝 <b>New Partner Application</b>`,
+      `Property: <b>${body.propertyName}</b>${body.propertyType ? ` (${body.propertyType})` : ''}`,
+      `Location: ${body.location ?? '—'}`,
+      `Rooms: ${body.roomCount ?? '—'}`,
+      `Contact: ${body.contactName} — ${body.email}${body.phone ? ` · ${body.phone}` : ''}`,
+      `Choice: <b>${dealType === 'commission' ? 'Earn commission' : 'Discount for guests'}</b>`,
+      `Preferred rate: ${numericRate ? `${numericRate}%` : '—'}`,
+      `Telegram: ${body.telegramUsername ?? '—'}`,
+      ``,
+      `⚠️ Action required — review in back office → /partners`,
+    ].join('\n');
+
+    void sendTelegramAlert(enrollAlertLines, getTelegramChatId('ops'));
+    void sendTelegramAlert(enrollAlertLines, getTelegramChatId('feedback'));
 
     res.status(201).json({ success: true, data });
   } catch (err) { next(err); }
@@ -237,7 +237,8 @@ router.post('/enroll/:id/details', enrollLimiter, validateBody(PublicEnrollDetai
 
 router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
   try {
-    const slug = req.params.slug;
+    const slugParam = req.params.slug;
+    const slug = Array.isArray(slugParam) ? slugParam[0] : slugParam;
     if (!slug || slug.length > 80 || !/^[a-z0-9-]+$/.test(slug)) {
       res.status(400).json({
         success: false,
@@ -248,7 +249,7 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
     const sb = getSupabaseClient();
     const { data, error } = await sb
       .from('accommodation_partners')
-      .select('name, deal_type, discount_type, discount_value, free_delivery, advance_discount_days, status, active')
+      .select('name, deal_type, discount_type, discount_value, free_delivery, advance_discount_days, status, active, logo_url')
       .eq('slug', slug)
       .eq('status', 'active')
       .eq('active', true)
@@ -270,6 +271,7 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
       discount_value: number | null;
       free_delivery: boolean;
       advance_discount_days: number | null;
+      logo_url: string | null;
     };
 
     res.json({
@@ -281,6 +283,7 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
         discountValue: row.discount_value != null ? Number(row.discount_value) : null,
         freeDelivery: row.free_delivery,
         advanceDiscountDays: row.advance_discount_days,
+        logoUrl: row.logo_url ?? null,
       },
     });
   } catch (err) { next(err); }
@@ -313,6 +316,7 @@ const PartnerBodySchema = z.object({
   advance_discount_days: z.number().int().min(0).max(365).nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
   telegram_chat_id: z.string().max(100).nullable().optional(),
+  logo_url: z.string().url().nullable().optional(),
   store_id: z.string().min(1),
 });
 
@@ -383,6 +387,7 @@ router.post('/', edit, validateBody(PartnerBodySchema), async (req, res, next) =
         advance_discount_days: body.advance_discount_days ?? null,
         notes: body.notes ?? null,
         telegram_chat_id: body.telegram_chat_id?.trim() || null,
+        logo_url: body.logo_url?.trim() || null,
       })
       .select()
       .single();
@@ -417,6 +422,7 @@ router.put('/:id', edit, validateBody(PartnerBodySchema.partial().extend({ store
     if (body.advance_discount_days !== undefined) updates.advance_discount_days = body.advance_discount_days;
     if (body.notes !== undefined) updates.notes = body.notes;
     if (body.telegram_chat_id !== undefined) updates.telegram_chat_id = body.telegram_chat_id?.trim() || null;
+    if (body.logo_url !== undefined) updates.logo_url = body.logo_url?.trim() || null;
 
     const { data, error } = await sb
       .from('accommodation_partners')
@@ -478,6 +484,7 @@ router.post('/:id/approve', edit, validateBody(ApproveBodySchema), async (req, r
     if (body.advance_discount_days !== undefined) updates.advance_discount_days = body.advance_discount_days;
     if (body.notes !== undefined) updates.notes = body.notes;
     if (body.telegram_chat_id !== undefined) updates.telegram_chat_id = body.telegram_chat_id?.trim() || null;
+    if (body.logo_url !== undefined) updates.logo_url = body.logo_url?.trim() || null;
 
     const { data, error } = await sb
       .from('accommodation_partners')

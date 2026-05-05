@@ -1,5 +1,5 @@
 -- ============================================================
--- 135: Partner enrolment Step 2 details
+-- 136: Partner enrolment Step 2 details
 -- Stores the optional pre-qualification answers a partner can
 -- submit after completing the short Step 1 enrolment form.
 -- Each accommodation_partners row owns at most one details row.

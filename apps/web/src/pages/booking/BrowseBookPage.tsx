@@ -6,9 +6,7 @@ import { useBookingStore } from '../../stores/bookingStore.js';
 import { useToast } from '../../hooks/useToast.js';
 import { HoldCountdown } from '../../components/booking/HoldCountdown.js';
 import { VehicleCard } from '../../components/booking/VehicleCard.js';
-import { PartnerBenefitBanner } from '../../components/booking/PartnerBenefitBanner.js';
 import { getStoredPartnerBenefit } from '../../utils/partnerRef.js';
-import { computePartnerBenefit } from '../../utils/partnerDiscount.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { SEO } from '../../components/seo/SEO.js';
 import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
@@ -919,18 +917,6 @@ export default function BrowseBookPage() {
       <div className="relative z-10 mx-auto max-w-7xl overflow-visible px-4 pt-4">
         <HeroFloatingClouds variant="functional" />
 
-        {/* Partner referral banner — only when a ?ref= was captured */}
-        {(() => {
-          const partnerBenefit = getStoredPartnerBenefit();
-          if (!partnerBenefit) return null;
-          const applied = computePartnerBenefit(partnerBenefit, 0, pickupDatetime);
-          return (
-            <div className="mb-4">
-              <PartnerBenefitBanner benefit={partnerBenefit} applied={applied} />
-            </div>
-          );
-        })()}
-
         {/* Basket bar — always visible when items are held */}
         {basket.length > 0 && (
           <div className="relative z-10 mb-6 flex flex-wrap items-center gap-4 rounded-4xl bg-cream-brand p-4 shadow-sm">
@@ -962,9 +948,38 @@ export default function BrowseBookPage() {
               >
                 Reserve Now
               </h1>
-              <p className="font-lato mt-1.5 text-sm text-charcoal-brand/60">
-                Choose your vehicle, then pick your dates
-              </p>
+              {(() => {
+                const pb = getStoredPartnerBenefit();
+                if (!pb) {
+                  return (
+                    <p className="font-lato mt-1.5 text-sm text-charcoal-brand/60">
+                      Choose your vehicle, then pick your dates
+                    </p>
+                  );
+                }
+                return (
+                  <div className="mt-2 flex flex-col items-center gap-1.5">
+                    {/* Partner logo — bare, no pill */}
+                    {pb.logoUrl ? (
+                      <img
+                        src={pb.logoUrl}
+                        alt={pb.name}
+                        className="mx-auto h-8 w-auto max-w-[120px] object-contain"
+                      />
+                    ) : (
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-charcoal-brand/40">
+                        {pb.name}
+                      </span>
+                    )}
+                    {/* Partner welcome copy */}
+                    <p className="font-lato max-w-md text-sm leading-relaxed text-charcoal-brand/70">
+                      You&apos;re in great hands at{' '}
+                      <span className="font-semibold text-charcoal-brand">{pb.name}</span>.
+                      Let us be the second best decision you make on your Siargao trip.
+                    </p>
+                  </div>
+                );
+              })()}
               {/* Trust pill sits naturally under the subtitle */}
               <div className="mt-2 mx-auto flex w-full max-w-2xl justify-center px-4">
                 <TrustPill />
@@ -1050,9 +1065,22 @@ export default function BrowseBookPage() {
                 </button>
 
                 <div className="rounded-2xl border border-teal-brand/20 bg-white p-6 shadow-sm">
-                  <h2 className="font-headline mb-5 text-xl font-bold text-charcoal-brand">
-                    Plan Your Ride
-                  </h2>
+                  <div className="mb-5 flex items-center justify-between gap-3">
+                    <h2 className="font-headline text-xl font-bold text-charcoal-brand">
+                      Plan Your Ride
+                    </h2>
+                    {(() => {
+                      const pb = getStoredPartnerBenefit();
+                      if (!pb?.logoUrl) return null;
+                      return (
+                        <img
+                          src={pb.logoUrl}
+                          alt={pb.name}
+                          className="h-7 w-auto max-w-[90px] shrink-0 object-contain opacity-80"
+                        />
+                      );
+                    })()}
+                  </div>
 
                   {/* Store label */}
                   <div className="mb-4 space-y-1.5">

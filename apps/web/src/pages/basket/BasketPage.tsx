@@ -7,7 +7,6 @@ import {
   getStoredPartnerBenefit,
 } from '../../utils/partnerRef.js';
 import { computePartnerBenefit } from '../../utils/partnerDiscount.js';
-import { PartnerBenefitBanner } from '../../components/booking/PartnerBenefitBanner.js';
 import { useBookingStore, type BasketItem, type RenterDetails } from '../../stores/bookingStore.js';
 import { useToast } from '../../hooks/useToast.js';
 import { BasketVehicleCard } from '../../components/basket/BasketVehicleCard.js';
@@ -1082,11 +1081,6 @@ export default function BasketPage() {
 
           {/* ── RIGHT COLUMN (summary + payment) — below main on mobile, sticky sidebar on lg ── */}
           <div className="order-2 lg:sticky lg:top-20 lg:self-start">
-            {partnerBenefit && (
-              <div className="mb-4">
-                <PartnerBenefitBanner benefit={partnerBenefit} applied={appliedPartnerBenefit} />
-              </div>
-            )}
             <OrderSummaryPanel
               basket={basket} rentalDays={rentalDays} selectedAddonIds={selectedAddonIds} addons={standardAddons}
               transfer={transfer} pickupFee={pickupFee} dropoffFee={dropoffFee} vehicleCount={vehicleCount}
