@@ -161,10 +161,14 @@ export function OrderSummaryPanel({
             <div>
               <p className="flex items-center gap-1.5 text-[12px] font-bold text-teal-800">
                 <Gift className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                Your {partnerBenefit.name} rate is applied
+                {partnerBenefitApplied?.earlyBird
+                  ? `Early bird rate applied — ${partnerBenefit.name}`
+                  : `Your ${partnerBenefit.name} rate is applied`}
               </p>
               <p className="mt-0.5 text-[11px] leading-relaxed text-teal-700/80">
-                Enjoy your exclusive discount — a little thank you for planning ahead.
+                {partnerBenefitApplied?.earlyBird
+                  ? 'You planned way ahead — this is our best thank you for it.'
+                  : 'Enjoy your exclusive discount — a little thank you for planning ahead.'}
               </p>
             </div>
           </div>
@@ -267,7 +271,7 @@ export function OrderSummaryPanel({
           {applied && (rentalDiscount > 0 || deliveryDiscount > 0) && (
             <div className="flex items-baseline justify-between gap-3 border-t border-dashed border-teal-200 pt-2">
               <span className="min-w-0 text-[13px] font-medium text-teal-700">
-                {partnerBenefit?.name ?? 'Partner'} rate
+                {partnerBenefitApplied?.earlyBird ? 'Early bird rate' : `${partnerBenefit?.name ?? 'Partner'} rate`}
               </span>
               <span className="shrink-0 text-[14px] font-semibold text-teal-700">
                 −<PesoSign />{formatPhpNumber(rentalDiscount + deliveryDiscount)}

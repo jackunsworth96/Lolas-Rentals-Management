@@ -249,7 +249,7 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
     const sb = getSupabaseClient();
     const { data, error } = await sb
       .from('accommodation_partners')
-      .select('name, deal_type, discount_type, discount_value, free_delivery, advance_discount_days, status, active, logo_url')
+      .select('name, deal_type, discount_type, discount_value, free_delivery, advance_discount_days, early_bird_days, early_bird_discount_value, status, active, logo_url')
       .eq('slug', slug)
       .eq('status', 'active')
       .eq('active', true)
@@ -271,6 +271,8 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
       discount_value: number | null;
       free_delivery: boolean;
       advance_discount_days: number | null;
+      early_bird_days: number | null;
+      early_bird_discount_value: number | null;
       logo_url: string | null;
     };
 
@@ -283,6 +285,8 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
         discountValue: row.discount_value != null ? Number(row.discount_value) : null,
         freeDelivery: row.free_delivery,
         advanceDiscountDays: row.advance_discount_days,
+        earlyBirdDays: row.early_bird_days,
+        earlyBirdDiscountValue: row.early_bird_discount_value != null ? Number(row.early_bird_discount_value) : null,
         logoUrl: row.logo_url ?? null,
       },
     });
@@ -317,6 +321,8 @@ const PartnerBodySchema = z.object({
   notes: z.string().max(2000).nullable().optional(),
   telegram_chat_id: z.string().max(100).nullable().optional(),
   logo_url: z.string().url().nullable().optional(),
+  early_bird_days: z.number().int().min(1).max(365).nullable().optional(),
+  early_bird_discount_value: z.number().min(0).nullable().optional(),
   store_id: z.string().min(1),
 });
 
@@ -388,6 +394,8 @@ router.post('/', edit, validateBody(PartnerBodySchema), async (req, res, next) =
         notes: body.notes ?? null,
         telegram_chat_id: body.telegram_chat_id?.trim() || null,
         logo_url: body.logo_url?.trim() || null,
+        early_bird_days: body.early_bird_days ?? null,
+        early_bird_discount_value: body.early_bird_discount_value ?? null,
       })
       .select()
       .single();
@@ -423,6 +431,8 @@ router.put('/:id', edit, validateBody(PartnerBodySchema.partial().extend({ store
     if (body.notes !== undefined) updates.notes = body.notes;
     if (body.telegram_chat_id !== undefined) updates.telegram_chat_id = body.telegram_chat_id?.trim() || null;
     if (body.logo_url !== undefined) updates.logo_url = body.logo_url?.trim() || null;
+    if (body.early_bird_days !== undefined) updates.early_bird_days = body.early_bird_days ?? null;
+    if (body.early_bird_discount_value !== undefined) updates.early_bird_discount_value = body.early_bird_discount_value ?? null;
 
     const { data, error } = await sb
       .from('accommodation_partners')
@@ -485,6 +495,8 @@ router.post('/:id/approve', edit, validateBody(ApproveBodySchema), async (req, r
     if (body.notes !== undefined) updates.notes = body.notes;
     if (body.telegram_chat_id !== undefined) updates.telegram_chat_id = body.telegram_chat_id?.trim() || null;
     if (body.logo_url !== undefined) updates.logo_url = body.logo_url?.trim() || null;
+    if (body.early_bird_days !== undefined) updates.early_bird_days = body.early_bird_days ?? null;
+    if (body.early_bird_discount_value !== undefined) updates.early_bird_discount_value = body.early_bird_discount_value ?? null;
 
     const { data, error } = await sb
       .from('accommodation_partners')

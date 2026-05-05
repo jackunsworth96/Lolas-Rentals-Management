@@ -13,6 +13,8 @@ export interface AppliedPartnerBenefit {
   rentalDiscount: number;
   /** Whether free delivery is in effect. */
   freeDelivery: boolean;
+  /** True when the early-bird (higher) tier was applied. */
+  earlyBird: boolean;
 }
 
 /**
@@ -33,6 +35,7 @@ export function computePartnerBenefit(
     daysShort: 0,
     rentalDiscount: 0,
     freeDelivery: false,
+    earlyBird: false,
   };
 
   if (!benefit) return empty;
@@ -58,12 +61,27 @@ export function computePartnerBenefit(
   const isFreeDeliveryDeal =
     benefit.freeDelivery || benefit.dealType === 'free_delivery' || benefit.dealType === 'combined';
 
+  // Determine advance days for early-bird check
+  const pickup = pickupDatetime ? new Date(pickupDatetime) : null;
+  const advanceDays = pickup && !Number.isNaN(pickup.getTime())
+    ? (pickup.getTime() - now.getTime()) / MS_PER_DAY
+    : 0;
+
+  const earlyBird =
+    benefit.earlyBirdDays != null &&
+    benefit.earlyBirdDiscountValue != null &&
+    advanceDays >= benefit.earlyBirdDays;
+
+  const effectiveDiscountValue = earlyBird
+    ? benefit.earlyBirdDiscountValue!
+    : benefit.discountValue;
+
   let rentalDiscount = 0;
-  if (isDiscountDeal && benefit.discountType && benefit.discountValue != null) {
+  if (isDiscountDeal && benefit.discountType && effectiveDiscountValue != null) {
     if (benefit.discountType === 'percentage') {
-      rentalDiscount = Math.round(rentalSubtotal * (benefit.discountValue / 100) * 100) / 100;
+      rentalDiscount = Math.round(rentalSubtotal * (effectiveDiscountValue / 100) * 100) / 100;
     } else {
-      rentalDiscount = Math.min(rentalSubtotal, benefit.discountValue);
+      rentalDiscount = Math.min(rentalSubtotal, effectiveDiscountValue);
     }
   }
 
@@ -73,6 +91,7 @@ export function computePartnerBenefit(
     daysShort: 0,
     rentalDiscount,
     freeDelivery: isFreeDeliveryDeal,
+    earlyBird,
   };
 }
 

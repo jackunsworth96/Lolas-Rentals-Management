@@ -25,6 +25,8 @@ export interface AccommodationPartner {
   free_delivery: boolean;
   advance_discount_days: number | null;
   logo_url: string | null;
+  early_bird_days: number | null;
+  early_bird_discount_value: number | null;
   notes: string | null;
   telegram_chat_id: string | null;
   created_at: string;
@@ -168,6 +170,8 @@ export interface PublicPartnerBenefit {
   discountValue: number | null;
   freeDelivery: boolean;
   advanceDiscountDays: number | null;
+  earlyBirdDays: number | null;
+  earlyBirdDiscountValue: number | null;
   logoUrl: string | null;
 }
 

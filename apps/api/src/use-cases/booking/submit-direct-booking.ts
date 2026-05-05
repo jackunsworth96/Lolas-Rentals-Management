@@ -150,11 +150,14 @@ export async function submitDirectBooking(
       validatedPartner &&
       isBenefitEligibleForPickup(validatedPartner, input.pickupDatetime)
     ) {
+      const advanceDaysFromNow =
+        (new Date(input.pickupDatetime).getTime() - Date.now()) / 86_400_000;
       const benefit = applyPartnerBenefit({
         partner: validatedPartner,
         rentalSubtotal: fullQuote.rentalSubtotal,
         pickupFee: fullQuote.pickupFee,
         dropoffFee: fullQuote.dropoffFee,
+        advanceDaysFromNow,
       });
       rentalSubtotalForCommission = benefit.rentalSubtotal;
       effectivePickupFee = benefit.pickupFee;

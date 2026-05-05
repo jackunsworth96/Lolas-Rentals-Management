@@ -95,6 +95,8 @@ const EMPTY_FORM = {
   advance_discount_days: '' as string,
   telegram_chat_id: '',
   logo_url: '',
+  early_bird_days: '' as string,
+  early_bird_discount_value: '' as string,
   notes: '',
 };
 
@@ -125,6 +127,8 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
         advance_discount_days: editing.advance_discount_days != null ? String(editing.advance_discount_days) : '',
         telegram_chat_id: editing.telegram_chat_id ?? '',
         logo_url: editing.logo_url ?? '',
+        early_bird_days: editing.early_bird_days != null ? String(editing.early_bird_days) : '',
+        early_bird_discount_value: editing.early_bird_discount_value != null ? String(editing.early_bird_discount_value) : '',
         notes: editing.notes ?? '',
       });
       setSlugManuallyEdited(true);
@@ -179,6 +183,8 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
       free_delivery: form.deal_type === 'free_delivery' || form.deal_type === 'combined' ? true : form.free_delivery,
       advance_discount_days: advanceDiscountDaysNum,
       logo_url: form.logo_url.trim() || null,
+      early_bird_days: form.early_bird_days.trim() === '' ? null : Math.max(1, Math.min(365, Number(form.early_bird_days))),
+      early_bird_discount_value: form.early_bird_discount_value.trim() === '' ? null : Number(form.early_bird_discount_value),
       notes: form.notes.trim() || null,
       telegram_chat_id: form.telegram_chat_id.trim() || null,
     };
@@ -375,6 +381,37 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
                 />
               </div>
             </div>
+            {/* Early bird tier */}
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+              <p className="mb-2 text-xs font-semibold text-amber-800">Early bird tier (optional)</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Min days ahead</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="365"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    value={form.early_bird_days}
+                    onChange={(e) => setField('early_bird_days', e.target.value)}
+                    placeholder="e.g. 30"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Higher discount {form.discount_type === 'percentage' ? '(%)' : '(₱)'}</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step={form.discount_type === 'percentage' ? '0.1' : '1'}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    value={form.early_bird_discount_value}
+                    onChange={(e) => setField('early_bird_discount_value', e.target.value)}
+                    placeholder="e.g. 10"
+                  />
+                </div>
+              </div>
+              <p className="mt-1.5 text-[11px] text-gray-400">Leave blank to disable the early bird tier.</p>
+            </div>
           )}
 
           {form.deal_type === 'free_delivery' && (
@@ -516,6 +553,8 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
       advance_discount_days: partner.advance_discount_days != null ? String(partner.advance_discount_days) : '',
       telegram_chat_id: partner.telegram_chat_id ?? '',
       logo_url: partner.logo_url ?? '',
+      early_bird_days: partner.early_bird_days != null ? String(partner.early_bird_days) : '',
+      early_bird_discount_value: partner.early_bird_discount_value != null ? String(partner.early_bird_discount_value) : '',
       notes: partner.notes ?? '',
     });
     setSlugManuallyEdited(!!partner.slug);
@@ -566,6 +605,8 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
       free_delivery: form.deal_type === 'free_delivery' || form.deal_type === 'combined' ? true : form.free_delivery,
       advance_discount_days: advanceDiscountDaysNum,
       logo_url: form.logo_url.trim() || null,
+      early_bird_days: form.early_bird_days.trim() === '' ? null : Math.max(1, Math.min(365, Number(form.early_bird_days))),
+      early_bird_discount_value: form.early_bird_discount_value.trim() === '' ? null : Number(form.early_bird_discount_value),
       notes: form.notes.trim() || null,
       telegram_chat_id: form.telegram_chat_id.trim() || null,
     };
@@ -732,6 +773,37 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
                   placeholder="None"
                 />
               </div>
+            </div>
+            {/* Early bird tier */}
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+              <p className="mb-2 text-xs font-semibold text-amber-800">Early bird tier (optional)</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Min days ahead</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="365"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    value={form.early_bird_days}
+                    onChange={(e) => setField('early_bird_days', e.target.value)}
+                    placeholder="e.g. 30"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Higher discount {form.discount_type === 'percentage' ? '(%)' : '(₱)'}</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step={form.discount_type === 'percentage' ? '0.1' : '1'}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    value={form.early_bird_discount_value}
+                    onChange={(e) => setField('early_bird_discount_value', e.target.value)}
+                    placeholder="e.g. 10"
+                  />
+                </div>
+              </div>
+              <p className="mt-1.5 text-[11px] text-gray-400">Leave blank to disable the early bird tier.</p>
             </div>
           )}
 

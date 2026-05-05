@@ -13,6 +13,8 @@ export interface PartnerBenefitRow {
   discountValue: number | null;
   freeDelivery: boolean;
   advanceDiscountDays: number | null;
+  earlyBirdDays: number | null;
+  earlyBirdDiscountValue: number | null;
 }
 
 /**
@@ -31,7 +33,7 @@ export async function lookupActivePartnerBySlug(
   const sb = getSupabaseClient();
   const { data, error } = await sb
     .from('accommodation_partners')
-    .select('id, slug, name, store_id, deal_type, discount_type, discount_value, free_delivery, advance_discount_days, status, active')
+    .select('id, slug, name, store_id, deal_type, discount_type, discount_value, free_delivery, advance_discount_days, early_bird_days, early_bird_discount_value, status, active')
     .eq('slug', trimmed)
     .eq('status', 'active')
     .eq('active', true)
@@ -46,6 +48,8 @@ export async function lookupActivePartnerBySlug(
     discount_value: number | null;
     free_delivery: boolean;
     advance_discount_days: number | null;
+    early_bird_days: number | null;
+    early_bird_discount_value: number | null;
   };
 
   return {
@@ -58,6 +62,8 @@ export async function lookupActivePartnerBySlug(
     discountValue: row.discount_value != null ? Number(row.discount_value) : null,
     freeDelivery: row.free_delivery,
     advanceDiscountDays: row.advance_discount_days,
+    earlyBirdDays: row.early_bird_days,
+    earlyBirdDiscountValue: row.early_bird_discount_value != null ? Number(row.early_bird_discount_value) : null,
   };
 }
 
@@ -88,6 +94,8 @@ export interface ApplyBenefitInput {
   rentalSubtotal: number;
   pickupFee: number;
   dropoffFee: number;
+  /** Days between booking (now) and pickup — used to pick early-bird tier. */
+  advanceDaysFromNow?: number | null;
 }
 
 export interface ApplyBenefitResult {
@@ -117,10 +125,19 @@ export function applyPartnerBenefit(input: ApplyBenefitInput): ApplyBenefitResul
     partner.freeDelivery || partner.dealType === 'free_delivery' || partner.dealType === 'combined';
 
   if (applyDiscount && partner.discountType && partner.discountValue != null) {
+    // Use the early-bird (higher) value when the pickup qualifies for that tier.
+    const effectiveDiscountValue =
+      partner.earlyBirdDiscountValue != null &&
+      partner.earlyBirdDays != null &&
+      input.advanceDaysFromNow != null &&
+      input.advanceDaysFromNow >= partner.earlyBirdDays
+        ? partner.earlyBirdDiscountValue
+        : partner.discountValue;
+
     if (partner.discountType === 'percentage') {
-      rentalDiscount = Math.round(rentalSubtotal * (partner.discountValue / 100) * 100) / 100;
+      rentalDiscount = Math.round(rentalSubtotal * (effectiveDiscountValue / 100) * 100) / 100;
     } else {
-      rentalDiscount = Math.min(rentalSubtotal, partner.discountValue);
+      rentalDiscount = Math.min(rentalSubtotal, effectiveDiscountValue);
     }
     rentalSubtotal = Math.max(0, Math.round((rentalSubtotal - rentalDiscount) * 100) / 100);
   }
