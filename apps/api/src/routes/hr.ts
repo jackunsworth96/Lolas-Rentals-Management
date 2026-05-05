@@ -85,7 +85,7 @@ router.patch('/timesheets/:id', requirePermission(Permission.EditTimesheets), va
   try {
     const { editTimesheet } = await import('../use-cases/hr/edit-timesheet.js');
     const amendedBy = req.user!.userId;
-    const result = await editTimesheet(req.params.id, req.body, amendedBy);
+    const result = await editTimesheet(String(req.params.id), req.body, amendedBy);
     res.json({ success: true, data: result });
   } catch (err: unknown) {
     const e = err as { statusCode?: number; code?: string; message?: string };
