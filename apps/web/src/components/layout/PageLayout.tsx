@@ -86,7 +86,7 @@ export function PageLayout({
 
   // Capture ?ref=<slug> (and resolve the partner benefit) on every customer
   // page. Cached in sessionStorage so subsequent navigations don't re-fetch.
-  usePartnerRefCapture();
+  const { benefit: partnerBenefit } = usePartnerRefCapture();
 
   // Flash the basket icon (bounce + gold highlight) whenever an item is added.
   const [basketFlash, setBasketFlash] = useState(false);
@@ -216,6 +216,7 @@ export function PageLayout({
         logo={logo}
         logoAlt="Lola's Rentals"
         items={navItems}
+        partnerBenefit={partnerBenefit}
         rightSlot={
           showBasketIcon ? (
             <Link

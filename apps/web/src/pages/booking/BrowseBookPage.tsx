@@ -973,9 +973,13 @@ export default function BrowseBookPage() {
                     )}
                     {/* Partner welcome copy */}
                     <p className="font-lato max-w-md text-sm leading-relaxed text-charcoal-brand/70">
-                      You&apos;re in great hands at{' '}
-                      <span className="font-semibold text-charcoal-brand">{pb.name}</span>.
-                      Let us be the second best decision you make on your Siargao trip.
+                      {pb.welcomeMessage ?? (
+                        <>
+                          You&apos;re in great hands at{' '}
+                          <span className="font-semibold text-charcoal-brand">{pb.name}</span>.
+                          Let us be the second best decision you make on your Siargao trip.
+                        </>
+                      )}
                     </p>
                   </div>
                 );

@@ -11,6 +11,7 @@ import { CloudinaryImage } from '../ui/CloudinaryImage.js';
 import lolaLogo from '../../assets/Hero/logo-lola-rentals-1.svg';
 import { instaIcon, phoneIcon, locationIcon } from '../public/customerContactIcons.js';
 import { GOOGLE_MAPS_PLACE_URL } from '../../config/maps.js';
+import type { PublicPartnerBenefit } from '../../api/partners.js';
 import './BubbleMenu.css';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -33,6 +34,7 @@ interface TopNavProps {
   logoAlt?: string;
   items: NavItem[];
   rightSlot?: ReactNode;
+  partnerBenefit?: PublicPartnerBenefit | null;
 }
 
 interface NavBubbleItem {
@@ -106,7 +108,7 @@ const itemVariants = {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function TopNav({ items, rightSlot }: TopNavProps) {
+export default function TopNav({ items, rightSlot, partnerBenefit }: TopNavProps) {
   const { pathname } = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -122,19 +124,44 @@ export default function TopNav({ items, rightSlot }: TopNavProps) {
         style={{ backgroundColor: '#f1e6d6' }}
       >
 
-        {/* Logo — far left */}
-        <Link
-          to="/book"
-          aria-label="Lola's Rentals home"
-          className="absolute left-3 top-1/2 z-10 -translate-y-1/2 md:left-5"
-        >
-          <img
-            src={lolaLogo}
-            alt="Lola's Rentals"
-            className="h-9 w-auto object-contain md:h-10"
-            draggable={false}
-          />
-        </Link>
+        {/* Logo — far left; expands to co-brand when a partner ref is active */}
+        <div className="absolute left-3 top-1/2 z-10 flex -translate-y-1/2 items-center gap-2 md:left-5">
+          <Link to="/book" aria-label="Lola's Rentals home">
+            <img
+              src={lolaLogo}
+              alt="Lola's Rentals"
+              className="h-9 w-auto object-contain md:h-10"
+              draggable={false}
+            />
+          </Link>
+
+          <AnimatePresence>
+            {partnerBenefit && (
+              <motion.div
+                key="partner-cobrand"
+                className="flex items-center gap-2"
+                initial={{ opacity: 0, x: -6 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -6 }}
+                transition={{ duration: 0.25, ease: 'easeOut' }}
+              >
+                <span className="select-none text-sm font-light text-charcoal-brand/40" aria-hidden="true">×</span>
+                {partnerBenefit.logoUrl ? (
+                  <img
+                    src={partnerBenefit.logoUrl}
+                    alt={partnerBenefit.name}
+                    className="h-7 w-auto max-w-[72px] object-contain md:h-8 md:max-w-[96px]"
+                    draggable={false}
+                  />
+                ) : (
+                  <span className="max-w-[80px] truncate text-xs font-semibold text-charcoal-brand/60 md:max-w-[110px] md:text-sm">
+                    {partnerBenefit.name}
+                  </span>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
         {/* Menu paw — centred */}
         <button

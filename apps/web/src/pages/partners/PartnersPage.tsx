@@ -95,6 +95,7 @@ const EMPTY_FORM = {
   advance_discount_days: '' as string,
   telegram_chat_id: '',
   logo_url: '',
+  welcome_message: '',
   early_bird_days: '' as string,
   early_bird_discount_value: '' as string,
   notes: '',
@@ -127,6 +128,7 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
         advance_discount_days: editing.advance_discount_days != null ? String(editing.advance_discount_days) : '',
         telegram_chat_id: editing.telegram_chat_id ?? '',
         logo_url: editing.logo_url ?? '',
+        welcome_message: editing.welcome_message ?? '',
         early_bird_days: editing.early_bird_days != null ? String(editing.early_bird_days) : '',
         early_bird_discount_value: editing.early_bird_discount_value != null ? String(editing.early_bird_discount_value) : '',
         notes: editing.notes ?? '',
@@ -183,6 +185,7 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
       free_delivery: form.deal_type === 'free_delivery' || form.deal_type === 'combined' ? true : form.free_delivery,
       advance_discount_days: advanceDiscountDaysNum,
       logo_url: form.logo_url.trim() || null,
+      welcome_message: form.welcome_message.trim() || null,
       early_bird_days: form.early_bird_days.trim() === '' ? null : Math.max(1, Math.min(365, Number(form.early_bird_days))),
       early_bird_discount_value: form.early_bird_discount_value.trim() === '' ? null : Number(form.early_bird_discount_value),
       notes: form.notes.trim() || null,
@@ -494,6 +497,21 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
         </div>
 
         <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Custom welcome message
+            <span className="ml-1.5 text-xs font-normal text-gray-400">(optional — replaces default copy on the guest booking page)</span>
+          </label>
+          <textarea
+            rows={2}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+            value={form.welcome_message}
+            onChange={(e) => setField('welcome_message', e.target.value)}
+            placeholder={`e.g. "Recommended by the team at ${form.name || 'your hotel'}? We'll make sure they were right."`}
+            maxLength={500}
+          />
+        </div>
+
+        <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
           <textarea
             rows={2}
@@ -555,6 +573,7 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
       advance_discount_days: partner.advance_discount_days != null ? String(partner.advance_discount_days) : '',
       telegram_chat_id: partner.telegram_chat_id ?? '',
       logo_url: partner.logo_url ?? '',
+      welcome_message: partner.welcome_message ?? '',
       early_bird_days: partner.early_bird_days != null ? String(partner.early_bird_days) : '',
       early_bird_discount_value: partner.early_bird_discount_value != null ? String(partner.early_bird_discount_value) : '',
       notes: partner.notes ?? '',
@@ -607,6 +626,7 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
       free_delivery: form.deal_type === 'free_delivery' || form.deal_type === 'combined' ? true : form.free_delivery,
       advance_discount_days: advanceDiscountDaysNum,
       logo_url: form.logo_url.trim() || null,
+      welcome_message: form.welcome_message.trim() || null,
       early_bird_days: form.early_bird_days.trim() === '' ? null : Math.max(1, Math.min(365, Number(form.early_bird_days))),
       early_bird_discount_value: form.early_bird_discount_value.trim() === '' ? null : Number(form.early_bird_discount_value),
       notes: form.notes.trim() || null,
@@ -827,6 +847,21 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
               </div>
             </div>
           )}
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Custom welcome message
+            <span className="ml-1.5 text-xs font-normal text-gray-400">(optional — replaces default copy on the guest booking page)</span>
+          </label>
+          <textarea
+            rows={2}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+            value={form.welcome_message}
+            onChange={(e) => setField('welcome_message', e.target.value)}
+            placeholder={`e.g. "Recommended by the team at ${form.name || 'your partner'}? We'll make sure they were right."`}
+            maxLength={500}
+          />
         </div>
 
         <div>
