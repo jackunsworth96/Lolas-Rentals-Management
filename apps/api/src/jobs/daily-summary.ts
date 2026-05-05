@@ -37,6 +37,7 @@ type ReturningRow = {
   vehicle_name: string | null;
   dropoff_datetime: string;
   dropoff_location: string | null;
+  helmet_numbers: string | null;
 };
 
 type OrderMeta = {
@@ -58,6 +59,7 @@ async function fetchReturnsForDate(dateStr: string): Promise<{
     note: string | null;
     balanceDue: number;
     hour: number;
+    helmetNumbers: string | null;
   }>;
 }> {
   const sb = getSupabaseClient();
@@ -65,7 +67,7 @@ async function fetchReturnsForDate(dateStr: string): Promise<{
 
   const { data: items, error: itemsErr } = await sb
     .from('order_items')
-    .select('order_id, vehicle_name, dropoff_datetime, dropoff_location')
+    .select('order_id, vehicle_name, dropoff_datetime, dropoff_location, helmet_numbers')
     .gte('dropoff_datetime', start)
     .lte('dropoff_datetime', end);
 
@@ -91,6 +93,22 @@ async function fetchReturnsForDate(dateStr: string): Promise<{
     });
   }
 
+  // Detect orders that have a 9PM Return add-on — these should be treated as
+  // hour=21 even if the original dropoff_datetime predates 9 PM, because the
+  // add-on is stored in order_addons without updating order_items.dropoff_datetime.
+  const ninepmOrderIds = new Set<string>();
+  const activeOrderIds = [...orderMap.keys()];
+  if (activeOrderIds.length > 0) {
+    const { data: ninepmAddons } = await sb
+      .from('order_addons')
+      .select('order_id')
+      .in('order_id', activeOrderIds)
+      .ilike('addon_name', '%9pm%');
+    for (const a of (ninepmAddons ?? []) as Array<{ order_id: string }>) {
+      ninepmOrderIds.add(a.order_id);
+    }
+  }
+
   const custIds = [...new Set([...orderMap.values()].map((o) => o.customer_id).filter(Boolean))];
   const custNameMap = new Map<string, string>();
   if (custIds.length > 0) {
@@ -105,27 +123,30 @@ async function fetchReturnsForDate(dateStr: string): Promise<{
     .sort((a, b) => (a.dropoff_datetime < b.dropoff_datetime ? -1 : 1))
     .map((r) => {
       const meta = orderMap.get(r.order_id)!;
+      const hasNinePmAddon = ninepmOrderIds.has(r.order_id);
       return {
         ref: meta.booking_token ?? '—',
         name: custNameMap.get(meta.customer_id) ?? '—',
         vehicle: r.vehicle_name ?? '—',
-        time: formatDropoffTime(r.dropoff_datetime),
+        time: hasNinePmAddon ? '9:00 PM' : formatDropoffTime(r.dropoff_datetime),
         location: r.dropoff_location ?? 'Lola\'s Rentals',
         note: meta.dropoff_location_note ?? null,
         balanceDue: Number(meta.balance_due ?? 0),
-        hour: manilaHour(r.dropoff_datetime),
+        hour: hasNinePmAddon ? 21 : manilaHour(r.dropoff_datetime),
+        helmetNumbers: r.helmet_numbers ?? null,
       };
     });
 
   return { lines };
 }
 
-function formatReturnLine(r: { ref: string; name: string; vehicle: string; time: string; location: string; note: string | null; balanceDue: number }): string {
+function formatReturnLine(r: { ref: string; name: string; vehicle: string; time: string; location: string; note: string | null; balanceDue: number; helmetNumbers: string | null }): string {
   const locPart = r.note
     ? `${escapeHtml(r.location)} (${escapeHtml(r.note)})`
     : escapeHtml(r.location);
   const balancePart = formatBalanceLine(r.balanceDue);
-  return `• ${escapeHtml(r.ref)} — ${escapeHtml(r.name)} — ${escapeHtml(r.vehicle)} — ${escapeHtml(r.time)}\n  📍 ${locPart}${balancePart}`;
+  const helmetPart = r.helmetNumbers ? `\n  🪖 Helmets: ${escapeHtml(r.helmetNumbers)}` : '';
+  return `• ${escapeHtml(r.ref)} — ${escapeHtml(r.name)} — ${escapeHtml(r.vehicle)} — ${escapeHtml(r.time)}\n  📍 ${locPart}${balancePart}${helmetPart}`;
 }
 
 // ─── 7 AM morning briefing ─────────────────────────────────────────────────
