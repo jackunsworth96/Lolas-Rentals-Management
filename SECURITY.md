@@ -3,7 +3,7 @@
 **Last updated:** April 9, 2026  
 **Audited by:** AI-assisted static analysis + penetration testing  
 **Status:** ✅ All critical and high findings resolved
-**Last scanned (CI):** 2026-05-05 13:17 UTC
+**Last scanned (CI):** 2026-05-05 23:55 UTC
 
 ---
 
@@ -21,7 +21,7 @@
 
 ## Automated Scan Results
 
-_Automated scan run:_ 2026-05-05 13:17 UTC
+_Automated scan run:_ 2026-05-05 23:55 UTC
 
 npm audit was run in `apps/api` with `--audit-level=moderate`.
 
