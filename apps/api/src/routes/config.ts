@@ -207,7 +207,7 @@ router.get('/task-categories', async (req, res, next) => {
   try { res.json({ success: true, data: await req.app.locals.deps.configRepo.getTaskCategories() }); } catch (e) { next(e); }
 });
 router.post('/task-categories', edit, validateBody(z.object({
-  name: z.string().min(1), colour: z.string().min(1).default('#6B7280'), isActive: z.boolean().optional(),
+  name: z.string().min(1), colour: z.string().optional().transform(v => v || '#6B7280'), isActive: z.boolean().optional(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveTaskCategory(req.body); res.json({ success: true }); } catch (e) { next(e); }
 });
