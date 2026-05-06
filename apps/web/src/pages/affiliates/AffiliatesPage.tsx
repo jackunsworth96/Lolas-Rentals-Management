@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Link2, Sparkles, ArrowRight, CheckCircle2, Clock, ShieldCheck, Truck, Receipt, Smartphone, MapPin, TrendingUp } from 'lucide-react';
+import { Link2, Sparkles, ArrowRight, CheckCircle2, Clock, ShieldCheck, Truck, Receipt, Smartphone, MapPin, TrendingUp, Gift } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { api, ApiError } from '../../api/client.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
@@ -11,22 +11,22 @@ const PROMISES = [
   {
     icon: <Clock className="h-5 w-5" strokeWidth={1.5} />,
     label: 'Same-day response',
-    body: 'We reply within the hour — your guests will never be left waiting.',
+    body: 'We usually reply within about 10 minutes — always within an hour — so your guests are never left waiting.',
   },
   {
     icon: <ShieldCheck className="h-5 w-5" strokeWidth={1.5} />,
     label: 'One standard, every time',
-    body: 'Every bike is inspected before and after each rental — no surprises.',
+    body: 'Every bike is inspected before and after each rental, with documentation — no surprises.',
   },
   {
     icon: <Truck className="h-5 w-5" strokeWidth={1.5} />,
     label: 'On-time delivery',
-    body: 'We show up when we said we would, wherever you need us.',
+    body: 'We show up when we said we would, wherever you need us. More than 15 minutes late? We refund the delivery or collection fee.',
   },
   {
     icon: <Receipt className="h-5 w-5" strokeWidth={1.5} />,
     label: 'Transparent damage policy',
-    body: 'No vague fees. If anything is disputed, we talk it through — always.',
+    body: "No vague fees. If anything is disputed, we talk it through — always. When a charge isn't on our website, we'll share a receipt so you can see we're not making anything up.",
   },
 ] as const;
 
@@ -37,6 +37,14 @@ const PROPERTY_TYPES = [
   { value: 'apartment', label: 'Apartment / Serviced Residence' },
   { value: 'other', label: 'Other' },
 ];
+
+const MOTIVATION_OPTIONS = [
+  { id: 'inconsistent', label: 'Our current provider is inconsistent' },
+  { id: 'add_value', label: 'We want to add value for our guests' },
+  { id: 'no_partner', label: "We don't have a rental partner yet" },
+  { id: 'guest_rec', label: 'A guest recommended Lola\'s' },
+  { id: 'other', label: 'Other' },
+] as const;
 
 interface EnrolForm {
   propertyName: string;
@@ -49,6 +57,7 @@ interface EnrolForm {
   telegramUsername: string;
   dealChoice: 'commission' | 'discount' | '';
   preferredRate: string;
+  motivations: string[];
 }
 
 const EMPTY_FORM: EnrolForm = {
@@ -62,6 +71,7 @@ const EMPTY_FORM: EnrolForm = {
   telegramUsername: '',
   dealChoice: '',
   preferredRate: '',
+  motivations: [],
 };
 
 const inputClass =
@@ -122,6 +132,15 @@ export default function AffiliatesPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  function toggleMotivation(id: string) {
+    setForm((prev) => ({
+      ...prev,
+      motivations: prev.motivations.includes(id)
+        ? prev.motivations.filter((m) => m !== id)
+        : [...prev.motivations, id],
+    }));
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
@@ -145,6 +164,7 @@ export default function AffiliatesPage() {
           telegramUsername: form.telegramUsername.trim() || null,
           dealChoice: form.dealChoice,
           preferredRate: form.preferredRate.trim() === '' ? null : Number(form.preferredRate),
+          motivations: form.motivations.length > 0 ? form.motivations : null,
         },
       );
       setSubmittedPartnerId(result.id);
@@ -256,7 +276,8 @@ export default function AffiliatesPage() {
             <p className="font-lato mx-auto mt-3 max-w-xl text-[15px] leading-relaxed text-charcoal-brand/70">
               Consistent bikes, honest damage policies, and a team that actually picks up the phone —
               your guests deserve a rental experience that reflects well on your property too.
-              Earn commission on every booking, or pass a partner-only discount straight to them.
+              Where it suits your property, we encourage passing a partner-only discount straight to your guests
+              through your booking link; if earning commission on each booking fits better for you, we can arrange that too.
             </p>
           </div>
 
@@ -307,7 +328,7 @@ export default function AffiliatesPage() {
                   step: '01',
                   icon: <Link2 className="h-5 w-5" strokeWidth={1.5} />,
                   label: 'Share your link',
-                  body: 'You get a personalised booking link. Put it on your welcome card, your website, or hand it to your concierge — wherever feels natural.',
+                  body: "You get a personalised booking link. Share it everywhere guests see you before they arrive — confirmation emails, pre-arrival messages, your website, welcome packs — and again right after they've booked, while they're planning their trip.",
                 },
                 {
                   step: '02',
@@ -319,7 +340,7 @@ export default function AffiliatesPage() {
                   step: '03',
                   icon: <MapPin className="h-5 w-5" strokeWidth={1.5} />,
                   label: 'We handle everything',
-                  body: "Bikes are delivered to your property on time. Your guests are looked after from pickup to return. You sit back — and if you earn commission, a monthly report lands in your inbox.",
+                  body: "Bikes and tuktuks are delivered to your property on time. Your guests are looked after from pickup to return. You sit back — and if you earn commission, a monthly summary arrives by Telegram or email.",
                 },
               ].map((s, i) => (
                 <motion.div
@@ -339,7 +360,7 @@ export default function AffiliatesPage() {
                   <p className="font-headline mb-1.5 text-[14px] font-bold text-charcoal-brand">
                     {s.label}
                   </p>
-                  <p className="font-lato text-[13px] leading-relaxed text-charcoal-brand/60 max-w-[220px]">
+                  <p className="font-lato mx-auto text-[13px] leading-relaxed text-charcoal-brand/60 max-w-[280px]">
                     {s.body}
                   </p>
                 </motion.div>
@@ -361,7 +382,10 @@ export default function AffiliatesPage() {
                   Full visibility, zero admin
                 </p>
                 <p className="font-lato mt-0.5 text-[12px] leading-relaxed text-charcoal-brand/60">
-                  Every booking through your link is tracked automatically. Commission partners receive a monthly Telegram report with totals — no spreadsheets, no chasing.
+                  Every booking through your link is tracked automatically. Commission partners receive a monthly report by Telegram or email with totals — no spreadsheets, no chasing.{' '}
+                  <strong className="font-bold text-charcoal-brand">
+                    A hassle-free experience for everyone involved, from start to finish.
+                  </strong>
                 </p>
               </div>
             </motion.div>
@@ -508,7 +532,7 @@ export default function AffiliatesPage() {
                   onSelect={() => setField('dealChoice', 'discount')}
                   title="Give guests a better rate"
                   body="Your guests book at a discount through your link. You keep the goodwill."
-                  icon={<Link2 className="h-5 w-5" />}
+                  icon={<Gift className="h-5 w-5" strokeWidth={1.5} />}
                 />
                 <DealCard
                   selected={form.dealChoice === 'commission'}
@@ -537,6 +561,36 @@ export default function AffiliatesPage() {
                   Your preferred % or fixed amount — many partnerships start around 5%; we'll confirm when we review
                   your application.
                 </p>
+              </div>
+            </fieldset>
+
+            {/* Motivations */}
+            <fieldset className="border-t border-charcoal-brand/10 pt-5">
+              <legend className="font-headline mb-1 text-base font-bold text-charcoal-brand">
+                What's prompting you to look for a rental partner?
+              </legend>
+              <p className="font-lato mb-3 text-[12px] text-charcoal-brand/50">
+                Optional — tick anything that applies.
+              </p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {MOTIVATION_OPTIONS.map((opt) => (
+                  <label
+                    key={opt.id}
+                    className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm transition-all ${
+                      form.motivations.includes(opt.id)
+                        ? 'border-teal-brand/50 bg-teal-50/70 text-charcoal-brand'
+                        : 'border-charcoal-brand/15 bg-white text-charcoal-brand/70 hover:border-teal-brand/30'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={form.motivations.includes(opt.id)}
+                      onChange={() => toggleMotivation(opt.id)}
+                      className="h-4 w-4 rounded border-charcoal-brand/30 text-teal-brand focus:ring-teal-brand"
+                    />
+                    <span className="font-medium leading-snug">{opt.label}</span>
+                  </label>
+                ))}
               </div>
             </fieldset>
 

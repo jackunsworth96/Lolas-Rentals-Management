@@ -93,6 +93,7 @@ const PublicEnrollSchema = z.object({
   telegramUsername: z.string().max(80).optional().nullable(),
   dealChoice: z.enum(['commission', 'discount']),
   preferredRate: z.coerce.number().min(0).max(100_000).optional().nullable(),
+  motivations: z.array(z.string().max(120)).max(10).optional().nullable(),
 });
 
 router.post('/enroll', enrollLimiter, validateBody(PublicEnrollSchema), async (req, res, next) => {
@@ -131,6 +132,7 @@ router.post('/enroll', enrollLimiter, validateBody(PublicEnrollSchema), async (r
         body.location ? `Location: ${body.location}` : null,
         body.roomCount ? `Rooms: ${body.roomCount}` : null,
         body.telegramUsername ? `Telegram: ${body.telegramUsername}` : null,
+        body.motivations?.length ? `Motivations: ${body.motivations.join(', ')}` : null,
         `Submitted via /affiliates`,
       ].filter(Boolean).join('\n'),
       telegram_chat_id: null,
@@ -154,6 +156,7 @@ router.post('/enroll', enrollLimiter, validateBody(PublicEnrollSchema), async (r
       `Choice: <b>${dealType === 'commission' ? 'Earn commission' : 'Discount for guests'}</b>`,
       `Preferred rate: ${numericRate ? `${numericRate}%` : '—'}`,
       `Telegram: ${body.telegramUsername ?? '—'}`,
+      body.motivations?.length ? `Motivations: ${body.motivations.join(' · ')}` : null,
       ``,
       `⚠️ Action required — review in back office → /partners`,
     ].join('\n');
@@ -179,6 +182,7 @@ const PublicEnrollDetailsSchema = z.object({
   has_concierge: z.boolean().optional().nullable(),
   wants_printed_materials: z.boolean().optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
+  motivations: z.string().max(1000).optional().nullable(),
 });
 
 router.post('/enroll/:id/details', enrollLimiter, validateBody(PublicEnrollDetailsSchema), async (req, res, next) => {
@@ -221,6 +225,7 @@ router.post('/enroll/:id/details', enrollLimiter, validateBody(PublicEnrollDetai
       has_concierge: body.has_concierge ?? null,
       wants_printed_materials: body.wants_printed_materials ?? null,
       notes: body.notes ?? null,
+      motivations: body.motivations ?? null,
       updated_at: new Date().toISOString(),
     };
 

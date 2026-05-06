@@ -323,15 +323,18 @@ export default function AffiliatesDetailsPage() {
             </fieldset>
 
             <fieldset className="border-t border-charcoal-brand/10 pt-5">
-              <legend className="font-headline mb-3 text-base font-bold text-charcoal-brand">
-                Anything else?
+              <legend className="font-headline mb-1 text-base font-bold text-charcoal-brand">
+                Tell us more
               </legend>
+              <p className="font-lato mb-3 text-[12px] text-charcoal-brand/50">
+                Is there anything else you'd like us to know — about your current setup, a previous experience, or what you're hoping this partnership looks like?
+              </p>
               <textarea
                 rows={4}
                 value={form.notes}
                 onChange={(e) => setField('notes', e.target.value)}
                 className={inputClass}
-                placeholder="Anything that'd help our team prepare for our first call…"
+                placeholder="e.g. We've had issues with late deliveries in the past and want to make sure guests are looked after…"
               />
             </fieldset>
 
