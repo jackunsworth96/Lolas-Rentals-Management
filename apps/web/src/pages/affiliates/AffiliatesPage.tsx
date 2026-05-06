@@ -1,10 +1,34 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Link2, Sparkles, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Link2, Sparkles, ArrowRight, CheckCircle2, Clock, ShieldCheck, Truck, Receipt, Smartphone, MapPin, TrendingUp } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { api, ApiError } from '../../api/client.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { SEO } from '../../components/seo/SEO.js';
 import { useToast } from '../../hooks/useToast.js';
+
+const PROMISES = [
+  {
+    icon: <Clock className="h-5 w-5" strokeWidth={1.5} />,
+    label: 'Same-day response',
+    body: 'We reply within the hour — your guests will never be left waiting.',
+  },
+  {
+    icon: <ShieldCheck className="h-5 w-5" strokeWidth={1.5} />,
+    label: 'One standard, every time',
+    body: 'Every bike is inspected before and after each rental — no surprises.',
+  },
+  {
+    icon: <Truck className="h-5 w-5" strokeWidth={1.5} />,
+    label: 'On-time delivery',
+    body: 'We show up when we said we would, wherever you need us.',
+  },
+  {
+    icon: <Receipt className="h-5 w-5" strokeWidth={1.5} />,
+    label: 'Transparent damage policy',
+    body: 'No vague fees. If anything is disputed, we talk it through — always.',
+  },
+] as const;
 
 const PROPERTY_TYPES = [
   { value: 'hotel', label: 'Hotel' },
@@ -215,9 +239,13 @@ export default function AffiliatesPage() {
       <PageLayout title="Become a Lola's Affiliate">
         <div className="relative mx-auto max-w-3xl px-4 pt-6 pb-16">
           {/* Hero */}
-          <div className="mb-6 text-center">
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-teal-brand/30 bg-teal-50 px-4 py-1.5 text-[12px] font-semibold uppercase tracking-wider text-teal-brand">
-              <Link2 className="h-3.5 w-3.5" /> Hotels &amp; Resorts in Siargao
+          <div className="mb-8 text-center">
+            <div className="mb-4 flex items-center justify-center gap-3">
+              <span className="h-px w-10 bg-teal-brand/40" aria-hidden="true" />
+              <span className="font-lato text-[11px] font-semibold uppercase tracking-[0.18em] text-teal-brand/70">
+                For properties that take their guest experience seriously
+              </span>
+              <span className="h-px w-10 bg-teal-brand/40" aria-hidden="true" />
             </div>
             <h1
               className="font-headline font-extrabold text-charcoal-brand"
@@ -226,10 +254,117 @@ export default function AffiliatesPage() {
               Partner with Lola's Rentals
             </h1>
             <p className="font-lato mx-auto mt-3 max-w-xl text-[15px] leading-relaxed text-charcoal-brand/70">
-              Send your guests our way and earn a commission on every booking — or pass the value
-              straight to them with a partner-only discount. Tell us a little about your property
-              and we'll handle the rest.
+              Consistent bikes, honest damage policies, and a team that actually picks up the phone —
+              your guests deserve a rental experience that reflects well on your property too.
+              Earn commission on every booking, or pass a partner-only discount straight to them.
             </p>
+          </div>
+
+          {/* Promise strip */}
+          <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {PROMISES.map((p, i) => (
+              <motion.div
+                key={p.label}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: i * 0.08, ease: 'easeOut' }}
+                className="flex flex-col gap-2 rounded-2xl border border-charcoal-brand/10 bg-white px-4 py-4 shadow-sm"
+              >
+                <span className="flex h-9 w-9 items-center justify-center rounded-full border border-teal-brand/25 bg-teal-50 text-teal-brand">
+                  {p.icon}
+                </span>
+                <span className="font-headline text-[13px] font-bold text-charcoal-brand leading-tight">
+                  {p.label}
+                </span>
+                <span className="font-lato text-[12px] leading-relaxed text-charcoal-brand/60">
+                  {p.body}
+                </span>
+              </motion.div>
+            ))}
+          </div>
+
+          {/* How it works */}
+          <div className="mb-10">
+            <div className="mb-6 flex items-center justify-center gap-3">
+              <span className="h-px w-8 bg-charcoal-brand/20" aria-hidden="true" />
+              <span className="font-lato text-[11px] font-semibold uppercase tracking-[0.18em] text-charcoal-brand/40">
+                How it works
+              </span>
+              <span className="h-px w-8 bg-charcoal-brand/20" aria-hidden="true" />
+            </div>
+
+            <div className="relative grid grid-cols-1 gap-6 sm:grid-cols-3">
+              {/* Connector line — desktop only */}
+              <div
+                className="pointer-events-none absolute inset-x-0 top-[22px] hidden sm:block"
+                aria-hidden="true"
+              >
+                <div className="mx-auto h-px w-2/3 bg-gradient-to-r from-transparent via-teal-brand/25 to-transparent" />
+              </div>
+
+              {[
+                {
+                  step: '01',
+                  icon: <Link2 className="h-5 w-5" strokeWidth={1.5} />,
+                  label: 'Share your link',
+                  body: 'You get a personalised booking link. Put it on your welcome card, your website, or hand it to your concierge — wherever feels natural.',
+                },
+                {
+                  step: '02',
+                  icon: <Smartphone className="h-5 w-5" strokeWidth={1.5} />,
+                  label: 'Guests book online',
+                  body: 'Your guests book directly through our site — a smooth, professional flow. No WhatsApp chains, no guesswork. Your partner rate or discount is applied automatically.',
+                },
+                {
+                  step: '03',
+                  icon: <MapPin className="h-5 w-5" strokeWidth={1.5} />,
+                  label: 'We handle everything',
+                  body: "Bikes are delivered to your property on time. Your guests are looked after from pickup to return. You sit back — and if you earn commission, a monthly report lands in your inbox.",
+                },
+              ].map((s, i) => (
+                <motion.div
+                  key={s.step}
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.45, delay: 0.1 + i * 0.1, ease: 'easeOut' }}
+                  className="relative flex flex-col items-center text-center"
+                >
+                  {/* Step number + icon stacked */}
+                  <div className="relative mb-4 flex h-11 w-11 items-center justify-center rounded-full border border-teal-brand/30 bg-white shadow-sm text-teal-brand">
+                    {s.icon}
+                    <span className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-teal-brand text-[9px] font-bold text-white">
+                      {s.step}
+                    </span>
+                  </div>
+                  <p className="font-headline mb-1.5 text-[14px] font-bold text-charcoal-brand">
+                    {s.label}
+                  </p>
+                  <p className="font-lato text-[13px] leading-relaxed text-charcoal-brand/60 max-w-[220px]">
+                    {s.body}
+                  </p>
+                </motion.div>
+              ))}
+            </div>
+
+            {/* Reporting callout */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.45, ease: 'easeOut' }}
+              className="mt-7 flex items-start gap-3 rounded-2xl border border-teal-brand/20 bg-teal-50/60 px-5 py-4"
+            >
+              <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-teal-brand/20 bg-white text-teal-brand">
+                <TrendingUp className="h-4 w-4" strokeWidth={1.5} />
+              </span>
+              <div>
+                <p className="font-headline text-[13px] font-bold text-charcoal-brand">
+                  Full visibility, zero admin
+                </p>
+                <p className="font-lato mt-0.5 text-[12px] leading-relaxed text-charcoal-brand/60">
+                  Every booking through your link is tracked automatically. Commission partners receive a monthly Telegram report with totals — no spreadsheets, no chasing.
+                </p>
+              </div>
+            </motion.div>
           </div>
 
           {/* Form card */}
