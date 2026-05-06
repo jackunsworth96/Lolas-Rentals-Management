@@ -150,7 +150,11 @@ export default function TopNav({ items, rightSlot, partnerBenefit }: TopNavProps
                   <img
                     src={partnerBenefit.logoUrl}
                     alt={partnerBenefit.name}
-                    className="h-7 w-auto max-w-[72px] object-contain md:h-8 md:max-w-[96px]"
+                    className="w-auto object-contain"
+                    style={{
+                      maxWidth: `${partnerBenefit.logoDisplayWidth ?? 96}px`,
+                      maxHeight: `${partnerBenefit.logoDisplayHeight ?? 32}px`,
+                    }}
                     draggable={false}
                   />
                 ) : (

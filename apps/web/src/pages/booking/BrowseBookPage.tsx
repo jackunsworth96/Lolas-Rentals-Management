@@ -964,7 +964,11 @@ export default function BrowseBookPage() {
                       <img
                         src={pb.logoUrl}
                         alt={pb.name}
-                        className="mx-auto h-8 w-auto max-w-[120px] object-contain"
+                        className="mx-auto w-auto object-contain"
+                        style={{
+                          maxWidth: `${pb.logoDisplayWidth ?? 120}px`,
+                          maxHeight: `${pb.logoDisplayHeight ?? 40}px`,
+                        }}
                       />
                     ) : (
                       <span className="text-[11px] font-bold uppercase tracking-wider text-charcoal-brand/40">
@@ -1080,7 +1084,11 @@ export default function BrowseBookPage() {
                         <img
                           src={pb.logoUrl}
                           alt={pb.name}
-                          className="h-7 w-auto max-w-[90px] shrink-0 object-contain opacity-80"
+                          className="w-auto shrink-0 object-contain opacity-80"
+                          style={{
+                            maxWidth: `${pb.logoDisplayWidth ?? 90}px`,
+                            maxHeight: `${pb.logoDisplayHeight ?? 28}px`,
+                          }}
                         />
                       );
                     })()}

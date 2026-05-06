@@ -96,6 +96,8 @@ const EMPTY_FORM = {
   telegram_chat_id: '',
   logo_url: '',
   welcome_message: '',
+  logo_display_width: '' as string,
+  logo_display_height: '' as string,
   early_bird_days: '' as string,
   early_bird_discount_value: '' as string,
   notes: '',
@@ -129,6 +131,8 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
         telegram_chat_id: editing.telegram_chat_id ?? '',
         logo_url: editing.logo_url ?? '',
         welcome_message: editing.welcome_message ?? '',
+        logo_display_width: editing.logo_display_width != null ? String(editing.logo_display_width) : '',
+        logo_display_height: editing.logo_display_height != null ? String(editing.logo_display_height) : '',
         early_bird_days: editing.early_bird_days != null ? String(editing.early_bird_days) : '',
         early_bird_discount_value: editing.early_bird_discount_value != null ? String(editing.early_bird_discount_value) : '',
         notes: editing.notes ?? '',
@@ -186,6 +190,8 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
       advance_discount_days: advanceDiscountDaysNum,
       logo_url: form.logo_url.trim() || null,
       welcome_message: form.welcome_message.trim() || null,
+      logo_display_width: form.logo_display_width.trim() === '' ? null : Math.max(20, Math.min(400, Number(form.logo_display_width))),
+      logo_display_height: form.logo_display_height.trim() === '' ? null : Math.max(16, Math.min(200, Number(form.logo_display_height))),
       early_bird_days: form.early_bird_days.trim() === '' ? null : Math.max(1, Math.min(365, Number(form.early_bird_days))),
       early_bird_discount_value: form.early_bird_discount_value.trim() === '' ? null : Number(form.early_bird_discount_value),
       notes: form.notes.trim() || null,
@@ -488,12 +494,49 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
               <img
                 src={form.logo_url.trim()}
                 alt="Logo preview"
-                className="h-8 max-w-[120px] rounded border border-gray-200 object-contain p-0.5"
+                style={{
+                  maxWidth: form.logo_display_width.trim() ? `${form.logo_display_width}px` : '120px',
+                  maxHeight: form.logo_display_height.trim() ? `${form.logo_display_height}px` : '40px',
+                }}
+                className="w-auto rounded border border-gray-200 object-contain p-0.5"
                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
               />
               <span className="text-xs text-gray-400">Preview</span>
             </div>
           )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Logo max-width (px)
+              <span className="ml-1 text-xs font-normal text-gray-400">optional</span>
+            </label>
+            <input
+              type="number"
+              min={20}
+              max={400}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={form.logo_display_width}
+              onChange={(e) => setField('logo_display_width', e.target.value)}
+              placeholder="e.g. 100"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Logo max-height (px)
+              <span className="ml-1 text-xs font-normal text-gray-400">optional</span>
+            </label>
+            <input
+              type="number"
+              min={16}
+              max={200}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={form.logo_display_height}
+              onChange={(e) => setField('logo_display_height', e.target.value)}
+              placeholder="e.g. 40"
+            />
+          </div>
         </div>
 
         <div>
@@ -574,6 +617,8 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
       telegram_chat_id: partner.telegram_chat_id ?? '',
       logo_url: partner.logo_url ?? '',
       welcome_message: partner.welcome_message ?? '',
+      logo_display_width: partner.logo_display_width != null ? String(partner.logo_display_width) : '',
+      logo_display_height: partner.logo_display_height != null ? String(partner.logo_display_height) : '',
       early_bird_days: partner.early_bird_days != null ? String(partner.early_bird_days) : '',
       early_bird_discount_value: partner.early_bird_discount_value != null ? String(partner.early_bird_discount_value) : '',
       notes: partner.notes ?? '',
@@ -627,6 +672,8 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
       advance_discount_days: advanceDiscountDaysNum,
       logo_url: form.logo_url.trim() || null,
       welcome_message: form.welcome_message.trim() || null,
+      logo_display_width: form.logo_display_width.trim() === '' ? null : Math.max(20, Math.min(400, Number(form.logo_display_width))),
+      logo_display_height: form.logo_display_height.trim() === '' ? null : Math.max(16, Math.min(200, Number(form.logo_display_height))),
       early_bird_days: form.early_bird_days.trim() === '' ? null : Math.max(1, Math.min(365, Number(form.early_bird_days))),
       early_bird_discount_value: form.early_bird_discount_value.trim() === '' ? null : Number(form.early_bird_discount_value),
       notes: form.notes.trim() || null,

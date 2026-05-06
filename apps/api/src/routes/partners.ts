@@ -254,7 +254,7 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
     const sb = getSupabaseClient();
     const { data, error } = await sb
       .from('accommodation_partners')
-      .select('name, deal_type, discount_type, discount_value, free_delivery, advance_discount_days, early_bird_days, early_bird_discount_value, status, active, logo_url, welcome_message')
+      .select('name, deal_type, discount_type, discount_value, free_delivery, advance_discount_days, early_bird_days, early_bird_discount_value, status, active, logo_url, welcome_message, logo_display_width, logo_display_height')
       .eq('slug', slug)
       .eq('status', 'active')
       .eq('active', true)
@@ -280,6 +280,8 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
       early_bird_discount_value: number | null;
       logo_url: string | null;
       welcome_message: string | null;
+      logo_display_width: number | null;
+      logo_display_height: number | null;
     };
 
     res.json({
@@ -295,6 +297,8 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
         earlyBirdDiscountValue: row.early_bird_discount_value != null ? Number(row.early_bird_discount_value) : null,
         logoUrl: row.logo_url ?? null,
         welcomeMessage: row.welcome_message ?? null,
+        logoDisplayWidth: row.logo_display_width ?? null,
+        logoDisplayHeight: row.logo_display_height ?? null,
       },
     });
   } catch (err) { next(err); }
@@ -329,6 +333,8 @@ const PartnerBodySchema = z.object({
   telegram_chat_id: z.string().max(100).nullable().optional(),
   logo_url: z.string().url().nullable().optional(),
   welcome_message: z.string().max(500).nullable().optional(),
+  logo_display_width: z.number().int().min(20).max(400).nullable().optional(),
+  logo_display_height: z.number().int().min(16).max(200).nullable().optional(),
   early_bird_days: z.number().int().min(1).max(365).nullable().optional(),
   early_bird_discount_value: z.number().min(0).nullable().optional(),
   store_id: z.string().min(1),
@@ -403,6 +409,8 @@ router.post('/', edit, validateBody(PartnerBodySchema), async (req, res, next) =
         telegram_chat_id: body.telegram_chat_id?.trim() || null,
         logo_url: body.logo_url?.trim() || null,
         welcome_message: body.welcome_message?.trim() || null,
+        logo_display_width: body.logo_display_width ?? null,
+        logo_display_height: body.logo_display_height ?? null,
         early_bird_days: body.early_bird_days ?? null,
         early_bird_discount_value: body.early_bird_discount_value ?? null,
       })
@@ -441,6 +449,8 @@ router.put('/:id', edit, validateBody(PartnerBodySchema.partial().extend({ store
     if (body.telegram_chat_id !== undefined) updates.telegram_chat_id = body.telegram_chat_id?.trim() || null;
     if (body.logo_url !== undefined) updates.logo_url = body.logo_url?.trim() || null;
     if (body.welcome_message !== undefined) updates.welcome_message = body.welcome_message?.trim() || null;
+    if (body.logo_display_width !== undefined) updates.logo_display_width = body.logo_display_width ?? null;
+    if (body.logo_display_height !== undefined) updates.logo_display_height = body.logo_display_height ?? null;
     if (body.early_bird_days !== undefined) updates.early_bird_days = body.early_bird_days ?? null;
     if (body.early_bird_discount_value !== undefined) updates.early_bird_discount_value = body.early_bird_discount_value ?? null;
 
@@ -506,6 +516,8 @@ router.post('/:id/approve', edit, validateBody(ApproveBodySchema), async (req, r
     if (body.telegram_chat_id !== undefined) updates.telegram_chat_id = body.telegram_chat_id?.trim() || null;
     if (body.logo_url !== undefined) updates.logo_url = body.logo_url?.trim() || null;
     if (body.welcome_message !== undefined) updates.welcome_message = body.welcome_message?.trim() || null;
+    if (body.logo_display_width !== undefined) updates.logo_display_width = body.logo_display_width ?? null;
+    if (body.logo_display_height !== undefined) updates.logo_display_height = body.logo_display_height ?? null;
     if (body.early_bird_days !== undefined) updates.early_bird_days = body.early_bird_days ?? null;
     if (body.early_bird_discount_value !== undefined) updates.early_bird_discount_value = body.early_bird_discount_value ?? null;
 

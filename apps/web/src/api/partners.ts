@@ -174,6 +174,8 @@ export interface PublicPartnerBenefit {
   earlyBirdDiscountValue: number | null;
   logoUrl: string | null;
   welcomeMessage: string | null;
+  logoDisplayWidth: number | null;
+  logoDisplayHeight: number | null;
 }
 
 export async function fetchPublicPartnerBenefit(slug: string): Promise<PublicPartnerBenefit | null> {
