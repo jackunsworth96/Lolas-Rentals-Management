@@ -40,6 +40,7 @@ import lolasLogo from '../../assets/Lolas Original Logo.svg';
 import { CloudinaryImage } from '../../components/ui/CloudinaryImage.js';
 import { PesoSign } from '../../components/ui/PesoSign.js';
 import { normalizeApiBase } from '../../api/normalize-api-base.js';
+import { usePartnerRefCapture } from '../../hooks/usePartnerRefCapture.js';
 
 const BE_PAW_PUBLIC_IDS = [
   '1_q903kw', '2_ppjkhm', '3_hgnjpm', '4_fpx4je', '5_ittwb7', '6_klj8zq',
@@ -78,6 +79,7 @@ function HeroSection() {
   const shouldAnimate = !prefersReducedMotion;
   const isTouchDevice = useIsTouchDevice();
   const heroRef = useRef<HTMLElement>(null);
+  const { benefit: affiliateBenefit } = usePartnerRefCapture();
 
   // ── Live order count (matches DB total; rounds display by 25; poll refreshes) ──
   const ORDER_COUNT_FLOOR = 6300;
@@ -179,6 +181,8 @@ function HeroSection() {
 
   const isTablet = windowWidth < 1024 && windowWidth >= 640;
   const isMobileFlower = windowWidth < 640;
+  /** Extra air below the mobile affiliate banner — desktop keeps existing hero offsets */
+  const affiliateHeroMobilePadding = affiliateBenefit && isMobileFlower;
   /** Narrow hero (phone + tablet): cloud behind “Many” + looser horizontal overflow */
   const isCompactHero = windowWidth < 1024;
 
@@ -421,7 +425,11 @@ function HeroSection() {
       </motion.div>
 
       {/* ── Hero content ── */}
-      <div className="relative z-10 flex min-h-[inherit] flex-col items-center justify-start px-6 pb-5 pt-[calc(3.35rem+0.55rem)] text-center sm:pb-10 sm:pt-[calc(3.75rem+1.2cm)] lg:pb-12 lg:pt-[calc(4rem+1.35cm)]">
+      <div
+        className={`relative z-10 flex min-h-[inherit] flex-col items-center justify-start px-6 pb-5 text-center sm:pb-10 sm:pt-[calc(3.75rem+1.2cm)] lg:pb-12 lg:pt-[calc(4rem+1.35cm)] ${
+          affiliateHeroMobilePadding ? 'pt-[calc(3.35rem+0.55rem+1.25rem)]' : 'pt-[calc(3.35rem+0.55rem)]'
+        }`}
+      >
         {/* Headline */}
         <h1
           className="font-headline font-extrabold"
@@ -463,7 +471,7 @@ function HeroSection() {
             marginBottom: 'clamp(14px, 3.25vw, 22px)',
           }}
         >
-          Safe bikes. Transparent pricing. No funny business.
+          Safe vehicles. Transparent pricing. No funny business.
         </motion.p>
 
         {/* Trust — mobile: flat single row, no pill; desktop: pill */}
