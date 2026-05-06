@@ -245,8 +245,11 @@ export function PageLayout({
         }
       />
 
-      {/* Reserve the same vertical space as the fixed nav (h-16) so content is not hidden underneath */}
-      <div className="h-16 shrink-0" aria-hidden="true" />
+      {/* Reserve vertical space for the fixed nav; on mobile also reserve the partner banner height when active */}
+      <div
+        className={`shrink-0 md:h-16 ${partnerBenefit ? 'h-[104px]' : 'h-16'}`}
+        aria-hidden="true"
+      />
 
       <main
         className={`relative pb-8 ${fullBleed ? '' : 'pt-20'} ${mainZ}`}

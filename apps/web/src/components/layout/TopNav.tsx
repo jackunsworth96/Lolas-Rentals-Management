@@ -124,7 +124,7 @@ export default function TopNav({ items, rightSlot, partnerBenefit }: TopNavProps
         style={{ backgroundColor: '#f1e6d6' }}
       >
 
-        {/* Logo — far left; expands to co-brand when a partner ref is active */}
+        {/* Logo — far left; desktop shows co-brand inline, mobile uses banner below */}
         <div className="absolute left-3 top-1/2 z-10 flex -translate-y-1/2 items-center gap-2 md:left-5">
           <Link to="/book" aria-label="Lola's Rentals home">
             <img
@@ -135,11 +135,12 @@ export default function TopNav({ items, rightSlot, partnerBenefit }: TopNavProps
             />
           </Link>
 
+          {/* Desktop co-brand — hidden on mobile */}
           <AnimatePresence>
             {partnerBenefit && (
               <motion.div
                 key="partner-cobrand"
-                className="flex items-center gap-2"
+                className="hidden md:flex items-center gap-2"
                 initial={{ opacity: 0, x: -6 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -6 }}
@@ -213,6 +214,39 @@ export default function TopNav({ items, rightSlot, partnerBenefit }: TopNavProps
           {rightSlot && <div>{rightSlot}</div>}
         </div>
       </header>
+
+      {/* Mobile partner banner — sits flush below the fixed nav, only on small screens */}
+      <AnimatePresence>
+        {partnerBenefit && (
+          <motion.div
+            key="mobile-partner-banner"
+            className="md:hidden fixed left-0 right-0 z-40 flex items-center justify-center gap-2.5 px-4 py-1.5 border-b border-charcoal-brand/10"
+            style={{ top: '64px', backgroundColor: '#f1e6d6' }}
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+          >
+            <span className="select-none text-[11px] font-light text-charcoal-brand/40" aria-hidden="true">×</span>
+            {partnerBenefit.logoUrl ? (
+              <img
+                src={partnerBenefit.logoUrl}
+                alt={partnerBenefit.name}
+                className="w-auto object-contain"
+                style={{
+                  maxWidth: `${partnerBenefit.logoDisplayWidth ?? 100}px`,
+                  maxHeight: `${partnerBenefit.logoDisplayHeight ?? 28}px`,
+                }}
+                draggable={false}
+              />
+            ) : (
+              <span className="text-[11px] font-semibold text-charcoal-brand/60 truncate max-w-[180px]">
+                {partnerBenefit.name}
+              </span>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {menuOpen && (
