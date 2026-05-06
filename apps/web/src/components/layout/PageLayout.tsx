@@ -247,7 +247,7 @@ export function PageLayout({
 
       {/* Reserve vertical space for the fixed nav; on mobile also reserve the partner banner height when active */}
       <div
-        className={`shrink-0 md:h-16 ${partnerBenefit ? 'h-[104px]' : 'h-16'}`}
+        className={`shrink-0 md:h-16 ${partnerBenefit ? 'h-[128px]' : 'h-16'}`}
         aria-hidden="true"
       />
 

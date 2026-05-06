@@ -221,13 +221,13 @@ export default function TopNav({ items, rightSlot, partnerBenefit }: TopNavProps
           <motion.div
             key="mobile-partner-banner"
             className="md:hidden fixed left-0 right-0 z-40 flex items-center justify-center gap-2.5 px-4 py-1.5 border-b border-charcoal-brand/10"
-            style={{ top: '64px', backgroundColor: '#f1e6d6' }}
+            style={{ top: '88px', backgroundColor: '#f1e6d6' }}
             initial={{ opacity: 0, y: -6 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.25, ease: 'easeOut' }}
           >
-            <span className="select-none text-[11px] font-light text-charcoal-brand/40" aria-hidden="true">×</span>
+            <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-charcoal-brand/40">Booking via</span>
             {partnerBenefit.logoUrl ? (
               <img
                 src={partnerBenefit.logoUrl}
