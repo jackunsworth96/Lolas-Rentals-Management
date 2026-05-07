@@ -12,6 +12,25 @@ interface Props {
   storeId: string;
 }
 
+type Account = { id: string; name: string; accountType?: string; storeId?: string | null };
+
+/** Driver payments should only ever debit the dedicated driver payments expense account. */
+function isDriverExpenseAccount(a: Account): boolean {
+  const n = a.name.toLowerCase();
+  return n.includes('driver');
+}
+
+/**
+ * Liquid accounts suitable as the cash-out source for a driver payment.
+ * Excludes investment reserves, depreciation contra-accounts, and receivables.
+ */
+function isLiquidPaymentAccount(a: Account): boolean {
+  const n = a.name.toLowerCase();
+  const EXCLUDED = ['depreciation', 'vehicle fund', 'fleet', 'advance', 'charity', 'receivable', 'card payment'];
+  if (EXCLUDED.some((kw) => n.includes(kw))) return false;
+  return true;
+}
+
 /** Calculate the suggested driver cut for a single transfer, accounting for per_head pricing. */
 function suggestedDriverCut(t: TransferRow): number {
   const cut = t.routeDriverCut ?? 0;
@@ -23,13 +42,30 @@ export function BulkDriverPaymentModal({ open, onClose, transfers, storeId }: Pr
   const mutation = useBulkDriverPayment();
   const { data: accounts = [] } = useChartOfAccounts();
 
-  const accList = accounts as Array<{ id: string; name: string; accountType?: string; storeId?: string | null }>;
+  const accList = accounts as Account[];
   const storeAccounts = useMemo(
     () => accList.filter((a) => !a.storeId || a.storeId === storeId || a.storeId === 'company'),
     [accList, storeId],
   );
-  const expenseAccounts = storeAccounts.filter((a) => (a.accountType ?? '').toLowerCase() === 'expense');
-  const assetAccounts = storeAccounts.filter((a) => (a.accountType ?? '').toLowerCase() === 'asset');
+
+  // Only show transfer/driver expense accounts in the debit picker.
+  const driverExpenseAccounts = useMemo(() => {
+    const filtered = storeAccounts.filter(
+      (a) => (a.accountType ?? '').toLowerCase() === 'expense' && isDriverExpenseAccount(a),
+    );
+    // Fall back to all expense accounts if no transfer-specific ones are configured yet.
+    return filtered.length > 0
+      ? filtered
+      : storeAccounts.filter((a) => (a.accountType ?? '').toLowerCase() === 'expense');
+  }, [storeAccounts]);
+
+  // Only show liquid cash/bank accounts in the credit picker.
+  const liquidAccounts = useMemo(
+    () => storeAccounts.filter(
+      (a) => (a.accountType ?? '').toLowerCase() === 'asset' && isLiquidPaymentAccount(a),
+    ),
+    [storeAccounts],
+  );
 
   // Per-transfer driver fee amounts (editable).
   const [fees, setFees] = useState<Record<string, string>>({});
@@ -47,11 +83,12 @@ export function BulkDriverPaymentModal({ open, onClose, transfers, storeId }: Pr
       initial[t.id] = cut > 0 ? String(cut) : '';
     }
     setFees(initial);
-    setDriverExpenseAccountId('');
+    // Auto-select the driver expense account if there's exactly one option.
+    setDriverExpenseAccountId(driverExpenseAccounts.length === 1 ? driverExpenseAccounts[0].id : '');
     setCashAccountId('');
     setDate(new Date().toISOString().slice(0, 10));
     setError('');
-  }, [open, transfers]);
+  }, [open, transfers, driverExpenseAccounts]);
 
   const totalDriverPay = useMemo(
     () => transfers.reduce((sum, t) => sum + (parseFloat(fees[t.id] ?? '') || 0), 0),
@@ -116,7 +153,8 @@ export function BulkDriverPaymentModal({ open, onClose, transfers, storeId }: Pr
                 <th className="px-3 py-2 text-left font-medium">Customer</th>
                 <th className="px-3 py-2 text-left font-medium">Route</th>
                 <th className="px-3 py-2 text-right font-medium">Revenue</th>
-                <th className="px-3 py-2 text-right font-medium">Driver Cut</th>
+                <th className="px-3 py-2 text-right font-medium">Pay to Driver</th>
+                <th className="px-3 py-2 text-right font-medium">Lola's Markup</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -135,22 +173,24 @@ export function BulkDriverPaymentModal({ open, onClose, transfers, storeId }: Pr
                       {formatCurrency(revenue)}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          value={fees[t.id] ?? ''}
-                          onChange={(e) => setFee(t.id, e.target.value)}
-                          required
-                          className="w-24 rounded border border-gray-300 px-2 py-1 text-right text-sm focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand"
-                        />
-                        {feeVal > 0 && (
-                          <span className={`w-16 text-right text-xs font-medium ${rowMarkup >= 0 ? 'text-green-700' : 'text-red-600'}`}>
-                            +{formatCurrency(rowMarkup)}
-                          </span>
-                        )}
-                      </div>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={fees[t.id] ?? ''}
+                        onChange={(e) => setFee(t.id, e.target.value)}
+                        required
+                        className="w-24 rounded border border-gray-300 px-2 py-1 text-right text-sm focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand"
+                      />
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right text-sm font-medium">
+                      {feeVal > 0 ? (
+                        <span className={rowMarkup >= 0 ? 'text-green-700' : 'text-red-600'}>
+                          {formatCurrency(rowMarkup)}
+                        </span>
+                      ) : (
+                        <span className="text-charcoal-brand/30">—</span>
+                      )}
                     </td>
                   </tr>
                 );
@@ -198,7 +238,7 @@ export function BulkDriverPaymentModal({ open, onClose, transfers, storeId }: Pr
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand"
             >
               <option value="">Select account…</option>
-              {expenseAccounts.map((a) => (
+              {driverExpenseAccounts.map((a) => (
                 <option key={a.id} value={a.id}>{a.name}</option>
               ))}
             </select>
@@ -212,7 +252,7 @@ export function BulkDriverPaymentModal({ open, onClose, transfers, storeId }: Pr
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand"
             >
               <option value="">Select account…</option>
-              {assetAccounts.map((a) => (
+              {liquidAccounts.map((a) => (
                 <option key={a.id} value={a.id}>{a.name}</option>
               ))}
             </select>

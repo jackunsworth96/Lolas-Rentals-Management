@@ -15,6 +15,31 @@
 export type TransferDirection = 'inbound' | 'outbound';
 
 /**
+ * Normalise any vanType variant to the canonical snake_case form used throughout
+ * the system (pickup rules, Telegram routing, email templates).
+ *
+ * Handles values that may come from:
+ *  - The public booking form:  'Shared', 'Private', 'TukTuk'
+ *  - The route config table:   'Shared Van', 'Private Van', 'Private TukTuk'
+ *  - Already-canonical values: 'shared_van', 'private_van', 'tuktuk'
+ */
+export function normaliseVanType(v: string | null): string | null {
+  switch ((v ?? '').toLowerCase().replace(/[\s_-]+/g, '')) {
+    case 'shared':
+    case 'sharedvan':
+      return 'shared_van';
+    case 'private':
+    case 'privatevan':
+      return 'private_van';
+    case 'tuktuk':
+    case 'privatetuktuk':
+      return 'tuktuk';
+    default:
+      return v;
+  }
+}
+
+/**
  * A single row from transfer_pickup_rules, mapped to camelCase.
  * Pass an array loaded from the database to calculatePickupTime.
  */

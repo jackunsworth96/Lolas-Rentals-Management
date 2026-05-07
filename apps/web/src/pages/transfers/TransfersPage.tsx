@@ -9,6 +9,7 @@ import {
   updateAccommodation,
   cancelTransfer,
   moneyAmount,
+  formatVanType,
   type TransferRow,
 } from '../../api/transfers.js';
 import { useToast } from '../../hooks/useToast.js';
@@ -20,6 +21,7 @@ import { AddTransferModal } from '../../components/transfers/AddTransferModal.js
 import { TransferPaymentModal } from '../../components/transfers/TransferPaymentModal.js';
 import { DriverPaymentModal } from '../../components/transfers/DriverPaymentModal.js';
 import { CollectTransferModal } from '../../components/transfers/CollectTransferModal.js';
+import { BulkDriverPaymentModal } from '../../components/transfers/BulkDriverPaymentModal.js';
 
 /** Returns true when the route originates from General Luna (GL→IAO direction).
  *  The driver needs to collect the customer from their accommodation, so the
@@ -63,6 +65,8 @@ export default function TransfersPage() {
   const [driverTarget, setDriverTarget] = useState<TransferRow | null>(null);
   const [collectTarget, setCollectTarget] = useState<TransferRow | null>(null);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [showBulkDriverPayment, setShowBulkDriverPayment] = useState(false);
+  const [bulkPayError, setBulkPayError] = useState('');
 
   const todayStr = new Date().toISOString().slice(0, 10);
 
@@ -279,14 +283,38 @@ export default function TransfersPage() {
 
       {/* Batch actions bar */}
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 rounded-lg bg-blue-50 px-4 py-2 text-sm text-blue-700">
-          <span className="font-medium">{selectedIds.size} selected</span>
-          <button
-            onClick={() => setSelectedIds(new Set())}
-            className="rounded border border-blue-300 px-2 py-1 text-xs hover:bg-blue-100"
-          >
-            Clear selection
-          </button>
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-3 rounded-lg bg-blue-50 px-4 py-2 text-sm text-blue-700">
+            <span className="font-medium">{selectedIds.size} selected</span>
+            <button
+              onClick={() => { setSelectedIds(new Set()); setBulkPayError(''); }}
+              className="rounded border border-blue-300 px-2 py-1 text-xs hover:bg-blue-100"
+            >
+              Clear selection
+            </button>
+            {activeTab === 'unpaid' && (
+              <button
+                onClick={() => {
+                  setBulkPayError('');
+                  const selected = filtered.filter((t) => selectedIds.has(t.id));
+                  const uncollected = selected.filter((t) => !t.collectedAt);
+                  if (uncollected.length > 0) {
+                    setBulkPayError(
+                      `${uncollected.length} selected transfer${uncollected.length !== 1 ? 's have' : ' has'} not been collected yet. Collect payment from the customer first.`,
+                    );
+                    return;
+                  }
+                  setShowBulkDriverPayment(true);
+                }}
+                className="ml-auto rounded-lg bg-orange-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-orange-700"
+              >
+                Pay Driver ({selectedIds.size})
+              </button>
+            )}
+          </div>
+          {bulkPayError && (
+            <p className="rounded-lg bg-red-50 px-4 py-2 text-xs text-red-700">{bulkPayError}</p>
+          )}
         </div>
       )}
 
@@ -553,7 +581,7 @@ export default function TransfersPage() {
                         {isGlToIao(t.route) ? (t.accommodation ?? '—') : <span className="text-gray-300">—</span>}
                       </td>
                       <td className="px-3 py-3 text-center text-sm text-gray-900">{t.paxCount}</td>
-                      <td className="px-3 py-3 text-sm text-gray-600">{t.vanType ?? '—'}</td>
+                      <td className="px-3 py-3 text-sm text-gray-600">{formatVanType(t.vanType)}</td>
                       <td className="whitespace-nowrap px-3 py-3 text-right text-sm font-medium text-gray-900">
                         {formatCurrency(total)}
                       </td>
@@ -729,6 +757,16 @@ export default function TransfersPage() {
           onSuccess={(msg) => pushToast(msg, 'success')}
         />
       )}
+      <BulkDriverPaymentModal
+        open={showBulkDriverPayment}
+        onClose={() => {
+          setShowBulkDriverPayment(false);
+          setSelectedIds(new Set());
+          setBulkPayError('');
+        }}
+        transfers={filtered.filter((t) => selectedIds.has(t.id))}
+        storeId={storeId}
+      />
 
       {/* Toast container */}
       <div className="fixed bottom-8 right-8 z-[60] flex flex-col-reverse items-end gap-2">

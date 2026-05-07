@@ -11,17 +11,45 @@ interface Props {
   storeId: string;
 }
 
+type Account = { id: string; name: string; accountType?: string; storeId?: string | null };
+
+function isDriverExpenseAccount(a: Account): boolean {
+  const n = a.name.toLowerCase();
+  return n.includes('driver');
+}
+
+function isLiquidPaymentAccount(a: Account): boolean {
+  const n = a.name.toLowerCase();
+  const EXCLUDED = ['depreciation', 'vehicle fund', 'fleet', 'advance', 'charity', 'receivable', 'card payment'];
+  if (EXCLUDED.some((kw) => n.includes(kw))) return false;
+  return true;
+}
+
 export function DriverPaymentModal({ open, onClose, transfer, storeId }: Props) {
   const mutation = useRecordDriverPayment();
   const { data: accounts = [] } = useChartOfAccounts();
 
-  const accList = accounts as Array<{ id: string; name: string; accountType?: string; storeId?: string | null }>;
+  const accList = accounts as Account[];
   const storeAccounts = useMemo(
     () => accList.filter((a) => !a.storeId || a.storeId === storeId || a.storeId === 'company'),
     [accList, storeId],
   );
-  const expenseAccounts = storeAccounts.filter((a) => (a.accountType ?? '').toLowerCase() === 'expense');
-  const assetAccounts = storeAccounts.filter((a) => (a.accountType ?? '').toLowerCase() === 'asset');
+
+  const driverExpenseAccounts = useMemo(() => {
+    const filtered = storeAccounts.filter(
+      (a) => (a.accountType ?? '').toLowerCase() === 'expense' && isDriverExpenseAccount(a),
+    );
+    return filtered.length > 0
+      ? filtered
+      : storeAccounts.filter((a) => (a.accountType ?? '').toLowerCase() === 'expense');
+  }, [storeAccounts]);
+
+  const liquidAccounts = useMemo(
+    () => storeAccounts.filter(
+      (a) => (a.accountType ?? '').toLowerCase() === 'asset' && isLiquidPaymentAccount(a),
+    ),
+    [storeAccounts],
+  );
 
   const totalPrice = moneyAmount(transfer.totalPrice);
   const existingDriverFee = moneyAmount(transfer.driverFee);
@@ -34,11 +62,11 @@ export function DriverPaymentModal({ open, onClose, transfer, storeId }: Props) 
   useEffect(() => {
     if (open) {
       setDriverFee(existingDriverFee > 0 ? existingDriverFee : '');
-      setDriverExpenseAccountId('');
+      setDriverExpenseAccountId(driverExpenseAccounts.length === 1 ? driverExpenseAccounts[0].id : '');
       setCashAccountId('');
       setError('');
     }
-  }, [open, existingDriverFee]);
+  }, [open, existingDriverFee, driverExpenseAccounts]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -117,7 +145,7 @@ export function DriverPaymentModal({ open, onClose, transfer, storeId }: Props) 
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
             >
               <option value="">Select...</option>
-              {expenseAccounts.map((a) => (
+              {driverExpenseAccounts.map((a) => (
                 <option key={a.id} value={a.id}>{a.name}</option>
               ))}
             </select>
@@ -131,7 +159,7 @@ export function DriverPaymentModal({ open, onClose, transfer, storeId }: Props) 
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
             >
               <option value="">Select...</option>
-              {assetAccounts.map((a) => (
+              {liquidAccounts.map((a) => (
                 <option key={a.id} value={a.id}>{a.name}</option>
               ))}
             </select>

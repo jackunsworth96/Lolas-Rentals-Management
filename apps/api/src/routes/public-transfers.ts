@@ -5,6 +5,7 @@ import { z } from 'zod';
 import type { Store, ConfigRepository } from '@lolas/domain';
 import { PublicTransferBookingSchema } from '@lolas/shared';
 import { sendEmail, transferBookingConfirmationHtml } from '../services/email.js';
+import { normaliseVanType } from '../transfers/pickup-time.js';
 
 const flightLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -25,19 +26,6 @@ const bookingLimiter = rateLimit({
 });
 
 const router = Router();
-
-/**
- * Maps the frontend vanType enum ('Shared' | 'Private' | 'TukTuk') to the
- * canonical snake_case values used by pickup rules and Telegram routing.
- */
-function normaliseVanType(v: string | null): string | null {
-  switch ((v ?? '').toLowerCase()) {
-    case 'shared':  return 'shared_van';
-    case 'private': return 'private_van';
-    case 'tuktuk':  return 'tuktuk';
-    default:        return v;
-  }
-}
 
 const PublicBookingSchema = z.object({
   serviceDate: z.string().min(1),

@@ -8,6 +8,7 @@ import {
   CreateTransferRequestSchema,
   RecordTransferPaymentRequestSchema,
   RecordDriverPaymentRequestSchema,
+  RecordBulkDriverPaymentRequestSchema,
   TransferQuerySchema,
   TransferSummaryQuerySchema,
   CollectTransferBodySchema,
@@ -149,6 +150,17 @@ router.post('/driver-payment', requirePermission(Permission.EditTransfers), vali
   try {
     const { recordDriverPayment } = await import('../use-cases/transfers/record-driver-payment.js');
     const result = await recordDriverPayment(req.body, {
+      transfers: req.app.locals.deps.transferRepo,
+      accounting: req.app.locals.deps.accountingPort,
+    });
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+router.post('/bulk-driver-payment', requirePermission(Permission.EditTransfers), validateBody(RecordBulkDriverPaymentRequestSchema), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { recordBulkDriverPayment } = await import('../use-cases/transfers/record-bulk-driver-payment.js');
+    const result = await recordBulkDriverPayment(req.body, {
       transfers: req.app.locals.deps.transferRepo,
       accounting: req.app.locals.deps.accountingPort,
     });

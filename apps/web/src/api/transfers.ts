@@ -47,6 +47,23 @@ export function moneyAmount(val: { amount: number } | number | null | undefined)
   return val.amount ?? 0;
 }
 
+/** Normalise any stored vanType variant to a user-friendly display label. */
+export function formatVanType(v: string | null | undefined): string {
+  switch ((v ?? '').toLowerCase().replace(/[\s_-]+/g, '')) {
+    case 'sharedvan':
+    case 'shared':
+      return 'Shared Van';
+    case 'privatevan':
+    case 'private':
+      return 'Private Van';
+    case 'tuktuk':
+    case 'privatetuktuk':
+      return 'TukTuk';
+    default:
+      return v ?? '—';
+  }
+}
+
 export interface TransferFilters {
   dateFrom?: string;
   dateTo?: string;
@@ -140,6 +157,27 @@ export function useRecordDriverPayment() {
     mutationFn: (body: Record<string, unknown>) =>
       api.post('/transfers/driver-payment', body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['transfers'] }),
+  });
+}
+
+export interface BulkDriverPaymentVars {
+  transferIds: string[];
+  driverFees: Record<string, number>;
+  driverExpenseAccountId: string;
+  cashAccountId: string;
+  date: string;
+  storeId: string;
+}
+
+export function useBulkDriverPayment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: BulkDriverPaymentVars) =>
+      api.post('/transfers/bulk-driver-payment', vars),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['transfers'] });
+      qc.invalidateQueries({ queryKey: ['transfers-summary'] });
+    },
   });
 }
 

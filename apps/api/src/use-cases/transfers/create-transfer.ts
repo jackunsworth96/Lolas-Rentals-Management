@@ -1,5 +1,6 @@
 import { Transfer, Money, type TransferRepository } from '@lolas/domain';
 import { randomUUID } from 'node:crypto';
+import { normaliseVanType } from '../../transfers/pickup-time.js';
 
 export interface CreateTransferInput {
   serviceDate: string;
@@ -38,7 +39,7 @@ export async function createTransfer(
     flightTime: input.flightTime,
     flightNumber: input.flightNumber,
     paxCount: input.paxCount,
-    vanType: input.vanType,
+    vanType: normaliseVanType(input.vanType),
     accommodation: input.accommodation,
     status: 'Pending',
     opsNotes: input.opsNotes,

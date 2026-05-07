@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { getSupabaseClient } from './client.js';
 import type { TransferRepository, TransferFilters, TransferSummary } from '@lolas/domain';
 import { Transfer, Money } from '@lolas/domain';
+import { normaliseVanType } from '../../transfers/pickup-time.js';
 
 const TransferRowSchema = z.object({
   id: z.string(),
@@ -125,7 +126,7 @@ function toDomain(raw: unknown, routeInfo?: RouteInfo): Transfer {
 }
 
 function routeKey(route: string, vanType: string | null): string {
-  return `${route}|${vanType ?? ''}`;
+  return `${route}|${normaliseVanType(vanType) ?? ''}`;
 }
 
 async function fetchRouteMap(storeId: string): Promise<Map<string, RouteInfo>> {
