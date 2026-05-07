@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './client.js';
 
 export interface NinePmVehicle {
@@ -171,6 +171,16 @@ export interface ChatDeviceRow {
   count: number;
 }
 
+export interface ChatTopicRow {
+  topic: string;
+  count: number;
+}
+
+export interface ChatQuestionRow {
+  question: string;
+  count: number;
+}
+
 export interface ChatSummary {
   total: number;
   handoffs: number;
@@ -179,6 +189,8 @@ export interface ChatSummary {
   sessionsByDay: ChatSessionsByDay[];
   byPageOrigin: ChatPageOriginRow[];
   byDevice: ChatDeviceRow[];
+  topTopics: ChatTopicRow[];
+  topQuestions: ChatQuestionRow[];
 }
 
 export interface PartnerSummaryRow {
@@ -202,6 +214,72 @@ export function usePartnerDashboardSummary(storeId?: string) {
     queryKey: ['dashboard', 'partner-summary', storeId],
     queryFn: () => api.get<PartnerDashboardSummary>(`/dashboard/partner-summary${params}`),
     staleTime: 5 * 60_000,
+  });
+}
+
+export interface ReferralStatRow {
+  source: string;
+  label: string;
+  count: number;
+  percentage: number;
+}
+
+export interface AccommodationStatRow {
+  name: string;
+  count: number;
+}
+
+export interface ReferralStats {
+  total: number;
+  breakdown: ReferralStatRow[];
+  accommodationBreakdown: AccommodationStatRow[];
+  unmatchedRawNames: string[];
+}
+
+export function useReferralStats(storeId?: string) {
+  const params = storeId && storeId !== 'all' ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  return useQuery<ReferralStats>({
+    queryKey: ['dashboard', 'referral-stats', storeId],
+    queryFn: () => api.get<ReferralStats>(`/dashboard/referral-stats${params}`),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export interface AccommodationAlias {
+  id: string;
+  raw_name: string;
+  canonical_name: string;
+  created_at: string;
+}
+
+export function useAccommodationAliases() {
+  return useQuery<AccommodationAlias[]>({
+    queryKey: ['dashboard', 'accommodation-aliases'],
+    queryFn: () => api.get<AccommodationAlias[]>('/dashboard/accommodation-aliases'),
+    staleTime: 60_000,
+  });
+}
+
+export function useUpsertAccommodationAlias() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rawName, canonicalName }: { rawName: string; canonicalName: string }) =>
+      api.post<AccommodationAlias>('/dashboard/accommodation-aliases', { rawName, canonicalName }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['dashboard', 'accommodation-aliases'] });
+      void qc.invalidateQueries({ queryKey: ['dashboard', 'referral-stats'] });
+    },
+  });
+}
+
+export function useDeleteAccommodationAlias() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/dashboard/accommodation-aliases/${id}`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['dashboard', 'accommodation-aliases'] });
+      void qc.invalidateQueries({ queryKey: ['dashboard', 'referral-stats'] });
+    },
   });
 }
 

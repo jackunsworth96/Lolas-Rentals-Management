@@ -1185,7 +1185,7 @@ router.get('/chat-summary', async (req, res, next) => {
 
     const { data, error } = await sb
       .from('chat_sessions')
-      .select('started_at, ended_at, page_origin, message_count, handoff_triggered, device_type')
+      .select('started_at, ended_at, page_origin, message_count, handoff_triggered, device_type, topics, messages')
       .gte('created_at', fromIso)
       .lte('created_at', toIso)
       .order('created_at', { ascending: true });
@@ -1199,6 +1199,8 @@ router.get('/chat-summary', async (req, res, next) => {
       message_count:     number;
       handoff_triggered: boolean;
       device_type:       string | null;
+      topics:            string[] | null;
+      messages:          Array<{ role: string; content: string }> | null;
     }>;
 
     const total       = rows.length;
@@ -1240,6 +1242,32 @@ router.get('/chat-summary', async (req, res, next) => {
     }
     const byDevice = [...deviceMap.entries()].map(([device, count]) => ({ device, count }));
 
+    // Topic frequency — from AI-tagged sessions
+    const topicMap = new Map<string, number>();
+    for (const r of rows) {
+      for (const t of (r.topics ?? [])) {
+        topicMap.set(t, (topicMap.get(t) ?? 0) + 1);
+      }
+    }
+    const topTopics = [...topicMap.entries()]
+      .sort(([, a], [, b]) => b - a)
+      .map(([topic, count]) => ({ topic, count }));
+
+    // Top questions — first user message from each completed session transcript
+    const questionMap = new Map<string, number>();
+    for (const r of rows) {
+      const msgs = r.messages ?? [];
+      const firstUser = msgs.find((m) => m.role === 'user');
+      if (!firstUser) continue;
+      // Normalise: lowercase, collapse whitespace, trim to 200 chars
+      const key = firstUser.content.toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 200);
+      if (key.length > 0) questionMap.set(key, (questionMap.get(key) ?? 0) + 1);
+    }
+    const topQuestions = [...questionMap.entries()]
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 15)
+      .map(([question, count]) => ({ question, count }));
+
     res.json({
       success: true,
       data: {
@@ -1250,6 +1278,8 @@ router.get('/chat-summary', async (req, res, next) => {
         sessionsByDay,
         byPageOrigin,
         byDevice,
+        topTopics,
+        topQuestions,
       },
     });
   } catch (err) {
@@ -1367,6 +1397,156 @@ router.get('/partner-summary', async (req, res, next) => {
         byPartner,
       },
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+function normalizeAccomName(name: string): string {
+  return name.toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
+const REFERRAL_LABELS: Record<string, string> = {
+  google: 'Google / Search engine',
+  friend: 'A friend or family member',
+  accommodation: 'My hotel or accommodation',
+  travel_site: 'A travel website',
+  ai: 'AI assistant',
+  social_media: 'Social media',
+  repeat: "Repeat customer",
+  walk_in: 'Saw shop in person',
+  other: 'Other',
+};
+
+router.get('/referral-stats', async (req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+    const storeFilter = typeof req.query.storeId === 'string' && req.query.storeId ? req.query.storeId : null;
+
+    const [waiverResult, aliasResult] = await Promise.all([
+      (() => {
+        let q = sb
+          .from('waivers')
+          .select('referral_source, referral_detail, store_id')
+          .eq('status', 'signed')
+          .not('referral_source', 'is', null);
+        if (storeFilter) q = q.eq('store_id', storeFilter);
+        return q;
+      })(),
+      sb.from('accommodation_aliases').select('raw_name, canonical_name'),
+    ]);
+
+    if (waiverResult.error) throw new Error(waiverResult.error.message);
+    if (aliasResult.error) throw new Error(aliasResult.error.message);
+
+    type WaiverRow = { referral_source: string | null; referral_detail: string | null };
+    type AliasRow = { raw_name: string; canonical_name: string };
+
+    // Build alias lookup: normalised raw → canonical
+    const aliasMap = new Map<string, string>();
+    for (const a of (aliasResult.data ?? []) as AliasRow[]) {
+      aliasMap.set(normalizeAccomName(a.raw_name), a.canonical_name);
+    }
+
+    const counts = new Map<string, number>();
+    const accommodationCounts = new Map<string, number>();
+
+    for (const row of (waiverResult.data ?? []) as WaiverRow[]) {
+      const src = row.referral_source;
+      if (!src) continue;
+      counts.set(src, (counts.get(src) ?? 0) + 1);
+
+      if (src === 'accommodation' && row.referral_detail) {
+        const normalised = normalizeAccomName(row.referral_detail);
+        if (!normalised) continue;
+        const display = aliasMap.get(normalised) ?? row.referral_detail.trim();
+        accommodationCounts.set(display, (accommodationCounts.get(display) ?? 0) + 1);
+      }
+    }
+
+    const total = Array.from(counts.values()).reduce((s, n) => s + n, 0);
+
+    const breakdown = Array.from(counts.entries())
+      .map(([source, count]) => ({
+        source,
+        label: REFERRAL_LABELS[source] ?? source,
+        count,
+        percentage: total > 0 ? Math.round((count / total) * 100) : 0,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const accommodationBreakdown = Array.from(accommodationCounts.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+
+    // Collect raw names that have no alias (for the alias management UI)
+    const unmatchedRawNames = Array.from(
+      new Set(
+        ((waiverResult.data ?? []) as WaiverRow[])
+          .filter((r) => r.referral_source === 'accommodation' && r.referral_detail)
+          .map((r) => normalizeAccomName(r.referral_detail!))
+          .filter((n) => n && !aliasMap.has(n)),
+      ),
+    ).sort();
+
+    res.json({ success: true, data: { total, breakdown, accommodationBreakdown, unmatchedRawNames } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Accommodation alias CRUD ──────────────────────────────────────────────────
+
+router.get('/accommodation-aliases', async (req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+    const { data, error } = await sb
+      .from('accommodation_aliases')
+      .select('id, raw_name, canonical_name, created_at')
+      .order('canonical_name', { ascending: true });
+    if (error) throw new Error(error.message);
+    res.json({ success: true, data: data ?? [] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/accommodation-aliases', async (req, res, next) => {
+  try {
+    if (!req.user?.permissions?.includes(Permission.EditSettings)) {
+      res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Requires can_edit_settings' } });
+      return;
+    }
+    const rawName = typeof req.body.rawName === 'string' ? req.body.rawName.trim() : '';
+    const canonicalName = typeof req.body.canonicalName === 'string' ? req.body.canonicalName.trim() : '';
+    if (!rawName || !canonicalName) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'rawName and canonicalName are required' } });
+      return;
+    }
+    const sb = getSupabaseClient();
+    const { data, error } = await sb
+      .from('accommodation_aliases')
+      .upsert({ raw_name: normalizeAccomName(rawName), canonical_name: canonicalName }, { onConflict: 'raw_name' })
+      .select('id, raw_name, canonical_name')
+      .single();
+    if (error) throw new Error(error.message);
+    res.status(201).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/accommodation-aliases/:id', async (req, res, next) => {
+  try {
+    if (!req.user?.permissions?.includes(Permission.EditSettings)) {
+      res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Requires can_edit_settings' } });
+      return;
+    }
+    const { id } = req.params;
+    const sb = getSupabaseClient();
+    const { error } = await sb.from('accommodation_aliases').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+    res.json({ success: true });
   } catch (err) {
     next(err);
   }

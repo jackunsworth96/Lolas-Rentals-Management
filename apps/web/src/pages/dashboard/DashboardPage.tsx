@@ -7,6 +7,7 @@ import {
   useBasketAbandonmentSummary,
   useChatSummary,
   usePartnerDashboardSummary,
+  useReferralStats,
   type StoreMetrics,
   type AddonRevenueRow,
   type CashBalanceRow,
@@ -18,6 +19,7 @@ import { useLostOpportunities, type LostOpportunityRow } from '../../api/lost-op
 import { useStores } from '../../api/config.js';
 import { AvailabilityDetailModal } from '../../components/dashboard/AvailabilityDetailModal.js';
 import { CharityDonationsModal } from '../../components/dashboard/CharityDonationsModal.js';
+import { AccommodationAliasModal } from '../../components/dashboard/AccommodationAliasModal.js';
 import { formatCurrency } from '../../utils/currency.js';
 import {
   ResponsiveContainer,
@@ -120,11 +122,13 @@ export default function DashboardPage() {
   const { data: basketAbandon } = useBasketAbandonmentSummary(selectedStoreId || undefined);
   const { data: chatSummary } = useChatSummary();
   const { data: partnerSummary } = usePartnerDashboardSummary(selectedStoreId || undefined);
+  const { data: referralStats } = useReferralStats(selectedStoreId || undefined);
 
   const [selectedReturn, setSelectedReturn] = useState<NinePmVehicle | null>(null);
   const [showAvailability, setShowAvailability] = useState(false);
   const [showTomorrowAvailability, setShowTomorrowAvailability] = useState(false);
   const [showCharityDonations, setShowCharityDonations] = useState(false);
+  const [showAliasManager, setShowAliasManager] = useState(false);
 
   const metrics: StoreMetrics | null = useMemo(() => {
     if (!data?.stores) return null;
@@ -302,6 +306,72 @@ export default function DashboardPage() {
             <StatCard label="Direct / Online" value={String(metrics.bookingSourceSplit.directWeb)} />
             <StatCard label="Walk-in" value={String(metrics.bookingSourceSplit.walkIn)} />
             <StatCard label="Total Today" value={String(metrics.bookingSourceSplit.total)} />
+          </div>
+        </section>
+      )}
+
+      {/* SECTION — How Customers Heard About Us */}
+      {referralStats != null && referralStats.total > 0 && (
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <SectionHeading>How Customers Heard About Us</SectionHeading>
+              {referralStats.unmatchedRawNames.length > 0 && (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                  {referralStats.unmatchedRawNames.length} unaliased
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-400">{referralStats.total} responses (all time)</span>
+              {canViewFinancial && (
+                <button
+                  type="button"
+                  onClick={() => setShowAliasManager(true)}
+                  className="text-xs font-medium text-teal-600 hover:underline"
+                >
+                  Manage aliases →
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Source</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Responses</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Share</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 w-40 hidden sm:table-cell"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {referralStats.breakdown.map((row) => (
+                  <>
+                    <tr key={row.source} className="border-b border-gray-100 last:border-0">
+                      <td className="px-4 py-2.5 font-medium text-gray-900">{row.label}</td>
+                      <td className="px-4 py-2.5 text-right text-gray-700">{row.count}</td>
+                      <td className="px-4 py-2.5 text-right text-gray-500">{row.percentage}%</td>
+                      <td className="px-4 py-2.5 hidden sm:table-cell">
+                        <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-teal-500"
+                            style={{ width: `${row.percentage}%` }}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                    {row.source === 'accommodation' && referralStats.accommodationBreakdown.length > 0 && referralStats.accommodationBreakdown.map((acc) => (
+                      <tr key={`acc-${acc.name}`} className="border-b border-gray-100 last:border-0 bg-gray-50/60">
+                        <td className="py-1.5 pl-8 pr-4 text-xs text-gray-500">↳ {acc.name}</td>
+                        <td className="py-1.5 px-4 text-right text-xs text-gray-500">{acc.count}</td>
+                        <td className="py-1.5 px-4" colSpan={2} />
+                      </tr>
+                    ))}
+                  </>
+                ))}
+              </tbody>
+            </table>
           </div>
         </section>
       )}
@@ -1015,6 +1085,71 @@ export default function DashboardPage() {
               ))}
             </div>
           )}
+
+          {/* Topic tags + top questions */}
+          <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
+            {/* Topic frequency */}
+            <div className="rounded-2xl bg-white p-6 shadow-sm">
+              <h3 className="mb-1 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                Most Common Topics
+              </h3>
+              <p className="mb-4 text-xs text-gray-400">AI-tagged from completed sessions</p>
+              {chatSummary.topTopics.length === 0 ? (
+                <p className="py-8 text-center text-sm text-gray-400">
+                  No tagged sessions yet — topics appear after conversations close
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {chatSummary.topTopics.map(({ topic, count }) => {
+                    const pct = chatSummary.total > 0 ? Math.round((count / chatSummary.total) * 100) : 0;
+                    return (
+                      <div key={topic} className="flex items-center gap-3">
+                        <span className="w-24 shrink-0 text-xs font-medium capitalize text-gray-600">
+                          {topic}
+                        </span>
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100">
+                          <div
+                            className="h-full rounded-full bg-[#FCBC5A]"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <span className="w-8 shrink-0 text-right text-xs font-semibold text-gray-700">
+                          {count}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Top questions (raw first messages) */}
+            <div className="rounded-2xl bg-white p-6 shadow-sm">
+              <h3 className="mb-1 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                Top Questions Asked
+              </h3>
+              <p className="mb-4 text-xs text-gray-400">First message from each session</p>
+              {chatSummary.topQuestions.length === 0 ? (
+                <p className="py-8 text-center text-sm text-gray-400">No sessions yet</p>
+              ) : (
+                <ol className="space-y-2">
+                  {chatSummary.topQuestions.map(({ question, count }, i) => (
+                    <li key={i} className="flex items-start gap-3">
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-500">
+                        {i + 1}
+                      </span>
+                      <span className="flex-1 text-sm text-gray-700 leading-snug">{question}</span>
+                      {count > 1 && (
+                        <span className="mt-0.5 shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                          ×{count}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          </div>
         </section>
       )}
 
@@ -1112,6 +1247,11 @@ export default function DashboardPage() {
     <CharityDonationsModal
       open={showCharityDonations}
       onClose={() => setShowCharityDonations(false)}
+    />
+    <AccommodationAliasModal
+      open={showAliasManager}
+      onClose={() => setShowAliasManager(false)}
+      unmatchedRawNames={referralStats?.unmatchedRawNames ?? []}
     />
     </>
   );

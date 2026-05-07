@@ -192,6 +192,7 @@ export default function WaiverPage() {
   const [driverEmail, setDriverEmail] = useState('');
   const [driverMobile, setDriverMobile] = useState('');
   const [referralSource, setReferralSource] = useState('');
+  const [referralDetail, setReferralDetail] = useState('');
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [licenceFrontUrl, setLicenceFrontUrl] = useState('');
   const [licenceBackUrl, setLicenceBackUrl] = useState('');
@@ -310,6 +311,7 @@ export default function WaiverPage() {
         driverEmail: driverEmail.trim(),
         driverMobile: driverMobile.trim() || undefined,
         referralSource,
+        referralDetail: referralDetail.trim() || undefined,
         agreedToTerms: true,
         driverSignatureDataUrl,
         licenceFrontUrl,
@@ -451,7 +453,10 @@ export default function WaiverPage() {
                   <select
                     className={`${inputClass} bg-white`}
                     value={referralSource}
-                    onChange={(e) => setReferralSource(e.target.value)}
+                    onChange={(e) => {
+                      setReferralSource(e.target.value);
+                      if (e.target.value !== 'accommodation') setReferralDetail('');
+                    }}
                   >
                     <option value="" disabled>Select an option…</option>
                     {REFERRAL_OPTIONS.map((opt) => (
@@ -459,6 +464,20 @@ export default function WaiverPage() {
                     ))}
                   </select>
                 </div>
+                {referralSource === 'accommodation' && (
+                  <div>
+                    <label className="font-lato text-sm font-medium text-charcoal-brand block mb-1">
+                      Which hotel or accommodation?
+                    </label>
+                    <input
+                      className={inputClass}
+                      value={referralDetail}
+                      onChange={(e) => setReferralDetail(e.target.value)}
+                      placeholder="e.g. Bravo Beach Resort"
+                      autoComplete="off"
+                    />
+                  </div>
+                )}
               </div>
 
               <label className="flex items-start gap-3 mt-6 font-lato text-sm text-charcoal-brand cursor-pointer">

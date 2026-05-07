@@ -58,6 +58,9 @@ export function WaiverViewModal({ open, onClose, orderReference, details, loadin
                 <div className="col-span-2">
                   <div className="text-xs font-medium uppercase text-gray-500">Heard about us via</div>
                   <div className="mt-0.5 text-gray-800 capitalize">{details.referralSource.replace(/_/g, ' ')}</div>
+                  {details.referralDetail && (
+                    <div className="mt-0.5 text-xs text-gray-500">{details.referralDetail}</div>
+                  )}
                 </div>
               )}
             </div>

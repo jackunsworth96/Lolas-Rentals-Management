@@ -11,6 +11,7 @@ export interface SignedWaiverDetails {
   licenceFrontUrl: string | null;
   licenceBackUrl: string | null;
   referralSource: string | null;
+  referralDetail: string | null;
 }
 
 export function useSignedWaiverDetails(orderReference: string | null | undefined, enabled: boolean) {

@@ -40,6 +40,7 @@ const WaiverSignBodySchema = z.object({
   driverEmail: z.string().email({ message: 'A valid email address is required' }),
   driverMobile: z.string().optional(),
   referralSource: z.string().min(1),
+  referralDetail: z.string().optional(),
   agreedToTerms: z.boolean().refine((v) => v === true),
   driverSignatureDataUrl: z.string().min(1),
   licenceFrontUrl: z.string().optional(),
@@ -348,6 +349,7 @@ waiverRouter.post('/:orderReference/sign', validateBody(WaiverSignBodySchema), a
         driver_signature_url: body.driverSignatureDataUrl,
         passenger_signatures: passengerSigs,
         referral_source: body.referralSource,
+        referral_detail: body.referralDetail ?? null,
         status: 'signed',
       })
       .select('id, agreed_at')
@@ -472,7 +474,7 @@ waiverRouter.get(
       const { data: waiver, error } = await sb
         .from('waivers')
         .select(
-          'id, driver_name, driver_email, driver_mobile, agreed_at, driver_signature_url, passenger_signatures, licence_front_url, licence_back_url, referral_source',
+          'id, driver_name, driver_email, driver_mobile, agreed_at, driver_signature_url, passenger_signatures, licence_front_url, licence_back_url, referral_source, referral_detail',
         )
         .eq('order_reference', orderReference)
         .eq('status', 'signed')
@@ -497,6 +499,7 @@ waiverRouter.get(
         licence_front_url: string | null;
         licence_back_url: string | null;
         referral_source: string | null;
+        referral_detail: string | null;
       };
 
       res.json({
@@ -511,6 +514,7 @@ waiverRouter.get(
           licenceFrontUrl: w.licence_front_url,
           licenceBackUrl: w.licence_back_url,
           referralSource: w.referral_source,
+          referralDetail: w.referral_detail,
         },
       });
     } catch (err) {

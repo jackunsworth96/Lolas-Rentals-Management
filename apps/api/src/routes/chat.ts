@@ -35,9 +35,10 @@ const ChatBodySchema = z.object({
   ended_at:     z.string().optional(),
 });
 
-// ── Live pricing cache ────────────────────────────────────────────────────────
+// ── Live pricing / addons cache ───────────────────────────────────────────────
 
 let pricingCache: { data: string; fetchedAt: number } | null = null;
+let addonsCache: { data: string; fetchedAt: number } | null = null;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 interface VehiclePricingRow {
@@ -151,8 +152,49 @@ async function fetchLivePricing(): Promise<string> {
   return block;
 }
 
+interface AddonRow {
+  name: string;
+  addon_type: string;
+  price_per_day: number;
+  price_one_time: number;
+}
+
+async function fetchLiveAddons(): Promise<string> {
+  const now = Date.now();
+  if (addonsCache && now - addonsCache.fetchedAt < CACHE_TTL) {
+    return addonsCache.data;
+  }
+
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from('addons')
+    .select('name, addon_type, price_per_day, price_one_time')
+    .eq('is_active', true)
+    .or(`store_id.eq.${STORE_ID},store_id.is.null`)
+    .order('name');
+
+  if (error) throw new Error(`Addons fetch failed: ${error.message}`);
+
+  const rows = (data ?? []) as AddonRow[];
+  const lines = rows.map((a) => {
+    const price =
+      a.addon_type === 'per_day'
+        ? `₱${Math.round(Number(a.price_per_day)).toLocaleString()}/day`
+        : `₱${Math.round(Number(a.price_one_time)).toLocaleString()} one-time (flat fee for the entire rental)`;
+    return `- ${a.name}: ${price}`;
+  });
+
+  const block = [
+    'OPTIONAL EXTRAS — LIVE PRICING (fetched in real-time):',
+    ...(lines.length > 0 ? lines : ['- No extras currently available.']),
+  ].join('\n');
+
+  addonsCache = { data: block, fetchedAt: now };
+  return block;
+}
+
 // ── System prompt ─────────────────────────────────────────────────────────────
-// {{LIVE_PRICING}} is replaced at request time with the live pricing block.
+// {{LIVE_PRICING}} and {{LIVE_ADDONS}} are replaced at request time.
 
 const SYSTEM_PROMPT_TEMPLATE = `You are Lola's Assistant, the friendly on-site concierge for Lola's Rentals & Tours Inc. in General Luna, Siargao Island, Philippines.
 
@@ -188,11 +230,13 @@ WHAT'S INCLUDED WITH EVERY TUK TUK RENTAL (free)
 - Included: rain coats, dry bag, first aid kit, mini cool box, umbrella, and the Paw Card (free loyalty programme with partner discounts).
 - TukTuk is an enclosed vehicle — helmet inclusions and helmet law guidance for two-wheel scooters do not apply; never describe TukTuk rentals as including helmets.
 
-OPTIONAL EXTRAS — SCOOTER / TWO-WHEEL (extra)
-Peace of Mind damage cover · Surf Rack · Bungee Cord · Delivery & Collection · Late Return (9 PM).
+{{LIVE_ADDONS}}
 
-OPTIONAL EXTRAS — TUK TUK ONLY (extra)
-- Optional extras customers can add for TukTuk: Peace of Mind damage cover, Delivery & Collection, or Late Return (9 PM) — and nothing from the scooter list that is not named here (no Surf Rack, no Bungee Cord). TukTuk cannot take a surfboard and does not have a surf rack; never offer or imply surf rack for TukTuk.
+EXTRAS RULES
+- Surf Rack and Bungee Cord are scooter-only extras — never offer or imply these for TukTuk.
+- TukTuk extras: Peace of Mind Cover (TukTuk), Delivery & Collection, Late Return (9 PM). Nothing else from the scooter list.
+- TukTuk cannot carry a surfboard and has no surf rack.
+- All extras are added in the basket when booking on the website.
 
 HELMETS (scooter / two-wheel motorbike rentals only; not TukTuk)
 - One sanitised helmet is included free with scooters. A second can be requested in the basket.
@@ -283,28 +327,121 @@ interface ChatSessionPayload {
   ended_at?:         string;
 }
 
+/**
+ * Classify the user's messages into topic tags using a lightweight Anthropic
+ * call. Returns an empty array if classification fails — never throws.
+ */
+async function classifyTopics(
+  userMessages: string[],
+  apiKey: string,
+): Promise<string[]> {
+  if (userMessages.length === 0) return [];
+
+  const VALID_TOPICS = [
+    'pricing', 'availability', 'booking', 'cancellation',
+    'vehicles', 'helmets', 'extras', 'transfers', 'lesson',
+    'pawcard', 'contact', 'other',
+  ] as const;
+
+  const prompt = `You are a topic classifier for a vehicle rental chatbot (Lola's Rentals, Siargao).
+Given these customer messages, return a JSON array of 1–3 topic tags that best describe what the customer was asking about.
+
+Valid tags: ${VALID_TOPICS.join(', ')}
+
+Tag definitions:
+- pricing: rates, costs, how much
+- availability: whether a vehicle is free on certain dates
+- booking: how to book, payment methods, deposit, confirmation
+- cancellation: refunds, cancellations, early returns
+- vehicles: scooter/tuktuk specs, differences between models
+- helmets: helmet questions, safety gear
+- extras: optional add-ons (surf rack, damage cover, delivery, late return)
+- transfers: airport transfers
+- lesson: riding lessons
+- pawcard: Paw Card, Be Pawsitive charity, partner discounts
+- contact: wants to speak to a human / staff
+- other: anything else
+
+Customer messages:
+${userMessages.map((m, i) => `${i + 1}. ${m}`).join('\n')}
+
+Respond with ONLY a JSON array, e.g. ["pricing","availability"]. No other text.`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        max_tokens: 64,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    if (!response.ok) return [];
+
+    const json = await response.json() as {
+      content?: Array<{ type: string; text?: string }>;
+    };
+    const text = json.content?.find((b) => b.type === 'text')?.text?.trim() ?? '';
+    const parsed: unknown = JSON.parse(text);
+    if (!Array.isArray(parsed)) return [];
+    return (parsed as unknown[])
+      .filter((t): t is string => typeof t === 'string' && (VALID_TOPICS as readonly string[]).includes(t));
+  } catch {
+    return [];
+  }
+}
+
 /** Fire-and-forget upsert — never throws, never blocks the response. */
 function logChatSession(payload: ChatSessionPayload): void {
   const sb = getSupabaseClient();
-  void Promise.resolve(
-    sb.from('chat_sessions').upsert(
-      {
-        session_id:        payload.session_id,
-        store_id:          STORE_ID,
-        page_origin:       payload.page_origin ?? null,
-        device_type:       payload.device_type ?? null,
-        message_count:     payload.message_count,
-        handoff_triggered: payload.handoff_triggered,
-        messages:          payload.messages,
-        ended_at:          payload.ended_at ?? null,
-      },
-      { onConflict: 'session_id' },
-    ),
-  ).then(({ error }) => {
-    if (error) logger.warn({ err: error }, 'chat_sessions upsert failed');
-  }).catch((err: unknown) => {
-    logger.warn({ err }, 'chat_sessions upsert threw');
-  });
+  const apiKey = process.env.ANTHROPIC_API_KEY ?? '';
+
+  const upsertBase = {
+    session_id:        payload.session_id,
+    store_id:          STORE_ID,
+    page_origin:       payload.page_origin ?? null,
+    device_type:       payload.device_type ?? null,
+    message_count:     payload.message_count,
+    handoff_triggered: payload.handoff_triggered,
+    messages:          payload.messages,
+    ended_at:          payload.ended_at ?? null,
+  };
+
+  // For completed sessions, classify topics then upsert with tags.
+  // For mid-session updates, upsert immediately without topics.
+  if (payload.ended_at) {
+    const userMessages = payload.messages
+      .filter((m) => m.role === 'user')
+      .map((m) => m.content);
+
+    void classifyTopics(userMessages, apiKey)
+      .then((topics) =>
+        sb.from('chat_sessions').upsert(
+          { ...upsertBase, topics },
+          { onConflict: 'session_id' },
+        ),
+      )
+      .then(({ error }) => {
+        if (error) logger.warn({ err: error }, 'chat_sessions upsert failed');
+      })
+      .catch((err: unknown) => {
+        logger.warn({ err }, 'chat_sessions upsert threw');
+      });
+  } else {
+    void Promise.resolve(
+      sb.from('chat_sessions').upsert(upsertBase, { onConflict: 'session_id' }),
+    ).then(({ error }) => {
+      if (error) logger.warn({ err: error }, 'chat_sessions upsert failed');
+    }).catch((err: unknown) => {
+      logger.warn({ err }, 'chat_sessions upsert threw');
+    });
+  }
 }
 
 // ── Router ────────────────────────────────────────────────────────────────────
@@ -344,15 +481,21 @@ router.post('/', chatLimiter, async (req, res, next) => {
       return;
     }
 
-    // Fetch live pricing; fall back to static copy on any error.
+    // Fetch live pricing and add-ons in parallel; fall back to static copy on any error.
     let livePricing = STATIC_PRICING_FALLBACK;
+    let liveAddons = 'OPTIONAL EXTRAS — pricing unavailable, please check the website.';
     try {
-      livePricing = await fetchLivePricing();
+      [livePricing, liveAddons] = await Promise.all([fetchLivePricing(), fetchLiveAddons()]);
     } catch (pricingErr) {
-      logger.warn({ err: pricingErr }, 'Live pricing fetch failed — using static fallback');
+      logger.warn({ err: pricingErr }, 'Live pricing/addons fetch failed — using static fallback');
+      // Try them independently so a partial failure still gets one
+      try { livePricing = await fetchLivePricing(); } catch { /* keep fallback */ }
+      try { liveAddons = await fetchLiveAddons(); } catch { /* keep fallback */ }
     }
 
-    const systemPrompt = SYSTEM_PROMPT_TEMPLATE.replace('{{LIVE_PRICING}}', livePricing);
+    const systemPrompt = SYSTEM_PROMPT_TEMPLATE
+      .replace('{{LIVE_PRICING}}', livePricing)
+      .replace('{{LIVE_ADDONS}}', liveAddons);
 
     let upstream: globalThis.Response;
     try {
