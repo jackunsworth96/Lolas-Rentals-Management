@@ -39,6 +39,7 @@ const WaiverSignBodySchema = z.object({
   driverName: z.string().min(1),
   driverEmail: z.string().email({ message: 'A valid email address is required' }),
   driverMobile: z.string().optional(),
+  referralSource: z.string().min(1),
   agreedToTerms: z.boolean().refine((v) => v === true),
   driverSignatureDataUrl: z.string().min(1),
   licenceFrontUrl: z.string().optional(),
@@ -346,6 +347,7 @@ waiverRouter.post('/:orderReference/sign', validateBody(WaiverSignBodySchema), a
         licence_back_url: body.licenceBackUrl ?? null,
         driver_signature_url: body.driverSignatureDataUrl,
         passenger_signatures: passengerSigs,
+        referral_source: body.referralSource,
         status: 'signed',
       })
       .select('id, agreed_at')
@@ -456,5 +458,130 @@ waiverRouter.post('/:orderReference/upload-licence', (req, res, next) => {
     }
   });
 });
+
+// Staff-only: fetch full details of a signed waiver (signature image, licence photos, etc.)
+// Must be added AFTER the rate-limited public routes to avoid the limiter.
+waiverRouter.get(
+  '/signed-details/:orderReference',
+  authenticate,
+  requirePermission(Permission.ViewOrders),
+  async (req, res, next) => {
+    try {
+      const orderReference = routeParamString(req.params.orderReference);
+      const sb = getSupabaseClient();
+      const { data: waiver, error } = await sb
+        .from('waivers')
+        .select(
+          'id, driver_name, driver_email, driver_mobile, agreed_at, driver_signature_url, passenger_signatures, licence_front_url, licence_back_url, referral_source',
+        )
+        .eq('order_reference', orderReference)
+        .eq('status', 'signed')
+        .order('agreed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw new Error(error.message);
+      if (!waiver) {
+        res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'No signed waiver found' } });
+        return;
+      }
+
+      const w = waiver as {
+        id: string;
+        driver_name: string;
+        driver_email: string | null;
+        driver_mobile: string | null;
+        agreed_at: string;
+        driver_signature_url: string | null;
+        passenger_signatures: unknown;
+        licence_front_url: string | null;
+        licence_back_url: string | null;
+        referral_source: string | null;
+      };
+
+      res.json({
+        success: true,
+        data: {
+          driverName: w.driver_name,
+          driverEmail: w.driver_email,
+          driverMobile: w.driver_mobile,
+          agreedAt: w.agreed_at,
+          driverSignatureUrl: w.driver_signature_url,
+          passengerSignatures: Array.isArray(w.passenger_signatures) ? (w.passenger_signatures as string[]) : [],
+          licenceFrontUrl: w.licence_front_url,
+          licenceBackUrl: w.licence_back_url,
+          referralSource: w.referral_source,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// Staff-only: resend the waiver confirmation email to the customer.
+waiverRouter.post(
+  '/resend-confirmation',
+  authenticate,
+  requirePermission(Permission.EditOrders),
+  validateBody(SendLinkBodySchema),
+  async (req, res, next) => {
+    try {
+      const { orderReference } = req.body as z.infer<typeof SendLinkBodySchema>;
+      const sb = getSupabaseClient();
+
+      const { data: waiver, error } = await sb
+        .from('waivers')
+        .select('driver_name, driver_email, agreed_at, licence_front_url')
+        .eq('order_reference', orderReference)
+        .eq('status', 'signed')
+        .order('agreed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw new Error(error.message);
+      if (!waiver) {
+        res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'No signed waiver found' } });
+        return;
+      }
+
+      const w = waiver as {
+        driver_name: string;
+        driver_email: string | null;
+        agreed_at: string;
+        licence_front_url: string | null;
+      };
+
+      if (!w.driver_email) {
+        res.status(400).json({
+          success: false,
+          error: { code: 'NO_EMAIL', message: 'No email address recorded on this waiver' },
+        });
+        return;
+      }
+
+      await sendEmail({
+        to: w.driver_email,
+        subject: `Your Signed Waiver — ${orderReference} | Lola's Rentals`,
+        html: waiverConfirmationHtml({
+          driverName: w.driver_name,
+          orderReference,
+          signedAt: new Date(w.agreed_at).toLocaleString('en-PH', {
+            timeZone: 'Asia/Manila',
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          }),
+          hasLicence: !!w.licence_front_url,
+          whatsappNumber: process.env.WHATSAPP_NUMBER ?? '639XXXXXXXXX',
+          waiverAgreementUrl: `${publicWebOriginFromEnv(process.env.WEB_URL)}/book/waiver-agreement`,
+        }),
+      });
+
+      res.json({ success: true, data: { sentTo: w.driver_email } });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 export { waiverRouter };

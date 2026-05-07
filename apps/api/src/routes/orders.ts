@@ -32,7 +32,7 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
 
     let query = sb
       .from('orders')
-      .select('id, store_id, order_date, customer_id, status, final_total, balance_due, web_notes, payment_method_id, security_deposit, card_fee_surcharge, woo_order_id, booking_token, customers!customer_id(name, mobile, email)')
+      .select('id, store_id, order_date, customer_id, status, final_total, balance_due, web_notes, payment_method_id, security_deposit, card_fee_surcharge, woo_order_id, booking_token, partner_ref, customers!customer_id(name, mobile, email)')
       .eq('store_id', storeId)
       .order('order_date', { ascending: false });
 
@@ -47,11 +47,11 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
 
     const orderIds = (orders ?? []).map((o: Record<string, unknown>) => o.id as string);
 
-    let itemsByOrder = new Map<string, Array<{ id: string; vehicle_id: string; vehicle_name: string; dropoff_datetime: string; discount: number }>>();
+    let itemsByOrder = new Map<string, Array<{ id: string; vehicle_id: string; vehicle_name: string; pickup_datetime: string | null; dropoff_datetime: string; discount: number }>>();
     if (orderIds.length > 0) {
       const { data: items, error: itemsErr } = await sb
         .from('order_items')
-        .select('id, order_id, vehicle_id, vehicle_name, dropoff_datetime, discount')
+        .select('id, order_id, vehicle_id, vehicle_name, pickup_datetime, dropoff_datetime, discount')
         .in('order_id', orderIds);
       if (itemsErr) throw new Error(`enriched items query failed: ${itemsErr.message}`);
       for (const item of (items ?? [])) {
@@ -160,6 +160,20 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
       }
     }
 
+    const ninePmOrderIds = new Set<string>();
+    if (orderIds.length > 0) {
+      const { data: ninePmAddons } = await sb
+        .from('order_addons')
+        .select('order_id, addon_name')
+        .in('order_id', orderIds);
+      for (const a of (ninePmAddons ?? []) as Array<{ order_id: string; addon_name: string }>) {
+        const n = (a.addon_name ?? '').toLowerCase();
+        if (n.includes('9pm') || n.includes('21:00') || n.includes('ninepm')) {
+          ninePmOrderIds.add(a.order_id);
+        }
+      }
+    }
+
     const enriched = (orders ?? []).map((o: Record<string, unknown>) => {
       const customer = o.customers as { name: string; mobile: string | null; email: string | null } | null;
       const items = itemsByOrder.get(o.id as string) ?? [];
@@ -190,6 +204,9 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
       const insp = inspectionByOrderId.get(o.id as string);
       const inspectionStatus = insp?.status === 'completed' ? 'completed' : 'pending';
       const hasExtension = extendedOrderIds.has(o.id as string);
+      const hasNinePmAddon = ninePmOrderIds.has(o.id as string);
+
+      const pickupDatetime = primaryItem?.pickup_datetime ?? null;
 
       return {
         id: o.id,
@@ -200,6 +217,7 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
         customerEmail: customer?.email?.trim() || null,
         vehicleNames: vehicleNames || '—',
         returnDatetime,
+        pickupDatetime,
         wooOrderId: (o.woo_order_id as string) ?? null,
         bookingToken: token,
         finalTotal: finalTotalNum,
@@ -215,6 +233,8 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
         waiverSignedAt: waiverData?.agreed_at ?? null,
         inspectionStatus,
         hasExtension,
+        hasNinePmAddon,
+        partnerRef: (o.partner_ref as string) ?? null,
         primaryVehicleId: primaryItem?.vehicle_id ?? null,
         primaryVehicleName: primaryItem?.vehicle_name ?? null,
         primaryOrderItemId: primaryItem?.id ?? null,

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Modal } from '../common/Modal.js';
 import { Badge } from '../common/Badge.js';
 import { useFleet } from '../../api/fleet.js';
@@ -588,7 +589,8 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
         }
       }
 
-      if (!merged.isExtension) {
+      // Auto-fill rate from pricing tiers when vehicle or dates change, unless the user has already set a manual rate
+      if (!patch.rentalRate) {
         const mid = modelId ?? (fleet?.find((v) => v.id === merged.vehicleId)?.modelId as string | null);
         const rate = findRate(mid, merged.rentalDaysCount, storePricing ?? []);
         if (rate !== null) merged.rentalRate = rate;
@@ -1202,29 +1204,15 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                     )}
                   </div>
 
-                  <div className="block">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Rental Rate (per day)</span>
-                      <label className="flex items-center gap-1.5 text-xs text-gray-500">
-                        <input
-                          type="checkbox"
-                          checked={v.isExtension}
-                          onChange={(e) => updateVehicle(i, { isExtension: e.target.checked })}
-                          className="h-3.5 w-3.5 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
-                        />
-                        Extension (override rate)
-                      </label>
-                    </div>
+                  <label className="block">
+                    <span className="text-sm text-gray-600">Rental Rate (per day)</span>
                     <input
                       type="number"
                       value={v.rentalRate}
                       onChange={(e) => updateVehicle(i, { rentalRate: Number(e.target.value) })}
-                      readOnly={!v.isExtension}
-                      className={`mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 ${
-                        !v.isExtension ? 'bg-gray-50 text-gray-600' : ''
-                      }`}
+                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
-                  </div>
+                  </label>
 
                   {/* Pickup Date/Time — AM/PM */}
                   <div className="block">
@@ -1432,6 +1420,47 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
         {/* Step 4: Summary */}
         {step === 'summary' && (
           <div className="space-y-6">
+            {/* Order overview — customer + collection/delivery details */}
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 sm:p-5">
+              <h3 className="mb-3 font-medium text-gray-900">Order Overview</h3>
+              <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 sm:gap-x-6 sm:gap-y-3">
+                <div className="min-w-0">
+                  <span className="text-gray-500">Customer</span>
+                  <div className="font-medium break-words text-gray-900">{customer.name || '—'}</div>
+                  {customer.phone && <div className="text-xs text-gray-600 break-all">{customer.phone}</div>}
+                  {customer.email && <div className="text-xs text-gray-600 break-all">{customer.email}</div>}
+                </div>
+                <div className="min-w-0">
+                  <span className="text-gray-500">Vehicles</span>
+                  <div className="font-medium break-words text-gray-900">
+                    {vehicles.filter((v) => v.vehicleId).map((v) => v.vehicleName || 'Unnamed').join(', ') || '—'}
+                  </div>
+                </div>
+                {vehicles.filter((v) => v.vehicleId).map((v, i) => (
+                  <div key={i} className="col-span-full grid grid-cols-1 gap-2 border-t border-blue-200 pt-3 sm:grid-cols-2 sm:gap-x-6">
+                    <div className="min-w-0">
+                      <span className="text-gray-500">Collection</span>
+                      <div className="font-medium break-words text-gray-900">{v.pickupLocation || '— store pickup'}</div>
+                      {v.pickupDatetime && (
+                        <div className="text-xs text-gray-600">
+                          {formatPickupDatetimeManila(v.pickupDatetime.includes('+') || v.pickupDatetime.endsWith('Z') ? v.pickupDatetime : `${v.pickupDatetime}:00+08:00`)}
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-gray-500">Delivery / Return</span>
+                      <div className="font-medium break-words text-gray-900">{v.dropoffLocation || '— store return'}</div>
+                      {v.dropoffDatetime && (
+                        <div className="text-xs text-gray-600">
+                          {formatPickupDatetimeManila(v.dropoffDatetime.includes('+') || v.dropoffDatetime.endsWith('Z') ? v.dropoffDatetime : `${v.dropoffDatetime}:00+08:00`)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div className="rounded-lg border border-gray-200 p-4">
               <h3 className="mb-3 font-medium text-gray-900">Pricing Breakdown</h3>
               <dl className="space-y-2 text-sm">
@@ -1505,7 +1534,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
             </div>
 
             {/* Payment Methods */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="rounded-lg border border-gray-200 p-4">
                 {rawOrder.web_payment_method && (
                   <p className="mb-2 text-xs text-gray-500">
@@ -1785,18 +1814,21 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
       </div>
     </Modal>
 
-    <InspectionModal
-      open={inspectionOpen}
-      onClose={() => setInspectionOpen(false)}
-      orderId={rawOrder.id}
-      orderReference={waiverRef ?? rawOrder.id}
-      storeId={storeId}
-      employeeName={employeeName}
-      onComplete={() => setInspectionOpen(false)}
-      onVehicleAssigned={(vehicleId) => {
-        updateVehicle(0, { vehicleId });
-      }}
-    />
+    {inspectionOpen && createPortal(
+      <InspectionModal
+        open={inspectionOpen}
+        onClose={() => setInspectionOpen(false)}
+        orderId={rawOrder.id}
+        orderReference={waiverRef ?? rawOrder.id}
+        storeId={storeId}
+        employeeName={employeeName}
+        onComplete={() => setInspectionOpen(false)}
+        onVehicleAssigned={(vehicleId, vehicleName) => {
+          updateVehicle(0, { vehicleId, vehicleName });
+        }}
+      />,
+      document.body,
+    )}
     </>
   );
 }

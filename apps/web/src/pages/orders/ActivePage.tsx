@@ -10,6 +10,7 @@ import { formatCurrency } from '../../utils/currency.js';
 import type { EnrichedOrder } from '../../types/api.js';
 
 type DateFilter = 'all' | 'today' | 'tomorrow';
+type PickupSort = 'none' | 'asc' | 'desc';
 
 function getDateStr(offset: number): string {
   const d = new Date();
@@ -53,6 +54,7 @@ export default function ActivePage() {
   const [inspectionOrderItemId, setInspectionOrderItemId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
+  const [pickupSort, setPickupSort] = useState<PickupSort>('none');
 
   function openInspection(r: EnrichedOrder) {
     setInspectionOrderId(r.id);
@@ -86,8 +88,19 @@ export default function ActivePage() {
       list = list.filter((o) => o.returnDatetime && o.returnDatetime.slice(0, 10) === tomorrowStr);
     }
 
+    if (pickupSort !== 'none') {
+      list = [...list].sort((a, b) => {
+        const pa = a.returnDatetime ?? '';
+        const pb = b.returnDatetime ?? '';
+        if (!pa && !pb) return 0;
+        if (!pa) return 1;
+        if (!pb) return -1;
+        return pickupSort === 'asc' ? pa.localeCompare(pb) : pb.localeCompare(pa);
+      });
+    }
+
     return list;
-  }, [orders, search, dateFilter]);
+  }, [orders, search, dateFilter, pickupSort]);
 
   const columns = [
     {
@@ -103,6 +116,14 @@ export default function ActivePage() {
             {inspectionStatus === 'completed' && (
               <span className="inline-flex items-center rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
                 Inspection ✓
+              </span>
+            )}
+            {r.partnerRef && (
+              <span
+                title={`Affiliate / partner booking (${r.partnerRef}) — handle with extra care`}
+                className="inline-flex items-center gap-1 rounded-full border border-orange-300 bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-700"
+              >
+                ★ Affiliate
               </span>
             )}
           </div>
@@ -159,6 +180,14 @@ export default function ActivePage() {
         return (
           <div className="flex flex-wrap items-center gap-2">
             <span className={cls}>{label}</span>
+            {r.hasNinePmAddon && (
+              <span
+                title="9PM late return add-on"
+                className="inline-flex items-center rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-xs font-semibold text-purple-700"
+              >
+                9PM
+              </span>
+            )}
             {r.hasExtension && (
               <span
                 title="Rental has been extended"
@@ -234,6 +263,17 @@ export default function ActivePage() {
     { key: 'tomorrow', label: 'Returning Tomorrow' },
   ];
 
+  function formatPickupDate(dt: string | null | undefined): string {
+    if (!dt) return '—';
+    return new Date(dt).toLocaleString('en-PH', {
+      timeZone: 'Asia/Manila',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
   return (
     <div>
       {/* Header */}
@@ -261,20 +301,38 @@ export default function ActivePage() {
         </div>
       </div>
 
-      <div className="mb-4 flex gap-2 flex-wrap">
-        {dateFilters.map((f) => (
-          <button
-            key={f.key}
-            onClick={() => setDateFilter(f.key)}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-              dateFilter === f.key
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="flex gap-2 flex-wrap">
+          {dateFilters.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setDateFilter(f.key)}
+              className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+                dateFilter === f.key
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="h-6 w-px bg-gray-200" />
+
+        <div className="flex items-center gap-2">
+          <label htmlFor="active-pickup-sort" className="text-sm font-medium text-gray-700">Sort return:</label>
+          <select
+            id="active-pickup-sort"
+            value={pickupSort}
+            onChange={(e) => setPickupSort(e.target.value as PickupSort)}
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
-            {f.label}
-          </button>
-        ))}
+            <option value="none">Default</option>
+            <option value="asc">Earliest first</option>
+            <option value="desc">Latest first</option>
+          </select>
+        </div>
       </div>
 
       {isLoading ? (
@@ -320,6 +378,14 @@ export default function ActivePage() {
                         {r.customerMobile && (
                           <p className="text-xs text-gray-500">{r.customerMobile}</p>
                         )}
+                        {r.partnerRef && (
+                          <span
+                            title={`Affiliate / partner booking (${r.partnerRef}) — handle with extra care`}
+                            className="mt-1 inline-flex items-center gap-1 rounded-full border border-orange-300 bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-700"
+                          >
+                            ★ Affiliate
+                          </span>
+                        )}
                       </div>
                       <div className="flex flex-col items-end gap-1">
                         {waiverStatus === 'signed' ? (
@@ -343,6 +409,7 @@ export default function ActivePage() {
                         : 'text-gray-500 text-xs'
                       }>
                         Return: {returnLabel}
+                        {r.hasNinePmAddon && <span className="ml-1 rounded-full border border-purple-200 bg-purple-50 px-1.5 py-0.5 text-xs font-semibold text-purple-700">9PM</span>}
                         {r.hasExtension && <span className="ml-1 text-teal-700">(Ext.)</span>}
                       </span>
                     </div>

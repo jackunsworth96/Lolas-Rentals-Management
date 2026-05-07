@@ -90,7 +90,7 @@ export async function sendTelegramAlert(message: string, chatId?: string): Promi
 }
 
 /** When Paid Orders is sent in the same flow as Ops (or another channel), stagger so the first alert sound completes. */
-const PAID_ORDERS_TELEGRAM_STAGGER_MS = 800;
+const PAID_ORDERS_TELEGRAM_STAGGER_MS = 3000;
 
 /**
  * Fire-and-forget: sends after {@link PAID_ORDERS_TELEGRAM_STAGGER_MS}. Pair with an immediate

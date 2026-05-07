@@ -7,7 +7,6 @@ import { BookingModal } from '../../components/orders/BookingModal.js';
 import { CancelOrderModal } from '../../components/orders/CancelOrderModal.js';
 import { WalkInBookingModal } from '../../components/orders/WalkInBookingModal.js';
 import { ReserveForLaterModal } from '../../components/orders/ReserveForLaterModal.js';
-import { CheckInModal } from '../../components/orders/CheckInModal.js';
 import { formatDateTime, formatPickupDatetimeManila } from '../../utils/date.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { extractPickupDate } from '../../utils/raw-order-payload.js';
@@ -15,6 +14,7 @@ import { resolveSourceFromStore } from '@lolas/shared';
 import { useAuthStore } from '../../stores/auth-store.js';
 
 type DateFilter = 'all' | 'today' | 'tomorrow';
+type PickupSort = 'none' | 'asc' | 'desc';
 
 function extractField(payload: Record<string, unknown>, ...keys: string[]): string {
   for (const key of keys) {
@@ -109,11 +109,11 @@ export default function InboxPage() {
     setPage(1);
   }, [apiStore, searchQuery]);
 
+  const [pickupSort, setPickupSort] = useState<PickupSort>('none');
   const [selectedOrder, setSelectedOrder] = useState<RawOrder | null>(null);
   const [cancelOrder, setCancelOrder] = useState<RawOrder | null>(null);
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [reserveForLaterOpen, setReserveForLaterOpen] = useState(false);
-  const [checkInOpen, setCheckInOpen] = useState(false);
 
   const canEditOrders = useAuthStore((s) => s.hasPermission('can_edit_orders'));
 
@@ -125,18 +125,36 @@ export default function InboxPage() {
   }, []);
 
   const filteredOrders = useMemo(() => {
-    const all = allOrders;
-    if (dateFilter === 'all') return all;
+    let list = allOrders;
 
-    const target = dateFilter === 'today' ? todayStr : tomorrowStr;
-    return all.filter((order) => {
-      if (isDirect(order) || isWalkIn(order)) {
-        return order.pickup_datetime ? order.pickup_datetime.slice(0, 10) === target : false;
-      }
-      const pickupDate = extractPickupDate(order.payload ?? {});
-      return pickupDate === target;
-    });
-  }, [allOrders, dateFilter, todayStr, tomorrowStr]);
+    if (dateFilter !== 'all') {
+      const target = dateFilter === 'today' ? todayStr : tomorrowStr;
+      list = list.filter((order) => {
+        if (isDirect(order) || isWalkIn(order)) {
+          return order.pickup_datetime ? order.pickup_datetime.slice(0, 10) === target : false;
+        }
+        const pickupDate = extractPickupDate(order.payload ?? {});
+        return pickupDate === target;
+      });
+    }
+
+    if (pickupSort !== 'none') {
+      list = [...list].sort((a, b) => {
+        const getPickup = (o: RawOrder): string => {
+          if (isDirect(o) || isWalkIn(o)) return o.pickup_datetime ?? '';
+          return extractPickupDate(o.payload ?? {}) ?? '';
+        };
+        const pa = getPickup(a);
+        const pb = getPickup(b);
+        if (!pa && !pb) return 0;
+        if (!pa) return 1;
+        if (!pb) return -1;
+        return pickupSort === 'asc' ? pa.localeCompare(pb) : pb.localeCompare(pa);
+      });
+    }
+
+    return list;
+  }, [allOrders, dateFilter, todayStr, tomorrowStr, pickupSort]);
 
   if (isLoading && allOrders.length === 0) return <div className="py-12 text-center text-gray-500">Loading orders...</div>;
   if (error) return <div className="py-12 text-center text-red-500">Failed to load orders</div>;
@@ -157,10 +175,18 @@ export default function InboxPage() {
       render: (r: RawOrder) => {
         const s = sourceLabel(r.source);
         return (
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <Badge color={s.color}>{s.text}</Badge>
             {isDirect(r) && !isWalkIn(r) && <Badge color="green">Direct</Badge>}
             {isWalkIn(r) && <Badge color="teal">Walk-in</Badge>}
+            {r.partner_ref && (
+              <span
+                title={`Affiliate / partner booking (${r.partner_ref}) — handle with extra care`}
+                className="inline-flex items-center gap-1 rounded-full border border-orange-300 bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-700"
+              >
+                ★ Affiliate
+              </span>
+            )}
           </div>
         );
       },
@@ -266,13 +292,6 @@ export default function InboxPage() {
             <>
               <button
                 type="button"
-                onClick={() => setCheckInOpen(true)}
-                className="rounded-lg border border-amber-500 px-4 py-2 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-50 whitespace-nowrap"
-              >
-                Quick Check-In
-              </button>
-              <button
-                type="button"
                 onClick={() => setReserveForLaterOpen(true)}
                 className="rounded-lg border border-teal-600 px-4 py-2 text-sm font-medium text-teal-700 transition-colors hover:bg-teal-50 whitespace-nowrap"
               >
@@ -355,6 +374,22 @@ export default function InboxPage() {
           ))}
         </div>
 
+        <div className="h-6 w-px bg-gray-200" />
+
+        <div className="flex items-center gap-2">
+          <label htmlFor="pickup-sort" className="text-sm font-medium text-gray-700">Sort pickup:</label>
+          <select
+            id="pickup-sort"
+            value={pickupSort}
+            onChange={(e) => setPickupSort(e.target.value as PickupSort)}
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="none">Default</option>
+            <option value="asc">Earliest first</option>
+            <option value="desc">Latest first</option>
+          </select>
+        </div>
+
         {dateFilter !== 'all' && filteredOrders.length !== totalCount && (
           <span className="text-sm text-gray-500">
             Showing {filteredOrders.length} of {totalCount}
@@ -409,6 +444,14 @@ export default function InboxPage() {
                   <Badge color={s.color}>{s.text}</Badge>
                   {isDirect(r) && !isWalkIn(r) && <Badge color="green">Direct</Badge>}
                   {isWalkIn(r) && <Badge color="teal">Walk-in</Badge>}
+                  {r.partner_ref && (
+                    <span
+                      title={`Affiliate / partner booking (${r.partner_ref}) — handle with extra care`}
+                      className="inline-flex items-center gap-1 rounded-full border border-orange-300 bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-700"
+                    >
+                      ★ Affiliate
+                    </span>
+                  )}
                 </div>
 
                 <div className="mb-2">
@@ -489,11 +532,6 @@ export default function InboxPage() {
           </button>
         </div>
       )}
-
-      <CheckInModal
-        open={checkInOpen}
-        onClose={() => setCheckInOpen(false)}
-      />
 
       <WalkInBookingModal
         open={walkInOpen}

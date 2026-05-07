@@ -6,6 +6,7 @@ import { ErrorBoundary } from './components/common/ErrorBoundary.js';
 import { BetaErrorBanner } from './components/common/BetaErrorBanner.js';
 import { ScrollToTop } from './components/ui/ScrollToTop.js';
 import { useFavicon } from './hooks/useFavicon.js';
+import { DeliveryReminderModal } from './components/orders/DeliveryReminderModal.js';
 
 function FaviconSwitcher() {
   useFavicon();
@@ -42,6 +43,7 @@ export function App() {
         <ErrorBoundary onError={triggerBetaError}>
           <AppRouter />
         </ErrorBoundary>
+        <DeliveryReminderModal />
         {BETA_ERROR_NOTICE && showBetaError && (
           <BetaErrorBanner onClose={() => setShowBetaError(false)} />
         )}

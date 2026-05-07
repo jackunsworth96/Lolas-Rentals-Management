@@ -49,6 +49,8 @@ export interface EnrichedOrder {
   customerEmail: string | null;
   vehicleNames: string;
   returnDatetime: string | null;
+  /** Pickup datetime from the primary order_item (first vehicle). */
+  pickupDatetime: string | null;
   /** Human-facing ref (e.g. walk-in LR-… / BB-…); stored as orders.booking_token */
   bookingToken: string | null;
   wooOrderId: string | null;
@@ -68,6 +70,10 @@ export interface EnrichedOrder {
   inspectionStatus?: 'pending' | 'completed';
   /** True when the order has at least one `payments.payment_type = 'extension'` row. */
   hasExtension?: boolean;
+  /** True when any order_addon has a 9PM/late-return add-on name. */
+  hasNinePmAddon?: boolean;
+  /** Accommodation partner slug when booked via a partner referral link. */
+  partnerRef?: string | null;
   /** Primary order_item vehicle — used to pre-populate the inspection form. */
   primaryVehicleId?: string | null;
   primaryVehicleName?: string | null;

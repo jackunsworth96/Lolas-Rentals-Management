@@ -20,6 +20,8 @@ export type OrderItem = {
   dropoffFee?: number;
   discount?: number;
   helmetNumbers?: string | null;
+  pickupLocation?: string | null;
+  dropoffLocation?: string | null;
 };
 
 export type OrderPayment = {

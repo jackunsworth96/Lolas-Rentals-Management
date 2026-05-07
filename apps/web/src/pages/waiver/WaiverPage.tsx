@@ -26,6 +26,18 @@ interface OrderWaiverPayload {
   signedAt: string | null;
 }
 
+const REFERRAL_OPTIONS: { value: string; label: string }[] = [
+  { value: 'google', label: 'Google / Search engine' },
+  { value: 'friend', label: 'A friend or family member' },
+  { value: 'accommodation', label: 'My hotel or accommodation' },
+  { value: 'travel_site', label: 'A travel website (TripAdvisor, Klook, etc.)' },
+  { value: 'ai', label: 'AI assistant (ChatGPT, etc.)' },
+  { value: 'social_media', label: 'Social media (Facebook, Instagram, TikTok)' },
+  { value: 'repeat', label: "I've rented with you before" },
+  { value: 'walk_in', label: 'Saw your shop in person' },
+  { value: 'other', label: 'Other' },
+];
+
 const cardClass = 'bg-white rounded-xl border border-charcoal-brand/10 p-6';
 const goldCtaClass =
   'w-full sm:w-auto inline-flex items-center justify-center rounded-xl bg-gold-brand border-2 border-charcoal-brand text-charcoal-brand font-bold font-lato px-6 py-3.5 transition-opacity disabled:opacity-40 disabled:pointer-events-none';
@@ -179,6 +191,7 @@ export default function WaiverPage() {
   const [driverName, setDriverName] = useState('');
   const [driverEmail, setDriverEmail] = useState('');
   const [driverMobile, setDriverMobile] = useState('');
+  const [referralSource, setReferralSource] = useState('');
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [licenceFrontUrl, setLicenceFrontUrl] = useState('');
   const [licenceBackUrl, setLicenceBackUrl] = useState('');
@@ -296,6 +309,7 @@ export default function WaiverPage() {
         driverName: driverName.trim(),
         driverEmail: driverEmail.trim(),
         driverMobile: driverMobile.trim() || undefined,
+        referralSource,
         agreedToTerms: true,
         driverSignatureDataUrl,
         licenceFrontUrl,
@@ -430,6 +444,21 @@ export default function WaiverPage() {
                     autoComplete="tel"
                   />
                 </div>
+                <div>
+                  <label className="font-lato text-sm font-medium text-charcoal-brand block mb-1">
+                    How did you hear about us? <span className="text-red-600">*</span>
+                  </label>
+                  <select
+                    className={`${inputClass} bg-white`}
+                    value={referralSource}
+                    onChange={(e) => setReferralSource(e.target.value)}
+                  >
+                    <option value="" disabled>Select an option…</option>
+                    {REFERRAL_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <label className="flex items-start gap-3 mt-6 font-lato text-sm text-charcoal-brand cursor-pointer">
@@ -445,7 +474,7 @@ export default function WaiverPage() {
               <button
                 type="button"
                 className={`${goldCtaClass} mt-6 w-full`}
-                disabled={!agreedToTerms || !driverName.trim()}
+                disabled={!agreedToTerms || !driverName.trim() || !referralSource}
                 onClick={() => setStep(2)}
               >
                 {t('waiver.continueToSign')}
