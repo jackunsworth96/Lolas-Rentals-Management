@@ -7,8 +7,10 @@
  *   TELEGRAM_DAILY_CHAT_ID          — Lola's Daily Updates channel (morning summary)
  *   TELEGRAM_MAINTENANCE_CHAT_ID    — Lola's Maintenance channel (jobs & inspections)
  *   TELEGRAM_DRIVER_CHAT_ID         — Driver channel (legacy fallback)
- *   TELEGRAM_VAN_CHAT_ID            — Van driver channel (shared & private van transfers)
- *   TELEGRAM_TUKTUK_CHAT_ID         — Tuktuk driver channel (tuktuk transfers)
+ *   TELEGRAM_VAN_CHAT_ID            — Van Transfers group chat (info-only, no confirm button)
+ *   TELEGRAM_VAN_DRIVER_CHAT_ID     — Van driver's personal chat (receives the Confirm button)
+ *   TELEGRAM_TUKTUK_CHAT_ID         — Tuktuk Transfers group chat (info-only, no confirm button)
+ *   TELEGRAM_TUKTUK_DRIVER_CHAT_ID  — Tuktuk driver's personal chat (receives the Confirm button)
  *   TELEGRAM_FEEDBACK_CHAT_ID       — Feedback channel
  *   TELEGRAM_PAID_ORDERS_CHAT_ID    — Lola's Paid Orders channel (order activated events)
  *   TELEGRAM_TODO_CHAT_ID           — To Do channel (team task visibility board)
@@ -19,20 +21,22 @@
  */
 import { logger } from './logger.js';
 
-export function getTelegramChatId(kind: 'default' | 'ops' | 'fleet' | 'daily' | 'maintenance' | 'driver' | 'van' | 'tuktuk' | 'feedback' | 'paid_orders' | 'todo'): string | undefined {
+export function getTelegramChatId(kind: 'default' | 'ops' | 'fleet' | 'daily' | 'maintenance' | 'driver' | 'van' | 'van_driver' | 'tuktuk' | 'tuktuk_driver' | 'feedback' | 'paid_orders' | 'todo'): string | undefined {
   switch (kind) {
-    case 'ops':          return process.env.TELEGRAM_OPS_CHAT_ID;
-    case 'fleet':        return process.env.TELEGRAM_FLEET_CHAT_ID;
-    case 'daily':        return process.env.TELEGRAM_DAILY_CHAT_ID;
-    case 'maintenance':  return process.env.TELEGRAM_MAINTENANCE_CHAT_ID;
-    case 'driver':       return process.env.TELEGRAM_DRIVER_CHAT_ID;
-    case 'van':          return process.env.TELEGRAM_VAN_CHAT_ID;
-    case 'tuktuk':       return process.env.TELEGRAM_TUKTUK_CHAT_ID;
-    case 'feedback':     return process.env.TELEGRAM_FEEDBACK_CHAT_ID;
-    case 'paid_orders':  return process.env.TELEGRAM_PAID_ORDERS_CHAT_ID;
-    case 'todo':         return process.env.TELEGRAM_TODO_CHAT_ID;
+    case 'ops':           return process.env.TELEGRAM_OPS_CHAT_ID;
+    case 'fleet':         return process.env.TELEGRAM_FLEET_CHAT_ID;
+    case 'daily':         return process.env.TELEGRAM_DAILY_CHAT_ID;
+    case 'maintenance':   return process.env.TELEGRAM_MAINTENANCE_CHAT_ID;
+    case 'driver':        return process.env.TELEGRAM_DRIVER_CHAT_ID;
+    case 'van':           return process.env.TELEGRAM_VAN_CHAT_ID;
+    case 'van_driver':    return process.env.TELEGRAM_VAN_DRIVER_CHAT_ID;
+    case 'tuktuk':        return process.env.TELEGRAM_TUKTUK_CHAT_ID;
+    case 'tuktuk_driver': return process.env.TELEGRAM_TUKTUK_DRIVER_CHAT_ID;
+    case 'feedback':      return process.env.TELEGRAM_FEEDBACK_CHAT_ID;
+    case 'paid_orders':   return process.env.TELEGRAM_PAID_ORDERS_CHAT_ID;
+    case 'todo':          return process.env.TELEGRAM_TODO_CHAT_ID;
     case 'default':
-    default:             return process.env.TELEGRAM_CHAT_ID;
+    default:              return process.env.TELEGRAM_CHAT_ID;
   }
 }
 

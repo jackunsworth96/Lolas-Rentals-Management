@@ -431,15 +431,22 @@ export default function TransfersPage() {
                   <p className="font-lato text-base font-bold text-charcoal-brand leading-tight">
                     {t.customerName}
                   </p>
-                  {t.collectedAt ? (
-                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
-                      ✓ Collected
-                    </span>
-                  ) : (
-                    <span className="inline-flex shrink-0 items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-                      Pending
-                    </span>
-                  )}
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    {t.collectedAt ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+                        ✓ Collected
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                        Pending
+                      </span>
+                    )}
+                    {t.driverConfirmed && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-800">
+                        ✓ Driver Confirmed
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Route */}
@@ -530,6 +537,7 @@ export default function TransfersPage() {
                 <th className="px-3 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Net Profit</th>
                 <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Payment</th>
                 <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Driver Paid</th>
+                <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Confirmed</th>
                 <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Collected</th>
                 <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Source</th>
                 <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"> </th>
@@ -603,6 +611,13 @@ export default function TransfersPage() {
                           <span className="text-gray-400">—</span>
                         )}
                       </td>
+                      <td className="px-3 py-3 text-sm">
+                        {t.driverConfirmed ? (
+                          <Badge color="green">Confirmed</Badge>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
                       <td className="px-3 py-3 text-sm" onClick={(e) => e.stopPropagation()}>
                         {t.collectedAt ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
@@ -635,7 +650,7 @@ export default function TransfersPage() {
                     </tr>
                     {isExpanded && (
                       <tr key={`${t.id}-actions`}>
-                        <td colSpan={18} className="bg-gray-50 px-6 py-3">
+                        <td colSpan={19} className="bg-gray-50 px-6 py-3">
                           <div className="flex flex-wrap items-center gap-3">
                             {t.paymentStatus !== 'Paid' && (
                               <button

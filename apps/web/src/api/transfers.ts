@@ -39,6 +39,10 @@ export interface TransferRow {
   pickupTime: string | null;
   /** End of pickup window for shared vans in HH:MM format; null for point-in-time transfers. */
   pickupTimeEnd: string | null;
+  /** Whether the driver has tapped the Confirm button in Telegram. */
+  driverConfirmed: boolean;
+  /** ISO timestamp when the driver confirmed; null if not yet confirmed. */
+  driverConfirmedAt: string | null;
 }
 
 export function moneyAmount(val: { amount: number } | number | null | undefined): number {
