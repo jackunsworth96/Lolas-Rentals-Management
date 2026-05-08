@@ -47,13 +47,14 @@ interface NavBubbleItem {
 // ── Per-route Cloudinary public ID (full graphic is the control; no separate pill chrome) ─────
 
 const NAV_CLOUDINARY_BY_HREF: Record<string, string> = {
-  '/book': 'Nav_Home_xrpdbm',
-  '/book/reserve': 'Nav_Reserve_dcjxey',
-  '/book/transfers': 'Nav_Transfers_a2ylr1',
-  '/book/repairs': 'Nav_Repairs_j2bdcx',
-  '/book/about': 'Nav_About_cp48yb',
-  '/paw-card/partners': 'Nav_Paw_Card_xa1znf',
-  '/book/extend': 'Nav_Extend_sbrjgg',
+  '/book': 'Lolas_icons_Home_sheeyj',
+  '/book/reserve': 'Lolas_icons_Reserve_oxqtua',
+  '/book/extend': 'Lolas_icons_Extend_rental_dpydb4',
+  '/paw-card/partners': 'Lolas_icons_Paw_card_mw4zic',
+  '/book/transfers': 'Lolas_icons_Transfers_fnkr0d',
+  '/book/repairs': 'Lolas_icons_Repairs_nkoe0r',
+  '/book/about': 'Lolas_icons_About_xdznnb',
+  '/book/bepawsitive': 'Lolas_icons_Community_xbt94y',
 };
 
 function buildNavBubbleItems(items: NavItem[]): NavBubbleItem[] {
@@ -291,15 +292,18 @@ export default function TopNav({ items, rightSlot, partnerBenefit }: TopNavProps
                     onClick={() => setMenuOpen(false)}
                   >
                     {entry.iconPublicId ? (
-                      <CloudinaryImage
-                        publicId={entry.iconPublicId}
-                        plugins={[]}
-                        alt=""
-                        className="nav-svg-link__img"
-                        width={280}
-                        height={120}
-                        draggable={false}
-                      />
+                      <>
+                        <CloudinaryImage
+                          publicId={entry.iconPublicId}
+                          plugins={[]}
+                          alt=""
+                          className="nav-svg-link__img"
+                          width={120}
+                          height={120}
+                          draggable={false}
+                        />
+                        <span className="nav-svg-link__label">{entry.label}</span>
+                      </>
                     ) : (
                       <span className="nav-svg-link__fallback">{entry.label}</span>
                     )}

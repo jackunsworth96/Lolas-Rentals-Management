@@ -100,18 +100,9 @@
 
 /*
  * Orphan centering for 3-col grid (mobile + sub-900 layouts only; reset at 900px+):
- *   Last item alone on its row (3n+1, e.g. 7th of 7): auto margins center the cell.
- *   Two on last row (3n+2): nudge first of the pair.
+ * With 8 items on 4-col mobile and 4-col desktop there are no orphans.
+ * At sub-900 tablet (2-col) 8 items = 4 clean rows — no orphan rules needed.
  */
-@media (max-width: 899px) {
-  .pill-col:last-child:nth-child(3n + 1) {
-    margin-left: auto;
-    margin-right: auto;
-  }
-  .pill-col:last-child:nth-child(3n + 2) {
-    margin-left: calc(100% / 6);
-  }
-}
 
 /* ── SVG-as-button nav (no gold pill chrome) ─────────────────────────────── */
 
@@ -122,8 +113,10 @@
   box-sizing: border-box;
 
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 0.35rem;
 
   text-decoration: none;
   background: transparent;
@@ -155,8 +148,9 @@
 
 .nav-svg-link__img {
   width: 100%;
-  max-width: min(100%, 260px);
+  max-width: min(100%, 110px);
   height: auto;
+  aspect-ratio: 1 / 1;
   display: block;
   object-fit: contain;
   user-select: none;
@@ -165,14 +159,14 @@
 
 /*
  * Web + tablet: scale icons with viewport height, but keep a sane desktop size
- * (clamp avoids the previous all-min() rule, which read as tiny on large monitors).
  */
 @media (min-width: 600px) {
   .nav-svg-link__img {
+    max-width: min(100%, 120px);
     max-height: clamp(
-      118px,
-      calc((100dvh - 64px - 10rem) / 3.15),
-      260px
+      90px,
+      calc((100dvh - 64px - 12rem) / 2.5),
+      130px
     );
   }
 }
@@ -180,11 +174,11 @@
 /* Room for slightly larger assets on wide desktop */
 @media (min-width: 900px) {
   .nav-svg-link__img {
-    max-width: min(100%, 280px);
+    max-width: min(100%, 130px);
     max-height: clamp(
-      128px,
-      calc((100dvh - 64px - 9.25rem) / 2.05),
-      280px
+      100px,
+      calc((100dvh - 64px - 10rem) / 2.2),
+      140px
     );
   }
 }
@@ -199,28 +193,31 @@
   text-underline-offset: 0.2em;
 }
 
+.nav-svg-link__label {
+  font-family: 'Alegreya Sans', ui-sans-serif, sans-serif;
+  font-size: clamp(0.7rem, 2.5vw, 0.875rem);
+  font-weight: 700;
+  color: #363737;
+  text-align: center;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+}
+
 /* ── Tablet: 2-column layout (600–899px) ─────────────────────────────────── */
 
 @media (min-width: 600px) and (max-width: 899px) {
   .pill-col {
     flex: 0 0 50%;
-    /* Reset 3-col orphan rules */
     margin-left: 0 !important;
-  }
-
-  /* Centre the last item if it is alone on its row */
-  .pill-col:last-child:nth-child(odd) {
-    margin-left: 25% !important;
   }
 }
 
-/* ── Mobile: 3-column compact grid so all 7 items fit in the viewport ─────── */
+/* ── Mobile: 4-column grid so all 8 items fit in 2 rows ─────────────────── */
 
 @media (max-width: 599px) {
   .bubble-menu-overlay {
     align-items: center;
     justify-content: center;
-    /* Prefer one screen; tiny devices can still scroll */
     overflow-y: auto;
     padding: 0.5rem 0.35rem 0.75rem;
     box-sizing: border-box;
@@ -228,9 +225,8 @@
 
   .pill-list {
     max-width: 100%;
-    /* Match web/tablet gap under MENU paw */
     padding: var(--nav-bubble-pad-top) 0.25rem 0.5rem;
-    row-gap: 0.35rem;
+    row-gap: 0.5rem;
     column-gap: 0;
     align-content: center;
     justify-content: center;
@@ -238,16 +234,17 @@
 
   .pill-col,
   .pill-col--sub {
-    flex: 0 0 calc(100% / 3);
+    flex: 0 0 25%;
     box-sizing: border-box;
     min-width: 0;
-    padding: 0 0.2rem;
+    padding: 0 0.15rem;
   }
 
   .nav-svg-link {
     min-height: 0;
     min-width: 0;
     padding: 0.1rem 0.05rem;
+    gap: 0.25rem;
     transform: none !important;
   }
 
@@ -256,18 +253,18 @@
     transform: none !important;
   }
 
-  /*
-   * Cap icon height from available viewport below the header (64px) so ~3 icon rows fit.
-   * Subtract overlay padding + shared top pad + list bottom + row gaps (~6.75rem slack).
-   */
   .nav-svg-link__img {
     width: 100%;
     max-width: 100%;
     max-height: min(
-      104px,
-      max(48px, calc((100dvh - 64px - 6.75rem) / 3.35))
+      80px,
+      max(44px, calc((100dvh - 64px - 7rem) / 2.6))
     );
     height: auto;
     object-fit: contain;
+  }
+
+  .nav-svg-link__label {
+    font-size: clamp(0.6rem, 2.8vw, 0.75rem);
   }
 }

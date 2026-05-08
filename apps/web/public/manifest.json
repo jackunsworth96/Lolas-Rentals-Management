@@ -5,7 +5,7 @@
   "description": "Rent scooters, motorbikes, tuktuks and tricycles on Siargao Island.",
   "start_url": "/book",
   "scope": "/book",
-  "display": "standalone",
+  "display": "fullscreen",
   "orientation": "any",
   "theme_color": "#f1e6d6",
   "background_color": "#f1e6d6",

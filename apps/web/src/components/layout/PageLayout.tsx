@@ -49,18 +49,12 @@ function useNavItems() {
   return [
     { label: t('nav.home'), href: '/book' },
     { label: t('nav.reserve'), href: '/book/reserve' },
+    { label: t('nav.extend'), href: '/book/extend' },
+    { label: t('nav.pawCard'), href: '/paw-card/partners' },
     { label: t('nav.transfers'), href: '/book/transfers' },
     { label: t('nav.repairs'), href: '/book/repairs' },
     { label: t('nav.about'), href: '/book/about' },
-    {
-      label: t('nav.myRental'),
-      href: '/paw-card/partners',
-      isDropdown: true,
-      dropdownItems: [
-        { label: t('nav.partnerDiscounts'), href: '/paw-card/partners' },
-        { label: t('nav.extendRental'), href: '/book/extend' },
-      ],
-    },
+    { label: t('nav.community'), href: '/book/bepawsitive' },
   ];
 }
 
