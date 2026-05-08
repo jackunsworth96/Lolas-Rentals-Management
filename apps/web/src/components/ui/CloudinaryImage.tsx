@@ -1,6 +1,7 @@
 import { useMemo, type ComponentProps, type ImgHTMLAttributes } from 'react';
 import { AdvancedImage, lazyload, responsive, placeholder } from '@cloudinary/react';
 import { format, quality } from '@cloudinary/url-gen/actions/delivery';
+import { scale } from '@cloudinary/url-gen/actions/resize';
 import { auto as autoFormat } from '@cloudinary/url-gen/qualifiers/format';
 import { auto as autoQuality } from '@cloudinary/url-gen/qualifiers/quality';
 import { buildCloudinaryImageUrl, cld } from '../../lib/cloudinary.js';
@@ -27,14 +28,16 @@ export function CloudinaryImage({
   plugins = DEFAULT_PLUGINS,
   ...rest
 }: Props) {
-  const img = useMemo(
-    () =>
-      cld
-        .image(publicId)
-        .delivery(format(autoFormat()))
-        .delivery(quality(autoQuality())),
-    [publicId],
-  );
+  const img = useMemo(() => {
+    let chain = cld
+      .image(publicId)
+      .delivery(format(autoFormat()))
+      .delivery(quality(autoQuality()));
+    if (typeof width === 'number' && typeof height === 'number') {
+      chain = chain.resize(scale().width(width).height(height));
+    }
+    return chain;
+  }, [publicId, width, height]);
 
   if (cacheBust) {
     return (

@@ -298,8 +298,8 @@ export default function TopNav({ items, rightSlot, partnerBenefit }: TopNavProps
                           plugins={[]}
                           alt=""
                           className="nav-svg-link__img"
-                          width={120}
-                          height={120}
+                          width={420}
+                          height={420}
                           draggable={false}
                         />
                         <span className="nav-svg-link__label">{entry.label}</span>
