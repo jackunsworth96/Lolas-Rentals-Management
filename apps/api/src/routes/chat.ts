@@ -39,6 +39,7 @@ const ChatBodySchema = z.object({
 
 let pricingCache: { data: string; fetchedAt: number } | null = null;
 let addonsCache: { data: string; fetchedAt: number } | null = null;
+let locationsCache: { data: string; fetchedAt: number } | null = null;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 interface VehiclePricingRow {
@@ -193,8 +194,72 @@ async function fetchLiveAddons(): Promise<string> {
   return block;
 }
 
+interface LocationRow {
+  name: string;
+  delivery_cost: number;
+  collection_cost: number;
+  location_type: string | null;
+  store_id: string | null;
+}
+
+/** Active pickup / delivery areas from Settings → Locations (same rules as back office). */
+async function fetchLivePickupDeliveryLocations(): Promise<string> {
+  const now = Date.now();
+  if (locationsCache && now - locationsCache.fetchedAt < CACHE_TTL) {
+    return locationsCache.data;
+  }
+
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from('locations')
+    .select('name, delivery_cost, collection_cost, location_type, store_id')
+    .eq('is_active', true)
+    .or(`store_id.eq.${STORE_ID},store_id.is.null`)
+    .order('name');
+
+  if (error) throw new Error(`Locations fetch failed: ${error.message}`);
+
+  const rows = (data ?? []) as LocationRow[];
+  const lines: string[] = [];
+
+  for (const row of rows) {
+    const name = row.name?.trim() || 'Area';
+    const locType = (row.location_type ?? '').toLowerCase();
+    const isStore = locType === 'store';
+    const scope =
+      row.store_id == null
+        ? ' (all store bookings)'
+        : " (Lola's Rentals bookings)";
+    if (isStore) {
+      lines.push(
+        `- **${name}** — shop pickup & return: delivery **₱0**, collection **₱0**${scope}.`,
+      );
+    } else {
+      const d = Math.round(Number(row.delivery_cost));
+      const c = Math.round(Number(row.collection_cost));
+      lines.push(
+        `- ${name}: delivery **₱${d.toLocaleString()}**, collection **₱${c.toLocaleString()}**${scope}.`,
+      );
+    }
+  }
+
+  const block = [
+    'DELIVERY & COLLECTION — LIVE AREAS (from back office Settings → Locations):',
+    '- **We do offer** vehicle delivery and collection for rentals. Fees depend on the area — use only the list below.',
+    '',
+    ...(lines.length > 0
+      ? lines
+      : ['- Area list unavailable — ask the team on WhatsApp for your location.']),
+    '',
+    'Airport transfers are separate from rental delivery/collection (see transfer pricing above).',
+  ].join('\n');
+
+  locationsCache = { data: block, fetchedAt: now };
+  return block;
+}
+
 // ── System prompt ─────────────────────────────────────────────────────────────
-// {{LIVE_PRICING}} and {{LIVE_ADDONS}} are replaced at request time.
+// {{LIVE_PRICING}}, {{LIVE_ADDONS}}, {{LIVE_PICKUP_DELIVERY}} replaced at request time.
 
 const SYSTEM_PROMPT_TEMPLATE = `You are Lola's Assistant, the friendly on-site concierge for Lola's Rentals & Tours Inc. in General Luna, Siargao Island, Philippines.
 
@@ -232,9 +297,17 @@ WHAT'S INCLUDED WITH EVERY TUK TUK RENTAL (free)
 
 {{LIVE_ADDONS}}
 
+{{LIVE_PICKUP_DELIVERY}}
+
+PICKUP, DELIVERY & COLLECTION RULES
+- When customers ask where they can pick up, drop off, or whether you deliver/collect vehicles, use **only** the live area list above — names and ₱ amounts must match it. Never say we do not offer delivery/collection if that list has areas with fees or a store pickup row.
+- "Delivery" / "collection" here means bringing the rental vehicle to the customer's area or collecting it after the rental (not the airport transfer vans).
+- Rows marked as the **shop / ₱0** option mean customers can pick up and return at the physical store with no delivery charge.
+- Rows marked "(all store bookings)" apply across company stores; "(Lola's Rentals bookings)" applies when booking with this shop.
+
 EXTRAS RULES
 - Surf Rack and Bungee Cord are scooter-only extras — never offer or imply these for TukTuk.
-- TukTuk extras: Peace of Mind Cover (TukTuk), Delivery & Collection, Late Return (9 PM). Nothing else from the scooter list.
+- TukTuk extras: Peace of Mind Cover (TukTuk), Delivery & Collection, Late Return (9 PM). Nothing else from the scooter list. Delivery & collection fees follow the live area list above when customers choose that extra.
 - TukTuk cannot carry a surfboard and has no surf rack.
 - All extras are added in the basket when booking on the website.
 
@@ -315,6 +388,10 @@ Airport Transfers (IAO / Sayak Airport ↔ General Luna, both directions):
 - Private TukTuk: ₱1,800 flat
 Customers can add a transfer in the basket when booking a rental, or book a standalone transfer from the Transfers page.`;
 
+const STATIC_LOCATIONS_FALLBACK = `DELIVERY & COLLECTION — LIVE AREAS (from back office Settings → Locations):
+- **We do offer** vehicle delivery and collection for rentals. Exact areas and fees are shown on the website when you add the delivery/collection extra — use WhatsApp for a quote if you do not see your barangay listed.
+- Airport transfers are separate from rental delivery/collection.`;
+
 // ── Analytics logging ─────────────────────────────────────────────────────────
 
 interface ChatSessionPayload {
@@ -339,7 +416,7 @@ async function classifyTopics(
 
   const VALID_TOPICS = [
     'pricing', 'availability', 'booking', 'cancellation',
-    'vehicles', 'helmets', 'extras', 'transfers', 'lesson',
+    'vehicles', 'helmets', 'extras', 'delivery', 'transfers', 'lesson',
     'pawcard', 'contact', 'other',
   ] as const;
 
@@ -355,7 +432,8 @@ Tag definitions:
 - cancellation: refunds, cancellations, early returns
 - vehicles: scooter/tuktuk specs, differences between models
 - helmets: helmet questions, safety gear
-- extras: optional add-ons (surf rack, damage cover, delivery, late return)
+- extras: optional add-ons (surf rack, damage cover, late return)
+- delivery: rental vehicle delivery/collection to an address or area (not airport transfers)
 - transfers: airport transfers
 - lesson: riding lessons
 - pawcard: Paw Card, Be Pawsitive charity, partner discounts
@@ -481,21 +559,27 @@ router.post('/', chatLimiter, async (req, res, next) => {
       return;
     }
 
-    // Fetch live pricing and add-ons in parallel; fall back to static copy on any error.
+    // Fetch live pricing, add-ons, and delivery areas in parallel; fall back on errors.
     let livePricing = STATIC_PRICING_FALLBACK;
     let liveAddons = 'OPTIONAL EXTRAS — pricing unavailable, please check the website.';
+    let liveLocations = STATIC_LOCATIONS_FALLBACK;
     try {
-      [livePricing, liveAddons] = await Promise.all([fetchLivePricing(), fetchLiveAddons()]);
-    } catch (pricingErr) {
-      logger.warn({ err: pricingErr }, 'Live pricing/addons fetch failed — using static fallback');
-      // Try them independently so a partial failure still gets one
+      [livePricing, liveAddons, liveLocations] = await Promise.all([
+        fetchLivePricing(),
+        fetchLiveAddons(),
+        fetchLivePickupDeliveryLocations(),
+      ]);
+    } catch (bundleErr) {
+      logger.warn({ err: bundleErr }, 'Live chat context fetch failed — using per-section fallback');
       try { livePricing = await fetchLivePricing(); } catch { /* keep fallback */ }
       try { liveAddons = await fetchLiveAddons(); } catch { /* keep fallback */ }
+      try { liveLocations = await fetchLivePickupDeliveryLocations(); } catch { /* keep fallback */ }
     }
 
     const systemPrompt = SYSTEM_PROMPT_TEMPLATE
       .replace('{{LIVE_PRICING}}', livePricing)
-      .replace('{{LIVE_ADDONS}}', liveAddons);
+      .replace('{{LIVE_ADDONS}}', liveAddons)
+      .replace('{{LIVE_PICKUP_DELIVERY}}', liveLocations);
 
     let upstream: globalThis.Response;
     try {
