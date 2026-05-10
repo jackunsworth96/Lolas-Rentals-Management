@@ -41,7 +41,9 @@ import { startTransferReminderJob } from './jobs/transfer-reminder.job.js';
 import { startDeliveryReminderJob } from './jobs/delivery-reminder.job.js';
 import { publicLimiter } from './middleware/rate-limit.js';
 import { authenticate } from './middleware/authenticate.js';
+import { authenticateApiKey } from './middleware/authenticateApiKey.js';
 import inspectionRouter from './routes/inspections.js';
+import respondRouter from './routes/public-respond.js';
 
 import { SupabaseOrderRepository } from './adapters/supabase/order-repo.js';
 import { createOrderItemRepo } from './adapters/supabase/order-item-repo.js';
@@ -156,6 +158,8 @@ app.use('/api/public/waiver', waiverRouter);
 app.use('/api/waiver', authenticate, waiverRouter);
 
 app.use('/api/inspections', authenticate, inspectionRouter);
+
+app.use('/api/public/respond', authenticateApiKey, respondRouter);
 
 app.use('/api', routes);
 app.use('/api', (req: Request, res: Response) => {
