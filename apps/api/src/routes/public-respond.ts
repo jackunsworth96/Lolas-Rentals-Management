@@ -64,6 +64,7 @@ interface PricingRow {
     type: string | null;
     cc: number | null;
     max_pax: number | null;
+    peace_of_mind_per_day: number | null;
   };
 }
 
@@ -121,7 +122,7 @@ router.get('/fleet', async (_req, res, next) => {
     const [pricingResult, fleetResult, addonsResult] = await Promise.all([
       sb
         .from('vehicle_model_pricing')
-        .select('model_id, daily_rate, min_days, max_days, vehicle_models!inner(id, name, security_deposit, type, cc, max_pax)')
+        .select('model_id, daily_rate, min_days, max_days, vehicle_models!inner(id, name, security_deposit, type, cc, max_pax, peace_of_mind_per_day)')
         .eq('store_id', STORE_ID)
         .order('min_days'),
 
@@ -154,24 +155,18 @@ router.get('/fleet', async (_req, res, next) => {
       availableByModel.set(row.model_id, (availableByModel.get(row.model_id) ?? 0) + 1);
     }
 
-    // ── Peace-of-mind rate ────────────────────────────────────────────────────
-
-    const pomAddon = addonRows.find((a) =>
-      a.name.toLowerCase().includes('peace'),
-    );
-    const peacePricePerDay = pomAddon ? Number(pomAddon.price_per_day) : null;
-
     // ── Group pricing brackets by model ──────────────────────────────────────
 
     const byModel = new Map<
       string,
       {
-        name:             string;
-        type:             string | null;
-        cc:               number | null;
-        max_pax:          number | null;
-        security_deposit: number;
-        brackets:         Array<{ min_days: number; daily_rate: number }>;
+        name:                  string;
+        type:                  string | null;
+        cc:                    number | null;
+        max_pax:               number | null;
+        security_deposit:      number;
+        peace_of_mind_per_day: number | null;
+        brackets:              Array<{ min_days: number; daily_rate: number }>;
       }
     >();
 
@@ -179,12 +174,13 @@ router.get('/fleet', async (_req, res, next) => {
       const model = row.vehicle_models;
       if (!byModel.has(row.model_id)) {
         byModel.set(row.model_id, {
-          name:             model.name,
-          type:             model.type ?? null,
-          cc:               model.cc != null ? Number(model.cc) : null,
-          max_pax:          model.max_pax != null ? Number(model.max_pax) : null,
-          security_deposit: Number(model.security_deposit ?? 0),
-          brackets:         [],
+          name:                  model.name,
+          type:                  model.type ?? null,
+          cc:                    model.cc != null ? Number(model.cc) : null,
+          max_pax:               model.max_pax != null ? Number(model.max_pax) : null,
+          security_deposit:      Number(model.security_deposit ?? 0),
+          peace_of_mind_per_day: model.peace_of_mind_per_day != null ? Number(model.peace_of_mind_per_day) : null,
+          brackets:              [],
         });
       }
       byModel.get(row.model_id)!.brackets.push({
@@ -204,7 +200,7 @@ router.get('/fleet', async (_req, res, next) => {
         max_pax:               entry.max_pax,
         pricing:               mapToPricingBrackets(entry.brackets),
         deposit:               entry.security_deposit,
-        peace_of_mind_per_day: peacePricePerDay,
+        peace_of_mind_per_day: entry.peace_of_mind_per_day,
         available_count:       availableByModel.get(modelId) ?? 0,
       });
     }
