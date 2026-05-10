@@ -620,4 +620,49 @@ router.get('/availability', async (req, res, next) => {
   }
 });
 
+/**
+ * GET /api/public/respond/delivery-fee?area=General+Luna
+ *
+ * Returns the delivery fee for a named location.
+ * Matches case-insensitively against the locations table used by the booking system.
+ */
+router.get('/delivery-fee', async (req, res, next) => {
+  try {
+    const area = typeof req.query.area === 'string' ? req.query.area.trim() : null;
+
+    if (!area) {
+      res.status(400).json({ error: 'area query parameter is required' });
+      return;
+    }
+
+    const sb = getSupabaseClient();
+
+    const { data, error } = await sb
+      .from('locations')
+      .select('name, delivery_cost, location_type')
+      .eq('is_active', true)
+      .or(`store_id.eq.${STORE_ID},store_id.is.null`)
+      .ilike('name', area)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[respond/delivery-fee] locations query failed:', error);
+      throw error;
+    }
+
+    if (!data) {
+      res.json({ area, fee: null, available: false });
+      return;
+    }
+
+    res.json({
+      area:      data.name as string,
+      fee:       Number(data.delivery_cost),
+      available: true,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;
