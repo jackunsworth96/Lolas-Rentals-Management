@@ -50,6 +50,25 @@ interface FleetPayload {
   callout_charge: typeof CALLOUT_CHARGE;
 }
 
+// ── Booking lookup ────────────────────────────────────────────────────────────
+
+interface BookingRow {
+  order_reference: string;
+  status: string;
+  customer_name: string | null;
+  vehicle_model_id: string | null;
+  pickup_datetime: string | null;
+  dropoff_datetime: string | null;
+  store_id: string;
+  stores: { name: string } | null;
+  vehicle_models: { name: string } | null;
+}
+
+const BOOKING_COLUMNS =
+  'order_reference, status, customer_name, vehicle_model_id, pickup_datetime, dropoff_datetime, store_id, stores!store_id(name), vehicle_models!vehicle_model_id(name)';
+
+const RETURNABLE_STATUSES = ['active', 'confirmed', 'completed'] as const;
+
 // ── Raw DB row shapes ─────────────────────────────────────────────────────────
 
 interface PricingRow {
@@ -252,6 +271,78 @@ router.get('/fleet', async (_req, res, next) => {
 
     fleetCache = { data: payload, fetchedAt: now };
     res.json(payload);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/public/respond/booking?ref=LR-XXXX-XXXX
+ * GET /api/public/respond/booking?phone=+63912345678
+ *
+ * Looks up a booking in orders_raw by booking reference or customer phone.
+ * Returns only active, confirmed, or completed bookings (not cancelled).
+ * When multiple results match a phone number the most recently created
+ * active booking is returned first.
+ */
+router.get('/booking', async (req, res, next) => {
+  try {
+    const ref   = typeof req.query.ref   === 'string' ? req.query.ref.trim()   : null;
+    const phone = typeof req.query.phone === 'string' ? req.query.phone.trim() : null;
+
+    if (!ref && !phone) {
+      res.status(400).json({ error: 'Please provide ref or phone query parameter' });
+      return;
+    }
+
+    const sb = getSupabaseClient();
+
+    let query = sb
+      .from('orders_raw')
+      .select(BOOKING_COLUMNS)
+      .in('status', RETURNABLE_STATUSES);
+
+    if (ref) {
+      query = query.ilike('order_reference', ref);
+    } else {
+      // phone search: return most recent active booking first, then by created_at desc
+      query = query
+        .eq('customer_mobile', phone!)
+        .order('status', { ascending: false }) // 'confirmed' > 'completed' > 'active' lexically; real priority handled below
+        .order('created_at', { ascending: false });
+    }
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+
+    const rows = (data ?? []) as BookingRow[];
+
+    if (rows.length === 0) {
+      res.status(404).json({ error: 'No booking found' });
+      return;
+    }
+
+    // When multiple rows come back (phone search), prioritise active status.
+    const STATUS_PRIORITY: Record<string, number> = { active: 0, confirmed: 1, completed: 2 };
+    const row = rows.length === 1
+      ? rows[0]
+      : [...rows].sort(
+          (a, b) => (STATUS_PRIORITY[a.status] ?? 99) - (STATUS_PRIORITY[b.status] ?? 99),
+        )[0];
+
+    res.json({
+      found: true,
+      booking: {
+        reference:        row.order_reference,
+        status:           row.status,
+        customer_name:    row.customer_name ?? null,
+        vehicle:          row.vehicle_models?.name ?? null,
+        pickup_datetime:  row.pickup_datetime  ?? null,
+        dropoff_datetime: row.dropoff_datetime ?? null,
+        store:            row.stores?.name ?? null,
+      },
+    });
   } catch (err) {
     next(err);
   }
