@@ -159,22 +159,6 @@ app.use('/api/waiver', authenticate, waiverRouter);
 
 app.use('/api/inspections', authenticate, inspectionRouter);
 
-// Temporary debug endpoint — remove once the auth issue is diagnosed.
-app.get('/api/public/respond/debug-auth', (req: Request, res: Response) => {
-  const headerValue = req.headers['x-api-key'];
-  const envKey = process.env.RESPOND_IO_API_KEY;
-  res.json({
-    header_received: headerValue ?? 'NOT PRESENT',
-    env_key_set: !!envKey,
-    env_key_length: envKey?.length ?? 0,
-    header_length: typeof headerValue === 'string' ? headerValue.length : 0,
-    lengths_match:
-      typeof headerValue === 'string' &&
-      envKey !== undefined &&
-      headerValue.length === envKey.length,
-  });
-});
-
 app.use('/api/public/respond', authenticateApiKey, respondRouter);
 
 app.use('/api', routes);
