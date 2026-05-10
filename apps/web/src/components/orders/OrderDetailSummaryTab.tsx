@@ -394,6 +394,8 @@ export function OrderDetailSummaryTab({
     // 'pending' → IOU not yet collected. 'absorbed' → rolled into the
     // settlement payment row (captured there, not here). Either way skip.
     if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return s;
+    // Addon with payment_method_id='pending' is an unpaid IOU (collect later) — no cash received yet.
+    if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return s;
     // Refunds reduce the net amount received from the customer.
     if (p.paymentType === 'refund') return s - (p.amount ?? 0);
     return s + (p.amount ?? 0);
@@ -513,6 +515,7 @@ export function OrderDetailSummaryTab({
     const settleRentalPaidH = payments.reduce((s, p) => {
       if (p.paymentType === 'deposit') return s;
       if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return s;
+      if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return s;
       return s + (p.amount ?? 0);
     }, 0);
     // Return charges increase the balance before the deposit is applied.
@@ -1339,6 +1342,7 @@ export function OrderDetailSummaryTab({
                 const settleRentalPaid = payments.reduce((s, p) => {
                   if (p.paymentType === 'deposit') return s;
                   if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return s;
+                  if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return s;
                   return s + (p.amount ?? 0);
                 }, 0);
                 const settleBalance = Math.max(0, total + returnChargesAmount - settleRentalPaid);

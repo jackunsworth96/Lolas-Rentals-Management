@@ -113,6 +113,7 @@ export async function refundOrder(
     if (p.paymentType === 'deposit') return sum;
     if (p.paymentType === 'extension' &&
         (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return sum;
+    if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return sum;
     if (p.paymentType === 'refund') return sum.subtract(Money.php(p.amount));
     return sum.add(Money.php(p.amount));
   }, Money.zero());

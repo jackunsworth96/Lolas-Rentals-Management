@@ -67,10 +67,10 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
     if (orderIds.length > 0) {
       const { data: payments, error: payErr } = await sb
         .from('payments')
-        .select('order_id, amount, payment_type, settlement_status')
+        .select('order_id, amount, payment_type, settlement_status, payment_method_id')
         .in('order_id', orderIds);
       if (!payErr && payments) {
-        for (const p of payments as Array<{ order_id: string; amount: number | string | null; payment_type: string | null; settlement_status: string | null }>) {
+        for (const p of payments as Array<{ order_id: string; amount: number | string | null; payment_type: string | null; settlement_status: string | null; payment_method_id: string | null }>) {
           if (p.payment_type === 'extension') {
             extendedOrderIds.add(p.order_id);
           }
@@ -96,6 +96,8 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
           // final_total — counting them here would mask unpaid rental charges.
           // Pending extension IOUs are excluded because no cash was received yet.
           if (p.payment_type === 'deposit') continue;
+          // Addon with payment_method_id='pending' is an unpaid IOU (collect later) — no cash received yet.
+          if (p.payment_type === 'addon' && p.payment_method_id === 'pending' && p.settlement_status === 'pending') continue;
           // Refunds represent money returned to the customer — subtract from net received.
           if (p.payment_type === 'refund') {
             paymentsByOrder.set(

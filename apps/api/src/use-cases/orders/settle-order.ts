@@ -101,6 +101,7 @@ export async function settleOrder(
   const paidNonDepositPayments = payments.filter((p) => {
     if (p.paymentType === 'deposit') return false;
     if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return false;
+    if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return false;
     return true;
   });
 

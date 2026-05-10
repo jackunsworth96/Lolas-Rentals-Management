@@ -52,6 +52,9 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
 
   const total = enrichedData?.finalTotal ?? moneyAmount(order.finalTotal);
   const totalPaid = enrichedData?.totalPaid ?? payments.reduce((s, p) => {
+    if (p.paymentType === 'deposit') return s;
+    if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return s;
+    if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return s;
     if (p.paymentType === 'refund') return s - (p.amount ?? 0);
     return s + (p.amount ?? 0);
   }, 0);

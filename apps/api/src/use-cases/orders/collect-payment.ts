@@ -61,6 +61,7 @@ export async function collectPayment(
     if (p.paymentType === 'deposit') return sum;
     if (p.paymentType === 'extension' &&
         (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return sum;
+    if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return sum;
     if (p.paymentType === 'refund') return sum - p.amount;
     return sum + p.amount;
   }, 0);
@@ -182,6 +183,7 @@ export async function collectPayment(
     if (p.paymentType === 'deposit') return sum;
     if (p.paymentType === 'extension' &&
         (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return sum;
+    if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return sum;
     if (p.paymentType === 'refund') return sum.subtract(Money.php(p.amount));
     return sum.add(Money.php(p.amount));
   }, Money.zero());
