@@ -493,4 +493,91 @@ router.get('/booking', async (req, res, next) => {
   }
 });
 
+/**
+ * GET /api/public/respond/availability?date=2026-05-15[&type=scooter|tuktuk]
+ *
+ * Returns available fleet counts grouped by vehicle model for the given date.
+ * Availability is currently based on fleet.status = 'Available' only.
+ * A future update will cross-reference active orders for the requested date.
+ */
+router.get('/availability', async (req, res, next) => {
+  try {
+    const dateParam = typeof req.query.date === 'string' ? req.query.date.trim() : null;
+    const typeParam = typeof req.query.type === 'string' ? req.query.type.trim().toLowerCase() : null;
+
+    if (!dateParam || !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+      res.status(400).json({ error: 'date query parameter is required (format: YYYY-MM-DD)' });
+      return;
+    }
+
+    if (typeParam !== null && typeParam !== 'scooter' && typeParam !== 'tuktuk') {
+      res.status(400).json({ error: 'type must be "scooter" or "tuktuk"' });
+      return;
+    }
+
+    const sb = getSupabaseClient();
+
+    // Fetch available fleet rows joined with their model name and type.
+    // type column on vehicle_models comes from migration 153.
+    let fleetQuery = sb
+      .from('fleet')
+      .select('model_id, vehicle_models!inner(name, type)')
+      .eq('store_id', STORE_ID)
+      .eq('status', 'Available');
+
+    // If type filter requested, filter via the joined vehicle_models.type column.
+    if (typeParam) {
+      fleetQuery = fleetQuery.eq('vehicle_models.type', typeParam);
+    }
+
+    const { data: fleetData, error: fleetError } = await fleetQuery;
+
+    if (fleetError) {
+      console.error('[respond/availability] fleet query failed:', fleetError);
+      throw fleetError;
+    }
+
+    type FleetAvailRow = {
+      model_id: string;
+      vehicle_models: { name: string; type: string | null } | { name: string; type: string | null }[];
+    };
+
+    const rows = (fleetData ?? []) as FleetAvailRow[];
+
+    // Group by model, counting available units.
+    const byModel = new Map<string, { model: string; type: string | null; count: number }>();
+
+    for (const row of rows) {
+      // PostgREST may return the joined relation as an object or array.
+      const vm = Array.isArray(row.vehicle_models) ? row.vehicle_models[0] : row.vehicle_models;
+      if (!vm) continue;
+
+      const key = row.model_id;
+      if (!byModel.has(key)) {
+        byModel.set(key, { model: vm.name, type: vm.type ?? null, count: 0 });
+      }
+      byModel.get(key)!.count += 1;
+    }
+
+    const available = [...byModel.values()]
+      .sort((a, b) => a.model.localeCompare(b.model))
+      .map((entry) => ({
+        model:           entry.model,
+        type:            entry.type,
+        available_count: entry.count,
+      }));
+
+    const totalAvailable = available.reduce((sum, e) => sum + e.available_count, 0);
+
+    res.json({
+      date:             dateParam,
+      available,
+      total_available:  totalAvailable,
+      has_availability: totalAvailable > 0,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;
