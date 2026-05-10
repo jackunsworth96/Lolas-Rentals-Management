@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import * as chrono from 'chrono-node';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 
 /**
@@ -494,38 +495,75 @@ router.get('/booking', async (req, res, next) => {
 });
 
 /**
- * GET /api/public/respond/availability?date=2026-05-15[&type=scooter|tuktuk]
+ * GET /api/public/respond/availability
  *
- * Returns available fleet counts grouped by vehicle model for the given date.
- * Availability is currently based on fleet.status = 'Available' only.
+ * Query params:
+ *   date      - ISO date YYYY-MM-DD (mutually exclusive with query)
+ *   query     - natural language date string e.g. "Friday", "May 15", "next week"
+ *   type      - optional: "scooter" | "tuktuk"
+ *   quantity  - optional integer, default 1
+ *
+ * Returns available fleet counts grouped by vehicle model.
+ * Availability is based on fleet.status = 'Available' only.
  * A future update will cross-reference active orders for the requested date.
  */
 router.get('/availability', async (req, res, next) => {
   try {
-    const dateParam = typeof req.query.date === 'string' ? req.query.date.trim() : null;
-    const typeParam = typeof req.query.type === 'string' ? req.query.type.trim().toLowerCase() : null;
+    const rawDate     = typeof req.query.date     === 'string' ? req.query.date.trim()             : null;
+    const queryParam  = typeof req.query.query    === 'string' ? req.query.query.trim()            : null;
+    const typeParam   = typeof req.query.type     === 'string' ? req.query.type.trim().toLowerCase() : null;
+    const quantityRaw = typeof req.query.quantity === 'string' ? req.query.quantity.trim()         : null;
 
-    if (!dateParam || !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
-      res.status(400).json({ error: 'date query parameter is required (format: YYYY-MM-DD)' });
+    // ── Resolve date string ───────────────────────────────────────────────────
+
+    let dateString: string;
+
+    if (rawDate) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+        res.status(400).json({ error: 'date must be in YYYY-MM-DD format' });
+        return;
+      }
+      dateString = rawDate;
+    } else if (queryParam) {
+      // Parse natural language date relative to now, preferring future dates.
+      // Use 'Asia/Manila' locale string for the formatted output so day boundaries
+      // are correct regardless of the server's local timezone.
+      const parsed = chrono.parseDate(queryParam, new Date(), { forwardDate: true });
+      if (!parsed) {
+        res.status(400).json({
+          error: "I couldn't understand those dates. Could you try sharing them like this: 10 May or Friday 16 May?",
+        });
+        return;
+      }
+      dateString = parsed.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }); // yields YYYY-MM-DD
+    } else {
+      res.status(400).json({ error: 'Provide either a date (YYYY-MM-DD) or a query parameter' });
       return;
     }
+
+    // ── Validate optional params ──────────────────────────────────────────────
 
     if (typeParam !== null && typeParam !== 'scooter' && typeParam !== 'tuktuk') {
       res.status(400).json({ error: 'type must be "scooter" or "tuktuk"' });
       return;
     }
 
+    const quantity = quantityRaw !== null ? parseInt(quantityRaw, 10) : 1;
+    if (isNaN(quantity) || quantity < 1) {
+      res.status(400).json({ error: 'quantity must be a positive integer' });
+      return;
+    }
+
+    // ── Fleet query ───────────────────────────────────────────────────────────
+
     const sb = getSupabaseClient();
 
-    // Fetch available fleet rows joined with their model name and type.
-    // type column on vehicle_models comes from migration 153.
     let fleetQuery = sb
       .from('fleet')
       .select('model_id, vehicle_models!inner(name, type)')
       .eq('store_id', STORE_ID)
       .eq('status', 'Available');
 
-    // If type filter requested, filter via the joined vehicle_models.type column.
     if (typeParam) {
       fleetQuery = fleetQuery.eq('vehicle_models.type', typeParam);
     }
@@ -544,36 +582,38 @@ router.get('/availability', async (req, res, next) => {
 
     const rows = (fleetData ?? []) as FleetAvailRow[];
 
-    // Group by model, counting available units.
+    // ── Group by model ────────────────────────────────────────────────────────
+
     const byModel = new Map<string, { model: string; type: string | null; count: number }>();
 
     for (const row of rows) {
-      // PostgREST may return the joined relation as an object or array.
       const vm = Array.isArray(row.vehicle_models) ? row.vehicle_models[0] : row.vehicle_models;
       if (!vm) continue;
 
-      const key = row.model_id;
-      if (!byModel.has(key)) {
-        byModel.set(key, { model: vm.name, type: vm.type ?? null, count: 0 });
+      if (!byModel.has(row.model_id)) {
+        byModel.set(row.model_id, { model: vm.name, type: vm.type ?? null, count: 0 });
       }
-      byModel.get(key)!.count += 1;
+      byModel.get(row.model_id)!.count += 1;
     }
 
     const available = [...byModel.values()]
       .sort((a, b) => a.model.localeCompare(b.model))
       .map((entry) => ({
-        model:           entry.model,
-        type:            entry.type,
-        available_count: entry.count,
+        model:                   entry.model,
+        type:                    entry.type,
+        available_count:         entry.count,
+        sufficient_availability: entry.count >= quantity,
       }));
 
     const totalAvailable = available.reduce((sum, e) => sum + e.available_count, 0);
+    const hasAvailability = available.some((e) => e.sufficient_availability);
 
     res.json({
-      date:             dateParam,
+      date:               dateString,
+      requested_quantity: quantity,
       available,
-      total_available:  totalAvailable,
-      has_availability: totalAvailable > 0,
+      total_available:    totalAvailable,
+      has_availability:   hasAvailability,
     });
   } catch (err) {
     next(err);
