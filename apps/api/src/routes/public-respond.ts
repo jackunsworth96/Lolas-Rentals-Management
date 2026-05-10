@@ -274,14 +274,46 @@ router.get('/fleet', async (_req, res, next) => {
   }
 });
 
+// ── Shared booking response builder ──────────────────────────────────────────
+
+interface BookingResponse {
+  reference:        string;
+  status:           string;
+  customer_name:    string | null;
+  vehicle:          string;
+  pickup_datetime:  string | null;
+  dropoff_datetime: string | null;
+  store:            string;
+}
+
+const STATUS_PRIORITY: Record<string, number> = { active: 0, confirmed: 1, completed: 2 };
+
+async function resolveStoreName(
+  sb: ReturnType<typeof getSupabaseClient>,
+  storeId: string,
+): Promise<string> {
+  const { data, error } = await sb.from('stores').select('name').eq('id', storeId).maybeSingle();
+  if (error) console.error('[respond/booking] stores query failed:', error);
+  return data?.name ?? 'Unknown';
+}
+
+async function resolveVehicleModelName(
+  sb: ReturnType<typeof getSupabaseClient>,
+  modelId: string,
+): Promise<string> {
+  const { data, error } = await sb.from('vehicle_models').select('name').eq('id', modelId).maybeSingle();
+  if (error) console.error('[respond/booking] vehicle_models query failed:', error);
+  return data?.name ?? 'Unknown';
+}
+
 /**
  * GET /api/public/respond/booking?ref=LR-XXXX-XXXX
  * GET /api/public/respond/booking?phone=+63912345678
  *
- * Looks up a booking in orders_raw by booking reference or customer phone.
- * Returns only active, confirmed, or completed bookings (not cancelled).
- * When multiple results match a phone number the most recently created
- * active booking is returned first.
+ * Searches orders_raw first (web/walk-in bookings), then falls back to the
+ * orders table (staff-created bookings). Returns only active, confirmed, or
+ * completed bookings. When multiple results match a phone number the most
+ * recently created active booking is returned first.
  */
 router.get('/booking', async (req, res, next) => {
   try {
@@ -295,87 +327,166 @@ router.get('/booking', async (req, res, next) => {
 
     const sb = getSupabaseClient();
 
-    // ── Step 1: fetch booking row ─────────────────────────────────────────────
+    // ── Path A: orders_raw ────────────────────────────────────────────────────
 
-    let bookingQuery = sb
+    let rawQuery = sb
       .from('orders_raw')
       .select(BOOKING_COLUMNS)
       .in('status', RETURNABLE_STATUSES);
 
     if (ref) {
-      bookingQuery = bookingQuery.ilike('order_reference', ref);
+      rawQuery = rawQuery.ilike('order_reference', ref);
     } else {
-      bookingQuery = bookingQuery
+      rawQuery = rawQuery
         .eq('customer_mobile', phone!)
         .order('created_at', { ascending: false });
     }
 
-    const { data: bookingData, error: bookingError } = await bookingQuery;
+    const { data: rawData, error: rawError } = await rawQuery;
 
-    if (bookingError) {
-      console.error('[respond/booking] orders_raw query failed:', bookingError);
-      throw bookingError;
+    if (rawError) {
+      console.error('[respond/booking] orders_raw query failed:', rawError);
+      throw rawError;
     }
 
-    const rows = (bookingData ?? []) as BookingRow[];
+    const rawRows = (rawData ?? []) as BookingRow[];
 
-    if (rows.length === 0) {
-      res.status(404).json({ error: 'No booking found' });
-      return;
-    }
+    if (rawRows.length > 0) {
+      const row = rawRows.length === 1
+        ? rawRows[0]
+        : [...rawRows].sort(
+            (a, b) => (STATUS_PRIORITY[a.status] ?? 99) - (STATUS_PRIORITY[b.status] ?? 99),
+          )[0];
 
-    // When multiple rows (phone search), prioritise active → confirmed → completed.
-    const STATUS_PRIORITY: Record<string, number> = { active: 0, confirmed: 1, completed: 2 };
-    const row = rows.length === 1
-      ? rows[0]
-      : [...rows].sort(
-          (a, b) => (STATUS_PRIORITY[a.status] ?? 99) - (STATUS_PRIORITY[b.status] ?? 99),
-        )[0];
+      const [storeName, vehicleName] = await Promise.all([
+        row.store_id        ? resolveStoreName(sb, row.store_id)               : Promise.resolve('Unknown'),
+        row.vehicle_model_id ? resolveVehicleModelName(sb, row.vehicle_model_id) : Promise.resolve('Unknown'),
+      ]);
 
-    // ── Step 2: resolve store name (graceful fallback) ───────────────────────
-
-    let storeName = 'Unknown';
-    if (row.store_id) {
-      const { data: storeData, error: storeError } = await sb
-        .from('stores')
-        .select('name')
-        .eq('id', row.store_id)
-        .maybeSingle();
-      if (storeError) {
-        console.error('[respond/booking] stores query failed:', storeError);
-      } else {
-        storeName = storeData?.name ?? 'Unknown';
-      }
-    }
-
-    // ── Step 3: resolve vehicle model name (graceful fallback) ───────────────
-
-    let vehicleName = 'Unknown';
-    if (row.vehicle_model_id) {
-      const { data: modelData, error: modelError } = await sb
-        .from('vehicle_models')
-        .select('name')
-        .eq('id', row.vehicle_model_id)
-        .maybeSingle();
-      if (modelError) {
-        console.error('[respond/booking] vehicle_models query failed:', modelError);
-      } else {
-        vehicleName = modelData?.name ?? 'Unknown';
-      }
-    }
-
-    res.json({
-      found: true,
-      booking: {
+      const booking: BookingResponse = {
         reference:        row.order_reference,
         status:           row.status,
-        customer_name:    row.customer_name   ?? null,
+        customer_name:    row.customer_name ?? null,
         vehicle:          vehicleName,
         pickup_datetime:  row.pickup_datetime  ?? null,
         dropoff_datetime: row.dropoff_datetime ?? null,
         store:            storeName,
-      },
-    });
+      };
+
+      res.json({ found: true, booking });
+      return;
+    }
+
+    // ── Path B: orders table (staff-created bookings) ─────────────────────────
+
+    // 1. Find the order(s).
+    let ordersQuery = sb
+      .from('orders')
+      .select('id, booking_token, status, store_id, customer_id, created_at')
+      .in('status', RETURNABLE_STATUSES);
+
+    if (ref) {
+      ordersQuery = ordersQuery.ilike('booking_token', ref);
+    } else {
+      // Look up customer_id by phone first, then find their orders.
+      const { data: customerData, error: customerError } = await sb
+        .from('customers')
+        .select('id')
+        .eq('mobile', phone!)
+        .maybeSingle();
+
+      if (customerError) {
+        console.error('[respond/booking] customers query failed:', customerError);
+        throw customerError;
+      }
+
+      if (!customerData) {
+        res.status(404).json({ error: 'No booking found' });
+        return;
+      }
+
+      ordersQuery = ordersQuery
+        .eq('customer_id', customerData.id)
+        .order('created_at', { ascending: false });
+    }
+
+    const { data: ordersData, error: ordersError } = await ordersQuery;
+
+    if (ordersError) {
+      console.error('[respond/booking] orders query failed:', ordersError);
+      throw ordersError;
+    }
+
+    type OrderRow = { id: string; booking_token: string | null; status: string; store_id: string; customer_id: string | null; created_at: string };
+    const orderRows = (ordersData ?? []) as OrderRow[];
+
+    if (orderRows.length === 0) {
+      res.status(404).json({ error: 'No booking found' });
+      return;
+    }
+
+    const order = orderRows.length === 1
+      ? orderRows[0]
+      : [...orderRows].sort(
+          (a, b) => (STATUS_PRIORITY[a.status] ?? 99) - (STATUS_PRIORITY[b.status] ?? 99),
+        )[0];
+
+    // 2. Fetch customer name.
+    let customerName: string | null = null;
+    if (order.customer_id) {
+      const { data: custData, error: custError } = await sb
+        .from('customers')
+        .select('name')
+        .eq('id', order.customer_id)
+        .maybeSingle();
+      if (custError) {
+        console.error('[respond/booking] customer name query failed:', custError);
+      } else {
+        customerName = custData?.name ?? null;
+      }
+    }
+
+    // 3. Fetch the first order_item for dates and vehicle name.
+    //    vehicle_name is stored as text; vehicle_model_id used as fallback for the name.
+    let pickupDatetime:  string | null = null;
+    let dropoffDatetime: string | null = null;
+    let vehicleName = 'Unknown';
+
+    const { data: itemData, error: itemError } = await sb
+      .from('order_items')
+      .select('pickup_datetime, dropoff_datetime, vehicle_name, vehicle_model_id')
+      .eq('order_id', order.id)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (itemError) {
+      console.error('[respond/booking] order_items query failed:', itemError);
+    } else if (itemData) {
+      pickupDatetime  = (itemData.pickup_datetime  as string | null) ?? null;
+      dropoffDatetime = (itemData.dropoff_datetime as string | null) ?? null;
+
+      if (itemData.vehicle_name) {
+        vehicleName = itemData.vehicle_name as string;
+      } else if (itemData.vehicle_model_id) {
+        vehicleName = await resolveVehicleModelName(sb, itemData.vehicle_model_id as string);
+      }
+    }
+
+    // 4. Resolve store name.
+    const storeName = await resolveStoreName(sb, order.store_id);
+
+    const booking: BookingResponse = {
+      reference:        order.booking_token ?? order.id,
+      status:           order.status,
+      customer_name:    customerName,
+      vehicle:          vehicleName,
+      pickup_datetime:  pickupDatetime,
+      dropoff_datetime: dropoffDatetime,
+      store:            storeName,
+    };
+
+    res.json({ found: true, booking });
   } catch (err) {
     console.error('[respond/booking] unhandled error:', err);
     next(err);
