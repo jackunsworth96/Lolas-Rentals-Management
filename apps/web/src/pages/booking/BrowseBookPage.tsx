@@ -488,7 +488,7 @@ function BookingCalendar({
       if (dateStr < pickupDate) {
         onReset(dateStr);
       } else if (dateStr === pickupDate) {
-        onReset('');
+        onDropoffSelect(dateStr);
       } else {
         onDropoffSelect(dateStr);
       }
