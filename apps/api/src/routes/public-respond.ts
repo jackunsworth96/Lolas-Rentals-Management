@@ -332,9 +332,9 @@ router.get('/booking', async (req, res, next) => {
           (a, b) => (STATUS_PRIORITY[a.status] ?? 99) - (STATUS_PRIORITY[b.status] ?? 99),
         )[0];
 
-    // ── Step 2: resolve store name ────────────────────────────────────────────
+    // ── Step 2: resolve store name (graceful fallback) ───────────────────────
 
-    let storeName: string | null = null;
+    let storeName = 'Unknown';
     if (row.store_id) {
       const { data: storeData, error: storeError } = await sb
         .from('stores')
@@ -343,14 +343,14 @@ router.get('/booking', async (req, res, next) => {
         .maybeSingle();
       if (storeError) {
         console.error('[respond/booking] stores query failed:', storeError);
-        throw storeError;
+      } else {
+        storeName = storeData?.name ?? 'Unknown';
       }
-      storeName = storeData?.name ?? null;
     }
 
-    // ── Step 3: resolve vehicle model name ────────────────────────────────────
+    // ── Step 3: resolve vehicle model name (graceful fallback) ───────────────
 
-    let vehicleName: string | null = null;
+    let vehicleName = 'Unknown';
     if (row.vehicle_model_id) {
       const { data: modelData, error: modelError } = await sb
         .from('vehicle_models')
@@ -359,9 +359,9 @@ router.get('/booking', async (req, res, next) => {
         .maybeSingle();
       if (modelError) {
         console.error('[respond/booking] vehicle_models query failed:', modelError);
-        throw modelError;
+      } else {
+        vehicleName = modelData?.name ?? 'Unknown';
       }
-      vehicleName = modelData?.name ?? null;
     }
 
     res.json({
