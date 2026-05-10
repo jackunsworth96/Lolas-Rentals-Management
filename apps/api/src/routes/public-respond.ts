@@ -64,7 +64,6 @@ interface PricingRow {
     type: string | null;
     cc: number | null;
     max_pax: number | null;
-    peace_of_mind_per_day: number | null;
   };
 }
 
@@ -122,7 +121,7 @@ router.get('/fleet', async (_req, res, next) => {
     const [pricingResult, fleetResult, addonsResult] = await Promise.all([
       sb
         .from('vehicle_model_pricing')
-        .select('model_id, daily_rate, min_days, max_days, vehicle_models!inner(id, name, security_deposit, type, cc, max_pax, peace_of_mind_per_day)')
+        .select('model_id, daily_rate, min_days, max_days, vehicle_models!inner(id, name, security_deposit, type, cc, max_pax)')
         .eq('store_id', STORE_ID)
         .order('min_days'),
 
@@ -155,6 +154,30 @@ router.get('/fleet', async (_req, res, next) => {
       availableByModel.set(row.model_id, (availableByModel.get(row.model_id) ?? 0) + 1);
     }
 
+    // ── Peace-of-mind rate — matched per vehicle type ─────────────────────────
+    //
+    // The addons table has two separate rows:
+    //   "Peace of Mind Cover"          → scooters (95/day)
+    //   "Peace of Mind Cover (TukTuk)" → tuktuk   (200/day)
+    //
+    // We identify which rate applies to each model by checking whether the
+    // addon name contains "tuktuk" and whether the model is a tuktuk (via
+    // type column if available, or model name as fallback).
+
+    const pomAddons = addonRows.filter((a) => a.name.toLowerCase().includes('peace'));
+
+    function pomRateForModel(modelType: string | null, modelName: string): number | null {
+      const isTuktuk =
+        modelType === 'tuktuk' ||
+        modelName.toLowerCase().includes('tuk');
+
+      const match = isTuktuk
+        ? pomAddons.find((a) => a.name.toLowerCase().includes('tuktuk') || a.name.toLowerCase().includes('tuk tuk'))
+        : pomAddons.find((a) => !a.name.toLowerCase().includes('tuktuk') && !a.name.toLowerCase().includes('tuk tuk'));
+
+      return match != null ? Number(match.price_per_day) : null;
+    }
+
     // ── Group pricing brackets by model ──────────────────────────────────────
 
     const byModel = new Map<
@@ -179,7 +202,7 @@ router.get('/fleet', async (_req, res, next) => {
           cc:                    model.cc != null ? Number(model.cc) : null,
           max_pax:               model.max_pax != null ? Number(model.max_pax) : null,
           security_deposit:      Number(model.security_deposit ?? 0),
-          peace_of_mind_per_day: model.peace_of_mind_per_day != null ? Number(model.peace_of_mind_per_day) : null,
+          peace_of_mind_per_day: pomRateForModel(model.type ?? null, model.name),
           brackets:              [],
         });
       }
