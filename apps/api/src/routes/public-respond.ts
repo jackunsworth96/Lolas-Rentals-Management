@@ -60,12 +60,10 @@ interface BookingRow {
   pickup_datetime: string | null;
   dropoff_datetime: string | null;
   store_id: string;
-  stores: { name: string }[];
-  vehicle_models: { name: string }[];
 }
 
 const BOOKING_COLUMNS =
-  'order_reference, status, customer_name, vehicle_model_id, pickup_datetime, dropoff_datetime, store_id, stores!store_id(name), vehicle_models!vehicle_model_id(name)';
+  'order_reference, status, customer_name, vehicle_model_id, pickup_datetime, dropoff_datetime, store_id';
 
 const RETURNABLE_STATUSES = ['active', 'confirmed', 'completed'] as const;
 
@@ -297,33 +295,36 @@ router.get('/booking', async (req, res, next) => {
 
     const sb = getSupabaseClient();
 
-    let query = sb
+    // ── Step 1: fetch booking row ─────────────────────────────────────────────
+
+    let bookingQuery = sb
       .from('orders_raw')
       .select(BOOKING_COLUMNS)
       .in('status', RETURNABLE_STATUSES);
 
     if (ref) {
-      query = query.ilike('order_reference', ref);
+      bookingQuery = bookingQuery.ilike('order_reference', ref);
     } else {
-      // phone search: return most recent active booking first, then by created_at desc
-      query = query
+      bookingQuery = bookingQuery
         .eq('customer_mobile', phone!)
-        .order('status', { ascending: false }) // 'confirmed' > 'completed' > 'active' lexically; real priority handled below
         .order('created_at', { ascending: false });
     }
 
-    const { data, error } = await query;
+    const { data: bookingData, error: bookingError } = await bookingQuery;
 
-    if (error) throw error;
+    if (bookingError) {
+      console.error('[respond/booking] orders_raw query failed:', bookingError);
+      throw bookingError;
+    }
 
-    const rows = (data ?? []) as BookingRow[];
+    const rows = (bookingData ?? []) as BookingRow[];
 
     if (rows.length === 0) {
       res.status(404).json({ error: 'No booking found' });
       return;
     }
 
-    // When multiple rows come back (phone search), prioritise active status.
+    // When multiple rows (phone search), prioritise active → confirmed → completed.
     const STATUS_PRIORITY: Record<string, number> = { active: 0, confirmed: 1, completed: 2 };
     const row = rows.length === 1
       ? rows[0]
@@ -331,19 +332,52 @@ router.get('/booking', async (req, res, next) => {
           (a, b) => (STATUS_PRIORITY[a.status] ?? 99) - (STATUS_PRIORITY[b.status] ?? 99),
         )[0];
 
+    // ── Step 2: resolve store name ────────────────────────────────────────────
+
+    let storeName: string | null = null;
+    if (row.store_id) {
+      const { data: storeData, error: storeError } = await sb
+        .from('stores')
+        .select('name')
+        .eq('id', row.store_id)
+        .maybeSingle();
+      if (storeError) {
+        console.error('[respond/booking] stores query failed:', storeError);
+        throw storeError;
+      }
+      storeName = storeData?.name ?? null;
+    }
+
+    // ── Step 3: resolve vehicle model name ────────────────────────────────────
+
+    let vehicleName: string | null = null;
+    if (row.vehicle_model_id) {
+      const { data: modelData, error: modelError } = await sb
+        .from('vehicle_models')
+        .select('name')
+        .eq('id', row.vehicle_model_id)
+        .maybeSingle();
+      if (modelError) {
+        console.error('[respond/booking] vehicle_models query failed:', modelError);
+        throw modelError;
+      }
+      vehicleName = modelData?.name ?? null;
+    }
+
     res.json({
       found: true,
       booking: {
         reference:        row.order_reference,
         status:           row.status,
-        customer_name:    row.customer_name ?? null,
-        vehicle:          row.vehicle_models[0]?.name ?? null,
+        customer_name:    row.customer_name   ?? null,
+        vehicle:          vehicleName,
         pickup_datetime:  row.pickup_datetime  ?? null,
         dropoff_datetime: row.dropoff_datetime ?? null,
-        store:            row.stores[0]?.name ?? null,
+        store:            storeName,
       },
     });
   } catch (err) {
+    console.error('[respond/booking] unhandled error:', err);
     next(err);
   }
 });
