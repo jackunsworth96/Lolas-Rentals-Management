@@ -60,8 +60,8 @@ interface BookingRow {
   pickup_datetime: string | null;
   dropoff_datetime: string | null;
   store_id: string;
-  stores: { name: string } | null;
-  vehicle_models: { name: string } | null;
+  stores: { name: string }[];
+  vehicle_models: { name: string }[];
 }
 
 const BOOKING_COLUMNS =
@@ -337,10 +337,10 @@ router.get('/booking', async (req, res, next) => {
         reference:        row.order_reference,
         status:           row.status,
         customer_name:    row.customer_name ?? null,
-        vehicle:          row.vehicle_models?.name ?? null,
+        vehicle:          row.vehicle_models[0]?.name ?? null,
         pickup_datetime:  row.pickup_datetime  ?? null,
         dropoff_datetime: row.dropoff_datetime ?? null,
-        store:            row.stores?.name ?? null,
+        store:            row.stores[0]?.name ?? null,
       },
     });
   } catch (err) {
