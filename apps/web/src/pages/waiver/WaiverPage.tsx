@@ -467,7 +467,7 @@ export default function WaiverPage() {
                 {referralSource === 'accommodation' && (
                   <div>
                     <label className="font-lato text-sm font-medium text-charcoal-brand block mb-1">
-                      Which hotel or accommodation?
+                      Which hotel or accommodation? <span className="text-red-600">*</span>
                     </label>
                     <input
                       className={inputClass}
@@ -493,7 +493,7 @@ export default function WaiverPage() {
               <button
                 type="button"
                 className={`${goldCtaClass} mt-6 w-full`}
-                disabled={!agreedToTerms || !driverName.trim() || !referralSource}
+                disabled={!agreedToTerms || !driverName.trim() || !referralSource || (referralSource === 'accommodation' && !referralDetail.trim())}
                 onClick={() => setStep(2)}
               >
                 {t('waiver.continueToSign')}

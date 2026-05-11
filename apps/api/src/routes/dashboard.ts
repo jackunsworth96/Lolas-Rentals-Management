@@ -246,8 +246,15 @@ router.get('/summary', authenticate, async (req, res, next) => {
           )
         `)
         .eq('orders.status', 'active')
-        .gt('dropoff_datetime', new Date().toISOString())
+        .gte('dropoff_datetime', `${manilaDate}T00:00:00+08:00`)
+        .lte('dropoff_datetime', `${manilaDate}T23:59:59+08:00`)
         .then((r) => ({ key: 'ninepmCandidates' as const, ...r })),
+
+      sb
+        .from('order_addons')
+        .select('order_id, addon_name')
+        .or('addon_name.ilike.%9pm%,addon_name.ilike.%21:00%,addon_name.ilike.%ninepm%')
+        .then((r) => ({ key: 'ninepmAddons' as const, ...r })),
 
       sb
         .from('fleet')
@@ -419,6 +426,12 @@ router.get('/summary', authenticate, async (req, res, next) => {
     const ninepmCandidates = dataMap.get('ninepmCandidates') ?? [];
     const maintenanceRecords = dataMap.get('maintenanceRecords') ?? [];
 
+    const ninePmAddonOrderIds = new Set<string>(
+      (dataMap.get('ninepmAddons') ?? [])
+        .map((a) => a.order_id as string)
+        .filter(Boolean),
+    );
+
     const rentableStatusIds = new Set(
       fleetStatuses
         .filter((s) => s.is_rentable === true)
@@ -450,7 +463,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
 
     const nowMs = Date.now();
 
-    function buildNinepmVehicles(items: Record<string, unknown>[], sid?: string): NinePmVehicle[] {
+    function buildNinepmVehicles(items: Record<string, unknown>[], ninePmOrderIds: Set<string>, sid?: string): NinePmVehicle[] {
       const result: NinePmVehicle[] = [];
       for (const item of items) {
         const orderInfo = item.orders as {
@@ -464,15 +477,13 @@ router.get('/summary', authenticate, async (req, res, next) => {
         if (!orderInfo || orderInfo.status !== 'active') continue;
         if (sid && orderInfo.store_id !== sid) continue;
 
+        const orderId = item.order_id as string | null;
+        if (!orderId || !ninePmOrderIds.has(orderId)) continue;
+
         const dropoff = item.dropoff_datetime as string | null;
         if (!dropoff) continue;
 
         const dropDate = new Date(dropoff);
-        const manilaStr = dropDate.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
-        if (manilaStr !== manilaDate) continue;
-
-        const manilaHour = Number(dropDate.toLocaleString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', hour12: false }));
-        if (manilaHour < 21) continue;
 
         const vehicleId = item.vehicle_id as string | null;
         const vehicleModel = (vehicleId ? fleetModelMap.get(vehicleId) : null) ?? (item.vehicle_name as string) ?? '—';
@@ -486,7 +497,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
         const vehicleName = (item.vehicle_name as string | null) ?? vehicleModel;
 
         result.push({
-          orderId: item.order_id as string,
+          orderId,
           vehicleModel,
           vehicleName,
           returnTime,
@@ -590,7 +601,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
         (sum, o) => sum + Number(o.security_deposit ?? 0), 0,
       );
 
-      const ninepmVehicles = buildNinepmVehicles(ninepmCandidates, sid);
+      const ninepmVehicles = buildNinepmVehicles(ninepmCandidates, ninePmAddonOrderIds, sid);
       /** Only vehicles with an open maintenance record (In Progress), not fleet status heuristics (e.g. Service Vehicle). */
       const maintenanceVehicles = buildMaintenanceVehicles(maintenanceRecords, sid);
 
