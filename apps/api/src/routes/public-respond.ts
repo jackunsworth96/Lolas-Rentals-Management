@@ -406,10 +406,10 @@ async function resolveVehicleModelName(
  * GET /api/public/respond/booking?ref=LR-XXXX-XXXX
  * GET /api/public/respond/booking?phone=+63912345678
  *
- * Searches orders_raw first (web/walk-in bookings), then falls back to the
- * orders table (staff-created bookings). Returns only active, confirmed, or
- * completed bookings. When multiple results match a phone number the most
- * recently created active booking is returned first.
+ * Searches orders first (activated/staff-created bookings with full financial
+ * data), then falls back to orders_raw for unactivated direct/walk-in bookings.
+ * Returns only bookings in returnable statuses. When multiple results match a
+ * phone number the most recently created active booking is returned first.
  */
 router.get('/booking', async (req, res, next) => {
   try {
@@ -423,60 +423,14 @@ router.get('/booking', async (req, res, next) => {
 
     const sb = getSupabaseClient();
 
-    // ── Path A: orders_raw ────────────────────────────────────────────────────
-
-    let rawQuery = sb
-      .from('orders_raw')
-      .select(BOOKING_COLUMNS)
-      .in('status', RAW_RETURNABLE_STATUSES);
-
-    if (ref) {
-      rawQuery = rawQuery.ilike('order_reference', ref);
-    } else {
-      rawQuery = rawQuery
-        .in('customer_mobile', philippinePhoneVariants(phone!))
-        .order('created_at', { ascending: false });
-    }
-
-    const { data: rawData, error: rawError } = await rawQuery;
-
-    if (rawError) {
-      console.error('[respond/booking] orders_raw query failed:', rawError);
-      throw rawError;
-    }
-
-    const rawRows = (rawData ?? []) as BookingRow[];
-
-    if (rawRows.length > 0) {
-      const row = rawRows.length === 1
-        ? rawRows[0]
-        : [...rawRows].sort(
-            (a, b) => (STATUS_PRIORITY[a.status] ?? 99) - (STATUS_PRIORITY[b.status] ?? 99),
-          )[0];
-
-      const [storeName, vehicleName] = await Promise.all([
-        row.store_id        ? resolveStoreName(sb, row.store_id)               : Promise.resolve('Unknown'),
-        row.vehicle_model_id ? resolveVehicleModelName(sb, row.vehicle_model_id) : Promise.resolve('Unknown'),
-      ]);
-
-      const booking: BookingResponse = {
-        reference:        row.order_reference,
-        status:           row.status,
-        customer_name:    row.customer_name ?? null,
-        vehicle:          vehicleName,
-        pickup_datetime:  row.pickup_datetime  ?? null,
-        dropoff_datetime: row.dropoff_datetime ?? null,
-        store:            storeName,
-        estimated_total:  row.web_quote_raw != null ? Number(row.web_quote_raw) : null,
-      };
-
-      res.json({ found: true, booking });
-      return;
-    }
-
-    // ── Path B: orders table (staff-created bookings) ─────────────────────────
+    // ── Path A: orders table (activated / staff-created bookings) ─────────────
 
     // 1. Find the order(s).
+    // For phone lookups: resolve customer_id first. If no customer record exists
+    // in the customers table, skip the orders query entirely and fall through to
+    // orders_raw (the booking may exist there before activation).
+    let skipOrdersQuery = false;
+
     let ordersQuery = sb
       .from('orders')
       .select(
@@ -500,16 +454,17 @@ router.get('/booking', async (req, res, next) => {
 
       const customerId = customerRows?.[0]?.id ?? null;
       if (!customerId) {
-        res.status(404).json({ error: 'No booking found' });
-        return;
+        skipOrdersQuery = true;
+      } else {
+        ordersQuery = ordersQuery
+          .eq('customer_id', customerId)
+          .order('created_at', { ascending: false });
       }
-
-      ordersQuery = ordersQuery
-        .eq('customer_id', customerId)
-        .order('created_at', { ascending: false });
     }
 
-    const { data: ordersData, error: ordersError } = await ordersQuery;
+    const { data: ordersData, error: ordersError } = skipOrdersQuery
+      ? { data: [], error: null }
+      : await ordersQuery;
 
     if (ordersError) {
       console.error('[respond/booking] orders query failed:', ordersError);
@@ -530,74 +485,125 @@ router.get('/booking', async (req, res, next) => {
     };
     const orderRows = (ordersData ?? []) as OrderRow[];
 
-    if (orderRows.length === 0) {
+    if (orderRows.length > 0) {
+      const order = orderRows.length === 1
+        ? orderRows[0]
+        : [...orderRows].sort(
+            (a, b) => (STATUS_PRIORITY[a.status] ?? 99) - (STATUS_PRIORITY[b.status] ?? 99),
+          )[0];
+
+      // 2. Fetch customer name.
+      let customerName: string | null = null;
+      if (order.customer_id) {
+        const { data: custData, error: custError } = await sb
+          .from('customers')
+          .select('name')
+          .eq('id', order.customer_id)
+          .maybeSingle();
+        if (custError) {
+          console.error('[respond/booking] customer name query failed:', custError);
+        } else {
+          customerName = custData?.name ?? null;
+        }
+      }
+
+      // 3. Fetch the first order_item for dates and vehicle name.
+      //    vehicle_name is stored as text; vehicle_model_id used as fallback for the name.
+      let pickupDatetime:  string | null = null;
+      let dropoffDatetime: string | null = null;
+      let vehicleName = 'Unknown';
+
+      const { data: itemData, error: itemError } = await sb
+        .from('order_items')
+        .select('pickup_datetime, dropoff_datetime, vehicle_name, vehicle_model_id')
+        .eq('order_id', order.id)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (itemError) {
+        console.error('[respond/booking] order_items query failed:', itemError);
+      } else if (itemData) {
+        pickupDatetime  = (itemData.pickup_datetime  as string | null) ?? null;
+        dropoffDatetime = (itemData.dropoff_datetime as string | null) ?? null;
+
+        if (itemData.vehicle_name) {
+          vehicleName = itemData.vehicle_name as string;
+        } else if (itemData.vehicle_model_id) {
+          vehicleName = await resolveVehicleModelName(sb, itemData.vehicle_model_id as string);
+        }
+      }
+
+      // 4. Resolve store name.
+      const storeName = await resolveStoreName(sb, order.store_id);
+
+      const booking: BookingResponse = {
+        reference:        order.booking_token ?? order.id,
+        status:           order.status,
+        customer_name:    customerName,
+        vehicle:          vehicleName,
+        pickup_datetime:  pickupDatetime,
+        dropoff_datetime: dropoffDatetime,
+        store:            storeName,
+        balance_due:      order.balance_due      != null ? Number(order.balance_due)      : null,
+        final_total:      order.final_total      != null ? Number(order.final_total)      : null,
+        security_deposit: order.security_deposit != null ? Number(order.security_deposit) : null,
+        deposit_status:   order.deposit_status   ?? null,
+      };
+
+      res.json({ found: true, booking });
+      return;
+    }
+
+    // ── Path B: orders_raw fallback (unactivated direct/walk-in bookings) ─────
+
+    let rawQuery = sb
+      .from('orders_raw')
+      .select(BOOKING_COLUMNS)
+      .in('status', RAW_RETURNABLE_STATUSES);
+
+    if (ref) {
+      rawQuery = rawQuery.ilike('order_reference', ref);
+    } else {
+      rawQuery = rawQuery
+        .in('customer_mobile', philippinePhoneVariants(phone!))
+        .order('created_at', { ascending: false });
+    }
+
+    const { data: rawData, error: rawError } = await rawQuery;
+
+    if (rawError) {
+      console.error('[respond/booking] orders_raw query failed:', rawError);
+      throw rawError;
+    }
+
+    const rawRows = (rawData ?? []) as BookingRow[];
+
+    if (rawRows.length === 0) {
       res.status(404).json({ error: 'No booking found' });
       return;
     }
 
-    const order = orderRows.length === 1
-      ? orderRows[0]
-      : [...orderRows].sort(
+    const row = rawRows.length === 1
+      ? rawRows[0]
+      : [...rawRows].sort(
           (a, b) => (STATUS_PRIORITY[a.status] ?? 99) - (STATUS_PRIORITY[b.status] ?? 99),
         )[0];
 
-    // 2. Fetch customer name.
-    let customerName: string | null = null;
-    if (order.customer_id) {
-      const { data: custData, error: custError } = await sb
-        .from('customers')
-        .select('name')
-        .eq('id', order.customer_id)
-        .maybeSingle();
-      if (custError) {
-        console.error('[respond/booking] customer name query failed:', custError);
-      } else {
-        customerName = custData?.name ?? null;
-      }
-    }
-
-    // 3. Fetch the first order_item for dates and vehicle name.
-    //    vehicle_name is stored as text; vehicle_model_id used as fallback for the name.
-    let pickupDatetime:  string | null = null;
-    let dropoffDatetime: string | null = null;
-    let vehicleName = 'Unknown';
-
-    const { data: itemData, error: itemError } = await sb
-      .from('order_items')
-      .select('pickup_datetime, dropoff_datetime, vehicle_name, vehicle_model_id')
-      .eq('order_id', order.id)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-
-    if (itemError) {
-      console.error('[respond/booking] order_items query failed:', itemError);
-    } else if (itemData) {
-      pickupDatetime  = (itemData.pickup_datetime  as string | null) ?? null;
-      dropoffDatetime = (itemData.dropoff_datetime as string | null) ?? null;
-
-      if (itemData.vehicle_name) {
-        vehicleName = itemData.vehicle_name as string;
-      } else if (itemData.vehicle_model_id) {
-        vehicleName = await resolveVehicleModelName(sb, itemData.vehicle_model_id as string);
-      }
-    }
-
-    // 4. Resolve store name.
-    const storeName = await resolveStoreName(sb, order.store_id);
+    const [storeName, vehicleName] = await Promise.all([
+      row.store_id         ? resolveStoreName(sb, row.store_id)                : Promise.resolve('Unknown'),
+      row.vehicle_model_id ? resolveVehicleModelName(sb, row.vehicle_model_id) : Promise.resolve('Unknown'),
+    ]);
 
     const booking: BookingResponse = {
-      reference:        order.booking_token ?? order.id,
-      status:           order.status,
-      customer_name:    customerName,
+      reference:        row.order_reference,
+      status:           row.status,
+      customer_name:    row.customer_name ?? null,
       vehicle:          vehicleName,
-      pickup_datetime:  pickupDatetime,
-      dropoff_datetime: dropoffDatetime,
+      pickup_datetime:  row.pickup_datetime  ?? null,
+      dropoff_datetime: row.dropoff_datetime ?? null,
       store:            storeName,
-      balance_due:      order.balance_due      != null ? Number(order.balance_due)      : null,
-      final_total:      order.final_total      != null ? Number(order.final_total)      : null,
-      security_deposit: order.security_deposit != null ? Number(order.security_deposit) : null,
-      deposit_status:   order.deposit_status   ?? null,
+      estimated_total:  row.web_quote_raw != null ? Number(row.web_quote_raw) : null,
     };
 
     res.json({ found: true, booking });
