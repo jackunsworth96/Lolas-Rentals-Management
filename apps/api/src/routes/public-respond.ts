@@ -81,6 +81,16 @@ interface BookingRow {
 const BOOKING_COLUMNS =
   'order_reference, status, customer_name, vehicle_model_id, pickup_datetime, dropoff_datetime, store_id, web_quote_raw';
 
+/**
+ * Statuses for orders_raw that represent a live (non-cancelled, non-skipped)
+ * booking. orders_raw never holds 'active'/'confirmed'/'completed' — those
+ * belong to the orders table. Using the wrong status set here caused every
+ * orders_raw lookup to silently return 0 rows, making unactivated direct/walk-in
+ * bookings invisible to this endpoint.
+ */
+const RAW_RETURNABLE_STATUSES = ['unprocessed', 'processed'] as const;
+
+/** Statuses on the canonical orders table that represent a live booking. */
 const RETURNABLE_STATUSES = ['active', 'confirmed', 'completed'] as const;
 
 // ── Raw DB row shapes ─────────────────────────────────────────────────────────
@@ -418,7 +428,7 @@ router.get('/booking', async (req, res, next) => {
     let rawQuery = sb
       .from('orders_raw')
       .select(BOOKING_COLUMNS)
-      .in('status', RETURNABLE_STATUSES);
+      .in('status', RAW_RETURNABLE_STATUSES);
 
     if (ref) {
       rawQuery = rawQuery.ilike('order_reference', ref);
