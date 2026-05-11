@@ -18,6 +18,7 @@ const CALLOUT_CHARGE = { minimum: 200, per_km: 20 } as const;
 
 /** 5-minute in-memory cache — same TTL used by chat.ts for live pricing. */
 let fleetCache: { data: FleetPayload; fetchedAt: number } | null = null;
+let transfersCache: { data: TransfersPayload; fetchedAt: number } | null = null;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
 // ── Response shape ────────────────────────────────────────────────────────────
@@ -51,20 +52,34 @@ interface FleetPayload {
   callout_charge: typeof CALLOUT_CHARGE;
 }
 
+// ── Transfer route pricing ────────────────────────────────────────────────────
+
+interface TransferRouteEntry {
+  route:        string;
+  van_type:     string | null;
+  pricing_type: 'fixed' | 'per_head';
+  price:        number;
+}
+
+interface TransfersPayload {
+  transfers: TransferRouteEntry[];
+}
+
 // ── Booking lookup ────────────────────────────────────────────────────────────
 
 interface BookingRow {
-  order_reference: string;
-  status: string;
-  customer_name: string | null;
+  order_reference:  string;
+  status:           string;
+  customer_name:    string | null;
   vehicle_model_id: string | null;
-  pickup_datetime: string | null;
+  pickup_datetime:  string | null;
   dropoff_datetime: string | null;
-  store_id: string;
+  store_id:         string;
+  web_quote_raw:    number | null;
 }
 
 const BOOKING_COLUMNS =
-  'order_reference, status, customer_name, vehicle_model_id, pickup_datetime, dropoff_datetime, store_id';
+  'order_reference, status, customer_name, vehicle_model_id, pickup_datetime, dropoff_datetime, store_id, web_quote_raw';
 
 const RETURNABLE_STATUSES = ['active', 'confirmed', 'completed'] as const;
 
@@ -113,6 +128,25 @@ function mapToPricingBrackets(
     '3_6_days':    sorted[1]?.daily_rate ?? null,
     '7_plus_days': sorted[2]?.daily_rate ?? null,
   };
+}
+
+/**
+ * All plausible Philippine mobile variants for `.in('mobile', …)` / customer_mobile
+ * so lookups succeed whether rows are normalised to E.164 or not yet.
+ */
+function philippinePhoneVariants(raw: string): string[] {
+  const d = raw.replace(/[\s\-().]/g, '');
+
+  let local: string | null = null;
+
+  if (/^\+639\d{9}$/.test(d))  local = d.slice(3);
+  else if (/^639\d{9}$/.test(d)) local = d.slice(2);
+  else if (/^09\d{9}$/.test(d))  local = d.slice(1);
+  else if (/^9\d{9}$/.test(d))   local = d;
+
+  if (!local) return [raw];
+
+  return [`+63${local}`, `0${local}`, `63${local}`, local];
 }
 
 // ── Router ────────────────────────────────────────────────────────────────────
@@ -275,16 +309,67 @@ router.get('/fleet', async (_req, res, next) => {
   }
 });
 
+/**
+ * GET /api/public/respond/transfers
+ *
+ * Returns all active transfer routes with pricing. Excludes internal-only
+ * columns (driver_cut) so the payload is safe to expose to third-party callers.
+ * pricing_type values are exactly as stored: 'fixed' or 'per_head'.
+ */
+router.get('/transfers', async (_req, res, next) => {
+  try {
+    const now = Date.now();
+
+    if (transfersCache && now - transfersCache.fetchedAt < CACHE_TTL_MS) {
+      res.json(transfersCache.data);
+      return;
+    }
+
+    const sb = getSupabaseClient();
+
+    const { data, error } = await sb
+      .from('transfer_routes')
+      .select('route, van_type, price, pricing_type')
+      .or(`store_id.eq.${STORE_ID},store_id.is.null`)
+      .eq('is_active', true)
+      .order('route')
+      .order('van_type');
+
+    if (error) {
+      console.error('[respond/transfers] transfer_routes query failed:', error);
+      throw error;
+    }
+
+    const transfers: TransferRouteEntry[] = (data ?? []).map((r) => ({
+      route:        r.route as string,
+      van_type:     (r.van_type as string | null) ?? null,
+      pricing_type: (r.pricing_type as 'fixed' | 'per_head') ?? 'fixed',
+      price:        Number(r.price),
+    }));
+
+    const payload: TransfersPayload = { transfers };
+    transfersCache = { data: payload, fetchedAt: now };
+    res.json(payload);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── Shared booking response builder ──────────────────────────────────────────
 
 interface BookingResponse {
-  reference:        string;
-  status:           string;
-  customer_name:    string | null;
-  vehicle:          string;
-  pickup_datetime:  string | null;
-  dropoff_datetime: string | null;
-  store:            string;
+  reference:         string;
+  status:            string;
+  customer_name:     string | null;
+  vehicle:           string;
+  pickup_datetime:   string | null;
+  dropoff_datetime:  string | null;
+  store:             string;
+  estimated_total?:  number | null;
+  balance_due?:      number | null;
+  final_total?:      number | null;
+  security_deposit?: number | null;
+  deposit_status?:   string | null;
 }
 
 const STATUS_PRIORITY: Record<string, number> = { active: 0, confirmed: 1, completed: 2 };
@@ -339,7 +424,7 @@ router.get('/booking', async (req, res, next) => {
       rawQuery = rawQuery.ilike('order_reference', ref);
     } else {
       rawQuery = rawQuery
-        .eq('customer_mobile', phone!)
+        .in('customer_mobile', philippinePhoneVariants(phone!))
         .order('created_at', { ascending: false });
     }
 
@@ -372,6 +457,7 @@ router.get('/booking', async (req, res, next) => {
         pickup_datetime:  row.pickup_datetime  ?? null,
         dropoff_datetime: row.dropoff_datetime ?? null,
         store:            storeName,
+        estimated_total:  row.web_quote_raw != null ? Number(row.web_quote_raw) : null,
       };
 
       res.json({ found: true, booking });
@@ -383,31 +469,33 @@ router.get('/booking', async (req, res, next) => {
     // 1. Find the order(s).
     let ordersQuery = sb
       .from('orders')
-      .select('id, booking_token, status, store_id, customer_id, created_at')
+      .select(
+        'id, booking_token, status, store_id, customer_id, created_at, balance_due, final_total, security_deposit, deposit_status',
+      )
       .in('status', RETURNABLE_STATUSES);
 
     if (ref) {
       ordersQuery = ordersQuery.ilike('booking_token', ref);
     } else {
-      // Look up customer_id by phone first, then find their orders.
-      const { data: customerData, error: customerError } = await sb
+      const { data: customerRows, error: customerError } = await sb
         .from('customers')
         .select('id')
-        .eq('mobile', phone!)
-        .maybeSingle();
+        .in('mobile', philippinePhoneVariants(phone!))
+        .limit(1);
 
       if (customerError) {
         console.error('[respond/booking] customers query failed:', customerError);
         throw customerError;
       }
 
-      if (!customerData) {
+      const customerId = customerRows?.[0]?.id ?? null;
+      if (!customerId) {
         res.status(404).json({ error: 'No booking found' });
         return;
       }
 
       ordersQuery = ordersQuery
-        .eq('customer_id', customerData.id)
+        .eq('customer_id', customerId)
         .order('created_at', { ascending: false });
     }
 
@@ -418,7 +506,18 @@ router.get('/booking', async (req, res, next) => {
       throw ordersError;
     }
 
-    type OrderRow = { id: string; booking_token: string | null; status: string; store_id: string; customer_id: string | null; created_at: string };
+    type OrderRow = {
+      id:               string;
+      booking_token:    string | null;
+      status:           string;
+      store_id:         string;
+      customer_id:      string | null;
+      created_at:       string;
+      balance_due:      number | string | null;
+      final_total:      number | string | null;
+      security_deposit: number | string | null;
+      deposit_status:   string | null;
+    };
     const orderRows = (ordersData ?? []) as OrderRow[];
 
     if (orderRows.length === 0) {
@@ -485,6 +584,10 @@ router.get('/booking', async (req, res, next) => {
       pickup_datetime:  pickupDatetime,
       dropoff_datetime: dropoffDatetime,
       store:            storeName,
+      balance_due:      order.balance_due      != null ? Number(order.balance_due)      : null,
+      final_total:      order.final_total      != null ? Number(order.final_total)      : null,
+      security_deposit: order.security_deposit != null ? Number(order.security_deposit) : null,
+      deposit_status:   order.deposit_status   ?? null,
     };
 
     res.json({ found: true, booking });
