@@ -60,6 +60,7 @@ export interface CashAdvanceSchedule {
   deductionPerPeriod: number;
   remainingBalance: number;
   startDate: string;
+  paydayType: 'mid_month' | 'end_of_month';
 }
 
 export interface PayrollPort {

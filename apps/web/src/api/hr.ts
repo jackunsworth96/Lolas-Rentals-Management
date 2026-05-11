@@ -270,6 +270,7 @@ export interface CashAdvanceScheduleRow {
   deductionPerPeriod: number;
   remainingBalance: number;
   startDate: string;
+  paydayType: 'mid_month' | 'end_of_month';
   repaymentType: 'installments';
 }
 
@@ -279,7 +280,12 @@ export interface GrantCashAdvancePayload {
   amount: number;
   date: string;
   repaymentType: 'lump-sum' | 'installments';
+  /** Lump-sum: which payday to deduct on. Defaults to 'end_of_month'. */
+  deductOn?: 'mid_month' | 'end_of_month';
+  /** Installments: number of payroll periods (min 2). */
   periods?: number;
+  /** Installments: which payday to start from. Defaults to 'end_of_month'. */
+  startPayday?: 'mid_month' | 'end_of_month';
   expenseAccountId: string;
   cashAccountId: string;
   description?: string;

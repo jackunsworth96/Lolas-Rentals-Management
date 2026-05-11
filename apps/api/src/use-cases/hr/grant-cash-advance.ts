@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { formatManilaDate } from '../../utils/manila-date.js';
 
 export type RepaymentType = 'lump-sum' | 'installments';
+export type PaydayType = 'mid_month' | 'end_of_month';
 
 export interface GrantCashAdvanceInput {
   storeId: string;
@@ -18,8 +19,12 @@ export interface GrantCashAdvanceInput {
   amount: number;
   date: string;
   repaymentType: RepaymentType;
-  /** Number of payroll periods to split across — required when repaymentType is 'installments'. */
+  /** Lump-sum: which payday to deduct the full amount on. Defaults to 'end_of_month'. */
+  deductOn?: PaydayType;
+  /** Installments: number of payroll periods to split across. Required when repaymentType is 'installments'. */
   periods?: number;
+  /** Installments: which payday to start deductions from. Defaults to 'end_of_month'. */
+  startPayday?: PaydayType;
   /** COA account ID for the expense (e.g. "Staff Advances" asset account). */
   expenseAccountId: string;
   /** COA account ID for the cash source (till or safe). */
@@ -29,7 +34,7 @@ export interface GrantCashAdvanceInput {
 
 export interface GrantCashAdvanceResult {
   expenseId: string;
-  scheduleId: string | null;
+  scheduleIds: string[];
 }
 
 export async function grantCashAdvance(
@@ -101,44 +106,61 @@ export async function grantCashAdvance(
 
   await deps.expenses.createWithJournal(expense, transaction, null);
 
-  // --- Payroll deduction setup ---
-  let scheduleId: string | null = null;
+  // --- Payroll deduction schedule ---
+  // All advances are stored as schedule rows. Each row represents one
+  // scheduled deduction on a specific payday (mid_month = 15th, end_of_month = last day).
+  const paydays: PaydayType[] = ['mid_month', 'end_of_month'];
+  const scheduleRows: Array<Record<string, unknown>> = [];
 
   if (input.repaymentType === 'lump-sum') {
-    // Increment employees.current_cash_advance so it deducts at next end-of-month run
-    const { error } = await sb.rpc('increment_cash_advance', {
-      p_employee_id: input.employeeId,
-      p_amount: input.amount,
-    });
-    if (error) {
-      throw new Error(`Failed to update employee cash advance balance: ${error.message}`);
-    }
-  } else {
-    // Create a schedule row that payroll deducts from each period until balance is 0
-    const periods = input.periods!;
-    const deductionPerPeriod = Math.round((input.amount / periods) * 100) / 100;
-    scheduleId = randomUUID();
-
-    const { error } = await sb.from('cash_advance_schedules').insert({
-      id: scheduleId,
+    const paydayType: PaydayType = input.deductOn ?? 'end_of_month';
+    const id = randomUUID();
+    scheduleRows.push({
+      id,
       employee_id: input.employeeId,
       expense_id: expenseId,
       total_amount: input.amount,
       granted_date: input.date,
-      // Legacy columns (kept for backward compat, not read by adapter)
-      installment_amount: deductionPerPeriod,
+      installment_amount: input.amount,
       period_start: input.date,
       period_end: input.date,
-      // Adapter columns
-      deduction_per_period: deductionPerPeriod,
+      deduction_per_period: input.amount,
       remaining_balance: input.amount,
       start_date: input.date,
+      payday_type: paydayType,
     });
+  } else {
+    const periods = input.periods!;
+    const deductionPerPeriod = Math.round((input.amount / periods) * 100) / 100;
+    const startPayday: PaydayType = input.startPayday ?? 'end_of_month';
+    const startIdx = startPayday === 'mid_month' ? 0 : 1;
 
-    if (error) {
-      throw new Error(`Failed to create cash advance schedule: ${error.message}`);
+    for (let i = 0; i < periods; i++) {
+      const paydayType = paydays[(startIdx + i) % 2];
+      scheduleRows.push({
+        id: randomUUID(),
+        employee_id: input.employeeId,
+        expense_id: expenseId,
+        total_amount: input.amount,
+        granted_date: input.date,
+        installment_amount: deductionPerPeriod,
+        period_start: input.date,
+        period_end: input.date,
+        deduction_per_period: deductionPerPeriod,
+        remaining_balance: deductionPerPeriod,
+        start_date: input.date,
+        payday_type: paydayType,
+      });
     }
   }
 
-  return { expenseId, scheduleId };
+  const { error } = await sb.from('cash_advance_schedules').insert(scheduleRows);
+  if (error) {
+    throw new Error(`Failed to create cash advance schedule: ${error.message}`);
+  }
+
+  return {
+    expenseId,
+    scheduleIds: scheduleRows.map((r) => String(r.id)),
+  };
 }

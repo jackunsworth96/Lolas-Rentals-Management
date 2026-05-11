@@ -50,7 +50,12 @@ export const GrantCashAdvanceRequestSchema = z.object({
   amount: z.number().positive(),
   date: z.string(),
   repaymentType: z.enum(['lump-sum', 'installments']),
+  /** Lump-sum: which payday to deduct the full amount on. Defaults to 'end_of_month'. */
+  deductOn: z.enum(['mid_month', 'end_of_month']).optional(),
+  /** Installments: how many payroll periods to spread across. Min 2. */
   periods: z.number().int().min(2).optional(),
+  /** Installments: which payday to start deductions from. Defaults to 'end_of_month'. */
+  startPayday: z.enum(['mid_month', 'end_of_month']).optional(),
   expenseAccountId: z.string(),
   cashAccountId: z.string(),
   description: z.string().optional(),

@@ -247,8 +247,13 @@ export async function runPayroll(
 }
 
 /**
- * After a successful payroll run, clear lump-sum balances (end-of-month)
- * and reduce remaining_balance on installment schedules (mid-month).
+ * After a successful payroll run, settle cash advance deductions.
+ *
+ * Each schedule row is tagged with a payday_type ('mid_month' or 'end_of_month').
+ * We only reduce rows matching the current run's payday type.
+ *
+ * For backward compatibility, end-of-month runs also clear the legacy
+ * employees.current_cash_advance field used by pre-migration lump-sum advances.
  *
  * Failures are non-fatal: the payroll has already been committed, so we
  * log errors rather than throwing, to avoid misleading the caller.
@@ -258,44 +263,46 @@ async function settleCashAdvances(
   isEndOfMonth: boolean,
 ): Promise<void> {
   const sb = getSupabaseClient();
+  const currentPaydayType = isEndOfMonth ? 'end_of_month' : 'mid_month';
 
   const deducted = payslips.filter((p) => p.cashAdvanceDeduction > 0);
   if (deducted.length === 0) return;
 
   for (const payslip of deducted) {
     try {
+      // Legacy: clear the lump-sum field for end-of-month runs
       if (isEndOfMonth) {
-        // Clear the lump-sum field on the employee record
         await sb.rpc('clear_cash_advance', { p_employee_id: payslip.employeeId });
-      } else {
-        // Reduce remaining_balance on any active schedule rows for this employee
-        const { data: schedules } = await sb
+      }
+
+      // Settle schedule rows tagged for the current payday type
+      const { data: schedules } = await sb
+        .from('cash_advance_schedules')
+        .select('id, remaining_balance, deduction_per_period')
+        .eq('employee_id', payslip.employeeId)
+        .eq('payday_type', currentPaydayType)
+        .gt('remaining_balance', 0);
+
+      if (!schedules || schedules.length === 0) continue;
+
+      let leftToSettle = payslip.cashAdvanceDeduction;
+
+      for (const sched of schedules as Array<{
+        id: string;
+        remaining_balance: number;
+        deduction_per_period: number;
+      }>) {
+        if (leftToSettle <= 0) break;
+
+        const deductNow = Math.min(leftToSettle, sched.deduction_per_period, sched.remaining_balance);
+        const newBalance = Math.round((sched.remaining_balance - deductNow) * 100) / 100;
+
+        await sb
           .from('cash_advance_schedules')
-          .select('id, remaining_balance, deduction_per_period')
-          .eq('employee_id', payslip.employeeId)
-          .gt('remaining_balance', 0);
+          .update({ remaining_balance: newBalance })
+          .eq('id', sched.id);
 
-        if (!schedules || schedules.length === 0) continue;
-
-        let leftToSettle = payslip.cashAdvanceDeduction;
-
-        for (const sched of schedules as Array<{
-          id: string;
-          remaining_balance: number;
-          deduction_per_period: number;
-        }>) {
-          if (leftToSettle <= 0) break;
-
-          const deductNow = Math.min(leftToSettle, sched.deduction_per_period, sched.remaining_balance);
-          const newBalance = Math.round((sched.remaining_balance - deductNow) * 100) / 100;
-
-          await sb
-            .from('cash_advance_schedules')
-            .update({ remaining_balance: newBalance })
-            .eq('id', sched.id);
-
-          leftToSettle -= deductNow;
-        }
+        leftToSettle -= deductNow;
       }
     } catch (err) {
       // Non-fatal — payroll is already committed

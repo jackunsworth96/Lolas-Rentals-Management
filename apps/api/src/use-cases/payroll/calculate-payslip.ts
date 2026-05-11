@@ -110,10 +110,15 @@ export async function calculatePayslip(
     ? input.bonuses
     : dbBonuses.reduce((sum, b) => sum + b.amount, 0);
 
-  // Cash advance: use the employee's current outstanding balance
-  const cashAdvanceDeduction = input.isEndOfMonth
-    ? employee.currentCashAdvance
-    : cashAdvances.reduce((sum, ca) => sum + ca.deductionPerPeriod, 0);
+  // Cash advance: sum schedule rows tagged for the current payday type.
+  // Legacy lump-sum advances stored on the employee record are also included
+  // for end-of-month runs so that pre-migration balances are still deducted.
+  const currentPaydayType = input.isEndOfMonth ? 'end_of_month' : 'mid_month';
+  const scheduleDeductions = cashAdvances
+    .filter((ca) => ca.paydayType === currentPaydayType)
+    .reduce((sum, ca) => sum + ca.deductionPerPeriod, 0);
+  const cashAdvanceDeduction =
+    scheduleDeductions + (input.isEndOfMonth ? employee.currentCashAdvance : 0);
 
   const bikeAllowance = input.isEndOfMonth ? employee.monthlyBikeAllowance : 0;
 

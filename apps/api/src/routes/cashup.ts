@@ -326,6 +326,15 @@ router.get(
           continue;
         }
 
+        // Pending addon IOUs — add-ons added to an order before the customer has
+        // paid (e.g. a "9pm return" fee added at booking time). No cash received
+        // yet; mirroring the same guard used in collect-payment, settle-order,
+        // and the orders route to avoid counting them as income or Bank Transfers.
+        const isUnpaidAddon = paymentType === 'addon' && rawMethodId === 'pending' && p.settlement_status === 'pending';
+        if (isUnpaidAddon) {
+          continue;
+        }
+
         if (isDeposit) {
           // Skip deposits for completed orders — deposit has been refunded or applied on settlement
           if (p.order_id && completedOrderIds.has(p.order_id as string)) {

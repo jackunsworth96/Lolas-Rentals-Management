@@ -164,6 +164,7 @@ export class SupabasePayrollAdapter implements PayrollPort {
       deductionPerPeriod: Number(r.deduction_per_period ?? 0),
       remainingBalance: Number(r.remaining_balance ?? 0),
       startDate: String(r.start_date ?? ''),
+      paydayType: (r.payday_type === 'mid_month' ? 'mid_month' : 'end_of_month') as 'mid_month' | 'end_of_month',
     }));
   }
 }
