@@ -41,6 +41,7 @@ import { startTransferReminderJob } from './jobs/transfer-reminder.job.js';
 import { startDeliveryReminderJob } from './jobs/delivery-reminder.job.js';
 import { startReturnReminderJob } from './jobs/return-reminder.job.js';
 import { startNinePmReturnReminderJob } from './jobs/nine-pm-return-reminder.job.js';
+import { startPostRentalReviewJob } from './jobs/post-rental-review.job.js';
 import { publicLimiter } from './middleware/rate-limit.js';
 import { authenticate } from './middleware/authenticate.js';
 import { authenticateApiKey } from './middleware/authenticateApiKey.js';
@@ -194,6 +195,7 @@ if (process.env.NODE_ENV !== 'test') {
     startDeliveryReminderJob();
     startReturnReminderJob();
     startNinePmReturnReminderJob();
+    startPostRentalReviewJob();
   });
 }
 

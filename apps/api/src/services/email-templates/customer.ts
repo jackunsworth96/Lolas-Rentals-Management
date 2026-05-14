@@ -594,7 +594,7 @@ export function postRentalThankYouHtml({
             Reviews mean the world to small island businesses like ours. If you had a great time, a quick
             Google review helps other travellers discover us — and keeps Siargao's community thriving.
           </p>
-          <a href="https://g.page/r/CXtJhZFnjqBIEBE/review"
+          <a href="https://g.page/r/CXtJhZFnjqBIEBM/review"
             style="display: inline-block; background: #FCBC5A; color: #363737; padding: 14px 32px;
               border-radius: 8px; font-weight: 700; font-size: 15px; text-decoration: none;">
             Leave Us a Google Review →
