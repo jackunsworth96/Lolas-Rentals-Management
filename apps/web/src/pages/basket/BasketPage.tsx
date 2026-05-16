@@ -528,6 +528,24 @@ export default function BasketPage() {
     if (transfer) {
       if (!transfer.flightNumber.trim()) te.flightNumber = 'Flight number is required';
       if (!transfer.flightArrivalTime) te.flightArrivalTime = 'Arrival time is required';
+
+      // Block last-minute after-hours bookings for early morning pick-ups.
+      // If it's after 5pm and the customer is booking for tomorrow before 9am,
+      // there's no window to collect payment or notify the driver.
+      if (transfer.flightArrivalTime) {
+        const [flightDatePart, flightTimePart] = transfer.flightArrivalTime.split('T');
+        if (flightDatePart && flightTimePart) {
+          const now = new Date();
+          const manilaDateStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+          const manilaHour = parseInt(now.toLocaleTimeString('en-GB', { timeZone: 'Asia/Manila', hour: '2-digit', hour12: false }).split(':')[0], 10);
+          const [yr, mo, dy] = manilaDateStr.split('-').map(Number);
+          const tomorrowDate = new Date(yr, mo - 1, dy + 1);
+          const tomorrowStr = `${tomorrowDate.getFullYear()}-${String(tomorrowDate.getMonth() + 1).padStart(2, '0')}-${String(tomorrowDate.getDate()).padStart(2, '0')}`;
+          if (manilaHour >= 17 && flightDatePart === tomorrowStr && flightTimePart < '09:00') {
+            te.flightArrivalTime = 'This booking cannot be completed online. We close at 5pm and cannot process payment before your early morning pick-up. Please contact us directly to arrange your transfer.';
+          }
+        }
+      }
     }
     setTransferErrors(te);
 

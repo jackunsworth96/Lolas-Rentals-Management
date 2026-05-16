@@ -61,6 +61,23 @@ export default function PublicBookingPage() {
     e.preventDefault();
     setError('');
     if (!selectedRoute) { setError(t('transfer.selectRouteError')); return; }
+
+    // Block last-minute after-hours bookings for early morning pick-ups.
+    // If it's after 5pm and the customer is booking for tomorrow before 9am,
+    // there's no window to collect payment or notify the driver.
+    if (flightTime.trim()) {
+      const now = new Date();
+      const manilaDateStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+      const manilaHour = parseInt(now.toLocaleTimeString('en-GB', { timeZone: 'Asia/Manila', hour: '2-digit', hour12: false }).split(':')[0], 10);
+      const [yr, mo, dy] = manilaDateStr.split('-').map(Number);
+      const tomorrowDate = new Date(yr, mo - 1, dy + 1);
+      const tomorrowStr = `${tomorrowDate.getFullYear()}-${String(tomorrowDate.getMonth() + 1).padStart(2, '0')}-${String(tomorrowDate.getDate()).padStart(2, '0')}`;
+      if (manilaHour >= 17 && serviceDate === tomorrowStr && flightTime.trim() < '09:00') {
+        setError('This booking cannot be completed online. We close at 5pm and cannot process payment before your early morning pick-up. Please contact us directly to arrange your transfer.');
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
       const result = await api.post<{ id: string }>('/public/transfer-booking', {
