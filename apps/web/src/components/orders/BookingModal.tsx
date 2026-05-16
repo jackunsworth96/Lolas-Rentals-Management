@@ -1686,9 +1686,10 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                     type="number"
                     value={waiveDeposit ? '' : securityDeposit}
                     onChange={(e) => setSecurityDeposit(e.target.value === '' ? '' : Number(e.target.value))}
+                    onWheel={(e) => e.currentTarget.blur()}
                     placeholder="0"
                     disabled={waiveDeposit}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </label>
                 <label className="mt-2 flex items-center gap-2 text-sm text-gray-600">
