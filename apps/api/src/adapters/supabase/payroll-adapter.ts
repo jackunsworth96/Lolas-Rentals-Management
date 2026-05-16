@@ -44,12 +44,12 @@ export class SupabasePayrollAdapter implements PayrollPort {
     const end = dateStr(period.end);
 
     const { data, error } = await sb
-      .from('order_payments')
+      .from('payments')
       .select('amount')
       .eq('store_id', storeId)
       .eq('payment_type', 'tip')
-      .gte('date', start)
-      .lte('date', end);
+      .gte('transaction_date', start)
+      .lte('transaction_date', end);
 
     if (error) throw new Error(`aggregateTips failed: ${error.message}`);
 

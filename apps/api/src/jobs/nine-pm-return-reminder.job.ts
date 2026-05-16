@@ -64,7 +64,7 @@ async function sendRespondIoMessage(phone: string, text: string): Promise<void> 
     );
   }
 
-  const url = `${baseUrl}/v1/contact/phone:${encodeURIComponent(phone)}/message`;
+  const url = `${baseUrl}/v2/contact/phone:${encodeURIComponent(phone)}/message`;
 
   const res = await fetch(url, {
     method: 'POST',
