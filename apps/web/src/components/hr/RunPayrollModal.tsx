@@ -149,6 +149,12 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees }: Props) 
           updated.fromTill = till;
           updated.fromSafe = Math.round((updated.netPay - till) * 100) / 100;
         }
+        // Recalculate fromTill when fromSafe changes
+        if (patch.fromSafe !== undefined) {
+          const safe = Math.min(Math.max(0, patch.fromSafe), updated.netPay);
+          updated.fromSafe = safe;
+          updated.fromTill = Math.round((updated.netPay - safe) * 100) / 100;
+        }
         return updated;
       }),
     );
@@ -326,8 +332,22 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees }: Props) 
                           <span className="text-gray-400">—</span>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-gray-700">
-                        {isCash ? formatCurrency(row.fromSafe) : <span className="text-gray-400">—</span>}
+                      <td className="px-3 py-2 text-right">
+                        {isCash ? (
+                          <input
+                            type="number"
+                            min={0}
+                            max={row.netPay}
+                            step={0.01}
+                            value={row.fromSafe}
+                            onChange={(e) =>
+                              updateRow(row.employeeId, { fromSafe: parseFloat(e.target.value) || 0 })
+                            }
+                            className="w-24 rounded border border-gray-300 px-2 py-1 text-right text-sm focus:outline-none focus:ring-1 focus:ring-teal-500"
+                          />
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
                       </td>
                     </tr>
                   );
