@@ -9,7 +9,7 @@ import {
 import { computePartnerBenefit } from '../../utils/partnerDiscount.js';
 import { useBookingStore, type BasketItem, type RenterDetails } from '../../stores/bookingStore.js';
 import { useToast } from '../../hooks/useToast.js';
-import { BasketVehicleCard } from '../../components/basket/BasketVehicleCard.js';
+import { BasketVehicleGroupCard } from '../../components/basket/BasketVehicleGroupCard.js';
 import { AddOnsSection, isNinePmReturnAddonName } from '../../components/basket/AddOnsSection.js';
 import { TransferSection } from '../../components/basket/TransferSection.js';
 import { RenterDetailsForm } from '../../components/basket/RenterDetailsForm.js';
@@ -523,6 +523,16 @@ export default function BasketPage() {
     if (!renter.email.trim() || !renter.email.includes('@')) fe.email = 'Valid email is required';
     if (!renter.phone.trim()) fe.phone = 'Phone number is required';
     if (!renter.nationality) fe.nationality = 'Nationality is required';
+
+    const pickupLoc = locations.find((l) => l.id === pickupLocationId);
+    const dropoffLoc = locations.find((l) => l.id === dropoffLocationId);
+    if (pickupLoc && pickupLoc.locationType !== 'store' && !pickupLocationAddress.trim()) {
+      fe.pickupLocationAddress = 'Please enter your exact pick-up address';
+    }
+    if (dropoffLoc && dropoffLoc.locationType !== 'store' && !dropoffLocationAddress.trim()) {
+      fe.dropoffLocationAddress = 'Please enter your exact return address';
+    }
+
     setFormErrors(fe);
     const te: Record<string, string> = {};
     if (transfer) {
@@ -1000,11 +1010,19 @@ export default function BasketPage() {
                           <input
                             type="text"
                             value={pickupLocationAddress}
-                            onChange={(e) => setPickupLocationAddress(e.target.value)}
+                            onChange={(e) => {
+                              setPickupLocationAddress(e.target.value);
+                              if (formErrors.pickupLocationAddress) {
+                                setFormErrors((prev) => { const next = { ...prev }; delete next.pickupLocationAddress; return next; });
+                              }
+                            }}
                             placeholder="e.g. Kermit Resort, Cloud 9, General Luna"
                             maxLength={500}
-                            className="w-full rounded-lg border border-charcoal-brand/15 bg-white px-3 py-2 font-lato text-sm text-charcoal-brand placeholder:text-charcoal-brand/30 outline-none focus:ring-2 focus:ring-teal-brand"
+                            className={`w-full rounded-lg border bg-white px-3 py-2 font-lato text-sm text-charcoal-brand placeholder:text-charcoal-brand/30 outline-none focus:ring-2 ${formErrors.pickupLocationAddress ? 'border-red-400 focus:ring-red-400/20' : 'border-charcoal-brand/15 focus:ring-teal-brand'}`}
                           />
+                          {formErrors.pickupLocationAddress && (
+                            <p className="font-lato text-[11px] font-semibold text-red-500">{formErrors.pickupLocationAddress}</p>
+                          )}
                         </div>
                       )}
                       {needsDropoffAddr && (
@@ -1018,11 +1036,19 @@ export default function BasketPage() {
                           <input
                             type="text"
                             value={dropoffLocationAddress}
-                            onChange={(e) => setDropoffLocationAddress(e.target.value)}
+                            onChange={(e) => {
+                              setDropoffLocationAddress(e.target.value);
+                              if (formErrors.dropoffLocationAddress) {
+                                setFormErrors((prev) => { const next = { ...prev }; delete next.dropoffLocationAddress; return next; });
+                              }
+                            }}
                             placeholder="e.g. Kermit Resort, Cloud 9, General Luna"
                             maxLength={500}
-                            className="w-full rounded-lg border border-charcoal-brand/15 bg-white px-3 py-2 font-lato text-sm text-charcoal-brand placeholder:text-charcoal-brand/30 outline-none focus:ring-2 focus:ring-teal-brand"
+                            className={`w-full rounded-lg border bg-white px-3 py-2 font-lato text-sm text-charcoal-brand placeholder:text-charcoal-brand/30 outline-none focus:ring-2 ${formErrors.dropoffLocationAddress ? 'border-red-400 focus:ring-red-400/20' : 'border-charcoal-brand/15 focus:ring-teal-brand'}`}
                           />
+                          {formErrors.dropoffLocationAddress && (
+                            <p className="font-lato text-[11px] font-semibold text-red-500">{formErrors.dropoffLocationAddress}</p>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1031,8 +1057,22 @@ export default function BasketPage() {
               )}
 
               <div className="space-y-4">
-                {basket.map((item) => (
-                  <BasketVehicleCard key={item.holdId} item={item} rentalDays={rentalDays} pickupLabel={formatDate(pickupDatetime)} dropoffLabel={formatDate(dropoffDatetime)} onToast={pushToast} />
+                {Object.values(
+                  basket.reduce<Record<string, typeof basket>>((acc, item) => {
+                    const key = item.vehicleModelId;
+                    if (!acc[key]) acc[key] = [];
+                    acc[key].push(item);
+                    return acc;
+                  }, {}),
+                ).map((group) => (
+                  <BasketVehicleGroupCard
+                    key={group[0].vehicleModelId}
+                    items={group}
+                    rentalDays={rentalDays}
+                    pickupLabel={formatDate(pickupDatetime)}
+                    dropoffLabel={formatDate(dropoffDatetime)}
+                    onToast={pushToast}
+                  />
                 ))}
               </div>
             </div>
