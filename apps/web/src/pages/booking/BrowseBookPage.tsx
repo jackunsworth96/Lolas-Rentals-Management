@@ -132,13 +132,18 @@ function generateTimeSlots(): { value: string; label: string }[] {
 const ALL_TIME_SLOTS = generateTimeSlots();
 
 function todayStr(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 }
 
 function nowTimeMinutes(): number {
-  const d = new Date();
-  return d.getHours() * 60 + d.getMinutes();
+  const manilaTime = new Date().toLocaleTimeString('en-GB', {
+    timeZone: 'Asia/Manila',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const [h, m] = manilaTime.split(':').map(Number);
+  return h * 60 + m;
 }
 
 function timeToMinutes(t: string): number {

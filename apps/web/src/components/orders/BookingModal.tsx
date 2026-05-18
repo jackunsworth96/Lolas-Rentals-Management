@@ -1282,6 +1282,21 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                         {dropoffParts.ampm}
                       </button>
                     </div>
+                    {(() => {
+                      let h24 = dropoffParts.hours12;
+                      if (dropoffParts.ampm === 'AM' && h24 === 12) h24 = 0;
+                      else if (dropoffParts.ampm === 'PM' && h24 < 12) h24 += 12;
+                      const totalMins = h24 * 60 + dropoffParts.minutes;
+                      const openMins = 9 * 60 + 15;
+                      const closeMins = 16 * 60 + 45;
+                      const ninePmMins = 21 * 60;
+                      const outsideHours = totalMins < openMins || (totalMins > closeMins && totalMins !== ninePmMins);
+                      return outsideHours ? (
+                        <p className="mt-1 text-xs font-semibold text-amber-600">
+                          Outside business hours (9:15 AM – 4:45 PM). Confirm this is intentional.
+                        </p>
+                      ) : null;
+                    })()}
                   </div>
 
                   {/* Pickup Location */}

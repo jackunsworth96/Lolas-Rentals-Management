@@ -125,12 +125,27 @@ function parseToDatetimeLocal(val: string | null): string {
   try {
     const d = new Date(trimmed);
     if (Number.isNaN(d.getTime())) return '';
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    const h = String(d.getHours()).padStart(2, '0');
-    const min = String(d.getMinutes()).padStart(2, '0');
-    return `${y}-${m}-${day}T${h}:${min}`;
+    // Strings with explicit timezone info (Z, +HH:MM, -HH:MM) must be converted
+    // to Manila time (UTC+8), not browser-local time. Naive strings (no offset)
+    // are treated as-is since they already represent Manila time in this context.
+    const hasTimezone = /[Zz]$|[+-]\d{2}:?\d{2}$/.test(trimmed);
+    let y: number, m: number, day: number, h: number, min: number;
+    if (hasTimezone) {
+      const manilaMs = d.getTime() + 8 * 60 * 60 * 1000;
+      const manila = new Date(manilaMs);
+      y = manila.getUTCFullYear();
+      m = manila.getUTCMonth() + 1;
+      day = manila.getUTCDate();
+      h = manila.getUTCHours();
+      min = manila.getUTCMinutes();
+    } else {
+      y = d.getFullYear();
+      m = d.getMonth() + 1;
+      day = d.getDate();
+      h = d.getHours();
+      min = d.getMinutes();
+    }
+    return `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
   } catch {
     return '';
   }

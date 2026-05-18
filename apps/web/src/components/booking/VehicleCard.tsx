@@ -17,13 +17,12 @@ const VEHICLE_NAME_MAP: Record<string, string> = {
 };
 
 function formatSlotTime(iso: string): string {
-  const d = new Date(iso);
-  let h = d.getHours();
-  const m = String(d.getMinutes()).padStart(2, '0');
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  if (h > 12) h -= 12;
-  if (h === 0) h = 12;
-  return `${h}:${m} ${ampm}`;
+  return new Date(iso).toLocaleTimeString('en-US', {
+    timeZone: 'Asia/Manila',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
 }
 
 /** Convert a Date to an ISO string in Manila time (UTC+8) with explicit offset. */
