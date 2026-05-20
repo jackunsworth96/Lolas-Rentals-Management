@@ -146,8 +146,15 @@ export default function CashupPage() {
       summary.totals.interStoreOut -
       (summary.totals.cashRefundTotal ?? 0)
     : 0;
+  // Envelope expected starts from the previous day's envelope closing balance
+  // (openingEnvelopeBalance), adds today's new cash deposits, then subtracts
+  // any deposits returned to customers today.  Without the opening balance the
+  // formula restarted from zero each day, producing a negative expected value
+  // on any day where prior-day deposits were returned without new ones taken.
   const expectedDepositsHeld = summary
-    ? summary.totals.cashDepositsHeldTotal - (summary.totals.depositReturnTotal ?? 0)
+    ? (summary.openingEnvelopeBalance ?? 0) +
+      summary.totals.cashDepositsHeldTotal -
+      (summary.totals.depositReturnTotal ?? 0)
     : 0;
   const tillVariance = tillTotal - expectedCashSales;
   const depVariance = depEnvTotal - expectedDepositsHeld;
@@ -263,6 +270,7 @@ export default function CashupPage() {
         tillExpected: expectedCashSales,
         depositsExpected: expectedDepositsHeld,
         closingBalance: tillTotal,
+        depositsClosingBalance: depEnvTotal,
       },
       { onSuccess: () => setShowReconcileModal(false) },
     );
@@ -561,7 +569,7 @@ export default function CashupPage() {
                       label="Deposit Returns"
                       value={summary.totals.depositReturnTotal}
                       color="orange"
-                      subtitle="Completed order deposits"
+                      subtitle="Refunded from deposit envelope"
                     />
                   )}
                   {(summary.totals.depositAppliedTotal ?? 0) > 0 && (
@@ -1600,7 +1608,7 @@ function DepositReturnsSection({
           <span>🔓</span>
           <div>
             <h3 className="text-sm font-semibold text-amber-900">Deposit Returns</h3>
-            <p className="text-[10px] text-amber-700">Deposits refunded at order settlement — reduces till</p>
+            <p className="text-[10px] text-amber-700">Deposits refunded at order settlement — reduces deposit envelope</p>
           </div>
         </div>
         <span className="text-sm font-bold text-amber-700">-{formatCurrency(total)}</span>

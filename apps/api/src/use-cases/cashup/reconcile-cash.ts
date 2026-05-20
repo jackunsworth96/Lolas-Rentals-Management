@@ -18,6 +18,7 @@ export interface ReconcileCashInput {
   tillExpected: number | null;
   depositsExpected: number | null;
   closingBalance: number;
+  depositsClosingBalance: number | null;
   submittedBy: string;
 }
 
@@ -80,6 +81,7 @@ export async function reconcileCash(
     tillVariance,
     depositVariance,
     closingBalance: input.closingBalance,
+    depositsClosingBalance: input.depositsClosingBalance,
   };
 
   await deps.cashReconciliation.reconcileAtomic(reconciliation);

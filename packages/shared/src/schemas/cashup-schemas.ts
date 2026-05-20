@@ -20,6 +20,7 @@ export const ReconcileCashRequestSchema = z.object({
   tillExpected: z.number().nullable().default(null),
   depositsExpected: z.number().nullable().default(null),
   closingBalance: z.number(),
+  depositsClosingBalance: z.number().nullable().default(null),
 });
 
 export type ReconcileCashRequest = z.infer<typeof ReconcileCashRequestSchema>;

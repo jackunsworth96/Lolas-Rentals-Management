@@ -87,7 +87,7 @@ router.get(
 
           sb
             .from('cash_reconciliation')
-            .select('closing_balance, actual_counted, date, overridden_by')
+            .select('closing_balance, deposits_closing_balance, actual_counted, date, overridden_by')
             .eq('store_id', storeId)
             .lt('date', date)
             .order('date', { ascending: false })
@@ -702,9 +702,16 @@ router.get(
       const prev = prevReconRes.data;
       let openingAmount = 0;
       let openingSource: 'previous_day' | 'override' | 'none' = 'none';
+      // Opening envelope balance: previous day's deposits_closing_balance.
+      // When null (no prior reconciliation, or pre-migration records), fall
+      // back to 0 so the envelope expected is still sensible.
+      let openingEnvelopeBalance = 0;
       if (prev) {
         openingAmount = Number(prev.closing_balance ?? prev.actual_counted ?? 0);
         openingSource = prev.overridden_by ? 'override' : 'previous_day';
+        openingEnvelopeBalance = prev.deposits_closing_balance != null
+          ? Number(prev.deposits_closing_balance)
+          : 0;
       }
 
       // Cash carry-deposits are now counted in cashSalesTotal; remove them from
@@ -768,6 +775,7 @@ router.get(
             source: openingSource,
             previousDate: prev?.date ?? null,
           },
+          openingEnvelopeBalance,
           transactions: {
             cashSales: cashSalesTx,
             cardSales: cardSalesTx,

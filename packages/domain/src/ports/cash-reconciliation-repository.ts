@@ -22,6 +22,7 @@ export interface CashReconciliation {
   tillVariance: number | null;
   depositVariance: number | null;
   closingBalance: number | null;
+  depositsClosingBalance: number | null;
 }
 
 export interface CashReconciliationRepository {

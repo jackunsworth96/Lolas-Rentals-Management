@@ -26,6 +26,7 @@ function toRow(r: CashReconciliation) {
     till_variance: r.tillVariance,
     deposit_variance: r.depositVariance,
     closing_balance: r.closingBalance,
+    deposits_closing_balance: r.depositsClosingBalance,
   };
 }
 
@@ -54,6 +55,7 @@ function toDomain(row: Record<string, unknown>): CashReconciliation {
     tillVariance: row.till_variance != null ? Number(row.till_variance) : null,
     depositVariance: row.deposit_variance != null ? Number(row.deposit_variance) : null,
     closingBalance: row.closing_balance != null ? Number(row.closing_balance) : null,
+    depositsClosingBalance: row.deposits_closing_balance != null ? Number(row.deposits_closing_balance) : null,
   };
 }
 
@@ -145,9 +147,10 @@ export function createCashReconciliationRepo(): CashReconciliationRepository {
         p_deposit_denoms:    row.deposit_denoms,
         p_till_expected:     row.till_expected,
         p_deposits_expected: row.deposits_expected,
-        p_till_variance:     row.till_variance,
-        p_deposit_variance:  row.deposit_variance,
-        p_closing_balance:   row.closing_balance,
+        p_till_variance:              row.till_variance,
+        p_deposit_variance:           row.deposit_variance,
+        p_closing_balance:            row.closing_balance,
+        p_deposits_closing_balance:   row.deposits_closing_balance,
       });
 
       if (error) throw new Error(`reconcile_cash_atomic RPC failed: ${error.message}`);

@@ -123,6 +123,7 @@ export interface CashupSummary {
     carryDepositsCashTotal: number;
   };
   expectedCash: number;
+  openingEnvelopeBalance: number;
   stores: StoreInfo[];
   otherStores: StoreInfo[];
   reconciliation: ReconciliationRecord | null;
