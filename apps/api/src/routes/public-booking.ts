@@ -363,6 +363,7 @@ router.post('/submit', submitLimiter, validateBody(SubmitDirectBookingRequestSch
       data: {
         id: result.id,
         orderReference: result.orderReference,
+        cancellationToken: result.cancellationToken,
         serverQuote: result.serverQuote ?? null,
         charityDonation: result.charityDonation,
       },

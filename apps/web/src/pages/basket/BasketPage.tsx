@@ -327,6 +327,7 @@ export default function BasketPage() {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [paymentMethodError, setPaymentMethodError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [charityDonation, setCharityDonation] = useState(0);
   type LocFee = { id: number; name: string; deliveryCost: number; collectionCost: number; locationType: string | null };
   const [locations, setLocationList] = useState<LocFee[]>([]);
@@ -573,7 +574,9 @@ export default function BasketPage() {
   }
 
   async function handlePlaceOrder() {
+    if (submittingRef.current) return;
     if (!validate()) return;
+    submittingRef.current = true;
     setSubmitting(true);
     const ninePmAddon = addons.find((a) => isNinePmReturnAddonName(a.name));
     let allAddonIds = [...selectedAddonIds];
@@ -653,8 +656,6 @@ export default function BasketPage() {
       // Persist email for confirmation page refresh/bookmark recovery
       sessionStorage.setItem(`confirm_email_${orderRefs[0]}`, renter.email.trim());
       clearPartnerRef();
-      resetBookingSession();
-      clearRenterDetails();
       const confirmState = {
         orderReferences: orderRefs, customerName: renter.fullName.trim(), customerEmail: renter.email.trim(),
         vehicleModelName: basket[0]?.modelName ?? '', pickupDatetime, dropoffDatetime, pickupLocationId, rentalDays,
@@ -681,13 +682,18 @@ export default function BasketPage() {
               description: `Lola's Rentals – ${orderRefs[0]}`,
             },
           );
-          // Redirect to Maya hosted payment page
+          resetBookingSession();
+          clearRenterDetails();
           window.location.href = mayaResult.redirectUrl;
         } catch {
           // If Maya checkout fails, fall back to normal confirmation
+          resetBookingSession();
+          clearRenterDetails();
           navigate(`/book/confirmation/${encodeURIComponent(orderRefs[0])}`, { state: confirmState });
         }
       } else {
+        resetBookingSession();
+        clearRenterDetails();
         navigate(`/book/confirmation/${encodeURIComponent(orderRefs[0])}`, { state: confirmState });
       }
     } catch (err: unknown) {
@@ -702,7 +708,10 @@ export default function BasketPage() {
       }
       const msg = err instanceof Error ? err.message : 'Something went wrong';
       pushToast(msg, 'error');
-    } finally { setSubmitting(false); }
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
   }
 
   if (basket.length === 0) {
