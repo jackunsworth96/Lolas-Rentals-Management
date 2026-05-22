@@ -502,10 +502,12 @@ router.get(
       // When a deposit collected on a PREVIOUS day is applied to the rental balance
       // today during settlement, it stops being a held liability and becomes rental
       // income.  We add the original payment amount into the matching sales bucket
-      // (cash → cashSalesTotal, gcash → gcashSalesTotal, etc.) and, for CASH
-      // deposits only, reduce openingAmount by the same figure later to prevent
-      // double-counting — the prior closing balance already included those cash
-      // deposits in the physical till total.
+      // (cash → cashSalesTotal, gcash → gcashSalesTotal, etc.).
+      // Cash deposits are held in the separate deposit envelope, NOT the physical
+      // till, so the prior closing_balance does NOT include them. We must NOT
+      // subtract carryDepositsCashTotal from openingAmount — the cash physically
+      // moves from the envelope into income today, so cashSalesTotal capturing it
+      // is the only adjustment needed.
       let carryDepositsCashTotal = 0;
       if (depositAppliedOrderIds.length > 0) {
         const { data: carryDepPayments, error: carryDepError } = await sb
