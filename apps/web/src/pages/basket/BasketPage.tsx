@@ -178,8 +178,8 @@ export default function BasketPage() {
 
   async function handleChangeDates() {
     if (!newPickupDate || !newDropoffDate) return;
-    const pickup = `${newPickupDate}T${newPickupTime}:00`;
-    const dropoff = `${newDropoffDate}T${newDropoffTime}:00`;
+    const pickup = `${newPickupDate}T${newPickupTime}:00+08:00`;
+    const dropoff = `${newDropoffDate}T${newDropoffTime}:00+08:00`;
     if (new Date(dropoff) <= new Date(pickup)) {
       setDateChangeError('Return date must be after pick-up date.');
       return;
