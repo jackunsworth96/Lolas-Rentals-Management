@@ -60,6 +60,16 @@ export interface SettleOrderInput {
    */
   returnChargesNote?: string | null;
   settlementRef?: string | null;
+  /**
+   * Payment method used to return the security deposit to the customer
+   * (e.g. 'gcash' when the deposit was collected in cash but returned
+   * via GCash). When provided a payments row with
+   * payment_type = 'deposit_refund' is persisted alongside the journal
+   * entries so the method is auditable on the order's payment history.
+   * When omitted the deposit return is recorded via journal entries only
+   * (backward-compatible behaviour).
+   */
+  depositRefundMethodId?: string | null;
 }
 
 function serialiseLeg(leg: JournalLeg): Record<string, unknown> {
@@ -143,6 +153,7 @@ export async function settleOrder(
   const legs: JournalLeg[] = [];
   let finalPayment: Payment | null = null;
   let cardSettlement: CardSettlement | null = null;
+  let depositRefundPayment: Payment | null = null;
 
   // ── Final payment (optional) ─────────────────────────────
   if (
@@ -242,6 +253,30 @@ export async function settleOrder(
 
   // ── Deposit-refund legs ──────────────────────────────────
   if (refund.isPositive()) {
+    // When a specific refund method is provided, build a payments row so the
+    // method is stored and auditable (e.g. deposit collected in cash but
+    // returned via GCash). The journal legs reference the payment ID so that
+    // the cashup deduplication logic suppresses the journal-only path.
+    if (input.depositRefundMethodId) {
+      depositRefundPayment = {
+        id: crypto.randomUUID(),
+        storeId: order.storeId,
+        orderId: order.id,
+        rawOrderId: null,
+        orderItemId: null,
+        orderAddonId: null,
+        paymentType: 'deposit_refund',
+        amount: refund.toNumber(),
+        paymentMethodId: input.depositRefundMethodId,
+        transactionDate: input.settlementDate,
+        settlementStatus: null,
+        settlementRef: null,
+        customerId: order.customerId,
+        accountId: input.refundAccountId,
+      };
+    }
+
+    const refundReferenceId = depositRefundPayment?.id ?? order.id;
     legs.push(
       {
         entryId: crypto.randomUUID(),
@@ -250,7 +285,7 @@ export async function settleOrder(
         credit: Money.zero(),
         description: `Order ${order.id} deposit refund`,
         referenceType: 'refund',
-        referenceId: order.id,
+        referenceId: refundReferenceId,
       },
       {
         entryId: crypto.randomUUID(),
@@ -259,7 +294,7 @@ export async function settleOrder(
         credit: refund,
         description: `Order ${order.id} deposit refund to customer`,
         referenceType: 'refund',
-        referenceId: order.id,
+        referenceId: refundReferenceId,
       },
     );
   }
@@ -341,6 +376,17 @@ export async function settleOrder(
     p_card_fee_surcharge_delta: surchargeDelta.toNumber(),
     p_return_charges_delta: returnChargesDelta.toNumber(),
     p_return_charges_note: input.returnChargesNote ?? null,
+    p_deposit_refund_payment: depositRefundPayment
+      ? {
+          id: depositRefundPayment.id,
+          amount: depositRefundPayment.amount,
+          payment_type: depositRefundPayment.paymentType,
+          payment_method_id: depositRefundPayment.paymentMethodId,
+          transaction_date: depositRefundPayment.transactionDate,
+          customer_id: depositRefundPayment.customerId,
+          account_id: depositRefundPayment.accountId,
+        }
+      : null,
   });
 
   if (rpcErr) {

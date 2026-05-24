@@ -534,6 +534,7 @@ router.post('/:id/settle', requirePermission(Permission.EditOrders), validateBod
   returnChargesDelta: z.number().nonnegative().optional(),
   returnChargesNote: z.string().max(200).nullable().optional(),
   settlementRef: z.string().nullable().optional(),
+  depositRefundMethodId: z.string().nullable().optional(),
 })), async (req, res, next) => {
   try {
     const { settleOrder } = await import('../use-cases/orders/settle-order.js');

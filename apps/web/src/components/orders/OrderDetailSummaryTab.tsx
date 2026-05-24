@@ -580,6 +580,7 @@ export function OrderDetailSummaryTab({
         depositLiabilityAccountId: settleDepositAccountId,
         receivableAccountId: settleReceivableAccountId,
         refundAccountId: depositRefund > 0 ? effectiveRefundAccountId : settleRefundAccountId,
+        depositRefundMethodId: depositRefund > 0 ? (settleRefundMethodId || null) : null,
         finalPaymentMethodId: needsFinalPayment ? settleFinalMethodId : null,
         finalPaymentAccountId: needsFinalPayment && !isSettleFinalCard ? settleFinalAccountId : null,
         finalPaymentAmount: needsFinalPayment ? inclusiveFinalPaymentAmount : undefined,

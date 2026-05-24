@@ -256,6 +256,11 @@ router.get(
       // Track payment IDs so we can exclude their journal entries from deposit-return totals
       const refundPaymentIds = new Set<string>();
 
+      // Deposit refunds recorded via payments row (settle flow with depositRefundMethodId set)
+      const depositRefundPaymentRows: {
+        id: unknown; amount: number; orderId: unknown; methodId: string; createdAt: unknown;
+      }[] = [];
+
       // Deposits held buckets (by method, but shown together)
       const depositsHeldByMethod: Record<string, { label: string; rows: unknown[]; total: number }> = {};
       let depositsHeldTotal = 0;
@@ -307,6 +312,23 @@ router.get(
           else if (cat === 'card') cardRefundTotal += amount;
           else if (cat === 'gcash') gcashRefundTotal += amount;
           else bankRefundTotal += amount;
+          continue;
+        }
+
+        // Deposit refunds with an explicit payment row (settle flow where the
+        // operator chose a different method to return the deposit — e.g. deposit
+        // collected in cash, refunded via GCash). We add the payment ID to
+        // refundPaymentIds so the corresponding journal entry is suppressed in
+        // filteredRefundJournalEntries and we avoid double-counting.
+        if (paymentType === 'deposit_refund') {
+          refundPaymentIds.add(String(p.id));
+          depositRefundPaymentRows.push({
+            id: p.id,
+            amount,
+            orderId: p.order_id ?? null,
+            methodId: rawMethodId,
+            createdAt: p.created_at,
+          });
           continue;
         }
 
@@ -457,6 +479,44 @@ router.get(
             createdAt: j.created_at,
           };
         });
+
+      // Append payment-row-based deposit refunds (method-mismatch settle flow).
+      // These were already excluded from filteredRefundJournalEntries via refundPaymentIds.
+      const depositRefundOrderIdSet = [...new Set(
+        depositRefundPaymentRows.map((r) => String(r.orderId ?? '')).filter(Boolean),
+      )];
+      const depositRefundPmtOrderMap = new Map<string, { bookingToken: string | null; customerName: string | null }>();
+      if (depositRefundOrderIdSet.length > 0) {
+        const { data: drOrders } = await sb
+          .from('orders')
+          .select('id, booking_token, customers!customer_id(name)')
+          .in('id', depositRefundOrderIdSet);
+        const drRows = (drOrders ?? []) as unknown as Array<{
+          id: string;
+          booking_token: string | null;
+          customers: { name: string } | { name: string }[] | null;
+        }>;
+        for (const o of drRows) {
+          depositRefundPmtOrderMap.set(o.id, {
+            bookingToken: o.booking_token ?? null,
+            customerName: customerNameFromJoin(o.customers),
+          });
+        }
+      }
+      for (const r of depositRefundPaymentRows) {
+        const orderInfo = depositRefundPmtOrderMap.get(String(r.orderId ?? ''));
+        depositReturnRows.push({
+          id: r.id,
+          amount: r.amount,
+          description: `Deposit refund via ${r.methodId}`,
+          accountId: null,
+          referenceId: r.orderId,
+          bookingToken: orderInfo?.bookingToken ?? null,
+          customerName: orderInfo?.customerName ?? null,
+          createdAt: r.createdAt,
+        });
+      }
+
       const depositReturnTotal = depositReturnRows.reduce((s, r) => s + r.amount, 0);
 
       // Enrich deposit-applied entries with booking token + customer name.
