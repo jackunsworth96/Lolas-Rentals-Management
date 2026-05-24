@@ -291,6 +291,7 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
 
     const extDays = extDayCount(currentDropoff.getTime(), newDropoff.getTime());
     let extensionCost = 0;
+    let effectiveDailyRate = 0;
 
     if (modelId) {
       let quote: Awaited<ReturnType<typeof computeQuote>>;
@@ -317,6 +318,7 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
         // extension-days bracket is cheaper (unlocked by volume) the customer keeps it.
         dailyRate = origDailyRate > 0 ? Math.min(computedExtDailyRate, origDailyRate) : computedExtDailyRate;
       }
+      effectiveDailyRate = dailyRate;
       extensionCost = Math.round(dailyRate * extDays * 100) / 100;
     }
 
@@ -461,6 +463,16 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
     if (!extResult.success) {
       console.error('[extend-active] RPC returned failure:', extResult.error, { orderId: ord.id, itemId: item.id as string, extDays, newDays, totalDelta, storeId });
       return { kind: 'error', reason: extResult.error ?? 'Extension failed. Please try again or contact us on WhatsApp.' };
+    }
+
+    // Ratchet rental_rate down to the effective extension daily rate so that
+    // future extensions are capped at this rate rather than the original booking
+    // rate. This ensures that a customer who earned a cheaper bracket (e.g. 7+
+    // days at ₱465) keeps that rate as their cap on any subsequent short extension,
+    // instead of reverting to the original booking rate (e.g. ₱535).
+    // Only applies to computed rates — staff overrides are one-time concessions.
+    if (overrideDailyRate === undefined && effectiveDailyRate > 0 && effectiveDailyRate < Number(item.rental_rate ?? 0)) {
+      await sb.from('order_items').update({ rental_rate: effectiveDailyRate }).eq('id', item.id as string);
     }
 
     // ── Post-RPC inserts / updates (fire sequentially, non-blocking on errors) ──
