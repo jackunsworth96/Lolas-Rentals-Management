@@ -2,12 +2,19 @@
  * Daily 9PM return reminder job.
  *
  * Fires at 12:00 Asia/Manila every day.
- * Finds every active rental whose dropoff_datetime falls today
- * (Asia/Manila date boundaries) AND that has the 9PM return add-on
- * selected. Sends a single WhatsApp message via respond.io.
+ * Finds every active rental whose dropoff_datetime falls between 16:45 and
+ * 23:59 today (Asia/Manila) AND that has the 9PM return add-on selected.
+ * The 16:45 lower bound is intentional: the 9PM add-on extends the 4:45 PM
+ * return slot. If a booking's dropoff is earlier (e.g. 12:45 PM), the add-on
+ * applied to the previous evening and no reminder should fire today.
+ * Sends a single WhatsApp message via respond.io.
  *
  * Sources:
- *   1. orders_raw  — web / direct bookings (addon_ids @> ARRAY[9])
+ *   1. orders_raw  — unprocessed web bookings only (addon_ids @> ARRAY[9]).
+ *      'processed' is deliberately excluded: once processed, orders_raw.status
+ *      never advances past 'processed' even after settlement, so including it
+ *      would send reminders to customers whose bookings are already completed.
+ *      Processed/active orders are covered by source 2 with accurate status.
  *   2. orders + order_items + order_addons + customers — staff-created
  *
  * Deduplication: nine_pm_reminder_log prevents double-sending if
@@ -94,11 +101,20 @@ async function runNinePmReturnReminderJob(): Promise<void> {
     timeZone: 'Asia/Manila',
   }).format(new Date());
 
-  const windowStart = `${todayPHT}T00:00:00+08:00`;
+  // Start at 16:45 (not 00:00) so that orders whose dropoff_datetime is before
+  // 4:45 PM are excluded. The 9PM add-on extends from the 4:45 PM slot — if a
+  // booking's dropoff is earlier (e.g. 12:45 PM), the add-on applied to the
+  // previous evening and the customer should NOT receive a 9PM reminder today.
+  const windowStart = `${todayPHT}T16:45:00+08:00`;
   const windowEnd   = `${todayPHT}T23:59:59.999+08:00`;
 
   const NINE_PM_ADDON_ID = 9;
-  const RAW_STATUSES     = ['unprocessed', 'processed'] as const;
+  // Only 'unprocessed' here — 'processed' orders have a corresponding `orders`
+  // record whose status is the authoritative source. Completed bookings keep
+  // orders_raw.status = 'processed' forever (settle_order_atomic never updates
+  // orders_raw), so including 'processed' would send reminders to customers
+  // who have already returned. Processed orders are covered by Query 2.
+  const RAW_STATUSES     = ['unprocessed'] as const;
   const ACTIVE_STATUSES  = ['active', 'confirmed'] as const;
 
   // ── Query 1: orders_raw ───────────────────────────────────────────────────
