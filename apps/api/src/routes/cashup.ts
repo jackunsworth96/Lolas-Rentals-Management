@@ -776,9 +776,11 @@ router.get(
           : 0;
       }
 
-      // Cash carry-deposits are now counted in cashSalesTotal; remove them from
-      // openingAmount so they are not counted twice in expectedCash.
-      openingAmount -= carryDepositsCashTotal;
+      // carryDepositsCashTotal is already captured in cashSalesTotal above.
+      // Do NOT subtract it from openingAmount — the prior closing_balance never
+      // included it (cash deposits go to the envelope, not the till), so there
+      // is no double-count risk. The ₱ physically moves from the deposit envelope
+      // to the main till on settlement day, so expectedCashSales must reflect it.
 
       // Only cash-method payments affect the physical till.
       // Subtract cash refunds (manual Issue Refund) and deposit returns (settle flow).

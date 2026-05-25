@@ -148,13 +148,15 @@ export default function CashupPage() {
     : 0;
   // Envelope expected starts from the previous day's envelope closing balance
   // (openingEnvelopeBalance), adds today's new cash deposits, then subtracts
-  // any deposits returned to customers today.  Without the opening balance the
-  // formula restarted from zero each day, producing a negative expected value
-  // on any day where prior-day deposits were returned without new ones taken.
+  // any deposits returned to customers today AND any prior-day cash deposits
+  // that were applied to a rental balance at settlement (carryDepositsCashTotal).
+  // Applied deposits physically leave the envelope and move into the main till
+  // as income, so they must reduce the envelope expected.
   const expectedDepositsHeld = summary
     ? (summary.openingEnvelopeBalance ?? 0) +
       summary.totals.cashDepositsHeldTotal -
-      (summary.totals.depositReturnTotal ?? 0)
+      (summary.totals.depositReturnTotal ?? 0) -
+      (summary.totals.carryDepositsCashTotal ?? 0)
     : 0;
   const tillVariance = tillTotal - expectedCashSales;
   const depVariance = depEnvTotal - expectedDepositsHeld;
@@ -494,11 +496,6 @@ export default function CashupPage() {
                 <SummaryCard
                   label="Opening Float"
                   value={summary.openingFloat.amount}
-                  subtitle={
-                    (summary.totals.carryDepositsCashTotal ?? 0) > 0
-                      ? `Adj. −${formatCurrency(summary.totals.carryDepositsCashTotal)} carry deposits → Cash Sales`
-                      : undefined
-                  }
                   badge={
                     summary.openingFloat.source === 'none'
                       ? 'No prior'
