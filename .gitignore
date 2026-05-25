@@ -13,6 +13,7 @@ packages/*/src/**/*.d.ts.map
 
 .env
 .env.local
+.env.dev
 *.log
 .DS_Store
 coverage/
