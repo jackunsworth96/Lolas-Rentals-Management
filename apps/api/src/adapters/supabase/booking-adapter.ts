@@ -33,6 +33,28 @@ function dbRowToHold(row: HoldDbRow): HoldRow {
   };
 }
 
+/**
+ * Last bookable pickup slot in minutes since midnight (Manila local time).
+ * Philippines is fixed UTC+8 — no DST.
+ */
+const LAST_SLOT_MINS = 16 * 60 + 45; // 16:45
+
+/**
+ * If `isoUtc` falls after the last bookable slot (16:45 Manila), advance it to
+ * 09:15 Manila the following calendar day. Otherwise return it unchanged.
+ */
+function snapToBusinessHours(isoUtc: string): string {
+  const d = new Date(isoUtc);
+  const manilaTime = d.toLocaleTimeString('en-GB', { timeZone: 'Asia/Manila', hour12: false });
+  const [h, m] = manilaTime.split(':').map(Number);
+  if (h * 60 + m <= LAST_SLOT_MINS) return isoUtc;
+
+  // Past last slot → next day 09:15 Manila (UTC+8 = UTC+0 01:15)
+  const manilaDate = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+  const [yr, mo, dy] = manilaDate.split('-').map(Number);
+  return new Date(Date.UTC(yr, mo - 1, dy + 1, 1, 15, 0)).toISOString();
+}
+
 export function createBookingAdapter(): BookingPort {
   const sb = getSupabaseClient();
 
@@ -174,7 +196,7 @@ export function createBookingAdapter(): BookingPort {
         const entry: AvailableModel = { modelId, modelName, availableCount: available };
         if (available === 0) {
           const drop = minDropoff.get(modelId);
-          if (drop) entry.nextAvailablePickup = new Date(new Date(drop).getTime() + BUFFER_MS).toISOString();
+          if (drop) entry.nextAvailablePickup = snapToBusinessHours(new Date(new Date(drop).getTime() + BUFFER_MS).toISOString());
           // If confirmed bookings leave stock free but holds consume it all, surface the
           // earliest hold expiry so the frontend can show "in another customer's basket"
           if (confirmedAvailable > 0) {
