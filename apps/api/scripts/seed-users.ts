@@ -23,10 +23,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const apiDir = resolve(__dirname, '..');
-const monorepoRoot = resolve(__dirname, '../..');
+const monorepoRoot = resolve(__dirname, '../../..');
 
 [monorepoRoot, apiDir, process.cwd()].forEach((dir) => {
-  config({ path: resolve(dir, '.env') });
+  config({ path: resolve(dir, '.env'), override: true });
 });
 
 import { createClient } from '@supabase/supabase-js';
@@ -47,6 +47,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const STORE_LOLAS_ID = 'store-lolas';
 const STORE_BASS_ID = 'store-bass';
+const STORE_LOLAS_BOOKING_TOKEN = 'local-store-lolas';
+const STORE_BASS_BOOKING_TOKEN = 'local-store-bass';
 const ROLE_ADMIN_ID = 'role-admin';
 const ROLE_STAFF_ID = 'role-staff';
 const EMPLOYEE_ADMIN_ID = 'emp-admin-1';
@@ -80,8 +82,20 @@ async function main() {
   console.log('Seeding stores, roles, employees, and users...\n');
 
   const stores = [
-    { id: STORE_LOLAS_ID, name: "Lola's Rentals", location: 'General Luna, Siargao', is_active: true },
-    { id: STORE_BASS_ID, name: 'Bass Bikes', location: 'General Luna, Siargao', is_active: true },
+    {
+      id: STORE_LOLAS_ID,
+      name: "Lola's Rentals",
+      location: 'General Luna, Siargao',
+      is_active: true,
+      booking_token: STORE_LOLAS_BOOKING_TOKEN,
+    },
+    {
+      id: STORE_BASS_ID,
+      name: 'Bass Bikes',
+      location: 'General Luna, Siargao',
+      is_active: true,
+      booking_token: STORE_BASS_BOOKING_TOKEN,
+    },
   ];
   const { error: storeErr } = await supabase.from('stores').upsert(stores, { onConflict: 'id' });
   if (storeErr) {
@@ -103,8 +117,10 @@ async function main() {
     console.log('✓ Roles: Admin, Staff');
   }
 
-  const adminPerms = ALL_PERMISSIONS.map((p) => ({ role_id: ROLE_ADMIN_ID, permission: p }));
-  const staffPerms = STAFF_PERMISSIONS.map((p) => ({ role_id: ROLE_STAFF_ID, permission: p }));
+  const uniqueAdminPermissions = Array.from(new Set(ALL_PERMISSIONS));
+  const uniqueStaffPermissions = Array.from(new Set(STAFF_PERMISSIONS));
+  const adminPerms = uniqueAdminPermissions.map((p) => ({ role_id: ROLE_ADMIN_ID, permission: p }));
+  const staffPerms = uniqueStaffPermissions.map((p) => ({ role_id: ROLE_STAFF_ID, permission: p }));
 
   const { error: rpErr } = await supabase.from('role_permissions').upsert(
     [...adminPerms, ...staffPerms],

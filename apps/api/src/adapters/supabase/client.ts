@@ -7,7 +7,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const apiDir = resolve(__dirname, '../../..');   // apps/api
 const monorepoRoot = resolve(__dirname, '../../../../..'); // repo root
 // Load api .env first, then repo root / cwd so repo root wins (avoids apps/api/.env overriding correct keys)
-[apiDir, monorepoRoot, process.cwd()].forEach((dir) => config({ path: resolve(dir, '.env') }));
+[apiDir, monorepoRoot, process.cwd()].forEach((dir) => config({ path: resolve(dir, '.env'), override: true }));
 
 let client: SupabaseClient | null = null;
 

@@ -300,6 +300,21 @@ interface ReviewQuote {
   author: string;
 }
 
+const FALLBACK_REVIEW_QUOTES: ReviewQuote[] = [
+  {
+    text: "Super smooth booking and really friendly handover. The scooter was clean, reliable, and perfect for exploring Siargao.",
+    author: 'Lola\'s Guest',
+  },
+  {
+    text: 'Great service from pickup to return. Fast replies, fair pricing, and the team made everything easy.',
+    author: 'Verified Explorer',
+  },
+  {
+    text: 'One of the easiest rental experiences we have had. Clear communication and a bike that felt brand new.',
+    author: 'Happy Customer',
+  },
+];
+
 type BubblePhase = 'idle' | 'entering' | 'typing' | 'holding' | 'leaving';
 
 /**
@@ -320,26 +335,27 @@ function ReviewTestimonialCard() {
         .map((r) => ({ text: truncateReview(r.comment.trim()), author: r.reviewerName || 'Guest' })),
     [reviewsData],
   );
+  const displayQuotes = quotes.length > 0 ? quotes : FALLBACK_REVIEW_QUOTES;
 
   const [phase, setPhase] = useState<BubblePhase>('idle');
   const [idx, setIdx] = useState(0);
   const [visibleChars, setVisibleChars] = useState(0);
 
   useEffect(() => {
-    if (quotes.length === 0) return;
+    if (displayQuotes.length === 0) return;
     const t = setTimeout(() => setPhase('entering'), 800);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quotes.length]);
+  }, [displayQuotes.length]);
 
   useEffect(() => {
-    if (quotes.length === 0) return;
+    if (displayQuotes.length === 0) return;
     if (phase === 'entering') {
       const t = setTimeout(() => { setVisibleChars(0); setPhase('typing'); }, 400);
       return () => clearTimeout(t);
     }
     if (phase === 'typing') {
-      const text = quotes[idx]?.text ?? '';
+      const text = displayQuotes[idx]?.text ?? '';
       if (visibleChars >= text.length) {
         const t = setTimeout(() => setPhase('holding'), 50);
         return () => clearTimeout(t);
@@ -353,17 +369,17 @@ function ReviewTestimonialCard() {
     }
     if (phase === 'leaving') {
       const t = setTimeout(() => {
-        setIdx((i) => (i + 1) % quotes.length);
+        setIdx((i) => (i + 1) % displayQuotes.length);
         setVisibleChars(0);
         setPhase('entering');
       }, 400);
       return () => clearTimeout(t);
     }
-  }, [phase, visibleChars, idx, quotes]);
+  }, [phase, visibleChars, idx, displayQuotes]);
 
   const opacity = phase === 'leaving' || phase === 'idle' ? 0 : 1;
   const isTyping = phase === 'typing';
-  const quote = quotes[idx] ?? null;
+  const quote = displayQuotes[idx] ?? null;
   const displayText = quote?.text.slice(0, visibleChars) ?? '';
 
   return (
@@ -409,7 +425,7 @@ function TrustPill() {
   useEffect(() => {
     const apiBase = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
     const base = apiBase.replace(/\/+$/, '');
-    fetch(`${base}/public/stats/order-count`)
+    fetch(`${base}/stats/order-count`)
       .then((r) => r.json())
       .then((json) => {
         const n = json?.data?.totalOrders;

@@ -9,9 +9,9 @@ import { initSentry } from './lib/sentry.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const apiRoot = resolve(__dirname, '..');
-const monorepoRoot = resolve(__dirname, '../..');
+const monorepoRoot = resolve(__dirname, '../../..');
 for (const dir of [monorepoRoot, apiRoot, process.cwd()]) {
-  config({ path: resolve(dir, '.env') });
+  config({ path: resolve(dir, '.env'), override: true });
 }
 
 await initSentry();

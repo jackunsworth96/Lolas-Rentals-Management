@@ -89,7 +89,7 @@ function HeroSection() {
 
   const fetchOrderCount = useCallback(() => {
     const apiBase = normalizeApiBase(import.meta.env.VITE_API_URL as string | undefined);
-    fetch(`${apiBase}/public/stats/order-count`)
+    fetch(`${apiBase}/stats/order-count`)
       .then((r) => r.json())
       .then((json) => {
         const count = json?.data?.totalOrders;
