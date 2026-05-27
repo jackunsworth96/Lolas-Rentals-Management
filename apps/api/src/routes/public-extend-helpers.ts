@@ -290,6 +290,7 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
     const locId = storeLoc ? Number(storeLoc.id) : (locRows[0] ? Number(locRows[0].id) : 1);
 
     const extDays = extDayCount(currentDropoff.getTime(), newDropoff.getTime());
+    const storedDailyRate = Number(item.rental_rate ?? 0);
     let extensionCost = 0;
     let effectiveDailyRate = 0;
 
@@ -312,14 +313,21 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
         dailyRate = overrideDailyRate;
       } else {
         const computedExtDailyRate = extDays > 0 ? quote.rentalSubtotal / extDays : quote.rentalSubtotal;
-        const origDailyRate = Number(item.rental_rate ?? 0);
         // Extension daily rate = bracket rate for the extension days, capped so the
         // customer is never charged more per day than their original rate, but if the
         // extension-days bracket is cheaper (unlocked by volume) the customer keeps it.
-        dailyRate = origDailyRate > 0 ? Math.min(computedExtDailyRate, origDailyRate) : computedExtDailyRate;
+        dailyRate = storedDailyRate > 0 ? Math.min(computedExtDailyRate, storedDailyRate) : computedExtDailyRate;
       }
       effectiveDailyRate = dailyRate;
       extensionCost = Math.round(dailyRate * extDays * 100) / 100;
+    } else if (overrideDailyRate !== undefined) {
+      effectiveDailyRate = overrideDailyRate;
+      extensionCost = Math.round(overrideDailyRate * extDays * 100) / 100;
+    } else if (storedDailyRate > 0) {
+      // Model ID unavailable — fall back to the stored original daily rate so the
+      // extension is still charged correctly when fleet/model data is missing.
+      effectiveDailyRate = storedDailyRate;
+      extensionCost = Math.round(storedDailyRate * extDays * 100) / 100;
     }
 
     const pickup = new Date(item.pickup_datetime as string);

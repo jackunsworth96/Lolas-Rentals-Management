@@ -60,9 +60,22 @@ export function ExtendCalendar({
 
   function handleDayClick(day: number) {
     const clicked = new Date(viewYear, viewMonth, day);
-    if (clicked <= dropoffDate) return;
+    if (!sameDay(clicked, dropoffDate) && clicked < dropoffDate) return;
     const iso = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     onSelectDate(iso);
+    // When the current return day is selected, auto-advance the time to the first
+    // slot that is strictly after the current return time (so the API won't reject it).
+    if (sameDay(clicked, dropoffDate)) {
+      const dropoffMinutes = dropoffDate.getHours() * 60 + dropoffDate.getMinutes();
+      const [sh, sm] = selectedTime.split(':').map(Number);
+      if (sh * 60 + sm <= dropoffMinutes) {
+        const firstValid = TIME_SLOTS.find((s) => {
+          const [vh, vm] = s.value.split(':').map(Number);
+          return vh * 60 + vm > dropoffMinutes;
+        });
+        if (firstValid) onSelectTime(firstValid.value);
+      }
+    }
   }
 
   const selectedDateObj = selectedDate ? (() => { const [y, mo, d] = selectedDate.split('-').map(Number); return new Date(y, mo - 1, d); })() : null;
@@ -73,6 +86,14 @@ export function ExtendCalendar({
   const additionalDays = selectedDateTimeMs != null
     ? Math.max(1, Math.ceil((selectedDateTimeMs - dropoffDate.getTime()) / 86400000))
     : 0;
+
+  const isSelectedDaySameAsDropoff = selectedDateObj != null && sameDay(selectedDateObj, dropoffDate);
+  const dropoffTimeMinutes = dropoffDate.getHours() * 60 + dropoffDate.getMinutes();
+  const availableTimeSlots = TIME_SLOTS.filter((s) => {
+    if (!isSelectedDaySameAsDropoff) return true;
+    const [h, m] = s.value.split(':').map(Number);
+    return h * 60 + m > dropoffTimeMinutes;
+  });
 
   const dayHeaders = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -90,7 +111,7 @@ export function ExtendCalendar({
             </span>
             <div>
               <p className="font-headline text-base font-black text-charcoal-brand leading-tight">Select New Return Date</p>
-              <p className="text-xs text-charcoal-brand/50">Choose a date after {shortMonthDay(dropoffDate)}</p>
+              <p className="text-xs text-charcoal-brand/50">New return must be after {shortMonthDay(dropoffDate)}</p>
             </div>
           </div>
           <div className="flex gap-1">
@@ -129,13 +150,13 @@ export function ExtendCalendar({
             const cellDate = new Date(viewYear, viewMonth, day);
             const isDropoff = sameDay(cellDate, dropoffDate);
             const isSelected = selectedDateObj != null && sameDay(cellDate, selectedDateObj);
-            const isPast = cellDate < dropoffDate;
+            const isPast = cellDate < dropoffDate && !isDropoff;
 
             let cls = 'aspect-square flex items-center justify-center rounded-xl text-sm font-bold transition-all duration-150 relative ';
             if (isSelected) {
               cls += 'bg-teal-brand text-white font-black shadow-sm cursor-pointer';
             } else if (isDropoff) {
-              cls += 'bg-amber-400 text-white font-black cursor-default';
+              cls += 'bg-amber-400 text-white font-black cursor-pointer hover:bg-amber-300';
             } else if (isPast) {
               cls += 'text-charcoal-brand/25 cursor-default';
             } else {
@@ -147,11 +168,11 @@ export function ExtendCalendar({
                 key={day}
                 type="button"
                 onClick={() => handleDayClick(day)}
-                disabled={isPast || isDropoff}
+                disabled={isPast}
                 className={cls}
               >
                 {day}
-                {isDropoff && (
+                {isDropoff && !isSelected && (
                   <span className="absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-white/70" />
                 )}
               </button>
@@ -176,7 +197,7 @@ export function ExtendCalendar({
       <div className="rounded-2xl border border-sand-brand bg-white p-5 shadow-sm">
         <p className="mb-3 text-xs font-black uppercase tracking-widest text-charcoal-brand/50">Return Time</p>
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
-          {TIME_SLOTS.map((s) => {
+          {availableTimeSlots.map((s) => {
             const isActive = s.value === selectedTime;
             return (
               <button

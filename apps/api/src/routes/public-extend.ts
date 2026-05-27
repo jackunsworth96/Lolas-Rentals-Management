@@ -304,6 +304,7 @@ router.get('/preview', extendLookupLimiter, async (req, res, next) => {
         const locId = storeLoc ? Number(storeLoc.id) : (locRows[0] ? Number(locRows[0].id) : 1);
 
         const extDays = extDayCount(currentDropoff.getTime(), newDropoff.getTime());
+        const origDailyRate = Number(item.rental_rate ?? 0);
         let dailyRate = 0;
 
         if (modelId) {
@@ -313,10 +314,13 @@ router.get('/preview', extendLookupLimiter, async (req, res, next) => {
             pickupLocationId: locId, dropoffLocationId: locId,
           });
           const computedExtDailyRate = extDays > 0 ? quote.rentalSubtotal / extDays : quote.rentalSubtotal;
-          const origDailyRate = Number(item.rental_rate ?? 0);
           // Daily rate = bracket rate for extension days, capped at the original rate
           // (never higher), but if the extension bracket is cheaper the customer keeps it.
           dailyRate = Math.round((origDailyRate > 0 ? Math.min(computedExtDailyRate, origDailyRate) : computedExtDailyRate) * 100) / 100;
+        } else if (origDailyRate > 0) {
+          // Model ID unavailable (e.g. fleet record missing model_id) — fall back to the
+          // stored original daily rate so the preview shows the correct charge instead of ₱0.
+          dailyRate = origDailyRate;
         }
 
         res.json({
