@@ -12,6 +12,9 @@
 -- guard make retries safe even after mid-flight failure.
 -- ============================================================
 
+DO $migration$
+BEGIN
+  EXECUTE $fn$
 CREATE OR REPLACE FUNCTION public.process_raw_order_atomic(
   p_raw_order_id           text,
   p_order_id               text,
@@ -337,22 +340,28 @@ BEGIN
   RETURN QUERY SELECT p_order_id, true;
 END;
 $$;
+$fn$;
+END
+$migration$;
 
 
 -- ============================================================
 -- Lock down execution — only the API service role may invoke.
 -- ============================================================
-REVOKE EXECUTE ON FUNCTION public.process_raw_order_atomic(
-  text, text, text, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb,
-  jsonb, jsonb, text, text, date, jsonb, timestamptz
-) FROM authenticated;
+DO $$
+BEGIN
+  EXECUTE 'REVOKE EXECUTE ON FUNCTION public.process_raw_order_atomic(
+    text, text, text, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb,
+    jsonb, jsonb, text, text, date, jsonb, timestamptz
+  ) FROM authenticated';
 
-REVOKE EXECUTE ON FUNCTION public.process_raw_order_atomic(
-  text, text, text, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb,
-  jsonb, jsonb, text, text, date, jsonb, timestamptz
-) FROM anon;
+  EXECUTE 'REVOKE EXECUTE ON FUNCTION public.process_raw_order_atomic(
+    text, text, text, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb,
+    jsonb, jsonb, text, text, date, jsonb, timestamptz
+  ) FROM anon';
 
-GRANT EXECUTE ON FUNCTION public.process_raw_order_atomic(
-  text, text, text, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb,
-  jsonb, jsonb, text, text, date, jsonb, timestamptz
-) TO service_role;
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.process_raw_order_atomic(
+    text, text, text, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb,
+    jsonb, jsonb, text, text, date, jsonb, timestamptz
+  ) TO service_role';
+END $$;

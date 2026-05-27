@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS order_payments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   raw_order_id uuid REFERENCES orders_raw(id),
-  order_id uuid REFERENCES orders(id),
+  order_id text REFERENCES orders(id),
   amount numeric(12,2) NOT NULL DEFAULT 0,
   payment_method_id text NOT NULL,
   note text DEFAULT '',

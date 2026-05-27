@@ -9,8 +9,17 @@
 -- ============================================================
 
 INSERT INTO public.chart_of_accounts (id, name, account_type, store_id, is_active)
-VALUES
-  ('CASH-TILL-store-lolas', 'Cash Till', 'Asset', 'store-lolas', true)
+SELECT
+  'CASH-TILL-store-lolas',
+  'Cash Till',
+  'Asset',
+  'store-lolas',
+  true
+WHERE EXISTS (
+  SELECT 1
+  FROM public.stores
+  WHERE id = 'store-lolas'
+)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.journal_entries (

@@ -5,7 +5,7 @@
 -- ============================================================
 
 INSERT INTO role_permissions (role_id, permission)
-VALUES
-  ('role-admin',     'can_cancel_orders'),
-  ('store-manager',  'can_cancel_orders')
+SELECT r.id, 'can_cancel_orders'
+FROM roles r
+WHERE r.id IN ('role-admin', 'store-manager')
 ON CONFLICT DO NOTHING;

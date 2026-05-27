@@ -23,6 +23,9 @@
 -- stamped as part of final_total at order creation.
 -- ============================================================
 
+DO $migration$
+BEGIN
+  EXECUTE $fn$
 CREATE OR REPLACE FUNCTION public.settle_order_atomic(
   p_order_id                            text,
   p_store_id                            text,
@@ -158,6 +161,9 @@ BEGIN
   WHERE id = p_order_id;
 END;
 $$;
+$fn$;
+END
+$migration$;
 
 -- ============================================================
 -- Re-apply EXECUTE permissions for the new signature.
@@ -165,17 +171,20 @@ $$;
 -- remains available until it is explicitly dropped in a later
 -- migration.
 -- ============================================================
-REVOKE EXECUTE ON FUNCTION public.settle_order_atomic(
-  text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
-  text, text, date, jsonb, jsonb, numeric
-) FROM authenticated;
+DO $$
+BEGIN
+  EXECUTE 'REVOKE EXECUTE ON FUNCTION public.settle_order_atomic(
+    text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
+    text, text, date, jsonb, jsonb, numeric
+  ) FROM authenticated';
 
-REVOKE EXECUTE ON FUNCTION public.settle_order_atomic(
-  text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
-  text, text, date, jsonb, jsonb, numeric
-) FROM anon;
+  EXECUTE 'REVOKE EXECUTE ON FUNCTION public.settle_order_atomic(
+    text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
+    text, text, date, jsonb, jsonb, numeric
+  ) FROM anon';
 
-GRANT EXECUTE ON FUNCTION public.settle_order_atomic(
-  text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
-  text, text, date, jsonb, jsonb, numeric
-) TO service_role;
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.settle_order_atomic(
+    text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
+    text, text, date, jsonb, jsonb, numeric
+  ) TO service_role';
+END $$;

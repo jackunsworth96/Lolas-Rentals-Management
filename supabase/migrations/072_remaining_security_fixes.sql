@@ -9,117 +9,26 @@
 -- PART A: Function search paths
 -- ============================================================
 
-CREATE OR REPLACE FUNCTION public.create_expense_with_journal(
-  p_expense_id text, p_store_id text, p_date date, p_category text,
-  p_description text, p_amount numeric, p_paid_from text, p_vehicle_id text,
-  p_employee_id text, p_account_id text, p_status text DEFAULT 'paid'::text,
-  p_transaction_id text DEFAULT NULL::text, p_period text DEFAULT NULL::text,
-  p_journal_date date DEFAULT NULL::date, p_journal_store_id text DEFAULT NULL::text,
-  p_created_by text DEFAULT NULL::text, p_legs jsonb DEFAULT '[]'::jsonb
-)
-RETURNS void
-LANGUAGE plpgsql
-SET search_path = public
-AS $function$
-BEGIN
-  INSERT INTO expenses (
-    id, store_id, date, category, description,
-    amount, paid_from, vehicle_id, employee_id,
-    account_id, status
-  ) VALUES (
-    p_expense_id, p_store_id, p_date, p_category, p_description,
-    p_amount, p_paid_from, p_vehicle_id, p_employee_id,
-    p_account_id, p_status
-  )
-  ON CONFLICT (id) DO UPDATE SET
-    store_id    = EXCLUDED.store_id,
-    date        = EXCLUDED.date,
-    category    = EXCLUDED.category,
-    description = EXCLUDED.description,
-    amount      = EXCLUDED.amount,
-    paid_from   = EXCLUDED.paid_from,
-    vehicle_id  = EXCLUDED.vehicle_id,
-    employee_id = EXCLUDED.employee_id,
-    account_id  = EXCLUDED.account_id,
-    status      = EXCLUDED.status;
-  IF p_status = 'paid' AND jsonb_array_length(p_legs) > 0 THEN
-    INSERT INTO journal_entries (
-      id, transaction_id, period, date, store_id,
-      account_id, debit, credit, description,
-      reference_type, reference_id, created_by
-    )
-    SELECT
-      leg->>'id', p_transaction_id, p_period, p_journal_date, p_journal_store_id,
-      leg->>'account_id', (leg->>'debit')::numeric(12,2), (leg->>'credit')::numeric(12,2),
-      leg->>'description', leg->>'reference_type', leg->>'reference_id', p_created_by
-    FROM jsonb_array_elements(p_legs) AS leg;
-  END IF;
-END;
-$function$;
-
-CREATE OR REPLACE FUNCTION public.pay_expenses_atomic(
-  p_expense_ids text[], p_paid_at timestamp with time zone,
-  p_paid_from text, p_legs jsonb
-)
-RETURNS void
-LANGUAGE plpgsql
-SET search_path = public
-AS $function$
+DO $$
 DECLARE
-  leg jsonb;
+  fn record;
 BEGIN
-  UPDATE expenses
-  SET status    = 'paid',
-      paid_at   = p_paid_at,
-      paid_from = p_paid_from
-  WHERE id = ANY(p_expense_ids);
-  FOR leg IN SELECT * FROM jsonb_array_elements(p_legs)
+  FOR fn IN
+    SELECT p.oid::regprocedure AS signature
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname IN (
+        'create_expense_with_journal',
+        'pay_expenses_atomic',
+        'has_permission',
+        'user_store_ids',
+        'update_updated_at'
+      )
   LOOP
-    INSERT INTO journal_entries (
-      id, transaction_id, period, date, store_id,
-      account_id, debit, credit, description,
-      reference_type, reference_id, created_by
-    ) VALUES (
-      leg->>'id', leg->>'transaction_id', leg->>'period', (leg->>'date')::date,
-      leg->>'store_id', leg->>'account_id', (leg->>'debit')::numeric(12,2),
-      (leg->>'credit')::numeric(12,2), leg->>'description',
-      leg->>'reference_type', leg->>'reference_id', NULL
-    );
+    EXECUTE format('ALTER FUNCTION %s SET search_path = public', fn.signature);
   END LOOP;
-END;
-$function$;
-
-CREATE OR REPLACE FUNCTION public.has_permission(required text)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SET search_path = public
-AS $function$
-  SELECT COALESCE(
-    (current_setting('request.jwt.claims', true)::jsonb -> 'permissions') ? required,
-    false
-  );
-$function$;
-
-CREATE OR REPLACE FUNCTION public.user_store_ids()
-RETURNS text[]
-LANGUAGE sql
-STABLE
-SET search_path = public
-AS $function$
-  SELECT COALESCE(
-    ARRAY(SELECT jsonb_array_elements_text((current_setting('request.jwt.claims', true)::jsonb) -> 'store_ids')),
-    '{}'::text[]
-  );
-$function$;
-
-CREATE OR REPLACE FUNCTION public.update_updated_at()
-RETURNS trigger
-LANGUAGE plpgsql
-SET search_path = public
-AS $function$
-BEGIN NEW.updated_at = now(); RETURN NEW; END;
-$function$;
+END $$;
 
 -- ============================================================
 -- PART B: Scope permissive RLS policies to authenticated staff

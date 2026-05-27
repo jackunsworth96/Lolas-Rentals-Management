@@ -13,6 +13,9 @@
 -- matching the table. This migration realigns the RPC with both.
 -- ============================================================
 
+DO $migration$
+BEGIN
+  EXECUTE $fn$
 CREATE OR REPLACE FUNCTION public.activate_order_atomic(
   -- Order fields (unchanged)
   p_order_id              text,
@@ -208,26 +211,34 @@ BEGIN
 
 END;
 $$;
+$fn$;
+END
+$migration$;
 
 -- Re-emit REVOKE/GRANT matching the typed signature (unchanged from 079/098).
-REVOKE EXECUTE ON FUNCTION public.activate_order_atomic(
-  text, text, text, text, text, date, text, text, integer,
-  numeric, numeric, text, numeric, numeric, numeric, numeric,
-  text, text, text, numeric, numeric, timestamptz,
-  jsonb, jsonb, jsonb, text, text, date, text, jsonb,
-  text, numeric, date, text, numeric, boolean
-) FROM authenticated;
-REVOKE EXECUTE ON FUNCTION public.activate_order_atomic(
-  text, text, text, text, text, date, text, text, integer,
-  numeric, numeric, text, numeric, numeric, numeric, numeric,
-  text, text, text, numeric, numeric, timestamptz,
-  jsonb, jsonb, jsonb, text, text, date, text, jsonb,
-  text, numeric, date, text, numeric, boolean
-) FROM anon;
-GRANT  EXECUTE ON FUNCTION public.activate_order_atomic(
-  text, text, text, text, text, date, text, text, integer,
-  numeric, numeric, text, numeric, numeric, numeric, numeric,
-  text, text, text, numeric, numeric, timestamptz,
-  jsonb, jsonb, jsonb, text, text, date, text, jsonb,
-  text, numeric, date, text, numeric, boolean
-) TO service_role;
+DO $$
+BEGIN
+  EXECUTE 'REVOKE EXECUTE ON FUNCTION public.activate_order_atomic(
+    text, text, text, text, text, date, text, text, integer,
+    numeric, numeric, text, numeric, numeric, numeric, numeric,
+    text, text, text, numeric, numeric, timestamptz,
+    jsonb, jsonb, jsonb, text, text, date, text, jsonb,
+    text, numeric, date, text, numeric, boolean
+  ) FROM authenticated';
+
+  EXECUTE 'REVOKE EXECUTE ON FUNCTION public.activate_order_atomic(
+    text, text, text, text, text, date, text, text, integer,
+    numeric, numeric, text, numeric, numeric, numeric, numeric,
+    text, text, text, numeric, numeric, timestamptz,
+    jsonb, jsonb, jsonb, text, text, date, text, jsonb,
+    text, numeric, date, text, numeric, boolean
+  ) FROM anon';
+
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.activate_order_atomic(
+    text, text, text, text, text, date, text, text, integer,
+    numeric, numeric, text, numeric, numeric, numeric, numeric,
+    text, text, text, numeric, numeric, timestamptz,
+    jsonb, jsonb, jsonb, text, text, date, text, jsonb,
+    text, numeric, date, text, numeric, boolean
+  ) TO service_role';
+END $$;

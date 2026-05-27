@@ -22,3 +22,6 @@ coverage/
 # Build outputs
 packages/shared/dist/
 packages/*/dist/
+supabase/.temp/*
+supabase/.temp/gotrue-version
+supabase/.branches/

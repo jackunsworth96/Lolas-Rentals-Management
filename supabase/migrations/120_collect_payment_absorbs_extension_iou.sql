@@ -23,11 +23,14 @@
 -- ============================================================
 
 -- Drop the old signature so the new one cleanly replaces it.
-DROP FUNCTION IF EXISTS public.collect_payment_atomic(
-  text, text, text, numeric, text, text, date,
-  text, text, text, text, date, jsonb, text
-);
+DO $migration$
+BEGIN
+  EXECUTE 'DROP FUNCTION IF EXISTS public.collect_payment_atomic(
+    text, text, text, numeric, text, text, date,
+    text, text, text, text, date, jsonb, text
+  )';
 
+  EXECUTE $fn$
 CREATE OR REPLACE FUNCTION public.collect_payment_atomic(
   p_payment_id                   text,
   p_order_id                     text,
@@ -112,6 +115,7 @@ BEGIN
   END IF;
 END;
 $$;
+$fn$;
 
 -- ============================================================
 -- Backfill: absorb any existing pending IOUs that have already
@@ -150,17 +154,20 @@ WHERE iou.payment_type    = 'extension'
 -- ============================================================
 -- Lock down execution — only the API service role may invoke.
 -- ============================================================
-REVOKE EXECUTE ON FUNCTION public.collect_payment_atomic(
-  text, text, text, numeric, text, text, date,
-  text, text, text, text, date, jsonb, text, jsonb
-) FROM authenticated;
 
-REVOKE EXECUTE ON FUNCTION public.collect_payment_atomic(
-  text, text, text, numeric, text, text, date,
-  text, text, text, text, date, jsonb, text, jsonb
-) FROM anon;
+  EXECUTE 'REVOKE EXECUTE ON FUNCTION public.collect_payment_atomic(
+    text, text, text, numeric, text, text, date,
+    text, text, text, text, date, jsonb, text, jsonb
+  ) FROM authenticated';
 
-GRANT EXECUTE ON FUNCTION public.collect_payment_atomic(
-  text, text, text, numeric, text, text, date,
-  text, text, text, text, date, jsonb, text, jsonb
-) TO service_role;
+  EXECUTE 'REVOKE EXECUTE ON FUNCTION public.collect_payment_atomic(
+    text, text, text, numeric, text, text, date,
+    text, text, text, text, date, jsonb, text, jsonb
+  ) FROM anon';
+
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.collect_payment_atomic(
+    text, text, text, numeric, text, text, date,
+    text, text, text, text, date, jsonb, text, jsonb
+  ) TO service_role';
+END
+$migration$;

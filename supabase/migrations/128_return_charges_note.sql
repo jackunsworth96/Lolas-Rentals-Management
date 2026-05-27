@@ -20,6 +20,9 @@ ALTER TABLE public.orders
 -- remain NULL (or retain its previous value if ever re-settled,
 -- though that path is not currently reachable).
 -- ============================================================
+DO $migration$
+BEGIN
+  EXECUTE $fn$
 CREATE OR REPLACE FUNCTION public.settle_order_atomic(
   p_order_id                            text,
   p_store_id                            text,
@@ -166,21 +169,27 @@ BEGIN
   WHERE id = p_order_id;
 END;
 $$;
+$fn$;
+END
+$migration$;
 
 -- Re-apply EXECUTE permissions for the new 15-argument signature.
 -- Prior overloads (12-, 13-, and 14-argument) remain available so
 -- any in-flight requests are not broken.
-REVOKE EXECUTE ON FUNCTION public.settle_order_atomic(
-  text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
-  text, text, date, jsonb, jsonb, numeric, numeric, text
-) FROM authenticated;
+DO $$
+BEGIN
+  EXECUTE 'REVOKE EXECUTE ON FUNCTION public.settle_order_atomic(
+    text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
+    text, text, date, jsonb, jsonb, numeric, numeric, text
+  ) FROM authenticated';
 
-REVOKE EXECUTE ON FUNCTION public.settle_order_atomic(
-  text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
-  text, text, date, jsonb, jsonb, numeric, numeric, text
-) FROM anon;
+  EXECUTE 'REVOKE EXECUTE ON FUNCTION public.settle_order_atomic(
+    text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
+    text, text, date, jsonb, jsonb, numeric, numeric, text
+  ) FROM anon';
 
-GRANT EXECUTE ON FUNCTION public.settle_order_atomic(
-  text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
-  text, text, date, jsonb, jsonb, numeric, numeric, text
-) TO service_role;
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.settle_order_atomic(
+    text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
+    text, text, date, jsonb, jsonb, numeric, numeric, text
+  ) TO service_role';
+END $$;

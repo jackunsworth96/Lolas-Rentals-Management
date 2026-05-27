@@ -9,11 +9,15 @@
 -- referencing it become valid and future journal entries can post successfully.
 
 INSERT INTO chart_of_accounts (id, name, account_type, store_id, is_active)
-VALUES (
+SELECT
   'EXP-STAFF-MEAL-store-lolas',
   'Staff Meals',
   'Expense',
   'store-lolas',
   true
+WHERE EXISTS (
+  SELECT 1
+  FROM stores
+  WHERE id = 'store-lolas'
 )
 ON CONFLICT (id) DO NOTHING;

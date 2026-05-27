@@ -12,15 +12,25 @@
 -- ============================================================
 
 INSERT INTO role_permissions (role_id, permission)
-VALUES
-  ('role-admin', 'can_edit_expenses'),
-  ('role-admin', 'can_edit_maintenance'),
-  ('role-admin', 'can_edit_transfers')
+SELECT r.id, p.permission
+FROM roles r
+CROSS JOIN (
+  VALUES
+    ('can_edit_expenses'),
+    ('can_edit_maintenance'),
+    ('can_edit_transfers')
+) AS p(permission)
+WHERE r.id = 'role-admin'
 ON CONFLICT DO NOTHING;
 
 INSERT INTO role_permissions (role_id, permission)
-VALUES
-  ('role-manager', 'can_edit_expenses'),
-  ('role-manager', 'can_edit_maintenance'),
-  ('role-manager', 'can_edit_transfers')
+SELECT r.id, p.permission
+FROM roles r
+CROSS JOIN (
+  VALUES
+    ('can_edit_expenses'),
+    ('can_edit_maintenance'),
+    ('can_edit_transfers')
+) AS p(permission)
+WHERE r.id = 'role-manager'
 ON CONFLICT DO NOTHING;

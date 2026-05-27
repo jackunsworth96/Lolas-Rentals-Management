@@ -27,6 +27,9 @@
 -- captured exactly once, by the final settlement payment.
 -- ============================================================
 
+DO $migration$
+BEGIN
+  EXECUTE $fn$
 CREATE OR REPLACE FUNCTION public.settle_order_atomic(
   p_order_id                            text,
   p_store_id                            text,
@@ -158,22 +161,28 @@ BEGIN
   WHERE id = p_order_id;
 END;
 $$;
+$fn$;
+END
+$migration$;
 
 -- ============================================================
 -- Re-apply EXECUTE permissions (signature changed — the old
 -- grants remain on the previous overload; grant the new one).
 -- ============================================================
-REVOKE EXECUTE ON FUNCTION public.settle_order_atomic(
-  text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
-  text, text, date, jsonb, jsonb
-) FROM authenticated;
+DO $$
+BEGIN
+  EXECUTE 'REVOKE EXECUTE ON FUNCTION public.settle_order_atomic(
+    text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
+    text, text, date, jsonb, jsonb
+  ) FROM authenticated';
 
-REVOKE EXECUTE ON FUNCTION public.settle_order_atomic(
-  text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
-  text, text, date, jsonb, jsonb
-) FROM anon;
+  EXECUTE 'REVOKE EXECUTE ON FUNCTION public.settle_order_atomic(
+    text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
+    text, text, date, jsonb, jsonb
+  ) FROM anon';
 
-GRANT EXECUTE ON FUNCTION public.settle_order_atomic(
-  text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
-  text, text, date, jsonb, jsonb
-) TO service_role;
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.settle_order_atomic(
+    text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
+    text, text, date, jsonb, jsonb
+  ) TO service_role';
+END $$;

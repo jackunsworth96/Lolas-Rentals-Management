@@ -37,76 +37,80 @@ CREATE POLICY "Staff read own store payroll runs"
 -- same transaction as the journal entries. CREATE OR REPLACE cannot change
 -- the argument list, so drop the old signature first.
 -- ------------------------------------------------------------
-DROP FUNCTION IF EXISTS public.run_payroll_atomic(jsonb, text[], text);
-
-CREATE OR REPLACE FUNCTION public.run_payroll_atomic(
-  p_transactions  jsonb,
-  p_timesheet_ids text[],
-  p_status        text,
-  p_store_id      text,
-  p_period_start  date,
-  p_period_end    date,
-  p_notes         text
-) RETURNS void
-LANGUAGE plpgsql
-SET search_path = public
-AS $$
-DECLARE
-  tx jsonb;
-  leg jsonb;
+DO $$
 BEGIN
-  -- Idempotency guard: one payroll run per (store_id, period_start, period_end).
-  INSERT INTO public.payroll_runs (store_id, period_start, period_end, run_by)
-  VALUES (p_store_id, p_period_start, p_period_end, p_notes)
-  ON CONFLICT (store_id, period_start, period_end) DO NOTHING;
+  EXECUTE 'DROP FUNCTION IF EXISTS public.run_payroll_atomic(jsonb, text[], text)';
 
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Payroll already run for store % period % to %',
-      p_store_id, p_period_start, p_period_end
-      USING ERRCODE = 'unique_violation';
-  END IF;
+  EXECUTE $fn$
+    CREATE OR REPLACE FUNCTION public.run_payroll_atomic(
+      p_transactions  jsonb,
+      p_timesheet_ids text[],
+      p_status        text,
+      p_store_id      text,
+      p_period_start  date,
+      p_period_end    date,
+      p_notes         text
+    ) RETURNS void
+    LANGUAGE plpgsql
+    SET search_path = public
+    AS $body$
+    DECLARE
+      tx jsonb;
+      leg jsonb;
+    BEGIN
+      INSERT INTO public.payroll_runs (store_id, period_start, period_end, run_by)
+      VALUES (p_store_id, p_period_start, p_period_end, p_notes)
+      ON CONFLICT (store_id, period_start, period_end) DO NOTHING;
 
-  -- Insert all journal entries for all store allocations
-  FOR tx IN SELECT * FROM jsonb_array_elements(p_transactions)
-  LOOP
-    FOR leg IN SELECT * FROM jsonb_array_elements(tx->'legs')
-    LOOP
-      INSERT INTO journal_entries (
-        id, transaction_id, period, date, store_id,
-        account_id, debit, credit, description,
-        reference_type, reference_id, created_by
-      ) VALUES (
-        leg->>'id',
-        tx->>'transactionId',
-        tx->>'period',
-        (tx->>'date')::date,
-        tx->>'storeId',
-        leg->>'account_id',
-        (leg->>'debit')::numeric(12,2),
-        (leg->>'credit')::numeric(12,2),
-        leg->>'description',
-        leg->>'reference_type',
-        leg->>'reference_id',
-        NULL
-      );
-    END LOOP;
-  END LOOP;
+      IF NOT FOUND THEN
+        RAISE EXCEPTION 'Payroll already run for store % period % to %',
+          p_store_id, p_period_start, p_period_end
+          USING ERRCODE = 'unique_violation';
+      END IF;
 
-  -- Bulk update timesheet status
-  IF array_length(p_timesheet_ids, 1) > 0 THEN
-    UPDATE timesheets
-    SET payroll_status = p_status
-    WHERE id = ANY(p_timesheet_ids);
-  END IF;
+      FOR tx IN SELECT * FROM jsonb_array_elements(p_transactions)
+      LOOP
+        FOR leg IN SELECT * FROM jsonb_array_elements(tx->'legs')
+        LOOP
+          INSERT INTO journal_entries (
+            id, transaction_id, period, date, store_id,
+            account_id, debit, credit, description,
+            reference_type, reference_id, created_by
+          ) VALUES (
+            leg->>'id',
+            tx->>'transactionId',
+            tx->>'period',
+            (tx->>'date')::date,
+            tx->>'storeId',
+            leg->>'account_id',
+            (leg->>'debit')::numeric(12,2),
+            (leg->>'credit')::numeric(12,2),
+            leg->>'description',
+            leg->>'reference_type',
+            leg->>'reference_id',
+            NULL
+          );
+        END LOOP;
+      END LOOP;
 
-END;
-$$;
+      IF array_length(p_timesheet_ids, 1) > 0 THEN
+        UPDATE timesheets
+        SET payroll_status = p_status
+        WHERE id = ANY(p_timesheet_ids);
+      END IF;
+    END;
+    $body$;
+  $fn$;
+END $$;
 
 
 -- ------------------------------------------------------------
 -- SECTION C: Lock down EXECUTE privileges (pattern from 066)
 -- ------------------------------------------------------------
-REVOKE EXECUTE ON FUNCTION public.run_payroll_atomic(jsonb, text[], text, text, date, date, text) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION public.run_payroll_atomic(jsonb, text[], text, text, date, date, text) FROM anon;
-REVOKE EXECUTE ON FUNCTION public.run_payroll_atomic(jsonb, text[], text, text, date, date, text) FROM authenticated;
-GRANT  EXECUTE ON FUNCTION public.run_payroll_atomic(jsonb, text[], text, text, date, date, text) TO service_role;
+DO $$
+BEGIN
+  EXECUTE 'REVOKE EXECUTE ON FUNCTION public.run_payroll_atomic(jsonb, text[], text, text, date, date, text) FROM PUBLIC';
+  EXECUTE 'REVOKE EXECUTE ON FUNCTION public.run_payroll_atomic(jsonb, text[], text, text, date, date, text) FROM anon';
+  EXECUTE 'REVOKE EXECUTE ON FUNCTION public.run_payroll_atomic(jsonb, text[], text, text, date, date, text) FROM authenticated';
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.run_payroll_atomic(jsonb, text[], text, text, date, date, text) TO service_role';
+END $$;

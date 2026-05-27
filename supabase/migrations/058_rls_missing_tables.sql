@@ -57,9 +57,12 @@ CREATE POLICY repair_costs_modify
 -- ============================================================
 -- M5: Revoke SECURITY DEFINER functions from anon
 -- ============================================================
-REVOKE EXECUTE ON FUNCTION cancel_order_raw_atomic FROM anon;
-REVOKE EXECUTE ON FUNCTION confirm_extend_raw_atomic FROM anon;
-REVOKE EXECUTE ON FUNCTION confirm_extend_order_atomic FROM anon;
+DO $$
+BEGIN
+  EXECUTE 'REVOKE EXECUTE ON FUNCTION cancel_order_raw_atomic FROM anon';
+  EXECUTE 'REVOKE EXECUTE ON FUNCTION confirm_extend_raw_atomic FROM anon';
+  EXECUTE 'REVOKE EXECUTE ON FUNCTION confirm_extend_order_atomic FROM anon';
+END $$;
 
 -- ============================================================
 -- L6: Storage bucket — paw-card-receipts

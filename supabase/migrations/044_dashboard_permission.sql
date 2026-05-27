@@ -1,3 +1,5 @@
 INSERT INTO role_permissions (role_id, permission)
-VALUES ('role-admin', 'can_view_dashboard')
+SELECT id, 'can_view_dashboard'
+FROM roles
+WHERE id = 'role-admin'
 ON CONFLICT DO NOTHING;

@@ -13,8 +13,12 @@ ALTER TABLE orders_raw
 
 -- ── Update extend RPCs to snapshot original dropoff ──────────
 
+DO $migration$
+BEGIN
+
 -- RPC: confirm_extend_order_atomic
 -- Sets original_dropoff_datetime only when it is NULL (i.e. first extension).
+  EXECUTE $fn$
 CREATE OR REPLACE FUNCTION confirm_extend_order_atomic(
   p_order_id           text,
   p_order_item_id      text,
@@ -122,9 +126,11 @@ EXCEPTION
     RETURN jsonb_build_object('success', false, 'error', SQLERRM);
 END;
 $$;
+$fn$;
 
 -- RPC: confirm_extend_raw_atomic
 -- Sets original_dropoff_datetime only when it is NULL (i.e. first extension).
+  EXECUTE $fn$
 CREATE OR REPLACE FUNCTION confirm_extend_raw_atomic(
   p_order_id           text,
   p_new_dropoff        timestamptz,
@@ -203,3 +209,6 @@ EXCEPTION
     RETURN jsonb_build_object('success', false, 'error', SQLERRM);
 END;
 $$;
+$fn$;
+END
+$migration$;

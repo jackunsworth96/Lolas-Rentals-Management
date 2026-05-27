@@ -22,6 +22,9 @@
 -- card-fee surcharge delta.
 -- ============================================================
 
+DO $migration$
+BEGIN
+  EXECUTE $fn$
 CREATE OR REPLACE FUNCTION public.settle_order_atomic(
   p_order_id                            text,
   p_store_id                            text,
@@ -164,23 +167,29 @@ BEGIN
   WHERE id = p_order_id;
 END;
 $$;
+$fn$;
+END
+$migration$;
 
 -- ============================================================
 -- Re-apply EXECUTE permissions for the new 14-argument
 -- signature. Prior overloads (12- and 13-argument) remain
 -- available so any in-flight requests are not broken.
 -- ============================================================
-REVOKE EXECUTE ON FUNCTION public.settle_order_atomic(
-  text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
-  text, text, date, jsonb, jsonb, numeric, numeric
-) FROM authenticated;
+DO $$
+BEGIN
+  EXECUTE 'REVOKE EXECUTE ON FUNCTION public.settle_order_atomic(
+    text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
+    text, text, date, jsonb, jsonb, numeric, numeric
+  ) FROM authenticated';
 
-REVOKE EXECUTE ON FUNCTION public.settle_order_atomic(
-  text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
-  text, text, date, jsonb, jsonb, numeric, numeric
-) FROM anon;
+  EXECUTE 'REVOKE EXECUTE ON FUNCTION public.settle_order_atomic(
+    text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
+    text, text, date, jsonb, jsonb, numeric, numeric
+  ) FROM anon';
 
-GRANT EXECUTE ON FUNCTION public.settle_order_atomic(
-  text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
-  text, text, date, jsonb, jsonb, numeric, numeric
-) TO service_role;
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.settle_order_atomic(
+    text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
+    text, text, date, jsonb, jsonb, numeric, numeric
+  ) TO service_role';
+END $$;
