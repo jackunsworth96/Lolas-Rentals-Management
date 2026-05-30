@@ -91,7 +91,7 @@ const PublicEnrollSchema = z.object({
   email: z.string().email().max(200),
   phone: z.string().max(50).optional().nullable(),
   telegramUsername: z.string().max(80).optional().nullable(),
-  dealChoice: z.enum(['commission', 'discount']),
+  dealChoice: z.enum(['commission', 'discount', 'commission_delivery', 'discount_delivery']),
   preferredRate: z.coerce.number().min(0).max(100_000).optional().nullable(),
   motivations: z.array(z.string().max(120)).max(10).optional().nullable(),
 });
@@ -101,7 +101,11 @@ router.post('/enroll', enrollLimiter, validateBody(PublicEnrollSchema), async (r
     const body = req.body as z.infer<typeof PublicEnrollSchema>;
     const sb = getSupabaseClient();
 
-    const dealType = body.dealChoice === 'discount' ? 'discount' : 'commission';
+    const dealType = body.dealChoice === 'discount' ? 'discount'
+      : body.dealChoice === 'commission_delivery' ? 'commission_delivery'
+      : body.dealChoice === 'discount_delivery' ? 'discount_delivery'
+      : 'commission';
+    const hasFreeDelivery = dealType === 'commission_delivery' || dealType === 'discount_delivery';
     const baseSlug = slugify(body.propertyName) || `partner-${Date.now().toString(36)}`;
     const slug = await uniqueSlug(DEFAULT_ENROL_STORE_ID, baseSlug);
 
@@ -117,15 +121,15 @@ router.post('/enroll', enrollLimiter, validateBody(PublicEnrollSchema), async (r
       contact_email: body.email.trim(),
       contact_whatsapp: body.phone?.trim() || null,
       commission_type: 'percentage' as const,
-      commission_value: dealType === 'commission' ? numericRate : 0,
+      commission_value: (dealType === 'commission' || dealType === 'commission_delivery') ? numericRate : 0,
       advance_booking_days: 7,
       commission_includes_extensions: false,
       active: false,
       status: 'pending' as const,
       deal_type: dealType,
-      discount_type: dealType === 'discount' ? 'percentage' : null,
-      discount_value: dealType === 'discount' ? numericRate : null,
-      free_delivery: false,
+      discount_type: (dealType === 'discount' || dealType === 'discount_delivery') ? 'percentage' : null,
+      discount_value: (dealType === 'discount' || dealType === 'discount_delivery') ? numericRate : null,
+      free_delivery: hasFreeDelivery,
       advance_discount_days: null,
       notes: [
         body.propertyType ? `Type: ${body.propertyType}` : null,
@@ -153,7 +157,12 @@ router.post('/enroll', enrollLimiter, validateBody(PublicEnrollSchema), async (r
       `Location: ${body.location ?? '—'}`,
       `Rooms: ${body.roomCount ?? '—'}`,
       `Contact: ${body.contactName} — ${body.email}${body.phone ? ` · ${body.phone}` : ''}`,
-      `Choice: <b>${dealType === 'commission' ? 'Earn commission' : 'Discount for guests'}</b>`,
+      `Choice: <b>${
+        dealType === 'commission' ? 'Earn commission'
+        : dealType === 'commission_delivery' ? 'Commission + free delivery'
+        : dealType === 'discount_delivery' ? 'Discount + free delivery'
+        : 'Discount for guests'
+      }</b>`,
       `Preferred rate: ${numericRate ? `${numericRate}%` : '—'}`,
       `Telegram: ${body.telegramUsername ?? '—'}`,
       body.motivations?.length ? `Motivations: ${body.motivations.join(' · ')}` : null,
@@ -271,7 +280,7 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
 
     const row = data as {
       name: string;
-      deal_type: 'commission' | 'discount' | 'free_delivery' | 'combined';
+      deal_type: 'commission' | 'discount' | 'free_delivery' | 'combined' | 'commission_delivery' | 'discount_delivery';
       discount_type: 'percentage' | 'fixed' | null;
       discount_value: number | null;
       free_delivery: boolean;
@@ -324,7 +333,7 @@ const PartnerBodySchema = z.object({
   commission_includes_extensions: z.boolean().optional(),
   active: z.boolean().optional(),
   status: z.enum(['active', 'pending', 'rejected']).optional(),
-  deal_type: z.enum(['commission', 'discount', 'free_delivery', 'combined']).optional(),
+  deal_type: z.enum(['commission', 'discount', 'free_delivery', 'combined', 'commission_delivery', 'discount_delivery']).optional(),
   discount_type: z.enum(['percentage', 'fixed']).nullable().optional(),
   discount_value: z.number().min(0).nullable().optional(),
   free_delivery: z.boolean().optional(),

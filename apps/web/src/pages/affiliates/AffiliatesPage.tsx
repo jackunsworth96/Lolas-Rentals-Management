@@ -55,7 +55,7 @@ interface EnrolForm {
   email: string;
   phone: string;
   telegramUsername: string;
-  dealChoice: 'commission' | 'discount' | '';
+  dealChoice: 'commission' | 'discount' | 'commission_delivery' | 'discount_delivery' | '';
   preferredRate: string;
   motivations: string[];
 }
@@ -541,6 +541,20 @@ export default function AffiliatesPage() {
                   body="We'll pay you a percentage of every booking made by your guests through your link."
                   icon={<Sparkles className="h-5 w-5" />}
                 />
+                <DealCard
+                  selected={form.dealChoice === 'commission_delivery'}
+                  onSelect={() => setField('dealChoice', 'commission_delivery')}
+                  title="Earn commission + free delivery"
+                  body="You earn a commission per booking and your guests get pickup & collection waived."
+                  icon={<Truck className="h-5 w-5" strokeWidth={1.5} />}
+                />
+                <DealCard
+                  selected={form.dealChoice === 'discount_delivery'}
+                  onSelect={() => setField('dealChoice', 'discount_delivery')}
+                  title="Give guests a discount + free delivery"
+                  body="Your guests book at a reduced rate and get free pickup & collection through your link."
+                  icon={<Gift className="h-5 w-5" strokeWidth={1.5} />}
+                />
               </div>
 
               <div className="mt-4 space-y-1.5">
@@ -554,7 +568,7 @@ export default function AffiliatesPage() {
                   inputMode="decimal"
                   value={form.preferredRate}
                   onChange={(e) => setField('preferredRate', e.target.value)}
-                  placeholder={form.dealChoice === 'discount' ? 'e.g. 5 (% off for guests)' : 'e.g. 5 (% commission)'}
+                  placeholder={form.dealChoice === 'discount' || form.dealChoice === 'discount_delivery' ? 'e.g. 5 (% off for guests)' : 'e.g. 5 (% commission)'}
                   className={inputClass}
                 />
                 <p className="ml-1 text-[11px] text-charcoal-brand/45">

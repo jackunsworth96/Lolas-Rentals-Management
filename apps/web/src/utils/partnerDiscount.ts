@@ -39,6 +39,8 @@ export function computePartnerBenefit(
   };
 
   if (!benefit) return empty;
+  // commission_delivery earns the partner a commission but still gives guests free delivery.
+  // Allow it through — isFreeDeliveryDeal below will pick it up.
   if (benefit.dealType === 'commission') return empty;
 
   // Advance days gate (mirrors the server-side rule in lib/partner-benefit.ts)
@@ -57,9 +59,10 @@ export function computePartnerBenefit(
     }
   }
 
-  const isDiscountDeal = benefit.dealType === 'discount' || benefit.dealType === 'combined';
+  const isDiscountDeal = benefit.dealType === 'discount' || benefit.dealType === 'combined' || benefit.dealType === 'discount_delivery';
   const isFreeDeliveryDeal =
-    benefit.freeDelivery || benefit.dealType === 'free_delivery' || benefit.dealType === 'combined';
+    benefit.freeDelivery || benefit.dealType === 'free_delivery' || benefit.dealType === 'combined' ||
+    benefit.dealType === 'commission_delivery' || benefit.dealType === 'discount_delivery';
 
   // Determine advance days for early-bird check
   const pickup = pickupDatetime ? new Date(pickupDatetime) : null;
@@ -98,13 +101,13 @@ export function computePartnerBenefit(
 /** Human-readable summary of the benefit for banner copy. */
 export function describeBenefit(benefit: PublicPartnerBenefit): string {
   const parts: string[] = [];
-  const discount = benefit.dealType === 'discount' || benefit.dealType === 'combined';
+  const discount = benefit.dealType === 'discount' || benefit.dealType === 'combined' || benefit.dealType === 'discount_delivery';
   if (discount && benefit.discountValue != null && benefit.discountType) {
     parts.push(benefit.discountType === 'percentage'
       ? `${benefit.discountValue}% discount applied`
       : `₱${benefit.discountValue.toLocaleString('en-PH')} discount applied`);
   }
-  if (benefit.freeDelivery || benefit.dealType === 'free_delivery' || benefit.dealType === 'combined') {
+  if (benefit.freeDelivery || benefit.dealType === 'free_delivery' || benefit.dealType === 'combined' || benefit.dealType === 'commission_delivery' || benefit.dealType === 'discount_delivery') {
     parts.push('Free delivery included');
   }
   if (parts.length === 0) {
