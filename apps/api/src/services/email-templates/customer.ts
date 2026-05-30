@@ -79,7 +79,7 @@ export function bookingConfirmationHtml({
   const charityHtml =
     charityDonation > 0
       ? `<p style="font-size: 13px; color: #00577C; font-style: italic; margin: 8px 0 16px;">
-          🐾 ₱${charityDonation.toLocaleString()} will be donated to Be Pawsitive — thank you for giving back to Siargao's street animals!
+          🐾 ₱${charityDonation.toLocaleString()} will be donated to local NGOs on Siargao — thank you for giving back to the community!
         </p>`
       : '';
 

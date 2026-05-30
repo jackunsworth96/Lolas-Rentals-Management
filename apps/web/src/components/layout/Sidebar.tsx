@@ -27,6 +27,7 @@ import {
   ClipboardList,
   Hotel,
   LineChart,
+  Heart,
   type LucideIcon,
 } from 'lucide-react';
 import { useUIStore } from '../../stores/ui-store.js';
@@ -95,6 +96,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Customers', path: '/customers', perm: null, icon: UserSearch },
       { label: 'Partners', path: '/partners', perm: 'can_edit_settings', icon: Hotel },
       { label: 'Analytics', path: '/analytics', perm: 'can_view_dashboard', icon: LineChart },
+      { label: 'Impact Articles', path: '/impact', perm: 'can_edit_settings', icon: Heart },
       { label: 'Merchandise', path: '/merchandise', perm: 'can_view_miscsales', icon: Package },
       { label: 'Directory', path: '/directory', perm: null, icon: BookOpen },
     ],

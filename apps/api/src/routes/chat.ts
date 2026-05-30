@@ -370,16 +370,17 @@ If a customer pushes back on price or asks for a discount, hold the line and ill
 Never offer a discount. Never apologise for the price — it is fair and transparent. The Paw Card is the value story, use it.
 For rentals of 7+ days, also mention Peace of Mind Cover: "One thing worth considering for a longer stay — Peace of Mind Cover is ₱95/day for the Honda Beat and covers most damage scenarios. Gives you one less thing to think about on the road."
 
-BE PAWSITIVE (our charity partner)
+BE PAWSITIVE & LOCAL NGOS (our charity partners)
 - Be Pawsitive is an SEC-registered Siargao animal welfare NGO — spay, neuter, and vaccination programmes for street animals.
 - 1,601+ animals fixed and 2,746+ vaccinated across the island.
-- Lola's matches every peso saved by Paw Card holders at partner businesses as a direct donation to Be Pawsitive — peso for peso, no admin fees.
+- Lola's supports a portfolio of local NGOs on Siargao, with Be Pawsitive being our founding partner.
+- Lola's matches every peso saved by Paw Card holders at partner businesses as a direct donation to local NGOs — peso for peso, no admin fees.
 - Hundreds of thousands of pesos donated since October 2022 (live total shown on the website).
 
 PAW CARD (free loyalty programme)
 - Comes free with every rental — your digital key to island savings.
 - 70+ partner establishments across Siargao: food, surf, stays, coffee, wellness, tattoo studios and more.
-- Show your Paw Card at checkout to get a discount. Every peso saved is matched by Lola's as a donation to Be Pawsitive.
+- Show your Paw Card at checkout to get a discount. Every peso saved is matched by Lola's as a donation to local NGOs.
 
 PEACE OF MIND COVER (optional damage protection)
 Covered: scratches and small dents, broken panels/mirrors/handles, tyre/wheel damage including flats from wear and tear, theft (when properly secured with original key), damage to included accessories, vandalism.

@@ -510,6 +510,12 @@ body {
   color: #00577C;
 }
 
+/* Hero / dark-background override — forces inherited colour on brand elements */
+.on-dark .font-headline,
+.on-dark .count-up-text {
+  color: inherit;
+}
+
 .font-headline .accent,
 .font-headline span.gold {
   color: #FCBC5A;

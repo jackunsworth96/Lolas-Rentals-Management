@@ -204,13 +204,13 @@ export function OrderSummaryPanel({
           Rental Duration:&nbsp;<span className="font-medium text-charcoal-brand">{rentalDays} Day{rentalDays !== 1 ? 's' : ''}</span>
         </div>
 
-        {/* Be Pawsitive donation banner */}
+        {/* NGO Donation banner */}
         <div className="mb-4 rounded-lg border border-teal-200/60 bg-teal-50 p-3">
           <p className="mb-1 flex items-center gap-1.5 text-[12px] font-medium text-teal-800">
-            {'\u{1F43E}'} Support Be Pawsitive
+            {'\u{1F43E}'} Support Local NGOs
           </p>
           <p className="mb-2.5 text-[11px] leading-relaxed text-teal-700/80">
-            Add a small donation to fund spay, neuter &amp; vaccination for Siargao's street animals.
+            Add a small donation to fund animal welfare and community programmes on Siargao.
           </p>
           <div className="flex flex-wrap gap-1.5">
             {CHARITY_DONATION_PRESETS.map(({ amount, label }) => {
@@ -236,12 +236,12 @@ export function OrderSummaryPanel({
             })}
           </div>
           <Link
-            to="/book/bepawsitive"
+            to="/book/impact"
             target="_blank"
             rel="noopener noreferrer"
             className="mt-2.5 inline-block font-lato text-sm text-teal-brand underline decoration-teal-brand/35 underline-offset-2 transition-colors hover:text-[#00496a]"
           >
-            Learn more about Be Pawsitive →
+            See where your donation goes →
           </Link>
         </div>
 
@@ -281,7 +281,7 @@ export function OrderSummaryPanel({
           {surchargeAmount > 0 && (
             <Row label={`Card Surcharge (${surchargePercent}%)`} amount={surchargeAmount} />
           )}
-          {charityDonation > 0 && <Row label={'Donation to Be Pawsitive \u{1F43E}'} amount={charityDonation} />}
+          {charityDonation > 0 && <Row label={'Donation to Local NGOs \u{1F43E}'} amount={charityDonation} />}
         </div>
 
         {/* Divider + Grand Total */}

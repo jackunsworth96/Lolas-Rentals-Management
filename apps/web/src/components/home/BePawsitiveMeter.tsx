@@ -8,7 +8,7 @@ interface CharityImpact {
   totalRaised: number;
 }
 
-export default function BePawsitiveMeter() {
+export function NgoImpactMeter() {
   const [total, setTotal] = useState<number>(FALLBACK_TOTAL);
 
   useEffect(() => {
@@ -40,3 +40,6 @@ export default function BePawsitiveMeter() {
     />
   );
 }
+
+/** @deprecated Use NgoImpactMeter */
+export default NgoImpactMeter;

@@ -49,6 +49,9 @@ const WaiverAgreementPage = lazy(() => import('./pages/waiver/WaiverAgreementPag
 const RefundPolicyPage = lazy(() => import('./pages/legal/RefundPolicyPage.js'));
 const PeaceOfMindPage = lazy(() => import('./pages/peace-of-mind/PeaceOfMindPage.js'));
 const BePawsitivePage = lazy(() => import('./pages/bepawsitive/BePawsitivePage.js'));
+const ImpactPage = lazy(() => import('./pages/impact/ImpactPage.js'));
+const ImpactArticlePage = lazy(() => import('./pages/impact/ImpactArticlePage.js'));
+const ImpactAdminPage = lazy(() => import('./pages/impact-admin/ImpactAdminPage.js'));
 const CancelBookingPage = lazy(() => import('./pages/cancel/CancelBookingPage.js'));
 const NotFoundPage = lazy(() => import('./pages/not-found/NotFoundPage.js'));
 const CustomersPage = lazy(() => import('./pages/customers/CustomersPage.js'));
@@ -111,6 +114,8 @@ export function AppRouter() {
           <Route path="/refund-policy" element={<RefundPolicyPage />} />
           <Route path="/peace-of-mind" element={<PeaceOfMindPage />} />
           <Route path="/book/bepawsitive" element={<BePawsitivePage />} />
+          <Route path="/book/impact" element={<ImpactPage />} />
+          <Route path="/book/impact/:slug" element={<ImpactArticlePage />} />
           <Route path="/book/cancel/:orderReference" element={<CancelBookingPage />} />
           <Route path="/unsubscribe" element={<UnsubscribePage />} />
           <Route path="/affiliates" element={<AffiliatesPage />} />
@@ -162,6 +167,7 @@ export function AppRouter() {
             <Route path="customers" element={<CustomersPage />} />
             <Route path="partners" element={<PartnersPage />} />
             <Route path="analytics" element={<AnalyticsPage />} />
+            <Route path="impact" element={<ImpactAdminPage />} />
           </Route>
           <Route path="*" element={<NotFoundPage />} />
         </Routes>

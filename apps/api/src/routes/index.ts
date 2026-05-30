@@ -36,6 +36,8 @@ import { publicStatsRoutes } from './public-stats.js';
 import { partnerRoutes } from './partners.js';
 import { analyticsRoutes } from './analytics.js';
 import { deliveryReminderRoutes } from './delivery-reminders.js';
+import { publicImpactRoutes } from './public-impact.js';
+import { impactAdminRoutes } from './impact-admin.js';
 import { loginLimiter, publicLimiter, apiLimiter } from '../middleware/rate-limit.js';
 import { telegramWebhookRouter } from '../telegram/telegram.webhook.js';
 
@@ -84,5 +86,7 @@ routes.use('/public/stats', publicStatsRoutes);
 routes.use('/partners', partnerRoutes);
 routes.use('/analytics', analyticsRoutes);
 routes.use('/orders/delivery-reminders', deliveryReminderRoutes);
+routes.use('/public/impact', publicImpactRoutes);
+routes.use('/impact', impactAdminRoutes);
 
 export { routes };

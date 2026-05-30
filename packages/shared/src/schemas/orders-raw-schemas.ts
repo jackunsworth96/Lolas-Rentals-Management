@@ -70,6 +70,8 @@ export interface OrdersRawRow {
   partner_ref: string | null;
   /** Pure rental subtotal (days × daily rate) at booking time, used as commission base (migration 130). */
   rental_value_raw: number | null;
+  /** UUID of the NGO this booking's charity donation is earmarked for (migration 131). Null for legacy rows. */
+  ngo_id: string | null;
 }
 
 /**
