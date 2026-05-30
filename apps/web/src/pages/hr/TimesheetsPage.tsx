@@ -70,6 +70,10 @@ interface EntryRow {
 }
 
 const LEAVE_DAY_TYPES = ['Holiday', 'Sick'];
+const HOLIDAY_PAY_RATES: Record<string, { label: string; extra: number }> = {
+  'Special Holiday': { label: 'Special Holiday', extra: 30 },
+  'Regular Holiday': { label: 'Regular Holiday', extra: 100 },
+};
 
 export default function TimesheetsPage() {
   const globalStoreId = useUIStore((s) => s.selectedStoreId) ?? '';
@@ -363,6 +367,12 @@ export default function TimesheetsPage() {
               {isLeaveDayType && (
                 <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800">
                   {entryDayType} — 8 hours recorded automatically, no time entry required.
+                </div>
+              )}
+              {HOLIDAY_PAY_RATES[entryDayType] && (
+                <div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2 text-sm text-blue-800">
+                  {HOLIDAY_PAY_RATES[entryDayType].label} — employees earn an additional{' '}
+                  <strong>+{HOLIDAY_PAY_RATES[entryDayType].extra}%</strong> on top of their regular daily rate.
                 </div>
               )}
 
