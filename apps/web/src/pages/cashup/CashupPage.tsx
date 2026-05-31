@@ -141,7 +141,7 @@ export default function CashupPage() {
       summary.totals.cashSalesTotal +
       (summary.totals.miscCashTotal ?? 0) +
       summary.totals.interStoreIn -
-      summary.totals.expenseTotal -
+      (summary.totals.cashExpenseTotal ?? summary.totals.expenseTotal) -
       summary.totals.depositTotal -
       summary.totals.interStoreOut -
       (summary.totals.cashRefundTotal ?? 0)
