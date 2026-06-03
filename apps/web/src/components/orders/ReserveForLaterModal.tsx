@@ -95,6 +95,7 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
   const [selectedVehicleName, setSelectedVehicleName] = useState('');
   const [vehicleModelId, setVehicleModelId] = useState('');
+  const [discount, setDiscount] = useState(0);
   const [depositAmount, setDepositAmount] = useState(0);
   const [depositMethod, setDepositMethod] = useState('cash');
   const [staffNotes, setStaffNotes] = useState('');
@@ -181,6 +182,7 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
     setSelectedVehicleId('');
     setSelectedVehicleName('');
     setVehicleModelId('');
+    setDiscount(0);
     setDepositAmount(0);
     setDepositMethod('cash');
     setStaffNotes('');
@@ -201,6 +203,10 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedVehicleId || !datesValid) return;
+    const baseTotal = quote?.grandTotalWithFees ?? quote?.grandTotal ?? undefined;
+    const discountedTotal = baseTotal != null
+      ? Math.max(0, baseTotal - discount)
+      : undefined;
     createWalkInReserved.mutate(
       {
         customerName: customerName.trim(),
@@ -218,9 +224,10 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
         depositMethod: depositAmount > 0
           ? (depositMethod as 'cash' | 'gcash' | 'card' | 'bank_transfer')
           : undefined,
-        grandTotal: quote?.grandTotalWithFees ?? quote?.grandTotal ?? undefined,
+        grandTotal: discountedTotal,
         rentalDays: quote?.rentalDays ?? undefined,
         dailyRate: quote?.dailyRate ?? undefined,
+        discount: discount > 0 ? discount : undefined,
         staffNotes: staffNotes.trim() || undefined,
       },
       {
@@ -265,10 +272,18 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
           {(depositAmount > 0 || quote) && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 space-y-1">
               {quote && (
-                <p className="font-lato text-sm text-amber-800">
-                  <span className="font-semibold">Estimated total:</span>{' '}
-                  {formatCurrency(quote.grandTotalWithFees ?? quote.grandTotal)}
-                </p>
+                <>
+                  {discount > 0 && (
+                    <p className="font-lato text-sm text-green-700">
+                      <span className="font-semibold">Discount applied:</span>{' '}
+                      {formatCurrency(discount)}
+                    </p>
+                  )}
+                  <p className="font-lato text-sm text-amber-800">
+                    <span className="font-semibold">Estimated total:</span>{' '}
+                    {formatCurrency(Math.max(0, (quote.grandTotalWithFees ?? quote.grandTotal) - discount))}
+                  </p>
+                </>
               )}
               {depositAmount > 0 && (
                 <p className="font-lato text-sm text-amber-800">
@@ -496,36 +511,74 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
 
         {/* Quote */}
         {selectedVehicleId && datesValid && (
-          <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+          <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 space-y-3">
             <p className={SECTION_HDR_CLS}>Estimated Total</p>
             {quoteLoading ? (
               <p className="font-lato text-sm text-gray-400">Calculating…</p>
             ) : quote ? (
-              <div className="space-y-1 font-lato text-sm text-gray-700">
-                <div className="flex justify-between">
-                  <span>{quote.rentalDays} day{quote.rentalDays !== 1 ? 's' : ''} × {formatCurrency(quote.dailyRate)}/day</span>
-                  <span>{formatCurrency(quote.rentalSubtotal)}</span>
-                </div>
-                {quote.pickupFee > 0 && (
-                  <div className="flex justify-between text-gray-500">
-                    <span>Pickup transfer</span>
-                    <span>{formatCurrency(quote.pickupFee)}</span>
+              <>
+                <div className="space-y-1 font-lato text-sm text-gray-700">
+                  <div className="flex justify-between">
+                    <span>{quote.rentalDays} day{quote.rentalDays !== 1 ? 's' : ''} × {formatCurrency(quote.dailyRate)}/day</span>
+                    <span>{formatCurrency(quote.rentalSubtotal)}</span>
                   </div>
-                )}
-                {quote.dropoffFee > 0 && (
-                  <div className="flex justify-between text-gray-500">
-                    <span>Dropoff transfer</span>
-                    <span>{formatCurrency(quote.dropoffFee)}</span>
+                  {quote.pickupFee > 0 && (
+                    <div className="flex justify-between text-gray-500">
+                      <span>Pickup transfer</span>
+                      <span>{formatCurrency(quote.pickupFee)}</span>
+                    </div>
+                  )}
+                  {quote.dropoffFee > 0 && (
+                    <div className="flex justify-between text-gray-500">
+                      <span>Dropoff transfer</span>
+                      <span>{formatCurrency(quote.dropoffFee)}</span>
+                    </div>
+                  )}
+                  {discount > 0 && (
+                    <div className="flex justify-between text-green-600 font-medium">
+                      <span>Discount</span>
+                      <span>−{formatCurrency(discount)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between border-t border-gray-200 pt-1 font-semibold text-gray-900">
+                    <span>Estimated total</span>
+                    <span>
+                      {discount > 0 ? (
+                        <>
+                          <span className="mr-2 font-normal text-gray-400 line-through">
+                            {formatCurrency(quote.grandTotalWithFees ?? quote.grandTotal)}
+                          </span>
+                          {formatCurrency(Math.max(0, (quote.grandTotalWithFees ?? quote.grandTotal) - discount))}
+                        </>
+                      ) : (
+                        formatCurrency(quote.grandTotalWithFees ?? quote.grandTotal)
+                      )}
+                    </span>
                   </div>
-                )}
-                <div className="flex justify-between border-t border-gray-200 pt-1 font-semibold text-gray-900">
-                  <span>Estimated total</span>
-                  <span>{formatCurrency(quote.grandTotalWithFees ?? quote.grandTotal)}</span>
+                  <p className="text-[11px] text-gray-400">
+                    Stored with the reservation · confirmed at activation
+                  </p>
                 </div>
-                <p className="text-[11px] text-gray-400">
-                  Stored with the reservation · confirmed at activation
-                </p>
-              </div>
+
+                {/* Discount input */}
+                <div className="border-t border-gray-200 pt-3">
+                  <label className={LABEL_CLS}>Discount (₱)</label>
+                  <input
+                    type="number"
+                    className={INPUT_CLS}
+                    min={0}
+                    step={1}
+                    value={discount === 0 ? '' : discount}
+                    placeholder="0"
+                    onChange={(e) => setDiscount(Number(e.target.value) || 0)}
+                  />
+                  {discount > 0 && (
+                    <p className="mt-1 font-lato text-xs text-green-600">
+                      {formatCurrency(discount)} discount applied to the estimated total.
+                    </p>
+                  )}
+                </div>
+              </>
             ) : (
               <p className="font-lato text-xs text-gray-400 italic">
                 Select pickup &amp; dropoff locations to see an estimate.

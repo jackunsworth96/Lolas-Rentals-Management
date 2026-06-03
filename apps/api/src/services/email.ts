@@ -92,6 +92,7 @@ export {
   bookingCancellationHtml,
   transferBookingConfirmationHtml,
   transferPickupConfirmationHtml,
+  walkInReservationConfirmationHtml,
 } from './email-templates/customer.js';
 
 export {

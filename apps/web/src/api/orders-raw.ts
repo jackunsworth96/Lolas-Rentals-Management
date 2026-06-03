@@ -214,6 +214,7 @@ export interface WalkInReservedPayload {
   grandTotal?: number;
   rentalDays?: number;
   dailyRate?: number;
+  discount?: number;
   staffNotes?: string;
 }
 

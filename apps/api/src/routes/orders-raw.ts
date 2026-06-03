@@ -8,7 +8,7 @@ import { Permission, resolveStoreFromSource, resolveSourceFromStore } from '@lol
 import { supabase } from '../adapters/supabase/client.js';
 import { resolveCharityPayableAccount } from '../adapters/supabase/maintenance-expense-rpc.js';
 import { processRawOrder, type ProcessRawOrderDeps } from '../use-cases/orders/process-raw-order.js';
-import { sendEmail, bookingConfirmationHtml, bookingCancellationHtml, walkInStaffAlertHtml, escapeHtml, NOTIFICATION_EMAIL, INTERNAL_FROM_EMAIL } from '../services/email.js';
+import { sendEmail, bookingConfirmationHtml, bookingCancellationHtml, walkInStaffAlertHtml, walkInReservationConfirmationHtml, escapeHtml, NOTIFICATION_EMAIL, INTERNAL_FROM_EMAIL } from '../services/email.js';
 import { formatManilaDate, formatManilaDateTime } from '../utils/manila-date.js';
 import { sendTelegramAlert, sendTelegramAlertPaidOrdersStaggered, getTelegramChatId } from '../lib/telegram.js';
 
@@ -120,6 +120,7 @@ const walkInReservedBodySchema = z.object({
   grandTotal: z.number().min(0).optional(),
   rentalDays: z.number().int().min(1).optional(),
   dailyRate: z.number().min(0).optional(),
+  discount: z.number().min(0).default(0),
   staffNotes: z.string().optional(),
 });
 
@@ -135,6 +136,45 @@ router.post('/walk-in-reserved', requirePermission(Permission.EditOrders), async
     }
 
     const body = parsed.data;
+
+    // ── Server-side double-booking check ──────────────────────────
+    // 1. Check active order_items for the exact vehicle overlapping the window
+    const { data: overlappingItems } = await supabase
+      .from('order_items')
+      .select('id')
+      .eq('vehicle_id', body.vehicleId)
+      .lt('pickup_datetime', body.dropoffDatetime)
+      .gt('dropoff_datetime', body.pickupDatetime)
+      .limit(1);
+
+    if (overlappingItems && overlappingItems.length > 0) {
+      res.status(409).json({
+        success: false,
+        error: { code: 'VEHICLE_UNAVAILABLE', message: 'This vehicle is already booked for the selected dates. Please choose different dates or another vehicle.' },
+      });
+      return;
+    }
+
+    // 2. Check unprocessed walk-in reservations for the same vehicle and window
+    const { data: overlappingReserved } = await supabase
+      .from('orders_raw')
+      .select('id')
+      .eq('vehicle_id', body.vehicleId)
+      .eq('booking_channel', 'walk_in')
+      .eq('status', 'unprocessed')
+      .lt('pickup_datetime', body.dropoffDatetime)
+      .gt('dropoff_datetime', body.pickupDatetime)
+      .limit(1);
+
+    if (overlappingReserved && overlappingReserved.length > 0) {
+      res.status(409).json({
+        success: false,
+        error: { code: 'VEHICLE_UNAVAILABLE', message: 'This vehicle already has a pending reservation for the selected dates. Please choose different dates or another vehicle.' },
+      });
+      return;
+    }
+    // ─────────────────────────────────────────────────────────────
+
     const source = resolveSourceFromStore(body.storeId);
     const orderReference = await uniqueWalkInReference(source);
 
@@ -144,6 +184,7 @@ router.post('/walk-in-reserved', requirePermission(Permission.EditOrders), async
       ...(body.grandTotal != null ? { grand_total: body.grandTotal } : {}),
       ...(body.rentalDays != null ? { rental_days: body.rentalDays } : {}),
       ...(body.dailyRate != null ? { daily_rate: body.dailyRate } : {}),
+      ...(body.discount > 0 ? { discount: body.discount } : {}),
       ...(body.staffNotes ? { staff_notes: body.staffNotes } : {}),
     };
 
@@ -172,7 +213,23 @@ router.post('/walk-in-reserved', requirePermission(Permission.EditOrders), async
 
     if (error) throw new Error(error.message);
 
-    // Fire-and-forget Telegram alert to ops channel
+    // ── Resolve location names for Telegram + email ──────────────
+    let pickupLocation = 'Store';
+    let dropoffLocation = 'Store';
+    if (body.pickupLocationId || body.dropoffLocationId) {
+      const { data: locRows } = await supabase
+        .from('locations')
+        .select('id, name')
+        .eq('is_active', true)
+        .or(`store_id.eq.${body.storeId},store_id.is.null`);
+      const locMap = new Map(
+        ((locRows ?? []) as Array<{ id: number; name: string }>).map((l) => [l.id, l.name]),
+      );
+      if (body.pickupLocationId) pickupLocation = locMap.get(body.pickupLocationId) ?? 'Store';
+      if (body.dropoffLocationId) dropoffLocation = locMap.get(body.dropoffLocationId) ?? 'Store';
+    }
+
+    // ── Fire-and-forget Telegram alert to ops channel ─────────────
     {
       const depositLine = body.depositAmount > 0
         ? `\n💵 <b>Deposit:</b> ₱${body.depositAmount.toLocaleString('en-PH')}` +
@@ -180,6 +237,9 @@ router.post('/walk-in-reserved', requirePermission(Permission.EditOrders), async
         : '';
       const totalLine = body.grandTotal != null
         ? `\n💰 <b>Est. Total:</b> ₱${body.grandTotal.toLocaleString('en-PH')}`
+        : '';
+      const discountLine = body.discount > 0
+        ? `\n🏷️ <b>Discount:</b> ₱${body.discount.toLocaleString('en-PH')}`
         : '';
       void sendTelegramAlert(
         `📋 <b>Walk-in Reserved (Pending)</b>\n` +
@@ -190,10 +250,43 @@ router.post('/walk-in-reserved', requirePermission(Permission.EditOrders), async
           `Pickup: ${escapeHtml(formatManilaDateTime(body.pickupDatetime))}\n` +
           `Return: ${escapeHtml(formatManilaDateTime(body.dropoffDatetime))}` +
           totalLine +
+          discountLine +
           depositLine +
           `\nStore: ${escapeHtml(body.storeId)}`,
         getTelegramChatId('ops'),
       );
+    }
+
+    // ── Fire-and-forget customer confirmation email ───────────────
+    if (body.customerEmail) {
+      const whatsappNumber = process.env.WHATSAPP_NUMBER ?? '639694443413';
+      const rentalSubtotal =
+        body.rentalDays != null && body.dailyRate != null
+          ? body.rentalDays * body.dailyRate
+          : undefined;
+      void sendEmail({
+        to: body.customerEmail,
+        subject: `Reservation Confirmed — ${orderReference} | Lola's Rentals`,
+        html: walkInReservationConfirmationHtml({
+          customerName: body.customerName,
+          orderReference,
+          vehicleName: body.vehicleName ?? body.vehicleModelId,
+          pickupDatetime: formatManilaDateTime(body.pickupDatetime),
+          dropoffDatetime: formatManilaDateTime(body.dropoffDatetime),
+          pickupLocation,
+          dropoffLocation,
+          rentalDays: body.rentalDays,
+          dailyRate: body.dailyRate,
+          rentalSubtotal,
+          pickupFee: undefined,
+          dropoffFee: undefined,
+          discount: body.discount > 0 ? body.discount : undefined,
+          estimatedTotal: body.grandTotal,
+          depositAmount: body.depositAmount > 0 ? body.depositAmount : undefined,
+          depositMethod: body.depositMethod,
+          whatsappNumber,
+        }),
+      });
     }
 
     res.status(201).json({ success: true, data, orderReference });
