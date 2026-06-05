@@ -16,37 +16,135 @@ const CATEGORY_COLOURS: Record<string, string> = {
   general: 'bg-amber-100 text-amber-800',
 };
 
-/** Render markdown body as simple HTML paragraphs / headings without a full markdown library. */
+// ---------------------------------------------------------------------------
+// Inline markdown → JSX (bold, italic, inline code, links)
+// ---------------------------------------------------------------------------
+function parseInline(text: string, baseKey: number): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  // Order matters: **bold** before *italic*
+  const regex = /(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`|\[(.+?)\]\((.+?)\))/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let k = 0;
+  while ((m = regex.exec(text)) !== null) {
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    if (m[2] !== undefined) {
+      parts.push(<strong key={`${baseKey}-b${k++}`}>{m[2]}</strong>);
+    } else if (m[3] !== undefined) {
+      parts.push(<em key={`${baseKey}-i${k++}`}>{m[3]}</em>);
+    } else if (m[4] !== undefined) {
+      parts.push(<code key={`${baseKey}-c${k++}`} className="rounded bg-sand-brand px-1 py-0.5 text-[13px] font-mono">{m[4]}</code>);
+    } else if (m[5] !== undefined && m[6] !== undefined) {
+      parts.push(<a key={`${baseKey}-a${k++}`} href={m[6]} target="_blank" rel="noopener noreferrer" className="text-teal-brand underline hover:opacity-80">{m[5]}</a>);
+    }
+    last = regex.lastIndex;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  if (parts.length === 0) return text;
+  if (parts.length === 1) return parts[0];
+  return <>{parts}</>;
+}
+
+// ---------------------------------------------------------------------------
+// Block-level markdown renderer
+// ---------------------------------------------------------------------------
 function SimpleMarkdown({ body }: { body: string }) {
   const lines = body.split('\n');
-  const elements: React.ReactNode[] = [];
+  const out: React.ReactNode[] = [];
   let key = 0;
+  let i = 0;
 
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      elements.push(<div key={key++} className="h-4" />);
-    } else if (trimmed.startsWith('### ')) {
-      elements.push(<h3 key={key++} className="mt-6 font-headline text-[20px] font-bold text-charcoal-brand">{trimmed.slice(4)}</h3>);
-    } else if (trimmed.startsWith('## ')) {
-      elements.push(<h2 key={key++} className="mt-8 font-headline text-[24px] font-bold text-charcoal-brand">{trimmed.slice(3)}</h2>);
-    } else if (trimmed.startsWith('# ')) {
-      elements.push(<h1 key={key++} className="mt-8 font-headline text-[28px] font-bold text-charcoal-brand">{trimmed.slice(2)}</h1>);
-    } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-      elements.push(
-        <li key={key++} className="ml-4 font-lato text-[15px] leading-relaxed text-charcoal-brand/80 list-disc">
-          {trimmed.slice(2)}
-        </li>
+  while (i < lines.length) {
+    const raw = lines[i];
+    const t = raw.trim();
+
+    // Blank line
+    if (!t) { out.push(<div key={key++} className="h-3" />); i++; continue; }
+
+    // Headings
+    if (t.startsWith('# '))   { out.push(<h1 key={key++} className="mt-8 mb-2 font-headline text-[28px] font-black text-charcoal-brand">{parseInline(t.slice(2), key)}</h1>); i++; continue; }
+    if (t.startsWith('## '))  { out.push(<h2 key={key++} className="mt-8 mb-2 font-headline text-[22px] font-bold text-charcoal-brand">{parseInline(t.slice(3), key)}</h2>); i++; continue; }
+    if (t.startsWith('### ')) { out.push(<h3 key={key++} className="mt-6 mb-1 font-headline text-[18px] font-bold text-charcoal-brand">{parseInline(t.slice(4), key)}</h3>); i++; continue; }
+
+    // Blockquote — collect consecutive > lines
+    if (t.startsWith('> ')) {
+      const quoteLines: string[] = [];
+      while (i < lines.length && lines[i].trim().startsWith('> ')) {
+        quoteLines.push(lines[i].trim().slice(2));
+        i++;
+      }
+      out.push(
+        <blockquote key={key++} className="my-4 border-l-4 border-teal-brand/40 bg-sand-brand/40 pl-4 pr-3 py-3 rounded-r-lg font-lato text-[15px] italic leading-relaxed text-charcoal-brand/75">
+          {quoteLines.map((ql, qi) => <p key={qi}>{parseInline(ql, key + qi)}</p>)}
+        </blockquote>
       );
-    } else {
-      elements.push(
-        <p key={key++} className="font-lato text-[15px] leading-[1.85] text-charcoal-brand/80">
-          {trimmed}
-        </p>
-      );
+      continue;
     }
+
+    // Table — collect consecutive | lines, skip separator rows
+    if (t.startsWith('|')) {
+      const tableRows: string[][] = [];
+      while (i < lines.length && lines[i].trim().startsWith('|')) {
+        const row = lines[i].trim();
+        if (!/^\|[\s\-|:]+\|$/.test(row)) {
+          tableRows.push(row.split('|').slice(1, -1).map((c) => c.trim()));
+        }
+        i++;
+      }
+      if (tableRows.length > 0) {
+        const [head, ...body2] = tableRows;
+        out.push(
+          <div key={key++} className="my-4 overflow-x-auto rounded-xl border border-charcoal-brand/10">
+            <table className="w-full text-left font-lato text-[14px]">
+              <thead className="bg-sand-brand/60">
+                <tr>{head.map((cell, ci) => <th key={ci} className="px-4 py-2.5 font-semibold text-charcoal-brand">{parseInline(cell, key + ci)}</th>)}</tr>
+              </thead>
+              <tbody>
+                {body2.map((row, ri) => (
+                  <tr key={ri} className="border-t border-charcoal-brand/8">
+                    {row.map((cell, ci) => <td key={ci} className="px-4 py-2 text-charcoal-brand/75">{parseInline(cell, key + ri * 100 + ci)}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+      continue;
+    }
+
+    // Horizontal rule
+    if (/^[-*]{3,}$/.test(t)) { out.push(<hr key={key++} className="my-6 border-charcoal-brand/10" />); i++; continue; }
+
+    // Unordered list — collect consecutive - / * lines
+    if (t.startsWith('- ') || t.startsWith('* ')) {
+      const items: string[] = [];
+      while (i < lines.length && (lines[i].trim().startsWith('- ') || lines[i].trim().startsWith('* '))) {
+        items.push(lines[i].trim().slice(2));
+        i++;
+      }
+      out.push(
+        <ul key={key++} className="my-2 ml-5 space-y-1.5 list-disc">
+          {items.map((item, ii) => (
+            <li key={ii} className="font-lato text-[15px] leading-relaxed text-charcoal-brand/80">
+              {parseInline(item, key + ii)}
+            </li>
+          ))}
+        </ul>
+      );
+      continue;
+    }
+
+    // Default paragraph
+    out.push(
+      <p key={key++} className="font-lato text-[15px] leading-[1.85] text-charcoal-brand/80">
+        {parseInline(t, key)}
+      </p>
+    );
+    i++;
   }
-  return <div className="space-y-3">{elements}</div>;
+
+  return <div className="space-y-2">{out}</div>;
 }
 
 export default function ImpactArticlePage() {
@@ -98,18 +196,6 @@ export default function ImpactArticlePage() {
         canonical={`/book/impact/${article.slug}`}
         ogImage={article.featured_image_url ?? undefined}
       />
-
-      {/* Hero image */}
-      {article.featured_image_url && (
-        <div className="w-full overflow-hidden" style={{ maxHeight: 480 }}>
-          <img
-            src={article.featured_image_url}
-            alt={article.title}
-            className="h-full w-full object-cover"
-            style={{ maxHeight: 480 }}
-          />
-        </div>
-      )}
 
       <FadeUpSection>
         <article className="mx-auto max-w-3xl px-6 py-12">

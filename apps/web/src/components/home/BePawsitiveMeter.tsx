@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import CountUp from './CountUp.js';
 
-const FALLBACK_TOTAL = 282995;
+const FALLBACK_TOTAL = 325495;
 const PUBLIC_ENDPOINT = '/api/public/booking/charity-impact';
 
 interface CharityImpact {

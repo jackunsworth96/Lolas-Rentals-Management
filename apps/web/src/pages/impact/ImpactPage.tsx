@@ -8,6 +8,7 @@ import { usePublicArticles, usePublicNgoTotals } from '../../api/impact.js';
 import { formatPhpNumber } from '../../utils/currency.js';
 import { PesoSign } from '../../components/ui/PesoSign.js';
 import { CloudinaryImage } from '../../components/ui/CloudinaryImage.js';
+import bpIconLogo from '../../assets/Be Pawsitive/Run 2025/Be Pawsitive Icon Logo.svg';
 
 const CATEGORY_LABELS: Record<string, string> = {
   ngo: 'NGO',
@@ -64,6 +65,11 @@ function ArticleCard({ article }: { article: import('../../api/impact.js').Artic
   );
 }
 
+const NGO_ROUTES: Record<string, string> = {
+  'be-pawsitive': '/book/bepawsitive',
+  'eco-hub-siargao': '/book/eco-hub-siargao',
+};
+
 function NgoTotalsSection() {
   const { data: totals } = usePublicNgoTotals();
   if (!totals || totals.length === 0) return null;
@@ -73,33 +79,61 @@ function NgoTotalsSection() {
       {totals.map((ngo) => (
         <div
           key={ngo.id}
-          className="flex items-center gap-4 rounded-xl border border-charcoal-brand/10 bg-white p-4"
+          className="flex flex-col rounded-xl border border-charcoal-brand/10 bg-white p-4"
         >
-          {ngo.logoUrl ? (
-            <img src={ngo.logoUrl} alt={ngo.name} className="h-10 w-10 shrink-0 rounded-full object-contain" />
-          ) : (
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-teal-100 text-xl">
-              🐾
-            </div>
-          )}
-          <div className="min-w-0">
-            <p className="truncate text-[13px] font-semibold text-charcoal-brand">{ngo.name}</p>
-            <p className="text-[12px] text-teal-brand font-medium">
-              <PesoSign />{formatPhpNumber(ngo.totalDonated)} raised
-            </p>
-            {ngo.websiteUrl && (
-              <a
-                href={ngo.websiteUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[11px] text-charcoal-brand/40 underline hover:text-teal-brand"
-              >
-                Visit website
-              </a>
+          <div className="flex items-center gap-4">
+            {ngo.logoUrl ? (
+              <img src={ngo.logoUrl} alt={ngo.name} className="h-12 w-12 shrink-0 rounded-xl object-cover" />
+            ) : ngo.slug === 'be-pawsitive' ? (
+              <img src={bpIconLogo} alt="Be Pawsitive" className="h-12 w-12 shrink-0 rounded-xl object-contain bg-[#1b5faa] p-1" />
+            ) : (
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-teal-100 text-xl">
+                🐾
+              </div>
             )}
+            <div className="min-w-0">
+              <p className="truncate text-[13px] font-semibold text-charcoal-brand">{ngo.name}</p>
+              <p className="text-[12px] text-teal-brand font-medium">
+                <PesoSign />{formatPhpNumber(ngo.totalDonated)} raised
+              </p>
+              {ngo.websiteUrl && (
+                <a
+                  href={ngo.websiteUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] text-charcoal-brand/40 underline hover:text-teal-brand"
+                >
+                  Visit website
+                </a>
+              )}
+            </div>
           </div>
+          {NGO_ROUTES[ngo.slug] && (
+            <Link
+              to={NGO_ROUTES[ngo.slug]}
+              className="mt-3 self-start rounded-full border border-charcoal-brand/15 px-4 py-1.5 font-lato text-[12px] font-semibold text-charcoal-brand/60 transition-colors hover:border-teal-brand/40 hover:text-teal-brand"
+            >
+              {ngo.name} →
+            </Link>
+          )}
         </div>
       ))}
+
+      {/* CTA card — fills the third column alongside the NGO cards */}
+      <div className="flex flex-col justify-between rounded-xl border border-teal-brand/20 bg-teal-brand/5 p-5">
+        <div>
+          <p className="font-headline text-[16px] font-bold text-charcoal-brand">Want to contribute?</p>
+          <p className="mt-2 font-lato text-[13px] leading-relaxed text-charcoal-brand/60">
+            Every booking automatically contributes — or add an optional donation at checkout.
+          </p>
+        </div>
+        <Link
+          to="/book/reserve"
+          className="mt-4 self-start rounded-full bg-teal-brand px-5 py-2 font-lato text-[13px] font-bold text-white transition-colors hover:bg-[#00496a]"
+        >
+          Book a Rental
+        </Link>
+      </div>
     </div>
   );
 }
@@ -111,11 +145,6 @@ const CATEGORIES = [
   { value: 'general', label: 'Community' },
 ];
 
-const STATS = [
-  { value: '1,601+', label: 'Animals Fixed' },
-  { value: '2,746+', label: 'Vaccinated' },
-  { value: 'Oct 2022', label: 'Partnership Began' },
-];
 
 export default function ImpactPage() {
   const [activeCategory, setActiveCategory] = useState('');
@@ -199,27 +228,6 @@ export default function ImpactPage() {
               <PesoSign style={{ height: '0.48em', verticalAlign: '-0.05em' }} /><NgoImpactMeter />
             </p>
             <p style={{ marginTop: 6, fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>and counting — updated live</p>
-          </div>
-
-          {/* Stat pills */}
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-            {STATS.map((s) => (
-              <div
-                key={s.label}
-                className="flex flex-col items-center rounded-2xl px-5 py-3"
-                style={{
-                  background: 'rgba(255,255,255,0.08)',
-                  border: '1px solid rgba(255,255,255,0.14)',
-                  backdropFilter: 'blur(8px)',
-                  WebkitBackdropFilter: 'blur(8px)',
-                }}
-              >
-                <span className="font-headline text-[22px] font-black text-white" style={{ lineHeight: 1 }}>
-                  {s.value}
-                </span>
-                <span className="mt-0.5 font-lato text-[11px] text-white/55">{s.label}</span>
-              </div>
-            ))}
           </div>
 
           {/* CTAs */}
@@ -310,32 +318,6 @@ export default function ImpactPage() {
                 ))}
               </div>
             )}
-          </div>
-        </section>
-      </FadeUpSection>
-
-      {/* ── CTA ── */}
-      <FadeUpSection>
-        <section className="px-6 py-16 text-center">
-          <h2 className="font-headline text-[24px] font-bold text-charcoal-brand">
-            Want to contribute?
-          </h2>
-          <p className="mx-auto mt-3 max-w-md font-lato text-[14px] leading-relaxed text-charcoal-brand/60">
-            Every booking automatically contributes — or add an optional donation at checkout. Either way, you&apos;re making a real difference.
-          </p>
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-            <Link
-              to="/book/reserve"
-              className="rounded-full bg-teal-brand px-7 py-3 font-lato text-[14px] font-bold text-white transition-colors hover:bg-[#00496a]"
-            >
-              Book a Rental
-            </Link>
-            <Link
-              to="/book/bepawsitive"
-              className="rounded-full border border-charcoal-brand/20 bg-white px-7 py-3 font-lato text-[14px] font-medium text-charcoal-brand/70 transition-colors hover:border-teal-brand/40 hover:text-teal-brand"
-            >
-              Be Pawsitive →
-            </Link>
           </div>
         </section>
       </FadeUpSection>

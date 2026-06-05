@@ -49,6 +49,7 @@ const WaiverAgreementPage = lazy(() => import('./pages/waiver/WaiverAgreementPag
 const RefundPolicyPage = lazy(() => import('./pages/legal/RefundPolicyPage.js'));
 const PeaceOfMindPage = lazy(() => import('./pages/peace-of-mind/PeaceOfMindPage.js'));
 const BePawsitivePage = lazy(() => import('./pages/bepawsitive/BePawsitivePage.js'));
+const EcoHubSiargaoPage = lazy(() => import('./pages/eco-hub-siargao/EcoHubSiargaoPage.js'));
 const ImpactPage = lazy(() => import('./pages/impact/ImpactPage.js'));
 const ImpactArticlePage = lazy(() => import('./pages/impact/ImpactArticlePage.js'));
 const ImpactAdminPage = lazy(() => import('./pages/impact-admin/ImpactAdminPage.js'));
@@ -114,6 +115,7 @@ export function AppRouter() {
           <Route path="/refund-policy" element={<RefundPolicyPage />} />
           <Route path="/peace-of-mind" element={<PeaceOfMindPage />} />
           <Route path="/book/bepawsitive" element={<BePawsitivePage />} />
+          <Route path="/book/eco-hub-siargao" element={<EcoHubSiargaoPage />} />
           <Route path="/book/impact" element={<ImpactPage />} />
           <Route path="/book/impact/:slug" element={<ImpactArticlePage />} />
           <Route path="/book/cancel/:orderReference" element={<CancelBookingPage />} />

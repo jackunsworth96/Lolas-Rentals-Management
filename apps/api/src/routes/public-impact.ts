@@ -110,18 +110,21 @@ router.get('/ngo-totals', async (req, res, next) => {
     // Be Pawsitive carries the full historical opening balance (₱282,995 paid before
     // per-booking tracking existed) plus the legacy pending amount (₱2,933).
     // These match the constants in dashboard.ts / queryCharityImpact.
-    const { queryCharityImpact } = await import('./dashboard.js');
-    const impact = await queryCharityImpact(sb);
+    const { CHARITY_OPENING_BALANCE, CHARITY_PENDING_LEGACY } = await import('./dashboard.js');
     const bePawsitiveSlug = 'be-pawsitive';
+
+    // Legacy orders_raw rows that predate per-NGO tracking have ngo_id = null;
+    // they belong to Be Pawsitive as the original partner.
+    const unassignedTotal = totalsMap['unassigned'] ?? 0;
 
     const result = ngos.map((ngo) => {
       const ngoTyped = ngo as { id: string; slug: string; name: string; logo_url?: string | null; website_url?: string | null };
       let bookingTotal = totalsMap[ngoTyped.id] ?? 0;
 
-      // For Be Pawsitive, use the full accurate total from the charity impact query
-      // (opening balance + all booking contributions) rather than orders_raw alone
+      // Be Pawsitive gets the historical opening balance + legacy pending + its own
+      // orders_raw rows + any unassigned (pre-tracking) rows — but NOT other NGOs' totals.
       if (ngoTyped.slug === bePawsitiveSlug) {
-        bookingTotal = impact.totalRaised;
+        bookingTotal = CHARITY_OPENING_BALANCE + CHARITY_PENDING_LEGACY + bookingTotal + unassignedTotal;
       }
 
       return {
