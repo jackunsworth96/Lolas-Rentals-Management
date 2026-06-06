@@ -592,7 +592,7 @@ export default function EcoHubSiargaoPage() {
             </p>
 
             {/* Programme cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: 12 }}>
               {[
                 {
                   Icon: IconLeaf,
@@ -608,6 +608,11 @@ export default function EcoHubSiargaoPage() {
                   Icon: IconNoPlastic,
                   title: 'Plastic-Free Initiative',
                   desc: 'Working with local restaurants, cafes and bars to eliminate single-use plastics island-wide.',
+                },
+                {
+                  Icon: IconRecycle,
+                  title: 'Sustainable Living Network',
+                  desc: 'Making sustainable living easier through online awareness initiatives, highlighting local eco-businesses, and building a network of sustainable living initiatives — refillables, recycling, and plastic-free shopping.',
                 },
               ].map((card, i) => {
                 const IconCmp = card.Icon;
@@ -946,7 +951,7 @@ export default function EcoHubSiargaoPage() {
       >
         <div ref={donationRef} style={{ maxWidth: 800, margin: '0 auto', textAlign: 'center' }}>
           <div ref={commitHeadRef} style={commitHeadAnim}>
-            <SectionEyebrow text="Our Commitment" color={C.forest} centered />
+            <SectionEyebrow text="Lola's Commitment" color={C.forest} centered />
             <h2 style={{ fontFamily: PACIFICO, fontSize: 'clamp(1.8rem, 3.5vw, 3rem)', color: C.text, fontWeight: 400, lineHeight: 1.2, marginBottom: 18 }}>
               Every Rental Helps
               <br />
@@ -955,7 +960,7 @@ export default function EcoHubSiargaoPage() {
           </div>
 
           <p style={{ fontFamily: NUNITO, fontSize: 15, lineHeight: 1.8, color: C.text, maxWidth: 580, margin: '0 auto 40px' }}>
-            A portion of every booking with Lola&apos;s Rentals goes directly to our NGO partners, including Eco Hub Siargao.
+            A portion of every booking with Lola&apos;s Rentals goes directly to Lola&apos;s NGO partners, including Eco Hub Siargao.
             No admin fees, no overheads — straight to the people doing the work on the ground.
           </p>
 
@@ -969,7 +974,7 @@ export default function EcoHubSiargaoPage() {
               },
               {
                 n: 2,
-                title: 'We Donate Directly',
+                title: 'Direct Donation',
                 desc: 'Funds are distributed directly to Eco Hub Siargao to cover clean-up logistics, equipment, and the kids program.',
               },
               {
