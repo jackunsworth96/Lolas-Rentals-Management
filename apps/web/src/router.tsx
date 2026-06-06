@@ -11,6 +11,7 @@ const CompletedPage = lazy(() => import('./pages/orders/CompletedPage.js'));
 const FleetPage = lazy(() => import('./pages/fleet/FleetPage.js'));
 const UtilizationDashboard = lazy(() => import('./pages/fleet/UtilizationDashboard.js'));
 const AssetRegisterPage = lazy(() => import('./pages/fleet/AssetRegisterPage.js'));
+const AccidentsPage = lazy(() => import('./pages/fleet/AccidentsPage.js'));
 const MaintenancePage = lazy(() => import('./pages/maintenance/MaintenancePage.js'));
 const TransfersPage = lazy(() => import('./pages/transfers/TransfersPage.js'));
 const PublicBookingPage = lazy(() => import('./pages/transfers/PublicBookingPage.js'));
@@ -146,6 +147,7 @@ export function AppRouter() {
                 </RequireAccounts>
               }
             />
+            <Route path="fleet/accidents" element={<AccidentsPage />} />
             <Route path="maintenance" element={<MaintenancePage />} />
             <Route path="transfers" element={<TransfersPage />} />
             <Route path="accounts" element={<AccountsPage />} />

@@ -106,3 +106,8 @@ export {
   maintenanceLogHtml,
   inspectionLogHtml,
 } from './email-templates/maintenance.js';
+
+export {
+  accidentReportHtml,
+  buildAccidentHash,
+} from './email-templates/accident.js';

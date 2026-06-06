@@ -315,11 +315,12 @@ router.get('/:id/history', requirePermission(Permission.ViewInbox), async (req, 
     const orderId = req.params.id;
     const sb = supabase;
 
-    const [orderRes, paymentsRes, swapsRes, addonsRes] = await Promise.all([
+    const [orderRes, paymentsRes, swapsRes, addonsRes, accidentsRes] = await Promise.all([
       sb.from('orders').select('id, status, order_date, created_at, employee_id').eq('id', orderId).maybeSingle(),
       sb.from('payments').select('id, payment_type, amount, payment_method_id, transaction_date, settlement_status, settlement_ref, created_at').eq('order_id', orderId).order('created_at', { ascending: true }),
       sb.from('vehicle_swaps').select('id, old_vehicle_name, new_vehicle_name, reason, swap_date, swap_time, employee_id, created_at').eq('order_id', orderId).order('created_at', { ascending: true }),
       sb.from('order_addons').select('id, addon_name, addon_price, addon_type, total_amount, added_at').eq('order_id', orderId).order('added_at', { ascending: true }),
+      sb.from('accident_reports').select('id, accident_at, description, customer_injured, police_report_filed, status, created_at').eq('order_id', orderId).order('accident_at', { ascending: true }),
     ]);
 
     interface TimelineEvent { timestamp: string; type: string; description: string; detail?: string; amount?: number }
@@ -378,6 +379,18 @@ router.get('/:id/history', requirePermission(Permission.ViewInbox), async (req, 
         type: 'addon',
         description: `Add-on: ${a.addon_name}`,
         amount: a.total_amount as number,
+      });
+    }
+
+    for (const acc of (accidentsRes.data ?? []) as Array<Record<string, unknown>>) {
+      const injured = acc.customer_injured as boolean;
+      const police = acc.police_report_filed as boolean;
+      const flags = [injured ? 'customer injured' : null, police ? 'police report filed' : null].filter(Boolean).join(', ');
+      events.push({
+        timestamp: (acc.accident_at ?? acc.created_at) as string,
+        type: 'accident',
+        description: '🚨 Accident reported',
+        detail: flags || (acc.description as string | undefined),
       });
     }
 

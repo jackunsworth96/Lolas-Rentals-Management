@@ -28,6 +28,7 @@ import {
   Hotel,
   LineChart,
   Heart,
+  Siren,
   type LucideIcon,
 } from 'lucide-react';
 import { useUIStore } from '../../stores/ui-store.js';
@@ -68,6 +69,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Fleet', path: '/fleet', perm: 'can_view_fleet', icon: ParkingSquare },
       { label: 'Asset Register', path: '/fleet/asset-register', perm: 'can_view_accounts', icon: ClipboardList },
       { label: 'Maintenance', path: '/maintenance', perm: 'can_view_maintenance', icon: Wrench },
+      { label: 'Accidents', path: '/fleet/accidents', perm: 'can_view_fleet', icon: Siren },
     ],
   },
   {
