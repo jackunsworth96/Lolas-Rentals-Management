@@ -65,7 +65,7 @@ export function AccidentDetailModal({ open, onClose, reportId }: AccidentDetailM
   const vehicleName = (r.fleet as { name?: string } | null)?.name ?? '—';
   const plateNumber = (r.fleet as { plate_number?: string } | null)?.plate_number ?? '—';
   const orderRef = (r.orders as { booking_token?: string } | null)?.booking_token ?? '—';
-  const customerName = (r.customers as { name?: string } | null)?.name ?? '—';
+  const customerName = (r.orders as { customers?: { name?: string } | null } | null)?.customers?.name ?? '—';
   const reporterName = (r.employees as { full_name?: string } | null)?.full_name ?? '—';
 
   async function handleClose() {

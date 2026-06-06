@@ -33,8 +33,8 @@ export default function AccidentsPage() {
     const q = search.toLowerCase();
     const vehicleName = (r.fleet as { name?: string } | null)?.name ?? '';
     const orderRef = (r.orders as { booking_token?: string } | null)?.booking_token ?? '';
-    const customer = r.customers
-      ? ((r.customers as { name?: string } | null)?.name ?? '')
+    const customer = r.orders
+      ? ((r.orders as { customers?: { name?: string } | null } | null)?.customers?.name ?? '')
       : '';
     return (
       vehicleName.toLowerCase().includes(q) ||
@@ -127,7 +127,7 @@ export default function AccidentsPage() {
                 const vehicleName = (r.fleet as { name?: string } | null)?.name ?? '—';
                 const plateNumber = (r.fleet as { plate_number?: string } | null)?.plate_number ?? '';
                 const orderRef = (r.orders as { booking_token?: string } | null)?.booking_token ?? '—';
-                const customerName = (r.customers as { name?: string } | null)?.name ?? '—';
+                const customerName = (r.orders as { customers?: { name?: string } | null } | null)?.customers?.name ?? '—';
 
                 return (
                   <tr

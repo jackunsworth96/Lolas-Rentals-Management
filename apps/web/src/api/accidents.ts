@@ -30,8 +30,7 @@ export interface AccidentReport {
   createdAt: string;
   // Joined fields
   fleet?: { name: string; plate_number: string } | null;
-  orders?: { booking_token: string } | null;
-  customers?: { name: string } | null;
+  orders?: { booking_token: string; customers: { name: string } | null } | null;
   employees?: { full_name: string } | null;
 }
 

@@ -63,8 +63,7 @@ router.get('/', requirePermission(Permission.ViewFleet), async (req, res, next) 
         photo_urls, customer_signature_url, additional_notes,
         reported_by_employee_id, status, tamper_hash, hash_emailed_at, created_at,
         fleet!vehicle_id(name, plate_number),
-        orders!order_id(booking_token),
-        customers(name),
+        orders!order_id(booking_token, customers!customer_id(name)),
         employees!reported_by_employee_id(full_name)
       `)
       .order('created_at', { ascending: false });
@@ -95,8 +94,7 @@ router.get('/:id', requirePermission(Permission.ViewFleet), async (req, res, nex
         photo_urls, customer_signature_url, additional_notes,
         reported_by_employee_id, status, tamper_hash, hash_emailed_at, created_at,
         fleet!vehicle_id(name, plate_number),
-        orders!order_id(booking_token),
-        customers(name),
+        orders!order_id(booking_token, customers!customer_id(name)),
         employees!reported_by_employee_id(full_name)
       `)
       .eq('id', req.params.id as string)
@@ -179,15 +177,16 @@ router.post('/', requirePermission(Permission.EditFleet), async (req, res, next)
           .maybeSingle();
         const orderReference = (order as { booking_token?: string } | null)?.booking_token ?? body.orderId;
 
-        // Resolve customer name
+        // Resolve customer name through the order's customer_id
         let customerName = '—';
-        if (body.customerId) {
-          const { data: customer } = await sb
-            .from('customers')
-            .select('name')
-            .eq('id', body.customerId)
-            .maybeSingle();
-          customerName = (customer as { name?: string } | null)?.name ?? '—';
+        const { data: orderWithCustomer } = await sb
+          .from('orders')
+          .select('customer_id, customers!customer_id(name)')
+          .eq('id', body.orderId)
+          .maybeSingle();
+        if (orderWithCustomer) {
+          const oc = orderWithCustomer as { customers?: { name?: string } | null };
+          customerName = oc.customers?.name ?? '—';
         }
 
         // Resolve reporter name

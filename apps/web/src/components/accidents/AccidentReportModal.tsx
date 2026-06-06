@@ -130,13 +130,15 @@ export function AccidentReportModal({ open, onClose, prefillOrder, onSuccess }: 
 
   function selectOrder(o: EnrichedOrder) {
     const pom = hasPomAddon(o);
+    // customerId may not be in the EnrichedOrder type but the API often returns it
+    const rawCustomerId = (o as unknown as Record<string, unknown>).customerId as string | null | undefined;
     setForm((f) => ({
       ...f,
       orderId: o.id,
       orderReference: o.bookingToken ?? '',
       vehicleId: o.primaryVehicleId ?? '',
       vehicleName: o.primaryVehicleName ?? o.vehicleNames ?? '',
-      customerId: null,
+      customerId: rawCustomerId ?? null,
       customerName: o.customerName,
       peaceOfMindActive: pom,
     }));
