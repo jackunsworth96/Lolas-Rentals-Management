@@ -1,6 +1,6 @@
 import { Modal } from '../common/Modal.js';
 import { Badge } from '../common/Badge.js';
-import { useAccident, useCloseAccident, useReopenAccident } from '../../api/accidents.js';
+import { useAccident } from '../../api/accidents.js';
 import type { AccidentReport } from '../../api/accidents.js';
 
 interface AccidentDetailModalProps {
@@ -18,11 +18,11 @@ function formatDt(iso: string | null | undefined): string {
   });
 }
 
-function Field({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
+function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="py-2">
       <dt className="text-xs text-gray-500">{label}</dt>
-      <dd className={`mt-0.5 text-sm text-gray-900 ${mono ? 'font-mono text-xs' : ''}`}>{value}</dd>
+      <dd className="mt-0.5 text-sm text-gray-900">{value}</dd>
     </div>
   );
 }
@@ -39,17 +39,12 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function YesNo({ val, yesColor = 'red' }: { val: boolean; yesColor?: 'red' | 'amber' | 'blue' | 'green' }) {
-  if (val) {
-    const color = yesColor === 'red' ? 'red' : yesColor === 'amber' ? 'amber' : yesColor === 'blue' ? 'blue' : 'green';
-    return <Badge color={color}>Yes</Badge>;
-  }
+  if (val) return <Badge color={yesColor}>Yes</Badge>;
   return <span className="text-gray-400 text-sm">No</span>;
 }
 
 export function AccidentDetailModal({ open, onClose, reportId }: AccidentDetailModalProps) {
   const { data: report, isLoading } = useAccident(reportId);
-  const closeReport = useCloseAccident();
-  const reopenReport = useReopenAccident();
   const r = report as AccidentReport | undefined;
 
   if (!open) return null;
@@ -62,57 +57,19 @@ export function AccidentDetailModal({ open, onClose, reportId }: AccidentDetailM
     );
   }
 
-  const vehicleName = (r.fleet as { name?: string } | null)?.name ?? '—';
-  const plateNumber = (r.fleet as { plate_number?: string } | null)?.plate_number ?? '—';
-  const orderRef = (r.orders as { booking_token?: string } | null)?.booking_token ?? '—';
-  const customerName = (r.orders as { customers?: { name?: string } | null } | null)?.customers?.name ?? '—';
-  const reporterName = (r.employees as { full_name?: string } | null)?.full_name ?? '—';
-
-  async function handleClose() {
-    await closeReport.mutateAsync(r!.id);
-  }
-
-  async function handleReopen() {
-    await reopenReport.mutateAsync(r!.id);
-  }
-
   return (
     <Modal open onClose={onClose} title="Accident Report" size="xl">
-      {/* Header row */}
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Badge color={r.status === 'open' ? 'red' : 'gray'}>
-            {r.status === 'open' ? 'Open' : 'Closed'}
-          </Badge>
-          <span className="text-sm text-gray-500">{formatDt(r.createdAt)}</span>
-        </div>
-        {r.status === 'open' ? (
-          <button
-            type="button"
-            onClick={handleClose}
-            disabled={closeReport.isPending}
-            className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-          >
-            Mark as Closed
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={handleReopen}
-            disabled={reopenReport.isPending}
-            className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-          >
-            Reopen
-          </button>
-        )}
+      {/* Header */}
+      <div className="mb-4 flex items-center gap-3 text-sm text-gray-500">
+        <span>Logged {formatDt(r.createdAt)}</span>
+        {r.reportedByName && <span>· {r.reportedByName}</span>}
       </div>
 
       <div className="max-h-[65vh] space-y-3 overflow-y-auto">
         <Section title="Report Details">
-          <Field label="Report ID" value={r.id} mono />
-          <Field label="Order Reference" value={orderRef} />
-          <Field label="Customer" value={customerName} />
-          <Field label="Reported By" value={reporterName} />
+          <Field label="Report ID" value={<span className="font-mono text-xs">{r.id}</span>} />
+          <Field label="Order Reference" value={<span className="font-mono text-xs">{r.orderReference ?? '—'}</span>} />
+          <Field label="Customer" value={r.customerName ?? '—'} />
           <Field label="Peace of Mind Cover" value={
             r.peaceOfMindActive === true ? <Badge color="green">Active</Badge> :
             r.peaceOfMindActive === false ? <span className="text-gray-400 text-sm">Not purchased</span> :
@@ -121,11 +78,15 @@ export function AccidentDetailModal({ open, onClose, reportId }: AccidentDetailM
         </Section>
 
         <Section title="Vehicle">
-          <Field label="Vehicle" value={`${vehicleName} — ${plateNumber}`} />
+          <Field label="Vehicle" value={
+            r.fleet
+              ? `${r.fleet.name}${r.fleet.plateNumber ? ` — ${r.fleet.plateNumber}` : ''}`
+              : '—'
+          } />
         </Section>
 
         <Section title="Incident">
-          <Field label="Date &amp; Time" value={formatDt(r.accidentAt)} />
+          <Field label="Date &amp; Time of Accident" value={formatDt(r.accidentAt)} />
           {r.location && <Field label="Location" value={r.location} />}
           <Field label="How it happened" value={
             <p className="mt-1 whitespace-pre-wrap text-sm text-gray-900">{r.description}</p>

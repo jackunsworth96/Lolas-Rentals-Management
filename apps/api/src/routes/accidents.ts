@@ -44,39 +44,79 @@ const CreateAccidentSchema = z.object({
   additionalNotes: z.string().nullable().optional(),
 });
 
+const ACCIDENT_SELECT = `
+  id, store_id, order_id, vehicle_id, customer_id,
+  accident_at, location, description, damage_description,
+  customer_injured, injury_description, medical_attention,
+  emergency_services_called, police_report_filed, police_report_number,
+  helmets_worn, third_party_notes, peace_of_mind_active,
+  photo_urls, customer_signature_url, additional_notes,
+  reported_by_employee_id, tamper_hash, hash_emailed_at, created_at,
+  fleet!vehicle_id(name, plate_number),
+  orders!order_id(booking_token, customers!customer_id(name)),
+  employees!reported_by_employee_id(full_name)
+`;
+
+type RawRow = Record<string, unknown>;
+
+function toDto(r: RawRow) {
+  const fleet = r.fleet as { name?: string; plate_number?: string } | null;
+  const orders = r.orders as { booking_token?: string; customers?: { name?: string } | null } | null;
+  const employees = r.employees as { full_name?: string } | null;
+  return {
+    id: r.id as string,
+    storeId: r.store_id as string,
+    orderId: r.order_id as string,
+    vehicleId: r.vehicle_id as string,
+    customerId: r.customer_id as string | null,
+    accidentAt: r.accident_at as string,
+    location: r.location as string | null,
+    description: r.description as string,
+    damageDescription: r.damage_description as string | null,
+    customerInjured: r.customer_injured as boolean,
+    injuryDescription: r.injury_description as string | null,
+    medicalAttention: r.medical_attention as boolean,
+    emergencyServicesCalled: r.emergency_services_called as boolean,
+    policeReportFiled: r.police_report_filed as boolean,
+    policeReportNumber: r.police_report_number as string | null,
+    helmetsWorn: r.helmets_worn as string | null,
+    thirdPartyNotes: r.third_party_notes as string | null,
+    peaceOfMindActive: r.peace_of_mind_active as boolean | null,
+    photoUrls: (r.photo_urls as string[]) ?? [],
+    customerSignatureUrl: r.customer_signature_url as string | null,
+    additionalNotes: r.additional_notes as string | null,
+    reportedByEmployeeId: r.reported_by_employee_id as string | null,
+    tamperHash: r.tamper_hash as string | null,
+    hashEmailedAt: r.hash_emailed_at as string | null,
+    createdAt: r.created_at as string,
+    fleet: fleet ? { name: fleet.name ?? '—', plateNumber: fleet.plate_number ?? '' } : null,
+    orderReference: orders?.booking_token ?? null,
+    customerName: orders?.customers?.name ?? null,
+    reportedByName: employees?.full_name ?? null,
+  };
+}
+
 const router = Router();
 router.use(authenticate);
 
 router.get('/', requirePermission(Permission.ViewFleet), async (req, res, next) => {
   try {
     const sb = getSupabaseClient();
-    const { storeId, vehicleId, orderId, status } = req.query as Record<string, string | undefined>;
+    const { storeId, vehicleId, orderId } = req.query as Record<string, string | undefined>;
 
     let query = sb
       .from('accident_reports')
-      .select(`
-        id, store_id, order_id, vehicle_id, customer_id,
-        accident_at, location, description, damage_description,
-        customer_injured, injury_description, medical_attention,
-        emergency_services_called, police_report_filed, police_report_number,
-        helmets_worn, third_party_notes, peace_of_mind_active,
-        photo_urls, customer_signature_url, additional_notes,
-        reported_by_employee_id, status, tamper_hash, hash_emailed_at, created_at,
-        fleet!vehicle_id(name, plate_number),
-        orders!order_id(booking_token, customers!customer_id(name)),
-        employees!reported_by_employee_id(full_name)
-      `)
+      .select(ACCIDENT_SELECT)
       .order('created_at', { ascending: false });
 
     if (storeId) query = query.eq('store_id', storeId);
     if (vehicleId) query = query.eq('vehicle_id', vehicleId);
     if (orderId) query = query.eq('order_id', orderId);
-    if (status) query = query.eq('status', status);
 
     const { data, error } = await query;
     if (error) throw error;
 
-    res.json({ success: true, data });
+    res.json({ success: true, data: (data ?? []).map((r) => toDto(r as RawRow)) });
   } catch (err) { next(err); }
 });
 
@@ -85,18 +125,7 @@ router.get('/:id', requirePermission(Permission.ViewFleet), async (req, res, nex
     const sb = getSupabaseClient();
     const { data, error } = await sb
       .from('accident_reports')
-      .select(`
-        id, store_id, order_id, vehicle_id, customer_id,
-        accident_at, location, description, damage_description,
-        customer_injured, injury_description, medical_attention,
-        emergency_services_called, police_report_filed, police_report_number,
-        helmets_worn, third_party_notes, peace_of_mind_active,
-        photo_urls, customer_signature_url, additional_notes,
-        reported_by_employee_id, status, tamper_hash, hash_emailed_at, created_at,
-        fleet!vehicle_id(name, plate_number),
-        orders!order_id(booking_token, customers!customer_id(name)),
-        employees!reported_by_employee_id(full_name)
-      `)
+      .select(ACCIDENT_SELECT)
       .eq('id', req.params.id as string)
       .single();
 
@@ -105,9 +134,10 @@ router.get('/:id', requirePermission(Permission.ViewFleet), async (req, res, nex
       return;
     }
 
-    res.json({ success: true, data });
+    res.json({ success: true, data: toDto(data as RawRow) });
   } catch (err) { next(err); }
 });
+
 
 router.post('/', requirePermission(Permission.EditFleet), async (req, res, next) => {
   try {
@@ -143,7 +173,6 @@ router.post('/', requirePermission(Permission.EditFleet), async (req, res, next)
         customer_signature_url: body.customerSignatureUrl ?? null,
         additional_notes: body.additionalNotes ?? null,
         reported_by_employee_id: req.user?.employeeId ?? null,
-        status: 'open',
       })
       .select()
       .single();
@@ -280,31 +309,6 @@ router.post('/', requirePermission(Permission.EditFleet), async (req, res, next)
   } catch (err) { next(err); }
 });
 
-// Only allow status transitions (open → closed). No field edits after creation.
-router.patch('/:id/status', requirePermission(Permission.EditFleet), async (req, res, next) => {
-  try {
-    const { status } = req.body as { status?: unknown };
-    if (status !== 'closed' && status !== 'open') {
-      res.status(400).json({ success: false, error: { code: 'INVALID_STATUS', message: 'Status must be "open" or "closed"' } });
-      return;
-    }
-
-    const sb = getSupabaseClient();
-    const { data, error } = await sb
-      .from('accident_reports')
-      .update({ status })
-      .eq('id', req.params.id as string)
-      .select('id, status')
-      .single();
-
-    if (error || !data) {
-      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Accident report not found' } });
-      return;
-    }
-
-    res.json({ success: true, data });
-  } catch (err) { next(err); }
-});
 
 // Photo upload — stores to Supabase Storage 'accident-photos' bucket, returns signed URL
 router.post('/upload-photo', requirePermission(Permission.EditFleet), (req, res, next) => {

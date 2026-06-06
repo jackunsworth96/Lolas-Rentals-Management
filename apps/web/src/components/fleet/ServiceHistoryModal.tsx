@@ -183,12 +183,13 @@ export function ServiceHistoryModal({ open, onClose, vehicleId, vehicleName, sto
           ) : (
             <div className="space-y-3">
               {accidents.map((a) => {
-                const orderRef = (a.orders as { booking_token?: string } | null)?.booking_token ?? '—';
-                const accidentDate = new Date(a.accidentAt).toLocaleString('en-PH', {
-                  timeZone: 'Asia/Manila',
-                  dateStyle: 'medium',
-                  timeStyle: 'short',
-                });
+                const accidentDate = a.accidentAt
+                  ? new Date(a.accidentAt).toLocaleString('en-PH', {
+                      timeZone: 'Asia/Manila',
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    })
+                  : '—';
                 return (
                   <button
                     key={a.id}
@@ -199,10 +200,8 @@ export function ServiceHistoryModal({ open, onClose, vehicleId, vehicleName, sto
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="flex items-center gap-2">
-                          <Badge color={a.status === 'open' ? 'red' : 'gray'}>
-                            {a.status === 'open' ? 'Open' : 'Closed'}
-                          </Badge>
-                          <span className="text-sm font-mono text-gray-600">{orderRef}</span>
+                          <span className="text-sm font-mono text-gray-600">{a.orderReference ?? '—'}</span>
+                          {a.customerName && <span className="text-sm text-gray-500">· {a.customerName}</span>}
                         </div>
                         <p className="mt-1 text-sm font-medium text-gray-900 line-clamp-2">{a.description}</p>
                         <div className="mt-1 flex flex-wrap gap-1.5">

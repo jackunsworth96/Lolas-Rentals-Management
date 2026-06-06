@@ -248,7 +248,9 @@ export function AccidentReportModal({ open, onClose, prefillOrder, onSuccess }: 
     setError(null);
     setSubmitting(true);
     try {
-      const accidentAt = `${form.accidentDate}T${form.accidentTime}:00`;
+      // Convert local datetime to UTC ISO so Postgres stores it correctly.
+      // new Date("YYYY-MM-DDTHH:MM:SS") parses as local time in JS.
+      const accidentAt = new Date(`${form.accidentDate}T${form.accidentTime}:00`).toISOString();
       const body: CreateAccidentBody = {
         storeId,
         orderId: form.orderId,
@@ -380,11 +382,14 @@ export function AccidentReportModal({ open, onClose, prefillOrder, onSuccess }: 
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Time</label>
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                Time <span className="text-xs font-normal text-gray-400">(24-hr, e.g. 00:30)</span>
+              </label>
               <input
                 type="time"
                 value={form.accidentTime}
                 onChange={(e) => set('accidentTime', e.target.value)}
+                step="60"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-red-400 focus:outline-none focus:ring-1 focus:ring-red-400"
               />
             </div>

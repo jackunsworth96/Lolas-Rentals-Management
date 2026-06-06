@@ -320,7 +320,7 @@ router.get('/:id/history', requirePermission(Permission.ViewInbox), async (req, 
       sb.from('payments').select('id, payment_type, amount, payment_method_id, transaction_date, settlement_status, settlement_ref, created_at').eq('order_id', orderId).order('created_at', { ascending: true }),
       sb.from('vehicle_swaps').select('id, old_vehicle_name, new_vehicle_name, reason, swap_date, swap_time, employee_id, created_at').eq('order_id', orderId).order('created_at', { ascending: true }),
       sb.from('order_addons').select('id, addon_name, addon_price, addon_type, total_amount, added_at').eq('order_id', orderId).order('added_at', { ascending: true }),
-      sb.from('accident_reports').select('id, accident_at, description, customer_injured, police_report_filed, status, created_at').eq('order_id', orderId).order('accident_at', { ascending: true }),
+      sb.from('accident_reports').select('id, accident_at, description, customer_injured, police_report_filed, created_at').eq('order_id', orderId).order('accident_at', { ascending: true }),
     ]);
 
     interface TimelineEvent { timestamp: string; type: string; description: string; detail?: string; amount?: number }

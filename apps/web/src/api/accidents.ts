@@ -24,14 +24,14 @@ export interface AccidentReport {
   customerSignatureUrl: string | null;
   additionalNotes: string | null;
   reportedByEmployeeId: string | null;
-  status: 'open' | 'closed';
   tamperHash: string | null;
   hashEmailedAt: string | null;
   createdAt: string;
-  // Joined fields
-  fleet?: { name: string; plate_number: string } | null;
-  orders?: { booking_token: string; customers: { name: string } | null } | null;
-  employees?: { full_name: string } | null;
+  // Flattened joined fields (resolved in toDto on the API)
+  fleet: { name: string; plateNumber: string } | null;
+  orderReference: string | null;
+  customerName: string | null;
+  reportedByName: string | null;
 }
 
 export interface CreateAccidentBody {
@@ -57,11 +57,10 @@ export interface CreateAccidentBody {
   additionalNotes?: string | null;
 }
 
-export function useAccidents(storeId: string, filters: { vehicleId?: string; orderId?: string; status?: string } = {}) {
+export function useAccidents(storeId: string, filters: { vehicleId?: string; orderId?: string } = {}) {
   const params = new URLSearchParams({ storeId });
   if (filters.vehicleId) params.set('vehicleId', filters.vehicleId);
   if (filters.orderId) params.set('orderId', filters.orderId);
-  if (filters.status) params.set('status', filters.status);
 
   return useQuery({
     queryKey: ['accidents', storeId, filters],
@@ -106,25 +105,6 @@ export function useCreateAccident() {
   });
 }
 
-export function useCloseAccident() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => api.patch(`/accidents/${id}/status`, { status: 'closed' }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['accidents'] });
-    },
-  });
-}
-
-export function useReopenAccident() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => api.patch(`/accidents/${id}/status`, { status: 'open' }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['accidents'] });
-    },
-  });
-}
 
 export async function uploadAccidentPhoto(file: File): Promise<string> {
   const form = new FormData();
