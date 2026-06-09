@@ -88,15 +88,15 @@ export class SupabasePayrollAdapter implements PayrollPort {
 
     const { data, error } = await sb
       .from('order_addons')
-      .select('price')
+      .select('total_amount')
       .ilike('addon_name', '%peace of mind%')
-      .gte('created_at', start)
-      .lte('created_at', end);
+      .gte('added_at', start)
+      .lte('added_at', end);
 
     if (error) throw new Error(`aggregatePOMCommission failed: ${error.message}`);
 
     const totalOrderValue = (data ?? []).reduce(
-      (sum: number, r: { price: number }) => sum + (r.price ?? 0),
+      (sum: number, r: { total_amount: number }) => sum + (r.total_amount ?? 0),
       0,
     );
 

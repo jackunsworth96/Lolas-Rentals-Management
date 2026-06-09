@@ -50,19 +50,19 @@ function monthLabel(yyyyMM: string) {
 
 function describeDeal(p: Pick<AccommodationPartner, 'deal_type' | 'commission_type' | 'commission_value' | 'discount_type' | 'discount_value' | 'free_delivery'>) {
   const parts: string[] = [];
-  if (p.deal_type === 'commission' || p.deal_type === 'combined') {
+  if (p.deal_type === 'commission' || p.deal_type === 'combined' || p.deal_type === 'commission_delivery') {
     parts.push(p.commission_type === 'percentage'
       ? `${p.commission_value}% commission`
       : `${formatPhp(p.commission_value)} commission`);
   }
-  if (p.deal_type === 'discount' || p.deal_type === 'combined') {
+  if (p.deal_type === 'discount' || p.deal_type === 'combined' || p.deal_type === 'discount_delivery') {
     if (p.discount_value != null && p.discount_type) {
       parts.push(p.discount_type === 'percentage'
         ? `${p.discount_value}% guest discount`
         : `${formatPhp(p.discount_value)} guest discount`);
     }
   }
-  if (p.deal_type === 'free_delivery' || p.deal_type === 'combined' || p.free_delivery) {
+  if (p.deal_type === 'free_delivery' || p.deal_type === 'combined' || p.deal_type === 'commission_delivery' || p.deal_type === 'discount_delivery' || p.free_delivery) {
     parts.push('Free delivery');
   }
   return parts.length > 0 ? parts.join(' · ') : '—';
@@ -307,6 +307,8 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
               <option value="commission">Commission only — partner earns per booking</option>
               <option value="discount">Guest discount — guest gets a better rate</option>
               <option value="free_delivery">Free delivery — pickup &amp; collection waived</option>
+              <option value="commission_delivery">Commission + free delivery — partner earns &amp; guests get free delivery</option>
+              <option value="discount_delivery">Discount + free delivery — guest gets a better rate &amp; free delivery</option>
               <option value="combined">Combined — guest discount + delivery + commission</option>
             </select>
           </div>
@@ -760,6 +762,8 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
               <option value="commission">Commission only</option>
               <option value="discount">Guest discount</option>
               <option value="free_delivery">Free delivery</option>
+              <option value="commission_delivery">Commission + free delivery</option>
+              <option value="discount_delivery">Discount + free delivery</option>
               <option value="combined">Combined (commission + discount + delivery)</option>
             </select>
           </div>

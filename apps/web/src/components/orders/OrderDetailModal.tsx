@@ -12,6 +12,7 @@ import { OrderDetailAddonsTab } from './OrderDetailAddonsTab.js';
 import { OrderDetailHistoryTab } from './OrderDetailHistoryTab.js';
 import { OrderDetailTransferTab } from './OrderDetailTransferTab.js';
 import { OrderDetailExtensionsTab } from './OrderDetailExtensionsTab.js';
+import { AccidentReportModal } from '../accidents/AccidentReportModal.js';
 
 function moneyAmount(val: unknown): number {
   if (val == null) return 0;
@@ -32,6 +33,7 @@ type TabKey = 'summary' | 'payments' | 'vehicles' | 'addons' | 'extensions' | 't
 
 export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = false, enrichedData }: OrderDetailModalProps) {
   const [tab, setTab] = useState<TabKey>('summary');
+  const [accidentReportOpen, setAccidentReportOpen] = useState(false);
   const { toasts, pushToast } = useToast();
   const { order, loading, items, payments, orderAddons, swaps, history, helmetSwaps } = useOrderDetail(orderId);
   const { data: paymentMethods = [] } = usePaymentMethods() as { data: Array<{ id: string; name: string }> | undefined };
@@ -74,16 +76,27 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
   return (
     <>
       <Modal open onClose={onClose} title={`Order — ${customerName}`} size="xl">
-        <div className="mb-4 flex gap-2 border-b border-gray-200">
-          {tabs.map((t) => (
+        <div className="mb-4 flex items-center gap-2 border-b border-gray-200">
+          <div className="flex flex-1 gap-2 overflow-x-auto">
+            {tabs.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`shrink-0 border-b-2 px-4 py-2 text-sm font-medium ${tab === t.key ? 'border-teal-brand text-teal-brand' : 'border-transparent text-charcoal-brand/60 hover:text-charcoal-brand'}`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {canAct && (
             <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`border-b-2 px-4 py-2 text-sm font-medium ${tab === t.key ? 'border-teal-brand text-teal-brand' : 'border-transparent text-charcoal-brand/60 hover:text-charcoal-brand'}`}
+              type="button"
+              onClick={() => setAccidentReportOpen(true)}
+              className="mb-1 shrink-0 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 transition"
             >
-              {t.label}
+              🚨 Report Accident
             </button>
-          ))}
+          )}
         </div>
 
         {tab === 'summary' && (
@@ -157,6 +170,23 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
           </div>,
           document.body,
         )}
+
+      {accidentReportOpen && (
+        <AccidentReportModal
+          open
+          onClose={() => setAccidentReportOpen(false)}
+          prefillOrder={items[0] ? {
+            orderId,
+            orderReference: (order.bookingToken ?? order.booking_token ?? '') as string,
+            vehicleId: items[0].vehicleId,
+            vehicleName: items[0].vehicleName,
+            customerId: (order.customerId ?? null) as string | null,
+            customerName: customerName,
+            peaceOfMindActive: orderAddons.some((a) => a.addonName.toLowerCase().includes('peace')),
+          } : undefined}
+          onSuccess={() => setAccidentReportOpen(false)}
+        />
+      )}
     </>
   );
 }

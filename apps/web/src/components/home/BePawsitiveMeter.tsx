@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
 import CountUp from './CountUp.js';
 
-const FALLBACK_TOTAL = 282995;
+const FALLBACK_TOTAL = 325495;
 const PUBLIC_ENDPOINT = '/api/public/booking/charity-impact';
 
 interface CharityImpact {
   totalRaised: number;
 }
 
-export default function BePawsitiveMeter() {
+export function NgoImpactMeter() {
   const [total, setTotal] = useState<number>(FALLBACK_TOTAL);
 
   useEffect(() => {
@@ -40,3 +40,6 @@ export default function BePawsitiveMeter() {
     />
   );
 }
+
+/** @deprecated Use NgoImpactMeter */
+export default NgoImpactMeter;

@@ -79,7 +79,7 @@ export function bookingConfirmationHtml({
   const charityHtml =
     charityDonation > 0
       ? `<p style="font-size: 13px; color: #00577C; font-style: italic; margin: 8px 0 16px;">
-          🐾 ₱${charityDonation.toLocaleString()} will be donated to Be Pawsitive — thank you for giving back to Siargao's street animals!
+          🐾 ₱${charityDonation.toLocaleString()} will be donated to local NGOs on Siargao — thank you for giving back to the community!
         </p>`
       : '';
 
@@ -751,6 +751,201 @@ export function extendConfirmationHtml({
         </p>
 
       </div>
+    </div>
+  `;
+}
+
+export function walkInReservationConfirmationHtml({
+  customerName,
+  orderReference,
+  vehicleName,
+  pickupDatetime,
+  dropoffDatetime,
+  pickupLocation,
+  dropoffLocation,
+  rentalDays,
+  dailyRate,
+  rentalSubtotal,
+  pickupFee,
+  dropoffFee,
+  discount,
+  estimatedTotal,
+  depositAmount,
+  depositMethod,
+  whatsappNumber,
+}: {
+  customerName: string;
+  orderReference: string;
+  vehicleName: string;
+  pickupDatetime: string;
+  dropoffDatetime: string;
+  pickupLocation: string;
+  dropoffLocation: string;
+  rentalDays?: number;
+  dailyRate?: number;
+  rentalSubtotal?: number;
+  pickupFee?: number;
+  dropoffFee?: number;
+  discount?: number;
+  estimatedTotal?: number;
+  depositAmount?: number;
+  depositMethod?: string;
+  whatsappNumber: string;
+}): string {
+  const hasBreakdown = rentalDays != null && dailyRate != null;
+
+  const depositMethodLabel = depositMethod === 'bank_transfer' ? 'Bank Transfer'
+    : depositMethod ? depositMethod.charAt(0).toUpperCase() + depositMethod.slice(1)
+    : 'Cash';
+
+  const discountRow = (discount ?? 0) > 0
+    ? `<tr>
+        <td style="padding: 8px 0; color: #059669; font-size: 13px;">Discount</td>
+        <td style="padding: 8px 0; font-weight: 700; color: #059669; font-size: 13px;">−₱${(discount!).toLocaleString()}</td>
+      </tr>`
+    : '';
+
+  const pickupFeeRow = (pickupFee ?? 0) > 0
+    ? `<tr>
+        <td style="padding: 8px 0; color: #888; font-size: 13px;">Pickup transfer</td>
+        <td style="padding: 8px 0; color: #363737; font-size: 13px;">₱${(pickupFee!).toLocaleString()}</td>
+      </tr>`
+    : '';
+
+  const dropoffFeeRow = (dropoffFee ?? 0) > 0
+    ? `<tr>
+        <td style="padding: 8px 0; color: #888; font-size: 13px;">Dropoff transfer</td>
+        <td style="padding: 8px 0; color: #363737; font-size: 13px;">₱${(dropoffFee!).toLocaleString()}</td>
+      </tr>`
+    : '';
+
+  const priceBreakdown = hasBreakdown ? `
+    <div style="background: white; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+      <p style="margin: 0 0 12px; font-size: 13px; font-weight: 700; color: #363737; text-transform: uppercase; letter-spacing: 0.05em;">
+        Estimated Price Breakdown
+      </p>
+      <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+          <td style="padding: 8px 0; color: #888; font-size: 13px;">${rentalDays} day${rentalDays !== 1 ? 's' : ''} × ₱${dailyRate!.toLocaleString()}/day</td>
+          <td style="padding: 8px 0; color: #363737; font-size: 13px;">₱${(rentalSubtotal ?? rentalDays! * dailyRate!).toLocaleString()}</td>
+        </tr>
+        ${pickupFeeRow}
+        ${dropoffFeeRow}
+        ${discountRow}
+        ${estimatedTotal != null ? `
+        <tr style="border-top: 2px solid #eee;">
+          <td style="padding: 12px 0 4px; color: #888; font-size: 13px;">Estimated Total</td>
+          <td style="padding: 12px 0 4px; font-weight: 800; color: #00577C; font-size: 18px;">₱${estimatedTotal.toLocaleString()}</td>
+        </tr>
+        <tr>
+          <td colspan="2" style="padding: 4px 0 8px; font-size: 11px; color: #aaa; font-style: italic;">
+            Estimate only — final amount confirmed at activation
+          </td>
+        </tr>` : ''}
+      </table>
+    </div>` : '';
+
+  const depositRow = (depositAmount ?? 0) > 0 ? `
+    <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 10px; padding: 14px 16px; margin-bottom: 20px;">
+      <p style="margin: 0; font-size: 13px; font-weight: 700; color: #166534;">
+        ✅ Deposit Collected
+      </p>
+      <p style="margin: 6px 0 0; font-size: 14px; color: #166534;">
+        ₱${depositAmount!.toLocaleString()} via ${escapeHtml(depositMethodLabel)}
+      </p>
+    </div>` : '';
+
+  return `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; background: #FAF6F0;">
+
+      <div style="background: #00577C; padding: 32px; text-align: center;">
+        <img src="https://res.cloudinary.com/dk3c78pro/image/upload/f_png,w_220/v1777351847/Lolas_Original_Logo_tnqhii.svg"
+             alt="Lola's Rentals"
+             width="220"
+             style="display: block; margin: 0 auto; height: auto;" />
+      </div>
+
+      <div style="padding: 32px;">
+
+        <h2 style="color: #363737; margin: 0 0 8px; font-size: 22px;">
+          Hi ${escapeHtml(customerName)}! 🐾
+        </h2>
+        <p style="color: #363737; line-height: 1.6; margin: 0 0 24px; font-size: 15px;">
+          Your reservation is confirmed! We've held your vehicle for the dates below.
+          Our team will be in touch to finalise the booking.
+        </p>
+
+        <div style="background: #FEF9EC; border: 1px solid #FCBC5A; border-radius: 10px; padding: 12px 16px; margin-bottom: 20px;">
+          <p style="margin: 0; font-size: 13px; color: #92400e; font-weight: 600;">
+            📋 Reservation — Pending Activation
+          </p>
+          <p style="margin: 6px 0 0; font-size: 13px; color: #92400e; line-height: 1.5;">
+            This is a reservation, not yet a confirmed booking. A member of our team will
+            activate your booking and collect full payment when you arrive.
+          </p>
+        </div>
+
+        <div style="background: white; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 8px 0; color: #888; font-size: 13px; width: 150px;">Reference</td>
+              <td style="padding: 8px 0; font-weight: 700; color: #363737; font-size: 14px;">${escapeHtml(orderReference)}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #888; font-size: 13px;">Vehicle</td>
+              <td style="padding: 8px 0; font-weight: 700; color: #363737; font-size: 14px;">${escapeHtml(vehicleName)}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #888; font-size: 13px;">Pick Up</td>
+              <td style="padding: 8px 0; font-weight: 700; color: #363737; font-size: 14px;">${escapeHtml(pickupLocation)} — ${escapeHtml(pickupDatetime)}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #888; font-size: 13px;">Drop Off</td>
+              <td style="padding: 8px 0; font-weight: 700; color: #363737; font-size: 14px;">${escapeHtml(dropoffLocation)} — ${escapeHtml(dropoffDatetime)}</td>
+            </tr>
+          </table>
+        </div>
+
+        ${priceBreakdown}
+        ${depositRow}
+
+        <div style="background: #00577C; border-radius: 12px; padding: 20px; margin: 20px 0; text-align: center;">
+          <p style="margin: 0 0 6px; font-size: 15px; font-weight: 700; color: white;">
+            🐾 Don't forget your Paw Card!
+          </p>
+          <p style="margin: 0; font-size: 13px; color: rgba(255,255,255,0.85); line-height: 1.5;">
+            Free with every rental — exclusive discounts at 75+ local businesses across Siargao.
+          </p>
+        </div>
+
+        <div style="padding: 16px 0; border-top: 1px solid #e8e0d5; margin-top: 8px;">
+          <p style="margin: 0 0 8px; font-size: 14px; color: #363737; line-height: 1.6;">
+            💬 Got a question? WhatsApp us anytime — we're open 9am–5pm (Philippines Time).
+          </p>
+          <p style="margin: 0;">
+            <a href="https://wa.me/${escapeHtml(whatsappNumber)}"
+              style="color: #FCBC5A; font-weight: 700; font-size: 14px; text-decoration: none;">
+              WhatsApp Lola's Rentals
+            </a>
+          </p>
+        </div>
+
+      </div>
+
+      <div style="padding: 20px 32px; text-align: center; border-top: 1px solid #e8e0d5;">
+        <p style="margin: 0 0 4px; font-size: 12px; color: #999;">
+          Lola's Rentals &amp; Tours Inc. — Siargao Island, Philippines
+        </p>
+        <p style="margin: 0 0 4px; font-size: 11px; color: #bbb;">
+          This is an automated confirmation. Please do not reply to this email.
+        </p>
+        <p style="margin: 0; font-size: 11px; color: #bbb;">
+          For questions, contact us at
+          <a href="mailto:hello@lolasrentals.com" style="color: #bbb;">hello@lolasrentals.com</a>
+          or WhatsApp +63 969 444 3413.
+        </p>
+      </div>
+
     </div>
   `;
 }

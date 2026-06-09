@@ -865,7 +865,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
 });
 
 // ── Charity impact — shared query helper ──────────────────────────────────────
-const CHARITY_OPENING_BALANCE = 282995;
+const CHARITY_OPENING_BALANCE = 307995;
 const CHARITY_PENDING_LEGACY = 2933;
 
 async function queryCharityImpact(sb: ReturnType<typeof getSupabaseClient>) {
@@ -1563,4 +1563,4 @@ router.delete('/accommodation-aliases/:id', async (req, res, next) => {
   }
 });
 
-export { router as dashboardRoutes, queryCharityImpact, CHARITY_OPENING_BALANCE };
+export { router as dashboardRoutes, queryCharityImpact, CHARITY_OPENING_BALANCE, CHARITY_PENDING_LEGACY };

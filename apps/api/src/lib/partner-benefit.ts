@@ -1,6 +1,6 @@
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 
-export type PartnerDealType = 'commission' | 'discount' | 'free_delivery' | 'combined';
+export type PartnerDealType = 'commission' | 'discount' | 'free_delivery' | 'combined' | 'commission_delivery' | 'discount_delivery';
 export type PartnerDiscountType = 'percentage' | 'fixed';
 
 export interface PartnerBenefitRow {
@@ -80,6 +80,8 @@ export function isBenefitEligibleForPickup(
   bookingNow: Date = new Date(),
 ): boolean {
   if (partner.dealType === 'commission') return false;
+  // commission_delivery has no rental discount but does apply free delivery —
+  // allow it through so applyPartnerBenefit can zero the delivery fees.
   if (partner.advanceDiscountDays == null || partner.advanceDiscountDays <= 0) return true;
 
   const pickup = new Date(pickupDatetime);
@@ -120,9 +122,10 @@ export function applyPartnerBenefit(input: ApplyBenefitInput): ApplyBenefitResul
   let deliveryDiscount = 0;
 
   const applyDiscount =
-    partner.dealType === 'discount' || partner.dealType === 'combined';
+    partner.dealType === 'discount' || partner.dealType === 'combined' || partner.dealType === 'discount_delivery';
   const applyFreeDelivery =
-    partner.freeDelivery || partner.dealType === 'free_delivery' || partner.dealType === 'combined';
+    partner.freeDelivery || partner.dealType === 'free_delivery' || partner.dealType === 'combined' ||
+    partner.dealType === 'commission_delivery' || partner.dealType === 'discount_delivery';
 
   if (applyDiscount && partner.discountType && partner.discountValue != null) {
     // Use the early-bird (higher) value when the pickup qualifies for that tier.

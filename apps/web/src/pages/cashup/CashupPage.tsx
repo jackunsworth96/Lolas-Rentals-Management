@@ -141,7 +141,7 @@ export default function CashupPage() {
       summary.totals.cashSalesTotal +
       (summary.totals.miscCashTotal ?? 0) +
       summary.totals.interStoreIn -
-      summary.totals.expenseTotal -
+      (summary.totals.cashExpenseTotal ?? summary.totals.expenseTotal) -
       summary.totals.depositTotal -
       summary.totals.interStoreOut -
       (summary.totals.cashRefundTotal ?? 0)
@@ -1464,8 +1464,8 @@ function CharityDonationsSection({
         <div className="flex items-center gap-2">
           <span>🐾</span>
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">Charity Donations — Be Pawsitive</h3>
-            <p className="text-[10px] text-gray-400">Payable to Be Pawsitive NGO</p>
+            <h3 className="text-sm font-semibold text-gray-900">Charity Donations</h3>
+            <p className="text-[10px] text-gray-400">Payable to local NGOs</p>
           </div>
           <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">
             Info only

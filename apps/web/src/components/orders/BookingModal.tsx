@@ -867,7 +867,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                       {Number(rawOrder.charity_donation ?? 0) > 0 && (
                         <div className="flex justify-between">
                           <dt className="text-gray-500">Charity Donation</dt>
-                          <dd className="font-medium text-teal-700">{formatCurrency(Number(rawOrder.charity_donation))} — Be Pawsitive</dd>
+                          <dd className="font-medium text-teal-700">{formatCurrency(Number(rawOrder.charity_donation))}</dd>
                         </div>
                       )}
                       <div className="flex justify-between">
@@ -1539,7 +1539,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
 
                 {Number(rawOrder.charity_donation ?? 0) > 0 && (
                   <div className="flex justify-between text-teal-700">
-                    <dt>Charity Donation — Be Pawsitive</dt>
+                    <dt>Charity Donation</dt>
                     <dd className="font-medium">{formatCurrency(Number(rawOrder.charity_donation))}</dd>
                   </div>
                 )}

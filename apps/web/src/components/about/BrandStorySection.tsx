@@ -44,14 +44,12 @@ export function BrandStorySection() {
                   here, still sandy, and still holding that same line.
                 </p>
                 <p>
-                  Our mission goes beyond the handlebars. Every rental you book helps fund Be Pawsitive, a
-                  local animal welfare NGO running spay, neuter, and vaccination programs across Siargao. The
-                  work they do is nothing short of incredible. 1,120 animals fixed, 2,023 vaccinated, and a
-                  ripple effect that prevents hundreds of thousands of future strays from ever entering the
-                  cycle. We&apos;re a small business, but we want to prove something: that any business, small,
-                  medium, or large, can be good for its customers and its community at the same time. No
-                  greenwashing, no gimmicks. Just real support for the animals and people that make this island
-                  feel like home.
+                  Our mission goes beyond the handlebars. Every rental you book helps fund local NGOs and
+                  community programmes on Siargao. We support animal welfare, conservation, and island community
+                  initiatives — organisations doing real, on-the-ground work that makes a difference. We&apos;re a
+                  small business, but we want to prove something: that any business, small, medium, or large, can be
+                  good for its customers and its community at the same time. No greenwashing, no gimmicks. Just real
+                  support for the people and animals that make this island feel like home.
                 </p>
                 <p>
                   Just imagine if every business gave a little something back to the communities they operate
