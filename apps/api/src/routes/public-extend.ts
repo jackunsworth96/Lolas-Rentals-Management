@@ -266,7 +266,7 @@ router.get('/preview', extendLookupLimiter, async (req, res, next) => {
       for (const ord of (orderRows ?? []) as Array<{ id: string; customer_id: string; store_id: string }>) {
         const { data: items } = await sb
           .from('order_items')
-          .select('vehicle_id, pickup_datetime, dropoff_datetime, store_id, rental_days_count, rental_rate')
+          .select('id, vehicle_id, pickup_datetime, dropoff_datetime, store_id, rental_days_count, rental_rate')
           .eq('order_id', ord.id).not('pickup_datetime', 'is', null);
 
         const item = (items ?? [])[0] as Record<string, unknown> | undefined;
@@ -287,7 +287,12 @@ router.get('/preview', extendLookupLimiter, async (req, res, next) => {
         if (modelId) {
           const avail = await checkAvailability(
             { bookingPort: req.app.locals.deps.bookingPort },
-            { storeId: item.store_id as string, pickupDatetime: item.dropoff_datetime as string, dropoffDatetime: newDropoffDatetime },
+            {
+              storeId: item.store_id as string,
+              pickupDatetime: item.dropoff_datetime as string,
+              dropoffDatetime: newDropoffDatetime,
+              excludeOrderItemId: item.id as string,
+            },
           );
           const m = avail.find((a) => a.modelId === modelId);
           if (!m || m.availableCount === 0) {

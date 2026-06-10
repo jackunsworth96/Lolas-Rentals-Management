@@ -4,6 +4,7 @@ export interface CheckAvailabilityInput {
   storeId: string;
   pickupDatetime: string;
   dropoffDatetime: string;
+  excludeOrderItemId?: string;
 }
 
 export interface CheckAvailabilityDeps {
@@ -29,5 +30,6 @@ export async function checkAvailability(
     storeId: input.storeId,
     pickupDatetime: input.pickupDatetime,
     dropoffDatetime: input.dropoffDatetime,
+    excludeOrderItemId: input.excludeOrderItemId,
   });
 }

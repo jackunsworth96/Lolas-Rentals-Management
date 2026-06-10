@@ -274,7 +274,12 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
     if (modelId) {
       const avail = await checkAvailability(
         { bookingPort: deps.bookingPort as never },
-        { storeId: item.store_id as string, pickupDatetime: item.dropoff_datetime as string, dropoffDatetime: newDropoffDatetime },
+        {
+          storeId: item.store_id as string,
+          pickupDatetime: item.dropoff_datetime as string,
+          dropoffDatetime: newDropoffDatetime,
+          excludeOrderItemId: item.id as string,
+        },
       );
       const m = avail.find((a) => a.modelId === modelId);
       if (!m || m.availableCount === 0) {

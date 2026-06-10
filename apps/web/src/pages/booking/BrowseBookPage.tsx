@@ -10,7 +10,6 @@ import { getStoredPartnerBenefit } from '../../utils/partnerRef.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { SEO } from '../../components/seo/SEO.js';
 import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
-import LolasChat from '../../components/chat/LolasChat.js';
 import { hasBookingDatetimeWithTime } from '../../utils/booking-datetime.js';
 import SectionDivider from '../../components/home/SectionDivider.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
@@ -1376,8 +1375,6 @@ export default function BrowseBookPage() {
           </div>
         ))}
       </div>
-
-      <LolasChat />
     </PageLayout>
   );
 }

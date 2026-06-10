@@ -4,6 +4,7 @@ import aiChatIcon from '../../assets/Buttons/ai chat icon.svg';
 import { normalizeApiBase } from '../../api/normalize-api-base.js';
 
 const API_BASE = normalizeApiBase(import.meta.env.VITE_API_URL);
+const OLD_LOLAS_CHAT_ENABLED = false;
 
 const WHATSAPP_URL =
   "https://wa.me/639694443413?text=Hi%20Lola's%20Rentals%2C%20I%20have%20a%20question%20about%20renting%20a%20scooter";
@@ -320,6 +321,8 @@ function getDeviceType(): 'mobile' | 'desktop' {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function LolasChat() {
+  if (!OLD_LOLAS_CHAT_ENABLED) return null;
+
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');

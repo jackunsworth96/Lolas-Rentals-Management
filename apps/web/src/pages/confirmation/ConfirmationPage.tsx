@@ -12,7 +12,6 @@ import { PrimaryCtaButton } from '../../components/public/PrimaryCtaButton.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { SEO } from '../../components/seo/SEO.js';
 import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
-import LolasChat from '../../components/chat/LolasChat.js';
 
 import lolaVideo from '../../assets/Checkout_Lola.mp4';
 import { WHATSAPP_NUMBER, WHATSAPP_URL } from '../../config/contact.js';
@@ -558,8 +557,6 @@ export default function ConfirmationPage() {
 
         </div>
       </div>
-
-      <LolasChat />
     </PageLayout>
   );
 }

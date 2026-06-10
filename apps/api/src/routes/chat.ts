@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { Readable } from 'node:stream';
 import { logger } from '../lib/logger.js';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
+import { sendRespondIoChat } from '../services/respond-io-chat.js';
 
 const STORE_ID = 'store-lolas';
 
@@ -673,6 +674,128 @@ function logChatSession(payload: ChatSessionPayload): void {
   }
 }
 
+function setSseHeaders(res: import('express').Response): void {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+}
+
+function writeSseTextDelta(res: import('express').Response, text: string): void {
+  const payload = JSON.stringify({
+    type: 'content_block_delta',
+    delta: { type: 'text_delta', text },
+  });
+  res.write(`data: ${payload}\n\n`);
+}
+
+async function streamTextAsSse(
+  res: import('express').Response,
+  text: string,
+): Promise<void> {
+  const chunkSizeRaw = Number(process.env.CHAT_SSE_CHUNK_SIZE ?? 28);
+  const chunkDelayRaw = Number(process.env.CHAT_SSE_CHUNK_DELAY_MS ?? 20);
+
+  const chunkSize = Number.isFinite(chunkSizeRaw) ? Math.max(1, chunkSizeRaw) : 28;
+  const chunkDelayMs = Number.isFinite(chunkDelayRaw) ? Math.max(0, chunkDelayRaw) : 20;
+
+  for (let i = 0; i < text.length; i += chunkSize) {
+    const chunk = text.slice(i, i + chunkSize);
+    writeSseTextDelta(res, chunk);
+    if (chunkDelayMs > 0) {
+      // Keeps the UI typing animation smooth when the upstream source is non-streaming.
+      await new Promise((resolve) => setTimeout(resolve, chunkDelayMs));
+    }
+  }
+
+  res.write('data: [DONE]\n\n');
+  res.end();
+}
+
+function isRespondIoChatEnabled(): boolean {
+  return process.env.RESPOND_IO_CHAT_ENABLED === 'true';
+}
+
+function isAnthropicFallbackEnabled(): boolean {
+  return process.env.RESPOND_IO_CHAT_FALLBACK_TO_ANTHROPIC !== 'false';
+}
+
+async function streamAnthropicResponse(
+  reqData: z.infer<typeof ChatBodySchema>,
+  res: import('express').Response,
+): Promise<boolean> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    logger.error('ANTHROPIC_API_KEY is not set');
+    return false;
+  }
+
+  // Fetch live pricing, add-ons, and delivery areas in parallel; fall back on errors.
+  let livePricing = STATIC_PRICING_FALLBACK;
+  let liveAddons = 'OPTIONAL EXTRAS — pricing unavailable, please check the website.';
+  let liveLocations = STATIC_LOCATIONS_FALLBACK;
+  try {
+    [livePricing, liveAddons, liveLocations] = await Promise.all([
+      fetchLivePricing(),
+      fetchLiveAddons(),
+      fetchLivePickupDeliveryLocations(),
+    ]);
+  } catch (bundleErr) {
+    logger.warn({ err: bundleErr }, 'Live chat context fetch failed — using per-section fallback');
+    try { livePricing = await fetchLivePricing(); } catch { /* keep fallback */ }
+    try { liveAddons = await fetchLiveAddons(); } catch { /* keep fallback */ }
+    try { liveLocations = await fetchLivePickupDeliveryLocations(); } catch { /* keep fallback */ }
+  }
+
+  const systemPrompt = SYSTEM_PROMPT_TEMPLATE
+    .replace('{{LIVE_PRICING}}', livePricing)
+    .replace('{{LIVE_ADDONS}}', liveAddons)
+    .replace('{{LIVE_PICKUP_DELIVERY}}', liveLocations);
+
+  let upstream: globalThis.Response;
+  try {
+    upstream = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 1000,
+        stream: true,
+        system: systemPrompt,
+        messages: reqData.messages,
+      }),
+    });
+  } catch (fetchErr) {
+    logger.error({ err: fetchErr }, 'Failed to reach Anthropic API');
+    return false;
+  }
+
+  if (!upstream.ok || !upstream.body) {
+    logger.error({ status: upstream.status }, 'Anthropic API returned an error');
+    return false;
+  }
+
+  setSseHeaders(res);
+
+  const nodeStream = Readable.fromWeb(
+    upstream.body as import('stream/web').ReadableStream<Uint8Array>,
+  );
+  nodeStream.pipe(res);
+  nodeStream.on('error', (err) => {
+    logger.error({ err }, 'Anthropic stream error');
+    if (!res.headersSent) {
+      res.status(502).json({ success: false, error: 'Chat service unavailable' });
+    } else {
+      res.end();
+    }
+  });
+
+  return true;
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 
 const router = Router();
@@ -703,80 +826,43 @@ router.post('/', chatLimiter, async (req, res, next) => {
       return;
     }
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      logger.error('ANTHROPIC_API_KEY is not set');
-      res.status(503).json({ success: false, error: 'Chat service unavailable' });
-      return;
-    }
+    let handled = false;
 
-    // Fetch live pricing, add-ons, and delivery areas in parallel; fall back on errors.
-    let livePricing = STATIC_PRICING_FALLBACK;
-    let liveAddons = 'OPTIONAL EXTRAS — pricing unavailable, please check the website.';
-    let liveLocations = STATIC_LOCATIONS_FALLBACK;
-    try {
-      [livePricing, liveAddons, liveLocations] = await Promise.all([
-        fetchLivePricing(),
-        fetchLiveAddons(),
-        fetchLivePickupDeliveryLocations(),
-      ]);
-    } catch (bundleErr) {
-      logger.warn({ err: bundleErr }, 'Live chat context fetch failed — using per-section fallback');
-      try { livePricing = await fetchLivePricing(); } catch { /* keep fallback */ }
-      try { liveAddons = await fetchLiveAddons(); } catch { /* keep fallback */ }
-      try { liveLocations = await fetchLivePickupDeliveryLocations(); } catch { /* keep fallback */ }
-    }
+    if (isRespondIoChatEnabled()) {
+      try {
+        const respondIoResult = await sendRespondIoChat({
+          messages: msgList,
+          session_id,
+          page_origin,
+          device_type,
+        });
 
-    const systemPrompt = SYSTEM_PROMPT_TEMPLATE
-      .replace('{{LIVE_PRICING}}', livePricing)
-      .replace('{{LIVE_ADDONS}}', liveAddons)
-      .replace('{{LIVE_PICKUP_DELIVERY}}', liveLocations);
+        setSseHeaders(res);
+        await streamTextAsSse(res, respondIoResult.text);
+        handled = true;
+      } catch (err) {
+        logger.error({ err }, 'respond.io chat backend failed');
 
-    let upstream: globalThis.Response;
-    try {
-      upstream = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-5',
-          max_tokens: 1000,
-          stream: true,
-          system: systemPrompt,
-          messages: parsed.data.messages,
-        }),
-      });
-    } catch (fetchErr) {
-      logger.error({ err: fetchErr }, 'Failed to reach Anthropic API');
-      res.status(503).json({ success: false, error: 'Chat service unavailable' });
-      return;
-    }
-
-    if (!upstream.ok || !upstream.body) {
-      logger.error({ status: upstream.status }, 'Anthropic API returned an error');
-      res.status(502).json({ success: false, error: 'Chat service unavailable' });
-      return;
-    }
-
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-
-    const nodeStream = Readable.fromWeb(
-      upstream.body as import('stream/web').ReadableStream<Uint8Array>,
-    );
-    nodeStream.pipe(res);
-    nodeStream.on('error', (err) => {
-      logger.error({ err }, 'Anthropic stream error');
-      if (!res.headersSent) {
-        res.status(502).json({ success: false, error: 'Chat service unavailable' });
-      } else {
-        res.end();
+        if (isAnthropicFallbackEnabled()) {
+          handled = await streamAnthropicResponse(parsed.data, res);
+          if (!handled) {
+            res.status(503).json({ success: false, error: 'Chat service unavailable' });
+            return;
+          }
+        } else {
+          res.status(503).json({ success: false, error: 'Chat service unavailable' });
+          return;
+        }
       }
-    });
+    }
+
+    if (!handled) {
+      handled = await streamAnthropicResponse(parsed.data, res);
+      if (!handled) {
+        res.status(503).json({ success: false, error: 'Chat service unavailable' });
+        return;
+      }
+    }
 
     // Log the session state after each exchange. The assistant reply hasn't
     // streamed yet so we log the user messages only; the frontend sends a
