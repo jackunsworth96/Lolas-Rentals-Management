@@ -806,6 +806,14 @@ export default function BrowseBookPage() {
     [pickupDate, pickupTime, dropoffDate],
   );
 
+  const rentalDays = useMemo(() => {
+    if (!pickupDate || !dropoffDate) return 0;
+    const diff = Math.round(
+      (new Date(dropoffDate).getTime() - new Date(pickupDate).getTime()) / 86400000,
+    );
+    return Math.max(0, diff);
+  }, [pickupDate, dropoffDate]);
+
   function validateDates(pDate: string, pTime: string, dDate: string, dTime: string): boolean {
     if (!pDate || !dDate || !pTime || !dTime) { setDateError(''); return true; }
     const pickup = new Date(`${pDate}T${pTime}`);
@@ -1102,9 +1110,20 @@ export default function BrowseBookPage() {
                   {/* Store label */}
                   <div className="mb-4 space-y-1.5">
                     <label className="ml-1 text-xs font-bold uppercase tracking-wider text-teal-700">Store</label>
-                    <div className={`${inputClass} flex items-center gap-2`}>
+                    <div className={`${inputClass} flex items-center justify-between gap-2`}>
                       <span className="font-semibold">{RESERVE_PAGE_STORE_DISPLAY_NAME}</span>
+                      <a
+                        href="https://maps.google.com/?q=Lola%27s+Rentals+General+Luna+Siargao"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 text-[11px] font-semibold text-teal-brand underline underline-offset-2 transition-colors hover:text-teal-brand/70"
+                      >
+                        View map →
+                      </a>
                     </div>
+                    <p className="ml-1 text-[11px] leading-snug text-charcoal-brand/45">
+                      General Luna, Siargao Island · <a href="https://maps.google.com/?q=Lola%27s+Rentals+General+Luna+Siargao" target="_blank" rel="noopener noreferrer" className="text-teal-brand underline underline-offset-2 hover:text-teal-brand/70 transition-colors">Get directions</a>
+                    </p>
                   </div>
 
                   {/* Location pickers */}
@@ -1212,25 +1231,35 @@ export default function BrowseBookPage() {
                     </div>
                   </div>
 
-                  {/* Auto-search status + manual re-check */}
+                  {/* Live running total — shown once dates are selected */}
+                  {rentalDays > 0 && (() => {
+                    const dailyRate = quotes[selectedModelId!]?.dailyRate ?? selectedModel?.minDailyRate ?? null;
+                    const isEstimate = !quotes[selectedModelId!] && !!selectedModel?.minDailyRate;
+                    if (!dailyRate) return null;
+                    return (
+                      <div className="mb-4 rounded-xl border border-teal-brand/15 bg-teal-50/50 px-4 py-3 text-center">
+                        <p className="font-lato text-sm font-bold text-charcoal-brand">
+                          {rentalDays} day{rentalDays !== 1 ? 's' : ''} × {isEstimate ? 'from ' : ''}<PesoSign />{formatPhpNumber(dailyRate)}{' '}
+                          ={' '}
+                          <span className="text-base text-teal-brand">
+                            {isEstimate ? 'from ' : ''}<PesoSign />{formatPhpNumber(rentalDays * dailyRate)}
+                          </span>
+                        </p>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Availability status */}
                   {isLoading ? (
                     <div className="flex items-center justify-center gap-2 py-3">
                       <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-teal-brand border-t-transparent" />
                       <span className="font-lato text-sm font-semibold text-charcoal-brand/60">Checking availability…</span>
                     </div>
-                  ) : canSearch ? (
-                    <button
-                      type="button"
-                      onClick={handleSearch}
-                      className="font-lato w-full rounded-xl border border-teal-brand/30 bg-sand-brand/50 py-2.5 text-sm font-semibold text-teal-brand transition-colors hover:bg-teal-brand/10"
-                    >
-                      ↻ Re-check availability
-                    </button>
-                  ) : (
+                  ) : !canSearch ? (
                     <p className="font-lato text-center text-xs text-charcoal-brand/40">
                       Complete all fields above to see availability
                     </p>
-                  )}
+                  ) : null}
 
                   {isSearched && (
                     <p className="font-lato mt-2 text-center text-xs italic text-charcoal-brand/60">
@@ -1274,7 +1303,7 @@ export default function BrowseBookPage() {
       {/* ── Below-fold trust builders ─────────────────────────── */}
 
       <FadeUpSection>
-        <section style={{ backgroundColor: SAND, padding: '64px 5%' }}>
+        <section id="whats-included" style={{ backgroundColor: SAND, padding: '64px 5%' }}>
           <div style={{ maxWidth: 1280, margin: '0 auto' }}>
             <p
               className="font-lato"

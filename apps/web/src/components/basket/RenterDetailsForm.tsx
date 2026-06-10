@@ -122,6 +122,9 @@ export function RenterDetailsForm({ info, onChange, errors }: Props) {
           </select>
           <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-charcoal-brand/40">▾</span>
         </div>
+        <p className="mt-1 text-[11px] leading-snug text-charcoal-brand/45">
+          Required for our rental agreement and accident report records.
+        </p>
         {errors.nationality && (
           <p className="mt-1 text-[11px] text-red-500">{errors.nationality}</p>
         )}
@@ -137,6 +140,9 @@ export function RenterDetailsForm({ info, onChange, errors }: Props) {
           autoComplete="off"
           className={INPUT_CLS}
         />
+        <p className="mt-1 text-[11px] leading-snug text-charcoal-brand/45">
+          Helps us coordinate delivery and contact you if needed.
+        </p>
       </div>
 
       <div>
@@ -149,6 +155,9 @@ export function RenterDetailsForm({ info, onChange, errors }: Props) {
           autoComplete="organization"
           className={INPUT_CLS}
         />
+        <p className="mt-1 text-[11px] leading-snug text-charcoal-brand/45">
+          For corporate bookings and invoice purposes.
+        </p>
       </div>
 
       <div className="md:col-span-2">

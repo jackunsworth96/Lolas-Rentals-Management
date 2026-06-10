@@ -9,6 +9,7 @@ import { hasBookingDatetimeWithTime } from '../../utils/booking-datetime.js';
 import { BrandCard } from '../public/BrandCard.js';
 import { PesoSign } from '../ui/PesoSign.js';
 import cartIcon from '../../assets/Buttons/basket icon.svg';
+import { getIncludedItemsForModel } from '../../data/home-included-rental-items.js';
 
 const VEHICLE_NAME_MAP: Record<string, string> = {
   'Honda Beat': 'Scooter Honda Beat 110cc',
@@ -252,7 +253,7 @@ export function VehicleCard({
           </div>
 
           {securityDeposit != null && securityDeposit > 0 && (
-            <p className="font-lato mb-4 text-xs text-charcoal-brand/50">
+            <p className="font-lato mb-3 text-xs text-charcoal-brand/50">
               <span className="font-bold">
                 <PesoSign />{formatPhpNumber(securityDeposit)}
               </span>
@@ -260,7 +261,25 @@ export function VehicleCard({
             </p>
           )}
 
-          <div className="mt-auto pt-4">
+          {/* Included kit strip */}
+          <div className="mb-1 flex flex-wrap items-start justify-around gap-x-2 gap-y-2 rounded-lg border border-charcoal-brand/[0.08] bg-sand-brand/40 px-3 py-2.5">
+            {getIncludedItemsForModel(modelName).map(({ icon, label }) => (
+              <div key={label} className="flex flex-col items-center gap-1">
+                <img src={icon} alt={label} className="h-6 w-6 object-contain" width={24} height={24} />
+                <span className="font-lato text-center text-[9px] font-semibold leading-tight text-charcoal-brand/70">{label}</span>
+              </div>
+            ))}
+          </div>
+          <p className="mb-3 text-right">
+            <a
+              href="#whats-included"
+              className="font-lato text-[10px] font-semibold text-teal-brand underline underline-offset-2 transition-colors hover:text-teal-brand/70"
+            >
+              &amp; more
+            </a>
+          </p>
+
+          <div className="mt-auto pt-2">
             {isHoldOnly ? (
               <div className="flex flex-col items-center gap-2 rounded-2xl border-2 border-gold-brand/40 bg-gold-brand/10 px-4 py-4 text-center">
                 <p className="font-lato text-sm font-bold text-charcoal-brand">
