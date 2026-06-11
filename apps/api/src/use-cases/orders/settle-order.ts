@@ -331,7 +331,7 @@ export async function settleOrder(
   const journalDate = formatManilaDate();
   const journalPeriod = journalDate.slice(0, 7);
 
-  const { error: rpcErr } = await supabase.rpc('settle_order_atomic', {
+  const rpcPayload = {
     p_order_id: order.id,
     p_store_id: order.storeId,
     p_settled_at: new Date().toISOString(),
@@ -385,9 +385,23 @@ export async function settleOrder(
           transaction_date: depositRefundPayment.transactionDate,
           customer_id: depositRefundPayment.customerId,
           account_id: depositRefundPayment.accountId,
-        }
+      }
       : null,
-  });
+  };
+
+  let { error: rpcErr } = await supabase.rpc('settle_order_atomic', rpcPayload);
+
+  if (
+    rpcErr &&
+    rpcErr.message.includes('settle_order_atomic') &&
+    rpcErr.message.includes('p_return_charges_note')
+  ) {
+    const legacyPayload: Omit<typeof rpcPayload, 'p_return_charges_note'> &
+      Partial<Pick<typeof rpcPayload, 'p_return_charges_note'>> = { ...rpcPayload };
+    delete legacyPayload.p_return_charges_note;
+    const retry = await supabase.rpc('settle_order_atomic', legacyPayload);
+    rpcErr = retry.error;
+  }
 
   if (rpcErr) {
     throw new Error(`settle_order_atomic RPC failed: ${rpcErr.message}`);

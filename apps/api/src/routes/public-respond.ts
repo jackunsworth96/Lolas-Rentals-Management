@@ -1,6 +1,17 @@
-import { Router } from 'express';
-import * as chrono from 'chrono-node';
+import { randomUUID } from 'node:crypto';
+import { Router, type Request, type Response } from 'express';
+import { z } from 'zod';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
+import { createHold } from '../use-cases/booking/create-hold.js';
+import { checkAvailability } from '../use-cases/booking/check-availability.js';
+import { computeQuote } from '../use-cases/booking/compute-quote.js';
+import { logger } from '../lib/logger.js';
+import {
+  extDayCount,
+  orderReferenceLookupVariants,
+  resolveExtensionForActive,
+  resolveExtensionForRaw,
+} from './public-extend-helpers.js';
 
 /**
  * Routes consumed by respond.io (or any authenticated third-party caller).
@@ -9,6 +20,7 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
  */
 
 const STORE_ID = 'store-lolas';
+const TEMP_BOOKING_HANDOFF_CART_ORIGIN = 'http://localhost:3002';
 
 /**
  * Hardcoded until a callout_charges config table is added.
@@ -30,6 +42,7 @@ interface PricingBrackets {
 }
 
 interface VehicleEntry {
+  model_id: string;
   model: string;
   type: string | null;
   cc: number | null;
@@ -41,6 +54,7 @@ interface VehicleEntry {
 }
 
 interface AddonEntry {
+  id: number;
   name: string;
   price: number;
   price_type: 'per_day' | 'one_time';
@@ -116,10 +130,35 @@ interface FleetRow {
 }
 
 interface AddonRow {
+  id: number;
   name: string;
   addon_type: 'per_day' | 'one_time';
   price_per_day: number;
   price_one_time: number;
+}
+
+interface LocationEntry {
+  id: number;
+  name: string;
+  delivery_cost: number;
+  collection_cost: number;
+  location_type: string | null;
+}
+
+interface RespondExtensionTarget {
+  orderReference: string;
+  email: string;
+  customerName: string | null;
+  status: string;
+  source: 'active' | 'raw';
+  orderItemId: string | null;
+  currentDropoffDatetime: string;
+  pickupDatetime: string | null;
+  vehicleModelId: string | null;
+  vehicle: string;
+  storeId: string;
+  currentDailyRate: number | null;
+  message?: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -159,6 +198,392 @@ function philippinePhoneVariants(raw: string): string[] {
   return [`+63${local}`, `0${local}`, `63${local}`, local];
 }
 
+function manilaDateKey(value: string | Date): string {
+  return new Date(value).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+}
+
+function getLookupParams(req: Request): {
+  ref: string | null;
+  phone: string | null;
+} {
+  let ref = typeof req.query.ref === 'string' ? req.query.ref.trim() : null;
+  let phone = typeof req.query.phone === 'string' ? req.query.phone.trim() : null;
+  const lookup = typeof req.query.lookup === 'string' ? req.query.lookup.trim() : null;
+
+  if (!ref && !phone && lookup) {
+    if (/^(LR|BB)[-\s]?\d{4}/i.test(lookup)) {
+      ref = lookup;
+    } else {
+      phone = lookup;
+    }
+  }
+
+  return { ref, phone };
+}
+
+function loggableLookup(params: { ref: string | null; phone: string | null }) {
+  const digits = params.phone?.replace(/\D/g, '') ?? '';
+  return {
+    ref: params.ref ?? undefined,
+    phone_last4: digits ? digits.slice(-4) : undefined,
+  };
+}
+
+function summariseExtensionResponse(payload: unknown) {
+  if (!payload || typeof payload !== 'object') return payload;
+  const body = payload as Record<string, unknown>;
+  return {
+    success: body.success,
+    found: body.found,
+    code: body.code,
+    message: body.message ?? body.error,
+    order_reference: body.order_reference,
+    can_extend: body.can_extend,
+    current_dropoff_datetime: body.current_dropoff_datetime,
+    new_dropoff_datetime: body.new_dropoff_datetime,
+    extension_days: body.extension_days,
+    extension_total: body.extension_total,
+    extension_cost: body.extension_cost,
+  };
+}
+
+function sendRespondExtensionJson(
+  res: Response,
+  action: 'lookup' | 'preview' | 'confirm',
+  params: { ref: string | null; phone: string | null },
+  payload: unknown,
+  status = 200,
+) {
+  logger.info(
+    {
+      action,
+      status,
+      lookup: loggableLookup(params),
+      response: summariseExtensionResponse(payload),
+    },
+    'respond.io extension response',
+  );
+  return res.status(status).json(payload);
+}
+
+function respondExtensionPublicTarget(target: RespondExtensionTarget) {
+  return {
+    found: true,
+    order_reference: target.orderReference,
+    customer_name: target.customerName,
+    status: target.status,
+    source: target.source,
+    vehicle: target.vehicle,
+    current_dropoff_datetime: target.currentDropoffDatetime,
+    pickup_datetime: target.pickupDatetime,
+    store_id: target.storeId,
+    can_extend: target.source === 'active',
+    extension_url: 'https://www.lolasrentals.com/book/extend',
+    guidance: target.source === 'active'
+      ? 'Use preview first, then confirm only after the customer agrees to the quoted extension balance.'
+      : 'Extensions are only available once the rental is active. Hand off to the team for booking changes before pickup.',
+    ...(target.message ? { message: target.message } : {}),
+  };
+}
+
+async function resolveRespondExtensionTarget(
+  sb: ReturnType<typeof getSupabaseClient>,
+  params: { ref: string | null; phone: string | null },
+): Promise<RespondExtensionTarget | null> {
+  const { ref, phone } = params;
+  const refVariants = ref ? orderReferenceLookupVariants(ref) : [];
+
+  type CustomerRow = { id: string; name: string | null; email: string | null; mobile: string | null };
+  const customerById = new Map<string, CustomerRow>();
+  let customerIds: string[] = [];
+
+  if (phone) {
+    const { data: customers, error } = await sb
+      .from('customers')
+      .select('id, name, email, mobile')
+      .in('mobile', philippinePhoneVariants(phone))
+      .limit(10);
+    if (error) throw error;
+    for (const customer of (customers ?? []) as CustomerRow[]) {
+      customerById.set(customer.id, customer);
+    }
+    customerIds = [...customerById.keys()];
+  }
+
+  let ordersQuery = sb
+    .from('orders')
+    .select('id, booking_token, status, store_id, customer_id, created_at')
+    .eq('status', 'active');
+
+  if (refVariants.length > 0) {
+    ordersQuery = ordersQuery.in('booking_token', refVariants);
+  } else if (customerIds.length > 0) {
+    ordersQuery = ordersQuery.in('customer_id', customerIds).order('created_at', { ascending: false });
+  } else {
+    ordersQuery = ordersQuery.limit(0);
+  }
+
+  const { data: activeOrders, error: activeOrdersError } = await ordersQuery;
+  if (activeOrdersError) throw activeOrdersError;
+
+  type ActiveOrderRow = {
+    id: string;
+    booking_token: string | null;
+    status: string;
+    store_id: string;
+    customer_id: string | null;
+    created_at: string;
+  };
+  const activeOrder = ((activeOrders ?? []) as ActiveOrderRow[])[0];
+
+  if (activeOrder) {
+    let customer = activeOrder.customer_id ? customerById.get(activeOrder.customer_id) ?? null : null;
+    if (!customer && activeOrder.customer_id) {
+      const { data, error } = await sb
+        .from('customers')
+        .select('id, name, email, mobile')
+        .eq('id', activeOrder.customer_id)
+        .maybeSingle();
+      if (error) throw error;
+      customer = data as CustomerRow | null;
+    }
+
+    const { data: item, error: itemError } = await sb
+      .from('order_items')
+      .select('id, vehicle_id, pickup_datetime, dropoff_datetime, store_id, rental_rate, vehicle_name, vehicle_model_id')
+      .eq('order_id', activeOrder.id)
+      .not('pickup_datetime', 'is', null)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (itemError) throw itemError;
+
+    if (item?.dropoff_datetime) {
+      let vehicleModelId = (item.vehicle_model_id as string | null) ?? null;
+      let vehicle = (item.vehicle_name as string | null) ?? 'Unknown';
+
+      if (item.vehicle_id && (!vehicleModelId || vehicle === 'Unknown')) {
+        const { data: fleetRow } = await sb
+          .from('fleet')
+          .select('model_id, name')
+          .eq('id', item.vehicle_id as string)
+          .maybeSingle();
+        vehicleModelId = vehicleModelId ?? ((fleetRow?.model_id as string | null) ?? null);
+        vehicle = vehicle !== 'Unknown' ? vehicle : ((fleetRow?.name as string | null) ?? 'Unknown');
+      }
+
+      if (vehicle === 'Unknown' && vehicleModelId) {
+        vehicle = await resolveVehicleModelName(sb, vehicleModelId);
+      }
+
+      return {
+        orderReference: activeOrder.booking_token ?? activeOrder.id,
+        email: customer?.email?.trim().toLowerCase() ?? '',
+        customerName: customer?.name ?? null,
+        status: activeOrder.status,
+        source: 'active',
+        orderItemId: item.id as string,
+        currentDropoffDatetime: item.dropoff_datetime as string,
+        pickupDatetime: (item.pickup_datetime as string | null) ?? null,
+        vehicleModelId,
+        vehicle,
+        storeId: (item.store_id as string | null) ?? activeOrder.store_id,
+        currentDailyRate: item.rental_rate != null ? Number(item.rental_rate) : null,
+      };
+    }
+  }
+
+  let rawQuery = sb
+    .from('orders_raw')
+    .select('order_reference, status, customer_name, customer_email, customer_mobile, pickup_datetime, dropoff_datetime, store_id, vehicle_model_id')
+    .in('status', ['unprocessed', 'processed'])
+    .order('created_at', { ascending: false });
+
+  if (refVariants.length > 0) {
+    rawQuery = rawQuery.in('order_reference', refVariants);
+  } else if (phone) {
+    rawQuery = rawQuery.in('customer_mobile', philippinePhoneVariants(phone));
+  } else {
+    rawQuery = rawQuery.limit(0);
+  }
+
+  const { data: rawRows, error: rawError } = await rawQuery;
+  if (rawError) throw rawError;
+  const raw = ((rawRows ?? []) as Array<{
+    order_reference: string;
+    status: string;
+    customer_name: string | null;
+    customer_email: string | null;
+    pickup_datetime: string | null;
+    dropoff_datetime: string | null;
+    store_id: string;
+    vehicle_model_id: string | null;
+  }>)[0];
+
+  if (!raw?.dropoff_datetime) return null;
+
+  return {
+    orderReference: raw.order_reference,
+    email: raw.customer_email?.trim().toLowerCase() ?? '',
+    customerName: raw.customer_name ?? null,
+    status: raw.status,
+    source: 'raw',
+    orderItemId: null,
+    currentDropoffDatetime: raw.dropoff_datetime,
+    pickupDatetime: raw.pickup_datetime,
+    vehicleModelId: raw.vehicle_model_id,
+    vehicle: raw.vehicle_model_id ? await resolveVehicleModelName(sb, raw.vehicle_model_id) : 'Unknown',
+    storeId: raw.store_id,
+    currentDailyRate: null,
+    message: raw.status === 'unprocessed'
+      ? 'This booking is not active yet, so respond.io should hand off instead of confirming an extension.'
+      : undefined,
+  };
+}
+
+async function previewRespondExtension(
+  req: Request,
+  target: RespondExtensionTarget,
+  newDropoffDatetime: string,
+) {
+  if (!target.email) {
+    return {
+      ok: false as const,
+      status: 409,
+      payload: {
+        success: false,
+        code: 'EMAIL_REQUIRED',
+        message: 'This booking has no customer email on file. Hand off to the team to process the extension.',
+      },
+    };
+  }
+
+  const currentDropoff = new Date(target.currentDropoffDatetime);
+  const newDropoff = new Date(newDropoffDatetime);
+  if (Number.isNaN(newDropoff.getTime())) {
+    return {
+      ok: false as const,
+      status: 400,
+      payload: { success: false, code: 'INVALID_DATE', message: 'newDropoffDatetime must be a valid ISO datetime.' },
+    };
+  }
+  if (newDropoff <= currentDropoff) {
+    return {
+      ok: false as const,
+      status: 400,
+      payload: { success: false, code: 'INVALID_DATE', message: 'New return date must be after the current return date.' },
+    };
+  }
+  if (manilaDateKey(newDropoff) === manilaDateKey(currentDropoff)) {
+    return {
+      ok: false as const,
+      status: 409,
+      payload: {
+        success: false,
+        code: 'SAME_DAY_LATE_RETURN_HANDOFF',
+        message: 'Same-day late returns need team confirmation. Offer the 9pm return option: PHP 100 per vehicle, store only, arranged before 4pm.',
+      },
+    };
+  }
+  if (target.source !== 'active') {
+    return {
+      ok: false as const,
+      status: 409,
+      payload: {
+        success: false,
+        code: 'ORDER_NOT_ACTIVE',
+        message: 'Extensions are only available once the rental is active. Hand off to the team for booking changes before pickup.',
+      },
+    };
+  }
+
+  const extDays = extDayCount(currentDropoff.getTime(), newDropoff.getTime());
+  let dailyRate = target.currentDailyRate ?? 0;
+
+  if (target.vehicleModelId) {
+    const availability = await checkAvailability(
+      { bookingPort: req.app.locals.deps.bookingPort },
+      {
+        storeId: target.storeId,
+        pickupDatetime: target.currentDropoffDatetime,
+        dropoffDatetime: newDropoffDatetime,
+        excludeOrderItemId: target.orderItemId ?? undefined,
+      },
+    );
+    const modelAvailability = availability.find((entry) => entry.modelId === target.vehicleModelId);
+    if (!modelAvailability || modelAvailability.availableCount === 0) {
+      logger.info(
+        {
+          orderReference: target.orderReference,
+          vehicleModelId: target.vehicleModelId,
+          vehicle: target.vehicle,
+          excludedOrderItemId: target.orderItemId ?? undefined,
+          pickupDatetime: target.currentDropoffDatetime,
+          dropoffDatetime: newDropoffDatetime,
+          modelAvailability: modelAvailability
+            ? {
+                modelId: modelAvailability.modelId,
+                modelName: modelAvailability.modelName,
+                availableCount: modelAvailability.availableCount,
+                nextAvailablePickup: modelAvailability.nextAvailablePickup,
+                holdExpiresAt: modelAvailability.holdExpiresAt,
+              }
+            : null,
+        },
+        'respond.io extension availability unavailable',
+      );
+      return {
+        ok: false as const,
+        status: 409,
+        payload: {
+          success: false,
+          code: 'NOT_AVAILABLE',
+          message: 'Sorry, this vehicle is not available for the extended dates. Hand off to the team.',
+        },
+      };
+    }
+
+    const locRows = await req.app.locals.deps.configRepo.getLocations(target.storeId);
+    const storeLoc = locRows.find((l: { deliveryCost: number; collectionCost: number }) =>
+      Number(l.deliveryCost) === 0 && Number(l.collectionCost) === 0,
+    );
+    const locId = storeLoc ? Number(storeLoc.id) : (locRows[0] ? Number(locRows[0].id) : 1);
+    const quote = await computeQuote(
+      { configRepo: req.app.locals.deps.configRepo },
+      {
+        storeId: target.storeId,
+        vehicleModelId: target.vehicleModelId,
+        pickupDatetime: target.currentDropoffDatetime,
+        dropoffDatetime: newDropoffDatetime,
+        pickupLocationId: locId,
+        dropoffLocationId: locId,
+      },
+    );
+    const computedDailyRate = extDays > 0 ? quote.rentalSubtotal / extDays : quote.rentalSubtotal;
+    dailyRate = target.currentDailyRate && target.currentDailyRate > 0
+      ? Math.min(computedDailyRate, target.currentDailyRate)
+      : computedDailyRate;
+  }
+
+  const extensionTotal = Math.round(dailyRate * extDays * 100) / 100;
+  return {
+    ok: true as const,
+    payload: {
+      success: true,
+      order_reference: target.orderReference,
+      customer_name: target.customerName,
+      vehicle: target.vehicle,
+      current_dropoff_datetime: target.currentDropoffDatetime,
+      new_dropoff_datetime: newDropoffDatetime,
+      extension_days: extDays,
+      daily_rate: Math.round(dailyRate * 100) / 100,
+      extension_total: extensionTotal,
+      balance_note: 'Add this amount to the booking balance. Confirm only after the customer agrees.',
+      customer_message: `Yes, we can extend your rental to ${newDropoff.toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' })}. The extension balance is PHP ${extensionTotal.toLocaleString('en-PH')}. Shall I confirm that for you?`,
+    },
+  };
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 
 const router = Router();
@@ -194,7 +619,7 @@ router.get('/fleet', async (_req, res, next) => {
 
       sb
         .from('addons')
-        .select('name, addon_type, price_per_day, price_one_time')
+        .select('id, name, addon_type, price_per_day, price_one_time')
         .eq('is_active', true)
         .or(`store_id.eq.${STORE_ID},store_id.is.null`)
         .order('name'),
@@ -279,6 +704,7 @@ router.get('/fleet', async (_req, res, next) => {
     const vehicles: VehicleEntry[] = [];
     for (const [modelId, entry] of byModel) {
       vehicles.push({
+        model_id:              modelId,
         model:                 entry.name,
         type:                  entry.type,
         cc:                    entry.cc,
@@ -299,6 +725,7 @@ router.get('/fleet', async (_req, res, next) => {
     const addons: AddonEntry[] = addonRows
       .filter((a) => !a.name.toLowerCase().includes('peace'))
       .map((a) => ({
+        id:         Number(a.id),
         name:       a.name,
         price:      a.addon_type === 'per_day' ? Number(a.price_per_day) : Number(a.price_one_time),
         price_type: a.addon_type,
@@ -315,6 +742,290 @@ router.get('/fleet', async (_req, res, next) => {
     fleetCache = { data: payload, fetchedAt: now };
     res.json(payload);
   } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/public/respond/locations
+ *
+ * Returns active booking locations with the IDs required by the public
+ * booking cart/submit flow.
+ */
+router.get('/locations', async (_req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+
+    const { data, error } = await sb
+      .from('locations')
+      .select('id, name, delivery_cost, collection_cost, location_type')
+      .eq('is_active', true)
+      .or(`store_id.eq.${STORE_ID},store_id.is.null`)
+      .order('location_type', { ascending: false })
+      .order('name');
+
+    if (error) {
+      console.error('[respond/locations] locations query failed:', error);
+      throw error;
+    }
+
+    const locations: LocationEntry[] = (data ?? []).map((row) => ({
+      id:              Number(row.id),
+      name:            row.name as string,
+      delivery_cost:   Number(row.delivery_cost ?? 0),
+      collection_cost: Number(row.collection_cost ?? 0),
+      location_type:   (row.location_type as string | null) ?? null,
+    }));
+
+    res.json({ locations });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const RespondBookingHandoffSchema = z.object({
+  vehicleModelId: z.string().min(1),
+  pickupDatetime: z.string().min(1),
+  dropoffDatetime: z.string().min(1),
+  pickupLocationId: z.coerce.number().int().positive(),
+  dropoffLocationId: z.coerce.number().int().positive(),
+  storeId: z.string().min(1).optional().default(STORE_ID),
+  sessionToken: z.string().min(20).optional(),
+  customer: z
+    .object({
+      fullName: z.string().optional(),
+      email: z.string().email().optional(),
+      phone: z.string().optional(),
+      nationality: z.string().optional(),
+      accommodationName: z.string().optional(),
+      company: z.string().optional(),
+      extraComments: z.string().optional(),
+    })
+    .optional(),
+  addonIds: z.array(z.coerce.number().int().positive()).optional(),
+  transfer: z
+    .object({
+      transferType: z.enum(['shared', 'private', 'tuktuk']),
+      transferRoute: z.string().min(1),
+      flightNumber: z.string().optional(),
+      flightArrivalTime: z.string().optional(),
+      transferRouteId: z.coerce.number().int().positive().optional(),
+      vanType: z.string().optional(),
+      pricingType: z.enum(['fixed', 'per_head']).optional(),
+      unitPrice: z.coerce.number().min(0).optional(),
+      paxCount: z.coerce.number().int().positive().optional(),
+      totalPrice: z.coerce.number().min(0).optional(),
+    })
+    .optional(),
+  respond: z.record(z.unknown()).optional(),
+});
+
+function isValidDateRange(pickupDatetime: string, dropoffDatetime: string): boolean {
+  const pickup = new Date(pickupDatetime);
+  const dropoff = new Date(dropoffDatetime);
+  return !Number.isNaN(pickup.getTime()) && !Number.isNaN(dropoff.getTime()) && dropoff > pickup;
+}
+
+function normaliseRenterDetails(
+  customer: z.infer<typeof RespondBookingHandoffSchema>['customer'],
+): Record<string, string> | null {
+  if (!customer) return null;
+
+  const renter = {
+    fullName:          customer.fullName?.trim() ?? '',
+    email:             customer.email?.trim() ?? '',
+    phone:             customer.phone?.trim() ?? '',
+    nationality:       customer.nationality?.trim() ?? '',
+    accommodationName: customer.accommodationName?.trim() ?? '',
+    company:           customer.company?.trim() ?? '',
+    extraComments:     customer.extraComments?.trim() ?? '',
+  };
+
+  return Object.values(renter).some((v) => v.length > 0) ? renter : null;
+}
+
+function isMissingHandoffContextColumn(error: { message?: string; code?: string } | null): boolean {
+  return Boolean(
+    error &&
+      (error.code === 'PGRST204' ||
+        error.message?.includes('handoff_context') ||
+        error.message?.includes('Could not find the')),
+  );
+}
+
+router.post('/booking-handoff', async (req, res, next) => {
+  try {
+    const parsed = RespondBookingHandoffSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error:   'Invalid booking handoff payload',
+        details: parsed.error.flatten(),
+      });
+      return;
+    }
+
+    const input = parsed.data;
+    if (!isValidDateRange(input.pickupDatetime, input.dropoffDatetime)) {
+      res.status(400).json({ error: 'dropoffDatetime must be after pickupDatetime' });
+      return;
+    }
+
+    const sb = getSupabaseClient();
+
+    const [modelResult, pickupLocResult, dropoffLocResult] = await Promise.all([
+      sb
+        .from('vehicle_models')
+        .select('id, name, security_deposit')
+        .eq('id', input.vehicleModelId)
+        .eq('is_active', true)
+        .maybeSingle(),
+      sb
+        .from('locations')
+        .select('id, name, delivery_cost, collection_cost, location_type')
+        .eq('id', input.pickupLocationId)
+        .eq('is_active', true)
+        .or(`store_id.eq.${input.storeId},store_id.is.null`)
+        .maybeSingle(),
+      sb
+        .from('locations')
+        .select('id, name, delivery_cost, collection_cost, location_type')
+        .eq('id', input.dropoffLocationId)
+        .eq('is_active', true)
+        .or(`store_id.eq.${input.storeId},store_id.is.null`)
+        .maybeSingle(),
+    ]);
+
+    if (modelResult.error) throw modelResult.error;
+    if (pickupLocResult.error) throw pickupLocResult.error;
+    if (dropoffLocResult.error) throw dropoffLocResult.error;
+
+    if (!modelResult.data) {
+      res.status(404).json({ error: 'Vehicle model not found' });
+      return;
+    }
+    if (!pickupLocResult.data || !dropoffLocResult.data) {
+      res.status(404).json({ error: 'Pickup or dropoff location not found' });
+      return;
+    }
+
+    const sessionToken = input.sessionToken ?? `respond_${randomUUID()}`;
+    const hold = await createHold(
+      { bookingPort: req.app.locals.deps.bookingPort },
+      {
+        vehicleModelId:  input.vehicleModelId,
+        storeId:         input.storeId,
+        pickupDatetime:  input.pickupDatetime,
+        dropoffDatetime: input.dropoffDatetime,
+        sessionToken,
+      },
+    );
+
+    let quote: Awaited<ReturnType<typeof computeQuote>> | null = null;
+    try {
+      quote = await computeQuote(
+        { configRepo: req.app.locals.deps.configRepo },
+        {
+          storeId:            input.storeId,
+          vehicleModelId:     input.vehicleModelId,
+          pickupDatetime:     input.pickupDatetime,
+          dropoffDatetime:    input.dropoffDatetime,
+          pickupLocationId:   input.pickupLocationId,
+          dropoffLocationId:  input.dropoffLocationId,
+          addonIds:           input.addonIds && input.addonIds.length > 0 ? input.addonIds : undefined,
+        },
+      );
+    } catch (err) {
+      console.error('[respond/booking-handoff] quote computation failed:', err);
+    }
+
+    const renterDetails = normaliseRenterDetails(input.customer);
+    const handoffContext = {
+      source: 'respond.io',
+      pickupLocationId: input.pickupLocationId,
+      dropoffLocationId: input.dropoffLocationId,
+      addonIds: input.addonIds ?? [],
+      transfer: input.transfer ?? null,
+      respond: input.respond ?? null,
+      createdAt: new Date().toISOString(),
+    };
+    const renterDetailsWithFallback = {
+      ...(renterDetails ?? {}),
+      __handoffContext: handoffContext,
+    };
+
+    const baseSessionRow = {
+      session_token:     sessionToken,
+      store_id:          input.storeId,
+      pickup_datetime:   input.pickupDatetime,
+      dropoff_datetime:  input.dropoffDatetime,
+      basket_items:      [input.vehicleModelId],
+      renter_details:    renterDetailsWithFallback,
+      device_type:       'mobile',
+      basket_viewed_at:  null,
+      submitted_at:      null,
+    };
+
+    const { error: sessionUpsertError } = await sb.from('booking_sessions').upsert(
+      {
+        ...baseSessionRow,
+        handoff_context: handoffContext,
+      },
+      { onConflict: 'session_token' },
+    );
+    if (isMissingHandoffContextColumn(sessionUpsertError)) {
+      const { error: fallbackUpsertError } = await sb.from('booking_sessions').upsert(
+        baseSessionRow,
+        { onConflict: 'session_token' },
+      );
+      if (fallbackUpsertError) throw fallbackUpsertError;
+    } else if (sessionUpsertError) {
+      throw sessionUpsertError;
+    }
+    await sb.rpc('increment_booking_interaction', { p_session_token: sessionToken });
+
+    const webBase = TEMP_BOOKING_HANDOFF_CART_ORIGIN;
+    const cartUrl = `${webBase}/book/basket?sessionToken=${encodeURIComponent(sessionToken)}`;
+    const message =
+      `Perfect, I reserved that vehicle for 10 minutes. ` +
+      `Please review and confirm your booking here: ${cartUrl}`;
+
+    res.status(201).json({
+      sessionToken,
+      holdId:    hold.id,
+      expiresAt: hold.expiresAt,
+      cartUrl,
+      message,
+      vehicle: {
+        model_id:         modelResult.data.id,
+        model:            modelResult.data.name,
+        security_deposit: Number(modelResult.data.security_deposit ?? 0),
+      },
+      pickup: {
+        id:              Number(pickupLocResult.data.id),
+        name:            pickupLocResult.data.name,
+        delivery_cost:   Number(pickupLocResult.data.delivery_cost ?? 0),
+        location_type:   pickupLocResult.data.location_type ?? null,
+      },
+      dropoff: {
+        id:              Number(dropoffLocResult.data.id),
+        name:            dropoffLocResult.data.name,
+        collection_cost: Number(dropoffLocResult.data.collection_cost ?? 0),
+        location_type:   dropoffLocResult.data.location_type ?? null,
+      },
+      quote: quote
+        ? {
+            dailyRate:       quote.dailyRate,
+            rentalSubtotal:  quote.rentalSubtotal,
+            pickupFee:       quote.pickupFee,
+            dropoffFee:      quote.dropoffFee,
+            addonsTotal:     quote.addonsTotal,
+            grandTotal:      quote.grandTotalWithFees,
+            securityDeposit: quote.securityDeposit,
+          }
+        : null,
+    });
+  } catch (err) {
+    console.error('[respond/booking-handoff] unhandled error:', err);
     next(err);
   }
 });
@@ -403,8 +1114,223 @@ async function resolveVehicleModelName(
 }
 
 /**
+ * GET /api/public/respond/extension/lookup?lookup=LR-XXXX-XXXX
+ * GET /api/public/respond/extension/lookup?lookup=+63912345678
+ */
+router.get('/extension/lookup', async (req, res, next) => {
+  try {
+    const params = getLookupParams(req);
+    if (!params.ref && !params.phone) {
+      sendRespondExtensionJson(res, 'lookup', params, {
+        found: false,
+        error: 'Please provide ref, phone, or lookup query parameter.',
+      }, 400);
+      return;
+    }
+
+    const target = await resolveRespondExtensionTarget(getSupabaseClient(), params);
+    if (!target) {
+      sendRespondExtensionJson(res, 'lookup', params, {
+        found: false,
+        error: 'No active booking found. Ask for the booking reference or phone number, then hand off if it still cannot be found.',
+      });
+      return;
+    }
+
+    sendRespondExtensionJson(res, 'lookup', params, respondExtensionPublicTarget(target));
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/public/respond/extension/preview?lookup=LR-XXXX-XXXX&newDropoffDatetime=2026-06-12T09:00:00%2B08:00
+ */
+router.get('/extension/preview', async (req, res, next) => {
+  try {
+    const params = getLookupParams(req);
+    const newDropoffDatetime = typeof req.query.newDropoffDatetime === 'string'
+      ? req.query.newDropoffDatetime.trim()
+      : null;
+
+    if ((!params.ref && !params.phone) || !newDropoffDatetime) {
+      sendRespondExtensionJson(res, 'preview', params, {
+        success: false,
+        code: 'VALIDATION_ERROR',
+        message: 'Provide ref, phone, or lookup plus newDropoffDatetime.',
+      }, 400);
+      return;
+    }
+
+    const target = await resolveRespondExtensionTarget(getSupabaseClient(), params);
+    if (!target) {
+      sendRespondExtensionJson(res, 'preview', params, {
+        success: false,
+        code: 'NOT_FOUND',
+        message: 'Booking not found. Ask the customer to confirm their booking reference or phone number.',
+      });
+      return;
+    }
+
+    const preview = await previewRespondExtension(req, target, newDropoffDatetime);
+    if (!preview.ok) {
+      sendRespondExtensionJson(res, 'preview', params, preview.payload);
+      return;
+    }
+
+    sendRespondExtensionJson(res, 'preview', params, preview.payload);
+  } catch (err) {
+    next(err);
+  }
+});
+
+const RespondExtensionConfirmSchema = z.object({
+  lookup: z.string().trim().min(1).optional(),
+  ref: z.string().trim().min(1).optional(),
+  phone: z.string().trim().min(1).optional(),
+  newDropoffDatetime: z.string().trim().min(1),
+  confirmedByCustomer: z.coerce.boolean().optional().default(false),
+});
+
+/**
+ * POST /api/public/respond/extension/confirm
+ *
+ * Confirms an extra-days extension after respond.io has quoted preview output
+ * and the customer has clearly accepted the balance.
+ */
+router.post('/extension/confirm', async (req, res, next) => {
+  try {
+    const parsed = RespondExtensionConfirmSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendRespondExtensionJson(res, 'confirm', { ref: null, phone: null }, {
+        success: false,
+        code: 'VALIDATION_ERROR',
+        message: 'lookup/ref/phone and newDropoffDatetime are required.',
+      }, 400);
+      return;
+    }
+
+    const { lookup, ref, phone, newDropoffDatetime, confirmedByCustomer } = parsed.data;
+    const params = {
+      ref: ref ?? (lookup && /^(LR|BB)[-\s]?\d{4}/i.test(lookup) ? lookup : null),
+      phone: phone ?? (lookup && !/^(LR|BB)[-\s]?\d{4}/i.test(lookup) ? lookup : null),
+    };
+
+    if (!params.ref && !params.phone) {
+      sendRespondExtensionJson(res, 'confirm', params, {
+        success: false,
+        code: 'VALIDATION_ERROR',
+        message: 'Provide lookup, ref, or phone.',
+      }, 400);
+      return;
+    }
+
+    if (!confirmedByCustomer) {
+      sendRespondExtensionJson(res, 'confirm', params, {
+        success: false,
+        code: 'CUSTOMER_CONFIRMATION_REQUIRED',
+        message: 'Run preview, quote the extension balance, and only call confirm after the customer clearly agrees.',
+      });
+      return;
+    }
+
+    const target = await resolveRespondExtensionTarget(getSupabaseClient(), params);
+    if (!target) {
+      sendRespondExtensionJson(res, 'confirm', params, {
+        success: false,
+        code: 'NOT_FOUND',
+        message: 'Booking not found. Ask the customer to confirm their booking reference or phone number.',
+      });
+      return;
+    }
+
+    const preview = await previewRespondExtension(req, target, newDropoffDatetime);
+    if (!preview.ok) {
+      sendRespondExtensionJson(res, 'confirm', params, preview.payload);
+      return;
+    }
+
+    const deps = req.app.locals.deps;
+    const activeOutcome = await resolveExtensionForActive({
+      orderReference: target.orderReference,
+      trimmedEmail: target.email,
+      newDropoffDatetime,
+      overrideDailyRate: undefined,
+      isPaid: false,
+      paymentMethodId: 'pending',
+      emailErrorLabel: '[respond-extension-email] Active path error:',
+      deps,
+    });
+
+    if (activeOutcome.kind === 'error') {
+      sendRespondExtensionJson(res, 'confirm', params, {
+        success: false,
+        code: 'EXTENSION_FAILED',
+        message: activeOutcome.reason,
+      });
+      return;
+    }
+
+    if (activeOutcome.kind === 'success') {
+      sendRespondExtensionJson(res, 'confirm', params, {
+        success: true,
+        order_reference: target.orderReference,
+        customer_name: target.customerName,
+        vehicle: target.vehicle,
+        previous_dropoff_datetime: target.currentDropoffDatetime,
+        new_dropoff_datetime: activeOutcome.newDropoffDatetime,
+        extension_days: activeOutcome.extensionDays,
+        extension_cost: activeOutcome.extensionCost,
+        payment_status: 'pending',
+        customer_message: `All set - your rental is extended to ${new Date(activeOutcome.newDropoffDatetime).toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' })}. The extension balance is PHP ${activeOutcome.extensionCost.toLocaleString('en-PH')} and has been added to your booking.`,
+      });
+      return;
+    }
+
+    const rawOutcome = await resolveExtensionForRaw({
+      orderReference: target.orderReference,
+      trimmedEmail: target.email,
+      newDropoffDatetime,
+      overrideDailyRate: undefined,
+      isPaid: false,
+      paymentMethodId: 'pending',
+      emailErrorLabel: '[respond-extension-email] Raw path error:',
+      deps,
+    });
+
+    if (rawOutcome.kind === 'success') {
+      sendRespondExtensionJson(res, 'confirm', params, {
+        success: true,
+        order_reference: target.orderReference,
+        customer_name: target.customerName,
+        vehicle: target.vehicle,
+        previous_dropoff_datetime: target.currentDropoffDatetime,
+        new_dropoff_datetime: rawOutcome.newDropoffDatetime,
+        extension_days: rawOutcome.extensionDays,
+        extension_cost: rawOutcome.extensionCost,
+        payment_status: 'pending',
+        customer_message: `All set - your rental is extended to ${new Date(rawOutcome.newDropoffDatetime).toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' })}. The extension balance is PHP ${rawOutcome.extensionCost.toLocaleString('en-PH')} and has been added to your booking.`,
+      });
+      return;
+    }
+
+    sendRespondExtensionJson(res, 'confirm', params, {
+      success: false,
+      code: rawOutcome.kind === 'error' ? 'EXTENSION_FAILED' : 'NOT_FOUND',
+      message: rawOutcome.kind === 'error'
+        ? rawOutcome.reason
+        : 'Booking was found but could not be extended automatically. Hand off to the team.',
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /api/public/respond/booking?ref=LR-XXXX-XXXX
  * GET /api/public/respond/booking?phone=+63912345678
+ * GET /api/public/respond/booking?lookup=LR-XXXX-XXXX
+ * GET /api/public/respond/booking?lookup=+63912345678
  *
  * Searches orders first (activated/staff-created bookings with full financial
  * data), then falls back to orders_raw for unactivated direct/walk-in bookings.
@@ -413,11 +1339,20 @@ async function resolveVehicleModelName(
  */
 router.get('/booking', async (req, res, next) => {
   try {
-    const ref   = typeof req.query.ref   === 'string' ? req.query.ref.trim()   : null;
-    const phone = typeof req.query.phone === 'string' ? req.query.phone.trim() : null;
+    let ref   = typeof req.query.ref   === 'string' ? req.query.ref.trim()   : null;
+    let phone = typeof req.query.phone === 'string' ? req.query.phone.trim() : null;
+    const lookup = typeof req.query.lookup === 'string' ? req.query.lookup.trim() : null;
+
+    if (!ref && !phone && lookup) {
+      if (/^LR[-\s]/i.test(lookup)) {
+        ref = lookup;
+      } else {
+        phone = lookup;
+      }
+    }
 
     if (!ref && !phone) {
-      res.status(400).json({ error: 'Please provide ref or phone query parameter' });
+      res.status(400).json({ error: 'Please provide ref, phone, or lookup query parameter' });
       return;
     }
 
@@ -617,50 +1552,38 @@ router.get('/booking', async (req, res, next) => {
  * GET /api/public/respond/availability
  *
  * Query params:
- *   date      - ISO date YYYY-MM-DD (mutually exclusive with query)
- *   query     - natural language date string e.g. "Friday", "May 15", "next week"
- *   type      - optional: "scooter" | "tuktuk"
- *   quantity  - optional integer, default 1
+ *   pickupDatetime  - exact ISO pickup datetime
+ *   dropoffDatetime - exact ISO return datetime
+ *   type            - optional: "scooter" | "tuktuk"
+ *   quantity        - optional integer, default 1
  *
- * Returns available fleet counts grouped by vehicle model.
- * Availability is based on fleet.status = 'Available' only.
- * A future update will cross-reference active orders for the requested date.
+ * Returns real bookable availability using the same engine as the website.
+ * Active holds, unprocessed bookings, walk-ins, and confirmed orders all block stock.
  */
 router.get('/availability', async (req, res, next) => {
   try {
-    const rawDate     = typeof req.query.date     === 'string' ? req.query.date.trim()             : null;
-    const queryParam  = typeof req.query.query    === 'string' ? req.query.query.trim()            : null;
-    const typeParam   = typeof req.query.type     === 'string' ? req.query.type.trim().toLowerCase() : null;
-    const quantityRaw = typeof req.query.quantity === 'string' ? req.query.quantity.trim()         : null;
+    const pickupDatetime = typeof req.query.pickupDatetime === 'string' ? req.query.pickupDatetime.trim() : null;
+    const dropoffDatetime = typeof req.query.dropoffDatetime === 'string' ? req.query.dropoffDatetime.trim() : null;
+    const typeParam = typeof req.query.type === 'string' ? req.query.type.trim().toLowerCase() : null;
+    const quantityRaw = typeof req.query.quantity === 'string' ? req.query.quantity.trim() : null;
 
-    // ── Resolve date string ───────────────────────────────────────────────────
-
-    let dateString: string;
-
-    if (rawDate) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
-        res.status(400).json({ error: 'date must be in YYYY-MM-DD format' });
-        return;
-      }
-      dateString = rawDate;
-    } else if (queryParam) {
-      // Parse natural language date relative to now, preferring future dates.
-      // Use 'Asia/Manila' locale string for the formatted output so day boundaries
-      // are correct regardless of the server's local timezone.
-      const parsed = chrono.parseDate(queryParam, new Date(), { forwardDate: true });
-      if (!parsed) {
-        res.status(400).json({
-          error: "I couldn't understand those dates. Could you try sharing them like this: 10 May or Friday 16 May?",
-        });
-        return;
-      }
-      dateString = parsed.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }); // yields YYYY-MM-DD
-    } else {
-      res.status(400).json({ error: 'Provide either a date (YYYY-MM-DD) or a query parameter' });
+    if (!pickupDatetime || !dropoffDatetime) {
+      res.status(400).json({
+        error: 'Exact pickupDatetime and dropoffDatetime are required before confirming availability.',
+      });
       return;
     }
 
-    // ── Validate optional params ──────────────────────────────────────────────
+    const pickup = new Date(pickupDatetime);
+    const dropoff = new Date(dropoffDatetime);
+    if (Number.isNaN(pickup.getTime()) || Number.isNaN(dropoff.getTime())) {
+      res.status(400).json({ error: 'pickupDatetime and dropoffDatetime must be valid ISO datetimes.' });
+      return;
+    }
+    if (dropoff <= pickup) {
+      res.status(400).json({ error: 'dropoffDatetime must be after pickupDatetime.' });
+      return;
+    }
 
     if (typeParam !== null && typeParam !== 'scooter' && typeParam !== 'tuktuk') {
       res.status(400).json({ error: 'type must be "scooter" or "tuktuk"' });
@@ -673,66 +1596,60 @@ router.get('/availability', async (req, res, next) => {
       return;
     }
 
-    // ── Fleet query ───────────────────────────────────────────────────────────
+    const availability = await checkAvailability(
+      { bookingPort: req.app.locals.deps.bookingPort },
+      { storeId: STORE_ID, pickupDatetime, dropoffDatetime },
+    );
 
-    const sb = getSupabaseClient();
-
-    let fleetQuery = sb
-      .from('fleet')
-      .select('model_id, vehicle_models!inner(name, type)')
-      .eq('store_id', STORE_ID)
-      .eq('status', 'Available');
-
+    let allowedModelTypes = new Map<string, string | null>();
     if (typeParam) {
-      fleetQuery = fleetQuery.eq('vehicle_models.type', typeParam);
-    }
+      const sb = getSupabaseClient();
+      const { data: models, error: modelsError } = await sb
+        .from('vehicle_models')
+        .select('id, type')
+        .eq('is_active', true);
 
-    const { data: fleetData, error: fleetError } = await fleetQuery;
-
-    if (fleetError) {
-      console.error('[respond/availability] fleet query failed:', fleetError);
-      throw fleetError;
-    }
-
-    type FleetAvailRow = {
-      model_id: string;
-      vehicle_models: { name: string; type: string | null } | { name: string; type: string | null }[];
-    };
-
-    const rows = (fleetData ?? []) as FleetAvailRow[];
-
-    // ── Group by model ────────────────────────────────────────────────────────
-
-    const byModel = new Map<string, { model: string; type: string | null; count: number }>();
-
-    for (const row of rows) {
-      const vm = Array.isArray(row.vehicle_models) ? row.vehicle_models[0] : row.vehicle_models;
-      if (!vm) continue;
-
-      if (!byModel.has(row.model_id)) {
-        byModel.set(row.model_id, { model: vm.name, type: vm.type ?? null, count: 0 });
+      if (modelsError) {
+        console.error('[respond/availability] vehicle_models query failed:', modelsError);
+        throw modelsError;
       }
-      byModel.get(row.model_id)!.count += 1;
+
+      allowedModelTypes = new Map(
+        ((models ?? []) as { id: string; type: string | null }[])
+          .filter((m) => m.type === typeParam)
+          .map((m) => [m.id, m.type]),
+      );
     }
 
-    const available = [...byModel.values()]
-      .sort((a, b) => a.model.localeCompare(b.model))
+    const filtered = typeParam
+      ? availability.filter((entry) => allowedModelTypes.has(entry.modelId))
+      : availability;
+
+    const available = filtered
+      .sort((a, b) => a.modelName.localeCompare(b.modelName))
       .map((entry) => ({
-        model:                   entry.model,
-        type:                    entry.type,
-        available_count:         entry.count,
-        sufficient_availability: entry.count >= quantity,
+        model_id:                entry.modelId,
+        model:                   entry.modelName,
+        available_count:         entry.availableCount,
+        sufficient_availability: entry.availableCount >= quantity,
+        hold_expires_at:         entry.holdExpiresAt ?? null,
+        blocking_window_may_clear_after: entry.nextAvailablePickup ?? null,
+        note: entry.availableCount >= quantity
+          ? 'This model has enough stock for the exact requested pickup and return datetimes.'
+          : 'Do not present blocking_window_may_clear_after as confirmed availability. It only means an overlapping booking or hold may clear after this time; the full requested rental window must be checked again before suggesting it.',
       }));
 
     const totalAvailable = available.reduce((sum, e) => sum + e.available_count, 0);
     const hasAvailability = available.some((e) => e.sufficient_availability);
 
     res.json({
-      date:               dateString,
+      pickup_datetime:    pickupDatetime,
+      dropoff_datetime:   dropoffDatetime,
       requested_quantity: quantity,
       available,
       total_available:    totalAvailable,
       has_availability:   hasAvailability,
+      guidance:           'Only models with sufficient_availability=true are available for the exact requested pickup and return datetimes. Do not suggest alternative pickup dates/times from blocking_window_may_clear_after unless you run a new availability check for the full requested rental window.',
     });
   } catch (err) {
     next(err);

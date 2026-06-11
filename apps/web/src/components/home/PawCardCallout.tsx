@@ -71,8 +71,8 @@ export function PawCardCallout() {
           The Siargao Paw Card is a community discount and donation scheme. Customers who rent with
           Lola&apos;s Rentals receive a card that gives them exclusive discounts at partner establishments across
           the island. Every time a customer logs a saving, Lola&apos;s Rentals matches it peso-for-peso as a
-          charitable donation to Be Pawsitive — the local NGO running spay, neuter and vaccination programmes for
-          Siargao&apos;s street animals.
+          charitable donation to local NGOs running community and animal welfare programmes on
+          Siargao&apos;s streets.
         </p>
       </div>
 

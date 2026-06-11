@@ -197,7 +197,10 @@ body {
 [data-id='crisp'],
 #tawkchat-container,
 #intercom-container,
-.intercom-lightweight-app {
+.intercom-lightweight-app,
+#respondio__widget,
+[id*='respondio'],
+[class*='respondio'] {
   z-index: 100000 !important;
 }
 
@@ -508,6 +511,12 @@ body {
 
 .font-headline {
   color: #00577C;
+}
+
+/* Hero / dark-background override — forces inherited colour on brand elements */
+.on-dark .font-headline,
+.on-dark .count-up-text {
+  color: inherit;
 }
 
 .font-headline .accent,

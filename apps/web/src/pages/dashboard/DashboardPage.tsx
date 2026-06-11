@@ -1153,16 +1153,16 @@ export default function DashboardPage() {
         </section>
       )}
 
-      {/* SECTION — Be Pawsitive Impact */}
+      {/* SECTION — NGO Impact */}
       {charityImpact && (
         <section>
-          <SectionHeading>🐾 Be Pawsitive Impact</SectionHeading>
+          <SectionHeading>🐾 NGO Impact</SectionHeading>
           <div className="rounded-2xl border border-teal-100 bg-white p-6 shadow-sm">
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
               {/* Total raised */}
               <div className="rounded-xl border border-teal-100 bg-teal-50 p-4">
                 <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-teal-600">
-                  Total Raised for Be Pawsitive
+                  Total Raised for Local NGOs
                 </p>
                 <p className="text-2xl font-bold" style={{ color: '#00577C' }}>
                   {formatCurrency(charityImpact.totalRaised)}
@@ -1212,7 +1212,7 @@ export default function DashboardPage() {
                     charityImpact.pendingPayout > 0 ? 'text-amber-500' : 'text-green-500'
                   }`}
                 >
-                  {charityImpact.pendingPayout > 0 ? 'Awaiting transfer to Be Pawsitive' : 'All paid ✓'}
+                  {charityImpact.pendingPayout > 0 ? 'Awaiting transfer to NGOs' : 'All paid ✓'}
                 </p>
               </div>
             </div>

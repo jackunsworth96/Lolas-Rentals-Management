@@ -36,6 +36,8 @@ export interface OrderProps {
   bookingToken: string | null;
   tips: Money;
   charityDonation: Money;
+  /** UUID of the NGO this booking's charity donation is earmarked for. Null for legacy rows. */
+  ngoId?: string | null;
   addons: OrderAddonData[];
   createdAt: Date;
   updatedAt: Date;
@@ -65,6 +67,7 @@ export class Order {
   private _balanceDue: Money;
   private _tips: Money;
   private _charityDonation: Money;
+  private _ngoId: string | null;
   private _addons: OrderAddonData[];
   private _updatedAt: Date;
 
@@ -92,6 +95,7 @@ export class Order {
     this._balanceDue = props.balanceDue;
     this._tips = props.tips;
     this._charityDonation = props.charityDonation;
+    this._ngoId = props.ngoId ?? null;
     this._addons = [...props.addons];
     this._updatedAt = props.updatedAt;
   }
@@ -106,6 +110,7 @@ export class Order {
   get balanceDue(): Money { return this._balanceDue; }
   get tips(): Money { return this._tips; }
   get charityDonation(): Money { return this._charityDonation; }
+  get ngoId(): string | null { return this._ngoId; }
   get addons(): ReadonlyArray<OrderAddonData> { return this._addons; }
   get updatedAt(): Date { return this._updatedAt; }
 
@@ -136,6 +141,7 @@ export class Order {
       bookingToken: this.bookingToken,
       tips: this._tips,
       charityDonation: this._charityDonation,
+      ngoId: this._ngoId,
       addons: this._addons,
       createdAt: this.createdAt,
       updatedAt: this._updatedAt,

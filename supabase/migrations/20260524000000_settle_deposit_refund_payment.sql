@@ -38,6 +38,7 @@ CREATE OR REPLACE FUNCTION public.settle_order_atomic(
   p_absorbed_extension_payment_ids      jsonb          DEFAULT '[]'::jsonb,
   p_card_fee_surcharge_delta            numeric(12,2)  DEFAULT 0,
   p_return_charges_delta                numeric(12,2)  DEFAULT 0,
+  p_return_charges_note                 text           DEFAULT NULL,
   p_deposit_refund_payment              jsonb          DEFAULT NULL
 )
 RETURNS void
@@ -166,37 +167,38 @@ BEGIN
   END IF;
 
   UPDATE public.orders
-  SET status             = 'completed',
-      balance_due        = p_final_balance_due,
-      final_total        = COALESCE(final_total, 0)
-                           + COALESCE(p_card_fee_surcharge_delta, 0)
-                           + COALESCE(p_return_charges_delta, 0),
-      card_fee_surcharge = COALESCE(card_fee_surcharge, 0)
-                           + COALESCE(p_card_fee_surcharge_delta, 0),
-      return_charges     = COALESCE(return_charges, 0)
-                           + COALESCE(p_return_charges_delta, 0),
-      settled_at         = p_settled_at,
-      updated_at         = p_settled_at
+  SET status               = 'completed',
+      balance_due          = p_final_balance_due,
+      final_total          = COALESCE(final_total, 0)
+                             + COALESCE(p_card_fee_surcharge_delta, 0)
+                             + COALESCE(p_return_charges_delta, 0),
+      card_fee_surcharge   = COALESCE(card_fee_surcharge, 0)
+                             + COALESCE(p_card_fee_surcharge_delta, 0),
+      return_charges       = COALESCE(return_charges, 0)
+                             + COALESCE(p_return_charges_delta, 0),
+      return_charges_note  = COALESCE(p_return_charges_note, return_charges_note),
+      settled_at           = p_settled_at,
+      updated_at           = p_settled_at
   WHERE id = p_order_id;
 END;
 $$;
 
 -- ============================================================
--- Re-apply EXECUTE permissions for the new 15-argument
--- signature. Prior overloads (12-, 13-, and 14-argument)
--- remain available so any in-flight requests are not broken.
+-- Re-apply EXECUTE permissions for the 16-argument signature.
+-- Prior overloads remain available so any in-flight requests
+-- are not broken.
 -- ============================================================
 REVOKE EXECUTE ON FUNCTION public.settle_order_atomic(
   text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
-  text, text, date, jsonb, jsonb, numeric, numeric, jsonb
+  text, text, date, jsonb, jsonb, numeric, numeric, text, jsonb
 ) FROM authenticated;
 
 REVOKE EXECUTE ON FUNCTION public.settle_order_atomic(
   text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
-  text, text, date, jsonb, jsonb, numeric, numeric, jsonb
+  text, text, date, jsonb, jsonb, numeric, numeric, text, jsonb
 ) FROM anon;
 
 GRANT EXECUTE ON FUNCTION public.settle_order_atomic(
   text, text, timestamptz, numeric, jsonb, jsonb, jsonb,
-  text, text, date, jsonb, jsonb, numeric, numeric, jsonb
+  text, text, date, jsonb, jsonb, numeric, numeric, text, jsonb
 ) TO service_role;

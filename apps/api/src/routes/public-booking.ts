@@ -266,6 +266,166 @@ router.get('/hold/:sessionToken', async (req, res, next) => {
   }
 });
 
+function isMissingHandoffContextColumn(error: { message?: string; code?: string } | null): boolean {
+  return Boolean(
+    error &&
+      (error.code === '42703' ||
+        error.code === 'PGRST204' ||
+        error.message?.includes('handoff_context') ||
+        error.message?.includes('Could not find the')),
+  );
+}
+
+function splitRenterDetailsAndHandoffContext(
+  renterDetails: unknown,
+  handoffContext: unknown,
+): { renterDetails: unknown; handoffContext: Record<string, unknown> } {
+  const renter = renterDetails && typeof renterDetails === 'object'
+    ? { ...(renterDetails as Record<string, unknown>) }
+    : {};
+  const fallbackContext = renter.__handoffContext;
+  delete renter.__handoffContext;
+
+  const context = handoffContext && typeof handoffContext === 'object'
+    ? handoffContext
+    : fallbackContext;
+
+  return {
+    renterDetails: Object.keys(renter).length > 0 ? renter : null,
+    handoffContext: context && typeof context === 'object'
+      ? context as Record<string, unknown>
+      : {},
+  };
+}
+
+router.get('/session/:sessionToken', async (req, res, next) => {
+  try {
+    const sessionToken = req.params.sessionToken;
+    if (!sessionToken || sessionToken.trim().length < 20) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Valid sessionToken is required' },
+      });
+      return;
+    }
+
+    const holds = await req.app.locals.deps.bookingPort.findActiveHoldsBySession(sessionToken);
+    if (holds.length === 0) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'No active booking hold found for this session.' },
+      });
+      return;
+    }
+
+    const { getSupabaseClient } = await import('../adapters/supabase/client.js');
+    const sb = getSupabaseClient();
+    let sessionQuery = await sb
+      .from('booking_sessions')
+      .select('session_token, store_id, pickup_datetime, dropoff_datetime, renter_details, handoff_context')
+      .eq('session_token', sessionToken)
+      .maybeSingle();
+    if (isMissingHandoffContextColumn(sessionQuery.error)) {
+      sessionQuery = await sb
+        .from('booking_sessions')
+        .select('session_token, store_id, pickup_datetime, dropoff_datetime, renter_details')
+        .eq('session_token', sessionToken)
+        .maybeSingle();
+    }
+
+    const { data: sessionRow, error: sessionError } = sessionQuery;
+    if (sessionError) throw new Error(`booking_sessions lookup failed: ${sessionError.message}`);
+    if (!sessionRow) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Booking session not found.' },
+      });
+      return;
+    }
+
+    const firstHold = holds[0];
+    const storeId = (sessionRow.store_id as string | null) ?? firstHold.storeId;
+    const pickupDatetime = (sessionRow.pickup_datetime as string | null) ?? firstHold.pickupDatetime;
+    const dropoffDatetime = (sessionRow.dropoff_datetime as string | null) ?? firstHold.dropoffDatetime;
+    const { renterDetails, handoffContext } = splitRenterDetailsAndHandoffContext(
+      sessionRow.renter_details,
+      'handoff_context' in sessionRow ? sessionRow.handoff_context : null,
+    );
+    const addonIds = Array.isArray(handoffContext.addonIds)
+      ? handoffContext.addonIds.map(Number).filter((id) => Number.isInteger(id) && id > 0)
+      : [];
+
+    const rawPickupLocationId = Number(handoffContext.pickupLocationId);
+    const rawDropoffLocationId = Number(handoffContext.dropoffLocationId);
+    const pickupLocationId = Number.isInteger(rawPickupLocationId) && rawPickupLocationId > 0
+      ? rawPickupLocationId
+      : null;
+    const dropoffLocationId = Number.isInteger(rawDropoffLocationId) && rawDropoffLocationId > 0
+      ? rawDropoffLocationId
+      : null;
+
+    const basket = await Promise.all(
+      holds.map(async (hold) => {
+        let modelName = hold.vehicleModelId;
+        let dailyRate = 0;
+        let securityDeposit = 0;
+
+        try {
+          const model = await req.app.locals.deps.configRepo.getVehicleModelById(hold.vehicleModelId);
+          modelName = model?.name ?? modelName;
+          securityDeposit = Number(model?.securityDeposit ?? 0);
+        } catch { /* non-critical fallback */ }
+
+        if (pickupLocationId && dropoffLocationId) {
+          try {
+            const quote = await computeQuote(
+              { configRepo: req.app.locals.deps.configRepo },
+              {
+                storeId,
+                vehicleModelId: hold.vehicleModelId,
+                pickupDatetime,
+                dropoffDatetime,
+                pickupLocationId,
+                dropoffLocationId,
+                addonIds: addonIds.length > 0 ? addonIds : undefined,
+              },
+            );
+            dailyRate = quote.dailyRate;
+            securityDeposit = quote.securityDeposit;
+          } catch { /* non-critical fallback */ }
+        }
+
+        return {
+          holdId: hold.id,
+          vehicleModelId: hold.vehicleModelId,
+          modelName,
+          dailyRate,
+          securityDeposit,
+          expiresAt: hold.expiresAt,
+        };
+      }),
+    );
+
+    res.json({
+      success: true,
+      data: {
+        sessionToken,
+        storeId,
+        pickupDatetime,
+        dropoffDatetime,
+        pickupLocationId,
+        dropoffLocationId,
+        basket,
+        renterDetails,
+        addonIds,
+        transfer: handoffContext.transfer ?? null,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── Session tracking ──
 
 const sessionLimiter = rateLimit({

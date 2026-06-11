@@ -128,7 +128,7 @@ export function BrowseBookVehicleSection({
                     <div className="mb-3 space-y-1">
                       {pricedModels.filter((m) => m.nextAvailablePickup).map((m) => (
                         <p key={m.modelId} className="text-sm text-charcoal-brand/80">
-                          The next available <span className="font-bold">{m.modelName}</span> is from{' '}
+                          Try <span className="font-bold">{m.modelName}</span> from{' '}
                           <span className="font-bold text-teal-brand">{formatNextDate(m.nextAvailablePickup!)}</span>
                         </p>
                       ))}

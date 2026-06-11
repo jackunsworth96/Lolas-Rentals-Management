@@ -55,6 +55,7 @@ const NAV_CLOUDINARY_BY_HREF: Record<string, string> = {
   '/book/repairs': 'Lolas_icons_Repairs_nkoe0r',
   '/book/about': 'Lolas_icons_About_xdznnb',
   '/book/bepawsitive': 'Lolas_icons_Community_xbt94y',
+  '/book/impact': 'Lolas_icons_Community_xbt94y',
 };
 
 function buildNavBubbleItems(items: NavItem[]): NavBubbleItem[] {

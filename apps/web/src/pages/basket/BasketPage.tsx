@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../../api/client.js';
 import {
   getPartnerRef,
@@ -19,7 +19,6 @@ import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { SEO } from '../../components/seo/SEO.js';
 import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
-import LolasChat from '../../components/chat/LolasChat.js';
 import type { Addon, TransferDetails, RenterInfo, PaymentMethodOption } from '../../components/basket/basket-types.js';
 
 import pawPrint from '../../assets/Paw Print.svg';
@@ -35,6 +34,19 @@ interface QuoteResponse {
 interface AvailableModel {
   modelId: string;
   availableCount: number;
+}
+
+interface HydratedBookingSession {
+  sessionToken: string;
+  storeId: string;
+  pickupDatetime: string;
+  dropoffDatetime: string;
+  pickupLocationId: number | null;
+  dropoffLocationId: number | null;
+  basket: BasketItem[];
+  renterDetails: Partial<RenterDetails> | null;
+  addonIds: number[];
+  transfer: Partial<TransferDetails> | null;
 }
 
 const TIME_SLOTS: { value: string; label: string }[] = [
@@ -97,6 +109,8 @@ function addonLineTotal(addon: Addon, rentalDaysCount: number): number {
 
 export default function BasketPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const handoffSessionToken = searchParams.get('sessionToken')?.trim() ?? '';
 
   const basket = useBookingStore((s) => s.basket);
   const storeId = useBookingStore((s) => s.storeId);
@@ -114,6 +128,7 @@ export default function BasketPage() {
   const storedRenterDetails = useBookingStore((s) => s.renterDetails);
   const setRenterDetailsInStore = useBookingStore((s) => s.setRenterDetails);
   const clearRenterDetails = useBookingStore((s) => s.clearRenterDetails);
+  const hydrateBookingSession = useBookingStore((s) => s.hydrateBookingSession);
 
   const rentalDays = rentalDaysFromDates(pickupDatetime, dropoffDatetime);
 
@@ -136,6 +151,8 @@ export default function BasketPage() {
   // Address inputs for non-store locations (set from basket page main view)
   const [pickupLocationAddress, setPickupLocationAddress] = useState('');
   const [dropoffLocationAddress, setDropoffLocationAddress] = useState('');
+  const [hydratingSession, setHydratingSession] = useState(Boolean(handoffSessionToken));
+  const [hydrationError, setHydrationError] = useState('');
 
   async function swapHold(
     item: BasketItem,
@@ -320,6 +337,91 @@ export default function BasketPage() {
     }, 2000);
   }
 
+  useEffect(() => {
+    if (!handoffSessionToken) {
+      setHydratingSession(false);
+      return;
+    }
+
+    if (sessionToken === handoffSessionToken && basket.length > 0) {
+      setHydratingSession(false);
+      return;
+    }
+
+    let cancelled = false;
+    setHydratingSession(true);
+    setHydrationError('');
+
+    api.get<HydratedBookingSession>(
+      `/public/booking/session/${encodeURIComponent(handoffSessionToken)}`,
+    )
+      .then((data) => {
+        if (cancelled) return;
+
+        hydrateBookingSession({
+          storeId: data.storeId,
+          pickupDatetime: data.pickupDatetime,
+          dropoffDatetime: data.dropoffDatetime,
+          pickupLocationId: data.pickupLocationId,
+          dropoffLocationId: data.dropoffLocationId,
+          sessionToken: data.sessionToken,
+          basket: data.basket,
+          renterDetails: data.renterDetails,
+        });
+
+        const nextRenter = {
+          ...storedRenterDetails,
+          ...(data.renterDetails ?? {}),
+        } as RenterInfo;
+        setRenterRaw(nextRenter);
+        if (data.addonIds.length > 0) {
+          setSelectedAddonIds(new Set(data.addonIds));
+        }
+
+        const transferPayload = data.transfer;
+        if (
+          transferPayload?.transferType &&
+          transferPayload.transferRoute &&
+          transferPayload.flightNumber &&
+          transferPayload.flightArrivalTime
+        ) {
+          const pricingType = transferPayload.pricingType ?? 'fixed';
+          const unitPrice = Number(transferPayload.unitPrice ?? transferPayload.totalPrice ?? 0);
+          const paxCount = Number(transferPayload.paxCount ?? 1);
+          setTransfer({
+            transferType: transferPayload.transferType,
+            transferRoute: transferPayload.transferRoute,
+            flightNumber: transferPayload.flightNumber,
+            flightArrivalTime: transferPayload.flightArrivalTime,
+            transferRouteId: Number(transferPayload.transferRouteId ?? 0),
+            vanType: transferPayload.vanType ?? transferPayload.transferType,
+            pricingType,
+            unitPrice,
+            paxCount,
+            totalPrice: Number(transferPayload.totalPrice ?? unitPrice * (pricingType === 'per_head' ? paxCount : 1)),
+          });
+        }
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : 'This booking link is no longer active.';
+        setHydrationError(message);
+      })
+      .finally(() => {
+        if (!cancelled) setHydratingSession(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    handoffSessionToken,
+    sessionToken,
+    basket.length,
+    hydrateBookingSession,
+    storedRenterDetails,
+  ]);
+
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [transferErrors, setTransferErrors] = useState<Record<string, string>>({});
   const [helmetCount, setHelmetCount] = useState(1);
@@ -372,8 +474,7 @@ export default function BasketPage() {
     return () => {
       if (sessionPingDebounceRef.current) clearTimeout(sessionPingDebounceRef.current);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [sessionToken]);
 
   const reviewSheetItems = useMemo(
     () =>
@@ -714,6 +815,16 @@ export default function BasketPage() {
     }
   }
 
+  if (hydratingSession) {
+    return (
+      <PageLayout title="Cart | Lola's Rentals">
+        <div className="flex min-h-[60vh] items-center justify-center px-4">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-teal-brand border-t-transparent" />
+        </div>
+      </PageLayout>
+    );
+  }
+
   if (basket.length === 0) {
     return (
       <>
@@ -728,7 +839,9 @@ export default function BasketPage() {
           <div className="relative z-10 flex flex-col items-center">
             <img src={pawPrint} alt="" className="mb-6 h-16 w-16 bg-transparent opacity-20 grayscale" />
             <h2 className="mb-2 text-center font-headline text-3xl font-black text-charcoal-brand">Your cart is empty</h2>
-            <p className="font-lato mb-8 text-center text-charcoal-brand/60">Find your perfect ride and add it to your cart</p>
+            <p className="font-lato mb-8 text-center text-charcoal-brand/60">
+              {hydrationError || 'Find your perfect ride and add it to your cart'}
+            </p>
             <button
               type="button"
               onClick={() => navigate('/book/reserve')}
@@ -759,7 +872,6 @@ export default function BasketPage() {
             </button>
           </div>
         </div>
-        <LolasChat />
       </PageLayout>
       </>
     );
@@ -1194,8 +1306,6 @@ export default function BasketPage() {
           </div>
         ))}
       </div>
-
-      <LolasChat />
     </PageLayout>
     </>
   );

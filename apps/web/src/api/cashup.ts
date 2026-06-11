@@ -108,6 +108,7 @@ export interface CashupSummary {
     miscBankTotal: number;
     miscSalesTotal: number;
     expenseTotal: number;
+    cashExpenseTotal: number;
     depositTotal: number;
     interStoreIn: number;
     interStoreOut: number;

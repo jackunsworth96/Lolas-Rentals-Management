@@ -352,7 +352,7 @@ export default function BePawsitivePage() {
   const vaccinated     = useCountUp(2746,   1800, statsInView);
   const eventsCount    = useCountUp(4,      1200, statsInView);
   const locationsCount = useCountUp(2,      1000, statsInView);
-  const donation       = useCountUp(282995, 2200, donationInView);
+  const donation       = useCountUp(307995, 2200, donationInView);
 
   const secPad  = isMobile ? '64px 20px' : '80px 48px';
 

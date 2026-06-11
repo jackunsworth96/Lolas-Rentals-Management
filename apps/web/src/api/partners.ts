@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './client.js';
 
-export type PartnerDealType = 'commission' | 'discount' | 'free_delivery' | 'combined';
+export type PartnerDealType = 'commission' | 'discount' | 'free_delivery' | 'combined' | 'commission_delivery' | 'discount_delivery';
 export type PartnerDiscountType = 'percentage' | 'fixed';
 export type PartnerStatus = 'active' | 'pending' | 'rejected';
 

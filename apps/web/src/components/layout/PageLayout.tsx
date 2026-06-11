@@ -54,7 +54,7 @@ function useNavItems() {
     { label: t('nav.transfers'), href: '/book/transfers' },
     { label: t('nav.repairs'), href: '/book/repairs' },
     { label: t('nav.about'), href: '/book/about' },
-    { label: t('nav.community'), href: '/book/bepawsitive' },
+    { label: t('nav.community'), href: '/book/impact' },
   ];
 }
 
@@ -313,7 +313,7 @@ export function PageLayout({
             {/* Page links */}
             <div className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3">
               <Link to="/book/repairs" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.islandSafety')}</Link>
-              <Link to="/book/bepawsitive" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.bePawsitiveNgo')}</Link>
+              <Link to="/book/impact" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.bePawsitiveNgo')}</Link>
               <a href="https://wa.me/639694443413" target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.contactUs')}</a>
               <Link to="/book/privacy" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.privacy')}</Link>
               <Link to="/book/waiver-agreement" className="text-xs font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.waiverAgreement')}</Link>
@@ -392,7 +392,7 @@ export function PageLayout({
               </div>
               <div className="grid grid-cols-2 gap-x-12 gap-y-4">
                 <Link to="/book/repairs" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.islandSafety')}</Link>
-                <Link to="/book/bepawsitive" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.bePawsitiveNgo')}</Link>
+                <Link to="/book/impact" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.bePawsitiveNgo')}</Link>
                 <a href="https://wa.me/639694443413" target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.contactUs')}</a>
                 <Link to="/book/privacy" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.privacy')}</Link>
                 <Link to="/book/waiver-agreement" className="text-sm font-semibold text-charcoal-brand/70 transition-all duration-300 hover:text-teal-brand">{t('footer.waiverAgreement')}</Link>
