@@ -7,6 +7,7 @@ import { BetaErrorBanner } from './components/common/BetaErrorBanner.js';
 import { ScrollToTop } from './components/ui/ScrollToTop.js';
 import { useFavicon } from './hooks/useFavicon.js';
 import { DeliveryReminderModal } from './components/orders/DeliveryReminderModal.js';
+import { ChatLauncherTooltip } from './components/chat/ChatLauncherTooltip.js';
 
 function FaviconSwitcher() {
   useFavicon();
@@ -44,6 +45,7 @@ export function App() {
           <AppRouter />
         </ErrorBoundary>
         <DeliveryReminderModal />
+        <ChatLauncherTooltip />
         {BETA_ERROR_NOTICE && showBetaError && (
           <BetaErrorBanner onClose={() => setShowBetaError(false)} />
         )}
