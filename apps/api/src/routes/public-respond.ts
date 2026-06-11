@@ -6,6 +6,7 @@ import { createHold } from '../use-cases/booking/create-hold.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
 import { computeQuote } from '../use-cases/booking/compute-quote.js';
 import { logger } from '../lib/logger.js';
+import { publicWebOriginFromEnv } from '../lib/public-web-url.js';
 import {
   extDayCount,
   orderReferenceLookupVariants,
@@ -20,7 +21,10 @@ import {
  */
 
 const STORE_ID = 'store-lolas';
-const TEMP_BOOKING_HANDOFF_CART_ORIGIN = 'http://localhost:3002';
+const BOOKING_HANDOFF_CART_ORIGIN = publicWebOriginFromEnv(
+  process.env.BOOKING_HANDOFF_CART_ORIGIN,
+  'http://localhost:3002',
+);
 
 /**
  * Hardcoded until a callout_charges config table is added.
@@ -983,7 +987,7 @@ router.post('/booking-handoff', async (req, res, next) => {
     }
     await sb.rpc('increment_booking_interaction', { p_session_token: sessionToken });
 
-    const webBase = TEMP_BOOKING_HANDOFF_CART_ORIGIN;
+    const webBase = BOOKING_HANDOFF_CART_ORIGIN;
     const cartUrl = `${webBase}/book/basket?sessionToken=${encodeURIComponent(sessionToken)}`;
     const message =
       `Perfect, I reserved that vehicle for 10 minutes. ` +
