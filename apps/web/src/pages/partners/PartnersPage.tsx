@@ -184,9 +184,9 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
       active: editing?.active ?? true,
       status: editing?.status ?? 'active',
       deal_type: form.deal_type,
-      discount_type: form.deal_type === 'discount' || form.deal_type === 'combined' ? form.discount_type : null,
-      discount_value: form.deal_type === 'discount' || form.deal_type === 'combined' ? Number(form.discount_value) : null,
-      free_delivery: form.deal_type === 'free_delivery' || form.deal_type === 'combined' ? true : form.free_delivery,
+      discount_type: form.deal_type === 'discount' || form.deal_type === 'combined' || form.deal_type === 'discount_delivery' ? form.discount_type : null,
+      discount_value: form.deal_type === 'discount' || form.deal_type === 'combined' || form.deal_type === 'discount_delivery' ? Number(form.discount_value) : null,
+      free_delivery: form.deal_type === 'free_delivery' || form.deal_type === 'combined' || form.deal_type === 'commission_delivery' || form.deal_type === 'discount_delivery' ? true : form.free_delivery,
       advance_discount_days: advanceDiscountDaysNum,
       logo_url: form.logo_url.trim() || null,
       welcome_message: form.welcome_message.trim() || null,
@@ -212,9 +212,9 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
   }
 
   const saving = createPartner.isPending || updatePartner.isPending;
-  const showCommissionFields = form.deal_type === 'commission' || form.deal_type === 'combined';
-  const showDiscountFields = form.deal_type === 'discount' || form.deal_type === 'combined';
-  const showFreeDeliveryNote = form.deal_type === 'free_delivery' || form.deal_type === 'combined';
+  const showCommissionFields = form.deal_type === 'commission' || form.deal_type === 'combined' || form.deal_type === 'commission_delivery';
+  const showDiscountFields = form.deal_type === 'discount' || form.deal_type === 'combined' || form.deal_type === 'discount_delivery';
+  const showFreeDeliveryNote = form.deal_type === 'free_delivery' || form.deal_type === 'combined' || form.deal_type === 'commission_delivery' || form.deal_type === 'discount_delivery';
 
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Partner' : 'Add Accommodation Partner'} size="lg">
@@ -668,9 +668,9 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
       advance_booking_days: Number(form.advance_booking_days),
       commission_includes_extensions: form.commission_includes_extensions,
       deal_type: form.deal_type,
-      discount_type: form.deal_type === 'discount' || form.deal_type === 'combined' ? form.discount_type : null,
-      discount_value: form.deal_type === 'discount' || form.deal_type === 'combined' ? Number(form.discount_value) : null,
-      free_delivery: form.deal_type === 'free_delivery' || form.deal_type === 'combined' ? true : form.free_delivery,
+      discount_type: form.deal_type === 'discount' || form.deal_type === 'combined' || form.deal_type === 'discount_delivery' ? form.discount_type : null,
+      discount_value: form.deal_type === 'discount' || form.deal_type === 'combined' || form.deal_type === 'discount_delivery' ? Number(form.discount_value) : null,
+      free_delivery: form.deal_type === 'free_delivery' || form.deal_type === 'combined' || form.deal_type === 'commission_delivery' || form.deal_type === 'discount_delivery' ? true : form.free_delivery,
       advance_discount_days: advanceDiscountDaysNum,
       logo_url: form.logo_url.trim() || null,
       welcome_message: form.welcome_message.trim() || null,
@@ -690,8 +690,8 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
     }
   }
 
-  const showCommissionFields = form.deal_type === 'commission' || form.deal_type === 'combined';
-  const showDiscountFields = form.deal_type === 'discount' || form.deal_type === 'combined';
+  const showCommissionFields = form.deal_type === 'commission' || form.deal_type === 'combined' || form.deal_type === 'commission_delivery';
+  const showDiscountFields = form.deal_type === 'discount' || form.deal_type === 'combined' || form.deal_type === 'discount_delivery';
   const saving = approve.isPending;
 
   return (
