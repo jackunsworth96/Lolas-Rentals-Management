@@ -97,6 +97,7 @@ export default function ExtendPage() {
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [confirmedDropoff, setConfirmedDropoff] = useState('');
   const [confirmedBalance, setConfirmedBalance] = useState(0);
+  const [confirmedPaymentUrl, setConfirmedPaymentUrl] = useState('');
   const [lookupEmail, setLookupEmail] = useState('');
   const [ninePmSelected, setNinePmSelected] = useState(false);
 
@@ -240,13 +241,14 @@ export default function ExtendPage() {
         body.newDropoffLocationId = selectedLocationId;
         if (locationAddress.trim()) body.newDropoffLocationAddress = locationAddress.trim();
       }
-      const res = await api.post<{ success: boolean; newDropoffDatetime?: string; extensionCost?: number; reason?: string }>(
+      const res = await api.post<{ success: boolean; newDropoffDatetime?: string; extensionCost?: number; paymentUrl?: string; reason?: string }>(
         '/public/extend/confirm',
         body,
       );
       if (res.success) {
         setConfirmedDropoff(res.newDropoffDatetime ?? newDropoff);
         setConfirmedBalance(res.extensionCost ?? (extensionCost ?? 0) + (ninePmSelected && ninePmAddon ? ninePmAddon.price : 0) + perDayAddonDelta + newAddonLines.reduce((s, a) => s + a.cost, 0) + locationDelta);
+        setConfirmedPaymentUrl(res.paymentUrl ?? `/book/extend/pay?ref=${encodeURIComponent(order.orderReference)}`);
         setPageState('confirmed');
       } else {
         setLookupError(res.reason ?? t('extend.extensionFailed'));
@@ -263,6 +265,7 @@ export default function ExtendPage() {
   function handleReset() {
     setPageState('lookup'); setOrder(null); setSelectedDate(null);
     setExtensionCost(null); setLookupError(null); setNinePmSelected(false);
+    setConfirmedPaymentUrl('');
     setSelectedAddonIds([]); setSelectedLocationId(null); setLocationAddress('');
   }
 
@@ -291,6 +294,7 @@ export default function ExtendPage() {
             <ConfirmedView
               dropoff={confirmedDropoff}
               balance={confirmedBalance}
+              paymentUrl={confirmedPaymentUrl}
               orderRef={order?.orderReference ?? ''}
               returnLocationName={effectiveReturnLocationName || undefined}
               perDayAddonDelta={perDayAddonDelta > 0 ? perDayAddonDelta : undefined}
@@ -479,6 +483,7 @@ function PawCardWidget({ savings }: { savings?: { hasPawCard: boolean; totalSave
 function ConfirmedView({
   dropoff,
   balance,
+  paymentUrl,
   orderRef,
   returnLocationName,
   perDayAddonDelta,
@@ -490,6 +495,7 @@ function ConfirmedView({
 }: {
   dropoff: string;
   balance: number;
+  paymentUrl?: string;
   orderRef: string;
   returnLocationName?: string;
   perDayAddonDelta?: number;
@@ -557,10 +563,16 @@ function ConfirmedView({
               </div>
             </div>
             <a
+              href={paymentUrl || `/book/extend/pay?ref=${encodeURIComponent(orderRef)}`}
+              className="mt-3 flex w-full items-center justify-center rounded-xl bg-teal-brand px-4 py-2.5 text-sm font-black text-white transition-colors hover:bg-teal-brand/90"
+            >
+              View payment page
+            </a>
+            <a
               href={WHATSAPP_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-green-500 px-4 py-2.5 text-sm font-black text-white transition-colors hover:bg-green-600"
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-green-500 px-4 py-2.5 text-sm font-black text-white transition-colors hover:bg-green-600"
             >
               <img src={phoneIcon} alt="" className="h-4 w-4 shrink-0 object-contain" />
               {t('extend.messageTeam')}
