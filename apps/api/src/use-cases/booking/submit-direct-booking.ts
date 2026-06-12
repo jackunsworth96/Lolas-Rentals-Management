@@ -16,6 +16,8 @@ import { getSupabaseClient } from '../../adapters/supabase/client.js';
 import { formatManilaDate } from '../../utils/manila-date.js';
 import { publicWebOriginFromEnv } from '../../lib/public-web-url.js';
 import { getTelegramChatId, sendTelegramAlert } from '../../lib/telegram.js';
+import { logger } from '../../lib/logger.js';
+import { sendRespondIoTextMessage } from '../../services/respond-io-outbound.js';
 import {
   applyPartnerBenefit,
   isBenefitEligibleForPickup,
@@ -64,6 +66,39 @@ function httpError(message: string, statusCode: number): Error {
   const err = new Error(message);
   (err as Error & { statusCode: number }).statusCode = statusCode;
   return err;
+}
+
+function buildRespondIoBookingConfirmationMessage({
+  customerName,
+  orderReference,
+  vehicleName,
+  pickupDatetime,
+  dropoffDatetime,
+  pickupLocation,
+  dropoffLocation,
+  waiverUrl,
+}: {
+  customerName: string;
+  orderReference: string;
+  vehicleName: string;
+  pickupDatetime: string;
+  dropoffDatetime: string;
+  pickupLocation: string;
+  dropoffLocation: string;
+  waiverUrl: string;
+}): string {
+  const firstName = customerName.trim().split(/\s+/)[0] || customerName;
+  return [
+    `Hi ${firstName}, your Lola's Rentals booking is confirmed.`,
+    '',
+    `Reference: ${orderReference}`,
+    `Vehicle: ${vehicleName}`,
+    `Pickup: ${pickupDatetime} - ${pickupLocation}`,
+    `Return: ${dropoffDatetime} - ${dropoffLocation}`,
+    '',
+    `You can complete your waiver here before pickup: ${waiverUrl}`,
+    'We have also sent the full confirmation to your email.',
+  ].join('\n');
 }
 
 export interface SubmitDirectBookingResult {
@@ -391,6 +426,32 @@ export async function submitDirectBooking(
         cancelUrl: `${webBase}/book/cancel/${orderReference}?token=${cancellationToken}`,
       }),
     });
+
+    if (input.customerMobile) {
+      void sendRespondIoTextMessage({
+        phone: input.customerMobile,
+        text: buildRespondIoBookingConfirmationMessage({
+          customerName: input.customerName,
+          orderReference,
+          vehicleName,
+          pickupDatetime: formatManilaDateTime(input.pickupDatetime),
+          dropoffDatetime: formatManilaDateTime(input.dropoffDatetime),
+          pickupLocation,
+          dropoffLocation,
+          waiverUrl,
+        }),
+        logContext: { orderReference, source: 'direct-booking-confirmation' },
+      }).catch((err: unknown) => {
+        logger.warn(
+          {
+            err,
+            orderReference,
+            phoneLast4: input.customerMobile.replace(/\D/g, '').slice(-4),
+          },
+          '[respond-io-booking-confirmation] send failed',
+        );
+      });
+    }
 
     // ── Staff alert ────────────────────────────────────────────────────────
     const addonsStaffHtml =
