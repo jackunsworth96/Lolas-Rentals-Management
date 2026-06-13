@@ -831,11 +831,11 @@ Use when:
 Returns:
 - Vehicle models.
 - Tiered price brackets.
-- Physical fleet count by model for pricing/options context only.
 - Add-ons, excluding Peace of Mind rows which are mapped per model.
 - Callout charge config.
 
 Important:
+- This endpoint intentionally does not disclose unit or inventory counts.
 - Do not promise availability from this endpoint alone.
 - Use the availability check endpoint with exact pickup and return datetimes before saying a vehicle is available.
 

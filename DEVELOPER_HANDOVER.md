@@ -899,7 +899,7 @@ Mounted under `/api/public/respond`, gated by `authenticateApiKey` (single stati
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/public/respond/fleet` | 5-min in-memory cached fleet pricing/availability for Lolo to quote. |
+| GET | `/api/public/respond/fleet` | 5-min in-memory cached fleet pricing for Lolo to quote; inventory counts are not disclosed. |
 | GET | `/api/public/respond/transfers` | 5-min cached transfer routes + pricing. |
 | GET | `/api/public/respond/booking-lookup` | Look up a booking by reference for Lolo to summarise. |
 | POST | `/api/public/respond/quote` | Compute a full booking quote on demand. |
