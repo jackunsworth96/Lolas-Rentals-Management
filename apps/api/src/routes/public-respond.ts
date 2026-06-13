@@ -58,7 +58,6 @@ interface VehicleEntry {
   pricing: PricingBrackets;
   deposit: number;
   peace_of_mind_per_day: number | null;
-  available_count: number;
 }
 
 interface AddonEntry {
@@ -130,11 +129,6 @@ interface PricingRow {
     cc: number | null;
     max_pax: number | null;
   };
-}
-
-interface FleetRow {
-  model_id: string | null;
-  status: string;
 }
 
 interface AddonRow {
@@ -603,8 +597,8 @@ const router = Router();
 /**
  * GET /api/public/respond/fleet
  *
- * Returns live vehicle models with pricing brackets, availability counts,
- * active add-ons, and callout charge config.
+ * Returns live vehicle models with pricing brackets, active add-ons, and
+ * callout charge config. Inventory counts are intentionally not disclosed.
  */
 router.get('/fleet', async (_req, res, next) => {
   try {
@@ -617,17 +611,12 @@ router.get('/fleet', async (_req, res, next) => {
 
     const sb = getSupabaseClient();
 
-    const [pricingResult, fleetResult, addonsResult] = await Promise.all([
+    const [pricingResult, addonsResult] = await Promise.all([
       sb
         .from('vehicle_model_pricing')
         .select('model_id, daily_rate, min_days, max_days, vehicle_models!inner(id, name, security_deposit, type, cc, max_pax)')
         .eq('store_id', STORE_ID)
         .order('min_days'),
-
-      sb
-        .from('fleet')
-        .select('model_id, status')
-        .eq('store_id', STORE_ID),
 
       sb
         .from('addons')
@@ -638,20 +627,10 @@ router.get('/fleet', async (_req, res, next) => {
     ]);
 
     if (pricingResult.error) throw pricingResult.error;
-    if (fleetResult.error)   throw fleetResult.error;
     if (addonsResult.error)  throw addonsResult.error;
 
     const pricingRows  = (pricingResult.data ?? []) as unknown as PricingRow[];
-    const fleetRows    = (fleetResult.data   ?? []) as FleetRow[];
     const addonRows    = (addonsResult.data  ?? []) as AddonRow[];
-
-    // ── Available-count per model ─────────────────────────────────────────────
-
-    const availableByModel = new Map<string, number>();
-    for (const row of fleetRows) {
-      if (!row.model_id || row.status !== 'Available') continue;
-      availableByModel.set(row.model_id, (availableByModel.get(row.model_id) ?? 0) + 1);
-    }
 
     // ── Peace-of-mind rate — matched per vehicle type ─────────────────────────
     //
@@ -724,7 +703,6 @@ router.get('/fleet', async (_req, res, next) => {
         pricing:               mapToPricingBrackets(entry.brackets),
         deposit:               entry.security_deposit,
         peace_of_mind_per_day: entry.peace_of_mind_per_day,
-        available_count:       availableByModel.get(modelId) ?? 0,
       });
     }
 
