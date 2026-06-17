@@ -1,7 +1,7 @@
 # Lola's Rentals - Respond.io Knowledge Base
 
-Version: 2.1  
-Last updated: 2026-06-12
+Version: 2.2  
+Last updated: 2026-06-17
 
 This KB is designed for Respond.io AI knowledge ingestion.
 Use it for Lolo, the friendly AI assistant for Lola's Rentals.
@@ -167,6 +167,24 @@ Available to add at checkout:
 - Surf Rack: PHP 250
 - Bungee Cord: PHP 25
 - Peace of Mind Cover: PHP 95/day for Honda Beat, or PHP 200/day for TukTuk
+
+### Add-on gate before booking handoff
+
+Before sending a booking cart URL, always offer relevant add-ons and wait for a clear accept or decline.
+
+Use `/api/public/respond/addons?vehicleModelId=<selected model_id>` for current add-on IDs, prices, and vehicle compatibility guidance before calling `/api/public/respond/booking-handoff`.
+
+Rules:
+- Do not call booking handoff until the customer has accepted one or more add-ons, or clearly declined add-ons.
+- Always include the price beside each add-on you offer. Do not upsell add-ons without prices.
+- Use live prices from `/api/public/respond/addons`: add-ons come from `addons[].price` and `addons[].price_type`; match customer choices using `addons[].key` such as `peace_of_mind`, `surf_rack`, or `bungee_cord`.
+- If the customer accepts add-ons, pass their selected add-on IDs in `addonIds` when calling `/api/public/respond/booking-handoff`.
+- If the customer declines, call booking handoff with no `addonIds`.
+- Do not share the returned cart URL until after this add-on choice is complete.
+- Keep the upsell concise and natural, never pushy.
+
+Suggested wording:
+"Before I send your booking cart, do you want to add any extras? Peace of Mind Cover is PHP 95/day for the Honda Beat, Surf Rack is PHP 250 one-time if you're carrying a board, and Late Return is PHP 100 one-time if you want to return at 9pm from the shop. Want any of those, or should I continue without extras?"
 
 ### Pricing brackets and extensions
 
@@ -839,14 +857,31 @@ Important:
 - Do not promise availability from this endpoint alone.
 - Use the availability check endpoint with exact pickup and return datetimes before saying a vehicle is available.
 
-### B. Transfer routes and pricing
+### B. Add-on lookup
+
+`GET /api/public/respond/addons?vehicleModelId=<model_id>`
+
+Use when:
+- The customer has selected a vehicle and you need to offer compatible add-ons.
+- The customer accepts an add-on and you need the numeric ID for `booking-handoff`.
+
+Returns:
+- `addons[].id` for `addonIds`.
+- `addons[].key` for matching intent, for example `peace_of_mind`, `surf_rack`, or `bungee_cord`.
+- `addons[].price` and `addons[].price_type`.
+
+Important:
+- Prefer this endpoint over `/fleet` for final add-on selection.
+- If the customer declines add-ons, pass `addonIds: []`.
+
+### C. Transfer routes and pricing
 
 `GET /api/public/respond/transfers`
 
 Use when:
 - Customer asks transfer route availability and pricing.
 
-### C. Booking lookup
+### D. Booking lookup
 
 `GET /api/public/respond/booking?ref=LR-XXXX-XXXX`  
 `GET /api/public/respond/booking?phone=+639XXXXXXXXX`  
@@ -867,7 +902,7 @@ Returns when found:
 - Store.
 - Financial fields when available.
 
-### D. Availability check
+### E. Availability check
 
 `GET /api/public/respond/availability?pickupDatetime=2026-06-10T09:15:00%2B08:00&dropoffDatetime=2026-06-12T09:15:00%2B08:00&type=scooter&quantity=1`
 
@@ -885,7 +920,7 @@ Notes:
 - Never tell a customer "the earliest available time is..." from `blocking_window_may_clear_after` unless you run a new availability check for the full requested pickup and return window and the result has `sufficient_availability=true`.
 - Apply the unit-count disclosure rule in this KB.
 
-### E. Delivery fee by area
+### F. Delivery fee by area
 
 `GET /api/public/respond/delivery-fee?area=General%20Luna`
 
@@ -893,7 +928,7 @@ Use when:
 - Customer asks delivery cost for a location.
 - The delivery area is not clear from the fixed delivery table above.
 
-### F. Return extension flow
+### G. Return extension flow
 
 Use these endpoints when a customer wants to add extra full days to an active rental.
 Do not use them for same-day late returns. Same-day late returns require human confirmation and should be escalated.

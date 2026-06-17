@@ -364,6 +364,19 @@ router.get('/session/:sessionToken', async (req, res, next) => {
       ? rawDropoffLocationId
       : null;
 
+    let selectedAddons: Array<{
+      id: number;
+      name: string;
+      type: 'per_day' | 'one_time';
+      unitPrice: number;
+      total: number;
+    }> = [];
+    let quoteRentalSubtotal = 0;
+    let quoteAddonsTotal = 0;
+    let quotePickupFee = 0;
+    let quoteDropoffFee = 0;
+    let quoteSecurityDeposit = 0;
+
     const basket = await Promise.all(
       holds.map(async (hold) => {
         let modelName = hold.vehicleModelId;
@@ -392,6 +405,14 @@ router.get('/session/:sessionToken', async (req, res, next) => {
             );
             dailyRate = quote.dailyRate;
             securityDeposit = quote.securityDeposit;
+            quoteRentalSubtotal += quote.rentalSubtotal;
+            quoteAddonsTotal += quote.addonsTotal;
+            quoteSecurityDeposit += quote.securityDeposit;
+            if (quotePickupFee === 0) quotePickupFee = quote.pickupFee;
+            if (quoteDropoffFee === 0) quoteDropoffFee = quote.dropoffFee;
+            if (selectedAddons.length === 0 && quote.addons.length > 0) {
+              selectedAddons = quote.addons;
+            }
           } catch { /* non-critical fallback */ }
         }
 
@@ -418,6 +439,18 @@ router.get('/session/:sessionToken', async (req, res, next) => {
         basket,
         renterDetails,
         addonIds,
+        selectedAddons,
+        quote: pickupLocationId && dropoffLocationId
+          ? {
+              rentalSubtotal: quoteRentalSubtotal,
+              pickupFee: quotePickupFee,
+              dropoffFee: quoteDropoffFee,
+              addons: selectedAddons,
+              addonsTotal: quoteAddonsTotal,
+              grandTotal: quoteRentalSubtotal + quotePickupFee + quoteDropoffFee + quoteAddonsTotal,
+              securityDeposit: quoteSecurityDeposit,
+            }
+          : null,
         transfer: handoffContext.transfer ?? null,
       },
     });
@@ -834,11 +867,22 @@ router.get('/order/:reference', async (req, res, next) => {
       const modelId = row.vehicle_model_id as string;
       const pickupLocId = row.pickup_location_id as number;
       const dropoffLocId = row.dropoff_location_id as number;
+      const storedAddonIds = Array.isArray(row.addon_ids)
+        ? row.addon_ids.map(Number).filter((id) => Number.isInteger(id) && id > 0)
+        : [];
       const quote = await computeQuote(
         { configRepo },
-        { storeId, vehicleModelId: modelId, pickupDatetime: pickupDt, dropoffDatetime: dropoffDt, pickupLocationId: pickupLocId, dropoffLocationId: dropoffLocId },
+        {
+          storeId,
+          vehicleModelId: modelId,
+          pickupDatetime: pickupDt,
+          dropoffDatetime: dropoffDt,
+          pickupLocationId: pickupLocId,
+          dropoffLocationId: dropoffLocId,
+          addonIds: storedAddonIds.length > 0 ? storedAddonIds : undefined,
+        },
       );
-      grandTotal = quote.grandTotal ?? 0;
+      grandTotal = quote.grandTotalWithFees ?? 0;
       depositAmount = quote.securityDeposit ?? 0;
     } catch { /* quote may fail for edge cases */ }
 
