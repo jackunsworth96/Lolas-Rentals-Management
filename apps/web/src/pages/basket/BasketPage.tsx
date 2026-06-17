@@ -46,6 +46,21 @@ interface HydratedBookingSession {
   basket: BasketItem[];
   renterDetails: Partial<RenterDetails> | null;
   addonIds: number[];
+  selectedAddons?: Array<{
+    id: number;
+    name: string;
+    type: 'per_day' | 'one_time';
+    unitPrice: number;
+    total: number;
+  }>;
+  quote?: {
+    rentalSubtotal: number;
+    pickupFee: number;
+    dropoffFee: number;
+    addonsTotal: number;
+    grandTotal: number;
+    securityDeposit: number;
+  } | null;
   transfer: Partial<TransferDetails> | null;
 }
 

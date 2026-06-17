@@ -67,6 +67,12 @@ interface AddonEntry {
   price_type: 'per_day' | 'one_time';
 }
 
+interface RespondAddonEntry extends AddonEntry {
+  key: string;
+  aliases: string[];
+  compatible_vehicle_model_id: string | null;
+}
+
 interface FleetPayload {
   vehicles: VehicleEntry[];
   addons: AddonEntry[];
@@ -137,6 +143,21 @@ interface AddonRow {
   addon_type: 'per_day' | 'one_time';
   price_per_day: number;
   price_one_time: number;
+}
+
+interface ConfigAddonLike {
+  id: number | string;
+  name: string;
+  addonType: 'per_day' | 'one_time';
+  pricePerDay: number;
+  priceOneTime: number;
+  applicableModelIds?: string[] | null;
+  isActive?: boolean;
+}
+
+interface ConfigVehicleModelLike {
+  id?: string;
+  name?: string;
 }
 
 interface LocationEntry {
@@ -270,6 +291,58 @@ function sendRespondExtensionJson(
     'respond.io extension response',
   );
   return res.status(status).json(payload);
+}
+
+function addonKeyForName(name: string): { key: string; aliases: string[] } {
+  const lower = name.toLowerCase();
+  if (lower.includes('peace')) {
+    return { key: 'peace_of_mind', aliases: ['peace of mind', 'peace', 'pom', 'cover'] };
+  }
+  if (lower.includes('surf')) {
+    return { key: 'surf_rack', aliases: ['surf rack', 'rack', 'board rack'] };
+  }
+  if (lower.includes('bungee')) {
+    return { key: 'bungee_cord', aliases: ['bungee cord', 'bungee'] };
+  }
+  if (lower.includes('9pm') || lower.includes('9 pm') || lower.includes('late')) {
+    return { key: 'late_return', aliases: ['late return', '9pm return', '9 pm return'] };
+  }
+  return {
+    key: lower.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''),
+    aliases: [lower],
+  };
+}
+
+function isTuktukName(value: string | null | undefined): boolean {
+  const lower = value?.toLowerCase() ?? '';
+  return lower.includes('tuktuk') || lower.includes('tuk tuk') || lower.includes('tuk');
+}
+
+function isAddonCompatibleWithVehicle(
+  addon: ConfigAddonLike,
+  vehicleModelId: string | null,
+  vehicleModel: ConfigVehicleModelLike | null,
+): boolean {
+  const applicableIds = addon.applicableModelIds;
+  if (vehicleModelId && applicableIds && applicableIds.length > 0) {
+    return applicableIds.includes(vehicleModelId);
+  }
+
+  if (!vehicleModelId) return true;
+
+  const addonName = addon.name.toLowerCase();
+  const isTuktukVehicle = isTuktukName(vehicleModelId) || isTuktukName(vehicleModel?.name);
+  const isTuktukAddon = isTuktukName(addon.name);
+
+  if (addonName.includes('peace')) {
+    return isTuktukVehicle ? isTuktukAddon : !isTuktukAddon;
+  }
+
+  if (addonName.includes('surf') || addonName.includes('bungee')) {
+    return !isTuktukVehicle;
+  }
+
+  return true;
 }
 
 function respondExtensionPublicTarget(target: RespondExtensionTarget) {
@@ -594,6 +667,11 @@ async function previewRespondExtension(
 
 const router = Router();
 
+const RespondAddonsQuerySchema = z.object({
+  storeId: z.string().min(1).optional().default(STORE_ID),
+  vehicleModelId: z.string().min(1).optional(),
+});
+
 /**
  * GET /api/public/respond/fleet
  *
@@ -737,6 +815,64 @@ router.get('/fleet', async (_req, res, next) => {
 });
 
 /**
+ * GET /api/public/respond/addons
+ *
+ * Returns add-on IDs and prices in a Respond.io-friendly shape. When
+ * vehicleModelId is supplied, scooter/TukTuk-specific add-ons are filtered so
+ * the agent can map a customer choice like "peace_of_mind" to the exact ID.
+ */
+router.get('/addons', async (req, res, next) => {
+  try {
+    const parsed = RespondAddonsQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({
+        error:   'Invalid add-ons lookup query',
+        details: parsed.error.flatten(),
+      });
+      return;
+    }
+
+    const { storeId, vehicleModelId } = parsed.data;
+    const vehicleModel = vehicleModelId
+      ? ((await req.app.locals.deps.configRepo.getVehicleModelById(vehicleModelId)) as ConfigVehicleModelLike | null)
+      : null;
+
+    if (vehicleModelId && !vehicleModel) {
+      res.status(404).json({ error: 'Vehicle model not found' });
+      return;
+    }
+
+    const allAddons = (await req.app.locals.deps.configRepo.getAddons(storeId)) as ConfigAddonLike[];
+    const addons: RespondAddonEntry[] = allAddons
+      .filter((addon) => addon.isActive !== false)
+      .filter((addon) => isAddonCompatibleWithVehicle(addon, vehicleModelId ?? null, vehicleModel))
+      .map((addon) => {
+        const { key, aliases } = addonKeyForName(addon.name);
+        return {
+          id: Number(addon.id),
+          key,
+          aliases,
+          name: addon.name,
+          price: addon.addonType === 'per_day' ? Number(addon.pricePerDay) : Number(addon.priceOneTime),
+          price_type: addon.addonType,
+          compatible_vehicle_model_id: vehicleModelId ?? null,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    res.json({
+      addons,
+      guidance: {
+        addonIds: 'Pass selected add-on IDs as addonIds in booking-handoff, e.g. [] or [11].',
+        match_by: 'Use key first, then aliases/name if needed.',
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /api/public/respond/locations
  *
  * Returns active booking locations with the IDs required by the public
@@ -792,7 +928,12 @@ const RespondBookingHandoffSchema = z.object({
       extraComments: z.string().optional(),
     })
     .optional(),
-  addonIds: z.array(z.coerce.number().int().positive()).optional(),
+  addonIds: z.preprocess((value) => {
+    if (value === 0 || value === '0' || value === '' || value == null) return undefined;
+    if (typeof value === 'number') return [value];
+    if (typeof value === 'string' && /^\d+$/.test(value.trim())) return [value.trim()];
+    return value;
+  }, z.array(z.coerce.number().int().positive()).optional()),
   transfer: z
     .object({
       transferType: z.enum(['shared', 'private', 'tuktuk']),
@@ -925,6 +1066,9 @@ router.post('/booking-handoff', async (req, res, next) => {
         },
       );
     } catch (err) {
+      if (input.addonIds && input.addonIds.length > 0) {
+        throw err;
+      }
       console.error('[respond/booking-handoff] quote computation failed:', err);
     }
 
@@ -1008,6 +1152,7 @@ router.post('/booking-handoff', async (req, res, next) => {
             rentalSubtotal:  quote.rentalSubtotal,
             pickupFee:       quote.pickupFee,
             dropoffFee:      quote.dropoffFee,
+            addons:          quote.addons,
             addonsTotal:     quote.addonsTotal,
             grandTotal:      quote.grandTotalWithFees,
             securityDeposit: quote.securityDeposit,
@@ -1015,7 +1160,9 @@ router.post('/booking-handoff', async (req, res, next) => {
         : null,
     });
   } catch (err) {
-    console.error('[respond/booking-handoff] unhandled error:', err);
+    if (typeof (err as { statusCode?: unknown }).statusCode !== 'number') {
+      console.error('[respond/booking-handoff] unhandled error:', err);
+    }
     next(err);
   }
 });
