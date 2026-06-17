@@ -318,6 +318,34 @@ function isTuktukName(value: string | null | undefined): boolean {
   return lower.includes('tuktuk') || lower.includes('tuk tuk') || lower.includes('tuk');
 }
 
+function normaliseLookupText(value: string): string {
+  return value.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+async function resolveVehicleModelForRespondAddons(
+  configRepo: {
+    getVehicleModelById: (id: string) => Promise<ConfigVehicleModelLike | null>;
+    getVehicleModels?: () => Promise<ConfigVehicleModelLike[]>;
+  },
+  vehicleModelLookup: string | undefined,
+): Promise<{ id: string; model: ConfigVehicleModelLike } | null> {
+  const lookup = vehicleModelLookup?.trim();
+  if (!lookup) return null;
+
+  const byId = await configRepo.getVehicleModelById(lookup);
+  if (byId) return { id: byId.id ?? lookup, model: byId };
+
+  const models = configRepo.getVehicleModels ? await configRepo.getVehicleModels() : [];
+  const normalisedLookup = normaliseLookupText(lookup);
+  const byName = models.find((model) => {
+    const id = model.id ? normaliseLookupText(model.id) : '';
+    const name = model.name ? normaliseLookupText(model.name) : '';
+    return id === normalisedLookup || name === normalisedLookup;
+  });
+
+  return byName?.id ? { id: byName.id, model: byName } : null;
+}
+
 function isAddonCompatibleWithVehicle(
   addon: ConfigAddonLike,
   vehicleModelId: string | null,
@@ -668,8 +696,8 @@ async function previewRespondExtension(
 const router = Router();
 
 const RespondAddonsQuerySchema = z.object({
-  storeId: z.string().min(1).optional().default(STORE_ID),
-  vehicleModelId: z.string().min(1).optional(),
+  storeId: z.string().trim().min(1).optional().default(STORE_ID),
+  vehicleModelId: z.string().trim().min(1).optional(),
 });
 
 /**
@@ -833,19 +861,22 @@ router.get('/addons', async (req, res, next) => {
     }
 
     const { storeId, vehicleModelId } = parsed.data;
-    const vehicleModel = vehicleModelId
-      ? ((await req.app.locals.deps.configRepo.getVehicleModelById(vehicleModelId)) as ConfigVehicleModelLike | null)
-      : null;
+    const resolvedVehicle = await resolveVehicleModelForRespondAddons(
+      req.app.locals.deps.configRepo,
+      vehicleModelId,
+    );
 
-    if (vehicleModelId && !vehicleModel) {
+    if (vehicleModelId && !resolvedVehicle) {
       res.status(404).json({ error: 'Vehicle model not found' });
       return;
     }
 
+    const resolvedVehicleModelId = resolvedVehicle?.id ?? null;
+    const vehicleModel = resolvedVehicle?.model ?? null;
     const allAddons = (await req.app.locals.deps.configRepo.getAddons(storeId)) as ConfigAddonLike[];
     const addons: RespondAddonEntry[] = allAddons
       .filter((addon) => addon.isActive !== false)
-      .filter((addon) => isAddonCompatibleWithVehicle(addon, vehicleModelId ?? null, vehicleModel))
+      .filter((addon) => isAddonCompatibleWithVehicle(addon, resolvedVehicleModelId, vehicleModel))
       .map((addon) => {
         const { key, aliases } = addonKeyForName(addon.name);
         return {
@@ -855,12 +886,14 @@ router.get('/addons', async (req, res, next) => {
           name: addon.name,
           price: addon.addonType === 'per_day' ? Number(addon.pricePerDay) : Number(addon.priceOneTime),
           price_type: addon.addonType,
-          compatible_vehicle_model_id: vehicleModelId ?? null,
+          compatible_vehicle_model_id: resolvedVehicleModelId,
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
 
     res.json({
+      resolved_vehicle_model_id: resolvedVehicleModelId,
+      resolved_vehicle_model_name: vehicleModel?.name ?? null,
       addons,
       guidance: {
         addonIds: 'Pass selected add-on IDs as addonIds in booking-handoff, e.g. [] or [11].',

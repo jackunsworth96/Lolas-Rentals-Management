@@ -172,12 +172,13 @@ Available to add at checkout:
 
 Before sending a booking cart URL, always offer relevant add-ons and wait for a clear accept or decline.
 
-Use `/api/public/respond/addons?vehicleModelId=<selected model_id>` for current add-on IDs, prices, and vehicle compatibility guidance before calling `/api/public/respond/booking-handoff`.
+Use `/api/public/respond/addons?vehicleModelId=<selected model_id_or_name>` for current add-on IDs, prices, and vehicle compatibility guidance before calling `/api/public/respond/booking-handoff`.
 
 Rules:
 - Do not call booking handoff until the customer has accepted one or more add-ons, or clearly declined add-ons.
 - Always include the price beside each add-on you offer. Do not upsell add-ons without prices.
 - Use live prices from `/api/public/respond/addons`: add-ons come from `addons[].price` and `addons[].price_type`; match customer choices using `addons[].key` such as `peace_of_mind`, `surf_rack`, or `bungee_cord`.
+- Store `resolved_vehicle_model_id` from the add-on lookup and use that exact ID as `vehicleModelId` in booking handoff.
 - If the customer accepts add-ons, pass their selected add-on IDs in `addonIds` when calling `/api/public/respond/booking-handoff`.
 - If the customer declines, call booking handoff with no `addonIds`.
 - Do not share the returned cart URL until after this add-on choice is complete.
@@ -859,7 +860,7 @@ Important:
 
 ### B. Add-on lookup
 
-`GET /api/public/respond/addons?vehicleModelId=<model_id>`
+`GET /api/public/respond/addons?vehicleModelId=<model_id_or_name>`
 
 Use when:
 - The customer has selected a vehicle and you need to offer compatible add-ons.
@@ -869,9 +870,11 @@ Returns:
 - `addons[].id` for `addonIds`.
 - `addons[].key` for matching intent, for example `peace_of_mind`, `surf_rack`, or `bungee_cord`.
 - `addons[].price` and `addons[].price_type`.
+- `resolved_vehicle_model_id`, the exact ID to reuse as `vehicleModelId` in booking handoff.
 
 Important:
 - Prefer this endpoint over `/fleet` for final add-on selection.
+- The `vehicleModelId` query can be either the true model ID or a selected display name such as `Honda Beat V3`; the response resolves it to the true ID.
 - If the customer declines add-ons, pass `addonIds: []`.
 
 ### C. Transfer routes and pricing

@@ -120,6 +120,10 @@ function makeSupabaseForOrderLookup() {
 
 const configRepo = {
   getVehicleModelById: vi.fn(async () => ({ id: 'beat', name: 'Honda Beat', securityDeposit: 1000 })),
+  getVehicleModels: vi.fn(async () => [
+    { id: 'beat', name: 'Honda Beat V3' },
+    { id: 'tuktuk', name: 'Bajaj TukTuk' },
+  ]),
   getModelPricing: vi.fn(async () => [{ minDays: 1, maxDays: 99, dailyRate: 500 }]),
   getLocations: vi.fn(async () => [
     { id: 1, deliveryCost: 100, collectionCost: 0 },
@@ -201,6 +205,31 @@ describe('Respond.io add-ons lookup', () => {
         price_type: 'one_time',
         compatible_vehicle_model_id: 'beat',
       },
+    ]);
+  });
+
+  it('accepts a vehicle display name with trailing spaces and returns the resolved model ID', async () => {
+    configRepo.getVehicleModelById.mockResolvedValueOnce(null);
+
+    const res = await request(app)
+      .get('/api/public/respond/addons')
+      .set('X-API-Key', 'respond-test-key')
+      .query({ vehicleModelId: 'Honda Beat V3 ' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.resolved_vehicle_model_id).toBe('beat');
+    expect(res.body.resolved_vehicle_model_name).toBe('Honda Beat V3');
+    expect(res.body.addons).toEqual([
+      expect.objectContaining({
+        id: 11,
+        key: 'peace_of_mind',
+        compatible_vehicle_model_id: 'beat',
+      }),
+      expect.objectContaining({
+        id: 10,
+        key: 'surf_rack',
+        compatible_vehicle_model_id: 'beat',
+      }),
     ]);
   });
 
