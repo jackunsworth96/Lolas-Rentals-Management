@@ -322,6 +322,28 @@ function normaliseLookupText(value: string): string {
   return value.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
+function normaliseAddonIdsInput(value: unknown): unknown {
+  if (value === 0 || value === '0' || value === '' || value == null) return undefined;
+  if (typeof value === 'number') return [value];
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed === '0' || trimmed === '') return undefined;
+    if (/^\d+$/.test(trimmed)) return [trimmed];
+
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed) as unknown;
+        return parsed;
+      } catch {
+        return value;
+      }
+    }
+  }
+
+  return value;
+}
+
 async function resolveVehicleModelForRespondAddons(
   configRepo: {
     getVehicleModelById: (id: string) => Promise<ConfigVehicleModelLike | null>;
@@ -961,12 +983,10 @@ const RespondBookingHandoffSchema = z.object({
       extraComments: z.string().optional(),
     })
     .optional(),
-  addonIds: z.preprocess((value) => {
-    if (value === 0 || value === '0' || value === '' || value == null) return undefined;
-    if (typeof value === 'number') return [value];
-    if (typeof value === 'string' && /^\d+$/.test(value.trim())) return [value.trim()];
-    return value;
-  }, z.array(z.coerce.number().int().positive()).optional()),
+  addonIds: z.preprocess(
+    normaliseAddonIdsInput,
+    z.array(z.coerce.number().int().positive()).optional(),
+  ),
   transfer: z
     .object({
       transferType: z.enum(['shared', 'private', 'tuktuk']),
