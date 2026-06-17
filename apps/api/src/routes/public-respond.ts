@@ -965,7 +965,7 @@ router.get('/locations', async (_req, res, next) => {
 });
 
 const RespondBookingHandoffSchema = z.object({
-  vehicleModelId: z.string().min(1),
+  vehicleModelId: z.string().trim().min(1),
   pickupDatetime: z.string().min(1),
   dropoffDatetime: z.string().min(1),
   pickupLocationId: z.coerce.number().int().positive(),
@@ -1055,12 +1055,23 @@ router.post('/booking-handoff', async (req, res, next) => {
     }
 
     const sb = getSupabaseClient();
+    const resolvedVehicle = await resolveVehicleModelForRespondAddons(
+      req.app.locals.deps.configRepo,
+      input.vehicleModelId,
+    );
+
+    if (!resolvedVehicle) {
+      res.status(404).json({ error: 'Vehicle model not found' });
+      return;
+    }
+
+    const vehicleModelId = resolvedVehicle.id;
 
     const [modelResult, pickupLocResult, dropoffLocResult] = await Promise.all([
       sb
         .from('vehicle_models')
         .select('id, name, security_deposit')
-        .eq('id', input.vehicleModelId)
+        .eq('id', vehicleModelId)
         .eq('is_active', true)
         .maybeSingle(),
       sb
@@ -1096,7 +1107,7 @@ router.post('/booking-handoff', async (req, res, next) => {
     const hold = await createHold(
       { bookingPort: req.app.locals.deps.bookingPort },
       {
-        vehicleModelId:  input.vehicleModelId,
+        vehicleModelId,
         storeId:         input.storeId,
         pickupDatetime:  input.pickupDatetime,
         dropoffDatetime: input.dropoffDatetime,
@@ -1110,7 +1121,7 @@ router.post('/booking-handoff', async (req, res, next) => {
         { configRepo: req.app.locals.deps.configRepo },
         {
           storeId:            input.storeId,
-          vehicleModelId:     input.vehicleModelId,
+          vehicleModelId,
           pickupDatetime:     input.pickupDatetime,
           dropoffDatetime:    input.dropoffDatetime,
           pickupLocationId:   input.pickupLocationId,
@@ -1128,6 +1139,8 @@ router.post('/booking-handoff', async (req, res, next) => {
     const renterDetails = normaliseRenterDetails(input.customer);
     const handoffContext = {
       source: 'respond.io',
+      submittedVehicleModelId: input.vehicleModelId,
+      resolvedVehicleModelId: vehicleModelId,
       pickupLocationId: input.pickupLocationId,
       dropoffLocationId: input.dropoffLocationId,
       addonIds: input.addonIds ?? [],
@@ -1145,7 +1158,7 @@ router.post('/booking-handoff', async (req, res, next) => {
       store_id:          input.storeId,
       pickup_datetime:   input.pickupDatetime,
       dropoff_datetime:  input.dropoffDatetime,
-      basket_items:      [input.vehicleModelId],
+      basket_items:      [vehicleModelId],
       renter_details:    renterDetailsWithFallback,
       device_type:       'mobile',
       basket_viewed_at:  null,

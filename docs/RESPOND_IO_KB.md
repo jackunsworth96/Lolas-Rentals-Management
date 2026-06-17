@@ -178,9 +178,9 @@ Rules:
 - Do not call booking handoff until the customer has accepted one or more add-ons, or clearly declined add-ons.
 - Always include the price beside each add-on you offer. Do not upsell add-ons without prices.
 - Use live prices from `/api/public/respond/addons`: add-ons come from `addons[].price` and `addons[].price_type`; match customer choices using `addons[].key` such as `peace_of_mind`, `surf_rack`, or `bungee_cord`.
-- Store `resolved_vehicle_model_id` from the add-on lookup and use that exact ID as `vehicleModelId` in booking handoff.
-- If the customer accepts add-ons, pass their selected add-on IDs in `addonIds` when calling `/api/public/respond/booking-handoff`.
-- If the customer declines, call booking handoff with no `addonIds`.
+- Prefer storing `resolved_vehicle_model_id` from the add-on lookup and using that exact ID as `vehicleModelId` in booking handoff. Booking handoff can also resolve an exact vehicle display name such as `Honda Beat V3` if Respond.io only has the name.
+- If the customer accepts add-ons, pass their selected add-on IDs in `addonIds` when calling `/api/public/respond/booking-handoff`. In Respond.io, define `addonIds` as a string field and send a JSON-array string such as `"[11]"` or `"[10,11]"`.
+- If the customer declines, call booking handoff with `addonIds` as the string `"[]"`.
 - Do not share the returned cart URL until after this add-on choice is complete.
 - Keep the upsell concise and natural, never pushy.
 
@@ -875,7 +875,7 @@ Returns:
 Important:
 - Prefer this endpoint over `/fleet` for final add-on selection.
 - The `vehicleModelId` query can be either the true model ID or a selected display name such as `Honda Beat V3`; the response resolves it to the true ID.
-- If the customer declines add-ons, pass `addonIds: []`.
+- If the customer declines add-ons, pass `addonIds` as the string `"[]"`.
 
 ### C. Transfer routes and pricing
 
