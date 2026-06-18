@@ -1,6 +1,7 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { SEO } from '../../components/seo/SEO.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
@@ -87,6 +88,27 @@ export default function PeaceOfMindPage() {
             </div>
           </FadeUpSection>
         </section>
+
+        {/* Book Your Ride CTA */}
+        <div className="py-8 text-center">
+          <div style={{ display: 'inline-block', transform: 'skewX(-4deg)' }}>
+            <Link
+              to="/book/reserve"
+              className="inline-block rounded-[6px] border-2 border-charcoal-brand bg-gold-brand px-10 py-3 font-lato text-sm font-extrabold uppercase tracking-[0.05em] text-charcoal-brand transition-shadow duration-150 sm:px-11 sm:py-3.5"
+              style={{ boxShadow: '4px 4px 0 #363737' }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLAnchorElement).style.boxShadow = '6px 6px 0 #363737';
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLAnchorElement).style.boxShadow = '4px 4px 0 #363737';
+              }}
+            >
+              <span style={{ display: 'inline-block', transform: 'skewX(4deg)' }}>
+                Book Your Ride
+              </span>
+            </Link>
+          </div>
+        </div>
 
         <div className="mx-auto max-w-7xl px-4 md:px-6">
           <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
