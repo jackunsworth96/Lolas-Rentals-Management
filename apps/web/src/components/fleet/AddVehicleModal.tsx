@@ -27,11 +27,11 @@ export function AddVehicleModal({ open, onClose }: AddVehicleModalProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !storeId) return;
+    if (!name.trim() || !storeId || !modelId) return;
     createVehicle.mutate(
       {
         name: name.trim(),
-        modelId: modelId || null,
+        modelId,
         plateNumber: plateNumber.trim() || null,
         storeId,
         gpsId: gpsId.trim() || null,
@@ -60,13 +60,14 @@ export function AddVehicleModal({ open, onClose }: AddVehicleModalProps) {
             />
           </label>
           <label className="block">
-            <span className="text-sm font-medium text-gray-700">Model</span>
+            <span className="text-sm font-medium text-gray-700">Model *</span>
             <select
               value={modelId}
               onChange={(e) => setModelId(e.target.value)}
+              required
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
-              <option value="">—</option>
+              <option value="">Select model</option>
               {modelList.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name ?? m.id}

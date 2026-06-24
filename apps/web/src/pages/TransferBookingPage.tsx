@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { PlaneTakeoff, PlaneLanding, Minus, Plus, CheckCircle2, Loader2 } from 'lucide-react';
 import { PageLayout } from '../components/layout/PageLayout.js';
-import LolasChat from '../components/chat/LolasChat.js';
 import { SEO } from '../components/seo/SEO.js';
 import { PageHeader } from '../components/public/PageHeader.js';
 import { PrimaryCtaButton } from '../components/public/PrimaryCtaButton.js';
@@ -711,8 +710,6 @@ export default function TransferBookingPage() {
           </FadeUpSection>
         )}
       </div>
-
-      <LolasChat />
     </PageLayout>
   );
 }

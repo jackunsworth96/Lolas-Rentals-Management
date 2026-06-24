@@ -16,12 +16,13 @@ export default defineConfig({
   },
   server: {
     port: 3002,
+    allowedHosts: ['.ngrok-free.app'],
     fs: {
       allow: [repoRoot],
     },
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:3004',
         changeOrigin: true,
       },
     },

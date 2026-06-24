@@ -194,6 +194,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const isDirect = rawOrder.booking_channel === 'direct' || rawOrder.booking_channel === 'walk_in';
   const payload = rawOrder.payload ?? {};
   const employeeName = useAuthStore((s) => s.user?.username ?? 'Staff');
+  const canEditOrders = useAuthStore((s) => s.hasPermission('can_edit_orders'));
 
   const waiverRef = isDirect
     ? (rawOrder.order_reference ?? null)
@@ -690,6 +691,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     (!rawOrder.transfer_amount || rawOrder.transfer_amount === 0);
 
   async function handleActivate() {
+    if (!canEditOrders) return;
     if (!depositValid) return;
     processMutation.mutate(buildPayload(), {
       onSuccess: () => {
@@ -703,6 +705,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   }
 
   async function handleCollectPayment() {
+    if (!canEditOrders) return;
     if (!paymentMethodId) return;
     collectMutation.mutate(
       {
@@ -1789,35 +1792,42 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
 
         {step === 'summary' ? (
           <div className="flex flex-col items-end gap-2">
+            {!canEditOrders && (
+              <p className="text-sm text-amber-700 font-medium">
+                You can review this order, but activating or collecting payment requires order edit permission.
+              </p>
+            )}
             {transferAmountMissing && (
               <p className="text-sm text-amber-700 font-medium">
                 Transfer amount is missing — please set it before activating.
               </p>
             )}
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleCollectPayment}
-                disabled={collectMutation.isPending || !paymentMethodId}
-                className="rounded-lg border border-blue-600 px-5 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50"
-                title="Record payment without activating the order"
-              >
-                {collectMutation.isPending ? 'Collecting...' : 'Collect Payment'}
-              </button>
-              <button
-                onClick={handleActivate}
-                disabled={processMutation.isPending || !depositValid || transferAmountMissing}
-                className="rounded-lg bg-green-600 px-6 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                title={
-                  transferAmountMissing
-                    ? 'Set the transfer amount before activating'
-                    : !depositValid
-                      ? 'Security deposit is required (or waive it)'
-                      : undefined
-                }
-              >
-                {processMutation.isPending ? 'Activating...' : 'Activate Order'}
-              </button>
-            </div>
+            {canEditOrders && (
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleCollectPayment}
+                  disabled={collectMutation.isPending || !paymentMethodId}
+                  className="rounded-lg border border-blue-600 px-5 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50"
+                  title="Record payment without activating the order"
+                >
+                  {collectMutation.isPending ? 'Collecting...' : 'Collect Payment'}
+                </button>
+                <button
+                  onClick={handleActivate}
+                  disabled={processMutation.isPending || !depositValid || transferAmountMissing}
+                  className="rounded-lg bg-green-600 px-6 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                  title={
+                    transferAmountMissing
+                      ? 'Set the transfer amount before activating'
+                      : !depositValid
+                        ? 'Security deposit is required (or waive it)'
+                        : undefined
+                  }
+                >
+                  {processMutation.isPending ? 'Activating...' : 'Activate Order'}
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <button

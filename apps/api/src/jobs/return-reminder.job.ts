@@ -13,8 +13,8 @@
  * Deduplication: return_reminder_log prevents double-sending if
  * the job is restarted or runs more than once on the same day.
  *
- * Required env vars:
- *   RESPOND_IO_API_URL         e.g. https://app.respond.io
+ * Required env vars outside NODE_ENV=development:
+ *   RESPOND_IO_API_URL         e.g. https://api.respond.io
  *   RESPOND_IO_OUTBOUND_TOKEN  Bearer token for outbound messages
  */
 
@@ -30,6 +30,32 @@ interface ReminderCandidate {
   customerMobile: string;
   dropoffDatetime: string;
 }
+
+interface RespondIoTemplatePayload {
+  channelId: number;
+  message: {
+    type: 'whatsapp_template';
+    template: {
+      name: string;
+      languageCode: string;
+      components: Array<{
+        type: 'body';
+        text: string;
+        parameters: Array<{ type: 'text'; text: string }>;
+      }>;
+    };
+  };
+}
+
+interface SendRespondIoResult {
+  delivered: boolean;
+}
+
+const RETURN_REMINDER_TEMPLATE_CHANNEL_ID = 501809;
+const RETURN_REMINDER_TEMPLATE_NAME = 'return_reminder_tomorrow';
+const RETURN_REMINDER_TEMPLATE_LANGUAGE = 'en';
+const RETURN_REMINDER_TEMPLATE_BODY =
+  "Heyy {{1}}, we hope you have been enjoying the island! Just a polite reminder that you rental is due back tomorrow at {{2}}. If you'd like to extend, please feel free to visit our website at: https://www.lolasrentals.com/book/extend\n\nAny questions, just let us know!";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -55,16 +81,44 @@ function formatReturnTime(isoString: string): string {
   });
 }
 
-function buildMessage(customerName: string, returnTime: string): string {
-  return (
-    `Hi ${customerName} 👋 Just a reminder that your Lola's Rentals vehicle is due back tomorrow at ${returnTime}.\n\n` +
-    `If you'd like to extend your rental, just reply here and our team will sort it out for you.\n\n` +
-    `Heading to the airport after? Book a transfer in advance at lolasrentals.com/book/transfers 🛺\n\n` +
-    `See you tomorrow!`
-  );
+function buildReturnReminderTemplatePayload(
+  customerName: string,
+  returnTime: string,
+): RespondIoTemplatePayload {
+  return {
+    channelId: RETURN_REMINDER_TEMPLATE_CHANNEL_ID,
+    message: {
+      type: 'whatsapp_template',
+      template: {
+        name:         RETURN_REMINDER_TEMPLATE_NAME,
+        languageCode: RETURN_REMINDER_TEMPLATE_LANGUAGE,
+        components: [
+          {
+            type:       'body',
+            text:       RETURN_REMINDER_TEMPLATE_BODY,
+            parameters: [
+              { type: 'text', text: customerName },
+              { type: 'text', text: returnTime },
+            ],
+          },
+        ],
+      },
+    },
+  };
 }
 
-async function sendRespondIoMessage(phone: string, text: string): Promise<void> {
+async function sendRespondIoMessage(phone: string, payload: RespondIoTemplatePayload): Promise<SendRespondIoResult> {
+  if (process.env.NODE_ENV === 'development') {
+    logger.info(
+      {
+        phone,
+        payload,
+      },
+      '[return-reminder] Development mode: simulated Respond.io return reminder send',
+    );
+    return { delivered: false };
+  }
+
   const baseUrl = process.env.RESPOND_IO_API_URL;
   const token = process.env.RESPOND_IO_OUTBOUND_TOKEN;
 
@@ -82,13 +136,15 @@ async function sendRespondIoMessage(phone: string, text: string): Promise<void> 
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ message: { type: 'text', text } }),
+    body: JSON.stringify(payload),
   });
 
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     throw new Error(`respond.io API error ${res.status}: ${body}`);
   }
+
+  return { delivered: true };
 }
 
 // ── Main job ──────────────────────────────────────────────────────────────────
@@ -223,19 +279,23 @@ async function runReturnReminderJob(): Promise<void> {
     }
 
     const returnTime = formatReturnTime(candidate.dropoffDatetime);
-    const message    = buildMessage(candidate.customerName, returnTime);
+    const payload    = buildReturnReminderTemplatePayload(candidate.customerName, returnTime);
 
     try {
-      await sendRespondIoMessage(phone, message);
+      const result = await sendRespondIoMessage(phone, payload);
 
-      await sb.from('return_reminder_log').insert({
-        booking_reference: candidate.bookingReference,
-        sent_at:           new Date().toISOString(),
-      });
+      if (result.delivered) {
+        await sb.from('return_reminder_log').insert({
+          booking_reference: candidate.bookingReference,
+          sent_at:           new Date().toISOString(),
+        });
+      }
 
       logger.info(
-        { ref: candidate.bookingReference, phone },
-        '[return-reminder] Reminder sent',
+        { ref: candidate.bookingReference, phone, delivered: result.delivered },
+        result.delivered
+          ? '[return-reminder] Reminder sent'
+          : '[return-reminder] Reminder simulated',
       );
     } catch (err) {
       logger.warn(

@@ -60,7 +60,7 @@ export function createBookingAdapter(): BookingPort {
 
   return {
     async checkAvailability(query: AvailabilityQuery): Promise<AvailableModel[]> {
-      const { storeId, pickupDatetime, dropoffDatetime, excludeSessionToken } = query;
+      const { storeId, pickupDatetime, dropoffDatetime, excludeSessionToken, excludeOrderItemId } = query;
 
       const BUFFER_MS = 30 * 60 * 1000;
       const pickupBuffered = new Date(new Date(pickupDatetime).getTime() - BUFFER_MS).toISOString();
@@ -98,7 +98,7 @@ export function createBookingAdapter(): BookingPort {
 
       // 3. Booked vehicles via order_items (30-min handover buffer applied)
       const { data: bookedRows, error: bookedErr } = await sb
-        .from('order_items').select('vehicle_id, dropoff_datetime, orders!inner(status)')
+        .from('order_items').select('id, vehicle_id, dropoff_datetime, orders!inner(status)')
         .eq('store_id', storeId).not('vehicle_id', 'is', null)
         .not('pickup_datetime', 'is', null).not('dropoff_datetime', 'is', null)
         .lt('pickup_datetime', dropoffDatetime)
@@ -106,7 +106,8 @@ export function createBookingAdapter(): BookingPort {
       if (bookedErr) throw new Error(`order_items overlap query failed: ${bookedErr.message}`);
 
       const bookedVehicleIds = new Set<string>();
-      for (const row of (bookedRows ?? []) as Array<{ vehicle_id: string; dropoff_datetime: string; orders: unknown }>) {
+      for (const row of (bookedRows ?? []) as Array<{ id: string; vehicle_id: string; dropoff_datetime: string; orders: unknown }>) {
+        if (excludeOrderItemId && row.id === excludeOrderItemId) continue;
         const orders = row.orders as { status: string } | { status: string }[] | null;
         const status = Array.isArray(orders) ? orders[0]?.status : orders?.status;
         if (status && status !== 'cancelled' && status !== 'completed') {

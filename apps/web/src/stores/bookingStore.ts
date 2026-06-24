@@ -60,6 +60,16 @@ interface BookingState {
   setDates: (pickup: string, dropoff: string) => void;
   setStore: (storeId: string) => void;
   setLocations: (pickupId: number | null, dropoffId: number | null) => void;
+  hydrateBookingSession: (input: {
+    storeId: string;
+    pickupDatetime: string;
+    dropoffDatetime: string;
+    pickupLocationId: number | null;
+    dropoffLocationId: number | null;
+    sessionToken: string;
+    basket: BasketItem[];
+    renterDetails?: Partial<RenterDetails> | null;
+  }) => void;
   addToBasket: (item: BasketItem) => void;
   removeFromBasket: (holdId: string) => void;
   updateBasketRate: (holdId: string, dailyRate: number, securityDeposit?: number) => void;
@@ -98,6 +108,22 @@ export const useBookingStore = create<BookingState>((set) => ({
 
   setLocations: (pickupId, dropoffId) =>
     set({ pickupLocationId: pickupId, dropoffLocationId: dropoffId }),
+
+  hydrateBookingSession: (input) => {
+    localStorage.setItem('lolas_booking_session', input.sessionToken);
+    const renterDetails = { ...EMPTY_RENTER_DETAILS, ...(input.renterDetails ?? {}) };
+    saveRenterDetails(renterDetails);
+    set({
+      storeId: input.storeId,
+      pickupDatetime: input.pickupDatetime,
+      dropoffDatetime: input.dropoffDatetime,
+      pickupLocationId: input.pickupLocationId,
+      dropoffLocationId: input.dropoffLocationId,
+      sessionToken: input.sessionToken,
+      basket: input.basket,
+      renterDetails,
+    });
+  },
 
   addToBasket: (item) =>
     set((s) => ({ basket: [...s.basket, item] })),

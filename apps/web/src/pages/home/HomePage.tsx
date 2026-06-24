@@ -1,7 +1,6 @@
 import { AnimatedHeading } from '../../components/public/AnimatedHeading.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
-import LolasChat from '../../components/chat/LolasChat.js';
 import { SEO } from '../../components/seo/SEO.js';
 import SectionDivider from '../../components/home/SectionDivider.js';
 import { FleetPreviewSection } from '../../components/home/FleetPreviewSection.js';
@@ -89,7 +88,7 @@ function HeroSection() {
 
   const fetchOrderCount = useCallback(() => {
     const apiBase = normalizeApiBase(import.meta.env.VITE_API_URL as string | undefined);
-    fetch(`${apiBase}/public/stats/order-count`)
+    fetch(`${apiBase}/stats/order-count`)
       .then((r) => r.json())
       .then((json) => {
         const count = json?.data?.totalOrders;
@@ -1383,8 +1382,6 @@ export default function HomePage() {
       </div>
 
       <ReviewsSection />
-
-      <LolasChat />
     </PageLayout>
   );
 }

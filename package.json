@@ -1,6 +1,9 @@
 {
   "name": "lolas-backoffice",
   "private": true,
+  "engines": {
+    "node": "20.x"
+  },
   "workspaces": [
     "packages/domain",
     "packages/shared",

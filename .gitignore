@@ -13,6 +13,7 @@ packages/*/src/**/*.d.ts.map
 
 .env
 .env.local
+.env.dev
 *.log
 .DS_Store
 coverage/
@@ -22,3 +23,5 @@ coverage/
 # Build outputs
 packages/shared/dist/
 packages/*/dist/
+supabase/.temp/*
+supabase/.temp/gotrue-version

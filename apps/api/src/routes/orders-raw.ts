@@ -805,8 +805,9 @@ const processBodySchema = z.object({
   securityDeposit: z.number().min(0).default(0),
   webQuoteRaw: z.number().nullable().default(null),
   webNotes: z.string().nullable().default(null),
-  receivableAccountId: z.string().min(1),
-  incomeAccountId: z.string().min(1),
+  // Optional accounting setup: allow activation even when chart accounts are not configured yet.
+  receivableAccountId: z.string().default(''),
+  incomeAccountId: z.string().default(''),
   paymentMethodId: z.string().nullable().default(null),
   depositMethodId: z.string().nullable().default(null),
   cardFeeSurcharge: z.number().min(0).default(0),

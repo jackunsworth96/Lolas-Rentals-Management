@@ -7,6 +7,7 @@ import { requirePermission } from '../middleware/authorize.js';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { computeQuote } from '../use-cases/booking/compute-quote.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
+import { publicWebOriginFromEnv } from '../lib/public-web-url.js';
 import {
   escapeIlike,
   extDayCount,
@@ -17,6 +18,10 @@ import {
 
 const router = Router();
 const staffRouter = Router();
+const EXTENSION_PAYMENT_ORIGIN = publicWebOriginFromEnv(
+  process.env.WEB_URL,
+  'http://localhost:3002',
+);
 
 const extendLookupLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -42,6 +47,10 @@ function getDayBracketLabel(days: number): string {
   return '7+ day rate';
 }
 
+function buildExtensionPaymentUrl(orderReference: string): string {
+  return `${EXTENSION_PAYMENT_ORIGIN}/book/extend/pay?ref=${encodeURIComponent(orderReference)}`;
+}
+
 // ── Public addon catalog (no auth — only returns id, name, price_one_time for active addons) ──
 
 router.get('/addons', async (req, res, next) => {
@@ -60,6 +69,92 @@ router.get('/addons', async (req, res, next) => {
     if (error) throw new Error(`Addon lookup failed: ${error.message}`);
     res.json({ success: true, data: data ?? [] });
   } catch (err) { next(err); }
+});
+
+// ── Extension Payment Placeholder Summary ──
+
+router.get('/payment-summary', extendLookupLimiter, async (req, res, next) => {
+  try {
+    const ref = typeof req.query.ref === 'string' ? req.query.ref.trim() : '';
+    if (!ref) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'ref is required' },
+      });
+      return;
+    }
+
+    const sb = getSupabaseClient();
+    const refVariants = orderReferenceLookupVariants(ref);
+    let target: { source: 'active' | 'raw'; id: string; orderReference: string } | null = null;
+
+    const { data: order } = await sb
+      .from('orders')
+      .select('id, booking_token')
+      .in('booking_token', refVariants)
+      .maybeSingle();
+
+    if (order) {
+      target = {
+        source: 'active',
+        id: (order as { id: string }).id,
+        orderReference: (order as { booking_token: string | null }).booking_token ?? ref,
+      };
+    } else {
+      const { data: rawOrder } = await sb
+        .from('orders_raw')
+        .select('id, order_reference')
+        .in('order_reference', refVariants)
+        .maybeSingle();
+      if (rawOrder) {
+        target = {
+          source: 'raw',
+          id: (rawOrder as { id: string }).id,
+          orderReference: (rawOrder as { order_reference: string }).order_reference,
+        };
+      }
+    }
+
+    if (!target) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Booking not found' },
+      });
+      return;
+    }
+
+    let query = sb
+      .from('payments')
+      .select('amount')
+      .eq('payment_type', 'extension')
+      .eq('settlement_status', 'pending');
+
+    query = target.source === 'active'
+      ? query.eq('order_id', target.id)
+      : query.eq('raw_order_id', target.id);
+
+    const { data: payments, error } = await query;
+    if (error) throw new Error(`Extension payment lookup failed: ${error.message}`);
+
+    const pendingAmount = (payments ?? []).reduce(
+      (sum, payment: { amount: number | string | null }) => sum + Number(payment.amount ?? 0),
+      0,
+    );
+
+    res.json({
+      success: true,
+      data: {
+        found: true,
+        orderReference: target.orderReference,
+        pendingAmount: Math.round(pendingAmount * 100) / 100,
+        paymentAvailable: false,
+        provider: 'xendit',
+        message: 'Online extension payment is coming soon. You can still pay this balance when you return.',
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ── Lookup ──
@@ -266,7 +361,7 @@ router.get('/preview', extendLookupLimiter, async (req, res, next) => {
       for (const ord of (orderRows ?? []) as Array<{ id: string; customer_id: string; store_id: string }>) {
         const { data: items } = await sb
           .from('order_items')
-          .select('vehicle_id, pickup_datetime, dropoff_datetime, store_id, rental_days_count, rental_rate')
+          .select('id, vehicle_id, pickup_datetime, dropoff_datetime, store_id, rental_days_count, rental_rate')
           .eq('order_id', ord.id).not('pickup_datetime', 'is', null);
 
         const item = (items ?? [])[0] as Record<string, unknown> | undefined;
@@ -287,7 +382,12 @@ router.get('/preview', extendLookupLimiter, async (req, res, next) => {
         if (modelId) {
           const avail = await checkAvailability(
             { bookingPort: req.app.locals.deps.bookingPort },
-            { storeId: item.store_id as string, pickupDatetime: item.dropoff_datetime as string, dropoffDatetime: newDropoffDatetime },
+            {
+              storeId: item.store_id as string,
+              pickupDatetime: item.dropoff_datetime as string,
+              dropoffDatetime: newDropoffDatetime,
+              excludeOrderItemId: item.id as string,
+            },
           );
           const m = avail.find((a) => a.modelId === modelId);
           if (!m || m.availableCount === 0) {
@@ -411,6 +511,7 @@ router.post('/confirm', extendConfirmLimiter, validateBody(PublicExtendConfirmSc
           newDropoffDatetime: activeOutcome.newDropoffDatetime,
           extensionCost: activeOutcome.extensionCost,
           extensionDays: activeOutcome.extensionDays,
+          paymentUrl: buildExtensionPaymentUrl(orderReference),
         },
       });
       return;
@@ -432,7 +533,15 @@ router.post('/confirm', extendConfirmLimiter, validateBody(PublicExtendConfirmSc
       return;
     }
     if (rawOutcome.kind === 'success') {
-      res.json({ success: true, data: { success: true, newDropoffDatetime: rawOutcome.newDropoffDatetime, extensionCost: rawOutcome.extensionCost } });
+      res.json({
+        success: true,
+        data: {
+          success: true,
+          newDropoffDatetime: rawOutcome.newDropoffDatetime,
+          extensionCost: rawOutcome.extensionCost,
+          paymentUrl: buildExtensionPaymentUrl(orderReference),
+        },
+      });
       return;
     }
 

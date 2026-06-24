@@ -294,7 +294,7 @@ export function VehicleCard({
                     onClick={handleNextAvailable}
                     className="font-lato mt-1 text-[11px] font-semibold text-teal-brand underline underline-offset-2 hover:text-teal-brand/70"
                   >
-                    Or jump to next confirmed availability ({formatNextAvailableDate(nextAvailablePickup)})
+                    Or try dates from {formatNextAvailableDate(nextAvailablePickup)}
                   </button>
                 )}
               </div>
@@ -304,9 +304,9 @@ export function VehicleCard({
                 onClick={handleNextAvailable}
                 className="font-lato flex w-full flex-col items-center justify-center gap-1 rounded-full border-2 border-teal-brand bg-transparent py-3.5 font-bold text-teal-brand transition-all duration-300 hover:bg-teal-brand/10"
               >
-                <span className="font-lato text-[11px] text-charcoal-brand/50">Next available from</span>
+                <span className="font-lato text-[11px] text-charcoal-brand/50">Try dates from</span>
                 <span className="font-lato text-sm">{formatNextAvailableDate(nextAvailablePickup!)} at {formatSlotTime(nextAvailablePickup!)}</span>
-                <span className="font-lato text-[10px] font-bold uppercase tracking-wider text-teal-brand/60">Tap to use these dates</span>
+                <span className="font-lato text-[10px] font-bold uppercase tracking-wider text-teal-brand/60">Tap to re-check</span>
               </button>
             ) : (
               <div className="flex flex-col gap-3">
@@ -409,7 +409,7 @@ export function VehicleCard({
 
                 {count > 0 && (availableCount - count) === 0 && nextAvailablePickup && (
                   <p className="text-center font-lato text-xs font-semibold text-[#00577C]">
-                    Next available: {formatNextAvailableWeekdayDayMonth(nextAvailablePickup)}
+                    Try from: {formatNextAvailableWeekdayDayMonth(nextAvailablePickup)}
                   </p>
                 )}
               </div>

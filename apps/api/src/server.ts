@@ -5,8 +5,8 @@ import { config } from 'dotenv';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const apiDir = resolve(__dirname, '..');
-const monorepoRoot = resolve(__dirname, '../..');
-[monorepoRoot, apiDir, process.cwd()].forEach((dir) => config({ path: resolve(dir, '.env') }));
+const monorepoRoot = resolve(__dirname, '../../..');
+[monorepoRoot, apiDir, process.cwd()].forEach((dir) => config({ path: resolve(dir, '.env'), override: true }));
 
 import { z } from 'zod';
 

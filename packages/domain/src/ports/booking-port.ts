@@ -2,6 +2,9 @@ export interface AvailableModel {
   modelId: string;
   modelName: string;
   availableCount: number;
+  /** Earliest observed time an overlapping blocker clears for this model.
+   * This is a hint for re-checking, not proof that the model is available for
+   * the same rental duration starting at this timestamp. */
   nextAvailablePickup?: string;
   /** Set when availableCount is 0 solely because active basket holds are consuming all capacity.
    * ISO timestamp of when the earliest blocking hold expires. Absent when a confirmed
@@ -17,6 +20,10 @@ export interface AvailabilityQuery {
    * Used during order submission so the customer's own hold is not counted
    * against their own booking. */
   excludeSessionToken?: string;
+  /** When set, this order item is ignored in overlap checks.
+   * Used by extension flows so the rental being extended does not block itself,
+   * especially because availability applies a 30-minute handover buffer. */
+  excludeOrderItemId?: string;
 }
 
 export interface HoldRow {
