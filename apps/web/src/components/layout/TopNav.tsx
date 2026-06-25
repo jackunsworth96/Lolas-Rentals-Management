@@ -137,9 +137,9 @@ export default function TopNav({ items, rightSlot, partnerBenefit }: TopNavProps
             />
           </Link>
 
-          {/* Desktop co-brand — hidden on mobile */}
+          {/* Desktop co-brand — hidden on mobile, only shown when partner has a logo */}
           <AnimatePresence>
-            {partnerBenefit && (
+            {partnerBenefit?.logoUrl && (
               <motion.div
                 key="partner-cobrand"
                 className="hidden md:flex items-center gap-2"
@@ -149,22 +149,16 @@ export default function TopNav({ items, rightSlot, partnerBenefit }: TopNavProps
                 transition={{ duration: 0.25, ease: 'easeOut' }}
               >
                 <span className="select-none text-sm font-light text-charcoal-brand/40" aria-hidden="true">×</span>
-                {partnerBenefit.logoUrl ? (
-                  <img
-                    src={partnerBenefit.logoUrl}
-                    alt={partnerBenefit.name}
-                    className="w-auto object-contain"
-                    style={{
-                      maxWidth: `${partnerBenefit.logoDisplayWidth ?? 96}px`,
-                      maxHeight: `${partnerBenefit.logoDisplayHeight ?? 32}px`,
-                    }}
-                    draggable={false}
-                  />
-                ) : (
-                  <span className="max-w-[80px] truncate text-xs font-semibold text-charcoal-brand/60 md:max-w-[110px] md:text-sm">
-                    {partnerBenefit.name}
-                  </span>
-                )}
+                <img
+                  src={partnerBenefit.logoUrl}
+                  alt={partnerBenefit.name}
+                  className="w-auto object-contain"
+                  style={{
+                    maxWidth: `${partnerBenefit.logoDisplayWidth ?? 96}px`,
+                    maxHeight: `${partnerBenefit.logoDisplayHeight ?? 32}px`,
+                  }}
+                  draggable={false}
+                />
               </motion.div>
             )}
           </AnimatePresence>
@@ -217,9 +211,9 @@ export default function TopNav({ items, rightSlot, partnerBenefit }: TopNavProps
         </div>
       </header>
 
-      {/* Mobile partner banner — sits flush below the fixed nav, only on small screens */}
+      {/* Mobile partner banner — sits flush below the fixed nav, only when partner has a logo */}
       <AnimatePresence>
-        {partnerBenefit && (
+        {partnerBenefit?.logoUrl && (
           <motion.div
             key="mobile-partner-banner"
             className="md:hidden fixed left-0 right-0 z-40 flex items-center justify-center gap-2.5 px-4 py-1.5 border-b border-charcoal-brand/10"
@@ -230,22 +224,16 @@ export default function TopNav({ items, rightSlot, partnerBenefit }: TopNavProps
             transition={{ duration: 0.25, ease: 'easeOut' }}
           >
             <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-charcoal-brand/40">Booking via</span>
-            {partnerBenefit.logoUrl ? (
-              <img
-                src={partnerBenefit.logoUrl}
-                alt={partnerBenefit.name}
-                className="w-auto object-contain"
-                style={{
-                  maxWidth: `${partnerBenefit.logoDisplayWidth ?? 100}px`,
-                  maxHeight: `${partnerBenefit.logoDisplayHeight ?? 28}px`,
-                }}
-                draggable={false}
-              />
-            ) : (
-              <span className="text-[11px] font-semibold text-charcoal-brand/60 truncate max-w-[180px]">
-                {partnerBenefit.name}
-              </span>
-            )}
+            <img
+              src={partnerBenefit.logoUrl}
+              alt={partnerBenefit.name}
+              className="w-auto object-contain"
+              style={{
+                maxWidth: `${partnerBenefit.logoDisplayWidth ?? 100}px`,
+                maxHeight: `${partnerBenefit.logoDisplayHeight ?? 28}px`,
+              }}
+              draggable={false}
+            />
           </motion.div>
         )}
       </AnimatePresence>
