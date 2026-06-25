@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ChevronDown } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency.js';
 import { RentalIncludedIconsGrid } from '../public/RentalIncludedIconsGrid.js';
 
@@ -43,7 +45,10 @@ export function RentalSummaryCard({
   calendarUrl,
 }: Props) {
   const { t } = useTranslation();
+  const [isExpanded, setIsExpanded] = useState(false);
   const isTuktuk = vehicleModelName.toLowerCase().includes('tuktuk') || vehicleModelName.toLowerCase().includes('tuk tuk');
+  const hasExpandableContent = !isTuktuk || addonNames.length > 0 || !!transferType || charityDonation > 0;
+
   return (
     <div className="flex h-full w-full flex-col rounded-2xl bg-white p-6 shadow-sm text-left">
 
@@ -59,22 +64,10 @@ export function RentalSummaryCard({
           {t('confirmation.confirmed')}
         </span>
       </div>
-      <p className="mb-5 text-sm text-charcoal-brand/50 font-lato">Lola's Rentals Store</p>
+      <p className="mb-4 text-sm text-charcoal-brand/50 font-lato">Lola's Rentals Store</p>
 
-      {/* What's included — only shown for scooters, not tuktuks */}
-      {!isTuktuk && (
-        <div className="mb-5">
-          <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-charcoal-brand/50 font-lato">
-            {t('browse.whatsIncluded')}
-          </p>
-          <div className="rounded-xl border border-charcoal-brand/8 bg-sand-brand/30 px-3 py-4">
-            <RentalIncludedIconsGrid variant="card" showOptionals={false} />
-          </div>
-        </div>
-      )}
-
-      {/* Pickup / dropoff */}
-      <div className="mb-1 grid grid-cols-2 gap-4 border-t border-charcoal-brand/8 pt-5">
+      {/* Pickup / dropoff — always visible */}
+      <div className="mb-1 grid grid-cols-2 gap-4 border-t border-charcoal-brand/8 pt-4">
         <div>
           <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-charcoal-brand/50 font-lato">
             {t('common.pickUp')}
@@ -91,56 +84,88 @@ export function RentalSummaryCard({
         </div>
       </div>
 
-      {/* Add to Calendar link */}
+      {/* Add to Calendar link — always visible */}
       {calendarUrl && (
         <a
           href={calendarUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="mb-4 inline-flex items-center gap-1.5 text-xs font-bold text-gold-brand hover:underline font-lato"
+          className="mb-3 inline-flex items-center gap-1.5 text-xs font-bold text-gold-brand hover:underline font-lato"
         >
           <span>📅</span> + {t('common.addToCalendar')}
         </a>
       )}
 
-      {/* Add-ons */}
-      {addonNames.length > 0 && (
-        <div className="mb-4">
-          <p className="mb-1.5 text-[10px] font-black uppercase tracking-wider text-charcoal-brand/50 font-lato">{t('common.addOns')}</p>
-          <div className="flex flex-wrap gap-2">
-            {addonNames.map((n) => (
-              <span key={n} className="rounded-full bg-teal-brand/10 px-3 py-1 text-xs font-bold text-teal-brand font-lato">
-                {n}
-              </span>
-            ))}
+      {/* Expandable details — hidden on mobile by default, always shown on desktop */}
+      <div className={`${isExpanded ? 'block' : 'hidden'} md:block`}>
+
+        {/* What's included — only shown for scooters, not tuktuks */}
+        {!isTuktuk && (
+          <div className="mb-5 mt-1">
+            <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-charcoal-brand/50 font-lato">
+              {t('browse.whatsIncluded')}
+            </p>
+            <div className="rounded-xl border border-charcoal-brand/8 bg-sand-brand/30 px-3 py-4">
+              <RentalIncludedIconsGrid variant="card" showOptionals={false} />
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Add-ons */}
+        {addonNames.length > 0 && (
+          <div className="mb-4">
+            <p className="mb-1.5 text-[10px] font-black uppercase tracking-wider text-charcoal-brand/50 font-lato">{t('common.addOns')}</p>
+            <div className="flex flex-wrap gap-2">
+              {addonNames.map((n) => (
+                <span key={n} className="rounded-full bg-teal-brand/10 px-3 py-1 text-xs font-bold text-teal-brand font-lato">
+                  {n}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Transfer */}
+        {transferType && (
+          <div className="mb-4 rounded-xl border-l-4 border-gold-brand bg-gold-brand/10 p-4 space-y-1">
+            <p className="text-xs font-black uppercase tracking-wider text-charcoal-brand/60 font-lato">
+              {t('common.transfer')} —{' '}
+              {transferType === 'shared' ? t('common.sharedAirportVan') : transferType === 'tuktuk' ? t('common.privateTukTuk') : t('common.privateAirportVan')}
+            </p>
+            {flightNumber && <p className="text-sm font-bold text-charcoal-brand font-lato">{t('common.flight')}: {flightNumber}</p>}
+            {transferRoute && <p className="text-sm font-bold text-charcoal-brand font-lato">{t('common.route')}: {transferRoute}</p>}
+            {transferPrice > 0 && (
+              <p className="text-sm font-bold text-charcoal-brand font-lato">{t('common.transferTotal')}: {formatCurrency(transferPrice)}</p>
+            )}
+          </div>
+        )}
+
+        {/* Charity */}
+        {charityDonation > 0 && (
+          <div className="mb-4 flex items-center justify-between rounded-xl bg-teal-brand/5 px-4 py-3">
+            <span className="text-sm font-bold text-teal-brand font-lato">{t('common.donationToBePawsitive')} 🐾</span>
+            <span className="text-sm font-bold text-teal-brand font-lato">{formatCurrency(charityDonation)}</span>
+          </div>
+        )}
+
+      </div>
+
+      {/* Show / hide details toggle — mobile only */}
+      {hasExpandableContent && (
+        <button
+          type="button"
+          onClick={() => setIsExpanded((v) => !v)}
+          className="mb-3 flex items-center gap-1 self-start text-xs font-bold text-teal-brand md:hidden"
+        >
+          <ChevronDown
+            size={14}
+            className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+          />
+          {isExpanded ? 'Hide details' : "What's included"}
+        </button>
       )}
 
-      {/* Transfer */}
-      {transferType && (
-        <div className="mb-4 rounded-xl border-l-4 border-gold-brand bg-gold-brand/10 p-4 space-y-1">
-          <p className="text-xs font-black uppercase tracking-wider text-charcoal-brand/60 font-lato">
-            {t('common.transfer')} —{' '}
-            {transferType === 'shared' ? t('common.sharedAirportVan') : transferType === 'tuktuk' ? t('common.privateTukTuk') : t('common.privateAirportVan')}
-          </p>
-          {flightNumber && <p className="text-sm font-bold text-charcoal-brand font-lato">{t('common.flight')}: {flightNumber}</p>}
-          {transferRoute && <p className="text-sm font-bold text-charcoal-brand font-lato">{t('common.route')}: {transferRoute}</p>}
-          {transferPrice > 0 && (
-            <p className="text-sm font-bold text-charcoal-brand font-lato">{t('common.transferTotal')}: {formatCurrency(transferPrice)}</p>
-          )}
-        </div>
-      )}
-
-      {/* Charity */}
-      {charityDonation > 0 && (
-        <div className="mb-4 flex items-center justify-between rounded-xl bg-teal-brand/5 px-4 py-3">
-          <span className="text-sm font-bold text-teal-brand font-lato">{t('common.donationToBePawsitive')} 🐾</span>
-          <span className="text-sm font-bold text-teal-brand font-lato">{formatCurrency(charityDonation)}</span>
-        </div>
-      )}
-
-      {/* Rental days + Grand Total — pinned to bottom */}
+      {/* Rental days + Grand Total — always visible */}
       <div className="mt-auto border-t border-charcoal-brand/8 pt-4">
         {rentalDays > 0 && (
           <p className="mb-3 text-xs font-bold text-charcoal-brand/50 font-lato">
