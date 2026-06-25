@@ -51,9 +51,11 @@ function monthLabel(yyyyMM: string) {
 function describeDeal(p: Pick<AccommodationPartner, 'deal_type' | 'commission_type' | 'commission_value' | 'discount_type' | 'discount_value' | 'free_delivery'>) {
   const parts: string[] = [];
   if (p.deal_type === 'commission' || p.deal_type === 'combined' || p.deal_type === 'commission_delivery') {
-    parts.push(p.commission_type === 'percentage'
-      ? `${p.commission_value}% commission`
-      : `${formatPhp(p.commission_value)} commission`);
+    if (p.commission_value != null && p.commission_value > 0) {
+      parts.push(p.commission_type === 'percentage'
+        ? `${p.commission_value}% commission`
+        : `${formatPhp(p.commission_value)} commission`);
+    }
   }
   if (p.deal_type === 'discount' || p.deal_type === 'combined' || p.deal_type === 'discount_delivery') {
     if (p.discount_value != null && p.discount_type) {

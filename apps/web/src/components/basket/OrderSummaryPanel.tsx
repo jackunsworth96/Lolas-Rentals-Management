@@ -154,11 +154,7 @@ export function OrderSummaryPanel({
                 alt={partnerBenefit.name}
                 className="mt-0.5 h-8 w-auto max-w-[72px] shrink-0 rounded object-contain"
               />
-            ) : (
-              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-100">
-                <Hotel className="h-4 w-4 text-teal-600" aria-hidden />
-              </div>
-            )}
+            ) : null}
             <div>
               <p className="flex items-center gap-1.5 text-[12px] font-bold text-teal-800">
                 <Gift className="h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -182,11 +178,7 @@ export function OrderSummaryPanel({
                 alt={partnerBenefit.name}
                 className="mt-0.5 h-8 w-auto max-w-[72px] shrink-0 rounded object-contain"
               />
-            ) : (
-              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-charcoal-brand/10">
-                <Hotel className="h-4 w-4 text-charcoal-brand/40" aria-hidden />
-              </div>
-            )}
+            ) : null}
             <div>
               <p className="text-[12px] font-bold text-charcoal-brand">
                 You&apos;re booking via {partnerBenefit.name}

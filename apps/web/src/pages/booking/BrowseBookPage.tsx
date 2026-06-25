@@ -998,11 +998,7 @@ export default function BrowseBookPage() {
                           maxHeight: `${pb.logoDisplayHeight ?? 40}px`,
                         }}
                       />
-                    ) : (
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-charcoal-brand/40">
-                        {pb.name}
-                      </span>
-                    )}
+                    ) : null}
                     {/* Partner welcome copy */}
                     <p className="font-lato max-w-md text-sm leading-relaxed text-charcoal-brand/70">
                       {pb.welcomeMessage ?? (
