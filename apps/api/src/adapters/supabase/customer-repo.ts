@@ -10,6 +10,7 @@ interface CustomerRow {
   total_spent: number;
   notes: string | null;
   blacklisted: boolean;
+  whatsapp_review_opt_out: boolean;
 }
 
 function rowToCustomer(row: CustomerRow): Customer {
@@ -22,6 +23,7 @@ function rowToCustomer(row: CustomerRow): Customer {
     totalSpent: row.total_spent ?? 0,
     notes: row.notes,
     blacklisted: row.blacklisted ?? false,
+    whatsappReviewOptOut: row.whatsapp_review_opt_out ?? false,
   };
 }
 
@@ -35,6 +37,7 @@ function customerToRow(customer: Customer): Record<string, unknown> {
     total_spent: customer.totalSpent,
     notes: customer.notes,
     blacklisted: customer.blacklisted,
+    whatsapp_review_opt_out: customer.whatsappReviewOptOut,
   };
 }
 

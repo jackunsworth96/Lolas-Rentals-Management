@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { Search, X, Save, AlertTriangle, PawPrint, ShoppingBag, ClipboardList, FileSignature, Download, Mail, ChevronDown, ChevronUp, CheckCircle } from 'lucide-react';
+import { Search, X, Save, AlertTriangle, PawPrint, ShoppingBag, ClipboardList, FileSignature, Download, Mail, ChevronDown, ChevronUp, CheckCircle, MessageSquareOff } from 'lucide-react';
 import {
   useCustomers,
   useCustomer,
   useUpdateCustomer,
+  useSetCustomerReviewOptOut,
   useCustomerPendingCheckin,
   useCustomerDocuments,
   useSendCustomerDocument,
@@ -51,6 +52,7 @@ function CustomerDetailPanel({ customerId, onClose, onSaved }: CustomerDetailPan
   const { data: documents = [] } = useCustomerDocuments(customerId);
   const sendDocument = useSendCustomerDocument();
   const updateCustomer = useUpdateCustomer();
+  const setReviewOptOut = useSetCustomerReviewOptOut();
 
   const customer = data?.customer ?? null;
   const orders = data?.orders ?? [];
@@ -128,6 +130,12 @@ function CustomerDetailPanel({ customerId, onClose, onSaved }: CustomerDetailPan
     }
     setConfirmBlacklist(false);
     handleChange('blacklisted', value);
+  }
+
+  async function handleReviewOptOutToggle(value: boolean) {
+    if (!customerId) return;
+    await setReviewOptOut.mutateAsync({ id: customerId, whatsappReviewOptOut: value });
+    onSaved();
   }
 
   // Keyboard close
@@ -258,6 +266,27 @@ function CustomerDetailPanel({ customerId, onClose, onSaved }: CustomerDetailPan
                     </div>
                   </div>
                 )}
+
+                <div className="mt-4 flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <MessageSquareOff className="h-4 w-4 text-amber-500" />
+                    <span className="text-sm font-medium text-gray-700">Suppress review request</span>
+                  </div>
+                  <button
+                    onClick={() => void handleReviewOptOutToggle(!customer.whatsappReviewOptOut)}
+                    disabled={setReviewOptOut.isPending}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-60 ${
+                      customer.whatsappReviewOptOut ? 'bg-amber-500' : 'bg-gray-200'
+                    }`}
+                    aria-label="Suppress review request"
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                        customer.whatsappReviewOptOut ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
 
                 {saveError && (
                   <p className="mt-2 text-xs text-red-600">{saveError}</p>

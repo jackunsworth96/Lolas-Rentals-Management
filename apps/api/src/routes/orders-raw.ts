@@ -365,6 +365,7 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
         mobile: body.customerMobile,
         email: body.customerEmail?.toLowerCase() ?? null,
         notes: body.nationality ? `Nationality: ${body.nationality}` : null,
+        whatsapp_review_opt_out: false,
       });
       if (custErr) throw new Error(`Customer insert failed: ${custErr.message}`);
     }

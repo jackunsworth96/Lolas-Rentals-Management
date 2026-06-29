@@ -3,9 +3,22 @@ import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { Permission } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
+import { runPickupReminderJob } from '../jobs/pickup-reminder.job.js';
+import { runReturnReminderJob } from '../jobs/return-reminder.job.js';
+import { runReturnReminderTodayJob } from '../jobs/return-reminder-today.job.js';
+import { runPostRentalReviewJob } from '../jobs/post-rental-review.job.js';
 
 const router = Router();
 router.use(authenticate);
+
+const CUSTOMER_MESSAGE_JOBS = {
+  pickup_reminder_tomorrow: runPickupReminderJob,
+  return_reminder_tomorrow: runReturnReminderJob,
+  return_reminder_today: runReturnReminderTodayJob,
+  post_rental_review: runPostRentalReviewJob,
+} as const;
+
+type CustomerMessageJobName = keyof typeof CUSTOMER_MESSAGE_JOBS;
 
 /**
  * POST /api/dev-tools/reset
@@ -125,6 +138,57 @@ router.post(
       }
 
       res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
+ * POST /api/dev-tools/run-customer-message-job
+ *
+ * Manually runs one customer WhatsApp automation using the exact scheduled
+ * job code. Non-production only so production sends cannot be fired from Dev
+ * Tools by accident.
+ *
+ * Body: { "job": "pickup_reminder_tomorrow" }
+ */
+router.post(
+  '/run-customer-message-job',
+  requirePermission(Permission.EditSettings),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (process.env.NODE_ENV === 'production') {
+        res.status(403).json({
+          success: false,
+          error: {
+            code: 'PRODUCTION_DISABLED',
+            message: 'Manual customer message job triggers are disabled in production.',
+          },
+        });
+        return;
+      }
+
+      const { job } = req.body as { job?: string };
+      if (!job || !(job in CUSTOMER_MESSAGE_JOBS)) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'INVALID_JOB',
+            message: `job must be one of: ${Object.keys(CUSTOMER_MESSAGE_JOBS).join(', ')}`,
+          },
+        });
+        return;
+      }
+
+      await CUSTOMER_MESSAGE_JOBS[job as CustomerMessageJobName]();
+      res.json({
+        success: true,
+        data: {
+          job,
+          simulated: process.env.NODE_ENV === 'development',
+        },
+      });
     } catch (err) {
       next(err);
     }
