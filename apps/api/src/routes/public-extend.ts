@@ -8,6 +8,8 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { computeQuote } from '../use-cases/booking/compute-quote.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
 import { publicWebOriginFromEnv } from '../lib/public-web-url.js';
+import { logger } from '../lib/logger.js';
+import { sendRespondIoTemplateMessage } from '../services/respond-io-outbound.js';
 import {
   escapeIlike,
   extDayCount,
@@ -22,6 +24,13 @@ const EXTENSION_PAYMENT_ORIGIN = publicWebOriginFromEnv(
   process.env.WEB_URL,
   'http://localhost:3002',
 );
+const EXTENSION_TEMPLATE_CHANNEL_ID = Number(
+  process.env.RESPOND_IO_EXTENSION_TEMPLATE_CHANNEL_ID ?? process.env.RESPOND_IO_WHATSAPP_CHANNEL_ID ?? 501809,
+);
+const EXTENSION_TEMPLATE_NAME = process.env.RESPOND_IO_EXTENSION_TEMPLATE_NAME ?? 'extension_recieved';
+const EXTENSION_TEMPLATE_LANGUAGE = process.env.RESPOND_IO_EXTENSION_TEMPLATE_LANGUAGE ?? 'en';
+const EXTENSION_TEMPLATE_BODY =
+  "Hey {{1}}! Thanks so much for extending with us. More island time is always a good idea! 🌴\n\nYour new return date and time is {{2}}.\n\nYour extension has an outstanding balance of {{3}}. You're welcome to drop by and settle it with us, or we can send you a Wise payment link if that's easier.\n\nThanks again for extending. See you soon!";
 
 const extendLookupLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -49,6 +58,120 @@ function getDayBracketLabel(days: number): string {
 
 function buildExtensionPaymentUrl(orderReference: string): string {
   return `${EXTENSION_PAYMENT_ORIGIN}/book/extend/pay?ref=${encodeURIComponent(orderReference)}`;
+}
+
+function formatManilaDateTime(isoString: string): string {
+  return new Date(isoString).toLocaleString('en-PH', {
+    timeZone: 'Asia/Manila',
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
+
+function formatPhp(amount: number): string {
+  return `PHP ${amount.toLocaleString('en-PH', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+async function sendExtensionReceivedMessage({
+  orderReference,
+  email,
+  newDropoffDatetime,
+  outstandingBalance,
+}: {
+  orderReference: string;
+  email: string;
+  newDropoffDatetime: string;
+  outstandingBalance: number;
+}): Promise<void> {
+  const sb = getSupabaseClient();
+  const refVariants = orderReferenceLookupVariants(orderReference);
+  const trimmedEmail = email.trim().toLowerCase();
+
+  const { data: existingLog } = await sb
+    .from('extension_message_log')
+    .select('id')
+    .in('booking_reference', refVariants)
+    .eq('new_dropoff_datetime', newDropoffDatetime)
+    .limit(1);
+
+  if (existingLog && existingLog.length > 0) {
+    logger.info({ orderReference, newDropoffDatetime }, '[extend-whatsapp] Already sent - skipping');
+    return;
+  }
+
+  let contact:
+    | { bookingReference: string; customerName: string; customerMobile: string }
+    | null = null;
+
+  const { data: activeOrder } = await sb
+    .from('orders')
+    .select('booking_token, customers!inner(name, email, mobile)')
+    .in('booking_token', refVariants)
+    .maybeSingle();
+
+  if (activeOrder) {
+    const customer = Array.isArray(activeOrder.customers)
+      ? activeOrder.customers[0]
+      : activeOrder.customers;
+    const customerEmail = (customer?.email as string | null | undefined)?.trim().toLowerCase();
+    const name = (customer?.name as string | null | undefined)?.trim();
+    const mobile = (customer?.mobile as string | null | undefined)?.trim();
+    const ref = activeOrder.booking_token as string | null;
+    if (customerEmail === trimmedEmail && name && mobile && ref) {
+      contact = { bookingReference: ref, customerName: name, customerMobile: mobile };
+    }
+  }
+
+  if (!contact) {
+    const { data: rawOrder } = await sb
+      .from('orders_raw')
+      .select('order_reference, customer_name, customer_email, customer_mobile')
+      .in('order_reference', refVariants)
+      .ilike('customer_email', escapeIlike(trimmedEmail))
+      .maybeSingle();
+
+    const name = (rawOrder?.customer_name as string | null | undefined)?.trim();
+    const mobile = (rawOrder?.customer_mobile as string | null | undefined)?.trim();
+    const ref = rawOrder?.order_reference as string | null | undefined;
+    if (name && mobile && ref) {
+      contact = { bookingReference: ref, customerName: name, customerMobile: mobile };
+    }
+  }
+
+  if (!contact) {
+    logger.info({ orderReference, email }, '[extend-whatsapp] No customer mobile found - skipping');
+    return;
+  }
+
+  const result = await sendRespondIoTemplateMessage({
+    phone: contact.customerMobile,
+    channelId: EXTENSION_TEMPLATE_CHANNEL_ID,
+    templateName: EXTENSION_TEMPLATE_NAME,
+    languageCode: EXTENSION_TEMPLATE_LANGUAGE,
+    bodyText: EXTENSION_TEMPLATE_BODY,
+    parameters: [
+      contact.customerName,
+      formatManilaDateTime(newDropoffDatetime),
+      formatPhp(Math.max(0, outstandingBalance)),
+    ],
+    logContext: { ref: contact.bookingReference, newDropoffDatetime },
+  });
+
+  if (result.delivered) {
+    await sb.from('extension_message_log').insert({
+      booking_reference: contact.bookingReference,
+      new_dropoff_datetime: newDropoffDatetime,
+      sent_at: new Date().toISOString(),
+    });
+  }
+
+  logger.info(
+    { ref: contact.bookingReference, delivered: result.delivered },
+    result.delivered ? '[extend-whatsapp] Extension message sent' : '[extend-whatsapp] Extension message simulated',
+  );
 }
 
 // ── Public addon catalog (no auth — only returns id, name, price_one_time for active addons) ──
@@ -504,6 +627,18 @@ router.post('/confirm', extendConfirmLimiter, validateBody(PublicExtendConfirmSc
       return;
     }
     if (activeOutcome.kind === 'success') {
+      void sendExtensionReceivedMessage({
+        orderReference,
+        email: trimmedEmail,
+        newDropoffDatetime: activeOutcome.newDropoffDatetime,
+        outstandingBalance: activeOutcome.extensionCost,
+      }).catch((err) => {
+        logger.warn(
+          { orderReference, error: err instanceof Error ? err.message : String(err) },
+          '[extend-whatsapp] Failed to send active extension message',
+        );
+      });
+
       res.json({
         success: true,
         data: {
@@ -533,6 +668,18 @@ router.post('/confirm', extendConfirmLimiter, validateBody(PublicExtendConfirmSc
       return;
     }
     if (rawOutcome.kind === 'success') {
+      void sendExtensionReceivedMessage({
+        orderReference,
+        email: trimmedEmail,
+        newDropoffDatetime: rawOutcome.newDropoffDatetime,
+        outstandingBalance: rawOutcome.extensionCost,
+      }).catch((err) => {
+        logger.warn(
+          { orderReference, error: err instanceof Error ? err.message : String(err) },
+          '[extend-whatsapp] Failed to send raw extension message',
+        );
+      });
+
       res.json({
         success: true,
         data: {
@@ -606,6 +753,18 @@ staffRouter.post(
         return;
       }
       if (rawOutcome.kind === 'success') {
+        void sendExtensionReceivedMessage({
+          orderReference,
+          email: trimmedEmail,
+          newDropoffDatetime: rawOutcome.newDropoffDatetime,
+          outstandingBalance: isPaid ? 0 : rawOutcome.extensionCost,
+        }).catch((err) => {
+          logger.warn(
+            { orderReference, error: err instanceof Error ? err.message : String(err) },
+            '[extend-whatsapp] Failed to send staff raw extension message',
+          );
+        });
+
         res.json({ success: true, data: { success: true, newDropoffDatetime: rawOutcome.newDropoffDatetime, extensionCost: rawOutcome.extensionCost } });
         return;
       }
@@ -629,6 +788,18 @@ staffRouter.post(
         return;
       }
       if (activeOutcome.kind === 'success') {
+        void sendExtensionReceivedMessage({
+          orderReference,
+          email: trimmedEmail,
+          newDropoffDatetime: activeOutcome.newDropoffDatetime,
+          outstandingBalance: isPaid ? 0 : activeOutcome.extensionCost,
+        }).catch((err) => {
+          logger.warn(
+            { orderReference, error: err instanceof Error ? err.message : String(err) },
+            '[extend-whatsapp] Failed to send staff active extension message',
+          );
+        });
+
         res.json({
           success: true,
           data: {

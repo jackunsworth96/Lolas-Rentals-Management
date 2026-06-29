@@ -18,6 +18,7 @@ function toCustomerDto(row: Record<string, unknown>) {
     totalSpent: Number(row.total_spent ?? 0),
     notes: row.notes ?? null,
     blacklisted: row.blacklisted ?? false,
+    whatsappReviewOptOut: row.whatsapp_review_opt_out ?? false,
   };
 }
 
@@ -32,6 +33,10 @@ const PatchBodySchema = z.object({
   mobile: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
   blacklisted: z.boolean().optional(),
+});
+
+const ReviewOptOutBodySchema = z.object({
+  whatsappReviewOptOut: z.boolean(),
 });
 
 // GET /customers?storeId=&q=
@@ -238,6 +243,31 @@ router.patch('/:id', validateBody(PatchBodySchema), async (req, res, next) => {
   }
 });
 
+router.patch('/:id/review-message-opt-out', validateBody(ReviewOptOutBodySchema), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { whatsappReviewOptOut } = req.body as z.infer<typeof ReviewOptOutBodySchema>;
+    const sb = getSupabaseClient();
+
+    const { data, error } = await sb
+      .from('customers')
+      .update({ whatsapp_review_opt_out: whatsappReviewOptOut })
+      .eq('id', id)
+      .select('*')
+      .maybeSingle();
+
+    if (error) throw new Error(`review opt-out update failed: ${error.message}`);
+    if (!data) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Customer not found' } });
+      return;
+    }
+
+    res.json({ success: true, data: { customer: toCustomerDto(data as Record<string, unknown>) } });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /customers/lookup-or-create — finds a customer by email or creates one.
 // Used by the pre-booking check-in flow so staff can capture waivers and
 // inspections before a booking exists.
@@ -278,6 +308,7 @@ router.post('/lookup-or-create', validateBody(LookupOrCreateBodySchema), async (
         mobile: mobile?.trim() ?? null,
         total_spent: 0,
         blacklisted: false,
+        whatsapp_review_opt_out: false,
       })
       .select('*')
       .single();
