@@ -924,6 +924,7 @@ const EstablishmentCard = memo(function EstablishmentCard({ establishment: e, in
             DISCOUNT
           </span>
           <p className="text-white text-2xl font-bold leading-tight">{e.discount_headline}</p>
+          <p className="text-white/90 text-sm font-semibold mt-1 leading-snug">{displayName}</p>
           {e.discount_conditions && (
             <p className="text-white/70 text-xs mt-1 leading-snug">{e.discount_conditions}</p>
           )}
