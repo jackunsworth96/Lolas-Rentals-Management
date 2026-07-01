@@ -134,6 +134,7 @@ export async function processRawOrder(
       totalSpent: 0,
       notes: null,
       blacklisted: false,
+      whatsappReviewOptOut: false,
     };
   } else {
     // Refresh mutable fields from the latest input so the upsert

@@ -32,6 +32,7 @@ export interface CustomerSummary {
   totalBookings?: number;
   notes: string | null;
   blacklisted: boolean;
+  whatsappReviewOptOut: boolean;
   hasActiveOrder?: boolean;
 }
 
@@ -94,6 +95,20 @@ export function useUpdateCustomer() {
   return useMutation({
     mutationFn: ({ id, ...body }: { id: string } & Record<string, unknown>) =>
       api.patch<UpdateCustomerResult>(`/customers/${id}`, body),
+    onSuccess: (_data, variables) => {
+      void qc.invalidateQueries({ queryKey: ['customers'] });
+      void qc.invalidateQueries({ queryKey: ['customer', variables.id] });
+    },
+  });
+}
+
+export function useSetCustomerReviewOptOut() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, whatsappReviewOptOut }: { id: string; whatsappReviewOptOut: boolean }) =>
+      api.patch<{ customer: CustomerSummary }>(`/customers/${id}/review-message-opt-out`, {
+        whatsappReviewOptOut,
+      }),
     onSuccess: (_data, variables) => {
       void qc.invalidateQueries({ queryKey: ['customers'] });
       void qc.invalidateQueries({ queryKey: ['customer', variables.id] });

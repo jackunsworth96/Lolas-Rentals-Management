@@ -40,6 +40,8 @@ import { startFleetSummaryJob } from './jobs/fleet-summary.js';
 import { startTransferReminderJob } from './jobs/transfer-reminder.job.js';
 import { startDeliveryReminderJob } from './jobs/delivery-reminder.job.js';
 import { startReturnReminderJob } from './jobs/return-reminder.job.js';
+import { startReturnReminderTodayJob } from './jobs/return-reminder-today.job.js';
+import { startPickupReminderJob } from './jobs/pickup-reminder.job.js';
 import { startNinePmReturnReminderJob } from './jobs/nine-pm-return-reminder.job.js';
 import { startPostRentalReviewJob } from './jobs/post-rental-review.job.js';
 import { publicLimiter } from './middleware/rate-limit.js';
@@ -194,6 +196,8 @@ if (process.env.NODE_ENV !== 'test') {
     startTransferReminderJob();
     startDeliveryReminderJob();
     startReturnReminderJob();
+    startReturnReminderTodayJob();
+    startPickupReminderJob();
     startNinePmReturnReminderJob();
     startPostRentalReviewJob();
   });

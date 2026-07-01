@@ -29,6 +29,8 @@ interface ReminderCandidate {
   customerName: string;
   customerMobile: string;
   dropoffDatetime: string;
+  orderId: string | null;
+  hasNinePmReturnAddon: boolean;
 }
 
 interface RespondIoTemplatePayload {
@@ -55,7 +57,8 @@ const RETURN_REMINDER_TEMPLATE_CHANNEL_ID = 501809;
 const RETURN_REMINDER_TEMPLATE_NAME = 'return_reminder_tomorrow';
 const RETURN_REMINDER_TEMPLATE_LANGUAGE = 'en';
 const RETURN_REMINDER_TEMPLATE_BODY =
-  "Heyy {{1}}, we hope you have been enjoying the island! Just a polite reminder that you rental is due back tomorrow at {{2}}. If you'd like to extend, please feel free to visit our website at: https://www.lolasrentals.com/book/extend\n\nAny questions, just let us know!";
+  "Hey {{1}}, hope you’re enjoying the island! 🌴\n\nJust a friendly reminder that your rental is due back tomorrow at {{2}}.\n\nIf you’d like to extend, just reply here with how many extra days you’d like, and we’ll help you sort it out.\n\nAny questions, just message us!";
+const NINE_PM_RETURN_ADDON_ID = 9;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -149,7 +152,7 @@ async function sendRespondIoMessage(phone: string, payload: RespondIoTemplatePay
 
 // ── Main job ──────────────────────────────────────────────────────────────────
 
-async function runReturnReminderJob(): Promise<void> {
+export async function runReturnReminderJob(): Promise<void> {
   logger.info('[return-reminder] Running...');
 
   const sb = getSupabaseClient();
@@ -175,7 +178,7 @@ async function runReturnReminderJob(): Promise<void> {
 
   const { data: rawRows, error: rawErr } = await sb
     .from('orders_raw')
-    .select('order_reference, customer_name, customer_mobile, dropoff_datetime')
+    .select('order_reference, customer_name, customer_mobile, dropoff_datetime, addon_ids')
     .in('status', ACTIVE_STATUSES)
     .gte('dropoff_datetime', windowStart)
     .lte('dropoff_datetime', windowEnd);
@@ -189,7 +192,7 @@ async function runReturnReminderJob(): Promise<void> {
   const { data: itemRows, error: itemErr } = await sb
     .from('order_items')
     .select(
-      'dropoff_datetime, orders!inner(booking_token, status, customers!inner(name, mobile))',
+      'order_id, dropoff_datetime, orders!inner(booking_token, status, customers!inner(name, mobile))',
     )
     .gte('dropoff_datetime', windowStart)
     .lte('dropoff_datetime', windowEnd)
@@ -197,6 +200,27 @@ async function runReturnReminderJob(): Promise<void> {
 
   if (itemErr) {
     logger.warn({ error: itemErr.message }, '[return-reminder] order_items query failed');
+  }
+
+  const staffOrderIds = [
+    ...new Set((itemRows ?? []).map((row) => row.order_id as string | null).filter(Boolean)),
+  ];
+  const ninePmOrderIds = new Set<string>();
+
+  if (staffOrderIds.length > 0) {
+    const { data: addonRows, error: addonErr } = await sb
+      .from('order_addons')
+      .select('order_id')
+      .in('order_id', staffOrderIds)
+      .or('addon_name.ilike.%9pm%,addon_name.ilike.%21:00%,addon_name.ilike.%ninepm%');
+
+    if (addonErr) {
+      logger.warn({ error: addonErr.message }, '[return-reminder] order_addons query failed');
+    }
+
+    for (const addon of (addonRows ?? []) as Array<{ order_id: string }>) {
+      ninePmOrderIds.add(addon.order_id);
+    }
   }
 
   // ── Merge results ─────────────────────────────────────────────────────────
@@ -213,10 +237,14 @@ async function runReturnReminderJob(): Promise<void> {
       customerName:     name,
       customerMobile:   mobile,
       dropoffDatetime:  row.dropoff_datetime as string,
+      orderId:          null,
+      hasNinePmReturnAddon: Array.isArray(row.addon_ids)
+        && row.addon_ids.includes(NINE_PM_RETURN_ADDON_ID),
     });
   }
 
   for (const row of itemRows ?? []) {
+    const orderId = row.order_id as string | null;
     const order = Array.isArray(row.orders) ? row.orders[0] : row.orders;
     if (!order) continue;
     const customer = Array.isArray(order.customers) ? order.customers[0] : order.customers;
@@ -232,6 +260,8 @@ async function runReturnReminderJob(): Promise<void> {
       customerName:     name,
       customerMobile:   mobile,
       dropoffDatetime:  row.dropoff_datetime as string,
+      orderId,
+      hasNinePmReturnAddon: !!orderId && ninePmOrderIds.has(orderId),
     });
   }
 
@@ -278,7 +308,9 @@ async function runReturnReminderJob(): Promise<void> {
       continue;
     }
 
-    const returnTime = formatReturnTime(candidate.dropoffDatetime);
+    const returnTime = candidate.hasNinePmReturnAddon
+      ? '9:00 PM'
+      : formatReturnTime(candidate.dropoffDatetime);
     const payload    = buildReturnReminderTemplatePayload(candidate.customerName, returnTime);
 
     try {

@@ -47,10 +47,19 @@ const WHAT_IS_KEPT = [
   'Timesheets and payroll records',
 ];
 
+const CUSTOMER_MESSAGE_JOBS = [
+  { id: 'pickup_reminder_tomorrow', label: 'Pickup tomorrow' },
+  { id: 'return_reminder_tomorrow', label: 'Return tomorrow' },
+  { id: 'return_reminder_today', label: 'Return today' },
+  { id: 'post_rental_review', label: 'Post-rental review' },
+] as const;
+
 export default function DevToolsPage() {
   const [confirmText, setConfirmText] = useState('');
   const [understood, setUnderstood] = useState(false);
   const [summary, setSummary] = useState<ResetSummary | null>(null);
+  const [selectedJob, setSelectedJob] = useState<(typeof CUSTOMER_MESSAGE_JOBS)[number]['id']>('pickup_reminder_tomorrow');
+  const [jobResult, setJobResult] = useState<string | null>(null);
 
   const resetMutation = useMutation({
     mutationFn: () => api.post<{ data: ResetSummary }>('/dev-tools/reset', {}),
@@ -62,6 +71,14 @@ export default function DevToolsPage() {
   });
 
   const canReset = confirmText === CONFIRM_WORD && understood && !resetMutation.isPending;
+
+  const runCustomerMessageJob = useMutation({
+    mutationFn: () => api.post<{ job: string; simulated: boolean }>('/dev-tools/run-customer-message-job', { job: selectedJob }),
+    onSuccess: (res) => {
+      const data = res as unknown as { job: string; simulated: boolean };
+      setJobResult(`${data.job} completed${data.simulated ? ' in simulated mode' : ''}.`);
+    },
+  });
 
   function handleReset() {
     if (!canReset) return;
@@ -166,6 +183,44 @@ export default function DevToolsPage() {
             </p>
           )}
         </div>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white p-6">
+        <h2 className="text-lg font-bold text-gray-900">Customer Message Jobs</h2>
+        <p className="mt-1 text-sm text-gray-500">
+          Runs the scheduled job code manually. Available only outside production.
+        </p>
+
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+          <select
+            value={selectedJob}
+            onChange={(e) => {
+              setSelectedJob(e.target.value as typeof selectedJob);
+              setJobResult(null);
+            }}
+            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-400 focus:outline-none focus:ring-1 focus:ring-teal-400"
+          >
+            {CUSTOMER_MESSAGE_JOBS.map((job) => (
+              <option key={job.id} value={job.id}>{job.label}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => runCustomerMessageJob.mutate()}
+            disabled={runCustomerMessageJob.isPending}
+            className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {runCustomerMessageJob.isPending ? 'Running...' : 'Run Job'}
+          </button>
+        </div>
+
+        {jobResult && (
+          <p className="mt-3 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">{jobResult}</p>
+        )}
+        {runCustomerMessageJob.isError && (
+          <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+            Job failed: {(runCustomerMessageJob.error as Error).message}
+          </p>
+        )}
       </div>
 
       {/* Success summary */}
