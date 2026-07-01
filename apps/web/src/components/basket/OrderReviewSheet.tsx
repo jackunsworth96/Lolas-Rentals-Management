@@ -202,7 +202,7 @@ export function OrderReviewSheet({
                     Processing…
                   </span>
                 ) : (
-                  'Confirm & Place Order'
+                  'Confirm Order'
                 )}
               </button>
             </div>

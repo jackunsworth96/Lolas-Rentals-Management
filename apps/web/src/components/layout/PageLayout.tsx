@@ -42,6 +42,8 @@ export interface PageLayoutProps {
    * cover third-party chat.)
    */
   unclipLeftFloral?: boolean;
+  /** Hide the mobile "back to top" button (e.g. on pages with their own bottom-sheet CTAs). */
+  hideBackToTop?: boolean;
 }
 
 function useNavItems() {
@@ -72,6 +74,7 @@ export function PageLayout({
   contentBackground = 'sand',
   elevateFlorals = false,
   unclipLeftFloral = false,
+  hideBackToTop = false,
 }: PageLayoutProps) {
   const { pathname } = useLocation();
   const { t } = useTranslation();
@@ -406,6 +409,7 @@ export function PageLayout({
         </div>
       </FadeUpSection>
 
+      {!hideBackToTop && (
       <button
         onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
         className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-1/2 z-50 -translate-x-1/2 md:hidden flex items-center justify-center h-10 w-10 rounded-full bg-teal-brand text-white shadow-md transition-opacity duration-300"
@@ -428,6 +432,7 @@ export function PageLayout({
           <path d="M8 12V4M4 8l4-4 4 4" />
         </svg>
       </button>
+      )}
 
       <ClickSpark sparkColor="#FCBC5A" sparkSize={10} sparkRadius={14} sparkCount={8} duration={400} easing="ease-out" extraScale={1} />
 

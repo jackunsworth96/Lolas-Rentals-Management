@@ -899,7 +899,7 @@ export default function BasketPage() {
         title="Your Cart | Lola's Rentals"
         description="Review your vehicle selection and complete your Lola's Rentals booking for Siargao."
       />
-    <PageLayout title="Cart | Lola's Rentals">
+    <PageLayout title="Cart | Lola's Rentals" hideBackToTop>
       <div className="relative mx-auto max-w-[1100px] px-4">
         <HeroFloatingClouds variant="functional" />
         <div className="relative z-10 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
