@@ -460,12 +460,25 @@ export default function BasketPage() {
   // ── Partner referral benefit (read once on mount, recompute when dates change) ──
   const partnerBenefit = useMemo(() => getStoredPartnerBenefit(), []);
   const vehicleSubtotalForBenefit = basket.reduce((s, b) => s + b.dailyRate * rentalDays, 0);
+  // Derive singleModelId here (before appliedPartnerBenefit) so it can be used
+  // in the useMemo below without hitting a temporal dead zone error. The same
+  // value is also used later for add-on fetching.
+  const _basketModelIds = [...new Set(basket.map((b) => b.vehicleModelId))];
+  const singleModelId = _basketModelIds.length === 1 ? _basketModelIds[0] : null;
   // Pass the vehicle model ID when the basket contains a single model type so
   // per-vehicle overrides can be resolved. Mixed-model baskets fall back to
   // global partner terms (singleModelId is null when models differ).
   const appliedPartnerBenefit = useMemo(
-    () => computePartnerBenefit(partnerBenefit, vehicleSubtotalForBenefit, pickupDatetime, new Date(), singleModelId),
-    [partnerBenefit, vehicleSubtotalForBenefit, pickupDatetime, singleModelId],
+    () => computePartnerBenefit(
+      partnerBenefit,
+      vehicleSubtotalForBenefit,
+      pickupDatetime,
+      new Date(),
+      singleModelId,
+      pickupLocationId,
+      dropoffLocationId,
+    ),
+    [partnerBenefit, vehicleSubtotalForBenefit, pickupDatetime, singleModelId, pickupLocationId, dropoffLocationId],
   );
   const partnerRentalDiscount = appliedPartnerBenefit.applied ? appliedPartnerBenefit.rentalDiscount : 0;
   const partnerFreeDelivery = appliedPartnerBenefit.applied && appliedPartnerBenefit.freeDelivery;
@@ -568,8 +581,7 @@ export default function BasketPage() {
 
   const { toasts, pushToast } = useToast();
 
-  const basketModelIds = [...new Set(basket.map((b) => b.vehicleModelId))];
-  const singleModelId = basketModelIds.length === 1 ? basketModelIds[0] : null;
+  const basketModelIds = _basketModelIds;
 
   useEffect(() => {
     if (!storeId) return;

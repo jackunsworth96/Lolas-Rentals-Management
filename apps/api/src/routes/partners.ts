@@ -263,7 +263,7 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
     const sb = getSupabaseClient();
     const { data, error } = await sb
       .from('accommodation_partners')
-      .select('id, name, deal_type, discount_type, discount_value, free_delivery, advance_discount_days, early_bird_days, early_bird_discount_value, status, active, logo_url, welcome_message, logo_display_width, logo_display_height')
+      .select('id, name, deal_type, discount_type, discount_value, free_delivery, free_delivery_location_ids, advance_discount_days, early_bird_days, early_bird_discount_value, status, active, logo_url, welcome_message, logo_display_width, logo_display_height')
       .eq('slug', slug)
       .eq('status', 'active')
       .eq('active', true)
@@ -285,6 +285,7 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
       discount_type: 'percentage' | 'fixed' | null;
       discount_value: number | null;
       free_delivery: boolean;
+      free_delivery_location_ids: number[] | null;
       advance_discount_days: number | null;
       early_bird_days: number | null;
       early_bird_discount_value: number | null;
@@ -333,6 +334,7 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
         advanceDiscountDays: row.advance_discount_days,
         earlyBirdDays: row.early_bird_days,
         earlyBirdDiscountValue: row.early_bird_discount_value != null ? Number(row.early_bird_discount_value) : null,
+        freeDeliveryLocationIds: row.free_delivery_location_ids ?? null,
         logoUrl: row.logo_url ?? null,
         welcomeMessage: row.welcome_message ?? null,
         logoDisplayWidth: row.logo_display_width ?? null,
@@ -376,6 +378,7 @@ const PartnerBodySchema = z.object({
   logo_display_height: z.number().int().min(16).max(200).nullable().optional(),
   early_bird_days: z.number().int().min(1).max(365).nullable().optional(),
   early_bird_discount_value: z.number().min(0).nullable().optional(),
+  free_delivery_location_ids: z.array(z.number().int().positive()).nullable().optional(),
   store_id: z.string().min(1),
 });
 
@@ -452,6 +455,7 @@ router.post('/', edit, validateBody(PartnerBodySchema), async (req, res, next) =
         logo_display_height: body.logo_display_height ?? null,
         early_bird_days: body.early_bird_days ?? null,
         early_bird_discount_value: body.early_bird_discount_value ?? null,
+        free_delivery_location_ids: body.free_delivery_location_ids ?? null,
       })
       .select()
       .single();
@@ -492,6 +496,7 @@ router.put('/:id', edit, validateBody(PartnerBodySchema.partial().extend({ store
     if (body.logo_display_height !== undefined) updates.logo_display_height = body.logo_display_height ?? null;
     if (body.early_bird_days !== undefined) updates.early_bird_days = body.early_bird_days ?? null;
     if (body.early_bird_discount_value !== undefined) updates.early_bird_discount_value = body.early_bird_discount_value ?? null;
+    if (body.free_delivery_location_ids !== undefined) updates.free_delivery_location_ids = body.free_delivery_location_ids ?? null;
 
     const { data, error } = await sb
       .from('accommodation_partners')
@@ -559,6 +564,7 @@ router.post('/:id/approve', edit, validateBody(ApproveBodySchema), async (req, r
     if (body.logo_display_height !== undefined) updates.logo_display_height = body.logo_display_height ?? null;
     if (body.early_bird_days !== undefined) updates.early_bird_days = body.early_bird_days ?? null;
     if (body.early_bird_discount_value !== undefined) updates.early_bird_discount_value = body.early_bird_discount_value ?? null;
+    if (body.free_delivery_location_ids !== undefined) updates.free_delivery_location_ids = body.free_delivery_location_ids ?? null;
 
     const { data, error } = await sb
       .from('accommodation_partners')

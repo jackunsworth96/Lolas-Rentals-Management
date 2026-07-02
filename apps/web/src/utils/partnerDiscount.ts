@@ -34,6 +34,20 @@ function resolveClientTerms(
 }
 
 /**
+ * Returns true when both location IDs are permitted by the partner's
+ * free-delivery allowlist. When the allowlist is null/empty all locations qualify.
+ */
+function isLocationAllowed(
+  ids: number[] | null | undefined,
+  pickupLocationId?: number | null,
+  dropoffLocationId?: number | null,
+): boolean {
+  if (!ids || ids.length === 0) return true;
+  return (pickupLocationId != null && ids.includes(pickupLocationId)) &&
+         (dropoffLocationId != null && ids.includes(dropoffLocationId));
+}
+
+/**
  * Compute the partner benefit applied to a quote at display time. Returns
  * `applied: false` when the partner has an advance_discount_days rule and
  * the chosen pickup date is too soon — the caller can then surface the
@@ -41,6 +55,8 @@ function resolveClientTerms(
  *
  * When vehicleModelId is supplied, per-vehicle overrides are resolved first
  * with a fallback to the global partner terms.
+ * When pickupLocationId / dropoffLocationId are supplied the partner's
+ * free-delivery location allowlist is checked.
  */
 export function computePartnerBenefit(
   benefit: PublicPartnerBenefit | null,
@@ -48,6 +64,8 @@ export function computePartnerBenefit(
   pickupDatetime: string,
   now: Date = new Date(),
   vehicleModelId?: string | null,
+  pickupLocationId?: number | null,
+  dropoffLocationId?: number | null,
 ): AppliedPartnerBenefit {
   const empty: AppliedPartnerBenefit = {
     applied: false,
@@ -84,8 +102,9 @@ export function computePartnerBenefit(
 
   const isDiscountDeal = terms.dealType === 'discount' || terms.dealType === 'combined' || terms.dealType === 'discount_delivery';
   const isFreeDeliveryDeal =
-    terms.freeDelivery || terms.dealType === 'free_delivery' || terms.dealType === 'combined' ||
-    terms.dealType === 'commission_delivery' || terms.dealType === 'discount_delivery';
+    (terms.freeDelivery || terms.dealType === 'free_delivery' || terms.dealType === 'combined' ||
+    terms.dealType === 'commission_delivery' || terms.dealType === 'discount_delivery') &&
+    isLocationAllowed(benefit.freeDeliveryLocationIds, pickupLocationId, dropoffLocationId);
 
   // Determine advance days for early-bird check
   const pickup = pickupDatetime ? new Date(pickupDatetime) : null;

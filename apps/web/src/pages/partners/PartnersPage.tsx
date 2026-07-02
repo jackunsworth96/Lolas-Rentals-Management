@@ -18,6 +18,7 @@ import {
   useUpdatePartnerVehicleTerm,
   useDeletePartnerVehicleTerm,
   useVehicleModels,
+  useDeliveryLocations,
   type AccommodationPartner,
   type PartnerInput,
   type PartnerDealType,
@@ -443,6 +444,7 @@ const EMPTY_FORM = {
   logo_display_height: '' as string,
   early_bird_days: '' as string,
   early_bird_discount_value: '' as string,
+  free_delivery_location_ids: null as number[] | null,
   notes: '',
 };
 
@@ -451,6 +453,7 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
   const createPartner = useCreatePartner();
   const updatePartner = useUpdatePartner();
+  const { data: deliveryLocations = [] } = useDeliveryLocations(editing?.store_id ?? defaultStoreId);
 
   const isEdit = !!editing;
 
@@ -478,6 +481,7 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
         logo_display_height: editing.logo_display_height != null ? String(editing.logo_display_height) : '',
         early_bird_days: editing.early_bird_days != null ? String(editing.early_bird_days) : '',
         early_bird_discount_value: editing.early_bird_discount_value != null ? String(editing.early_bird_discount_value) : '',
+        free_delivery_location_ids: editing.free_delivery_location_ids ?? null,
         notes: editing.notes ?? '',
       });
       setSlugManuallyEdited(true);
@@ -537,6 +541,7 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
       logo_display_height: form.logo_display_height.trim() === '' ? null : Math.max(16, Math.min(200, Number(form.logo_display_height))),
       early_bird_days: form.early_bird_days.trim() === '' ? null : Math.max(1, Math.min(365, Number(form.early_bird_days))),
       early_bird_discount_value: form.early_bird_discount_value.trim() === '' ? null : Number(form.early_bird_discount_value),
+      free_delivery_location_ids: form.free_delivery_location_ids,
       notes: form.notes.trim() || null,
       telegram_chat_id: form.telegram_chat_id.trim() || null,
     };
@@ -558,6 +563,8 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
   const showCommissionFields = form.deal_type === 'commission' || form.deal_type === 'combined' || form.deal_type === 'commission_delivery';
   const showDiscountFields = form.deal_type === 'discount' || form.deal_type === 'combined' || form.deal_type === 'discount_delivery';
   const showFreeDeliveryNote = form.deal_type === 'free_delivery' || form.deal_type === 'combined' || form.deal_type === 'commission_delivery' || form.deal_type === 'discount_delivery';
+  const nonStoreLocations = deliveryLocations.filter((l) => l.locationType !== 'store');
+  const isAllLocations = form.free_delivery_location_ids == null;
 
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Partner' : 'Add Accommodation Partner'} size="lg">
@@ -788,9 +795,61 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
           )}
 
           {(showFreeDeliveryNote || form.free_delivery) && (
-            <p className="mt-2 text-xs text-gray-400">
-              Pickup &amp; collection delivery fees are waived for guests booking via this link.
-            </p>
+            <div className="mt-3 space-y-2">
+              <p className="text-xs text-gray-400">
+                Pickup &amp; collection delivery fees are waived for guests booking via this link.
+              </p>
+              <div>
+                <p className="text-xs font-medium text-gray-600 mb-1.5">Free delivery applies to</p>
+                <div className="flex gap-4 text-sm">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="fd-scope-create"
+                      checked={isAllLocations}
+                      onChange={() => setField('free_delivery_location_ids', null)}
+                    />
+                    <span>All locations</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="fd-scope-create"
+                      checked={!isAllLocations}
+                      onChange={() => setField('free_delivery_location_ids', [])}
+                    />
+                    <span>Specific locations only</span>
+                  </label>
+                </div>
+                {!isAllLocations && (
+                  <div className="mt-2 grid grid-cols-2 gap-1.5">
+                    {nonStoreLocations.map((loc) => {
+                      const checked = (form.free_delivery_location_ids ?? []).includes(loc.id);
+                      return (
+                        <label key={loc.id} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                          <input
+                            type="checkbox"
+                            className="h-3.5 w-3.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                            checked={checked}
+                            onChange={() => {
+                              const current = form.free_delivery_location_ids ?? [];
+                              setField(
+                                'free_delivery_location_ids',
+                                checked ? current.filter((id) => id !== loc.id) : [...current, loc.id],
+                              );
+                            }}
+                          />
+                          <span className="text-gray-700">{loc.name}</span>
+                        </label>
+                      );
+                    })}
+                    {nonStoreLocations.length === 0 && (
+                      <p className="text-xs text-gray-400 col-span-2">No delivery locations configured.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
           )}
 
           {showCommissionFields && form.commission_type === 'percentage' && (
@@ -951,6 +1010,7 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
   const { data: details } = usePartnerEnrollmentDetails(partner?.id ?? null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
+  const { data: deliveryLocations = [] } = useDeliveryLocations(partner?.store_id);
 
   const resetFromPartner = useCallback(() => {
     if (!partner) return;
@@ -976,6 +1036,7 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
       logo_display_height: partner.logo_display_height != null ? String(partner.logo_display_height) : '',
       early_bird_days: partner.early_bird_days != null ? String(partner.early_bird_days) : '',
       early_bird_discount_value: partner.early_bird_discount_value != null ? String(partner.early_bird_discount_value) : '',
+      free_delivery_location_ids: partner.free_delivery_location_ids ?? null,
       notes: partner.notes ?? '',
     });
     setSlugManuallyEdited(!!partner.slug);
@@ -1031,6 +1092,7 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
       logo_display_height: form.logo_display_height.trim() === '' ? null : Math.max(16, Math.min(200, Number(form.logo_display_height))),
       early_bird_days: form.early_bird_days.trim() === '' ? null : Math.max(1, Math.min(365, Number(form.early_bird_days))),
       early_bird_discount_value: form.early_bird_discount_value.trim() === '' ? null : Number(form.early_bird_discount_value),
+      free_delivery_location_ids: form.free_delivery_location_ids,
       notes: form.notes.trim() || null,
       telegram_chat_id: form.telegram_chat_id.trim() || null,
     };
@@ -1045,7 +1107,10 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
 
   const showCommissionFields = form.deal_type === 'commission' || form.deal_type === 'combined' || form.deal_type === 'commission_delivery';
   const showDiscountFields = form.deal_type === 'discount' || form.deal_type === 'combined' || form.deal_type === 'discount_delivery';
+  const showFreeDeliveryNote = form.deal_type === 'free_delivery' || form.deal_type === 'combined' || form.deal_type === 'commission_delivery' || form.deal_type === 'discount_delivery';
   const saving = approve.isPending;
+  const nonStoreLocations = deliveryLocations.filter((l) => l.locationType !== 'store');
+  const isAllLocations = form.free_delivery_location_ids == null;
 
   return (
     <Modal open={open} onClose={onClose} title={`Approve "${partner.name}"`} size="lg">
@@ -1248,6 +1313,61 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
                   onChange={(e) => setField('advance_discount_days', e.target.value)}
                   placeholder="None"
                 />
+              </div>
+            </div>
+          )}
+
+          {(showFreeDeliveryNote || form.free_delivery) && (
+            <div className="mt-3 space-y-2">
+              <div>
+                <p className="text-xs font-medium text-gray-600 mb-1.5">Free delivery applies to</p>
+                <div className="flex gap-4 text-sm">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="fd-scope-approve"
+                      checked={isAllLocations}
+                      onChange={() => setField('free_delivery_location_ids', null)}
+                    />
+                    <span>All locations</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="fd-scope-approve"
+                      checked={!isAllLocations}
+                      onChange={() => setField('free_delivery_location_ids', [])}
+                    />
+                    <span>Specific locations only</span>
+                  </label>
+                </div>
+                {!isAllLocations && (
+                  <div className="mt-2 grid grid-cols-2 gap-1.5">
+                    {nonStoreLocations.map((loc) => {
+                      const checked = (form.free_delivery_location_ids ?? []).includes(loc.id);
+                      return (
+                        <label key={loc.id} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                          <input
+                            type="checkbox"
+                            className="h-3.5 w-3.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                            checked={checked}
+                            onChange={() => {
+                              const current = form.free_delivery_location_ids ?? [];
+                              setField(
+                                'free_delivery_location_ids',
+                                checked ? current.filter((id) => id !== loc.id) : [...current, loc.id],
+                              );
+                            }}
+                          />
+                          <span className="text-gray-700">{loc.name}</span>
+                        </label>
+                      );
+                    })}
+                    {nonStoreLocations.length === 0 && (
+                      <p className="text-xs text-gray-400 col-span-2">No delivery locations configured.</p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}

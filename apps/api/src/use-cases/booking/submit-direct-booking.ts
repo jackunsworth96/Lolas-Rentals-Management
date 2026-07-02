@@ -210,6 +210,8 @@ export async function submitDirectBooking(
         dropoffFee: fullQuote.dropoffFee,
         advanceDaysFromNow,
         vehicleModelId: input.vehicleModelId,
+        pickupLocationId: input.pickupLocationId ?? null,
+        dropoffLocationId: input.dropoffLocationId ?? null,
       });
       rentalSubtotalForCommission = benefit.rentalSubtotal;
       effectivePickupFee = benefit.pickupFee;

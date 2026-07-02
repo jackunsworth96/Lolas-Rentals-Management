@@ -23,6 +23,7 @@ export interface AccommodationPartner {
   discount_type: PartnerDiscountType | null;
   discount_value: number | null;
   free_delivery: boolean;
+  free_delivery_location_ids: number[] | null;
   advance_discount_days: number | null;
   logo_url: string | null;
   early_bird_days: number | null;
@@ -181,6 +182,8 @@ export interface PublicPartnerBenefit {
   discountType: PartnerDiscountType | null;
   discountValue: number | null;
   freeDelivery: boolean;
+  /** When set, free delivery only applies when both pickup and dropoff are in this list. */
+  freeDeliveryLocationIds: number[] | null;
   advanceDiscountDays: number | null;
   earlyBirdDays: number | null;
   earlyBirdDiscountValue: number | null;
@@ -199,6 +202,26 @@ export async function fetchPublicPartnerBenefit(slug: string): Promise<PublicPar
   } catch {
     return null;
   }
+}
+
+// ── Delivery locations (for free-delivery allowlist UI) ───────────────────────
+
+export interface DeliveryLocation {
+  id: number;
+  name: string;
+  deliveryCost: number;
+  collectionCost: number;
+  locationType: string | null;
+}
+
+export function useDeliveryLocations(storeId?: string) {
+  const params = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  return useQuery<DeliveryLocation[]>({
+    queryKey: ['delivery-locations', storeId],
+    queryFn: () => api.get<DeliveryLocation[]>(`/config/locations${params}`),
+    staleTime: 5 * 60_000,
+    enabled: !!storeId,
+  });
 }
 
 // ── Vehicle models (for override dropdowns) ────────────────────────────────────

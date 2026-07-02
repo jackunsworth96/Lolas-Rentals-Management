@@ -28,6 +28,8 @@ export interface PartnerBenefitRow {
   discountType: PartnerDiscountType | null;
   discountValue: number | null;
   freeDelivery: boolean;
+  /** When set, free delivery only applies when both pickup and dropoff are in this list. */
+  freeDeliveryLocationIds: number[] | null;
   advanceDiscountDays: number | null;
   earlyBirdDays: number | null;
   earlyBirdDiscountValue: number | null;
@@ -65,7 +67,7 @@ export async function lookupActivePartnerBySlug(
   const sb = getSupabaseClient();
   const { data, error } = await sb
     .from('accommodation_partners')
-    .select('id, slug, name, store_id, deal_type, discount_type, discount_value, free_delivery, advance_discount_days, early_bird_days, early_bird_discount_value, status, active')
+    .select('id, slug, name, store_id, deal_type, discount_type, discount_value, free_delivery, free_delivery_location_ids, advance_discount_days, early_bird_days, early_bird_discount_value, status, active')
     .eq('slug', trimmed)
     .eq('status', 'active')
     .eq('active', true)
@@ -79,6 +81,7 @@ export async function lookupActivePartnerBySlug(
     discount_type: PartnerDiscountType | null;
     discount_value: number | null;
     free_delivery: boolean;
+    free_delivery_location_ids: number[] | null;
     advance_discount_days: number | null;
     early_bird_days: number | null;
     early_bird_discount_value: number | null;
@@ -127,6 +130,7 @@ export async function lookupActivePartnerBySlug(
     discountType: row.discount_type,
     discountValue: row.discount_value != null ? Number(row.discount_value) : null,
     freeDelivery: row.free_delivery,
+    freeDeliveryLocationIds: row.free_delivery_location_ids ?? null,
     advanceDiscountDays: row.advance_discount_days,
     earlyBirdDays: row.early_bird_days,
     earlyBirdDiscountValue: row.early_bird_discount_value != null ? Number(row.early_bird_discount_value) : null,
@@ -194,6 +198,21 @@ export function isBenefitEligibleForPickup(
   return advanceDays >= terms.advanceDiscountDays;
 }
 
+/**
+ * Returns true when the selected locations are permitted for free delivery.
+ * If no allowlist is configured (null or empty) all locations qualify.
+ * When an allowlist is set, BOTH pickup and dropoff must be included.
+ */
+function isLocationAllowed(
+  ids: number[] | null,
+  pickupLocationId?: number | null,
+  dropoffLocationId?: number | null,
+): boolean {
+  if (!ids || ids.length === 0) return true;
+  return (pickupLocationId != null && ids.includes(pickupLocationId)) &&
+         (dropoffLocationId != null && ids.includes(dropoffLocationId));
+}
+
 export interface ApplyBenefitInput {
   partner: PartnerBenefitRow;
   rentalSubtotal: number;
@@ -203,6 +222,9 @@ export interface ApplyBenefitInput {
   advanceDaysFromNow?: number | null;
   /** When provided, per-vehicle override terms are applied if they exist. */
   vehicleModelId?: string | null;
+  /** Location IDs used to check against the partner's free-delivery location allowlist. */
+  pickupLocationId?: number | null;
+  dropoffLocationId?: number | null;
 }
 
 export interface ApplyBenefitResult {
@@ -253,7 +275,11 @@ export function applyPartnerBenefit(input: ApplyBenefitInput): ApplyBenefitResul
     rentalSubtotal = Math.max(0, Math.round((rentalSubtotal - rentalDiscount) * 100) / 100);
   }
 
-  if (applyFreeDelivery) {
+  if (applyFreeDelivery && isLocationAllowed(
+    input.partner.freeDeliveryLocationIds,
+    input.pickupLocationId,
+    input.dropoffLocationId,
+  )) {
     deliveryDiscount = pickupFee + dropoffFee;
     pickupFee = 0;
     dropoffFee = 0;
