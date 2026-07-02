@@ -1,4 +1,4 @@
-import type { PublicPartnerBenefit } from '../api/partners.js';
+import type { PublicPartnerBenefit, PublicPartnerVehicleTerm } from '../api/partners.js';
 
 const MS_PER_DAY = 86_400_000;
 
@@ -18,16 +18,36 @@ export interface AppliedPartnerBenefit {
 }
 
 /**
+ * Resolve the effective guest-facing deal terms for a booking.
+ * When vehicleModelId is supplied and a per-vehicle override exists for that
+ * model the override is used; otherwise the global partner terms apply.
+ */
+function resolveClientTerms(
+  benefit: PublicPartnerBenefit,
+  vehicleModelId?: string | null,
+): PublicPartnerVehicleTerm | Pick<PublicPartnerBenefit, 'dealType' | 'discountType' | 'discountValue' | 'freeDelivery' | 'advanceDiscountDays' | 'earlyBirdDays' | 'earlyBirdDiscountValue'> {
+  if (vehicleModelId && benefit.vehicleTerms?.length) {
+    const override = benefit.vehicleTerms.find((vt) => vt.vehicleModelId === vehicleModelId);
+    if (override) return override;
+  }
+  return benefit;
+}
+
+/**
  * Compute the partner benefit applied to a quote at display time. Returns
  * `applied: false` when the partner has an advance_discount_days rule and
  * the chosen pickup date is too soon — the caller can then surface the
  * "advance booking required" hint to the customer.
+ *
+ * When vehicleModelId is supplied, per-vehicle overrides are resolved first
+ * with a fallback to the global partner terms.
  */
 export function computePartnerBenefit(
   benefit: PublicPartnerBenefit | null,
   rentalSubtotal: number,
   pickupDatetime: string,
   now: Date = new Date(),
+  vehicleModelId?: string | null,
 ): AppliedPartnerBenefit {
   const empty: AppliedPartnerBenefit = {
     applied: false,
@@ -39,30 +59,33 @@ export function computePartnerBenefit(
   };
 
   if (!benefit) return empty;
+
+  const terms = resolveClientTerms(benefit, vehicleModelId);
+
   // commission_delivery earns the partner a commission but still gives guests free delivery.
   // Allow it through — isFreeDeliveryDeal below will pick it up.
-  if (benefit.dealType === 'commission') return empty;
+  if (terms.dealType === 'commission') return empty;
 
   // Advance days gate (mirrors the server-side rule in lib/partner-benefit.ts)
-  if (benefit.advanceDiscountDays != null && benefit.advanceDiscountDays > 0) {
+  if (terms.advanceDiscountDays != null && terms.advanceDiscountDays > 0) {
     const pickup = pickupDatetime ? new Date(pickupDatetime) : null;
     if (!pickup || Number.isNaN(pickup.getTime())) {
-      return { ...empty, pendingReason: 'advance_days', daysShort: benefit.advanceDiscountDays };
+      return { ...empty, pendingReason: 'advance_days', daysShort: terms.advanceDiscountDays };
     }
     const advanceDays = (pickup.getTime() - now.getTime()) / MS_PER_DAY;
-    if (advanceDays < benefit.advanceDiscountDays) {
+    if (advanceDays < terms.advanceDiscountDays) {
       return {
         ...empty,
         pendingReason: 'advance_days',
-        daysShort: Math.max(1, Math.ceil(benefit.advanceDiscountDays - advanceDays)),
+        daysShort: Math.max(1, Math.ceil(terms.advanceDiscountDays - advanceDays)),
       };
     }
   }
 
-  const isDiscountDeal = benefit.dealType === 'discount' || benefit.dealType === 'combined' || benefit.dealType === 'discount_delivery';
+  const isDiscountDeal = terms.dealType === 'discount' || terms.dealType === 'combined' || terms.dealType === 'discount_delivery';
   const isFreeDeliveryDeal =
-    benefit.freeDelivery || benefit.dealType === 'free_delivery' || benefit.dealType === 'combined' ||
-    benefit.dealType === 'commission_delivery' || benefit.dealType === 'discount_delivery';
+    terms.freeDelivery || terms.dealType === 'free_delivery' || terms.dealType === 'combined' ||
+    terms.dealType === 'commission_delivery' || terms.dealType === 'discount_delivery';
 
   // Determine advance days for early-bird check
   const pickup = pickupDatetime ? new Date(pickupDatetime) : null;
@@ -71,17 +94,17 @@ export function computePartnerBenefit(
     : 0;
 
   const earlyBird =
-    benefit.earlyBirdDays != null &&
-    benefit.earlyBirdDiscountValue != null &&
-    advanceDays >= benefit.earlyBirdDays;
+    terms.earlyBirdDays != null &&
+    terms.earlyBirdDiscountValue != null &&
+    advanceDays >= terms.earlyBirdDays;
 
   const effectiveDiscountValue = earlyBird
-    ? benefit.earlyBirdDiscountValue!
-    : benefit.discountValue;
+    ? terms.earlyBirdDiscountValue!
+    : terms.discountValue;
 
   let rentalDiscount = 0;
-  if (isDiscountDeal && benefit.discountType && effectiveDiscountValue != null) {
-    if (benefit.discountType === 'percentage') {
+  if (isDiscountDeal && terms.discountType && effectiveDiscountValue != null) {
+    if (terms.discountType === 'percentage') {
       rentalDiscount = Math.round(rentalSubtotal * (effectiveDiscountValue / 100) * 100) / 100;
     } else {
       rentalDiscount = Math.min(rentalSubtotal, effectiveDiscountValue);
@@ -99,15 +122,16 @@ export function computePartnerBenefit(
 }
 
 /** Human-readable summary of the benefit for banner copy. */
-export function describeBenefit(benefit: PublicPartnerBenefit): string {
+export function describeBenefit(benefit: PublicPartnerBenefit, vehicleModelId?: string | null): string {
+  const terms = resolveClientTerms(benefit, vehicleModelId);
   const parts: string[] = [];
-  const discount = benefit.dealType === 'discount' || benefit.dealType === 'combined' || benefit.dealType === 'discount_delivery';
-  if (discount && benefit.discountValue != null && benefit.discountType) {
-    parts.push(benefit.discountType === 'percentage'
-      ? `${benefit.discountValue}% discount applied`
-      : `₱${benefit.discountValue.toLocaleString('en-PH')} discount applied`);
+  const discount = terms.dealType === 'discount' || terms.dealType === 'combined' || terms.dealType === 'discount_delivery';
+  if (discount && terms.discountValue != null && terms.discountType) {
+    parts.push(terms.discountType === 'percentage'
+      ? `${terms.discountValue}% discount applied`
+      : `₱${terms.discountValue.toLocaleString('en-PH')} discount applied`);
   }
-  if (benefit.freeDelivery || benefit.dealType === 'free_delivery' || benefit.dealType === 'combined' || benefit.dealType === 'commission_delivery' || benefit.dealType === 'discount_delivery') {
+  if (terms.freeDelivery || terms.dealType === 'free_delivery' || terms.dealType === 'combined' || terms.dealType === 'commission_delivery' || terms.dealType === 'discount_delivery') {
     parts.push('Free delivery included');
   }
   if (parts.length === 0) {

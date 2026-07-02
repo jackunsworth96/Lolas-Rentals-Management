@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import {
   Link2, Plus, Pencil, BarChart2, ToggleLeft, ToggleRight, Copy, CheckCheck,
-  ExternalLink, Send, Check, X, Clock,
+  ExternalLink, Send, Check, X, Clock, ChevronDown, ChevronUp, Trash2,
 } from 'lucide-react';
 import {
   usePartners,
@@ -13,10 +13,17 @@ import {
   useApprovePartner,
   useRejectPartner,
   usePartnerEnrollmentDetails,
+  usePartnerVehicleTerms,
+  useCreatePartnerVehicleTerm,
+  useUpdatePartnerVehicleTerm,
+  useDeletePartnerVehicleTerm,
+  useVehicleModels,
   type AccommodationPartner,
   type PartnerInput,
   type PartnerDealType,
   type PartnerDiscountType,
+  type PartnerVehicleTerm,
+  type PartnerVehicleTermInput,
 } from '../../api/partners.js';
 import { useUIStore } from '../../stores/ui-store.js';
 import { Badge } from '../../components/common/Badge.js';
@@ -68,6 +75,340 @@ function describeDeal(p: Pick<AccommodationPartner, 'deal_type' | 'commission_ty
     parts.push('Free delivery');
   }
   return parts.length > 0 ? parts.join(' · ') : '—';
+}
+
+// ── Vehicle overrides section ────────────────────────────────────────────────
+
+const DEAL_TYPES: { value: PartnerDealType; label: string }[] = [
+  { value: 'commission', label: 'Commission only' },
+  { value: 'discount', label: 'Guest discount' },
+  { value: 'free_delivery', label: 'Free delivery' },
+  { value: 'commission_delivery', label: 'Commission + free delivery' },
+  { value: 'discount_delivery', label: 'Discount + free delivery' },
+  { value: 'combined', label: 'Combined (commission + discount + delivery)' },
+];
+
+const EMPTY_VT_FORM: PartnerVehicleTermInput = {
+  vehicle_model_id: '',
+  deal_type: 'commission',
+  commission_type: 'percentage',
+  commission_value: 0,
+  advance_booking_days: null,
+  commission_includes_extensions: false,
+  discount_type: 'percentage',
+  discount_value: 0,
+  advance_discount_days: null,
+  early_bird_days: null,
+  early_bird_discount_value: null,
+  free_delivery: false,
+};
+
+interface VehicleOverridesSectionProps {
+  partnerId: string;
+  pushToast: (msg: string, type: 'success' | 'error') => void;
+}
+
+function VehicleOverridesSection({ partnerId, pushToast }: VehicleOverridesSectionProps) {
+  const { data: terms = [], isLoading } = usePartnerVehicleTerms(partnerId);
+  const { data: models = [] } = useVehicleModels();
+  const createVt = useCreatePartnerVehicleTerm(partnerId);
+  const updateVt = useUpdatePartnerVehicleTerm(partnerId);
+  const deleteVt = useDeletePartnerVehicleTerm(partnerId);
+
+  const [expanded, setExpanded] = useState(false);
+  const [addingNew, setAddingNew] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<PartnerVehicleTermInput>({ ...EMPTY_VT_FORM });
+
+  const usedModelIds = new Set(terms.map((t) => t.vehicle_model_id));
+  const availableModels = models.filter((m) => !usedModelIds.has(m.id));
+  const editingTerm = terms.find((t) => t.id === editingId) ?? null;
+  const availableModelsForEdit = editingTerm
+    ? models.filter((m) => !usedModelIds.has(m.id) || m.id === editingTerm.vehicle_model_id)
+    : availableModels;
+
+  function resetForm(source?: PartnerVehicleTerm) {
+    if (source) {
+      setForm({
+        vehicle_model_id: source.vehicle_model_id,
+        deal_type: source.deal_type,
+        commission_type: source.commission_type,
+        commission_value: source.commission_value ?? 0,
+        advance_booking_days: source.advance_booking_days,
+        commission_includes_extensions: source.commission_includes_extensions,
+        discount_type: source.discount_type ?? 'percentage',
+        discount_value: source.discount_value ?? 0,
+        advance_discount_days: source.advance_discount_days,
+        early_bird_days: source.early_bird_days,
+        early_bird_discount_value: source.early_bird_discount_value,
+        free_delivery: source.free_delivery,
+      });
+    } else {
+      setForm({ ...EMPTY_VT_FORM });
+    }
+  }
+
+  function setVtField<K extends keyof PartnerVehicleTermInput>(key: K, value: PartnerVehicleTermInput[K]) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function handleSave() {
+    if (!form.vehicle_model_id) { pushToast('Select a vehicle model', 'error'); return; }
+    try {
+      if (editingId) {
+        await updateVt.mutateAsync({ id: editingId, ...form });
+        pushToast('Override updated', 'success');
+        setEditingId(null);
+      } else {
+        await createVt.mutateAsync(form);
+        pushToast('Override added', 'success');
+        setAddingNew(false);
+      }
+      resetForm();
+    } catch (err) {
+      pushToast((err as Error).message ?? 'Failed to save override', 'error');
+    }
+  }
+
+  async function handleDelete(id: string) {
+    try {
+      await deleteVt.mutateAsync(id);
+      pushToast('Override removed', 'success');
+    } catch (err) {
+      pushToast((err as Error).message ?? 'Failed to remove override', 'error');
+    }
+  }
+
+  const showCommission = form.deal_type === 'commission' || form.deal_type === 'combined' || form.deal_type === 'commission_delivery';
+  const showDiscount = form.deal_type === 'discount' || form.deal_type === 'combined' || form.deal_type === 'discount_delivery';
+  const saving = createVt.isPending || updateVt.isPending;
+
+  function modelName(id: string) {
+    return models.find((m) => m.id === id)?.name ?? id;
+  }
+
+  function vtSummary(t: PartnerVehicleTerm) {
+    const parts: string[] = [];
+    if (t.deal_type === 'commission' || t.deal_type === 'combined' || t.deal_type === 'commission_delivery') {
+      if (t.commission_value != null && t.commission_value > 0) {
+        parts.push(t.commission_type === 'percentage' ? `${t.commission_value}% commission` : `₱${t.commission_value} commission`);
+      }
+    }
+    if (t.deal_type === 'discount' || t.deal_type === 'combined' || t.deal_type === 'discount_delivery') {
+      if (t.discount_value != null && t.discount_type) {
+        parts.push(t.discount_type === 'percentage' ? `${t.discount_value}% discount` : `₱${t.discount_value} discount`);
+      }
+    }
+    if (t.free_delivery || t.deal_type === 'free_delivery' || t.deal_type === 'combined' || t.deal_type === 'commission_delivery' || t.deal_type === 'discount_delivery') {
+      parts.push('Free delivery');
+    }
+    return parts.length > 0 ? parts.join(' · ') : DEAL_TYPES.find((d) => d.value === t.deal_type)?.label ?? t.deal_type;
+  }
+
+  const vtFormFields = (
+    <div className="space-y-3 pt-2">
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">Vehicle model *</label>
+        <select
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+          value={form.vehicle_model_id}
+          onChange={(e) => setVtField('vehicle_model_id', e.target.value)}
+        >
+          <option value="">Select model…</option>
+          {(editingTerm ? availableModelsForEdit : availableModels).map((m) => (
+            <option key={m.id} value={m.id}>{m.name}</option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">Deal type *</label>
+        <select
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+          value={form.deal_type}
+          onChange={(e) => setVtField('deal_type', e.target.value as PartnerDealType)}
+        >
+          {DEAL_TYPES.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+        </select>
+      </div>
+
+      {showCommission && (
+        <div className="grid grid-cols-3 gap-2">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Commission type</label>
+            <select
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={form.commission_type ?? 'percentage'}
+              onChange={(e) => setVtField('commission_type', e.target.value as 'fixed' | 'percentage')}
+            >
+              <option value="percentage">% rate</option>
+              <option value="fixed">₱ fixed</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">{form.commission_type === 'percentage' ? 'Rate (%)' : 'Amount (₱)'}</label>
+            <input
+              type="number" min="0" step={form.commission_type === 'percentage' ? '0.1' : '1'}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={form.commission_value ?? 0}
+              onChange={(e) => setVtField('commission_value', Number(e.target.value))}
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Advance (days)</label>
+            <input
+              type="number" min="0" max="365"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={form.advance_booking_days ?? ''}
+              onChange={(e) => setVtField('advance_booking_days', e.target.value === '' ? null : Number(e.target.value))}
+              placeholder="None"
+            />
+          </div>
+        </div>
+      )}
+
+      {showDiscount && (
+        <div className="grid grid-cols-3 gap-2">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Discount type</label>
+            <select
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={form.discount_type ?? 'percentage'}
+              onChange={(e) => setVtField('discount_type', e.target.value as PartnerDiscountType)}
+            >
+              <option value="percentage">%</option>
+              <option value="fixed">₱ fixed</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">{form.discount_type === 'percentage' ? 'Discount (%)' : 'Discount (₱)'}</label>
+            <input
+              type="number" min="0" step={form.discount_type === 'percentage' ? '0.1' : '1'}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={form.discount_value ?? 0}
+              onChange={(e) => setVtField('discount_value', Number(e.target.value))}
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Min advance (days)</label>
+            <input
+              type="number" min="0" max="365"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={form.advance_discount_days ?? ''}
+              onChange={(e) => setVtField('advance_discount_days', e.target.value === '' ? null : Number(e.target.value))}
+              placeholder="None"
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="flex gap-2 pt-1">
+        <button
+          type="button"
+          onClick={() => { setAddingNew(false); setEditingId(null); resetForm(); }}
+          className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => { void handleSave(); }}
+          className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : editingId ? 'Update override' : 'Add override'}
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="border-t border-gray-100 pt-4">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between text-sm font-medium text-gray-700 hover:text-teal-700"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <span>
+          Vehicle-specific overrides
+          {terms.length > 0 && (
+            <span className="ml-2 rounded-full bg-teal-100 px-2 py-0.5 text-[11px] font-semibold text-teal-700">
+              {terms.length}
+            </span>
+          )}
+        </span>
+        {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+      </button>
+
+      {expanded && (
+        <div className="mt-3 space-y-2">
+          <p className="text-[11px] text-gray-400">
+            Overrides apply to specific vehicle models. For models without an override the global deal terms above are used.
+          </p>
+
+          {isLoading && <p className="text-xs text-gray-400">Loading…</p>}
+
+          {terms.length > 0 && (
+            <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+              {terms.map((t) => (
+                <div key={t.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                  {editingId === t.id ? (
+                    <div className="w-full">{vtFormFields}</div>
+                  ) : (
+                    <>
+                      <div className="min-w-0 flex-1">
+                        <span className="font-medium text-gray-800">{modelName(t.vehicle_model_id)}</span>
+                        <span className="ml-2 text-xs text-gray-500">{vtSummary(t)}</span>
+                      </div>
+                      <div className="flex shrink-0 gap-1">
+                        <button
+                          type="button"
+                          onClick={() => { setEditingId(t.id); setAddingNew(false); resetForm(t); }}
+                          className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-teal-700"
+                          title="Edit override"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { void handleDelete(t.id); }}
+                          className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                          title="Remove override"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {addingNew && !editingId && (
+            <div className="rounded-lg border border-teal-200 bg-teal-50/40 p-3">
+              {vtFormFields}
+            </div>
+          )}
+
+          {!addingNew && !editingId && availableModels.length > 0 && (
+            <button
+              type="button"
+              onClick={() => { setAddingNew(true); resetForm(); }}
+              className="flex items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 py-2 text-xs font-medium text-gray-500 hover:border-teal-400 hover:text-teal-700 w-full justify-center"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add vehicle override
+            </button>
+          )}
+
+          {!addingNew && !editingId && availableModels.length === 0 && terms.length > 0 && (
+            <p className="text-[11px] text-gray-400">All active vehicle models have an override.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Partner form modal ──────────────────────────────────────────────────────
@@ -568,6 +909,16 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
             placeholder="Any agreement details, renewal dates, etc."
           />
         </div>
+
+        {isEdit && editing && (
+          <VehicleOverridesSection partnerId={editing.id} pushToast={pushToast} />
+        )}
+
+        {!isEdit && (
+          <p className="text-[11px] text-gray-400 border-t border-gray-100 pt-3">
+            Save the partner first, then re-open to configure vehicle-specific overrides.
+          </p>
+        )}
 
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">

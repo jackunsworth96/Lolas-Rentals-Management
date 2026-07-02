@@ -199,7 +199,7 @@ export async function submitDirectBooking(
     // rental subtotal and location fees if the partner is eligible.
     if (
       validatedPartner &&
-      isBenefitEligibleForPickup(validatedPartner, input.pickupDatetime)
+      isBenefitEligibleForPickup(validatedPartner, input.pickupDatetime, new Date(), input.vehicleModelId)
     ) {
       const advanceDaysFromNow =
         (new Date(input.pickupDatetime).getTime() - Date.now()) / 86_400_000;
@@ -209,6 +209,7 @@ export async function submitDirectBooking(
         pickupFee: fullQuote.pickupFee,
         dropoffFee: fullQuote.dropoffFee,
         advanceDaysFromNow,
+        vehicleModelId: input.vehicleModelId,
       });
       rentalSubtotalForCommission = benefit.rentalSubtotal;
       effectivePickupFee = benefit.pickupFee;

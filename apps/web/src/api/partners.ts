@@ -163,6 +163,18 @@ export function useSendMonthlyReport() {
 
 // ── Public benefit lookup (no auth) ───────────────────────────────────────────
 
+/** Guest-facing fields for a single per-vehicle override. */
+export interface PublicPartnerVehicleTerm {
+  vehicleModelId: string;
+  dealType: PartnerDealType;
+  discountType: PartnerDiscountType | null;
+  discountValue: number | null;
+  freeDelivery: boolean;
+  advanceDiscountDays: number | null;
+  earlyBirdDays: number | null;
+  earlyBirdDiscountValue: number | null;
+}
+
 export interface PublicPartnerBenefit {
   name: string;
   dealType: PartnerDealType;
@@ -176,6 +188,8 @@ export interface PublicPartnerBenefit {
   welcomeMessage: string | null;
   logoDisplayWidth: number | null;
   logoDisplayHeight: number | null;
+  /** Per-vehicle deal term overrides. Empty array when none are configured. */
+  vehicleTerms: PublicPartnerVehicleTerm[];
 }
 
 export async function fetchPublicPartnerBenefit(slug: string): Promise<PublicPartnerBenefit | null> {
@@ -185,4 +199,78 @@ export async function fetchPublicPartnerBenefit(slug: string): Promise<PublicPar
   } catch {
     return null;
   }
+}
+
+// ── Vehicle models (for override dropdowns) ────────────────────────────────────
+
+export interface VehicleModelOption {
+  id: string;
+  name: string;
+  type: string | null;
+}
+
+export function useVehicleModels() {
+  return useQuery<VehicleModelOption[]>({
+    queryKey: ['vehicle-models'],
+    queryFn: () => api.get<VehicleModelOption[]>('/partners/vehicle-models'),
+    staleTime: 5 * 60_000,
+  });
+}
+
+// ── Per-vehicle term overrides ─────────────────────────────────────────────────
+
+export interface PartnerVehicleTerm {
+  id: string;
+  partner_id: string;
+  vehicle_model_id: string;
+  deal_type: PartnerDealType;
+  commission_type: 'fixed' | 'percentage' | null;
+  commission_value: number | null;
+  advance_booking_days: number | null;
+  commission_includes_extensions: boolean;
+  discount_type: PartnerDiscountType | null;
+  discount_value: number | null;
+  advance_discount_days: number | null;
+  early_bird_days: number | null;
+  early_bird_discount_value: number | null;
+  free_delivery: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type PartnerVehicleTermInput = Omit<PartnerVehicleTerm, 'id' | 'partner_id' | 'created_at' | 'updated_at'>;
+
+export function usePartnerVehicleTerms(partnerId: string | null) {
+  return useQuery<PartnerVehicleTerm[]>({
+    queryKey: ['partner-vehicle-terms', partnerId],
+    queryFn: () => api.get<PartnerVehicleTerm[]>(`/partners/${partnerId}/vehicle-terms`),
+    enabled: !!partnerId,
+    staleTime: 30_000,
+  });
+}
+
+export function useCreatePartnerVehicleTerm(partnerId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: PartnerVehicleTermInput) =>
+      api.post<PartnerVehicleTerm>(`/partners/${partnerId}/vehicle-terms`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['partner-vehicle-terms', partnerId] }),
+  });
+}
+
+export function useUpdatePartnerVehicleTerm(partnerId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: Partial<PartnerVehicleTermInput> & { id: string }) =>
+      api.put<PartnerVehicleTerm>(`/partners/${partnerId}/vehicle-terms/${id}`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['partner-vehicle-terms', partnerId] }),
+  });
+}
+
+export function useDeletePartnerVehicleTerm(partnerId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/partners/${partnerId}/vehicle-terms/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['partner-vehicle-terms', partnerId] }),
+  });
 }

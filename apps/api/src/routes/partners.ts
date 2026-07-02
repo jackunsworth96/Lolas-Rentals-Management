@@ -263,7 +263,7 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
     const sb = getSupabaseClient();
     const { data, error } = await sb
       .from('accommodation_partners')
-      .select('name, deal_type, discount_type, discount_value, free_delivery, advance_discount_days, early_bird_days, early_bird_discount_value, status, active, logo_url, welcome_message, logo_display_width, logo_display_height')
+      .select('id, name, deal_type, discount_type, discount_value, free_delivery, advance_discount_days, early_bird_days, early_bird_discount_value, status, active, logo_url, welcome_message, logo_display_width, logo_display_height')
       .eq('slug', slug)
       .eq('status', 'active')
       .eq('active', true)
@@ -279,6 +279,7 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
     }
 
     const row = data as {
+      id: string;
       name: string;
       deal_type: 'commission' | 'discount' | 'free_delivery' | 'combined' | 'commission_delivery' | 'discount_delivery';
       discount_type: 'percentage' | 'fixed' | null;
@@ -292,6 +293,34 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
       logo_display_width: number | null;
       logo_display_height: number | null;
     };
+
+    // Fetch per-vehicle overrides — only guest-facing fields are exposed publicly
+    const { data: vtRows } = await sb
+      .from('partner_vehicle_terms')
+      .select('vehicle_model_id, deal_type, discount_type, discount_value, free_delivery, advance_discount_days, early_bird_days, early_bird_discount_value')
+      .eq('partner_id', row.id);
+
+    type VtRow = {
+      vehicle_model_id: string;
+      deal_type: string;
+      discount_type: string | null;
+      discount_value: number | null;
+      free_delivery: boolean;
+      advance_discount_days: number | null;
+      early_bird_days: number | null;
+      early_bird_discount_value: number | null;
+    };
+
+    const vehicleTerms = (vtRows ?? []).map((vt: VtRow) => ({
+      vehicleModelId: vt.vehicle_model_id,
+      dealType: vt.deal_type,
+      discountType: vt.discount_type ?? null,
+      discountValue: vt.discount_value != null ? Number(vt.discount_value) : null,
+      freeDelivery: vt.free_delivery,
+      advanceDiscountDays: vt.advance_discount_days,
+      earlyBirdDays: vt.early_bird_days,
+      earlyBirdDiscountValue: vt.early_bird_discount_value != null ? Number(vt.early_bird_discount_value) : null,
+    }));
 
     res.json({
       success: true,
@@ -308,6 +337,7 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
         welcomeMessage: row.welcome_message ?? null,
         logoDisplayWidth: row.logo_display_width ?? null,
         logoDisplayHeight: row.logo_display_height ?? null,
+        vehicleTerms,
       },
     });
   } catch (err) { next(err); }
@@ -795,6 +825,131 @@ router.post('/:id/send-monthly-report', edit, async (req, res, next) => {
     await sendTelegramAlert(lines.join('\n'), p.telegram_chat_id);
 
     res.json({ success: true, data: { totalBookings, commissionableBookings, totalCommission } });
+  } catch (err) { next(err); }
+});
+
+// ── GET /vehicle-models — list all active vehicle models (for override dropdowns) ──
+router.get('/vehicle-models', async (_req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+    const { data, error } = await sb
+      .from('vehicle_models')
+      .select('id, name, type')
+      .eq('is_active', true)
+      .order('name', { ascending: true });
+
+    if (error) throw new Error(`Failed to fetch vehicle models: ${error.message}`);
+    res.json({ success: true, data: data ?? [] });
+  } catch (err) { next(err); }
+});
+
+// ── Vehicle term override schema ──────────────────────────────────────────────
+
+const VehicleTermBodySchema = z.object({
+  vehicle_model_id: z.string().min(1).max(80),
+  deal_type: z.enum(['commission', 'discount', 'free_delivery', 'combined', 'commission_delivery', 'discount_delivery']),
+  commission_type: z.enum(['fixed', 'percentage']).nullable().optional(),
+  commission_value: z.number().min(0).nullable().optional(),
+  advance_booking_days: z.number().int().min(0).max(365).nullable().optional(),
+  commission_includes_extensions: z.boolean().optional(),
+  discount_type: z.enum(['percentage', 'fixed']).nullable().optional(),
+  discount_value: z.number().min(0).nullable().optional(),
+  advance_discount_days: z.number().int().min(0).max(365).nullable().optional(),
+  early_bird_days: z.number().int().min(1).max(365).nullable().optional(),
+  early_bird_discount_value: z.number().min(0).nullable().optional(),
+  free_delivery: z.boolean().optional(),
+});
+
+// ── GET /:id/vehicle-terms — list overrides for a partner ────────────────────
+router.get('/:id/vehicle-terms', async (req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+    const { data, error } = await sb
+      .from('partner_vehicle_terms')
+      .select('*')
+      .eq('partner_id', req.params.id)
+      .order('vehicle_model_id', { ascending: true });
+
+    if (error) throw new Error(`Failed to fetch vehicle terms: ${error.message}`);
+    res.json({ success: true, data: data ?? [] });
+  } catch (err) { next(err); }
+});
+
+// ── POST /:id/vehicle-terms — create an override ──────────────────────────────
+router.post('/:id/vehicle-terms', edit, validateBody(VehicleTermBodySchema), async (req, res, next) => {
+  try {
+    const body = req.body as z.infer<typeof VehicleTermBodySchema>;
+    const sb = getSupabaseClient();
+
+    const { data, error } = await sb
+      .from('partner_vehicle_terms')
+      .insert({
+        partner_id: req.params.id,
+        vehicle_model_id: body.vehicle_model_id,
+        deal_type: body.deal_type,
+        commission_type: body.commission_type ?? null,
+        commission_value: body.commission_value ?? null,
+        advance_booking_days: body.advance_booking_days ?? null,
+        commission_includes_extensions: body.commission_includes_extensions ?? false,
+        discount_type: body.discount_type ?? null,
+        discount_value: body.discount_value ?? null,
+        advance_discount_days: body.advance_discount_days ?? null,
+        early_bird_days: body.early_bird_days ?? null,
+        early_bird_discount_value: body.early_bird_discount_value ?? null,
+        free_delivery: body.free_delivery ?? false,
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to create vehicle term: ${error.message}`);
+    res.status(201).json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// ── PUT /:id/vehicle-terms/:vtId — update an override ────────────────────────
+router.put('/:id/vehicle-terms/:vtId', edit, validateBody(VehicleTermBodySchema.partial()), async (req, res, next) => {
+  try {
+    const body = req.body as Partial<z.infer<typeof VehicleTermBodySchema>>;
+    const sb = getSupabaseClient();
+
+    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (body.deal_type !== undefined) updates.deal_type = body.deal_type;
+    if (body.commission_type !== undefined) updates.commission_type = body.commission_type;
+    if (body.commission_value !== undefined) updates.commission_value = body.commission_value;
+    if (body.advance_booking_days !== undefined) updates.advance_booking_days = body.advance_booking_days;
+    if (body.commission_includes_extensions !== undefined) updates.commission_includes_extensions = body.commission_includes_extensions;
+    if (body.discount_type !== undefined) updates.discount_type = body.discount_type;
+    if (body.discount_value !== undefined) updates.discount_value = body.discount_value;
+    if (body.advance_discount_days !== undefined) updates.advance_discount_days = body.advance_discount_days;
+    if (body.early_bird_days !== undefined) updates.early_bird_days = body.early_bird_days;
+    if (body.early_bird_discount_value !== undefined) updates.early_bird_discount_value = body.early_bird_discount_value;
+    if (body.free_delivery !== undefined) updates.free_delivery = body.free_delivery;
+
+    const { data, error } = await sb
+      .from('partner_vehicle_terms')
+      .update(updates)
+      .eq('id', req.params.vtId)
+      .eq('partner_id', req.params.id)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to update vehicle term: ${error.message}`);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// ── DELETE /:id/vehicle-terms/:vtId — remove an override ─────────────────────
+router.delete('/:id/vehicle-terms/:vtId', edit, async (req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+    const { error } = await sb
+      .from('partner_vehicle_terms')
+      .delete()
+      .eq('id', req.params.vtId)
+      .eq('partner_id', req.params.id);
+
+    if (error) throw new Error(`Failed to delete vehicle term: ${error.message}`);
+    res.json({ success: true });
   } catch (err) { next(err); }
 });
 

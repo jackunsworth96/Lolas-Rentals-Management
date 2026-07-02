@@ -460,9 +460,12 @@ export default function BasketPage() {
   // ── Partner referral benefit (read once on mount, recompute when dates change) ──
   const partnerBenefit = useMemo(() => getStoredPartnerBenefit(), []);
   const vehicleSubtotalForBenefit = basket.reduce((s, b) => s + b.dailyRate * rentalDays, 0);
+  // Pass the vehicle model ID when the basket contains a single model type so
+  // per-vehicle overrides can be resolved. Mixed-model baskets fall back to
+  // global partner terms (singleModelId is null when models differ).
   const appliedPartnerBenefit = useMemo(
-    () => computePartnerBenefit(partnerBenefit, vehicleSubtotalForBenefit, pickupDatetime),
-    [partnerBenefit, vehicleSubtotalForBenefit, pickupDatetime],
+    () => computePartnerBenefit(partnerBenefit, vehicleSubtotalForBenefit, pickupDatetime, new Date(), singleModelId),
+    [partnerBenefit, vehicleSubtotalForBenefit, pickupDatetime, singleModelId],
   );
   const partnerRentalDiscount = appliedPartnerBenefit.applied ? appliedPartnerBenefit.rentalDiscount : 0;
   const partnerFreeDelivery = appliedPartnerBenefit.applied && appliedPartnerBenefit.freeDelivery;
