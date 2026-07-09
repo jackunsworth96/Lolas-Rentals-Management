@@ -17,7 +17,7 @@ import { formatManilaDate } from '../../utils/manila-date.js';
 import { publicWebOriginFromEnv } from '../../lib/public-web-url.js';
 import { getTelegramChatId, sendTelegramAlert } from '../../lib/telegram.js';
 import { logger } from '../../lib/logger.js';
-import { sendRespondIoTextMessage } from '../../services/respond-io-outbound.js';
+import { sendRespondIoTemplateMessage } from '../../services/respond-io-outbound.js';
 import {
   applyPartnerBenefit,
   isBenefitEligibleForPickup,
@@ -68,7 +68,24 @@ function httpError(message: string, statusCode: number): Error {
   return err;
 }
 
-function buildRespondIoBookingConfirmationMessage({
+const RESPOND_IO_BOOKING_TEMPLATE_CHANNEL_ID = Number(
+  process.env.RESPOND_IO_BOOKING_TEMPLATE_CHANNEL_ID ?? process.env.RESPOND_IO_WHATSAPP_CHANNEL_ID ?? 501809,
+);
+const RESPOND_IO_BOOKING_TEMPLATE_NAME = process.env.RESPOND_IO_BOOKING_TEMPLATE_NAME ?? 'booking_recieved';
+const RESPOND_IO_BOOKING_TEMPLATE_LANGUAGE = process.env.RESPOND_IO_BOOKING_TEMPLATE_LANGUAGE ?? 'en';
+export const RESPOND_IO_BOOKING_TEMPLATE_BODY = [
+  "Hi {{1}}, your Lola's Rentals booking is confirmed.",
+  '',
+  'Reference: {{2}}',
+  'Vehicle: {{3}}',
+  'Pickup: {{4}} - {{5}}',
+  'Return: {{6}} - {{7}}',
+  '',
+  'Please complete your waiver before pickup: {{8}}',
+  'We have also sent the full confirmation to your email.',
+].join('\n');
+
+function buildRespondIoBookingTemplateParameters({
   customerName,
   orderReference,
   vehicleName,
@@ -86,19 +103,18 @@ function buildRespondIoBookingConfirmationMessage({
   pickupLocation: string;
   dropoffLocation: string;
   waiverUrl: string;
-}): string {
+}): string[] {
   const firstName = customerName.trim().split(/\s+/)[0] || customerName;
   return [
-    `Hi ${firstName}, your Lola's Rentals booking is confirmed.`,
-    '',
-    `Reference: ${orderReference}`,
-    `Vehicle: ${vehicleName}`,
-    `Pickup: ${pickupDatetime} - ${pickupLocation}`,
-    `Return: ${dropoffDatetime} - ${dropoffLocation}`,
-    '',
-    `You can complete your waiver here before pickup: ${waiverUrl}`,
-    'We have also sent the full confirmation to your email.',
-  ].join('\n');
+    firstName,
+    orderReference,
+    vehicleName,
+    pickupDatetime,
+    pickupLocation,
+    dropoffDatetime,
+    dropoffLocation,
+    waiverUrl,
+  ];
 }
 
 export interface SubmitDirectBookingResult {
@@ -183,7 +199,7 @@ export async function submitDirectBooking(
     // rental subtotal and location fees if the partner is eligible.
     if (
       validatedPartner &&
-      isBenefitEligibleForPickup(validatedPartner, input.pickupDatetime)
+      isBenefitEligibleForPickup(validatedPartner, input.pickupDatetime, new Date(), input.vehicleModelId)
     ) {
       const advanceDaysFromNow =
         (new Date(input.pickupDatetime).getTime() - Date.now()) / 86_400_000;
@@ -193,6 +209,9 @@ export async function submitDirectBooking(
         pickupFee: fullQuote.pickupFee,
         dropoffFee: fullQuote.dropoffFee,
         advanceDaysFromNow,
+        vehicleModelId: input.vehicleModelId,
+        pickupLocationId: input.pickupLocationId ?? null,
+        dropoffLocationId: input.dropoffLocationId ?? null,
       });
       rentalSubtotalForCommission = benefit.rentalSubtotal;
       effectivePickupFee = benefit.pickupFee;
@@ -428,9 +447,13 @@ export async function submitDirectBooking(
     });
 
     if (input.customerMobile) {
-      void sendRespondIoTextMessage({
+      void sendRespondIoTemplateMessage({
         phone: input.customerMobile,
-        text: buildRespondIoBookingConfirmationMessage({
+        channelId: RESPOND_IO_BOOKING_TEMPLATE_CHANNEL_ID,
+        templateName: RESPOND_IO_BOOKING_TEMPLATE_NAME,
+        languageCode: RESPOND_IO_BOOKING_TEMPLATE_LANGUAGE,
+        bodyText: RESPOND_IO_BOOKING_TEMPLATE_BODY,
+        parameters: buildRespondIoBookingTemplateParameters({
           customerName: input.customerName,
           orderReference,
           vehicleName,

@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Check, Clipboard, FileSignature, CalendarPlus } from 'lucide-react';
-import { motion } from 'framer-motion';
 import { api } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
 import { RentalSummaryCard } from '../../components/confirmation/RentalSummaryCard.js';
@@ -14,7 +13,7 @@ import { SEO } from '../../components/seo/SEO.js';
 import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
 
 import lolaVideo from '../../assets/Checkout_Lola.mp4';
-import { WHATSAPP_NUMBER, WHATSAPP_URL } from '../../config/contact.js';
+import { WHATSAPP_URL } from '../../config/contact.js';
 import { phoneIcon, locationIcon } from '../../components/public/customerContactIcons.js';
 
 interface ConfirmationState {
@@ -63,6 +62,8 @@ export default function ConfirmationPage() {
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [activeStep, setActiveStep] = useState(0);
+  const carouselRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { resetBookingSession(); }, [resetBookingSession]);
 
@@ -116,6 +117,18 @@ export default function ConfirmationPage() {
     );
   }
 
+  useEffect(() => {
+    const el = carouselRef.current;
+    if (!el) return;
+    const handleScroll = () => {
+      const cardWidth = el.scrollWidth / 4;
+      const newStep = Math.round(el.scrollLeft / cardWidth);
+      setActiveStep(Math.min(newStep, 3));
+    };
+    el.addEventListener('scroll', handleScroll, { passive: true });
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, []);
+
   if (!state) return null;
 
   const refDisplay = state.orderReferences.join(' · ');
@@ -130,8 +143,6 @@ export default function ConfirmationPage() {
       setTimeout(() => setCopied(false), 2000);
     } catch { /* clipboard not available */ }
   }
-
-  const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(`Hi Lola's! My booking ref is ${refDisplay}`)}`;
 
   return (
     <PageLayout title={t('confirmation.pageTitle')} showFloralRight={false}>
@@ -178,17 +189,17 @@ export default function ConfirmationPage() {
 
           {/* ── HERO ── */}
           <FadeUpSection>
-            <div className="mb-10 flex flex-col items-center text-center">
+            <div className="mb-4 flex flex-col items-center text-center sm:mb-6">
               {/* Green checkmark circle */}
-              <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-green-500 shadow-lg shadow-green-200">
-                <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-green-500 shadow-lg shadow-green-200">
+                <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
               </div>
 
               {/* Confirmed pill */}
               <div
-                className="mb-5 inline-flex items-center gap-1.5 whitespace-nowrap"
+                className="mb-3 inline-flex items-center gap-1.5 whitespace-nowrap"
                 style={{
                   backgroundColor: '#FCBC5A',
                   color: '#363737',
@@ -206,15 +217,15 @@ export default function ConfirmationPage() {
               </div>
 
               {/* Headline */}
-              <h1 className="mb-2 font-headline text-5xl font-black leading-tight tracking-tight text-teal-brand sm:text-6xl">
+              <h1 className="mb-1 font-headline text-4xl font-black leading-tight tracking-tight text-teal-brand sm:text-5xl md:text-6xl">
                 {t('confirmation.seeYouInSiargao')}
               </h1>
-              <p className="mb-6 text-charcoal-brand/60 font-lato">
+              <p className="mb-3 text-charcoal-brand/60 font-lato">
                 {t('confirmation.scooterReady')}
               </p>
 
               {/* Reference number */}
-              <div className="mb-4 flex flex-col items-center">
+              <div className="mb-2 flex flex-col items-center">
                 <span className="mb-2 text-[10px] font-black uppercase tracking-widest text-charcoal-brand/50 font-lato">
                   {t('confirmation.yourReference')}
                 </span>
@@ -253,46 +264,21 @@ export default function ConfirmationPage() {
                 {t('confirmation.receiptSentTo')} <span className="text-charcoal-brand">{state.customerEmail}</span>
               </p>
 
-              {/* Scroll prompt — nudges users toward the waiver section below */}
-              <motion.button
-                type="button"
-                onClick={() => window.scrollBy({ top: window.innerHeight * 0.75, behavior: 'smooth' })}
-                aria-label={t('confirmation.scrollToWaiver')}
-                animate={{ y: [0, 8, 0] }}
-                transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-                whileHover={{ scale: 1.15 }}
-                whileTap={{ scale: 0.92 }}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 4,
-                  marginTop: 32,
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: '#00577C',
-                  opacity: 0.7,
-                  padding: 0,
-                }}
-              >
-                <span className="font-lato" style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-                  {t('confirmation.completeWaiverBelow')}
-                </span>
-                <svg
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </motion.button>
+              {/* Waiver CTA — visible above the fold on all screen sizes */}
+              {state.orderReferences?.[0] && (
+                <div className="mt-5 w-full max-w-xs">
+                  <Link
+                    to={`/waiver/${state.orderReferences[0]}`}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-gold-brand py-3.5 px-6 font-lato text-sm font-black text-charcoal-brand shadow-sm transition-all hover:brightness-105 active:scale-[0.98]"
+                  >
+                    <FileSignature size={16} className="shrink-0" />
+                    {t('confirmation.completeYourWaiver')}
+                  </Link>
+                  <p className="mt-1.5 text-center text-[11px] text-charcoal-brand/50 font-lato">
+                    {t('confirmation.waiverSubtext')}
+                  </p>
+                </div>
+              )}
             </div>
           </FadeUpSection>
 
@@ -316,35 +302,6 @@ export default function ConfirmationPage() {
                       </p>
                     </div>
                   )}
-
-                  {/* Waiver CTA */}
-                  {state.orderReferences?.[0] && (
-                    <>
-                      <Link
-                        to={`/waiver/${state.orderReferences[0]}`}
-                        className="mb-1 flex w-full items-center justify-center gap-2 rounded-xl bg-gold-brand py-3 px-5 font-lato text-sm font-black text-charcoal-brand shadow-sm transition-all hover:brightness-105 active:scale-[0.98]"
-                      >
-                        <FileSignature size={16} className="shrink-0" />
-                        {t('confirmation.completeYourWaiver')}
-                      </Link>
-                      <p className="mb-4 text-center text-[11px] text-charcoal-brand/50 font-lato">
-                        {t('confirmation.waiverSubtext')}
-                      </p>
-                    </>
-                  )}
-
-                  {/* WhatsApp */}
-                  <a
-                    href={whatsappUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#25D366] py-3 px-5 font-lato text-sm font-black text-white shadow-sm transition-all hover:brightness-105 active:scale-[0.98]"
-                  >
-                    <svg viewBox="0 0 24 24" width={16} height={16} fill="currentColor" aria-hidden className="shrink-0">
-                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
-                    </svg>
-                    {t('confirmation.sendRefWhatsapp')}
-                  </a>
 
                   {/* Add to Calendar */}
                   {calendarUrl && (
@@ -425,77 +382,103 @@ export default function ConfirmationPage() {
               <h2 className="mb-5 flex items-center gap-2 font-headline text-2xl font-black text-charcoal-brand">
                 <span className="text-xl">⏱</span> {t('confirmation.whatToDoNext')}
               </h2>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
 
-                {/* 1 — Waiver */}
-                <div className="relative rounded-2xl bg-white p-4 shadow-sm">
-                  <div className="mb-3 flex items-center justify-between">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-charcoal-brand text-xs font-black text-white">1</span>
-                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-amber-600">{t('confirmation.doNow')}</span>
-                  </div>
-                  <span className="mb-2 block text-2xl">📋</span>
-                  <p className="mb-1 font-headline text-sm font-black text-charcoal-brand leading-tight">{t('confirmation.completeYourWaiver')}</p>
-                  <p className="mb-3 text-xs text-charcoal-brand/60 font-lato leading-relaxed">
-                    {t('confirmation.waiverDescription')}
-                  </p>
-                  {state.orderReferences?.[0] && (
-                    <Link to={`/waiver/${state.orderReferences[0]}`} className="text-xs font-bold text-gold-brand hover:underline">
-                      {t('confirmation.startWaiver')}
-                    </Link>
-                  )}
-                </div>
+              {/* Carousel on mobile, 4-col grid on desktop */}
+              <div className="-mx-4 md:mx-0">
+                <div
+                  ref={carouselRef}
+                  className="flex gap-3 overflow-x-auto snap-x snap-mandatory scroll-smooth px-4 pb-3 md:grid md:grid-cols-4 md:overflow-visible md:px-0 md:pb-0"
+                  style={{ scrollbarWidth: 'none' }}
+                >
 
-                {/* 2 — Find Us */}
-                <div className="rounded-2xl bg-white p-4 shadow-sm">
-                  <div className="mb-3">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-charcoal-brand text-xs font-black text-white">2</span>
-                  </div>
-                  <img src={locationIcon} alt="" className="mb-2 h-8 w-8 object-contain" />
-                  <p className="mb-1 font-headline text-sm font-black text-charcoal-brand leading-tight">{t('confirmation.findUs')}</p>
-                  <p className="mb-3 text-xs text-charcoal-brand/60 font-lato leading-relaxed">
-                    {t('confirmation.findUsDescription')}
-                  </p>
-                  <a
-                    href="https://maps.google.com/?q=Tourism+Rd+Catangnan+General+Luna+Siargao"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs font-bold text-gold-brand hover:underline"
-                  >
-                    {t('confirmation.getDirections')}
-                  </a>
-                </div>
-
-                {/* 3 — Pick Up */}
-                <div className="rounded-2xl bg-white p-4 shadow-sm">
-                  <div className="mb-3">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-charcoal-brand text-xs font-black text-white">3</span>
-                  </div>
-                  <span className="mb-2 block text-2xl">🛵</span>
-                  <p className="mb-1 font-headline text-sm font-black text-charcoal-brand leading-tight">{t('confirmation.pickUpYourScooter')}</p>
-                  <p className="mb-3 text-xs text-charcoal-brand/60 font-lato leading-relaxed">
-                    {t('confirmation.pickupInstructions')}
-                  </p>
-                  {state.pickupDatetime && (
-                    <p className="text-xs font-bold text-teal-brand">
-                      {new Date(state.pickupDatetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })},{' '}
-                      {new Date(state.pickupDatetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                  {/* 1 — Waiver */}
+                  <div className="relative snap-center shrink-0 w-[78vw] sm:w-[55vw] md:w-auto rounded-2xl bg-white p-4 shadow-sm">
+                    <div className="mb-3 flex items-center justify-between">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-charcoal-brand text-xs font-black text-white">1</span>
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-amber-600">{t('confirmation.doNow')}</span>
+                    </div>
+                    <span className="mb-2 block text-2xl">📋</span>
+                    <p className="mb-1 font-headline text-sm font-black text-charcoal-brand leading-tight">{t('confirmation.completeYourWaiver')}</p>
+                    <p className="mb-3 text-xs text-charcoal-brand/60 font-lato leading-relaxed">
+                      {t('confirmation.waiverDescription')}
                     </p>
-                  )}
-                </div>
-
-                {/* 4 — Explore */}
-                <div className="rounded-2xl bg-white p-4 shadow-sm">
-                  <div className="mb-3">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-teal-brand text-xs font-black text-white">4</span>
+                    {state.orderReferences?.[0] && (
+                      <Link to={`/waiver/${state.orderReferences[0]}`} className="text-xs font-bold text-gold-brand hover:underline">
+                        {t('confirmation.startWaiver')}
+                      </Link>
+                    )}
                   </div>
-                  <span className="mb-2 block text-2xl">🏄</span>
-                  <p className="mb-1 font-headline text-sm font-black text-charcoal-brand leading-tight">{t('confirmation.exploreSiargao')}</p>
-                  <p className="mb-3 text-xs text-charcoal-brand/60 font-lato leading-relaxed">
-                    {t('confirmation.exploreDescription')}
-                  </p>
-                  <span className="text-xs font-bold text-teal-brand">{t('confirmation.enjoy')}</span>
+
+                  {/* 2 — Find Us */}
+                  <div className="snap-center shrink-0 w-[78vw] sm:w-[55vw] md:w-auto rounded-2xl bg-white p-4 shadow-sm">
+                    <div className="mb-3">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-charcoal-brand text-xs font-black text-white">2</span>
+                    </div>
+                    <img src={locationIcon} alt="" className="mb-2 h-8 w-8 object-contain" />
+                    <p className="mb-1 font-headline text-sm font-black text-charcoal-brand leading-tight">{t('confirmation.findUs')}</p>
+                    <p className="mb-3 text-xs text-charcoal-brand/60 font-lato leading-relaxed">
+                      {t('confirmation.findUsDescription')}
+                    </p>
+                    <a
+                      href="https://maps.google.com/?q=Tourism+Rd+Catangnan+General+Luna+Siargao"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-bold text-gold-brand hover:underline"
+                    >
+                      {t('confirmation.getDirections')}
+                    </a>
+                  </div>
+
+                  {/* 3 — Pick Up */}
+                  <div className="snap-center shrink-0 w-[78vw] sm:w-[55vw] md:w-auto rounded-2xl bg-white p-4 shadow-sm">
+                    <div className="mb-3">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-charcoal-brand text-xs font-black text-white">3</span>
+                    </div>
+                    <span className="mb-2 block text-2xl">🛵</span>
+                    <p className="mb-1 font-headline text-sm font-black text-charcoal-brand leading-tight">{t('confirmation.pickUpYourScooter')}</p>
+                    <p className="mb-3 text-xs text-charcoal-brand/60 font-lato leading-relaxed">
+                      {t('confirmation.pickupInstructions')}
+                    </p>
+                    {state.pickupDatetime && (
+                      <p className="text-xs font-bold text-teal-brand">
+                        {new Date(state.pickupDatetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })},{' '}
+                        {new Date(state.pickupDatetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* 4 — Explore */}
+                  <div className="snap-center shrink-0 w-[78vw] sm:w-[55vw] md:w-auto rounded-2xl bg-white p-4 shadow-sm">
+                    <div className="mb-3">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-teal-brand text-xs font-black text-white">4</span>
+                    </div>
+                    <span className="mb-2 block text-2xl">🏄</span>
+                    <p className="mb-1 font-headline text-sm font-black text-charcoal-brand leading-tight">{t('confirmation.exploreSiargao')}</p>
+                    <p className="mb-3 text-xs text-charcoal-brand/60 font-lato leading-relaxed">
+                      {t('confirmation.exploreDescription')}
+                    </p>
+                    <span className="text-xs font-bold text-teal-brand">{t('confirmation.enjoy')}</span>
+                  </div>
+
                 </div>
 
+                {/* Dot indicators — mobile only */}
+                <div className="mt-2 flex justify-center gap-1.5 md:hidden">
+                  {[0, 1, 2, 3].map((i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => {
+                        const el = carouselRef.current;
+                        if (!el) return;
+                        const cardWidth = el.scrollWidth / 4;
+                        el.scrollTo({ left: cardWidth * i, behavior: 'smooth' });
+                      }}
+                      className={`h-1.5 rounded-full transition-all duration-200 ${activeStep === i ? 'w-4 bg-teal-brand' : 'w-1.5 bg-charcoal-brand/20'}`}
+                      aria-label={`Step ${i + 1}`}
+                    />
+                  ))}
+                </div>
               </div>
             </div>
           </FadeUpSection>
@@ -533,7 +516,7 @@ export default function ConfirmationPage() {
           </FadeUpSection>
 
           {/* ── Footer ── */}
-          <div className="mt-8 pb-12 text-center">
+          <div className="mt-8 pb-28 text-center md:pb-12">
             <button
               type="button"
               onClick={() => navigate('/book')}
@@ -557,6 +540,19 @@ export default function ConfirmationPage() {
 
         </div>
       </div>
+
+      {/* ── Sticky waiver bar — mobile only ── */}
+      {state.orderReferences?.[0] && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-charcoal-brand/10 bg-white/95 px-4 pb-5 pt-3 backdrop-blur-sm md:hidden">
+          <Link
+            to={`/waiver/${state.orderReferences[0]}`}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-gold-brand py-3.5 font-lato text-sm font-black text-charcoal-brand shadow-sm transition-all active:scale-[0.98]"
+          >
+            <FileSignature size={16} className="shrink-0" />
+            {t('confirmation.completeYourWaiver')} · 2 mins
+          </Link>
+        </div>
+      )}
     </PageLayout>
   );
 }

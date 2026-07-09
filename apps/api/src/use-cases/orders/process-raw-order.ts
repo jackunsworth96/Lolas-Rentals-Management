@@ -134,6 +134,7 @@ export async function processRawOrder(
       totalSpent: 0,
       notes: null,
       blacklisted: false,
+      whatsappReviewOptOut: false,
     };
   } else {
     // Refresh mutable fields from the latest input so the upsert
@@ -753,6 +754,18 @@ export async function processRawOrder(
     : (rpcData as { order_id: string; was_new: boolean } | null);
 
   const wasNew = resultRow?.was_new === true;
+
+  const partnerRef = (rawOrder as { partner_ref?: string | null }).partner_ref?.trim() || null;
+  if (partnerRef) {
+    const { error: partnerRefErr } = await supabase
+      .from('orders')
+      .update({ partner_ref: partnerRef })
+      .eq('id', orderId)
+      .is('partner_ref', null);
+    if (partnerRefErr) {
+      throw new Error(`Failed to preserve partner_ref on activated order ${orderId}: ${partnerRefErr.message}`);
+    }
+  }
 
   // ── 11. Reload the persisted order so we return a clean
   // domain object with the DB-canonical values.

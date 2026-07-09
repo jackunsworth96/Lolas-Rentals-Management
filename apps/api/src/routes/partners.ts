@@ -1,14 +1,32 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import rateLimit from 'express-rate-limit';
+import multer from 'multer';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { validateBody } from '../middleware/validate.js';
 import { Permission } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
+import { hashPin } from '../adapters/auth/password.js';
+import { sendEmail, INTERNAL_FROM_EMAIL, escapeHtml } from '../services/email.js';
+import { getPartnerCommissionStats } from '../lib/partner-commission.js';
 
 const router = Router();
+const PARTNER_LOGO_MIMES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+const MAX_PARTNER_LOGO_BYTES = 5 * 1024 * 1024;
+
+const partnerLogoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_PARTNER_LOGO_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (PARTNER_LOGO_MIMES.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Invalid file type: ${file.mimetype}. Allowed: JPEG, PNG, GIF, WebP, SVG`));
+    }
+  },
+});
 
 // ── Slug helper ───────────────────────────────────────────────────────────────
 
@@ -18,6 +36,15 @@ function slugify(name: string): string {
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
+}
+
+function logoExtForMime(mime: string): string {
+  if (mime === 'image/jpeg') return 'jpg';
+  if (mime === 'image/png') return 'png';
+  if (mime === 'image/gif') return 'gif';
+  if (mime === 'image/webp') return 'webp';
+  if (mime === 'image/svg+xml') return 'svg';
+  return 'png';
 }
 
 async function uniqueSlug(storeId: string, base: string): Promise<string> {
@@ -34,21 +61,6 @@ async function uniqueSlug(storeId: string, base: string): Promise<string> {
     attempt++;
     slug = `${base}-${attempt}`;
   }
-}
-
-/**
- * Calculate commission amount for a single booking row.
- * Uses rental_value_raw as the percentage base (excludes add-ons, fees, charity, card surcharge).
- * Falls back to web_quote_raw for legacy rows that pre-date migration 130.
- */
-function calcCommission(
-  row: { rental_value_raw: number | null; web_quote_raw: number | null; status: string },
-  partner: { commission_type: string; commission_value: number },
-): number {
-  if (row.status === 'cancelled') return 0;
-  if (partner.commission_type === 'fixed') return partner.commission_value;
-  const base = row.rental_value_raw ?? row.web_quote_raw ?? 0;
-  return Math.round(base * partner.commission_value / 100 * 100) / 100;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -263,7 +275,7 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
     const sb = getSupabaseClient();
     const { data, error } = await sb
       .from('accommodation_partners')
-      .select('name, deal_type, discount_type, discount_value, free_delivery, advance_discount_days, early_bird_days, early_bird_discount_value, status, active, logo_url, welcome_message, logo_display_width, logo_display_height')
+      .select('id, name, deal_type, discount_type, discount_value, free_delivery, free_delivery_location_ids, advance_discount_days, early_bird_days, early_bird_discount_value, status, active, logo_url, welcome_message, logo_display_width, logo_display_height')
       .eq('slug', slug)
       .eq('status', 'active')
       .eq('active', true)
@@ -279,11 +291,13 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
     }
 
     const row = data as {
+      id: string;
       name: string;
       deal_type: 'commission' | 'discount' | 'free_delivery' | 'combined' | 'commission_delivery' | 'discount_delivery';
       discount_type: 'percentage' | 'fixed' | null;
       discount_value: number | null;
       free_delivery: boolean;
+      free_delivery_location_ids: number[] | null;
       advance_discount_days: number | null;
       early_bird_days: number | null;
       early_bird_discount_value: number | null;
@@ -292,6 +306,34 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
       logo_display_width: number | null;
       logo_display_height: number | null;
     };
+
+    // Fetch per-vehicle overrides — only guest-facing fields are exposed publicly
+    const { data: vtRows } = await sb
+      .from('partner_vehicle_terms')
+      .select('vehicle_model_id, deal_type, discount_type, discount_value, free_delivery, advance_discount_days, early_bird_days, early_bird_discount_value')
+      .eq('partner_id', row.id);
+
+    type VtRow = {
+      vehicle_model_id: string;
+      deal_type: string;
+      discount_type: string | null;
+      discount_value: number | null;
+      free_delivery: boolean;
+      advance_discount_days: number | null;
+      early_bird_days: number | null;
+      early_bird_discount_value: number | null;
+    };
+
+    const vehicleTerms = (vtRows ?? []).map((vt: VtRow) => ({
+      vehicleModelId: vt.vehicle_model_id,
+      dealType: vt.deal_type,
+      discountType: vt.discount_type ?? null,
+      discountValue: vt.discount_value != null ? Number(vt.discount_value) : null,
+      freeDelivery: vt.free_delivery,
+      advanceDiscountDays: vt.advance_discount_days,
+      earlyBirdDays: vt.early_bird_days,
+      earlyBirdDiscountValue: vt.early_bird_discount_value != null ? Number(vt.early_bird_discount_value) : null,
+    }));
 
     res.json({
       success: true,
@@ -304,10 +346,12 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
         advanceDiscountDays: row.advance_discount_days,
         earlyBirdDays: row.early_bird_days,
         earlyBirdDiscountValue: row.early_bird_discount_value != null ? Number(row.early_bird_discount_value) : null,
+        freeDeliveryLocationIds: row.free_delivery_location_ids ?? null,
         logoUrl: row.logo_url ?? null,
         welcomeMessage: row.welcome_message ?? null,
         logoDisplayWidth: row.logo_display_width ?? null,
         logoDisplayHeight: row.logo_display_height ?? null,
+        vehicleTerms,
       },
     });
   } catch (err) { next(err); }
@@ -346,6 +390,9 @@ const PartnerBodySchema = z.object({
   logo_display_height: z.number().int().min(16).max(200).nullable().optional(),
   early_bird_days: z.number().int().min(1).max(365).nullable().optional(),
   early_bird_discount_value: z.number().min(0).nullable().optional(),
+  free_delivery_location_ids: z.array(z.number().int().positive()).nullable().optional(),
+  portal_enabled: z.boolean().optional(),
+  portal_subdomain: z.string().min(1).max(80).regex(/^[a-z0-9-]+$/).nullable().optional(),
   store_id: z.string().min(1),
 });
 
@@ -368,6 +415,44 @@ router.get('/', async (req, res, next) => {
 
     res.json({ success: true, data: data ?? [] });
   } catch (err) { next(err); }
+});
+
+// ── POST /upload-logo — upload partner logo to Supabase Storage ──────────────
+router.post('/upload-logo', edit, (req, res, next) => {
+  partnerLogoUpload.single('file')(req, res, async (err) => {
+    if (err) {
+      const message =
+        err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE'
+          ? 'File too large. Maximum size is 5 MB.'
+          : (err as Error).message || 'Upload failed';
+      res.status(400).json({ success: false, error: { code: 'UPLOAD_ERROR', message } });
+      return;
+    }
+    if (!req.file) {
+      res.status(400).json({ success: false, error: { code: 'UPLOAD_ERROR', message: 'No file provided' } });
+      return;
+    }
+
+    try {
+      const sb = getSupabaseClient();
+      const ext = logoExtForMime(req.file.mimetype);
+      const objectPath = `uploads/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+      const { error: uploadErr } = await sb.storage
+        .from('partner-logos')
+        .upload(objectPath, req.file.buffer, {
+          contentType: req.file.mimetype,
+          upsert: false,
+        });
+
+      if (uploadErr) throw new Error(`Storage upload failed: ${uploadErr.message}`);
+
+      const { data } = sb.storage.from('partner-logos').getPublicUrl(objectPath);
+      res.json({ success: true, data: { url: data.publicUrl } });
+    } catch (uploadError) {
+      next(uploadError);
+    }
+  });
 });
 
 // ── GET /:id/enrollment-details — Step 2 details for a partner ───────────────
@@ -422,6 +507,9 @@ router.post('/', edit, validateBody(PartnerBodySchema), async (req, res, next) =
         logo_display_height: body.logo_display_height ?? null,
         early_bird_days: body.early_bird_days ?? null,
         early_bird_discount_value: body.early_bird_discount_value ?? null,
+        free_delivery_location_ids: body.free_delivery_location_ids ?? null,
+        portal_enabled: body.portal_enabled ?? false,
+        portal_subdomain: body.portal_subdomain?.trim() || slug,
       })
       .select()
       .single();
@@ -462,6 +550,9 @@ router.put('/:id', edit, validateBody(PartnerBodySchema.partial().extend({ store
     if (body.logo_display_height !== undefined) updates.logo_display_height = body.logo_display_height ?? null;
     if (body.early_bird_days !== undefined) updates.early_bird_days = body.early_bird_days ?? null;
     if (body.early_bird_discount_value !== undefined) updates.early_bird_discount_value = body.early_bird_discount_value ?? null;
+    if (body.free_delivery_location_ids !== undefined) updates.free_delivery_location_ids = body.free_delivery_location_ids ?? null;
+    if (body.portal_enabled !== undefined) updates.portal_enabled = body.portal_enabled;
+    if (body.portal_subdomain !== undefined) updates.portal_subdomain = body.portal_subdomain?.trim() || null;
 
     const { data, error } = await sb
       .from('accommodation_partners')
@@ -529,6 +620,9 @@ router.post('/:id/approve', edit, validateBody(ApproveBodySchema), async (req, r
     if (body.logo_display_height !== undefined) updates.logo_display_height = body.logo_display_height ?? null;
     if (body.early_bird_days !== undefined) updates.early_bird_days = body.early_bird_days ?? null;
     if (body.early_bird_discount_value !== undefined) updates.early_bird_discount_value = body.early_bird_discount_value ?? null;
+    if (body.free_delivery_location_ids !== undefined) updates.free_delivery_location_ids = body.free_delivery_location_ids ?? null;
+    if (body.portal_enabled !== undefined) updates.portal_enabled = body.portal_enabled;
+    if (body.portal_subdomain !== undefined) updates.portal_subdomain = body.portal_subdomain?.trim() || null;
 
     const { data, error } = await sb
       .from('accommodation_partners')
@@ -596,102 +690,8 @@ router.delete('/:id', edit, async (req, res, next) => {
 router.get('/:id/stats', async (req, res, next) => {
   try {
     const { month } = req.query as { month?: string };
-    const sb = getSupabaseClient();
-
-    const { data: partner, error: partnerErr } = await sb
-      .from('accommodation_partners')
-      .select('id, slug, store_id, advance_booking_days, commission_type, commission_value, commission_includes_extensions')
-      .eq('id', req.params.id)
-      .single();
-
-    if (partnerErr || !partner) {
-      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Partner not found' } });
-      return;
-    }
-
-    const p = partner as {
-      id: string; slug: string; store_id: string;
-      advance_booking_days: number; commission_type: string; commission_value: number;
-      commission_includes_extensions: boolean;
-    };
-
-    let rawQuery = sb
-      .from('orders_raw')
-      .select('id, order_reference, customer_name, pickup_datetime, dropoff_datetime, rental_value_raw, web_quote_raw, status, created_at')
-      .eq('store_id', p.store_id)
-      .eq('partner_ref', p.slug)
-      .order('created_at', { ascending: false });
-
-    if (month) {
-      const [y, m] = month.split('-').map(Number);
-      if (y && m) {
-        const from = new Date(Date.UTC(y, m - 1, 1)).toISOString();
-        const to = new Date(Date.UTC(y, m, 1)).toISOString();
-        rawQuery = rawQuery.gte('created_at', from).lt('created_at', to);
-      }
-    }
-
-    const { data: rawRows, error: rawErr } = await rawQuery;
-    if (rawErr) throw new Error(`Failed to fetch attribution data: ${rawErr.message}`);
-
-    const rows = (rawRows ?? []) as Array<{
-      id: string;
-      order_reference: string | null;
-      customer_name: string | null;
-      pickup_datetime: string | null;
-      dropoff_datetime: string | null;
-      rental_value_raw: number | null;
-      web_quote_raw: number | null;
-      status: string;
-      created_at: string;
-    }>;
-
-    const bookings = rows.map((row) => {
-      const advanceDays = row.pickup_datetime
-        ? (new Date(row.pickup_datetime).getTime() - new Date(row.created_at).getTime()) / 86_400_000
-        : null;
-
-      const commissionable =
-        row.status !== 'cancelled' &&
-        advanceDays !== null &&
-        advanceDays >= p.advance_booking_days;
-
-      const commissionAmount = commissionable ? calcCommission(row, p) : 0;
-
-      const commissionBase = p.commission_type === 'fixed'
-        ? null
-        : (row.rental_value_raw ?? row.web_quote_raw ?? 0);
-
-      return {
-        id: row.id,
-        orderReference: row.order_reference,
-        customerName: row.customer_name,
-        pickupDatetime: row.pickup_datetime,
-        dropoffDatetime: row.dropoff_datetime,
-        rentalValue: row.rental_value_raw ?? 0,
-        bookingValue: row.web_quote_raw ?? 0,
-        commissionBase,
-        status: row.status,
-        bookedAt: row.created_at,
-        advanceDays: advanceDays !== null ? Math.floor(advanceDays) : null,
-        commissionable,
-        commissionAmount,
-      };
-    });
-
-    const totalBookings = bookings.length;
-    const commissionableBookings = bookings.filter((b) => b.commissionable).length;
-    const totalCommission = bookings.reduce((sum, b) => sum + b.commissionAmount, 0);
-
-    res.json({
-      success: true,
-      data: {
-        totalBookings,
-        commissionableBookings,
-        totalCommission: Math.round(totalCommission * 100) / 100,
-        bookings,
-      },
-    });
+    const data = await getPartnerCommissionStats(req.params.id, month);
+    res.json({ success: true, data });
   } catch (err) { next(err); }
 });
 
@@ -715,60 +715,26 @@ router.post('/:id/send-monthly-report', edit, async (req, res, next) => {
     const p = partner as {
       id: string; name: string; slug: string; store_id: string;
       advance_booking_days: number; commission_type: string; commission_value: number;
-      commission_includes_extensions: boolean; telegram_chat_id: string | null;
+      commission_includes_extensions: boolean; telegram_chat_id: string | null; contact_email: string | null;
     };
 
-    if (!p.telegram_chat_id) {
+    if (!p.telegram_chat_id && !p.contact_email) {
       res.status(422).json({
         success: false,
-        error: { code: 'NO_TELEGRAM', message: 'No Telegram chat ID configured for this partner.' },
+        error: { code: 'NO_REPORT_DESTINATION', message: 'No Telegram chat ID or contact email configured for this partner.' },
       });
       return;
     }
 
     const reportMonth = month ?? new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }).slice(0, 7);
     const [y, m] = reportMonth.split('-').map(Number);
-    const from = new Date(Date.UTC(y, m - 1, 1)).toISOString();
-    const to = new Date(Date.UTC(y, m, 1)).toISOString();
 
     const monthLabel = new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-PH', {
       month: 'long', year: 'numeric',
     });
 
-    const { data: rawRows, error: rawErr } = await sb
-      .from('orders_raw')
-      .select('id, pickup_datetime, rental_value_raw, web_quote_raw, status, created_at')
-      .eq('store_id', p.store_id)
-      .eq('partner_ref', p.slug)
-      .gte('created_at', from)
-      .lt('created_at', to);
-
-    if (rawErr) throw new Error(rawErr.message);
-
-    type RawRow = {
-      id: string; pickup_datetime: string | null;
-      rental_value_raw: number | null; web_quote_raw: number | null;
-      status: string; created_at: string;
-    };
-    const rows = (rawRows ?? []) as RawRow[];
-
-    let totalBookings = 0;
-    let commissionableBookings = 0;
-    let totalCommission = 0;
-
-    for (const row of rows) {
-      totalBookings++;
-      const advanceDays = row.pickup_datetime
-        ? (new Date(row.pickup_datetime).getTime() - new Date(row.created_at).getTime()) / 86_400_000
-        : null;
-
-      if (row.status !== 'cancelled' && advanceDays !== null && advanceDays >= p.advance_booking_days) {
-        commissionableBookings++;
-        totalCommission += calcCommission(row, p);
-      }
-    }
-
-    totalCommission = Math.round(totalCommission * 100) / 100;
+    const stats = await getPartnerCommissionStats(p.id, reportMonth);
+    const { totalBookings, commissionableBookings, totalCommission } = stats;
 
     const commissionDisplay = p.commission_type === 'fixed'
       ? `₱${p.commission_value.toLocaleString('en-PH')} per booking`
@@ -792,9 +758,215 @@ router.post('/:id/send-monthly-report', edit, async (req, res, next) => {
       `Thank you for partnering with Lola's Rentals! 🛵`,
     ];
 
-    await sendTelegramAlert(lines.join('\n'), p.telegram_chat_id);
+    if (p.telegram_chat_id) {
+      await sendTelegramAlert(lines.join('\n'), p.telegram_chat_id);
+    } else if (p.contact_email) {
+      await sendEmail({
+        to: p.contact_email,
+        from: INTERNAL_FROM_EMAIL,
+        subject: `Lola's Rentals Partner Report — ${monthLabel}`,
+        html: [
+          `<h2>Lola's Rentals Partner Report</h2>`,
+          `<p><strong>Partner:</strong> ${escapeHtml(p.name)}</p>`,
+          `<p><strong>Month:</strong> ${escapeHtml(monthLabel)}</p>`,
+          `<p>Total attributed bookings: <strong>${totalBookings}</strong></p>`,
+          `<p>Commissionable bookings: <strong>${commissionableBookings}</strong></p>`,
+          `<p>Total due: <strong>₱${totalCommission.toLocaleString('en-PH', { minimumFractionDigits: 0 })}</strong></p>`,
+          `<p>Commission applies to bookings made at least ${p.advance_booking_days} day${p.advance_booking_days !== 1 ? 's' : ''} before pickup.</p>`,
+        ].join('\n'),
+      });
+    }
 
     res.json({ success: true, data: { totalBookings, commissionableBookings, totalCommission } });
+  } catch (err) { next(err); }
+});
+
+// ── Partner portal users ─────────────────────────────────────────────────────
+
+const PartnerUserBodySchema = z.object({
+  name: z.string().min(1).max(200),
+  username: z.string().min(1).max(120),
+  pin: z.coerce.string().min(4).max(120).optional(),
+  is_active: z.boolean().optional(),
+});
+
+router.get('/:id/portal-users', async (req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+    const { data, error } = await sb
+      .from('partner_users')
+      .select('id, partner_id, name, username, is_active, last_login_at, created_at, updated_at')
+      .eq('partner_id', req.params.id)
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(`Failed to fetch partner users: ${error.message}`);
+    res.json({ success: true, data: data ?? [] });
+  } catch (err) { next(err); }
+});
+
+router.post('/:id/portal-users', edit, validateBody(PartnerUserBodySchema.extend({ pin: z.coerce.string().min(4).max(120) })), async (req, res, next) => {
+  try {
+    const body = req.body as z.infer<typeof PartnerUserBodySchema> & { pin: string };
+    const sb = getSupabaseClient();
+    const { data, error } = await sb
+      .from('partner_users')
+      .insert({
+        partner_id: req.params.id,
+        name: body.name.trim(),
+        username: body.username.trim(),
+        pin_hash: await hashPin(body.pin),
+        is_active: body.is_active ?? true,
+      })
+      .select('id, partner_id, name, username, is_active, last_login_at, created_at, updated_at')
+      .single();
+    if (error) throw new Error(`Failed to create partner user: ${error.message}`);
+    res.status(201).json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+router.put('/:id/portal-users/:userId', edit, validateBody(PartnerUserBodySchema.partial()), async (req, res, next) => {
+  try {
+    const body = req.body as Partial<z.infer<typeof PartnerUserBodySchema>>;
+    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (body.name !== undefined) updates.name = body.name.trim();
+    if (body.username !== undefined) updates.username = body.username.trim();
+    if (body.is_active !== undefined) updates.is_active = body.is_active;
+    if (body.pin !== undefined && body.pin.trim()) updates.pin_hash = await hashPin(body.pin);
+
+    const sb = getSupabaseClient();
+    const { data, error } = await sb
+      .from('partner_users')
+      .update(updates)
+      .eq('id', req.params.userId)
+      .eq('partner_id', req.params.id)
+      .select('id, partner_id, name, username, is_active, last_login_at, created_at, updated_at')
+      .single();
+    if (error) throw new Error(`Failed to update partner user: ${error.message}`);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// ── GET /vehicle-models — list all active vehicle models (for override dropdowns) ──
+router.get('/vehicle-models', async (_req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+    const { data, error } = await sb
+      .from('vehicle_models')
+      .select('id, name, type')
+      .eq('is_active', true)
+      .order('name', { ascending: true });
+
+    if (error) throw new Error(`Failed to fetch vehicle models: ${error.message}`);
+    res.json({ success: true, data: data ?? [] });
+  } catch (err) { next(err); }
+});
+
+// ── Vehicle term override schema ──────────────────────────────────────────────
+
+const VehicleTermBodySchema = z.object({
+  vehicle_model_id: z.string().min(1).max(80),
+  deal_type: z.enum(['commission', 'discount', 'free_delivery', 'combined', 'commission_delivery', 'discount_delivery']),
+  commission_type: z.enum(['fixed', 'percentage']).nullable().optional(),
+  commission_value: z.number().min(0).nullable().optional(),
+  advance_booking_days: z.number().int().min(0).max(365).nullable().optional(),
+  commission_includes_extensions: z.boolean().optional(),
+  discount_type: z.enum(['percentage', 'fixed']).nullable().optional(),
+  discount_value: z.number().min(0).nullable().optional(),
+  advance_discount_days: z.number().int().min(0).max(365).nullable().optional(),
+  early_bird_days: z.number().int().min(1).max(365).nullable().optional(),
+  early_bird_discount_value: z.number().min(0).nullable().optional(),
+  free_delivery: z.boolean().optional(),
+});
+
+// ── GET /:id/vehicle-terms — list overrides for a partner ────────────────────
+router.get('/:id/vehicle-terms', async (req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+    const { data, error } = await sb
+      .from('partner_vehicle_terms')
+      .select('*')
+      .eq('partner_id', req.params.id)
+      .order('vehicle_model_id', { ascending: true });
+
+    if (error) throw new Error(`Failed to fetch vehicle terms: ${error.message}`);
+    res.json({ success: true, data: data ?? [] });
+  } catch (err) { next(err); }
+});
+
+// ── POST /:id/vehicle-terms — create an override ──────────────────────────────
+router.post('/:id/vehicle-terms', edit, validateBody(VehicleTermBodySchema), async (req, res, next) => {
+  try {
+    const body = req.body as z.infer<typeof VehicleTermBodySchema>;
+    const sb = getSupabaseClient();
+
+    const { data, error } = await sb
+      .from('partner_vehicle_terms')
+      .insert({
+        partner_id: req.params.id,
+        vehicle_model_id: body.vehicle_model_id,
+        deal_type: body.deal_type,
+        commission_type: body.commission_type ?? null,
+        commission_value: body.commission_value ?? null,
+        advance_booking_days: body.advance_booking_days ?? null,
+        commission_includes_extensions: body.commission_includes_extensions ?? false,
+        discount_type: body.discount_type ?? null,
+        discount_value: body.discount_value ?? null,
+        advance_discount_days: body.advance_discount_days ?? null,
+        early_bird_days: body.early_bird_days ?? null,
+        early_bird_discount_value: body.early_bird_discount_value ?? null,
+        free_delivery: body.free_delivery ?? false,
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to create vehicle term: ${error.message}`);
+    res.status(201).json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// ── PUT /:id/vehicle-terms/:vtId — update an override ────────────────────────
+router.put('/:id/vehicle-terms/:vtId', edit, validateBody(VehicleTermBodySchema.partial()), async (req, res, next) => {
+  try {
+    const body = req.body as Partial<z.infer<typeof VehicleTermBodySchema>>;
+    const sb = getSupabaseClient();
+
+    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (body.deal_type !== undefined) updates.deal_type = body.deal_type;
+    if (body.commission_type !== undefined) updates.commission_type = body.commission_type;
+    if (body.commission_value !== undefined) updates.commission_value = body.commission_value;
+    if (body.advance_booking_days !== undefined) updates.advance_booking_days = body.advance_booking_days;
+    if (body.commission_includes_extensions !== undefined) updates.commission_includes_extensions = body.commission_includes_extensions;
+    if (body.discount_type !== undefined) updates.discount_type = body.discount_type;
+    if (body.discount_value !== undefined) updates.discount_value = body.discount_value;
+    if (body.advance_discount_days !== undefined) updates.advance_discount_days = body.advance_discount_days;
+    if (body.early_bird_days !== undefined) updates.early_bird_days = body.early_bird_days;
+    if (body.early_bird_discount_value !== undefined) updates.early_bird_discount_value = body.early_bird_discount_value;
+    if (body.free_delivery !== undefined) updates.free_delivery = body.free_delivery;
+
+    const { data, error } = await sb
+      .from('partner_vehicle_terms')
+      .update(updates)
+      .eq('id', req.params.vtId)
+      .eq('partner_id', req.params.id)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to update vehicle term: ${error.message}`);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// ── DELETE /:id/vehicle-terms/:vtId — remove an override ─────────────────────
+router.delete('/:id/vehicle-terms/:vtId', edit, async (req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+    const { error } = await sb
+      .from('partner_vehicle_terms')
+      .delete()
+      .eq('id', req.params.vtId)
+      .eq('partner_id', req.params.id);
+
+    if (error) throw new Error(`Failed to delete vehicle term: ${error.message}`);
+    res.json({ success: true });
   } catch (err) { next(err); }
 });
 

@@ -1,7 +1,8 @@
 import { useState, useCallback, useMemo } from 'react';
 import {
   Link2, Plus, Pencil, BarChart2, ToggleLeft, ToggleRight, Copy, CheckCheck,
-  ExternalLink, Send, Check, X, Clock,
+  ExternalLink, Send, Check, X, Clock, ChevronDown, ChevronUp, Trash2,
+  UserPlus, KeyRound,
 } from 'lucide-react';
 import {
   usePartners,
@@ -13,10 +14,22 @@ import {
   useApprovePartner,
   useRejectPartner,
   usePartnerEnrollmentDetails,
+  usePartnerVehicleTerms,
+  useCreatePartnerVehicleTerm,
+  useUpdatePartnerVehicleTerm,
+  useDeletePartnerVehicleTerm,
+  useVehicleModels,
+  useDeliveryLocations,
+  usePartnerPortalUsers,
+  useCreatePartnerPortalUser,
+  useUpdatePartnerPortalUser,
+  uploadPartnerLogo,
   type AccommodationPartner,
   type PartnerInput,
   type PartnerDealType,
   type PartnerDiscountType,
+  type PartnerVehicleTerm,
+  type PartnerVehicleTermInput,
 } from '../../api/partners.js';
 import { useUIStore } from '../../stores/ui-store.js';
 import { Badge } from '../../components/common/Badge.js';
@@ -27,6 +40,19 @@ const SITE_URL = (import.meta.env.VITE_SITE_URL as string | undefined) ?? window
 
 function partnerLink(slug: string) {
   return `${SITE_URL}/book?ref=${encodeURIComponent(slug)}`;
+}
+
+function partnerPortalLink(partner: Pick<AccommodationPartner, 'slug' | 'portal_subdomain'>) {
+  const origin = SITE_URL.replace(/\/+$/, '');
+  const url = new URL(origin);
+  const isLocal = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+  if (!isLocal && partner.portal_subdomain) {
+    url.hostname = `${partner.portal_subdomain}.lolasrentals.com`;
+    url.pathname = '/partner/login';
+    url.search = '';
+    return url.toString();
+  }
+  return `${origin}/partner/login?partner=${encodeURIComponent(partner.slug)}`;
 }
 
 function formatPhp(amount: number) {
@@ -51,9 +77,11 @@ function monthLabel(yyyyMM: string) {
 function describeDeal(p: Pick<AccommodationPartner, 'deal_type' | 'commission_type' | 'commission_value' | 'discount_type' | 'discount_value' | 'free_delivery'>) {
   const parts: string[] = [];
   if (p.deal_type === 'commission' || p.deal_type === 'combined' || p.deal_type === 'commission_delivery') {
-    parts.push(p.commission_type === 'percentage'
-      ? `${p.commission_value}% commission`
-      : `${formatPhp(p.commission_value)} commission`);
+    if (p.commission_value != null && p.commission_value > 0) {
+      parts.push(p.commission_type === 'percentage'
+        ? `${p.commission_value}% commission`
+        : `${formatPhp(p.commission_value)} commission`);
+    }
   }
   if (p.deal_type === 'discount' || p.deal_type === 'combined' || p.deal_type === 'discount_delivery') {
     if (p.discount_value != null && p.discount_type) {
@@ -66,6 +94,340 @@ function describeDeal(p: Pick<AccommodationPartner, 'deal_type' | 'commission_ty
     parts.push('Free delivery');
   }
   return parts.length > 0 ? parts.join(' · ') : '—';
+}
+
+// ── Vehicle overrides section ────────────────────────────────────────────────
+
+const DEAL_TYPES: { value: PartnerDealType; label: string }[] = [
+  { value: 'commission', label: 'Commission only' },
+  { value: 'discount', label: 'Guest discount' },
+  { value: 'free_delivery', label: 'Free delivery' },
+  { value: 'commission_delivery', label: 'Commission + free delivery' },
+  { value: 'discount_delivery', label: 'Discount + free delivery' },
+  { value: 'combined', label: 'Combined (commission + discount + delivery)' },
+];
+
+const EMPTY_VT_FORM: PartnerVehicleTermInput = {
+  vehicle_model_id: '',
+  deal_type: 'commission',
+  commission_type: 'percentage',
+  commission_value: 0,
+  advance_booking_days: null,
+  commission_includes_extensions: false,
+  discount_type: 'percentage',
+  discount_value: 0,
+  advance_discount_days: null,
+  early_bird_days: null,
+  early_bird_discount_value: null,
+  free_delivery: false,
+};
+
+interface VehicleOverridesSectionProps {
+  partnerId: string;
+  pushToast: (msg: string, type: 'success' | 'error') => void;
+}
+
+function VehicleOverridesSection({ partnerId, pushToast }: VehicleOverridesSectionProps) {
+  const { data: terms = [], isLoading } = usePartnerVehicleTerms(partnerId);
+  const { data: models = [] } = useVehicleModels();
+  const createVt = useCreatePartnerVehicleTerm(partnerId);
+  const updateVt = useUpdatePartnerVehicleTerm(partnerId);
+  const deleteVt = useDeletePartnerVehicleTerm(partnerId);
+
+  const [expanded, setExpanded] = useState(false);
+  const [addingNew, setAddingNew] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<PartnerVehicleTermInput>({ ...EMPTY_VT_FORM });
+
+  const usedModelIds = new Set(terms.map((t) => t.vehicle_model_id));
+  const availableModels = models.filter((m) => !usedModelIds.has(m.id));
+  const editingTerm = terms.find((t) => t.id === editingId) ?? null;
+  const availableModelsForEdit = editingTerm
+    ? models.filter((m) => !usedModelIds.has(m.id) || m.id === editingTerm.vehicle_model_id)
+    : availableModels;
+
+  function resetForm(source?: PartnerVehicleTerm) {
+    if (source) {
+      setForm({
+        vehicle_model_id: source.vehicle_model_id,
+        deal_type: source.deal_type,
+        commission_type: source.commission_type,
+        commission_value: source.commission_value ?? 0,
+        advance_booking_days: source.advance_booking_days,
+        commission_includes_extensions: source.commission_includes_extensions,
+        discount_type: source.discount_type ?? 'percentage',
+        discount_value: source.discount_value ?? 0,
+        advance_discount_days: source.advance_discount_days,
+        early_bird_days: source.early_bird_days,
+        early_bird_discount_value: source.early_bird_discount_value,
+        free_delivery: source.free_delivery,
+      });
+    } else {
+      setForm({ ...EMPTY_VT_FORM });
+    }
+  }
+
+  function setVtField<K extends keyof PartnerVehicleTermInput>(key: K, value: PartnerVehicleTermInput[K]) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function handleSave() {
+    if (!form.vehicle_model_id) { pushToast('Select a vehicle model', 'error'); return; }
+    try {
+      if (editingId) {
+        await updateVt.mutateAsync({ id: editingId, ...form });
+        pushToast('Override updated', 'success');
+        setEditingId(null);
+      } else {
+        await createVt.mutateAsync(form);
+        pushToast('Override added', 'success');
+        setAddingNew(false);
+      }
+      resetForm();
+    } catch (err) {
+      pushToast((err as Error).message ?? 'Failed to save override', 'error');
+    }
+  }
+
+  async function handleDelete(id: string) {
+    try {
+      await deleteVt.mutateAsync(id);
+      pushToast('Override removed', 'success');
+    } catch (err) {
+      pushToast((err as Error).message ?? 'Failed to remove override', 'error');
+    }
+  }
+
+  const showCommission = form.deal_type === 'commission' || form.deal_type === 'combined' || form.deal_type === 'commission_delivery';
+  const showDiscount = form.deal_type === 'discount' || form.deal_type === 'combined' || form.deal_type === 'discount_delivery';
+  const saving = createVt.isPending || updateVt.isPending;
+
+  function modelName(id: string) {
+    return models.find((m) => m.id === id)?.name ?? id;
+  }
+
+  function vtSummary(t: PartnerVehicleTerm) {
+    const parts: string[] = [];
+    if (t.deal_type === 'commission' || t.deal_type === 'combined' || t.deal_type === 'commission_delivery') {
+      if (t.commission_value != null && t.commission_value > 0) {
+        parts.push(t.commission_type === 'percentage' ? `${t.commission_value}% commission` : `₱${t.commission_value} commission`);
+      }
+    }
+    if (t.deal_type === 'discount' || t.deal_type === 'combined' || t.deal_type === 'discount_delivery') {
+      if (t.discount_value != null && t.discount_type) {
+        parts.push(t.discount_type === 'percentage' ? `${t.discount_value}% discount` : `₱${t.discount_value} discount`);
+      }
+    }
+    if (t.free_delivery || t.deal_type === 'free_delivery' || t.deal_type === 'combined' || t.deal_type === 'commission_delivery' || t.deal_type === 'discount_delivery') {
+      parts.push('Free delivery');
+    }
+    return parts.length > 0 ? parts.join(' · ') : DEAL_TYPES.find((d) => d.value === t.deal_type)?.label ?? t.deal_type;
+  }
+
+  const vtFormFields = (
+    <div className="space-y-3 pt-2">
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">Vehicle model *</label>
+        <select
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+          value={form.vehicle_model_id}
+          onChange={(e) => setVtField('vehicle_model_id', e.target.value)}
+        >
+          <option value="">Select model…</option>
+          {(editingTerm ? availableModelsForEdit : availableModels).map((m) => (
+            <option key={m.id} value={m.id}>{m.name}</option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">Deal type *</label>
+        <select
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+          value={form.deal_type}
+          onChange={(e) => setVtField('deal_type', e.target.value as PartnerDealType)}
+        >
+          {DEAL_TYPES.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+        </select>
+      </div>
+
+      {showCommission && (
+        <div className="grid grid-cols-3 gap-2">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Commission type</label>
+            <select
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={form.commission_type ?? 'percentage'}
+              onChange={(e) => setVtField('commission_type', e.target.value as 'fixed' | 'percentage')}
+            >
+              <option value="percentage">% rate</option>
+              <option value="fixed">₱ fixed</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">{form.commission_type === 'percentage' ? 'Rate (%)' : 'Amount (₱)'}</label>
+            <input
+              type="number" min="0" step={form.commission_type === 'percentage' ? '0.1' : '1'}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={form.commission_value ?? 0}
+              onChange={(e) => setVtField('commission_value', Number(e.target.value))}
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Advance (days)</label>
+            <input
+              type="number" min="0" max="365"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={form.advance_booking_days ?? ''}
+              onChange={(e) => setVtField('advance_booking_days', e.target.value === '' ? null : Number(e.target.value))}
+              placeholder="None"
+            />
+          </div>
+        </div>
+      )}
+
+      {showDiscount && (
+        <div className="grid grid-cols-3 gap-2">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Discount type</label>
+            <select
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={form.discount_type ?? 'percentage'}
+              onChange={(e) => setVtField('discount_type', e.target.value as PartnerDiscountType)}
+            >
+              <option value="percentage">%</option>
+              <option value="fixed">₱ fixed</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">{form.discount_type === 'percentage' ? 'Discount (%)' : 'Discount (₱)'}</label>
+            <input
+              type="number" min="0" step={form.discount_type === 'percentage' ? '0.1' : '1'}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={form.discount_value ?? 0}
+              onChange={(e) => setVtField('discount_value', Number(e.target.value))}
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Min advance (days)</label>
+            <input
+              type="number" min="0" max="365"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={form.advance_discount_days ?? ''}
+              onChange={(e) => setVtField('advance_discount_days', e.target.value === '' ? null : Number(e.target.value))}
+              placeholder="None"
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="flex gap-2 pt-1">
+        <button
+          type="button"
+          onClick={() => { setAddingNew(false); setEditingId(null); resetForm(); }}
+          className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => { void handleSave(); }}
+          className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : editingId ? 'Update override' : 'Add override'}
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="border-t border-gray-100 pt-4">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between text-sm font-medium text-gray-700 hover:text-teal-700"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <span>
+          Vehicle-specific overrides
+          {terms.length > 0 && (
+            <span className="ml-2 rounded-full bg-teal-100 px-2 py-0.5 text-[11px] font-semibold text-teal-700">
+              {terms.length}
+            </span>
+          )}
+        </span>
+        {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+      </button>
+
+      {expanded && (
+        <div className="mt-3 space-y-2">
+          <p className="text-[11px] text-gray-400">
+            Overrides apply to specific vehicle models. For models without an override the global deal terms above are used.
+          </p>
+
+          {isLoading && <p className="text-xs text-gray-400">Loading…</p>}
+
+          {terms.length > 0 && (
+            <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+              {terms.map((t) => (
+                <div key={t.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                  {editingId === t.id ? (
+                    <div className="w-full">{vtFormFields}</div>
+                  ) : (
+                    <>
+                      <div className="min-w-0 flex-1">
+                        <span className="font-medium text-gray-800">{modelName(t.vehicle_model_id)}</span>
+                        <span className="ml-2 text-xs text-gray-500">{vtSummary(t)}</span>
+                      </div>
+                      <div className="flex shrink-0 gap-1">
+                        <button
+                          type="button"
+                          onClick={() => { setEditingId(t.id); setAddingNew(false); resetForm(t); }}
+                          className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-teal-700"
+                          title="Edit override"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { void handleDelete(t.id); }}
+                          className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                          title="Remove override"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {addingNew && !editingId && (
+            <div className="rounded-lg border border-teal-200 bg-teal-50/40 p-3">
+              {vtFormFields}
+            </div>
+          )}
+
+          {!addingNew && !editingId && availableModels.length > 0 && (
+            <button
+              type="button"
+              onClick={() => { setAddingNew(true); resetForm(); }}
+              className="flex items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 py-2 text-xs font-medium text-gray-500 hover:border-teal-400 hover:text-teal-700 w-full justify-center"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add vehicle override
+            </button>
+          )}
+
+          {!addingNew && !editingId && availableModels.length === 0 && terms.length > 0 && (
+            <p className="text-[11px] text-gray-400">All active vehicle models have an override.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Partner form modal ──────────────────────────────────────────────────────
@@ -100,14 +462,19 @@ const EMPTY_FORM = {
   logo_display_height: '' as string,
   early_bird_days: '' as string,
   early_bird_discount_value: '' as string,
+  free_delivery_location_ids: null as number[] | null,
+  portal_enabled: false,
+  portal_subdomain: '',
   notes: '',
 };
 
 function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }: PartnerFormModalProps) {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const createPartner = useCreatePartner();
   const updatePartner = useUpdatePartner();
+  const { data: deliveryLocations = [] } = useDeliveryLocations(editing?.store_id ?? defaultStoreId);
 
   const isEdit = !!editing;
 
@@ -135,6 +502,9 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
         logo_display_height: editing.logo_display_height != null ? String(editing.logo_display_height) : '',
         early_bird_days: editing.early_bird_days != null ? String(editing.early_bird_days) : '',
         early_bird_discount_value: editing.early_bird_discount_value != null ? String(editing.early_bird_discount_value) : '',
+        free_delivery_location_ids: editing.free_delivery_location_ids ?? null,
+        portal_enabled: editing.portal_enabled ?? false,
+        portal_subdomain: editing.portal_subdomain ?? editing.slug,
         notes: editing.notes ?? '',
       });
       setSlugManuallyEdited(true);
@@ -164,6 +534,28 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
     });
   }
 
+  async function handleLogoFile(file: File | null) {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      pushToast('Logo file is too large. Maximum size is 5 MB.', 'error');
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      pushToast('Please upload an image file.', 'error');
+      return;
+    }
+    setUploadingLogo(true);
+    try {
+      const result = await uploadPartnerLogo(file);
+      setField('logo_url', result.url);
+      pushToast('Logo uploaded', 'success');
+    } catch (err) {
+      pushToast((err as Error).message ?? 'Logo upload failed', 'error');
+    } finally {
+      setUploadingLogo(false);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const advanceDiscountDaysNum = form.advance_discount_days.trim() === ''
@@ -184,9 +576,9 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
       active: editing?.active ?? true,
       status: editing?.status ?? 'active',
       deal_type: form.deal_type,
-      discount_type: form.deal_type === 'discount' || form.deal_type === 'combined' ? form.discount_type : null,
-      discount_value: form.deal_type === 'discount' || form.deal_type === 'combined' ? Number(form.discount_value) : null,
-      free_delivery: form.deal_type === 'free_delivery' || form.deal_type === 'combined' ? true : form.free_delivery,
+      discount_type: form.deal_type === 'discount' || form.deal_type === 'combined' || form.deal_type === 'discount_delivery' ? form.discount_type : null,
+      discount_value: form.deal_type === 'discount' || form.deal_type === 'combined' || form.deal_type === 'discount_delivery' ? Number(form.discount_value) : null,
+      free_delivery: form.deal_type === 'free_delivery' || form.deal_type === 'combined' || form.deal_type === 'commission_delivery' || form.deal_type === 'discount_delivery' ? true : form.free_delivery,
       advance_discount_days: advanceDiscountDaysNum,
       logo_url: form.logo_url.trim() || null,
       welcome_message: form.welcome_message.trim() || null,
@@ -194,6 +586,9 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
       logo_display_height: form.logo_display_height.trim() === '' ? null : Math.max(16, Math.min(200, Number(form.logo_display_height))),
       early_bird_days: form.early_bird_days.trim() === '' ? null : Math.max(1, Math.min(365, Number(form.early_bird_days))),
       early_bird_discount_value: form.early_bird_discount_value.trim() === '' ? null : Number(form.early_bird_discount_value),
+      free_delivery_location_ids: form.free_delivery_location_ids,
+      portal_enabled: form.portal_enabled,
+      portal_subdomain: form.portal_subdomain.trim() || form.slug.trim(),
       notes: form.notes.trim() || null,
       telegram_chat_id: form.telegram_chat_id.trim() || null,
     };
@@ -212,9 +607,11 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
   }
 
   const saving = createPartner.isPending || updatePartner.isPending;
-  const showCommissionFields = form.deal_type === 'commission' || form.deal_type === 'combined';
-  const showDiscountFields = form.deal_type === 'discount' || form.deal_type === 'combined';
-  const showFreeDeliveryNote = form.deal_type === 'free_delivery' || form.deal_type === 'combined';
+  const showCommissionFields = form.deal_type === 'commission' || form.deal_type === 'combined' || form.deal_type === 'commission_delivery';
+  const showDiscountFields = form.deal_type === 'discount' || form.deal_type === 'combined' || form.deal_type === 'discount_delivery';
+  const showFreeDeliveryNote = form.deal_type === 'free_delivery' || form.deal_type === 'combined' || form.deal_type === 'commission_delivery' || form.deal_type === 'discount_delivery';
+  const nonStoreLocations = deliveryLocations.filter((l) => l.locationType !== 'store');
+  const isAllLocations = form.free_delivery_location_ids == null;
 
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Partner' : 'Add Accommodation Partner'} size="lg">
@@ -291,6 +688,33 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
               onChange={(e) => setField('telegram_chat_id', e.target.value)}
               placeholder="e.g. 123456789"
             />
+          </div>
+
+          <div className="col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                checked={form.portal_enabled}
+                onChange={(e) => setField('portal_enabled', e.target.checked)}
+              />
+              <span className="text-sm text-gray-700">
+                Enable partner portal access
+                <span className="block text-xs text-gray-400 mt-0.5">Lets this partner log in, check availability, book guests, and view reports.</span>
+              </span>
+            </label>
+            <div className="mt-3">
+              <label className="block text-xs text-gray-500 mb-1">Portal subdomain</label>
+              <div className="flex items-center gap-2">
+                <input
+                  className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  value={form.portal_subdomain}
+                  onChange={(e) => setField('portal_subdomain', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                  placeholder={form.slug || 'bravo'}
+                />
+                <span className="shrink-0 text-xs text-gray-400">.lolasrentals.com</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -445,9 +869,61 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
           )}
 
           {(showFreeDeliveryNote || form.free_delivery) && (
-            <p className="mt-2 text-xs text-gray-400">
-              Pickup &amp; collection delivery fees are waived for guests booking via this link.
-            </p>
+            <div className="mt-3 space-y-2">
+              <p className="text-xs text-gray-400">
+                Pickup &amp; collection delivery fees are waived for guests booking via this link.
+              </p>
+              <div>
+                <p className="text-xs font-medium text-gray-600 mb-1.5">Free delivery applies to</p>
+                <div className="flex gap-4 text-sm">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="fd-scope-create"
+                      checked={isAllLocations}
+                      onChange={() => setField('free_delivery_location_ids', null)}
+                    />
+                    <span>All locations</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="fd-scope-create"
+                      checked={!isAllLocations}
+                      onChange={() => setField('free_delivery_location_ids', [])}
+                    />
+                    <span>Specific locations only</span>
+                  </label>
+                </div>
+                {!isAllLocations && (
+                  <div className="mt-2 grid grid-cols-2 gap-1.5">
+                    {nonStoreLocations.map((loc) => {
+                      const checked = (form.free_delivery_location_ids ?? []).includes(loc.id);
+                      return (
+                        <label key={loc.id} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                          <input
+                            type="checkbox"
+                            className="h-3.5 w-3.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                            checked={checked}
+                            onChange={() => {
+                              const current = form.free_delivery_location_ids ?? [];
+                              setField(
+                                'free_delivery_location_ids',
+                                checked ? current.filter((id) => id !== loc.id) : [...current, loc.id],
+                              );
+                            }}
+                          />
+                          <span className="text-gray-700">{loc.name}</span>
+                        </label>
+                      );
+                    })}
+                    {nonStoreLocations.length === 0 && (
+                      <p className="text-xs text-gray-400 col-span-2">No delivery locations configured.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
           )}
 
           {showCommissionFields && form.commission_type === 'percentage' && (
@@ -481,16 +957,17 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Partner logo URL
-            <span className="ml-1.5 text-xs font-normal text-gray-400">(Cloudinary or any CDN — shown on the guest booking page)</span>
+            Partner logo
+            <span className="ml-1.5 text-xs font-normal text-gray-400">(image upload, max 5 MB)</span>
           </label>
           <input
-            type="url"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-            value={form.logo_url}
-            onChange={(e) => setField('logo_url', e.target.value)}
-            placeholder="https://res.cloudinary.com/…/logo.png"
+            type="file"
+            accept="image/*"
+            disabled={uploadingLogo}
+            onChange={(e) => void handleLogoFile(e.target.files?.[0] ?? null)}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-teal-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-teal-700 hover:file:bg-teal-100 disabled:opacity-60"
           />
+          {uploadingLogo && <p className="mt-1 text-xs text-gray-400">Uploading logo...</p>}
           {form.logo_url.trim() && (
             <div className="mt-2 flex items-center gap-2">
               <img
@@ -504,6 +981,13 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
               />
               <span className="text-xs text-gray-400">Preview</span>
+              <button
+                type="button"
+                onClick={() => setField('logo_url', '')}
+                className="text-xs font-medium text-red-600 hover:underline"
+              >
+                Remove
+              </button>
             </div>
           )}
         </div>
@@ -567,6 +1051,16 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
           />
         </div>
 
+        {isEdit && editing && (
+          <VehicleOverridesSection partnerId={editing.id} pushToast={pushToast} />
+        )}
+
+        {!isEdit && (
+          <p className="text-[11px] text-gray-400 border-t border-gray-100 pt-3">
+            Save the partner first, then re-open to configure vehicle-specific overrides.
+          </p>
+        )}
+
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
             Cancel
@@ -598,6 +1092,8 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
   const { data: details } = usePartnerEnrollmentDetails(partner?.id ?? null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const { data: deliveryLocations = [] } = useDeliveryLocations(partner?.store_id);
 
   const resetFromPartner = useCallback(() => {
     if (!partner) return;
@@ -623,6 +1119,9 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
       logo_display_height: partner.logo_display_height != null ? String(partner.logo_display_height) : '',
       early_bird_days: partner.early_bird_days != null ? String(partner.early_bird_days) : '',
       early_bird_discount_value: partner.early_bird_discount_value != null ? String(partner.early_bird_discount_value) : '',
+      free_delivery_location_ids: partner.free_delivery_location_ids ?? null,
+      portal_enabled: partner.portal_enabled ?? false,
+      portal_subdomain: partner.portal_subdomain ?? partner.slug,
       notes: partner.notes ?? '',
     });
     setSlugManuallyEdited(!!partner.slug);
@@ -648,6 +1147,28 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
     });
   }
 
+  async function handleLogoFile(file: File | null) {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      pushToast('Logo file is too large. Maximum size is 5 MB.', 'error');
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      pushToast('Please upload an image file.', 'error');
+      return;
+    }
+    setUploadingLogo(true);
+    try {
+      const result = await uploadPartnerLogo(file);
+      setField('logo_url', result.url);
+      pushToast('Logo uploaded', 'success');
+    } catch (err) {
+      pushToast((err as Error).message ?? 'Logo upload failed', 'error');
+    } finally {
+      setUploadingLogo(false);
+    }
+  }
+
   if (!partner) return null;
 
   async function handleApprove(e: React.FormEvent) {
@@ -668,9 +1189,9 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
       advance_booking_days: Number(form.advance_booking_days),
       commission_includes_extensions: form.commission_includes_extensions,
       deal_type: form.deal_type,
-      discount_type: form.deal_type === 'discount' || form.deal_type === 'combined' ? form.discount_type : null,
-      discount_value: form.deal_type === 'discount' || form.deal_type === 'combined' ? Number(form.discount_value) : null,
-      free_delivery: form.deal_type === 'free_delivery' || form.deal_type === 'combined' ? true : form.free_delivery,
+      discount_type: form.deal_type === 'discount' || form.deal_type === 'combined' || form.deal_type === 'discount_delivery' ? form.discount_type : null,
+      discount_value: form.deal_type === 'discount' || form.deal_type === 'combined' || form.deal_type === 'discount_delivery' ? Number(form.discount_value) : null,
+      free_delivery: form.deal_type === 'free_delivery' || form.deal_type === 'combined' || form.deal_type === 'commission_delivery' || form.deal_type === 'discount_delivery' ? true : form.free_delivery,
       advance_discount_days: advanceDiscountDaysNum,
       logo_url: form.logo_url.trim() || null,
       welcome_message: form.welcome_message.trim() || null,
@@ -678,6 +1199,9 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
       logo_display_height: form.logo_display_height.trim() === '' ? null : Math.max(16, Math.min(200, Number(form.logo_display_height))),
       early_bird_days: form.early_bird_days.trim() === '' ? null : Math.max(1, Math.min(365, Number(form.early_bird_days))),
       early_bird_discount_value: form.early_bird_discount_value.trim() === '' ? null : Number(form.early_bird_discount_value),
+      free_delivery_location_ids: form.free_delivery_location_ids,
+      portal_enabled: form.portal_enabled,
+      portal_subdomain: form.portal_subdomain.trim() || (form.slug.trim() || autoSlug(form.name)),
       notes: form.notes.trim() || null,
       telegram_chat_id: form.telegram_chat_id.trim() || null,
     };
@@ -690,9 +1214,12 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
     }
   }
 
-  const showCommissionFields = form.deal_type === 'commission' || form.deal_type === 'combined';
-  const showDiscountFields = form.deal_type === 'discount' || form.deal_type === 'combined';
+  const showCommissionFields = form.deal_type === 'commission' || form.deal_type === 'combined' || form.deal_type === 'commission_delivery';
+  const showDiscountFields = form.deal_type === 'discount' || form.deal_type === 'combined' || form.deal_type === 'discount_delivery';
+  const showFreeDeliveryNote = form.deal_type === 'free_delivery' || form.deal_type === 'combined' || form.deal_type === 'commission_delivery' || form.deal_type === 'discount_delivery';
   const saving = approve.isPending;
+  const nonStoreLocations = deliveryLocations.filter((l) => l.locationType !== 'store');
+  const isAllLocations = form.free_delivery_location_ids == null;
 
   return (
     <Modal open={open} onClose={onClose} title={`Approve "${partner.name}"`} size="lg">
@@ -746,6 +1273,33 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
               onChange={(e) => setField('telegram_chat_id', e.target.value)}
               placeholder="123456789"
             />
+          </div>
+
+          <div className="col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                checked={form.portal_enabled}
+                onChange={(e) => setField('portal_enabled', e.target.checked)}
+              />
+              <span className="text-sm text-gray-700">
+                Enable partner portal access
+                <span className="block text-xs text-gray-400 mt-0.5">Useful for reception teams who need availability and booking tools.</span>
+              </span>
+            </label>
+            <div className="mt-3">
+              <label className="block text-xs text-gray-500 mb-1">Portal subdomain</label>
+              <div className="flex items-center gap-2">
+                <input
+                  className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  value={form.portal_subdomain}
+                  onChange={(e) => setField('portal_subdomain', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                  placeholder={form.slug || 'bravo'}
+                />
+                <span className="shrink-0 text-xs text-gray-400">.lolasrentals.com</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -898,6 +1452,131 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
               </div>
             </div>
           )}
+
+          {(showFreeDeliveryNote || form.free_delivery) && (
+            <div className="mt-3 space-y-2">
+              <div>
+                <p className="text-xs font-medium text-gray-600 mb-1.5">Free delivery applies to</p>
+                <div className="flex gap-4 text-sm">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="fd-scope-approve"
+                      checked={isAllLocations}
+                      onChange={() => setField('free_delivery_location_ids', null)}
+                    />
+                    <span>All locations</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="fd-scope-approve"
+                      checked={!isAllLocations}
+                      onChange={() => setField('free_delivery_location_ids', [])}
+                    />
+                    <span>Specific locations only</span>
+                  </label>
+                </div>
+                {!isAllLocations && (
+                  <div className="mt-2 grid grid-cols-2 gap-1.5">
+                    {nonStoreLocations.map((loc) => {
+                      const checked = (form.free_delivery_location_ids ?? []).includes(loc.id);
+                      return (
+                        <label key={loc.id} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                          <input
+                            type="checkbox"
+                            className="h-3.5 w-3.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                            checked={checked}
+                            onChange={() => {
+                              const current = form.free_delivery_location_ids ?? [];
+                              setField(
+                                'free_delivery_location_ids',
+                                checked ? current.filter((id) => id !== loc.id) : [...current, loc.id],
+                              );
+                            }}
+                          />
+                          <span className="text-gray-700">{loc.name}</span>
+                        </label>
+                      );
+                    })}
+                    {nonStoreLocations.length === 0 && (
+                      <p className="text-xs text-gray-400 col-span-2">No delivery locations configured.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Partner logo
+            <span className="ml-1.5 text-xs font-normal text-gray-400">(image upload, max 5 MB)</span>
+          </label>
+          <input
+            type="file"
+            accept="image/*"
+            disabled={uploadingLogo}
+            onChange={(e) => void handleLogoFile(e.target.files?.[0] ?? null)}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-teal-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-teal-700 hover:file:bg-teal-100 disabled:opacity-60"
+          />
+          {uploadingLogo && <p className="mt-1 text-xs text-gray-400">Uploading logo...</p>}
+          {form.logo_url.trim() && (
+            <div className="mt-2 flex items-center gap-2">
+              <img
+                src={form.logo_url.trim()}
+                alt="Logo preview"
+                style={{
+                  maxWidth: form.logo_display_width.trim() ? `${form.logo_display_width}px` : '120px',
+                  maxHeight: form.logo_display_height.trim() ? `${form.logo_display_height}px` : '40px',
+                }}
+                className="w-auto rounded border border-gray-200 object-contain p-0.5"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+              />
+              <span className="text-xs text-gray-400">Preview</span>
+              <button
+                type="button"
+                onClick={() => setField('logo_url', '')}
+                className="text-xs font-medium text-red-600 hover:underline"
+              >
+                Remove
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Logo max-width (px)
+              <span className="ml-1 text-xs font-normal text-gray-400">optional</span>
+            </label>
+            <input
+              type="number"
+              min={20}
+              max={400}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={form.logo_display_width}
+              onChange={(e) => setField('logo_display_width', e.target.value)}
+              placeholder="e.g. 100"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Logo max-height (px)
+              <span className="ml-1 text-xs font-normal text-gray-400">optional</span>
+            </label>
+            <input
+              type="number"
+              min={16}
+              max={200}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={form.logo_display_height}
+              onChange={(e) => setField('logo_display_height', e.target.value)}
+              placeholder="e.g. 40"
+            />
+          </div>
         </div>
 
         <div>
@@ -1053,18 +1732,33 @@ interface PartnerDetailPanelProps {
 function PartnerDetailPanel({ partner, onEdit, onClose, pushToast }: PartnerDetailPanelProps) {
   const [month, setMonth] = useState(currentMonth());
   const [copied, setCopied] = useState(false);
+  const [copiedPortal, setCopiedPortal] = useState(false);
+  const [newPortalUser, setNewPortalUser] = useState({ name: '', username: '', pin: '' });
+  const [pinResetByUserId, setPinResetByUserId] = useState<Record<string, string>>({});
   const deletePartner = useDeletePartner();
   const updatePartner = useUpdatePartner();
   const sendReport = useSendMonthlyReport();
+  const createPortalUser = useCreatePartnerPortalUser(partner.id);
+  const updatePortalUser = useUpdatePartnerPortalUser(partner.id);
 
   const { data: stats, isLoading: statsLoading } = usePartnerStats(partner.id, month);
+  const { data: portalUsers = [], isLoading: portalUsersLoading } = usePartnerPortalUsers(partner.id);
 
   const link = partnerLink(partner.slug);
+  const portalLink = partnerPortalLink(partner);
+  const hasReportDestination = Boolean(partner.telegram_chat_id || partner.contact_email);
 
   function handleCopy() {
     navigator.clipboard.writeText(link).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  function handleCopyPortal() {
+    navigator.clipboard.writeText(portalLink).then(() => {
+      setCopiedPortal(true);
+      setTimeout(() => setCopiedPortal(false), 2000);
     });
   }
 
@@ -1091,15 +1785,51 @@ function PartnerDetailPanel({ partner, onEdit, onClose, pushToast }: PartnerDeta
       );
     } catch (err) {
       const msg = (err as Error).message ?? '';
-      if (msg.includes('NO_TELEGRAM') || msg.includes('No Telegram')) {
-        pushToast('No Telegram chat ID configured for this partner', 'error');
+      if (msg.includes('NO_REPORT_DESTINATION') || msg.includes('NO_TELEGRAM') || msg.includes('No Telegram')) {
+        pushToast('Add Telegram or email before sending this report', 'error');
       } else {
         pushToast(msg || 'Failed to send report', 'error');
       }
     }
   }
 
-  const showsCommission = partner.deal_type === 'commission' || partner.deal_type === 'combined';
+  async function handleCreatePortalUser(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      await createPortalUser.mutateAsync({
+        name: newPortalUser.name.trim(),
+        username: newPortalUser.username.trim(),
+        pin: newPortalUser.pin.trim(),
+      });
+      setNewPortalUser({ name: '', username: '', pin: '' });
+      pushToast('Partner portal user added', 'success');
+    } catch (err) {
+      pushToast((err as Error).message ?? 'Failed to add portal user', 'error');
+    }
+  }
+
+  async function handleTogglePortalUser(id: string, isActive: boolean) {
+    try {
+      await updatePortalUser.mutateAsync({ id, is_active: !isActive });
+      pushToast(!isActive ? 'Portal user activated' : 'Portal user disabled', 'success');
+    } catch (err) {
+      pushToast((err as Error).message ?? 'Failed to update portal user', 'error');
+    }
+  }
+
+  async function handleResetPortalPin(id: string) {
+    const pin = pinResetByUserId[id]?.trim();
+    if (!pin) return;
+    try {
+      await updatePortalUser.mutateAsync({ id, pin });
+      setPinResetByUserId((prev) => ({ ...prev, [id]: '' }));
+      pushToast('Portal PIN updated', 'success');
+    } catch (err) {
+      pushToast((err as Error).message ?? 'Failed to update PIN', 'error');
+    }
+  }
+
+  const showsCommission = partner.deal_type === 'commission' || partner.deal_type === 'combined' || partner.deal_type === 'commission_delivery';
 
   return (
     <div className="flex h-full flex-col">
@@ -1170,6 +1900,137 @@ function PartnerDetailPanel({ partner, onEdit, onClose, pushToast }: PartnerDeta
           </p>
         </div>
 
+        {/* Partner portal */}
+        <div className="rounded-xl border border-gray-200 p-4">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 flex items-center gap-1.5">
+                <KeyRound className="h-3.5 w-3.5" /> Partner portal
+              </p>
+              <p className="mt-1 text-sm text-gray-600">
+                {partner.portal_enabled
+                  ? 'Enabled for availability checks, guest bookings, and commission reports.'
+                  : 'Disabled. Enable portal access in Edit before sharing login details.'}
+              </p>
+            </div>
+            <Badge color={partner.portal_enabled ? 'green' : 'gray'}>
+              {partner.portal_enabled ? 'Enabled' : 'Disabled'}
+            </Badge>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              readOnly
+              value={portalLink}
+              className="flex-1 min-w-0 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700 font-mono"
+            />
+            <button
+              onClick={handleCopyPortal}
+              className="shrink-0 flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50"
+            >
+              {copiedPortal ? <CheckCheck className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              {copiedPortal ? 'Copied' : 'Copy'}
+            </button>
+            <a
+              href={portalLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 rounded-lg border border-gray-200 bg-white p-2 text-gray-600 hover:bg-gray-50"
+              title="Open portal"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          </div>
+
+          <div className="mt-4 border-t border-gray-100 pt-4">
+            <p className="mb-2 text-sm font-semibold text-gray-800">Portal users</p>
+            <form onSubmit={handleCreatePortalUser} className="grid grid-cols-4 gap-2">
+              <input
+                required
+                value={newPortalUser.name}
+                onChange={(e) => setNewPortalUser((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="Name"
+                className="rounded-lg border border-gray-300 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+              <input
+                required
+                value={newPortalUser.username}
+                onChange={(e) => setNewPortalUser((prev) => ({ ...prev, username: e.target.value }))}
+                placeholder="Username/email"
+                className="rounded-lg border border-gray-300 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+              <input
+                required
+                type="password"
+                minLength={4}
+                value={newPortalUser.pin}
+                onChange={(e) => setNewPortalUser((prev) => ({ ...prev, pin: e.target.value }))}
+                placeholder="PIN/password"
+                className="rounded-lg border border-gray-300 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+              <button
+                disabled={createPortalUser.isPending}
+                className="flex items-center justify-center gap-1.5 rounded-lg bg-gray-900 px-3 py-2 text-xs font-semibold text-white hover:bg-gray-800 disabled:opacity-50"
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                Add
+              </button>
+            </form>
+
+            <div className="mt-3 space-y-2">
+              {portalUsersLoading ? (
+                <div className="rounded-lg border border-gray-200 p-3 text-xs text-gray-400">Loading portal users…</div>
+              ) : portalUsers.length > 0 ? (
+                portalUsers.map((user) => (
+                  <div key={user.id} className="rounded-lg border border-gray-200 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-gray-900">{user.name}</p>
+                        <p className="truncate text-xs text-gray-500">
+                          {user.username}
+                          {user.last_login_at ? ` • last login ${formatDate(user.last_login_at)}` : ' • no login yet'}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleTogglePortalUser(user.id, user.is_active)}
+                        disabled={updatePortalUser.isPending}
+                        className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-medium ${
+                          user.is_active
+                            ? 'border-red-200 text-red-600 hover:bg-red-50'
+                            : 'border-green-200 text-green-600 hover:bg-green-50'
+                        }`}
+                      >
+                        {user.is_active ? 'Disable' : 'Enable'}
+                      </button>
+                    </div>
+                    <div className="mt-2 flex gap-2">
+                      <input
+                        type="password"
+                        minLength={4}
+                        value={pinResetByUserId[user.id] ?? ''}
+                        onChange={(e) => setPinResetByUserId((prev) => ({ ...prev, [user.id]: e.target.value }))}
+                        placeholder="New PIN/password"
+                        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      />
+                      <button
+                        onClick={() => handleResetPortalPin(user.id)}
+                        disabled={updatePortalUser.isPending || !(pinResetByUserId[user.id]?.trim())}
+                        className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        Reset PIN
+                      </button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-lg border border-dashed border-gray-200 p-3 text-xs text-gray-400">
+                  No portal users yet.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* Deal info */}
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-lg border border-gray-200 p-3">
@@ -1235,10 +2096,10 @@ function PartnerDetailPanel({ partner, onEdit, onClose, pushToast }: PartnerDeta
                 />
                 <button
                   onClick={handleSendReport}
-                  disabled={sendReport.isPending || !partner.telegram_chat_id}
-                  title={partner.telegram_chat_id ? 'Send monthly report via Telegram' : 'No Telegram chat ID configured'}
+                  disabled={sendReport.isPending || !hasReportDestination}
+                  title={hasReportDestination ? 'Send monthly report' : 'No Telegram chat ID or email configured'}
                   className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                    partner.telegram_chat_id
+                    hasReportDestination
                       ? 'border-blue-200 text-blue-600 hover:bg-blue-50 disabled:opacity-50'
                       : 'border-gray-200 text-gray-400 cursor-not-allowed'
                   }`}
@@ -1249,9 +2110,9 @@ function PartnerDetailPanel({ partner, onEdit, onClose, pushToast }: PartnerDeta
               </div>
             </div>
 
-            {!partner.telegram_chat_id && (
+            {!hasReportDestination && (
               <p className="mb-3 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-xs text-amber-700">
-                Add a Telegram chat ID in Edit to enable automatic monthly report sending.
+                Add a Telegram chat ID or contact email in Edit to enable monthly report sending.
               </p>
             )}
 

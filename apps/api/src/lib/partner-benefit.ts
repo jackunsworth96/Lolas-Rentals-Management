@@ -3,11 +3,45 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 export type PartnerDealType = 'commission' | 'discount' | 'free_delivery' | 'combined' | 'commission_delivery' | 'discount_delivery';
 export type PartnerDiscountType = 'percentage' | 'fixed';
 
+/** Per-vehicle override row from partner_vehicle_terms. */
+export interface PartnerVehicleTermRow {
+  vehicleModelId: string;
+  dealType: PartnerDealType;
+  commissionType: 'fixed' | 'percentage' | null;
+  commissionValue: number | null;
+  advanceBookingDays: number | null;
+  commissionIncludesExtensions: boolean;
+  discountType: PartnerDiscountType | null;
+  discountValue: number | null;
+  advanceDiscountDays: number | null;
+  earlyBirdDays: number | null;
+  earlyBirdDiscountValue: number | null;
+  freeDelivery: boolean;
+}
+
 export interface PartnerBenefitRow {
   id: string;
   slug: string;
   name: string;
   storeId: string;
+  dealType: PartnerDealType;
+  discountType: PartnerDiscountType | null;
+  discountValue: number | null;
+  freeDelivery: boolean;
+  /** When set, free delivery only applies when both pickup and dropoff are in this list. */
+  freeDeliveryLocationIds: number[] | null;
+  advanceDiscountDays: number | null;
+  earlyBirdDays: number | null;
+  earlyBirdDiscountValue: number | null;
+  /** Per-vehicle overrides; empty array when none are configured. */
+  vehicleTerms: PartnerVehicleTermRow[];
+}
+
+/**
+ * The resolved set of deal terms after applying per-vehicle override logic.
+ * Shape mirrors the fields used by isBenefitEligibleForPickup and applyPartnerBenefit.
+ */
+export interface ResolvedPartnerTerms {
   dealType: PartnerDealType;
   discountType: PartnerDiscountType | null;
   discountValue: number | null;
@@ -33,7 +67,7 @@ export async function lookupActivePartnerBySlug(
   const sb = getSupabaseClient();
   const { data, error } = await sb
     .from('accommodation_partners')
-    .select('id, slug, name, store_id, deal_type, discount_type, discount_value, free_delivery, advance_discount_days, early_bird_days, early_bird_discount_value, status, active')
+    .select('id, slug, name, store_id, deal_type, discount_type, discount_value, free_delivery, free_delivery_location_ids, advance_discount_days, early_bird_days, early_bird_discount_value, status, active')
     .eq('slug', trimmed)
     .eq('status', 'active')
     .eq('active', true)
@@ -47,10 +81,45 @@ export async function lookupActivePartnerBySlug(
     discount_type: PartnerDiscountType | null;
     discount_value: number | null;
     free_delivery: boolean;
+    free_delivery_location_ids: number[] | null;
     advance_discount_days: number | null;
     early_bird_days: number | null;
     early_bird_discount_value: number | null;
   };
+
+  // Fetch per-vehicle overrides for this partner
+  const { data: vtRows } = await sb
+    .from('partner_vehicle_terms')
+    .select('vehicle_model_id, deal_type, commission_type, commission_value, advance_booking_days, commission_includes_extensions, discount_type, discount_value, advance_discount_days, early_bird_days, early_bird_discount_value, free_delivery')
+    .eq('partner_id', row.id);
+
+  const vehicleTerms: PartnerVehicleTermRow[] = (vtRows ?? []).map((vt: {
+    vehicle_model_id: string;
+    deal_type: PartnerDealType;
+    commission_type: string | null;
+    commission_value: number | null;
+    advance_booking_days: number | null;
+    commission_includes_extensions: boolean;
+    discount_type: string | null;
+    discount_value: number | null;
+    advance_discount_days: number | null;
+    early_bird_days: number | null;
+    early_bird_discount_value: number | null;
+    free_delivery: boolean;
+  }) => ({
+    vehicleModelId: vt.vehicle_model_id,
+    dealType: vt.deal_type,
+    commissionType: (vt.commission_type as 'fixed' | 'percentage' | null),
+    commissionValue: vt.commission_value != null ? Number(vt.commission_value) : null,
+    advanceBookingDays: vt.advance_booking_days,
+    commissionIncludesExtensions: vt.commission_includes_extensions,
+    discountType: (vt.discount_type as PartnerDiscountType | null),
+    discountValue: vt.discount_value != null ? Number(vt.discount_value) : null,
+    advanceDiscountDays: vt.advance_discount_days,
+    earlyBirdDays: vt.early_bird_days,
+    earlyBirdDiscountValue: vt.early_bird_discount_value != null ? Number(vt.early_bird_discount_value) : null,
+    freeDelivery: vt.free_delivery,
+  }));
 
   return {
     id: row.id,
@@ -61,9 +130,44 @@ export async function lookupActivePartnerBySlug(
     discountType: row.discount_type,
     discountValue: row.discount_value != null ? Number(row.discount_value) : null,
     freeDelivery: row.free_delivery,
+    freeDeliveryLocationIds: row.free_delivery_location_ids ?? null,
     advanceDiscountDays: row.advance_discount_days,
     earlyBirdDays: row.early_bird_days,
     earlyBirdDiscountValue: row.early_bird_discount_value != null ? Number(row.early_bird_discount_value) : null,
+    vehicleTerms,
+  };
+}
+
+/**
+ * Resolve the effective deal terms for a booking, applying a per-vehicle override
+ * when one exists for the given model. Falls back to the global partner terms.
+ */
+export function resolveTerms(
+  partner: PartnerBenefitRow,
+  vehicleModelId?: string | null,
+): ResolvedPartnerTerms {
+  if (vehicleModelId) {
+    const override = partner.vehicleTerms.find((vt) => vt.vehicleModelId === vehicleModelId);
+    if (override) {
+      return {
+        dealType: override.dealType,
+        discountType: override.discountType,
+        discountValue: override.discountValue,
+        freeDelivery: override.freeDelivery,
+        advanceDiscountDays: override.advanceDiscountDays,
+        earlyBirdDays: override.earlyBirdDays,
+        earlyBirdDiscountValue: override.earlyBirdDiscountValue,
+      };
+    }
+  }
+  return {
+    dealType: partner.dealType,
+    discountType: partner.discountType,
+    discountValue: partner.discountValue,
+    freeDelivery: partner.freeDelivery,
+    advanceDiscountDays: partner.advanceDiscountDays,
+    earlyBirdDays: partner.earlyBirdDays,
+    earlyBirdDiscountValue: partner.earlyBirdDiscountValue,
   };
 }
 
@@ -78,17 +182,35 @@ export function isBenefitEligibleForPickup(
   partner: PartnerBenefitRow,
   pickupDatetime: string,
   bookingNow: Date = new Date(),
+  vehicleModelId?: string | null,
 ): boolean {
-  if (partner.dealType === 'commission') return false;
+  const terms = resolveTerms(partner, vehicleModelId);
+
+  if (terms.dealType === 'commission') return false;
   // commission_delivery has no rental discount but does apply free delivery —
   // allow it through so applyPartnerBenefit can zero the delivery fees.
-  if (partner.advanceDiscountDays == null || partner.advanceDiscountDays <= 0) return true;
+  if (terms.advanceDiscountDays == null || terms.advanceDiscountDays <= 0) return true;
 
   const pickup = new Date(pickupDatetime);
   if (Number.isNaN(pickup.getTime())) return false;
 
   const advanceDays = (pickup.getTime() - bookingNow.getTime()) / MS_PER_DAY;
-  return advanceDays >= partner.advanceDiscountDays;
+  return advanceDays >= terms.advanceDiscountDays;
+}
+
+/**
+ * Returns true when the selected locations are permitted for free delivery.
+ * If no allowlist is configured (null or empty) all locations qualify.
+ * When an allowlist is set, BOTH pickup and dropoff must be included.
+ */
+function isLocationAllowed(
+  ids: number[] | null,
+  pickupLocationId?: number | null,
+  dropoffLocationId?: number | null,
+): boolean {
+  if (!ids || ids.length === 0) return true;
+  return (pickupLocationId != null && ids.includes(pickupLocationId)) &&
+         (dropoffLocationId != null && ids.includes(dropoffLocationId));
 }
 
 export interface ApplyBenefitInput {
@@ -98,6 +220,11 @@ export interface ApplyBenefitInput {
   dropoffFee: number;
   /** Days between booking (now) and pickup — used to pick early-bird tier. */
   advanceDaysFromNow?: number | null;
+  /** When provided, per-vehicle override terms are applied if they exist. */
+  vehicleModelId?: string | null;
+  /** Location IDs used to check against the partner's free-delivery location allowlist. */
+  pickupLocationId?: number | null;
+  dropoffLocationId?: number | null;
 }
 
 export interface ApplyBenefitResult {
@@ -112,9 +239,12 @@ export interface ApplyBenefitResult {
  * Apply a partner benefit to a quote. The discount is taken off the rental
  * subtotal only (not addons or transfers); free delivery zeroes the
  * pickup/dropoff fees. The function rounds to 2dp so PHP totals stay sane.
+ *
+ * Per-vehicle overrides are resolved via vehicleModelId when supplied.
  */
 export function applyPartnerBenefit(input: ApplyBenefitInput): ApplyBenefitResult {
-  const { partner } = input;
+  const terms = resolveTerms(input.partner, input.vehicleModelId);
+
   let rentalSubtotal = input.rentalSubtotal;
   let pickupFee = input.pickupFee;
   let dropoffFee = input.dropoffFee;
@@ -122,22 +252,22 @@ export function applyPartnerBenefit(input: ApplyBenefitInput): ApplyBenefitResul
   let deliveryDiscount = 0;
 
   const applyDiscount =
-    partner.dealType === 'discount' || partner.dealType === 'combined' || partner.dealType === 'discount_delivery';
+    terms.dealType === 'discount' || terms.dealType === 'combined' || terms.dealType === 'discount_delivery';
   const applyFreeDelivery =
-    partner.freeDelivery || partner.dealType === 'free_delivery' || partner.dealType === 'combined' ||
-    partner.dealType === 'commission_delivery' || partner.dealType === 'discount_delivery';
+    terms.freeDelivery || terms.dealType === 'free_delivery' || terms.dealType === 'combined' ||
+    terms.dealType === 'commission_delivery' || terms.dealType === 'discount_delivery';
 
-  if (applyDiscount && partner.discountType && partner.discountValue != null) {
+  if (applyDiscount && terms.discountType && terms.discountValue != null) {
     // Use the early-bird (higher) value when the pickup qualifies for that tier.
     const effectiveDiscountValue =
-      partner.earlyBirdDiscountValue != null &&
-      partner.earlyBirdDays != null &&
+      terms.earlyBirdDiscountValue != null &&
+      terms.earlyBirdDays != null &&
       input.advanceDaysFromNow != null &&
-      input.advanceDaysFromNow >= partner.earlyBirdDays
-        ? partner.earlyBirdDiscountValue
-        : partner.discountValue;
+      input.advanceDaysFromNow >= terms.earlyBirdDays
+        ? terms.earlyBirdDiscountValue
+        : terms.discountValue;
 
-    if (partner.discountType === 'percentage') {
+    if (terms.discountType === 'percentage') {
       rentalDiscount = Math.round(rentalSubtotal * (effectiveDiscountValue / 100) * 100) / 100;
     } else {
       rentalDiscount = Math.min(rentalSubtotal, effectiveDiscountValue);
@@ -145,7 +275,11 @@ export function applyPartnerBenefit(input: ApplyBenefitInput): ApplyBenefitResul
     rentalSubtotal = Math.max(0, Math.round((rentalSubtotal - rentalDiscount) * 100) / 100);
   }
 
-  if (applyFreeDelivery) {
+  if (applyFreeDelivery && isLocationAllowed(
+    input.partner.freeDeliveryLocationIds,
+    input.pickupLocationId,
+    input.dropoffLocationId,
+  )) {
     deliveryDiscount = pickupFee + dropoffFee;
     pickupFee = 0;
     dropoffFee = 0;

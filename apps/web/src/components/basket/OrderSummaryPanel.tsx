@@ -8,6 +8,7 @@ import type { AppliedPartnerBenefit } from '../../utils/partnerDiscount.js';
 import { describeBenefit } from '../../utils/partnerDiscount.js';
 import { formatPhpNumber } from '../../utils/currency.js';
 import { PesoSign } from '../ui/PesoSign.js';
+import { getIncludedItemsForModel } from '../../data/home-included-rental-items.js';
 
 interface Props {
   basket: BasketItem[];
@@ -153,11 +154,7 @@ export function OrderSummaryPanel({
                 alt={partnerBenefit.name}
                 className="mt-0.5 h-8 w-auto max-w-[72px] shrink-0 rounded object-contain"
               />
-            ) : (
-              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-100">
-                <Hotel className="h-4 w-4 text-teal-600" aria-hidden />
-              </div>
-            )}
+            ) : null}
             <div>
               <p className="flex items-center gap-1.5 text-[12px] font-bold text-teal-800">
                 <Gift className="h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -181,11 +178,7 @@ export function OrderSummaryPanel({
                 alt={partnerBenefit.name}
                 className="mt-0.5 h-8 w-auto max-w-[72px] shrink-0 rounded object-contain"
               />
-            ) : (
-              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-charcoal-brand/10">
-                <Hotel className="h-4 w-4 text-charcoal-brand/40" aria-hidden />
-              </div>
-            )}
+            ) : null}
             <div>
               <p className="text-[12px] font-bold text-charcoal-brand">
                 You&apos;re booking via {partnerBenefit.name}
@@ -311,6 +304,27 @@ export function OrderSummaryPanel({
           </p>
         </div>
       </div>
+
+      {/* ── What's Included ── */}
+      {basket.length > 0 && (() => {
+        const primaryModel = basket[0].modelName;
+        const items = getIncludedItemsForModel(primaryModel);
+        return (
+          <div className="border-t border-charcoal-brand/10 px-5 py-4 md:px-6">
+            <p className="font-lato mb-3 text-center text-[9px] font-black uppercase tracking-wider text-charcoal-brand/50">
+              What&apos;s included
+            </p>
+            <div className="flex flex-wrap justify-around gap-x-2 gap-y-3">
+              {items.map(({ icon, label }) => (
+                <div key={label} className="flex flex-col items-center gap-1">
+                  <img src={icon} alt={label} className="h-7 w-7 object-contain" width={28} height={28} />
+                  <span className="font-lato text-center text-[9px] font-semibold leading-tight text-charcoal-brand/70">{label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Payment Method ── */}
       <div className="border-t border-charcoal-brand/10 px-5 py-5 md:px-6">

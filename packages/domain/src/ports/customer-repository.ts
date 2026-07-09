@@ -7,6 +7,7 @@ export interface Customer {
   totalSpent: number;
   notes: string | null;
   blacklisted: boolean;
+  whatsappReviewOptOut: boolean;
 }
 
 export interface CustomerRepository {

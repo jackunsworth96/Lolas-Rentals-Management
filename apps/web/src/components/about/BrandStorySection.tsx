@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { FadeUpSection } from '../public/FadeUpSection.js';
 import { CloudinaryImage } from '../ui/CloudinaryImage.js';
 
@@ -58,6 +59,24 @@ export function BrandStorySection() {
                 <p className="font-semibold" style={{ opacity: 1 }}>
                   It costs nothing to be kind.
                 </p>
+              </div>
+
+              <div className="pt-4" style={{ display: 'inline-block', transform: 'skewX(-4deg)' }}>
+                <Link
+                  to="/book/reserve"
+                  className="inline-block rounded-[6px] border-2 border-charcoal-brand bg-gold-brand px-10 py-3 font-lato text-sm font-extrabold uppercase tracking-[0.05em] text-charcoal-brand transition-shadow duration-150 sm:px-11 sm:py-3.5"
+                  style={{ boxShadow: '4px 4px 0 #363737' }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLAnchorElement).style.boxShadow = '6px 6px 0 #363737';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLAnchorElement).style.boxShadow = '4px 4px 0 #363737';
+                  }}
+                >
+                  <span style={{ display: 'inline-block', transform: 'skewX(4deg)' }}>
+                    Book Your Ride
+                  </span>
+                </Link>
               </div>
             </div>
 

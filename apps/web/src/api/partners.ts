@@ -23,12 +23,18 @@ export interface AccommodationPartner {
   discount_type: PartnerDiscountType | null;
   discount_value: number | null;
   free_delivery: boolean;
+  free_delivery_location_ids: number[] | null;
   advance_discount_days: number | null;
   logo_url: string | null;
+  welcome_message: string | null;
+  logo_display_width: number | null;
+  logo_display_height: number | null;
   early_bird_days: number | null;
   early_bird_discount_value: number | null;
   notes: string | null;
   telegram_chat_id: string | null;
+  portal_enabled: boolean;
+  portal_subdomain: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -76,6 +82,17 @@ export interface PartnerStats {
 }
 
 export type PartnerInput = Omit<AccommodationPartner, 'id' | 'created_at' | 'updated_at'>;
+
+export interface PartnerPortalUser {
+  id: string;
+  partner_id: string;
+  name: string;
+  username: string;
+  is_active: boolean;
+  last_login_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 export function usePartners(storeId?: string) {
   const params = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
@@ -161,10 +178,44 @@ export function useSendMonthlyReport() {
   });
 }
 
+export async function uploadPartnerLogo(file: File): Promise<{ url: string }> {
+  const form = new FormData();
+  form.append('file', file);
+  return api.upload<{ url: string }>('/partners/upload-logo', form);
+}
+
+export function usePartnerPortalUsers(partnerId: string | null) {
+  return useQuery<PartnerPortalUser[]>({
+    queryKey: ['partners', partnerId, 'portal-users'],
+    queryFn: () => api.get<PartnerPortalUser[]>(`/partners/${partnerId}/portal-users`),
+    enabled: !!partnerId,
+    staleTime: 60_000,
+  });
+}
+
+export function useCreatePartnerPortalUser(partnerId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { name: string; username: string; pin: string; is_active?: boolean }) =>
+      api.post<PartnerPortalUser>(`/partners/${partnerId}/portal-users`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['partners', partnerId, 'portal-users'] }),
+  });
+}
+
+export function useUpdatePartnerPortalUser(partnerId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; name?: string; username?: string; pin?: string; is_active?: boolean }) =>
+      api.put<PartnerPortalUser>(`/partners/${partnerId}/portal-users/${id}`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['partners', partnerId, 'portal-users'] }),
+  });
+}
+
 // ── Public benefit lookup (no auth) ───────────────────────────────────────────
 
-export interface PublicPartnerBenefit {
-  name: string;
+/** Guest-facing fields for a single per-vehicle override. */
+export interface PublicPartnerVehicleTerm {
+  vehicleModelId: string;
   dealType: PartnerDealType;
   discountType: PartnerDiscountType | null;
   discountValue: number | null;
@@ -172,10 +223,25 @@ export interface PublicPartnerBenefit {
   advanceDiscountDays: number | null;
   earlyBirdDays: number | null;
   earlyBirdDiscountValue: number | null;
+}
+
+export interface PublicPartnerBenefit {
+  name: string;
+  dealType: PartnerDealType;
+  discountType: PartnerDiscountType | null;
+  discountValue: number | null;
+  freeDelivery: boolean;
+  /** When set, free delivery only applies when both pickup and dropoff are in this list. */
+  freeDeliveryLocationIds: number[] | null;
+  advanceDiscountDays: number | null;
+  earlyBirdDays: number | null;
+  earlyBirdDiscountValue: number | null;
   logoUrl: string | null;
   welcomeMessage: string | null;
   logoDisplayWidth: number | null;
   logoDisplayHeight: number | null;
+  /** Per-vehicle deal term overrides. Empty array when none are configured. */
+  vehicleTerms: PublicPartnerVehicleTerm[];
 }
 
 export async function fetchPublicPartnerBenefit(slug: string): Promise<PublicPartnerBenefit | null> {
@@ -185,4 +251,98 @@ export async function fetchPublicPartnerBenefit(slug: string): Promise<PublicPar
   } catch {
     return null;
   }
+}
+
+// ── Delivery locations (for free-delivery allowlist UI) ───────────────────────
+
+export interface DeliveryLocation {
+  id: number;
+  name: string;
+  deliveryCost: number;
+  collectionCost: number;
+  locationType: string | null;
+}
+
+export function useDeliveryLocations(storeId?: string) {
+  const params = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  return useQuery<DeliveryLocation[]>({
+    queryKey: ['delivery-locations', storeId],
+    queryFn: () => api.get<DeliveryLocation[]>(`/config/locations${params}`),
+    staleTime: 5 * 60_000,
+    enabled: !!storeId,
+  });
+}
+
+// ── Vehicle models (for override dropdowns) ────────────────────────────────────
+
+export interface VehicleModelOption {
+  id: string;
+  name: string;
+  type: string | null;
+}
+
+export function useVehicleModels() {
+  return useQuery<VehicleModelOption[]>({
+    queryKey: ['vehicle-models'],
+    queryFn: () => api.get<VehicleModelOption[]>('/partners/vehicle-models'),
+    staleTime: 5 * 60_000,
+  });
+}
+
+// ── Per-vehicle term overrides ─────────────────────────────────────────────────
+
+export interface PartnerVehicleTerm {
+  id: string;
+  partner_id: string;
+  vehicle_model_id: string;
+  deal_type: PartnerDealType;
+  commission_type: 'fixed' | 'percentage' | null;
+  commission_value: number | null;
+  advance_booking_days: number | null;
+  commission_includes_extensions: boolean;
+  discount_type: PartnerDiscountType | null;
+  discount_value: number | null;
+  advance_discount_days: number | null;
+  early_bird_days: number | null;
+  early_bird_discount_value: number | null;
+  free_delivery: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type PartnerVehicleTermInput = Omit<PartnerVehicleTerm, 'id' | 'partner_id' | 'created_at' | 'updated_at'>;
+
+export function usePartnerVehicleTerms(partnerId: string | null) {
+  return useQuery<PartnerVehicleTerm[]>({
+    queryKey: ['partner-vehicle-terms', partnerId],
+    queryFn: () => api.get<PartnerVehicleTerm[]>(`/partners/${partnerId}/vehicle-terms`),
+    enabled: !!partnerId,
+    staleTime: 30_000,
+  });
+}
+
+export function useCreatePartnerVehicleTerm(partnerId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: PartnerVehicleTermInput) =>
+      api.post<PartnerVehicleTerm>(`/partners/${partnerId}/vehicle-terms`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['partner-vehicle-terms', partnerId] }),
+  });
+}
+
+export function useUpdatePartnerVehicleTerm(partnerId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: Partial<PartnerVehicleTermInput> & { id: string }) =>
+      api.put<PartnerVehicleTerm>(`/partners/${partnerId}/vehicle-terms/${id}`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['partner-vehicle-terms', partnerId] }),
+  });
+}
+
+export function useDeletePartnerVehicleTerm(partnerId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/partners/${partnerId}/vehicle-terms/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['partner-vehicle-terms', partnerId] }),
+  });
 }

@@ -28,6 +28,9 @@ interface ReviewCandidate {
   bookingReference: string;
   customerName: string;
   customerMobile: string;
+  customerEmail: string | null;
+  customerId: string | null;
+  whatsappReviewOptOut: boolean;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -43,6 +46,10 @@ function sanitisePhone(raw: string): string {
   if (digits.startsWith('0')) return `+63${digits.slice(1)}`;
   if (digits.startsWith('63')) return `+${digits}`;
   return `+63${digits}`;
+}
+
+function escapeIlike(value: string): string {
+  return value.replace(/[%_\\]/g, '\\$&');
 }
 
 function buildMessage(customerName: string): string {
@@ -84,7 +91,7 @@ async function sendRespondIoMessage(phone: string, text: string): Promise<void> 
 
 // ── Main job ──────────────────────────────────────────────────────────────────
 
-async function runPostRentalReviewJob(): Promise<void> {
+export async function runPostRentalReviewJob(): Promise<void> {
   logger.info('[post-rental-review] Running...');
 
   const sb = getSupabaseClient();
@@ -108,7 +115,7 @@ async function runPostRentalReviewJob(): Promise<void> {
 
   const { data: rawRows, error: rawErr } = await sb
     .from('orders_raw')
-    .select('order_reference, customer_name, customer_mobile')
+    .select('order_reference, customer_name, customer_email, customer_mobile')
     .eq('status', 'processed')
     .gte('dropoff_datetime', windowStart)
     .lte('dropoff_datetime', windowEnd);
@@ -122,7 +129,7 @@ async function runPostRentalReviewJob(): Promise<void> {
   const { data: itemRows, error: itemErr } = await sb
     .from('order_items')
     .select(
-      'dropoff_datetime, orders!inner(booking_token, status, customers!inner(name, mobile))',
+      'dropoff_datetime, orders!inner(booking_token, status, customer_id, customers!inner(name, email, mobile, whatsapp_review_opt_out))',
     )
     .gte('dropoff_datetime', windowStart)
     .lte('dropoff_datetime', windowEnd)
@@ -139,9 +146,17 @@ async function runPostRentalReviewJob(): Promise<void> {
   for (const row of rawRows ?? []) {
     const name   = (row.customer_name as string | null)?.trim();
     const mobile = (row.customer_mobile as string | null)?.trim();
+    const email  = (row.customer_email as string | null)?.trim() || null;
     const ref    = row.order_reference as string | null;
     if (!name || !mobile || !ref) continue;
-    candidates.push({ bookingReference: ref, customerName: name, customerMobile: mobile });
+    candidates.push({
+      bookingReference: ref,
+      customerName: name,
+      customerMobile: mobile,
+      customerEmail: email,
+      customerId: null,
+      whatsappReviewOptOut: false,
+    });
   }
 
   for (const row of itemRows ?? []) {
@@ -152,6 +167,7 @@ async function runPostRentalReviewJob(): Promise<void> {
 
     const name   = (customer.name as string | null)?.trim();
     const mobile = (customer.mobile as string | null)?.trim();
+    const email  = (customer.email as string | null)?.trim() || null;
     const ref    = order.booking_token as string | null;
     if (!name || !mobile || !ref) continue;
 
@@ -159,6 +175,9 @@ async function runPostRentalReviewJob(): Promise<void> {
       bookingReference: ref,
       customerName:     name,
       customerMobile:   mobile,
+      customerEmail:    email,
+      customerId:       (order.customer_id as string | null) ?? null,
+      whatsappReviewOptOut: Boolean(customer.whatsapp_review_opt_out),
     });
   }
 
@@ -200,6 +219,46 @@ async function runPostRentalReviewJob(): Promise<void> {
         '[post-rental-review] Already sent — skipping',
       );
       continue;
+    }
+
+    if (candidate.whatsappReviewOptOut) {
+      logger.info(
+        { ref: candidate.bookingReference, customerId: candidate.customerId },
+        '[post-rental-review] Customer opted out — skipping',
+      );
+      continue;
+    }
+
+    if (!candidate.customerId && (candidate.customerEmail || candidate.customerMobile)) {
+      let optOutQuery = sb
+        .from('customers')
+        .select('id, whatsapp_review_opt_out')
+        .limit(1);
+
+      if (candidate.customerEmail) {
+        optOutQuery = optOutQuery.ilike('email', escapeIlike(candidate.customerEmail));
+      } else {
+        optOutQuery = optOutQuery.ilike('mobile', escapeIlike(candidate.customerMobile));
+      }
+
+      const { data: customerRows, error: customerErr } = await optOutQuery;
+      if (customerErr) {
+        logger.warn(
+          { ref: candidate.bookingReference, error: customerErr.message },
+          '[post-rental-review] Customer opt-out lookup failed - defaulting to send',
+        );
+      }
+
+      const matchedCustomer = (customerRows ?? [])[0] as
+        | { id: string; whatsapp_review_opt_out?: boolean | null }
+        | undefined;
+      if (matchedCustomer?.whatsapp_review_opt_out) {
+        logger.info(
+          { ref: candidate.bookingReference, customerId: matchedCustomer.id },
+          '[post-rental-review] Matched raw customer opted out — skipping',
+        );
+        continue;
+      }
     }
 
     let phone: string;
