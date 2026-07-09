@@ -276,7 +276,7 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
     const { data, error } = await sb
       .from('accommodation_partners')
       .select('id, name, deal_type, discount_type, discount_value, free_delivery, free_delivery_location_ids, advance_discount_days, early_bird_days, early_bird_discount_value, status, active, logo_url, welcome_message, logo_display_width, logo_display_height')
-      .eq('slug', slug)
+      .or(`slug.eq.${slug},portal_subdomain.eq.${slug}`)
       .eq('status', 'active')
       .eq('active', true)
       .maybeSingle();
