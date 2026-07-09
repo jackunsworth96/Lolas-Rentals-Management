@@ -45,12 +45,15 @@ export interface PartnerReportBooking {
   id: string;
   orderReference: string | null;
   customerName: string | null;
+  vehicleModelId: string | null;
   pickupDatetime: string | null;
   status: string;
   advanceDays: number | null;
   commissionable: boolean;
   commissionAmount: number;
   commissionBase: number | null;
+  commissionType: 'fixed' | 'percentage' | null;
+  commissionValue: number | null;
 }
 
 export interface PartnerReport {

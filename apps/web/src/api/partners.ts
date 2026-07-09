@@ -62,11 +62,14 @@ export interface PartnerBookingRow {
   id: string;
   orderReference: string | null;
   customerName: string | null;
+  vehicleModelId: string | null;
   pickupDatetime: string | null;
   dropoffDatetime: string | null;
   rentalValue: number;
   bookingValue: number;
   commissionBase: number | null;
+  commissionType: 'fixed' | 'percentage' | null;
+  commissionValue: number | null;
   status: string;
   bookedAt: string;
   advanceDays: number | null;

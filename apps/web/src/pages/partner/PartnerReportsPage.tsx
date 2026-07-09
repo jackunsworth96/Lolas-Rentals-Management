@@ -41,7 +41,21 @@ export default function PartnerReportsPage() {
                 <td className="px-3 py-2 font-mono text-xs">{b.orderReference ?? '-'}</td>
                 <td className="px-3 py-2">{b.customerName ?? '-'}</td>
                 <td className="px-3 py-2 text-gray-500">{b.pickupDatetime ? new Date(b.pickupDatetime).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' }) : '-'}</td>
-                <td className="px-3 py-2 text-right">{b.commissionable ? money(b.commissionAmount) : <span className="text-gray-400">Not eligible</span>}</td>
+                <td className="px-3 py-2 text-right">
+                  {b.commissionable ? (
+                    <div>
+                      <span className="font-semibold text-teal-700">{money(b.commissionAmount)}</span>
+                      {b.commissionType === 'percentage' && b.commissionBase !== null && (
+                        <p className="text-xs text-gray-400">{b.commissionValue ?? 0}% on {money(b.commissionBase)}</p>
+                      )}
+                      {b.commissionType === 'fixed' && b.commissionValue !== null && (
+                        <p className="text-xs text-gray-400">{money(b.commissionValue)} fixed</p>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-gray-400">Not eligible</span>
+                  )}
+                </td>
               </tr>
             ))}
             {!isLoading && (data?.bookings ?? []).length === 0 && <tr><td colSpan={4} className="px-3 py-6 text-center text-gray-500">No bookings for this month.</td></tr>}
