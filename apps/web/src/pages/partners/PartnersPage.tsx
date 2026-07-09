@@ -2163,8 +2163,13 @@ function PartnerDetailPanel({ partner, onEdit, onClose, pushToast }: PartnerDeta
                               {b.commissionable ? (
                                 <div>
                                   <span className="font-semibold text-teal-700">{formatPhp(b.commissionAmount)}</span>
-                                  {b.commissionBase !== null && partner.commission_type === 'percentage' && (
-                                    <p className="text-gray-400">on {formatPhp(b.commissionBase)}</p>
+                                  {b.commissionType === 'percentage' && b.commissionBase !== null && (
+                                    <p className="text-gray-400">
+                                      {b.commissionValue ?? 0}% on {formatPhp(b.commissionBase)}
+                                    </p>
+                                  )}
+                                  {b.commissionType === 'fixed' && b.commissionValue !== null && (
+                                    <p className="text-gray-400">{formatPhp(b.commissionValue)} fixed</p>
                                   )}
                                 </div>
                               ) : (
