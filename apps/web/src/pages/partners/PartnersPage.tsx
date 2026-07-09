@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import {
   Link2, Plus, Pencil, BarChart2, ToggleLeft, ToggleRight, Copy, CheckCheck,
   ExternalLink, Send, Check, X, Clock, ChevronDown, ChevronUp, Trash2,
+  UserPlus, KeyRound,
 } from 'lucide-react';
 import {
   usePartners,
@@ -19,6 +20,10 @@ import {
   useDeletePartnerVehicleTerm,
   useVehicleModels,
   useDeliveryLocations,
+  usePartnerPortalUsers,
+  useCreatePartnerPortalUser,
+  useUpdatePartnerPortalUser,
+  uploadPartnerLogo,
   type AccommodationPartner,
   type PartnerInput,
   type PartnerDealType,
@@ -35,6 +40,19 @@ const SITE_URL = (import.meta.env.VITE_SITE_URL as string | undefined) ?? window
 
 function partnerLink(slug: string) {
   return `${SITE_URL}/book?ref=${encodeURIComponent(slug)}`;
+}
+
+function partnerPortalLink(partner: Pick<AccommodationPartner, 'slug' | 'portal_subdomain'>) {
+  const origin = SITE_URL.replace(/\/+$/, '');
+  const url = new URL(origin);
+  const isLocal = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+  if (!isLocal && partner.portal_subdomain) {
+    url.hostname = `${partner.portal_subdomain}.lolasrentals.com`;
+    url.pathname = '/partner/login';
+    url.search = '';
+    return url.toString();
+  }
+  return `${origin}/partner/login?partner=${encodeURIComponent(partner.slug)}`;
 }
 
 function formatPhp(amount: number) {
@@ -445,12 +463,15 @@ const EMPTY_FORM = {
   early_bird_days: '' as string,
   early_bird_discount_value: '' as string,
   free_delivery_location_ids: null as number[] | null,
+  portal_enabled: false,
+  portal_subdomain: '',
   notes: '',
 };
 
 function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }: PartnerFormModalProps) {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const createPartner = useCreatePartner();
   const updatePartner = useUpdatePartner();
   const { data: deliveryLocations = [] } = useDeliveryLocations(editing?.store_id ?? defaultStoreId);
@@ -482,6 +503,8 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
         early_bird_days: editing.early_bird_days != null ? String(editing.early_bird_days) : '',
         early_bird_discount_value: editing.early_bird_discount_value != null ? String(editing.early_bird_discount_value) : '',
         free_delivery_location_ids: editing.free_delivery_location_ids ?? null,
+        portal_enabled: editing.portal_enabled ?? false,
+        portal_subdomain: editing.portal_subdomain ?? editing.slug,
         notes: editing.notes ?? '',
       });
       setSlugManuallyEdited(true);
@@ -509,6 +532,28 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
       }
       return next;
     });
+  }
+
+  async function handleLogoFile(file: File | null) {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      pushToast('Logo file is too large. Maximum size is 5 MB.', 'error');
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      pushToast('Please upload an image file.', 'error');
+      return;
+    }
+    setUploadingLogo(true);
+    try {
+      const result = await uploadPartnerLogo(file);
+      setField('logo_url', result.url);
+      pushToast('Logo uploaded', 'success');
+    } catch (err) {
+      pushToast((err as Error).message ?? 'Logo upload failed', 'error');
+    } finally {
+      setUploadingLogo(false);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -542,6 +587,8 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
       early_bird_days: form.early_bird_days.trim() === '' ? null : Math.max(1, Math.min(365, Number(form.early_bird_days))),
       early_bird_discount_value: form.early_bird_discount_value.trim() === '' ? null : Number(form.early_bird_discount_value),
       free_delivery_location_ids: form.free_delivery_location_ids,
+      portal_enabled: form.portal_enabled,
+      portal_subdomain: form.portal_subdomain.trim() || form.slug.trim(),
       notes: form.notes.trim() || null,
       telegram_chat_id: form.telegram_chat_id.trim() || null,
     };
@@ -641,6 +688,33 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
               onChange={(e) => setField('telegram_chat_id', e.target.value)}
               placeholder="e.g. 123456789"
             />
+          </div>
+
+          <div className="col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                checked={form.portal_enabled}
+                onChange={(e) => setField('portal_enabled', e.target.checked)}
+              />
+              <span className="text-sm text-gray-700">
+                Enable partner portal access
+                <span className="block text-xs text-gray-400 mt-0.5">Lets this partner log in, check availability, book guests, and view reports.</span>
+              </span>
+            </label>
+            <div className="mt-3">
+              <label className="block text-xs text-gray-500 mb-1">Portal subdomain</label>
+              <div className="flex items-center gap-2">
+                <input
+                  className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  value={form.portal_subdomain}
+                  onChange={(e) => setField('portal_subdomain', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                  placeholder={form.slug || 'bravo'}
+                />
+                <span className="shrink-0 text-xs text-gray-400">.lolasrentals.com</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -883,16 +957,17 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Partner logo URL
-            <span className="ml-1.5 text-xs font-normal text-gray-400">(Cloudinary or any CDN — shown on the guest booking page)</span>
+            Partner logo
+            <span className="ml-1.5 text-xs font-normal text-gray-400">(image upload, max 5 MB)</span>
           </label>
           <input
-            type="url"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-            value={form.logo_url}
-            onChange={(e) => setField('logo_url', e.target.value)}
-            placeholder="https://res.cloudinary.com/…/logo.png"
+            type="file"
+            accept="image/*"
+            disabled={uploadingLogo}
+            onChange={(e) => void handleLogoFile(e.target.files?.[0] ?? null)}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-teal-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-teal-700 hover:file:bg-teal-100 disabled:opacity-60"
           />
+          {uploadingLogo && <p className="mt-1 text-xs text-gray-400">Uploading logo...</p>}
           {form.logo_url.trim() && (
             <div className="mt-2 flex items-center gap-2">
               <img
@@ -906,6 +981,13 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
               />
               <span className="text-xs text-gray-400">Preview</span>
+              <button
+                type="button"
+                onClick={() => setField('logo_url', '')}
+                className="text-xs font-medium text-red-600 hover:underline"
+              >
+                Remove
+              </button>
             </div>
           )}
         </div>
@@ -1010,6 +1092,7 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
   const { data: details } = usePartnerEnrollmentDetails(partner?.id ?? null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const { data: deliveryLocations = [] } = useDeliveryLocations(partner?.store_id);
 
   const resetFromPartner = useCallback(() => {
@@ -1037,6 +1120,8 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
       early_bird_days: partner.early_bird_days != null ? String(partner.early_bird_days) : '',
       early_bird_discount_value: partner.early_bird_discount_value != null ? String(partner.early_bird_discount_value) : '',
       free_delivery_location_ids: partner.free_delivery_location_ids ?? null,
+      portal_enabled: partner.portal_enabled ?? false,
+      portal_subdomain: partner.portal_subdomain ?? partner.slug,
       notes: partner.notes ?? '',
     });
     setSlugManuallyEdited(!!partner.slug);
@@ -1060,6 +1145,28 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
       }
       return next;
     });
+  }
+
+  async function handleLogoFile(file: File | null) {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      pushToast('Logo file is too large. Maximum size is 5 MB.', 'error');
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      pushToast('Please upload an image file.', 'error');
+      return;
+    }
+    setUploadingLogo(true);
+    try {
+      const result = await uploadPartnerLogo(file);
+      setField('logo_url', result.url);
+      pushToast('Logo uploaded', 'success');
+    } catch (err) {
+      pushToast((err as Error).message ?? 'Logo upload failed', 'error');
+    } finally {
+      setUploadingLogo(false);
+    }
   }
 
   if (!partner) return null;
@@ -1093,6 +1200,8 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
       early_bird_days: form.early_bird_days.trim() === '' ? null : Math.max(1, Math.min(365, Number(form.early_bird_days))),
       early_bird_discount_value: form.early_bird_discount_value.trim() === '' ? null : Number(form.early_bird_discount_value),
       free_delivery_location_ids: form.free_delivery_location_ids,
+      portal_enabled: form.portal_enabled,
+      portal_subdomain: form.portal_subdomain.trim() || (form.slug.trim() || autoSlug(form.name)),
       notes: form.notes.trim() || null,
       telegram_chat_id: form.telegram_chat_id.trim() || null,
     };
@@ -1164,6 +1273,33 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
               onChange={(e) => setField('telegram_chat_id', e.target.value)}
               placeholder="123456789"
             />
+          </div>
+
+          <div className="col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                checked={form.portal_enabled}
+                onChange={(e) => setField('portal_enabled', e.target.checked)}
+              />
+              <span className="text-sm text-gray-700">
+                Enable partner portal access
+                <span className="block text-xs text-gray-400 mt-0.5">Useful for reception teams who need availability and booking tools.</span>
+              </span>
+            </label>
+            <div className="mt-3">
+              <label className="block text-xs text-gray-500 mb-1">Portal subdomain</label>
+              <div className="flex items-center gap-2">
+                <input
+                  className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  value={form.portal_subdomain}
+                  onChange={(e) => setField('portal_subdomain', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                  placeholder={form.slug || 'bravo'}
+                />
+                <span className="shrink-0 text-xs text-gray-400">.lolasrentals.com</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1375,6 +1511,76 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
+            Partner logo
+            <span className="ml-1.5 text-xs font-normal text-gray-400">(image upload, max 5 MB)</span>
+          </label>
+          <input
+            type="file"
+            accept="image/*"
+            disabled={uploadingLogo}
+            onChange={(e) => void handleLogoFile(e.target.files?.[0] ?? null)}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-teal-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-teal-700 hover:file:bg-teal-100 disabled:opacity-60"
+          />
+          {uploadingLogo && <p className="mt-1 text-xs text-gray-400">Uploading logo...</p>}
+          {form.logo_url.trim() && (
+            <div className="mt-2 flex items-center gap-2">
+              <img
+                src={form.logo_url.trim()}
+                alt="Logo preview"
+                style={{
+                  maxWidth: form.logo_display_width.trim() ? `${form.logo_display_width}px` : '120px',
+                  maxHeight: form.logo_display_height.trim() ? `${form.logo_display_height}px` : '40px',
+                }}
+                className="w-auto rounded border border-gray-200 object-contain p-0.5"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+              />
+              <span className="text-xs text-gray-400">Preview</span>
+              <button
+                type="button"
+                onClick={() => setField('logo_url', '')}
+                className="text-xs font-medium text-red-600 hover:underline"
+              >
+                Remove
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Logo max-width (px)
+              <span className="ml-1 text-xs font-normal text-gray-400">optional</span>
+            </label>
+            <input
+              type="number"
+              min={20}
+              max={400}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={form.logo_display_width}
+              onChange={(e) => setField('logo_display_width', e.target.value)}
+              placeholder="e.g. 100"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Logo max-height (px)
+              <span className="ml-1 text-xs font-normal text-gray-400">optional</span>
+            </label>
+            <input
+              type="number"
+              min={16}
+              max={200}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={form.logo_display_height}
+              onChange={(e) => setField('logo_display_height', e.target.value)}
+              placeholder="e.g. 40"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
             Custom welcome message
             <span className="ml-1.5 text-xs font-normal text-gray-400">(optional — replaces default copy on the guest booking page)</span>
           </label>
@@ -1526,18 +1732,33 @@ interface PartnerDetailPanelProps {
 function PartnerDetailPanel({ partner, onEdit, onClose, pushToast }: PartnerDetailPanelProps) {
   const [month, setMonth] = useState(currentMonth());
   const [copied, setCopied] = useState(false);
+  const [copiedPortal, setCopiedPortal] = useState(false);
+  const [newPortalUser, setNewPortalUser] = useState({ name: '', username: '', pin: '' });
+  const [pinResetByUserId, setPinResetByUserId] = useState<Record<string, string>>({});
   const deletePartner = useDeletePartner();
   const updatePartner = useUpdatePartner();
   const sendReport = useSendMonthlyReport();
+  const createPortalUser = useCreatePartnerPortalUser(partner.id);
+  const updatePortalUser = useUpdatePartnerPortalUser(partner.id);
 
   const { data: stats, isLoading: statsLoading } = usePartnerStats(partner.id, month);
+  const { data: portalUsers = [], isLoading: portalUsersLoading } = usePartnerPortalUsers(partner.id);
 
   const link = partnerLink(partner.slug);
+  const portalLink = partnerPortalLink(partner);
+  const hasReportDestination = Boolean(partner.telegram_chat_id || partner.contact_email);
 
   function handleCopy() {
     navigator.clipboard.writeText(link).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  function handleCopyPortal() {
+    navigator.clipboard.writeText(portalLink).then(() => {
+      setCopiedPortal(true);
+      setTimeout(() => setCopiedPortal(false), 2000);
     });
   }
 
@@ -1564,15 +1785,51 @@ function PartnerDetailPanel({ partner, onEdit, onClose, pushToast }: PartnerDeta
       );
     } catch (err) {
       const msg = (err as Error).message ?? '';
-      if (msg.includes('NO_TELEGRAM') || msg.includes('No Telegram')) {
-        pushToast('No Telegram chat ID configured for this partner', 'error');
+      if (msg.includes('NO_REPORT_DESTINATION') || msg.includes('NO_TELEGRAM') || msg.includes('No Telegram')) {
+        pushToast('Add Telegram or email before sending this report', 'error');
       } else {
         pushToast(msg || 'Failed to send report', 'error');
       }
     }
   }
 
-  const showsCommission = partner.deal_type === 'commission' || partner.deal_type === 'combined';
+  async function handleCreatePortalUser(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      await createPortalUser.mutateAsync({
+        name: newPortalUser.name.trim(),
+        username: newPortalUser.username.trim(),
+        pin: newPortalUser.pin.trim(),
+      });
+      setNewPortalUser({ name: '', username: '', pin: '' });
+      pushToast('Partner portal user added', 'success');
+    } catch (err) {
+      pushToast((err as Error).message ?? 'Failed to add portal user', 'error');
+    }
+  }
+
+  async function handleTogglePortalUser(id: string, isActive: boolean) {
+    try {
+      await updatePortalUser.mutateAsync({ id, is_active: !isActive });
+      pushToast(!isActive ? 'Portal user activated' : 'Portal user disabled', 'success');
+    } catch (err) {
+      pushToast((err as Error).message ?? 'Failed to update portal user', 'error');
+    }
+  }
+
+  async function handleResetPortalPin(id: string) {
+    const pin = pinResetByUserId[id]?.trim();
+    if (!pin) return;
+    try {
+      await updatePortalUser.mutateAsync({ id, pin });
+      setPinResetByUserId((prev) => ({ ...prev, [id]: '' }));
+      pushToast('Portal PIN updated', 'success');
+    } catch (err) {
+      pushToast((err as Error).message ?? 'Failed to update PIN', 'error');
+    }
+  }
+
+  const showsCommission = partner.deal_type === 'commission' || partner.deal_type === 'combined' || partner.deal_type === 'commission_delivery';
 
   return (
     <div className="flex h-full flex-col">
@@ -1643,6 +1900,137 @@ function PartnerDetailPanel({ partner, onEdit, onClose, pushToast }: PartnerDeta
           </p>
         </div>
 
+        {/* Partner portal */}
+        <div className="rounded-xl border border-gray-200 p-4">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 flex items-center gap-1.5">
+                <KeyRound className="h-3.5 w-3.5" /> Partner portal
+              </p>
+              <p className="mt-1 text-sm text-gray-600">
+                {partner.portal_enabled
+                  ? 'Enabled for availability checks, guest bookings, and commission reports.'
+                  : 'Disabled. Enable portal access in Edit before sharing login details.'}
+              </p>
+            </div>
+            <Badge color={partner.portal_enabled ? 'green' : 'gray'}>
+              {partner.portal_enabled ? 'Enabled' : 'Disabled'}
+            </Badge>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              readOnly
+              value={portalLink}
+              className="flex-1 min-w-0 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700 font-mono"
+            />
+            <button
+              onClick={handleCopyPortal}
+              className="shrink-0 flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50"
+            >
+              {copiedPortal ? <CheckCheck className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              {copiedPortal ? 'Copied' : 'Copy'}
+            </button>
+            <a
+              href={portalLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 rounded-lg border border-gray-200 bg-white p-2 text-gray-600 hover:bg-gray-50"
+              title="Open portal"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          </div>
+
+          <div className="mt-4 border-t border-gray-100 pt-4">
+            <p className="mb-2 text-sm font-semibold text-gray-800">Portal users</p>
+            <form onSubmit={handleCreatePortalUser} className="grid grid-cols-4 gap-2">
+              <input
+                required
+                value={newPortalUser.name}
+                onChange={(e) => setNewPortalUser((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="Name"
+                className="rounded-lg border border-gray-300 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+              <input
+                required
+                value={newPortalUser.username}
+                onChange={(e) => setNewPortalUser((prev) => ({ ...prev, username: e.target.value }))}
+                placeholder="Username/email"
+                className="rounded-lg border border-gray-300 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+              <input
+                required
+                type="password"
+                minLength={4}
+                value={newPortalUser.pin}
+                onChange={(e) => setNewPortalUser((prev) => ({ ...prev, pin: e.target.value }))}
+                placeholder="PIN/password"
+                className="rounded-lg border border-gray-300 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+              <button
+                disabled={createPortalUser.isPending}
+                className="flex items-center justify-center gap-1.5 rounded-lg bg-gray-900 px-3 py-2 text-xs font-semibold text-white hover:bg-gray-800 disabled:opacity-50"
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                Add
+              </button>
+            </form>
+
+            <div className="mt-3 space-y-2">
+              {portalUsersLoading ? (
+                <div className="rounded-lg border border-gray-200 p-3 text-xs text-gray-400">Loading portal users…</div>
+              ) : portalUsers.length > 0 ? (
+                portalUsers.map((user) => (
+                  <div key={user.id} className="rounded-lg border border-gray-200 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-gray-900">{user.name}</p>
+                        <p className="truncate text-xs text-gray-500">
+                          {user.username}
+                          {user.last_login_at ? ` • last login ${formatDate(user.last_login_at)}` : ' • no login yet'}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleTogglePortalUser(user.id, user.is_active)}
+                        disabled={updatePortalUser.isPending}
+                        className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-medium ${
+                          user.is_active
+                            ? 'border-red-200 text-red-600 hover:bg-red-50'
+                            : 'border-green-200 text-green-600 hover:bg-green-50'
+                        }`}
+                      >
+                        {user.is_active ? 'Disable' : 'Enable'}
+                      </button>
+                    </div>
+                    <div className="mt-2 flex gap-2">
+                      <input
+                        type="password"
+                        minLength={4}
+                        value={pinResetByUserId[user.id] ?? ''}
+                        onChange={(e) => setPinResetByUserId((prev) => ({ ...prev, [user.id]: e.target.value }))}
+                        placeholder="New PIN/password"
+                        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      />
+                      <button
+                        onClick={() => handleResetPortalPin(user.id)}
+                        disabled={updatePortalUser.isPending || !(pinResetByUserId[user.id]?.trim())}
+                        className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        Reset PIN
+                      </button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-lg border border-dashed border-gray-200 p-3 text-xs text-gray-400">
+                  No portal users yet.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* Deal info */}
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-lg border border-gray-200 p-3">
@@ -1708,10 +2096,10 @@ function PartnerDetailPanel({ partner, onEdit, onClose, pushToast }: PartnerDeta
                 />
                 <button
                   onClick={handleSendReport}
-                  disabled={sendReport.isPending || !partner.telegram_chat_id}
-                  title={partner.telegram_chat_id ? 'Send monthly report via Telegram' : 'No Telegram chat ID configured'}
+                  disabled={sendReport.isPending || !hasReportDestination}
+                  title={hasReportDestination ? 'Send monthly report' : 'No Telegram chat ID or email configured'}
                   className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                    partner.telegram_chat_id
+                    hasReportDestination
                       ? 'border-blue-200 text-blue-600 hover:bg-blue-50 disabled:opacity-50'
                       : 'border-gray-200 text-gray-400 cursor-not-allowed'
                   }`}
@@ -1722,9 +2110,9 @@ function PartnerDetailPanel({ partner, onEdit, onClose, pushToast }: PartnerDeta
               </div>
             </div>
 
-            {!partner.telegram_chat_id && (
+            {!hasReportDestination && (
               <p className="mb-3 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-xs text-amber-700">
-                Add a Telegram chat ID in Edit to enable automatic monthly report sending.
+                Add a Telegram chat ID or contact email in Edit to enable monthly report sending.
               </p>
             )}
 
@@ -1775,8 +2163,13 @@ function PartnerDetailPanel({ partner, onEdit, onClose, pushToast }: PartnerDeta
                               {b.commissionable ? (
                                 <div>
                                   <span className="font-semibold text-teal-700">{formatPhp(b.commissionAmount)}</span>
-                                  {b.commissionBase !== null && partner.commission_type === 'percentage' && (
-                                    <p className="text-gray-400">on {formatPhp(b.commissionBase)}</p>
+                                  {b.commissionType === 'percentage' && b.commissionBase !== null && (
+                                    <p className="text-gray-400">
+                                      {b.commissionValue ?? 0}% on {formatPhp(b.commissionBase)}
+                                    </p>
+                                  )}
+                                  {b.commissionType === 'fixed' && b.commissionValue !== null && (
+                                    <p className="text-gray-400">{formatPhp(b.commissionValue)} fixed</p>
                                   )}
                                 </div>
                               ) : (

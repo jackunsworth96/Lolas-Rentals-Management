@@ -26,10 +26,15 @@ export interface AccommodationPartner {
   free_delivery_location_ids: number[] | null;
   advance_discount_days: number | null;
   logo_url: string | null;
+  welcome_message: string | null;
+  logo_display_width: number | null;
+  logo_display_height: number | null;
   early_bird_days: number | null;
   early_bird_discount_value: number | null;
   notes: string | null;
   telegram_chat_id: string | null;
+  portal_enabled: boolean;
+  portal_subdomain: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -57,11 +62,14 @@ export interface PartnerBookingRow {
   id: string;
   orderReference: string | null;
   customerName: string | null;
+  vehicleModelId: string | null;
   pickupDatetime: string | null;
   dropoffDatetime: string | null;
   rentalValue: number;
   bookingValue: number;
   commissionBase: number | null;
+  commissionType: 'fixed' | 'percentage' | null;
+  commissionValue: number | null;
   status: string;
   bookedAt: string;
   advanceDays: number | null;
@@ -77,6 +85,17 @@ export interface PartnerStats {
 }
 
 export type PartnerInput = Omit<AccommodationPartner, 'id' | 'created_at' | 'updated_at'>;
+
+export interface PartnerPortalUser {
+  id: string;
+  partner_id: string;
+  name: string;
+  username: string;
+  is_active: boolean;
+  last_login_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 export function usePartners(storeId?: string) {
   const params = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
@@ -159,6 +178,39 @@ export function useSendMonthlyReport() {
   return useMutation({
     mutationFn: ({ id, month }: { id: string; month?: string }) =>
       api.post<MonthlyReportResult>(`/partners/${id}/send-monthly-report`, { month }),
+  });
+}
+
+export async function uploadPartnerLogo(file: File): Promise<{ url: string }> {
+  const form = new FormData();
+  form.append('file', file);
+  return api.upload<{ url: string }>('/partners/upload-logo', form);
+}
+
+export function usePartnerPortalUsers(partnerId: string | null) {
+  return useQuery<PartnerPortalUser[]>({
+    queryKey: ['partners', partnerId, 'portal-users'],
+    queryFn: () => api.get<PartnerPortalUser[]>(`/partners/${partnerId}/portal-users`),
+    enabled: !!partnerId,
+    staleTime: 60_000,
+  });
+}
+
+export function useCreatePartnerPortalUser(partnerId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { name: string; username: string; pin: string; is_active?: boolean }) =>
+      api.post<PartnerPortalUser>(`/partners/${partnerId}/portal-users`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['partners', partnerId, 'portal-users'] }),
+  });
+}
+
+export function useUpdatePartnerPortalUser(partnerId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; name?: string; username?: string; pin?: string; is_active?: boolean }) =>
+      api.put<PartnerPortalUser>(`/partners/${partnerId}/portal-users/${id}`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['partners', partnerId, 'portal-users'] }),
   });
 }
 
