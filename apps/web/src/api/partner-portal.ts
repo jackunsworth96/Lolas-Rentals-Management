@@ -111,6 +111,7 @@ export interface PartnerBookingInput {
 
 export function usePartnerLogin() {
   return useMutation({
+    meta: { suppressGlobalErrorBanner: true },
     mutationFn: (body: { partnerSlug: string; username: string; pin: string }) =>
       partnerRequest<{ token: string; user: PartnerAuthUser; partner: { id: string; slug: string; name: string; storeId: string } }>('/partner-auth/login', {
         method: 'POST',
