@@ -1,4 +1,5 @@
 import type { PublicPartnerBenefit } from '../api/partners.js';
+import { partnerSlugFromHost } from './partnerHost.js';
 
 const REF_STORAGE_KEY = 'lolaPartnerRef';
 const BENEFIT_STORAGE_KEY = 'lolaPartnerBenefit';
@@ -16,6 +17,11 @@ export function capturePartnerRefFromUrl(): string | null {
     if (ref) {
       sessionStorage.setItem(REF_STORAGE_KEY, ref);
       return ref;
+    }
+    const hostRef = partnerSlugFromHost();
+    if (hostRef) {
+      sessionStorage.setItem(REF_STORAGE_KEY, hostRef);
+      return hostRef;
     }
   } catch {
     // sessionStorage may be unavailable in some environments — safe to ignore

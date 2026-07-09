@@ -3,6 +3,7 @@ import { lazy, Suspense } from 'react';
 import { ChunkErrorBoundary } from './components/ChunkErrorBoundary.js';
 import { AppLayout } from './components/layout/AppLayout.js';
 import { useAuthStore } from './stores/auth-store.js';
+import { usePartnerAuthStore } from './stores/partner-auth-store.js';
 
 const LoginPage = lazy(() => import('./pages/login/LoginPage.js'));
 const InboxPage = lazy(() => import('./pages/orders/InboxPage.js'));
@@ -63,10 +64,21 @@ const PartnersPage = lazy(() => import('./pages/partners/PartnersPage.js'));
 const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage.js'));
 const AffiliatesPage = lazy(() => import('./pages/affiliates/AffiliatesPage.js'));
 const AffiliatesDetailsPage = lazy(() => import('./pages/affiliates/AffiliatesDetailsPage.js'));
+const PartnerLoginPage = lazy(() => import('./pages/partner/PartnerLoginPage.js'));
+const PartnerShell = lazy(() => import('./pages/partner/PartnerShell.js'));
+const PartnerDashboardPage = lazy(() => import('./pages/partner/PartnerDashboardPage.js'));
+const PartnerBookPage = lazy(() => import('./pages/partner/PartnerBookPage.js'));
+const PartnerReportsPage = lazy(() => import('./pages/partner/PartnerReportsPage.js'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
   if (!token) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
+function ProtectedPartnerRoute({ children }: { children: React.ReactNode }) {
+  const token = usePartnerAuthStore((s) => s.token);
+  if (!token) return <Navigate to="/partner/login" replace />;
   return <>{children}</>;
 }
 
@@ -125,6 +137,13 @@ export function AppRouter() {
           <Route path="/unsubscribe" element={<UnsubscribePage />} />
           <Route path="/affiliates" element={<AffiliatesPage />} />
           <Route path="/affiliates/details/:partnerId" element={<AffiliatesDetailsPage />} />
+          <Route path="/partner" element={<Navigate to="/partner/dashboard" replace />} />
+          <Route path="/partner/login" element={<PartnerLoginPage />} />
+          <Route element={<ProtectedPartnerRoute><PartnerShell /></ProtectedPartnerRoute>}>
+            <Route path="/partner/dashboard" element={<PartnerDashboardPage />} />
+            <Route path="/partner/book" element={<PartnerBookPage />} />
+            <Route path="/partner/reports" element={<PartnerReportsPage />} />
+          </Route>
 
           {/* Backoffice routes — protected */}
           <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>

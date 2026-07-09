@@ -4,7 +4,18 @@ import { useAuthStore } from '../../stores/auth-store.js';
 import { useUIStore } from '../../stores/ui-store.js';
 import { api } from '../../api/client.js';
 import { Button } from '../../components/common/Button.js';
-import lolaLogo from '../../assets/Lola.BASS.Logo.svg';
+import lolaLogo from '../../assets/Lolas Original Logo.svg';
+import bassLogo from '../../assets/BASS Logo .svg';
+
+function affiliateLogoFromLocation() {
+  const params = new URLSearchParams(window.location.search);
+  const affiliate = (params.get('affiliate') ?? params.get('brand') ?? '').toLowerCase();
+  const hostLabel = window.location.hostname.split('.')[0]?.toLowerCase() ?? '';
+  if (affiliate === 'bass' || hostLabel.includes('bass')) {
+    return { src: bassLogo, alt: 'BASS' };
+  }
+  return null;
+}
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -14,6 +25,7 @@ export default function LoginPage() {
   const setAuth = useAuthStore((s) => s.setAuth);
   const setSelectedStore = useUIStore((s) => s.setSelectedStore);
   const navigate = useNavigate();
+  const affiliateLogo = affiliateLogoFromLocation();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -36,8 +48,14 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
       <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-lg">
-        <div className="mb-8 flex justify-center">
+        <div className="mb-8 flex items-center justify-center gap-4">
           <img src={lolaLogo} alt="Lola's Rentals" className="h-16 w-auto" />
+          {affiliateLogo && (
+            <>
+              <span className="h-10 w-px bg-gray-200" aria-hidden="true" />
+              <img src={affiliateLogo.src} alt={affiliateLogo.alt} className="h-14 w-auto" />
+            </>
+          )}
         </div>
         <p className="mb-8 -mt-4 text-center text-sm text-gray-500">Sign in to the backoffice</p>
         <form onSubmit={handleSubmit} className="space-y-4">
