@@ -28,7 +28,12 @@ function resolveClientTerms(
 ): PublicPartnerVehicleTerm | Pick<PublicPartnerBenefit, 'dealType' | 'discountType' | 'discountValue' | 'freeDelivery' | 'advanceDiscountDays' | 'earlyBirdDays' | 'earlyBirdDiscountValue'> {
   if (vehicleModelId && benefit.vehicleTerms?.length) {
     const override = benefit.vehicleTerms.find((vt) => vt.vehicleModelId === vehicleModelId);
-    if (override) return override;
+    if (override) {
+      return {
+        ...override,
+        freeDelivery: override.freeDelivery || benefit.freeDelivery,
+      };
+    }
   }
   return benefit;
 }
@@ -82,7 +87,7 @@ export function computePartnerBenefit(
 
   // commission_delivery earns the partner a commission but still gives guests free delivery.
   // Allow it through — isFreeDeliveryDeal below will pick it up.
-  if (terms.dealType === 'commission') return empty;
+  if (terms.dealType === 'commission' && !terms.freeDelivery) return empty;
 
   // Advance days gate (mirrors the server-side rule in lib/partner-benefit.ts)
   if (terms.advanceDiscountDays != null && terms.advanceDiscountDays > 0) {

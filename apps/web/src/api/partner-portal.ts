@@ -32,6 +32,7 @@ export interface PartnerProfile {
   slug: string;
   name: string;
   store_id: string;
+  deal_type: 'commission' | 'discount' | 'free_delivery' | 'combined' | 'commission_delivery' | 'discount_delivery';
   logo_url: string | null;
   welcome_message: string | null;
   portal_subdomain: string | null;
@@ -39,6 +40,8 @@ export interface PartnerProfile {
   commission_value: number;
   advance_booking_days: number;
   commission_includes_extensions: boolean;
+  free_delivery: boolean;
+  free_delivery_location_ids: number[] | null;
 }
 
 export interface PartnerReportBooking {

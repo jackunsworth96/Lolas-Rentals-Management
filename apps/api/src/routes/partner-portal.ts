@@ -81,12 +81,32 @@ function partnerGroupRef(slug: string): string {
   return `PG-${slug.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || 'PARTNER'}-${randomBytes(4).toString('hex').toUpperCase()}`;
 }
 
-async function activeAddonIds(configRepo: { getAddons(storeId: string): Promise<Array<{ id: number | string; isActive?: boolean }>> }, storeId: string, addonIds?: number[]): Promise<number[] | undefined> {
+function isNinePmReturnAddonName(name: string): boolean {
+  const normalized = name.toLowerCase();
+  return normalized.includes('return') && (
+    /\b9\s*pm\b/i.test(name) ||
+    normalized.includes('9pm') ||
+    normalized.includes('21:00') ||
+    normalized.includes('ninepm')
+  );
+}
+
+function allowsNinePmReturn(dropoffDatetime: string): boolean {
+  return dropoffDatetime.includes('T16:45');
+}
+
+async function activeAddonIds(
+  configRepo: { getAddons(storeId: string): Promise<Array<{ id: number | string; name?: string; isActive?: boolean }>> },
+  storeId: string,
+  addonIds?: number[],
+  dropoffDatetime?: string,
+): Promise<number[] | undefined> {
   if (!addonIds || addonIds.length === 0) return undefined;
   const addons = await configRepo.getAddons(storeId);
   const activeIds = new Set(
     addons
       .filter((addon) => addon.isActive !== false)
+      .filter((addon) => !dropoffDatetime || allowsNinePmReturn(dropoffDatetime) || !isNinePmReturnAddonName(addon.name ?? ''))
       .map((addon) => Number(addon.id))
       .filter((id) => Number.isInteger(id) && id > 0),
   );
@@ -99,7 +119,7 @@ router.get('/me', async (req, res, next) => {
     const sb = getSupabaseClient();
     const { data: partner, error } = await sb
       .from('accommodation_partners')
-      .select('id, slug, name, store_id, deal_type, commission_type, commission_value, advance_booking_days, commission_includes_extensions, discount_type, discount_value, free_delivery, portal_enabled, portal_subdomain, logo_url, welcome_message, logo_display_width, logo_display_height')
+      .select('id, slug, name, store_id, deal_type, commission_type, commission_value, advance_booking_days, commission_includes_extensions, discount_type, discount_value, free_delivery, free_delivery_location_ids, portal_enabled, portal_subdomain, logo_url, welcome_message, logo_display_width, logo_display_height')
       .eq('id', req.partnerUser!.partnerId)
       .single();
     if (error) throw new Error(error.message);
@@ -139,7 +159,7 @@ router.get('/quote', validateQuery(QuoteQuerySchema), async (req, res, next) => 
     };
 
     assertPartnerLeadTime(pickupDatetime);
-    const validAddonIds = await activeAddonIds(req.app.locals.deps.configRepo, partner.storeId, addonIds);
+    const validAddonIds = await activeAddonIds(req.app.locals.deps.configRepo, partner.storeId, addonIds, dropoffDatetime);
     const quote = await computeQuote(
       { configRepo: req.app.locals.deps.configRepo },
       {
@@ -222,7 +242,7 @@ router.post('/book', validateBody(PartnerBookSchema), async (req, res, next) => 
 
     const commonInput = {
       ...body,
-      addonIds: await activeAddonIds(req.app.locals.deps.configRepo, partner.storeId, body.addonIds),
+      addonIds: await activeAddonIds(req.app.locals.deps.configRepo, partner.storeId, body.addonIds, body.dropoffDatetime),
       sessionToken,
       storeId: partner.storeId,
       partnerRef: partner.partnerSlug,
