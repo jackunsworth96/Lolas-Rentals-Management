@@ -60,6 +60,8 @@ export interface PartnerReport {
   totalBookings: number;
   commissionableBookings: number;
   totalCommission: number;
+  totalVehiclesRented: number;
+  averageVehiclesPerDay: number;
   bookings: PartnerReportBooking[];
 }
 
@@ -94,11 +96,50 @@ export interface PublicAddon {
   isActive: boolean;
 }
 
+export interface ModelPricingTier {
+  id: number | string;
+  modelId: string;
+  storeId: string;
+  minDays: number;
+  maxDays: number;
+  dailyRate: number;
+}
+
+export interface PartnerQuoteAddonLine {
+  id: number;
+  name: string;
+  type: 'per_day' | 'one_time';
+  unitPrice: number;
+  total: number;
+}
+
+export interface PartnerQuote {
+  rentalDays: number;
+  dailyRate: number;
+  originalRentalSubtotal: number;
+  rentalSubtotal: number;
+  effectiveRentalSubtotal: number;
+  pickupFee: number;
+  dropoffFee: number;
+  originalPickupFee: number;
+  originalDropoffFee: number;
+  effectivePickupFee: number;
+  effectiveDropoffFee: number;
+  rentalDiscount: number;
+  deliveryDiscount: number;
+  addons: PartnerQuoteAddonLine[];
+  addonsTotal: number;
+  securityDeposit: number;
+  grandTotal: number;
+  grandTotalWithFees: number;
+}
+
 export interface PartnerBookingInput {
   customerName: string;
   customerEmail: string;
   customerMobile: string;
   vehicleModelId: string;
+  vehicles?: Array<{ vehicleModelId: string; driverName?: string | null }>;
   pickupDatetime: string;
   dropoffDatetime: string;
   pickupLocationId: number;
@@ -107,6 +148,18 @@ export interface PartnerBookingInput {
   accommodationName?: string;
   extraComments?: string;
   roomReference?: string;
+}
+
+export interface PartnerBookingResult {
+  id: string;
+  orderReference: string;
+  groupRef: string;
+  bookings: Array<{
+    id: string;
+    orderReference: string;
+    vehicleModelId: string;
+    driverName: string;
+  }>;
 }
 
 export function usePartnerLogin() {
@@ -148,7 +201,7 @@ export function usePartnerBook() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: PartnerBookingInput) =>
-      partnerRequest<{ id: string; orderReference: string }>('/partner/book', {
+      partnerRequest<PartnerBookingResult>('/partner/book', {
         method: 'POST',
         body: JSON.stringify(body),
       }),
@@ -156,6 +209,32 @@ export function usePartnerBook() {
       qc.invalidateQueries({ queryKey: ['partner', 'report'] });
       qc.invalidateQueries({ queryKey: ['partner', 'availability'] });
     },
+  });
+}
+
+export function usePartnerQuote(input: {
+  vehicleModelId: string;
+  pickupDatetime: string;
+  dropoffDatetime: string;
+  pickupLocationId: number;
+  dropoffLocationId: number;
+  addonIds?: number[];
+  enabled?: boolean;
+}) {
+  return useQuery<PartnerQuote>({
+    queryKey: ['partner', 'quote', input.vehicleModelId, input.pickupDatetime, input.dropoffDatetime, input.pickupLocationId, input.dropoffLocationId, input.addonIds ?? []],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        vehicleModelId: input.vehicleModelId,
+        pickupDatetime: input.pickupDatetime,
+        dropoffDatetime: input.dropoffDatetime,
+        pickupLocationId: String(input.pickupLocationId),
+        dropoffLocationId: String(input.dropoffLocationId),
+      });
+      if (input.addonIds && input.addonIds.length > 0) params.set('addonIds', input.addonIds.join(','));
+      return partnerRequest<PartnerQuote>(`/partner/quote?${params.toString()}`);
+    },
+    enabled: input.enabled !== false && !!input.vehicleModelId && !!input.pickupDatetime && !!input.dropoffDatetime && !!input.pickupLocationId && !!input.dropoffLocationId,
   });
 }
 
@@ -180,4 +259,12 @@ export async function fetchPublicAddons(storeId: string, vehicleModelId?: string
   const json = await res.json() as ApiResponse<PublicAddon[]>;
   if (!res.ok || !json.success) throw new Error(json.error?.message ?? 'Failed to load add-ons');
   return json.data ?? [];
+}
+
+export async function fetchPublicModelPricing(storeId: string, vehicleModelId: string): Promise<ModelPricingTier[]> {
+  const params = new URLSearchParams({ storeId, vehicleModelId });
+  const res = await fetch(`${BASE_URL}/public/booking/model-pricing?${params.toString()}`);
+  const json = await res.json() as ApiResponse<{ tiers: ModelPricingTier[] }>;
+  if (!res.ok || !json.success) throw new Error(json.error?.message ?? 'Failed to load pricing');
+  return json.data?.tiers ?? [];
 }

@@ -32,6 +32,7 @@ export default function PartnerShell() {
         <nav className="mx-auto flex max-w-6xl gap-2 px-4 pb-3">
           <NavLink to="/partner/dashboard" className={linkCls}>Dashboard</NavLink>
           <NavLink to="/partner/book" className={linkCls}>Book Guest</NavLink>
+          <NavLink to="/partner/prices" className={linkCls}>Prices</NavLink>
           <NavLink to="/partner/reports" className={linkCls}>Reports</NavLink>
         </nav>
       </header>

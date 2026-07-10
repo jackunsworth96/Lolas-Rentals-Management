@@ -128,7 +128,7 @@ export interface SubmitDirectBookingResult {
 export async function submitDirectBooking(
   deps: SubmitDirectBookingDeps,
   input: SubmitDirectBookingInput,
-  context?: { deviceType?: 'mobile' | 'desktop' },
+  context?: { deviceType?: 'mobile' | 'desktop'; partnerBookingGroupRef?: string | null; driverName?: string | null },
 ): Promise<SubmitDirectBookingResult> {
   const { bookingPort } = deps;
 
@@ -290,6 +290,8 @@ export async function submitDirectBooking(
     deviceType: context?.deviceType ?? null,
     partnerRef: partnerRefToPersist,
     rentalValueRaw: rentalSubtotalForCommission ?? fullQuote?.rentalSubtotal ?? null,
+    partnerBookingGroupRef: context?.partnerBookingGroupRef ?? null,
+    driverName: context?.driverName ?? null,
   });
 
   // 5b. Auto-journal charity donation → wallet (best-effort; never blocks booking).

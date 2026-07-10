@@ -301,6 +301,10 @@ export function createBookingAdapter(): BookingPort {
           p.transfer_pax_count = input.transferPaxCount;
         const acc = input.accommodationName?.trim();
         if (acc) p.accommodation_name = acc;
+        const driverName = input.driverName?.trim();
+        if (driverName) p.driver_name = driverName;
+        const groupRef = input.partnerBookingGroupRef?.trim();
+        if (groupRef) p.partner_booking_group_ref = groupRef;
         return Object.keys(p).length > 0 ? p : null;
       })();
 
@@ -345,6 +349,8 @@ export function createBookingAdapter(): BookingPort {
           device_type: input.deviceType ?? null,
           partner_ref: input.partnerRef?.trim() || null,
           rental_value_raw: input.rentalValueRaw ?? null,
+          partner_booking_group_ref: input.partnerBookingGroupRef?.trim() || null,
+          driver_name: input.driverName?.trim() || null,
         })
         .select('id, order_reference, cancellation_token')
         .single();

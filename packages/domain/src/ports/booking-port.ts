@@ -87,6 +87,10 @@ export interface DirectBookingInsert {
   /** Pure rental subtotal (days × daily rate) at booking time — excludes add-ons, fees, charity, transfer.
    * Used as the commission base for percentage commissions (migration 130). */
   rentalValueRaw?: number | null;
+  /** Shared reference for partner portal bookings that created multiple raw orders together. */
+  partnerBookingGroupRef?: string | null;
+  /** Driver/renter name for this specific vehicle in a grouped partner booking. */
+  driverName?: string | null;
 }
 
 export interface DirectBookingResult {

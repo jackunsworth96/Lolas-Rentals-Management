@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Copy, Check } from 'lucide-react';
 import { usePartnerAvailability, usePartnerMe, usePartnerReport } from '../../api/partner-portal.js';
 
 const BOOKING_TIMES = [
@@ -33,6 +34,7 @@ function money(value: number) {
 
 export default function PartnerDashboardPage() {
   const { data: me } = usePartnerMe();
+  const [copied, setCopied] = useState<'slug' | 'link' | null>(null);
   const [pickupDate, setPickupDate] = useState(() => manilaDate(24));
   const [pickupTime, setPickupTime] = useState('09:15');
   const [dropoffDate, setDropoffDate] = useState(() => manilaDate(72));
@@ -40,12 +42,59 @@ export default function PartnerDashboardPage() {
   const availability = usePartnerAvailability(toManilaIso(pickupDate, pickupTime), toManilaIso(dropoffDate, dropoffTime));
   const report = usePartnerReport(currentMonth());
   const availableModels = useMemo(() => (availability.data ?? []).filter((m) => m.availableCount > 0), [availability.data]);
+  const partnerSlug = me?.partner.slug ?? '';
+  const partnerLoginLink = partnerSlug
+    ? `${window.location.origin}/partner/login?partner=${encodeURIComponent(partnerSlug)}`
+    : '';
+
+  async function copyText(value: string, key: 'slug' | 'link') {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(key);
+      window.setTimeout(() => setCopied(null), 1800);
+    } catch {
+      setCopied(null);
+    }
+  }
 
   return (
     <div className="space-y-6">
       <section className="rounded-lg bg-white p-4 shadow-sm">
         <h1 className="text-xl font-bold text-gray-900">Hi {me?.user.name ?? 'there'}</h1>
         <p className="mt-1 text-sm text-gray-500">Check availability quickly or book for a guest at reception.</p>
+        {partnerSlug && (
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <p className="text-xs font-semibold text-gray-500">Partner slug</p>
+              <div className="mt-1 flex items-center justify-between gap-3">
+                <code className="min-w-0 truncate text-sm font-bold text-gray-900">{partnerSlug}</code>
+                <button
+                  type="button"
+                  onClick={() => copyText(partnerSlug, 'slug')}
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-300 text-gray-600 hover:bg-white"
+                  aria-label="Copy partner slug"
+                >
+                  {copied === 'slug' ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <p className="text-xs font-semibold text-gray-500">Portal login link</p>
+              <div className="mt-1 flex items-center justify-between gap-3">
+                <code className="min-w-0 truncate text-sm font-bold text-gray-900">{partnerLoginLink}</code>
+                <button
+                  type="button"
+                  onClick={() => copyText(partnerLoginLink, 'link')}
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-300 text-gray-600 hover:bg-white"
+                  aria-label="Copy portal login link"
+                >
+                  {copied === 'link' ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="rounded-lg bg-white p-4 shadow-sm">
@@ -80,7 +129,7 @@ export default function PartnerDashboardPage() {
         </div>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-3">
+      <section className="grid gap-3 sm:grid-cols-4">
         <div className="rounded-lg bg-white p-4 shadow-sm">
           <p className="text-xs font-semibold text-gray-500">Bookings this month</p>
           <p className="mt-1 text-2xl font-bold text-gray-900">{report.data?.totalBookings ?? 0}</p>
@@ -92,6 +141,10 @@ export default function PartnerDashboardPage() {
         <div className="rounded-lg bg-white p-4 shadow-sm">
           <p className="text-xs font-semibold text-gray-500">Commission due</p>
           <p className="mt-1 text-2xl font-bold text-teal-700">{money(report.data?.totalCommission ?? 0)}</p>
+        </div>
+        <div className="rounded-lg bg-white p-4 shadow-sm">
+          <p className="text-xs font-semibold text-gray-500">Avg vehicles per day</p>
+          <p className="mt-1 text-2xl font-bold text-blue-700">{(report.data?.averageVehiclesPerDay ?? 0).toFixed(2)}</p>
         </div>
       </section>
     </div>
