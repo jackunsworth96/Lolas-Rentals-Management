@@ -52,10 +52,10 @@ export interface ResolvedPartnerTerms {
 }
 
 /**
- * Look up an active accommodation partner by slug. Returns null when the slug
- * is missing/blank, when the partner does not exist, or when the partner is
- * pending/rejected/inactive — in any of those cases the booking should be
- * treated as if no partner referral was supplied (per spec).
+ * Look up an active accommodation partner by slug or portal subdomain. Returns
+ * null when the ref is missing/blank, when the partner does not exist, or when
+ * the partner is pending/rejected/inactive — in any of those cases the booking
+ * should be treated as if no partner referral was supplied (per spec).
  */
 export async function lookupActivePartnerBySlug(
   slug: string | null | undefined,
@@ -68,7 +68,7 @@ export async function lookupActivePartnerBySlug(
   const { data, error } = await sb
     .from('accommodation_partners')
     .select('id, slug, name, store_id, deal_type, discount_type, discount_value, free_delivery, free_delivery_location_ids, advance_discount_days, early_bird_days, early_bird_discount_value, status, active')
-    .eq('slug', trimmed)
+    .or(`slug.eq.${trimmed},portal_subdomain.eq.${trimmed}`)
     .eq('status', 'active')
     .eq('active', true)
     .maybeSingle();

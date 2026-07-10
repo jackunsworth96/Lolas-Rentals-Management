@@ -2,6 +2,9 @@ import { useMemo, useState } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { usePartnerAvailability, usePartnerMe, usePartnerReport } from '../../api/partner-portal.js';
 
+const SITE_URL = (import.meta.env.VITE_SITE_URL as string | undefined) ?? window.location.origin;
+const PARTNER_ROOT_DOMAIN = (import.meta.env.VITE_PARTNER_ROOT_DOMAIN as string | undefined) ?? 'lolasrentals.com';
+
 const BOOKING_TIMES = [
   '09:15', '09:45', '10:15', '10:45',
   '11:15', '11:45', '12:15', '12:45',
@@ -32,9 +35,24 @@ function money(value: number) {
   return `₱${value.toLocaleString('en-PH', { maximumFractionDigits: 0 })}`;
 }
 
+function partnerRefBookingLink(slug: string) {
+  return `${SITE_URL.replace(/\/+$/, '')}/book?ref=${encodeURIComponent(slug)}`;
+}
+
+function partnerSubdomainBookingLink(subdomain: string) {
+  const origin = SITE_URL.replace(/\/+$/, '');
+  const url = new URL(origin);
+  const isLocal = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+  if (isLocal) return '';
+  url.hostname = `${subdomain}.${PARTNER_ROOT_DOMAIN}`;
+  url.pathname = '/book';
+  url.search = '';
+  return url.toString();
+}
+
 export default function PartnerDashboardPage() {
   const { data: me } = usePartnerMe();
-  const [copied, setCopied] = useState<'slug' | 'link' | null>(null);
+  const [copied, setCopied] = useState<'booking' | 'ref' | 'link' | null>(null);
   const [pickupDate, setPickupDate] = useState(() => manilaDate(24));
   const [pickupTime, setPickupTime] = useState('09:15');
   const [dropoffDate, setDropoffDate] = useState(() => manilaDate(72));
@@ -43,11 +61,14 @@ export default function PartnerDashboardPage() {
   const report = usePartnerReport(currentMonth());
   const availableModels = useMemo(() => (availability.data ?? []).filter((m) => m.availableCount > 0), [availability.data]);
   const partnerSlug = me?.partner.slug ?? '';
+  const refBookingLink = partnerSlug ? partnerRefBookingLink(partnerSlug) : '';
+  const subdomainBookingLink = me?.partner.portal_subdomain ? partnerSubdomainBookingLink(me.partner.portal_subdomain) : '';
+  const guestBookingLink = subdomainBookingLink || refBookingLink;
   const partnerLoginLink = partnerSlug
     ? `${window.location.origin}/partner/login?partner=${encodeURIComponent(partnerSlug)}`
     : '';
 
-  async function copyText(value: string, key: 'slug' | 'link') {
+  async function copyText(value: string, key: 'booking' | 'ref' | 'link') {
     if (!value) return;
     try {
       await navigator.clipboard.writeText(value);
@@ -66,18 +87,31 @@ export default function PartnerDashboardPage() {
         {partnerSlug && (
           <div className="mt-4 grid gap-3 lg:grid-cols-2">
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-              <p className="text-xs font-semibold text-gray-500">Partner slug</p>
+              <p className="text-xs font-semibold text-gray-500">Guest booking link</p>
               <div className="mt-1 flex items-center justify-between gap-3">
-                <code className="min-w-0 truncate text-sm font-bold text-gray-900">{partnerSlug}</code>
+                <code className="min-w-0 truncate text-sm font-bold text-gray-900">{guestBookingLink}</code>
                 <button
                   type="button"
-                  onClick={() => copyText(partnerSlug, 'slug')}
+                  onClick={() => copyText(guestBookingLink, 'booking')}
                   className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-300 text-gray-600 hover:bg-white"
-                  aria-label="Copy partner slug"
+                  aria-label="Copy guest booking link"
                 >
-                  {copied === 'slug' ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                  {copied === 'booking' ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
                 </button>
               </div>
+              {subdomainBookingLink && refBookingLink && subdomainBookingLink !== refBookingLink && (
+                <div className="mt-2 flex items-center justify-between gap-3 border-t border-gray-200 pt-2">
+                  <code className="min-w-0 truncate text-xs font-medium text-gray-500">{refBookingLink}</code>
+                  <button
+                    type="button"
+                    onClick={() => copyText(refBookingLink, 'ref')}
+                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-gray-300 text-gray-500 hover:bg-white"
+                    aria-label="Copy ref booking link"
+                  >
+                    {copied === 'ref' ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
+              )}
             </div>
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
               <p className="text-xs font-semibold text-gray-500">Portal login link</p>
