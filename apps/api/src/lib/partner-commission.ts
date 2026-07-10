@@ -23,6 +23,8 @@ export interface PartnerCommissionStats {
   totalBookings: number;
   commissionableBookings: number;
   totalCommission: number;
+  totalVehiclesRented: number;
+  averageVehiclesPerDay: number;
   bookings: PartnerCommissionBooking[];
 }
 
@@ -57,6 +59,15 @@ function monthBounds(month?: string): { from?: string; to?: string } {
     from: new Date(Date.UTC(y, m - 1, 1)).toISOString(),
     to: new Date(Date.UTC(y, m, 1)).toISOString(),
   };
+}
+
+function daysInReportMonth(month?: string): number {
+  const source = month && /^\d{4}-\d{2}$/.test(month)
+    ? month
+    : new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }).slice(0, 7);
+  const [y, m] = source.split('-').map(Number);
+  if (!y || !m) return 30;
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
 }
 
 export async function getPartnerCommissionStats(partnerId: string, month?: string): Promise<PartnerCommissionStats> {
@@ -109,18 +120,39 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
     if (refs.length > 0) {
       const orderQuery = sb
         .from('orders')
-        .select('booking_token, final_total, security_deposit, partner_ref, store_id')
+        .select('id, booking_token, partner_ref, store_id')
         .eq('store_id', p.store_id)
         .eq('partner_ref', p.slug)
         .in('booking_token', refs);
 
-    const { data: orders } = await orderQuery;
-    activeTotals = new Map(
-      (orders ?? []).map((o: { booking_token: string | null; final_total: number | null; security_deposit: number | null }) => [
-        o.booking_token ?? '',
-        Math.max(0, Number(o.final_total ?? 0) - Number(o.security_deposit ?? 0)),
-      ]),
-    );
+      const { data: orders } = await orderQuery;
+      const orderRows = (orders ?? []) as Array<{ id: string; booking_token: string | null }>;
+      const orderIds = orderRows.map((o) => o.id).filter(Boolean);
+      const rentalTotalsByOrderId = new Map<string, number>();
+      if (orderIds.length > 0) {
+        const { data: items } = await sb
+          .from('order_items')
+          .select('order_id, rental_days_count, rental_rate, discount')
+          .in('order_id', orderIds);
+        for (const item of (items ?? []) as Array<{
+          order_id: string;
+          rental_days_count: number | null;
+          rental_rate: number | null;
+          discount: number | null;
+        }>) {
+          const line = Math.max(
+            0,
+            Number(item.rental_days_count ?? 0) * Number(item.rental_rate ?? 0) - Number(item.discount ?? 0),
+          );
+          rentalTotalsByOrderId.set(item.order_id, (rentalTotalsByOrderId.get(item.order_id) ?? 0) + line);
+        }
+      }
+      activeTotals = new Map(
+        orderRows.map((o) => [
+          o.booking_token ?? '',
+          rentalTotalsByOrderId.get(o.id) ?? 0,
+        ]),
+      );
     }
   }
 
@@ -190,10 +222,14 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
   });
 
   const totalCommission = bookings.reduce((sum, b) => sum + b.commissionAmount, 0);
+  const totalVehiclesRented = bookings.filter((b) => b.status !== 'cancelled').length;
+  const monthDays = daysInReportMonth(month);
   return {
     totalBookings: bookings.length,
     commissionableBookings: bookings.filter((b) => b.commissionable).length,
     totalCommission: roundMoney(totalCommission),
+    totalVehiclesRented,
+    averageVehiclesPerDay: roundMoney(totalVehiclesRented / monthDays),
     bookings,
   };
 }
