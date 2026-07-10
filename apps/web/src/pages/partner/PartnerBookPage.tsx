@@ -10,6 +10,7 @@ import {
   usePartnerQuote,
   type PartnerBookingInput,
   type PartnerQuote,
+  type PartnerProfile,
   type PublicAddon,
   type PublicLocation,
   type PublicModel,
@@ -66,6 +67,16 @@ function isPeaceOfMind(addon: PublicAddon) {
   return addon.name.toLowerCase().includes('peace');
 }
 
+function isNinePmReturn(addon: PublicAddon) {
+  const name = addon.name.toLowerCase();
+  return name.includes('return') && (
+    /\b9\s*pm\b/i.test(addon.name) ||
+    name.includes('9pm') ||
+    name.includes('21:00') ||
+    name.includes('ninepm')
+  );
+}
+
 function hasLeadTime(pickupIso: string) {
   if (!pickupIso) return false;
   const pickup = new Date(pickupIso);
@@ -85,8 +96,30 @@ function rentalDaysBetween(pickupIso: string, dropoffIso: string) {
   return Math.max(1, Math.ceil((dropoff.getTime() - pickup.getTime()) / MS_PER_DAY));
 }
 
-function locationFeeLabel(location: PublicLocation | undefined, kind: 'pickup' | 'dropoff') {
+function hasPartnerFreeDelivery(partner: PartnerProfile | undefined) {
+  return Boolean(partner && (
+    partner.free_delivery ||
+    partner.deal_type === 'free_delivery' ||
+    partner.deal_type === 'combined' ||
+    partner.deal_type === 'commission_delivery' ||
+    partner.deal_type === 'discount_delivery'
+  ));
+}
+
+function isPartnerFreeDeliveryLocation(partner: PartnerProfile | undefined, locationId: number | undefined) {
+  if (!hasPartnerFreeDelivery(partner)) return false;
+  const ids = partner?.free_delivery_location_ids;
+  if (!ids || ids.length === 0) return true;
+  return locationId != null && ids.includes(locationId);
+}
+
+function locationFeeLabel(
+  location: PublicLocation | undefined,
+  kind: 'pickup' | 'dropoff',
+  partner?: PartnerProfile,
+) {
   if (!location) return '';
+  if (isPartnerFreeDeliveryLocation(partner, location.id)) return 'Free';
   const value = kind === 'pickup' ? location.deliveryCost : location.collectionCost;
   return value > 0 ? money(value) : 'Free';
 }
@@ -198,11 +231,13 @@ export default function PartnerBookPage() {
   const pickupDatetime = toManilaIso(form.pickupDate, form.pickupTime);
   const dropoffDatetime = toManilaIso(form.dropoffDate, form.dropoffTime);
   const leadTimeOk = hasLeadTime(pickupDatetime);
+  const ninePmReturnEligible = form.dropoffTime === '16:45';
   const availableAddonIds = useMemo(() => new Set(
     (addons.data ?? [])
+      .filter((addon) => ninePmReturnEligible || !isNinePmReturn(addon))
       .map((addon) => Number(addon.id))
       .filter((id) => Number.isInteger(id) && id > 0),
-  ), [addons.data]);
+  ), [addons.data, ninePmReturnEligible]);
   const selectedAddonIdList = useMemo(
     () => Array.from(selectedAddonIds).filter((id) => availableAddonIds.size === 0 || availableAddonIds.has(id)),
     [availableAddonIds, selectedAddonIds],
@@ -218,6 +253,10 @@ export default function PartnerBookPage() {
   const dropoffLoc = locationOptions.find((l) => l.id === dropoffLocationId);
   const fallbackPickupFee = pickupLoc ? Number(pickupLoc.deliveryCost) : 0;
   const fallbackDropoffFee = dropoffLoc ? Number(dropoffLoc.collectionCost) : 0;
+  const fallbackPickupEffectiveFee = isPartnerFreeDeliveryLocation(me?.partner, pickupLocationId) ? 0 : fallbackPickupFee;
+  const fallbackDropoffEffectiveFee = isPartnerFreeDeliveryLocation(me?.partner, dropoffLocationId) ? 0 : fallbackDropoffFee;
+  const fallbackDeliveryDiscount =
+    (fallbackPickupFee - fallbackPickupEffectiveFee) + (fallbackDropoffFee - fallbackDropoffEffectiveFee);
   const selectedQuotes = vehicleLines.map((line) => quotesByLine[line.id]).filter(Boolean) as PartnerQuote[];
   const selectedVehicleCount = Math.max(1, vehicleLines.filter((line) => line.vehicleModelId).length);
   const summaryRentalDays = selectedQuotes[0]?.rentalDays ?? rentalDaysBetween(pickupDatetime, dropoffDatetime);
@@ -240,8 +279,8 @@ export default function PartnerBookPage() {
       if (index === 0) {
         acc.pickupOriginal = fallbackPickupFee;
         acc.dropoffOriginal = fallbackDropoffFee;
-        acc.pickupEffective = quote.deliveryDiscount > 0 ? quote.effectivePickupFee : fallbackPickupFee;
-        acc.dropoffEffective = quote.deliveryDiscount > 0 ? quote.effectiveDropoffFee : fallbackDropoffFee;
+        acc.pickupEffective = quote.deliveryDiscount > 0 ? quote.effectivePickupFee : fallbackPickupEffectiveFee;
+        acc.dropoffEffective = quote.deliveryDiscount > 0 ? quote.effectiveDropoffFee : fallbackDropoffEffectiveFee;
         acc.deliveryDiscount = quote.deliveryDiscount;
       }
       return acc;
@@ -252,9 +291,9 @@ export default function PartnerBookPage() {
       deposit: 0,
       pickupOriginal: fallbackPickupFee,
       dropoffOriginal: fallbackDropoffFee,
-      pickupEffective: fallbackPickupFee,
-      dropoffEffective: fallbackDropoffFee,
-      deliveryDiscount: 0,
+      pickupEffective: fallbackPickupEffectiveFee,
+      dropoffEffective: fallbackDropoffEffectiveFee,
+      deliveryDiscount: fallbackDeliveryDiscount,
     },
   );
   const grandTotal = totals.rental + summaryAddonsTotal + totals.pickupEffective + totals.dropoffEffective;
@@ -284,6 +323,8 @@ export default function PartnerBookPage() {
   }
 
   function toggleAddon(id: number) {
+    const addon = (addons.data ?? []).find((row) => Number(row.id) === id);
+    if (addon && isNinePmReturn(addon) && !ninePmReturnEligible) return;
     setSelectedAddonIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
@@ -386,13 +427,13 @@ export default function PartnerBookPage() {
           <div>
             <label className="mb-1 block text-xs font-semibold text-gray-500">Pickup location</label>
             <select value={pickupLocationId} onChange={(e) => set('pickupLocationId', Number(e.target.value))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-              {locationOptions.map((l) => <option key={l.id} value={l.id}>{l.name} - delivery {locationFeeLabel(l, 'pickup')}</option>)}
+              {locationOptions.map((l) => <option key={l.id} value={l.id}>{l.name} - delivery {locationFeeLabel(l, 'pickup', me?.partner)}</option>)}
             </select>
           </div>
           <div>
             <label className="mb-1 block text-xs font-semibold text-gray-500">Return location</label>
             <select value={dropoffLocationId} onChange={(e) => set('dropoffLocationId', Number(e.target.value))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-              {locationOptions.map((l) => <option key={l.id} value={l.id}>{l.name} - collection {locationFeeLabel(l, 'dropoff')}</option>)}
+              {locationOptions.map((l) => <option key={l.id} value={l.id}>{l.name} - collection {locationFeeLabel(l, 'dropoff', me?.partner)}</option>)}
             </select>
           </div>
         </div>
@@ -448,11 +489,13 @@ export default function PartnerBookPage() {
             <div className="grid gap-2 sm:grid-cols-2">
               {(addons.data ?? []).map((addon) => {
                 const id = Number(addon.id);
+                const ninePmDisabled = isNinePmReturn(addon) && !ninePmReturnEligible;
                 return (
-                  <label key={addon.id} className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-3 hover:bg-gray-50">
+                  <label key={addon.id} className={`flex items-start gap-3 rounded-lg border border-gray-200 p-3 ${ninePmDisabled ? 'cursor-not-allowed bg-gray-50 opacity-60' : 'cursor-pointer hover:bg-gray-50'}`}>
                     <input
                       type="checkbox"
                       checked={selectedAddonIds.has(id)}
+                      disabled={ninePmDisabled}
                       onChange={() => toggleAddon(id)}
                       className="mt-1 h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
                     />
@@ -460,6 +503,11 @@ export default function PartnerBookPage() {
                       <span className="block text-sm font-semibold text-gray-900">{addon.name}</span>
                       <span className="block text-xs text-gray-500">{addonPrice(addon)}</span>
                       <span className="mt-1 block text-xs text-gray-500">{addonDescription(addon.name)}</span>
+                      {ninePmDisabled && (
+                        <span className="mt-1 block text-xs font-semibold text-amber-700">
+                          Only available with a 4:45pm return time.
+                        </span>
+                      )}
                       {isPeaceOfMind(addon) && (
                         <button type="button" onClick={(e) => { e.preventDefault(); setPeaceOpen(true); }} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-teal-700 underline">
                           <Info className="h-3.5 w-3.5" /> More info

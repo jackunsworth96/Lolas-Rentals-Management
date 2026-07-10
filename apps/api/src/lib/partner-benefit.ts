@@ -28,7 +28,7 @@ export interface PartnerBenefitRow {
   discountType: PartnerDiscountType | null;
   discountValue: number | null;
   freeDelivery: boolean;
-  /** When set, free delivery only applies when both pickup and dropoff are in this list. */
+  /** When set, free delivery applies per delivery/collection leg for these locations. */
   freeDeliveryLocationIds: number[] | null;
   advanceDiscountDays: number | null;
   earlyBirdDays: number | null;
@@ -153,7 +153,7 @@ export function resolveTerms(
         dealType: override.dealType,
         discountType: override.discountType,
         discountValue: override.discountValue,
-        freeDelivery: override.freeDelivery,
+        freeDelivery: override.freeDelivery || partner.freeDelivery,
         advanceDiscountDays: override.advanceDiscountDays,
         earlyBirdDays: override.earlyBirdDays,
         earlyBirdDiscountValue: override.earlyBirdDiscountValue,
@@ -186,7 +186,7 @@ export function isBenefitEligibleForPickup(
 ): boolean {
   const terms = resolveTerms(partner, vehicleModelId);
 
-  if (terms.dealType === 'commission') return false;
+  if (terms.dealType === 'commission' && !terms.freeDelivery) return false;
   // commission_delivery has no rental discount but does apply free delivery —
   // allow it through so applyPartnerBenefit can zero the delivery fees.
   if (terms.advanceDiscountDays == null || terms.advanceDiscountDays <= 0) return true;
@@ -201,16 +201,13 @@ export function isBenefitEligibleForPickup(
 /**
  * Returns true when the selected locations are permitted for free delivery.
  * If no allowlist is configured (null or empty) all locations qualify.
- * When an allowlist is set, BOTH pickup and dropoff must be included.
  */
 function isLocationAllowed(
   ids: number[] | null,
-  pickupLocationId?: number | null,
-  dropoffLocationId?: number | null,
+  locationId?: number | null,
 ): boolean {
   if (!ids || ids.length === 0) return true;
-  return (pickupLocationId != null && ids.includes(pickupLocationId)) &&
-         (dropoffLocationId != null && ids.includes(dropoffLocationId));
+  return locationId != null && ids.includes(locationId);
 }
 
 export interface ApplyBenefitInput {
@@ -275,13 +272,12 @@ export function applyPartnerBenefit(input: ApplyBenefitInput): ApplyBenefitResul
     rentalSubtotal = Math.max(0, Math.round((rentalSubtotal - rentalDiscount) * 100) / 100);
   }
 
-  if (applyFreeDelivery && isLocationAllowed(
-    input.partner.freeDeliveryLocationIds,
-    input.pickupLocationId,
-    input.dropoffLocationId,
-  )) {
-    deliveryDiscount = pickupFee + dropoffFee;
+  if (applyFreeDelivery && isLocationAllowed(input.partner.freeDeliveryLocationIds, input.pickupLocationId)) {
+    deliveryDiscount += pickupFee;
     pickupFee = 0;
+  }
+  if (applyFreeDelivery && isLocationAllowed(input.partner.freeDeliveryLocationIds, input.dropoffLocationId)) {
+    deliveryDiscount += dropoffFee;
     dropoffFee = 0;
   }
 
