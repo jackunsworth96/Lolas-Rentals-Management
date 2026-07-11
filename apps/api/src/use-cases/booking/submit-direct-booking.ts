@@ -20,7 +20,6 @@ import { logger } from '../../lib/logger.js';
 import { sendRespondIoTemplateMessage } from '../../services/respond-io-outbound.js';
 import {
   applyPartnerBenefit,
-  isBenefitEligibleForPickup,
   lookupActivePartnerBySlug,
 } from '../../lib/partner-benefit.js';
 
@@ -195,12 +194,10 @@ export async function submitDirectBooking(
     effectivePickupFee = fullQuote.pickupFee;
     effectiveDropoffFee = fullQuote.dropoffFee;
 
-    // Apply the partner benefit (discount / free delivery / combined) to the
-    // rental subtotal and location fees if the partner is eligible.
-    if (
-      validatedPartner &&
-      isBenefitEligibleForPickup(validatedPartner, input.pickupDatetime, new Date(), input.vehicleModelId)
-    ) {
+    // Apply partner benefits independently: rental discounts respect the
+    // advance-days rule inside applyPartnerBenefit, while free delivery can
+    // still apply for eligible locations.
+    if (validatedPartner) {
       const advanceDaysFromNow =
         (new Date(input.pickupDatetime).getTime() - Date.now()) / 86_400_000;
       const benefit = applyPartnerBenefit({

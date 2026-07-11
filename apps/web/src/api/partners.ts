@@ -236,6 +236,7 @@ export interface PublicPartnerBenefit {
   freeDelivery: boolean;
   /** When set, free delivery only applies when both pickup and dropoff are in this list. */
   freeDeliveryLocationIds: number[] | null;
+  advanceBookingDays: number | null;
   advanceDiscountDays: number | null;
   earlyBirdDays: number | null;
   earlyBirdDiscountValue: number | null;

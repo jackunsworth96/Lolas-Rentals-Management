@@ -154,9 +154,9 @@ export function resolveTerms(
         discountType: override.discountType,
         discountValue: override.discountValue,
         freeDelivery: override.freeDelivery || partner.freeDelivery,
-        advanceDiscountDays: override.advanceDiscountDays,
-        earlyBirdDays: override.earlyBirdDays,
-        earlyBirdDiscountValue: override.earlyBirdDiscountValue,
+        advanceDiscountDays: override.advanceDiscountDays ?? partner.advanceDiscountDays,
+        earlyBirdDays: override.earlyBirdDays ?? partner.earlyBirdDays,
+        earlyBirdDiscountValue: override.earlyBirdDiscountValue ?? partner.earlyBirdDiscountValue,
       };
     }
   }
@@ -187,8 +187,12 @@ export function isBenefitEligibleForPickup(
   const terms = resolveTerms(partner, vehicleModelId);
 
   if (terms.dealType === 'commission' && !terms.freeDelivery) return false;
-  // commission_delivery has no rental discount but does apply free delivery —
-  // allow it through so applyPartnerBenefit can zero the delivery fees.
+  const hasRentalRateBenefit =
+    ((terms.dealType === 'discount' || terms.dealType === 'combined' || terms.dealType === 'discount_delivery') &&
+      terms.discountType != null &&
+      terms.discountValue != null) ||
+    (terms.earlyBirdDays != null && terms.earlyBirdDiscountValue != null);
+  if (!hasRentalRateBenefit) return true;
   if (terms.advanceDiscountDays == null || terms.advanceDiscountDays <= 0) return true;
 
   const pickup = new Date(pickupDatetime);
@@ -253,8 +257,12 @@ export function applyPartnerBenefit(input: ApplyBenefitInput): ApplyBenefitResul
   const applyFreeDelivery =
     terms.freeDelivery || terms.dealType === 'free_delivery' || terms.dealType === 'combined' ||
     terms.dealType === 'commission_delivery' || terms.dealType === 'discount_delivery';
+  const advanceQualified =
+    terms.advanceDiscountDays == null ||
+    terms.advanceDiscountDays <= 0 ||
+    (input.advanceDaysFromNow != null && input.advanceDaysFromNow >= terms.advanceDiscountDays);
 
-  if (applyDiscount && terms.discountType && terms.discountValue != null) {
+  if (applyDiscount && advanceQualified && terms.discountType && terms.discountValue != null) {
     // Use the early-bird (higher) value when the pickup qualifies for that tier.
     const effectiveDiscountValue =
       terms.earlyBirdDiscountValue != null &&

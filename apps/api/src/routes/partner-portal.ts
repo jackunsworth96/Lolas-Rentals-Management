@@ -13,7 +13,6 @@ import { submitDirectBooking } from '../use-cases/booking/submit-direct-booking.
 import { getPartnerCommissionStats } from '../lib/partner-commission.js';
 import {
   applyPartnerBenefit,
-  isBenefitEligibleForPickup,
   lookupActivePartnerBySlug,
 } from '../lib/partner-benefit.js';
 
@@ -174,10 +173,7 @@ router.get('/quote', validateQuery(QuoteQuerySchema), async (req, res, next) => 
     );
 
     const validatedPartner = await lookupActivePartnerBySlug(partner.partnerSlug);
-    const eligible = validatedPartner
-      ? isBenefitEligibleForPickup(validatedPartner, pickupDatetime, new Date(), vehicleModelId)
-      : false;
-    const benefit = validatedPartner && eligible
+    const benefit = validatedPartner
       ? applyPartnerBenefit({
           partner: validatedPartner,
           rentalSubtotal: quote.rentalSubtotal,

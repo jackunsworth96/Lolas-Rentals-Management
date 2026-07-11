@@ -32,6 +32,9 @@ function resolveClientTerms(
       return {
         ...override,
         freeDelivery: override.freeDelivery || benefit.freeDelivery,
+        advanceDiscountDays: override.advanceDiscountDays ?? benefit.advanceDiscountDays,
+        earlyBirdDays: override.earlyBirdDays ?? benefit.earlyBirdDays,
+        earlyBirdDiscountValue: override.earlyBirdDiscountValue ?? benefit.earlyBirdDiscountValue,
       };
     }
   }
@@ -89,14 +92,30 @@ export function computePartnerBenefit(
   // Allow it through — isFreeDeliveryDeal below will pick it up.
   if (terms.dealType === 'commission' && !terms.freeDelivery) return empty;
 
-  // Advance days gate (mirrors the server-side rule in lib/partner-benefit.ts)
+  const isDiscountDeal = terms.dealType === 'discount' || terms.dealType === 'combined' || terms.dealType === 'discount_delivery';
+  const hasRentalRateBenefit =
+    (isDiscountDeal && terms.discountType != null && terms.discountValue != null) ||
+    (terms.earlyBirdDays != null && terms.earlyBirdDiscountValue != null);
+  const isFreeDeliveryDeal =
+    (terms.freeDelivery || terms.dealType === 'free_delivery' || terms.dealType === 'combined' ||
+    terms.dealType === 'commission_delivery' || terms.dealType === 'discount_delivery') &&
+    isLocationAllowed(benefit.freeDeliveryLocationIds, pickupLocationId, dropoffLocationId);
+
+  // Advance days gate only blocks customer-facing rate discounts. Commission
+  // and free-delivery-only partners should not show "exclusive rate" messaging.
   if (terms.advanceDiscountDays != null && terms.advanceDiscountDays > 0) {
     const pickup = pickupDatetime ? new Date(pickupDatetime) : null;
     if (!pickup || Number.isNaN(pickup.getTime())) {
-      return { ...empty, pendingReason: 'advance_days', daysShort: terms.advanceDiscountDays };
+      if (hasRentalRateBenefit && !isFreeDeliveryDeal) {
+        return { ...empty, pendingReason: 'advance_days', daysShort: terms.advanceDiscountDays };
+      }
+      return { ...empty, applied: isFreeDeliveryDeal, freeDelivery: isFreeDeliveryDeal };
     }
     const advanceDays = (pickup.getTime() - now.getTime()) / MS_PER_DAY;
-    if (advanceDays < terms.advanceDiscountDays) {
+    if (advanceDays < terms.advanceDiscountDays && hasRentalRateBenefit) {
+      if (isFreeDeliveryDeal) {
+        return { ...empty, applied: true, freeDelivery: true };
+      }
       return {
         ...empty,
         pendingReason: 'advance_days',
@@ -104,12 +123,6 @@ export function computePartnerBenefit(
       };
     }
   }
-
-  const isDiscountDeal = terms.dealType === 'discount' || terms.dealType === 'combined' || terms.dealType === 'discount_delivery';
-  const isFreeDeliveryDeal =
-    (terms.freeDelivery || terms.dealType === 'free_delivery' || terms.dealType === 'combined' ||
-    terms.dealType === 'commission_delivery' || terms.dealType === 'discount_delivery') &&
-    isLocationAllowed(benefit.freeDeliveryLocationIds, pickupLocationId, dropoffLocationId);
 
   // Determine advance days for early-bird check
   const pickup = pickupDatetime ? new Date(pickupDatetime) : null;
