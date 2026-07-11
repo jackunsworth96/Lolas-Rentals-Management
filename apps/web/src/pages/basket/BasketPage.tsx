@@ -482,6 +482,13 @@ export default function BasketPage() {
   );
   const partnerRentalDiscount = appliedPartnerBenefit.applied ? appliedPartnerBenefit.rentalDiscount : 0;
   const partnerFreeDelivery = appliedPartnerBenefit.applied && appliedPartnerBenefit.freeDelivery;
+  const partnerFreeDeliveryLocationNames = useMemo(() => {
+    if (!partnerBenefit || !partnerBenefit.freeDeliveryLocationIds?.length) return [];
+    const names = locations
+      .filter((location) => partnerBenefit.freeDeliveryLocationIds?.includes(location.id))
+      .map((location) => location.name);
+    return Array.from(new Set(names));
+  }, [locations, partnerBenefit]);
 
   const [isMdUp, setIsMdUp] = useState(() =>
     typeof window !== 'undefined' ? window.matchMedia('(min-width: 768px)').matches : true,
@@ -1309,6 +1316,7 @@ export default function BasketPage() {
               onOpenMobileReview={handleOpenMobileReview}
               partnerBenefit={partnerBenefit}
               partnerBenefitApplied={appliedPartnerBenefit}
+              partnerFreeDeliveryLocationNames={partnerFreeDeliveryLocationNames}
             />
           </div>
         </div>

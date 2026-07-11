@@ -275,7 +275,7 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
     const sb = getSupabaseClient();
     const { data, error } = await sb
       .from('accommodation_partners')
-      .select('id, name, deal_type, discount_type, discount_value, free_delivery, free_delivery_location_ids, advance_discount_days, early_bird_days, early_bird_discount_value, status, active, logo_url, welcome_message, logo_display_width, logo_display_height')
+      .select('id, name, deal_type, discount_type, discount_value, free_delivery, free_delivery_location_ids, advance_booking_days, advance_discount_days, early_bird_days, early_bird_discount_value, status, active, logo_url, welcome_message, logo_display_width, logo_display_height')
       .or(`slug.eq.${slug},portal_subdomain.eq.${slug}`)
       .eq('status', 'active')
       .eq('active', true)
@@ -298,6 +298,7 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
       discount_value: number | null;
       free_delivery: boolean;
       free_delivery_location_ids: number[] | null;
+      advance_booking_days: number | null;
       advance_discount_days: number | null;
       early_bird_days: number | null;
       early_bird_discount_value: number | null;
@@ -343,6 +344,7 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
         discountType: row.discount_type,
         discountValue: row.discount_value != null ? Number(row.discount_value) : null,
         freeDelivery: row.free_delivery,
+        advanceBookingDays: row.advance_booking_days,
         advanceDiscountDays: row.advance_discount_days,
         earlyBirdDays: row.early_bird_days,
         earlyBirdDiscountValue: row.early_bird_discount_value != null ? Number(row.early_bird_discount_value) : null,
