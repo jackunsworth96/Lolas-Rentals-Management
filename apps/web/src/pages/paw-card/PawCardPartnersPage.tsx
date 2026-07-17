@@ -98,7 +98,7 @@ function MarqueeRow({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: 8,
+              padding: 13,
             }}
           >
             <img
