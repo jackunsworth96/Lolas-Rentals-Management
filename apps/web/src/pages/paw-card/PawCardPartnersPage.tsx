@@ -56,7 +56,6 @@ function useInView(threshold = 0.1) {
   return { ref, inView };
 }
 
-const allLogos = [...PARTNER_MARQUEE_CLOUDINARY_IDS].map(partnerMarqueeImageUrl);
 
 function MarqueeRow({
   logos,
@@ -223,6 +222,14 @@ export default function PawCardPartnersPage() {
 
   const { data: establishments = [], isLoading, error } = usePublicEstablishments();
   const { data: topData } = useTopEstablishments();
+
+  const allLogos = useMemo(() => {
+    const withLogo = establishments.filter((e) => e.cloudinary_public_id);
+    const ids = withLogo.length > 0
+      ? withLogo.map((e) => resolveEstablishmentCloudinaryId(e.cloudinary_public_id, e.name ?? '') ?? e.cloudinary_public_id!)
+      : [...PARTNER_MARQUEE_CLOUDINARY_IDS];
+    return ids.map(partnerMarqueeImageUrl);
+  }, [establishments]);
 
   const topEstablishments = useMemo(() => {
     if (!topData || !establishments.length) return [];

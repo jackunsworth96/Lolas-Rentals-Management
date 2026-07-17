@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -14,21 +14,25 @@ import { PageHeader } from '../../components/public/PageHeader.js';
 import BorderGlow from '../../components/home/BorderGlow.js';
 import InclusionMarquee from '../../components/home/InclusionMarquee.js';
 import { partnerMarqueeImageUrl } from '../../lib/cloudinary.js';
-import { PARTNER_MARQUEE_CLOUDINARY_IDS } from './partner-marquee-public-ids.js';
+import { PARTNER_MARQUEE_CLOUDINARY_IDS, resolveEstablishmentCloudinaryId } from './partner-marquee-public-ids.js';
+import { usePublicEstablishments } from '../../api/paw-card-establishments.js';
 
 import separatorSvg from '../../assets/Original Assests/separator.svg';
 import flower4 from '../../assets/Original Assests/flower-4.svg';
 import aboutUsLowerRight from '../../assets/Original Assests/about-us-lower-right.svg';
 
-const PARTNER_LOGOS = PARTNER_MARQUEE_CLOUDINARY_IDS.map((publicId) => ({
-  icon: partnerMarqueeImageUrl(publicId),
-  label: '',
-}));
-
 export default function PawCardPage() {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [pawAccess, setPawAccess] = useState<PawCardAccess | null>(null);
+  const { data: establishments = [] } = usePublicEstablishments();
+  const partnerLogos = useMemo(() => {
+    const withLogo = establishments.filter((e) => e.cloudinary_public_id);
+    const ids = withLogo.length > 0
+      ? withLogo.map((e) => resolveEstablishmentCloudinaryId(e.cloudinary_public_id, e.name ?? '') ?? e.cloudinary_public_id!)
+      : [...PARTNER_MARQUEE_CLOUDINARY_IDS];
+    return ids.map((publicId) => ({ icon: partnerMarqueeImageUrl(publicId), label: '' }));
+  }, [establishments]);
   const [searchParams] = useSearchParams();
   const preselectedEstablishmentId = searchParams.get('establishment');
 
@@ -150,7 +154,7 @@ export default function PawCardPage() {
       {/* ── Partner logos marquee ── */}
       <div className="pb-2 pt-4">
         <InclusionMarquee
-          items={PARTNER_LOGOS}
+          items={partnerLogos}
           speed={90}
           iconSize={96}
           knockOutIconWhiteMatte={false}
