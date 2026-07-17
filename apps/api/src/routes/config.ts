@@ -299,6 +299,7 @@ router.post('/paw-card-establishments', edit, validateBody(z.object({
   instagramUrl: z.string().optional(),
   isFavourite: z.boolean().optional().default(false),
   isHighValue: z.boolean().optional().default(false),
+  cloudinaryPublicId: z.string().optional().nullable(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveEstablishment(req.body); res.json({ success: true }); } catch (e) { next(e); }
 });
@@ -319,6 +320,7 @@ router.put('/paw-card-establishments/:id', edit, validateBody(z.object({
   instagramUrl: z.string().optional(),
   isFavourite: z.boolean().optional().default(false),
   isHighValue: z.boolean().optional().default(false),
+  cloudinaryPublicId: z.string().optional().nullable(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveEstablishment({ id: Number(req.params.id), ...req.body }); res.json({ success: true }); } catch (e) { next(e); }
 });
