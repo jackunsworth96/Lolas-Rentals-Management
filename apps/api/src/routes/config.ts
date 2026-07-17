@@ -302,6 +302,26 @@ router.post('/paw-card-establishments', edit, validateBody(z.object({
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveEstablishment(req.body); res.json({ success: true }); } catch (e) { next(e); }
 });
+router.put('/paw-card-establishments/:id', edit, validateBody(z.object({
+  name: z.string().min(1),
+  isActive: z.boolean().optional(),
+  category: z.enum(['Food & Drink', 'Activities', 'Services', 'Shopping']).default('Food & Drink'),
+  discountHeadline: z.string().optional(),
+  discountConditions: z.string().optional(),
+  discountCode: z.string().optional(),
+  description: z.string().optional(),
+  openingHours: z.string().optional(),
+  timeOfDay: z.enum(['all_day', 'morning', 'afternoon', 'evening', 'late_night']).optional(),
+  savingSolo: z.number().int().nonnegative().optional().nullable(),
+  savingGroup: z.number().int().nonnegative().optional().nullable(),
+  googleRating: z.number().min(0).max(5).optional().nullable(),
+  googleMapsUrl: z.string().optional(),
+  instagramUrl: z.string().optional(),
+  isFavourite: z.boolean().optional().default(false),
+  isHighValue: z.boolean().optional().default(false),
+})), async (req, res, next) => {
+  try { await req.app.locals.deps.configRepo.saveEstablishment({ id: Number(req.params.id), ...req.body }); res.json({ success: true }); } catch (e) { next(e); }
+});
 router.delete('/paw-card-establishments/:id', edit, async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.deleteEstablishment(Number(req.params.id)); res.json({ success: true }); } catch (e) { next(e); }
 });
