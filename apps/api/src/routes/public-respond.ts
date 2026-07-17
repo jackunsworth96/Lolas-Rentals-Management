@@ -1484,9 +1484,10 @@ router.post('/extension/confirm', async (req, res, next) => {
         new_dropoff_datetime: activeOutcome.newDropoffDatetime,
         extension_days: activeOutcome.extensionDays,
         extension_cost: activeOutcome.extensionCost,
+        outstanding_extension_balance: activeOutcome.outstandingBalance,
         payment_status: 'pending',
         payment_url: buildExtensionPaymentUrl(target.orderReference),
-        customer_message: `All set - your rental is extended to ${new Date(activeOutcome.newDropoffDatetime).toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' })}. The extension balance is PHP ${activeOutcome.extensionCost.toLocaleString('en-PH')} and has been added to your booking. You can pay on return, or use this page once online extension payments are available: ${buildExtensionPaymentUrl(target.orderReference)}`,
+        customer_message: `All set - your rental is extended to ${new Date(activeOutcome.newDropoffDatetime).toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' })}. The outstanding extension balance is PHP ${activeOutcome.outstandingBalance.toLocaleString('en-PH')}. You can pay on return, or use this page once online extension payments are available: ${buildExtensionPaymentUrl(target.orderReference)}`,
       });
       return;
     }
@@ -1512,9 +1513,10 @@ router.post('/extension/confirm', async (req, res, next) => {
         new_dropoff_datetime: rawOutcome.newDropoffDatetime,
         extension_days: rawOutcome.extensionDays,
         extension_cost: rawOutcome.extensionCost,
+        outstanding_extension_balance: rawOutcome.outstandingBalance,
         payment_status: 'pending',
         payment_url: buildExtensionPaymentUrl(target.orderReference),
-        customer_message: `All set - your rental is extended to ${new Date(rawOutcome.newDropoffDatetime).toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' })}. The extension balance is PHP ${rawOutcome.extensionCost.toLocaleString('en-PH')} and has been added to your booking. You can pay on return, or use this page once online extension payments are available: ${buildExtensionPaymentUrl(target.orderReference)}`,
+        customer_message: `All set - your rental is extended to ${new Date(rawOutcome.newDropoffDatetime).toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' })}. The outstanding extension balance is PHP ${rawOutcome.outstandingBalance.toLocaleString('en-PH')}. You can pay on return, or use this page once online extension payments are available: ${buildExtensionPaymentUrl(target.orderReference)}`,
       });
       return;
     }

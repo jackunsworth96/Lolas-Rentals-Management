@@ -57,7 +57,33 @@ export type ExtensionInputs = {
 export type ExtensionOutcome =
   | { kind: 'not_found' }
   | { kind: 'error'; reason: string }
-  | { kind: 'success'; extensionDays: number; extensionCost: number; newDropoffDatetime: string };
+  | { kind: 'success'; extensionDays: number; extensionCost: number; outstandingBalance: number; newDropoffDatetime: string };
+
+async function getPendingExtensionBalance(
+  target: { source: 'active' | 'raw'; id: string },
+  fallbackAmount: number,
+): Promise<number> {
+  let query = getSupabaseClient()
+    .from('payments')
+    .select('amount')
+    .eq('payment_type', 'extension')
+    .eq('settlement_status', 'pending');
+
+  query = target.source === 'active'
+    ? query.eq('order_id', target.id)
+    : query.eq('raw_order_id', target.id);
+
+  const { data, error } = await query;
+  if (error) {
+    console.error('[extend] Pending extension balance lookup failed:', error.message, target);
+    return fallbackAmount;
+  }
+
+  return Math.round((data ?? []).reduce(
+    (sum: number, payment: { amount: number | string | null }) => sum + Number(payment.amount ?? 0),
+    0,
+  ) * 100) / 100;
+}
 
 // ── resolveExtensionForRaw ──
 // Handles extension for raw/unactivated orders (orders_raw).
@@ -204,7 +230,11 @@ export async function resolveExtensionForRaw(args: ExtensionInputs): Promise<Ext
     }
   })();
 
-  return { kind: 'success', extensionDays: extDays, extensionCost, newDropoffDatetime };
+  const outstandingBalance = await getPendingExtensionBalance(
+    { source: 'raw', id: row.id as string },
+    isPaid ? 0 : extensionCost,
+  );
+  return { kind: 'success', extensionDays: extDays, extensionCost, outstandingBalance, newDropoffDatetime };
 }
 
 // ── resolveExtensionForActive ──
@@ -626,7 +656,11 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
       }
     })();
 
-    return { kind: 'success', extensionDays: newDays - oldDays, extensionCost: totalExtensionCost, newDropoffDatetime };
+    const outstandingBalance = await getPendingExtensionBalance(
+      { source: 'active', id: ord.id },
+      isPaid ? 0 : totalExtensionCost,
+    );
+    return { kind: 'success', extensionDays: newDays - oldDays, extensionCost: totalExtensionCost, outstandingBalance, newDropoffDatetime };
   }
 
   return { kind: 'not_found' };

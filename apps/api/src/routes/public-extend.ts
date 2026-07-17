@@ -631,7 +631,7 @@ router.post('/confirm', extendConfirmLimiter, validateBody(PublicExtendConfirmSc
         orderReference,
         email: trimmedEmail,
         newDropoffDatetime: activeOutcome.newDropoffDatetime,
-        outstandingBalance: activeOutcome.extensionCost,
+        outstandingBalance: activeOutcome.outstandingBalance,
       }).catch((err) => {
         logger.warn(
           { orderReference, error: err instanceof Error ? err.message : String(err) },
@@ -672,7 +672,7 @@ router.post('/confirm', extendConfirmLimiter, validateBody(PublicExtendConfirmSc
         orderReference,
         email: trimmedEmail,
         newDropoffDatetime: rawOutcome.newDropoffDatetime,
-        outstandingBalance: rawOutcome.extensionCost,
+        outstandingBalance: rawOutcome.outstandingBalance,
       }).catch((err) => {
         logger.warn(
           { orderReference, error: err instanceof Error ? err.message : String(err) },
@@ -757,7 +757,7 @@ staffRouter.post(
           orderReference,
           email: trimmedEmail,
           newDropoffDatetime: rawOutcome.newDropoffDatetime,
-          outstandingBalance: isPaid ? 0 : rawOutcome.extensionCost,
+          outstandingBalance: rawOutcome.outstandingBalance,
         }).catch((err) => {
           logger.warn(
             { orderReference, error: err instanceof Error ? err.message : String(err) },
@@ -792,7 +792,7 @@ staffRouter.post(
           orderReference,
           email: trimmedEmail,
           newDropoffDatetime: activeOutcome.newDropoffDatetime,
-          outstandingBalance: isPaid ? 0 : activeOutcome.extensionCost,
+          outstandingBalance: activeOutcome.outstandingBalance,
         }).catch((err) => {
           logger.warn(
             { orderReference, error: err instanceof Error ? err.message : String(err) },
