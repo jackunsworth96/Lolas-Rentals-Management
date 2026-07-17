@@ -105,7 +105,7 @@ export default function InclusionMarquee({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                padding: Math.round(iconSize * 0.16),
+                padding: Math.round(iconSize * 0.1),
               }}
             >
               <img
