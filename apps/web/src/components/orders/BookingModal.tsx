@@ -999,6 +999,12 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                           </dd>
                         </div>
                       )}
+                      {rawOrder.partner_ref && partnerBenefit && (
+                        <div className="flex justify-between gap-2">
+                          <dt className="shrink-0 text-gray-500">Referred by</dt>
+                          <dd className="font-medium text-right text-orange-700">{partnerBenefit.name}</dd>
+                        </div>
+                      )}
                       {isDirect && rawOrder.customer_company && (
                         <div className="flex justify-between gap-2">
                           <dt className="shrink-0 text-gray-500">Company</dt>
