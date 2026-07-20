@@ -2,7 +2,7 @@ import { NonRentableVehicleError } from '../errors/domain-error.js';
 
 const PROTECTED_STATUSES = ['Sold', 'Closed', 'Service Vehicle'] as const;
 
-const NON_RENTABLE_STATUSES = ['Sold', 'Closed', 'Maintenance', 'Retired'] as const;
+const NON_RENTABLE_STATUSES = ['Sold', 'Closed', 'Maintenance', 'Retired', 'Pending ORCR'] as const;
 
 export interface VehicleProps {
   id: string;

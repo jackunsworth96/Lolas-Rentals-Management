@@ -66,7 +66,7 @@ export function createBookingAdapter(): BookingPort {
       const pickupBuffered = new Date(new Date(pickupDatetime).getTime() - BUFFER_MS).toISOString();
 
       // Statuses that permanently prevent a vehicle from being rented
-      const NON_RENTABLE = ['Under Maintenance', 'Sold', 'Service Vehicle', 'Closed'];
+      const NON_RENTABLE = ['Under Maintenance', 'Sold', 'Service Vehicle', 'Closed', 'Pending ORCR'];
 
       // Fleet rows — include all vehicles except hard non-rentable statuses.
       // "Active" vehicles may be available for the requested dates if their

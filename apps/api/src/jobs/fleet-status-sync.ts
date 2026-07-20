@@ -1,6 +1,6 @@
 import { supabase } from '../adapters/supabase/client.js';
 
-const PROTECTED_STATUSES = ['Sold', 'Closed', 'Service Vehicle'];
+const PROTECTED_STATUSES = ['Sold', 'Closed', 'Service Vehicle', 'Pending ORCR'];
 
 export async function syncFleetStatuses(): Promise<void> {
   console.log('[fleet-status-sync] Syncing fleet statuses from active orders and maintenance...');
