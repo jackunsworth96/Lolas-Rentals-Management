@@ -181,6 +181,7 @@ Rules:
 - Prefer storing `resolved_vehicle_model_id` from the add-on lookup and using that exact ID as `vehicleModelId` in booking handoff. Booking handoff can also resolve an exact vehicle display name such as `Honda Beat V3` if Respond.io only has the name.
 - If the customer accepts add-ons, pass their selected add-on IDs in `addonIds` when calling `/api/public/respond/booking-handoff`. In Respond.io, define `addonIds` as a string field and send a JSON-array string such as `"[11]"` or `"[10,11]"`.
 - If the customer declines, call booking handoff with `addonIds` as the string `"[]"`.
+- `pickupLocationId` and `dropoffLocationId` accept either the numeric ID from `/api/public/respond/locations` or the exact location name (case-insensitive), such as `"General Luna"`.
 - Do not share the returned cart URL until after this add-on choice is complete.
 - Keep the upsell concise and natural, never pushy.
 

@@ -968,8 +968,14 @@ const RespondBookingHandoffSchema = z.object({
   vehicleModelId: z.string().trim().min(1),
   pickupDatetime: z.string().min(1),
   dropoffDatetime: z.string().min(1),
-  pickupLocationId: z.coerce.number().int().positive(),
-  dropoffLocationId: z.coerce.number().int().positive(),
+  pickupLocationId: z.union([
+    z.coerce.number().int().positive(),
+    z.string().trim().min(1),
+  ]),
+  dropoffLocationId: z.union([
+    z.coerce.number().int().positive(),
+    z.string().trim().min(1),
+  ]),
   storeId: z.string().min(1).optional().default(STORE_ID),
   sessionToken: z.string().min(20).optional(),
   customer: z
@@ -1003,6 +1009,28 @@ const RespondBookingHandoffSchema = z.object({
     .optional(),
   respond: z.record(z.unknown()).optional(),
 });
+
+type RespondLocationInput = z.infer<typeof RespondBookingHandoffSchema>['pickupLocationId'];
+
+function normaliseLocationName(value: string): string {
+  return value.trim().toLocaleLowerCase().replace(/\s+/g, ' ');
+}
+
+function resolveRespondLocationId(
+  input: RespondLocationInput,
+  locations: Array<{ id: number | string; name: string }>,
+): number | null {
+  if (typeof input === 'number') return input;
+
+  const normalisedInput = normaliseLocationName(input);
+  const location = locations.find(
+    (candidate) => normaliseLocationName(candidate.name) === normalisedInput,
+  );
+  if (!location) return null;
+
+  const id = Number(location.id);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
 
 function isValidDateRange(pickupDatetime: string, dropoffDatetime: string): boolean {
   const pickup = new Date(pickupDatetime);
@@ -1055,10 +1083,13 @@ router.post('/booking-handoff', async (req, res, next) => {
     }
 
     const sb = getSupabaseClient();
-    const resolvedVehicle = await resolveVehicleModelForRespondAddons(
-      req.app.locals.deps.configRepo,
-      input.vehicleModelId,
-    );
+    const [resolvedVehicle, locations] = await Promise.all([
+      resolveVehicleModelForRespondAddons(
+        req.app.locals.deps.configRepo,
+        input.vehicleModelId,
+      ),
+      req.app.locals.deps.configRepo.getLocations(input.storeId),
+    ]);
 
     if (!resolvedVehicle) {
       res.status(404).json({ error: 'Vehicle model not found' });
@@ -1066,6 +1097,19 @@ router.post('/booking-handoff', async (req, res, next) => {
     }
 
     const vehicleModelId = resolvedVehicle.id;
+    const pickupLocationId = resolveRespondLocationId(input.pickupLocationId, locations);
+    const dropoffLocationId = resolveRespondLocationId(input.dropoffLocationId, locations);
+
+    if (!pickupLocationId || !dropoffLocationId) {
+      res.status(404).json({
+        error: 'Pickup or dropoff location not found',
+        locations: locations.map((location) => ({
+          id: Number(location.id),
+          name: location.name,
+        })),
+      });
+      return;
+    }
 
     const [modelResult, pickupLocResult, dropoffLocResult] = await Promise.all([
       sb
@@ -1077,14 +1121,14 @@ router.post('/booking-handoff', async (req, res, next) => {
       sb
         .from('locations')
         .select('id, name, delivery_cost, collection_cost, location_type')
-        .eq('id', input.pickupLocationId)
+        .eq('id', pickupLocationId)
         .eq('is_active', true)
         .or(`store_id.eq.${input.storeId},store_id.is.null`)
         .maybeSingle(),
       sb
         .from('locations')
         .select('id, name, delivery_cost, collection_cost, location_type')
-        .eq('id', input.dropoffLocationId)
+        .eq('id', dropoffLocationId)
         .eq('is_active', true)
         .or(`store_id.eq.${input.storeId},store_id.is.null`)
         .maybeSingle(),
@@ -1124,8 +1168,8 @@ router.post('/booking-handoff', async (req, res, next) => {
           vehicleModelId,
           pickupDatetime:     input.pickupDatetime,
           dropoffDatetime:    input.dropoffDatetime,
-          pickupLocationId:   input.pickupLocationId,
-          dropoffLocationId:  input.dropoffLocationId,
+          pickupLocationId,
+          dropoffLocationId,
           addonIds:           input.addonIds && input.addonIds.length > 0 ? input.addonIds : undefined,
         },
       );
@@ -1141,8 +1185,8 @@ router.post('/booking-handoff', async (req, res, next) => {
       source: 'respond.io',
       submittedVehicleModelId: input.vehicleModelId,
       resolvedVehicleModelId: vehicleModelId,
-      pickupLocationId: input.pickupLocationId,
-      dropoffLocationId: input.dropoffLocationId,
+      pickupLocationId,
+      dropoffLocationId,
       addonIds: input.addonIds ?? [],
       transfer: input.transfer ?? null,
       respond: input.respond ?? null,
