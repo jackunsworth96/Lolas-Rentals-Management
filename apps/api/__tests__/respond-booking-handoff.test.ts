@@ -35,26 +35,37 @@ function queryResult<T>(result: T) {
 function makeSupabaseForHandoff() {
   const locationRows = [
     {
-      data: {
-        id: 1,
-        name: 'Lola Shop',
-        delivery_cost: 100,
-        collection_cost: 0,
-        location_type: 'shop',
-      },
-      error: null,
+      id: 1,
+      name: 'Lola Shop',
+      delivery_cost: 100,
+      collection_cost: 0,
+      location_type: 'shop',
     },
     {
-      data: {
-        id: 2,
-        name: 'General Luna',
-        delivery_cost: 0,
-        collection_cost: 150,
-        location_type: 'delivery',
-      },
-      error: null,
+      id: 2,
+      name: 'General Luna',
+      delivery_cost: 0,
+      collection_cost: 150,
+      location_type: 'delivery',
     },
   ];
+
+  function locationQuery() {
+    let selectedId: number | null = null;
+    const query = {
+      select: vi.fn(() => query),
+      eq: vi.fn((column: string, value: unknown) => {
+        if (column === 'id') selectedId = Number(value);
+        return query;
+      }),
+      or: vi.fn(() => query),
+      maybeSingle: vi.fn(async () => ({
+        data: locationRows.find((row) => row.id === selectedId) ?? null,
+        error: null,
+      })),
+    };
+    return query;
+  }
 
   return {
     from: vi.fn((table: string) => {
@@ -65,7 +76,7 @@ function makeSupabaseForHandoff() {
         });
       }
       if (table === 'locations') {
-        return queryResult(locationRows.shift());
+        return locationQuery();
       }
       if (table === 'booking_sessions') {
         return {
@@ -126,8 +137,8 @@ const configRepo = {
   ]),
   getModelPricing: vi.fn(async () => [{ minDays: 1, maxDays: 99, dailyRate: 500 }]),
   getLocations: vi.fn(async () => [
-    { id: 1, deliveryCost: 100, collectionCost: 0 },
-    { id: 2, deliveryCost: 0, collectionCost: 150 },
+    { id: 1, name: 'Lola Shop', deliveryCost: 100, collectionCost: 0 },
+    { id: 2, name: 'General Luna', deliveryCost: 0, collectionCost: 150 },
   ]),
   getAddons: vi.fn(async () => [
     {
@@ -261,6 +272,28 @@ describe('Respond.io add-ons lookup', () => {
 });
 
 describe('Respond.io booking handoff', () => {
+  it('accepts location names from Respond.io and resolves their numeric IDs', async () => {
+    mocks.getSupabaseClient.mockReturnValue(makeSupabaseForHandoff());
+
+    const res = await request(app)
+      .post('/api/public/respond/booking-handoff')
+      .set('X-API-Key', 'respond-test-key')
+      .send({
+        vehicleModelId: 'Honda Beat',
+        pickupDatetime: '2026-07-21T12:15:00+08:00',
+        dropoffDatetime: '2026-07-26T12:15:00+08:00',
+        pickupLocationId: ' General Luna ',
+        dropoffLocationId: 'general luna',
+        addonIds: '[]',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.pickup.id).toBe(2);
+    expect(res.body.dropoff.id).toBe(2);
+    expect(res.body.quote.pickupFee).toBe(0);
+    expect(res.body.quote.dropoffFee).toBe(150);
+  });
+
   it('returns selected add-on lines and totals in the cart preview quote', async () => {
     mocks.getSupabaseClient.mockReturnValue(makeSupabaseForHandoff());
 
