@@ -37,6 +37,18 @@ export interface VehicleSummary {
   profitLoss?: number | null;
   rentableStartDate?: string | null;
   registrationDate?: string | null;
+  activeOwnerUse?: {
+    id: string;
+    startsAt: string;
+    endsAt: string;
+    note: string | null;
+  } | null;
+  ownerUsePeriods?: Array<{
+    id: string;
+    startsAt: string;
+    endsAt: string;
+    note: string | null;
+  }>;
 }
 
 export interface EnrichedOrder {
