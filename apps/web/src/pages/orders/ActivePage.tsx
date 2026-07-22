@@ -6,6 +6,7 @@ import { Table } from '../../components/common/Table.js';
 import { Badge } from '../../components/common/Badge.js';
 import { OrderDetailModal } from '../../components/orders/OrderDetailModal.js';
 import { InspectionModal } from '../../components/orders/InspectionModal.js';
+import { PartnerAttributionModal } from '../../components/orders/PartnerAttributionModal.js';
 import { formatCurrency } from '../../utils/currency.js';
 import type { EnrichedOrder } from '../../types/api.js';
 
@@ -41,12 +42,14 @@ function formatReturnDate(dt: string | null): string {
 export default function ActivePage() {
   const storeId = useUIStore((s) => s.selectedStoreId) ?? '';
   const currentUser = useAuthStore((s) => s.user);
+  const canEditOrders = useAuthStore((s) => s.hasPermission('can_edit_orders'));
   const { data: orders, isLoading, refetch: refetchOrders } = useEnrichedOrders(storeId, 'active,confirmed') as {
     data: EnrichedOrder[] | undefined;
     isLoading: boolean;
     refetch: () => void;
   };
   const [selectedOrder, setSelectedOrder] = useState<EnrichedOrder | null>(null);
+  const [partnerOrder, setPartnerOrder] = useState<EnrichedOrder | null>(null);
   const [inspectionOrderId, setInspectionOrderId] = useState<string | null>(null);
   const [inspectionOrderRef, setInspectionOrderRef] = useState('');
   const [inspectionVehicleId, setInspectionVehicleId] = useState<string | null>(null);
@@ -118,14 +121,33 @@ export default function ActivePage() {
                 Inspection ✓
               </span>
             )}
-            {r.partnerRef && (
-              <span
-                title={`Affiliate / partner booking (${r.partnerRef}) — handle with extra care`}
-                className="inline-flex items-center gap-1 rounded-full border border-orange-300 bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-700"
+            {r.partnerRef ? (
+              <button
+                type="button"
+                disabled={!canEditOrders}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setPartnerOrder(r);
+                }}
+                title={canEditOrders
+                  ? `Affiliate / partner booking (${r.partnerRef}) — click to change`
+                  : `Affiliate / partner booking (${r.partnerRef}) — handle with extra care`}
+                className="inline-flex items-center gap-1 rounded-full border border-orange-300 bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-700 enabled:hover:bg-orange-100 disabled:cursor-default"
               >
                 ★ Affiliate
-              </span>
-            )}
+              </button>
+            ) : canEditOrders ? (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setPartnerOrder(r);
+                }}
+                className="inline-flex items-center rounded-full border border-dashed border-gray-300 px-2 py-0.5 text-xs font-medium text-gray-500 hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700"
+              >
+                + Assign partner
+              </button>
+            ) : null}
           </div>
         );
       },
@@ -357,10 +379,14 @@ export default function ActivePage() {
                   className="bg-white rounded-xl border border-gray-200 overflow-hidden"
                 >
                   {/* Card top — tap to open order detail */}
-                  <button
-                    type="button"
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setSelectedOrder(r)}
-                    className="w-full text-left px-4 pt-4 pb-3"
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') setSelectedOrder(r);
+                    }}
+                    className="w-full cursor-pointer px-4 pt-4 pb-3 text-left"
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <div>
@@ -378,14 +404,33 @@ export default function ActivePage() {
                         {r.customerMobile && (
                           <p className="text-xs text-gray-500">{r.customerMobile}</p>
                         )}
-                        {r.partnerRef && (
-                          <span
-                            title={`Affiliate / partner booking (${r.partnerRef}) — handle with extra care`}
-                            className="mt-1 inline-flex items-center gap-1 rounded-full border border-orange-300 bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-700"
+                        {r.partnerRef ? (
+                          <button
+                            type="button"
+                            disabled={!canEditOrders}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setPartnerOrder(r);
+                            }}
+                            title={canEditOrders
+                              ? `Affiliate / partner booking (${r.partnerRef}) — tap to change`
+                              : `Affiliate / partner booking (${r.partnerRef}) — handle with extra care`}
+                            className="mt-1 inline-flex items-center gap-1 rounded-full border border-orange-300 bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-700 enabled:hover:bg-orange-100 disabled:cursor-default"
                           >
                             ★ Affiliate
-                          </span>
-                        )}
+                          </button>
+                        ) : canEditOrders ? (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setPartnerOrder(r);
+                            }}
+                            className="mt-1 inline-flex items-center rounded-full border border-dashed border-gray-300 px-2 py-0.5 text-xs font-medium text-gray-500 hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700"
+                          >
+                            + Assign partner
+                          </button>
+                        ) : null}
                       </div>
                       <div className="flex flex-col items-end gap-1">
                         {waiverStatus === 'signed' ? (
@@ -420,7 +465,7 @@ export default function ActivePage() {
                         <span className="text-xs font-medium text-red-600">Balance: {formatCurrency(r.balanceDue)}</span>
                       )}
                     </div>
-                  </button>
+                  </div>
 
                   {inspectionStatus !== 'completed' && (
                     <div className="border-t border-gray-100 px-4 py-3">
@@ -459,6 +504,19 @@ export default function ActivePage() {
           storeId={selectedOrder.storeId}
           readOnly={false}
           enrichedData={selectedOrder}
+        />
+      )}
+
+      {partnerOrder && (
+        <PartnerAttributionModal
+          open={!!partnerOrder}
+          onClose={() => setPartnerOrder(null)}
+          orderId={partnerOrder.id}
+          orderReference={partnerOrder.bookingToken ?? partnerOrder.wooOrderId ?? partnerOrder.id.slice(0, 8)}
+          customerName={partnerOrder.customerName}
+          storeId={partnerOrder.storeId}
+          currentPartnerRef={partnerOrder.partnerRef ?? null}
+          onSaved={() => void refetchOrders()}
         />
       )}
 

@@ -16,6 +16,10 @@ const StoreQuerySchema = z.object({
   status: z.string().optional(),
 });
 
+const PartnerAttributionSchema = z.object({
+  partnerId: z.string().uuid().nullable(),
+});
+
 router.get('/', requirePermission(Permission.ViewInbox), validateQuery(StoreQuerySchema), async (req, res, next) => {
   try {
     const { storeId, status } = req.query as { storeId: string; status?: string };
@@ -285,6 +289,60 @@ router.get('/:id', requirePermission(Permission.ViewInbox), async (req, res, nex
   } catch (err) { next(err); }
 });
 
+router.patch(
+  '/:id/partner',
+  requirePermission(Permission.EditOrders),
+  validateBody(PartnerAttributionSchema),
+  async (req, res, next) => {
+    try {
+      const { data: order, error: orderError } = await supabase
+        .from('orders')
+        .select('id, store_id')
+        .eq('id', req.params.id)
+        .maybeSingle();
+      if (orderError) throw new Error(orderError.message);
+      if (!order) {
+        res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found' } });
+        return;
+      }
+      if (!req.user!.storeIds.includes(order.store_id)) {
+        res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You cannot edit orders from this store' } });
+        return;
+      }
+
+      const { partnerId } = req.body as z.infer<typeof PartnerAttributionSchema>;
+      const { data, error } = await supabase.rpc('set_order_partner_attribution', {
+        p_order_id: req.params.id,
+        p_partner_id: partnerId,
+        p_changed_by: req.user!.employeeId,
+      });
+
+      if (error) {
+        const knownErrors: Record<string, { status: number; code: string; message: string }> = {
+          ORDER_NOT_FOUND: { status: 404, code: 'NOT_FOUND', message: 'Order not found' },
+          ORDER_NOT_ACTIVE: { status: 422, code: 'ORDER_NOT_ACTIVE', message: 'Partner attribution is only available for active or confirmed orders' },
+          RAW_ORDER_NOT_LINKED: { status: 422, code: 'RAW_ORDER_NOT_LINKED', message: 'This order has no linked source booking, so partner attribution cannot be applied safely' },
+          PARTNER_NOT_FOUND: { status: 404, code: 'PARTNER_NOT_FOUND', message: 'Partner not found' },
+          PARTNER_STORE_MISMATCH: { status: 422, code: 'PARTNER_STORE_MISMATCH', message: 'The selected partner belongs to a different store' },
+          PARTNER_NOT_ACTIVE: { status: 422, code: 'PARTNER_NOT_ACTIVE', message: 'Only active partners can be assigned' },
+        };
+        const match = Object.entries(knownErrors).find(([key]) => error.message.includes(key));
+        if (match) {
+          const [, responseError] = match;
+          res.status(responseError.status).json({
+            success: false,
+            error: { code: responseError.code, message: responseError.message },
+          });
+          return;
+        }
+        throw new Error(`Failed to update partner attribution: ${error.message}`);
+      }
+
+      res.json({ success: true, data: data ?? null });
+    } catch (err) { next(err); }
+  },
+);
+
 router.patch('/:id/dropoff-note', requirePermission(Permission.EditOrders), validateBody(z.object({ note: z.string().max(500).nullable() })), async (req, res, next) => {
   try {
     const { error } = await supabase
@@ -315,13 +373,17 @@ router.get('/:id/history', requirePermission(Permission.ViewInbox), async (req, 
     const orderId = req.params.id;
     const sb = supabase;
 
-    const [orderRes, paymentsRes, swapsRes, addonsRes, accidentsRes] = await Promise.all([
+    const [orderRes, paymentsRes, swapsRes, addonsRes, accidentsRes, partnerAttributionRes] = await Promise.all([
       sb.from('orders').select('id, status, order_date, created_at, employee_id').eq('id', orderId).maybeSingle(),
       sb.from('payments').select('id, payment_type, amount, payment_method_id, transaction_date, settlement_status, settlement_ref, created_at').eq('order_id', orderId).order('created_at', { ascending: true }),
       sb.from('vehicle_swaps').select('id, old_vehicle_name, new_vehicle_name, reason, swap_date, swap_time, employee_id, created_at').eq('order_id', orderId).order('created_at', { ascending: true }),
       sb.from('order_addons').select('id, addon_name, addon_price, addon_type, total_amount, added_at').eq('order_id', orderId).order('added_at', { ascending: true }),
       sb.from('accident_reports').select('id, accident_at, description, customer_injured, police_report_filed, created_at').eq('order_id', orderId).order('accident_at', { ascending: true }),
+      sb.from('order_partner_attribution_logs').select('previous_partner_name, previous_partner_slug, new_partner_name, new_partner_slug, changed_by, created_at').eq('order_id', orderId).order('created_at', { ascending: true }),
     ]);
+    if (partnerAttributionRes.error) {
+      throw new Error(`partner attribution history query failed: ${partnerAttributionRes.error.message}`);
+    }
 
     interface TimelineEvent { timestamp: string; type: string; description: string; detail?: string; amount?: number }
     const events: TimelineEvent[] = [];
@@ -391,6 +453,22 @@ router.get('/:id/history', requirePermission(Permission.ViewInbox), async (req, 
         type: 'accident',
         description: '🚨 Accident reported',
         detail: flags || (acc.description as string | undefined),
+      });
+    }
+
+    for (const change of (partnerAttributionRes.data ?? []) as Array<Record<string, unknown>>) {
+      const previous = (change.previous_partner_name ?? change.previous_partner_slug) as string | null;
+      const nextPartner = (change.new_partner_name ?? change.new_partner_slug) as string | null;
+      const description = previous && nextPartner
+        ? `Affiliate changed: ${previous} → ${nextPartner}`
+        : nextPartner
+          ? `Affiliate assigned: ${nextPartner}`
+          : `Affiliate removed${previous ? `: ${previous}` : ''}`;
+      events.push({
+        timestamp: change.created_at as string,
+        type: 'partner_attribution',
+        description,
+        detail: change.changed_by ? `Changed by employee ${change.changed_by}` : undefined,
       });
     }
 

@@ -181,6 +181,24 @@ export function useUpdateDropoffNote() {
   });
 }
 
+export interface OrderPartnerAttribution {
+  partnerId: string;
+  slug: string;
+  name: string;
+}
+
+export function useSetOrderPartner() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, partnerId }: { id: string; partnerId: string | null }) =>
+      api.patch<OrderPartnerAttribution | null>(`/orders/${id}/partner`, { partnerId }),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['orders', id, 'history'] });
+    },
+  });
+}
+
 export function useCreateMayaCheckout() {
   return useMutation({
     mutationFn: (params: { orderId: string; amountPHP: number; description?: string }) =>
