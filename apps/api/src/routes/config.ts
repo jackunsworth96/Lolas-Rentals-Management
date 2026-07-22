@@ -177,6 +177,11 @@ router.post('/fleet-statuses', edit, validateBody(z.object({
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveFleetStatus(req.body); res.json({ success: true }); } catch (e) { next(e); }
 });
+router.put('/fleet-statuses/:id', edit, validateBody(z.object({
+  name: z.string().min(1), isRentable: z.boolean().optional(),
+})), async (req, res, next) => {
+  try { await req.app.locals.deps.configRepo.saveFleetStatus({ id: req.params.id, ...req.body }); res.json({ success: true }); } catch (e) { next(e); }
+});
 router.delete('/fleet-statuses/:id', edit, async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.deleteFleetStatus(req.params.id); res.json({ success: true }); } catch (e) { next(e); }
 });
