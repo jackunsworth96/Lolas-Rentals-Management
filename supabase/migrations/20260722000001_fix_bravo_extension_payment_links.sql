@@ -64,10 +64,10 @@ BEGIN
 
       UPDATE payments
       SET
-        order_id      = v_order_id,
+        order_id      = v_order_id::uuid,
         raw_order_id  = NULL,
-        order_item_id = v_item_id
-      WHERE raw_order_id = v_raw_id
+        order_item_id = v_item_id::uuid
+      WHERE raw_order_id = v_raw_id::uuid
         AND payment_type  = 'extension'
         AND order_id IS NULL;
 
@@ -104,7 +104,7 @@ BEGIN
     SET
       dropoff_datetime  = v_new_dropoff,
       rental_days_count = v_new_days
-    WHERE id = v_item_id;
+    WHERE id = v_item_id::uuid;
 
     RAISE NOTICE '[fix-ext] % — updated dropoff to % (%  days)',
       v_ref, v_new_dropoff, v_new_days;
