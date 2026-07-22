@@ -738,37 +738,6 @@ staffRouter.post(
       const trimmedEmail = email.trim().toLowerCase();
       const deps = req.app.locals.deps;
 
-      const rawOutcome = await resolveExtensionForRaw({
-        orderReference,
-        trimmedEmail,
-        newDropoffDatetime,
-        overrideDailyRate,
-        isPaid,
-        paymentMethodId: effectivePaymentMethodId,
-        emailErrorLabel: '[extend-email] Staff raw path error:',
-        deps,
-      });
-      if (rawOutcome.kind === 'error') {
-        res.json({ success: true, data: { success: false, reason: rawOutcome.reason } });
-        return;
-      }
-      if (rawOutcome.kind === 'success') {
-        void sendExtensionReceivedMessage({
-          orderReference,
-          email: trimmedEmail,
-          newDropoffDatetime: rawOutcome.newDropoffDatetime,
-          outstandingBalance: rawOutcome.outstandingBalance,
-        }).catch((err) => {
-          logger.warn(
-            { orderReference, error: err instanceof Error ? err.message : String(err) },
-            '[extend-whatsapp] Failed to send staff raw extension message',
-          );
-        });
-
-        res.json({ success: true, data: { success: true, newDropoffDatetime: rawOutcome.newDropoffDatetime, extensionCost: rawOutcome.extensionCost } });
-        return;
-      }
-
       const activeOutcome = await resolveExtensionForActive({
         orderReference,
         trimmedEmail,
@@ -809,6 +778,37 @@ staffRouter.post(
             extensionDays: activeOutcome.extensionDays,
           },
         });
+        return;
+      }
+
+      const rawOutcome = await resolveExtensionForRaw({
+        orderReference,
+        trimmedEmail,
+        newDropoffDatetime,
+        overrideDailyRate,
+        isPaid,
+        paymentMethodId: effectivePaymentMethodId,
+        emailErrorLabel: '[extend-email] Staff raw path error:',
+        deps,
+      });
+      if (rawOutcome.kind === 'error') {
+        res.json({ success: true, data: { success: false, reason: rawOutcome.reason } });
+        return;
+      }
+      if (rawOutcome.kind === 'success') {
+        void sendExtensionReceivedMessage({
+          orderReference,
+          email: trimmedEmail,
+          newDropoffDatetime: rawOutcome.newDropoffDatetime,
+          outstandingBalance: rawOutcome.outstandingBalance,
+        }).catch((err) => {
+          logger.warn(
+            { orderReference, error: err instanceof Error ? err.message : String(err) },
+            '[extend-whatsapp] Failed to send staff raw extension message',
+          );
+        });
+
+        res.json({ success: true, data: { success: true, newDropoffDatetime: rawOutcome.newDropoffDatetime, extensionCost: rawOutcome.extensionCost } });
         return;
       }
 
