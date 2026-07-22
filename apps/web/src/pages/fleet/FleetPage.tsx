@@ -12,6 +12,8 @@ import { AddVehicleModal } from '../../components/fleet/AddVehicleModal.js';
 import { AssetManagementModal } from '../../components/fleet/AssetManagementModal.js';
 import { ServiceHistoryModal } from '../../components/fleet/ServiceHistoryModal.js';
 import { FleetCalendar } from '../../components/fleet/FleetCalendar.js';
+import { OwnerUseModal } from '../../components/fleet/OwnerUseModal.js';
+import { AvailabilityExplanationModal } from '../../components/fleet/AvailabilityExplanationModal.js';
 import { formatDate } from '../../utils/date.js';
 import { formatCurrency } from '../../utils/currency.js';
 import type { VehicleSummary } from '../../types/api.js';
@@ -63,6 +65,8 @@ export default function FleetPage() {
   const [addVehicleOpen, setAddVehicleOpen] = useState(false);
   const [assetVehicleId, setAssetVehicleId] = useState<string | null>(null);
   const [serviceHistoryVehicle, setServiceHistoryVehicle] = useState<{ id: string; name: string; storeId: string } | null>(null);
+  const [ownerUseVehicle, setOwnerUseVehicle] = useState<{ id: string; name: string; storeId: string } | null>(null);
+  const [availabilityExplanationOpen, setAvailabilityExplanationOpen] = useState(false);
 
   const storeIdForApi = fleetStoreFilter === 'all' || !fleetStoreFilter ? 'all' : fleetStoreFilter;
   const { data: vehicles, isLoading } = useFleet(storeIdForApi);
@@ -88,6 +92,13 @@ export default function FleetPage() {
 
   const statusColor = (s: string) => STATUS_COLOR[s] ?? 'gray';
   const getStoreName = (id: string) => storeList.find((s) => s.id === id)?.name ?? id;
+  const ownerUseLabel = (vehicle: VehicleSummary) => {
+    if (vehicle.activeOwnerUse) return { label: 'Owner Use', active: true, period: vehicle.activeOwnerUse };
+    const scheduled = vehicle.ownerUsePeriods?.[0];
+    return scheduled ? { label: 'Owner Use scheduled', active: false, period: scheduled } : null;
+  };
+  const ownerUseDates = (period: { startsAt: string; endsAt: string }) =>
+    `${new Date(period.startsAt).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' })}–${new Date(period.endsAt).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' })}`;
 
   const fleetSummary = useMemo(() => {
     const totalFleetCost = filtered.reduce((sum, v) => {
@@ -109,7 +120,15 @@ export default function FleetPage() {
     {
       key: 'status',
       header: 'Status',
-      render: (r: VehicleSummary) => <Badge color={statusColor(r.status)}>{r.status}</Badge>,
+      render: (r: VehicleSummary) => {
+        const ownerUse = ownerUseLabel(r);
+        return (
+          <div className="flex flex-col items-start gap-1">
+            <Badge color={ownerUse?.active ? 'yellow' : statusColor(r.status)}>{ownerUse?.active ? 'Owner Use' : r.status}</Badge>
+            {ownerUse && <span className="text-[10px] text-amber-700">{ownerUse.active ? '' : 'Scheduled · '}{ownerUseDates(ownerUse.period)}</span>}
+          </div>
+        );
+      },
     },
     { key: 'currentMileage', header: 'Mileage', render: (r: VehicleSummary) => r.currentMileage ?? '—' },
     { key: 'gpsId', header: 'GPS ID', render: (r: VehicleSummary) => r.gpsId ?? '—' },
@@ -193,6 +212,15 @@ export default function FleetPage() {
           >
             Asset
           </button>
+          {hasPermission('can_edit_fleet') && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setOwnerUseVehicle({ id: r.id, name: r.name, storeId: r.storeId }); }}
+              className="text-sm text-amber-700 hover:underline"
+            >
+              Owner Use
+            </button>
+          )}
         </div>
       ),
     },
@@ -259,6 +287,15 @@ export default function FleetPage() {
               Calendar
             </button>
           </div>
+          {storeIdForApi !== 'all' && (
+            <button
+              type="button"
+              onClick={() => setAvailabilityExplanationOpen(true)}
+              className="rounded-lg border border-blue-300 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+            >
+              Explain availability
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setAddVehicleOpen(true)}
@@ -316,7 +353,16 @@ export default function FleetPage() {
                   <p className="font-medium text-gray-900">{v.name}</p>
                   <p className="text-sm text-gray-500">{getModelNameById(v.modelId)} · {v.plateNumber ?? '—'}</p>
                 </div>
-                <Badge color={statusColor(v.status)}>{v.status}</Badge>
+                <div className="flex flex-col items-end gap-1">
+                  <Badge color={ownerUseLabel(v)?.active ? 'yellow' : statusColor(v.status)}>
+                    {ownerUseLabel(v)?.active ? 'Owner Use' : v.status}
+                  </Badge>
+                  {ownerUseLabel(v) && (
+                    <span className="text-[10px] text-amber-700">
+                      {ownerUseLabel(v)?.active ? '' : 'Owner Use scheduled · '}{ownerUseDates(ownerUseLabel(v)!.period)}
+                    </span>
+                  )}
+                </div>
               </div>
               <dl className="mt-2 grid grid-cols-2 gap-1 text-xs text-gray-600">
                 <dt>Store</dt>
@@ -347,6 +393,15 @@ export default function FleetPage() {
                 >
                   Asset
                 </button>
+                {hasPermission('can_edit_fleet') && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setOwnerUseVehicle({ id: v.id, name: v.name, storeId: v.storeId }); }}
+                    className="text-xs text-amber-700 hover:underline"
+                  >
+                    Owner Use
+                  </button>
+                )}
               </div>
             </div>
           ))}
@@ -386,6 +441,22 @@ export default function FleetPage() {
           vehicleId={serviceHistoryVehicle.id}
           vehicleName={serviceHistoryVehicle.name}
           storeId={serviceHistoryVehicle.storeId}
+        />
+      )}
+      {ownerUseVehicle && (
+        <OwnerUseModal
+          open
+          onClose={() => setOwnerUseVehicle(null)}
+          vehicleId={ownerUseVehicle.id}
+          vehicleName={ownerUseVehicle.name}
+          storeId={ownerUseVehicle.storeId}
+        />
+      )}
+      {availabilityExplanationOpen && storeIdForApi !== 'all' && (
+        <AvailabilityExplanationModal
+          open
+          onClose={() => setAvailabilityExplanationOpen(false)}
+          storeId={storeIdForApi}
         />
       )}
     </div>

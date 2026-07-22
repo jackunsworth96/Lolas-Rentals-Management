@@ -15,6 +15,13 @@ interface CalendarBooking {
   status: 'active' | 'due-soon' | 'overdue' | 'confirmed' | 'completed';
 }
 
+interface CalendarOwnerUse {
+  id: string;
+  startsAt: string;
+  endsAt: string;
+  note: string | null;
+}
+
 interface CalendarVehicle {
   vehicleId: string;
   vehicleName: string;
@@ -25,6 +32,7 @@ interface CalendarVehicle {
   status: string;
   surfRack: boolean;
   bookings: CalendarBooking[];
+  ownerUsePeriods: CalendarOwnerUse[];
 }
 
 interface UnassignedBooking {
@@ -191,6 +199,28 @@ const GanttBookingBar = memo(function GanttBookingBar({
   );
 });
 
+const GanttOwnerUseBar = memo(function GanttOwnerUseBar({
+  period,
+  rangeFrom,
+  daysCount,
+}: {
+  period: CalendarOwnerUse;
+  rangeFrom: Date;
+  daysCount: number;
+}) {
+  const { left, width } = computeBarStyle({ pickupDatetime: period.startsAt, dropoffDatetime: period.endsAt }, rangeFrom, daysCount);
+  const title = `Owner Use\n${new Date(period.startsAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })} → ${new Date(period.endsAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}${period.note ? `\n${period.note}` : ''}`;
+  return (
+    <div
+      className="absolute z-20 flex items-center truncate rounded border border-amber-500 bg-amber-200 px-1.5 text-[9px] font-semibold text-amber-900"
+      style={{ left: left + 2, width, top: 21, height: 15 }}
+      title={title}
+    >
+      Owner Use
+    </div>
+  );
+});
+
 interface GanttVehicleRowProps {
   vehicle: CalendarVehicle;
   days: Date[];
@@ -233,6 +263,9 @@ const GanttVehicleRow = memo(function GanttVehicleRow({
           />
         );
       })}
+      {v.ownerUsePeriods.map((period) => (
+        <GanttOwnerUseBar key={period.id} period={period} rangeFrom={rangeFrom} daysCount={days.length} />
+      ))}
     </div>
   );
 });
@@ -382,6 +415,7 @@ export function FleetCalendar({ storeId }: Props) {
           { label: 'Overdue', color: 'bg-red-400' },
           { label: 'Confirmed', color: 'bg-blue-400' },
           { label: 'Unassigned', color: 'bg-purple-400' },
+          { label: 'Owner Use', color: 'bg-amber-300' },
         ].map(({ label, color }) => (
           <span key={label} className="flex items-center gap-1.5">
             <span className={`inline-block h-3 w-3 rounded-sm ${color}`} />

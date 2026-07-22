@@ -8,9 +8,84 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { formatManilaDate } from '../utils/manila-date.js';
 import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
 import { escapeHtml } from '../services/email.js';
+import { evaluateAvailability } from '../adapters/supabase/booking-adapter.js';
 
 const router = Router();
 router.use(authenticate);
+
+type FleetUnavailabilityRow = {
+  id: string;
+  vehicle_id: string;
+  store_id: string;
+  type: 'owner_use';
+  starts_at: string;
+  ends_at: string;
+  note: string | null;
+  created_by: string | null;
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+const unavailabilityFields = z.object({
+  vehicleId: z.string().min(1),
+  storeId: z.string().min(1),
+  type: z.literal('owner_use').default('owner_use'),
+  startsAt: z.string().datetime({ offset: true }),
+  endsAt: z.string().datetime({ offset: true }),
+  note: z.string().trim().max(500).nullable().optional(),
+});
+
+const unavailabilityBody = unavailabilityFields.refine((value) => new Date(value.startsAt) < new Date(value.endsAt), {
+  message: 'Owner use end must be after its start',
+  path: ['endsAt'],
+});
+
+function unavailabilityToDto(row: FleetUnavailabilityRow) {
+  return {
+    id: row.id,
+    vehicleId: row.vehicle_id,
+    storeId: row.store_id,
+    type: row.type,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    note: row.note,
+    createdBy: row.created_by,
+    cancelledAt: row.cancelled_at,
+    cancelledBy: row.cancelled_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function assertStoreAccess(req: { user?: { storeIds: string[] } }, storeId: string): void {
+  const stores = req.user?.storeIds ?? [];
+  if (stores.includes(storeId) || stores.includes('company')) return;
+  const error = new Error('You do not have access to this store') as Error & { statusCode?: number };
+  error.statusCode = 403;
+  throw error;
+}
+
+async function assertNoOwnerUseOverlap(
+  vehicleId: string,
+  startsAt: string,
+  endsAt: string,
+  excludeId?: string,
+): Promise<void> {
+  const sb = getSupabaseClient();
+  let query = sb.from('fleet_unavailability').select('id')
+    .eq('vehicle_id', vehicleId).eq('type', 'owner_use').is('cancelled_at', null)
+    .lt('starts_at', endsAt).gt('ends_at', startsAt);
+  if (excludeId) query = query.neq('id', excludeId);
+  const { data, error } = await query.limit(1);
+  if (error) throw new Error(`Owner use overlap check failed: ${error.message}`);
+  if ((data ?? []).length > 0) {
+    const conflict = new Error('This vehicle already has an overlapping owner-use period') as Error & { statusCode?: number };
+    conflict.statusCode = 409;
+    throw conflict;
+  }
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function vehicleToDto(v: any) {
@@ -67,6 +142,31 @@ router.get('/', requirePermission(Permission.ViewFleet), validateQuery(z.object(
       : await req.app.locals.deps.fleetRepo.findByStore(storeId);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const dtos = vehicles.map((v: any) => vehicleToDto(v));
+    const vehicleIds = dtos.map((vehicle) => vehicle.id);
+    if (vehicleIds.length > 0) {
+      const nowIso = new Date().toISOString();
+      const { data: periods, error } = await getSupabaseClient()
+        .from('fleet_unavailability').select('*')
+        .in('vehicle_id', vehicleIds).eq('type', 'owner_use').is('cancelled_at', null)
+        .gt('ends_at', nowIso).order('starts_at');
+      if (error) throw new Error(`Fleet owner-use query failed: ${error.message}`);
+      const byVehicle = new Map<string, ReturnType<typeof unavailabilityToDto>[]>();
+      for (const row of (periods ?? []) as FleetUnavailabilityRow[]) {
+        const list = byVehicle.get(row.vehicle_id) ?? [];
+        list.push(unavailabilityToDto(row));
+        byVehicle.set(row.vehicle_id, list);
+      }
+      for (const dto of dtos) {
+        const ownerUsePeriods = byVehicle.get(dto.id) ?? [];
+        const now = Date.now();
+        Object.assign(dto, {
+          ownerUsePeriods,
+          activeOwnerUse: ownerUsePeriods.find((period) =>
+            new Date(period.startsAt).getTime() <= now && new Date(period.endsAt).getTime() > now,
+          ) ?? null,
+        });
+      }
+    }
     res.json({ success: true, data: dtos });
   } catch (err) { next(err); }
 });
@@ -76,6 +176,124 @@ router.post('/sync', requirePermission(Permission.ViewFleet), async (req, res, n
     const { syncFleetStatuses } = await import('../jobs/fleet-status-sync.js');
     await syncFleetStatuses();
     res.json({ success: true, data: { ok: true } });
+  } catch (err) { next(err); }
+});
+
+router.get('/unavailability', requirePermission(Permission.ViewFleet), validateQuery(z.object({
+  storeId: z.string().min(1),
+  vehicleId: z.string().optional(),
+  from: z.string().datetime({ offset: true }).optional(),
+  to: z.string().datetime({ offset: true }).optional(),
+})), async (req, res, next) => {
+  try {
+    const { storeId, vehicleId, from, to } = req.query as { storeId: string; vehicleId?: string; from?: string; to?: string };
+    assertStoreAccess(req, storeId);
+    let query = getSupabaseClient().from('fleet_unavailability').select('*')
+      .eq('store_id', storeId).eq('type', 'owner_use').is('cancelled_at', null).order('starts_at');
+    if (vehicleId) query = query.eq('vehicle_id', vehicleId);
+    if (from) query = query.gt('ends_at', from);
+    if (to) query = query.lt('starts_at', to);
+    const { data, error } = await query;
+    if (error) throw new Error(`Owner use list failed: ${error.message}`);
+    res.json({ success: true, data: ((data ?? []) as FleetUnavailabilityRow[]).map(unavailabilityToDto) });
+  } catch (err) { next(err); }
+});
+
+router.post('/unavailability', requirePermission(Permission.EditFleet), validateBody(unavailabilityBody), async (req, res, next) => {
+  try {
+    const body = req.body as z.infer<typeof unavailabilityBody>;
+    assertStoreAccess(req, body.storeId);
+    const sb = getSupabaseClient();
+    const { data: vehicle, error: vehicleError } = await sb.from('fleet').select('id, store_id')
+      .eq('id', body.vehicleId).maybeSingle();
+    if (vehicleError) throw new Error(`Vehicle lookup failed: ${vehicleError.message}`);
+    if (!vehicle || vehicle.store_id !== body.storeId) {
+      const error = new Error('Vehicle was not found in the selected store') as Error & { statusCode?: number };
+      error.statusCode = 404;
+      throw error;
+    }
+    await assertNoOwnerUseOverlap(body.vehicleId, body.startsAt, body.endsAt);
+    const { data, error } = await sb.from('fleet_unavailability').insert({
+      vehicle_id: body.vehicleId,
+      store_id: body.storeId,
+      type: body.type,
+      starts_at: body.startsAt,
+      ends_at: body.endsAt,
+      note: body.note || null,
+      created_by: req.user!.employeeId,
+    }).select('*').single();
+    if (error) throw new Error(`Owner use create failed: ${error.message}`);
+    res.status(201).json({ success: true, data: unavailabilityToDto(data as FleetUnavailabilityRow) });
+  } catch (err) { next(err); }
+});
+
+router.put('/unavailability/:unavailabilityId', requirePermission(Permission.EditFleet), validateBody(
+  unavailabilityFields.pick({ startsAt: true, endsAt: true, note: true })
+    .refine((value) => new Date(value.startsAt) < new Date(value.endsAt), {
+      message: 'Owner use end must be after its start', path: ['endsAt'],
+    }),
+), async (req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+    const id = req.params.unavailabilityId as string;
+    const { data: existing, error: findError } = await sb.from('fleet_unavailability').select('*')
+      .eq('id', id).is('cancelled_at', null).maybeSingle();
+    if (findError) throw new Error(`Owner use lookup failed: ${findError.message}`);
+    if (!existing) {
+      const error = new Error('Owner-use period not found') as Error & { statusCode?: number };
+      error.statusCode = 404;
+      throw error;
+    }
+    const row = existing as FleetUnavailabilityRow;
+    assertStoreAccess(req, row.store_id);
+    const body = req.body as { startsAt: string; endsAt: string; note?: string | null };
+    await assertNoOwnerUseOverlap(row.vehicle_id, body.startsAt, body.endsAt, id);
+    const { data, error } = await sb.from('fleet_unavailability').update({
+      starts_at: body.startsAt,
+      ends_at: body.endsAt,
+      note: body.note || null,
+    }).eq('id', id).select('*').single();
+    if (error) throw new Error(`Owner use update failed: ${error.message}`);
+    res.json({ success: true, data: unavailabilityToDto(data as FleetUnavailabilityRow) });
+  } catch (err) { next(err); }
+});
+
+router.delete('/unavailability/:unavailabilityId', requirePermission(Permission.EditFleet), async (req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+    const id = req.params.unavailabilityId as string;
+    const { data: existing, error: findError } = await sb.from('fleet_unavailability').select('store_id')
+      .eq('id', id).is('cancelled_at', null).maybeSingle();
+    if (findError) throw new Error(`Owner use lookup failed: ${findError.message}`);
+    if (!existing) {
+      const error = new Error('Owner-use period not found') as Error & { statusCode?: number };
+      error.statusCode = 404;
+      throw error;
+    }
+    assertStoreAccess(req, existing.store_id as string);
+    const { error } = await sb.from('fleet_unavailability').update({
+      cancelled_at: new Date().toISOString(),
+      cancelled_by: req.user!.employeeId,
+    }).eq('id', id);
+    if (error) throw new Error(`Owner use cancellation failed: ${error.message}`);
+    res.json({ success: true, data: { id, cancelled: true } });
+  } catch (err) { next(err); }
+});
+
+router.get('/availability-explanation', requirePermission(Permission.ViewFleet), validateQuery(z.object({
+  storeId: z.string().min(1),
+  pickupDatetime: z.string().datetime({ offset: true }),
+  dropoffDatetime: z.string().datetime({ offset: true }),
+}).refine((value) => new Date(value.pickupDatetime) < new Date(value.dropoffDatetime), {
+  message: 'Dropoff must be after pickup', path: ['dropoffDatetime'],
+})), async (req, res, next) => {
+  try {
+    const { storeId, pickupDatetime, dropoffDatetime } = req.query as {
+      storeId: string; pickupDatetime: string; dropoffDatetime: string;
+    };
+    assertStoreAccess(req, storeId);
+    const result = await evaluateAvailability({ storeId, pickupDatetime, dropoffDatetime });
+    res.json({ success: true, data: result.explanation });
   } catch (err) { next(err); }
 });
 
@@ -151,15 +369,28 @@ router.get('/calendar', requirePermission(Permission.ViewFleet), validateQuery(z
       original_dropoff_datetime: string | null;
     };
     let itemRows: OrderItemRow[] = [];
+    const ownerUseByVehicle = new Map<string, ReturnType<typeof unavailabilityToDto>[]>();
     if (vehicleIds.length > 0) {
-      const { data, error } = await sb
-        .from('order_items')
-        .select('id, order_id, vehicle_id, vehicle_name, pickup_datetime, dropoff_datetime, original_dropoff_datetime')
-        .in('vehicle_id', vehicleIds)
-        .lte('pickup_datetime', `${to}T23:59:59`)
-        .gte('dropoff_datetime', `${from}T00:00:00`);
-      if (error) throw new Error(`Order items query failed: ${error.message}`);
-      itemRows = (data ?? []) as unknown as OrderItemRow[];
+      const [itemsResult, ownerUseResult] = await Promise.all([
+        sb.from('order_items')
+          .select('id, order_id, vehicle_id, vehicle_name, pickup_datetime, dropoff_datetime, original_dropoff_datetime')
+          .in('vehicle_id', vehicleIds)
+          .lte('pickup_datetime', `${to}T23:59:59+08:00`)
+          .gte('dropoff_datetime', `${from}T00:00:00+08:00`),
+        sb.from('fleet_unavailability').select('*')
+          .in('vehicle_id', vehicleIds).eq('type', 'owner_use').is('cancelled_at', null)
+          .lt('starts_at', `${to}T23:59:59+08:00`)
+          .gt('ends_at', `${from}T00:00:00+08:00`)
+          .order('starts_at'),
+      ]);
+      if (itemsResult.error) throw new Error(`Order items query failed: ${itemsResult.error.message}`);
+      if (ownerUseResult.error) throw new Error(`Owner use query failed: ${ownerUseResult.error.message}`);
+      itemRows = (itemsResult.data ?? []) as unknown as OrderItemRow[];
+      for (const row of (ownerUseResult.data ?? []) as FleetUnavailabilityRow[]) {
+        const periods = ownerUseByVehicle.get(row.vehicle_id) ?? [];
+        periods.push(unavailabilityToDto(row));
+        ownerUseByVehicle.set(row.vehicle_id, periods);
+      }
     }
 
     const orderIds = [...new Set(itemRows.map((i) => i.order_id))];
@@ -245,6 +476,7 @@ router.get('/calendar', requirePermission(Permission.ViewFleet), validateQuery(z
         storeName: storeMap.get(v.store_id) ?? v.store_id,
         status: v.status,
         surfRack: v.surf_rack ?? false,
+        ownerUsePeriods: ownerUseByVehicle.get(v.id) ?? [],
         bookings: vItems.map((item) => {
           const orderStatus = orderMap.get(item.order_id)?.status ?? 'active';
           const custId = orderMap.get(item.order_id)?.customer_id;
@@ -425,6 +657,16 @@ router.get(
       if (reservedErr) throw new Error(`Walk-in reserved query failed: ${reservedErr.message}`);
 
       for (const row of (reservedRows ?? []) as Array<{ vehicle_id: string }>) {
+        bookedVehicleIds.add(row.vehicle_id);
+      }
+
+      // 3c. Exclude exact vehicles with an overlapping owner-use period.
+      const { data: ownerUseRows, error: ownerUseErr } = await sb
+        .from('fleet_unavailability').select('vehicle_id')
+        .eq('store_id', storeId).eq('type', 'owner_use').is('cancelled_at', null)
+        .lt('starts_at', dropoffDatetime).gt('ends_at', pickupDatetime);
+      if (ownerUseErr) throw new Error(`Owner use query failed: ${ownerUseErr.message}`);
+      for (const row of (ownerUseRows ?? []) as Array<{ vehicle_id: string }>) {
         bookedVehicleIds.add(row.vehicle_id);
       }
 

@@ -2,6 +2,42 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './client.js';
 import type { VehicleSummary } from '../types/api.js';
 
+export interface FleetUnavailability {
+  id: string;
+  vehicleId: string;
+  storeId: string;
+  type: 'owner_use';
+  startsAt: string;
+  endsAt: string;
+  note: string | null;
+  createdBy: string | null;
+  cancelledAt: string | null;
+  cancelledBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AvailabilityExplanation {
+  models: Array<{
+    modelId: string;
+    modelName: string;
+    totalEligible: number;
+    availableCount: number;
+    exactVehicleExclusions: Array<{
+      vehicleId: string;
+      vehicleName: string;
+      reasons: Array<'order' | 'walk_in' | 'owner_use'>;
+    }>;
+    capacityDeductions: { directReservations: number; holds: number };
+  }>;
+  configurationExclusions: Array<{
+    vehicleId: string;
+    vehicleName: string;
+    reason: 'missing_model' | 'non_rentable_status' | 'inactive_model';
+    detail?: string;
+  }>;
+}
+
 export function useFleet(storeId: string) {
   return useQuery<VehicleSummary[]>({
     queryKey: ['fleet', storeId],
@@ -28,6 +64,67 @@ export function useFleetSync() {
   return useMutation({
     mutationFn: () => api.post('/fleet/sync', {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['fleet'] }),
+  });
+}
+
+export function useFleetUnavailability(storeId: string, vehicleId?: string) {
+  const search = new URLSearchParams({ storeId });
+  if (vehicleId) search.set('vehicleId', vehicleId);
+  return useQuery<FleetUnavailability[]>({
+    queryKey: ['fleet-unavailability', storeId, vehicleId],
+    queryFn: () => api.get(`/fleet/unavailability?${search.toString()}`),
+    enabled: Boolean(storeId),
+  });
+}
+
+export function useCreateFleetUnavailability() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      vehicleId: string; storeId: string; type: 'owner_use'; startsAt: string; endsAt: string; note?: string | null;
+    }) => api.post<FleetUnavailability>('/fleet/unavailability', body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fleet'] });
+      qc.invalidateQueries({ queryKey: ['fleet-unavailability'] });
+    },
+  });
+}
+
+export function useUpdateFleetUnavailability() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; startsAt: string; endsAt: string; note?: string | null }) =>
+      api.put<FleetUnavailability>(`/fleet/unavailability/${id}`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fleet'] });
+      qc.invalidateQueries({ queryKey: ['fleet-unavailability'] });
+    },
+  });
+}
+
+export function useCancelFleetUnavailability() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete<{ id: string; cancelled: boolean }>(`/fleet/unavailability/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fleet'] });
+      qc.invalidateQueries({ queryKey: ['fleet-unavailability'] });
+    },
+  });
+}
+
+export function useAvailabilityExplanation(params: {
+  storeId: string; pickupDatetime: string; dropoffDatetime: string; enabled?: boolean;
+}) {
+  const search = new URLSearchParams({
+    storeId: params.storeId,
+    pickupDatetime: params.pickupDatetime,
+    dropoffDatetime: params.dropoffDatetime,
+  });
+  return useQuery<AvailabilityExplanation>({
+    queryKey: ['availability-explanation', params.storeId, params.pickupDatetime, params.dropoffDatetime],
+    queryFn: () => api.get(`/fleet/availability-explanation?${search.toString()}`),
+    enabled: (params.enabled ?? true) && Boolean(params.storeId && params.pickupDatetime && params.dropoffDatetime),
   });
 }
 
