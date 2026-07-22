@@ -50,6 +50,7 @@ export interface PartnerReportBooking {
   customerName: string | null;
   vehicleModelId: string | null;
   pickupDatetime: string | null;
+  dropoffDatetime: string | null;
   status: string;
   advanceDays: number | null;
   commissionable: boolean;
@@ -57,12 +58,16 @@ export interface PartnerReportBooking {
   commissionBase: number | null;
   commissionType: 'fixed' | 'percentage' | null;
   commissionValue: number | null;
+  isExtended: boolean;
+  extendedDropoffDatetime: string | null;
+  pendingCommissionAmount: number;
 }
 
 export interface PartnerReport {
   totalBookings: number;
   commissionableBookings: number;
   totalCommission: number;
+  totalPendingCommission: number;
   totalVehiclesRented: number;
   averageVehiclesPerDay: number;
   bookings: PartnerReportBooking[];
