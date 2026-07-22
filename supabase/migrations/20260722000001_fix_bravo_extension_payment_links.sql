@@ -24,9 +24,9 @@ DO $$
 DECLARE
   v_refs       text[]      := ARRAY['LR-0720-2C2D', 'LR-0720-0BF3', 'LR-0720-03B8'];
   v_ref        text;
-  v_order_id   uuid;
-  v_raw_id     uuid;
-  v_item_id    uuid;
+  v_order_id   text;
+  v_raw_id     text;
+  v_item_id    text;
   v_pickup     timestamptz;
   v_dropoff    timestamptz;
   v_new_dropoff timestamptz := '2026-07-28 11:15:00+08';
