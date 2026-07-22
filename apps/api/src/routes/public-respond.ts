@@ -181,7 +181,18 @@ interface RespondExtensionTarget {
   vehicle: string;
   storeId: string;
   currentDailyRate: number | null;
+  items: RespondExtensionItem[];
   message?: string;
+}
+
+interface RespondExtensionItem {
+  orderItemId: string;
+  currentDropoffDatetime: string;
+  pickupDatetime: string | null;
+  vehicleModelId: string | null;
+  vehicle: string;
+  storeId: string;
+  currentDailyRate: number | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -403,6 +414,8 @@ function respondExtensionPublicTarget(target: RespondExtensionTarget) {
     status: target.status,
     source: target.source,
     vehicle: target.vehicle,
+    vehicle_count: target.items.length || 1,
+    vehicles: target.items.length > 0 ? target.items.map((item) => item.vehicle) : [target.vehicle],
     current_dropoff_datetime: target.currentDropoffDatetime,
     pickup_datetime: target.pickupDatetime,
     store_id: target.storeId,
@@ -477,17 +490,17 @@ async function resolveRespondExtensionTarget(
       customer = data as CustomerRow | null;
     }
 
-    const { data: item, error: itemError } = await sb
+    const { data: itemRows, error: itemError } = await sb
       .from('order_items')
       .select('id, vehicle_id, pickup_datetime, dropoff_datetime, store_id, rental_rate, vehicle_name, vehicle_model_id')
       .eq('order_id', activeOrder.id)
       .not('pickup_datetime', 'is', null)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle();
+      .order('created_at', { ascending: true });
     if (itemError) throw itemError;
 
-    if (item?.dropoff_datetime) {
+    const items: RespondExtensionItem[] = [];
+    for (const item of (itemRows ?? []) as Array<Record<string, unknown>>) {
+      if (!item.dropoff_datetime) continue;
       let vehicleModelId = (item.vehicle_model_id as string | null) ?? null;
       let vehicle = (item.vehicle_name as string | null) ?? 'Unknown';
 
@@ -505,12 +518,7 @@ async function resolveRespondExtensionTarget(
         vehicle = await resolveVehicleModelName(sb, vehicleModelId);
       }
 
-      return {
-        orderReference: activeOrder.booking_token ?? activeOrder.id,
-        email: customer?.email?.trim().toLowerCase() ?? '',
-        customerName: customer?.name ?? null,
-        status: activeOrder.status,
-        source: 'active',
+      items.push({
         orderItemId: item.id as string,
         currentDropoffDatetime: item.dropoff_datetime as string,
         pickupDatetime: (item.pickup_datetime as string | null) ?? null,
@@ -518,6 +526,25 @@ async function resolveRespondExtensionTarget(
         vehicle,
         storeId: (item.store_id as string | null) ?? activeOrder.store_id,
         currentDailyRate: item.rental_rate != null ? Number(item.rental_rate) : null,
+      });
+    }
+
+    const item = items[0];
+    if (item) {
+      return {
+        orderReference: activeOrder.booking_token ?? activeOrder.id,
+        email: customer?.email?.trim().toLowerCase() ?? '',
+        customerName: customer?.name ?? null,
+        status: activeOrder.status,
+        source: 'active',
+        orderItemId: item.orderItemId,
+        currentDropoffDatetime: item.currentDropoffDatetime,
+        pickupDatetime: item.pickupDatetime,
+        vehicleModelId: item.vehicleModelId,
+        vehicle: items.length === 1 ? item.vehicle : `${items.length} rental vehicles`,
+        storeId: item.storeId,
+        currentDailyRate: item.currentDailyRate,
+        items,
       };
     }
   }
@@ -564,6 +591,7 @@ async function resolveRespondExtensionTarget(
     vehicle: raw.vehicle_model_id ? await resolveVehicleModelName(sb, raw.vehicle_model_id) : 'Unknown',
     storeId: raw.store_id,
     currentDailyRate: null,
+    items: [],
     message: raw.status === 'unprocessed'
       ? 'This booking is not active yet, so respond.io should hand off instead of confirming an extension.'
       : undefined,
@@ -622,6 +650,97 @@ async function previewRespondExtension(
         success: false,
         code: 'ORDER_NOT_ACTIVE',
         message: 'Extensions are only available once the rental is active. Hand off to the team for booking changes before pickup.',
+      },
+    };
+  }
+
+  if (target.items.length > 1) {
+    const lineItems: Array<{
+      order_item_id: string;
+      vehicle: string;
+      extension_days: number;
+      daily_rate: number;
+      extension_total: number;
+    }> = [];
+
+    for (const item of target.items) {
+      const itemDropoff = new Date(item.currentDropoffDatetime);
+      if (newDropoff <= itemDropoff) {
+        return {
+          ok: false as const,
+          status: 400,
+          payload: {
+            success: false,
+            code: 'INVALID_DATE',
+            message: `New return date must be after the current return date for every vehicle (${item.vehicle}).`,
+          },
+        };
+      }
+
+      const itemDays = extDayCount(itemDropoff.getTime(), newDropoff.getTime());
+      let itemDailyRate = item.currentDailyRate ?? 0;
+      if (item.vehicleModelId) {
+        const locRows = await req.app.locals.deps.configRepo.getLocations(item.storeId);
+        const storeLoc = locRows.find((location: { deliveryCost: number; collectionCost: number }) =>
+          Number(location.deliveryCost) === 0 && Number(location.collectionCost) === 0,
+        );
+        const locId = storeLoc ? Number(storeLoc.id) : (locRows[0] ? Number(locRows[0].id) : 1);
+        const quote = await computeQuote(
+          { configRepo: req.app.locals.deps.configRepo },
+          {
+            storeId: item.storeId,
+            vehicleModelId: item.vehicleModelId,
+            pickupDatetime: item.currentDropoffDatetime,
+            dropoffDatetime: newDropoffDatetime,
+            pickupLocationId: locId,
+            dropoffLocationId: locId,
+          },
+        );
+        const computedRate = itemDays > 0 ? quote.rentalSubtotal / itemDays : quote.rentalSubtotal;
+        itemDailyRate = item.currentDailyRate && item.currentDailyRate > 0
+          ? Math.min(computedRate, item.currentDailyRate)
+          : computedRate;
+      }
+
+      const roundedRate = Math.round(itemDailyRate * 100) / 100;
+      lineItems.push({
+        order_item_id: item.orderItemId,
+        vehicle: item.vehicle,
+        extension_days: itemDays,
+        daily_rate: roundedRate,
+        extension_total: Math.round(roundedRate * itemDays * 100) / 100,
+      });
+    }
+
+    const extensionTotal = Math.round(
+      lineItems.reduce((sum, item) => sum + item.extension_total, 0) * 100,
+    ) / 100;
+    const commonDays = new Set(lineItems.map((item) => item.extension_days));
+    const commonRates = new Set(lineItems.map((item) => item.daily_rate));
+    const dayDescription = commonDays.size === 1
+      ? `${lineItems[0].extension_days} day${lineItems[0].extension_days === 1 ? '' : 's'}`
+      : 'the requested extension period';
+    const calculation = commonDays.size === 1 && commonRates.size === 1
+      ? `${lineItems.length} vehicles x ${lineItems[0].extension_days} days x PHP ${lineItems[0].daily_rate.toLocaleString('en-PH')} = PHP ${extensionTotal.toLocaleString('en-PH')}`
+      : lineItems.map((item) => `${item.vehicle}: ${item.extension_days} days x PHP ${item.daily_rate.toLocaleString('en-PH')} = PHP ${item.extension_total.toLocaleString('en-PH')}`).join('; ');
+
+    return {
+      ok: true as const,
+      payload: {
+        success: true,
+        order_reference: target.orderReference,
+        customer_name: target.customerName,
+        vehicle_count: lineItems.length,
+        vehicles: lineItems,
+        new_dropoff_datetime: newDropoffDatetime,
+        extension_days: commonDays.size === 1 ? lineItems[0].extension_days : null,
+        daily_rate_per_vehicle: commonRates.size === 1 ? lineItems[0].daily_rate : null,
+        extension_total: extensionTotal,
+        calculation,
+        can_auto_confirm: false,
+        requires_human_confirmation: true,
+        balance_note: 'This total covers every vehicle. A team member must verify availability and confirm multi-vehicle extensions.',
+        customer_message: `The extension quote for all ${lineItems.length} vehicles for ${dayDescription} is PHP ${extensionTotal.toLocaleString('en-PH')} (${calculation}). A team member needs to verify availability and confirm this multi-vehicle extension.`,
       },
     };
   }
@@ -1494,6 +1613,16 @@ router.post('/extension/confirm', async (req, res, next) => {
     const preview = await previewRespondExtension(req, target, newDropoffDatetime);
     if (!preview.ok) {
       sendRespondExtensionJson(res, 'confirm', params, preview.payload);
+      return;
+    }
+
+    if (target.items.length > 1) {
+      sendRespondExtensionJson(res, 'confirm', params, {
+        success: false,
+        code: 'MULTI_VEHICLE_HANDOFF',
+        message: 'Do not confirm this automatically. This booking has multiple rental vehicles and must be handed off to the team so every vehicle and the full balance are updated together.',
+        quote: preview.payload,
+      });
       return;
     }
 

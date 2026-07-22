@@ -283,6 +283,13 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
       .select('id, vehicle_id, pickup_datetime, dropoff_datetime, store_id, rental_days_count, rental_rate, pickup_fee, dropoff_fee, discount, dropoff_location_id')
       .eq('order_id', ord.id).not('pickup_datetime', 'is', null);
 
+    if ((items ?? []).length > 1) {
+      return {
+        kind: 'error',
+        reason: 'This booking contains multiple rental vehicles. Please hand it off to the team so every vehicle and the full extension balance are updated together.',
+      };
+    }
+
     const item = (items ?? [])[0] as Record<string, unknown> | undefined;
     if (!item) continue;
 
