@@ -129,6 +129,66 @@ function makeSupabaseForOrderLookup() {
   };
 }
 
+function makeSupabaseForMultiVehicleExtension() {
+  const items = [1, 2, 3].map((number) => ({
+    id: `item-${number}`,
+    vehicle_id: `vehicle-${number}`,
+    pickup_datetime: '2026-07-17T10:00:00+08:00',
+    dropoff_datetime: '2026-07-20T10:00:00+08:00',
+    store_id: 'store-lolas',
+    rental_rate: 535,
+    vehicle_name: `Honda Beat ${number}`,
+    vehicle_model_id: 'beat',
+  }));
+
+  return {
+    from: vi.fn((table: string) => {
+      if (table === 'orders') {
+        const query = {
+          select: vi.fn(() => query),
+          eq: vi.fn(() => query),
+          in: vi.fn(async () => ({
+            data: [{
+              id: 'order-1',
+              booking_token: 'LR-0722-TEST',
+              status: 'active',
+              store_id: 'store-lolas',
+              customer_id: 'customer-1',
+              created_at: '2026-07-17T00:00:00Z',
+            }],
+            error: null,
+          })),
+        };
+        return query;
+      }
+      if (table === 'customers') {
+        return queryResult({
+          data: {
+            id: 'customer-1',
+            name: 'Jaap Groenendijk',
+            email: 'jaap@example.com',
+            mobile: '+31624640254',
+          },
+          error: null,
+        });
+      }
+      if (table === 'order_items') {
+        const query = {
+          select: vi.fn(() => query),
+          eq: vi.fn(() => query),
+          not: vi.fn(() => query),
+          order: vi.fn(async () => ({ data: items, error: null })),
+        };
+        return query;
+      }
+      if (table === 'fleet') {
+        return queryResult({ data: { model_id: 'beat', name: 'Honda Beat' }, error: null });
+      }
+      throw new Error(`Unexpected table ${table}`);
+    }),
+  };
+}
+
 const configRepo = {
   getVehicleModelById: vi.fn(async () => ({ id: 'beat', name: 'Honda Beat', securityDeposit: 1000 })),
   getVehicleModels: vi.fn(async () => [
@@ -394,5 +454,61 @@ describe('Public booking lookup totals', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.grandTotal).toBe(2035);
     expect(res.body.data.addonNames).toEqual(['Peace of Mind Cover']);
+  });
+});
+
+describe('Respond.io multi-vehicle extension pricing', () => {
+  it('quotes all three scooters and makes the arithmetic explicit', async () => {
+    mocks.getSupabaseClient.mockReturnValue(makeSupabaseForMultiVehicleExtension());
+    configRepo.getModelPricing.mockResolvedValue([
+      { minDays: 1, maxDays: 99, dailyRate: 535 },
+    ]);
+
+    const res = await request(app)
+      .get('/api/public/respond/extension/preview')
+      .set('X-API-Key', 'respond-test-key')
+      .query({
+        ref: 'LR-0722-TEST',
+        newDropoffDatetime: '2026-07-25T10:00:00+08:00',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      success: true,
+      vehicle_count: 3,
+      extension_days: 5,
+      daily_rate_per_vehicle: 535,
+      extension_total: 8025,
+      calculation: '3 vehicles x 5 days x PHP 535 = PHP 8,025',
+      can_auto_confirm: false,
+      requires_human_confirmation: true,
+    });
+    expect(res.body.vehicles).toHaveLength(3);
+  });
+
+  it('refuses to partially confirm a multi-vehicle extension', async () => {
+    mocks.getSupabaseClient.mockReturnValue(makeSupabaseForMultiVehicleExtension());
+    configRepo.getModelPricing.mockResolvedValue([
+      { minDays: 1, maxDays: 99, dailyRate: 535 },
+    ]);
+
+    const res = await request(app)
+      .post('/api/public/respond/extension/confirm')
+      .set('X-API-Key', 'respond-test-key')
+      .send({
+        ref: 'LR-0722-TEST',
+        newDropoffDatetime: '2026-07-25T10:00:00+08:00',
+        confirmedByCustomer: true,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      success: false,
+      code: 'MULTI_VEHICLE_HANDOFF',
+      quote: {
+        extension_total: 8025,
+        vehicle_count: 3,
+      },
+    });
   });
 });
