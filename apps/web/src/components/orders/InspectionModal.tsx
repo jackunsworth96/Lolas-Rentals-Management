@@ -83,8 +83,6 @@ export function InspectionModal({
   const [error, setError] = useState('');
   const [availableVehicles, setAvailableVehicles] = useState<AvailableVehicle[]>([]);
   const [hasSignature, setHasSignature] = useState(false);
-  const [vehicleType, setVehicleType] = useState<'scooter' | 'tuktuk'>('scooter');
-
   const signatureCanvasRef = useRef<HTMLCanvasElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const isClosingRef = useRef(false);
@@ -116,11 +114,6 @@ export function InspectionModal({
     setHasSignature(false);
     setItems([]);
     setAvailableVehicles([]);
-
-    const derivedType: 'scooter' | 'tuktuk' = preAssignedVehicleName?.toLowerCase().includes('tuk')
-      ? 'tuktuk'
-      : 'scooter';
-    setVehicleType(derivedType);
 
     const now = new Date().toISOString();
     const future = new Date(Date.now() + 86_400_000).toISOString();
@@ -161,8 +154,9 @@ export function InspectionModal({
 
   useEffect(() => {
     if (!open) return;
+    const type = vehicleName.toLowerCase().includes('tuk') ? 'tuktuk' : 'scooter';
     api
-      .get<InspectionItem[]>(`/inspections/items?vehicleType=${vehicleType}`)
+      .get<InspectionItem[]>(`/inspections/items?vehicleType=${type}`)
       .then((data) => {
         const list = Array.isArray(data) ? data : [];
         setItems(list);
@@ -173,7 +167,7 @@ export function InspectionModal({
         setResults(initial);
       })
       .catch((err: unknown) => console.error('Items error:', err));
-  }, [vehicleType, open]);
+  }, [vehicleName, open]);
 
   // ── Signature drawing ──────────────────────────────────────────────────────
 
@@ -406,10 +400,6 @@ export function InspectionModal({
                 const v = availableVehicles.find((x) => x.id === e.target.value);
                 setVehicleId(e.target.value);
                 setVehicleName(v?.name ?? '');
-                if (v) {
-                  const isTuktuk = v.name.toLowerCase().includes('tuk');
-                  setVehicleType(isTuktuk ? 'tuktuk' : 'scooter');
-                }
               }}
               className="block w-full rounded-lg border border-charcoal-brand/20 bg-white px-3 py-2.5 text-sm font-lato text-charcoal-brand focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand appearance-none"
             >
