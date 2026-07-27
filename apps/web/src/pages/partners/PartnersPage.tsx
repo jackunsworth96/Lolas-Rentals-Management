@@ -2331,7 +2331,7 @@ export default function PartnersPage() {
                         <td className="px-4 py-3 font-mono text-xs text-gray-600">{p.slug}</td>
                         <td className="px-4 py-3 text-gray-700">{describeDeal(p)}</td>
                         <td className="px-4 py-3 text-gray-700 text-xs">
-                          {(p.deal_type === 'commission' || p.deal_type === 'combined') && (
+                          {(p.deal_type === 'commission' || p.deal_type === 'combined' || p.deal_type === 'commission_delivery') && (
                             <span>Comm ≥ {p.advance_booking_days}d</span>
                           )}
                           {p.advance_discount_days != null && (
