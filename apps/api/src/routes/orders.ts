@@ -32,7 +32,7 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
 
     let query = sb
       .from('orders')
-      .select('id, store_id, order_date, customer_id, status, final_total, balance_due, web_notes, payment_method_id, security_deposit, card_fee_surcharge, woo_order_id, booking_token, partner_ref, customers!customer_id(name, mobile, email)')
+      .select('id, store_id, order_date, customer_id, booking_customer_name, status, final_total, balance_due, web_notes, payment_method_id, security_deposit, card_fee_surcharge, woo_order_id, booking_token, partner_ref, customers!customer_id(name, mobile, email)')
       .eq('store_id', storeId)
       .order('order_date', { ascending: false });
 
@@ -214,7 +214,8 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
         id: o.id,
         storeId: o.store_id,
         orderDate: o.order_date,
-        customerName: customer?.name ?? '—',
+        customerName:
+          ((o.booking_customer_name as string | null)?.trim() || customer?.name) ?? '—',
         customerMobile: customer?.mobile ?? null,
         customerEmail: customer?.email?.trim() || null,
         vehicleNames: vehicleNames || '—',

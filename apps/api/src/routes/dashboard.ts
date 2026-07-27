@@ -243,6 +243,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
             status,
             balance_due,
             security_deposit,
+            booking_customer_name,
             customers!customer_id(name, mobile)
           )
         `)
@@ -473,6 +474,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
           status: string;
           balance_due: number | null;
           security_deposit: number | null;
+          booking_customer_name: string | null;
           customers: { name: string; mobile: string | null } | null;
         } | null;
         if (!orderInfo || orderInfo.status !== 'active') continue;
@@ -490,7 +492,10 @@ router.get('/summary', authenticate, async (req, res, next) => {
         const vehicleModel = (vehicleId ? fleetModelMap.get(vehicleId) : null) ?? (item.vehicle_name as string) ?? '—';
         const returnTime = dropDate.toLocaleTimeString('en-GB', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit' });
 
-        const customerName = orderInfo.customers?.name ?? '—';
+        const customerName =
+          orderInfo.booking_customer_name?.trim()
+          || orderInfo.customers?.name
+          || '—';
         const customerMobile = orderInfo.customers?.mobile ?? null;
         const helmetNumbers = (item.helmet_numbers as string | null) ?? null;
         const balanceDue = Number(orderInfo.balance_due ?? 0);
