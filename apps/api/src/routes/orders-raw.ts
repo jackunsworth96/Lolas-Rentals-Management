@@ -586,6 +586,17 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       throw new Error(`activate_order_atomic RPC failed: ${rpcErr.message}`);
     }
 
+    // A walk-in can reuse an existing customer profile while naming a
+    // different renter for this booking. This path has no orders_raw row for
+    // the snapshot trigger to read, so preserve the submitted name explicitly.
+    const { error: bookingNameErr } = await supabase
+      .from('orders')
+      .update({ booking_customer_name: body.customerName.trim() })
+      .eq('id', orderId);
+    if (bookingNameErr) {
+      throw new Error(`Failed to preserve booking customer name: ${bookingNameErr.message}`);
+    }
+
     // 16. Return result
     res.status(201).json({
       success: true,

@@ -399,12 +399,13 @@ router.get('/calendar', requirePermission(Permission.ViewFleet), validateQuery(z
       status: string;
       customer_id: string;
       raw_order_id: string | null;
+      booking_customer_name: string | null;
     }>();
 
     if (orderIds.length > 0) {
       const { data: orderRows } = await sb
         .from('orders')
-        .select('id, status, customer_id, raw_order_id')
+        .select('id, status, customer_id, raw_order_id, booking_customer_name')
         .in('id', orderIds);
 
       for (const o of (orderRows ?? []) as Array<{
@@ -412,11 +413,13 @@ router.get('/calendar', requirePermission(Permission.ViewFleet), validateQuery(z
         status: string;
         customer_id: string;
         raw_order_id: string | null;
+        booking_customer_name: string | null;
       }>) {
         orderMap.set(o.id, {
           status: o.status,
           customer_id: o.customer_id,
           raw_order_id: o.raw_order_id,
+          booking_customer_name: o.booking_customer_name,
         });
       }
     }
@@ -498,7 +501,9 @@ router.get('/calendar', requirePermission(Permission.ViewFleet), validateQuery(z
               const rawId = orderMap.get(item.order_id)?.raw_order_id;
               return rawId ? (refMap.get(rawId) ?? null) : null;
             })(),
-            customerName: custId ? (custMap.get(custId) ?? '—') : '—',
+            customerName:
+              orderMap.get(item.order_id)?.booking_customer_name?.trim()
+              || (custId ? (custMap.get(custId) ?? '—') : '—'),
             pickupDatetime: item.pickup_datetime,
             dropoffDatetime: item.dropoff_datetime,
             originalDropoffDatetime: item.original_dropoff_datetime ?? null,
