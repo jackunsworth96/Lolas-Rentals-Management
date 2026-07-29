@@ -48,7 +48,9 @@ function resultQuery<T>(getResult: () => { data: T; error: null }) {
   return query;
 }
 
-function activeBookingClient() {
+function activeBookingClient(options?: {
+  addons?: Array<Record<string, unknown>>;
+}) {
   const state = {
     order: {
       id: 'order-active',
@@ -87,7 +89,7 @@ function activeBookingClient() {
         case 'fleet':
           return resultQuery(() => ({ data: { model_id: 'beat', name: 'Honda Beat' }, error: null }));
         case 'order_addons':
-          return resultQuery(() => ({ data: [], error: null }));
+          return resultQuery(() => ({ data: options?.addons ?? [], error: null }));
         case 'payments':
           return resultQuery(() => ({ data: state.payments, error: null }));
         default:
@@ -167,5 +169,63 @@ describe('active booking extension resolver', () => {
       settlement_status: 'pending',
     });
     expect(client.rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it('includes recurring per-day add-ons in the pending balance and customer-facing extension total', async () => {
+    const { client, state } = activeBookingClient({
+      addons: [{
+        id: 'addon-pom',
+        addon_name: 'Peace of Mind Cover',
+        addon_type: 'per_day',
+        addon_price: 95,
+        quantity: 2,
+        total_amount: 190,
+      }],
+    });
+    state.item.rental_rate = 465;
+    mocks.computeQuote.mockResolvedValue({ rentalSubtotal: 930 });
+    mocks.getSupabaseClient.mockReturnValue(client);
+
+    const result = await resolveExtensionForActive({
+      orderReference: 'LR-0720-2C2D',
+      trimmedEmail: 'customer@example.com',
+      newDropoffDatetime: '2026-07-24T11:15:00+08:00',
+      overrideDailyRate: undefined,
+      isPaid: false,
+      paymentMethodId: 'pending',
+      emailErrorLabel: '[test]',
+      deps: {
+        bookingPort: {},
+        configRepo: {
+          getLocations: async () => [{ id: 1, deliveryCost: 0, collectionCost: 0 }],
+        },
+      },
+    });
+
+    expect(result).toMatchObject({
+      kind: 'success',
+      extensionDays: 2,
+      extensionCost: 1120,
+      outstandingBalance: 1120,
+    });
+    expect(state.order).toMatchObject({ final_total: 5120, balance_due: 1120 });
+    expect(state.payments[0]).toMatchObject({
+      amount: 1120,
+      payment_type: 'extension',
+      settlement_status: 'pending',
+    });
+    expect(client.rpc).toHaveBeenCalledWith(
+      'confirm_extend_order_atomic',
+      expect.objectContaining({
+        p_total_delta: 1120,
+        p_amount: 1120,
+        p_addon_updates: [{
+          id: 'addon-pom',
+          name: 'Peace of Mind Cover',
+          delta: 190,
+          new_total: 380,
+        }],
+      }),
+    );
   });
 });

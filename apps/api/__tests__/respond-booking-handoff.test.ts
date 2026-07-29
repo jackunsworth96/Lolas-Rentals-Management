@@ -189,6 +189,80 @@ function makeSupabaseForMultiVehicleExtension() {
   };
 }
 
+function makeSupabaseForSingleVehicleExtensionWithPom() {
+  return {
+    from: vi.fn((table: string) => {
+      if (table === 'orders') {
+        const query = {
+          select: vi.fn(() => query),
+          eq: vi.fn(() => query),
+          in: vi.fn(async () => ({
+            data: [{
+              id: 'order-pom',
+              booking_token: 'LR-0728-POM1',
+              status: 'active',
+              store_id: 'store-lolas',
+              customer_id: 'customer-pom',
+              created_at: '2026-07-20T00:00:00Z',
+            }],
+            error: null,
+          })),
+        };
+        return query;
+      }
+      if (table === 'customers') {
+        return queryResult({
+          data: {
+            id: 'customer-pom',
+            name: 'Indy Booth',
+            email: 'indy@example.com',
+            mobile: '+61439888798',
+          },
+          error: null,
+        });
+      }
+      if (table === 'order_items') {
+        const query = {
+          select: vi.fn(() => query),
+          eq: vi.fn(() => query),
+          not: vi.fn(() => query),
+          order: vi.fn(async () => ({
+            data: [{
+              id: 'item-pom',
+              vehicle_id: 'vehicle-pom',
+              pickup_datetime: '2026-07-20T16:45:00+08:00',
+              dropoff_datetime: '2026-07-26T16:45:00+08:00',
+              store_id: 'store-lolas',
+              rental_days_count: 6,
+              rental_rate: 465,
+              vehicle_name: 'Honda Beat',
+              vehicle_model_id: 'beat',
+            }],
+            error: null,
+          })),
+        };
+        return query;
+      }
+      if (table === 'order_addons') {
+        const query = {
+          select: vi.fn(() => query),
+          eq: vi.fn(async () => ({
+            data: [{
+              addon_name: 'Peace of Mind Cover',
+              addon_type: 'per_day',
+              addon_price: 95,
+              total_amount: 570,
+            }],
+            error: null,
+          })),
+        };
+        return query;
+      }
+      throw new Error(`Unexpected table ${table}`);
+    }),
+  };
+}
+
 const configRepo = {
   getVehicleModelById: vi.fn(async () => ({ id: 'beat', name: 'Honda Beat', securityDeposit: 1000 })),
   getVehicleModels: vi.fn(async () => [
@@ -510,5 +584,40 @@ describe('Respond.io multi-vehicle extension pricing', () => {
         vehicle_count: 3,
       },
     });
+  });
+});
+
+describe('Respond.io recurring add-on extension pricing', () => {
+  it('includes Peace of Mind Cover in the quoted extension balance', async () => {
+    mocks.getSupabaseClient.mockReturnValue(makeSupabaseForSingleVehicleExtensionWithPom());
+    configRepo.getModelPricing.mockResolvedValue([
+      { minDays: 1, maxDays: 99, dailyRate: 465 },
+    ]);
+
+    const res = await request(app)
+      .get('/api/public/respond/extension/preview')
+      .set('X-API-Key', 'respond-test-key')
+      .query({
+        ref: 'LR-0728-POM1',
+        newDropoffDatetime: '2026-07-28T16:45:00+08:00',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      success: true,
+      extension_days: 2,
+      daily_rate: 465,
+      rental_extension_total: 930,
+      recurring_addons_total: 190,
+      extension_total: 1120,
+      recurring_addons: [{
+        name: 'Peace of Mind Cover',
+        daily_rate: 95,
+        extension_days: 2,
+        extension_total: 190,
+      }],
+    });
+    expect(res.body.customer_message).toContain('PHP 1,120');
+    expect(res.body.customer_message).toContain('Peace of Mind Cover');
   });
 });
