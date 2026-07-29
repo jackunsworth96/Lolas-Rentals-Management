@@ -13,6 +13,7 @@ import {
   resolveExtensionForActive,
   resolveExtensionForRaw,
 } from './public-extend-helpers.js';
+import { phoneLookupVariants, phoneSuffixIlikePattern } from '../utils/phone-lookup.js';
 
 /**
  * Routes consumed by respond.io (or any authenticated third-party caller).
@@ -216,25 +217,6 @@ function mapToPricingBrackets(
   };
 }
 
-/**
- * All plausible Philippine mobile variants for `.in('mobile', …)` / customer_mobile
- * so lookups succeed whether rows are normalised to E.164 or not yet.
- */
-function philippinePhoneVariants(raw: string): string[] {
-  const d = raw.replace(/[\s\-().]/g, '');
-
-  let local: string | null = null;
-
-  if (/^\+639\d{9}$/.test(d))  local = d.slice(3);
-  else if (/^639\d{9}$/.test(d)) local = d.slice(2);
-  else if (/^09\d{9}$/.test(d))  local = d.slice(1);
-  else if (/^9\d{9}$/.test(d))   local = d;
-
-  if (!local) return [raw];
-
-  return [`+63${local}`, `0${local}`, `63${local}`, local];
-}
-
 function manilaDateKey(value: string | Date): string {
   return new Date(value).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 }
@@ -268,6 +250,12 @@ function loggableLookup(params: { ref: string | null; phone: string | null }) {
     ref: params.ref ?? undefined,
     phone_last4: digits ? digits.slice(-4) : undefined,
   };
+}
+
+function extensionLookupNotFoundMessage(params: { ref: string | null; phone: string | null }): string {
+  return params.phone
+    ? 'No active booking matched the customer WhatsApp number after normalized lookup. Do not ask them to repeat the number or find a reference; hand off to the team.'
+    : 'No active booking matched that reference. Hand off to the team.';
 }
 
 function summariseExtensionResponse(payload: unknown) {
@@ -443,12 +431,24 @@ async function resolveRespondExtensionTarget(
   let customerIds: string[] = [];
 
   if (phone) {
-    const { data: customers, error } = await sb
+    let { data: customers, error } = await sb
       .from('customers')
       .select('id, name, email, mobile')
-      .in('mobile', philippinePhoneVariants(phone))
+      .in('mobile', phoneLookupVariants(phone))
       .limit(10);
     if (error) throw error;
+
+    const suffixPattern = phoneSuffixIlikePattern(phone);
+    if ((customers ?? []).length === 0 && suffixPattern) {
+      const fallback = await sb
+        .from('customers')
+        .select('id, name, email, mobile')
+        .ilike('mobile', suffixPattern)
+        .limit(10);
+      if (fallback.error) throw fallback.error;
+      customers = fallback.data;
+    }
+
     for (const customer of (customers ?? []) as CustomerRow[]) {
       customerById.set(customer.id, customer);
     }
@@ -564,13 +564,25 @@ async function resolveRespondExtensionTarget(
   if (refVariants.length > 0) {
     rawQuery = rawQuery.in('order_reference', refVariants);
   } else if (phone) {
-    rawQuery = rawQuery.in('customer_mobile', philippinePhoneVariants(phone));
+    rawQuery = rawQuery.in('customer_mobile', phoneLookupVariants(phone));
   } else {
     rawQuery = rawQuery.limit(0);
   }
 
-  const { data: rawRows, error: rawError } = await rawQuery;
+  let { data: rawRows, error: rawError } = await rawQuery;
   if (rawError) throw rawError;
+  const rawSuffixPattern = phone ? phoneSuffixIlikePattern(phone) : null;
+  if ((rawRows ?? []).length === 0 && phone && rawSuffixPattern) {
+    const fallback = await sb
+      .from('orders_raw')
+      .select('order_reference, status, customer_name, customer_email, customer_mobile, pickup_datetime, dropoff_datetime, store_id, vehicle_model_id')
+      .in('status', ['unprocessed', 'processed'])
+      .ilike('customer_mobile', rawSuffixPattern)
+      .order('created_at', { ascending: false });
+    rawRows = fallback.data;
+    rawError = fallback.error;
+    if (rawError) throw rawError;
+  }
   const raw = ((rawRows ?? []) as Array<{
     order_reference: string;
     status: string;
@@ -1555,7 +1567,7 @@ router.get('/extension/lookup', async (req, res, next) => {
     if (!target) {
       sendRespondExtensionJson(res, 'lookup', params, {
         found: false,
-        error: 'No active booking found. Ask for the booking reference or phone number, then hand off if it still cannot be found.',
+        error: extensionLookupNotFoundMessage(params),
       });
       return;
     }
@@ -1590,7 +1602,7 @@ router.get('/extension/preview', async (req, res, next) => {
       sendRespondExtensionJson(res, 'preview', params, {
         success: false,
         code: 'NOT_FOUND',
-        message: 'Booking not found. Ask the customer to confirm their booking reference or phone number.',
+        message: extensionLookupNotFoundMessage(params),
       });
       return;
     }
@@ -1662,7 +1674,7 @@ router.post('/extension/confirm', async (req, res, next) => {
       sendRespondExtensionJson(res, 'confirm', params, {
         success: false,
         code: 'NOT_FOUND',
-        message: 'Booking not found. Ask the customer to confirm their booking reference or phone number.',
+        message: extensionLookupNotFoundMessage(params),
       });
       return;
     }
@@ -1816,7 +1828,7 @@ router.get('/booking', async (req, res, next) => {
       const { data: customerRows, error: customerError } = await sb
         .from('customers')
         .select('id')
-        .in('mobile', philippinePhoneVariants(phone!))
+        .in('mobile', phoneLookupVariants(phone!))
         .limit(1);
 
       if (customerError) {
@@ -1824,7 +1836,21 @@ router.get('/booking', async (req, res, next) => {
         throw customerError;
       }
 
-      const customerId = customerRows?.[0]?.id ?? null;
+      let customerId = customerRows?.[0]?.id ?? null;
+      const suffixPattern = phoneSuffixIlikePattern(phone!);
+      if (!customerId && suffixPattern) {
+        const fallback = await sb
+          .from('customers')
+          .select('id')
+          .ilike('mobile', suffixPattern)
+          .limit(1);
+        if (fallback.error) {
+          console.error('[respond/booking] customer suffix query failed:', fallback.error);
+          throw fallback.error;
+        }
+        customerId = fallback.data?.[0]?.id ?? null;
+      }
+
       if (!customerId) {
         skipOrdersQuery = true;
       } else {
@@ -1938,15 +1964,31 @@ router.get('/booking', async (req, res, next) => {
       rawQuery = rawQuery.ilike('order_reference', ref);
     } else {
       rawQuery = rawQuery
-        .in('customer_mobile', philippinePhoneVariants(phone!))
+        .in('customer_mobile', phoneLookupVariants(phone!))
         .order('created_at', { ascending: false });
     }
 
-    const { data: rawData, error: rawError } = await rawQuery;
+    let { data: rawData, error: rawError } = await rawQuery;
 
     if (rawError) {
       console.error('[respond/booking] orders_raw query failed:', rawError);
       throw rawError;
+    }
+
+    const rawSuffixPattern = phone ? phoneSuffixIlikePattern(phone) : null;
+    if ((rawData ?? []).length === 0 && phone && rawSuffixPattern) {
+      const fallback = await sb
+        .from('orders_raw')
+        .select(BOOKING_COLUMNS)
+        .in('status', RAW_RETURNABLE_STATUSES)
+        .ilike('customer_mobile', rawSuffixPattern)
+        .order('created_at', { ascending: false });
+      rawData = fallback.data;
+      rawError = fallback.error;
+      if (rawError) {
+        console.error('[respond/booking] orders_raw suffix query failed:', rawError);
+        throw rawError;
+      }
     }
 
     const rawRows = (rawData ?? []) as BookingRow[];

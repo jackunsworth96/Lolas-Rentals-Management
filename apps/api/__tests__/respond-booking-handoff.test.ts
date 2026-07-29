@@ -129,6 +129,81 @@ function makeSupabaseForOrderLookup() {
   };
 }
 
+function makeSupabaseForInternationalPhoneExtension() {
+  return {
+    from: vi.fn((table: string) => {
+      if (table === 'customers') {
+        let lookup: 'exact' | 'suffix' = 'exact';
+        const query = {
+          select: vi.fn(() => query),
+          in: vi.fn(() => {
+            lookup = 'exact';
+            return query;
+          }),
+          ilike: vi.fn(() => {
+            lookup = 'suffix';
+            return query;
+          }),
+          limit: vi.fn(async () => ({
+            data: lookup === 'suffix'
+              ? [{
+                  id: 'customer-phoebe',
+                  name: 'Phoebe Delafaille',
+                  email: 'phoebe@example.com',
+                  mobile: '499430527',
+                }]
+              : [],
+            error: null,
+          })),
+        };
+        return query;
+      }
+      if (table === 'orders') {
+        const query = {
+          select: vi.fn(() => query),
+          eq: vi.fn(() => query),
+          in: vi.fn(() => query),
+          order: vi.fn(async () => ({
+            data: [{
+              id: 'order-phoebe',
+              booking_token: 'LR-0730-PHOE',
+              status: 'active',
+              store_id: 'store-lolas',
+              customer_id: 'customer-phoebe',
+              created_at: '2026-07-29T02:00:00Z',
+            }],
+            error: null,
+          })),
+        };
+        return query;
+      }
+      if (table === 'order_items') {
+        const query = {
+          select: vi.fn(() => query),
+          eq: vi.fn(() => query),
+          not: vi.fn(() => query),
+          order: vi.fn(async () => ({
+            data: [{
+              id: 'item-phoebe',
+              vehicle_id: 'vehicle-phoebe',
+              pickup_datetime: '2026-07-29T11:15:00+08:00',
+              dropoff_datetime: '2026-07-31T11:15:00+08:00',
+              store_id: 'store-lolas',
+              rental_days_count: 2,
+              rental_rate: 535,
+              vehicle_name: 'Honda Beat',
+              vehicle_model_id: 'beat',
+            }],
+            error: null,
+          })),
+        };
+        return query;
+      }
+      throw new Error(`Unexpected table ${table}`);
+    }),
+  };
+}
+
 function makeSupabaseForMultiVehicleExtension() {
   const items = [1, 2, 3].map((number) => ({
     id: `item-${number}`,
@@ -583,6 +658,26 @@ describe('Respond.io multi-vehicle extension pricing', () => {
         extension_total: 8025,
         vehicle_count: 3,
       },
+    });
+  });
+});
+
+describe('Respond.io international phone extension lookup', () => {
+  it('matches Phoebe’s channel-prefixed phone to the stored nine-digit number', async () => {
+    mocks.getSupabaseClient.mockReturnValue(makeSupabaseForInternationalPhoneExtension());
+
+    const res = await request(app)
+      .get('/api/public/respond/extension/lookup')
+      .set('X-API-Key', 'respond-test-key')
+      .query({ lookup: 'whatsapp:499430527' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      found: true,
+      order_reference: 'LR-0730-PHOE',
+      customer_name: 'Phoebe Delafaille',
+      status: 'active',
+      can_extend: true,
     });
   });
 });
