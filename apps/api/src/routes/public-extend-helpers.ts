@@ -489,7 +489,10 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
         p_total_delta:       totalDelta,
         p_payment_id:        paymentId,
         p_store_id:          storeId,
-        p_amount:            extensionCost,
+        // The pending payment drives the customer-facing outstanding balance.
+        // It must match the full order delta, including recurring add-ons such
+        // as Peace of Mind Cover, not only the vehicle rental charge.
+        p_amount:            totalDelta,
         p_payment_method_id: paymentMethodId,
         p_transaction_date:  journalDate,
         p_settlement_status: isPaid ? null : 'pending',

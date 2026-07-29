@@ -169,6 +169,7 @@ interface LocationEntry {
 }
 
 interface RespondExtensionTarget {
+  orderId: string | null;
   orderReference: string;
   email: string;
   customerName: string | null;
@@ -181,6 +182,7 @@ interface RespondExtensionTarget {
   vehicle: string;
   storeId: string;
   currentDailyRate: number | null;
+  currentRentalDays: number | null;
   items: RespondExtensionItem[];
   message?: string;
 }
@@ -193,6 +195,7 @@ interface RespondExtensionItem {
   vehicle: string;
   storeId: string;
   currentDailyRate: number | null;
+  currentRentalDays: number | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -492,7 +495,7 @@ async function resolveRespondExtensionTarget(
 
     const { data: itemRows, error: itemError } = await sb
       .from('order_items')
-      .select('id, vehicle_id, pickup_datetime, dropoff_datetime, store_id, rental_rate, vehicle_name, vehicle_model_id')
+      .select('id, vehicle_id, pickup_datetime, dropoff_datetime, store_id, rental_days_count, rental_rate, vehicle_name, vehicle_model_id')
       .eq('order_id', activeOrder.id)
       .not('pickup_datetime', 'is', null)
       .order('created_at', { ascending: true });
@@ -526,12 +529,14 @@ async function resolveRespondExtensionTarget(
         vehicle,
         storeId: (item.store_id as string | null) ?? activeOrder.store_id,
         currentDailyRate: item.rental_rate != null ? Number(item.rental_rate) : null,
+        currentRentalDays: item.rental_days_count != null ? Number(item.rental_days_count) : null,
       });
     }
 
     const item = items[0];
     if (item) {
       return {
+        orderId: activeOrder.id,
         orderReference: activeOrder.booking_token ?? activeOrder.id,
         email: customer?.email?.trim().toLowerCase() ?? '',
         customerName: customer?.name ?? null,
@@ -544,6 +549,7 @@ async function resolveRespondExtensionTarget(
         vehicle: items.length === 1 ? item.vehicle : `${items.length} rental vehicles`,
         storeId: item.storeId,
         currentDailyRate: item.currentDailyRate,
+        currentRentalDays: item.currentRentalDays,
         items,
       };
     }
@@ -579,6 +585,7 @@ async function resolveRespondExtensionTarget(
   if (!raw?.dropoff_datetime) return null;
 
   return {
+    orderId: null,
     orderReference: raw.order_reference,
     email: raw.customer_email?.trim().toLowerCase() ?? '',
     customerName: raw.customer_name ?? null,
@@ -591,6 +598,7 @@ async function resolveRespondExtensionTarget(
     vehicle: raw.vehicle_model_id ? await resolveVehicleModelName(sb, raw.vehicle_model_id) : 'Unknown',
     storeId: raw.store_id,
     currentDailyRate: null,
+    currentRentalDays: null,
     items: [],
     message: raw.status === 'unprocessed'
       ? 'This booking is not active yet, so respond.io should hand off instead of confirming an extension.'
@@ -813,7 +821,53 @@ async function previewRespondExtension(
       : computedDailyRate;
   }
 
-  const extensionTotal = Math.round(dailyRate * extDays * 100) / 100;
+  const rentalExtensionTotal = Math.round(dailyRate * extDays * 100) / 100;
+  const recurringAddons: Array<{
+    name: string;
+    daily_rate: number;
+    extension_days: number;
+    extension_total: number;
+  }> = [];
+
+  if (target.orderId) {
+    const { data: addonRows, error: addonError } = await getSupabaseClient()
+      .from('order_addons')
+      .select('addon_name, addon_type, addon_price, total_amount')
+      .eq('order_id', target.orderId);
+    if (addonError) throw addonError;
+
+    const currentRentalDays = target.currentRentalDays && target.currentRentalDays > 0
+      ? target.currentRentalDays
+      : target.pickupDatetime
+        ? extDayCount(new Date(target.pickupDatetime).getTime(), currentDropoff.getTime())
+        : 0;
+
+    for (const addon of (addonRows ?? []) as Array<Record<string, unknown>>) {
+      if (addon.addon_type !== 'per_day') continue;
+      const existingTotal = Number(addon.total_amount ?? 0);
+      const dailyAddonRate = currentRentalDays > 0
+        ? existingTotal / currentRentalDays
+        : Number(addon.addon_price ?? 0);
+      if (dailyAddonRate <= 0) continue;
+      const roundedAddonRate = Math.round(dailyAddonRate * 100) / 100;
+      recurringAddons.push({
+        name: String(addon.addon_name ?? 'Per-day add-on'),
+        daily_rate: roundedAddonRate,
+        extension_days: extDays,
+        extension_total: Math.round(roundedAddonRate * extDays * 100) / 100,
+      });
+    }
+  }
+
+  const recurringAddonsTotal = Math.round(
+    recurringAddons.reduce((sum, addon) => sum + addon.extension_total, 0) * 100,
+  ) / 100;
+  const extensionTotal = Math.round((rentalExtensionTotal + recurringAddonsTotal) * 100) / 100;
+  const addonCalculation = recurringAddons.length > 0
+    ? `, including ${recurringAddons.map((addon) =>
+      `${addon.name}: ${addon.extension_days} days x PHP ${addon.daily_rate.toLocaleString('en-PH')} = PHP ${addon.extension_total.toLocaleString('en-PH')}`
+    ).join('; ')}`
+    : '';
   return {
     ok: true as const,
     payload: {
@@ -825,9 +879,12 @@ async function previewRespondExtension(
       new_dropoff_datetime: newDropoffDatetime,
       extension_days: extDays,
       daily_rate: Math.round(dailyRate * 100) / 100,
+      rental_extension_total: rentalExtensionTotal,
+      recurring_addons: recurringAddons,
+      recurring_addons_total: recurringAddonsTotal,
       extension_total: extensionTotal,
       balance_note: 'Add this amount to the booking balance. Confirm only after the customer agrees.',
-      customer_message: `Yes, we can extend your rental to ${newDropoff.toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' })}. The extension balance is PHP ${extensionTotal.toLocaleString('en-PH')}. Shall I confirm that for you?`,
+      customer_message: `Yes, we can extend your rental to ${newDropoff.toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' })}. The extension balance is PHP ${extensionTotal.toLocaleString('en-PH')}${addonCalculation}. Shall I confirm that for you?`,
     },
   };
 }
