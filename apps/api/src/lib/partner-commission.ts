@@ -258,13 +258,36 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
   const totalPendingCommission = bookings.reduce((sum, b) => sum + b.pendingCommissionAmount, 0);
   const totalVehiclesRented = bookings.filter((b) => b.status !== 'cancelled').length;
   const monthDays = daysInReportMonth(month);
+
+  // Sum vehicle-days: duration of each non-cancelled rental, clamped to the report month
+  // so e.g. a booking that runs Jul 29 → Aug 2 only contributes 3 days to the July report.
+  const monthStart = bounds.from ? new Date(bounds.from).getTime() : null;
+  const monthEnd = bounds.to ? new Date(bounds.to).getTime() : null;
+
+  function clampedRentalDays(pickup: string | null, dropoff: string | null): number {
+    if (!pickup || !dropoff) return 0;
+    const start = monthStart !== null ? Math.max(new Date(pickup).getTime(), monthStart) : new Date(pickup).getTime();
+    const end = monthEnd !== null ? Math.min(new Date(dropoff).getTime(), monthEnd) : new Date(dropoff).getTime();
+    return Math.max(0, (end - start) / 86_400_000);
+  }
+
+  const totalVehicleDays = bookings
+    .filter((b) => b.status !== 'cancelled')
+    .reduce((sum, b) => {
+      // Use extended dropoff if the booking was extended, to reflect actual return date
+      const effectiveDropoff = b.isExtended && b.extendedDropoffDatetime
+        ? b.extendedDropoffDatetime
+        : b.dropoffDatetime;
+      return sum + clampedRentalDays(b.pickupDatetime, effectiveDropoff);
+    }, 0);
+
   return {
     totalBookings: bookings.length,
     commissionableBookings: bookings.filter((b) => b.commissionable).length,
     totalCommission: roundMoney(totalCommission),
     totalPendingCommission: roundMoney(totalPendingCommission),
     totalVehiclesRented,
-    averageVehiclesPerDay: roundMoney(totalVehiclesRented / monthDays),
+    averageVehiclesPerDay: roundMoney(totalVehicleDays / monthDays),
     bookings,
   };
 }
