@@ -10,6 +10,11 @@ export interface AvailableModel {
    * ISO timestamp of when the earliest blocking hold expires. Absent when a confirmed
    * booking (order_items / orders_raw) is the reason for unavailability. */
   holdExpiresAt?: string;
+  /** Set when availableCount is 0 but at least one unit was free at the very start of the
+   * requested window. Indicates the ISO timestamp when the first new conflict begins — so the
+   * caller can display "available [pickup] – [just before firstConflictAt], free again from
+   * nextAvailablePickup". Absent when the model was already fully blocked at pickup time. */
+  firstConflictAt?: string;
 }
 
 export interface AvailabilityQuery {

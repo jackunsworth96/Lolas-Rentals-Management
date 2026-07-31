@@ -135,6 +135,27 @@ export async function evaluateAvailability(
     const previous = minDropoff.get(modelId);
     if (!previous || dropoff < previous) minDropoff.set(modelId, dropoff);
   };
+
+  // Track earliest blocker that starts AFTER the user's pickup (for partial-availability detection)
+  const minConflictStart = new Map<string, string>();
+  const trackConflictStart = (modelId: string, blockerPickup: string) => {
+    if (blockerPickup <= pickupDatetime) return;
+    const previous = minConflictStart.get(modelId);
+    if (!previous || blockerPickup < previous) minConflictStart.set(modelId, blockerPickup);
+  };
+
+  // Track units that were already blocked AT the start of the window (pickup ≤ user's pickupDatetime)
+  // Used to verify that at least one unit was actually free at pickup time before claiming partial availability.
+  const exactVehicleBlockedFromStart = new Map<string, Set<string>>(); // model → set of vehicle IDs
+  const trackExactVehicleFromStart = (vehicleId: string, modelId: string, blockerPickup: string) => {
+    if (blockerPickup > pickupDatetime) return;
+    const set = exactVehicleBlockedFromStart.get(modelId) ?? new Set<string>();
+    set.add(vehicleId);
+    exactVehicleBlockedFromStart.set(modelId, set);
+  };
+  const directFromStart = new Map<string, number>();
+  const holdsFromStart = new Map<string, number>();
+
   const exactBlockers = new Map<string, Set<ExactAvailabilityReason>>();
   const addExactBlocker = (vehicleId: string, reason: ExactAvailabilityReason) => {
     const reasons = exactBlockers.get(vehicleId) ?? new Set<ExactAvailabilityReason>();
@@ -143,60 +164,77 @@ export async function evaluateAvailability(
   };
 
   const { data: bookedRows, error: bookedErr } = await sb
-    .from('order_items').select('id, vehicle_id, dropoff_datetime, orders!inner(status)')
+    .from('order_items').select('id, vehicle_id, pickup_datetime, dropoff_datetime, orders!inner(status)')
     .eq('store_id', storeId).not('vehicle_id', 'is', null)
     .not('pickup_datetime', 'is', null).not('dropoff_datetime', 'is', null)
     .lt('pickup_datetime', dropoffDatetime).gt('dropoff_datetime', pickupBuffered);
   if (bookedErr) throw new Error(`order_items overlap query failed: ${bookedErr.message}`);
-  for (const row of (bookedRows ?? []) as Array<{ id: string; vehicle_id: string; dropoff_datetime: string; orders: unknown }>) {
+  for (const row of (bookedRows ?? []) as Array<{ id: string; vehicle_id: string; pickup_datetime: string; dropoff_datetime: string; orders: unknown }>) {
     if (excludeOrderItemId && row.id === excludeOrderItemId) continue;
     const orders = row.orders as { status: string } | { status: string }[] | null;
     const status = Array.isArray(orders) ? orders[0]?.status : orders?.status;
     if (status && status !== 'cancelled' && status !== 'completed') {
       addExactBlocker(row.vehicle_id, 'order');
       const modelId = vehicleToModel.get(row.vehicle_id);
-      if (modelId) trackDrop(modelId, row.dropoff_datetime);
+      if (modelId) {
+        trackDrop(modelId, row.dropoff_datetime);
+        trackConflictStart(modelId, row.pickup_datetime);
+        trackExactVehicleFromStart(row.vehicle_id, modelId, row.pickup_datetime);
+      }
     }
   }
 
   const { data: directRows, error: directErr } = await sb
-    .from('orders_raw').select('vehicle_model_id, dropoff_datetime')
+    .from('orders_raw').select('vehicle_model_id, pickup_datetime, dropoff_datetime')
     .eq('store_id', storeId).eq('booking_channel', 'direct').eq('status', 'unprocessed')
     .not('vehicle_model_id', 'is', null)
     .lt('pickup_datetime', dropoffDatetime).gt('dropoff_datetime', pickupBuffered);
   if (directErr) throw new Error(`orders_raw direct overlap query failed: ${directErr.message}`);
   const directReservedByModel = new Map<string, number>();
-  for (const row of (directRows ?? []) as Array<{ vehicle_model_id: string; dropoff_datetime: string }>) {
+  for (const row of (directRows ?? []) as Array<{ vehicle_model_id: string; pickup_datetime: string; dropoff_datetime: string }>) {
     directReservedByModel.set(row.vehicle_model_id, (directReservedByModel.get(row.vehicle_model_id) ?? 0) + 1);
     trackDrop(row.vehicle_model_id, row.dropoff_datetime);
+    trackConflictStart(row.vehicle_model_id, row.pickup_datetime);
+    if (row.pickup_datetime <= pickupDatetime) {
+      directFromStart.set(row.vehicle_model_id, (directFromStart.get(row.vehicle_model_id) ?? 0) + 1);
+    }
   }
 
   const { data: walkInRows, error: walkInErr } = await sb
-    .from('orders_raw').select('vehicle_id, dropoff_datetime')
+    .from('orders_raw').select('vehicle_id, pickup_datetime, dropoff_datetime')
     .eq('store_id', storeId).eq('booking_channel', 'walk_in').eq('status', 'unprocessed')
     .not('vehicle_id', 'is', null)
     .lt('pickup_datetime', dropoffDatetime).gt('dropoff_datetime', pickupBuffered);
   if (walkInErr) throw new Error(`orders_raw walk-in overlap query failed: ${walkInErr.message}`);
-  for (const row of (walkInRows ?? []) as Array<{ vehicle_id: string; dropoff_datetime: string }>) {
+  for (const row of (walkInRows ?? []) as Array<{ vehicle_id: string; pickup_datetime: string; dropoff_datetime: string }>) {
     addExactBlocker(row.vehicle_id, 'walk_in');
     const modelId = vehicleToModel.get(row.vehicle_id);
-    if (modelId) trackDrop(modelId, row.dropoff_datetime);
+    if (modelId) {
+      trackDrop(modelId, row.dropoff_datetime);
+      trackConflictStart(modelId, row.pickup_datetime);
+      trackExactVehicleFromStart(row.vehicle_id, modelId, row.pickup_datetime);
+    }
   }
 
   const vehicleIds = rentableFleet.map((vehicle) => vehicle.id);
   const { data: ownerUseRows, error: ownerUseErr } = await sb
-    .from('fleet_unavailability').select('vehicle_id')
+    .from('fleet_unavailability').select('vehicle_id, starts_at')
     .eq('store_id', storeId).eq('type', 'owner_use').is('cancelled_at', null)
     .in('vehicle_id', vehicleIds)
     .lt('starts_at', dropoffDatetime).gt('ends_at', pickupDatetime);
   if (ownerUseErr) throw new Error(`fleet unavailability query failed: ${ownerUseErr.message}`);
-  for (const row of (ownerUseRows ?? []) as Array<{ vehicle_id: string }>) {
+  for (const row of (ownerUseRows ?? []) as Array<{ vehicle_id: string; starts_at: string }>) {
     addExactBlocker(row.vehicle_id, 'owner_use');
+    const modelId = vehicleToModel.get(row.vehicle_id);
+    if (modelId) {
+      trackConflictStart(modelId, row.starts_at);
+      trackExactVehicleFromStart(row.vehicle_id, modelId, row.starts_at);
+    }
   }
 
   const nowIso = new Date().toISOString();
   let holdsQuery = sb
-    .from('booking_holds').select('vehicle_model_id, dropoff_datetime, expires_at')
+    .from('booking_holds').select('vehicle_model_id, pickup_datetime, dropoff_datetime, expires_at')
     .eq('store_id', storeId).gt('expires_at', nowIso)
     .lt('pickup_datetime', dropoffDatetime).gt('dropoff_datetime', pickupDatetime);
   if (excludeSessionToken) holdsQuery = holdsQuery.neq('session_token', excludeSessionToken);
@@ -204,11 +242,15 @@ export async function evaluateAvailability(
   if (holdErr) throw new Error(`booking_holds overlap query failed: ${holdErr.message}`);
   const holdsByModel = new Map<string, number>();
   const minHoldExpiry = new Map<string, string>();
-  for (const row of (holdRows ?? []) as Array<{ vehicle_model_id: string; dropoff_datetime: string; expires_at: string }>) {
+  for (const row of (holdRows ?? []) as Array<{ vehicle_model_id: string; pickup_datetime: string; dropoff_datetime: string; expires_at: string }>) {
     holdsByModel.set(row.vehicle_model_id, (holdsByModel.get(row.vehicle_model_id) ?? 0) + 1);
     trackDrop(row.vehicle_model_id, row.dropoff_datetime);
+    trackConflictStart(row.vehicle_model_id, row.pickup_datetime);
     const previous = minHoldExpiry.get(row.vehicle_model_id);
     if (!previous || row.expires_at < previous) minHoldExpiry.set(row.vehicle_model_id, row.expires_at);
+    if (row.pickup_datetime <= pickupDatetime) {
+      holdsFromStart.set(row.vehicle_model_id, (holdsFromStart.get(row.vehicle_model_id) ?? 0) + 1);
+    }
   }
 
   const modelIds = [...fleetByModel.keys()];
@@ -255,6 +297,16 @@ export async function evaluateAvailability(
       if (confirmedAvailable > 0) {
         const expiry = minHoldExpiry.get(modelId);
         if (expiry) entry.holdExpiresAt = expiry;
+      }
+      // Partial availability: set firstConflictAt only when at least one unit was free at pickup
+      const conflictStart = minConflictStart.get(modelId);
+      if (conflictStart) {
+        const totalUnits = ids.size;
+        const fromStartExact = exactVehicleBlockedFromStart.get(modelId)?.size ?? 0;
+        const fromStartDirect = directFromStart.get(modelId) ?? 0;
+        const fromStartHolds = holdsFromStart.get(modelId) ?? 0;
+        const availableAtWindowStart = Math.max(0, totalUnits - fromStartExact - fromStartDirect - fromStartHolds);
+        if (availableAtWindowStart > 0) entry.firstConflictAt = conflictStart;
       }
     }
     results.push(entry);
