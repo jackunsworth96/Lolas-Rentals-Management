@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { usePartnerReport } from '../../api/partner-portal.js';
+import { usePartnerReport, usePartnerMe } from '../../api/partner-portal.js';
+import { generatePartnerReportPdf } from '../../utils/partnerReportPdf.js';
 
 function currentMonth() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }).slice(0, 7);
@@ -27,6 +28,13 @@ function statusClass(status: string) {
 export default function PartnerReportsPage() {
   const [month, setMonth] = useState(currentMonth());
   const { data, isLoading } = usePartnerReport(month);
+  const { data: meData } = usePartnerMe();
+  const partnerName = meData?.partner?.name ?? "Partner";
+
+  function handleDownloadPdf() {
+    if (!data) return;
+    generatePartnerReportPdf(partnerName, month, data);
+  }
 
   return (
     <div className="rounded-lg bg-white p-4 shadow-sm">
@@ -35,7 +43,19 @@ export default function PartnerReportsPage() {
           <h1 className="text-xl font-bold text-gray-900">Reports</h1>
           <p className="text-sm text-gray-500">Your attributed bookings and commission summary.</p>
         </div>
-        <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+        <div className="flex items-center gap-2">
+          <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+          <button
+            onClick={handleDownloadPdf}
+            disabled={!data || isLoading}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+            </svg>
+            Download PDF
+          </button>
+        </div>
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-4">
