@@ -298,7 +298,7 @@ export async function evaluateAvailability(
         const expiry = minHoldExpiry.get(modelId);
         if (expiry) entry.holdExpiresAt = expiry;
       }
-      // Partial availability: set firstConflictAt only when at least one unit was free at pickup
+      // Partial availability: set firstConflictAt when there is a free window within the period.
       const conflictStart = minConflictStart.get(modelId);
       if (conflictStart) {
         const totalUnits = ids.size;
@@ -306,7 +306,19 @@ export async function evaluateAvailability(
         const fromStartDirect = directFromStart.get(modelId) ?? 0;
         const fromStartHolds = holdsFromStart.get(modelId) ?? 0;
         const availableAtWindowStart = Math.max(0, totalUnits - fromStartExact - fromStartDirect - fromStartHolds);
-        if (availableAtWindowStart > 0) entry.firstConflictAt = conflictStart;
+        if (availableAtWindowStart > 0) {
+          // Clean case: at least one unit was free at the user's exact pickup time.
+          entry.firstConflictAt = conflictStart;
+        } else if (
+          entry.nextAvailablePickup &&
+          entry.nextAvailablePickup < dropoffDatetime &&
+          conflictStart > entry.nextAvailablePickup
+        ) {
+          // Same-day-return case: a prior booking clears within the window (nextAvailablePickup)
+          // before a new booking starts (conflictStart). The vehicle is free between those two
+          // points even though it was blocked at the user's exact pickup time.
+          entry.firstConflictAt = conflictStart;
+        }
       }
     }
     results.push(entry);

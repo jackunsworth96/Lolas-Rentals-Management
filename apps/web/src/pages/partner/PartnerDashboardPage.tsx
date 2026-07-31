@@ -183,42 +183,63 @@ export default function PartnerDashboardPage() {
             // ── Partly available ─────────────────────────────────────────────
             if (m.firstConflictAt) {
               const lastFreeDay = dayBeforeManila(m.firstConflictAt);
-              const pickupLabel = fmtManilaDate(toManilaIso(pickupDate, pickupTime));
               const lastFreeLabel = fmtManilaDate(`${lastFreeDay}T16:45:00+08:00`);
+              const userPickupIso = toManilaIso(pickupDate, pickupTime);
+              // Same-day-return case: the vehicle was blocked at the user's exact pickup time
+              // but clears later the same day (nextAvailablePickup > userPickupIso).
+              // Use nextAvailablePickup as the "free from" label and suppress the book button
+              // (adjusting only the dropoff wouldn't help — the pickup time also needs changing).
+              const isSameDayReturn = !!m.nextAvailablePickup && m.nextAvailablePickup > userPickupIso;
+              const freeFromLabel = isSameDayReturn
+                ? fmtManilaDate(m.nextAvailablePickup!)
+                : fmtManilaDate(userPickupIso);
               return (
                 <div key={m.modelId} className="rounded-lg border border-amber-200 bg-amber-50 p-3">
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-semibold text-gray-900">{m.modelName}</p>
                     <span className="shrink-0 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">Partly available</span>
                   </div>
-                  <p className="mt-1.5 text-sm text-gray-700">Free {pickupLabel} – {lastFreeLabel} only</p>
-                  {m.nextAvailablePickup && (
+                  <p className="mt-1.5 text-sm text-gray-700">Free {freeFromLabel} – {lastFreeLabel} only</p>
+                  {!isSameDayReturn && m.nextAvailablePickup && (
                     <p className="mt-0.5 text-xs text-gray-500">Available again from {fmtManilaDate(m.nextAvailablePickup)}</p>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => { setDropoffDate(lastFreeDay); setDropoffTime('16:45'); }}
-                    className="mt-2 text-xs font-semibold text-amber-700 hover:underline"
-                  >
-                    Book {pickupLabel} – {lastFreeLabel} →
-                  </button>
+                  {!isSameDayReturn && (
+                    <button
+                      type="button"
+                      onClick={() => { setDropoffDate(lastFreeDay); setDropoffTime('16:45'); }}
+                      className="mt-2 text-xs font-semibold text-amber-700 hover:underline"
+                    >
+                      Book {fmtManilaDate(userPickupIso)} – {lastFreeLabel} →
+                    </button>
+                  )}
                 </div>
               );
             }
 
             // ── Fully booked ─────────────────────────────────────────────────
-            return (
-              <div key={m.modelId} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="font-semibold text-gray-500">{m.modelName}</p>
-                  <span className="shrink-0 rounded-full border border-gray-300 bg-white px-2 py-0.5 text-xs font-semibold text-gray-500">Fully booked</span>
+            {
+              // Suppress "Available from [date]" if nextAvailablePickup falls on the same
+              // calendar day as the user's pickup — it reads as though today is fine when it
+              // only means a different time slot today is free.
+              const nextAvailableDay = m.nextAvailablePickup
+                ? new Date(m.nextAvailablePickup).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+                : null;
+              const isSameDayAvailable = nextAvailableDay === pickupDate;
+              return (
+                <div key={m.modelId} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-semibold text-gray-500">{m.modelName}</p>
+                    <span className="shrink-0 rounded-full border border-gray-300 bg-white px-2 py-0.5 text-xs font-semibold text-gray-500">Fully booked</span>
+                  </div>
+                  {isSameDayAvailable
+                    ? <p className="mt-1.5 text-sm text-gray-500">Try a later pickup time today</p>
+                    : m.nextAvailablePickup
+                      ? <p className="mt-1.5 text-sm text-gray-500">Available from {fmtManilaDate(m.nextAvailablePickup)}</p>
+                      : <p className="mt-1.5 text-sm text-gray-400">No upcoming availability found</p>
+                  }
                 </div>
-                {m.nextAvailablePickup
-                  ? <p className="mt-1.5 text-sm text-gray-500">Available from {fmtManilaDate(m.nextAvailablePickup)}</p>
-                  : <p className="mt-1.5 text-sm text-gray-400">No upcoming availability found</p>
-                }
-              </div>
-            );
+              );
+            }
           })}
         </div>
       </section>
