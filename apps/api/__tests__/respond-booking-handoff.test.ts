@@ -204,6 +204,100 @@ function makeSupabaseForInternationalPhoneExtension() {
   };
 }
 
+function makeSupabaseForFutureDeliveryLookup() {
+  const locations = new Map([
+    [1, { name: 'Lola Shop', location_type: 'store' }],
+    [2, { name: 'General Luna', location_type: 'delivery' }],
+  ]);
+
+  return {
+    from: vi.fn((table: string) => {
+      if (table === 'customers') {
+        let byId = false;
+        const query = {
+          select: vi.fn(() => query),
+          in: vi.fn(() => query),
+          ilike: vi.fn(() => query),
+          eq: vi.fn(() => {
+            byId = true;
+            return query;
+          }),
+          limit: vi.fn(async () => ({
+            data: [{ id: 'customer-joris' }],
+            error: null,
+          })),
+          maybeSingle: vi.fn(async () => ({
+            data: byId
+              ? { id: 'customer-joris', name: 'Joris', email: 'joris@example.com', mobile: '+447597124073' }
+              : null,
+            error: null,
+          })),
+        };
+        return query;
+      }
+      if (table === 'orders') {
+        const query = {
+          select: vi.fn(() => query),
+          in: vi.fn(() => query),
+          eq: vi.fn(() => query),
+          order: vi.fn(async () => ({
+            data: [{
+              id: 'order-joris',
+              booking_token: 'LR-0801-JORIS',
+              status: 'confirmed',
+              store_id: 'store-lolas',
+              customer_id: 'customer-joris',
+              created_at: '2026-07-30T00:00:00Z',
+              balance_due: 0,
+              final_total: 7200,
+              security_deposit: 6000,
+              deposit_status: 'pending',
+            }],
+            error: null,
+          })),
+        };
+        return query;
+      }
+      if (table === 'order_items') {
+        const items = [1, 2].map((number) => ({
+          pickup_datetime: '2026-08-03T10:15:00+08:00',
+          dropoff_datetime: '2026-08-06T10:15:00+08:00',
+          vehicle_name: `TukTuk ${number}`,
+          vehicle_model_id: 'tuktuk',
+          pickup_location: 'General Luna',
+          dropoff_location: 'Lola Shop',
+          pickup_location_id: '2',
+          dropoff_location_id: '1',
+          pickup_fee: 100,
+          dropoff_fee: 0,
+        }));
+        const query = {
+          select: vi.fn(() => query),
+          eq: vi.fn(() => query),
+          order: vi.fn(async () => ({ data: items, error: null })),
+        };
+        return query;
+      }
+      if (table === 'locations') {
+        let id = 0;
+        const query = {
+          select: vi.fn(() => query),
+          eq: vi.fn((_column: string, value: unknown) => {
+            id = Number(value);
+            return query;
+          }),
+          maybeSingle: vi.fn(async () => ({ data: locations.get(id) ?? null, error: null })),
+        };
+        return query;
+      }
+      if (table === 'stores') {
+        return queryResult({ data: { name: "Lola's Rentals" }, error: null });
+      }
+      throw new Error(`Unexpected table ${table}`);
+    }),
+  };
+}
+
 function makeSupabaseForMultiVehicleExtension() {
   const items = [1, 2, 3].map((number) => ({
     id: `item-${number}`,
@@ -679,6 +773,66 @@ describe('Respond.io international phone extension lookup', () => {
       status: 'active',
       can_extend: true,
     });
+  });
+});
+
+describe('Respond.io future booking context', () => {
+  it('returns multi-vehicle delivery details for a confirmed booking found by phone', async () => {
+    mocks.getSupabaseClient.mockReturnValue(makeSupabaseForFutureDeliveryLookup());
+
+    const res = await request(app)
+      .get('/api/public/respond/booking')
+      .set('X-API-Key', 'respond-test-key')
+      .query({ phone: '+447597124073' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      found: true,
+      booking: {
+        reference: 'LR-0801-JORIS',
+        status: 'confirmed',
+        has_existing_booking: true,
+        booking_stage: 'future',
+        customer_name: 'Joris',
+        vehicle_count: 2,
+        vehicles: ['TukTuk 1', 'TukTuk 2'],
+        pickup_location: 'General Luna',
+        dropoff_location: 'Lola Shop',
+        delivery_booked: true,
+        collection_booked: false,
+      },
+    });
+  });
+});
+
+describe('Respond.io availability alternatives', () => {
+  it('returns a confirmed available-until boundary for a shorter rental', async () => {
+    app.locals.deps.bookingPort.checkAvailability = vi.fn(async () => [{
+      modelId: 'tuktuk',
+      modelName: 'TukTuk',
+      availableCount: 0,
+      availableUntil: '2026-08-03T10:15:00+08:00',
+    }]);
+
+    const res = await request(app)
+      .get('/api/public/respond/availability')
+      .set('X-API-Key', 'respond-test-key')
+      .query({
+        pickupDatetime: '2026-08-01T16:30:00+08:00',
+        dropoffDatetime: '2026-08-05T16:30:00+08:00',
+        quantity: '1',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.available[0]).toMatchObject({
+      model_id: 'tuktuk',
+      sufficient_availability: false,
+      available_until: '2026-08-03T10:15:00+08:00',
+    });
+    expect(res.body.guidance).toContain('offer that confirmed shorter window first');
+    expect(app.locals.deps.bookingPort.checkAvailability).toHaveBeenCalledWith(expect.objectContaining({
+      requestedQuantity: 1,
+    }));
   });
 });
 

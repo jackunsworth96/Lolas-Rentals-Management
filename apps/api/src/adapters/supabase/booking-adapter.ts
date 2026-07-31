@@ -157,6 +157,34 @@ export async function evaluateAvailability(
   const holdsFromStart = new Map<string, number>();
 
   const exactBlockers = new Map<string, Set<ExactAvailabilityReason>>();
+  const requestedPickupMs = new Date(pickupDatetime).getTime();
+  const requestedQuantity = Math.max(1, query.requestedQuantity ?? 1);
+  const initiallyBlockedVehicles = new Set<string>();
+  const futureVehicleBlockStarts = new Map<string, string>();
+  const initialCapacityDeductions = new Map<string, number>();
+  const futureCapacityBlockStarts = new Map<string, string[]>();
+
+  const trackVehicleBlockStart = (vehicleId: string, startsAt: string | null | undefined) => {
+    if (!startsAt) return;
+    const startsMs = new Date(startsAt).getTime();
+    if (startsMs <= requestedPickupMs) {
+      initiallyBlockedVehicles.add(vehicleId);
+      return;
+    }
+    const previous = futureVehicleBlockStarts.get(vehicleId);
+    if (!previous || startsAt < previous) futureVehicleBlockStarts.set(vehicleId, startsAt);
+  };
+  const trackCapacityBlockStart = (modelId: string, startsAt: string | null | undefined) => {
+    if (!startsAt) return;
+    const startsMs = new Date(startsAt).getTime();
+    if (startsMs <= requestedPickupMs) {
+      initialCapacityDeductions.set(modelId, (initialCapacityDeductions.get(modelId) ?? 0) + 1);
+      return;
+    }
+    const starts = futureCapacityBlockStarts.get(modelId) ?? [];
+    starts.push(startsAt);
+    futureCapacityBlockStarts.set(modelId, starts);
+  };
   const addExactBlocker = (vehicleId: string, reason: ExactAvailabilityReason) => {
     const reasons = exactBlockers.get(vehicleId) ?? new Set<ExactAvailabilityReason>();
     reasons.add(reason);
@@ -178,6 +206,7 @@ export async function evaluateAvailability(
       const modelId = vehicleToModel.get(row.vehicle_id);
       if (modelId) {
         trackDrop(modelId, row.dropoff_datetime);
+        trackVehicleBlockStart(row.vehicle_id, row.pickup_datetime);
         trackConflictStart(modelId, row.pickup_datetime);
         trackExactVehicleFromStart(row.vehicle_id, modelId, row.pickup_datetime);
       }
@@ -194,6 +223,7 @@ export async function evaluateAvailability(
   for (const row of (directRows ?? []) as Array<{ vehicle_model_id: string; pickup_datetime: string; dropoff_datetime: string }>) {
     directReservedByModel.set(row.vehicle_model_id, (directReservedByModel.get(row.vehicle_model_id) ?? 0) + 1);
     trackDrop(row.vehicle_model_id, row.dropoff_datetime);
+    trackCapacityBlockStart(row.vehicle_model_id, row.pickup_datetime);
     trackConflictStart(row.vehicle_model_id, row.pickup_datetime);
     if (row.pickup_datetime <= pickupDatetime) {
       directFromStart.set(row.vehicle_model_id, (directFromStart.get(row.vehicle_model_id) ?? 0) + 1);
@@ -211,6 +241,7 @@ export async function evaluateAvailability(
     const modelId = vehicleToModel.get(row.vehicle_id);
     if (modelId) {
       trackDrop(modelId, row.dropoff_datetime);
+      trackVehicleBlockStart(row.vehicle_id, row.pickup_datetime);
       trackConflictStart(modelId, row.pickup_datetime);
       trackExactVehicleFromStart(row.vehicle_id, modelId, row.pickup_datetime);
     }
@@ -225,6 +256,7 @@ export async function evaluateAvailability(
   if (ownerUseErr) throw new Error(`fleet unavailability query failed: ${ownerUseErr.message}`);
   for (const row of (ownerUseRows ?? []) as Array<{ vehicle_id: string; starts_at: string }>) {
     addExactBlocker(row.vehicle_id, 'owner_use');
+    trackVehicleBlockStart(row.vehicle_id, row.starts_at);
     const modelId = vehicleToModel.get(row.vehicle_id);
     if (modelId) {
       trackConflictStart(modelId, row.starts_at);
@@ -245,6 +277,7 @@ export async function evaluateAvailability(
   for (const row of (holdRows ?? []) as Array<{ vehicle_model_id: string; pickup_datetime: string; dropoff_datetime: string; expires_at: string }>) {
     holdsByModel.set(row.vehicle_model_id, (holdsByModel.get(row.vehicle_model_id) ?? 0) + 1);
     trackDrop(row.vehicle_model_id, row.dropoff_datetime);
+    trackCapacityBlockStart(row.vehicle_model_id, row.pickup_datetime);
     trackConflictStart(row.vehicle_model_id, row.pickup_datetime);
     const previous = minHoldExpiry.get(row.vehicle_model_id);
     if (!previous || row.expires_at < previous) minHoldExpiry.set(row.vehicle_model_id, row.expires_at);
@@ -291,6 +324,32 @@ export async function evaluateAvailability(
     available = Math.max(0, available - holds);
 
     const entry: AvailableModel = { modelId, modelName, availableCount: available };
+    if (available < requestedQuantity) {
+      const initiallyBlockedForModel = [...ids]
+        .filter((vehicleId) => initiallyBlockedVehicles.has(vehicleId)).length;
+      let continuousCapacity = ids.size
+        - initiallyBlockedForModel
+        - (initialCapacityDeductions.get(modelId) ?? 0);
+
+      if (continuousCapacity >= requestedQuantity) {
+        const events = new Map<string, number>();
+        for (const vehicleId of ids) {
+          if (initiallyBlockedVehicles.has(vehicleId)) continue;
+          const startsAt = futureVehicleBlockStarts.get(vehicleId);
+          if (startsAt) events.set(startsAt, (events.get(startsAt) ?? 0) + 1);
+        }
+        for (const startsAt of futureCapacityBlockStarts.get(modelId) ?? []) {
+          events.set(startsAt, (events.get(startsAt) ?? 0) + 1);
+        }
+        for (const [startsAt, deduction] of [...events].sort(([a], [b]) => a.localeCompare(b))) {
+          continuousCapacity -= deduction;
+          if (continuousCapacity < requestedQuantity) {
+            entry.availableUntil = startsAt;
+            break;
+          }
+        }
+      }
+    }
     if (available === 0) {
       const dropoff = minDropoff.get(modelId);
       if (dropoff) entry.nextAvailablePickup = snapToBusinessHours(new Date(new Date(dropoff).getTime() + BUFFER_MS).toISOString());

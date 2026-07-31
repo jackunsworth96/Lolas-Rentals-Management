@@ -102,4 +102,29 @@ describe('owner-use availability blocks', () => {
     expect(result.models[0].availableCount).toBe(3);
     expect(result.explanation.models[0].exactVehicleExclusions).toEqual([]);
   });
+
+  it('returns the latest confirmed return when a future booking shortens the window', async () => {
+    const result = await evaluateAvailability({
+      storeId: 'store-lolas',
+      pickupDatetime: '2026-08-01T16:30:00+08:00',
+      dropoffDatetime: '2026-08-05T16:30:00+08:00',
+      requestedQuantity: 1,
+    }, fakeSupabase({
+      fleet: [{ id: 'tuktuk-1', name: 'TukTuk 1', model_id: 'tuktuk', status: 'Available' }],
+      orderItems: [{
+        id: 'future-booking',
+        vehicle_id: 'tuktuk-1',
+        pickup_datetime: '2026-08-03T10:15:00+08:00',
+        dropoff_datetime: '2026-08-06T10:15:00+08:00',
+        orders: { status: 'confirmed' },
+      }],
+      models: [{ id: 'tuktuk', name: 'TukTuk' }],
+    }));
+
+    expect(result.models[0]).toMatchObject({
+      modelId: 'tuktuk',
+      availableCount: 0,
+      availableUntil: '2026-08-03T10:15:00+08:00',
+    });
+  });
 });
