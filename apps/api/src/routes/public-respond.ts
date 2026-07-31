@@ -100,14 +100,19 @@ interface BookingRow {
   status:           string;
   customer_name:    string | null;
   vehicle_model_id: string | null;
+  quantity:         number | null;
   pickup_datetime:  string | null;
   dropoff_datetime: string | null;
+  pickup_location_id: number | null;
+  dropoff_location_id: number | null;
+  pickup_location_address: string | null;
+  dropoff_location_address: string | null;
   store_id:         string;
   web_quote_raw:    number | null;
 }
 
 const BOOKING_COLUMNS =
-  'order_reference, status, customer_name, vehicle_model_id, pickup_datetime, dropoff_datetime, store_id, web_quote_raw';
+  'order_reference, status, customer_name, vehicle_model_id, quantity, pickup_datetime, dropoff_datetime, pickup_location_id, dropoff_location_id, pickup_location_address, dropoff_location_address, store_id, web_quote_raw';
 
 /**
  * Statuses for orders_raw that represent a live (non-cancelled, non-skipped)
@@ -1516,10 +1521,20 @@ router.get('/transfers', async (_req, res, next) => {
 interface BookingResponse {
   reference:         string;
   status:            string;
+  has_existing_booking: true;
+  booking_stage:     'future' | 'active' | 'past';
   customer_name:     string | null;
   vehicle:           string;
+  vehicle_count:     number;
+  vehicles:          string[];
   pickup_datetime:   string | null;
   dropoff_datetime:  string | null;
+  pickup_location:   string | null;
+  pickup_address:    string | null;
+  dropoff_location:  string | null;
+  dropoff_address:   string | null;
+  delivery_booked:   boolean | null;
+  collection_booked: boolean | null;
   store:             string;
   estimated_total?:  number | null;
   balance_due?:      number | null;
@@ -1529,6 +1544,46 @@ interface BookingResponse {
 }
 
 const STATUS_PRIORITY: Record<string, number> = { active: 0, confirmed: 1, completed: 2 };
+
+function bookingStage(status: string): BookingResponse['booking_stage'] {
+  if (status === 'active') return 'active';
+  if (status === 'completed') return 'past';
+  return 'future';
+}
+
+function bookedLocationService(
+  locationName: string | null,
+  locationType: string | null,
+  fee: number | null,
+  address: string | null,
+): boolean | null {
+  if (address?.trim()) return true;
+  if (locationType === 'store') return false;
+  if (locationType) return true;
+  if (fee != null && fee > 0) return true;
+  if (!locationName?.trim()) return null;
+  return !/^(?:store|shop|lola(?:'s)?(?: rentals)?(?: shop)?)$/i.test(locationName.trim());
+}
+
+async function resolveBookingLocation(
+  sb: ReturnType<typeof getSupabaseClient>,
+  locationId: string | number | null | undefined,
+): Promise<{ name: string | null; type: string | null }> {
+  if (locationId == null || locationId === '') return { name: null, type: null };
+  const numericId = Number(locationId);
+  if (!Number.isInteger(numericId) || numericId <= 0) return { name: null, type: null };
+
+  const { data, error } = await sb
+    .from('locations')
+    .select('name, location_type')
+    .eq('id', numericId)
+    .maybeSingle();
+  if (error) console.error('[respond/booking] location query failed:', error);
+  return {
+    name: (data?.name as string | null) ?? null,
+    type: (data?.location_type as string | null) ?? null,
+  };
+}
 
 async function resolveStoreName(
   sb: ReturnType<typeof getSupabaseClient>,
@@ -1905,32 +1960,43 @@ router.get('/booking', async (req, res, next) => {
         }
       }
 
-      // 3. Fetch the first order_item for dates and vehicle name.
-      //    vehicle_name is stored as text; vehicle_model_id used as fallback for the name.
+      // 3. Fetch all order items so Respond.io can distinguish a multi-vehicle
+      //    booking and can see delivery/collection already attached to it.
       let pickupDatetime:  string | null = null;
       let dropoffDatetime: string | null = null;
-      let vehicleName = 'Unknown';
+      let vehicleNames: string[] = [];
 
-      const { data: itemData, error: itemError } = await sb
+      const { data: itemRows, error: itemError } = await sb
         .from('order_items')
-        .select('pickup_datetime, dropoff_datetime, vehicle_name, vehicle_model_id')
+        .select('pickup_datetime, dropoff_datetime, vehicle_name, vehicle_model_id, pickup_location, dropoff_location, pickup_location_id, dropoff_location_id, pickup_fee, dropoff_fee')
         .eq('order_id', order.id)
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
+        .order('created_at', { ascending: true });
 
       if (itemError) {
         console.error('[respond/booking] order_items query failed:', itemError);
-      } else if (itemData) {
-        pickupDatetime  = (itemData.pickup_datetime  as string | null) ?? null;
-        dropoffDatetime = (itemData.dropoff_datetime as string | null) ?? null;
-
-        if (itemData.vehicle_name) {
-          vehicleName = itemData.vehicle_name as string;
-        } else if (itemData.vehicle_model_id) {
-          vehicleName = await resolveVehicleModelName(sb, itemData.vehicle_model_id as string);
-        }
+      } else if (itemRows?.length) {
+        pickupDatetime  = (itemRows[0].pickup_datetime  as string | null) ?? null;
+        dropoffDatetime = (itemRows[0].dropoff_datetime as string | null) ?? null;
+        vehicleNames = await Promise.all(itemRows.map(async (item) => {
+          if (item.vehicle_name) return item.vehicle_name as string;
+          if (item.vehicle_model_id) return resolveVehicleModelName(sb, item.vehicle_model_id as string);
+          return 'Unknown';
+        }));
       }
+
+      const firstItem = itemRows?.[0] ?? null;
+      const [pickupLocationRecord, dropoffLocationRecord] = await Promise.all([
+        resolveBookingLocation(sb, firstItem?.pickup_location_id as string | number | null),
+        resolveBookingLocation(sb, firstItem?.dropoff_location_id as string | number | null),
+      ]);
+      const pickupLocation = pickupLocationRecord.name
+        ?? ((firstItem?.pickup_location as string | null) ?? null);
+      const dropoffLocation = dropoffLocationRecord.name
+        ?? ((firstItem?.dropoff_location as string | null) ?? null);
+      const pickupFee = firstItem?.pickup_fee != null ? Number(firstItem.pickup_fee) : null;
+      const dropoffFee = firstItem?.dropoff_fee != null ? Number(firstItem.dropoff_fee) : null;
+      const vehicleCount = Math.max(vehicleNames.length, 1);
+      if (vehicleNames.length === 0) vehicleNames = ['Unknown'];
 
       // 4. Resolve store name.
       const storeName = await resolveStoreName(sb, order.store_id);
@@ -1938,10 +2004,30 @@ router.get('/booking', async (req, res, next) => {
       const booking: BookingResponse = {
         reference:        order.booking_token ?? order.id,
         status:           order.status,
+        has_existing_booking: true,
+        booking_stage:     bookingStage(order.status),
         customer_name:    customerName,
-        vehicle:          vehicleName,
+        vehicle:          vehicleCount === 1 ? vehicleNames[0] : `${vehicleCount} vehicles`,
+        vehicle_count:    vehicleCount,
+        vehicles:         vehicleNames,
         pickup_datetime:  pickupDatetime,
         dropoff_datetime: dropoffDatetime,
+        pickup_location:  pickupLocation,
+        pickup_address:   null,
+        dropoff_location: dropoffLocation,
+        dropoff_address:  null,
+        delivery_booked: bookedLocationService(
+          pickupLocation,
+          pickupLocationRecord.type,
+          pickupFee,
+          null,
+        ),
+        collection_booked: bookedLocationService(
+          dropoffLocation,
+          dropoffLocationRecord.type,
+          dropoffFee,
+          null,
+        ),
         store:            storeName,
         balance_due:      order.balance_due      != null ? Number(order.balance_due)      : null,
         final_total:      order.final_total      != null ? Number(order.final_total)      : null,
@@ -2004,18 +2090,41 @@ router.get('/booking', async (req, res, next) => {
           (a, b) => (STATUS_PRIORITY[a.status] ?? 99) - (STATUS_PRIORITY[b.status] ?? 99),
         )[0];
 
-    const [storeName, vehicleName] = await Promise.all([
+    const [storeName, vehicleName, pickupLocationRecord, dropoffLocationRecord] = await Promise.all([
       row.store_id         ? resolveStoreName(sb, row.store_id)                : Promise.resolve('Unknown'),
       row.vehicle_model_id ? resolveVehicleModelName(sb, row.vehicle_model_id) : Promise.resolve('Unknown'),
+      resolveBookingLocation(sb, row.pickup_location_id),
+      resolveBookingLocation(sb, row.dropoff_location_id),
     ]);
+    const vehicleCount = Math.max(Number(row.quantity) || 1, 1);
 
     const booking: BookingResponse = {
       reference:        row.order_reference,
       status:           row.status,
+      has_existing_booking: true,
+      booking_stage:     bookingStage(row.status),
       customer_name:    row.customer_name ?? null,
-      vehicle:          vehicleName,
+      vehicle:          vehicleCount === 1 ? vehicleName : `${vehicleCount} x ${vehicleName}`,
+      vehicle_count:    vehicleCount,
+      vehicles:         Array.from({ length: vehicleCount }, () => vehicleName),
       pickup_datetime:  row.pickup_datetime  ?? null,
       dropoff_datetime: row.dropoff_datetime ?? null,
+      pickup_location:  pickupLocationRecord.name,
+      pickup_address:   row.pickup_location_address ?? null,
+      dropoff_location: dropoffLocationRecord.name,
+      dropoff_address:  row.dropoff_location_address ?? null,
+      delivery_booked: bookedLocationService(
+        pickupLocationRecord.name,
+        pickupLocationRecord.type,
+        null,
+        row.pickup_location_address,
+      ),
+      collection_booked: bookedLocationService(
+        dropoffLocationRecord.name,
+        dropoffLocationRecord.type,
+        null,
+        row.dropoff_location_address,
+      ),
       store:            storeName,
       estimated_total:  row.web_quote_raw != null ? Number(row.web_quote_raw) : null,
     };
@@ -2077,7 +2186,7 @@ router.get('/availability', async (req, res, next) => {
 
     const availability = await checkAvailability(
       { bookingPort: req.app.locals.deps.bookingPort },
-      { storeId: STORE_ID, pickupDatetime, dropoffDatetime },
+      { storeId: STORE_ID, pickupDatetime, dropoffDatetime, requestedQuantity: quantity },
     );
 
     let allowedModelTypes = new Map<string, string | null>();
@@ -2112,10 +2221,13 @@ router.get('/availability', async (req, res, next) => {
         available_count:         entry.availableCount,
         sufficient_availability: entry.availableCount >= quantity,
         hold_expires_at:         entry.holdExpiresAt ?? null,
+        available_until:         entry.availableUntil ?? null,
         blocking_window_may_clear_after: entry.nextAvailablePickup ?? null,
         note: entry.availableCount >= quantity
           ? 'This model has enough stock for the exact requested pickup and return datetimes.'
-          : 'Do not present blocking_window_may_clear_after as confirmed availability. It only means an overlapping booking or hold may clear after this time; the full requested rental window must be checked again before suggesting it.',
+          : entry.availableUntil
+            ? 'The requested window is unavailable, but the requested quantity is continuously available from pickup until available_until. Offer this exact shorter return as the first alternative.'
+            : 'Do not present blocking_window_may_clear_after as confirmed availability. It only means an overlapping booking or hold may clear after this time; the full requested rental window must be checked again before suggesting it.',
       }));
 
     const totalAvailable = available.reduce((sum, e) => sum + e.available_count, 0);
@@ -2128,7 +2240,7 @@ router.get('/availability', async (req, res, next) => {
       available,
       total_available:    totalAvailable,
       has_availability:   hasAvailability,
-      guidance:           'Only models with sufficient_availability=true are available for the exact requested pickup and return datetimes. Do not suggest alternative pickup dates/times from blocking_window_may_clear_after unless you run a new availability check for the full requested rental window.',
+      guidance:           'Check availability as soon as the vehicle, quantity, pickup datetime, and return datetime are known. If unavailable and available_until is present, offer that confirmed shorter window first. Do not present blocking_window_may_clear_after as confirmed availability without checking the full alternative rental window.',
     });
   } catch (err) {
     next(err);

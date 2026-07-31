@@ -6,6 +6,10 @@ export interface AvailableModel {
    * This is a hint for re-checking, not proof that the model is available for
    * the same rental duration starting at this timestamp. */
   nextAvailablePickup?: string;
+  /** Latest return datetime that remains continuously bookable from the
+   * requested pickup for requestedQuantity. Present only when shortening an
+   * otherwise unavailable window produces a useful confirmed alternative. */
+  availableUntil?: string;
   /** Set when availableCount is 0 solely because active basket holds are consuming all capacity.
    * ISO timestamp of when the earliest blocking hold expires. Absent when a confirmed
    * booking (order_items / orders_raw) is the reason for unavailability. */
@@ -16,6 +20,8 @@ export interface AvailabilityQuery {
   storeId: string;
   pickupDatetime: string;
   dropoffDatetime: string;
+  /** Quantity used when calculating availableUntil. Defaults to 1. */
+  requestedQuantity?: number;
   /** When set, holds belonging to this session are excluded from the count.
    * Used during order submission so the customer's own hold is not counted
    * against their own booking. */

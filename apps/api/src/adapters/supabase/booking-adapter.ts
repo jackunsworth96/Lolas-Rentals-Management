@@ -136,6 +136,34 @@ export async function evaluateAvailability(
     if (!previous || dropoff < previous) minDropoff.set(modelId, dropoff);
   };
   const exactBlockers = new Map<string, Set<ExactAvailabilityReason>>();
+  const requestedPickupMs = new Date(pickupDatetime).getTime();
+  const requestedQuantity = Math.max(1, query.requestedQuantity ?? 1);
+  const initiallyBlockedVehicles = new Set<string>();
+  const futureVehicleBlockStarts = new Map<string, string>();
+  const initialCapacityDeductions = new Map<string, number>();
+  const futureCapacityBlockStarts = new Map<string, string[]>();
+
+  const trackVehicleBlockStart = (vehicleId: string, startsAt: string | null | undefined) => {
+    if (!startsAt) return;
+    const startsMs = new Date(startsAt).getTime();
+    if (startsMs <= requestedPickupMs) {
+      initiallyBlockedVehicles.add(vehicleId);
+      return;
+    }
+    const previous = futureVehicleBlockStarts.get(vehicleId);
+    if (!previous || startsAt < previous) futureVehicleBlockStarts.set(vehicleId, startsAt);
+  };
+  const trackCapacityBlockStart = (modelId: string, startsAt: string | null | undefined) => {
+    if (!startsAt) return;
+    const startsMs = new Date(startsAt).getTime();
+    if (startsMs <= requestedPickupMs) {
+      initialCapacityDeductions.set(modelId, (initialCapacityDeductions.get(modelId) ?? 0) + 1);
+      return;
+    }
+    const starts = futureCapacityBlockStarts.get(modelId) ?? [];
+    starts.push(startsAt);
+    futureCapacityBlockStarts.set(modelId, starts);
+  };
   const addExactBlocker = (vehicleId: string, reason: ExactAvailabilityReason) => {
     const reasons = exactBlockers.get(vehicleId) ?? new Set<ExactAvailabilityReason>();
     reasons.add(reason);
@@ -143,60 +171,68 @@ export async function evaluateAvailability(
   };
 
   const { data: bookedRows, error: bookedErr } = await sb
-    .from('order_items').select('id, vehicle_id, dropoff_datetime, orders!inner(status)')
+    .from('order_items').select('id, vehicle_id, pickup_datetime, dropoff_datetime, orders!inner(status)')
     .eq('store_id', storeId).not('vehicle_id', 'is', null)
     .not('pickup_datetime', 'is', null).not('dropoff_datetime', 'is', null)
     .lt('pickup_datetime', dropoffDatetime).gt('dropoff_datetime', pickupBuffered);
   if (bookedErr) throw new Error(`order_items overlap query failed: ${bookedErr.message}`);
-  for (const row of (bookedRows ?? []) as Array<{ id: string; vehicle_id: string; dropoff_datetime: string; orders: unknown }>) {
+  for (const row of (bookedRows ?? []) as Array<{ id: string; vehicle_id: string; pickup_datetime: string; dropoff_datetime: string; orders: unknown }>) {
     if (excludeOrderItemId && row.id === excludeOrderItemId) continue;
     const orders = row.orders as { status: string } | { status: string }[] | null;
     const status = Array.isArray(orders) ? orders[0]?.status : orders?.status;
     if (status && status !== 'cancelled' && status !== 'completed') {
       addExactBlocker(row.vehicle_id, 'order');
       const modelId = vehicleToModel.get(row.vehicle_id);
-      if (modelId) trackDrop(modelId, row.dropoff_datetime);
+      if (modelId) {
+        trackDrop(modelId, row.dropoff_datetime);
+        trackVehicleBlockStart(row.vehicle_id, row.pickup_datetime);
+      }
     }
   }
 
   const { data: directRows, error: directErr } = await sb
-    .from('orders_raw').select('vehicle_model_id, dropoff_datetime')
+    .from('orders_raw').select('vehicle_model_id, pickup_datetime, dropoff_datetime')
     .eq('store_id', storeId).eq('booking_channel', 'direct').eq('status', 'unprocessed')
     .not('vehicle_model_id', 'is', null)
     .lt('pickup_datetime', dropoffDatetime).gt('dropoff_datetime', pickupBuffered);
   if (directErr) throw new Error(`orders_raw direct overlap query failed: ${directErr.message}`);
   const directReservedByModel = new Map<string, number>();
-  for (const row of (directRows ?? []) as Array<{ vehicle_model_id: string; dropoff_datetime: string }>) {
+  for (const row of (directRows ?? []) as Array<{ vehicle_model_id: string; pickup_datetime: string; dropoff_datetime: string }>) {
     directReservedByModel.set(row.vehicle_model_id, (directReservedByModel.get(row.vehicle_model_id) ?? 0) + 1);
     trackDrop(row.vehicle_model_id, row.dropoff_datetime);
+    trackCapacityBlockStart(row.vehicle_model_id, row.pickup_datetime);
   }
 
   const { data: walkInRows, error: walkInErr } = await sb
-    .from('orders_raw').select('vehicle_id, dropoff_datetime')
+    .from('orders_raw').select('vehicle_id, pickup_datetime, dropoff_datetime')
     .eq('store_id', storeId).eq('booking_channel', 'walk_in').eq('status', 'unprocessed')
     .not('vehicle_id', 'is', null)
     .lt('pickup_datetime', dropoffDatetime).gt('dropoff_datetime', pickupBuffered);
   if (walkInErr) throw new Error(`orders_raw walk-in overlap query failed: ${walkInErr.message}`);
-  for (const row of (walkInRows ?? []) as Array<{ vehicle_id: string; dropoff_datetime: string }>) {
+  for (const row of (walkInRows ?? []) as Array<{ vehicle_id: string; pickup_datetime: string; dropoff_datetime: string }>) {
     addExactBlocker(row.vehicle_id, 'walk_in');
     const modelId = vehicleToModel.get(row.vehicle_id);
-    if (modelId) trackDrop(modelId, row.dropoff_datetime);
+    if (modelId) {
+      trackDrop(modelId, row.dropoff_datetime);
+      trackVehicleBlockStart(row.vehicle_id, row.pickup_datetime);
+    }
   }
 
   const vehicleIds = rentableFleet.map((vehicle) => vehicle.id);
   const { data: ownerUseRows, error: ownerUseErr } = await sb
-    .from('fleet_unavailability').select('vehicle_id')
+    .from('fleet_unavailability').select('vehicle_id, starts_at')
     .eq('store_id', storeId).eq('type', 'owner_use').is('cancelled_at', null)
     .in('vehicle_id', vehicleIds)
     .lt('starts_at', dropoffDatetime).gt('ends_at', pickupDatetime);
   if (ownerUseErr) throw new Error(`fleet unavailability query failed: ${ownerUseErr.message}`);
-  for (const row of (ownerUseRows ?? []) as Array<{ vehicle_id: string }>) {
+  for (const row of (ownerUseRows ?? []) as Array<{ vehicle_id: string; starts_at: string }>) {
     addExactBlocker(row.vehicle_id, 'owner_use');
+    trackVehicleBlockStart(row.vehicle_id, row.starts_at);
   }
 
   const nowIso = new Date().toISOString();
   let holdsQuery = sb
-    .from('booking_holds').select('vehicle_model_id, dropoff_datetime, expires_at')
+    .from('booking_holds').select('vehicle_model_id, pickup_datetime, dropoff_datetime, expires_at')
     .eq('store_id', storeId).gt('expires_at', nowIso)
     .lt('pickup_datetime', dropoffDatetime).gt('dropoff_datetime', pickupDatetime);
   if (excludeSessionToken) holdsQuery = holdsQuery.neq('session_token', excludeSessionToken);
@@ -204,9 +240,10 @@ export async function evaluateAvailability(
   if (holdErr) throw new Error(`booking_holds overlap query failed: ${holdErr.message}`);
   const holdsByModel = new Map<string, number>();
   const minHoldExpiry = new Map<string, string>();
-  for (const row of (holdRows ?? []) as Array<{ vehicle_model_id: string; dropoff_datetime: string; expires_at: string }>) {
+  for (const row of (holdRows ?? []) as Array<{ vehicle_model_id: string; pickup_datetime: string; dropoff_datetime: string; expires_at: string }>) {
     holdsByModel.set(row.vehicle_model_id, (holdsByModel.get(row.vehicle_model_id) ?? 0) + 1);
     trackDrop(row.vehicle_model_id, row.dropoff_datetime);
+    trackCapacityBlockStart(row.vehicle_model_id, row.pickup_datetime);
     const previous = minHoldExpiry.get(row.vehicle_model_id);
     if (!previous || row.expires_at < previous) minHoldExpiry.set(row.vehicle_model_id, row.expires_at);
   }
@@ -249,6 +286,32 @@ export async function evaluateAvailability(
     available = Math.max(0, available - holds);
 
     const entry: AvailableModel = { modelId, modelName, availableCount: available };
+    if (available < requestedQuantity) {
+      const initiallyBlockedForModel = [...ids]
+        .filter((vehicleId) => initiallyBlockedVehicles.has(vehicleId)).length;
+      let continuousCapacity = ids.size
+        - initiallyBlockedForModel
+        - (initialCapacityDeductions.get(modelId) ?? 0);
+
+      if (continuousCapacity >= requestedQuantity) {
+        const events = new Map<string, number>();
+        for (const vehicleId of ids) {
+          if (initiallyBlockedVehicles.has(vehicleId)) continue;
+          const startsAt = futureVehicleBlockStarts.get(vehicleId);
+          if (startsAt) events.set(startsAt, (events.get(startsAt) ?? 0) + 1);
+        }
+        for (const startsAt of futureCapacityBlockStarts.get(modelId) ?? []) {
+          events.set(startsAt, (events.get(startsAt) ?? 0) + 1);
+        }
+        for (const [startsAt, deduction] of [...events].sort(([a], [b]) => a.localeCompare(b))) {
+          continuousCapacity -= deduction;
+          if (continuousCapacity < requestedQuantity) {
+            entry.availableUntil = startsAt;
+            break;
+          }
+        }
+      }
+    }
     if (available === 0) {
       const dropoff = minDropoff.get(modelId);
       if (dropoff) entry.nextAvailablePickup = snapToBusinessHours(new Date(new Date(dropoff).getTime() + BUFFER_MS).toISOString());
