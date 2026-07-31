@@ -77,7 +77,11 @@ export interface AvailabilityModel {
   modelId: string;
   modelName: string;
   availableCount: number;
-  totalCount: number;
+  /** Earliest time the model is free again after being fully booked. */
+  nextAvailablePickup?: string;
+  /** Start of the first conflict within the requested window when at least one unit
+   * was free at the beginning of the period (partial availability). */
+  firstConflictAt?: string;
 }
 
 export interface PublicModel {

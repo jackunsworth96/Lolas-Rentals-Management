@@ -135,6 +135,27 @@ export async function evaluateAvailability(
     const previous = minDropoff.get(modelId);
     if (!previous || dropoff < previous) minDropoff.set(modelId, dropoff);
   };
+
+  // Track earliest blocker that starts AFTER the user's pickup (for partial-availability detection)
+  const minConflictStart = new Map<string, string>();
+  const trackConflictStart = (modelId: string, blockerPickup: string) => {
+    if (blockerPickup <= pickupDatetime) return;
+    const previous = minConflictStart.get(modelId);
+    if (!previous || blockerPickup < previous) minConflictStart.set(modelId, blockerPickup);
+  };
+
+  // Track units that were already blocked AT the start of the window (pickup ≤ user's pickupDatetime)
+  // Used to verify that at least one unit was actually free at pickup time before claiming partial availability.
+  const exactVehicleBlockedFromStart = new Map<string, Set<string>>(); // model → set of vehicle IDs
+  const trackExactVehicleFromStart = (vehicleId: string, modelId: string, blockerPickup: string) => {
+    if (blockerPickup > pickupDatetime) return;
+    const set = exactVehicleBlockedFromStart.get(modelId) ?? new Set<string>();
+    set.add(vehicleId);
+    exactVehicleBlockedFromStart.set(modelId, set);
+  };
+  const directFromStart = new Map<string, number>();
+  const holdsFromStart = new Map<string, number>();
+
   const exactBlockers = new Map<string, Set<ExactAvailabilityReason>>();
   const requestedPickupMs = new Date(pickupDatetime).getTime();
   const requestedQuantity = Math.max(1, query.requestedQuantity ?? 1);
@@ -186,6 +207,8 @@ export async function evaluateAvailability(
       if (modelId) {
         trackDrop(modelId, row.dropoff_datetime);
         trackVehicleBlockStart(row.vehicle_id, row.pickup_datetime);
+        trackConflictStart(modelId, row.pickup_datetime);
+        trackExactVehicleFromStart(row.vehicle_id, modelId, row.pickup_datetime);
       }
     }
   }
@@ -201,6 +224,10 @@ export async function evaluateAvailability(
     directReservedByModel.set(row.vehicle_model_id, (directReservedByModel.get(row.vehicle_model_id) ?? 0) + 1);
     trackDrop(row.vehicle_model_id, row.dropoff_datetime);
     trackCapacityBlockStart(row.vehicle_model_id, row.pickup_datetime);
+    trackConflictStart(row.vehicle_model_id, row.pickup_datetime);
+    if (row.pickup_datetime <= pickupDatetime) {
+      directFromStart.set(row.vehicle_model_id, (directFromStart.get(row.vehicle_model_id) ?? 0) + 1);
+    }
   }
 
   const { data: walkInRows, error: walkInErr } = await sb
@@ -215,6 +242,8 @@ export async function evaluateAvailability(
     if (modelId) {
       trackDrop(modelId, row.dropoff_datetime);
       trackVehicleBlockStart(row.vehicle_id, row.pickup_datetime);
+      trackConflictStart(modelId, row.pickup_datetime);
+      trackExactVehicleFromStart(row.vehicle_id, modelId, row.pickup_datetime);
     }
   }
 
@@ -228,6 +257,11 @@ export async function evaluateAvailability(
   for (const row of (ownerUseRows ?? []) as Array<{ vehicle_id: string; starts_at: string }>) {
     addExactBlocker(row.vehicle_id, 'owner_use');
     trackVehicleBlockStart(row.vehicle_id, row.starts_at);
+    const modelId = vehicleToModel.get(row.vehicle_id);
+    if (modelId) {
+      trackConflictStart(modelId, row.starts_at);
+      trackExactVehicleFromStart(row.vehicle_id, modelId, row.starts_at);
+    }
   }
 
   const nowIso = new Date().toISOString();
@@ -244,8 +278,12 @@ export async function evaluateAvailability(
     holdsByModel.set(row.vehicle_model_id, (holdsByModel.get(row.vehicle_model_id) ?? 0) + 1);
     trackDrop(row.vehicle_model_id, row.dropoff_datetime);
     trackCapacityBlockStart(row.vehicle_model_id, row.pickup_datetime);
+    trackConflictStart(row.vehicle_model_id, row.pickup_datetime);
     const previous = minHoldExpiry.get(row.vehicle_model_id);
     if (!previous || row.expires_at < previous) minHoldExpiry.set(row.vehicle_model_id, row.expires_at);
+    if (row.pickup_datetime <= pickupDatetime) {
+      holdsFromStart.set(row.vehicle_model_id, (holdsFromStart.get(row.vehicle_model_id) ?? 0) + 1);
+    }
   }
 
   const modelIds = [...fleetByModel.keys()];
@@ -318,6 +356,28 @@ export async function evaluateAvailability(
       if (confirmedAvailable > 0) {
         const expiry = minHoldExpiry.get(modelId);
         if (expiry) entry.holdExpiresAt = expiry;
+      }
+      // Partial availability: set firstConflictAt when there is a free window within the period.
+      const conflictStart = minConflictStart.get(modelId);
+      if (conflictStart) {
+        const totalUnits = ids.size;
+        const fromStartExact = exactVehicleBlockedFromStart.get(modelId)?.size ?? 0;
+        const fromStartDirect = directFromStart.get(modelId) ?? 0;
+        const fromStartHolds = holdsFromStart.get(modelId) ?? 0;
+        const availableAtWindowStart = Math.max(0, totalUnits - fromStartExact - fromStartDirect - fromStartHolds);
+        if (availableAtWindowStart > 0) {
+          // Clean case: at least one unit was free at the user's exact pickup time.
+          entry.firstConflictAt = conflictStart;
+        } else if (
+          entry.nextAvailablePickup &&
+          entry.nextAvailablePickup < dropoffDatetime &&
+          conflictStart > entry.nextAvailablePickup
+        ) {
+          // Same-day-return case: a prior booking clears within the window (nextAvailablePickup)
+          // before a new booking starts (conflictStart). The vehicle is free between those two
+          // points even though it was blocked at the user's exact pickup time.
+          entry.firstConflictAt = conflictStart;
+        }
       }
     }
     results.push(entry);
