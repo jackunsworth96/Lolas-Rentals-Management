@@ -189,6 +189,7 @@ interface RespondExtensionTarget {
   storeId: string;
   currentDailyRate: number | null;
   currentRentalDays: number | null;
+  securityDeposit: number | null;
   items: RespondExtensionItem[];
   message?: string;
 }
@@ -228,6 +229,25 @@ function manilaDateKey(value: string | Date): string {
 
 function buildExtensionPaymentUrl(orderReference: string): string {
   return `${EXTENSION_PAYMENT_ORIGIN}/book/extend/pay?ref=${encodeURIComponent(orderReference)}`;
+}
+
+function extensionPaymentPolicy(extensionBalance: number, securityDeposit: number | null) {
+  if (securityDeposit == null) {
+    return {
+      security_deposit: null,
+      payment_required_before_return: null,
+      payment_guidance: 'The booking deposit could not be verified. Hand off payment-timing questions to the team.',
+    };
+  }
+
+  const paymentRequiredBeforeReturn = extensionBalance > securityDeposit;
+  return {
+    security_deposit: securityDeposit,
+    payment_required_before_return: paymentRequiredBeforeReturn,
+    payment_guidance: paymentRequiredBeforeReturn
+      ? 'The extension balance exceeds the deposit. Ask the customer to settle at the store or offer to have the team send a Wise payment link.'
+      : 'The extension balance does not exceed the deposit. The customer does not need to visit the store now and may settle when returning the vehicle.',
+  };
 }
 
 function getLookupParams(req: Request): {
@@ -415,6 +435,7 @@ function respondExtensionPublicTarget(target: RespondExtensionTarget) {
     current_dropoff_datetime: target.currentDropoffDatetime,
     pickup_datetime: target.pickupDatetime,
     store_id: target.storeId,
+    security_deposit: target.securityDeposit,
     can_extend: target.source === 'active',
     extension_url: 'https://www.lolasrentals.com/book/extend',
     guidance: target.source === 'active'
@@ -462,7 +483,7 @@ async function resolveRespondExtensionTarget(
 
   let ordersQuery = sb
     .from('orders')
-    .select('id, booking_token, status, store_id, customer_id, created_at')
+    .select('id, booking_token, status, store_id, customer_id, created_at, security_deposit')
     .eq('status', 'active');
 
   if (refVariants.length > 0) {
@@ -483,6 +504,7 @@ async function resolveRespondExtensionTarget(
     store_id: string;
     customer_id: string | null;
     created_at: string;
+    security_deposit: number | string | null;
   };
   const activeOrder = ((activeOrders ?? []) as ActiveOrderRow[])[0];
 
@@ -555,6 +577,9 @@ async function resolveRespondExtensionTarget(
         storeId: item.storeId,
         currentDailyRate: item.currentDailyRate,
         currentRentalDays: item.currentRentalDays,
+        securityDeposit: activeOrder.security_deposit != null
+          ? Number(activeOrder.security_deposit)
+          : null,
         items,
       };
     }
@@ -616,6 +641,7 @@ async function resolveRespondExtensionTarget(
     storeId: raw.store_id,
     currentDailyRate: null,
     currentRentalDays: null,
+    securityDeposit: null,
     items: [],
     message: raw.status === 'unprocessed'
       ? 'This booking is not active yet, so respond.io should hand off instead of confirming an extension.'
@@ -761,6 +787,7 @@ async function previewRespondExtension(
         extension_days: commonDays.size === 1 ? lineItems[0].extension_days : null,
         daily_rate_per_vehicle: commonRates.size === 1 ? lineItems[0].daily_rate : null,
         extension_total: extensionTotal,
+        ...extensionPaymentPolicy(extensionTotal, target.securityDeposit),
         calculation,
         can_auto_confirm: false,
         requires_human_confirmation: true,
@@ -900,6 +927,7 @@ async function previewRespondExtension(
       recurring_addons: recurringAddons,
       recurring_addons_total: recurringAddonsTotal,
       extension_total: extensionTotal,
+      ...extensionPaymentPolicy(extensionTotal, target.securityDeposit),
       balance_note: 'Add this amount to the booking balance. Confirm only after the customer agrees.',
       customer_message: `Yes, we can extend your rental to ${newDropoff.toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' })}. The extension balance is PHP ${extensionTotal.toLocaleString('en-PH')}${addonCalculation}. Shall I confirm that for you?`,
     },
@@ -1772,6 +1800,13 @@ router.post('/extension/confirm', async (req, res, next) => {
     }
 
     if (activeOutcome.kind === 'success') {
+      const paymentPolicy = extensionPaymentPolicy(
+        activeOutcome.outstandingBalance,
+        target.securityDeposit,
+      );
+      const paymentMessage = paymentPolicy.payment_required_before_return
+        ? 'Because this is more than your deposit, please settle it at our store, or we can ask the team to send you a Wise payment link.'
+        : 'This does not exceed your deposit, so you do not need to come by now and can settle it when you return the vehicle.';
       sendRespondExtensionJson(res, 'confirm', params, {
         success: true,
         order_reference: target.orderReference,
@@ -1782,9 +1817,10 @@ router.post('/extension/confirm', async (req, res, next) => {
         extension_days: activeOutcome.extensionDays,
         extension_cost: activeOutcome.extensionCost,
         outstanding_extension_balance: activeOutcome.outstandingBalance,
+        ...paymentPolicy,
         payment_status: 'pending',
         payment_url: buildExtensionPaymentUrl(target.orderReference),
-        customer_message: `All set - your rental is extended to ${new Date(activeOutcome.newDropoffDatetime).toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' })}. The outstanding extension balance is PHP ${activeOutcome.outstandingBalance.toLocaleString('en-PH')}. You can pay on return, or use this page once online extension payments are available: ${buildExtensionPaymentUrl(target.orderReference)}`,
+        customer_message: `All set - your rental is extended to ${new Date(activeOutcome.newDropoffDatetime).toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' })}. The outstanding extension balance is PHP ${activeOutcome.outstandingBalance.toLocaleString('en-PH')}. ${paymentMessage}`,
       });
       return;
     }

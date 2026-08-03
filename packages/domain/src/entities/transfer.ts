@@ -154,6 +154,8 @@ export class Transfer {
     return Transfer.create({
       ...(this as unknown as TransferProps),
       pickupTime: time,
+      pickupTimeEnd: null,
+      updatedAt: new Date(),
     });
   }
 

@@ -126,6 +126,22 @@ describe('Transfer', () => {
       expect(profit.amount).toBe(2500);
     });
   });
+
+  describe('withPickupTime', () => {
+    it('stores the manually selected pickup time and clears an old calculated window', () => {
+      const original = Transfer.create(makeTransferProps({
+        pickupTime: '16:20',
+        pickupTimeEnd: '16:50',
+      }));
+
+      const updated = original.withPickupTime('17:00');
+
+      expect(updated.flightTime).toBe('14:00');
+      expect(updated.pickupTime).toBe('17:00');
+      expect(updated.pickupTimeEnd).toBeNull();
+      expect(updated.updatedAt.getTime()).toBeGreaterThanOrEqual(original.updatedAt.getTime());
+    });
+  });
 });
 
 describe('MaintenanceRecord', () => {
