@@ -109,6 +109,7 @@ export default function TransfersPage() {
     setSavedPickupTimeId(null);
     try {
       await updatePickupTime(t.id, value || null);
+      await queryClient.invalidateQueries({ queryKey: ['transfers'] });
       setSavedPickupTimeId(t.id);
       setTimeout(() => setSavedPickupTimeId((prev) => (prev === t.id ? null : prev)), 2000);
     } catch {
@@ -456,7 +457,7 @@ export default function TransfersPage() {
                 <p className="mt-2 font-lato text-xs text-charcoal-brand/70">
                   {formatDate(t.serviceDate)}
                   {t.flightTime && (
-                    <span className="ml-1 text-charcoal-brand/50">{t.flightTime}</span>
+                    <span className="ml-1 text-charcoal-brand/50">✈ Flight: {t.flightTime}</span>
                   )}
                 </p>
                 {t.pickupTime && (

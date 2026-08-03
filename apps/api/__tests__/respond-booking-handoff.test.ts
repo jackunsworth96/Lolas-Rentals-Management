@@ -358,7 +358,7 @@ function makeSupabaseForMultiVehicleExtension() {
   };
 }
 
-function makeSupabaseForSingleVehicleExtensionWithPom() {
+function makeSupabaseForSingleVehicleExtensionWithPom(securityDeposit = 2000) {
   return {
     from: vi.fn((table: string) => {
       if (table === 'orders') {
@@ -373,6 +373,7 @@ function makeSupabaseForSingleVehicleExtensionWithPom() {
               store_id: 'store-lolas',
               customer_id: 'customer-pom',
               created_at: '2026-07-20T00:00:00Z',
+              security_deposit: securityDeposit,
             }],
             error: null,
           })),
@@ -859,6 +860,8 @@ describe('Respond.io recurring add-on extension pricing', () => {
       rental_extension_total: 930,
       recurring_addons_total: 190,
       extension_total: 1120,
+      security_deposit: 2000,
+      payment_required_before_return: false,
       recurring_addons: [{
         name: 'Peace of Mind Cover',
         daily_rate: 95,
@@ -868,5 +871,30 @@ describe('Respond.io recurring add-on extension pricing', () => {
     });
     expect(res.body.customer_message).toContain('PHP 1,120');
     expect(res.body.customer_message).toContain('Peace of Mind Cover');
+    expect(res.body.payment_guidance).toContain('may settle when returning');
+  });
+
+  it('requires store or Wise settlement when the extension exceeds the deposit', async () => {
+    mocks.getSupabaseClient.mockReturnValue(makeSupabaseForSingleVehicleExtensionWithPom(1000));
+    configRepo.getModelPricing.mockResolvedValue([
+      { minDays: 1, maxDays: 99, dailyRate: 465 },
+    ]);
+
+    const res = await request(app)
+      .get('/api/public/respond/extension/preview')
+      .set('X-API-Key', 'respond-test-key')
+      .query({
+        ref: 'LR-0728-POM1',
+        newDropoffDatetime: '2026-07-28T16:45:00+08:00',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      extension_total: 1120,
+      security_deposit: 1000,
+      payment_required_before_return: true,
+    });
+    expect(res.body.payment_guidance).toContain('settle at the store');
+    expect(res.body.payment_guidance).toContain('Wise payment link');
   });
 });
