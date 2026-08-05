@@ -63,6 +63,7 @@ export function FleetAccountingTab() {
   const storeConfig = configs.find((c) => c.storeId === selectedStoreId);
 
   const [fixedAsset, setFixedAsset] = useState('');
+  const [setupAsset, setSetupAsset] = useState('');
   const [accDep, setAccDep] = useState('');
   const [depExpense, setDepExpense] = useState('');
   const [gainLoss, setGainLoss] = useState('');
@@ -70,6 +71,7 @@ export function FleetAccountingTab() {
 
   useEffect(() => {
     setFixedAsset(storeConfig?.fixedAssetAccountId ?? '');
+    setSetupAsset(storeConfig?.setupAssetAccountId ?? '');
     setAccDep(storeConfig?.accDepreciationAccountId ?? '');
     setDepExpense(storeConfig?.depreciationExpenseAccountId ?? '');
     setGainLoss(storeConfig?.gainLossAccountId ?? '');
@@ -105,6 +107,7 @@ export function FleetAccountingTab() {
       {
         storeId: selectedStoreId,
         fixedAssetAccountId: fixedAsset || null,
+        setupAssetAccountId: setupAsset || null,
         accDepreciationAccountId: accDep || null,
         depreciationExpenseAccountId: depExpense || null,
         gainLossAccountId: gainLoss || null,
@@ -153,6 +156,13 @@ export function FleetAccountingTab() {
             hint="The balance sheet account where vehicle costs are capitalised (e.g. 'Vehicles')."
             value={fixedAsset}
             onChange={setFixedAsset}
+            options={assetAccounts}
+          />
+          <AccountSelect
+            label="Reusable setup asset account"
+            hint="The balance sheet account for reusable racks and accessories that are not disposed with a vehicle."
+            value={setupAsset}
+            onChange={setSetupAsset}
             options={assetAccounts}
           />
           <AccountSelect

@@ -23,7 +23,7 @@ function makeVehicleProps(overrides: Partial<VehicleProps> = {}): VehicleProps {
     usefulLifeMonths: 60,
     salvageValue: 10000,
     accumulatedDepreciation: 0,
-    bookValue: 85000,
+    bookValue: 80000,
     dateSold: null,
     soldPrice: null,
     profitLoss: null,
@@ -109,43 +109,43 @@ describe('Vehicle', () => {
     it('updates book value correctly', () => {
       const v = Vehicle.create(
         makeVehicleProps({
-          totalBikeCost: 85000,
+          purchasePrice: 80000,
           accumulatedDepreciation: 0,
-          bookValue: 85000,
+          bookValue: 80000,
           salvageValue: 10000,
         }),
       );
       v.applyDepreciation(5000);
       expect(v.accumulatedDepreciation).toBe(5000);
-      expect(v.bookValue).toBe(80000);
+      expect(v.bookValue).toBe(75000);
     });
 
     it('does not reduce book value below salvage value', () => {
       const v = Vehicle.create(
         makeVehicleProps({
-          totalBikeCost: 85000,
-          accumulatedDepreciation: 70000,
+          purchasePrice: 80000,
+          accumulatedDepreciation: 65000,
           bookValue: 15000,
           salvageValue: 10000,
         }),
       );
       v.applyDepreciation(20000);
       expect(v.bookValue).toBe(10000);
-      expect(v.accumulatedDepreciation).toBe(75000);
+      expect(v.accumulatedDepreciation).toBe(70000);
     });
 
     it('clamps exactly to salvage when depreciation matches remaining', () => {
       const v = Vehicle.create(
         makeVehicleProps({
-          totalBikeCost: 85000,
-          accumulatedDepreciation: 70000,
+          purchasePrice: 80000,
+          accumulatedDepreciation: 65000,
           bookValue: 15000,
           salvageValue: 10000,
         }),
       );
       v.applyDepreciation(5000);
       expect(v.bookValue).toBe(10000);
-      expect(v.accumulatedDepreciation).toBe(75000);
+      expect(v.accumulatedDepreciation).toBe(70000);
     });
 
     it('throws when vehicle is protected', () => {
@@ -157,14 +157,14 @@ describe('Vehicle', () => {
       const v = Vehicle.create(
         makeVehicleProps({
           status: 'Maintenance',
-          totalBikeCost: 85000,
+          purchasePrice: 80000,
           accumulatedDepreciation: 0,
-          bookValue: 85000,
+          bookValue: 80000,
           salvageValue: 10000,
         }),
       );
       v.applyDepreciation(1000);
-      expect(v.bookValue).toBe(84000);
+      expect(v.bookValue).toBe(79000);
     });
   });
 });

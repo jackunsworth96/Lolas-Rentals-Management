@@ -126,11 +126,14 @@ export class Vehicle {
         `Cannot depreciate: status '${this._status}'`,
       );
     }
+    if (this.purchasePrice == null) {
+      throw new Error(`Cannot depreciate vehicle ${this.id}: purchase price is missing`);
+    }
     this._accumulatedDepreciation += amount;
-    this._bookValue = this.totalBikeCost - this._accumulatedDepreciation;
+    this._bookValue = this.purchasePrice - this._accumulatedDepreciation;
     if (this._bookValue < this.salvageValue) {
       this._bookValue = this.salvageValue;
-      this._accumulatedDepreciation = this.totalBikeCost - this.salvageValue;
+      this._accumulatedDepreciation = this.purchasePrice - this.salvageValue;
     }
     this._updatedAt = new Date();
   }

@@ -37,7 +37,10 @@ export async function recordSale(
     );
   }
 
-  const totalCost = vehicle.totalBikeCost;
+  if (vehicle.purchasePrice == null) {
+    throw new Error(`Cannot sell vehicle ${vehicle.id}: purchase price is missing`);
+  }
+  const assetCost = vehicle.purchasePrice;
   const accDepreciation = vehicle.accumulatedDepreciation;
   const bookValue = vehicle.bookValue;
   const profitLoss = input.salePrice - bookValue;
@@ -59,7 +62,7 @@ export async function recordSale(
     purchasePrice: vehicle.purchasePrice,
     purchaseDate: vehicle.purchaseDate,
     setUpCosts: vehicle.setUpCosts,
-    totalBikeCost: totalCost,
+    totalBikeCost: vehicle.totalBikeCost,
     usefulLifeMonths: vehicle.usefulLifeMonths,
     salvageValue: vehicle.salvageValue,
     accumulatedDepreciation: accDepreciation,
@@ -96,7 +99,7 @@ export async function recordSale(
       entryId: crypto.randomUUID(),
       accountId: input.fixedAssetAccountId,
       debit: Money.zero(),
-      credit: Money.php(totalCost),
+      credit: Money.php(assetCost),
       description: `Vehicle ${vehicle.id} asset disposal`,
       referenceType: 'vehicle',
       referenceId: vehicle.id,

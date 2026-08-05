@@ -26,6 +26,7 @@ export function AssetManagementModal({ open, onClose, vehicleId }: AssetManageme
   const [usefulLifeMonths, setUsefulLifeMonths] = useState('36');
   const [salvageValue, setSalvageValue] = useState('0');
   const [fixedAssetAccountId, setFixedAssetAccountId] = useState('');
+  const [setupAssetAccountId, setSetupAssetAccountId] = useState('');
   const [cashAccountId, setCashAccountId] = useState('');
 
   const [saleDate, setSaleDate] = useState('');
@@ -49,6 +50,7 @@ export function AssetManagementModal({ open, onClose, vehicleId }: AssetManageme
       setFixedAssetAccountId(cfg.fixedAssetAccountId);
       setSaleFixedAssetAccountId(cfg.fixedAssetAccountId);
     }
+    if (cfg.setupAssetAccountId) setSetupAssetAccountId(cfg.setupAssetAccountId);
     if (cfg.accDepreciationAccountId) {
       setSaleAccDepreciationAccountId(cfg.accDepreciationAccountId);
       setAccumulatedAccountId(cfg.accDepreciationAccountId);
@@ -63,16 +65,18 @@ export function AssetManagementModal({ open, onClose, vehicleId }: AssetManageme
 
   const handleRecordPurchase = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!purchasePrice || !purchaseDate || !fixedAssetAccountId || !cashAccountId) return;
+    const setupCostAmount = Number(setUpCosts) || 0;
+    if (!purchasePrice || !purchaseDate || !fixedAssetAccountId || !cashAccountId || (setupCostAmount > 0 && !setupAssetAccountId)) return;
     recordPurchase.mutate(
       {
         vehicleId,
         purchasePrice: Number(purchasePrice),
         purchaseDate,
-        setUpCosts: Number(setUpCosts) || 0,
+        setUpCosts: setupCostAmount,
         usefulLifeMonths: Number(usefulLifeMonths) || 36,
         salvageValue: Number(salvageValue) || 0,
         fixedAssetAccountId,
+        setupAssetAccountId: setupAssetAccountId || undefined,
         cashAccountId,
       },
       { onSuccess: () => onClose() },
@@ -198,6 +202,15 @@ export function AssetManagementModal({ open, onClose, vehicleId }: AssetManageme
                 {labelledAccounts.filter((a) => (accType(a) || '').toLowerCase() === 'asset').map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
               </select>
             </label>
+            {(Number(setUpCosts) || 0) > 0 && (
+              <label className="block">
+                <span className="text-sm text-gray-600">Reusable setup asset account</span>
+                <select value={setupAssetAccountId} onChange={(e) => setSetupAssetAccountId(e.target.value)} required className="mt-1 block w-40 rounded border px-2 py-1.5 text-sm">
+                  <option value="">Select</option>
+                  {labelledAccounts.filter((a) => (accType(a) || '').toLowerCase() === 'asset' && a.id !== fixedAssetAccountId).map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
+                </select>
+              </label>
+            )}
             <button type="submit" disabled={recordPurchase.isPending} className="self-end rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50">Record purchase</button>
           </form>
           {recordPurchase.error && <p className="mt-2 text-sm text-red-600">{(recordPurchase.error as Error).message}</p>}

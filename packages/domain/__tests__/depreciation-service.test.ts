@@ -4,11 +4,10 @@ import { calculateMonthlyDepreciation } from '../src/services/depreciation-servi
 describe('calculateMonthlyDepreciation', () => {
   it('calculates standard straight-line depreciation', () => {
     const result = calculateMonthlyDepreciation({
-      totalCost: 100000,
+      purchasePrice: 100000,
       salvageValue: 35000,
       usefulLifeMonths: 36,
       accumulatedDepreciation: 0,
-      bookValue: 100000,
     });
     expect(result.monthlyAmount).toBeCloseTo(1805.56, 2);
     expect(result.actualDepreciation).toBeCloseTo(1805.56, 2);
@@ -17,11 +16,10 @@ describe('calculateMonthlyDepreciation', () => {
 
   it('stops depreciation at salvage value', () => {
     const result = calculateMonthlyDepreciation({
-      totalCost: 100000,
+      purchasePrice: 100000,
       salvageValue: 35000,
       usefulLifeMonths: 36,
       accumulatedDepreciation: 64500,
-      bookValue: 35500,
     });
     expect(result.actualDepreciation).toBe(500);
     expect(result.newBookValue).toBeCloseTo(35000, 2);
@@ -29,11 +27,10 @@ describe('calculateMonthlyDepreciation', () => {
 
   it('returns zero when fully depreciated', () => {
     const result = calculateMonthlyDepreciation({
-      totalCost: 100000,
+      purchasePrice: 100000,
       salvageValue: 35000,
       usefulLifeMonths: 36,
       accumulatedDepreciation: 65000,
-      bookValue: 35000,
     });
     expect(result.actualDepreciation).toBe(0);
     expect(result.newBookValue).toBe(35000);
@@ -42,24 +39,33 @@ describe('calculateMonthlyDepreciation', () => {
   it('throws on zero useful life', () => {
     expect(() =>
       calculateMonthlyDepreciation({
-        totalCost: 100000,
+        purchasePrice: 100000,
         salvageValue: 35000,
         usefulLifeMonths: 0,
         accumulatedDepreciation: 0,
-        bookValue: 100000,
       }),
     ).toThrow('Useful life must be positive');
   });
 
-  it('handles salvage value equal to total cost', () => {
+  it('handles salvage value equal to purchase price', () => {
     const result = calculateMonthlyDepreciation({
-      totalCost: 100000,
+      purchasePrice: 100000,
       salvageValue: 100000,
       usefulLifeMonths: 36,
       accumulatedDepreciation: 0,
-      bookValue: 100000,
     });
     expect(result.monthlyAmount).toBe(0);
     expect(result.actualDepreciation).toBe(0);
+  });
+
+  it('excludes reusable setup costs from the Honda Beat depreciation basis', () => {
+    const result = calculateMonthlyDepreciation({
+      purchasePrice: 75122,
+      salvageValue: 35000,
+      usefulLifeMonths: 36,
+      accumulatedDepreciation: 0,
+    });
+    expect(result.monthlyAmount).toBe(1114.5);
+    expect(result.newBookValue).toBe(74007.5);
   });
 });

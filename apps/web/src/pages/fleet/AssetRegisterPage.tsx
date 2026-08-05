@@ -22,11 +22,11 @@ function assetStatus(fleetStatus: string): AssetStatus {
 
 function calcMonthlyDep(v: VehicleSummary): number {
   if (!v.usefulLifeMonths || v.usefulLifeMonths <= 0) return 0;
-  const totalCost = v.totalBikeCost ?? 0;
+  const purchasePrice = v.purchasePrice ?? 0;
   const salvage = v.salvageValue ?? 0;
   const bookVal = v.bookValue ?? 0;
   if (bookVal <= salvage) return 0;
-  return Math.max(0, (totalCost - salvage) / v.usefulLifeMonths);
+  return Math.max(0, (purchasePrice - salvage) / v.usefulLifeMonths);
 }
 
 function monthsSince(dateStr: string): number {

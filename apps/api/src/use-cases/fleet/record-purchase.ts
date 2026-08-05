@@ -20,6 +20,7 @@ export interface RecordPurchaseInput {
   usefulLifeMonths: number;
   salvageValue: number;
   fixedAssetAccountId: string;
+  setupAssetAccountId?: string;
   cashAccountId: string;
 }
 
@@ -34,6 +35,12 @@ export async function recordPurchase(
 
   const totalCost = input.purchasePrice + input.setUpCosts;
   const amount = Money.php(totalCost);
+  if (input.setUpCosts > 0 && !input.setupAssetAccountId) {
+    throw new Error('Setup asset account is required when setup costs are greater than zero');
+  }
+  if (input.setUpCosts > 0 && input.setupAssetAccountId === input.fixedAssetAccountId) {
+    throw new Error('Setup assets must use an account separate from the vehicle fixed asset account');
+  }
 
   const props: VehicleProps = {
     id: vehicle.id,
@@ -56,7 +63,7 @@ export async function recordPurchase(
     usefulLifeMonths: input.usefulLifeMonths,
     salvageValue: input.salvageValue,
     accumulatedDepreciation: 0,
-    bookValue: totalCost,
+    bookValue: input.purchasePrice,
     dateSold: vehicle.dateSold,
     soldPrice: vehicle.soldPrice,
     profitLoss: vehicle.profitLoss,
@@ -71,12 +78,21 @@ export async function recordPurchase(
     {
       entryId: crypto.randomUUID(),
       accountId: input.fixedAssetAccountId,
-      debit: amount,
+      debit: Money.php(input.purchasePrice),
       credit: Money.zero(),
       description: `Vehicle ${vehicle.id} purchase`,
       referenceType: 'vehicle',
       referenceId: vehicle.id,
     },
+    ...(input.setUpCosts > 0 ? [{
+      entryId: crypto.randomUUID(),
+      accountId: input.setupAssetAccountId!,
+      debit: Money.php(input.setUpCosts),
+      credit: Money.zero(),
+      description: `Vehicle ${vehicle.id} reusable setup assets`,
+      referenceType: 'vehicle',
+      referenceId: vehicle.id,
+    }] : []),
     {
       entryId: crypto.randomUUID(),
       accountId: input.cashAccountId,

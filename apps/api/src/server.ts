@@ -44,6 +44,7 @@ import { startReturnReminderTodayJob } from './jobs/return-reminder-today.job.js
 import { startPickupReminderJob } from './jobs/pickup-reminder.job.js';
 import { startNinePmReturnReminderJob } from './jobs/nine-pm-return-reminder.job.js';
 import { startPostRentalReviewJob } from './jobs/post-rental-review.job.js';
+import { startMonthlyDepreciationJob } from './jobs/monthly-depreciation.js';
 import { publicLimiter } from './middleware/rate-limit.js';
 import { authenticate } from './middleware/authenticate.js';
 import { authenticateApiKey } from './middleware/authenticateApiKey.js';
@@ -200,6 +201,11 @@ if (process.env.NODE_ENV !== 'test') {
     startPickupReminderJob();
     startNinePmReturnReminderJob();
     startPostRentalReviewJob();
+    if (process.env.ENABLE_MONTHLY_DEPRECIATION_JOB === 'true') {
+      startMonthlyDepreciationJob();
+    } else {
+      logger.warn('Monthly depreciation job disabled; enable only after fleet data remediation');
+    }
   });
 }
 

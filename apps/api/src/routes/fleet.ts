@@ -821,7 +821,15 @@ router.put('/:id', requirePermission(Permission.EditFleet), validateBody(z.objec
 router.post('/purchase', requirePermission(Permission.EditFleet), validateBody(z.object({
   vehicleId: z.string(), purchasePrice: z.number().positive(), purchaseDate: z.string(),
   setUpCosts: z.number().nonnegative(), usefulLifeMonths: z.number().int().positive(),
-  salvageValue: z.number().nonnegative(), fixedAssetAccountId: z.string(), cashAccountId: z.string(),
+  salvageValue: z.number().nonnegative(), fixedAssetAccountId: z.string(),
+  setupAssetAccountId: z.string().optional(), cashAccountId: z.string(),
+}).superRefine((value, ctx) => {
+  if (value.setUpCosts > 0 && !value.setupAssetAccountId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['setupAssetAccountId'], message: 'Required when setup costs are greater than zero' });
+  }
+  if (value.setUpCosts > 0 && value.setupAssetAccountId === value.fixedAssetAccountId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['setupAssetAccountId'], message: 'Must differ from the vehicle fixed asset account' });
+  }
 })), async (req, res, next) => {
   try {
     const { recordPurchase } = await import('../use-cases/fleet/record-purchase.js');

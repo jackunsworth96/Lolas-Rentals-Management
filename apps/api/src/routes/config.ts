@@ -673,11 +673,12 @@ router.get('/fleet-accounting-config', async (req, res, next) => {
     const sb = getSupabaseClient();
     const { data, error } = await sb
       .from('fleet_accounting_config')
-      .select('store_id, fixed_asset_account_id, acc_depreciation_account_id, depreciation_expense_account_id, gain_loss_account_id');
+      .select('store_id, fixed_asset_account_id, setup_asset_account_id, acc_depreciation_account_id, depreciation_expense_account_id, gain_loss_account_id');
     if (error) throw new Error(error.message);
     const mapped = (data ?? []).map((r) => ({
       storeId: r.store_id,
       fixedAssetAccountId: r.fixed_asset_account_id ?? null,
+      setupAssetAccountId: r.setup_asset_account_id ?? null,
       accDepreciationAccountId: r.acc_depreciation_account_id ?? null,
       depreciationExpenseAccountId: r.depreciation_expense_account_id ?? null,
       gainLossAccountId: r.gain_loss_account_id ?? null,
@@ -690,6 +691,7 @@ router.get('/fleet-accounting-config', async (req, res, next) => {
 
 router.put('/fleet-accounting-config/:storeId', edit, validateBody(z.object({
   fixedAssetAccountId: z.string().nullable().optional(),
+  setupAssetAccountId: z.string().nullable().optional(),
   accDepreciationAccountId: z.string().nullable().optional(),
   depreciationExpenseAccountId: z.string().nullable().optional(),
   gainLossAccountId: z.string().nullable().optional(),
@@ -701,6 +703,7 @@ router.put('/fleet-accounting-config/:storeId', edit, validateBody(z.object({
       .upsert({
         store_id: req.params.storeId,
         fixed_asset_account_id: req.body.fixedAssetAccountId ?? null,
+        setup_asset_account_id: req.body.setupAssetAccountId ?? null,
         acc_depreciation_account_id: req.body.accDepreciationAccountId ?? null,
         depreciation_expense_account_id: req.body.depreciationExpenseAccountId ?? null,
         gain_loss_account_id: req.body.gainLossAccountId ?? null,

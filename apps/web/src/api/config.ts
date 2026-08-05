@@ -238,6 +238,7 @@ export function useDeleteTaskCategory() { return useDelete('task-categories', ['
 export interface FleetAccountingConfig {
   storeId: string;
   fixedAssetAccountId: string | null;
+  setupAssetAccountId: string | null;
   accDepreciationAccountId: string | null;
   depreciationExpenseAccountId: string | null;
   gainLossAccountId: string | null;
