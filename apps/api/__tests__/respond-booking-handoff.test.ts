@@ -358,7 +358,10 @@ function makeSupabaseForMultiVehicleExtension() {
   };
 }
 
-function makeSupabaseForSingleVehicleExtensionWithPom(securityDeposit = 2000) {
+function makeSupabaseForSingleVehicleExtensionWithPom(
+  securityDeposit = 2000,
+  currentDropoffDatetime = '2026-07-26T16:45:00+08:00',
+) {
   return {
     from: vi.fn((table: string) => {
       if (table === 'orders') {
@@ -401,7 +404,7 @@ function makeSupabaseForSingleVehicleExtensionWithPom(securityDeposit = 2000) {
               id: 'item-pom',
               vehicle_id: 'vehicle-pom',
               pickup_datetime: '2026-07-20T16:45:00+08:00',
-              dropoff_datetime: '2026-07-26T16:45:00+08:00',
+              dropoff_datetime: currentDropoffDatetime,
               store_id: 'store-lolas',
               rental_days_count: 6,
               rental_rate: 465,
@@ -896,5 +899,50 @@ describe('Respond.io recurring add-on extension pricing', () => {
     });
     expect(res.body.payment_guidance).toContain('settle at the store');
     expect(res.body.payment_guidance).toContain('Wise payment link');
+  });
+
+  it('includes the one-time 9PM return charge in the extension balance', async () => {
+    mocks.getSupabaseClient.mockReturnValue(makeSupabaseForSingleVehicleExtensionWithPom(
+      2000,
+      '2026-07-26T21:00:00+08:00',
+    ));
+    configRepo.getAddons.mockResolvedValue([
+      {
+        id: 13,
+        name: '9PM Return',
+        addonType: 'one_time',
+        pricePerDay: 0,
+        priceOneTime: 100,
+        isActive: true,
+        mutualExclusivityGroup: null,
+      },
+    ]);
+    configRepo.getModelPricing.mockResolvedValue([
+      { minDays: 1, maxDays: 99, dailyRate: 465 },
+    ]);
+
+    const res = await request(app)
+      .get('/api/public/respond/extension/preview')
+      .set('X-API-Key', 'respond-test-key')
+      .query({
+        ref: 'LR-0728-POM1',
+        newDropoffDatetime: '2026-07-28T21:00:00+08:00',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      success: true,
+      rental_extension_total: 930,
+      recurring_addons_total: 190,
+      one_time_addons_total: 100,
+      extension_total: 1220,
+      one_time_addons: [{
+        id: 13,
+        name: '9PM Return',
+        amount: 100,
+      }],
+    });
+    expect(res.body.customer_message).toContain('PHP 1,220');
+    expect(res.body.customer_message).toContain('9PM Return: PHP 100');
   });
 });
