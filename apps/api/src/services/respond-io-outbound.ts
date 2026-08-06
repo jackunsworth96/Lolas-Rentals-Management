@@ -13,6 +13,11 @@ export interface RespondIoTemplateMessageInput {
   languageCode?: string;
   bodyText: string;
   parameters: string[];
+  createContactIfMissing?: {
+    firstName: string;
+    lastName?: string;
+    email?: string;
+  };
   logContext?: Record<string, unknown>;
 }
 
@@ -72,6 +77,7 @@ export async function sendRespondIoTemplateMessage({
   languageCode = 'en',
   bodyText,
   parameters,
+  createContactIfMissing,
   logContext,
 }: RespondIoTemplateMessageInput): Promise<{ delivered: boolean }> {
   const normalizedPhone = sanitisePhilippinePhone(phone);
@@ -108,20 +114,59 @@ export async function sendRespondIoTemplateMessage({
     throw new Error('Missing RESPOND_IO_API_URL or RESPOND_IO_OUTBOUND_TOKEN environment variable');
   }
 
-  const url = `${baseUrl}/v2/contact/phone:${encodeURIComponent(normalizedPhone)}/message`;
-  const res = await fetch(url, {
+  const contactUrl = `${baseUrl}/v2/contact/phone:${encodeURIComponent(normalizedPhone)}`;
+  const contactUpsertUrl = `${baseUrl}/v2/contact/create_or_update/phone:${encodeURIComponent(normalizedPhone)}`;
+  const messageUrl = `${contactUrl}/message`;
+  const headers = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+  };
+  const sendTemplate = () => fetch(messageUrl, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
+    headers,
     body: JSON.stringify(payload),
   });
 
+  let res = await sendTemplate();
+  let body = res.ok ? '' : await res.text().catch(() => '');
+
+  if (
+    res.status === 404
+    && body.toLowerCase().includes('contact not found')
+    && createContactIfMissing
+  ) {
+    const contactPayload = {
+      firstName: createContactIfMissing.firstName,
+      ...(createContactIfMissing.lastName ? { lastName: createContactIfMissing.lastName } : {}),
+      ...(createContactIfMissing.email ? { email: createContactIfMissing.email } : {}),
+      phone: normalizedPhone,
+    };
+    const createRes = await fetch(contactUpsertUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(contactPayload),
+    });
+    if (!createRes.ok) {
+      const createBody = await createRes.text().catch(() => '');
+      throw new Error(`respond.io contact creation error ${createRes.status}: ${createBody}`);
+    }
+
+    logger.info(
+      { phoneLast4: normalizedPhone.replace(/\D/g, '').slice(-4), ...logContext },
+      '[respond-io-outbound] Missing contact upserted; retrying template',
+    );
+    res = await sendTemplate();
+    body = res.ok ? '' : await res.text().catch(() => '');
+  }
+
   if (!res.ok) {
-    const body = await res.text().catch(() => '');
     throw new Error(`respond.io API error ${res.status}: ${body}`);
   }
+
+  logger.info(
+    { phoneLast4: normalizedPhone.replace(/\D/g, '').slice(-4), ...logContext },
+    '[respond-io-outbound] Template message sent',
+  );
 
   return { delivered: true };
 }

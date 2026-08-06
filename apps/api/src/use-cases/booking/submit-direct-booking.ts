@@ -446,6 +446,7 @@ export async function submitDirectBooking(
     });
 
     if (input.customerMobile) {
+      const customerNameParts = input.customerName.trim().split(/\s+/).filter(Boolean);
       void sendRespondIoTemplateMessage({
         phone: input.customerMobile,
         channelId: RESPOND_IO_BOOKING_TEMPLATE_CHANNEL_ID,
@@ -462,6 +463,11 @@ export async function submitDirectBooking(
           dropoffLocation,
           waiverUrl,
         }),
+        createContactIfMissing: {
+          firstName: customerNameParts[0] || input.customerName,
+          lastName: customerNameParts.slice(1).join(' ') || undefined,
+          email: input.customerEmail,
+        },
         logContext: { orderReference, source: 'direct-booking-confirmation' },
       }).catch((err: unknown) => {
         logger.warn(
