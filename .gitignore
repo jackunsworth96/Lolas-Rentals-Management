@@ -25,5 +25,3 @@ packages/shared/dist/
 packages/*/dist/
 supabase/.temp/*
 supabase/.temp/gotrue-version
-
-LOLO_MAIN_INSTRUCTION_CONCISE.md

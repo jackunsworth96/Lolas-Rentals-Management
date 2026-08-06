@@ -227,6 +227,15 @@ function manilaDateKey(value: string | Date): string {
   return new Date(value).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 }
 
+function manilaTimeKey(value: string | Date): string {
+  return new Date(value).toLocaleTimeString('en-GB', {
+    timeZone: 'Asia/Manila',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}
+
 function buildExtensionPaymentUrl(orderReference: string): string {
   return `${EXTENSION_PAYMENT_ORIGIN}/book/extend/pay?ref=${encodeURIComponent(orderReference)}`;
 }
@@ -872,6 +881,13 @@ async function previewRespondExtension(
     extension_days: number;
     extension_total: number;
   }> = [];
+  const oneTimeAddons: Array<{
+    id: number;
+    name: string;
+    amount: number;
+  }> = [];
+  let ninePmAddonId: number | undefined;
+  let hasExistingLateReturnAddon = false;
 
   if (target.orderId) {
     const { data: addonRows, error: addonError } = await getSupabaseClient()
@@ -887,6 +903,12 @@ async function previewRespondExtension(
         : 0;
 
     for (const addon of (addonRows ?? []) as Array<Record<string, unknown>>) {
+      if (
+        addon.addon_type === 'one_time'
+        && addonKeyForName(String(addon.addon_name ?? '')).key === 'late_return'
+      ) {
+        hasExistingLateReturnAddon = true;
+      }
       if (addon.addon_type !== 'per_day') continue;
       const existingTotal = Number(addon.total_amount ?? 0);
       const dailyAddonRate = currentRentalDays > 0
@@ -903,17 +925,62 @@ async function previewRespondExtension(
     }
   }
 
+  if (manilaTimeKey(newDropoff) === '21:00' && !hasExistingLateReturnAddon) {
+    const catalog = (await req.app.locals.deps.configRepo.getAddons(target.storeId)) as ConfigAddonLike[];
+    const lateReturnAddon = catalog.find((addon) =>
+      addon.isActive !== false
+      && addon.addonType === 'one_time'
+      && addonKeyForName(addon.name).key === 'late_return'
+      && isAddonCompatibleWithVehicle(
+        addon,
+        target.vehicleModelId,
+        { id: target.vehicleModelId ?? undefined, name: target.vehicle },
+      )
+    );
+    const resolvedId = Number(lateReturnAddon?.id);
+    const amount = Number(lateReturnAddon?.priceOneTime ?? 0);
+    if (!lateReturnAddon || !Number.isFinite(resolvedId) || amount <= 0) {
+      return {
+        ok: false as const,
+        status: 409,
+        payload: {
+          success: false,
+          code: 'LATE_RETURN_ADDON_UNAVAILABLE',
+          message: 'The 9pm return charge could not be verified. Hand off to the team.',
+        },
+      };
+    }
+    ninePmAddonId = resolvedId;
+    oneTimeAddons.push({
+      id: resolvedId,
+      name: lateReturnAddon.name,
+      amount: Math.round(amount * 100) / 100,
+    });
+  }
+
   const recurringAddonsTotal = Math.round(
     recurringAddons.reduce((sum, addon) => sum + addon.extension_total, 0) * 100,
   ) / 100;
-  const extensionTotal = Math.round((rentalExtensionTotal + recurringAddonsTotal) * 100) / 100;
-  const addonCalculation = recurringAddons.length > 0
-    ? `, including ${recurringAddons.map((addon) =>
+  const oneTimeAddonsTotal = Math.round(
+    oneTimeAddons.reduce((sum, addon) => sum + addon.amount, 0) * 100,
+  ) / 100;
+  const extensionTotal = Math.round(
+    (rentalExtensionTotal + recurringAddonsTotal + oneTimeAddonsTotal) * 100,
+  ) / 100;
+  const addonLines = [
+    ...recurringAddons.map((addon) =>
       `${addon.name}: ${addon.extension_days} days x PHP ${addon.daily_rate.toLocaleString('en-PH')} = PHP ${addon.extension_total.toLocaleString('en-PH')}`
-    ).join('; ')}`
+    ),
+    ...oneTimeAddons.map((addon) =>
+      `${addon.name}: PHP ${addon.amount.toLocaleString('en-PH')}`
+    ),
+  ];
+  const addonCalculation = addonLines.length > 0
+    ? `, including ${addonLines.join('; ')}`
     : '';
   return {
     ok: true as const,
+    ninePmAddonId,
     payload: {
       success: true,
       order_reference: target.orderReference,
@@ -926,6 +993,8 @@ async function previewRespondExtension(
       rental_extension_total: rentalExtensionTotal,
       recurring_addons: recurringAddons,
       recurring_addons_total: recurringAddonsTotal,
+      one_time_addons: oneTimeAddons,
+      one_time_addons_total: oneTimeAddonsTotal,
       extension_total: extensionTotal,
       ...extensionPaymentPolicy(extensionTotal, target.securityDeposit),
       balance_note: 'Add this amount to the booking balance. Confirm only after the customer agrees.',
@@ -1787,6 +1856,7 @@ router.post('/extension/confirm', async (req, res, next) => {
       isPaid: false,
       paymentMethodId: 'pending',
       emailErrorLabel: '[respond-extension-email] Active path error:',
+      ninePmAddonId: 'ninePmAddonId' in preview ? preview.ninePmAddonId : undefined,
       deps,
     });
 
