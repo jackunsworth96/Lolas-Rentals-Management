@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
+import { invalidatePublicArticlesCache } from './public-impact.js';
 
 const router = Router();
 
@@ -93,6 +94,7 @@ router.post('/articles', async (req, res, next) => {
       .single();
 
     if (error) throw error;
+    invalidatePublicArticlesCache();
     res.status(201).json({ success: true, data });
   } catch (err) {
     next(err);
@@ -145,6 +147,7 @@ router.patch('/articles/:id', async (req, res, next) => {
       .single();
 
     if (error) throw error;
+    invalidatePublicArticlesCache();
     res.json({ success: true, data });
   } catch (err) {
     next(err);
@@ -158,6 +161,7 @@ router.delete('/articles/:id', async (req, res, next) => {
     const sb = getSupabaseClient();
     const { error } = await sb.from('ngo_articles').delete().eq('id', id);
     if (error) throw error;
+    invalidatePublicArticlesCache();
     res.json({ success: true });
   } catch (err) {
     next(err);

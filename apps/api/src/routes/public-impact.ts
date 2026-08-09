@@ -7,6 +7,12 @@ const ARTICLES_CACHE_TTL_MS = 2 * 60 * 1000;
 let cachedArticleList: unknown[] | null = null;
 let articleListExpiry = 0;
 
+/** Clear the unfiltered page-1 list cache (used by "All" on the impact page). */
+export function invalidatePublicArticlesCache(): void {
+  cachedArticleList = null;
+  articleListExpiry = 0;
+}
+
 // ── GET /articles — paginated list of published articles ─────────────────────
 router.get('/articles', async (req, res, next) => {
   try {

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Pencil, Trash2, Plus, ExternalLink, Eye, EyeOff, Globe } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Pencil, Trash2, Plus, ExternalLink, Eye, EyeOff, Globe, ImagePlus, Film } from 'lucide-react';
 import {
   useAdminArticles,
   useAdminNgos,
@@ -7,7 +7,6 @@ import {
   useUpdateArticle,
   useDeleteArticle,
   useAdminArticle,
-  type ArticleListItem,
   type UpsertArticlePayload,
 } from '../../api/impact.js';
 
@@ -25,6 +24,38 @@ const CATEGORY_COLOURS: Record<string, string> = {
   general: 'bg-amber-100 text-amber-800',
 };
 
+function insertAtCursor(
+  textarea: HTMLTextAreaElement | null,
+  value: string,
+  snippet: string,
+  setValue: (next: string) => void,
+) {
+  if (!textarea) {
+    const needsNewline = value.length > 0 && !value.endsWith('\n');
+    setValue(`${value}${needsNewline ? '\n\n' : ''}${snippet}`);
+    return;
+  }
+
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const before = value.slice(0, start);
+  const after = value.slice(end);
+
+  let padBefore = '';
+  if (before.length > 0 && !before.endsWith('\n')) padBefore = '\n\n';
+  else if (before.endsWith('\n') && !before.endsWith('\n\n')) padBefore = '\n';
+
+  const padAfter = after.length > 0 && !after.startsWith('\n') ? '\n\n' : '';
+  const next = `${before}${padBefore}${snippet}${padAfter}${after}`;
+  setValue(next);
+
+  const cursor = before.length + padBefore.length + snippet.length + padAfter.length;
+  requestAnimationFrame(() => {
+    textarea.focus();
+    textarea.setSelectionRange(cursor, cursor);
+  });
+}
+
 // ── Article Editor Modal ──────────────────────────────────────────────────────
 
 function ArticleEditorModal({
@@ -38,6 +69,7 @@ function ArticleEditorModal({
   const { data: existing } = useAdminArticle(editId ?? '');
   const createMut = useCreateArticle();
   const updateMut = useUpdateArticle(editId ?? '');
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
 
   const isEdit = !!editId;
   const isBusy = createMut.isPending || updateMut.isPending;
@@ -88,6 +120,24 @@ function ArticleEditorModal({
     setForm((f) => ({ ...f, [k]: v }));
   }
 
+  function handleInsertMedia(kind: 'image' | 'video') {
+    const url = window.prompt(
+      kind === 'image'
+        ? 'Paste the Cloudinary image URL:'
+        : 'Paste the Cloudinary video URL:',
+    )?.trim();
+    if (!url) return;
+
+    const alt =
+      window.prompt(
+        kind === 'image' ? 'Alt text (optional):' : 'Video label / caption (optional):',
+        '',
+      )?.trim() ?? '';
+
+    const snippet = `![${alt}](${url})`;
+    insertAtCursor(bodyRef.current, form.body_markdown, snippet, (next) => set('body_markdown', next));
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const payload: UpsertArticlePayload = {
@@ -113,6 +163,8 @@ function ArticleEditorModal({
 
   const labelClass = 'block text-[12px] font-semibold text-charcoal-brand/60 mb-1';
   const inputClass = 'w-full rounded-lg border border-charcoal-brand/15 bg-white px-3 py-2 text-[13px] text-charcoal-brand focus:border-teal-brand focus:outline-none';
+  const mediaBtnClass =
+    'inline-flex items-center gap-1.5 rounded-lg border border-charcoal-brand/15 bg-white px-3 py-1.5 text-[12px] font-medium text-charcoal-brand/70 hover:border-teal-brand/40 hover:text-teal-brand';
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4">
@@ -167,19 +219,38 @@ function ArticleEditorModal({
           </div>
 
           <div>
-            <label className={labelClass}>Body (Markdown)</label>
+            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+              <label className={labelClass + ' mb-0'}>Body (Markdown)</label>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" className={mediaBtnClass} onClick={() => handleInsertMedia('image')}>
+                  <ImagePlus className="h-3.5 w-3.5" />
+                  Insert image
+                </button>
+                <button type="button" className={mediaBtnClass} onClick={() => handleInsertMedia('video')}>
+                  <Film className="h-3.5 w-3.5" />
+                  Insert video
+                </button>
+              </div>
+            </div>
+            <p className="mb-2 text-[11px] text-charcoal-brand/45">
+              Upload in Cloudinary → copy the delivery URL → Insert image/video (or paste markdown yourself).
+            </p>
             <textarea
+              ref={bodyRef}
               className={`${inputClass} resize-y font-mono text-[12px]`}
               rows={12}
               value={form.body_markdown}
               onChange={(e) => set('body_markdown', e.target.value)}
-              placeholder="Write your article in Markdown…&#10;&#10;# Heading&#10;&#10;## Sub-heading&#10;&#10;Paragraph text here."
+              placeholder={"Write your article in Markdown…\n\n# Heading\n\n## Sub-heading\n\nParagraph text here.\n\n![Photo caption](https://res.cloudinary.com/…/image/upload/…)"}
             />
           </div>
 
           <div>
             <label className={labelClass}>Featured Image URL</label>
-            <input className={inputClass} type="url" value={form.featured_image_url} onChange={(e) => set('featured_image_url', e.target.value)} placeholder="https://…" />
+            <input className={inputClass} type="url" value={form.featured_image_url} onChange={(e) => set('featured_image_url', e.target.value)} placeholder="https://res.cloudinary.com/…/image/upload/…" />
+            <p className="mt-1 text-[11px] text-charcoal-brand/45">
+              Paste a Cloudinary delivery URL for the card and article hero image.
+            </p>
           </div>
 
           <div>

@@ -45,6 +45,51 @@ function parseInline(text: string, baseKey: number): React.ReactNode {
   return <>{parts}</>;
 }
 
+const IMAGE_LINE_RE = /^!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)$/;
+const VIDEO_EXT_RE = /\.(mp4|webm|mov)(?:\?|#|$)/i;
+
+function isVideoUrl(url: string): boolean {
+  return url.includes('/video/upload/') || VIDEO_EXT_RE.test(url);
+}
+
+function MediaBlock({ alt, url }: { alt: string; url: string }) {
+  if (isVideoUrl(url)) {
+    return (
+      <figure className="my-6">
+        <video
+          src={url}
+          controls
+          playsInline
+          preload="metadata"
+          className="w-full rounded-xl border border-charcoal-brand/10 bg-charcoal-brand/5"
+          aria-label={alt || undefined}
+        />
+        {alt ? (
+          <figcaption className="mt-2 text-center font-lato text-[12px] text-charcoal-brand/50">
+            {alt}
+          </figcaption>
+        ) : null}
+      </figure>
+    );
+  }
+
+  return (
+    <figure className="my-6">
+      <img
+        src={url}
+        alt={alt}
+        className="w-full rounded-xl border border-charcoal-brand/10 object-cover"
+        loading="lazy"
+      />
+      {alt ? (
+        <figcaption className="mt-2 text-center font-lato text-[12px] text-charcoal-brand/50">
+          {alt}
+        </figcaption>
+      ) : null}
+    </figure>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Block-level markdown renderer
 // ---------------------------------------------------------------------------
@@ -60,6 +105,14 @@ function SimpleMarkdown({ body }: { body: string }) {
 
     // Blank line
     if (!t) { out.push(<div key={key++} className="h-3" />); i++; continue; }
+
+    // Image / video — standalone ![alt](url) line
+    const mediaMatch = IMAGE_LINE_RE.exec(t);
+    if (mediaMatch) {
+      out.push(<MediaBlock key={key++} alt={mediaMatch[1]} url={mediaMatch[2]} />);
+      i++;
+      continue;
+    }
 
     // Headings
     if (t.startsWith('# '))   { out.push(<h1 key={key++} className="mt-8 mb-2 font-headline text-[28px] font-black text-charcoal-brand">{parseInline(t.slice(2), key)}</h1>); i++; continue; }
