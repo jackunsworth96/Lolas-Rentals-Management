@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Info, Plus, Trash2 } from 'lucide-react';
 import {
@@ -212,6 +212,7 @@ export default function PartnerBookPage() {
   const [success, setSuccess] = useState<{ groupRef: string; refs: string[] } | null>(null);
   const [error, setError] = useState('');
   const [peaceOpen, setPeaceOpen] = useState(false);
+  const locationDefaultHandledRef = useRef(false);
 
   const firstVehicleModelId = vehicleLines.find((v) => v.vehicleModelId)?.vehicleModelId ?? '';
   const addons = useQuery({
@@ -225,6 +226,29 @@ export default function PartnerBookPage() {
       setForm((prev) => ({ ...prev, accommodationName: me.partner.name }));
     }
   }, [form.accommodationName, me?.partner.name]);
+
+  useEffect(() => {
+    if (
+      locationDefaultHandledRef.current ||
+      !hasPartnerFreeDelivery(me?.partner) ||
+      locationOptions.length === 0
+    ) return;
+
+    const eligibleLocationIds = Array.from(new Set(me?.partner.free_delivery_location_ids ?? []))
+      .filter((id) => locationOptions.some((location) => location.id === id));
+
+    // Only prefill when the partnership has one unambiguous delivery area.
+    // If all/multiple locations are free, the partner user keeps choosing.
+    if (eligibleLocationIds.length !== 1) return;
+
+    const [locationId] = eligibleLocationIds;
+    setForm((prev) => ({
+      ...prev,
+      pickupLocationId: locationId,
+      dropoffLocationId: locationId,
+    }));
+    locationDefaultHandledRef.current = true;
+  }, [locationOptions, me?.partner]);
 
   const pickupLocationId = form.pickupLocationId || storeLocationId;
   const dropoffLocationId = form.dropoffLocationId || storeLocationId;
@@ -426,13 +450,19 @@ export default function PartnerBookPage() {
           </div>
           <div>
             <label className="mb-1 block text-xs font-semibold text-gray-500">Pickup location</label>
-            <select value={pickupLocationId} onChange={(e) => set('pickupLocationId', Number(e.target.value))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <select value={pickupLocationId} onChange={(e) => {
+              locationDefaultHandledRef.current = true;
+              set('pickupLocationId', Number(e.target.value));
+            }} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
               {locationOptions.map((l) => <option key={l.id} value={l.id}>{l.name} - delivery {locationFeeLabel(l, 'pickup', me?.partner)}</option>)}
             </select>
           </div>
           <div>
             <label className="mb-1 block text-xs font-semibold text-gray-500">Return location</label>
-            <select value={dropoffLocationId} onChange={(e) => set('dropoffLocationId', Number(e.target.value))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <select value={dropoffLocationId} onChange={(e) => {
+              locationDefaultHandledRef.current = true;
+              set('dropoffLocationId', Number(e.target.value));
+            }} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
               {locationOptions.map((l) => <option key={l.id} value={l.id}>{l.name} - collection {locationFeeLabel(l, 'dropoff', me?.partner)}</option>)}
             </select>
           </div>

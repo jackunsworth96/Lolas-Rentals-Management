@@ -52,6 +52,8 @@ export interface PartnerReportBooking {
   pickupDatetime: string | null;
   dropoffDatetime: string | null;
   status: string;
+  cancelledReason: string | null;
+  cancelledAt: string | null;
   advanceDays: number | null;
   commissionable: boolean;
   commissionAmount: number;

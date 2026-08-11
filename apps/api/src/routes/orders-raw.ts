@@ -1090,7 +1090,7 @@ router.post('/:id/collect-payment', requirePermission(Permission.EditOrders), as
 });
 
 const cancelBodySchema = z.object({
-  reason: z.string().optional(),
+  reason: z.string().trim().max(500).optional(),
 });
 
 router.patch('/:id/cancel', requirePermission(Permission.CancelOrders), async (req, res, next) => {
@@ -1105,6 +1105,30 @@ router.patch('/:id/cancel', requirePermission(Permission.CancelOrders), async (r
     }
 
     const id = req.params.id as string;
+
+    const { data: cancellationTarget, error: targetErr } = await supabase
+      .from('orders_raw')
+      .select('partner_ref')
+      .eq('id', id)
+      .maybeSingle();
+    if (targetErr) throw new Error(`Failed to check cancellation target: ${targetErr.message}`);
+    if (!cancellationTarget) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Raw order not found' },
+      });
+      return;
+    }
+    if (cancellationTarget.partner_ref && !parsed.data.reason) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'CANCELLATION_REASON_REQUIRED',
+          message: 'A cancellation reason is required for affiliate bookings.',
+        },
+      });
+      return;
+    }
 
     const { data: rpcResult, error: rpcErr } = await supabase
       .rpc('cancel_order_raw_atomic', {

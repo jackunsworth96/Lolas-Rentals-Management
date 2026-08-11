@@ -25,6 +25,11 @@ function statusClass(status: string) {
   return 'border-gray-200 bg-gray-50 text-gray-600';
 }
 
+function cancellationReasonLabel(reason: string | null) {
+  if (!reason?.trim()) return 'Reason not recorded';
+  return reason.trim().replace(/_/g, ' ').replace(/^\w/, (char) => char.toUpperCase());
+}
+
 export default function PartnerReportsPage() {
   const [month, setMonth] = useState(currentMonth());
   const { data, isLoading } = usePartnerReport(month);
@@ -100,10 +105,18 @@ export default function PartnerReportsPage() {
                   <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${statusClass(b.status)}`}>
                     {statusLabel(b.status)}
                   </span>
+                  {isCancelled && (
+                    <p className="mt-1 max-w-xs text-xs leading-snug text-red-700">
+                      {cancellationReasonLabel(b.cancelledReason)}
+                    </p>
+                  )}
                 </td>
                 <td className="px-3 py-2 text-right">
                   {isCancelled ? (
-                    <span className="font-semibold text-red-700">Cancelled</span>
+                    <div>
+                      <span className="font-semibold text-red-700">{money(0)}</span>
+                      <p className="text-xs text-gray-400">Removed from payout</p>
+                    </div>
                   ) : b.commissionable ? (
                     <div>
                       <span className="font-semibold text-teal-700">{money(b.commissionAmount)}</span>
