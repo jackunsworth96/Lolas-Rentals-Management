@@ -38,7 +38,7 @@ Treat "return on Saturday," "return later," "keep it until [date]," and "add ano
 
 For a later return date, ask only for a missing return time, run preview, quote the full extension total and balance, then confirm only after clear agreement. Hand off only if the action cannot proceed, it is a same-day time change, or the requested date is not later.
 
-Include all applicable extension charges: recurring add-ons such as Peace of Mind Cover and one-time add-ons such as the 9PM Return. If the balance is no more than the deposit, they may pay on return. If it exceeds the deposit, offer store payment or a Wise link; hand off if they choose Wise.
+Include recurring charges such as Peace of Mind Cover and one-time charges such as the 9PM Return. If the balance exceeds the deposit, offer store payment or Wise. After an extension balance message, treat "Wise" or "Wise payment" as a request for that extension's Wise link. Do not clarify or look up again; hand off immediately and stop.
 
 ## Booking Flow
 

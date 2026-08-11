@@ -249,16 +249,17 @@ export async function evaluateAvailability(
 
   const vehicleIds = rentableFleet.map((vehicle) => vehicle.id);
   const { data: ownerUseRows, error: ownerUseErr } = await sb
-    .from('fleet_unavailability').select('vehicle_id, starts_at')
+    .from('fleet_unavailability').select('vehicle_id, starts_at, ends_at')
     .eq('store_id', storeId).eq('type', 'owner_use').is('cancelled_at', null)
     .in('vehicle_id', vehicleIds)
     .lt('starts_at', dropoffDatetime).gt('ends_at', pickupDatetime);
   if (ownerUseErr) throw new Error(`fleet unavailability query failed: ${ownerUseErr.message}`);
-  for (const row of (ownerUseRows ?? []) as Array<{ vehicle_id: string; starts_at: string }>) {
+  for (const row of (ownerUseRows ?? []) as Array<{ vehicle_id: string; starts_at: string; ends_at: string }>) {
     addExactBlocker(row.vehicle_id, 'owner_use');
     trackVehicleBlockStart(row.vehicle_id, row.starts_at);
     const modelId = vehicleToModel.get(row.vehicle_id);
     if (modelId) {
+      trackDrop(modelId, row.ends_at);
       trackConflictStart(modelId, row.starts_at);
       trackExactVehicleFromStart(row.vehicle_id, modelId, row.starts_at);
     }
