@@ -103,6 +103,25 @@ describe('owner-use availability blocks', () => {
     expect(result.explanation.models[0].exactVehicleExclusions).toEqual([]);
   });
 
+  it('returns the next booking slot when owner use fully books a model', async () => {
+    const result = await evaluateAvailability(query, fakeSupabase({
+      fleet: [{ id: 'tuktuk-1', name: 'TukTuk 1', model_id: 'tuktuk', status: 'Available' }],
+      ownerUse: [{
+        vehicle_id: 'tuktuk-1',
+        starts_at: '2026-07-20T09:15:00+08:00',
+        ends_at: '2026-07-21T10:15:00+08:00',
+      }],
+      models: [{ id: 'tuktuk', name: 'TukTuk' }],
+    }));
+
+    expect(result.models[0]).toMatchObject({
+      modelId: 'tuktuk',
+      modelName: 'TukTuk',
+      availableCount: 0,
+      nextAvailablePickup: '2026-07-21T02:45:00.000Z',
+    });
+  });
+
   it('returns the latest confirmed return when a future booking shortens the window', async () => {
     const result = await evaluateAvailability({
       storeId: 'store-lolas',
