@@ -13,6 +13,8 @@ export interface PartnerCommissionBooking {
   commissionType: 'fixed' | 'percentage' | null;
   commissionValue: number | null;
   status: string;
+  cancelledReason: string | null;
+  cancelledAt: string | null;
   bookedAt: string;
   advanceDays: number | null;
   commissionable: boolean;
@@ -104,7 +106,7 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
 
   let rawQuery = sb
     .from('orders_raw')
-    .select('id, order_reference, customer_name, vehicle_model_id, pickup_datetime, dropoff_datetime, rental_value_raw, web_quote_raw, status, created_at')
+    .select('id, order_reference, customer_name, vehicle_model_id, pickup_datetime, dropoff_datetime, rental_value_raw, web_quote_raw, status, cancelled_reason, cancelled_at, created_at')
     .eq('store_id', p.store_id)
     .eq('partner_ref', p.slug)
     .order('created_at', { ascending: false });
@@ -180,6 +182,8 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
     rental_value_raw: number | null;
     web_quote_raw: number | null;
     status: string;
+    cancelled_reason: string | null;
+    cancelled_at: string | null;
     created_at: string;
   }>).map((row) => {
     const advanceDays = row.pickup_datetime
@@ -244,6 +248,8 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
       commissionType,
       commissionValue,
       status: row.status,
+      cancelledReason: row.cancelled_reason,
+      cancelledAt: row.cancelled_at,
       bookedAt: row.created_at,
       advanceDays: advanceDays !== null ? Math.floor(advanceDays) : null,
       commissionable,

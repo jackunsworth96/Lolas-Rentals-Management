@@ -16,6 +16,8 @@ type Fixture = {
   commissionValue?: number;
   includesExtensions?: boolean;
   payments?: Array<{ order_id: string; amount: number; settlement_status: string | null }>;
+  rawStatus?: string;
+  cancelledReason?: string | null;
 };
 
 function queryResult<T>(data: T) {
@@ -55,7 +57,9 @@ function commissionClient(fixture: Fixture = {}) {
     dropoff_datetime: '2026-07-22T11:15:00+08:00',
     rental_value_raw: 10000,
     web_quote_raw: 10000,
-    status: 'processed',
+    status: fixture.rawStatus ?? 'processed',
+    cancelled_reason: fixture.cancelledReason ?? null,
+    cancelled_at: fixture.rawStatus === 'cancelled' ? '2026-07-10T09:00:00+08:00' : null,
     created_at: '2026-07-01T00:00:00+08:00',
   }];
   const from = vi.fn((table: string) => {
@@ -147,5 +151,31 @@ describe('partner extension commissions', () => {
     });
     expect(client.from).not.toHaveBeenCalledWith('orders');
     expect(client.from).not.toHaveBeenCalledWith('payments');
+  });
+
+  it('keeps cancelled affiliate bookings visible with their reason and removes all commission', async () => {
+    mocks.getSupabaseClient.mockReturnValue(commissionClient({
+      rawStatus: 'cancelled',
+      cancelledReason: 'Customer changed travel plans',
+      payments: [
+        { order_id: 'order-1', amount: 1000, settlement_status: null },
+        { order_id: 'order-1', amount: 500, settlement_status: 'pending' },
+      ],
+    }));
+
+    const stats = await getPartnerCommissionStats('partner-1', '2026-07');
+
+    expect(stats.totalBookings).toBe(1);
+    expect(stats.commissionableBookings).toBe(0);
+    expect(stats.totalCommission).toBe(0);
+    expect(stats.totalPendingCommission).toBe(0);
+    expect(stats.bookings[0]).toMatchObject({
+      status: 'cancelled',
+      cancelledReason: 'Customer changed travel plans',
+      cancelledAt: '2026-07-10T09:00:00+08:00',
+      commissionable: false,
+      commissionAmount: 0,
+      pendingCommissionAmount: 0,
+    });
   });
 });

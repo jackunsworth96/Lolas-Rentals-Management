@@ -7,6 +7,11 @@ import { useToast } from '../../hooks/useToast.js';
 import { HoldCountdown } from '../../components/booking/HoldCountdown.js';
 import { VehicleCard } from '../../components/booking/VehicleCard.js';
 import { getStoredPartnerBenefit } from '../../utils/partnerRef.js';
+import {
+  hasHandledPartnerLocationDefault,
+  markPartnerLocationDefaultHandled,
+} from '../../utils/partnerRef.js';
+import { usePartnerRefCapture } from '../../hooks/usePartnerRefCapture.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { SEO } from '../../components/seo/SEO.js';
 import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
@@ -644,6 +649,7 @@ export default function BrowseBookPage() {
   const basket = useBookingStore((s) => s.basket);
   const removeFromBasket = useBookingStore((s) => s.removeFromBasket);
   const searchTrigger = useBookingStore((s) => s.searchTrigger);
+  const { ref: partnerRef, benefit: partnerBenefit } = usePartnerRefCapture();
 
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
@@ -706,6 +712,36 @@ export default function BrowseBookPage() {
       setLocations(storeLocationId, storeLocationId);
     }
   }, [storeLocationId, pickupLocationId, setLocations]);
+
+  useEffect(() => {
+    if (
+      !partnerRef ||
+      !partnerBenefit?.freeDelivery ||
+      !locations?.length ||
+      hasHandledPartnerLocationDefault(partnerRef)
+    ) return;
+
+    const eligibleLocationIds = Array.from(new Set(partnerBenefit.freeDeliveryLocationIds ?? []))
+      .filter((id) => locations.some((location) => location.id === id));
+
+    // A single configured area is an unambiguous default. With multiple free
+    // areas the guest still chooses, so we never silently guess between them.
+    if (eligibleLocationIds.length !== 1) return;
+
+    const [locationId] = eligibleLocationIds;
+    setLocations(locationId, locationId);
+    markPartnerLocationDefaultHandled(partnerRef);
+  }, [locations, partnerBenefit, partnerRef, setLocations]);
+
+  function handlePickupLocationChange(locationId: number) {
+    if (partnerRef) markPartnerLocationDefaultHandled(partnerRef);
+    setLocations(locationId, dropoffLocationId);
+  }
+
+  function handleDropoffLocationChange(locationId: number) {
+    if (partnerRef) markPartnerLocationDefaultHandled(partnerRef);
+    setLocations(pickupLocationId, locationId);
+  }
 
   const {
     data: availableModels,
@@ -1147,7 +1183,7 @@ export default function BrowseBookPage() {
                         <div className="relative">
                           <select
                             value={pickupLocationId ?? ''}
-                            onChange={(e) => setLocations(Number(e.target.value), dropoffLocationId)}
+                            onChange={(e) => handlePickupLocationChange(Number(e.target.value))}
                             className={`${inputClass} appearance-none`}
                           >
                             <option value="">Select…</option>
@@ -1170,7 +1206,7 @@ export default function BrowseBookPage() {
                         <div className="relative">
                           <select
                             value={dropoffLocationId ?? ''}
-                            onChange={(e) => setLocations(pickupLocationId, Number(e.target.value))}
+                            onChange={(e) => handleDropoffLocationChange(Number(e.target.value))}
                             className={`${inputClass} appearance-none`}
                           >
                             <option value="">Select…</option>
