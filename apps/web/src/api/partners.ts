@@ -84,6 +84,25 @@ export interface PartnerStats {
   bookings: PartnerBookingRow[];
 }
 
+export interface PartnerCommissionDueRow {
+  partnerId: string;
+  partnerName: string;
+  contactName: string | null;
+  contactEmail: string | null;
+  totalBookings: number;
+  commissionableBookings: number;
+  amountDue: number;
+  pendingAmount: number;
+}
+
+export interface PartnerCommissionsDue {
+  month: string;
+  totalDue: number;
+  totalPending: number;
+  partnersDue: number;
+  partners: PartnerCommissionDueRow[];
+}
+
 export type PartnerInput = Omit<AccommodationPartner, 'id' | 'created_at' | 'updated_at'>;
 
 export interface PartnerPortalUser {
@@ -120,6 +139,17 @@ export function usePartnerStats(partnerId: string, month?: string, enabled = tru
   return useQuery<PartnerStats>({
     queryKey: ['partners', partnerId, 'stats', month],
     queryFn: () => api.get<PartnerStats>(`/partners/${partnerId}/stats${params}`),
+    staleTime: 60_000,
+    enabled,
+  });
+}
+
+export function usePartnerCommissionsDue(storeId: string, month: string, enabled = true) {
+  const params = new URLSearchParams({ month });
+  if (storeId) params.set('storeId', storeId);
+  return useQuery<PartnerCommissionsDue>({
+    queryKey: ['partners', 'commissions-due', storeId, month],
+    queryFn: () => api.get<PartnerCommissionsDue>(`/partners/commissions-due?${params.toString()}`),
     staleTime: 60_000,
     enabled,
   });
