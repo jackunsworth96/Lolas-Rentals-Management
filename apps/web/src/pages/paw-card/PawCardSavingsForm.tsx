@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { useAuthStore } from '../../stores/auth-store.js';
 import { api } from '../../api/client.js';
 import { PawCardReceiptArea } from './PawCardReceiptArea.js';
 import { PawCardSavingsDetailsFields } from './PawCardSavingsDetailsFields.js';
@@ -8,9 +7,7 @@ import { PrimaryCtaButton } from '../../components/public/PrimaryCtaButton.js';
 type Est = { id: number; name: string };
 
 type Props = {
-  accessEmail: string;
-  customerIdForSubmit: string;
-  displayFullName: string;
+  accessToken: string;
   onLogged: () => void;
   preselectedEstablishmentId?: string;
 };
@@ -31,33 +28,46 @@ function formatFetchError(err: unknown): string {
   return 'Could not load data. Refresh and try again.';
 }
 
-async function uploadPawReceipt(file: File): Promise<string> {
-  const formData = new FormData();
-  formData.append('receipt', file);
-  const token = useAuthStore.getState().token;
-  const headers: Record<string, string> = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`${apiBaseUrl()}/paw-card/upload-receipt`, {
-    method: 'POST',
-    headers,
-    body: formData,
-  });
-  let json: { success?: boolean; data?: { url?: string }; error?: { message?: string } };
+type PawCardApiResponse<T> = {
+  success: boolean;
+  data?: T;
+  error?: { message?: string };
+};
+
+async function pawCardCustomerPost<T>(
+  path: string,
+  accessToken: string,
+  body: BodyInit,
+  contentType?: string,
+): Promise<T> {
+  const headers: Record<string, string> = { Authorization: `Bearer ${accessToken}` };
+  if (contentType) headers['Content-Type'] = contentType;
+  const res = await fetch(`${apiBaseUrl()}${path}`, { method: 'POST', headers, body });
+  let json: PawCardApiResponse<T>;
   try {
     json = await res.json();
   } catch {
     throw new Error('Invalid response from server');
   }
-  if (!res.ok || !json.success || !json.data?.url) {
-    throw new Error(json.error?.message ?? 'Upload failed');
+  if (!res.ok || !json.success || json.data === undefined) {
+    throw new Error(json.error?.message ?? 'Request failed');
   }
-  return json.data.url;
+  return json.data;
+}
+
+async function uploadPawReceipt(file: File, accessToken: string): Promise<string> {
+  const formData = new FormData();
+  formData.append('receipt', file);
+  const result = await pawCardCustomerPost<{ receiptPath: string }>(
+    '/public/paw-card/upload-receipt',
+    accessToken,
+    formData,
+  );
+  return result.receiptPath;
 }
 
 export function PawCardSavingsForm({
-  accessEmail,
-  customerIdForSubmit,
-  displayFullName,
+  accessToken,
   onLogged,
   preselectedEstablishmentId,
 }: Props) {
@@ -86,7 +96,7 @@ export function PawCardSavingsForm({
       setLoadingEst(true);
       setEstablishmentsError('');
       try {
-        const raw = await api.get<Array<{ id: string; name: string }>>('/paw-card/establishments');
+        const raw = await api.get<Array<{ id: string; name: string }>>('/public/paw-card/establishments');
         if (!cancelled) {
           setEstablishments(
             raw.map((e) => ({ id: Number(e.id), name: e.name })),
@@ -132,9 +142,6 @@ export function PawCardSavingsForm({
     reader.readAsDataURL(file);
   }, []);
 
-  const establishmentName =
-    establishments.find((e) => String(e.id) === establishmentId)?.name ?? '';
-
   const handleSubmitSaving = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitSuccess(false);
@@ -147,18 +154,12 @@ export function PawCardSavingsForm({
     setIsSubmitting(true);
 
     try {
-      const email = accessEmail.trim().toLowerCase();
-      if (!email) {
-        setSubmitError('Missing email. Please access your Paw Card again.');
-        return;
-      }
-
-      let receiptUrl: string | null = null;
+      let receiptPath: string | null = null;
       if (receiptFile) {
         try {
-          receiptUrl = await uploadPawReceipt(receiptFile);
-        } catch {
-          setUploadError('Receipt upload failed. Please try again.');
+          receiptPath = await uploadPawReceipt(receiptFile, accessToken);
+        } catch (err) {
+          setUploadError(err instanceof Error ? err.message : 'Receipt upload failed. Please try again.');
           return;
         }
       }
@@ -166,16 +167,18 @@ export function PawCardSavingsForm({
       const n = numPeople ? Number(numPeople) : null;
       const numberOfPeople = typeof n === 'number' && Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined;
 
-      await api.post('/paw-card/submit', {
-        customerId: customerIdForSubmit,
-        email,
-        fullName: displayFullName,
-        establishmentId,
-        discountAmount: Number(amount),
-        visitDate,
-        receiptUrl: receiptUrl ?? undefined,
-        numberOfPeople,
-      });
+      await pawCardCustomerPost(
+        '/public/paw-card/submit',
+        accessToken,
+        JSON.stringify({
+          establishmentId,
+          discountAmount: Number(amount),
+          visitDate,
+          receiptPath: receiptPath ?? undefined,
+          numberOfPeople,
+        }),
+        'application/json',
+      );
 
       setSuccessInfo({});
       setSubmitSuccess(true);
