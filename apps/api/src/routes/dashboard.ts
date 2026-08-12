@@ -4,6 +4,7 @@ import { Permission } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { formatManilaDate } from '../utils/manila-date.js';
 import { getPartnerCommissionStats } from '../lib/partner-commission.js';
+import { getDashboardAvailabilityModel } from '../lib/dashboard-availability-model.js';
 
 const router = Router();
 router.use(authenticate);
@@ -1033,14 +1034,16 @@ router.get('/availability-detail', async (req, res, next) => {
 
     const modelMap = new Map<string, {
       modelName: string;
+      isScooter: boolean;
       units: Array<{ id: string; name: string; surfRack: boolean; isBooked: boolean; dropoff: string | null }>;
     }>();
 
     for (const v of rentableFleet) {
-      const modelId = v.model_id as string | null;
-      if (!modelId) continue;
-      const modelName = modelNameMap.get(modelId) ?? 'Unknown';
-      if (!modelMap.has(modelId)) modelMap.set(modelId, { modelName, units: [] });
+      const rawModelId = v.model_id as string | null;
+      if (!rawModelId) continue;
+      const rawModelName = modelNameMap.get(rawModelId) ?? 'Unknown';
+      const { modelId, modelName, isScooter } = getDashboardAvailabilityModel(rawModelName);
+      if (!modelMap.has(modelId)) modelMap.set(modelId, { modelName, isScooter, units: [] });
       const isBooked = bookedVehicleIds.has(v.id as string);
       modelMap.get(modelId)!.units.push({
         id: v.id as string,
@@ -1051,7 +1054,7 @@ router.get('/availability-detail', async (req, res, next) => {
       });
     }
 
-    const models = [...modelMap.entries()].map(([modelId, { modelName, units }]) => {
+    const models = [...modelMap.entries()].map(([modelId, { modelName, isScooter, units }]) => {
       const availableUnits = units.filter((u) => !u.isBooked);
       const bookedUnits = units.filter((u) => u.isBooked && u.dropoff !== null);
 
@@ -1082,7 +1085,7 @@ router.get('/availability-detail', async (req, res, next) => {
         availableNow: availableUnits.length,
         withSurfRack: availableUnits.filter((u) => u.surfRack).length,
         withoutSurfRack: availableUnits.filter((u) => !u.surfRack).length,
-        isScooter: !modelName.toLowerCase().includes('tuk'),
+        isScooter,
         returningToday,
       };
     });
