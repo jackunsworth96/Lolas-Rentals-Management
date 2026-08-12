@@ -10,7 +10,7 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
 import { hashPin } from '../adapters/auth/password.js';
 import { sendEmail, INTERNAL_FROM_EMAIL, escapeHtml } from '../services/email.js';
-import { getPartnerCommissionStats } from '../lib/partner-commission.js';
+import { getPartnerCommissionStats, getPartnerCommissionsDue } from '../lib/partner-commission.js';
 
 const router = Router();
 const PARTNER_LOGO_MIMES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
@@ -416,6 +416,24 @@ router.get('/', async (req, res, next) => {
     if (error) throw new Error(`Failed to fetch partners: ${error.message}`);
 
     res.json({ success: true, data: data ?? [] });
+  } catch (err) { next(err); }
+});
+
+// ── GET /commissions-due — consolidated monthly payout ledger ───────────────
+router.get('/commissions-due', async (req, res, next) => {
+  try {
+    const { storeId, month } = req.query as { storeId?: string; month?: string };
+    const reportMonth = month ?? new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }).slice(0, 7);
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(reportMonth)) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_MONTH', message: 'Month must use YYYY-MM format.' },
+      });
+      return;
+    }
+
+    const data = await getPartnerCommissionsDue(storeId, reportMonth);
+    res.json({ success: true, data });
   } catch (err) { next(err); }
 });
 

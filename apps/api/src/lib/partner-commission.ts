@@ -34,6 +34,25 @@ export interface PartnerCommissionStats {
   bookings: PartnerCommissionBooking[];
 }
 
+export interface PartnerCommissionDueRow {
+  partnerId: string;
+  partnerName: string;
+  contactName: string | null;
+  contactEmail: string | null;
+  totalBookings: number;
+  commissionableBookings: number;
+  amountDue: number;
+  pendingAmount: number;
+}
+
+export interface PartnerCommissionsDue {
+  month: string;
+  totalDue: number;
+  totalPending: number;
+  partnersDue: number;
+  partners: PartnerCommissionDueRow[];
+}
+
 interface PartnerTerms {
   id: string;
   slug: string;
@@ -74,6 +93,52 @@ function daysInReportMonth(month?: string): number {
   const [y, m] = source.split('-').map(Number);
   if (!y || !m) return 30;
   return new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+
+export async function getPartnerCommissionsDue(storeId: string | undefined, month: string): Promise<PartnerCommissionsDue> {
+  const sb = getSupabaseClient();
+  let query = sb
+    .from('accommodation_partners')
+    .select('id, name, contact_name, contact_email')
+    .eq('active', true)
+    .eq('status', 'active')
+    .in('deal_type', ['commission', 'combined', 'commission_delivery'])
+    .order('name', { ascending: true });
+
+  if (storeId) query = query.eq('store_id', storeId);
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Failed to fetch commission partners: ${error.message}`);
+
+  const partners = (data ?? []) as Array<{
+    id: string;
+    name: string;
+    contact_name: string | null;
+    contact_email: string | null;
+  }>;
+
+  const rows = await Promise.all(partners.map(async (partner) => {
+    const stats = await getPartnerCommissionStats(partner.id, month);
+    return {
+      partnerId: partner.id,
+      partnerName: partner.name,
+      contactName: partner.contact_name,
+      contactEmail: partner.contact_email,
+      totalBookings: stats.totalBookings,
+      commissionableBookings: stats.commissionableBookings,
+      amountDue: stats.totalCommission,
+      pendingAmount: stats.totalPendingCommission,
+    } satisfies PartnerCommissionDueRow;
+  }));
+
+  const visibleRows = rows.filter((row) => row.amountDue > 0 || row.pendingAmount > 0);
+  return {
+    month,
+    totalDue: roundMoney(visibleRows.reduce((sum, row) => sum + row.amountDue, 0)),
+    totalPending: roundMoney(visibleRows.reduce((sum, row) => sum + row.pendingAmount, 0)),
+    partnersDue: visibleRows.filter((row) => row.amountDue > 0).length,
+    partners: visibleRows,
+  };
 }
 
 export async function getPartnerCommissionStats(partnerId: string, month?: string): Promise<PartnerCommissionStats> {
