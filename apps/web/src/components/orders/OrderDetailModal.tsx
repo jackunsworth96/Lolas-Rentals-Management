@@ -13,6 +13,8 @@ import { OrderDetailHistoryTab } from './OrderDetailHistoryTab.js';
 import { OrderDetailTransferTab } from './OrderDetailTransferTab.js';
 import { OrderDetailExtensionsTab } from './OrderDetailExtensionsTab.js';
 import { AccidentReportModal } from '../accidents/AccidentReportModal.js';
+import { CancelActivatedOrderModal } from './CancelActivatedOrderModal.js';
+import { useAuthStore } from '../../stores/auth-store.js';
 
 function moneyAmount(val: unknown): number {
   if (val == null) return 0;
@@ -27,13 +29,16 @@ interface OrderDetailModalProps {
   storeId: string;
   readOnly?: boolean;
   enrichedData?: EnrichedOrder;
+  onCancelled?: () => void;
 }
 
 type TabKey = 'summary' | 'payments' | 'vehicles' | 'addons' | 'extensions' | 'transfer' | 'history';
 
-export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = false, enrichedData }: OrderDetailModalProps) {
+export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = false, enrichedData, onCancelled }: OrderDetailModalProps) {
   const [tab, setTab] = useState<TabKey>('summary');
   const [accidentReportOpen, setAccidentReportOpen] = useState(false);
+  const [cancelBookingOpen, setCancelBookingOpen] = useState(false);
+  const canCancelOrders = useAuthStore((state) => state.hasPermission('can_cancel_orders'));
   const { toasts, pushToast } = useToast();
   const { order, loading, items, payments, orderAddons, swaps, history, helmetSwaps } = useOrderDetail(orderId);
   const { data: paymentMethods = [] } = usePaymentMethods() as { data: Array<{ id: string; name: string }> | undefined };
@@ -51,6 +56,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
   const orderStatusStr = String((order.status as { value?: string } | undefined)?.value ?? order.status ?? '');
   const isActive = orderStatusStr === 'active';
   const canAct = isActive && !readOnly;
+  const canCancel = !readOnly && canCancelOrders && (isActive || orderStatusStr === 'confirmed');
 
   const total = enrichedData?.finalTotal ?? moneyAmount(order.finalTotal);
   const totalPaid = enrichedData?.totalPaid ?? payments.reduce((s, p) => {
@@ -88,14 +94,27 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
               </button>
             ))}
           </div>
-          {canAct && (
-            <button
-              type="button"
-              onClick={() => setAccidentReportOpen(true)}
-              className="mb-1 shrink-0 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 transition"
-            >
-              🚨 Report Accident
-            </button>
+          {(canAct || canCancel) && (
+            <div className="mb-1 flex shrink-0 items-center gap-2">
+              {canCancel && (
+                <button
+                  type="button"
+                  onClick={() => setCancelBookingOpen(true)}
+                  className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:border-red-400 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300"
+                >
+                  Cancel booking
+                </button>
+              )}
+              {canAct && (
+                <button
+                  type="button"
+                  onClick={() => setAccidentReportOpen(true)}
+                  className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-300"
+                >
+                  🚨 Report Accident
+                </button>
+              )}
+            </div>
           )}
         </div>
 
@@ -185,6 +204,22 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
             peaceOfMindActive: orderAddons.some((a) => a.addonName.toLowerCase().includes('peace')),
           } : undefined}
           onSuccess={() => setAccidentReportOpen(false)}
+        />
+      )}
+
+      {cancelBookingOpen && (
+        <CancelActivatedOrderModal
+          open
+          onClose={() => setCancelBookingOpen(false)}
+          orderId={orderId}
+          orderReference={(order.bookingToken ?? order.booking_token ?? orderId) as string}
+          customerName={customerName}
+          vehicleNames={items.map((item) => item.vehicleName).filter(Boolean).join(', ') || 'No assigned vehicle'}
+          recordedPaymentTotal={totalPaid}
+          onCancelled={() => {
+            onClose();
+            onCancelled?.();
+          }}
         />
       )}
     </>

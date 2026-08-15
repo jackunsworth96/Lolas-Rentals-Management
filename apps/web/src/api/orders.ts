@@ -170,6 +170,18 @@ export function useRefundOrder() {
   });
 }
 
+export function useCancelActivatedOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      api.patch(`/orders/${id}/cancel`, { reason }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['fleet'] });
+    },
+  });
+}
+
 export function useUpdateDropoffNote() {
   const qc = useQueryClient();
   return useMutation({
