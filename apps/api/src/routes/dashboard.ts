@@ -129,6 +129,10 @@ interface StoreMetrics {
   availableVehicles: number;
   ninepmReturns: { count: number; vehicles: NinePmVehicle[] };
   depositsWithheld: number;
+  depositsWithheldByMethod: {
+    cash: number;
+    gcash: number;
+  };
   fleetUtilisation: number;
   maintenanceVehicles: MaintenanceVehicle[];
   maintenancePartsCost: number | null;
@@ -165,6 +169,7 @@ function emptyMetrics(financial: boolean): StoreMetrics {
     availableVehicles: 0,
     ninepmReturns: { count: 0, vehicles: [] },
     depositsWithheld: 0,
+    depositsWithheldByMethod: { cash: 0, gcash: 0 },
     fleetUtilisation: 0,
     maintenanceVehicles: [],
     maintenancePartsCost: financial ? 0 : null,
@@ -207,7 +212,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
     const operationalQueries = [
       sb
         .from('orders')
-        .select('id, store_id, security_deposit, status')
+        .select('id, store_id, security_deposit, deposit_method_id, status')
         .eq('status', 'active')
         .then((r) => ({ key: 'activeOrders' as const, ...r })),
 
@@ -607,6 +612,20 @@ router.get('/summary', authenticate, async (req, res, next) => {
       const depositsWithheld = storeActiveOrders.reduce(
         (sum, o) => sum + Number(o.security_deposit ?? 0), 0,
       );
+      const depositsWithheldByMethod = storeActiveOrders.reduce<{ cash: number; gcash: number }>(
+        (totals, order) => {
+          const method = String(order.deposit_method_id ?? '')
+            .toLowerCase()
+            .replace(/[\s_-]/g, '');
+          const amount = Number(order.security_deposit ?? 0);
+
+          if (method === 'cash') totals.cash += amount;
+          if (method === 'gcash' || method === 'paymaya') totals.gcash += amount;
+
+          return totals;
+        },
+        { cash: 0, gcash: 0 },
+      );
 
       const ninepmVehicles = buildNinepmVehicles(ninepmCandidates, ninePmAddonOrderIds, sid);
       /** Only vehicles with an open maintenance record (In Progress), not fleet status heuristics (e.g. Service Vehicle). */
@@ -784,6 +803,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
         availableVehicles,
         ninepmReturns: { count: ninepmVehicles.length, vehicles: ninepmVehicles },
         depositsWithheld,
+        depositsWithheldByMethod,
         fleetUtilisation,
         maintenanceVehicles,
         maintenancePartsCost,
