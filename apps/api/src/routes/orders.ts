@@ -32,7 +32,7 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
 
     let query = sb
       .from('orders')
-      .select('id, store_id, order_date, customer_id, booking_customer_name, status, final_total, balance_due, web_notes, payment_method_id, security_deposit, card_fee_surcharge, woo_order_id, booking_token, partner_ref, customers!customer_id(name, mobile, email)')
+      .select('id, store_id, order_date, customer_id, booking_customer_name, status, final_total, balance_due, web_notes, payment_method_id, deposit_method_id, security_deposit, card_fee_surcharge, woo_order_id, booking_token, partner_ref, customers!customer_id(name, mobile, email)')
       .eq('store_id', storeId)
       .order('order_date', { ascending: false });
 
@@ -232,6 +232,7 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
         status: o.status as string,
         webNotes: o.web_notes as string | null,
         paymentMethodId: o.payment_method_id as string | null,
+        depositMethodId: o.deposit_method_id as string | null,
         waiverStatus: (waiverData?.status as 'pending' | 'signed' | 'expired' | undefined) ?? 'pending',
         waiverSignedAt: waiverData?.agreed_at ?? null,
         inspectionStatus,
@@ -726,7 +727,7 @@ router.patch('/:id/cancel', requirePermission(Permission.CancelOrders), validate
 
     void sendTelegramAlert(
       `❌ <b>Activated Booking Cancelled</b>\n` +
-        `Reference: ${escapeHtml(result.order_reference ?? req.params.id)}\n` +
+        `Reference: ${escapeHtml(result.order_reference ?? String(req.params.id))}\n` +
         `Customer: ${escapeHtml(result.customer_name ?? '—')}\n` +
         `Reason: ${escapeHtml(reason)}`,
       getTelegramChatId('ops'),

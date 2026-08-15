@@ -86,6 +86,7 @@ export function OrderDetailSummaryTab({
   const [settleReceivableAccountId, setSettleReceivableAccountId] = useState('');
   const [settleRefundAccountId, setSettleRefundAccountId] = useState('');
   const [settleRefundMethodId, setSettleRefundMethodId] = useState('');
+  const depositRefundDefaultApplied = useRef(false);
   const [settleFinalMethodId, setSettleFinalMethodId] = useState('');
   const [settleFinalAccountId, setSettleFinalAccountId] = useState('');
   const [settleFinalRef, setSettleFinalRef] = useState('');
@@ -246,6 +247,20 @@ export function OrderDetailSummaryTab({
     }),
     [activePaymentMethods],
   );
+
+  const depositMethodId = enrichedData?.depositMethodId ?? order.depositMethodId ?? null;
+  const depositMethodLabel = depositMethodId
+    ? pmLookup.get(depositMethodId)?.name ?? depositMethodId
+    : null;
+
+  // Returning a deposit through its original method is the common case. Preselect
+  // it once when available, while keeping the selector editable for exceptions.
+  useEffect(() => {
+    if (depositRefundDefaultApplied.current || !depositMethodId) return;
+    if (!refundPaymentMethods.some((method) => method.id === depositMethodId)) return;
+    depositRefundDefaultApplied.current = true;
+    setSettleRefundMethodId(depositMethodId);
+  }, [depositMethodId, refundPaymentMethods]);
 
   useEffect(() => {
     if (routedCollectAcct && !paymentAccountId) setPaymentAccountId(routedCollectAcct);
@@ -1464,7 +1479,12 @@ export function OrderDetailSummaryTab({
                       </div>
                       {securityDeposit > 0 && (
                         <div className="flex justify-between px-4 py-2.5">
-                          <span className="text-gray-600">Security Deposit Held</span>
+                          <span className="text-gray-600">
+                            Security Deposit Held
+                            <span className={`ml-2 text-xs font-medium ${depositMethodLabel ? 'text-teal-700' : 'text-amber-600'}`}>
+                              ({depositMethodLabel ?? 'Method not recorded'})
+                            </span>
+                          </span>
                           <span className="font-medium">{formatCurrency(securityDeposit)}</span>
                         </div>
                       )}
@@ -1516,7 +1536,10 @@ export function OrderDetailSummaryTab({
                       )}
                       {depositRefund > 0 && (
                         <div className="flex justify-between px-4 py-2.5 bg-amber-50">
-                          <span className="font-medium text-amber-800">Deposit to Refund</span>
+                          <span className="font-medium text-amber-800">
+                            Deposit to Refund
+                            {depositMethodLabel && <span className="ml-2 text-xs">(paid via {depositMethodLabel})</span>}
+                          </span>
                           <span className="font-bold text-amber-800">{formatCurrency(depositRefund)}</span>
                         </div>
                       )}
@@ -1581,6 +1604,11 @@ export function OrderDetailSummaryTab({
                         <p className="text-sm font-medium text-amber-900">
                           Refund {formatCurrency(depositRefund)} deposit to customer
                         </p>
+                        {depositMethodLabel && (
+                          <p className="text-xs text-amber-800">
+                            Deposit was originally paid via <span className="font-semibold">{depositMethodLabel}</span>.
+                          </p>
+                        )}
                         <label className="block">
                           <span className="text-xs font-medium text-amber-800">How are you returning the deposit?</span>
                           <select

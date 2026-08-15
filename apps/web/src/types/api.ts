@@ -76,6 +76,8 @@ export interface EnrichedOrder {
   status: string;
   webNotes: string | null;
   paymentMethodId: string | null;
+  /** Payment method used to collect the refundable security deposit. */
+  depositMethodId: string | null;
   waiverStatus: 'pending' | 'signed' | 'expired';
   waiverSignedAt: string | null;
   /** From inspections table — list views only show a badge when `completed`. */

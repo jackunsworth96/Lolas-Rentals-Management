@@ -7,6 +7,7 @@ import { Badge } from '../../components/common/Badge.js';
 import { OrderDetailModal } from '../../components/orders/OrderDetailModal.js';
 import { InspectionModal } from '../../components/orders/InspectionModal.js';
 import { formatCurrency } from '../../utils/currency.js';
+import { usePaymentMethods } from '../../api/config.js';
 import type { EnrichedOrder } from '../../types/api.js';
 
 type DateFilter = 'all' | 'today' | 'tomorrow';
@@ -41,6 +42,13 @@ function formatReturnDate(dt: string | null): string {
 export default function ActivePage() {
   const storeId = useUIStore((s) => s.selectedStoreId) ?? '';
   const currentUser = useAuthStore((s) => s.user);
+  const { data: paymentMethods = [] } = usePaymentMethods() as {
+    data: Array<{ id: string; name: string }> | undefined;
+  };
+  const paymentMethodNames = useMemo(
+    () => new Map(paymentMethods.map((method) => [method.id, method.name])),
+    [paymentMethods],
+  );
   const { data: orders, isLoading, refetch: refetchOrders } = useEnrichedOrders(storeId, 'active,confirmed') as {
     data: EnrichedOrder[] | undefined;
     isLoading: boolean;
@@ -225,6 +233,24 @@ export default function ActivePage() {
           {formatCurrency(r.balanceDue)}
         </span>
       ),
+    },
+    {
+      key: 'securityDeposit',
+      header: 'Deposit',
+      render: (r: EnrichedOrder) => {
+        if (r.securityDeposit <= 0) return <span className="text-gray-400">—</span>;
+        const methodName = r.depositMethodId
+          ? paymentMethodNames.get(r.depositMethodId) ?? r.depositMethodId
+          : 'Method not recorded';
+        return (
+          <div className="flex flex-col items-start gap-0.5">
+            <span>{formatCurrency(r.securityDeposit)}</span>
+            <span className={`text-xs font-medium ${r.depositMethodId ? 'text-teal-700' : 'text-amber-600'}`}>
+              {methodName}
+            </span>
+          </div>
+        );
+      },
     },
     {
       key: 'status',
@@ -420,6 +446,16 @@ export default function ActivePage() {
                         <span className="text-xs font-medium text-red-600">Balance: {formatCurrency(r.balanceDue)}</span>
                       )}
                     </div>
+                    {r.securityDeposit > 0 && (
+                      <div className="mt-1.5 flex items-center justify-between text-xs">
+                        <span className="text-gray-500">Security deposit</span>
+                        <span className={`font-medium ${r.depositMethodId ? 'text-teal-700' : 'text-amber-600'}`}>
+                          {formatCurrency(r.securityDeposit)} · {r.depositMethodId
+                            ? paymentMethodNames.get(r.depositMethodId) ?? r.depositMethodId
+                            : 'Method not recorded'}
+                        </span>
+                      </div>
+                    )}
                   </button>
 
                   {inspectionStatus !== 'completed' && (
