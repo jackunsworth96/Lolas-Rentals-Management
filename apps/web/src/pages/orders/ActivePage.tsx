@@ -459,6 +459,9 @@ export default function ActivePage() {
           storeId={selectedOrder.storeId}
           readOnly={false}
           enrichedData={selectedOrder}
+          onCancelled={() => {
+            void refetchOrders();
+          }}
         />
       )}
 

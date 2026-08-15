@@ -317,7 +317,7 @@ router.get('/:id/history', requirePermission(Permission.ViewInbox), async (req, 
     const sb = supabase;
 
     const [orderRes, paymentsRes, swapsRes, addonsRes, accidentsRes] = await Promise.all([
-      sb.from('orders').select('id, status, order_date, created_at, employee_id').eq('id', orderId).maybeSingle(),
+      sb.from('orders').select('id, status, order_date, created_at, employee_id, cancelled_at, cancelled_reason').eq('id', orderId).maybeSingle(),
       sb.from('payments').select('id, payment_type, amount, payment_method_id, transaction_date, settlement_status, settlement_ref, created_at').eq('order_id', orderId).order('created_at', { ascending: true }),
       sb.from('vehicle_swaps').select('id, old_vehicle_name, new_vehicle_name, reason, swap_date, swap_time, employee_id, created_at').eq('order_id', orderId).order('created_at', { ascending: true }),
       sb.from('order_addons').select('id, addon_name, addon_price, addon_type, total_amount, added_at').eq('order_id', orderId).order('added_at', { ascending: true }),
@@ -400,6 +400,16 @@ router.get('/:id/history', requirePermission(Permission.ViewInbox), async (req, 
         timestamp: new Date().toISOString(),
         type: 'settled',
         description: 'Order settled',
+      });
+    }
+
+    if (orderRes.data && String((orderRes.data as Record<string, unknown>).status) === 'cancelled') {
+      const cancelledOrder = orderRes.data as Record<string, unknown>;
+      events.push({
+        timestamp: (cancelledOrder.cancelled_at ?? new Date().toISOString()) as string,
+        type: 'cancelled',
+        description: 'Booking cancelled',
+        detail: (cancelledOrder.cancelled_reason as string | null) ?? undefined,
       });
     }
 
@@ -665,6 +675,62 @@ router.post('/:id/refund', requirePermission(Permission.EditOrders), validateBod
     const { refundOrder } = await import('../use-cases/orders/refund-order.js');
     const result = await refundOrder(req.app.locals.deps, { orderId: req.params.id, ...req.body });
     res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+router.patch('/:id/cancel', requirePermission(Permission.CancelOrders), validateBody(z.object({
+  reason: z.string().trim().min(1, 'Cancellation reason is required').max(500),
+})), async (req, res, next) => {
+  try {
+    const reason = (req.body as { reason: string }).reason;
+    const { data, error } = await supabase.rpc('cancel_activated_order_atomic', {
+      p_order_id: req.params.id,
+      p_cancelled_at: new Date().toISOString(),
+      p_cancelled_reason: reason,
+      p_cancelled_by: req.user!.employeeId,
+    });
+    if (error) {
+      const missingCancellationRpc =
+        error.code === 'PGRST202' || error.message.includes('cancel_activated_order_atomic');
+      if (missingCancellationRpc) {
+        res.status(503).json({
+          success: false,
+          error: {
+            code: 'DATABASE_MIGRATION_REQUIRED',
+            message: 'Activated-booking cancellation is not installed in this environment. Apply migration 20260815000000_cancel_activated_orders.sql, then try again.',
+          },
+        });
+        return;
+      }
+      throw new Error(`Cancel activated order RPC failed: ${error.message}`);
+    }
+
+    const result = data as { success: boolean; error?: string; order_reference?: string; customer_name?: string };
+    if (!result.success) {
+      if (result.error === 'Order not found') {
+        res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found' } });
+        return;
+      }
+      if (result.error === 'Already cancelled') {
+        res.status(409).json({ success: false, error: { code: 'ALREADY_CANCELLED', message: 'Booking is already cancelled' } });
+        return;
+      }
+      if (result.error === 'Order is not active') {
+        res.status(409).json({ success: false, error: { code: 'INVALID_ORDER_STATUS', message: 'Only active or confirmed bookings can be cancelled' } });
+        return;
+      }
+      throw new Error(result.error ?? 'Cancellation failed');
+    }
+
+    res.json({ success: true });
+
+    void sendTelegramAlert(
+      `❌ <b>Activated Booking Cancelled</b>\n` +
+        `Reference: ${escapeHtml(result.order_reference ?? req.params.id)}\n` +
+        `Customer: ${escapeHtml(result.customer_name ?? '—')}\n` +
+        `Reason: ${escapeHtml(reason)}`,
+      getTelegramChatId('ops'),
+    );
   } catch (err) { next(err); }
 });
 
