@@ -86,6 +86,8 @@ export interface EnrichedOrder {
   hasExtension?: boolean;
   /** True when any order_addon has a 9PM/late-return add-on name. */
   hasNinePmAddon?: boolean;
+  /** Off-site vehicle transport required for this booking. */
+  transportService?: 'delivery' | 'collection' | 'both' | null;
   /** Accommodation partner slug when booked via a partner referral link. */
   partnerRef?: string | null;
   /** Primary order_item vehicle — used to pre-populate the inspection form. */
