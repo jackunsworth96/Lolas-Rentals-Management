@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { supabase } from '../adapters/supabase/client.js';
 import { sendTelegramAlert, sendTelegramAlertPaidOrdersStaggered, getTelegramChatId } from '../lib/telegram.js';
 import { escapeHtml } from '../services/email.js';
+import { deriveTransportService } from '../lib/transport-service.js';
 
 const router = Router();
 router.use(authenticate);
@@ -55,6 +56,8 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
       dropoff_datetime: string;
       pickup_location_id: string | number | null;
       dropoff_location_id: string | number | null;
+      pickup_location: string | null;
+      dropoff_location: string | null;
       pickup_fee: number | string | null;
       dropoff_fee: number | string | null;
       discount: number;
@@ -63,7 +66,7 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
     if (orderIds.length > 0) {
       const { data: items, error: itemsErr } = await sb
         .from('order_items')
-        .select('id, order_id, vehicle_id, vehicle_name, pickup_datetime, dropoff_datetime, pickup_location_id, dropoff_location_id, pickup_fee, dropoff_fee, discount')
+        .select('id, order_id, vehicle_id, vehicle_name, pickup_datetime, dropoff_datetime, pickup_location_id, dropoff_location_id, pickup_location, dropoff_location, pickup_fee, dropoff_fee, discount')
         .in('order_id', orderIds);
       if (itemsErr) throw new Error(`enriched items query failed: ${itemsErr.message}`);
       for (const item of (items ?? [])) {
@@ -73,43 +76,15 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
       }
     }
 
-    // A location, rather than its charged fee, is the authoritative transport
-    // signal. Partner benefits can waive a fee while staff must still deliver
-    // or collect the vehicle. Fees remain as a fallback for legacy items that
-    // pre-date location IDs.
-    const bookedLocationIds = [
-      ...new Set(
-        [...itemsByOrder.values()]
-          .flat()
-          .flatMap((item) => [item.pickup_location_id, item.dropoff_location_id])
-          .filter((id): id is string | number => id !== null && id !== undefined && String(id).trim() !== '')
-          .map(String),
-      ),
-    ];
-    const storeLocationIds = new Set<string>();
-    if (bookedLocationIds.length > 0) {
-      const { data: locationRows, error: locationsErr } = await sb
-        .from('locations')
-        .select('id, location_type, delivery_cost, collection_cost')
-        .in('id', bookedLocationIds);
-      if (locationsErr) throw new Error(`enriched locations query failed: ${locationsErr.message}`);
-      for (const location of locationRows ?? []) {
-        const isStoreLocation =
-          location.location_type === 'store' ||
-          (Number(location.delivery_cost ?? 0) === 0 && Number(location.collection_cost ?? 0) === 0);
-        if (isStoreLocation) storeLocationIds.add(String(location.id));
-      }
-    }
-
-    const requiresTransport = (
-      locationId: string | number | null,
-      fee: number | string | null,
-    ): boolean => {
-      if (locationId !== null && locationId !== undefined && String(locationId).trim() !== '') {
-        return !storeLocationIds.has(String(locationId));
-      }
-      return Number(fee ?? 0) > 0;
-    };
+    // Load location names as well as IDs. Older activated partner bookings lost
+    // their location IDs while keeping the names and zero (waived) fees.
+    const { data: transportLocations, error: locationsErr } = orderIds.length > 0
+      ? await sb
+          .from('locations')
+          .select('id, name, location_type, delivery_cost, collection_cost')
+          .or(`store_id.eq.${storeId},store_id.is.null`)
+      : { data: [], error: null };
+    if (locationsErr) throw new Error(`enriched locations query failed: ${locationsErr.message}`);
 
     let paymentsByOrder = new Map<string, number>();
     let pendingExtensionsByOrder = new Map<string, number>();
@@ -257,15 +232,7 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
       const inspectionStatus = insp?.status === 'completed' ? 'completed' : 'pending';
       const hasExtension = extendedOrderIds.has(o.id as string);
       const hasNinePmAddon = ninePmOrderIds.has(o.id as string);
-      const hasDelivery = items.some((item) => requiresTransport(item.pickup_location_id, item.pickup_fee));
-      const hasCollection = items.some((item) => requiresTransport(item.dropoff_location_id, item.dropoff_fee));
-      const transportService = hasDelivery && hasCollection
-        ? 'both'
-        : hasDelivery
-          ? 'delivery'
-          : hasCollection
-            ? 'collection'
-            : null;
+      const transportService = deriveTransportService(items, transportLocations ?? []);
 
       const pickupDatetime = primaryItem?.pickup_datetime ?? null;
 

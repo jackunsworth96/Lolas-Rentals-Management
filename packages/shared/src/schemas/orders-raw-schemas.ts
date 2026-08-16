@@ -68,6 +68,8 @@ export interface OrdersRawRow {
   device_type: 'mobile' | 'desktop' | null;
   /** Accommodation partner slug when the booking was made via a partner referral link (migration 129). */
   partner_ref: string | null;
+  /** Operational transport required, derived from location IDs by the inbox API. */
+  transport_service?: 'delivery' | 'collection' | 'both' | null;
   /** Pure rental subtotal (days × daily rate) at booking time, used as commission base (migration 130). */
   rental_value_raw: number | null;
   /** UUID of the NGO this booking's charity donation is earmarked for (migration 131). Null for legacy rows. */

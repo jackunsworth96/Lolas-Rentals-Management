@@ -9,7 +9,7 @@ import { InspectionModal } from '../../components/orders/InspectionModal.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { usePaymentMethods } from '../../api/config.js';
 import type { EnrichedOrder } from '../../types/api.js';
-import { Truck } from 'lucide-react';
+import { TransportBadge } from '../../components/orders/TransportBadge.js';
 
 type DateFilter = 'all' | 'today' | 'tomorrow';
 type PickupSort = 'none' | 'asc' | 'desc';
@@ -38,27 +38,6 @@ function formatReturnDate(dt: string | null): string {
     hour: '2-digit',
     minute: '2-digit',
   });
-}
-
-function TransportBadge({ service }: { service: EnrichedOrder['transportService'] }) {
-  if (!service) return <span className="text-gray-400">—</span>;
-
-  const label = service === 'both' ? 'Both' : service === 'delivery' ? 'Delivery' : 'Collection';
-  const color = service === 'delivery'
-    ? 'border-sky-200 bg-sky-50 text-sky-700'
-    : service === 'collection'
-      ? 'border-violet-200 bg-violet-50 text-violet-700'
-      : 'border-teal-200 bg-teal-50 text-teal-700';
-
-  return (
-    <span
-      title={`${label} transport required`}
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold ${color}`}
-    >
-      <Truck aria-hidden="true" className="h-3 w-3" strokeWidth={2.25} />
-      {label}
-    </span>
-  );
 }
 
 export default function ActivePage() {
