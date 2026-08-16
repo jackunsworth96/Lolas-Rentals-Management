@@ -481,6 +481,14 @@ export default function TransfersPage() {
 
                 {/* Action buttons */}
                 <div className="mt-3 flex flex-wrap gap-2">
+                  {t.paymentStatus !== 'Paid' && !archiveMode && (
+                    <button
+                      onClick={() => setPaymentTarget(t)}
+                      className="rounded-lg bg-green-600 px-3 py-1.5 font-lato text-xs font-medium text-white hover:bg-green-700"
+                    >
+                      Record Payment
+                    </button>
+                  )}
                   {!t.collectedAt && (
                     <button
                       onClick={() => setCollectTarget(t)}
@@ -603,10 +611,21 @@ export default function TransfersPage() {
                       <td className="whitespace-nowrap px-3 py-3 text-right text-sm font-medium text-gray-900">
                         {total > 0 ? formatCurrency(netProfit) : '—'}
                       </td>
-                      <td className="px-3 py-3 text-sm">
-                        <Badge color={PAYMENT_STATUS_COLORS[t.paymentStatus] ?? 'gray'}>
-                          {t.paymentStatus}
-                        </Badge>
+                      <td className="px-3 py-3 text-sm" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex min-w-max flex-col items-start gap-1.5">
+                          <Badge color={PAYMENT_STATUS_COLORS[t.paymentStatus] ?? 'gray'}>
+                            {t.paymentStatus}
+                          </Badge>
+                          {t.paymentStatus !== 'Paid' && !archiveMode && (
+                            <button
+                              type="button"
+                              onClick={() => setPaymentTarget(t)}
+                              className="rounded-md bg-green-600 px-2 py-1 text-xs font-medium text-white hover:bg-green-700"
+                            >
+                              Record Payment
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td className="px-3 py-3 text-sm">
                         {t.driverPaidStatus === 'Paid' ? (
@@ -658,14 +677,6 @@ export default function TransfersPage() {
                       <tr key={`${t.id}-actions`}>
                         <td colSpan={19} className="bg-gray-50 px-6 py-3">
                           <div className="flex flex-wrap items-center gap-3">
-                            {t.paymentStatus !== 'Paid' && (
-                              <button
-                                onClick={() => { setPaymentTarget(t); setExpandedRow(null); }}
-                                className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700"
-                              >
-                                Record Payment
-                              </button>
-                            )}
                             {t.driverPaidStatus !== 'Paid' && (
                               <button
                                 onClick={() => { setDriverTarget(t); setExpandedRow(null); }}
