@@ -35,8 +35,7 @@ import { useUIStore } from '../../stores/ui-store.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 import { useUnseenTaskCount } from '../../api/todo.js';
 import lolasLogo from '../../assets/Lolas Original Logo.svg';
-import bassLogo from '../../assets/BASS Logo .svg';
-import combinedLogo from '../../assets/Lola.BASS.Logo.svg';
+import { isArchivePath } from '../../utils/archive-mode.js';
 
 interface NavItem {
   label: string;
@@ -115,16 +114,11 @@ const NAV_GROUPS: NavGroup[] = [
 
 export function Sidebar() {
   const open = useUIStore((s) => s.sidebarOpen);
-  const selectedStoreId = useUIStore((s) => s.selectedStoreId);
+  const archiveMode = useUIStore((s) => s.archiveMode);
   const perms = useAuthStore((s) => s.user?.permissions ?? []);
   const employeeId = useAuthStore((s) => s.user?.employeeId) ?? '';
   const { data: unseenData } = useUnseenTaskCount(employeeId);
   const todoCount = (unseenData as { count?: number } | undefined)?.count ?? 0;
-
-  const logo =
-    selectedStoreId === 'store-bass' ? bassLogo :
-    selectedStoreId === 'store-lolas' ? lolasLogo :
-    combinedLogo;
 
   return (
     <aside
@@ -135,9 +129,9 @@ export function Sidebar() {
       {/* Logo */}
       <div className="flex h-16 items-center justify-center border-b border-gray-100 px-4">
         {open ? (
-          <img src={logo} alt="Store logo" className="h-10 w-auto object-contain" />
+          <img src={lolasLogo} alt="Lola's Rentals" className="h-10 w-auto object-contain" />
         ) : (
-          <img src={logo} alt="Store logo" className="h-8 w-8 object-contain" />
+          <img src={lolasLogo} alt="Lola's Rentals" className="h-8 w-8 object-contain" />
         )}
       </div>
 
@@ -145,7 +139,7 @@ export function Sidebar() {
       <nav className="flex-1 overflow-y-auto px-2 py-3">
         {NAV_GROUPS.map((group, groupIdx) => {
           const visibleItems = group.items.filter(
-            (item) => !item.perm || perms.includes(item.perm),
+            (item) => (!item.perm || perms.includes(item.perm)) && (!archiveMode || isArchivePath(item.path)),
           );
           if (visibleItems.length === 0) return null;
 

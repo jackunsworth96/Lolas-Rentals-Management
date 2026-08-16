@@ -195,6 +195,10 @@ router.get('/summary', authenticate, async (req, res, next) => {
     const storeIdParam = req.query.storeId as string | undefined;
     const userPerms = req.user?.permissions ?? [];
     const canViewFinancial = userPerms.includes(Permission.ViewDashboard);
+    const activeStoreIds = (await req.app.locals.deps.configRepo.getStores('active'))
+      .filter((store: { id: string }) => store.id !== 'company')
+      .map((store: { id: string }) => store.id);
+    const activeStoreSet = new Set(activeStoreIds);
 
     const manilaDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
     const firstDayOfMonth = manilaDate.slice(0, 7) + '-01';
@@ -377,6 +381,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
         .select('store_id, is_locked')
         .eq('date', manilaDate);
       if (storeFilter) q = q.eq('store_id', storeFilter);
+      else q = q.in('store_id', activeStoreIds);
       return q;
     })();
 
@@ -385,6 +390,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
         .select('id', { count: 'exact', head: true })
         .neq('status', 'Closed');
       if (storeFilter) q = q.eq('store_id', storeFilter);
+      else q = q.in('store_id', activeStoreIds);
       return q;
     })();
 
@@ -394,6 +400,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
         .eq('service_date', manilaDate)
         .neq('status', 'Cancelled');
       if (storeFilter) q = q.eq('store_id', storeFilter);
+      else q = q.in('store_id', activeStoreIds);
       return q;
     })();
 
@@ -404,6 +411,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
         .eq('orders.status', 'active')
         .lt('dropoff_datetime', new Date().toISOString());
       if (storeFilter) q = q.eq('orders.store_id', storeFilter);
+      else q = q.in('orders.store_id', activeStoreIds);
       return q;
     })();
 
@@ -423,7 +431,16 @@ router.get('/summary', authenticate, async (req, res, next) => {
         if (r.error) {
           console.error(`Dashboard query ${r.key} failed: ${r.error.message}`);
         }
-        dataMap.set(r.key, (r.data ?? []) as Record<string, unknown>[]);
+        const rows = (r.data ?? []) as Record<string, unknown>[];
+        dataMap.set(r.key, storeFilter ? rows : rows.filter((row) => {
+          const directStoreId = row.store_id;
+          if (typeof directStoreId === 'string') return directStoreId === 'company' || activeStoreSet.has(directStoreId);
+          const order = row.orders as { store_id?: string } | null | undefined;
+          if (order?.store_id) return activeStoreSet.has(order.store_id);
+          const fleetRow = row.fleet as { store_id?: string } | null | undefined;
+          if (fleetRow?.store_id) return activeStoreSet.has(fleetRow.store_id);
+          return true;
+        }));
       }
     }
 
@@ -823,7 +840,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
       };
     }
 
-    const storeIds = ['store-lolas', 'store-bass'] as const;
+    const storeIds = activeStoreIds;
     const stores: Record<string, StoreMetrics> = {};
 
     stores['combined'] = buildStoreMetrics(undefined);

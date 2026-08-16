@@ -19,6 +19,7 @@ import type {
   Role,
   AppUser,
   RepairCostConfig,
+  StoreScope,
 } from '@lolas/domain';
 
 function snakeToCamel(obj: Record<string, unknown>): Record<string, unknown> {
@@ -112,7 +113,14 @@ async function hardDelete(table: string, id: string | number): Promise<void> {
 export function createConfigRepo(): ConfigRepository {
   return {
     // ── Reads (only active rows so soft-deleted items disappear from UI) ──
-    getStores: () => selectAllActive<Store>('stores'),
+    async getStores(scope: StoreScope = 'active') {
+      let query = sb().from('stores').select('*');
+      if (scope === 'active') query = query.eq('is_active', true);
+      if (scope === 'archived') query = query.eq('is_active', false);
+      const { data, error } = await query.order('name', { ascending: true });
+      if (error) throw new Error(`Failed to fetch stores: ${error.message}`);
+      return (data ?? []).map((r) => snakeToCamel(r) as unknown as Store);
+    },
     async getStoreByBookingToken(token: string): Promise<Store | null> {
       const { data, error } = await sb()
         .from('stores')

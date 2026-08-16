@@ -31,7 +31,18 @@ const edit = requirePermission(Permission.EditSettings);
 // ── Stores ──
 // No EditSettings required — all authenticated users need the stores list (e.g. StoreFilter dropdown).
 router.get('/stores', async (req, res, next) => {
-  try { res.json({ success: true, data: await req.app.locals.deps.configRepo.getStores() }); } catch (e) { next(e); }
+  try {
+    const scope = String(req.query.scope ?? 'active');
+    if (!['active', 'archived', 'all'].includes(scope)) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid store scope' } });
+      return;
+    }
+    if (scope !== 'active' && !req.user?.permissions.includes(Permission.EditSettings)) {
+      res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Archived stores require settings access' } });
+      return;
+    }
+    res.json({ success: true, data: await req.app.locals.deps.configRepo.getStores(scope as 'active' | 'archived' | 'all') });
+  } catch (e) { next(e); }
 });
 router.post('/stores', edit, validateBody(z.object({
   id: z.string().min(1), name: z.string().min(1), location: z.string().nullable().optional(),

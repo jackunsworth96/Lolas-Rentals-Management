@@ -45,11 +45,17 @@ router.get('/', async (req, res, next) => {
     const filterByStore = storeId && storeId !== 'all';
 
     const sb = getSupabaseClient();
+    const activeStoreIds = filterByStore
+      ? []
+      : (await req.app.locals.deps.configRepo.getStores('active'))
+          .filter((store: { id: string }) => store.id !== 'company')
+          .map((store: { id: string }) => store.id);
 
     // ── Parallel fetches ──────────────────────────────────────────────────────
 
     let fleetQ = sb.from('fleet').select('id, store_id, model_id, status');
     if (filterByStore) fleetQ = fleetQ.eq('store_id', storeId);
+    else fleetQ = fleetQ.in('store_id', activeStoreIds);
 
     let orderItemsQ = sb
       .from('order_items')
@@ -59,6 +65,7 @@ router.get('/', async (req, res, next) => {
       .gte('pickup_datetime', from)
       .lte('pickup_datetime', to);
     if (filterByStore) orderItemsQ = orderItemsQ.eq('store_id', storeId);
+    else orderItemsQ = orderItemsQ.in('store_id', activeStoreIds);
 
     let ordersQ = sb
       .from('orders')
@@ -66,6 +73,7 @@ router.get('/', async (req, res, next) => {
       .gte('created_at', from)
       .lte('created_at', to);
     if (filterByStore) ordersQ = ordersQ.eq('store_id', storeId);
+    else ordersQ = ordersQ.in('store_id', activeStoreIds);
 
     let ordersRawQ = sb
       .from('orders_raw')
@@ -74,6 +82,7 @@ router.get('/', async (req, res, next) => {
       .lte('created_at', to)
       .neq('status', 'cancelled');
     if (filterByStore) ordersRawQ = ordersRawQ.eq('store_id', storeId);
+    else ordersRawQ = ordersRawQ.in('store_id', activeStoreIds);
 
     let addonsQ = sb
       .from('order_addons')
@@ -81,6 +90,7 @@ router.get('/', async (req, res, next) => {
       .gte('added_at', from)
       .lte('added_at', to);
     if (filterByStore) addonsQ = addonsQ.eq('store_id', storeId);
+    else addonsQ = addonsQ.in('store_id', activeStoreIds);
 
     const [
       fleetRes,

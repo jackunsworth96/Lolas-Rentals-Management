@@ -12,9 +12,8 @@
  * .env is loaded from (first found): monorepo root, apps/api, process.cwd()
  * Required: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  *
- * Store ID mapping: CSV uses ST01 / ST02. These are mapped to your seeded stores:
- *   ST01 -> store-lolas,  ST02 -> store-bass
- * Override with env: FLEET_STORE_MAP='{"ST01":"store-lolas","ST02":"store-bass"}'
+ * Store ID mapping: active imports default ST01 to Lola's. Any legacy code must
+ * be mapped explicitly with FLEET_STORE_MAP; archived stores reject writes.
  */
 
 import { readFileSync } from 'node:fs';
@@ -37,7 +36,6 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const DEFAULT_STORE_MAP: Record<string, string> = {
   ST01: 'store-lolas',
-  ST02: 'store-bass',
 };
 
 function parseStoreMap(): Record<string, string> {

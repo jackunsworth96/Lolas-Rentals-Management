@@ -1,5 +1,6 @@
 import { useAuthStore } from '../stores/auth-store.js';
 import { normalizeApiBase } from './normalize-api-base.js';
+import { useUIStore } from '../stores/ui-store.js';
 
 const BASE_URL = normalizeApiBase(import.meta.env.VITE_API_URL as string | undefined);
 
@@ -29,6 +30,10 @@ async function request<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
+  const method = String(options.method ?? 'GET').toUpperCase();
+  if (useUIStore.getState().archiveMode && !['GET', 'HEAD', 'OPTIONS'].includes(method) && !isAuthLoginPath(path)) {
+    throw new ApiError('Archived stores are read-only', 'STORE_ARCHIVED');
+  }
   const token = useAuthStore.getState().token;
 
   const headers: Record<string, string> = {
@@ -74,6 +79,9 @@ async function request<T>(
 }
 
 async function uploadRequest<T>(path: string, body: FormData): Promise<T> {
+  if (useUIStore.getState().archiveMode) {
+    throw new ApiError('Archived stores are read-only', 'STORE_ARCHIVED');
+  }
   const token = useAuthStore.getState().token;
   const headers: Record<string, string> = {};
   if (token) {
