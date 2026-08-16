@@ -38,12 +38,15 @@ export function OrderDetailPaymentsTab({ payments, totalPaid }: OrderDetailPayme
           {payments.map((p, idx) => {
             const isExt = p.paymentType === 'extension';
             const isRefund = p.paymentType === 'refund';
+            const isReturnCharge = p.paymentType === 'return_charge';
             const isAddonIou = p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending';
             return (
               <tr key={idx} className={`border-b hover:bg-sand-brand ${isExt ? 'bg-amber-50' : ''} ${isRefund ? 'bg-red-50' : ''}`}>
                 <td className="py-2 pr-4">{formatDate(p.transactionDate)}</td>
                 <td className="py-2 pr-4">
-                  {isRefund ? (
+                  {isReturnCharge ? (
+                    <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-800">Return charge</span>
+                  ) : isRefund ? (
                     <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">Refund</span>
                   ) : isExt ? (
                     <span className="inline-flex items-center gap-1.5">
