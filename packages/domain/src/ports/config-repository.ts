@@ -8,6 +8,8 @@ export interface Store {
   publicBookingEnabled: boolean;
 }
 
+export type StoreScope = 'active' | 'archived' | 'all';
+
 export interface Addon {
   id: number | string;
   name: string;
@@ -147,7 +149,7 @@ export interface RepairCostConfig {
 
 export interface ConfigRepository {
   // Reads
-  getStores(): Promise<Store[]>;
+  getStores(scope?: StoreScope): Promise<Store[]>;
   getStoreByBookingToken(token: string): Promise<Store | null>;
   getAddons(storeId: string): Promise<Addon[]>;
   getLocations(storeId: string): Promise<Location[]>;

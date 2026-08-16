@@ -1,16 +1,25 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './client.js';
 import { COMPANY_STORE_ID } from '@lolas/shared';
+import { useUIStore } from '../stores/ui-store.js';
 
 // ── Query hooks ──
 
-export function useStores(opts?: { includeCompany?: boolean }) {
+export type StoreScope = 'active' | 'archived' | 'all';
+
+export function useStores(opts?: { includeCompany?: boolean; scope?: StoreScope }) {
   const includeCompany = !!opts?.includeCompany;
+  const archiveMode = useUIStore((s) => s.archiveMode);
+  const scope = opts?.scope ?? (archiveMode ? 'archived' : 'active');
+  const fetchScope = scope === 'archived' && includeCompany ? 'all' : scope;
   return useQuery({
-    queryKey: ['config', 'stores', includeCompany ? 'with-company' : 'operational'],
+    queryKey: ['config', 'stores', scope, includeCompany ? 'with-company' : 'operational'],
     queryFn: async () => {
-      const rows = await api.get<Array<{ id: string; name: string }>>('/config/stores');
+      const rows = await api.get<Array<{ id: string; name: string; isActive?: boolean }>>(`/config/stores?scope=${fetchScope}`);
       if (!Array.isArray(rows)) return [];
+      if (scope === 'archived' && includeCompany) {
+        return rows.filter((s) => s.id === COMPANY_STORE_ID || s.isActive === false);
+      }
       if (includeCompany) return rows;
       return rows.filter((s) => s.id !== COMPANY_STORE_ID);
     },

@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const VALID_STORES = new Set(["lolas", "bass"]);
+const VALID_STORES = new Set(["lolas"]);
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -41,14 +41,18 @@ Deno.serve(async (req) => {
   const url = new URL(req.url);
   const store = url.searchParams.get("store")?.toLowerCase() ?? "";
 
+  if (store === "bass") {
+    return json({ error: "Bass Bikes is permanently closed", code: "STORE_ARCHIVED" }, 410);
+  }
+
   if (!VALID_STORES.has(store)) {
     return json(
-      { error: "Missing or invalid ?store= parameter. Use ?store=lolas or ?store=bass" },
+      { error: "Missing or invalid ?store= parameter. Use ?store=lolas" },
       400,
     );
   }
 
-  const secretEnvName = store === "lolas" ? "WEBHOOK_SECRET_LOLAS" : "WEBHOOK_SECRET_BASS";
+  const secretEnvName = "WEBHOOK_SECRET_LOLAS";
   const secret = Deno.env.get(secretEnvName);
 
   if (!secret) {
