@@ -19,7 +19,11 @@ import { usePaymentRouting } from '../../hooks/use-payment-routing.js';
 import { resolveStoreFromSource } from '@lolas/shared';
 import { InspectionModal } from './InspectionModal.js';
 import { useAuthStore } from '../../stores/auth-store.js';
-import { fetchPublicPartnerBenefit, type PublicPartnerBenefit } from '../../api/partners.js';
+import { fetchPublicPartnerBenefit } from '../../api/partners.js';
+import {
+  partnerAllowsFreeDeliveryLocation,
+  partnerEstablishmentLocation,
+} from '../../utils/partnerDeliveryLocation.js';
 
 // ── AM/PM datetime helpers ──
 
@@ -191,23 +195,6 @@ function emptyVehicleRow(): VehicleRow {
   };
 }
 
-function hasPartnerFreeDelivery(benefit: PublicPartnerBenefit | null | undefined) {
-  return Boolean(benefit && (
-    benefit.freeDelivery ||
-    benefit.dealType === 'free_delivery' ||
-    benefit.dealType === 'combined' ||
-    benefit.dealType === 'commission_delivery' ||
-    benefit.dealType === 'discount_delivery'
-  ));
-}
-
-function partnerAllowsFreeDeliveryLocation(benefit: PublicPartnerBenefit | null | undefined, locationId: number | null) {
-  if (!hasPartnerFreeDelivery(benefit)) return false;
-  const ids = benefit?.freeDeliveryLocationIds;
-  if (!ids || ids.length === 0) return true;
-  return locationId != null && ids.includes(locationId);
-}
-
 function locationId(loc: Record<string, unknown> | undefined): number | null {
   const id = Number(loc?.id);
   return Number.isInteger(id) && id > 0 ? id : null;
@@ -285,6 +272,16 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     enabled: Boolean(rawOrder.partner_ref),
     staleTime: 5 * 60_000,
   });
+  const partnerPickupLocationOption = partnerEstablishmentLocation(
+    partnerBenefit,
+    rawOrder.pickup_location_id != null ? Number(rawOrder.pickup_location_id) : null,
+    rawOrder.vehicle_model_id,
+  );
+  const partnerDropoffLocationOption = partnerEstablishmentLocation(
+    partnerBenefit,
+    rawOrder.dropoff_location_id != null ? Number(rawOrder.dropoff_location_id) : null,
+    rawOrder.vehicle_model_id,
+  );
 
   function effectiveLocationFee(
     loc: Record<string, unknown> | undefined,
@@ -294,7 +291,11 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     const rawFee = kind === 'pickup'
       ? Number(loc.deliveryCost ?? loc.fee ?? 0)
       : Number(loc.collectionCost ?? loc.fee ?? 0);
-    return partnerAllowsFreeDeliveryLocation(partnerBenefit, locationId(loc)) ? 0 : rawFee;
+    return partnerAllowsFreeDeliveryLocation(
+      partnerBenefit,
+      locationId(loc),
+      rawOrder.vehicle_model_id,
+    ) ? 0 : rawFee;
   }
 
   function locationOptionLabel(loc: Record<string, unknown>, kind: 'pickup' | 'dropoff') {
@@ -302,7 +303,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
       ? Number(loc.deliveryCost ?? loc.fee ?? 0)
       : Number(loc.collectionCost ?? loc.fee ?? 0);
     if (rawFee <= 0) return String(loc.name);
-    if (partnerAllowsFreeDeliveryLocation(partnerBenefit, locationId(loc))) {
+    if (partnerAllowsFreeDeliveryLocation(partnerBenefit, locationId(loc), rawOrder.vehicle_model_id)) {
       return `${String(loc.name)} (Free - was ${formatCurrency(rawFee)})`;
     }
     return `${String(loc.name)} (${formatCurrency(rawFee)})`;
@@ -358,6 +359,17 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
         dropoffLocName = dLoc ? String(dLoc.name) : '';
         locPickupFee = effectiveLocationFee(pLoc, 'pickup');
         locDropoffFee = effectiveLocationFee(dLoc, 'dropoff');
+
+        pickupLocName = partnerEstablishmentLocation(
+          partnerBenefit,
+          locationId(pLoc),
+          rawOrder.vehicle_model_id,
+        ) || pickupLocName;
+        dropoffLocName = partnerEstablishmentLocation(
+          partnerBenefit,
+          locationId(dLoc),
+          rawOrder.vehicle_model_id,
+        ) || dropoffLocName;
       }
     } else {
       const extracted = rawOrder.payload
@@ -388,6 +400,19 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
       locDropoffFee = dropoffLocName && locations
         ? effectiveLocationFee(locations.find((l) => String(l.name) === dropoffLocName), 'dropoff')
         : 0;
+
+      const matchedPickup = locations?.find((l) => String(l.name) === pickupLocName);
+      const matchedDropoff = locations?.find((l) => String(l.name) === dropoffLocName);
+      pickupLocName = partnerEstablishmentLocation(
+        partnerBenefit,
+        locationId(matchedPickup),
+        rawOrder.vehicle_model_id,
+      ) || pickupLocName;
+      dropoffLocName = partnerEstablishmentLocation(
+        partnerBenefit,
+        locationId(matchedDropoff),
+        rawOrder.vehicle_model_id,
+      ) || dropoffLocName;
     }
 
     const days = calcDays(pickup, dropoff);
@@ -650,10 +675,12 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
       }
 
       if (patch.pickupLocation && locations) {
+        if (patch.pickupLocation === partnerPickupLocationOption) merged.pickupFee = 0;
         const loc = locations.find((l) => l.name === patch.pickupLocation || l.id === patch.pickupLocation);
         if (loc) merged.pickupFee = effectiveLocationFee(loc, 'pickup');
       }
       if (patch.dropoffLocation && locations) {
+        if (patch.dropoffLocation === partnerDropoffLocationOption) merged.dropoffFee = 0;
         const loc = locations.find((l) => l.name === patch.dropoffLocation || l.id === patch.dropoffLocation);
         if (loc) merged.dropoffFee = effectiveLocationFee(loc, 'dropoff');
       }
@@ -1369,6 +1396,13 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                       className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     >
                       <option value="">Select...</option>
+                      {(partnerPickupLocationOption || v.pickupLocation === partnerBenefit?.name?.trim()) &&
+                        partnerBenefit?.name?.trim() &&
+                        !locations?.some((l) => String(l.name) === partnerBenefit.name.trim()) && (
+                        <option value={partnerBenefit.name.trim()}>
+                          {partnerBenefit.name.trim()} (Partner establishment - Free)
+                        </option>
+                      )}
                       {(locations ?? []).map((l) => (
                         <option key={String(l.id)} value={String(l.name)}>
                           {locationOptionLabel(l, 'pickup')}
@@ -1389,6 +1423,13 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                       className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     >
                       <option value="">Select...</option>
+                      {(partnerDropoffLocationOption || v.dropoffLocation === partnerBenefit?.name?.trim()) &&
+                        partnerBenefit?.name?.trim() &&
+                        !locations?.some((l) => String(l.name) === partnerBenefit.name.trim()) && (
+                        <option value={partnerBenefit.name.trim()}>
+                          {partnerBenefit.name.trim()} (Partner establishment - Free)
+                        </option>
+                      )}
                       {(locations ?? []).map((l) => (
                         <option key={String(l.id)} value={String(l.name)}>
                           {locationOptionLabel(l, 'dropoff')}
