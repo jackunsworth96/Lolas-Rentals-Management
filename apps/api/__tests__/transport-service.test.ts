@@ -32,4 +32,24 @@ describe('deriveTransportService', () => {
       dropoff_fee: 0,
     }], locations)).toBe('delivery');
   });
+
+  it('shows both legs for a free partner booking saved with its establishment name', () => {
+    expect(deriveTransportService([{
+      pickup_location: 'Bravo Beach Resort',
+      dropoff_location: 'Bravo Beach Resort',
+      pickup_fee: 0,
+      dropoff_fee: 0,
+    }], locations, {
+      unknownNamedLocationsRequireTransport: true,
+    })).toBe('both');
+  });
+
+  it('does not infer free transport from an unknown name on a non-partner booking', () => {
+    expect(deriveTransportService([{
+      pickup_location: 'Unknown location',
+      dropoff_location: 'Unknown location',
+      pickup_fee: 0,
+      dropoff_fee: 0,
+    }], locations)).toBe(null);
+  });
 });

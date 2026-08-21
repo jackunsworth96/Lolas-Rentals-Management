@@ -17,6 +17,15 @@ export interface TransportLeg {
   dropoff_fee?: number | string | null;
 }
 
+export interface DeriveTransportServiceOptions {
+  /**
+   * Partner bookings may save the establishment name instead of a configured
+   * pricing-zone name. A named, non-store destination still requires transport
+   * even when the partner benefit has waived its fee.
+   */
+  unknownNamedLocationsRequireTransport?: boolean;
+}
+
 function normalizedName(value: string | null | undefined): string {
   return value?.trim().toLocaleLowerCase() ?? '';
 }
@@ -33,6 +42,7 @@ function isStoreLocation(location: TransportLocation): boolean {
 export function deriveTransportService(
   legs: TransportLeg[],
   locations: TransportLocation[],
+  options: DeriveTransportServiceOptions = {},
 ): TransportService {
   const locationsById = new Map(locations.map((location) => [String(location.id), location]));
   const locationsByName = new Map(
@@ -50,6 +60,7 @@ export function deriveTransportService(
     const location = (id ? locationsById.get(id) : undefined)
       ?? locationsByName.get(normalizedName(locationName));
     if (location) return !isStoreLocation(location);
+    if (options.unknownNamedLocationsRequireTransport && normalizedName(locationName)) return true;
     return Number(fee ?? 0) > 0;
   };
 

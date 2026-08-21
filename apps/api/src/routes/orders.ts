@@ -232,7 +232,13 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
       const inspectionStatus = insp?.status === 'completed' ? 'completed' : 'pending';
       const hasExtension = extendedOrderIds.has(o.id as string);
       const hasNinePmAddon = ninePmOrderIds.has(o.id as string);
-      const transportService = deriveTransportService(items, transportLocations ?? []);
+      const transportService = deriveTransportService(items, transportLocations ?? [], {
+        // Free partner delivery/collection is saved using the establishment
+        // name (for example, "Bravo Beach Resort"). It is intentionally not a
+        // configured pricing-zone name, and its fee is zero because it was
+        // waived, but the operational transport job still exists.
+        unknownNamedLocationsRequireTransport: Boolean(o.partner_ref),
+      });
 
       const pickupDatetime = primaryItem?.pickup_datetime ?? null;
 
