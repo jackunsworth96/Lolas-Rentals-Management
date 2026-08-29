@@ -213,7 +213,7 @@ export default function BudgetPage() {
   );
   const upsertMut = useUpsertBudgetLines();
 
-  const { data: rawCategories = [] } = useExpenseCategories() as {
+  const { data: rawCategories = [] } = useExpenseCategories(selectedStore ?? undefined) as {
     data: CategoryConfig[] | undefined;
   };
   const activeCategories = useMemo(

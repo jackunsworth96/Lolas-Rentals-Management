@@ -94,7 +94,7 @@ export default function ExpensesPage() {
   const [date, setDate] = useState(todayStr());
 
   const { data: expenses = [], isLoading } = useExpenses(storeId, date);
-  const { data: categories = [] } = useExpenseCategories() as {
+  const { data: categories = [] } = useExpenseCategories(storeId || undefined) as {
     data: CategoryConfig[] | undefined;
   };
   const { data: allAccounts = [] } = useChartOfAccounts() as {

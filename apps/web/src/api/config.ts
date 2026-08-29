@@ -46,8 +46,15 @@ export function useStorePricing(storeId: string) {
 export function useFleetStatuses() {
   return useQuery({ queryKey: ['config', 'fleet-statuses'], queryFn: () => api.get('/config/fleet-statuses') });
 }
-export function useExpenseCategories() {
-  return useQuery({ queryKey: ['config', 'expense-categories'], queryFn: () => api.get('/config/expense-categories') });
+export function useExpenseCategories(storeId?: string) {
+  return useQuery({
+    queryKey: ['config', 'expense-categories', storeId ?? 'auto'],
+    queryFn: () => {
+      const qs = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+      return api.get(`/config/expense-categories${qs}`);
+    },
+    enabled: storeId === undefined || !!storeId,
+  });
 }
 export function useTransferRoutes(storeId: string) {
   return useQuery({ queryKey: ['config', 'transfer-routes', storeId], queryFn: () => api.get(`/config/transfer-routes?storeId=${storeId}`), enabled: !!storeId });

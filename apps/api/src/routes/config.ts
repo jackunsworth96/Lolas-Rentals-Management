@@ -6,6 +6,10 @@ import { validateBody, validateQuery } from '../middleware/validate.js';
 import { Permission } from '@lolas/shared';
 import { z } from 'zod';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
+import {
+  canAccessExpenseCategoryStore,
+  resolveExpenseCategoryStoreId,
+} from '../lib/resolve-expense-category-store.js';
 
 const router = Router();
 
@@ -197,10 +201,28 @@ router.delete('/fleet-statuses/:id', edit, async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.deleteFleetStatus(req.params.id); res.json({ success: true }); } catch (e) { next(e); }
 });
 
+function httpError(message: string, statusCode: number): Error {
+  const err = new Error(message) as Error & { statusCode: number };
+  err.statusCode = statusCode;
+  return err;
+}
+
+function resolveExpenseCategoryStore(req: Request): string {
+  const userStores = req.user?.storeIds ?? [];
+  const requestedRaw = req.query.storeId;
+  const requested = typeof requestedRaw === 'string' ? requestedRaw.trim() : '';
+  const storeId = resolveExpenseCategoryStoreId(userStores, requested);
+  if (!storeId) throw httpError('No store available for expense categories', 400);
+  if (!canAccessExpenseCategoryStore(userStores, storeId)) {
+    throw httpError('You do not have access to this store', 403);
+  }
+  return storeId;
+}
+
 // ── Expense Categories ──
 router.get('/expense-categories', async (req, res, next) => {
   try {
-    const storeId = req.user!.storeIds[0];
+    const storeId = resolveExpenseCategoryStore(req);
     res.json({ success: true, data: await req.app.locals.deps.configRepo.getExpenseCategories(storeId) });
   } catch (e) { next(e); }
 });
