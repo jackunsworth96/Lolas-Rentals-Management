@@ -88,18 +88,45 @@ function formatReturnDatetime(dt: string): string {
 
 function minDate(currentDropoff: string): string {
   if (!currentDropoff) return new Date().toISOString().slice(0, 10);
-  return currentDropoff.slice(0, 10);
+  const date = new Date(currentDropoff);
+  if (isNaN(date.getTime())) return new Date().toISOString().slice(0, 10);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const year = parts.find((part) => part.type === 'year')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+  const day = parts.find((part) => part.type === 'day')?.value;
+  return year && month && day ? `${year}-${month}-${day}` : currentDropoff.slice(0, 10);
 }
 
 function defaultNewDate(currentDropoff: string): string {
-  const d = currentDropoff ? new Date(currentDropoff) : new Date();
-  if (isNaN(d.getTime())) {
+  const currentDate = minDate(currentDropoff);
+  const [year, month, day] = currentDate.split('-').map(Number);
+  if (!year || !month || !day) {
     const fallback = new Date();
-    fallback.setDate(fallback.getDate() + 1);
+    fallback.setUTCDate(fallback.getUTCDate() + 1);
     return fallback.toISOString().slice(0, 10);
   }
-  d.setDate(d.getDate() + 1);
+  const d = new Date(Date.UTC(year, month - 1, day + 1));
   return d.toISOString().slice(0, 10);
+}
+
+function defaultReturnTime(currentDropoff: string): string {
+  if (!currentDropoff) return '';
+  const date = new Date(currentDropoff);
+  if (isNaN(date.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Manila',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const hour = parts.find((part) => part.type === 'hour')?.value;
+  const minute = parts.find((part) => part.type === 'minute')?.value;
+  return hour && minute ? `${hour}:${minute}` : '';
 }
 
 const PAYMENT_METHODS = [
@@ -137,7 +164,7 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
   // Step state
   const [step, setStep] = useState<Step>('dates');
   const [newDate, setNewDate] = useState(() => defaultNewDate(currentDropoff));
-  const [newTime, setNewTime] = useState('');
+  const [newTime, setNewTime] = useState(() => defaultReturnTime(currentDropoff));
   const [overrideEmail, setOverrideEmail] = useState('');
 
   // Add-on state
@@ -151,6 +178,8 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
   // Review / payment state
   const [previewData, setPreviewData] = useState<PreviewData | null>(null);
   const [overrideRate, setOverrideRate] = useState('');
+  const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
+  const [discountValue, setDiscountValue] = useState('');
   const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid'>('unpaid');
   const [paymentMethod, setPaymentMethod] = useState('');
 
@@ -190,6 +219,11 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
     const ms = new Date(newDropoffDatetime).getTime() - new Date(currentDropoff).getTime();
     return Math.max(1, Math.ceil(ms / 86400000));
   }, [newDropoffDatetime, currentDropoff]);
+
+  const availableTimeSlots = useMemo(() => {
+    if (!newTime || TIME_SLOTS.includes(newTime)) return TIME_SLOTS;
+    return [...TIME_SLOTS, newTime].sort();
+  }, [newTime]);
 
   // Original rental days — used to derive per-day rate from total_amount
   const originalRentalDays = useMemo(
@@ -243,7 +277,7 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
     if (!open) {
       setStep('dates');
       setNewDate(defaultNewDate(currentDropoff));
-      setNewTime('');
+      setNewTime(defaultReturnTime(currentDropoff));
       setOverrideEmail('');
       setSelectedOneTimeAddonIds([]);
       setSelectedPerDayAddonIds([]);
@@ -251,6 +285,8 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
       setLocationAddress('');
       setPreviewData(null);
       setOverrideRate('');
+      setDiscountType('percentage');
+      setDiscountValue('');
       setPaymentStatus('unpaid');
       setPaymentMethod('');
       setLoading(false);
@@ -306,6 +342,8 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
     const rateNum = parseFloat(overrideRate);
     const effectiveRate = !isNaN(rateNum) && rateNum > 0 ? rateNum : previewData.dailyRate;
     const isOverride = Math.abs(effectiveRate - previewData.dailyRate) > 0.001;
+    const discountNum = parseFloat(discountValue);
+    const hasDiscount = !isNaN(discountNum) && discountNum > 0;
     const accountId = paymentStatus === 'paid' && paymentMethod
       ? getAccountId(paymentMethod, storeId)
       : undefined;
@@ -321,6 +359,7 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
           email: emailToUse,
           newDropoffDatetime,
           ...(isOverride ? { overrideDailyRate: effectiveRate } : {}),
+          ...(hasDiscount ? { discountType, discountValue: discountNum } : {}),
           paymentStatus,
           ...(paymentStatus === 'paid' && paymentMethod
             ? { paymentMethod, paymentAccountId: accountId }
@@ -367,10 +406,25 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
   const rateNum = parseFloat(overrideRate);
   const effectiveRate = !isNaN(rateNum) && rateNum > 0 ? rateNum : (previewData?.dailyRate ?? 0);
   const rentalExtensionTotal = previewData ? Math.round(effectiveRate * previewData.extensionDays * 100) / 100 : 0;
-  const computedTotal = rentalExtensionTotal + perDayAddonDelta + newOneTimeCost + newPerDayCost + locationDelta;
+  const extensionSubtotal = rentalExtensionTotal + perDayAddonDelta + newOneTimeCost + newPerDayCost + locationDelta;
+  const parsedDiscountValue = parseFloat(discountValue);
+  const discountAmount = !isNaN(parsedDiscountValue) && parsedDiscountValue > 0
+    ? Math.min(
+        extensionSubtotal,
+        Math.round((discountType === 'percentage'
+          ? extensionSubtotal * Math.min(parsedDiscountValue, 100) / 100
+          : parsedDiscountValue) * 100) / 100,
+      )
+    : 0;
+  const computedTotal = Math.round((extensionSubtotal - discountAmount) * 100) / 100;
 
   const step1Valid = !!(newDate && newTime && emailToUse && orderReference);
-  const step2Valid = paymentStatus === 'unpaid' || !!paymentMethod;
+  const discountIsValid = discountValue === '' || (
+    !isNaN(parsedDiscountValue)
+    && parsedDiscountValue > 0
+    && (discountType !== 'percentage' || parsedDiscountValue <= 100)
+  );
+  const step2Valid = (paymentStatus === 'unpaid' || !!paymentMethod) && discountIsValid;
 
   const STEP_LABELS: Record<Step, string> = {
     dates: 'Extend Booking',
@@ -379,7 +433,7 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={STEP_LABELS[step]} size="sm">
+    <Modal open={open} onClose={onClose} title={STEP_LABELS[step]} size={step === 'review' ? 'lg' : step === 'dates' ? 'md' : 'sm'}>
 
       {/* ── SUCCESS ── */}
       {step === 'success' && successResult && (
@@ -471,7 +525,7 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
                 className="w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
               >
                 <option value="">Select time</option>
-                {TIME_SLOTS.map((slot) => (
+                {availableTimeSlots.map((slot) => (
                   <option key={slot} value={slot}>{formatSlotLabel(slot)}</option>
                 ))}
               </select>
@@ -691,9 +745,68 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
               </div>
             )}
 
-            <div className="flex justify-between px-4 py-2.5">
-              <span className="font-medium text-gray-900">Total</span>
-              <span className="text-lg font-bold text-gray-900">{formatCurrency(computedTotal)}</span>
+            <div className="bg-gray-50/70 px-4 py-3">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium text-gray-900">Discount</p>
+                  <p className="text-xs text-gray-500">Applied to the full extension subtotal</p>
+                </div>
+                {discountAmount > 0 && (
+                  <span className="font-semibold text-teal-700">−{formatCurrency(discountAmount)}</span>
+                )}
+              </div>
+              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2">
+                <div className="grid grid-cols-2 rounded-lg border border-gray-300 bg-white p-0.5">
+                  {(['percentage', 'fixed'] as const).map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => { setDiscountType(type); setError(null); }}
+                      aria-pressed={discountType === type}
+                      className={`rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+                        discountType === type ? 'bg-teal-600 text-white' : 'text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      {type === 'percentage' ? 'Percentage' : 'Fixed amount'}
+                    </button>
+                  ))}
+                </div>
+                <div className="relative">
+                  <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-gray-400">
+                    {discountType === 'percentage' ? '%' : '₱'}
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={discountType === 'percentage' ? 100 : undefined}
+                    step={0.01}
+                    value={discountValue}
+                    onChange={(e) => { setDiscountValue(e.target.value); setError(null); }}
+                    placeholder="No discount"
+                    aria-label={discountType === 'percentage' ? 'Percentage discount' : 'Fixed discount amount'}
+                    className={`w-full rounded-lg border py-2 pl-8 pr-3 text-sm focus:outline-none focus:ring-1 ${
+                      discountIsValid
+                        ? 'border-gray-300 focus:border-teal-500 focus:ring-teal-500'
+                        : 'border-red-300 focus:border-red-500 focus:ring-red-500'
+                    }`}
+                  />
+                </div>
+              </div>
+              {!discountIsValid && (
+                <p className="mt-1.5 text-xs text-red-600">
+                  Enter a positive discount{discountType === 'percentage' ? ' of no more than 100%' : ''}.
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-end justify-between bg-teal-50/60 px-4 py-3">
+              <div>
+                <span className="font-semibold text-gray-900">Extension total</span>
+                {discountAmount > 0 && (
+                  <p className="text-xs text-gray-500">Before discount: {formatCurrency(extensionSubtotal)}</p>
+                )}
+              </div>
+              <span className="text-xl font-bold text-teal-800">{formatCurrency(computedTotal)}</span>
             </div>
           </div>
 

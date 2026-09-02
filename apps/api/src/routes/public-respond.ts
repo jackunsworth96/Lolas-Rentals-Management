@@ -1391,33 +1391,27 @@ router.post('/booking-handoff', async (req, res, next) => {
     const dropoffLocationId = resolveRespondLocationId(input.dropoffLocationId, locations);
 
     if (!pickupLocationId || !dropoffLocationId) {
-      res.status(404).json({
-        error: 'Pickup or dropoff location not found',
-        locations: locations.map((location) => ({
-          id: Number(location.id),
-          name: location.name,
-        })),
-      });
+      res.status(404).json({ error: 'Pickup or dropoff location not found' });
       return;
     }
 
     const [modelResult, pickupLocResult, dropoffLocResult] = await Promise.all([
       sb
         .from('vehicle_models')
-        .select('id, name, security_deposit')
+        .select('id')
         .eq('id', vehicleModelId)
         .eq('is_active', true)
         .maybeSingle(),
       sb
         .from('locations')
-        .select('id, name, delivery_cost, collection_cost, location_type')
+        .select('id, delivery_cost')
         .eq('id', pickupLocationId)
         .eq('is_active', true)
         .or(`store_id.eq.${input.storeId},store_id.is.null`)
         .maybeSingle(),
       sb
         .from('locations')
-        .select('id, name, delivery_cost, collection_cost, location_type')
+        .select('id, collection_cost')
         .eq('id', dropoffLocationId)
         .eq('is_active', true)
         .or(`store_id.eq.${input.storeId},store_id.is.null`)
@@ -1438,7 +1432,7 @@ router.post('/booking-handoff', async (req, res, next) => {
     }
 
     const sessionToken = input.sessionToken ?? `respond_${randomUUID()}`;
-    const hold = await createHold(
+    await createHold(
       { bookingPort: req.app.locals.deps.bookingPort },
       {
         vehicleModelId,
@@ -1524,40 +1518,12 @@ router.post('/booking-handoff', async (req, res, next) => {
       `Please review and confirm your booking here: ${cartUrl}`;
 
     res.status(201).json({
-      sessionToken,
-      holdId:    hold.id,
-      expiresAt: hold.expiresAt,
+      sufficient_availability: true,
+      price_per_day:            quote?.dailyRate ?? null,
+      delivery_fee:             quote?.pickupFee ?? Number(pickupLocResult.data.delivery_cost ?? 0),
+      collection_fee:           quote?.dropoffFee ?? Number(dropoffLocResult.data.collection_cost ?? 0),
       cartUrl,
       message,
-      vehicle: {
-        model_id:         modelResult.data.id,
-        model:            modelResult.data.name,
-        security_deposit: Number(modelResult.data.security_deposit ?? 0),
-      },
-      pickup: {
-        id:              Number(pickupLocResult.data.id),
-        name:            pickupLocResult.data.name,
-        delivery_cost:   Number(pickupLocResult.data.delivery_cost ?? 0),
-        location_type:   pickupLocResult.data.location_type ?? null,
-      },
-      dropoff: {
-        id:              Number(dropoffLocResult.data.id),
-        name:            dropoffLocResult.data.name,
-        collection_cost: Number(dropoffLocResult.data.collection_cost ?? 0),
-        location_type:   dropoffLocResult.data.location_type ?? null,
-      },
-      quote: quote
-        ? {
-            dailyRate:       quote.dailyRate,
-            rentalSubtotal:  quote.rentalSubtotal,
-            pickupFee:       quote.pickupFee,
-            dropoffFee:      quote.dropoffFee,
-            addons:          quote.addons,
-            addonsTotal:     quote.addonsTotal,
-            grandTotal:      quote.grandTotalWithFees,
-            securityDeposit: quote.securityDeposit,
-          }
-        : null,
     });
   } catch (err) {
     if (typeof (err as { statusCode?: unknown }).statusCode !== 'number') {

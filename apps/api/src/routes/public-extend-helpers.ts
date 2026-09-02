@@ -38,6 +38,8 @@ export type ExtensionInputs = {
   trimmedEmail: string;
   newDropoffDatetime: string;
   overrideDailyRate: number | undefined;
+  discountType?: 'percentage' | 'fixed';
+  discountValue?: number;
   isPaid: boolean;
   paymentMethodId: string;
   emailErrorLabel: string;
@@ -58,6 +60,20 @@ export type ExtensionOutcome =
   | { kind: 'not_found' }
   | { kind: 'error'; reason: string }
   | { kind: 'success'; extensionDays: number; extensionCost: number; outstandingBalance: number; newDropoffDatetime: string };
+
+export function calculateExtensionDiscount(
+  subtotal: number,
+  discountType?: 'percentage' | 'fixed',
+  discountValue?: number,
+): number {
+  if (subtotal <= 0 || discountValue === undefined || discountValue <= 0) return 0;
+  const requested = discountType === 'percentage'
+    ? subtotal * Math.min(discountValue, 100) / 100
+    : discountType === 'fixed'
+      ? discountValue
+      : 0;
+  return Math.min(subtotal, Math.round(requested * 100) / 100);
+}
 
 async function getPendingExtensionBalance(
   target: { source: 'active' | 'raw'; id: string },
@@ -97,6 +113,8 @@ export async function resolveExtensionForRaw(args: ExtensionInputs): Promise<Ext
     trimmedEmail,
     newDropoffDatetime,
     overrideDailyRate,
+    discountType,
+    discountValue,
     isPaid,
     paymentMethodId,
     emailErrorLabel,
@@ -162,7 +180,9 @@ export async function resolveExtensionForRaw(args: ExtensionInputs): Promise<Ext
     // volume) the customer keeps that cheaper rate.
     protectedDailyRate = origDailyRate > 0 ? Math.min(computedExtDailyRate, origDailyRate) : computedExtDailyRate;
   }
-  const extensionCost = Math.round(protectedDailyRate * extDays * 100) / 100;
+  const extensionSubtotal = Math.round(protectedDailyRate * extDays * 100) / 100;
+  const discountAmount = calculateExtensionDiscount(extensionSubtotal, discountType, discountValue);
+  const extensionCost = Math.round((extensionSubtotal - discountAmount) * 100) / 100;
 
   const paymentId = crypto.randomUUID();
   const journalTxId = crypto.randomUUID();
@@ -189,7 +209,7 @@ export async function resolveExtensionForRaw(args: ExtensionInputs): Promise<Ext
       p_journal_tx_id:     journalTxId,
       p_journal_date:      journalDate,
       p_journal_period:    journalPeriod,
-      p_ext_description:   `Extension (raw order ${row.id as string}): ${extDays} day${extDays !== 1 ? 's' : ''}`,
+      p_ext_description:   `Extension (raw order ${row.id as string}): ${extDays} day${extDays !== 1 ? 's' : ''}${discountAmount > 0 ? `; discount ₱${discountAmount}` : ''}`,
     });
 
   if (rpcErr) {
@@ -249,6 +269,8 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
     trimmedEmail,
     newDropoffDatetime,
     overrideDailyRate,
+    discountType,
+    discountValue,
     isPaid,
     paymentMethodId,
     emailErrorLabel,
@@ -471,7 +493,9 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
       }
     }
 
-    const totalDelta = extensionCost + addonDelta + ninePmCost + newOneTimeCost + newPerDayCost + locationDelta;
+    const extensionSubtotal = extensionCost + addonDelta + ninePmCost + newOneTimeCost + newPerDayCost + locationDelta;
+    const discountAmount = calculateExtensionDiscount(extensionSubtotal, discountType, discountValue);
+    const totalDelta = Math.round((extensionSubtotal - discountAmount) * 100) / 100;
     const paymentId = crypto.randomUUID();
     const journalTxId = crypto.randomUUID();
     const now = new Date();
@@ -505,7 +529,7 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
         p_journal_tx_id:     journalTxId,
         p_journal_date:      journalDate,
         p_journal_period:    journalPeriod,
-        p_ext_description:   `Extension: order ${ord.id} (${oldDays}→${newDays} days)`,
+        p_ext_description:   `Extension: order ${ord.id} (${oldDays}→${newDays} days)${discountAmount > 0 ? `; discount ₱${discountAmount}` : ''}`,
       });
 
     if (rpcErr) {
@@ -598,7 +622,7 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
     // addonDelta = per-day addon adjustment for extended days (e.g. Peace of Mind × extra days).
     // It is already included in totalDelta (sent to the RPC) and must also be included
     // in totalExtensionCost so the return value, Telegram, and email all reflect the full charge.
-    const totalExtensionCost = extensionCost + addonDelta + ninePmCost + newOneTimeCost + newPerDayCost + locationDelta;
+    const totalExtensionCost = totalDelta;
 
     // Fire-and-forget Ops channel Telegram alert. Look up the customer name
     // from the orders row — never block the response path on this.
@@ -626,6 +650,10 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
           }
         }
         if (newDropoffLocationId) extraLines.push(`Location change → ID ${newDropoffLocationId}${newDropoffLocationAddress ? ` (${newDropoffLocationAddress})` : ''}`);
+        if (discountAmount > 0) {
+          const discountLabel = discountType === 'percentage' ? `${discountValue}%` : `₱${discountValue}`;
+          extraLines.push(`Discount (${discountLabel}): −₱${discountAmount.toLocaleString('en-PH')}`);
+        }
         await sendTelegramAlert(
           `🔄 <b>Rental Extended</b>\n` +
             `Reference: ${escapeHtml(displayRef)}\n` +
