@@ -712,6 +712,8 @@ staffRouter.post(
         email,
         newDropoffDatetime,
         overrideDailyRate,
+        discountType,
+        discountValue,
         paymentStatus,
         paymentMethod,
         newOneTimeAddonIds,
@@ -723,6 +725,8 @@ staffRouter.post(
         email: string;
         newDropoffDatetime: string;
         overrideDailyRate?: number;
+        discountType?: 'percentage' | 'fixed';
+        discountValue?: number;
         paymentStatus?: 'paid' | 'unpaid';
         paymentMethod?: string;
         paymentAccountId?: string;
@@ -743,6 +747,8 @@ staffRouter.post(
         trimmedEmail,
         newDropoffDatetime,
         overrideDailyRate,
+        discountType,
+        discountValue,
         isPaid,
         paymentMethodId: effectivePaymentMethodId,
         emailErrorLabel: '[extend-email] Staff active path error:',
@@ -786,6 +792,8 @@ staffRouter.post(
         trimmedEmail,
         newDropoffDatetime,
         overrideDailyRate,
+        discountType,
+        discountValue,
         isPaid,
         paymentMethodId: effectivePaymentMethodId,
         emailErrorLabel: '[extend-email] Staff raw path error:',

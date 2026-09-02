@@ -595,13 +595,15 @@ describe('Respond.io booking handoff', () => {
       });
 
     expect(res.status).toBe(201);
-    expect(res.body.pickup.id).toBe(2);
-    expect(res.body.dropoff.id).toBe(2);
-    expect(res.body.quote.pickupFee).toBe(0);
-    expect(res.body.quote.dropoffFee).toBe(150);
+    expect(res.body).toMatchObject({
+      sufficient_availability: true,
+      price_per_day: 500,
+      delivery_fee: 0,
+      collection_fee: 150,
+    });
   });
 
-  it('returns selected add-on lines and totals in the cart preview quote', async () => {
+  it('returns only compact AI-visible fields', async () => {
     mocks.getSupabaseClient.mockReturnValue(makeSupabaseForHandoff());
 
     const res = await request(app)
@@ -617,13 +619,15 @@ describe('Respond.io booking handoff', () => {
       });
 
     expect(res.status).toBe(201);
-    expect(res.body.quote.addons).toEqual([
-      { id: 10, name: 'Surf Rack', type: 'one_time', unitPrice: 250, total: 250 },
-      { id: 11, name: 'Peace of Mind Cover', type: 'per_day', unitPrice: 95, total: 285 },
+    expect(Object.keys(res.body).sort()).toEqual([
+      'cartUrl',
+      'collection_fee',
+      'delivery_fee',
+      'message',
+      'price_per_day',
+      'sufficient_availability',
     ]);
-    expect(res.body.quote.addonsTotal).toBe(535);
-    expect(res.body.quote.grandTotal).toBe(2285);
-    expect(res.body.quote.securityDeposit).toBe(1000);
+    expect(JSON.stringify(res.body).length).toBeLessThan(4000);
     expect(res.body.cartUrl).toContain('/book/basket?sessionToken=');
   });
 
@@ -643,8 +647,6 @@ describe('Respond.io booking handoff', () => {
       });
 
     expect(res.status).toBe(201);
-    expect(res.body.quote.addons).toEqual([]);
-    expect(res.body.quote.addonsTotal).toBe(0);
     expect(res.body.cartUrl).toContain('/book/basket?sessionToken=');
   });
 
@@ -664,10 +666,7 @@ describe('Respond.io booking handoff', () => {
       });
 
     expect(res.status).toBe(201);
-    expect(res.body.quote.addons).toEqual([
-      { id: 10, name: 'Surf Rack', type: 'one_time', unitPrice: 250, total: 250 },
-    ]);
-    expect(res.body.quote.addonsTotal).toBe(250);
+    expect(res.body.sufficient_availability).toBe(true);
   });
 
   it('rejects invalid selected add-ons through quote validation', async () => {
