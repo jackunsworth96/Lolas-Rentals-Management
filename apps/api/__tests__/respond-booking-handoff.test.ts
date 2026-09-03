@@ -737,15 +737,11 @@ describe('Respond.io accommodation directory', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       found: true,
-      place: {
-        name: 'Bravo Beach Resort Siargao',
-        area: 'General Luna',
-        address: 'Poblacion 5, General Luna',
-        delivery_available: true,
-        delivery_fee: 0,
-        collection_fee: 0,
-        is_partner: true,
-      },
+      name: 'Bravo Beach Resort Siargao',
+      area: 'General Luna',
+      delivery_fee: 0,
+      collection_fee: 0,
+      is_partner: true,
     });
     expect(JSON.stringify(res.body).length).toBeLessThan(4000);
   });
@@ -761,11 +757,9 @@ describe('Respond.io accommodation directory', () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
       found: true,
-      place: {
-        name: 'Muni Muni Villas Siargao',
-        area: 'General Luna',
-        delivery_fee: 100,
-      },
+      name: 'Muni Muni Villas Siargao',
+      area: 'General Luna',
+      delivery_fee: 100,
     });
   });
 

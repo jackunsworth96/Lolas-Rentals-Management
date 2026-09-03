@@ -2327,7 +2327,7 @@ router.get('/accommodation', async (req, res, next) => {
 
     const { data, error } = await getSupabaseClient()
       .from('accommodation_directory')
-      .select('name, aliases, area, address, delivery_fee, collection_fee, is_partner, delivery_available')
+      .select('name, aliases, area, delivery_fee, collection_fee, is_partner, delivery_available')
       .eq('is_active', true);
     if (error) throw error;
 
@@ -2357,15 +2357,11 @@ router.get('/accommodation', async (req, res, next) => {
     const deliveryAvailable = Boolean(match.delivery_available);
     res.json({
       found: true,
-      place: {
-        name: String(match.name),
-        area: String(match.area),
-        address: (match.address as string | null) ?? null,
-        delivery_available: deliveryAvailable,
-        delivery_fee: !deliveryAvailable ? null : isPartner ? 0 : match.delivery_fee == null ? null : Number(match.delivery_fee),
-        collection_fee: !deliveryAvailable ? null : isPartner ? 0 : match.collection_fee == null ? null : Number(match.collection_fee),
-        is_partner: isPartner,
-      },
+      name: String(match.name),
+      area: String(match.area),
+      delivery_fee: !deliveryAvailable ? null : isPartner ? 0 : match.delivery_fee == null ? null : Number(match.delivery_fee),
+      collection_fee: !deliveryAvailable ? null : isPartner ? 0 : match.collection_fee == null ? null : Number(match.collection_fee),
+      is_partner: isPartner,
     });
   } catch (err) {
     next(err);
