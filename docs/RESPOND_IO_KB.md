@@ -935,11 +935,20 @@ Notes:
 - Response includes `sufficient_availability` per model.
 - When the full window is unavailable, `available_until` is the confirmed latest return datetime that supports the requested quantity from the requested pickup. Offer it first.
 - `hold_expires_at` means a vehicle is blocked by another customer's temporary cart hold.
-- `blocking_window_may_clear_after` is not confirmed availability. It only means an overlapping booking or hold may clear after that time.
-- Never tell a customer "the earliest available time is..." from `blocking_window_may_clear_after` unless you run a new availability check for the full requested pickup and return window and the result has `sufficient_availability=true`.
 - Apply the unit-count disclosure rule in this KB.
 
-### F. Delivery fee by area
+### F. Accommodation and business search
+
+`GET /api/public/respond/accommodation?search=Bravo%20Resort`
+
+Use this first when the customer names a hotel, hostel, villa, cafe, or business. The search is case-insensitive and checks both the canonical name and saved aliases.
+
+- If `found=true`, keep `place.name` as the accommodation and use `place.area` as the booking service area.
+- `delivery_fee` and `collection_fee` already include the free-partner rule.
+- If `delivery_available=false`, offer store pickup and return instead.
+- If `found=false`, tell the customer the place was not found and ask for its area. Never guess.
+
+### G. Delivery fee by area
 
 `GET /api/public/respond/delivery-fee?area=General%20Luna`
 
@@ -954,7 +963,7 @@ Establishment rule:
 - If the directory identifies it as being within General Luna, use `area=General Luna`, including addresses that also mention Catangnan or Backroad. Example: JungleNest Resort stays as the accommodation, while the fee lookup uses `General Luna`.
 - Do not ask the customer for an area already supplied by the directory. For an unlisted establishment, use the location action, then pass its resolved service area here. Ask only if neither source can resolve it confidently.
 
-### G. Return extension flow
+### H. Return extension flow
 
 Use these endpoints when a customer wants to add extra full days to an active rental.
 Do not use them for same-day late returns. Same-day late returns require human confirmation and should be escalated.

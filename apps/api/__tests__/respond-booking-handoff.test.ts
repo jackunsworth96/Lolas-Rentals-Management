@@ -89,6 +89,42 @@ function makeSupabaseForHandoff() {
   };
 }
 
+function makeSupabaseForAccommodationDirectory() {
+  const rows = [
+    {
+      name: 'Bravo Beach Resort Siargao',
+      aliases: ['Bravo', 'Bravo Resort'],
+      area: 'General Luna',
+      address: 'Poblacion 5, General Luna',
+      delivery_fee: 100,
+      collection_fee: 100,
+      is_partner: true,
+      delivery_available: true,
+    },
+    {
+      name: 'Muni Muni Villas Siargao',
+      aliases: ['Muni Muni Villa', 'Muni Muni Villas', 'Muni Muni'],
+      area: 'General Luna',
+      address: 'General Luna',
+      delivery_fee: 100,
+      collection_fee: 100,
+      is_partner: false,
+      delivery_available: true,
+    },
+  ];
+
+  return {
+    from: vi.fn((table: string) => {
+      if (table !== 'accommodation_directory') throw new Error(`Unexpected table ${table}`);
+      const query = {
+        select: vi.fn(() => query),
+        eq: vi.fn(async () => ({ data: rows, error: null })),
+      };
+      return query;
+    }),
+  };
+}
+
 function makeSupabaseForOrderLookup() {
   return {
     from: vi.fn((table: string) => {
@@ -689,6 +725,63 @@ describe('Respond.io booking handoff', () => {
   });
 });
 
+describe('Respond.io accommodation directory', () => {
+  it('matches aliases and returns a compact place result', async () => {
+    mocks.getSupabaseClient.mockReturnValue(makeSupabaseForAccommodationDirectory());
+
+    const res = await request(app)
+      .get('/api/public/respond/accommodation')
+      .set('X-API-Key', 'respond-test-key')
+      .query({ search: 'bravo resort' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      found: true,
+      place: {
+        name: 'Bravo Beach Resort Siargao',
+        area: 'General Luna',
+        address: 'Poblacion 5, General Luna',
+        delivery_available: true,
+        delivery_fee: 0,
+        collection_fee: 0,
+        is_partner: true,
+      },
+    });
+    expect(JSON.stringify(res.body).length).toBeLessThan(4000);
+  });
+
+  it('resolves Muni Muni Villa to its General Luna record', async () => {
+    mocks.getSupabaseClient.mockReturnValue(makeSupabaseForAccommodationDirectory());
+
+    const res = await request(app)
+      .get('/api/public/respond/accommodation')
+      .set('X-API-Key', 'respond-test-key')
+      .query({ search: 'muni muni villa' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      found: true,
+      place: {
+        name: 'Muni Muni Villas Siargao',
+        area: 'General Luna',
+        delivery_fee: 100,
+      },
+    });
+  });
+
+  it('returns a short message when no place matches', async () => {
+    mocks.getSupabaseClient.mockReturnValue(makeSupabaseForAccommodationDirectory());
+
+    const res = await request(app)
+      .get('/api/public/respond/accommodation')
+      .set('X-API-Key', 'respond-test-key')
+      .query({ search: 'definitely not a real villa' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ found: false, message: 'Place not found' });
+  });
+});
+
 describe('Public booking lookup totals', () => {
   it('includes stored add-ons when recomputing the public order total', async () => {
     mocks.getSupabaseClient.mockReturnValue(makeSupabaseForOrderLookup());
@@ -827,12 +920,18 @@ describe('Respond.io availability alternatives', () => {
       });
 
     expect(res.status).toBe(200);
-    expect(res.body.available[0]).toMatchObject({
-      model_id: 'tuktuk',
-      sufficient_availability: false,
-      available_until: '2026-08-03T10:15:00+08:00',
+    expect(res.body).toEqual({
+      available: [{
+        model_id: 'tuktuk',
+        model: 'TukTuk',
+        available_count: 0,
+        sufficient_availability: false,
+        hold_expires_at: null,
+        available_until: '2026-08-03T10:15:00+08:00',
+      }],
+      has_availability: false,
     });
-    expect(res.body.guidance).toContain('offer that confirmed shorter window first');
+    expect(JSON.stringify(res.body).length).toBeLessThan(4000);
     expect(app.locals.deps.bookingPort.checkAvailability).toHaveBeenCalledWith(expect.objectContaining({
       requestedQuantity: 1,
     }));

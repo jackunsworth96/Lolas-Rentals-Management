@@ -31,6 +31,24 @@ export function useAddons(storeId: string) {
 export function useLocations(storeId: string) {
   return useQuery({ queryKey: ['config', 'locations', storeId], queryFn: () => api.get(`/config/locations?storeId=${storeId}`), enabled: !!storeId });
 }
+export interface AccommodationDirectoryEntry {
+  id: number;
+  name: string;
+  aliases: string[];
+  area: string;
+  address: string | null;
+  deliveryFee: number | null;
+  collectionFee: number | null;
+  isPartner: boolean;
+  deliveryAvailable: boolean;
+  isActive: boolean;
+}
+export function useAccommodationDirectory() {
+  return useQuery<AccommodationDirectoryEntry[]>({
+    queryKey: ['config', 'accommodation-directory'],
+    queryFn: () => api.get('/config/accommodation-directory'),
+  });
+}
 export function usePaymentMethods() {
   return useQuery({ queryKey: ['config', 'payment-methods'], queryFn: () => api.get('/config/payment-methods') });
 }
@@ -215,6 +233,8 @@ export function useDeleteAddon() { return useDelete('addons', ['addons']); }
 
 export function useSaveLocation() { return useSave('locations', ['locations']); }
 export function useDeleteLocation() { return useDelete('locations', ['locations']); }
+export function useSaveAccommodationDirectoryEntry() { return useSave('accommodation-directory', ['accommodation-directory']); }
+export function useDeleteAccommodationDirectoryEntry() { return useDelete('accommodation-directory', ['accommodation-directory']); }
 
 export function useSavePaymentMethod() { return useSave('payment-methods', ['payment-methods']); }
 export function useDeletePaymentMethod() { return useDelete('payment-methods', ['payment-methods']); }

@@ -28,6 +28,21 @@ function mapReviewRow(row: Record<string, unknown>) {
     createdAt: row.created_at as string,
   };
 }
+
+function mapAccommodationDirectoryRow(row: Record<string, unknown>) {
+  return {
+    id: Number(row.id),
+    name: String(row.name),
+    aliases: (row.aliases as string[] | null) ?? [],
+    area: String(row.area),
+    address: (row.address as string | null) ?? null,
+    deliveryFee: row.delivery_fee == null ? null : Number(row.delivery_fee),
+    collectionFee: row.collection_fee == null ? null : Number(row.collection_fee),
+    isPartner: Boolean(row.is_partner),
+    deliveryAvailable: Boolean(row.delivery_available),
+    isActive: Boolean(row.is_active),
+  };
+}
 router.use(authenticate);
 
 const edit = requirePermission(Permission.EditSettings);
@@ -116,6 +131,76 @@ router.put('/locations/:id', edit, validateBody(z.object({
 });
 router.delete('/locations/:id', edit, async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.deleteLocation(Number(req.params.id)); res.json({ success: true }); } catch (e) { next(e); }
+});
+
+// ── Accommodation and business directory ──
+const accommodationDirectoryBody = z.object({
+  name: z.string().trim().min(1).max(200),
+  aliases: z.array(z.string().trim().min(1).max(200)).max(30).optional().default([]),
+  area: z.string().trim().min(1).max(100),
+  address: z.string().trim().max(500).nullable().optional(),
+  deliveryFee: z.number().nonnegative().nullable().optional(),
+  collectionFee: z.number().nonnegative().nullable().optional(),
+  isPartner: z.boolean().optional(),
+  deliveryAvailable: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+});
+
+function accommodationDirectoryPayload(body: z.infer<typeof accommodationDirectoryBody>) {
+  return {
+    name: body.name,
+    aliases: body.aliases,
+    area: body.area,
+    address: body.address || null,
+    delivery_fee: body.deliveryFee ?? null,
+    collection_fee: body.collectionFee ?? null,
+    is_partner: body.isPartner ?? false,
+    delivery_available: body.deliveryAvailable ?? true,
+    is_active: body.isActive ?? true,
+  };
+}
+
+router.get('/accommodation-directory', async (_req, res, next) => {
+  try {
+    const { data, error } = await getSupabaseClient()
+      .from('accommodation_directory')
+      .select('*')
+      .order('name', { ascending: true });
+    if (error) throw error;
+    res.json({ success: true, data: (data ?? []).map((row) => mapAccommodationDirectoryRow(row as Record<string, unknown>)) });
+  } catch (e) { next(e); }
+});
+
+router.post('/accommodation-directory', edit, validateBody(accommodationDirectoryBody), async (req, res, next) => {
+  try {
+    const { error } = await getSupabaseClient()
+      .from('accommodation_directory')
+      .insert(accommodationDirectoryPayload(req.body));
+    if (error) throw error;
+    res.status(201).json({ success: true });
+  } catch (e) { next(e); }
+});
+
+router.put('/accommodation-directory/:id', edit, validateBody(accommodationDirectoryBody), async (req, res, next) => {
+  try {
+    const { error } = await getSupabaseClient()
+      .from('accommodation_directory')
+      .update(accommodationDirectoryPayload(req.body))
+      .eq('id', Number(req.params.id));
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e) { next(e); }
+});
+
+router.delete('/accommodation-directory/:id', edit, async (req, res, next) => {
+  try {
+    const { error } = await getSupabaseClient()
+      .from('accommodation_directory')
+      .delete()
+      .eq('id', Number(req.params.id));
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e) { next(e); }
 });
 
 // ── Payment Methods ──

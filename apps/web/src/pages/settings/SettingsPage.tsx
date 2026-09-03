@@ -21,6 +21,7 @@ import { ReviewsTab } from '../../components/settings/tabs/ReviewsTab.js';
 import { InspectionChecklistTab } from '../../components/settings/tabs/InspectionChecklistTab.js';
 import { PickupRulesTab } from '../../components/settings/tabs/PickupRulesTab.js';
 import { FleetAccountingTab } from '../../components/settings/tabs/FleetAccountingTab.js';
+import { AccommodationDirectoryTab } from '../../components/settings/tabs/AccommodationDirectoryTab.js';
 
 const TABS = [
   { key: 'stores', label: 'Stores' },
@@ -28,6 +29,7 @@ const TABS = [
   { key: 'roles', label: 'Roles & Permissions' },
   { key: 'addons', label: 'Add-ons' },
   { key: 'locations', label: 'Locations' },
+  { key: 'accommodation-directory', label: 'Accommodation Directory' },
   { key: 'payment-methods', label: 'Payment Methods' },
   { key: 'vehicle-models', label: 'Vehicle Models' },
   { key: 'fleet-statuses', label: 'Fleet Statuses' },
@@ -55,6 +57,7 @@ const TAB_COMPONENT: Record<TabKey, React.FC> = {
   roles: RolesTab,
   addons: AddonsTab,
   locations: LocationsTab,
+  'accommodation-directory': AccommodationDirectoryTab,
   'payment-methods': PaymentMethodsTab,
   'vehicle-models': VehicleModelsTab,
   'fleet-statuses': FleetStatusesTab,

@@ -2294,25 +2294,78 @@ router.get('/availability', async (req, res, next) => {
         sufficient_availability: entry.availableCount >= quantity,
         hold_expires_at:         entry.holdExpiresAt ?? null,
         available_until:         entry.availableUntil ?? null,
-        blocking_window_may_clear_after: entry.nextAvailablePickup ?? null,
-        note: entry.availableCount >= quantity
-          ? 'This model has enough stock for the exact requested pickup and return datetimes.'
-          : entry.availableUntil
-            ? 'The requested window is unavailable, but the requested quantity is continuously available from pickup until available_until. Offer this exact shorter return as the first alternative.'
-            : 'Do not present blocking_window_may_clear_after as confirmed availability. It only means an overlapping booking or hold may clear after this time; the full requested rental window must be checked again before suggesting it.',
       }));
 
-    const totalAvailable = available.reduce((sum, e) => sum + e.available_count, 0);
     const hasAvailability = available.some((e) => e.sufficient_availability);
 
     res.json({
-      pickup_datetime:    pickupDatetime,
-      dropoff_datetime:   dropoffDatetime,
-      requested_quantity: quantity,
       available,
-      total_available:    totalAvailable,
-      has_availability:   hasAvailability,
-      guidance:           'Check availability as soon as the vehicle, quantity, pickup datetime, and return datetime are known. If unavailable and available_until is present, offer that confirmed shorter window first. Do not present blocking_window_may_clear_after as confirmed availability without checking the full alternative rental window.',
+      has_availability: hasAvailability,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+function normalisePlaceSearch(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+/** GET /api/public/respond/accommodation?search=bravo+resort */
+router.get('/accommodation', async (req, res, next) => {
+  try {
+    const search = typeof req.query.search === 'string' ? normalisePlaceSearch(req.query.search) : '';
+    if (search.length < 2) {
+      res.status(400).json({ error: 'search must contain at least 2 characters' });
+      return;
+    }
+
+    const { data, error } = await getSupabaseClient()
+      .from('accommodation_directory')
+      .select('name, aliases, area, address, delivery_fee, collection_fee, is_partner, delivery_available')
+      .eq('is_active', true);
+    if (error) throw error;
+
+    const searchTokens = search.split(' ');
+    const matches = ((data ?? []) as Array<Record<string, unknown>>)
+      .map((row) => {
+        const names = [String(row.name), ...((row.aliases as string[] | null) ?? [])]
+          .map(normalisePlaceSearch);
+        const score = Math.min(...names.map((name) => {
+          if (name === search) return 0;
+          if (name.includes(search) || search.includes(name)) return 1;
+          if (searchTokens.every((token) => name.includes(token))) return 2;
+          return 99;
+        }));
+        return { row, score };
+      })
+      .filter((match) => match.score < 99)
+      .sort((a, b) => a.score - b.score || String(a.row.name).length - String(b.row.name).length);
+
+    const match = matches[0]?.row;
+    if (!match) {
+      res.json({ found: false, message: 'Place not found' });
+      return;
+    }
+
+    const isPartner = Boolean(match.is_partner);
+    const deliveryAvailable = Boolean(match.delivery_available);
+    res.json({
+      found: true,
+      place: {
+        name: String(match.name),
+        area: String(match.area),
+        address: (match.address as string | null) ?? null,
+        delivery_available: deliveryAvailable,
+        delivery_fee: !deliveryAvailable ? null : isPartner ? 0 : match.delivery_fee == null ? null : Number(match.delivery_fee),
+        collection_fee: !deliveryAvailable ? null : isPartner ? 0 : match.collection_fee == null ? null : Number(match.collection_fee),
+        is_partner: isPartner,
+      },
     });
   } catch (err) {
     next(err);
