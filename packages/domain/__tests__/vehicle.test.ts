@@ -88,6 +88,28 @@ describe('Vehicle', () => {
     });
   });
 
+  describe('isStatusLocked', () => {
+    it('returns true for Sold', () => {
+      const v = Vehicle.create(makeVehicleProps({ status: 'Sold' }));
+      expect(v.isStatusLocked()).toBe(true);
+    });
+
+    it('returns true for Closed', () => {
+      const v = Vehicle.create(makeVehicleProps({ status: 'Closed' }));
+      expect(v.isStatusLocked()).toBe(true);
+    });
+
+    it('returns false for Service Vehicle (can be manually changed back)', () => {
+      const v = Vehicle.create(makeVehicleProps({ status: 'Service Vehicle' }));
+      expect(v.isStatusLocked()).toBe(false);
+    });
+
+    it('returns false for Available', () => {
+      const v = Vehicle.create(makeVehicleProps({ status: 'Available' }));
+      expect(v.isStatusLocked()).toBe(false);
+    });
+  });
+
   describe('canAutoUpdateStatus', () => {
     it('returns true when not protected', () => {
       const v = Vehicle.create(makeVehicleProps({ status: 'Available' }));
