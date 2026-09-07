@@ -334,6 +334,61 @@ function makeSupabaseForFutureDeliveryLookup() {
   };
 }
 
+function makeSupabaseForEmailBookingLookup() {
+  return {
+    from: vi.fn((table: string) => {
+      if (table === 'customers') {
+        const query = {
+          select: vi.fn(() => query),
+          ilike: vi.fn(() => query),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+        };
+        return query;
+      }
+      if (table === 'orders') {
+        const query = {
+          select: vi.fn(() => query),
+          in: vi.fn(() => query),
+        };
+        return query;
+      }
+      if (table === 'orders_raw') {
+        const query = {
+          select: vi.fn(() => query),
+          in: vi.fn(() => query),
+          ilike: vi.fn(() => query),
+          order: vi.fn(async () => ({
+            data: [{
+              order_reference: 'LR-0907-EMAIL',
+              status: 'unprocessed',
+              customer_name: 'Email Customer',
+              vehicle_model_id: 'beat',
+              quantity: 1,
+              pickup_datetime: '2026-09-10T09:00:00+08:00',
+              dropoff_datetime: '2026-09-12T09:00:00+08:00',
+              pickup_location_id: null,
+              dropoff_location_id: null,
+              pickup_location_address: null,
+              dropoff_location_address: null,
+              store_id: 'store-lolas',
+              web_quote_raw: 1070,
+            }],
+            error: null,
+          })),
+        };
+        return query;
+      }
+      if (table === 'vehicle_models') {
+        return queryResult({ data: { name: 'Honda Beat' }, error: null });
+      }
+      if (table === 'stores') {
+        return queryResult({ data: { name: "Lola's Rentals" }, error: null });
+      }
+      throw new Error(`Unexpected table ${table}`);
+    }),
+  };
+}
+
 function makeSupabaseForMultiVehicleExtension() {
   const items = [1, 2, 3].map((number) => ({
     id: `item-${number}`,
@@ -867,6 +922,73 @@ describe('Respond.io international phone extension lookup', () => {
 });
 
 describe('Respond.io future booking context', () => {
+  it('accepts an email in the generic query parameter', async () => {
+    mocks.getSupabaseClient.mockReturnValue(makeSupabaseForEmailBookingLookup());
+
+    const res = await request(app)
+      .get('/api/public/respond/booking')
+      .set('X-API-Key', 'respond-test-key')
+      .query({ query: 'Customer@Example.com' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      found: true,
+      booking: {
+        reference: 'LR-0907-EMAIL',
+        customer_name: 'Email Customer',
+      },
+    });
+  });
+
+  it('returns a useful validation error when no lookup value is supplied', async () => {
+    const res = await request(app)
+      .get('/api/public/respond/booking')
+      .set('X-API-Key', 'respond-test-key');
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      success: false,
+      error: {
+        code: 'INVALID_LOOKUP',
+        message: 'Provide a booking reference, email, or phone number.',
+      },
+    });
+  });
+
+  it('returns a retryable error when the booking store is unavailable', async () => {
+    mocks.getSupabaseClient.mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === 'orders') {
+          const query = { select: vi.fn(() => query), in: vi.fn(() => query) };
+          return query;
+        }
+        if (table === 'customers') {
+          const query = {
+            select: vi.fn(() => query),
+            ilike: vi.fn(() => query),
+            limit: vi.fn(async () => ({ data: null, error: { message: 'connection failed' } })),
+          };
+          return query;
+        }
+        throw new Error(`Unexpected table ${table}`);
+      }),
+    });
+
+    const res = await request(app)
+      .get('/api/public/respond/booking')
+      .set('X-API-Key', 'respond-test-key')
+      .query({ email: 'customer@example.com' });
+
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({
+      success: false,
+      error: {
+        code: 'BOOKING_LOOKUP_FAILED',
+        message: 'Booking lookup is temporarily unavailable. Please try again or hand off to the team.',
+      },
+    });
+  });
+
   it('returns multi-vehicle delivery details for a confirmed booking found by phone', async () => {
     mocks.getSupabaseClient.mockReturnValue(makeSupabaseForFutureDeliveryLookup());
 

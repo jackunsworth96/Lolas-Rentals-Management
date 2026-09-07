@@ -895,10 +895,14 @@ Use when:
 
 ### D. Booking lookup
 
-`GET /api/public/respond/booking?ref=LR-XXXX-XXXX`  
-`GET /api/public/respond/booking?phone=+639XXXXXXXXX`  
-`GET /api/public/respond/booking?lookup=LR-XXXX-XXXX`  
-`GET /api/public/respond/booking?lookup=+639XXXXXXXXX`
+- `GET /api/public/respond/booking?query=<email, booking reference, or phone number>`
+- `GET /api/public/respond/booking?ref=LR-XXXX-XXXX`
+- `GET /api/public/respond/booking?email=customer@example.com`
+- `GET /api/public/respond/booking?phone=+639XXXXXXXXX`
+- `GET /api/public/respond/booking?lookup=LR-XXXX-XXXX`
+- `GET /api/public/respond/booking?bookingNumber=LR-XXXX-XXXX`
+
+Use `query` for the Respond.io "Look Up Existing Booking" action. The API detects whether its value is an email, booking reference, or phone number. Invalid input returns HTTP 400, no match returns HTTP 404, and a temporary database failure returns HTTP 503 with a machine-readable error code.
 
 Use when:
 - Customer asks to check an existing booking.

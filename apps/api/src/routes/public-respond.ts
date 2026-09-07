@@ -8,12 +8,13 @@ import { computeQuote } from '../use-cases/booking/compute-quote.js';
 import { logger } from '../lib/logger.js';
 import { publicWebOriginFromEnv } from '../lib/public-web-url.js';
 import {
+  escapeIlike,
   extDayCount,
   orderReferenceLookupVariants,
   resolveExtensionForActive,
   resolveExtensionForRaw,
 } from './public-extend-helpers.js';
-import { phoneLookupVariants, phoneSuffixIlikePattern } from '../utils/phone-lookup.js';
+import { phoneDigits, phoneLookupVariants, phoneSuffixIlikePattern } from '../utils/phone-lookup.js';
 
 /**
  * Routes consumed by respond.io (or any authenticated third-party caller).
@@ -1606,6 +1607,67 @@ interface BookingResponse {
   deposit_status?:   string | null;
 }
 
+type BookingLookup =
+  | { type: 'reference'; value: string }
+  | { type: 'email'; value: string }
+  | { type: 'phone'; value: string };
+
+function bookingLookupFromRequest(req: Request):
+  | { lookup: BookingLookup; error?: never }
+  | { lookup?: never; error: string } {
+  const value = (key: string) => {
+    const raw = req.query[key];
+    return typeof raw === 'string' && raw.trim() ? raw.trim() : null;
+  };
+  const explicit = [
+    value('ref') ?? value('bookingNumber') ?? value('booking_number'),
+    value('email'),
+    value('phone'),
+  ].filter((item): item is string => item !== null);
+
+  if (explicit.length > 1) {
+    return { error: 'Provide only one booking reference, email, or phone number.' };
+  }
+
+  const generic = value('lookup') ?? value('query');
+  if (explicit.length === 0 && !generic) {
+    return { error: 'Provide a booking reference, email, or phone number.' };
+  }
+
+  const ref = value('ref') ?? value('bookingNumber') ?? value('booking_number');
+  const email = value('email');
+  const phone = value('phone');
+  if (ref) return { lookup: { type: 'reference', value: ref } };
+  if (email) {
+    const normalized = email.toLowerCase();
+    return z.string().email().safeParse(normalized).success
+      ? { lookup: { type: 'email', value: normalized } }
+      : { error: 'Provide a valid email address.' };
+  }
+  if (phone) {
+    return phoneDigits(phone).length >= 7
+      ? { lookup: { type: 'phone', value: phone } }
+      : { error: 'Provide a valid phone number with at least 7 digits.' };
+  }
+
+  if (generic!.includes('@')) {
+    const normalized = generic!.toLowerCase();
+    return z.string().email().safeParse(normalized).success
+      ? { lookup: { type: 'email', value: normalized } }
+      : { error: 'Provide a valid email address.' };
+  }
+  if (/^(?:LR|BB)[-\s]?\d{4}/i.test(generic!)) {
+    return { lookup: { type: 'reference', value: generic! } };
+  }
+  return phoneDigits(generic!).length >= 7
+    ? { lookup: { type: 'phone', value: generic! } }
+    : { lookup: { type: 'reference', value: generic! } };
+}
+
+function sendBookingLookupError(res: Response, status: number, code: string, message: string) {
+  return res.status(status).json({ success: false, error: { code, message } });
+}
+
 const STATUS_PRIORITY: Record<string, number> = { active: 0, confirmed: 1, completed: 2 };
 
 function bookingStage(status: string): BookingResponse['booking_stage'] {
@@ -1903,34 +1965,25 @@ router.post('/extension/confirm', async (req, res, next) => {
 });
 
 /**
- * GET /api/public/respond/booking?ref=LR-XXXX-XXXX
- * GET /api/public/respond/booking?phone=+63912345678
- * GET /api/public/respond/booking?lookup=LR-XXXX-XXXX
- * GET /api/public/respond/booking?lookup=+63912345678
+ * GET /api/public/respond/booking?query=LR-XXXX-XXXX
+ * GET /api/public/respond/booking?query=customer@example.com
+ * GET /api/public/respond/booking?query=+63912345678
  *
  * Searches orders first (activated/staff-created bookings with full financial
  * data), then falls back to orders_raw for unactivated direct/walk-in bookings.
  * Returns only bookings in returnable statuses. When multiple results match a
  * phone number the most recently created active booking is returned first.
  */
-router.get('/booking', async (req, res, next) => {
+router.get('/booking', async (req, res) => {
   try {
-    let ref   = typeof req.query.ref   === 'string' ? req.query.ref.trim()   : null;
-    let phone = typeof req.query.phone === 'string' ? req.query.phone.trim() : null;
-    const lookup = typeof req.query.lookup === 'string' ? req.query.lookup.trim() : null;
-
-    if (!ref && !phone && lookup) {
-      if (/^LR[-\s]/i.test(lookup)) {
-        ref = lookup;
-      } else {
-        phone = lookup;
-      }
-    }
-
-    if (!ref && !phone) {
-      res.status(400).json({ error: 'Please provide ref, phone, or lookup query parameter' });
+    const parsed = bookingLookupFromRequest(req);
+    if (!parsed.lookup) {
+      sendBookingLookupError(res, 400, 'INVALID_LOOKUP', parsed.error);
       return;
     }
+    const ref = parsed.lookup.type === 'reference' ? parsed.lookup.value : null;
+    const email = parsed.lookup.type === 'email' ? parsed.lookup.value : null;
+    const phone = parsed.lookup.type === 'phone' ? parsed.lookup.value : null;
 
     const sb = getSupabaseClient();
 
@@ -1950,39 +2003,38 @@ router.get('/booking', async (req, res, next) => {
       .in('status', RETURNABLE_STATUSES);
 
     if (ref) {
-      ordersQuery = ordersQuery.ilike('booking_token', ref);
+      ordersQuery = ordersQuery.in('booking_token', orderReferenceLookupVariants(ref));
     } else {
-      const { data: customerRows, error: customerError } = await sb
-        .from('customers')
-        .select('id')
-        .in('mobile', phoneLookupVariants(phone!))
-        .limit(1);
+      const customerQuery = sb.from('customers').select('id');
+      const { data: customerRows, error: customerError } = email
+        ? await customerQuery.ilike('email', escapeIlike(email)).limit(10)
+        : await customerQuery.in('mobile', phoneLookupVariants(phone!)).limit(10);
 
       if (customerError) {
         console.error('[respond/booking] customers query failed:', customerError);
         throw customerError;
       }
 
-      let customerId = customerRows?.[0]?.id ?? null;
-      const suffixPattern = phoneSuffixIlikePattern(phone!);
-      if (!customerId && suffixPattern) {
+      let customerIds = (customerRows ?? []).map((row) => row.id as string);
+      const suffixPattern = phone ? phoneSuffixIlikePattern(phone) : null;
+      if (phone && customerIds.length === 0 && suffixPattern) {
         const fallback = await sb
           .from('customers')
           .select('id')
           .ilike('mobile', suffixPattern)
-          .limit(1);
+          .limit(10);
         if (fallback.error) {
           console.error('[respond/booking] customer suffix query failed:', fallback.error);
           throw fallback.error;
         }
-        customerId = fallback.data?.[0]?.id ?? null;
+        customerIds = (fallback.data ?? []).map((row) => row.id as string);
       }
 
-      if (!customerId) {
+      if (customerIds.length === 0) {
         skipOrdersQuery = true;
       } else {
         ordersQuery = ordersQuery
-          .eq('customer_id', customerId)
+          .in('customer_id', customerIds)
           .order('created_at', { ascending: false });
       }
     }
@@ -2119,7 +2171,11 @@ router.get('/booking', async (req, res, next) => {
       .in('status', RAW_RETURNABLE_STATUSES);
 
     if (ref) {
-      rawQuery = rawQuery.ilike('order_reference', ref);
+      rawQuery = rawQuery.in('order_reference', orderReferenceLookupVariants(ref));
+    } else if (email) {
+      rawQuery = rawQuery
+        .ilike('customer_email', escapeIlike(email))
+        .order('created_at', { ascending: false });
     } else {
       rawQuery = rawQuery
         .in('customer_mobile', phoneLookupVariants(phone!))
@@ -2152,7 +2208,12 @@ router.get('/booking', async (req, res, next) => {
     const rawRows = (rawData ?? []) as BookingRow[];
 
     if (rawRows.length === 0) {
-      res.status(404).json({ error: 'No booking found' });
+      sendBookingLookupError(
+        res,
+        404,
+        'BOOKING_NOT_FOUND',
+        'No current booking matched that lookup.',
+      );
       return;
     }
 
@@ -2204,7 +2265,12 @@ router.get('/booking', async (req, res, next) => {
     res.json({ found: true, booking });
   } catch (err) {
     console.error('[respond/booking] unhandled error:', err);
-    next(err);
+    sendBookingLookupError(
+      res,
+      503,
+      'BOOKING_LOOKUP_FAILED',
+      'Booking lookup is temporarily unavailable. Please try again or hand off to the team.',
+    );
   }
 });
 
