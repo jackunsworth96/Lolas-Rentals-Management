@@ -3,6 +3,7 @@ import request from 'supertest';
 
 const mocks = vi.hoisted(() => ({
   getSupabaseClient: vi.fn(),
+  bookingSessionUpsert: vi.fn(async () => ({ error: null })),
 }));
 
 vi.mock('../src/adapters/supabase/client.js', () => ({
@@ -80,7 +81,7 @@ function makeSupabaseForHandoff() {
       }
       if (table === 'booking_sessions') {
         return {
-          upsert: vi.fn(async () => ({ error: null })),
+          upsert: mocks.bookingSessionUpsert,
         };
       }
       throw new Error(`Unexpected table ${table}`);
@@ -670,6 +671,36 @@ describe('Respond.io add-ons lookup', () => {
 });
 
 describe('Respond.io booking handoff', () => {
+  it('stores optional flat customer fields for the booking cart', async () => {
+    mocks.getSupabaseClient.mockReturnValue(makeSupabaseForHandoff());
+
+    const res = await request(app)
+      .post('/api/public/respond/booking-handoff')
+      .set('X-API-Key', 'respond-test-key')
+      .send({
+        vehicleModelId: 'beat',
+        pickupDatetime: '2026-06-20T09:15:00+08:00',
+        dropoffDatetime: '2026-06-23T09:15:00+08:00',
+        pickupLocationId: 1,
+        dropoffLocationId: 2,
+        customerFullName: ' Juan Dela Cruz ',
+        customerEmail: 'juan@example.com',
+        customerPhone: ' +639171234567 ',
+      });
+
+    expect(res.status).toBe(201);
+    expect(mocks.bookingSessionUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        renter_details: expect.objectContaining({
+          fullName: 'Juan Dela Cruz',
+          email: 'juan@example.com',
+          phone: '+639171234567',
+        }),
+      }),
+      { onConflict: 'session_token' },
+    );
+  });
+
   it('accepts location names from Respond.io and resolves their numeric IDs', async () => {
     mocks.getSupabaseClient.mockReturnValue(makeSupabaseForHandoff());
 

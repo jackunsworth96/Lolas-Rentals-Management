@@ -1269,6 +1269,9 @@ const RespondBookingHandoffSchema = z.object({
   ]),
   storeId: z.string().min(1).optional().default(STORE_ID),
   sessionToken: z.string().min(20).optional(),
+  customerFullName: z.string().optional(),
+  customerEmail: z.string().email().optional(),
+  customerPhone: z.string().optional(),
   customer: z
     .object({
       fullName: z.string().optional(),
@@ -1465,7 +1468,12 @@ router.post('/booking-handoff', async (req, res, next) => {
       console.error('[respond/booking-handoff] quote computation failed:', err);
     }
 
-    const renterDetails = normaliseRenterDetails(input.customer);
+    const renterDetails = normaliseRenterDetails({
+      ...(input.customer ?? {}),
+      fullName: input.customerFullName ?? input.customer?.fullName,
+      email: input.customerEmail ?? input.customer?.email,
+      phone: input.customerPhone ?? input.customer?.phone,
+    });
     const handoffContext = {
       source: 'respond.io',
       submittedVehicleModelId: input.vehicleModelId,
