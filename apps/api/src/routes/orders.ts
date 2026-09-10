@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
-import { Permission } from '@lolas/shared';
+import { calculateBalanceDue, Permission } from '@lolas/shared';
 import { z } from 'zod';
 import { supabase } from '../adapters/supabase/client.js';
 import { sendTelegramAlert, sendTelegramAlertPaidOrdersStaggered, getTelegramChatId } from '../lib/telegram.js';
@@ -217,13 +217,10 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
 
       const finalTotalNum = Number(o.final_total ?? 0);
       const totalPaidNum = totalPaid;
-      // Balance = rental/addon charges not yet paid. Use max of:
-      //   (a) final_total - totalPaid (works when migration 091 applied and
-      //       extension RPC bumped final_total)
-      //   (b) pendingExtensionsTotal (fallback when final_total is stale —
-      //       the IOU rows authoritatively show outstanding extension debt)
-      const balanceFromFinalTotal = Math.max(0, finalTotalNum - totalPaidNum);
-      const balanceDueComputed = Math.max(balanceFromFinalTotal, pendingExtensionsTotal);
+      // Pending extension charges already increase final_total. Adding them
+      // again here overstates the balance when earlier payments cover part of
+      // the extension.
+      const balanceDueComputed = calculateBalanceDue(finalTotalNum, totalPaidNum);
 
       const token = (o.booking_token as string) ?? null;
       const waiverData = token ? waiverByReference.get(token) : undefined;

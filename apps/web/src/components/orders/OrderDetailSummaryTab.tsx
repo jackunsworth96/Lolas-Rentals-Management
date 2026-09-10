@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
+import { calculateBalanceDue } from '@lolas/shared';
 import { CheckCircle2, AlertTriangle, Phone, MessageCircle } from 'lucide-react';
 import { Badge } from '../common/Badge.js';
 import { Modal } from '../common/Modal.js';
@@ -414,9 +415,8 @@ export function OrderDetailSummaryTab({
   //  • `totalPaid` should reflect only payments toward rental — excluding
   //    deposit payments (held separately) and pending extension IOUs (no cash
   //    received yet).
-  //  • Balance = greater of `final_total − totalPaid` and the pending
-  //    extension IOU total — the latter acts as a resilient fallback when
-  //    `final_total` hasn't been bumped by the extension RPC (migration 091).
+  //  • Pending extension IOUs are already included in `final_total`, so the
+  //    balance must not add them a second time.
   const total = enrichedData?.finalTotal ?? moneyAmount(order.finalTotal);
   const totalPaid = payments.reduce((s, p) => {
     if (p.paymentType === 'deposit') return s;
@@ -435,8 +435,7 @@ export function OrderDetailSummaryTab({
       const isPending = p.paymentType === 'extension' && p.settlementStatus === 'pending';
       return isPending ? s + (p.amount ?? 0) : s;
     }, 0);
-  const balanceFromFinalTotal = Math.max(0, total - totalPaid);
-  const balance = Math.max(balanceFromFinalTotal, pendingExtensionsTotal);
+  const balance = calculateBalanceDue(total, totalPaid);
 
   // For completed/cancelled orders the settle RPC writes the authoritative
   // balance back to orders.balance_due (often negative, meaning fully cleared).
@@ -549,7 +548,7 @@ export function OrderDetailSummaryTab({
     }, 0);
     // Return charges are collected separately using their selected tender, so
     // they do not consume the security deposit or alter the rental balance.
-    const settleBalanceH = Math.max(0, total - settleRentalPaidH);
+    const settleBalanceH = calculateBalanceDue(total, settleRentalPaidH);
 
     const depositApplied = Math.min(securityDeposit, settleBalanceH);
     const depositRefund = Math.max(0, securityDeposit - settleBalanceH);
@@ -1026,7 +1025,7 @@ export function OrderDetailSummaryTab({
             {pendingExtensionsTotal > 0 && (
               <div className="flex justify-between px-4 py-2 bg-amber-50">
                 <span className="font-medium text-amber-800">Unpaid extensions (IOU)</span>
-                <span className="font-bold text-amber-800">+{formatCurrency(pendingExtensionsTotal)}</span>
+                <span className="font-bold text-amber-800">{formatCurrency(pendingExtensionsTotal)}</span>
               </div>
             )}
             <div className="flex justify-between px-4 py-2 font-semibold">
@@ -1378,7 +1377,7 @@ export function OrderDetailSummaryTab({
                   if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return s;
                   return s + (p.amount ?? 0);
                 }, 0);
-                const settleBalance = Math.max(0, total - settleRentalPaid);
+                const settleBalance = calculateBalanceDue(total, settleRentalPaid);
 
                 const depositApplied = Math.min(securityDeposit, settleBalance);
                 const depositRefund = Math.max(0, securityDeposit - settleBalance);
