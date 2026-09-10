@@ -364,7 +364,6 @@ function makeSupabaseForEmailBookingLookup() {
               status: 'unprocessed',
               customer_name: 'Email Customer',
               vehicle_model_id: 'beat',
-              quantity: 1,
               pickup_datetime: '2026-09-10T09:00:00+08:00',
               dropoff_datetime: '2026-09-12T09:00:00+08:00',
               pickup_location_id: null,

@@ -101,7 +101,6 @@ interface BookingRow {
   status:           string;
   customer_name:    string | null;
   vehicle_model_id: string | null;
-  quantity:         number | null;
   pickup_datetime:  string | null;
   dropoff_datetime: string | null;
   pickup_location_id: number | null;
@@ -113,7 +112,7 @@ interface BookingRow {
 }
 
 const BOOKING_COLUMNS =
-  'order_reference, status, customer_name, vehicle_model_id, quantity, pickup_datetime, dropoff_datetime, pickup_location_id, dropoff_location_id, pickup_location_address, dropoff_location_address, store_id, web_quote_raw';
+  'order_reference, status, customer_name, vehicle_model_id, pickup_datetime, dropoff_datetime, pickup_location_id, dropoff_location_id, pickup_location_address, dropoff_location_address, store_id, web_quote_raw';
 
 /**
  * Statuses for orders_raw that represent a live (non-cancelled, non-skipped)
@@ -2237,7 +2236,7 @@ router.get('/booking', async (req, res) => {
       resolveBookingLocation(sb, row.pickup_location_id),
       resolveBookingLocation(sb, row.dropoff_location_id),
     ]);
-    const vehicleCount = Math.max(Number(row.quantity) || 1, 1);
+    const vehicleCount = 1;
 
     const booking: BookingResponse = {
       reference:        row.order_reference,
@@ -2272,7 +2271,7 @@ router.get('/booking', async (req, res) => {
 
     res.json({ found: true, booking });
   } catch (err) {
-    console.error('[respond/booking] unhandled error:', err);
+    logger.error({ err }, 'respond.io booking lookup failed');
     sendBookingLookupError(
       res,
       503,
