@@ -317,6 +317,61 @@ router.get('/:id', requirePermission(Permission.ViewInbox), async (req, res, nex
   } catch (err) { next(err); }
 });
 
+router.patch('/:id/deposit-method', requirePermission(Permission.EditOrders), validateBody(z.object({
+  paymentMethodId: z.string().min(1),
+  accountId: z.string().min(1),
+})), async (req, res, next) => {
+  try {
+    const { paymentMethodId, accountId } = req.body as { paymentMethodId: string; accountId: string };
+    const [{ data: order, error: orderError }, { data: method, error: methodError }, { data: account, error: accountError }] = await Promise.all([
+      supabase.from('orders').select('store_id, status, security_deposit').eq('id', req.params.id).maybeSingle(),
+      supabase.from('payment_methods').select('id, name, is_active, is_deposit_eligible').eq('id', paymentMethodId).maybeSingle(),
+      supabase.from('chart_of_accounts').select('id, name, store_id, account_type, is_active').eq('id', accountId).maybeSingle(),
+    ]);
+    if (orderError) throw new Error(orderError.message);
+    if (methodError) throw new Error(methodError.message);
+    if (accountError) throw new Error(accountError.message);
+    if (!order) {
+      throw Object.assign(new Error('Order not found'), { statusCode: 404 });
+    }
+    if (order.status !== 'active' || Number(order.security_deposit ?? 0) <= 0) {
+      throw Object.assign(new Error('Only active orders with a held deposit can be changed'), { statusCode: 409 });
+    }
+
+    const methodIdKey = String(method?.id ?? '').toLowerCase().replace(/[\s_-]/g, '');
+    const methodNameKey = String(method?.name ?? '').toLowerCase().replace(/[\s_-]/g, '');
+    const isCashOrGcash = [methodIdKey, methodNameKey].some((key) => key === 'cash' || key === 'gcash');
+    if (!method || !method.is_active || !method.is_deposit_eligible || !isCashOrGcash) {
+      throw Object.assign(new Error('Select Cash or GCash for the deposit'), { statusCode: 400 });
+    }
+    if (
+      !account ||
+      !account.is_active ||
+      String(account.account_type).toLowerCase() !== 'asset' ||
+      ![order.store_id, 'company'].includes(String(account.store_id))
+    ) {
+      throw Object.assign(new Error('Select an active cash or GCash account for this store'), { statusCode: 400 });
+    }
+
+    const accountKey = String(account.name).toLowerCase().replace(/[\s_-]/g, '');
+    const selectedGcash = methodIdKey === 'gcash' || methodNameKey === 'gcash';
+    const accountMatchesMethod = selectedGcash
+      ? accountKey.includes('gcash')
+      : accountKey.includes('cash') && !accountKey.includes('gcash');
+    if (!accountMatchesMethod) {
+      throw Object.assign(new Error(`Select a ${selectedGcash ? 'GCash' : 'cash'} account for this deposit`), { statusCode: 400 });
+    }
+
+    const { data, error } = await supabase.rpc('correct_order_deposit_method', {
+      p_order_id: req.params.id,
+      p_payment_method_id: paymentMethodId,
+      p_account_id: accountId,
+    });
+    if (error) throw new Error(`Failed to update deposit method: ${error.message}`);
+    res.json({ success: true, data: { paymentMethodId, updatedPayments: Number(data ?? 0) } });
+  } catch (err) { next(err); }
+});
+
 router.patch('/:id/dropoff-note', requirePermission(Permission.EditOrders), validateBody(z.object({ note: z.string().max(500).nullable() })), async (req, res, next) => {
   try {
     const { error } = await supabase
