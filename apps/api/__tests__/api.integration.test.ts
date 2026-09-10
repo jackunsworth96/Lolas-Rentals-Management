@@ -21,6 +21,13 @@ describe('API integration', () => {
     expect(res.body.error?.message).toBeDefined();
   });
 
+  it('PATCH /api/orders/:id/deposit-method requires authentication', async () => {
+    const res = await request(app)
+      .patch('/api/orders/test-order/deposit-method')
+      .send({ paymentMethodId: 'Cash', accountId: 'CASH-TILL-store-lolas' });
+    expect(res.status).toBe(401);
+  });
+
   it('GET /api/orders with auth but no storeId returns 400', async () => {
     const token = 'invalid-token-for-validation-test';
     const res = await request(app)

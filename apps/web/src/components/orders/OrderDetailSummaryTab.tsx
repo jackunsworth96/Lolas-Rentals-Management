@@ -12,7 +12,7 @@ import { MayaPaymentModal } from './MayaPaymentModal.js';
 import { WaiverViewModal } from './WaiverViewModal.js';
 import { useSignedWaiverDetails, useResendWaiverConfirmation } from '../../api/waivers.js';
 import { useInspectionByOrder } from '../../api/inspections.js';
-import { useCollectPayment, useRefundOrder, useSettleOrder, useSwapHelmet, useSwapVehicle, useUpdateDropoffNote } from '../../api/orders.js';
+import { useCollectPayment, useRefundOrder, useSettleOrder, useSwapHelmet, useSwapVehicle, useUpdateDepositMethod, useUpdateDropoffNote } from '../../api/orders.js';
 import { useFleet } from '../../api/fleet.js';
 import { usePaymentMethods, useChartOfAccounts, useFleetStatuses } from '../../api/config.js';
 import { formatCurrency } from '../../utils/currency.js';
@@ -87,6 +87,8 @@ export function OrderDetailSummaryTab({
   const [settleReceivableAccountId, setSettleReceivableAccountId] = useState('');
   const [settleRefundAccountId, setSettleRefundAccountId] = useState('');
   const [settleRefundMethodId, setSettleRefundMethodId] = useState('');
+  const [depositMethodDraftId, setDepositMethodDraftId] = useState(enrichedData?.depositMethodId ?? order.depositMethodId ?? '');
+  const [depositMethodAccountId, setDepositMethodAccountId] = useState('');
   const depositRefundDefaultApplied = useRef(false);
   const [settleFinalMethodId, setSettleFinalMethodId] = useState('');
   const [settleFinalAccountId, setSettleFinalAccountId] = useState('');
@@ -119,6 +121,7 @@ export function OrderDetailSummaryTab({
 
   const collectPaymentMut = useCollectPayment();
   const refundOrderMut = useRefundOrder();
+  const updateDepositMethod = useUpdateDepositMethod();
   const settleOrder = useSettleOrder();
   const swapVehicle = useSwapVehicle();
   const swapHelmetMut = useSwapHelmet();
@@ -263,10 +266,37 @@ export function OrderDetailSummaryTab({
     [activePaymentMethods],
   );
 
-  const depositMethodId = enrichedData?.depositMethodId ?? order.depositMethodId ?? null;
+  const editableDepositMethods = useMemo(
+    () => activePaymentMethods.filter((method) => {
+      const id = method.id.toLowerCase().replace(/[\s_-]/g, '');
+      const name = method.name.toLowerCase().replace(/[\s_-]/g, '');
+      return id === 'cash' || id === 'gcash' || name === 'cash' || name === 'gcash';
+    }),
+    [activePaymentMethods],
+  );
+
+  const depositMethodId = order.depositMethodId ?? enrichedData?.depositMethodId ?? null;
   const depositMethodLabel = depositMethodId
     ? pmLookup.get(depositMethodId)?.name ?? depositMethodId
     : null;
+  const depositMethodDraft = depositMethodDraftId ? pmLookup.get(depositMethodDraftId) : null;
+  const routedDepositMethodAccountId = depositMethodDraftId
+    ? routing.resolveReceivedIntoForStore(storeId, depositMethodDraftId, depositMethodDraft?.name ?? null)
+    : null;
+  const effectiveDepositMethodAccountId = routedDepositMethodAccountId ?? depositMethodAccountId;
+  const depositMethodAccountOptions = useMemo(() => {
+    const methodKey = `${depositMethodDraftId} ${depositMethodDraft?.name ?? ''}`.toLowerCase().replace(/[\s_-]/g, '');
+    const wantsGcash = methodKey.includes('gcash');
+    return paymentAccountOptions.filter((account) => {
+      const accountKey = String(account.name ?? '').toLowerCase().replace(/[\s_-]/g, '');
+      return wantsGcash ? accountKey.includes('gcash') : accountKey.includes('cash') && !accountKey.includes('gcash');
+    });
+  }, [depositMethodDraftId, depositMethodDraft?.name, paymentAccountOptions]);
+
+  useEffect(() => {
+    setDepositMethodDraftId(depositMethodId ?? '');
+    setDepositMethodAccountId('');
+  }, [depositMethodId]);
 
   // Returning a deposit through its original method is the common case. Preselect
   // it once when available, while keeping the selector editable for exceptions.
@@ -400,6 +430,26 @@ export function OrderDetailSummaryTab({
           setShowRefundConfirm(false);
           pushToast((err as Error).message, 'error');
         },
+      },
+    );
+  };
+
+  const handleUpdateDepositMethod = () => {
+    if (!depositMethodDraftId || !effectiveDepositMethodAccountId || depositMethodDraftId === depositMethodId) return;
+    updateDepositMethod.mutate(
+      {
+        id: orderId,
+        paymentMethodId: depositMethodDraftId,
+        accountId: effectiveDepositMethodAccountId,
+      },
+      {
+        onSuccess: () => {
+          depositRefundDefaultApplied.current = true;
+          setSettleRefundMethodId(depositMethodDraftId);
+          setSettleRefundAccountId('');
+          pushToast('Deposit payment method updated.', 'success');
+        },
+        onError: (err) => pushToast((err as Error).message, 'error'),
       },
     );
   };
@@ -1657,6 +1707,64 @@ export function OrderDetailSummaryTab({
                       </div>
                     )}
 
+                    {/* Deposit payment method correction */}
+                    {depositRefund > 0 && (
+                      <div className="rounded-lg border border-gray-200 bg-white p-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                          <label className="block">
+                            <span className="text-sm font-medium text-gray-700">Deposit payment method</span>
+                            <p className="mt-0.5 text-xs text-gray-500">
+                              Update this if the customer changed how they paid the deposit.
+                            </p>
+                            <select
+                              value={depositMethodDraftId}
+                              onChange={(e) => {
+                                setDepositMethodDraftId(e.target.value);
+                                setDepositMethodAccountId('');
+                              }}
+                              className="mt-2 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm sm:w-48 focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand"
+                            >
+                              <option value="">Select method</option>
+                              {editableDepositMethods.map((method) => (
+                                <option key={method.id} value={method.id}>{method.name}</option>
+                              ))}
+                            </select>
+                          </label>
+                          {depositMethodDraftId && !routedDepositMethodAccountId && (
+                            <label className="block sm:flex-1">
+                              <span className="text-xs font-medium text-gray-600">Deposit account</span>
+                              <select
+                                value={depositMethodAccountId}
+                                onChange={(e) => setDepositMethodAccountId(e.target.value)}
+                                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm sm:max-w-56"
+                              >
+                                <option value="">Select account</option>
+                                {depositMethodAccountOptions.map((account) => (
+                                  <option key={String(account.id)} value={String(account.id)}>{String(account.name)}</option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
+                          <button
+                            type="button"
+                            onClick={handleUpdateDepositMethod}
+                            disabled={
+                              updateDepositMethod.isPending ||
+                              !depositMethodDraftId ||
+                              !effectiveDepositMethodAccountId ||
+                              depositMethodDraftId === depositMethodId
+                            }
+                            className="rounded-lg border border-teal-brand px-4 py-2 text-sm font-medium text-teal-brand hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {updateDepositMethod.isPending ? 'Saving...' : 'Save method'}
+                          </button>
+                        </div>
+                        {updateDepositMethod.error && (
+                          <p className="mt-2 text-sm text-red-600">{(updateDepositMethod.error as Error).message}</p>
+                        )}
+                      </div>
+                    )}
+
                     {/* Deposit refund section */}
                     {depositRefund > 0 && (
                       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
@@ -1665,7 +1773,7 @@ export function OrderDetailSummaryTab({
                         </p>
                         {depositMethodLabel && (
                           <p className="text-xs text-amber-800">
-                            Deposit was originally paid via <span className="font-semibold">{depositMethodLabel}</span>.
+                            Deposit is recorded as <span className="font-semibold">{depositMethodLabel}</span>.
                           </p>
                         )}
                         <label className="block">
