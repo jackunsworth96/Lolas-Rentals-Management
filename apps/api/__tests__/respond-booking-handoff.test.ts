@@ -670,6 +670,30 @@ describe('Respond.io add-ons lookup', () => {
 });
 
 describe('Respond.io booking handoff', () => {
+  it('accepts an email that the customer can correct during confirmation', async () => {
+    mocks.getSupabaseClient.mockReturnValue(makeSupabaseForHandoff());
+
+    const res = await request(app)
+      .post('/api/public/respond/booking-handoff')
+      .set('X-API-Key', 'respond-test-key')
+      .send({
+        vehicleModelId: 'beat',
+        pickupDatetime: '2026-06-20T09:15:00+08:00',
+        dropoffDatetime: '2026-06-23T09:15:00+08:00',
+        pickupLocationId: 1,
+        dropoffLocationId: 2,
+        customerEmail: 'needs-correction',
+      });
+
+    expect(res.status).toBe(201);
+    expect(mocks.bookingSessionUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        renter_details: expect.objectContaining({ email: 'needs-correction' }),
+      }),
+      { onConflict: 'session_token' },
+    );
+  });
+
   it('stores optional flat customer fields for the booking cart', async () => {
     mocks.getSupabaseClient.mockReturnValue(makeSupabaseForHandoff());
 

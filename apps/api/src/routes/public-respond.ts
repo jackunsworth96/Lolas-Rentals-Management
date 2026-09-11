@@ -1269,12 +1269,12 @@ const RespondBookingHandoffSchema = z.object({
   storeId: z.string().min(1).optional().default(STORE_ID),
   sessionToken: z.string().min(20).optional(),
   customerFullName: z.string().optional(),
-  customerEmail: z.string().email().optional(),
+  customerEmail: z.string().optional(),
   customerPhone: z.string().optional(),
   customer: z
     .object({
       fullName: z.string().optional(),
-      email: z.string().email().optional(),
+      email: z.string().optional(),
       phone: z.string().optional(),
       nationality: z.string().optional(),
       accommodationName: z.string().optional(),
