@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../adapters/supabase/client.js';
+import { findLiveXenditSessionForOrder } from '../lib/xendit-session-lock.js';
 import { computeQuote } from '../use-cases/booking/compute-quote.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
 import { resolveStoreAccounts } from '../adapters/supabase/maintenance-expense-rpc.js';
@@ -277,6 +278,9 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
     .in('booking_token', refVariants);
 
   for (const ord of (orderRows ?? []) as Array<{ id: string; customer_id: string; store_id: string; booking_token: string | null }>) {
+    if (await findLiveXenditSessionForOrder(ord.id)) {
+      return { kind: 'error', reason: 'An online payment checkout is already in progress for this booking. Please complete or cancel it before changing the extension.' };
+    }
     const displayRef = ord.booking_token || orderReference;
     const { data: items } = await sb
       .from('order_items')

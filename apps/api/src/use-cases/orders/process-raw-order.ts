@@ -159,6 +159,23 @@ export async function processRawOrder(
   const addonTotal = input.addons.reduce((sum, a) => sum + a.totalAmount, 0);
   const charityAmount = Number(rawOrder.charity_donation ?? 0);
 
+  // Gateway payments are recorded against the raw booking by the webhook.
+  // They must be included before deciding whether activation should create a
+  // new payment, otherwise a paid web booking can be charged twice.
+  const preActivationPayments = await deps.paymentRepo.findByRawOrderId(
+    input.rawOrderId,
+  );
+  const xenditPrepayments = preActivationPayments.filter(
+    (payment) => payment.paymentType === 'card_xendit',
+  );
+  const hasXenditPrepayment = xenditPrepayments.length > 0;
+  const effectiveCardFeeSurcharge = hasXenditPrepayment
+    ? Number((rawOrder as { web_card_fee_surcharge?: number | null }).web_card_fee_surcharge ?? 0)
+    : input.cardFeeSurcharge;
+  const effectivePaymentMethodId = hasXenditPrepayment
+    ? xenditPrepayments[0]?.paymentMethodId ?? input.paymentMethodId
+    : input.paymentMethodId;
+
   // Transfer amount is stored on `raw_orders.transfer_amount` (direct bookings)
   // or inside the JSON `payload.transfer_amount` (WooCommerce webhooks). Extract
   // it here so it can be included in finalTotal — the customer owes the transfer
@@ -175,7 +192,7 @@ export async function processRawOrder(
 
   // Pure rental income (does not include transfer or charity — those have
   // dedicated journal legs so they must NOT be double-counted here).
-  const rentalIncomeTotal = rentalTotal + addonTotal + input.cardFeeSurcharge;
+  const rentalIncomeTotal = rentalTotal + addonTotal + effectiveCardFeeSurcharge;
 
   // When the customer pays the driver directly we exclude the transfer fee from
   // the order's financial obligation so staff don't try to collect it at the counter.
@@ -189,9 +206,6 @@ export async function processRawOrder(
   // Previous pre-activation payments (e.g. deposit paid at
   // /collect-payment) also reduce the remaining balance. Pull them
   // now so balance_due is computed once up front.
-  const preActivationPayments = await deps.paymentRepo.findByRawOrderId(
-    input.rawOrderId,
-  );
   const preActivationPaid = preActivationPayments.reduce(
     (sum, p) => sum + Number(p.amount ?? 0),
     0,
@@ -201,6 +215,7 @@ export async function processRawOrder(
   // we must include them in balance_due so the order lands in the
   // correct state on first insert.
   const willCreateRentalPayment =
+    !hasXenditPrepayment &&
     !!input.paymentMethodId &&
     !!input.receivableAccountId &&
     (input.isCardPayment || !!input.paymentAccountId);
@@ -242,11 +257,11 @@ export async function processRawOrder(
     webQuoteRaw: input.webQuoteRaw,
     securityDeposit: Money.php(input.securityDeposit),
     depositStatus: willCreateDepositPayment ? 'paid' : null,
-    cardFeeSurcharge: Money.php(input.cardFeeSurcharge),
+    cardFeeSurcharge: Money.php(effectiveCardFeeSurcharge),
     returnCharges: Money.zero(),
     finalTotal: Money.php(finalTotal),
     balanceDue: Money.php(balanceDue),
-    paymentMethodId: input.paymentMethodId,
+    paymentMethodId: effectivePaymentMethodId,
     depositMethodId: input.depositMethodId,
     bookingToken: (rawOrder.order_reference as string | null) ?? null,
     tips: Money.zero(),
@@ -805,12 +820,11 @@ export async function processRawOrder(
   }
 
   // ── 12. Auto-link pre-booking waivers and inspections. ───
-  // If staff captured a waiver or inspection before the booking existed
-  // (via the Quick Check-In flow), those records have customer_id set but
-  // no order_reference / order_id. Link them now that the order is confirmed.
+  // Quick Check-In records link through customer_id. Inbox inspections already
+  // carry the raw booking reference and link through booking_token.
   const bookingToken = rawOrder.order_reference as string | null;
   if (bookingToken && customer.id) {
-    await Promise.all([
+    const linkResults = await Promise.all([
       supabase
         .from('waivers')
         .update({ order_reference: bookingToken })
@@ -821,7 +835,16 @@ export async function processRawOrder(
         .update({ order_id: orderId, order_reference: bookingToken })
         .eq('customer_id', customer.id)
         .is('order_id', null),
+      supabase
+        .from('inspections')
+        .update({ order_id: orderId })
+        .eq('order_reference', bookingToken)
+        .is('order_id', null),
     ]);
+    const linkError = linkResults.find((result) => result.error)?.error;
+    if (linkError) {
+      throw new Error(`Failed to link pre-booking documents: ${linkError.message}`);
+    }
   }
 
   if (!wasNew) {

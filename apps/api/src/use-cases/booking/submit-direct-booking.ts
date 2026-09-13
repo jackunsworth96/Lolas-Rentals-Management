@@ -122,6 +122,7 @@ export interface SubmitDirectBookingResult {
   cancellationToken: string;
   serverQuote: number | null;
   charityDonation: number;
+  surchargeAmount: number;
 }
 
 export async function submitDirectBooking(
@@ -170,6 +171,7 @@ export async function submitDirectBooking(
   let rentalSubtotalForCommission: number | null = null;
   let effectivePickupFee = 0;
   let effectiveDropoffFee = 0;
+  let surchargeAmount = 0;
   // Resolve the partner referral against the live record so we never trust a
   // discount the client claims. When the partner is pending/inactive/missing
   // we drop the partnerRef entirely so the booking is treated as a normal one.
@@ -230,7 +232,7 @@ export async function submitDirectBooking(
       const paymentMethods = await deps.configRepo.getPaymentMethods();
       const pm = paymentMethods.find((m) => m.id === input.webPaymentMethod);
       if (pm && pm.surchargePercent > 0) {
-        const surchargeAmount = Math.round(webQuoteRaw * (pm.surchargePercent / 100) * 100) / 100;
+        surchargeAmount = Math.round(webQuoteRaw * (pm.surchargePercent / 100) * 100) / 100;
         webQuoteRaw = webQuoteRaw + surchargeAmount;
       }
     } catch {
@@ -274,6 +276,7 @@ export async function submitDirectBooking(
     flightArrivalTime: input.flightArrivalTime ?? null,
     transferRoute: input.transferRoute ?? null,
     webQuoteRaw,
+    webCardFeeSurcharge: surchargeAmount,
     charityDonation: input.charityDonation ?? 0,
     webPaymentMethod: input.webPaymentMethod ?? null,
     helmetCount: input.helmet_count ?? null,
@@ -544,5 +547,11 @@ export async function submitDirectBooking(
     );
   })();
 
-  return { ...result, serverQuote: webQuoteRaw, charityDonation: input.charityDonation ?? 0, cancellationToken: result.cancellationToken };
+  return {
+    ...result,
+    serverQuote: webQuoteRaw,
+    charityDonation: input.charityDonation ?? 0,
+    surchargeAmount,
+    cancellationToken: result.cancellationToken,
+  };
 }

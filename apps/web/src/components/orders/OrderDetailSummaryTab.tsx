@@ -7,7 +7,7 @@ import { Modal } from '../common/Modal.js';
 import { Button } from '../common/Button.js';
 import { ExtendOrderModal } from './ExtendOrderModal.js';
 import { InspectionModal } from './InspectionModal.js';
-import { MayaPaymentModal } from './MayaPaymentModal.js';
+import { XenditPaymentModal } from './XenditPaymentModal.js';
 import { WaiverViewModal } from './WaiverViewModal.js';
 import { useSignedWaiverDetails, useResendWaiverConfirmation } from '../../api/waivers.js';
 import { useInspectionByOrder } from '../../api/inspections.js';
@@ -101,15 +101,18 @@ export function OrderDetailSummaryTab({
   // ── Modal open/close ──
   const [extendOpen, setExtendOpen] = useState(false);
   const [inspectionModalOpen, setInspectionModalOpen] = useState(false);
-  const [showMayaModal, setShowMayaModal] = useState(false);
+  const [showXenditModal, setShowXenditModal] = useState(false);
   const [showRefundConfirm, setShowRefundConfirm] = useState(false);
   const [waiverViewOpen, setWaiverViewOpen] = useState(false);
   // ── Refs ──
   const settleRef = useRef<HTMLElement>(null);
   // ── Data / config queries ──
   const { data: vehicles = [] } = useFleet(storeId);
-  const { data: paymentMethods = [] } = usePaymentMethods() as { data: Array<{ id: string; name: string; surchargePercent?: number; surcharge_percent?: number; isActive?: boolean; is_active?: boolean }> | undefined };
-  const cardSurchargePercent = Number(paymentMethods.find((m) => m.id === 'Card')?.surcharge_percent ?? paymentMethods.find((m) => m.id === 'Card')?.surchargePercent ?? 0);
+  const { data: paymentMethods = [] } = usePaymentMethods() as { data: Array<{ id: string; name: string; surchargePercent?: number; surcharge_percent?: number; gatewayProvider?: string | null; gateway_provider?: string | null; isActive?: boolean; is_active?: boolean }> | undefined };
+  const xenditPaymentMethod = paymentMethods.find((method) =>
+    (method.gatewayProvider ?? method.gateway_provider) === 'xendit',
+  );
+  const xenditSurchargePercent = Number(xenditPaymentMethod?.surchargePercent ?? xenditPaymentMethod?.surcharge_percent ?? 0);
   const { data: accounts = [] } = useChartOfAccounts() as { data: Array<Record<string, unknown>> | undefined };
   const { data: fleetStatuses = [] } = useFleetStatuses() as { data: Array<{ id: string; name: string; isRentable?: boolean; is_rentable?: boolean }> | undefined };
 
@@ -1165,20 +1168,22 @@ export function OrderDetailSummaryTab({
               </form>
             </section>
 
-            {/* ─── REQUEST PAYMENT VIA MAYA ─── */}
+            {/* ─── REQUEST PAYMENT VIA XENDIT ─── */}
             <section>
-              <h3 className="mb-3 font-medium text-gray-900">Request Payment via Maya</h3>
+              <h3 className="mb-3 font-medium text-gray-900">Request Payment via Xendit</h3>
               <p className="mb-3 text-sm text-charcoal-brand/60">
-                Generate a hosted Maya checkout link to send to the customer for online card payment.
+                Generate a hosted Xendit checkout link to send to the customer.
               </p>
               <button
                 type="button"
-                onClick={() => setShowMayaModal(true)}
+                onClick={() => setShowXenditModal(true)}
+                disabled={!xenditPaymentMethod || balance <= 0}
                 className="flex w-full sm:w-auto items-center gap-2 rounded-lg border border-green-600 px-5 py-2 text-sm font-medium text-green-700 transition-colors hover:bg-green-50"
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-                Request Payment via Maya…
+                Request Payment via Xendit...
               </button>
+              {!xenditPaymentMethod && <p className="mt-2 text-xs text-amber-700">Configure an active Xendit payment method in Settings first.</p>}
             </section>
 
             {/* ─── EXTEND BOOKING ─── */}
@@ -1735,16 +1740,17 @@ export function OrderDetailSummaryTab({
           document.body,
         )}
 
-      <MayaPaymentModal
-        isOpen={showMayaModal}
-        onClose={() => setShowMayaModal(false)}
+      <XenditPaymentModal
+        isOpen={showXenditModal}
+        onClose={() => setShowXenditModal(false)}
         orderId={order.id ?? orderId}
         orderReference={String(order.booking_token ?? orderId)}
         // Use the derived balance (final_total − totalPaid, excluding pending
         // extension IOUs) rather than the stored orders.balance_due column,
         // which can drift after paid extensions (see migration 091).
         balanceDue={balance}
-        cardSurchargePercent={cardSurchargePercent}
+        paymentMethodId={xenditPaymentMethod?.id ?? ''}
+        surchargePercent={xenditSurchargePercent}
       />
 
       {/* ─── Signed waiver view modal ─── */}

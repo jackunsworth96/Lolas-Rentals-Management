@@ -56,6 +56,10 @@ export interface OrdersRawRow {
   updated_at: string;
   /** Server-computed quote persisted at booking time (migration 089). Null for legacy rows. */
   web_quote_raw: number | null;
+  /** Online gateway surcharge included in web_quote_raw. */
+  web_card_fee_surcharge: number;
+  /** Active or completed Xendit payment claim for this raw booking. */
+  xendit_payment_session_id: string | null;
   /** Company name provided by the customer at checkout (optional). */
   customer_company: string | null;
   /** Extra comments / notes provided by the customer at checkout (optional). */
@@ -72,6 +76,57 @@ export interface OrdersRawRow {
   rental_value_raw: number | null;
   /** UUID of the NGO this booking's charity donation is earmarked for (migration 131). Null for legacy rows. */
   ngo_id: string | null;
+}
+
+export interface OnlinePaymentSummary {
+  status: 'paid';
+  amount: number;
+  reference: string | null;
+  paidAt: string;
+}
+
+export interface DirectBookingTermAddon {
+  id: number;
+  name: string;
+  type: 'per_day' | 'one_time';
+  unitPrice: number;
+  quantity: number;
+  total: number;
+}
+
+/** Server-reconstructed commercial terms used by the Inbox processing wizard. */
+export interface DirectBookingTerms {
+  source: 'reconstructed';
+  vehicleModelId: string;
+  vehicleModelName: string;
+  pickupDatetime: string;
+  dropoffDatetime: string;
+  rentalDays: number;
+  effectiveDailyRate: number;
+  discount: number;
+  pickupLocationId: number;
+  pickupLocationName: string;
+  pickupFee: number;
+  dropoffLocationId: number;
+  dropoffLocationName: string;
+  dropoffFee: number;
+  addons: DirectBookingTermAddon[];
+  rentalSubtotal: number;
+  addonsTotal: number;
+  surcharge: number;
+  transferAmount: number;
+  charityAmount: number;
+  calculatedTotal: number;
+  quotedTotal: number | null;
+  totalDifference: number;
+  warning: string | null;
+}
+
+/** Authenticated inbox response: database row plus webhook-confirmed online payment data. */
+export interface OrdersRawInboxRow extends OrdersRawRow {
+  online_payment: OnlinePaymentSummary | null;
+  /** Included by the authenticated detail endpoint for direct bookings only. */
+  booking_terms?: DirectBookingTerms | null;
 }
 
 /**

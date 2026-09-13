@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
+import { LockKeyhole, RotateCcw, Unlock } from 'lucide-react';
 import { Modal } from '../common/Modal.js';
 import { Badge } from '../common/Badge.js';
-import { useFleet } from '../../api/fleet.js';
+import { useAvailableVehicles, useFleet } from '../../api/fleet.js';
 import {
   extractPickupDropoffFromPayload,
   extractPickupLocation,
@@ -12,7 +13,7 @@ import {
   toDatetimeLocal,
 } from '../../utils/raw-order-payload.js';
 import { useAddons, useLocations, useChartOfAccounts, useStorePricing, useFleetStatuses, usePaymentMethods, useVehicleModels } from '../../api/config.js';
-import { useProcessRawOrder, useCollectPayment, type RawOrder, type ProcessRawOrderPayload } from '../../api/orders-raw.js';
+import { useOrderRaw, useProcessRawOrder, useCollectPayment, type RawOrder, type ProcessRawOrderPayload } from '../../api/orders-raw.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { formatPickupDatetimeManila } from '../../utils/date.js';
 import { usePaymentRouting } from '../../hooks/use-payment-routing.js';
@@ -44,6 +45,11 @@ function combineFromParts(p: TimeParts): string {
   if (p.ampm === 'AM' && h24 === 12) h24 = 0;
   else if (p.ampm === 'PM' && h24 < 12) h24 += 12;
   return `${p.date}T${String(h24).padStart(2, '0')}:${String(p.minutes).padStart(2, '0')}:00+08:00`;
+}
+
+function toBookingIso(value: string): string {
+  if (!value || value.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(value)) return value;
+  return `${value}${value.split('T')[1]?.split(':').length === 2 ? ':00' : ''}+08:00`;
 }
 
 interface BookingModalProps {
@@ -216,9 +222,13 @@ function locationId(loc: Record<string, unknown> | undefined): number | null {
 export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: BookingModalProps) {
   const storeId = storeIdFromSource(rawOrder.source);
   const isDirect = rawOrder.booking_channel === 'direct' || rawOrder.booking_channel === 'walk_in';
+  const isDirectWebsite = rawOrder.booking_channel === 'direct';
   const payload = rawOrder.payload ?? {};
   const employeeName = useAuthStore((s) => s.user?.username ?? 'Staff');
   const canEditOrders = useAuthStore((s) => s.hasPermission('can_edit_orders'));
+  const canOverrideBookingTerms = useAuthStore((s) => s.hasPermission('can_override_booking_terms'));
+  const { data: detailedRawOrder, isLoading: detailLoading } = useOrderRaw(open ? rawOrder.id : '');
+  const bookingTerms = isDirectWebsite ? detailedRawOrder?.booking_terms ?? null : null;
 
   const waiverRef = isDirect
     ? (rawOrder.order_reference ?? null)
@@ -242,6 +252,13 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const webQuote = isDirect
     ? (rawOrder.web_quote_raw ?? 0)
     : Number(payload.total ?? payload.order_total ?? payload.web_quote ?? 0) || 0;
+  const onlinePayment = detailedRawOrder?.online_payment ?? rawOrder.online_payment;
+  const confirmedOnlinePayment = onlinePayment?.status === 'paid'
+    ? onlinePayment
+    : null;
+  const liveCheckoutSessionId = !confirmedOnlinePayment
+    ? detailedRawOrder?.xendit_payment_session_id ?? rawOrder.xendit_payment_session_id
+    : null;
 
   const [step, setStep] = useState<Step>('review');
   const [inspectionOpen, setInspectionOpen] = useState(false);
@@ -270,9 +287,23 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const [preActivationAmount, setPreActivationAmount] = useState<number | ''>('');
   const [collectNowAmount, setCollectNowAmount] = useState<number | ''>('');
   const [dropoffLocationNote, setDropoffLocationNote] = useState('');
+  const [overrideRequested, setOverrideRequested] = useState(false);
+  const [overrideReason, setOverrideReason] = useState('');
+  const [acknowledgePaymentAdjustment, setAcknowledgePaymentAdjustment] = useState(false);
+
+  const overrideUnlocked = isDirectWebsite && overrideRequested && overrideReason.trim().length >= 10;
+  const directTermsLocked = isDirectWebsite && !overrideUnlocked;
+  const paidPriceLocked = Boolean(confirmedOnlinePayment) && !overrideUnlocked;
 
   const { data: vehicleModels } = useVehicleModels() as { data: Array<{ id: string; name: string }> | undefined };
   const { data: fleet } = useFleet(storeId) as { data: Array<Record<string, unknown>> | undefined };
+  const availabilityPickup = vehicles[0]?.pickupDatetime ?? '';
+  const availabilityDropoff = vehicles[0]?.dropoffDatetime ?? '';
+  const { data: intervalAvailableVehicles, isFetching: intervalAvailabilityLoading } = useAvailableVehicles(
+    isDirectWebsite ? storeId : '',
+    toBookingIso(availabilityPickup),
+    toBookingIso(availabilityDropoff),
+  );
   const { data: storeAddons } = useAddons(storeId) as { data: Array<Record<string, unknown>> | undefined };
   const { data: locations } = useLocations(storeId) as { data: Array<Record<string, unknown>> | undefined };
   const { data: accounts } = useChartOfAccounts() as { data: Array<Record<string, unknown>> | undefined };
@@ -338,6 +369,9 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     setPreActivationAmount('');
     setCollectNowAmount('');
     setDropoffLocationNote('');
+    setOverrideRequested(false);
+    setOverrideReason('');
+    setAcknowledgePaymentAdjustment(false);
 
     let pickup = '';
     let dropoff = '';
@@ -346,7 +380,16 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     let locPickupFee = 0;
     let locDropoffFee = 0;
 
-    if (isDirect) {
+    if (isDirectWebsite && bookingTerms) {
+      pickup = toDatetimeLocal(bookingTerms.pickupDatetime);
+      dropoff = toDatetimeLocal(bookingTerms.dropoffDatetime);
+      pickupLocName = bookingTerms.pickupLocationName;
+      dropoffLocName = bookingTerms.dropoffLocationName;
+      locPickupFee = bookingTerms.pickupFee;
+      locDropoffFee = bookingTerms.dropoffFee;
+      setPayloadPickupLoc('');
+      setPayloadDropoffLoc('');
+    } else if (isDirect) {
       pickup = toDatetimeLocal(rawOrder.pickup_datetime);
       dropoff = toDatetimeLocal(rawOrder.dropoff_datetime);
       setPayloadPickupLoc('');
@@ -401,8 +444,10 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
       dropoffLocation: dropoffLocName,
       pickupFee: locPickupFee,
       dropoffFee: locDropoffFee,
+      rentalRate: bookingTerms?.effectiveDailyRate ?? 0,
+      discount: bookingTerms?.discount ?? 0,
     }]);
-  }, [open, rawOrder?.id, locations, partnerBenefit]);
+  }, [open, rawOrder?.id, locations, partnerBenefit, bookingTerms, isDirectWebsite]);
 
   const rentableStatusSet = useMemo(() => {
     const statuses = fleetStatuses ?? [];
@@ -422,8 +467,13 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     () => (fleet ?? []).filter((v) => rentableStatusSet.has(String(v.status ?? '').toLowerCase())),
     [fleet, rentableStatusSet],
   );
-  const vehicleFilterFallback = filteredByStatus.length === 0 && (fleet ?? []).length > 0;
-  const availableVehicles = vehicleFilterFallback ? (fleet ?? []) : filteredByStatus;
+  const vehicleFilterFallback = !isDirectWebsite && filteredByStatus.length === 0 && (fleet ?? []).length > 0;
+  const availableVehicles = useMemo(() => {
+    if (!isDirectWebsite) return vehicleFilterFallback ? (fleet ?? []) : filteredByStatus;
+    const available = intervalAvailableVehicles ?? [];
+    if (overrideUnlocked || !bookingTerms) return available;
+    return available.filter((vehicle) => vehicle.modelId === bookingTerms.vehicleModelId);
+  }, [isDirectWebsite, vehicleFilterFallback, fleet, filteredByStatus, intervalAvailableVehicles, overrideUnlocked, bookingTerms]);
 
   const storeAccounts = useMemo(
     () => (accounts ?? []).filter((a) => {
@@ -538,9 +588,11 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     .reduce((sum, a) => sum + a.totalAmount, 0);
 
   const subtotalBeforeSurcharge = rentalSubtotal + addonSubtotal;
-  const cardSurchargeAmount = (!waiveCardFee && surchargePercent > 0)
-    ? Math.round(subtotalBeforeSurcharge * surchargePercent) / 100
-    : 0;
+  const cardSurchargeAmount = confirmedOnlinePayment
+    ? Number(bookingTerms?.surcharge ?? rawOrder.web_card_fee_surcharge ?? 0)
+    : (!waiveCardFee && surchargePercent > 0)
+      ? Math.round(subtotalBeforeSurcharge * surchargePercent) / 100
+      : 0;
 
   // Transfer fee is billable when the customer has NOT agreed to pay the driver directly.
   const transferBillable =
@@ -557,6 +609,50 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   // Card surcharge applies to rental+addons only, not to transfer or charity.
   const finalTotal = subtotalBeforeSurcharge + cardSurchargeAmount + transferBillable + charityAmount;
 
+  const dateRangeValid = vehicles.every((vehicle) => {
+    const pickupMs = new Date(vehicle.pickupDatetime).getTime();
+    const dropoffMs = new Date(vehicle.dropoffDatetime).getTime();
+    return Number.isFinite(pickupMs) && Number.isFinite(dropoffMs) && dropoffMs > pickupMs;
+  });
+
+  const protectedTermChanges = useMemo(() => {
+    if (!isDirectWebsite || !bookingTerms || vehicles.length !== 1) return [];
+    const vehicle = vehicles[0];
+    const changes: string[] = [];
+    const selectedModelId = fleet?.find((candidate) => candidate.id === vehicle.vehicleId)?.modelId;
+    const equalMoney = (left: number, right: number) => Math.abs(left - right) <= 0.01;
+    const equalInstant = (left: string, right: string) => new Date(toBookingIso(left)).getTime() === new Date(toBookingIso(right)).getTime();
+    if (vehicle.vehicleId && selectedModelId !== bookingTerms.vehicleModelId) changes.push('vehicle model');
+    if (!equalInstant(vehicle.pickupDatetime, bookingTerms.pickupDatetime)) changes.push('pickup date/time');
+    if (!equalInstant(vehicle.dropoffDatetime, bookingTerms.dropoffDatetime)) changes.push('dropoff date/time');
+    if (vehicle.pickupLocation.trim().toLowerCase() !== bookingTerms.pickupLocationName.trim().toLowerCase()) changes.push('pickup location');
+    if (vehicle.dropoffLocation.trim().toLowerCase() !== bookingTerms.dropoffLocationName.trim().toLowerCase()) changes.push('dropoff location');
+    if (!equalMoney(vehicle.pickupFee, bookingTerms.pickupFee)) changes.push('pickup fee');
+    if (!equalMoney(vehicle.dropoffFee, bookingTerms.dropoffFee)) changes.push('dropoff fee');
+    if (!equalMoney(vehicle.rentalRate * vehicle.rentalDaysCount, bookingTerms.rentalSubtotal)) changes.push('rental rate');
+    if (!equalMoney(vehicle.discount, bookingTerms.discount)) changes.push('discount');
+    if (confirmedOnlinePayment) {
+      const selected = selectedAddons.filter((addon) => addon.enabled).map((addon) =>
+        `${addon.addonName.trim().toLowerCase()}|${addon.addonType}|${addon.addonPrice.toFixed(2)}|${addon.quantity}|${addon.totalAmount.toFixed(2)}`,
+      ).sort();
+      const original = bookingTerms.addons.map((addon) =>
+        `${addon.name.trim().toLowerCase()}|${addon.type}|${addon.unitPrice.toFixed(2)}|${addon.quantity}|${addon.total.toFixed(2)}`,
+      ).sort();
+      if (selected.length !== original.length || selected.some((value, index) => value !== original[index])) changes.push('add-ons');
+      if (transferPaidByCustomer) changes.push('transfer billing');
+    }
+    return changes;
+  }, [isDirectWebsite, bookingTerms, vehicles, fleet, confirmedOnlinePayment, selectedAddons, transferPaidByCustomer]);
+
+  const originalTotal = bookingTerms?.quotedTotal ?? bookingTerms?.calculatedTotal ?? webQuote;
+  const totalMismatch = isDirectWebsite && originalTotal > 0 && Math.abs(finalTotal - originalTotal) > 0.01;
+  const paymentDifference = confirmedOnlinePayment ? finalTotal - confirmedOnlinePayment.amount : 0;
+  const overrideRequired = isDirectWebsite && (
+    protectedTermChanges.length > 0 ||
+    totalMismatch ||
+    (Boolean(confirmedOnlinePayment) && Math.abs(paymentDifference) > 0.01)
+  );
+
   // Partial-payment support: how much to collect at activation (defaults to full total).
   const effectiveCollectNow = collectNowAmount === '' ? finalTotal : Number(collectNowAmount);
   const previewBalanceDue = paymentMethodId ? Math.max(0, finalTotal - effectiveCollectNow) : finalTotal;
@@ -568,6 +664,8 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   function goNext() {
     if (step === 'review' && !customer.name.trim()) return;
     if (step === 'vehicles' && vehicles.every((v) => !v.vehicleId)) return;
+    if (step === 'vehicles' && !dateRangeValid) return;
+    if (step === 'vehicles' && isDirectWebsite && !bookingTerms) return;
 
     if (step === 'vehicles') {
       initAddons();
@@ -584,25 +682,41 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     const totalDays = vehicles.reduce((max, v) => Math.max(max, v.rentalDaysCount || 1), 1);
     const directAddonIds = isDirect ? new Set(rawOrder.addon_ids ?? []) : null;
     const payloadAddonNames = isDirect ? new Set<string>() : extractPayloadAddonNames(payload);
-    setSelectedAddons(
-      (storeAddons ?? []).map((a) => {
+    const configuredRows = (storeAddons ?? []).map((a) => {
         const adType = (a.addonType ?? a.type ?? 'one_time') as string;
         const price = adType === 'per_day' ? Number(a.pricePerDay ?? a.price ?? 0) : Number(a.priceOneTime ?? a.price ?? 0);
         const addonNameLower = (a.name as string).trim().toLowerCase();
+        const frozen = confirmedOnlinePayment && bookingTerms
+          ? bookingTerms.addons.find((addon) => addon.id === Number(a.id))
+          : null;
         const preSelected = directAddonIds
           ? directAddonIds.has(Number(a.id))
           : payloadAddonNames.has(addonNameLower);
         return {
           addonName: a.name as string,
-          addonPrice: price,
-          addonType: adType as 'per_day' | 'one_time',
-          quantity: adType === 'per_day' ? totalDays : 1,
-          totalAmount: adType === 'per_day' ? price * totalDays : price,
+          addonPrice: frozen?.unitPrice ?? price,
+          addonType: (frozen?.type ?? adType) as 'per_day' | 'one_time',
+          quantity: frozen?.quantity ?? (adType === 'per_day' ? totalDays : 1),
+          totalAmount: frozen?.total ?? (adType === 'per_day' ? price * totalDays : price),
           mutualExclusivityGroup: (a.mutualExclusivityGroup as string) ?? null,
-          enabled: preSelected,
+          enabled: frozen ? true : preSelected,
         };
-      }),
-    );
+      });
+    const configuredIds = new Set((storeAddons ?? []).map((addon) => Number(addon.id)));
+    const missingFrozenRows = confirmedOnlinePayment && bookingTerms
+      ? bookingTerms.addons
+          .filter((addon) => !configuredIds.has(addon.id))
+          .map((addon) => ({
+            addonName: addon.name,
+            addonPrice: addon.unitPrice,
+            addonType: addon.type,
+            quantity: addon.quantity,
+            totalAmount: addon.total,
+            mutualExclusivityGroup: null,
+            enabled: true,
+          }))
+      : [];
+    setSelectedAddons([...configuredRows, ...missingFrozenRows]);
   }
 
   function toggleAddon(index: number) {
@@ -643,7 +757,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
       }
 
       // Auto-fill rate from pricing tiers when vehicle or dates change, unless the user has already set a manual rate
-      if (!patch.rentalRate) {
+      if (!patch.rentalRate && !directTermsLocked) {
         const mid = modelId ?? (fleet?.find((v) => v.id === merged.vehicleId)?.modelId as string | null);
         const rate = findRate(mid, merged.rentalDaysCount, storePricing ?? []);
         if (rate !== null) merged.rentalRate = rate;
@@ -681,12 +795,8 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
         .map((v) => ({
           vehicleId: v.vehicleId,
           vehicleName: v.vehicleName,
-          pickupDatetime: v.pickupDatetime.includes('+') || v.pickupDatetime.endsWith('Z')
-            ? v.pickupDatetime
-            : `${v.pickupDatetime}:00+08:00`,
-          dropoffDatetime: v.dropoffDatetime.includes('+') || v.dropoffDatetime.endsWith('Z')
-            ? v.dropoffDatetime
-            : `${v.dropoffDatetime}:00+08:00`,
+          pickupDatetime: toBookingIso(v.pickupDatetime),
+          dropoffDatetime: toBookingIso(v.dropoffDatetime),
           rentalDaysCount: v.rentalDaysCount,
           pickupLocation: v.pickupLocation,
           dropoffLocation: v.dropoffLocation,
@@ -720,17 +830,23 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
         : ((payload.customer_note as string) ?? null),
       receivableAccountId: (receivableAccount?.id as string) ?? '',
       incomeAccountId: (incomeAccount?.id as string) ?? '',
-      paymentMethodId: paymentMethodId || null,
+      paymentMethodId: confirmedOnlinePayment ? null : (paymentMethodId || null),
       depositMethodId: depositMethodId || null,
       cardFeeSurcharge: cardSurchargeAmount,
-      paymentAccountId: surchargePercent > 0 ? null : (paymentAccountId || null),
+      paymentAccountId: confirmedOnlinePayment || surchargePercent > 0 ? null : (paymentAccountId || null),
       depositLiabilityAccountId: depositLiabilityAccountId || null,
-      isCardPayment: surchargePercent > 0,
-      settlementRef: surchargePercent > 0 ? (settlementRef || null) : null,
+      isCardPayment: confirmedOnlinePayment ? false : surchargePercent > 0,
+      settlementRef: confirmedOnlinePayment ? null : (surchargePercent > 0 ? (settlementRef || null) : null),
       excludeTransferFromBalance: transferPaidByCustomer,
       transferAccommodation: transferAccommodation.trim() || null,
       dropoffLocationNote: dropoffLocationNote.trim() || null,
-      partialPaymentAmount: (paymentMethodId && effectiveCollectNow < finalTotal) ? effectiveCollectNow : undefined,
+      partialPaymentAmount: !confirmedOnlinePayment && paymentMethodId && effectiveCollectNow < finalTotal ? effectiveCollectNow : undefined,
+      bookingOverride: overrideRequired && overrideUnlocked
+        ? {
+            reason: overrideReason.trim(),
+            acknowledgePaymentAdjustment,
+          }
+        : undefined,
     };
   }
 
@@ -745,9 +861,18 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   async function handleActivate() {
     if (!canEditOrders) return;
     if (!depositValid) return;
+    if (!dateRangeValid) return;
+    if (isDirectWebsite && !bookingTerms) return;
+    if (overrideRequired && !overrideUnlocked) return;
+    if (confirmedOnlinePayment && Math.abs(paymentDifference) > 0.01 && !acknowledgePaymentAdjustment) return;
     processMutation.mutate(buildPayload(), {
-      onSuccess: () => {
-        setSuccessMessage('Order activated successfully!');
+      onSuccess: (result) => {
+        if (result.paymentAdjustment.kind !== 'none') {
+          const action = result.paymentAdjustment.kind === 'collect' ? 'Collect' : 'Refund';
+          setSuccessMessage(`Order activated. ${action} ${formatCurrency(result.paymentAdjustment.amount)} using the existing Active booking payment tools.`);
+          return;
+        }
+        setSuccessMessage(result.bookingOverrideApplied ? 'Order activated with an audited booking override.' : 'Order activated successfully!');
         setTimeout(() => {
           setSuccessMessage('');
           onClose();
@@ -926,6 +1051,24 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                         <dt className="text-gray-500">Payment Method</dt>
                         <dd className="font-medium">{rawOrder.web_payment_method ?? 'Not specified'}</dd>
                       </div>
+                      {confirmedOnlinePayment && (
+                        <>
+                          <div className="flex justify-between">
+                            <dt className="text-gray-500">Payment Status</dt>
+                            <dd><Badge color="green">Paid online</Badge></dd>
+                          </div>
+                          <div className="flex justify-between">
+                            <dt className="text-gray-500">Online Payment</dt>
+                            <dd className="font-medium">{formatCurrency(confirmedOnlinePayment.amount)}</dd>
+                          </div>
+                          {confirmedOnlinePayment.reference && (
+                            <div className="flex justify-between gap-2">
+                              <dt className="shrink-0 text-gray-500">Xendit Reference</dt>
+                              <dd className="break-all text-right font-medium">{confirmedOnlinePayment.reference}</dd>
+                            </div>
+                          )}
+                        </>
+                      )}
                       {rawOrder.transfer_type && (
                         <>
                           <div className="flex justify-between">
@@ -952,6 +1095,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                               className="mt-0.5 h-4 w-4 shrink-0 accent-amber-600"
                               checked={transferPaidByCustomer}
                               onChange={(e) => setTransferPaidByCustomer(e.target.checked)}
+                              disabled={paidPriceLocked}
                             />
                             <label htmlFor="transfer-paid-by-customer" className="cursor-pointer leading-snug">
                               <span className="font-semibold">Customer pays driver directly</span>
@@ -1130,77 +1274,169 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
             )}
 
             {/* Pre-activation card payment */}
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <h3 className="font-medium text-gray-900">Record Pre-activation Payment</h3>
-                <Badge color="blue">Before vehicle assignment</Badge>
+            {liveCheckoutSessionId && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+                <p className="font-medium">Online payment checkout in progress</p>
+                <p className="mt-1 text-xs">Processing, cancellation, and manual payment collection are locked until the Xendit checkout is completed or cancelled by an authorized staff member.</p>
               </div>
-              <p className="mb-3 text-xs text-gray-600">
-                Record a card payment now if the customer is paying before vehicle collection. The order still needs to be processed through the remaining steps.
-              </p>
-              <div className="grid grid-cols-3 gap-3">
-                <label className="block">
-                  <span className="text-sm text-gray-600">Payment Method</span>
-                  <select
-                    value={preActivationMethodId}
-                    onChange={(e) => setPreActivationMethodId(e.target.value)}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  >
-                    <option value="">Select...</option>
-                    {activePaymentMethods.map((m) => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block">
-                  <span className="text-sm text-gray-600">Amount</span>
-                  <input
-                    type="number"
-                    value={preActivationAmount}
-                    onChange={(e) => setPreActivationAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="0.00"
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                </label>
-                {preActivationIsCard && (
+            )}
+            {!confirmedOnlinePayment && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                <div className="mb-3 flex items-center gap-2">
+                  <h3 className="font-medium text-gray-900">Record Pre-activation Payment</h3>
+                  <Badge color="blue">Before vehicle assignment</Badge>
+                </div>
+                <p className="mb-3 text-xs text-gray-600">
+                  Record a card payment now if the customer is paying before vehicle collection. The order still needs to be processed through the remaining steps.
+                </p>
+                <div className="grid grid-cols-3 gap-3">
                   <label className="block">
-                    <span className="text-sm text-gray-600">Card Reference #</span>
+                    <span className="text-sm text-gray-600">Payment Method</span>
+                    <select
+                      value={preActivationMethodId}
+                      onChange={(e) => setPreActivationMethodId(e.target.value)}
+                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >
+                      <option value="">Select...</option>
+                      {activePaymentMethods.map((m) => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="text-sm text-gray-600">Amount</span>
                     <input
-                      type="text"
-                      value={preActivationRef}
-                      onChange={(e) => setPreActivationRef(e.target.value)}
-                      placeholder="Terminal receipt #"
+                      type="number"
+                      value={preActivationAmount}
+                      onChange={(e) => setPreActivationAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                      placeholder="0.00"
                       className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                   </label>
+                  {preActivationIsCard && (
+                    <label className="block">
+                      <span className="text-sm text-gray-600">Card Reference #</span>
+                      <input
+                        type="text"
+                        value={preActivationRef}
+                        onChange={(e) => setPreActivationRef(e.target.value)}
+                        placeholder="Terminal receipt #"
+                        className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </label>
+                  )}
+                </div>
+                {preActivationIsCard && (
+                  <p className="mt-2 text-xs text-amber-700">
+                    Card payment — a pending settlement will be created for reconciliation.
+                  </p>
+                )}
+                <div className="mt-3 flex items-center gap-3">
+                  <button
+                    onClick={handlePreActivationPayment}
+                    disabled={collectMutation.isPending || !preActivationMethodId || !preActivationAmount}
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {collectMutation.isPending ? 'Recording...' : 'Record Pre-activation Payment'}
+                  </button>
+                </div>
+                {collectMutation.error && step === 'review' && (
+                  <div className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
+                    {(collectMutation.error as Error).message}
+                  </div>
                 )}
               </div>
-              {preActivationIsCard && (
-                <p className="mt-2 text-xs text-amber-700">
-                  Card payment — a pending settlement will be created for reconciliation.
-                </p>
-              )}
-              <div className="mt-3 flex items-center gap-3">
-                <button
-                  onClick={handlePreActivationPayment}
-                  disabled={collectMutation.isPending || !preActivationMethodId || !preActivationAmount}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {collectMutation.isPending ? 'Recording...' : 'Record Pre-activation Payment'}
-                </button>
-              </div>
-              {collectMutation.error && step === 'review' && (
-                <div className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
-                  {(collectMutation.error as Error).message}
-                </div>
-              )}
-            </div>
+            )}
           </div>
         )}
 
         {/* Step 2: Vehicles */}
         {step === 'vehicles' && (
           <div className="space-y-4">
+            {isDirectWebsite && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex gap-2">
+                    <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    <div>
+                      <p className="font-medium">Customer-booked terms are locked</p>
+                      <p className="mt-0.5 text-xs text-blue-700">
+                        Assign the physical vehicle and helmets here. Changing dates, locations, model, or pricing requires an authorized override.
+                      </p>
+                    </div>
+                  </div>
+                  {canOverrideBookingTerms && !overrideRequested && (
+                    <button
+                      type="button"
+                      onClick={() => setOverrideRequested(true)}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-blue-600 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                    >
+                      <Unlock className="h-3.5 w-3.5" aria-hidden="true" />
+                      Override terms
+                    </button>
+                  )}
+                </div>
+                {overrideRequested && (
+                  <div className="mt-3 border-t border-blue-200 pt-3">
+                    <label className="block">
+                      <span className="text-xs font-semibold text-blue-900">Override reason</span>
+                      <textarea
+                        value={overrideReason}
+                        onChange={(event) => setOverrideReason(event.target.value)}
+                        maxLength={500}
+                        rows={2}
+                        placeholder="Explain why the customer-booked terms must change (minimum 10 characters)."
+                        className="mt-1 block w-full rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </label>
+                    <div className="mt-2 flex items-center justify-between gap-3">
+                      <p className="text-xs text-blue-700">
+                        {overrideUnlocked ? 'Protected fields are unlocked. The reason and changes will be added to the order notes.' : `${Math.max(0, 10 - overrideReason.trim().length)} more characters required to unlock.`}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOverrideRequested(false);
+                          setOverrideReason('');
+                          setAcknowledgePaymentAdjustment(false);
+                          if (bookingTerms) {
+                            setVehicles((current) => [{
+                              ...(current[0] ?? emptyVehicleRow()),
+                              pickupDatetime: toDatetimeLocal(bookingTerms.pickupDatetime),
+                              dropoffDatetime: toDatetimeLocal(bookingTerms.dropoffDatetime),
+                              rentalDaysCount: bookingTerms.rentalDays,
+                              pickupLocation: bookingTerms.pickupLocationName,
+                              dropoffLocation: bookingTerms.dropoffLocationName,
+                              pickupFee: bookingTerms.pickupFee,
+                              dropoffFee: bookingTerms.dropoffFee,
+                              rentalRate: bookingTerms.effectiveDailyRate,
+                              discount: bookingTerms.discount,
+                            }]);
+                            setTransferPaidByCustomer(false);
+                            setSelectedAddons([]);
+                          }
+                        }}
+                        className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-blue-700 hover:text-blue-900"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                        Cancel override
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {isDirectWebsite && detailLoading && (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                Loading the original booking terms...
+              </div>
+            )}
+            {isDirectWebsite && bookingTerms?.warning && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                {bookingTerms.warning}
+              </div>
+            )}
+
             {vehicleFilterFallback && (
               <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-2 text-sm text-amber-800">
                 Fleet status filter could not match any vehicles — showing all fleet vehicles.
@@ -1220,6 +1456,10 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                 Open Inspection
               </button>
             </div>
+
+            {isDirectWebsite && intervalAvailabilityLoading && (
+              <p className="text-xs text-gray-500">Checking vehicle availability for the booked interval...</p>
+            )}
 
             {vehicles.map((v, i) => {
               const pickupParts = splitDatetime(v.pickupDatetime);
@@ -1260,6 +1500,9 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                         </option>
                       ))}
                     </select>
+                    {isDirectWebsite && bookingTerms && !overrideUnlocked && (
+                      <p className="mt-1 text-xs text-gray-500">Showing available {bookingTerms.vehicleModelName} units only.</p>
+                    )}
                     {v.vehicleId && !fleet?.find((fv) => fv.id === v.vehicleId)?.modelId && (
                       <p className="mt-1 text-xs text-amber-600">No model linked — set vehicle model in fleet settings to auto-fill rate.</p>
                     )}
@@ -1271,7 +1514,8 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                       type="number"
                       value={v.rentalRate}
                       onChange={(e) => updateVehicle(i, { rentalRate: Number(e.target.value) })}
-                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      disabled={directTermsLocked}
+                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-600"
                     />
                   </label>
 
@@ -1283,14 +1527,16 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                         type="date"
                         value={pickupParts.date}
                         onChange={(e) => updatePickupPart({ date: e.target.value })}
-                        className="block w-[130px] rounded-lg border border-gray-300 px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        disabled={directTermsLocked}
+                        className="block w-[130px] rounded-lg border border-gray-300 px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-600"
                       />
                       <input
                         type="number"
                         min={1} max={12}
                         value={pickupParts.hours12}
                         onChange={(e) => updatePickupPart({ hours12: Math.max(1, Math.min(12, Number(e.target.value) || 1)) })}
-                        className="block w-[52px] rounded-lg border border-gray-300 px-2 py-2 text-sm text-center focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        disabled={directTermsLocked}
+                        className="block w-[52px] rounded-lg border border-gray-300 px-2 py-2 text-sm text-center focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-600"
                       />
                       <span className="text-gray-400 font-medium">:</span>
                       <input
@@ -1298,12 +1544,14 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                         min={0} max={59}
                         value={String(pickupParts.minutes).padStart(2, '0')}
                         onChange={(e) => updatePickupPart({ minutes: Math.max(0, Math.min(59, Number(e.target.value) || 0)) })}
-                        className="block w-[52px] rounded-lg border border-gray-300 px-2 py-2 text-sm text-center focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        disabled={directTermsLocked}
+                        className="block w-[52px] rounded-lg border border-gray-300 px-2 py-2 text-sm text-center focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-600"
                       />
                       <button
                         type="button"
                         onClick={() => updatePickupPart({ ampm: pickupParts.ampm === 'AM' ? 'PM' : 'AM' })}
-                        className="rounded-lg border border-gray-300 px-2.5 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        disabled={directTermsLocked}
+                        className="rounded-lg border border-gray-300 px-2.5 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
                       >
                         {pickupParts.ampm}
                       </button>
@@ -1318,14 +1566,16 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                         type="date"
                         value={dropoffParts.date}
                         onChange={(e) => updateDropoffPart({ date: e.target.value })}
-                        className="block w-[130px] rounded-lg border border-gray-300 px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        disabled={directTermsLocked}
+                        className="block w-[130px] rounded-lg border border-gray-300 px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-600"
                       />
                       <input
                         type="number"
                         min={1} max={12}
                         value={dropoffParts.hours12}
                         onChange={(e) => updateDropoffPart({ hours12: Math.max(1, Math.min(12, Number(e.target.value) || 1)) })}
-                        className="block w-[52px] rounded-lg border border-gray-300 px-2 py-2 text-sm text-center focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        disabled={directTermsLocked}
+                        className="block w-[52px] rounded-lg border border-gray-300 px-2 py-2 text-sm text-center focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-600"
                       />
                       <span className="text-gray-400 font-medium">:</span>
                       <input
@@ -1333,12 +1583,14 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                         min={0} max={59}
                         value={String(dropoffParts.minutes).padStart(2, '0')}
                         onChange={(e) => updateDropoffPart({ minutes: Math.max(0, Math.min(59, Number(e.target.value) || 0)) })}
-                        className="block w-[52px] rounded-lg border border-gray-300 px-2 py-2 text-sm text-center focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        disabled={directTermsLocked}
+                        className="block w-[52px] rounded-lg border border-gray-300 px-2 py-2 text-sm text-center focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-600"
                       />
                       <button
                         type="button"
                         onClick={() => updateDropoffPart({ ampm: dropoffParts.ampm === 'AM' ? 'PM' : 'AM' })}
-                        className="rounded-lg border border-gray-300 px-2.5 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        disabled={directTermsLocked}
+                        className="rounded-lg border border-gray-300 px-2.5 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
                       >
                         {dropoffParts.ampm}
                       </button>
@@ -1366,7 +1618,8 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                     <select
                       value={v.pickupLocation}
                       onChange={(e) => updateVehicle(i, { pickupLocation: e.target.value })}
-                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      disabled={directTermsLocked}
+                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-600"
                     >
                       <option value="">Select...</option>
                       {(locations ?? []).map((l) => (
@@ -1386,7 +1639,8 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                     <select
                       value={v.dropoffLocation}
                       onChange={(e) => updateVehicle(i, { dropoffLocation: e.target.value })}
-                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      disabled={directTermsLocked}
+                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-600"
                     >
                       <option value="">Select...</option>
                       {(locations ?? []).map((l) => (
@@ -1417,7 +1671,8 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                       type="number"
                       value={v.discount}
                       onChange={(e) => updateVehicle(i, { discount: Number(e.target.value) })}
-                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      disabled={directTermsLocked}
+                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-600"
                     />
                   </label>
                 </div>
@@ -1426,6 +1681,9 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                   <span>Days: <strong>{v.rentalDaysCount}</strong></span>
                   <span>Subtotal: <strong>{formatCurrency(v.rentalRate * v.rentalDaysCount + v.pickupFee + v.dropoffFee - v.discount)}</strong></span>
                 </div>
+                {!dateRangeValid && (
+                  <p className="mt-2 text-sm font-medium text-red-600">Dropoff must be after pickup.</p>
+                )}
               </div>
               );
             })}
@@ -1460,7 +1718,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
               selectedAddons.map((addon, i) => (
                 <label
                   key={i}
-                  className={`flex cursor-pointer items-center justify-between rounded-lg border p-4 transition ${
+                  className={`flex items-center justify-between rounded-lg border p-4 transition ${paidPriceLocked ? 'cursor-not-allowed opacity-75' : 'cursor-pointer'} ${
                     addon.enabled ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
@@ -1469,6 +1727,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                       type="checkbox"
                       checked={addon.enabled}
                       onChange={() => toggleAddon(i)}
+                      disabled={paidPriceLocked}
                       className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
                     <div>
@@ -1489,6 +1748,9 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                   </div>
                 </label>
               ))
+            )}
+            {paidPriceLocked && (
+              <p className="text-xs text-gray-500">Add-ons are locked because this booking has a confirmed online payment.</p>
             )}
           </div>
         )}
@@ -1590,7 +1852,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
 
                 {cardSurchargeAmount > 0 && (
                   <div className="flex justify-between text-amber-700">
-                    <dt>Card surcharge ({surchargePercent}%)</dt>
+                    <dt>{confirmedOnlinePayment ? 'Online payment surcharge' : `Card surcharge (${surchargePercent}%)`}</dt>
                     <dd className="font-medium">{formatCurrency(cardSurchargeAmount)}</dd>
                   </div>
                 )}
@@ -1609,9 +1871,62 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
               </dl>
             </div>
 
+            {isDirectWebsite && bookingTerms && (
+              <div className={`rounded-lg border p-4 ${overrideRequired ? 'border-amber-300 bg-amber-50' : 'border-green-200 bg-green-50'}`}>
+                <div className="flex items-center gap-2">
+                  {overrideRequired ? <Unlock className="h-4 w-4 text-amber-700" aria-hidden="true" /> : <LockKeyhole className="h-4 w-4 text-green-700" aria-hidden="true" />}
+                  <h3 className="text-sm font-medium text-gray-900">
+                    {overrideRequired ? 'Booking override summary' : 'Original booking terms preserved'}
+                  </h3>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                  <div><span className="text-gray-500">Original quote</span><div className="font-medium">{formatCurrency(originalTotal)}</div></div>
+                  <div><span className="text-gray-500">Revised total</span><div className="font-medium">{formatCurrency(finalTotal)}</div></div>
+                </div>
+                {protectedTermChanges.length > 0 && (
+                  <p className="mt-3 text-sm text-amber-800">Changed: {protectedTermChanges.join(', ')}</p>
+                )}
+                {overrideRequired && !overrideUnlocked && (
+                  <p className="mt-2 text-sm font-medium text-amber-800">Return to Vehicles and provide an authorized override reason before activation.</p>
+                )}
+                {confirmedOnlinePayment && Math.abs(paymentDifference) > 0.01 && (
+                  <div className="mt-3 border-t border-amber-200 pt-3">
+                    <p className="text-sm font-medium text-amber-900">
+                      {paymentDifference > 0
+                        ? `Additional balance to collect: ${formatCurrency(paymentDifference)}`
+                        : `Refund due after activation: ${formatCurrency(Math.abs(paymentDifference))}`}
+                    </p>
+                    <label className="mt-2 flex items-start gap-2 text-sm text-amber-900">
+                      <input
+                        type="checkbox"
+                        checked={acknowledgePaymentAdjustment}
+                        onChange={(event) => setAcknowledgePaymentAdjustment(event.target.checked)}
+                        disabled={!overrideUnlocked}
+                        className="mt-0.5 h-4 w-4 rounded border-amber-400 text-amber-700"
+                      />
+                      I understand this adjustment must be completed using the existing Active booking payment or refund tools.
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Payment Methods */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="rounded-lg border border-gray-200 p-4">
+                {confirmedOnlinePayment ? (
+                  <div>
+                    <span className="text-sm font-medium text-gray-700">Rental Payment</span>
+                    <div className="mt-2 flex items-center justify-between gap-3">
+                      <Badge color="green">Paid online</Badge>
+                      <span className="font-medium text-gray-900">{formatCurrency(confirmedOnlinePayment.amount)}</span>
+                    </div>
+                    {confirmedOnlinePayment.reference && (
+                      <p className="mt-2 break-all text-xs text-gray-500">Xendit reference: {confirmedOnlinePayment.reference}</p>
+                    )}
+                  </div>
+                ) : (
+                  <>
                 {rawOrder.web_payment_method && (
                   <p className="mb-2 text-xs text-gray-500">
                     Customer selected:{' '}
@@ -1649,6 +1964,8 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                     Waive card fee
                   </label>
                 )}
+                  </>
+                )}
               </div>
 
               <div className="rounded-lg border border-gray-200 p-4">
@@ -1668,7 +1985,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
               </div>
             </div>
 
-            {paymentMethodId && (
+            {!confirmedOnlinePayment && paymentMethodId && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
                 <label className="block">
                   <span className="text-sm font-medium text-gray-700">Amount to collect now</span>
@@ -1697,7 +2014,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
               </div>
             )}
 
-            {(paymentMethodId || Number(securityDeposit) > 0) && (
+            {((!confirmedOnlinePayment && paymentMethodId) || Number(securityDeposit) > 0) && (
               <div className="grid grid-cols-2 gap-4">
                 {surchargePercent > 0 ? (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
@@ -1860,19 +2177,35 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                 Transfer amount is missing — please set it before activating.
               </p>
             )}
+            {overrideRequired && !overrideUnlocked && (
+              <p className="text-sm font-medium text-amber-700">An authorized override reason is required for the revised booking terms.</p>
+            )}
+            {confirmedOnlinePayment && Math.abs(paymentDifference) > 0.01 && !acknowledgePaymentAdjustment && (
+              <p className="text-sm font-medium text-amber-700">Acknowledge the payment adjustment before activation.</p>
+            )}
             {canEditOrders && (
               <div className="flex items-center gap-3">
-                <button
-                  onClick={handleCollectPayment}
-                  disabled={collectMutation.isPending || !paymentMethodId}
-                  className="rounded-lg border border-blue-600 px-5 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50"
-                  title="Record payment without activating the order"
-                >
-                  {collectMutation.isPending ? 'Collecting...' : 'Collect Payment'}
-                </button>
+                {!confirmedOnlinePayment && (
+                  <button
+                    onClick={handleCollectPayment}
+                    disabled={collectMutation.isPending || !paymentMethodId}
+                    className="rounded-lg border border-blue-600 px-5 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50"
+                    title="Record payment without activating the order"
+                  >
+                    {collectMutation.isPending ? 'Collecting...' : 'Collect Payment'}
+                  </button>
+                )}
                 <button
                   onClick={handleActivate}
-                  disabled={processMutation.isPending || !depositValid || transferAmountMissing}
+                  disabled={
+                    processMutation.isPending ||
+                    !depositValid ||
+                    transferAmountMissing ||
+                    !dateRangeValid ||
+                    (isDirectWebsite && (detailLoading || !bookingTerms)) ||
+                    (overrideRequired && !overrideUnlocked) ||
+                    (Boolean(confirmedOnlinePayment) && Math.abs(paymentDifference) > 0.01 && !acknowledgePaymentAdjustment)
+                  }
                   className="rounded-lg bg-green-600 px-6 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
                   title={
                     transferAmountMissing
@@ -1890,7 +2223,8 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
         ) : (
           <button
             onClick={goNext}
-            className="rounded-lg bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            disabled={step === 'vehicles' && (!dateRangeValid || (isDirectWebsite && (detailLoading || !bookingTerms)))}
+            className="rounded-lg bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
             Next
           </button>
@@ -1902,7 +2236,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
       <InspectionModal
         open={inspectionOpen}
         onClose={() => setInspectionOpen(false)}
-        orderId={rawOrder.id}
+        rawOrderId={rawOrder.id}
         orderReference={waiverRef ?? rawOrder.id}
         storeId={storeId}
         employeeName={employeeName}

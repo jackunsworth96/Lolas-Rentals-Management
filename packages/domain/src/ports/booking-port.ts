@@ -76,6 +76,7 @@ export interface DirectBookingInsert {
   flightArrivalTime?: string | null;
   transferRoute?: string | null;
   webQuoteRaw?: number | null;
+  webCardFeeSurcharge?: number;
   charityDonation?: number;
   webPaymentMethod?: string | null;
   helmetCount?: number | null;

@@ -9,6 +9,7 @@ import type {
 } from '@lolas/domain';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseClient } from './client.js';
+import { isFleetStatusRentable } from '../../lib/fleet-status.js';
 
 interface HoldDbRow {
   id: string;
@@ -92,19 +93,22 @@ export async function evaluateAvailability(
   const { storeId, pickupDatetime, dropoffDatetime, excludeSessionToken, excludeOrderItemId } = query;
   const BUFFER_MS = 30 * 60 * 1000;
   const pickupBuffered = new Date(new Date(pickupDatetime).getTime() - BUFFER_MS).toISOString();
-  const NON_RENTABLE = ['Under Maintenance', 'Sold', 'Service Vehicle', 'Closed', 'Pending ORCR'];
-
   type FleetRow = { id: string; name: string; model_id: string | null; status: string };
-  const { data: fleet, error: fleetErr } = await sb
-    .from('fleet').select('id, name, model_id, status').eq('store_id', storeId);
+  const [fleetResult, statusResult] = await Promise.all([
+    sb.from('fleet').select('id, name, model_id, status').eq('store_id', storeId),
+    sb.from('fleet_statuses').select('id, name, is_rentable'),
+  ]);
+  const { data: fleet, error: fleetErr } = fleetResult;
   if (fleetErr) throw new Error(`fleet query failed: ${fleetErr.message}`);
+  if (statusResult.error) throw new Error(`fleet statuses query failed: ${statusResult.error.message}`);
+  const configuredStatuses = statusResult.data ?? [];
 
   const configurationExclusions: AvailabilityExplanation['configurationExclusions'] = [];
   const rentableFleet: FleetRow[] = [];
   for (const vehicle of (fleet ?? []) as FleetRow[]) {
     if (!vehicle.model_id) {
       configurationExclusions.push({ vehicleId: vehicle.id, vehicleName: vehicle.name, reason: 'missing_model' });
-    } else if (NON_RENTABLE.includes(vehicle.status)) {
+    } else if (!isFleetStatusRentable(vehicle.status, configuredStatuses)) {
       configurationExclusions.push({
         vehicleId: vehicle.id,
         vehicleName: vehicle.name,
@@ -526,6 +530,7 @@ export function createBookingAdapter(): BookingPort {
           charity_donation: input.charityDonation ?? 0,
           web_payment_method: input.webPaymentMethod ?? null,
           web_quote_raw: input.webQuoteRaw ?? null,
+          web_card_fee_surcharge: input.webCardFeeSurcharge ?? 0,
           transfer_pax_count:
             input.transferPaxCount != null && input.transferPaxCount > 0
               ? input.transferPaxCount

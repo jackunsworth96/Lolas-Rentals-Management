@@ -41,6 +41,7 @@ import { deliveryReminderRoutes } from './delivery-reminders.js';
 import { publicImpactRoutes } from './public-impact.js';
 import { impactAdminRoutes } from './impact-admin.js';
 import { accidentRoutes } from './accidents.js';
+import { publicXenditRouter, staffXenditRouter } from './xendit.js';
 import { loginLimiter, publicLimiter, apiLimiter } from '../middleware/rate-limit.js';
 import { telegramWebhookRouter } from '../telegram/telegram.webhook.js';
 
@@ -80,6 +81,8 @@ routes.use('/public/repairs', publicRepairsRoutes);
 routes.use('/public/waiver', waiverRouter);
 routes.use('/budget', budgetRoutes);
 routes.use('/payments/maya', mayaRouter);
+routes.use('/public/payments/xendit', publicXenditRouter);
+routes.use('/payments/xendit', staffXenditRouter);
 routes.use('/public/chat', chatRouter);
 routes.use('/dev-tools', devToolsRoutes);
 routes.use('/customers', customerRoutes);

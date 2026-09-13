@@ -1,8 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './client.js';
-import type { OrdersRawRow } from '@lolas/shared';
+import type { OrdersRawInboxRow } from '@lolas/shared';
 
-export type RawOrder = OrdersRawRow;
+export type RawOrder = OrdersRawInboxRow;
 
 export interface RawOrdersPage {
   data: RawOrder[];
@@ -76,13 +76,25 @@ export interface ProcessRawOrderPayload {
   /** When set, only this amount is recorded as the rental payment at activation.
    * The difference between finalTotal and this amount becomes balance_due. */
   partialPaymentAmount?: number;
+  bookingOverride?: {
+    reason: string;
+    acknowledgePaymentAdjustment: boolean;
+  };
+}
+
+export interface ProcessRawOrderResult {
+  order: { id: string };
+  alreadyProcessed: boolean;
+  bookingOverrideApplied: boolean;
+  paymentAdjustment: { kind: 'none' | 'collect' | 'refund'; amount: number };
+  [key: string]: unknown;
 }
 
 export function useProcessRawOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...body }: ProcessRawOrderPayload & { id: string }) =>
-      api.post(`/orders-raw/${id}/process`, body),
+      api.post<ProcessRawOrderResult>(`/orders-raw/${id}/process`, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['orders-raw'] });
       qc.invalidateQueries({ queryKey: ['orders'] });

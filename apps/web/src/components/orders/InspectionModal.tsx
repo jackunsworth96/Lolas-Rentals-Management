@@ -16,6 +16,8 @@ interface InspectionModalProps {
   onClose: () => void;
   /** Required when capturing an inspection linked to an existing booking. */
   orderId?: string | null;
+  /** Required when capturing an inspection from an unprocessed inbox booking. */
+  rawOrderId?: string | null;
   /** Required when capturing an inspection linked to an existing booking. */
   orderReference?: string | null;
   /** Required when capturing an inspection before a booking exists (check-in flow). */
@@ -60,6 +62,7 @@ export function InspectionModal({
   open,
   onClose,
   orderId,
+  rawOrderId,
   orderReference,
   customerId,
   storeId,
@@ -295,6 +298,7 @@ export function InspectionModal({
 
       await api.post('/inspections', {
         ...(orderId ? { orderId, orderReference } : {}),
+        ...(rawOrderId ? { rawOrderId } : {}),
         ...(customerId ? { customerId } : {}),
         storeId,
         vehicleId: vehicleId || undefined,

@@ -8,17 +8,9 @@ const apiDir = resolve(__dirname, '..');
 const monorepoRoot = resolve(__dirname, '../../..');
 [monorepoRoot, apiDir, process.cwd()].forEach((dir) => config({ path: resolve(dir, '.env'), override: true }));
 
-import { z } from 'zod';
+import { validateEnvironment } from './lib/env.js';
 
-const EnvSchema = z.object({
-  SUPABASE_URL: z.string().url(),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
-  JWT_SECRET: z.string().min(32),
-  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  PORT: z.coerce.number().default(3001),
-});
-
-const _env = EnvSchema.safeParse(process.env);
+const _env = validateEnvironment(process.env);
 if (!_env.success) {
   console.error('Invalid environment variables:', _env.error.flatten().fieldErrors);
   process.exit(1);

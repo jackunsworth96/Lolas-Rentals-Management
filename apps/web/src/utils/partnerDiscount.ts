@@ -55,6 +55,98 @@ function isLocationAllowed(
          (dropoffLocationId != null && ids.includes(dropoffLocationId));
 }
 
+function isSingleLocationAllowed(
+  ids: number[] | null | undefined,
+  locationId?: number | null,
+): boolean {
+  if (!ids || ids.length === 0) return true;
+  return locationId != null && ids.includes(locationId);
+}
+
+export interface AppliedPartnerLineBenefit extends AppliedPartnerBenefit {
+  adjustedRentalSubtotal: number;
+  adjustedPickupFee: number;
+  adjustedDropoffFee: number;
+  deliveryDiscount: number;
+}
+
+/** Mirrors the server's per-vehicle partner calculation, including per-leg delivery eligibility. */
+export function computePartnerLineBenefit(args: {
+  benefit: PublicPartnerBenefit | null;
+  rentalSubtotal: number;
+  pickupFee: number;
+  dropoffFee: number;
+  pickupDatetime: string;
+  now?: Date;
+  vehicleModelId?: string | null;
+  pickupLocationId?: number | null;
+  dropoffLocationId?: number | null;
+}): AppliedPartnerLineBenefit {
+  const {
+    benefit,
+    rentalSubtotal,
+    pickupFee,
+    dropoffFee,
+    pickupDatetime,
+    now = new Date(),
+    vehicleModelId,
+    pickupLocationId,
+    dropoffLocationId,
+  } = args;
+  const empty: AppliedPartnerLineBenefit = {
+    applied: false,
+    pendingReason: null,
+    daysShort: 0,
+    rentalDiscount: 0,
+    freeDelivery: false,
+    earlyBird: false,
+    adjustedRentalSubtotal: rentalSubtotal,
+    adjustedPickupFee: pickupFee,
+    adjustedDropoffFee: dropoffFee,
+    deliveryDiscount: 0,
+  };
+  if (!benefit) return empty;
+
+  const terms = resolveClientTerms(benefit, vehicleModelId);
+  const discountDeal = terms.dealType === 'discount' || terms.dealType === 'combined' || terms.dealType === 'discount_delivery';
+  const freeDeliveryDeal = terms.freeDelivery || terms.dealType === 'free_delivery' || terms.dealType === 'combined' ||
+    terms.dealType === 'commission_delivery' || terms.dealType === 'discount_delivery';
+  const pickup = new Date(pickupDatetime);
+  const advanceDays = Number.isNaN(pickup.getTime()) ? null : (pickup.getTime() - now.getTime()) / MS_PER_DAY;
+  const advanceQualified = terms.advanceDiscountDays == null || terms.advanceDiscountDays <= 0 ||
+    (advanceDays != null && advanceDays >= terms.advanceDiscountDays);
+  const earlyBird = advanceQualified && terms.earlyBirdDays != null && terms.earlyBirdDiscountValue != null &&
+    advanceDays != null && advanceDays >= terms.earlyBirdDays;
+
+  let rentalDiscount = 0;
+  if (discountDeal && advanceQualified && terms.discountType && terms.discountValue != null) {
+    const discountValue = earlyBird ? terms.earlyBirdDiscountValue! : terms.discountValue;
+    rentalDiscount = terms.discountType === 'percentage'
+      ? Math.round(rentalSubtotal * (discountValue / 100) * 100) / 100
+      : Math.min(rentalSubtotal, discountValue);
+  }
+
+  const pickupIsFree = freeDeliveryDeal && isSingleLocationAllowed(benefit.freeDeliveryLocationIds, pickupLocationId);
+  const dropoffIsFree = freeDeliveryDeal && isSingleLocationAllowed(benefit.freeDeliveryLocationIds, dropoffLocationId);
+  const deliveryDiscount = (pickupIsFree ? pickupFee : 0) + (dropoffIsFree ? dropoffFee : 0);
+  const pendingAdvanceDiscount = discountDeal && !advanceQualified && terms.discountType != null && terms.discountValue != null;
+
+  return {
+    applied: rentalDiscount > 0 || deliveryDiscount > 0 || earlyBird,
+    pendingReason: pendingAdvanceDiscount ? 'advance_days' : null,
+    daysShort: pendingAdvanceDiscount && terms.advanceDiscountDays != null && advanceDays != null
+      ? Math.max(1, Math.ceil(terms.advanceDiscountDays - advanceDays))
+      : 0,
+    rentalDiscount,
+    freeDelivery: pickupIsFree || dropoffIsFree,
+    earlyBird,
+    adjustedRentalSubtotal: Math.max(0, Math.round((rentalSubtotal - rentalDiscount) * 100) / 100),
+    adjustedPickupFee: pickupIsFree ? 0 : pickupFee,
+    adjustedDropoffFee: dropoffIsFree ? 0 : dropoffFee,
+    deliveryDiscount,
+  };
+}
+
 /**
  * Compute the partner benefit applied to a quote at display time. Returns
  * `applied: false` when the partner has an advance_discount_days rule and

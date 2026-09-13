@@ -10,6 +10,7 @@ import { computeQuote } from '../use-cases/booking/compute-quote.js';
 import { createHold } from '../use-cases/booking/create-hold.js';
 import { releaseHold } from '../use-cases/booking/release-hold.js';
 import { submitDirectBooking, type SubmitDirectBookingResult } from '../use-cases/booking/submit-direct-booking.js';
+import { isXenditEnabled } from '../services/xendit.js';
 
 const holdLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
@@ -559,6 +560,7 @@ router.post('/submit', submitLimiter, validateBody(SubmitDirectBookingRequestSch
         cancellationToken: result.cancellationToken,
         serverQuote: result.serverQuote ?? null,
         charityDonation: result.charityDonation,
+        surchargeAmount: result.surchargeAmount,
       },
     });
 
@@ -769,13 +771,15 @@ router.get('/payment-methods', async (req, res, next) => {
   try {
     const methods = await req.app.locals.deps.configRepo.getPaymentMethods();
     const publicMethods = methods
-      .filter((m: { id: string; name: string; surchargePercent?: number; showOnCustomerWebsite?: boolean }) =>
-        m.showOnCustomerWebsite !== false,
+      .filter((m: { id: string; name: string; surchargePercent?: number; showOnCustomerWebsite?: boolean; gatewayProvider?: string | null }) =>
+        m.showOnCustomerWebsite !== false
+        && (m.gatewayProvider !== 'xendit' || isXenditEnabled()),
       )
-      .map((m: { id: string; name: string; surchargePercent?: number }) => ({
+      .map((m: { id: string; name: string; surchargePercent?: number; gatewayProvider?: string | null }) => ({
         id: m.id,
         name: m.name,
         surchargePercent: m.surchargePercent ?? 0,
+        gatewayProvider: m.gatewayProvider ?? null,
       }));
     res.json({ success: true, data: publicMethods });
   } catch (err) {

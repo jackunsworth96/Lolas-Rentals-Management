@@ -18,6 +18,8 @@ export const Permission = {
   /** Same capability as inbox/order visibility (no separate `can_view_orders` in DB yet). */
   ViewOrders: 'can_view_inbox',
   EditOrders: 'can_edit_orders',
+  OverrideBookingTerms: 'can_override_booking_terms',
+  ReconcileOnlinePayments: 'can_reconcile_online_payments',
   CancelOrders: 'can_cancel_orders',
   EditFleet: 'can_edit_fleet',
   ViewUIErrors: 'can_view_uierrors',
