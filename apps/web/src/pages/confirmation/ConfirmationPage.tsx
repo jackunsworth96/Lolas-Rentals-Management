@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Check, Clipboard, FileSignature, CalendarPlus, Loader2 } from 'lucide-react';
-import { api } from '../../api/client.js';
+import { api, ApiError } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
 import { RentalSummaryCard } from '../../components/confirmation/RentalSummaryCard.js';
 import { BookingFeedbackForm } from '../../components/confirmation/BookingFeedbackForm.js';
@@ -59,7 +59,7 @@ export default function ConfirmationPage() {
   const returnPaymentStatus = searchParams.get('payment') as 'processing' | 'failed' | 'cancelled' | null;
   const paymentSessionId = searchParams.get('paymentSession');
   const paymentState = searchParams.get('paymentState');
-  const [verifiedPaymentStatus, setVerifiedPaymentStatus] = useState<'processing' | 'success' | 'failed' | 'cancelled' | null>(
+  const [verifiedPaymentStatus, setVerifiedPaymentStatus] = useState<'processing' | 'success' | 'failed' | 'cancelled' | 'reconciliation_required' | 'verification_required' | null>(
     returnPaymentStatus,
   );
 
@@ -87,13 +87,22 @@ export default function ConfirmationPage() {
           setVerifiedPaymentStatus('success');
           return;
         }
-        if (['expired', 'cancelled', 'failed', 'reconciliation_required'].includes(result.status)) {
+        if (result.status === 'reconciliation_required') {
+          setVerifiedPaymentStatus('reconciliation_required');
+          return;
+        }
+        if (['expired', 'cancelled', 'failed'].includes(result.status)) {
           setVerifiedPaymentStatus(result.status === 'cancelled' ? 'cancelled' : 'failed');
           return;
         }
         setVerifiedPaymentStatus('processing');
-      } catch {
-        if (!cancelled) setVerifiedPaymentStatus('processing');
+      } catch (error) {
+        if (cancelled) return;
+        if (error instanceof ApiError && ['INVALID_RETURN_STATE', 'SESSION_NOT_FOUND', 'FORBIDDEN'].includes(error.code ?? '')) {
+          setVerifiedPaymentStatus('verification_required');
+          return;
+        }
+        setVerifiedPaymentStatus('processing');
       }
       if (!cancelled) timer = setTimeout(() => void poll(), 2500);
     };
@@ -216,6 +225,15 @@ export default function ConfirmationPage() {
               <div>
                 <p className="font-lato font-semibold text-blue-800">Confirming your payment</p>
                 <p className="font-lato text-sm text-blue-700">This page will update after Xendit confirms the payment.</p>
+              </div>
+            </div>
+          )}
+          {(verifiedPaymentStatus === 'reconciliation_required' || verifiedPaymentStatus === 'verification_required') && (
+            <div className="mb-6 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
+              <Loader2 className="h-6 w-6 shrink-0 text-amber-700" />
+              <div>
+                <p className="font-semibold text-amber-900 font-lato">Payment verification required</p>
+                <p className="text-sm text-amber-800 font-lato">Please keep your Xendit receipt and contact Lola's Rentals. Do not make another payment.</p>
               </div>
             </div>
           )}

@@ -67,6 +67,54 @@ async function withOnlinePaymentSummaries(rows: RawInboxRow[]) {
   }));
 }
 
+type XenditSessionSummaryRow = {
+  id: string;
+  status: 'creating' | 'active' | 'completed' | 'expired' | 'cancelled' | 'failed' | 'reconciliation_required';
+};
+
+function xenditOperatorMessage(status: XenditSessionSummaryRow['status']): string {
+  switch (status) {
+    case 'creating':
+      return 'Checkout creation is unresolved. An authorized reconciler must verify and release it before booking changes.';
+    case 'active':
+      return 'A customer can still pay through Xendit. Booking changes remain locked until it is cancelled or reaches a terminal state.';
+    case 'reconciliation_required':
+      return 'Xendit payment verification is required. Finance must resolve this before booking changes or collection.';
+    case 'completed':
+      return 'Online payment was completed.';
+    default:
+      return 'This Xendit checkout is no longer active.';
+  }
+}
+
+async function withXenditSessionSummaries(rows: RawInboxRow[]) {
+  const sessionIds = [...new Set(rows
+    .map((row) => typeof row.xendit_payment_session_id === 'string' ? row.xendit_payment_session_id : null)
+    .filter((id): id is string => Boolean(id)))];
+  if (sessionIds.length === 0) return rows.map((row) => ({ ...row, xendit_session: null }));
+
+  const { data, error } = await supabase
+    .from('xendit_payment_sessions')
+    .select('id, status')
+    .in('id', sessionIds);
+  if (error) throw new Error(`Failed to load Xendit session summaries: ${error.message}`);
+
+  const sessions = new Map(
+    ((data ?? []) as XenditSessionSummaryRow[]).map((session) => [session.id, {
+      id: session.id,
+      status: session.status,
+      operatorMessage: xenditOperatorMessage(session.status),
+    }]),
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    xendit_session: typeof row.xendit_payment_session_id === 'string'
+      ? sessions.get(row.xendit_payment_session_id) ?? null
+      : null,
+  }));
+}
+
 function generateWalkInReference(source: string): string {
   const prefix = source === 'bass' ? 'BB' : 'LR';
   const now = new Date();
@@ -816,7 +864,9 @@ router.get('/', requirePermission(Permission.ViewInbox), async (req, res, next) 
     const { data, error, count } = await query;
     if (error) throw new Error(error.message);
 
-    const enrichedRows = await withOnlinePaymentSummaries((data ?? []) as RawInboxRow[]);
+    const enrichedRows = await withXenditSessionSummaries(
+      await withOnlinePaymentSummaries((data ?? []) as RawInboxRow[]),
+    );
 
     res.json({
       success: true,
@@ -851,7 +901,9 @@ router.get('/:id', requirePermission(Permission.ViewInbox), async (req, res, nex
       return;
     }
 
-    const [enriched] = await withOnlinePaymentSummaries([data as RawInboxRow]);
+    const [enriched] = await withXenditSessionSummaries(
+      await withOnlinePaymentSummaries([data as RawInboxRow]),
+    );
     const bookingTerms = (data as { booking_channel?: string }).booking_channel === 'direct'
       ? await resolveDirectBookingTerms(
           data as unknown as DirectBookingTermsRow,

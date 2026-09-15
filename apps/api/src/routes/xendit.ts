@@ -78,9 +78,22 @@ type ExistingSessionRow = {
   status: string;
   payment_link_url: string | null;
   expires_at: string | null;
+  payment_session_id: string | null;
+  store_id: string;
   created_at: string;
   amount_php: number;
 };
+
+type XenditSessionStatus = 'creating' | 'active' | 'completed' | 'expired' | 'cancelled' | 'failed' | 'reconciliation_required';
+
+type CheckedCloseResult = {
+  status: XenditSessionStatus;
+  closed: boolean;
+  claimsReleased: boolean;
+  providerSessionMatched: boolean;
+};
+
+const RETURN_STATE_TTL_MS = 24 * 60 * 60 * 1000;
 
 type ExtensionOrderRow = {
   id: string;
@@ -178,10 +191,10 @@ async function closeFailedDraft(sessionId: string, error: unknown): Promise<bool
   return true;
 }
 
-function isStaleSession(session: ExistingSessionRow): boolean {
-  if (session.status === 'creating') return false;
-  if (session.expires_at && new Date(session.expires_at).getTime() <= Date.now()) return true;
-  return ['expired', 'cancelled', 'failed'].includes(session.status);
+function hasExpiredLocally(session: ExistingSessionRow): boolean {
+  return session.status === 'active'
+    && !!session.expires_at
+    && new Date(session.expires_at).getTime() <= Date.now();
 }
 
 async function activateXenditSession(
@@ -207,9 +220,107 @@ async function activateXenditSession(
   throw new Error(`Failed to activate Xendit checkout locally: ${String(lastError)}`);
 }
 
-function returnUrl(base: string, path: string, payment: 'processing' | 'cancelled', sessionId: string, expiresAt: string): string {
-  const state = createXenditReturnState({ sessionId, expiresAt });
+function returnUrl(base: string, path: string, payment: 'processing' | 'cancelled', sessionId: string): string {
+  // This is a short-lived authorization token for public status polling, not
+  // the provider checkout expiry. The provider remains authoritative for that.
+  const state = createXenditReturnState({
+    sessionId,
+    expiresAt: new Date(Date.now() + RETURN_STATE_TTL_MS).toISOString(),
+  });
   return `${base}${path}${path.includes('?') ? '&' : '?'}payment=${payment}&paymentSession=${sessionId}&paymentState=${encodeURIComponent(state)}`;
+}
+
+async function markSessionReconciliationRequired(
+  sessionId: string,
+  reason: string,
+  providerStatus: string | null,
+  employeeId: string | null = null,
+): Promise<'completed' | 'reconciliation_required'> {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.rpc('mark_xendit_session_reconciliation_required', {
+    p_session_id: sessionId,
+    p_employee_id: employeeId,
+    p_reason: reason,
+    p_provider_status: providerStatus,
+  });
+  if (error) throw new Error(`Failed to mark Xendit session for reconciliation: ${error.message}`);
+
+  const { data, error: statusError } = await supabase
+    .from('xendit_payment_sessions')
+    .select('status')
+    .eq('id', sessionId)
+    .maybeSingle();
+  if (statusError) throw new Error(`Failed to confirm Xendit reconciliation state: ${statusError.message}`);
+  const status = (data as { status?: XenditSessionStatus } | null)?.status;
+  if (status === 'completed' || status === 'reconciliation_required') return status;
+  throw new Error('Xendit reconciliation did not produce a terminal state');
+}
+
+async function closeProviderTerminalSession(
+  session: ExistingSessionRow,
+  reason: string,
+  employeeId: string | null = null,
+): Promise<'closed' | 'completed' | 'reconciliation_required' | 'still_active'> {
+  if (!session.payment_session_id) return 'still_active';
+  const provider = await getXenditPaymentSession(session.payment_session_id);
+  if (provider.status === 'ACTIVE') return 'still_active';
+  if (provider.status === 'COMPLETED') {
+    return markSessionReconciliationRequired(
+      session.id,
+      `${reason}: Xendit reports the hosted checkout completed.`,
+      provider.status,
+      employeeId,
+    );
+  }
+  const status = provider.status === 'EXPIRED' ? 'expired' : 'cancelled';
+  const { data, error } = await getSupabaseClient().rpc('close_xendit_session_after_provider_terminal', {
+    p_session_id: session.id,
+    p_expected_payment_session_id: session.payment_session_id,
+    p_status: status,
+    p_processing_error: `${reason}: Xendit reports ${provider.status}.`,
+  });
+  if (error) throw new Error(`Failed to close provider-terminal Xendit session: ${error.message}`);
+  const result = data as CheckedCloseResult | null;
+  if (!result) throw new Error('Provider-terminal Xendit session closure returned no result');
+  if (result.status === 'reconciliation_required') return 'reconciliation_required';
+  if (result.status === 'completed') return 'completed';
+  return result.closed ? 'closed' : 'still_active';
+}
+
+function isRetryableDraftError(error: { code?: string | null; message?: string | null }): boolean {
+  return error.code === '40P01'
+    || error.code === '40001'
+    || /deadlock detected|could not serialize/i.test(error.message ?? '');
+}
+
+function isBlockingSessionError(error: { code?: string | null; message?: string | null }): boolean {
+  return error.code === '23505'
+    || /unresolved Xendit session|already has an unresolved Xendit session|idx_xendit_blocking_order/i.test(error.message ?? '');
+}
+
+function xenditOperatorMessage(status: XenditSessionStatus): string {
+  switch (status) {
+    case 'creating':
+      return 'Checkout creation is unresolved. An authorized reconciler must verify and release it before changing this order.';
+    case 'active':
+      return 'A customer can still pay through Xendit. Cancel or reconcile the checkout before changing this order.';
+    case 'reconciliation_required':
+      return 'Xendit payment verification is required. Finance must resolve this before changing this order.';
+    case 'completed':
+      return 'The Xendit payment was completed.';
+    default:
+      return 'This Xendit checkout is no longer active.';
+  }
+}
+
+async function resolveExpiredActiveSession(session: ExistingSessionRow, reason: string): Promise<boolean> {
+  if (!hasExpiredLocally(session)) return false;
+  try {
+    return (await closeProviderTerminalSession(session, reason)) === 'closed';
+  } catch (error) {
+    logger.error({ sessionId: session.id, error }, 'Could not confirm Xendit session state before retry');
+    return false;
+  }
 }
 
 async function cancelCheckoutAfterActivationFailure(
@@ -285,9 +396,9 @@ publicXenditRouter.post(
       const supabase = getSupabaseClient();
       const { data: existingData, error: existingError } = await supabase
         .from('xendit_payment_sessions')
-        .select('id, target_type, status, payment_link_url, expires_at, created_at, amount_php')
+        .select('id, target_type, status, payment_link_url, expires_at, payment_session_id, store_id, created_at, amount_php')
         .eq('order_id', order.id)
-        .in('status', ['creating', 'active'])
+        .in('status', ['creating', 'active', 'reconciliation_required'])
         .maybeSingle();
       if (existingError) throw new Error(`Failed to inspect existing extension payment session: ${existingError.message}`);
 
@@ -295,7 +406,7 @@ publicXenditRouter.post(
       if (existing?.target_type === 'public_extension'
         && existing.status === 'active'
         && existing.payment_link_url
-        && !isStaleSession(existing)) {
+        && !hasExpiredLocally(existing)) {
         res.json({
           success: true,
           data: {
@@ -308,13 +419,8 @@ publicXenditRouter.post(
         return;
       }
 
-      if (existing && isStaleSession(existing)) {
-        const { error: closeError } = await supabase.rpc('close_xendit_session_without_payment', {
-          p_session_id: existing.id,
-          p_status: existing.status === 'active' ? 'expired' : 'failed',
-          p_processing_error: 'Closed stale session before extension payment retry',
-        });
-        if (closeError) throw new Error(`Failed to close stale extension payment session: ${closeError.message}`);
+      if (existing && await resolveExpiredActiveSession(existing, 'Extension checkout retry requested after local expiry')) {
+        // Provider confirmed expiry/cancellation and the local claim was released.
       } else if (existing) {
         res.status(409).json({
           success: false,
@@ -335,6 +441,14 @@ publicXenditRouter.post(
         },
       );
       if (draftError) {
+        if (isRetryableDraftError(draftError)) {
+          sessionId = null;
+          res.status(409).json({
+            success: false,
+            error: { code: 'PAYMENT_SESSION_RETRY', message: 'Payment setup conflicted with another request. Please try again.' },
+          });
+          return;
+        }
         const normalizedMessage = draftError.message.toLowerCase();
         if (normalizedMessage.includes('no pending extension payments')) {
           res.status(409).json({
@@ -343,7 +457,9 @@ publicXenditRouter.post(
           });
           return;
         }
-        if (normalizedMessage.includes('already claimed') || normalizedMessage.includes('active xendit session')) {
+        if (normalizedMessage.includes('already claimed')
+          || normalizedMessage.includes('active xendit session')
+          || isBlockingSessionError(draftError)) {
           res.status(409).json({
             success: false,
             error: { code: 'PAYMENT_ALREADY_IN_PROGRESS', message: 'A payment is already in progress for this booking' },
@@ -363,8 +479,8 @@ publicXenditRouter.post(
         referenceId,
         amountPHP,
         description: `Lola's Rentals extension - ${reference}`,
-        successReturnUrl: returnUrl(webOrigin, paymentPath, 'processing', sessionId, new Date(Date.now() + 86_400_000).toISOString()),
-        cancelReturnUrl: returnUrl(webOrigin, paymentPath, 'cancelled', sessionId, new Date(Date.now() + 86_400_000).toISOString()),
+        successReturnUrl: returnUrl(webOrigin, paymentPath, 'processing', sessionId),
+        cancelReturnUrl: returnUrl(webOrigin, paymentPath, 'cancelled', sessionId),
         items: [{
           referenceId: reference,
           name: `Rental extension ${reference}`,
@@ -486,7 +602,7 @@ publicXenditRouter.post(
         }
         const { data: existingData, error: existingError } = await supabase
           .from('xendit_payment_sessions')
-          .select('id, status, payment_link_url, expires_at, created_at, amount_php')
+          .select('id, status, payment_link_url, expires_at, payment_session_id, store_id, created_at, amount_php')
           .eq('id', claimedSessionIds[0]!)
           .maybeSingle();
         if (existingError) throw new Error(`Failed to inspect existing payment session: ${existingError.message}`);
@@ -495,17 +611,19 @@ publicXenditRouter.post(
           res.status(409).json({ success: false, error: { code: 'BOOKING_ALREADY_PAID', message: 'These bookings have already been paid' } });
           return;
         }
-        if (existing?.status === 'active' && existing.payment_link_url && !isStaleSession(existing)) {
+        if (existing?.status === 'reconciliation_required') {
+          res.status(409).json({
+            success: false,
+            error: { code: 'PAYMENT_VERIFICATION_REQUIRED', message: 'Payment verification is in progress. Please contact Lola\'s Rentals before trying again.' },
+          });
+          return;
+        }
+        if (existing?.status === 'active' && existing.payment_link_url && !hasExpiredLocally(existing)) {
           res.json({ success: true, data: { sessionId: existing.id, checkoutUrl: existing.payment_link_url, expiresAt: existing.expires_at, amountPHP: Number(existing.amount_php) } });
           return;
         }
-        if (existing && isStaleSession(existing)) {
-          const { error: closeError } = await supabase.rpc('close_xendit_session_without_payment', {
-            p_session_id: existing.id,
-            p_status: existing.status === 'active' ? 'expired' : 'failed',
-            p_processing_error: 'Closed stale session before retry',
-          });
-          if (closeError) throw new Error(`Failed to close stale payment session: ${closeError.message}`);
+        if (existing && await resolveExpiredActiveSession(existing, 'Public checkout retry requested after local expiry')) {
+          // Provider confirmed expiry/cancellation and the local claim was released.
         } else {
           res.status(409).json({ success: false, error: { code: 'PAYMENT_ALREADY_IN_PROGRESS', message: 'A payment session is already being created' } });
           return;
@@ -546,7 +664,25 @@ publicXenditRouter.post(
         p_created_by: null,
         p_allocations: allocations.map(({ referenceId: _referenceId, ...allocation }) => allocation),
       });
-      if (draftError) throw new Error(`Failed to reserve payment session: ${draftError.message}`);
+      if (draftError) {
+        if (isRetryableDraftError(draftError)) {
+          sessionId = null;
+          res.status(409).json({
+            success: false,
+            error: { code: 'PAYMENT_SESSION_RETRY', message: 'Payment setup conflicted with another request. Please try again.' },
+          });
+          return;
+        }
+        if (isBlockingSessionError(draftError)) {
+          sessionId = null;
+          res.status(409).json({
+            success: false,
+            error: { code: 'PAYMENT_ALREADY_IN_PROGRESS', message: 'A payment session is already in progress for this order' },
+          });
+          return;
+        }
+        throw new Error(`Failed to reserve payment session: ${draftError.message}`);
+      }
 
       const webOrigin = publicWebOriginFromEnv(process.env.WEB_URL);
       const confirmationPath = `/book/confirmation/${encodeURIComponent(first.order_reference)}`;
@@ -554,8 +690,8 @@ publicXenditRouter.post(
         referenceId,
         amountPHP,
         description: `Lola's Rentals - ${rows.map((row) => row.order_reference).join(', ')}`,
-        successReturnUrl: returnUrl(webOrigin, confirmationPath, 'processing', sessionId, new Date(Date.now() + 86_400_000).toISOString()),
-        cancelReturnUrl: returnUrl(webOrigin, confirmationPath, 'cancelled', sessionId, new Date(Date.now() + 86_400_000).toISOString()),
+        successReturnUrl: returnUrl(webOrigin, confirmationPath, 'processing', sessionId),
+        cancelReturnUrl: returnUrl(webOrigin, confirmationPath, 'cancelled', sessionId),
         items: allocations.map((allocation) => ({
           referenceId: allocation.referenceId,
           name: `Vehicle rental ${allocation.referenceId}`,
@@ -649,26 +785,21 @@ staffXenditRouter.post(
 
       const { data: existingData, error: existingError } = await supabase
         .from('xendit_payment_sessions')
-        .select('id, status, payment_link_url, expires_at, created_at, amount_php')
+        .select('id, status, payment_link_url, expires_at, payment_session_id, store_id, created_at, amount_php')
         .eq('order_id', order.id)
-        .in('status', ['creating', 'active'])
+        .in('status', ['creating', 'active', 'reconciliation_required'])
         .maybeSingle();
       if (existingError) throw new Error(`Failed to inspect existing payment session: ${existingError.message}`);
       const existing = existingData as ExistingSessionRow | null;
       if (existing?.status === 'active'
         && existing.payment_link_url
         && Number(existing.amount_php) === amountPHP
-        && !isStaleSession(existing)) {
+        && !hasExpiredLocally(existing)) {
         res.json({ success: true, data: { sessionId: existing.id, checkoutUrl: existing.payment_link_url, expiresAt: existing.expires_at, amountPHP: Number(existing.amount_php) } });
         return;
       }
-      if (existing && isStaleSession(existing)) {
-        const { error: closeError } = await supabase.rpc('close_xendit_session_without_payment', {
-          p_session_id: existing.id,
-          p_status: existing.status === 'active' ? 'expired' : 'failed',
-          p_processing_error: 'Closed stale session before retry',
-        });
-        if (closeError) throw new Error(`Failed to close stale payment session: ${closeError.message}`);
+      if (existing && await resolveExpiredActiveSession(existing, 'Staff checkout retry requested after local expiry')) {
+        // Provider confirmed expiry/cancellation and the local claim was released.
       } else if (existing) {
         res.status(409).json({ success: false, error: { code: 'PAYMENT_ALREADY_IN_PROGRESS', message: 'A payment session is already being created' } });
         return;
@@ -689,7 +820,25 @@ staffXenditRouter.post(
         p_created_by: req.user!.employeeId,
         p_allocations: [],
       });
-      if (draftError) throw new Error(`Failed to reserve payment session: ${draftError.message}`);
+      if (draftError) {
+        if (isRetryableDraftError(draftError)) {
+          sessionId = null;
+          res.status(409).json({
+            success: false,
+            error: { code: 'PAYMENT_SESSION_RETRY', message: 'Payment setup conflicted with another request. Please try again.' },
+          });
+          return;
+        }
+        if (isBlockingSessionError(draftError)) {
+          sessionId = null;
+          res.status(409).json({
+            success: false,
+            error: { code: 'PAYMENT_ALREADY_IN_PROGRESS', message: 'A payment session is already in progress for this order' },
+          });
+          return;
+        }
+        throw new Error(`Failed to reserve payment session: ${draftError.message}`);
+      }
 
       const webOrigin = publicWebOriginFromEnv(process.env.WEB_URL);
       const reference = order.booking_token ?? order.id;
@@ -697,8 +846,8 @@ staffXenditRouter.post(
         referenceId,
         amountPHP,
         description: parsed.data.description ?? `Lola's Rentals - ${reference}`,
-        successReturnUrl: returnUrl(webOrigin, `/book/confirmation/${encodeURIComponent(reference)}`, 'processing', sessionId, new Date(Date.now() + 86_400_000).toISOString()),
-        cancelReturnUrl: returnUrl(webOrigin, `/book/confirmation/${encodeURIComponent(reference)}`, 'cancelled', sessionId, new Date(Date.now() + 86_400_000).toISOString()),
+        successReturnUrl: returnUrl(webOrigin, `/book/confirmation/${encodeURIComponent(reference)}`, 'processing', sessionId),
+        cancelReturnUrl: returnUrl(webOrigin, `/book/confirmation/${encodeURIComponent(reference)}`, 'cancelled', sessionId),
         items: [{ referenceId: reference, name: `Vehicle rental ${reference}`, amountPHP }],
       });
       closeDraftOnFailure = false;
@@ -758,6 +907,59 @@ publicXenditRouter.get(
   },
 );
 
+staffXenditRouter.get(
+  '/orders/:orderId/session',
+  authenticate,
+  requirePermission(Permission.EditOrders),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const orderId = z.string().min(1).safeParse(req.params.orderId);
+      if (!orderId.success) {
+        res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid order id' } });
+        return;
+      }
+
+      const supabase = getSupabaseClient();
+      const { data: orderData, error: orderError } = await supabase
+        .from('orders')
+        .select('id, store_id')
+        .eq('id', orderId.data)
+        .maybeSingle();
+      if (orderError) throw new Error(`Failed to load order payment session: ${orderError.message}`);
+      const order = orderData as { id: string; store_id: string } | null;
+      const stores = req.user?.storeIds ?? [];
+      if (!order || (!stores.includes(COMPANY_STORE_ID) && !stores.includes(order.store_id))) {
+        res.status(404).json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'Order not found' } });
+        return;
+      }
+
+      const { data: sessionData, error: sessionError } = await supabase
+        .from('xendit_payment_sessions')
+        .select('id, status, payment_link_url')
+        .eq('order_id', order.id)
+        .eq('target_type', 'staff_order')
+        .in('status', ['creating', 'active', 'reconciliation_required'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (sessionError) throw new Error(`Failed to load Xendit payment session: ${sessionError.message}`);
+
+      const session = sessionData as { id: string; status: XenditSessionStatus; payment_link_url: string | null } | null;
+      res.json({
+        success: true,
+        data: session
+          ? {
+              id: session.id,
+              status: session.status,
+              operatorMessage: xenditOperatorMessage(session.status),
+              checkoutUrl: session.status === 'active' ? session.payment_link_url : null,
+            }
+          : null,
+      });
+    } catch (error) { next(error); }
+  },
+);
+
 staffXenditRouter.post(
   '/sessions/:id/cancel',
   authenticate,
@@ -771,11 +973,11 @@ staffXenditRouter.post(
       }
       const { data, error } = await getSupabaseClient()
         .from('xendit_payment_sessions')
-        .select('id, status, payment_session_id, store_id')
+        .select('id, status, payment_session_id, payment_link_url, expires_at, created_at, amount_php, store_id')
         .eq('id', id.data)
         .maybeSingle();
       if (error) throw new Error(`Failed to load Xendit session: ${error.message}`);
-      const session = data as { id: string; status: string; payment_session_id: string | null; store_id: string } | null;
+      const session = data as ExistingSessionRow | null;
       const stores = req.user?.storeIds ?? [];
       if (!session || (!stores.includes(COMPANY_STORE_ID) && !stores.includes(session.store_id))) {
         res.status(404).json({ success: false, error: { code: 'SESSION_NOT_FOUND', message: 'Payment session not found' } });
@@ -788,17 +990,70 @@ staffXenditRouter.post(
       try {
         await cancelXenditPaymentSession(session.payment_session_id);
       } catch (cancelError) {
-        const providerSession = await getXenditPaymentSession(session.payment_session_id).catch(() => null);
-        logger.error({ sessionId: session.id, providerSessionId: session.payment_session_id, providerStatus: providerSession?.status, cancelError }, 'Xendit hosted checkout cancellation failed');
+        try {
+          const outcome = await closeProviderTerminalSession(
+            session,
+            'Staff cancellation encountered a provider error',
+            req.user!.employeeId,
+          );
+          if (outcome !== 'still_active') {
+            res.json({ success: true, data: { status: outcome === 'closed' ? 'cancelled' : outcome } });
+            return;
+          }
+        } catch (recoveryError) {
+          logger.error({ sessionId: session.id, providerSessionId: session.payment_session_id, cancelError, recoveryError }, 'Xendit hosted checkout cancellation recovery failed');
+        }
+        logger.error({ sessionId: session.id, providerSessionId: session.payment_session_id, cancelError }, 'Xendit hosted checkout cancellation failed while provider still reports it active');
         throw cancelError;
       }
-      const { error: closeError } = await getSupabaseClient().rpc('close_xendit_session_without_payment', {
-        p_session_id: session.id,
-        p_status: 'cancelled',
-        p_processing_error: 'Cancelled by authorized staff before booking change',
-      });
-      if (closeError) throw new Error(`Failed to close cancelled Xendit session: ${closeError.message}`);
-      res.json({ success: true, data: { status: 'cancelled' } });
+      const outcome = await closeProviderTerminalSession(
+        session,
+        'Staff cancelled the hosted checkout',
+        req.user!.employeeId,
+      );
+      if (outcome === 'still_active') {
+        res.status(409).json({ success: false, error: { code: 'SESSION_STILL_ACTIVE', message: 'Xendit still reports this checkout as active' } });
+        return;
+      }
+      res.json({ success: true, data: { status: outcome === 'closed' ? 'cancelled' : outcome } });
+    } catch (error) { next(error); }
+  },
+);
+
+staffXenditRouter.post(
+  '/sessions/:id/reconcile-terminal',
+  authenticate,
+  requirePermission(Permission.ReconcileOnlinePayments),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = z.string().uuid().safeParse(req.params.id);
+      const parsed = reconciliationReleaseSchema.safeParse(req.body);
+      if (!id.success || !parsed.success) {
+        res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'A valid session id and 10-500 character reason are required' } });
+        return;
+      }
+      const { data, error } = await getSupabaseClient()
+        .from('xendit_payment_sessions')
+        .select('id, status, payment_session_id, payment_link_url, expires_at, created_at, amount_php, store_id')
+        .eq('id', id.data)
+        .maybeSingle();
+      if (error) throw new Error(`Failed to load Xendit session: ${error.message}`);
+      const session = data as ExistingSessionRow | null;
+      const stores = req.user?.storeIds ?? [];
+      if (!session || (!stores.includes(COMPANY_STORE_ID) && !stores.includes(session.store_id))) {
+        res.status(404).json({ success: false, error: { code: 'SESSION_NOT_FOUND', message: 'Payment session not found' } });
+        return;
+      }
+      if (session.status !== 'active' || !session.payment_session_id) {
+        res.status(409).json({ success: false, error: { code: 'SESSION_NOT_RECONCILABLE', message: 'Only an active provider-backed checkout can be reconciled here' } });
+        return;
+      }
+      const outcome = await closeProviderTerminalSession(session, parsed.data.reason, req.user!.employeeId);
+      if (outcome === 'still_active') {
+        res.status(409).json({ success: false, error: { code: 'SESSION_STILL_ACTIVE', message: 'Xendit still reports this checkout as active' } });
+        return;
+      }
+      res.json({ success: true, data: { status: outcome === 'closed' ? 'closed' : outcome } });
     } catch (error) { next(error); }
   },
 );
@@ -897,14 +1152,10 @@ publicXenditRouter.post(
         return;
       }
 
-      if (session.payment_session_id && session.payment_session_id !== payload.data.payment_session_id) {
-        res.status(409).json({ success: false, error: { code: 'SESSION_MISMATCH', message: 'Payment session id mismatch' } });
-        return;
-      }
-
       if (payload.event === 'payment_session.expired') {
-        const { error: closeError } = await supabase.rpc('close_xendit_session_without_payment', {
+        const { error: closeError } = await supabase.rpc('close_xendit_session_after_provider_terminal', {
           p_session_id: session.id,
+          p_expected_payment_session_id: payload.data.payment_session_id,
           p_status: 'expired',
           p_processing_error: null,
           p_event_key: eventKey,
@@ -923,7 +1174,9 @@ publicXenditRouter.post(
         p_payload: payload,
         p_payment_session_id: payload.data.payment_session_id,
         p_payment_request_id: payload.data.payment_request_id ?? null,
-        p_payment_id: payload.data.payment_id!,
+        // The SQL RPC records a known completed event without a payment id as
+        // reconciliation_required before it can create any financial records.
+        p_payment_id: payload.data.payment_id ?? null,
         p_amount_php: payload.data.amount,
         p_currency: payload.data.currency,
       });

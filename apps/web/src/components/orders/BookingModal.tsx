@@ -21,6 +21,7 @@ import { resolveStoreFromSource } from '@lolas/shared';
 import { InspectionModal } from './InspectionModal.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 import { fetchPublicPartnerBenefit, type PublicPartnerBenefit } from '../../api/partners.js';
+import { api } from '../../api/client.js';
 
 // ── AM/PM datetime helpers ──
 
@@ -227,7 +228,8 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const employeeName = useAuthStore((s) => s.user?.username ?? 'Staff');
   const canEditOrders = useAuthStore((s) => s.hasPermission('can_edit_orders'));
   const canOverrideBookingTerms = useAuthStore((s) => s.hasPermission('can_override_booking_terms'));
-  const { data: detailedRawOrder, isLoading: detailLoading } = useOrderRaw(open ? rawOrder.id : '');
+  const canReconcileOnlinePayments = useAuthStore((s) => s.hasPermission('can_reconcile_online_payments'));
+  const { data: detailedRawOrder, isLoading: detailLoading, refetch: refetchRawOrder } = useOrderRaw(open ? rawOrder.id : '');
   const bookingTerms = isDirectWebsite ? detailedRawOrder?.booking_terms ?? null : null;
 
   const waiverRef = isDirect
@@ -256,9 +258,12 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const confirmedOnlinePayment = onlinePayment?.status === 'paid'
     ? onlinePayment
     : null;
-  const liveCheckoutSessionId = !confirmedOnlinePayment
-    ? detailedRawOrder?.xendit_payment_session_id ?? rawOrder.xendit_payment_session_id
+  const xenditSession = !confirmedOnlinePayment
+    ? detailedRawOrder?.xendit_session ?? rawOrder.xendit_session ?? null
     : null;
+  const liveCheckoutSessionId = xenditSession?.id ?? null;
+  const hasBlockingXenditSession = Boolean(xenditSession
+    && ['creating', 'active', 'reconciliation_required'].includes(xenditSession.status));
 
   const [step, setStep] = useState<Step>('review');
   const [inspectionOpen, setInspectionOpen] = useState(false);
@@ -290,6 +295,9 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const [overrideRequested, setOverrideRequested] = useState(false);
   const [overrideReason, setOverrideReason] = useState('');
   const [acknowledgePaymentAdjustment, setAcknowledgePaymentAdjustment] = useState(false);
+  const [checkoutActionLoading, setCheckoutActionLoading] = useState(false);
+  const [checkoutActionError, setCheckoutActionError] = useState<string | null>(null);
+  const [reconciliationReason, setReconciliationReason] = useState('');
 
   const overrideUnlocked = isDirectWebsite && overrideRequested && overrideReason.trim().length >= 10;
   const directTermsLocked = isDirectWebsite && !overrideUnlocked;
@@ -862,6 +870,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     if (!canEditOrders) return;
     if (!depositValid) return;
     if (!dateRangeValid) return;
+    if (hasBlockingXenditSession) return;
     if (isDirectWebsite && !bookingTerms) return;
     if (overrideRequired && !overrideUnlocked) return;
     if (confirmedOnlinePayment && Math.abs(paymentDifference) > 0.01 && !acknowledgePaymentAdjustment) return;
@@ -901,6 +910,59 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
         },
       },
     );
+  }
+
+  async function handleCancelLiveCheckout() {
+    if (!liveCheckoutSessionId) return;
+    setCheckoutActionLoading(true);
+    setCheckoutActionError(null);
+    try {
+      await api.post(`/payments/xendit/sessions/${encodeURIComponent(liveCheckoutSessionId)}/cancel`, {});
+      await refetchRawOrder();
+      setSuccessMessage('The Xendit checkout was cancelled. You can continue processing this booking.');
+    } catch (error) {
+      setCheckoutActionError(error instanceof Error ? error.message : 'Could not cancel the Xendit checkout.');
+    } finally {
+      setCheckoutActionLoading(false);
+    }
+  }
+
+  async function handleReconcileLiveCheckout() {
+    if (!liveCheckoutSessionId || reconciliationReason.trim().length < 10) return;
+    setCheckoutActionLoading(true);
+    setCheckoutActionError(null);
+    try {
+      const result = await api.post<{ status: string }>(
+        `/payments/xendit/sessions/${encodeURIComponent(liveCheckoutSessionId)}/reconcile-terminal`,
+        { reason: reconciliationReason.trim() },
+      );
+      await refetchRawOrder();
+      setSuccessMessage(result.status === 'reconciliation_required'
+        ? 'Xendit reported a completed payment. Finance reconciliation is now required.'
+        : 'The provider-confirmed terminal checkout was released.');
+    } catch (error) {
+      setCheckoutActionError(error instanceof Error ? error.message : 'Could not reconcile the Xendit checkout.');
+    } finally {
+      setCheckoutActionLoading(false);
+    }
+  }
+
+  async function handleReleaseCreatingCheckout() {
+    if (!liveCheckoutSessionId || reconciliationReason.trim().length < 10) return;
+    setCheckoutActionLoading(true);
+    setCheckoutActionError(null);
+    try {
+      await api.post<{ status: string }>(
+        `/payments/xendit/sessions/${encodeURIComponent(liveCheckoutSessionId)}/release-creating`,
+        { reason: reconciliationReason.trim() },
+      );
+      await refetchRawOrder();
+      setSuccessMessage('The unresolved Xendit checkout draft was released after reconciliation.');
+    } catch (error) {
+      setCheckoutActionError(error instanceof Error ? error.message : 'Could not release the Xendit checkout draft.');
+    } finally {
+      setCheckoutActionLoading(false);
+    }
   }
 
   const preActivationMethod = useMemo(
@@ -1274,13 +1336,78 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
             )}
 
             {/* Pre-activation card payment */}
-            {liveCheckoutSessionId && (
+            {xenditSession && (
               <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-                <p className="font-medium">Online payment checkout in progress</p>
-                <p className="mt-1 text-xs">Processing, cancellation, and manual payment collection are locked until the Xendit checkout is completed or cancelled by an authorized staff member.</p>
+                <p className="font-medium">
+                  {xenditSession.status === 'reconciliation_required'
+                    ? 'Online payment verification required'
+                    : xenditSession.status === 'creating'
+                      ? 'Online payment checkout creation unresolved'
+                      : 'Online payment checkout in progress'}
+                </p>
+                <p className="mt-1 text-xs">{xenditSession.operatorMessage}</p>
+                {xenditSession.status === 'active' && canEditOrders && (
+                  <button
+                    type="button"
+                    onClick={() => void handleCancelLiveCheckout()}
+                    disabled={checkoutActionLoading}
+                    className="mt-3 rounded-md border border-amber-500 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    {checkoutActionLoading ? 'Checking Xendit...' : 'Cancel checkout'}
+                  </button>
+                )}
+                {xenditSession.status === 'active' && canReconcileOnlinePayments && (
+                  <div className="mt-3 border-t border-amber-200 pt-3">
+                    <label className="block text-xs font-semibold" htmlFor="xendit-reconciliation-reason">
+                      Provider-terminal reconciliation reason
+                    </label>
+                    <textarea
+                      id="xendit-reconciliation-reason"
+                      value={reconciliationReason}
+                      onChange={(event) => setReconciliationReason(event.target.value)}
+                      minLength={10}
+                      maxLength={500}
+                      placeholder="Confirm the terminal Xendit status in the dashboard before releasing this checkout."
+                      className="mt-1 min-h-20 w-full rounded-md border border-amber-300 bg-white px-2 py-1.5 text-xs text-gray-900"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void handleReconcileLiveCheckout()}
+                      disabled={checkoutActionLoading || reconciliationReason.trim().length < 10}
+                      className="mt-2 rounded-md border border-amber-600 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-950 hover:bg-amber-200 disabled:opacity-50"
+                    >
+                      Verify provider terminal state
+                    </button>
+                  </div>
+                )}
+                {xenditSession.status === 'creating' && canReconcileOnlinePayments && (
+                  <div className="mt-3 border-t border-amber-200 pt-3">
+                    <label className="block text-xs font-semibold" htmlFor="xendit-creating-release-reason">
+                      Creating-checkout release reason
+                    </label>
+                    <textarea
+                      id="xendit-creating-release-reason"
+                      value={reconciliationReason}
+                      onChange={(event) => setReconciliationReason(event.target.value)}
+                      minLength={10}
+                      maxLength={500}
+                      placeholder="Verify in the Xendit Dashboard that no payment session was created before releasing this draft."
+                      className="mt-1 min-h-20 w-full rounded-md border border-amber-300 bg-white px-2 py-1.5 text-xs text-gray-900"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void handleReleaseCreatingCheckout()}
+                      disabled={checkoutActionLoading || reconciliationReason.trim().length < 10}
+                      className="mt-2 rounded-md border border-amber-600 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-950 hover:bg-amber-200 disabled:opacity-50"
+                    >
+                      Release unresolved checkout draft
+                    </button>
+                  </div>
+                )}
+                {checkoutActionError && <p className="mt-2 text-xs font-medium text-red-700">{checkoutActionError}</p>}
               </div>
             )}
-            {!confirmedOnlinePayment && (
+            {!confirmedOnlinePayment && !hasBlockingXenditSession && (
               <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
                 <div className="mb-3 flex items-center gap-2">
                   <h3 className="font-medium text-gray-900">Record Pre-activation Payment</h3>
@@ -2172,6 +2299,11 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                 You can review this order, but activating or collecting payment requires order edit permission.
               </p>
             )}
+            {hasBlockingXenditSession && (
+              <p className="text-sm text-amber-700 font-medium">
+                {xenditSession?.operatorMessage}
+              </p>
+            )}
             {transferAmountMissing && (
               <p className="text-sm text-amber-700 font-medium">
                 Transfer amount is missing — please set it before activating.
@@ -2188,7 +2320,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                 {!confirmedOnlinePayment && (
                   <button
                     onClick={handleCollectPayment}
-                    disabled={collectMutation.isPending || !paymentMethodId}
+                    disabled={collectMutation.isPending || !paymentMethodId || hasBlockingXenditSession}
                     className="rounded-lg border border-blue-600 px-5 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50"
                     title="Record payment without activating the order"
                   >
@@ -2199,6 +2331,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                   onClick={handleActivate}
                   disabled={
                     processMutation.isPending ||
+                    hasBlockingXenditSession ||
                     !depositValid ||
                     transferAmountMissing ||
                     !dateRangeValid ||

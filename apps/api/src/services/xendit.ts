@@ -244,8 +244,8 @@ export function isXenditDashboardTestWebhook(body: unknown): boolean {
 export function parseXenditWebhookPayload(body: unknown): XenditWebhookPayload {
   const parsed = XenditWebhookSchema.parse(body);
   if (parsed.event === 'payment_session.completed') {
-    if (parsed.data.status !== 'COMPLETED' || !parsed.data.payment_id) {
-      throw new Error('Completed Xendit session is missing a completed payment');
+    if (parsed.data.status !== 'COMPLETED') {
+      throw new Error('Completed Xendit event has an invalid status');
     }
   }
   if (parsed.event === 'payment_session.expired' && parsed.data.status !== 'EXPIRED') {

@@ -39,6 +39,7 @@ type FakeOptions = {
   draftData?: Record<string, unknown> | null;
   draftError?: { message: string } | null;
   activationError?: { message: string } | null;
+  checkedCloseData?: Record<string, unknown> | null;
 };
 
 function chain(terminal: () => Promise<unknown>) {
@@ -95,6 +96,17 @@ function fakeSupabase(options: FakeOptions = {}) {
         };
       }
       if (name === 'close_xendit_session_without_payment') return { data: null, error: null };
+      if (name === 'close_xendit_session_after_provider_terminal') {
+        return {
+          data: options.checkedCloseData ?? {
+            status: 'expired',
+            closed: true,
+            claimsReleased: true,
+            providerSessionMatched: true,
+          },
+          error: null,
+        };
+      }
       throw new Error(`Unexpected RPC ${name}`);
     }),
   };
@@ -129,6 +141,7 @@ describe('public Xendit extension sessions', () => {
     vi.clearAllMocks();
     mocks.isXenditEnabled.mockReturnValue(true);
     mocks.cancelXenditPaymentSession.mockResolvedValue(undefined);
+    mocks.getXenditPaymentSession.mockResolvedValue({ status: 'ACTIVE' });
     mocks.createXenditPaymentSession.mockResolvedValue({
       paymentSessionId: 'ps-extension-1',
       checkoutUrl: 'https://checkout.xendit.test/ps-extension-1',
@@ -248,6 +261,98 @@ describe('public Xendit extension sessions', () => {
       orderReference: 'LR-0909-TEST',
       email: 'customer@example.com',
     });
+
+    expect(response.status).toHaveBeenCalledWith(409);
+    expect(mocks.createXenditPaymentSession).not.toHaveBeenCalled();
+  });
+
+  it('returns a conflict when a reconciliation-required checkout blocks the order', async () => {
+    const { client } = fakeSupabase({
+      draftError: { message: 'Order already has an unresolved Xendit session' },
+    });
+    mocks.getSupabaseClient.mockReturnValue(client);
+
+    const response = await invoke({
+      orderReference: 'LR-0909-TEST',
+      email: 'customer@example.com',
+    });
+
+    expect(response.status).toHaveBeenCalledWith(409);
+    expect(mocks.createXenditPaymentSession).not.toHaveBeenCalled();
+  });
+
+  it('releases an expired local checkout only after Xendit confirms it expired', async () => {
+    const { client } = fakeSupabase({
+      existingSession: {
+        id: '00000000-0000-4000-8000-000000000003',
+        target_type: 'public_extension',
+        status: 'active',
+        payment_session_id: 'ps-expired',
+        payment_link_url: 'https://checkout.xendit.test/expired',
+        expires_at: '2020-01-01T00:00:00.000Z',
+        created_at: '2020-01-01T00:00:00.000Z',
+        amount_php: 1050,
+      },
+    });
+    mocks.getSupabaseClient.mockReturnValue(client);
+    mocks.getXenditPaymentSession.mockResolvedValue({ status: 'EXPIRED' });
+
+    const response = await invoke({ orderReference: 'LR-0909-TEST', email: 'customer@example.com' });
+
+    expect(response.next).not.toHaveBeenCalled();
+    expect(mocks.getXenditPaymentSession).toHaveBeenCalledWith('ps-expired');
+    expect(client.rpc).toHaveBeenCalledWith('close_xendit_session_after_provider_terminal', expect.objectContaining({
+      p_status: 'expired',
+      p_expected_payment_session_id: 'ps-expired',
+    }));
+    expect(mocks.createXenditPaymentSession).toHaveBeenCalled();
+  });
+
+  it('keeps an expired-looking checkout locked when Xendit still reports it active', async () => {
+    const { client } = fakeSupabase({
+      existingSession: {
+        id: '00000000-0000-4000-8000-000000000004',
+        target_type: 'public_extension',
+        status: 'active',
+        payment_session_id: 'ps-still-active',
+        payment_link_url: 'https://checkout.xendit.test/still-active',
+        expires_at: '2020-01-01T00:00:00.000Z',
+        created_at: '2020-01-01T00:00:00.000Z',
+        amount_php: 1050,
+      },
+    });
+    mocks.getSupabaseClient.mockReturnValue(client);
+    mocks.getXenditPaymentSession.mockResolvedValue({ status: 'ACTIVE' });
+
+    const response = await invoke({ orderReference: 'LR-0909-TEST', email: 'customer@example.com' });
+
+    expect(response.status).toHaveBeenCalledWith(409);
+    expect(mocks.createXenditPaymentSession).not.toHaveBeenCalled();
+  });
+
+  it('keeps checkout locked when checked local closure requires reconciliation', async () => {
+    const { client } = fakeSupabase({
+      existingSession: {
+        id: '00000000-0000-4000-8000-000000000005',
+        target_type: 'public_extension',
+        status: 'active',
+        payment_session_id: 'ps-reconciliation',
+        payment_link_url: 'https://checkout.xendit.test/reconciliation',
+        expires_at: '2020-01-01T00:00:00.000Z',
+        created_at: '2020-01-01T00:00:00.000Z',
+        amount_php: 1050,
+      },
+      checkedCloseData: {
+        status: 'reconciliation_required',
+        closed: false,
+        claimsReleased: false,
+        providerSessionMatched: false,
+      },
+    });
+    mocks.getSupabaseClient.mockReturnValue(client);
+    mocks.getXenditPaymentSession.mockResolvedValue({ status: 'EXPIRED' });
+
+    const response = await invoke({ orderReference: 'LR-0909-TEST', email: 'customer@example.com' });
 
     expect(response.status).toHaveBeenCalledWith(409);
     expect(mocks.createXenditPaymentSession).not.toHaveBeenCalled();

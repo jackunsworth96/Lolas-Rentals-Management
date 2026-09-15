@@ -152,8 +152,20 @@ describe('Xendit service', () => {
     expect(verifyXenditReturnState(`${token}x`, 'b31b3cd7-544d-43c4-9794-0574c3db069e')).toBe(false);
   });
 
-  it('requires a payment id on completed webhook events', () => {
-    expect(() => parseXenditWebhookPayload({
+  it('rejects an otherwise valid return-state token after its explicit polling TTL', () => {
+    vi.useFakeTimers();
+    const sessionId = 'b31b3cd7-544d-43c4-9794-0574c3db069e';
+    const token = createXenditReturnState({
+      sessionId,
+      expiresAt: new Date(Date.now() + 1_000).toISOString(),
+    });
+    vi.advanceTimersByTime(1_001);
+    expect(verifyXenditReturnState(token, sessionId)).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it('preserves a completed webhook without a payment id for database reconciliation', () => {
+    const payload = parseXenditWebhookPayload({
       event: 'payment_session.completed',
       business_id: 'business-1',
       created: '2026-08-05T12:00:00.000Z',
@@ -167,7 +179,9 @@ describe('Xendit service', () => {
         amount: 100,
         status: 'COMPLETED',
       },
-    })).toThrow('Completed Xendit session is missing a completed payment');
+    });
+    expect(payload.event).toBe('payment_session.completed');
+    expect(payload.data).not.toHaveProperty('payment_id');
   });
 
   it('recognizes the authenticated Xendit dashboard verification fixture', () => {

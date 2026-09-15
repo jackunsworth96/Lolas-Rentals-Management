@@ -241,7 +241,7 @@ BEGIN
       SELECT 1
       FROM public.xendit_payment_sessions
       WHERE order_id IS NOT NULL
-        AND status IN ('creating', 'active')
+        AND status IN ('creating', 'active', 'reconciliation_required')
       GROUP BY order_id
       HAVING count(*) > 1
     )
@@ -364,9 +364,10 @@ CREATE TABLE IF NOT EXISTS public.xendit_webhook_events (
 CREATE INDEX IF NOT EXISTS idx_xendit_sessions_status
   ON public.xendit_payment_sessions(status, created_at DESC);
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_xendit_active_staff_order
+CREATE UNIQUE INDEX IF NOT EXISTS idx_xendit_blocking_order
   ON public.xendit_payment_sessions(order_id)
-  WHERE order_id IS NOT NULL AND status IN ('creating', 'active');
+  WHERE order_id IS NOT NULL
+    AND status IN ('creating', 'active', 'reconciliation_required');
 
 CREATE INDEX IF NOT EXISTS idx_xendit_session_orders_raw
   ON public.xendit_payment_session_orders(raw_order_id);
@@ -549,7 +550,7 @@ BEGIN
       last_webhook_at = CASE WHEN p_event_key IS NULL THEN last_webhook_at ELSE now() END,
       updated_at = now()
   WHERE id = p_session_id
-    AND status <> 'completed';
+    AND status IN ('creating', 'active');
 
   GET DIAGNOSTICS closed_count = ROW_COUNT;
 
@@ -629,6 +630,21 @@ BEGIN
     UPDATE public.xendit_webhook_events
     SET processing_status = 'rejected',
         processing_error = 'Session is already closed or requires reconciliation',
+        processed_at = now()
+    WHERE event_key = p_event_key;
+    RETURN false;
+  END IF;
+
+  IF p_payment_id IS NULL OR btrim(p_payment_id) = '' THEN
+    UPDATE public.xendit_payment_sessions
+    SET status = 'reconciliation_required',
+        processing_error = 'Completed Xendit webhook is missing a payment id',
+        last_webhook_at = now(),
+        updated_at = now()
+    WHERE id = p_session_id;
+    UPDATE public.xendit_webhook_events
+    SET processing_status = 'rejected',
+        processing_error = 'Completed Xendit webhook is missing a payment id',
         processed_at = now()
     WHERE event_key = p_event_key;
     RETURN false;
@@ -831,9 +847,9 @@ BEGIN
     SELECT 1
     FROM public.xendit_payment_sessions s
     WHERE s.order_id = p_order_id
-      AND s.status IN ('creating', 'active')
+      AND s.status IN ('creating', 'active', 'reconciliation_required')
   ) THEN
-    RAISE EXCEPTION 'Active Xendit session already exists for this order';
+    RAISE EXCEPTION 'Order already has an unresolved Xendit session';
   END IF;
 
   FOR extension_payment IN
@@ -919,7 +935,7 @@ BEGIN
       last_webhook_at = CASE WHEN p_event_key IS NULL THEN last_webhook_at ELSE now() END,
       updated_at = now()
   WHERE id = p_session_id
-    AND status <> 'completed';
+    AND status IN ('creating', 'active');
 
   GET DIAGNOSTICS closed_count = ROW_COUNT;
 
@@ -1021,6 +1037,21 @@ BEGIN
     WHERE id = p_session_id;
     UPDATE public.xendit_webhook_events
     SET processing_status = 'rejected', processing_error = 'Provider amount or currency differs from frozen session', processed_at = now()
+    WHERE event_key = p_event_key;
+    RETURN false;
+  END IF;
+
+  IF p_payment_id IS NULL OR btrim(p_payment_id) = '' THEN
+    UPDATE public.xendit_payment_sessions
+    SET status = 'reconciliation_required',
+        processing_error = 'Completed Xendit webhook is missing a payment id',
+        last_webhook_at = now(),
+        updated_at = now()
+    WHERE id = p_session_id;
+    UPDATE public.xendit_webhook_events
+    SET processing_status = 'rejected',
+        processing_error = 'Completed Xendit webhook is missing a payment id',
+        processed_at = now()
     WHERE event_key = p_event_key;
     RETURN false;
   END IF;
@@ -1138,7 +1169,13 @@ BEGIN
       AND released_at IS NULL;
 
     IF expected_extension_count = 0 THEN
-      RAISE EXCEPTION 'Xendit extension session has no live payment allocations';
+      UPDATE public.xendit_payment_sessions
+      SET status = 'reconciliation_required', processing_error = 'Extension payment allocations are missing before completion', updated_at = now()
+      WHERE id = p_session_id;
+      UPDATE public.xendit_webhook_events
+      SET processing_status = 'rejected', processing_error = 'Extension payment allocations are missing before completion', processed_at = now()
+      WHERE event_key = p_event_key;
+      RETURN false;
     END IF;
 
     FOR extension_payment IN
@@ -1155,7 +1192,13 @@ BEGIN
          OR extension_payment.payment_type <> 'extension'
          OR extension_payment.settlement_status <> 'pending'
          OR extension_payment.amount <> extension_payment.principal_amount_php THEN
-        RAISE EXCEPTION 'Xendit extension payment allocation changed before completion';
+        UPDATE public.xendit_payment_sessions
+        SET status = 'reconciliation_required', processing_error = 'Extension payment allocation changed before completion', updated_at = now()
+        WHERE id = p_session_id;
+        UPDATE public.xendit_webhook_events
+        SET processing_status = 'rejected', processing_error = 'Extension payment allocation changed before completion', processed_at = now()
+        WHERE event_key = p_event_key;
+        RETURN false;
       END IF;
 
       extension_total := extension_total + extension_payment.principal_amount_php;
@@ -1164,42 +1207,65 @@ BEGIN
 
     IF locked_extension_count <> expected_extension_count
        OR extension_total <> session_row.principal_amount_php THEN
-      RAISE EXCEPTION 'Xendit extension payment allocation total mismatch';
+      UPDATE public.xendit_payment_sessions
+      SET status = 'reconciliation_required', processing_error = 'Extension payment allocation total differs from frozen session', updated_at = now()
+      WHERE id = p_session_id;
+      UPDATE public.xendit_webhook_events
+      SET processing_status = 'rejected', processing_error = 'Extension payment allocation total differs from frozen session', processed_at = now()
+      WHERE event_key = p_event_key;
+      RETURN false;
     END IF;
 
-    payment_row_id := 'PAY-XENDIT-' || md5(p_payment_id || session_row.order_id);
-    INSERT INTO public.payments (
-      id, store_id, order_id, raw_order_id, payment_type, amount,
-      payment_method_id, transaction_date, settlement_status,
-      settlement_ref, customer_id, created_at
-    ) VALUES (
-      payment_row_id, session_row.store_id, session_row.order_id, NULL,
-      'card_xendit', session_row.amount_php, session_row.payment_method_id,
-      (now() AT TIME ZONE 'Asia/Manila')::date, 'pending', p_payment_id,
-      order_customer_id, now()
-    );
+    -- Financial writes are isolated so an unexpected insert/update failure
+    -- rolls back all payment and IOU changes before reconciliation is recorded.
+    BEGIN
+      UPDATE public.payments extension_iou
+      SET settlement_status = 'absorbed'
+      FROM public.xendit_payment_session_extension_payments extension_allocation
+      WHERE extension_allocation.session_id = p_session_id
+        AND extension_allocation.released_at IS NULL
+        AND extension_iou.id = extension_allocation.extension_payment_id
+        AND extension_iou.order_id = session_row.order_id
+        AND extension_iou.payment_type = 'extension'
+        AND extension_iou.settlement_status = 'pending';
 
-    UPDATE public.payments extension_iou
-    SET settlement_status = 'absorbed'
-    FROM public.xendit_payment_session_extension_payments extension_allocation
-    WHERE extension_allocation.session_id = p_session_id
-      AND extension_allocation.released_at IS NULL
-      AND extension_iou.id = extension_allocation.extension_payment_id
-      AND extension_iou.order_id = session_row.order_id
-      AND extension_iou.payment_type = 'extension'
-      AND extension_iou.settlement_status = 'pending';
+      GET DIAGNOSTICS absorbed_extension_count = ROW_COUNT;
+      IF absorbed_extension_count <> expected_extension_count THEN
+        RAISE EXCEPTION 'Not all Xendit extension payments were absorbed';
+      END IF;
 
-    GET DIAGNOSTICS absorbed_extension_count = ROW_COUNT;
-    IF absorbed_extension_count <> expected_extension_count THEN
-      RAISE EXCEPTION 'Not all Xendit extension payments were absorbed';
-    END IF;
+      payment_row_id := 'PAY-XENDIT-' || md5(p_payment_id || session_row.order_id);
+      INSERT INTO public.payments (
+        id, store_id, order_id, raw_order_id, payment_type, amount,
+        payment_method_id, transaction_date, settlement_status,
+        settlement_ref, customer_id, created_at
+      ) VALUES (
+        payment_row_id, session_row.store_id, session_row.order_id, NULL,
+        'card_xendit', session_row.amount_php, session_row.payment_method_id,
+        (now() AT TIME ZONE 'Asia/Manila')::date, 'pending', p_payment_id,
+        order_customer_id, now()
+      );
 
-    UPDATE public.orders
-    SET final_total = COALESCE(final_total, 0) + session_row.surcharge_amount_php,
-        card_fee_surcharge = COALESCE(card_fee_surcharge, 0) + session_row.surcharge_amount_php,
-        balance_due = GREATEST(0, COALESCE(balance_due, 0) - session_row.principal_amount_php),
-        updated_at = now()
-    WHERE id = session_row.order_id;
+      UPDATE public.orders
+      SET final_total = COALESCE(final_total, 0) + session_row.surcharge_amount_php,
+          card_fee_surcharge = COALESCE(card_fee_surcharge, 0) + session_row.surcharge_amount_php,
+          balance_due = GREATEST(0, COALESCE(balance_due, 0) - session_row.principal_amount_php),
+          updated_at = now()
+      WHERE id = session_row.order_id;
+    EXCEPTION WHEN OTHERS THEN
+      UPDATE public.xendit_payment_sessions
+      SET status = 'reconciliation_required',
+          processing_error = left('Extension payment completion failed: ' || SQLERRM, 1000),
+          last_webhook_at = now(),
+          updated_at = now()
+      WHERE id = p_session_id;
+      UPDATE public.xendit_webhook_events
+      SET processing_status = 'rejected',
+          processing_error = left('Extension payment completion failed: ' || SQLERRM, 1000),
+          processed_at = now()
+      WHERE event_key = p_event_key;
+      RETURN false;
+    END;
   ELSE
     RAISE EXCEPTION 'Unsupported Xendit target type %', session_row.target_type;
   END IF;
@@ -1323,6 +1389,438 @@ $$;
 REVOKE ALL ON FUNCTION public.release_xendit_creating_session(uuid, text, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.release_xendit_creating_session(uuid, text, text) TO service_role;
 
+CREATE OR REPLACE FUNCTION public.mark_xendit_session_reconciliation_required(
+  p_session_id uuid,
+  p_employee_id text,
+  p_reason text,
+  p_provider_status text DEFAULT NULL
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  session_row public.xendit_payment_sessions%ROWTYPE;
+BEGIN
+  IF length(trim(p_reason)) < 10 OR length(trim(p_reason)) > 500 THEN
+    RAISE EXCEPTION 'A 10-500 character reconciliation reason is required';
+  END IF;
+
+  SELECT * INTO session_row
+  FROM public.xendit_payment_sessions
+  WHERE id = p_session_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Xendit session not found';
+  END IF;
+
+  -- A completion webhook can win the race after Xendit has already reported
+  -- COMPLETED to a staff operator. Preserve either terminal result rather than
+  -- turning a successful reconciliation action into an application error.
+  IF session_row.status IN ('completed', 'reconciliation_required') THEN
+    RETURN;
+  END IF;
+
+  IF session_row.status NOT IN ('active', 'failed', 'expired', 'cancelled') THEN
+    RAISE EXCEPTION 'Only a provider-backed or locally closed Xendit session may require manual reconciliation';
+  END IF;
+
+  UPDATE public.xendit_payment_sessions
+  SET status = 'reconciliation_required',
+      processing_error = trim(p_reason),
+      updated_at = now()
+  WHERE id = p_session_id;
+
+  INSERT INTO public.xendit_webhook_events (
+    event_key, event_type, session_id, payload, processing_status, processing_error, processed_at
+  ) VALUES (
+    'manual-reconciliation:' || p_session_id::text || ':' || md5(clock_timestamp()::text),
+    'manual.provider_terminal_reconciliation', p_session_id,
+    jsonb_build_object(
+      'employee_id', p_employee_id,
+      'reason', trim(p_reason),
+      'provider_status', p_provider_status
+    ),
+    'rejected', trim(p_reason), now()
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.mark_xendit_session_reconciliation_required(uuid, text, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.mark_xendit_session_reconciliation_required(uuid, text, text, text) TO service_role;
+
+-- A raw booking cannot be activated while Xendit can still collect money for
+-- it. This protects process_raw_order_atomic without rewriting its migration.
+CREATE OR REPLACE FUNCTION public.prevent_processing_live_xendit_raw_order()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF OLD.status = 'unprocessed'
+     AND NEW.status = 'processed'
+     AND EXISTS (
+       SELECT 1
+       FROM public.xendit_payment_session_orders allocation
+       JOIN public.xendit_payment_sessions session_row
+         ON session_row.id = allocation.session_id
+       WHERE allocation.raw_order_id = NEW.id
+         AND session_row.status IN ('creating', 'active', 'reconciliation_required')
+     ) THEN
+    RAISE EXCEPTION
+      'Raw booking % cannot be processed while a Xendit checkout is unresolved',
+      NEW.id;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS orders_raw_block_live_xendit_processing ON public.orders_raw;
+CREATE TRIGGER orders_raw_block_live_xendit_processing
+BEFORE UPDATE OF status ON public.orders_raw
+FOR EACH ROW
+EXECUTE FUNCTION public.prevent_processing_live_xendit_raw_order();
+
+REVOKE ALL ON FUNCTION public.prevent_processing_live_xendit_raw_order() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.prevent_processing_live_xendit_raw_order() TO service_role;
+
+DO $xendit_blocking_order_preflight$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM public.xendit_payment_sessions
+    WHERE order_id IS NOT NULL
+      AND status IN ('creating', 'active', 'reconciliation_required')
+    GROUP BY order_id
+    HAVING count(*) > 1
+  ) THEN
+    RAISE EXCEPTION
+      'Cannot install Xendit order-session guard: duplicate unresolved sessions already exist';
+  END IF;
+END;
+$xendit_blocking_order_preflight$;
+
+DROP INDEX IF EXISTS public.idx_xendit_active_staff_order;
+DROP INDEX IF EXISTS public.idx_xendit_blocking_staff_order;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_xendit_blocking_order
+  ON public.xendit_payment_sessions(order_id)
+  WHERE order_id IS NOT NULL
+    AND status IN ('creating', 'active', 'reconciliation_required');
+
+-- Provider-terminal closure is checked rather than inferred from an UPDATE
+-- row count. This prevents a cancellation or expiry event from overwriting a
+-- concurrently completed or reconciliation-required session.
+CREATE OR REPLACE FUNCTION public.close_xendit_session_after_provider_terminal(
+  p_session_id uuid,
+  p_expected_payment_session_id text,
+  p_status text,
+  p_processing_error text DEFAULT NULL,
+  p_event_key text DEFAULT NULL,
+  p_event_type text DEFAULT NULL,
+  p_payload jsonb DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  session_row public.xendit_payment_sessions%ROWTYPE;
+  resulting_status text;
+  closed boolean := false;
+  claims_released boolean := false;
+  provider_session_matched boolean := false;
+  event_status text;
+  event_error text;
+BEGIN
+  IF p_status NOT IN ('expired', 'cancelled') THEN
+    RAISE EXCEPTION 'Unsupported provider-terminal Xendit status';
+  END IF;
+
+  SELECT * INTO session_row
+  FROM public.xendit_payment_sessions
+  WHERE id = p_session_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Xendit session not found';
+  END IF;
+
+  provider_session_matched := p_expected_payment_session_id IS NOT NULL
+    AND session_row.payment_session_id IS NOT NULL
+    AND session_row.payment_session_id = p_expected_payment_session_id;
+
+  IF NOT provider_session_matched THEN
+    IF session_row.status IN ('creating', 'active') THEN
+      UPDATE public.xendit_payment_sessions
+      SET status = 'reconciliation_required',
+          processing_error = 'Provider session id missing or differs from frozen session',
+          last_webhook_at = CASE WHEN p_event_key IS NULL THEN last_webhook_at ELSE now() END,
+          updated_at = now()
+      WHERE id = p_session_id;
+      resulting_status := 'reconciliation_required';
+    ELSE
+      resulting_status := session_row.status;
+    END IF;
+    event_status := 'rejected';
+    event_error := 'Provider session id missing or differs from frozen session';
+  ELSIF session_row.status IN ('creating', 'active') THEN
+    UPDATE public.xendit_payment_sessions
+    SET status = p_status,
+        processing_error = p_processing_error,
+        last_webhook_at = CASE WHEN p_event_key IS NULL THEN last_webhook_at ELSE now() END,
+        updated_at = now()
+    WHERE id = p_session_id;
+
+    UPDATE public.orders_raw
+    SET xendit_payment_session_id = NULL
+    WHERE xendit_payment_session_id = p_session_id;
+
+    UPDATE public.xendit_payment_session_extension_payments
+    SET released_at = COALESCE(released_at, now())
+    WHERE session_id = p_session_id
+      AND released_at IS NULL;
+
+    resulting_status := p_status;
+    closed := true;
+    claims_released := true;
+    event_status := 'processed';
+    event_error := p_processing_error;
+  ELSE
+    resulting_status := session_row.status;
+    event_status := CASE
+      WHEN session_row.status IN ('completed', 'reconciliation_required') THEN 'rejected'
+      ELSE 'processed'
+    END;
+    event_error := CASE
+      WHEN session_row.status IN ('completed', 'reconciliation_required')
+        THEN 'Provider-terminal event arrived after local terminal state'
+      ELSE p_processing_error
+    END;
+  END IF;
+
+  IF p_event_key IS NOT NULL AND p_event_type IS NOT NULL AND p_payload IS NOT NULL THEN
+    INSERT INTO public.xendit_webhook_events (
+      event_key, event_type, session_id, payload,
+      processing_status, processing_error, processed_at
+    ) VALUES (
+      p_event_key, p_event_type, p_session_id, p_payload,
+      event_status, event_error, now()
+    ) ON CONFLICT (event_key) DO NOTHING;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'status', resulting_status,
+    'closed', closed,
+    'claimsReleased', claims_released,
+    'providerSessionMatched', provider_session_matched
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.close_xendit_session_after_provider_terminal(
+  uuid, text, text, text, text, text, jsonb
+) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.close_xendit_session_after_provider_terminal(
+  uuid, text, text, text, text, text, jsonb
+) TO service_role;
+
+-- The final draft contract validates and locks the payable target inside the
+-- database transaction. Route checks remain helpful but are not authoritative.
+CREATE OR REPLACE FUNCTION public.create_xendit_session_draft(
+  p_session_id uuid,
+  p_reference_id text,
+  p_target_type text,
+  p_order_id text,
+  p_store_id text,
+  p_payment_method_id text,
+  p_principal_amount_php numeric,
+  p_surcharge_amount_php numeric,
+  p_amount_php numeric,
+  p_created_by text,
+  p_allocations jsonb DEFAULT '[]'::jsonb
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  allocation jsonb;
+  raw_order record;
+  staff_order record;
+  raw_order_id uuid;
+  seen_raw_order_ids uuid[] := ARRAY[]::uuid[];
+  allocation_principal numeric(12,2);
+  allocation_surcharge numeric(12,2);
+  allocation_amount numeric(12,2);
+  allocation_principal_total numeric(12,2) := 0;
+  allocation_surcharge_total numeric(12,2) := 0;
+  allocation_total numeric(12,2) := 0;
+  method_is_valid boolean := false;
+BEGIN
+  IF p_principal_amount_php <= 0
+     OR p_surcharge_amount_php < 0
+     OR p_amount_php <= 0
+     OR p_amount_php <> p_principal_amount_php + p_surcharge_amount_php THEN
+    RAISE EXCEPTION 'Xendit session amounts do not match';
+  END IF;
+
+  SELECT true INTO method_is_valid
+  FROM public.payment_methods
+  WHERE id = p_payment_method_id
+    AND is_active = true
+    AND gateway_provider = 'xendit';
+
+  IF NOT COALESCE(method_is_valid, false) THEN
+    RAISE EXCEPTION 'Xendit payment method is inactive or invalid';
+  END IF;
+
+  IF p_target_type = 'staff_order' THEN
+    IF p_order_id IS NULL OR jsonb_array_length(p_allocations) <> 0 THEN
+      RAISE EXCEPTION 'Staff Xendit session requires one active order only';
+    END IF;
+
+    SELECT id, store_id, status, balance_due
+    INTO staff_order
+    FROM public.orders
+    WHERE id = p_order_id
+    FOR UPDATE;
+
+    IF NOT FOUND
+       OR staff_order.store_id <> p_store_id
+       OR lower(COALESCE(staff_order.status, '')) <> 'active'
+       OR COALESCE(staff_order.balance_due, 0) < p_principal_amount_php THEN
+      RAISE EXCEPTION 'Staff Xendit payment target is no longer payable';
+    END IF;
+
+    IF EXISTS (
+      SELECT 1
+      FROM public.xendit_payment_sessions
+      WHERE order_id = p_order_id
+        AND status IN ('creating', 'active', 'reconciliation_required')
+    ) THEN
+      RAISE EXCEPTION 'Order already has an unresolved Xendit session';
+    END IF;
+  ELSIF p_target_type = 'public_booking_group' THEN
+    IF p_order_id IS NOT NULL OR jsonb_array_length(p_allocations) = 0 THEN
+      RAISE EXCEPTION 'Public Xendit session requires raw-order allocations only';
+    END IF;
+
+    IF NOT EXISTS (
+      SELECT 1
+      FROM public.payment_methods
+      WHERE id = p_payment_method_id
+        AND show_on_customer_website = true
+    ) THEN
+      RAISE EXCEPTION 'Xendit payment method is unavailable for public bookings';
+    END IF;
+
+    FOR allocation IN
+      SELECT value
+      FROM jsonb_array_elements(p_allocations) AS allocation_rows(value)
+      ORDER BY (value->>'raw_order_id')::uuid
+    LOOP
+      raw_order_id := (allocation->>'raw_order_id')::uuid;
+      allocation_principal := (allocation->>'principal_amount_php')::numeric(12,2);
+      allocation_surcharge := (allocation->>'surcharge_amount_php')::numeric(12,2);
+      allocation_amount := (allocation->>'amount_php')::numeric(12,2);
+
+      IF raw_order_id = ANY(seen_raw_order_ids)
+         OR allocation_principal <= 0
+         OR allocation_surcharge < 0
+         OR allocation_amount <> allocation_principal + allocation_surcharge THEN
+        RAISE EXCEPTION 'Invalid or duplicate public Xendit allocation';
+      END IF;
+      seen_raw_order_ids := array_append(seen_raw_order_ids, raw_order_id);
+
+      SELECT id, store_id, status, booking_channel, web_payment_method,
+             web_quote_raw, web_card_fee_surcharge, xendit_payment_session_id
+      INTO raw_order
+      FROM public.orders_raw
+      WHERE id = raw_order_id
+      FOR UPDATE;
+
+      IF NOT FOUND
+         OR raw_order.store_id <> p_store_id
+         OR raw_order.status <> 'unprocessed'
+         OR raw_order.booking_channel <> 'direct'
+         OR raw_order.web_payment_method <> p_payment_method_id
+         OR raw_order.xendit_payment_session_id IS NOT NULL
+         OR raw_order.web_quote_raw IS NULL
+         OR raw_order.web_quote_raw <> allocation_amount
+         OR COALESCE(raw_order.web_card_fee_surcharge, 0) <> allocation_surcharge
+         OR raw_order.web_quote_raw - COALESCE(raw_order.web_card_fee_surcharge, 0) <> allocation_principal
+         OR EXISTS (
+           SELECT 1
+           FROM public.xendit_payment_session_orders existing_allocation
+           JOIN public.xendit_payment_sessions existing_session
+             ON existing_session.id = existing_allocation.session_id
+           WHERE existing_allocation.raw_order_id = raw_order_id
+             AND existing_session.status IN ('creating', 'active', 'reconciliation_required')
+         ) THEN
+        RAISE EXCEPTION 'Raw booking is no longer payable through Xendit';
+      END IF;
+
+      allocation_principal_total := allocation_principal_total + allocation_principal;
+      allocation_surcharge_total := allocation_surcharge_total + allocation_surcharge;
+      allocation_total := allocation_total + allocation_amount;
+    END LOOP;
+
+    IF allocation_principal_total <> p_principal_amount_php
+       OR allocation_surcharge_total <> p_surcharge_amount_php
+       OR allocation_total <> p_amount_php THEN
+      RAISE EXCEPTION 'Xendit allocation total does not match session amount';
+    END IF;
+  ELSE
+    RAISE EXCEPTION 'Unsupported Xendit target type';
+  END IF;
+
+  INSERT INTO public.xendit_payment_sessions (
+    id, reference_id, target_type, order_id, store_id, payment_method_id,
+    principal_amount_php, surcharge_amount_php, amount_php, created_by
+  ) VALUES (
+    p_session_id, p_reference_id, p_target_type, p_order_id, p_store_id,
+    p_payment_method_id, p_principal_amount_php, p_surcharge_amount_php,
+    p_amount_php, p_created_by
+  );
+
+  IF p_target_type = 'public_booking_group' THEN
+    FOR allocation IN
+      SELECT value
+      FROM jsonb_array_elements(p_allocations) AS allocation_rows(value)
+      ORDER BY (value->>'raw_order_id')::uuid
+    LOOP
+      raw_order_id := (allocation->>'raw_order_id')::uuid;
+      UPDATE public.orders_raw
+      SET xendit_payment_session_id = p_session_id
+      WHERE id = raw_order_id;
+
+      INSERT INTO public.xendit_payment_session_orders (
+        session_id, raw_order_id, principal_amount_php,
+        surcharge_amount_php, amount_php
+      ) VALUES (
+        p_session_id,
+        raw_order_id,
+        (allocation->>'principal_amount_php')::numeric(12,2),
+        (allocation->>'surcharge_amount_php')::numeric(12,2),
+        (allocation->>'amount_php')::numeric(12,2)
+      );
+    END LOOP;
+  END IF;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.create_xendit_session_draft(
+  uuid, text, text, text, text, text, numeric, numeric, numeric, text, jsonb
+) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.create_xendit_session_draft(
+  uuid, text, text, text, text, text, numeric, numeric, numeric, text, jsonb
+) TO service_role;
+
 -- --------------------------------------------------------------------------
 -- Final installation assertions
 -- --------------------------------------------------------------------------
@@ -1334,6 +1832,7 @@ DECLARE
   missing_constraints text;
   function_oid oid;
   relation_name text;
+  blocking_order_index_predicate text;
 BEGIN
   SELECT string_agg(required.relation_name, ', ' ORDER BY required.relation_name)
   INTO missing_relations
@@ -1357,11 +1856,11 @@ BEGIN
   FROM (
     VALUES
       ('public.idx_xendit_sessions_status'),
-      ('public.idx_xendit_active_staff_order'),
       ('public.idx_xendit_session_orders_raw'),
       ('public.idx_xendit_card_settlements_payment'),
       ('public.idx_xendit_live_extension_payment_claim'),
-      ('public.idx_xendit_extension_payments_session')
+      ('public.idx_xendit_extension_payments_session'),
+      ('public.idx_xendit_blocking_order')
   ) AS required(index_name)
   WHERE to_regclass(required.index_name) IS NULL;
 
@@ -1369,6 +1868,34 @@ BEGIN
     RAISE EXCEPTION
       'Xendit verification failed. Missing indexes: %',
       missing_indexes;
+  END IF;
+
+  SELECT pg_get_expr(index_row.indpred, index_row.indrelid)
+  INTO blocking_order_index_predicate
+  FROM pg_index index_row
+  JOIN pg_class index_class ON index_class.oid = index_row.indexrelid
+  WHERE index_class.oid = 'public.idx_xendit_blocking_order'::regclass
+    AND index_row.indisunique;
+
+  IF blocking_order_index_predicate IS NULL
+     OR NOT EXISTS (
+       SELECT 1
+       FROM pg_index index_row
+       JOIN pg_class index_class ON index_class.oid = index_row.indexrelid
+       JOIN pg_attribute attribute_row
+         ON attribute_row.attrelid = index_row.indrelid
+        AND attribute_row.attnum = index_row.indkey[0]
+       WHERE index_class.oid = 'public.idx_xendit_blocking_order'::regclass
+         AND array_length(index_row.indkey, 1) = 1
+         AND attribute_row.attname = 'order_id'
+     )
+     OR blocking_order_index_predicate LIKE '%target_type%'
+     OR blocking_order_index_predicate NOT LIKE '%order_id IS NOT NULL%'
+     OR blocking_order_index_predicate NOT LIKE '%creating%'
+     OR blocking_order_index_predicate NOT LIKE '%active%'
+     OR blocking_order_index_predicate NOT LIKE '%reconciliation_required%' THEN
+    RAISE EXCEPTION
+      'Xendit verification failed. Order blocking-session index has an incompatible predicate';
   END IF;
 
   SELECT string_agg(required.constraint_name, ', ' ORDER BY required.constraint_name)
@@ -1460,6 +1987,21 @@ BEGIN
       'Xendit verification failed. Payment settlement trigger is missing';
   END IF;
 
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_trigger trigger_row
+    JOIN pg_proc trigger_function ON trigger_function.oid = trigger_row.tgfoid
+    WHERE trigger_row.tgrelid = 'public.orders_raw'::regclass
+      AND trigger_row.tgname = 'orders_raw_block_live_xendit_processing'
+      AND NOT trigger_row.tgisinternal
+      AND trigger_function.oid = 'public.prevent_processing_live_xendit_raw_order()'::regprocedure
+      AND (trigger_row.tgtype & 2) = 2
+      AND (trigger_row.tgtype & 16) = 16
+  ) THEN
+    RAISE EXCEPTION
+      'Xendit verification failed. Raw booking live-session trigger is missing or incompatible';
+  END IF;
+
   FOREACH function_oid IN ARRAY ARRAY[
     to_regprocedure(
       'public.create_xendit_session_draft(uuid,text,text,text,text,text,numeric,numeric,numeric,text,jsonb)'
@@ -1474,7 +2016,16 @@ BEGIN
       'public.close_xendit_session_without_payment(uuid,text,text,text,text,jsonb)'
     ),
     to_regprocedure(
+      'public.close_xendit_session_after_provider_terminal(uuid,text,text,text,text,text,jsonb)'
+    ),
+    to_regprocedure(
       'public.release_xendit_creating_session(uuid,text,text)'
+    ),
+    to_regprocedure(
+      'public.mark_xendit_session_reconciliation_required(uuid,text,text,text)'
+    ),
+    to_regprocedure(
+      'public.prevent_processing_live_xendit_raw_order()'
     )
   ]
   LOOP

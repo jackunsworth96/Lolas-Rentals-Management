@@ -82,15 +82,18 @@ export default function ExtensionPaymentPage() {
     enabled: returnState === 'processing' && !!paymentSessionId && !!paymentState,
     retry: false,
     refetchInterval: (query) => {
+      if (query.state.error) return false;
       const status = query.state.data?.status;
       return status && !['creating', 'active'].includes(status) ? false : 2000;
     },
   });
 
   const paymentCompleted = statusQuery.data?.status === 'completed';
+  const paymentReconciliationRequired = statusQuery.data?.status === 'reconciliation_required';
   const paymentFailed = statusQuery.data
-    ? ['expired', 'cancelled', 'failed', 'reconciliation_required'].includes(statusQuery.data.status)
+    ? ['expired', 'cancelled', 'failed'].includes(statusQuery.data.status)
     : false;
+  const paymentVerificationRequired = paymentReconciliationRequired || Boolean(statusQuery.error);
 
   useEffect(() => {
     if (paymentCompleted) void summaryQuery.refetch();
@@ -157,6 +160,8 @@ export default function ExtensionPaymentPage() {
             <h1 className="mt-2 font-headline text-4xl font-black leading-tight text-charcoal-brand sm:text-5xl">
               {paymentCompleted
                 ? 'Payment received'
+                : paymentReconciliationRequired
+                  ? 'Payment verification required'
                 : verifiedEmail
                   ? 'Pay your extension'
                   : 'Verify your booking'}
@@ -233,7 +238,7 @@ export default function ExtensionPaymentPage() {
               </div>
             )}
 
-            {returnState === 'processing' && !paymentCompleted && !paymentFailed && (
+            {returnState === 'processing' && !paymentCompleted && !paymentFailed && !paymentVerificationRequired && (
               <div className="mt-5 flex gap-3 rounded-2xl border border-gold-brand/20 bg-gold-brand/10 px-4 py-4">
                 <Clock className="mt-0.5 h-5 w-5 shrink-0 text-gold-brand" />
                 <p className="text-sm font-semibold leading-relaxed text-charcoal-brand/70">
@@ -242,7 +247,16 @@ export default function ExtensionPaymentPage() {
               </div>
             )}
 
-            {(paymentFailed || statusQuery.error) && (
+            {paymentReconciliationRequired && (
+              <div className="mt-5 flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-amber-900">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+                <p className="text-sm font-semibold">
+                  Your payment needs manual verification. Keep your Xendit receipt and message the team. Do not start another payment.
+                </p>
+              </div>
+            )}
+
+            {(paymentFailed || (statusQuery.error && !paymentReconciliationRequired)) && (
               <div className="mt-5 flex gap-3 rounded-2xl bg-red-50 px-4 py-4 text-red-700">
                 <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
                 <p className="text-sm font-semibold">
@@ -312,6 +326,7 @@ export default function ExtensionPaymentPage() {
                 {summaryQuery.data.paymentAvailable
                   && summaryQuery.data.principalAmountPHP > 0
                   && !paymentCompleted
+                  && !paymentVerificationRequired
                   && (returnState !== 'processing' || paymentFailed) && (
                     <button
                       type="button"

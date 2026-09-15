@@ -3,14 +3,16 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 export type LiveXenditSession = {
   id: string;
   target_type: string;
-  status: 'creating' | 'active';
+  status: 'creating' | 'active' | 'reconciliation_required';
   payment_session_id: string | null;
   payment_link_url: string | null;
   expires_at: string | null;
   store_id: string;
 };
 
-const LIVE_STATUSES = ['creating', 'active'] as const;
+// Reconciliation-required sessions are terminal but intentionally remain
+// non-payable until finance resolves the provider-confirmed outcome.
+const LIVE_STATUSES = ['creating', 'active', 'reconciliation_required'] as const;
 
 export async function findLiveXenditSessionForRawOrder(rawOrderId: string): Promise<LiveXenditSession | null> {
   const { data, error } = await getSupabaseClient()

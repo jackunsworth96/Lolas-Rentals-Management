@@ -85,6 +85,13 @@ export interface OnlinePaymentSummary {
   paidAt: string;
 }
 
+/** Safe operational state for a Xendit checkout attached to an inbox booking. */
+export interface XenditSessionSummary {
+  id: string;
+  status: 'creating' | 'active' | 'completed' | 'expired' | 'cancelled' | 'failed' | 'reconciliation_required';
+  operatorMessage: string;
+}
+
 export interface DirectBookingTermAddon {
   id: number;
   name: string;
@@ -125,6 +132,8 @@ export interface DirectBookingTerms {
 /** Authenticated inbox response: database row plus webhook-confirmed online payment data. */
 export interface OrdersRawInboxRow extends OrdersRawRow {
   online_payment: OnlinePaymentSummary | null;
+  /** Included by authenticated inbox responses when the booking has a Xendit session. */
+  xendit_session?: XenditSessionSummary | null;
   /** Included by the authenticated detail endpoint for direct bookings only. */
   booking_terms?: DirectBookingTerms | null;
 }
