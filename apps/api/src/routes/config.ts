@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { randomBytes } from 'node:crypto';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
@@ -6,6 +6,10 @@ import { validateBody, validateQuery } from '../middleware/validate.js';
 import { Permission } from '@lolas/shared';
 import { z } from 'zod';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
+import {
+  canAccessExpenseCategoryStore,
+  resolveExpenseCategoryStoreId,
+} from '../lib/resolve-expense-category-store.js';
 
 const router = Router();
 
@@ -24,6 +28,21 @@ function mapReviewRow(row: Record<string, unknown>) {
     createdAt: row.created_at as string,
   };
 }
+
+function mapAccommodationDirectoryRow(row: Record<string, unknown>) {
+  return {
+    id: Number(row.id),
+    name: String(row.name),
+    aliases: (row.aliases as string[] | null) ?? [],
+    area: String(row.area),
+    address: (row.address as string | null) ?? null,
+    deliveryFee: row.delivery_fee == null ? null : Number(row.delivery_fee),
+    collectionFee: row.collection_fee == null ? null : Number(row.collection_fee),
+    isPartner: Boolean(row.is_partner),
+    deliveryAvailable: Boolean(row.delivery_available),
+    isActive: Boolean(row.is_active),
+  };
+}
 router.use(authenticate);
 
 const edit = requirePermission(Permission.EditSettings);
@@ -31,7 +50,18 @@ const edit = requirePermission(Permission.EditSettings);
 // ── Stores ──
 // No EditSettings required — all authenticated users need the stores list (e.g. StoreFilter dropdown).
 router.get('/stores', async (req, res, next) => {
-  try { res.json({ success: true, data: await req.app.locals.deps.configRepo.getStores() }); } catch (e) { next(e); }
+  try {
+    const scope = String(req.query.scope ?? 'active');
+    if (!['active', 'archived', 'all'].includes(scope)) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid store scope' } });
+      return;
+    }
+    if (scope !== 'active' && !req.user?.permissions.includes(Permission.EditSettings)) {
+      res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Archived stores require settings access' } });
+      return;
+    }
+    res.json({ success: true, data: await req.app.locals.deps.configRepo.getStores(scope as 'active' | 'archived' | 'all') });
+  } catch (e) { next(e); }
 });
 router.post('/stores', edit, validateBody(z.object({
   id: z.string().min(1), name: z.string().min(1), location: z.string().nullable().optional(),
@@ -101,6 +131,76 @@ router.put('/locations/:id', edit, validateBody(z.object({
 });
 router.delete('/locations/:id', edit, async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.deleteLocation(Number(req.params.id)); res.json({ success: true }); } catch (e) { next(e); }
+});
+
+// ── Accommodation and business directory ──
+const accommodationDirectoryBody = z.object({
+  name: z.string().trim().min(1).max(200),
+  aliases: z.array(z.string().trim().min(1).max(200)).max(30).optional().default([]),
+  area: z.string().trim().min(1).max(100),
+  address: z.string().trim().max(500).nullable().optional(),
+  deliveryFee: z.number().nonnegative().nullable().optional(),
+  collectionFee: z.number().nonnegative().nullable().optional(),
+  isPartner: z.boolean().optional(),
+  deliveryAvailable: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+});
+
+function accommodationDirectoryPayload(body: z.infer<typeof accommodationDirectoryBody>) {
+  return {
+    name: body.name,
+    aliases: body.aliases,
+    area: body.area,
+    address: body.address || null,
+    delivery_fee: body.deliveryFee ?? null,
+    collection_fee: body.collectionFee ?? null,
+    is_partner: body.isPartner ?? false,
+    delivery_available: body.deliveryAvailable ?? true,
+    is_active: body.isActive ?? true,
+  };
+}
+
+router.get('/accommodation-directory', async (_req, res, next) => {
+  try {
+    const { data, error } = await getSupabaseClient()
+      .from('accommodation_directory')
+      .select('*')
+      .order('name', { ascending: true });
+    if (error) throw error;
+    res.json({ success: true, data: (data ?? []).map((row) => mapAccommodationDirectoryRow(row as Record<string, unknown>)) });
+  } catch (e) { next(e); }
+});
+
+router.post('/accommodation-directory', edit, validateBody(accommodationDirectoryBody), async (req, res, next) => {
+  try {
+    const { error } = await getSupabaseClient()
+      .from('accommodation_directory')
+      .insert(accommodationDirectoryPayload(req.body));
+    if (error) throw error;
+    res.status(201).json({ success: true });
+  } catch (e) { next(e); }
+});
+
+router.put('/accommodation-directory/:id', edit, validateBody(accommodationDirectoryBody), async (req, res, next) => {
+  try {
+    const { error } = await getSupabaseClient()
+      .from('accommodation_directory')
+      .update(accommodationDirectoryPayload(req.body))
+      .eq('id', Number(req.params.id));
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e) { next(e); }
+});
+
+router.delete('/accommodation-directory/:id', edit, async (req, res, next) => {
+  try {
+    const { error } = await getSupabaseClient()
+      .from('accommodation_directory')
+      .delete()
+      .eq('id', Number(req.params.id));
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e) { next(e); }
 });
 
 // ── Payment Methods ──
@@ -186,10 +286,28 @@ router.delete('/fleet-statuses/:id', edit, async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.deleteFleetStatus(req.params.id); res.json({ success: true }); } catch (e) { next(e); }
 });
 
+function httpError(message: string, statusCode: number): Error {
+  const err = new Error(message) as Error & { statusCode: number };
+  err.statusCode = statusCode;
+  return err;
+}
+
+function resolveExpenseCategoryStore(req: Request): string {
+  const userStores = req.user?.storeIds ?? [];
+  const requestedRaw = req.query.storeId;
+  const requested = typeof requestedRaw === 'string' ? requestedRaw.trim() : '';
+  const storeId = resolveExpenseCategoryStoreId(userStores, requested);
+  if (!storeId) throw httpError('No store available for expense categories', 400);
+  if (!canAccessExpenseCategoryStore(userStores, storeId)) {
+    throw httpError('You do not have access to this store', 403);
+  }
+  return storeId;
+}
+
 // ── Expense Categories ──
 router.get('/expense-categories', async (req, res, next) => {
   try {
-    const storeId = req.user!.storeIds[0];
+    const storeId = resolveExpenseCategoryStore(req);
     res.json({ success: true, data: await req.app.locals.deps.configRepo.getExpenseCategories(storeId) });
   } catch (e) { next(e); }
 });

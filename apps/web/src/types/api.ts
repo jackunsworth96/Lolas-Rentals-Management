@@ -76,6 +76,8 @@ export interface EnrichedOrder {
   status: string;
   webNotes: string | null;
   paymentMethodId: string | null;
+  /** Payment method used to collect the refundable security deposit. */
+  depositMethodId: string | null;
   waiverStatus: 'pending' | 'signed' | 'expired';
   waiverSignedAt: string | null;
   /** From inspections table — list views only show a badge when `completed`. */
@@ -84,6 +86,8 @@ export interface EnrichedOrder {
   hasExtension?: boolean;
   /** True when any order_addon has a 9PM/late-return add-on name. */
   hasNinePmAddon?: boolean;
+  /** Off-site vehicle transport required for this booking. */
+  transportService?: 'delivery' | 'collection' | 'both' | null;
   /** Accommodation partner slug when booked via a partner referral link. */
   partnerRef?: string | null;
   /** Primary order_item vehicle — used to pre-populate the inspection form. */

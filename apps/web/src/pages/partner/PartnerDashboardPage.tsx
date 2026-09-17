@@ -38,6 +38,18 @@ function fmtManilaDate(iso: string): string {
   });
 }
 
+function fmtManilaFullDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-PH', {
+    timeZone: 'Asia/Manila', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  });
+}
+
+function fmtManilaTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-PH', {
+    timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit', hour12: true,
+  });
+}
+
 /** Return the Manila calendar day before an ISO timestamp as a YYYY-MM-DD string. */
 function dayBeforeManila(iso: string): string {
   const manila = new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
@@ -218,25 +230,18 @@ export default function PartnerDashboardPage() {
 
             // ── Fully booked ─────────────────────────────────────────────────
             {
-              // Suppress "Available from [date]" if nextAvailablePickup falls on the same
-              // calendar day as the user's pickup — it reads as though today is fine when it
-              // only means a different time slot today is free.
-              const nextAvailableDay = m.nextAvailablePickup
-                ? new Date(m.nextAvailablePickup).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
-                : null;
-              const isSameDayAvailable = nextAvailableDay === pickupDate;
               return (
                 <div key={m.modelId} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                   <div className="flex items-start justify-between gap-2">
-                    <p className="font-semibold text-gray-500">{m.modelName}</p>
+                    <p className="font-semibold text-gray-700">{m.modelName}</p>
                     <span className="shrink-0 rounded-full border border-gray-300 bg-white px-2 py-0.5 text-xs font-semibold text-gray-500">Fully booked</span>
                   </div>
-                  {isSameDayAvailable
-                    ? <p className="mt-1.5 text-sm text-gray-500">Try a later pickup time today</p>
-                    : m.nextAvailablePickup
-                      ? <p className="mt-1.5 text-sm text-gray-500">Available from {fmtManilaDate(m.nextAvailablePickup)}</p>
-                      : <p className="mt-1.5 text-sm text-gray-400">No upcoming availability found</p>
-                  }
+                  <p className="mt-1.5 text-sm text-gray-600">
+                    {m.modelName} is fully booked.
+                    {m.nextAvailablePickup
+                      ? <> Next available booking slot is at <span className="font-semibold text-gray-800">{fmtManilaTime(m.nextAvailablePickup)}</span> on <span className="font-semibold text-gray-800">{fmtManilaFullDate(m.nextAvailablePickup)}</span>.</>
+                      : ' Contact Lola\'s Rentals for the next available booking slot.'}
+                  </p>
                 </div>
               );
             }

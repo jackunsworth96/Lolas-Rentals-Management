@@ -210,8 +210,6 @@ export default function PawCardPartnersPage() {
     ?? pawAccess?.email.split('@')[0]?.replace(/[._-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
     ?? 'Member';
 
-  const customerIdForSubmit = pawAccess?.customerId ?? pawAccess?.email ?? '';
-
   const handleLogSaving = useCallback((id: string) => {
     setPreselectedEstablishmentId(id);
     const target = pawAccessRef.current
@@ -846,9 +844,7 @@ export default function PawCardPartnersPage() {
                 <BorderGlow backgroundColor="#ffffff" borderRadius={16} glowIntensity={0.8} className="shadow-lg">
                   <div className="p-8">
                     <PawCardSavingsForm
-                      accessEmail={pawAccess.email}
-                      customerIdForSubmit={customerIdForSubmit}
-                      displayFullName={displayFullName}
+                      accessToken={pawAccess.accessToken}
                       onLogged={() => qc.invalidateQueries({ queryKey: ['paw-card'] })}
                       preselectedEstablishmentId={preselectedEstablishmentId ?? undefined}
                     />

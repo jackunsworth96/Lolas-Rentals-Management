@@ -64,13 +64,15 @@ the same amount, so `finalBalanceDue` resolves to zero.
    Confirm all show the expected body (091 has `CASE WHEN p_is_paid THEN balance_due`,
    092 has `p_absorbed_extension_payment_ids`, 093 has `p_card_fee_surcharge_delta`).
 
-## Application-layer fallbacks
+## Application behavior
 
-The frontend + API have been updated to cope if either migration isn't yet applied:
-- Summary Tab computes balance as `max(final_total - rentalPaid, pendingExtensionsTotal)`
-  so the displayed Balance Due is correct even if `final_total` is stale.
-- `settleOrder` computes the pre-deposit balance from the filtered payment list
-  rather than the raw `final_total`, so settlement math stays correct.
+The frontend and API compute the active balance as
+`max(0, final_total - rentalPaid)`. This keeps the active-orders list, Summary
+tab, and settlement screen consistent without counting a pending extension
+twice. Apply migration 091 so `final_total` includes every extension charge.
+
+`settleOrder` computes the pre-deposit balance from the filtered payment list
+rather than the raw `orders.balance_due`, so settlement math stays correct.
 
 However, `orders.balance_due` and orphan IOU rows are **only** fixed by the
 migrations themselves. Please apply them to get full data integrity.

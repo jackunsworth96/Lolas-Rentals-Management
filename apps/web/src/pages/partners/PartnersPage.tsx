@@ -3,6 +3,7 @@ import {
   Link2, Plus, Pencil, BarChart2, ToggleLeft, ToggleRight, Copy, CheckCheck,
   ExternalLink, Send, Check, X, Clock, ChevronDown, ChevronUp, Trash2,
   UserPlus, KeyRound,
+  WalletCards, ArrowRight, AlertCircle,
 } from 'lucide-react';
 import {
   usePartners,
@@ -10,6 +11,7 @@ import {
   useUpdatePartner,
   useDeletePartner,
   usePartnerStats,
+  usePartnerCommissionsDue,
   useSendMonthlyReport,
   useApprovePartner,
   useRejectPartner,
@@ -72,6 +74,145 @@ function currentMonth() {
 function monthLabel(yyyyMM: string) {
   const [y, m] = yyyyMM.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' });
+}
+
+interface CommissionsDueModalProps {
+  open: boolean;
+  onClose: () => void;
+  storeId: string;
+  onOpenPartner: (partnerId: string) => void;
+}
+
+function CommissionsDueModal({ open, onClose, storeId, onOpenPartner }: CommissionsDueModalProps) {
+  const [month, setMonth] = useState(currentMonth());
+  const { data, isLoading, isError, refetch } = usePartnerCommissionsDue(storeId, month, open);
+  const payable = data?.partners.filter((partner) => partner.amountDue > 0) ?? [];
+  const awaitingCollection = data?.partners.filter((partner) => partner.amountDue === 0 && partner.pendingAmount > 0) ?? [];
+
+  return (
+    <Modal open={open} onClose={onClose} title="Commission payouts" size="xl">
+      <div className="max-h-[72vh] overflow-y-auto pr-1">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-sm text-gray-600">Everything confirmed and ready to pay, in one place.</p>
+            <p className="mt-1 text-xs text-gray-400">Based on commissionable bookings made during the selected month.</p>
+          </div>
+          <label className="text-xs font-medium text-gray-500">
+            Payout month
+            <input
+              type="month"
+              value={month}
+              onChange={(event) => { if (event.target.value) setMonth(event.target.value); }}
+              className="mt-1 block rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500"
+            />
+          </label>
+        </div>
+
+        {isLoading ? (
+          <div className="flex min-h-56 items-center justify-center rounded-xl border border-gray-200 text-sm text-gray-400">
+            Calculating commissions…
+          </div>
+        ) : isError ? (
+          <div className="flex min-h-56 flex-col items-center justify-center rounded-xl border border-red-200 bg-red-50 px-6 text-center">
+            <AlertCircle className="mb-2 h-6 w-6 text-red-500" />
+            <p className="text-sm font-medium text-red-700">Commission totals could not be loaded.</p>
+            <button onClick={() => { void refetch(); }} className="mt-3 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100">
+              Try again
+            </button>
+          </div>
+        ) : data ? (
+          <>
+            <div className="mb-4 overflow-hidden rounded-xl bg-teal-800 text-white shadow-sm">
+              <div className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-teal-200">Ready to pay · {monthLabel(month)}</p>
+                  <p className="mt-1 text-3xl font-bold tracking-tight">{formatPhp(data.totalDue)}</p>
+                </div>
+                <div className="inline-flex w-fit items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-sm font-semibold ring-1 ring-inset ring-white/20">
+                  <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-amber-300 px-1.5 text-xs font-bold text-teal-950">
+                    {data.partnersDue}
+                  </span>
+                  {data.partnersDue === 1 ? 'partner to pay' : 'partners to pay'}
+                </div>
+              </div>
+              {data.totalPending > 0 && (
+                <div className="border-t border-white/10 bg-teal-950/20 px-5 py-2.5 text-xs text-teal-100">
+                  {formatPhp(data.totalPending)} more is awaiting customer payment and is not included above.
+                </div>
+              )}
+            </div>
+
+            {payable.length > 0 ? (
+              <div className="overflow-hidden rounded-xl border border-gray-200">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50 text-left">
+                      <th className="px-4 py-3 font-medium text-gray-500">Partner</th>
+                      <th className="hidden px-4 py-3 text-right font-medium text-gray-500 sm:table-cell">Bookings</th>
+                      <th className="px-4 py-3 text-right font-medium text-gray-500">Amount due</th>
+                      <th className="w-12 px-3 py-3"><span className="sr-only">Open partner</span></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payable.map((partner) => (
+                      <tr key={partner.partnerId} className="border-b border-gray-100 last:border-0 hover:bg-teal-50/40">
+                        <td className="px-4 py-3">
+                          <p className="font-semibold text-gray-900">{partner.partnerName}</p>
+                          <p className="mt-0.5 text-xs text-gray-400 sm:hidden">{partner.commissionableBookings} commissionable booking{partner.commissionableBookings === 1 ? '' : 's'}</p>
+                          {(partner.contactName || partner.contactEmail) && (
+                            <p className="mt-0.5 hidden text-xs text-gray-400 sm:block">{partner.contactName ?? partner.contactEmail}</p>
+                          )}
+                        </td>
+                        <td className="hidden px-4 py-3 text-right text-gray-600 sm:table-cell">
+                          <span className="font-medium text-gray-800">{partner.commissionableBookings}</span>
+                          <span className="text-gray-400"> / {partner.totalBookings}</span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <p className="font-bold tabular-nums text-teal-700">{formatPhp(partner.amountDue)}</p>
+                          {partner.pendingAmount > 0 && (
+                            <p className="mt-0.5 text-[11px] font-medium tabular-nums text-amber-600">+ {formatPhp(partner.pendingAmount)} pending</p>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          <button
+                            onClick={() => onOpenPartner(partner.partnerId)}
+                            className="rounded-lg p-2 text-gray-400 hover:bg-white hover:text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            title={`View ${partner.partnerName} bookings`}
+                          >
+                            <ArrowRight className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-gray-300 px-6 py-10 text-center">
+                <CheckCheck className="mx-auto mb-3 h-8 w-8 text-teal-500" />
+                <p className="font-medium text-gray-700">No commission payouts for {monthLabel(month)}</p>
+                <p className="mt-1 text-sm text-gray-400">There are no confirmed commissionable bookings to pay.</p>
+              </div>
+            )}
+
+            {awaitingCollection.length > 0 && (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Awaiting customer payment</p>
+                <div className="mt-2 space-y-1.5">
+                  {awaitingCollection.map((partner) => (
+                    <div key={partner.partnerId} className="flex items-center justify-between gap-4 text-sm">
+                      <span className="text-amber-900">{partner.partnerName}</span>
+                      <span className="font-semibold tabular-nums text-amber-800">{formatPhp(partner.pendingAmount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        ) : null}
+      </div>
+    </Modal>
+  );
 }
 
 function describeDeal(p: Pick<AccommodationPartner, 'deal_type' | 'commission_type' | 'commission_value' | 'discount_type' | 'discount_value' | 'free_delivery'>) {
@@ -2202,6 +2343,7 @@ function PartnerDetailPanel({ partner, onEdit, onClose, pushToast }: PartnerDeta
 export default function PartnersPage() {
   const selectedStoreId = useUIStore((s) => s.selectedStoreId);
   const storeId = selectedStoreId && selectedStoreId !== 'all' ? selectedStoreId : 'store-lolas';
+  const commissionStoreId = selectedStoreId && selectedStoreId !== 'all' ? selectedStoreId : '';
 
   const { data: partners = [], isLoading } = usePartners();
   const { toasts, pushToast } = useToast();
@@ -2210,6 +2352,7 @@ export default function PartnersPage() {
   const [editingPartner, setEditingPartner] = useState<AccommodationPartner | null>(null);
   const [selectedPartner, setSelectedPartner] = useState<AccommodationPartner | null>(null);
   const [approvingPartner, setApprovingPartner] = useState<AccommodationPartner | null>(null);
+  const [showCommissionsDue, setShowCommissionsDue] = useState(false);
 
   const visiblePartners = partners.filter(
     (p) => !selectedStoreId || selectedStoreId === 'all' || p.store_id === selectedStoreId,
@@ -2239,6 +2382,13 @@ export default function PartnersPage() {
     setSelectedPartner(partner);
   }
 
+  function openPartnerFromCommissions(partnerId: string) {
+    const partner = partners.find((item) => item.id === partnerId);
+    if (!partner) return;
+    setShowCommissionsDue(false);
+    setSelectedPartner(partner);
+  }
+
   const livePartner = partners.find((p) => p.id === selectedPartner?.id) ?? selectedPartner;
 
   return (
@@ -2250,12 +2400,22 @@ export default function PartnersPage() {
             <h1 className="text-xl font-semibold text-gray-900">Accommodation Partners</h1>
             <p className="mt-0.5 text-sm text-gray-500">Trackable affiliate links for advance booking referrals</p>
           </div>
-          <button
-            onClick={openAdd}
-            className="flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
-          >
-            <Plus className="h-4 w-4" /> Add partner
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowCommissionsDue(true)}
+              className="flex items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-4 py-2 text-sm font-semibold text-teal-700 hover:border-teal-300 hover:bg-teal-100 focus:outline-none focus:ring-2 focus:ring-teal-500"
+            >
+              <WalletCards className="h-4 w-4" />
+              <span className="hidden sm:inline">Payouts due</span>
+              <span className="sm:hidden">Payouts</span>
+            </button>
+            <button
+              onClick={openAdd}
+              className="flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500"
+            >
+              <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Add partner</span><span className="sm:hidden">Add</span>
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-auto p-6 space-y-6">
@@ -2387,6 +2547,13 @@ export default function PartnersPage() {
         onClose={() => setApprovingPartner(null)}
         partner={approvingPartner}
         pushToast={pushToast}
+      />
+
+      <CommissionsDueModal
+        open={showCommissionsDue}
+        onClose={() => setShowCommissionsDue(false)}
+        storeId={commissionStoreId}
+        onOpenPartner={openPartnerFromCommissions}
       />
 
       {/* Toast notifications */}

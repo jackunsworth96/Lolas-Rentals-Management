@@ -46,6 +46,10 @@ export interface StoreMetrics {
   availableVehicles: number;
   ninepmReturns: { count: number; vehicles: NinePmVehicle[] };
   depositsWithheld: number;
+  depositsWithheldByMethod: {
+    cash: number;
+    gcash: number;
+  };
   fleetUtilisation: number;
   maintenanceVehicles: MaintenanceVehicle[];
   maintenancePartsCost: number | null;

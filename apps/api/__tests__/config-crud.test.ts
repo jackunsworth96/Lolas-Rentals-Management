@@ -12,6 +12,11 @@ describe('Config CRUD API', () => {
     expect(res.status).toBe(401);
   });
 
+  it('GET /api/config/accommodation-directory requires staff authentication', async () => {
+    const res = await request(app).get('/api/config/accommodation-directory');
+    expect(res.status).toBe(401);
+  });
+
   it('POST /api/config/stores without auth returns 401', async () => {
     const res = await request(app)
       .post('/api/config/stores')

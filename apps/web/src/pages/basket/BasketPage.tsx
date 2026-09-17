@@ -4,9 +4,9 @@ import { api } from '../../api/client.js';
 import {
   getPartnerRef,
   clearPartnerRef,
-  getStoredPartnerBenefit,
 } from '../../utils/partnerRef.js';
 import { calculateBasketPricing } from '../../utils/basket-pricing.js';
+import { usePartnerRefCapture } from '../../hooks/usePartnerRefCapture.js';
 import { useBookingStore, type BasketItem, type RenterDetails } from '../../stores/bookingStore.js';
 import { useToast } from '../../hooks/useToast.js';
 import { BasketVehicleGroupCard } from '../../components/basket/BasketVehicleGroupCard.js';
@@ -455,10 +455,21 @@ export default function BasketPage() {
   const selectedPm = paymentMethods.find((pm) => pm.id === paymentMethodId);
   const surchargePercent = selectedPm?.surchargePercent ?? 0;
 
-  // ── Partner referral benefit (read once on mount, recompute when dates change) ──
-  const partnerBenefit = useMemo(() => getStoredPartnerBenefit(), []);
-  // The distinct-model value is used for add-on filtering. Pricing resolves
-  // partner terms independently for every vehicle.
+  // ── Partner referral benefit (reactive so a fast booking flow does not outrun lookup) ──
+  const { benefit: partnerBenefit } = usePartnerRefCapture();
+
+  useEffect(() => {
+    const accommodationName = partnerBenefit?.name.trim();
+    if (!accommodationName || hydratingSession || renter.accommodationName?.trim()) return;
+
+    const nextRenter = { ...renter, accommodationName };
+    setRenterRaw(nextRenter);
+    setRenterDetailsInStore(nextRenter as RenterDetails);
+    void api.patch('/public/booking/session', {
+      sessionToken,
+      renterDetails: nextRenter,
+    }).catch(() => {});
+  }, [hydratingSession, partnerBenefit, renter, sessionToken, setRenterDetailsInStore]);
   const _basketModelIds = [...new Set(basket.map((b) => b.vehicleModelId))];
   const singleModelId = _basketModelIds.length === 1 ? _basketModelIds[0] : null;
   const basketPricing = useMemo(() => calculateBasketPricing({

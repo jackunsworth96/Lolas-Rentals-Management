@@ -10,11 +10,12 @@ export type PawCardAccess = {
   email: string;
   customerId: string | null;
   customerName: string | null;
+  accessToken: string;
 };
 
 type LookupResponse =
   | { found: false }
-  | { found: true; customerId: string | null; customerName: string | null };
+  | { found: true; customerId: string | null; customerName: string | null; accessToken: string };
 
 const WHATSAPP_HREF = WHATSAPP_URL;
 
@@ -46,6 +47,7 @@ export function PawCardLoginPanel({ access, onAccessGranted, compact = false }: 
           email: email.trim().toLowerCase(),
           customerId: data.customerId,
           customerName: data.customerName,
+          accessToken: data.accessToken,
         });
       } else {
         setNotRecognised(true);

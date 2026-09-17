@@ -20,8 +20,13 @@ function statusLabel(status: string): string {
   return status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function cancellationReasonLabel(reason: string | null): string {
+  if (!reason?.trim()) return 'Reason not recorded';
+  return reason.trim().replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
+}
+
 function commissionCell(b: PartnerReportBooking): string {
-  if (b.status.toLowerCase() === 'cancelled') return 'Cancelled';
+  if (b.status.toLowerCase() === 'cancelled') return `${money(0)}\nRemoved from payout`;
   if (!b.commissionable) return 'Not eligible';
 
   let line = money(b.commissionAmount);
@@ -133,7 +138,9 @@ export function generatePartnerReportPdf(
       b.orderReference ?? '—',
       b.customerName ?? '—',
       dates + (b.isExtended ? '\n[Extended]' : ''),
-      statusLabel(b.status),
+      b.status.toLowerCase() === 'cancelled'
+        ? `${statusLabel(b.status)}\n${cancellationReasonLabel(b.cancelledReason)}`
+        : statusLabel(b.status),
       commissionCell(b),
     ];
   });

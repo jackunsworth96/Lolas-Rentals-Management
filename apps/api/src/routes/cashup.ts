@@ -1156,7 +1156,7 @@ router.post(
       );
       res.json({ success: true, data: result });
 
-      // Only trigger evening Telegram for Lola's Rentals — Bass Bikes has its own
+      // Evening Telegram is tied to the active Lola's operation.
       // separate automation that is not yet configured.
       if (req.body.storeId === 'store-lolas') {
         const { triggerEveningNotifications } = await import('../jobs/evening-trigger.js');

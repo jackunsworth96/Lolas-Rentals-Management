@@ -79,6 +79,7 @@ export type OrderDetail = {
   securityDeposit?: unknown;
   cardFeeSurcharge?: unknown;
   paymentMethodId?: string;
+  depositMethodId?: string | null;
   webNotes?: string;
   /** Human-readable ref (e.g. LR-0419-15C7); API may return camelCase from GET /orders/:id */
   bookingToken?: string | null;

@@ -8,12 +8,13 @@ import { computeQuote } from '../use-cases/booking/compute-quote.js';
 import { logger } from '../lib/logger.js';
 import { publicWebOriginFromEnv } from '../lib/public-web-url.js';
 import {
+  escapeIlike,
   extDayCount,
   orderReferenceLookupVariants,
   resolveExtensionForActive,
   resolveExtensionForRaw,
 } from './public-extend-helpers.js';
-import { phoneLookupVariants, phoneSuffixIlikePattern } from '../utils/phone-lookup.js';
+import { phoneDigits, phoneLookupVariants, phoneSuffixIlikePattern } from '../utils/phone-lookup.js';
 
 /**
  * Routes consumed by respond.io (or any authenticated third-party caller).
@@ -100,7 +101,6 @@ interface BookingRow {
   status:           string;
   customer_name:    string | null;
   vehicle_model_id: string | null;
-  quantity:         number | null;
   pickup_datetime:  string | null;
   dropoff_datetime: string | null;
   pickup_location_id: number | null;
@@ -112,7 +112,7 @@ interface BookingRow {
 }
 
 const BOOKING_COLUMNS =
-  'order_reference, status, customer_name, vehicle_model_id, quantity, pickup_datetime, dropoff_datetime, pickup_location_id, dropoff_location_id, pickup_location_address, dropoff_location_address, store_id, web_quote_raw';
+  'order_reference, status, customer_name, vehicle_model_id, pickup_datetime, dropoff_datetime, pickup_location_id, dropoff_location_id, pickup_location_address, dropoff_location_address, store_id, web_quote_raw';
 
 /**
  * Statuses for orders_raw that represent a live (non-cancelled, non-skipped)
@@ -225,6 +225,15 @@ function mapToPricingBrackets(
 
 function manilaDateKey(value: string | Date): string {
   return new Date(value).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+}
+
+function manilaTimeKey(value: string | Date): string {
+  return new Date(value).toLocaleTimeString('en-GB', {
+    timeZone: 'Asia/Manila',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
 }
 
 function buildExtensionPaymentUrl(orderReference: string): string {
@@ -872,6 +881,13 @@ async function previewRespondExtension(
     extension_days: number;
     extension_total: number;
   }> = [];
+  const oneTimeAddons: Array<{
+    id: number;
+    name: string;
+    amount: number;
+  }> = [];
+  let ninePmAddonId: number | undefined;
+  let hasExistingLateReturnAddon = false;
 
   if (target.orderId) {
     const { data: addonRows, error: addonError } = await getSupabaseClient()
@@ -887,6 +903,12 @@ async function previewRespondExtension(
         : 0;
 
     for (const addon of (addonRows ?? []) as Array<Record<string, unknown>>) {
+      if (
+        addon.addon_type === 'one_time'
+        && addonKeyForName(String(addon.addon_name ?? '')).key === 'late_return'
+      ) {
+        hasExistingLateReturnAddon = true;
+      }
       if (addon.addon_type !== 'per_day') continue;
       const existingTotal = Number(addon.total_amount ?? 0);
       const dailyAddonRate = currentRentalDays > 0
@@ -903,17 +925,62 @@ async function previewRespondExtension(
     }
   }
 
+  if (manilaTimeKey(newDropoff) === '21:00' && !hasExistingLateReturnAddon) {
+    const catalog = (await req.app.locals.deps.configRepo.getAddons(target.storeId)) as ConfigAddonLike[];
+    const lateReturnAddon = catalog.find((addon) =>
+      addon.isActive !== false
+      && addon.addonType === 'one_time'
+      && addonKeyForName(addon.name).key === 'late_return'
+      && isAddonCompatibleWithVehicle(
+        addon,
+        target.vehicleModelId,
+        { id: target.vehicleModelId ?? undefined, name: target.vehicle },
+      )
+    );
+    const resolvedId = Number(lateReturnAddon?.id);
+    const amount = Number(lateReturnAddon?.priceOneTime ?? 0);
+    if (!lateReturnAddon || !Number.isFinite(resolvedId) || amount <= 0) {
+      return {
+        ok: false as const,
+        status: 409,
+        payload: {
+          success: false,
+          code: 'LATE_RETURN_ADDON_UNAVAILABLE',
+          message: 'The 9pm return charge could not be verified. Hand off to the team.',
+        },
+      };
+    }
+    ninePmAddonId = resolvedId;
+    oneTimeAddons.push({
+      id: resolvedId,
+      name: lateReturnAddon.name,
+      amount: Math.round(amount * 100) / 100,
+    });
+  }
+
   const recurringAddonsTotal = Math.round(
     recurringAddons.reduce((sum, addon) => sum + addon.extension_total, 0) * 100,
   ) / 100;
-  const extensionTotal = Math.round((rentalExtensionTotal + recurringAddonsTotal) * 100) / 100;
-  const addonCalculation = recurringAddons.length > 0
-    ? `, including ${recurringAddons.map((addon) =>
+  const oneTimeAddonsTotal = Math.round(
+    oneTimeAddons.reduce((sum, addon) => sum + addon.amount, 0) * 100,
+  ) / 100;
+  const extensionTotal = Math.round(
+    (rentalExtensionTotal + recurringAddonsTotal + oneTimeAddonsTotal) * 100,
+  ) / 100;
+  const addonLines = [
+    ...recurringAddons.map((addon) =>
       `${addon.name}: ${addon.extension_days} days x PHP ${addon.daily_rate.toLocaleString('en-PH')} = PHP ${addon.extension_total.toLocaleString('en-PH')}`
-    ).join('; ')}`
+    ),
+    ...oneTimeAddons.map((addon) =>
+      `${addon.name}: PHP ${addon.amount.toLocaleString('en-PH')}`
+    ),
+  ];
+  const addonCalculation = addonLines.length > 0
+    ? `, including ${addonLines.join('; ')}`
     : '';
   return {
     ok: true as const,
+    ninePmAddonId,
     payload: {
       success: true,
       order_reference: target.orderReference,
@@ -926,6 +993,8 @@ async function previewRespondExtension(
       rental_extension_total: rentalExtensionTotal,
       recurring_addons: recurringAddons,
       recurring_addons_total: recurringAddonsTotal,
+      one_time_addons: oneTimeAddons,
+      one_time_addons_total: oneTimeAddonsTotal,
       extension_total: extensionTotal,
       ...extensionPaymentPolicy(extensionTotal, target.securityDeposit),
       balance_note: 'Add this amount to the booking balance. Confirm only after the customer agrees.',
@@ -1199,10 +1268,13 @@ const RespondBookingHandoffSchema = z.object({
   ]),
   storeId: z.string().min(1).optional().default(STORE_ID),
   sessionToken: z.string().min(20).optional(),
+  customerFullName: z.string().optional(),
+  customerEmail: z.string().optional(),
+  customerPhone: z.string().optional(),
   customer: z
     .object({
       fullName: z.string().optional(),
-      email: z.string().email().optional(),
+      email: z.string().optional(),
       phone: z.string().optional(),
       nationality: z.string().optional(),
       accommodationName: z.string().optional(),
@@ -1322,33 +1394,27 @@ router.post('/booking-handoff', async (req, res, next) => {
     const dropoffLocationId = resolveRespondLocationId(input.dropoffLocationId, locations);
 
     if (!pickupLocationId || !dropoffLocationId) {
-      res.status(404).json({
-        error: 'Pickup or dropoff location not found',
-        locations: locations.map((location) => ({
-          id: Number(location.id),
-          name: location.name,
-        })),
-      });
+      res.status(404).json({ error: 'Pickup or dropoff location not found' });
       return;
     }
 
     const [modelResult, pickupLocResult, dropoffLocResult] = await Promise.all([
       sb
         .from('vehicle_models')
-        .select('id, name, security_deposit')
+        .select('id')
         .eq('id', vehicleModelId)
         .eq('is_active', true)
         .maybeSingle(),
       sb
         .from('locations')
-        .select('id, name, delivery_cost, collection_cost, location_type')
+        .select('id, delivery_cost')
         .eq('id', pickupLocationId)
         .eq('is_active', true)
         .or(`store_id.eq.${input.storeId},store_id.is.null`)
         .maybeSingle(),
       sb
         .from('locations')
-        .select('id, name, delivery_cost, collection_cost, location_type')
+        .select('id, collection_cost')
         .eq('id', dropoffLocationId)
         .eq('is_active', true)
         .or(`store_id.eq.${input.storeId},store_id.is.null`)
@@ -1369,7 +1435,7 @@ router.post('/booking-handoff', async (req, res, next) => {
     }
 
     const sessionToken = input.sessionToken ?? `respond_${randomUUID()}`;
-    const hold = await createHold(
+    await createHold(
       { bookingPort: req.app.locals.deps.bookingPort },
       {
         vehicleModelId,
@@ -1401,7 +1467,12 @@ router.post('/booking-handoff', async (req, res, next) => {
       console.error('[respond/booking-handoff] quote computation failed:', err);
     }
 
-    const renterDetails = normaliseRenterDetails(input.customer);
+    const renterDetails = normaliseRenterDetails({
+      ...(input.customer ?? {}),
+      fullName: input.customerFullName ?? input.customer?.fullName,
+      email: input.customerEmail ?? input.customer?.email,
+      phone: input.customerPhone ?? input.customer?.phone,
+    });
     const handoffContext = {
       source: 'respond.io',
       submittedVehicleModelId: input.vehicleModelId,
@@ -1455,40 +1526,12 @@ router.post('/booking-handoff', async (req, res, next) => {
       `Please review and confirm your booking here: ${cartUrl}`;
 
     res.status(201).json({
-      sessionToken,
-      holdId:    hold.id,
-      expiresAt: hold.expiresAt,
+      sufficient_availability: true,
+      price_per_day:            quote?.dailyRate ?? null,
+      delivery_fee:             quote?.pickupFee ?? Number(pickupLocResult.data.delivery_cost ?? 0),
+      collection_fee:           quote?.dropoffFee ?? Number(dropoffLocResult.data.collection_cost ?? 0),
       cartUrl,
       message,
-      vehicle: {
-        model_id:         modelResult.data.id,
-        model:            modelResult.data.name,
-        security_deposit: Number(modelResult.data.security_deposit ?? 0),
-      },
-      pickup: {
-        id:              Number(pickupLocResult.data.id),
-        name:            pickupLocResult.data.name,
-        delivery_cost:   Number(pickupLocResult.data.delivery_cost ?? 0),
-        location_type:   pickupLocResult.data.location_type ?? null,
-      },
-      dropoff: {
-        id:              Number(dropoffLocResult.data.id),
-        name:            dropoffLocResult.data.name,
-        collection_cost: Number(dropoffLocResult.data.collection_cost ?? 0),
-        location_type:   dropoffLocResult.data.location_type ?? null,
-      },
-      quote: quote
-        ? {
-            dailyRate:       quote.dailyRate,
-            rentalSubtotal:  quote.rentalSubtotal,
-            pickupFee:       quote.pickupFee,
-            dropoffFee:      quote.dropoffFee,
-            addons:          quote.addons,
-            addonsTotal:     quote.addonsTotal,
-            grandTotal:      quote.grandTotalWithFees,
-            securityDeposit: quote.securityDeposit,
-          }
-        : null,
     });
   } catch (err) {
     if (typeof (err as { statusCode?: unknown }).statusCode !== 'number') {
@@ -1569,6 +1612,67 @@ interface BookingResponse {
   final_total?:      number | null;
   security_deposit?: number | null;
   deposit_status?:   string | null;
+}
+
+type BookingLookup =
+  | { type: 'reference'; value: string }
+  | { type: 'email'; value: string }
+  | { type: 'phone'; value: string };
+
+function bookingLookupFromRequest(req: Request):
+  | { lookup: BookingLookup; error?: never }
+  | { lookup?: never; error: string } {
+  const value = (key: string) => {
+    const raw = req.query[key];
+    return typeof raw === 'string' && raw.trim() ? raw.trim() : null;
+  };
+  const explicit = [
+    value('ref') ?? value('bookingNumber') ?? value('booking_number'),
+    value('email'),
+    value('phone'),
+  ].filter((item): item is string => item !== null);
+
+  if (explicit.length > 1) {
+    return { error: 'Provide only one booking reference, email, or phone number.' };
+  }
+
+  const generic = value('lookup') ?? value('query');
+  if (explicit.length === 0 && !generic) {
+    return { error: 'Provide a booking reference, email, or phone number.' };
+  }
+
+  const ref = value('ref') ?? value('bookingNumber') ?? value('booking_number');
+  const email = value('email');
+  const phone = value('phone');
+  if (ref) return { lookup: { type: 'reference', value: ref } };
+  if (email) {
+    const normalized = email.toLowerCase();
+    return z.string().email().safeParse(normalized).success
+      ? { lookup: { type: 'email', value: normalized } }
+      : { error: 'Provide a valid email address.' };
+  }
+  if (phone) {
+    return phoneDigits(phone).length >= 7
+      ? { lookup: { type: 'phone', value: phone } }
+      : { error: 'Provide a valid phone number with at least 7 digits.' };
+  }
+
+  if (generic!.includes('@')) {
+    const normalized = generic!.toLowerCase();
+    return z.string().email().safeParse(normalized).success
+      ? { lookup: { type: 'email', value: normalized } }
+      : { error: 'Provide a valid email address.' };
+  }
+  if (/^(?:LR|BB)[-\s]?\d{4}/i.test(generic!)) {
+    return { lookup: { type: 'reference', value: generic! } };
+  }
+  return phoneDigits(generic!).length >= 7
+    ? { lookup: { type: 'phone', value: generic! } }
+    : { lookup: { type: 'reference', value: generic! } };
+}
+
+function sendBookingLookupError(res: Response, status: number, code: string, message: string) {
+  return res.status(status).json({ success: false, error: { code, message } });
 }
 
 const STATUS_PRIORITY: Record<string, number> = { active: 0, confirmed: 1, completed: 2 };
@@ -1787,6 +1891,7 @@ router.post('/extension/confirm', async (req, res, next) => {
       isPaid: false,
       paymentMethodId: 'pending',
       emailErrorLabel: '[respond-extension-email] Active path error:',
+      ninePmAddonId: 'ninePmAddonId' in preview ? preview.ninePmAddonId : undefined,
       deps,
     });
 
@@ -1867,34 +1972,25 @@ router.post('/extension/confirm', async (req, res, next) => {
 });
 
 /**
- * GET /api/public/respond/booking?ref=LR-XXXX-XXXX
- * GET /api/public/respond/booking?phone=+63912345678
- * GET /api/public/respond/booking?lookup=LR-XXXX-XXXX
- * GET /api/public/respond/booking?lookup=+63912345678
+ * GET /api/public/respond/booking?query=LR-XXXX-XXXX
+ * GET /api/public/respond/booking?query=customer@example.com
+ * GET /api/public/respond/booking?query=+63912345678
  *
  * Searches orders first (activated/staff-created bookings with full financial
  * data), then falls back to orders_raw for unactivated direct/walk-in bookings.
  * Returns only bookings in returnable statuses. When multiple results match a
  * phone number the most recently created active booking is returned first.
  */
-router.get('/booking', async (req, res, next) => {
+router.get('/booking', async (req, res) => {
   try {
-    let ref   = typeof req.query.ref   === 'string' ? req.query.ref.trim()   : null;
-    let phone = typeof req.query.phone === 'string' ? req.query.phone.trim() : null;
-    const lookup = typeof req.query.lookup === 'string' ? req.query.lookup.trim() : null;
-
-    if (!ref && !phone && lookup) {
-      if (/^LR[-\s]/i.test(lookup)) {
-        ref = lookup;
-      } else {
-        phone = lookup;
-      }
-    }
-
-    if (!ref && !phone) {
-      res.status(400).json({ error: 'Please provide ref, phone, or lookup query parameter' });
+    const parsed = bookingLookupFromRequest(req);
+    if (!parsed.lookup) {
+      sendBookingLookupError(res, 400, 'INVALID_LOOKUP', parsed.error);
       return;
     }
+    const ref = parsed.lookup.type === 'reference' ? parsed.lookup.value : null;
+    const email = parsed.lookup.type === 'email' ? parsed.lookup.value : null;
+    const phone = parsed.lookup.type === 'phone' ? parsed.lookup.value : null;
 
     const sb = getSupabaseClient();
 
@@ -1914,39 +2010,38 @@ router.get('/booking', async (req, res, next) => {
       .in('status', RETURNABLE_STATUSES);
 
     if (ref) {
-      ordersQuery = ordersQuery.ilike('booking_token', ref);
+      ordersQuery = ordersQuery.in('booking_token', orderReferenceLookupVariants(ref));
     } else {
-      const { data: customerRows, error: customerError } = await sb
-        .from('customers')
-        .select('id')
-        .in('mobile', phoneLookupVariants(phone!))
-        .limit(1);
+      const customerQuery = sb.from('customers').select('id');
+      const { data: customerRows, error: customerError } = email
+        ? await customerQuery.ilike('email', escapeIlike(email)).limit(10)
+        : await customerQuery.in('mobile', phoneLookupVariants(phone!)).limit(10);
 
       if (customerError) {
         console.error('[respond/booking] customers query failed:', customerError);
         throw customerError;
       }
 
-      let customerId = customerRows?.[0]?.id ?? null;
-      const suffixPattern = phoneSuffixIlikePattern(phone!);
-      if (!customerId && suffixPattern) {
+      let customerIds = (customerRows ?? []).map((row) => row.id as string);
+      const suffixPattern = phone ? phoneSuffixIlikePattern(phone) : null;
+      if (phone && customerIds.length === 0 && suffixPattern) {
         const fallback = await sb
           .from('customers')
           .select('id')
           .ilike('mobile', suffixPattern)
-          .limit(1);
+          .limit(10);
         if (fallback.error) {
           console.error('[respond/booking] customer suffix query failed:', fallback.error);
           throw fallback.error;
         }
-        customerId = fallback.data?.[0]?.id ?? null;
+        customerIds = (fallback.data ?? []).map((row) => row.id as string);
       }
 
-      if (!customerId) {
+      if (customerIds.length === 0) {
         skipOrdersQuery = true;
       } else {
         ordersQuery = ordersQuery
-          .eq('customer_id', customerId)
+          .in('customer_id', customerIds)
           .order('created_at', { ascending: false });
       }
     }
@@ -2083,7 +2178,11 @@ router.get('/booking', async (req, res, next) => {
       .in('status', RAW_RETURNABLE_STATUSES);
 
     if (ref) {
-      rawQuery = rawQuery.ilike('order_reference', ref);
+      rawQuery = rawQuery.in('order_reference', orderReferenceLookupVariants(ref));
+    } else if (email) {
+      rawQuery = rawQuery
+        .ilike('customer_email', escapeIlike(email))
+        .order('created_at', { ascending: false });
     } else {
       rawQuery = rawQuery
         .in('customer_mobile', phoneLookupVariants(phone!))
@@ -2116,7 +2215,12 @@ router.get('/booking', async (req, res, next) => {
     const rawRows = (rawData ?? []) as BookingRow[];
 
     if (rawRows.length === 0) {
-      res.status(404).json({ error: 'No booking found' });
+      sendBookingLookupError(
+        res,
+        404,
+        'BOOKING_NOT_FOUND',
+        'No current booking matched that lookup.',
+      );
       return;
     }
 
@@ -2132,7 +2236,7 @@ router.get('/booking', async (req, res, next) => {
       resolveBookingLocation(sb, row.pickup_location_id),
       resolveBookingLocation(sb, row.dropoff_location_id),
     ]);
-    const vehicleCount = Math.max(Number(row.quantity) || 1, 1);
+    const vehicleCount = 1;
 
     const booking: BookingResponse = {
       reference:        row.order_reference,
@@ -2167,8 +2271,13 @@ router.get('/booking', async (req, res, next) => {
 
     res.json({ found: true, booking });
   } catch (err) {
-    console.error('[respond/booking] unhandled error:', err);
-    next(err);
+    logger.error({ err }, 'respond.io booking lookup failed');
+    sendBookingLookupError(
+      res,
+      503,
+      'BOOKING_LOOKUP_FAILED',
+      'Booking lookup is temporarily unavailable. Please try again or hand off to the team.',
+    );
   }
 });
 
@@ -2258,25 +2367,74 @@ router.get('/availability', async (req, res, next) => {
         sufficient_availability: entry.availableCount >= quantity,
         hold_expires_at:         entry.holdExpiresAt ?? null,
         available_until:         entry.availableUntil ?? null,
-        blocking_window_may_clear_after: entry.nextAvailablePickup ?? null,
-        note: entry.availableCount >= quantity
-          ? 'This model has enough stock for the exact requested pickup and return datetimes.'
-          : entry.availableUntil
-            ? 'The requested window is unavailable, but the requested quantity is continuously available from pickup until available_until. Offer this exact shorter return as the first alternative.'
-            : 'Do not present blocking_window_may_clear_after as confirmed availability. It only means an overlapping booking or hold may clear after this time; the full requested rental window must be checked again before suggesting it.',
       }));
 
-    const totalAvailable = available.reduce((sum, e) => sum + e.available_count, 0);
     const hasAvailability = available.some((e) => e.sufficient_availability);
 
     res.json({
-      pickup_datetime:    pickupDatetime,
-      dropoff_datetime:   dropoffDatetime,
-      requested_quantity: quantity,
       available,
-      total_available:    totalAvailable,
-      has_availability:   hasAvailability,
-      guidance:           'Check availability as soon as the vehicle, quantity, pickup datetime, and return datetime are known. If unavailable and available_until is present, offer that confirmed shorter window first. Do not present blocking_window_may_clear_after as confirmed availability without checking the full alternative rental window.',
+      has_availability: hasAvailability,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+function normalisePlaceSearch(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+/** GET /api/public/respond/accommodation?search=bravo+resort */
+router.get('/accommodation', async (req, res, next) => {
+  try {
+    const search = typeof req.query.search === 'string' ? normalisePlaceSearch(req.query.search) : '';
+    if (search.length < 2) {
+      res.status(400).json({ error: 'search must contain at least 2 characters' });
+      return;
+    }
+
+    const { data, error } = await getSupabaseClient()
+      .from('accommodation_directory')
+      .select('name, aliases, area, delivery_fee, collection_fee, is_partner, delivery_available')
+      .eq('is_active', true);
+    if (error) throw error;
+
+    const searchTokens = search.split(' ');
+    const matches = ((data ?? []) as Array<Record<string, unknown>>)
+      .map((row) => {
+        const names = [String(row.name), ...((row.aliases as string[] | null) ?? [])]
+          .map(normalisePlaceSearch);
+        const score = Math.min(...names.map((name) => {
+          if (name === search) return 0;
+          if (name.includes(search) || search.includes(name)) return 1;
+          if (searchTokens.every((token) => name.includes(token))) return 2;
+          return 99;
+        }));
+        return { row, score };
+      })
+      .filter((match) => match.score < 99)
+      .sort((a, b) => a.score - b.score || String(a.row.name).length - String(b.row.name).length);
+
+    const match = matches[0]?.row;
+    if (!match) {
+      res.json({ found: false, message: 'Place not found' });
+      return;
+    }
+
+    const isPartner = Boolean(match.is_partner);
+    const deliveryAvailable = Boolean(match.delivery_available);
+    res.json({
+      found: true,
+      name: String(match.name),
+      area: String(match.area),
+      delivery_fee: !deliveryAvailable ? null : isPartner ? 0 : match.delivery_fee == null ? null : Number(match.delivery_fee),
+      collection_fee: !deliveryAvailable ? null : isPartner ? 0 : match.collection_fee == null ? null : Number(match.collection_fee),
+      is_partner: isPartner,
     });
   } catch (err) {
     next(err);

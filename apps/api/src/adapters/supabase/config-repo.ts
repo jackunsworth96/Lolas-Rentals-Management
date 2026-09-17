@@ -19,6 +19,7 @@ import type {
   Role,
   AppUser,
   RepairCostConfig,
+  StoreScope,
 } from '@lolas/domain';
 
 function snakeToCamel(obj: Record<string, unknown>): Record<string, unknown> {
@@ -112,7 +113,14 @@ async function hardDelete(table: string, id: string | number): Promise<void> {
 export function createConfigRepo(): ConfigRepository {
   return {
     // ── Reads (only active rows so soft-deleted items disappear from UI) ──
-    getStores: () => selectAllActive<Store>('stores'),
+    async getStores(scope: StoreScope = 'active') {
+      let query = sb().from('stores').select('*');
+      if (scope === 'active') query = query.eq('is_active', true);
+      if (scope === 'archived') query = query.eq('is_active', false);
+      const { data, error } = await query.order('name', { ascending: true });
+      if (error) throw new Error(`Failed to fetch stores: ${error.message}`);
+      return (data ?? []).map((r) => snakeToCamel(r) as unknown as Store);
+    },
     async getStoreByBookingToken(token: string): Promise<Store | null> {
       const { data, error } = await sb()
         .from('stores')
@@ -318,13 +326,19 @@ export function createConfigRepo(): ConfigRepository {
 
     async saveUser(user) {
       const row = camelToSnake(user) as Record<string, unknown>;
-      if (!row.pin_hash) delete row.pin_hash;
+      const hasPin = Boolean(row.pin_hash);
+      if (!hasPin) delete row.pin_hash;
       const clean = Object.fromEntries(
         Object.entries(row).filter(([, v]) => v !== undefined),
       ) as Record<string, unknown>;
-      const { error } = await sb()
-        .from('users')
-        .upsert(clean, { onConflict: 'username' });
+
+      // `pin_hash` is NOT NULL on `users`. Postgres validates NOT NULL constraints on the
+      // proposed row even when an upsert resolves to an UPDATE, so omitting pin_hash (editing
+      // a user without changing their PIN) makes .upsert() fail. Fall back to a plain UPDATE
+      // by id in that case; only new users / explicit PIN changes go through the upsert path.
+      const { error } = hasPin
+        ? await sb().from('users').upsert(clean, { onConflict: 'username' })
+        : await sb().from('users').update(clean).eq('id', user.id);
       if (error) {
         const msg = error.message;
         if (msg.includes('foreign key') || msg.includes('violates foreign key'))

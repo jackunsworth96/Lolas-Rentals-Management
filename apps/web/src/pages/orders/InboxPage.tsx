@@ -12,6 +12,7 @@ import { formatCurrency } from '../../utils/currency.js';
 import { extractPickupDate } from '../../utils/raw-order-payload.js';
 import { resolveSourceFromStore } from '@lolas/shared';
 import { useAuthStore } from '../../stores/auth-store.js';
+import { TransportBadge } from '../../components/orders/TransportBadge.js';
 
 type DateFilter = 'all' | 'today' | 'tomorrow';
 type PickupSort = 'none' | 'asc' | 'desc';
@@ -204,6 +205,11 @@ export default function InboxPage() {
           </div>
         </div>
       ),
+    },
+    {
+      key: 'transport_service',
+      header: 'Transport',
+      render: (r: RawOrder) => <TransportBadge service={r.transport_service} />,
     },
     {
       key: 'pickup',
@@ -452,6 +458,7 @@ export default function InboxPage() {
                       ★ Affiliate
                     </span>
                   )}
+                  {r.transport_service && <TransportBadge service={r.transport_service} />}
                 </div>
 
                 <div className="mb-2">

@@ -1,9 +1,11 @@
 import { useState, useCallback } from 'react';
 import { useExpenseCategories, useSaveExpenseCategory, useDeleteExpenseCategory, useChartOfAccounts, useStores } from '../../../api/config.js';
+import { useUIStore } from '../../../stores/ui-store.js';
 import { ConfigSection, type FieldDef } from '../ConfigSection.js';
 
 export function ExpenseCategoriesTab() {
-  const { data, isLoading } = useExpenseCategories();
+  const storeId = useUIStore((s) => s.selectedStoreId) ?? '';
+  const { data, isLoading } = useExpenseCategories(storeId || undefined);
   const { data: accounts } = useChartOfAccounts();
   const { data: stores = [] } = useStores();
   const save = useSaveExpenseCategory();

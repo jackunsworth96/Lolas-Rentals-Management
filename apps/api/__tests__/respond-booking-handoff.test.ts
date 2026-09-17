@@ -3,6 +3,7 @@ import request from 'supertest';
 
 const mocks = vi.hoisted(() => ({
   getSupabaseClient: vi.fn(),
+  bookingSessionUpsert: vi.fn(async () => ({ error: null })),
 }));
 
 vi.mock('../src/adapters/supabase/client.js', () => ({
@@ -80,12 +81,48 @@ function makeSupabaseForHandoff() {
       }
       if (table === 'booking_sessions') {
         return {
-          upsert: vi.fn(async () => ({ error: null })),
+          upsert: mocks.bookingSessionUpsert,
         };
       }
       throw new Error(`Unexpected table ${table}`);
     }),
     rpc: vi.fn(async () => ({ data: null, error: null })),
+  };
+}
+
+function makeSupabaseForAccommodationDirectory() {
+  const rows = [
+    {
+      name: 'Bravo Beach Resort Siargao',
+      aliases: ['Bravo', 'Bravo Resort'],
+      area: 'General Luna',
+      address: 'Poblacion 5, General Luna',
+      delivery_fee: 100,
+      collection_fee: 100,
+      is_partner: true,
+      delivery_available: true,
+    },
+    {
+      name: 'Muni Muni Villas Siargao',
+      aliases: ['Muni Muni Villa', 'Muni Muni Villas', 'Muni Muni'],
+      area: 'General Luna',
+      address: 'General Luna',
+      delivery_fee: 100,
+      collection_fee: 100,
+      is_partner: false,
+      delivery_available: true,
+    },
+  ];
+
+  return {
+    from: vi.fn((table: string) => {
+      if (table !== 'accommodation_directory') throw new Error(`Unexpected table ${table}`);
+      const query = {
+        select: vi.fn(() => query),
+        eq: vi.fn(async () => ({ data: rows, error: null })),
+      };
+      return query;
+    }),
   };
 }
 
@@ -298,6 +335,60 @@ function makeSupabaseForFutureDeliveryLookup() {
   };
 }
 
+function makeSupabaseForEmailBookingLookup() {
+  return {
+    from: vi.fn((table: string) => {
+      if (table === 'customers') {
+        const query = {
+          select: vi.fn(() => query),
+          ilike: vi.fn(() => query),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+        };
+        return query;
+      }
+      if (table === 'orders') {
+        const query = {
+          select: vi.fn(() => query),
+          in: vi.fn(() => query),
+        };
+        return query;
+      }
+      if (table === 'orders_raw') {
+        const query = {
+          select: vi.fn(() => query),
+          in: vi.fn(() => query),
+          ilike: vi.fn(() => query),
+          order: vi.fn(async () => ({
+            data: [{
+              order_reference: 'LR-0907-EMAIL',
+              status: 'unprocessed',
+              customer_name: 'Email Customer',
+              vehicle_model_id: 'beat',
+              pickup_datetime: '2026-09-10T09:00:00+08:00',
+              dropoff_datetime: '2026-09-12T09:00:00+08:00',
+              pickup_location_id: null,
+              dropoff_location_id: null,
+              pickup_location_address: null,
+              dropoff_location_address: null,
+              store_id: 'store-lolas',
+              web_quote_raw: 1070,
+            }],
+            error: null,
+          })),
+        };
+        return query;
+      }
+      if (table === 'vehicle_models') {
+        return queryResult({ data: { name: 'Honda Beat' }, error: null });
+      }
+      if (table === 'stores') {
+        return queryResult({ data: { name: "Lola's Rentals" }, error: null });
+      }
+      throw new Error(`Unexpected table ${table}`);
+    }),
+  };
+}
+
 function makeSupabaseForMultiVehicleExtension() {
   const items = [1, 2, 3].map((number) => ({
     id: `item-${number}`,
@@ -358,7 +449,10 @@ function makeSupabaseForMultiVehicleExtension() {
   };
 }
 
-function makeSupabaseForSingleVehicleExtensionWithPom(securityDeposit = 2000) {
+function makeSupabaseForSingleVehicleExtensionWithPom(
+  securityDeposit = 2000,
+  currentDropoffDatetime = '2026-07-26T16:45:00+08:00',
+) {
   return {
     from: vi.fn((table: string) => {
       if (table === 'orders') {
@@ -401,7 +495,7 @@ function makeSupabaseForSingleVehicleExtensionWithPom(securityDeposit = 2000) {
               id: 'item-pom',
               vehicle_id: 'vehicle-pom',
               pickup_datetime: '2026-07-20T16:45:00+08:00',
-              dropoff_datetime: '2026-07-26T16:45:00+08:00',
+              dropoff_datetime: currentDropoffDatetime,
               store_id: 'store-lolas',
               rental_days_count: 6,
               rental_rate: 465,
@@ -576,6 +670,60 @@ describe('Respond.io add-ons lookup', () => {
 });
 
 describe('Respond.io booking handoff', () => {
+  it('accepts an email that the customer can correct during confirmation', async () => {
+    mocks.getSupabaseClient.mockReturnValue(makeSupabaseForHandoff());
+
+    const res = await request(app)
+      .post('/api/public/respond/booking-handoff')
+      .set('X-API-Key', 'respond-test-key')
+      .send({
+        vehicleModelId: 'beat',
+        pickupDatetime: '2026-06-20T09:15:00+08:00',
+        dropoffDatetime: '2026-06-23T09:15:00+08:00',
+        pickupLocationId: 1,
+        dropoffLocationId: 2,
+        customerEmail: 'needs-correction',
+      });
+
+    expect(res.status).toBe(201);
+    expect(mocks.bookingSessionUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        renter_details: expect.objectContaining({ email: 'needs-correction' }),
+      }),
+      { onConflict: 'session_token' },
+    );
+  });
+
+  it('stores optional flat customer fields for the booking cart', async () => {
+    mocks.getSupabaseClient.mockReturnValue(makeSupabaseForHandoff());
+
+    const res = await request(app)
+      .post('/api/public/respond/booking-handoff')
+      .set('X-API-Key', 'respond-test-key')
+      .send({
+        vehicleModelId: 'beat',
+        pickupDatetime: '2026-06-20T09:15:00+08:00',
+        dropoffDatetime: '2026-06-23T09:15:00+08:00',
+        pickupLocationId: 1,
+        dropoffLocationId: 2,
+        customerFullName: ' Juan Dela Cruz ',
+        customerEmail: 'juan@example.com',
+        customerPhone: ' +639171234567 ',
+      });
+
+    expect(res.status).toBe(201);
+    expect(mocks.bookingSessionUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        renter_details: expect.objectContaining({
+          fullName: 'Juan Dela Cruz',
+          email: 'juan@example.com',
+          phone: '+639171234567',
+        }),
+      }),
+      { onConflict: 'session_token' },
+    );
+  });
+
   it('accepts location names from Respond.io and resolves their numeric IDs', async () => {
     mocks.getSupabaseClient.mockReturnValue(makeSupabaseForHandoff());
 
@@ -592,13 +740,15 @@ describe('Respond.io booking handoff', () => {
       });
 
     expect(res.status).toBe(201);
-    expect(res.body.pickup.id).toBe(2);
-    expect(res.body.dropoff.id).toBe(2);
-    expect(res.body.quote.pickupFee).toBe(0);
-    expect(res.body.quote.dropoffFee).toBe(150);
+    expect(res.body).toMatchObject({
+      sufficient_availability: true,
+      price_per_day: 500,
+      delivery_fee: 0,
+      collection_fee: 150,
+    });
   });
 
-  it('returns selected add-on lines and totals in the cart preview quote', async () => {
+  it('returns only compact AI-visible fields', async () => {
     mocks.getSupabaseClient.mockReturnValue(makeSupabaseForHandoff());
 
     const res = await request(app)
@@ -614,13 +764,15 @@ describe('Respond.io booking handoff', () => {
       });
 
     expect(res.status).toBe(201);
-    expect(res.body.quote.addons).toEqual([
-      { id: 10, name: 'Surf Rack', type: 'one_time', unitPrice: 250, total: 250 },
-      { id: 11, name: 'Peace of Mind Cover', type: 'per_day', unitPrice: 95, total: 285 },
+    expect(Object.keys(res.body).sort()).toEqual([
+      'cartUrl',
+      'collection_fee',
+      'delivery_fee',
+      'message',
+      'price_per_day',
+      'sufficient_availability',
     ]);
-    expect(res.body.quote.addonsTotal).toBe(535);
-    expect(res.body.quote.grandTotal).toBe(2285);
-    expect(res.body.quote.securityDeposit).toBe(1000);
+    expect(JSON.stringify(res.body).length).toBeLessThan(4000);
     expect(res.body.cartUrl).toContain('/book/basket?sessionToken=');
   });
 
@@ -640,8 +792,6 @@ describe('Respond.io booking handoff', () => {
       });
 
     expect(res.status).toBe(201);
-    expect(res.body.quote.addons).toEqual([]);
-    expect(res.body.quote.addonsTotal).toBe(0);
     expect(res.body.cartUrl).toContain('/book/basket?sessionToken=');
   });
 
@@ -661,10 +811,7 @@ describe('Respond.io booking handoff', () => {
       });
 
     expect(res.status).toBe(201);
-    expect(res.body.quote.addons).toEqual([
-      { id: 10, name: 'Surf Rack', type: 'one_time', unitPrice: 250, total: 250 },
-    ]);
-    expect(res.body.quote.addonsTotal).toBe(250);
+    expect(res.body.sufficient_availability).toBe(true);
   });
 
   it('rejects invalid selected add-ons through quote validation', async () => {
@@ -684,6 +831,57 @@ describe('Respond.io booking handoff', () => {
 
     expect(res.status).toBe(422);
     expect(res.body.error.message).toContain('Add-on 999 not found');
+  });
+});
+
+describe('Respond.io accommodation directory', () => {
+  it('matches aliases and returns a compact place result', async () => {
+    mocks.getSupabaseClient.mockReturnValue(makeSupabaseForAccommodationDirectory());
+
+    const res = await request(app)
+      .get('/api/public/respond/accommodation')
+      .set('X-API-Key', 'respond-test-key')
+      .query({ search: 'bravo resort' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      found: true,
+      name: 'Bravo Beach Resort Siargao',
+      area: 'General Luna',
+      delivery_fee: 0,
+      collection_fee: 0,
+      is_partner: true,
+    });
+    expect(JSON.stringify(res.body).length).toBeLessThan(4000);
+  });
+
+  it('resolves Muni Muni Villa to its General Luna record', async () => {
+    mocks.getSupabaseClient.mockReturnValue(makeSupabaseForAccommodationDirectory());
+
+    const res = await request(app)
+      .get('/api/public/respond/accommodation')
+      .set('X-API-Key', 'respond-test-key')
+      .query({ search: 'muni muni villa' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      found: true,
+      name: 'Muni Muni Villas Siargao',
+      area: 'General Luna',
+      delivery_fee: 100,
+    });
+  });
+
+  it('returns a short message when no place matches', async () => {
+    mocks.getSupabaseClient.mockReturnValue(makeSupabaseForAccommodationDirectory());
+
+    const res = await request(app)
+      .get('/api/public/respond/accommodation')
+      .set('X-API-Key', 'respond-test-key')
+      .query({ search: 'definitely not a real villa' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ found: false, message: 'Place not found' });
   });
 });
 
@@ -778,6 +976,73 @@ describe('Respond.io international phone extension lookup', () => {
 });
 
 describe('Respond.io future booking context', () => {
+  it('accepts an email in the generic query parameter', async () => {
+    mocks.getSupabaseClient.mockReturnValue(makeSupabaseForEmailBookingLookup());
+
+    const res = await request(app)
+      .get('/api/public/respond/booking')
+      .set('X-API-Key', 'respond-test-key')
+      .query({ query: 'Customer@Example.com' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      found: true,
+      booking: {
+        reference: 'LR-0907-EMAIL',
+        customer_name: 'Email Customer',
+      },
+    });
+  });
+
+  it('returns a useful validation error when no lookup value is supplied', async () => {
+    const res = await request(app)
+      .get('/api/public/respond/booking')
+      .set('X-API-Key', 'respond-test-key');
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      success: false,
+      error: {
+        code: 'INVALID_LOOKUP',
+        message: 'Provide a booking reference, email, or phone number.',
+      },
+    });
+  });
+
+  it('returns a retryable error when the booking store is unavailable', async () => {
+    mocks.getSupabaseClient.mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === 'orders') {
+          const query = { select: vi.fn(() => query), in: vi.fn(() => query) };
+          return query;
+        }
+        if (table === 'customers') {
+          const query = {
+            select: vi.fn(() => query),
+            ilike: vi.fn(() => query),
+            limit: vi.fn(async () => ({ data: null, error: { message: 'connection failed' } })),
+          };
+          return query;
+        }
+        throw new Error(`Unexpected table ${table}`);
+      }),
+    });
+
+    const res = await request(app)
+      .get('/api/public/respond/booking')
+      .set('X-API-Key', 'respond-test-key')
+      .query({ email: 'customer@example.com' });
+
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({
+      success: false,
+      error: {
+        code: 'BOOKING_LOOKUP_FAILED',
+        message: 'Booking lookup is temporarily unavailable. Please try again or hand off to the team.',
+      },
+    });
+  });
+
   it('returns multi-vehicle delivery details for a confirmed booking found by phone', async () => {
     mocks.getSupabaseClient.mockReturnValue(makeSupabaseForFutureDeliveryLookup());
 
@@ -825,12 +1090,18 @@ describe('Respond.io availability alternatives', () => {
       });
 
     expect(res.status).toBe(200);
-    expect(res.body.available[0]).toMatchObject({
-      model_id: 'tuktuk',
-      sufficient_availability: false,
-      available_until: '2026-08-03T10:15:00+08:00',
+    expect(res.body).toEqual({
+      available: [{
+        model_id: 'tuktuk',
+        model: 'TukTuk',
+        available_count: 0,
+        sufficient_availability: false,
+        hold_expires_at: null,
+        available_until: '2026-08-03T10:15:00+08:00',
+      }],
+      has_availability: false,
     });
-    expect(res.body.guidance).toContain('offer that confirmed shorter window first');
+    expect(JSON.stringify(res.body).length).toBeLessThan(4000);
     expect(app.locals.deps.bookingPort.checkAvailability).toHaveBeenCalledWith(expect.objectContaining({
       requestedQuantity: 1,
     }));
@@ -896,5 +1167,50 @@ describe('Respond.io recurring add-on extension pricing', () => {
     });
     expect(res.body.payment_guidance).toContain('settle at the store');
     expect(res.body.payment_guidance).toContain('Wise payment link');
+  });
+
+  it('includes the one-time 9PM return charge in the extension balance', async () => {
+    mocks.getSupabaseClient.mockReturnValue(makeSupabaseForSingleVehicleExtensionWithPom(
+      2000,
+      '2026-07-26T21:00:00+08:00',
+    ));
+    configRepo.getAddons.mockResolvedValue([
+      {
+        id: 13,
+        name: '9PM Return',
+        addonType: 'one_time',
+        pricePerDay: 0,
+        priceOneTime: 100,
+        isActive: true,
+        mutualExclusivityGroup: null,
+      },
+    ]);
+    configRepo.getModelPricing.mockResolvedValue([
+      { minDays: 1, maxDays: 99, dailyRate: 465 },
+    ]);
+
+    const res = await request(app)
+      .get('/api/public/respond/extension/preview')
+      .set('X-API-Key', 'respond-test-key')
+      .query({
+        ref: 'LR-0728-POM1',
+        newDropoffDatetime: '2026-07-28T21:00:00+08:00',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      success: true,
+      rental_extension_total: 930,
+      recurring_addons_total: 190,
+      one_time_addons_total: 100,
+      extension_total: 1220,
+      one_time_addons: [{
+        id: 13,
+        name: '9PM Return',
+        amount: 100,
+      }],
+    });
+    expect(res.body.customer_message).toContain('PHP 1,220');
+    expect(res.body.customer_message).toContain('9PM Return: PHP 100');
   });
 });

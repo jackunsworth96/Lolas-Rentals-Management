@@ -14,6 +14,7 @@ import { sendTelegramAlert, sendTelegramAlertPaidOrdersStaggered, getTelegramCha
 import { resolveDirectBookingTerms, rentalDaysBetween, roundMoney, sameInstant, sameMoney, type DirectBookingTermsRow } from '../lib/direct-booking-terms.js';
 import { isFleetStatusRentable } from '../lib/fleet-status.js';
 import { findLiveXenditSessionForRawOrder, paymentInProgressError } from '../lib/xendit-session-lock.js';
+import { deriveTransportService } from '../lib/transport-service.js';
 
 /** GET list / GET :id — explicit columns; excludes payload (V10-11). */
 const ORDERS_RAW_INBOX_COLUMNS =
@@ -864,8 +865,28 @@ router.get('/', requirePermission(Permission.ViewInbox), async (req, res, next) 
     const { data, error, count } = await query;
     if (error) throw new Error(error.message);
 
+    const rawOrders = data ?? [];
+    const bookedLocationIds = [
+      ...new Set(
+        rawOrders
+          .flatMap((order) => [order.pickup_location_id, order.dropoff_location_id])
+          .filter((id): id is number => id !== null && id !== undefined),
+      ),
+    ];
+    const { data: transportLocations, error: locationsError } = bookedLocationIds.length > 0
+      ? await supabase
+          .from('locations')
+          .select('id, name, location_type, delivery_cost, collection_cost')
+          .in('id', bookedLocationIds)
+      : { data: [], error: null };
+    if (locationsError) throw new Error(locationsError.message);
+
+    const inboxOrders = rawOrders.map((order) => ({
+      ...order,
+      transport_service: deriveTransportService([order], transportLocations ?? []),
+    }));
     const enrichedRows = await withXenditSessionSummaries(
-      await withOnlinePaymentSummaries((data ?? []) as RawInboxRow[]),
+      await withOnlinePaymentSummaries(inboxOrders as RawInboxRow[]),
     );
 
     res.json({
@@ -1539,7 +1560,7 @@ router.post('/:id/collect-payment', requirePermission(Permission.EditOrders), as
 });
 
 const cancelBodySchema = z.object({
-  reason: z.string().optional(),
+  reason: z.string().trim().max(500).optional(),
 });
 
 router.patch('/:id/cancel', requirePermission(Permission.CancelOrders), async (req, res, next) => {
@@ -1557,7 +1578,7 @@ router.patch('/:id/cancel', requirePermission(Permission.CancelOrders), async (r
 
     const { data: rawOrder, error: rawOrderError } = await supabase
       .from('orders_raw')
-      .select('store_id')
+      .select('store_id, partner_ref')
       .eq('id', id)
       .maybeSingle();
     if (rawOrderError) throw new Error(`Raw order lookup failed: ${rawOrderError.message}`);
@@ -1572,6 +1593,16 @@ router.patch('/:id/cancel', requirePermission(Permission.CancelOrders), async (r
 
     if (await findLiveXenditSessionForRawOrder(id)) {
       res.status(409).json(paymentInProgressError());
+      return;
+    }
+    if (rawOrder.partner_ref && !parsed.data.reason) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'CANCELLATION_REASON_REQUIRED',
+          message: 'A cancellation reason is required for affiliate bookings.',
+        },
+      });
       return;
     }
 

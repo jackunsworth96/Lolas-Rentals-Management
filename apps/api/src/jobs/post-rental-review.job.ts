@@ -6,9 +6,11 @@
  * (Asia/Manila date boundaries) and sends a WhatsApp template review request
  * via the respond.io outbound API.
  *
- * Sources:
- *   1. orders_raw  — web / direct bookings (status = 'processed')
- *   2. orders + order_items + customers — staff-created bookings
+ * Source: orders + order_items + customers.
+ *
+ * Do not use orders_raw.status = 'processed' as a completion signal. That row
+ * stays processed after activation, including while the authoritative order is
+ * still active or has had its return time extended.
  *
  * Deduplication: post_rental_review_log prevents double-sending if
  * the job is restarted or runs more than once on the same day.
@@ -78,20 +80,9 @@ export async function runPostRentalReviewJob(): Promise<void> {
   const windowStart = `${yesterdayPHT}T00:00:00+08:00`;
   const windowEnd   = `${yesterdayPHT}T23:59:59.999+08:00`;
 
-  // ── Query 1: orders_raw ───────────────────────────────────────────────────
-
-  const { data: rawRows, error: rawErr } = await sb
-    .from('orders_raw')
-    .select('order_reference, customer_name, customer_email, customer_mobile')
-    .eq('status', 'processed')
-    .gte('dropoff_datetime', windowStart)
-    .lte('dropoff_datetime', windowEnd);
-
-  if (rawErr) {
-    logger.warn({ error: rawErr.message }, '[post-rental-review] orders_raw query failed');
-  }
-
-  // ── Query 2: orders + order_items + customers ─────────────────────────────
+  // `orders` is authoritative after activation. In particular, the current
+  // order_items.dropoff_datetime reflects extensions while the processed raw
+  // row may still contain the original return time.
 
   const { data: itemRows, error: itemErr } = await sb
     .from('order_items')
@@ -109,22 +100,6 @@ export async function runPostRentalReviewJob(): Promise<void> {
   // ── Merge results ─────────────────────────────────────────────────────────
 
   const candidates: ReviewCandidate[] = [];
-
-  for (const row of rawRows ?? []) {
-    const name   = (row.customer_name as string | null)?.trim();
-    const mobile = (row.customer_mobile as string | null)?.trim();
-    const email  = (row.customer_email as string | null)?.trim() || null;
-    const ref    = row.order_reference as string | null;
-    if (!name || !mobile || !ref) continue;
-    candidates.push({
-      bookingReference: ref,
-      customerName: name,
-      customerMobile: mobile,
-      customerEmail: email,
-      customerId: null,
-      whatsappReviewOptOut: false,
-    });
-  }
 
   for (const row of itemRows ?? []) {
     const order = Array.isArray(row.orders) ? row.orders[0] : row.orders;

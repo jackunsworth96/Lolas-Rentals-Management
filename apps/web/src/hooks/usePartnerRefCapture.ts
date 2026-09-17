@@ -25,9 +25,18 @@ export function usePartnerRefCapture(): UsePartnerRefCaptureResult {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    const previousRef = getPartnerRef();
     const captured = capturePartnerRefFromUrl();
     const activeRef = captured ?? getPartnerRef();
     setRef(activeRef);
+
+    // A tab can enter a second partner's link after previously browsing under
+    // another referral. Never expose the prior partner's cached defaults while
+    // the new lookup is in flight.
+    if (captured && previousRef && captured !== previousRef) {
+      setBenefit(null);
+      setStoredPartnerBenefit(null);
+    }
 
     if (!activeRef) {
       setBenefit(null);
@@ -36,7 +45,9 @@ export function usePartnerRefCapture(): UsePartnerRefCaptureResult {
     }
 
     // If we already have a cached benefit for the same ref skip the fetch.
-    const cached = getStoredPartnerBenefit();
+    const cached = captured && previousRef && captured !== previousRef
+      ? null
+      : getStoredPartnerBenefit();
     if (cached && cached.name) {
       setBenefit(cached);
     }

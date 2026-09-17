@@ -47,8 +47,6 @@ export default function PawCardPage() {
     ?? 'Member';
 
   const handleLogged = () => { qc.invalidateQueries({ queryKey: ['paw-card'] }); };
-  const customerIdForSubmit = pawAccess?.customerId ?? pawAccess?.email ?? '';
-
   return (
     <PageLayout title={t('pawCard.pageTitle')} showFloralLeft={false} showFloralRight={false} fullBleed>
       <SEO
@@ -199,9 +197,7 @@ export default function PawCardPage() {
                 <BorderGlow backgroundColor="#ffffff" borderRadius={16} glowIntensity={0.8} className="shadow-lg">
                   <div className="p-8">
                     <PawCardSavingsForm
-                      accessEmail={pawAccess.email}
-                      customerIdForSubmit={customerIdForSubmit}
-                      displayFullName={displayFullName}
+                      accessToken={pawAccess.accessToken}
                       onLogged={handleLogged}
                       preselectedEstablishmentId={preselectedEstablishmentId ?? undefined}
                     />

@@ -26,6 +26,8 @@ process.env.SUPABASE_URL = 'https://example.supabase.co';
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-key';
 
 const { staffExtendRoutes } = await import('../src/routes/public-extend.js');
+const { calculateExtensionDiscount } = await import('../src/routes/public-extend-helpers.js');
+const { StaffExtendConfirmSchema } = await import('@lolas/shared');
 
 function extensionMessageLogClient() {
   const query = {
@@ -58,7 +60,7 @@ function confirmHandler() {
   return handler;
 }
 
-async function invokeConfirm() {
+async function invokeConfirm(body: Record<string, unknown> = {}) {
   const json = vi.fn();
   const next = vi.fn();
   await confirmHandler()(
@@ -68,6 +70,7 @@ async function invokeConfirm() {
         email: 'customer@example.com',
         newDropoffDatetime: '2026-07-28T11:15:00+08:00',
         paymentStatus: 'unpaid',
+        ...body,
       },
       app: { locals: { deps: { bookingPort: {}, configRepo: {} } } },
     },
@@ -150,5 +153,57 @@ describe('staff extension route resolution', () => {
         extensionCost: 2675,
       },
     });
+  });
+
+  it('passes a staff discount to the extension resolver', async () => {
+    mocks.resolveExtensionForActive.mockResolvedValue({ kind: 'not_found' });
+    mocks.resolveExtensionForRaw.mockResolvedValue({ kind: 'not_found' });
+
+    await invokeConfirm({ discountType: 'percentage', discountValue: 15 });
+
+    expect(mocks.resolveExtensionForActive).toHaveBeenCalledWith(expect.objectContaining({
+      discountType: 'percentage',
+      discountValue: 15,
+    }));
+    expect(mocks.resolveExtensionForRaw).toHaveBeenCalledWith(expect.objectContaining({
+      discountType: 'percentage',
+      discountValue: 15,
+    }));
+  });
+});
+
+describe('extension discount calculation', () => {
+  it('calculates percentage discounts to currency precision', () => {
+    expect(calculateExtensionDiscount(1120, 'percentage', 15)).toBe(168);
+    expect(calculateExtensionDiscount(999.99, 'percentage', 10)).toBe(100);
+  });
+
+  it('caps percentage and fixed discounts at the extension subtotal', () => {
+    expect(calculateExtensionDiscount(500, 'percentage', 100)).toBe(500);
+    expect(calculateExtensionDiscount(500, 'fixed', 750)).toBe(500);
+  });
+
+  it('does not discount without a complete positive discount', () => {
+    expect(calculateExtensionDiscount(500, undefined, 10)).toBe(0);
+    expect(calculateExtensionDiscount(500, 'fixed', 0)).toBe(0);
+  });
+
+  it('validates complete staff discounts and caps percentages at 100', () => {
+    const base = {
+      orderReference: 'LR-0720-2C2D',
+      email: 'customer@example.com',
+      newDropoffDatetime: '2026-07-28T11:15:00+08:00',
+    };
+    expect(StaffExtendConfirmSchema.safeParse({
+      ...base,
+      discountType: 'fixed',
+      discountValue: 250,
+    }).success).toBe(true);
+    expect(StaffExtendConfirmSchema.safeParse({ ...base, discountType: 'fixed' }).success).toBe(false);
+    expect(StaffExtendConfirmSchema.safeParse({
+      ...base,
+      discountType: 'percentage',
+      discountValue: 101,
+    }).success).toBe(false);
   });
 });

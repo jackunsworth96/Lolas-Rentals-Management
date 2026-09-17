@@ -46,9 +46,7 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const STORE_LOLAS_ID = 'store-lolas';
-const STORE_BASS_ID = 'store-bass';
 const STORE_LOLAS_BOOKING_TOKEN = 'local-store-lolas';
-const STORE_BASS_BOOKING_TOKEN = 'local-store-bass';
 const ROLE_ADMIN_ID = 'role-admin';
 const ROLE_STAFF_ID = 'role-staff';
 const EMPLOYEE_ADMIN_ID = 'emp-admin-1';
@@ -89,19 +87,12 @@ async function main() {
       is_active: true,
       booking_token: STORE_LOLAS_BOOKING_TOKEN,
     },
-    {
-      id: STORE_BASS_ID,
-      name: 'Bass Bikes',
-      location: 'General Luna, Siargao',
-      is_active: true,
-      booking_token: STORE_BASS_BOOKING_TOKEN,
-    },
   ];
   const { error: storeErr } = await supabase.from('stores').upsert(stores, { onConflict: 'id' });
   if (storeErr) {
     console.error('Stores:', storeErr.message);
   } else {
-    console.log("✓ Stores: Lola's Rentals, Bass Bikes");
+    console.log("✓ Store: Lola's Rentals");
   }
 
   const { error: rolesErr } = await supabase.from('roles').upsert(
@@ -161,7 +152,7 @@ async function main() {
     },
     {
       id: EMPLOYEE_STAFF_ID,
-      store_id: STORE_BASS_ID,
+      store_id: STORE_LOLAS_ID,
       full_name: 'Test Staff',
       role: 'Staff',
       status: 'Active',

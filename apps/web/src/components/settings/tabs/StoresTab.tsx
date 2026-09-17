@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   useStores,
   useSaveStore,
@@ -7,6 +8,7 @@ import {
   useRegenerateBookingToken,
 } from '../../../api/config.js';
 import { ConfigSection, type FieldDef } from '../ConfigSection.js';
+import { useUIStore } from '../../../stores/ui-store.js';
 
 interface StoreRow {
   id: string;
@@ -150,8 +152,11 @@ const fields: FieldDef[] = [
 
 export function StoresTab() {
   const { data, isLoading } = useStores();
+  const { data: archivedData = [], isLoading: archivedLoading } = useStores({ scope: 'archived' });
   const save = useSaveStore();
   const del = useDeleteStore();
+  const enterArchiveMode = useUIStore((s) => s.enterArchiveMode);
+  const navigate = useNavigate();
 
   const storeList = ((data ?? []) as Record<string, unknown>[]).map(rowFromApi);
 
@@ -169,6 +174,38 @@ export function StoresTab() {
         isSaving={save.isPending}
         saveError={save.error as Error | null}
       />
+      <section className="mt-8 border-t border-gray-200 pt-6">
+        <div className="mb-3">
+          <h3 className="text-sm font-semibold text-gray-900">Archived stores</h3>
+          <p className="mt-1 text-sm text-gray-500">Historical records are available in a read-only workspace.</p>
+        </div>
+        {archivedLoading ? (
+          <p className="text-sm text-gray-500">Loading archived stores…</p>
+        ) : archivedData.length === 0 ? (
+          <p className="text-sm text-gray-500">No archived stores.</p>
+        ) : (
+          <div className="space-y-2">
+            {archivedData.map((store) => (
+              <div key={store.id} className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                <div>
+                  <p className="font-medium text-gray-900">{store.name}</p>
+                  <p className="text-xs text-gray-500">{store.id}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    enterArchiveMode(store.id, store.name);
+                    navigate('/orders/completed');
+                  }}
+                  className="rounded-md border border-amber-400 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-600"
+                >
+                  View archive
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </>
   );
 }

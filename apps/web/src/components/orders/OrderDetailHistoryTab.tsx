@@ -26,6 +26,7 @@ export function OrderDetailHistoryTab({ history }: OrderDetailHistoryTabProps) {
             evt.type === 'settled' ? 'bg-teal-brand' :
             evt.type === 'activated' ? 'bg-blue-500' :
             evt.type === 'accident' ? 'bg-red-600' :
+            evt.type === 'cancelled' ? 'bg-red-600' :
             'bg-gray-400';
 
           return (

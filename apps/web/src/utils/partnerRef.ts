@@ -3,6 +3,7 @@ import { partnerSlugFromHost } from './partnerHost.js';
 
 const REF_STORAGE_KEY = 'lolaPartnerRef';
 const BENEFIT_STORAGE_KEY = 'lolaPartnerBenefit';
+const LOCATION_DEFAULT_HANDLED_KEY_PREFIX = 'lolaPartnerLocationDefaultHandled:';
 
 /**
  * Reads the ?ref= query param from the current URL.
@@ -64,11 +65,34 @@ export function setStoredPartnerBenefit(benefit: PublicPartnerBenefit | null): v
 }
 
 /**
+ * The reserve page uses this session-scoped marker so an automatic partner
+ * location default is only considered once. This prevents a later remount
+ * from replacing a location the guest deliberately changed.
+ */
+export function hasHandledPartnerLocationDefault(ref: string): boolean {
+  try {
+    return sessionStorage.getItem(`${LOCATION_DEFAULT_HANDLED_KEY_PREFIX}${ref}`) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function markPartnerLocationDefaultHandled(ref: string): void {
+  try {
+    sessionStorage.setItem(`${LOCATION_DEFAULT_HANDLED_KEY_PREFIX}${ref}`, 'true');
+  } catch {
+    // sessionStorage may be unavailable — safe to ignore
+  }
+}
+
+/**
  * Clears the stored partner ref + cached benefit after a successful booking
  * submission (or whenever the funnel restarts).
  */
 export function clearPartnerRef(): void {
   try {
+    const ref = sessionStorage.getItem(REF_STORAGE_KEY);
+    if (ref) sessionStorage.removeItem(`${LOCATION_DEFAULT_HANDLED_KEY_PREFIX}${ref}`);
     sessionStorage.removeItem(REF_STORAGE_KEY);
     sessionStorage.removeItem(BENEFIT_STORAGE_KEY);
   } catch {
