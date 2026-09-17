@@ -41,6 +41,16 @@ export interface NgoTotal {
   totalDonated: number;
 }
 
+export interface CharityImpact {
+  openingBalance: number;
+  totalRaised: number;
+  totalDonated: number;
+  pendingPayout: number;
+  bookingContributions: number;
+  annualCap: number;
+  annualDonated: number;
+}
+
 export interface UpsertArticlePayload {
   slug?: string;
   title: string;
@@ -79,6 +89,15 @@ export function usePublicNgoTotals() {
   return useQuery<NgoTotal[]>({
     queryKey: ['public', 'impact', 'ngo-totals'],
     queryFn: () => api.get<NgoTotal[]>('/public/impact/ngo-totals'),
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** Single source for the donation counter shown across the public site and backoffice. */
+export function useCharityImpact() {
+  return useQuery<CharityImpact>({
+    queryKey: ['charity-impact'],
+    queryFn: () => api.get<CharityImpact>('/public/booking/charity-impact'),
     staleTime: 5 * 60_000,
   });
 }

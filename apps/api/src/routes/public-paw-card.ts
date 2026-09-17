@@ -1,9 +1,45 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import rateLimit from 'express-rate-limit';
+import multer from 'multer';
+import { createHash, randomBytes } from 'node:crypto';
 import { validateBody, validateQuery } from '../middleware/validate.js';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { lookupPawCardPublicAccess } from '../use-cases/paw-card/lookup-paw-card-public.js';
+import {
+  authenticatePawCardAccess,
+  generatePawCardAccessToken,
+} from '../auth/paw-card-access.js';
+
+const ALLOWED_RECEIPT_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+const MAX_RECEIPT_SIZE = 5 * 1024 * 1024;
+
+const receiptUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_RECEIPT_SIZE },
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_RECEIPT_MIME.includes(file.mimetype)) cb(null, true);
+    else cb(new Error('Invalid file type. Allowed: JPEG, PNG, WebP, HEIC'));
+  },
+});
+
+const writeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  message: { success: false, error: { code: 'RATE_LIMIT', message: 'Too many Paw Card requests' } },
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+});
+
+function receiptOwnerKey(email: string): string {
+  return createHash('sha256').update(email.trim().toLowerCase()).digest('hex').slice(0, 24);
+}
+
+async function resolvePrimaryStoreId(): Promise<string> {
+  const sb = getSupabaseClient();
+  const { data } = await sb.from('stores').select('id').order('name').limit(1).single();
+  return data?.id ?? 'store-lolas';
+}
 
 const lookupLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -35,11 +71,115 @@ router.post('/lookup', lookupLimiter, validateBody(LookupBodySchema), async (req
       { customerRepo: req.app.locals.deps.customerRepo },
       { email },
     );
-    res.json({ success: true, data });
+    if (!data.found) {
+      res.json({ success: true, data });
+      return;
+    }
+    const normalizedEmail = email.trim().toLowerCase();
+    const accessToken = generatePawCardAccessToken({
+      email: normalizedEmail,
+      customerId: data.customerId,
+      customerName: data.customerName,
+    });
+    res.json({ success: true, data: { ...data, accessToken } });
   } catch (err) {
     next(err);
   }
 });
+
+const PublicSubmitSchema = z.object({
+  establishmentId: z.string().trim().min(1),
+  discountAmount: z.number().positive(),
+  visitDate: z.string().trim().min(1),
+  receiptPath: z.string().trim().min(1).optional(),
+  numberOfPeople: z.number().int().positive().optional(),
+});
+
+router.post(
+  '/upload-receipt',
+  writeLimiter,
+  authenticatePawCardAccess,
+  (req, res, next) => {
+    receiptUpload.single('receipt')(req, res, async (err) => {
+      if (err) {
+        const message = err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE'
+          ? 'File too large. Maximum size is 5 MB.'
+          : err.message || 'Upload failed';
+        res.status(400).json({ success: false, error: { code: 'UPLOAD_ERROR', message } });
+        return;
+      }
+      if (!req.file) {
+        res.status(400).json({ success: false, error: { code: 'UPLOAD_ERROR', message: 'No file provided' } });
+        return;
+      }
+
+      try {
+        const owner = receiptOwnerKey(req.pawCardAccess!.email);
+        const originalExt = req.file.originalname.split('.').pop()?.toLowerCase();
+        const ext = originalExt && /^[a-z0-9]{2,5}$/.test(originalExt) ? originalExt : 'jpg';
+        const receiptPath = `${owner}/${Date.now()}-${randomBytes(8).toString('hex')}.${ext}`;
+        const sb = getSupabaseClient();
+        const { error: uploadError } = await sb.storage
+          .from('paw-card-receipts')
+          .upload(receiptPath, req.file.buffer, {
+            contentType: req.file.mimetype,
+            upsert: false,
+          });
+        if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
+        res.json({ success: true, data: { receiptPath } });
+      } catch (uploadError) {
+        next(uploadError);
+      }
+    });
+  },
+);
+
+router.post(
+  '/submit',
+  writeLimiter,
+  authenticatePawCardAccess,
+  validateBody(PublicSubmitSchema),
+  async (req, res, next) => {
+    try {
+      const access = req.pawCardAccess!;
+      const { establishmentId, discountAmount, visitDate, receiptPath, numberOfPeople } = req.body;
+      let receiptUrl: string | undefined;
+      if (receiptPath) {
+        const expectedPrefix = `${receiptOwnerKey(access.email)}/`;
+        if (!receiptPath.startsWith(expectedPrefix) || receiptPath.includes('..')) {
+          res.status(403).json({
+            success: false,
+            error: { code: 'FORBIDDEN', message: 'Receipt does not belong to this Paw Card session' },
+          });
+          return;
+        }
+        receiptUrl = getSupabaseClient().storage
+          .from('paw-card-receipts')
+          .getPublicUrl(receiptPath).data.publicUrl;
+      }
+
+      const { logSavings } = await import('../use-cases/paw-card/log-savings.js');
+      const result = await logSavings(
+        {
+          customerId: access.customerId ?? access.email,
+          email: access.email,
+          fullName: access.customerName ?? access.email.split('@')[0] ?? 'Member',
+          establishmentId,
+          discountAmount,
+          visitDate,
+          receiptUrl,
+          numberOfPeople,
+          storeId: await resolvePrimaryStoreId(),
+          submittedBy: 'public',
+        },
+        { pawCard: req.app.locals.deps.pawCardPort },
+      );
+      res.status(201).json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 const EntriesQuerySchema = z.object({
   email: z.string().email(),

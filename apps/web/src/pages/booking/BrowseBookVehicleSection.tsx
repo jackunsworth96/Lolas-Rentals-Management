@@ -98,18 +98,6 @@ export function BrowseBookVehicleSection({
                 </a>
                 .
               </p>
-              <p className="mt-4 text-sm text-charcoal-brand/70">
-                You could also check our sister store{' '}
-                <a
-                  href="https://www.bassbikes.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-bold text-teal-brand underline"
-                >
-                  Bass Bikes
-                </a>
-                {' '}for availability.
-              </p>
             </div>
           ) : (
             <>
@@ -134,18 +122,6 @@ export function BrowseBookVehicleSection({
                       ))}
                     </div>
                   )}
-                  <p className="text-sm text-charcoal-brand/70">
-                    You could also check our sister store{' '}
-                    <a
-                      href="https://www.bassbikes.com"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-bold text-teal-brand underline underline-offset-2"
-                    >
-                      Bass Bikes
-                    </a>
-                    {' '}for availability.
-                  </p>
                 </div>
               )}
               <div className="flex flex-wrap justify-center gap-8">

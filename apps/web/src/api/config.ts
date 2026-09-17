@@ -1,16 +1,25 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './client.js';
 import { COMPANY_STORE_ID } from '@lolas/shared';
+import { useUIStore } from '../stores/ui-store.js';
 
 // ── Query hooks ──
 
-export function useStores(opts?: { includeCompany?: boolean }) {
+export type StoreScope = 'active' | 'archived' | 'all';
+
+export function useStores(opts?: { includeCompany?: boolean; scope?: StoreScope }) {
   const includeCompany = !!opts?.includeCompany;
+  const archiveMode = useUIStore((s) => s.archiveMode);
+  const scope = opts?.scope ?? (archiveMode ? 'archived' : 'active');
+  const fetchScope = scope === 'archived' && includeCompany ? 'all' : scope;
   return useQuery({
-    queryKey: ['config', 'stores', includeCompany ? 'with-company' : 'operational'],
+    queryKey: ['config', 'stores', scope, includeCompany ? 'with-company' : 'operational'],
     queryFn: async () => {
-      const rows = await api.get<Array<{ id: string; name: string }>>('/config/stores');
+      const rows = await api.get<Array<{ id: string; name: string; isActive?: boolean }>>(`/config/stores?scope=${fetchScope}`);
       if (!Array.isArray(rows)) return [];
+      if (scope === 'archived' && includeCompany) {
+        return rows.filter((s) => s.id === COMPANY_STORE_ID || s.isActive === false);
+      }
       if (includeCompany) return rows;
       return rows.filter((s) => s.id !== COMPANY_STORE_ID);
     },
@@ -21,6 +30,24 @@ export function useAddons(storeId: string) {
 }
 export function useLocations(storeId: string) {
   return useQuery({ queryKey: ['config', 'locations', storeId], queryFn: () => api.get(`/config/locations?storeId=${storeId}`), enabled: !!storeId });
+}
+export interface AccommodationDirectoryEntry {
+  id: number;
+  name: string;
+  aliases: string[];
+  area: string;
+  address: string | null;
+  deliveryFee: number | null;
+  collectionFee: number | null;
+  isPartner: boolean;
+  deliveryAvailable: boolean;
+  isActive: boolean;
+}
+export function useAccommodationDirectory() {
+  return useQuery<AccommodationDirectoryEntry[]>({
+    queryKey: ['config', 'accommodation-directory'],
+    queryFn: () => api.get('/config/accommodation-directory'),
+  });
 }
 export function usePaymentMethods() {
   return useQuery({ queryKey: ['config', 'payment-methods'], queryFn: () => api.get('/config/payment-methods') });
@@ -37,8 +64,15 @@ export function useStorePricing(storeId: string) {
 export function useFleetStatuses() {
   return useQuery({ queryKey: ['config', 'fleet-statuses'], queryFn: () => api.get('/config/fleet-statuses') });
 }
-export function useExpenseCategories() {
-  return useQuery({ queryKey: ['config', 'expense-categories'], queryFn: () => api.get('/config/expense-categories') });
+export function useExpenseCategories(storeId?: string) {
+  return useQuery({
+    queryKey: ['config', 'expense-categories', storeId ?? 'auto'],
+    queryFn: () => {
+      const qs = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+      return api.get(`/config/expense-categories${qs}`);
+    },
+    enabled: storeId === undefined || !!storeId,
+  });
 }
 export function useTransferRoutes(storeId: string) {
   return useQuery({ queryKey: ['config', 'transfer-routes', storeId], queryFn: () => api.get(`/config/transfer-routes?storeId=${storeId}`), enabled: !!storeId });
@@ -199,6 +233,8 @@ export function useDeleteAddon() { return useDelete('addons', ['addons']); }
 
 export function useSaveLocation() { return useSave('locations', ['locations']); }
 export function useDeleteLocation() { return useDelete('locations', ['locations']); }
+export function useSaveAccommodationDirectoryEntry() { return useSave('accommodation-directory', ['accommodation-directory']); }
+export function useDeleteAccommodationDirectoryEntry() { return useDelete('accommodation-directory', ['accommodation-directory']); }
 
 export function useSavePaymentMethod() { return useSave('payment-methods', ['payment-methods']); }
 export function useDeletePaymentMethod() { return useDelete('payment-methods', ['payment-methods']); }

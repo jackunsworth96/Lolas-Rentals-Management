@@ -73,12 +73,22 @@ router.post('/login', validateBody(LoginRequestSchema), async (req, res, next) =
     if (empErr) {
       logSupabaseError('auth/login employee_stores lookup', empErr);
     }
-    const joinedStoreIds = (employee?.employee_stores ?? []).map(
+    const assignedStoreIds = (employee?.employee_stores ?? []).map(
       (r: { store_id: string }) => r.store_id,
     );
-    const storeIds = joinedStoreIds.length > 0
-      ? Array.from(new Set(joinedStoreIds))
+    const candidateStoreIds = assignedStoreIds.length > 0
+      ? Array.from(new Set(assignedStoreIds))
       : (employee?.store_id ? [employee.store_id] : []);
+    const { data: activeStores, error: storeErr } = candidateStoreIds.length > 0
+      ? await supabase.from('stores').select('id').in('id', candidateStoreIds).eq('is_active', true)
+      : { data: [], error: null };
+    if (storeErr) logSupabaseError('auth/login active stores lookup', storeErr);
+    const storeIds = (activeStores ?? []).map((store) => String(store.id));
+
+    if (candidateStoreIds.length > 0 && storeIds.length === 0) {
+      res.status(403).json({ success: false, error: { code: 'ACCOUNT_DISABLED', message: 'Account has no active store assignment' } });
+      return;
+    }
 
     const payload: TokenPayload = {
       userId: user.id,

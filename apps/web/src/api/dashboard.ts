@@ -46,6 +46,10 @@ export interface StoreMetrics {
   availableVehicles: number;
   ninepmReturns: { count: number; vehicles: NinePmVehicle[] };
   depositsWithheld: number;
+  depositsWithheldByMethod: {
+    cash: number;
+    gcash: number;
+  };
   fleetUtilisation: number;
   maintenanceVehicles: MaintenanceVehicle[];
   maintenancePartsCost: number | null;
@@ -97,23 +101,7 @@ export function useDashboardSummary(storeId?: string) {
   });
 }
 
-export interface CharityImpact {
-  openingBalance: number;
-  totalRaised: number;
-  totalDonated: number;
-  pendingPayout: number;
-  bookingContributions: number;
-  annualCap: number;
-  annualDonated: number;
-}
-
-export function useCharityImpact() {
-  return useQuery<CharityImpact>({
-    queryKey: ['dashboard', 'charity-impact'],
-    queryFn: () => api.get<CharityImpact>('/dashboard/charity-impact'),
-    staleTime: 5 * 60_000,
-  });
-}
+export { useCharityImpact, type CharityImpact } from './impact.js';
 
 export interface CharityDonationRow {
   id: string;

@@ -631,7 +631,7 @@ router.post('/confirm', extendConfirmLimiter, validateBody(PublicExtendConfirmSc
         orderReference,
         email: trimmedEmail,
         newDropoffDatetime: activeOutcome.newDropoffDatetime,
-        outstandingBalance: activeOutcome.extensionCost,
+        outstandingBalance: activeOutcome.outstandingBalance,
       }).catch((err) => {
         logger.warn(
           { orderReference, error: err instanceof Error ? err.message : String(err) },
@@ -672,7 +672,7 @@ router.post('/confirm', extendConfirmLimiter, validateBody(PublicExtendConfirmSc
         orderReference,
         email: trimmedEmail,
         newDropoffDatetime: rawOutcome.newDropoffDatetime,
-        outstandingBalance: rawOutcome.extensionCost,
+        outstandingBalance: rawOutcome.outstandingBalance,
       }).catch((err) => {
         logger.warn(
           { orderReference, error: err instanceof Error ? err.message : String(err) },
@@ -712,6 +712,8 @@ staffRouter.post(
         email,
         newDropoffDatetime,
         overrideDailyRate,
+        discountType,
+        discountValue,
         paymentStatus,
         paymentMethod,
         newOneTimeAddonIds,
@@ -723,6 +725,8 @@ staffRouter.post(
         email: string;
         newDropoffDatetime: string;
         overrideDailyRate?: number;
+        discountType?: 'percentage' | 'fixed';
+        discountValue?: number;
         paymentStatus?: 'paid' | 'unpaid';
         paymentMethod?: string;
         paymentAccountId?: string;
@@ -738,42 +742,13 @@ staffRouter.post(
       const trimmedEmail = email.trim().toLowerCase();
       const deps = req.app.locals.deps;
 
-      const rawOutcome = await resolveExtensionForRaw({
-        orderReference,
-        trimmedEmail,
-        newDropoffDatetime,
-        overrideDailyRate,
-        isPaid,
-        paymentMethodId: effectivePaymentMethodId,
-        emailErrorLabel: '[extend-email] Staff raw path error:',
-        deps,
-      });
-      if (rawOutcome.kind === 'error') {
-        res.json({ success: true, data: { success: false, reason: rawOutcome.reason } });
-        return;
-      }
-      if (rawOutcome.kind === 'success') {
-        void sendExtensionReceivedMessage({
-          orderReference,
-          email: trimmedEmail,
-          newDropoffDatetime: rawOutcome.newDropoffDatetime,
-          outstandingBalance: isPaid ? 0 : rawOutcome.extensionCost,
-        }).catch((err) => {
-          logger.warn(
-            { orderReference, error: err instanceof Error ? err.message : String(err) },
-            '[extend-whatsapp] Failed to send staff raw extension message',
-          );
-        });
-
-        res.json({ success: true, data: { success: true, newDropoffDatetime: rawOutcome.newDropoffDatetime, extensionCost: rawOutcome.extensionCost } });
-        return;
-      }
-
       const activeOutcome = await resolveExtensionForActive({
         orderReference,
         trimmedEmail,
         newDropoffDatetime,
         overrideDailyRate,
+        discountType,
+        discountValue,
         isPaid,
         paymentMethodId: effectivePaymentMethodId,
         emailErrorLabel: '[extend-email] Staff active path error:',
@@ -792,7 +767,7 @@ staffRouter.post(
           orderReference,
           email: trimmedEmail,
           newDropoffDatetime: activeOutcome.newDropoffDatetime,
-          outstandingBalance: isPaid ? 0 : activeOutcome.extensionCost,
+          outstandingBalance: activeOutcome.outstandingBalance,
         }).catch((err) => {
           logger.warn(
             { orderReference, error: err instanceof Error ? err.message : String(err) },
@@ -809,6 +784,39 @@ staffRouter.post(
             extensionDays: activeOutcome.extensionDays,
           },
         });
+        return;
+      }
+
+      const rawOutcome = await resolveExtensionForRaw({
+        orderReference,
+        trimmedEmail,
+        newDropoffDatetime,
+        overrideDailyRate,
+        discountType,
+        discountValue,
+        isPaid,
+        paymentMethodId: effectivePaymentMethodId,
+        emailErrorLabel: '[extend-email] Staff raw path error:',
+        deps,
+      });
+      if (rawOutcome.kind === 'error') {
+        res.json({ success: true, data: { success: false, reason: rawOutcome.reason } });
+        return;
+      }
+      if (rawOutcome.kind === 'success') {
+        void sendExtensionReceivedMessage({
+          orderReference,
+          email: trimmedEmail,
+          newDropoffDatetime: rawOutcome.newDropoffDatetime,
+          outstandingBalance: rawOutcome.outstandingBalance,
+        }).catch((err) => {
+          logger.warn(
+            { orderReference, error: err instanceof Error ? err.message : String(err) },
+            '[extend-whatsapp] Failed to send staff raw extension message',
+          );
+        });
+
+        res.json({ success: true, data: { success: true, newDropoffDatetime: rawOutcome.newDropoffDatetime, extensionCost: rawOutcome.extensionCost } });
         return;
       }
 

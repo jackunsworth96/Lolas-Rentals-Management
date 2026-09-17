@@ -43,12 +43,14 @@ import { impactAdminRoutes } from './impact-admin.js';
 import { accidentRoutes } from './accidents.js';
 import { loginLimiter, publicLimiter, apiLimiter } from '../middleware/rate-limit.js';
 import { telegramWebhookRouter } from '../telegram/telegram.webhook.js';
+import { requireOperationalStore } from '../middleware/operational-store.js';
 
 const routes = Router();
 
 routes.use('/auth', loginLimiter);
 routes.use('/public', publicLimiter);
 routes.use(apiLimiter);
+routes.use(requireOperationalStore);
 
 routes.use('/auth', authRoutes);
 routes.use('/dashboard', dashboardRoutes);

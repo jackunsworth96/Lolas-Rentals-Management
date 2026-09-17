@@ -18,8 +18,7 @@ import type { SavingsRow } from './paw-card-utils.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import BorderGlow from '../../components/home/BorderGlow.js';
 import CountUp from '../../components/home/CountUp.js';
-
-const HISTORICAL_DONATIONS = 280000;
+import { useCharityImpact } from '../../api/impact.js';
 
 type Props = {
   accessEmail: string;
@@ -50,22 +49,12 @@ export function PawCardDashboard({ accessEmail, displayFullName }: Props) {
     enabled: !!email,
   });
 
-  const communityQuery = useQuery({
-    queryKey: ['paw-card', 'leaderboard', 'all', userKey],
-    queryFn: () => {
-      const q = new URLSearchParams({ email, period: 'all' });
-      return api.get<SavingsRow[]>(`/public/paw-card/leaderboard?${q}`);
-    },
-    enabled: !!email,
-  });
+  const charityImpactQuery = useCharityImpact();
 
   const allRows = dashQuery.data ?? [];
   const myRows = useMemo(() => rowsForUser(allRows, email), [allRows, email]);
   const myTotal = useMemo(() => sumAmountSaved(myRows), [myRows]);
-  const communityTotal = useMemo(
-    () => sumAmountSaved(communityQuery.data ?? []) + HISTORICAL_DONATIONS,
-    [communityQuery.data],
-  );
+  const communityTotal = charityImpactQuery.data?.totalRaised ?? 0;
   const recent = useMemo(() => {
     const mine = [...myRows].sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
@@ -80,6 +69,7 @@ export function PawCardDashboard({ accessEmail, displayFullName }: Props) {
   const top = ranked.slice(0, 10);
 
   const dashLoading = dashQuery.isLoading;
+  const communityLoading = charityImpactQuery.isLoading;
   const dashErr =
     dashQuery.error instanceof Error
       ? dashQuery.error.message
@@ -182,7 +172,7 @@ export function PawCardDashboard({ accessEmail, displayFullName }: Props) {
                 <img src={handOnHeart} alt="" className="w-8 h-8 mb-2 bg-transparent" />
                 <h4 className="font-headline text-xs font-bold uppercase tracking-wider">Community Total</h4>
                 <p className="font-headline text-4xl font-black mt-2">
-                  {dashLoading ? (
+                  {communityLoading ? (
                     '…'
                   ) : (
                     <span className="inline-flex flex-wrap items-baseline gap-x-[0.28em]">
@@ -192,7 +182,7 @@ export function PawCardDashboard({ accessEmail, displayFullName }: Props) {
                         className="be-pawsitive-meter-peso brightness-0"
                         aria-hidden
                       />
-                      <CountUp to={Math.round(communityTotal)} from={0} separator="," startWhen={!dashLoading} />
+                      <CountUp to={Math.round(communityTotal)} from={0} separator="," startWhen={!communityLoading} />
                     </span>
                   )}
                 </p>

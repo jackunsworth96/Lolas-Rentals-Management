@@ -25,7 +25,7 @@ router.post('/login', validateBody(PartnerLoginSchema), async (req, res, next) =
     const { data: partner, error: partnerErr } = await sb
       .from('accommodation_partners')
       .select('id, slug, name, store_id, portal_enabled, active, status')
-      .eq('slug', body.partnerSlug)
+      .or(`slug.eq.${body.partnerSlug},portal_subdomain.eq.${body.partnerSlug}`)
       .eq('active', true)
       .eq('status', 'active')
       .maybeSingle();
@@ -42,6 +42,7 @@ router.post('/login', validateBody(PartnerLoginSchema), async (req, res, next) =
       .select('id, partner_id, name, username, pin_hash, is_active')
       .eq('partner_id', p.id)
       .ilike('username', escapeForILikeExact(username))
+      .limit(1)
       .maybeSingle();
 
     if (userErr || !user || !(user as { is_active?: boolean }).is_active) {

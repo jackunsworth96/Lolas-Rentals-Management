@@ -1,4 +1,4 @@
-import { type FleetRepository, type VehicleProps, Vehicle } from '@lolas/domain';
+import { type FleetRepository, type VehicleProps, Vehicle, InvalidStatusTransitionError } from '@lolas/domain';
 
 export interface UpdateVehicleDeps {
   fleetRepo: FleetRepository;
@@ -29,10 +29,8 @@ export async function updateVehicle(
   const vehicle = await fleetRepo.findById(input.vehicleId);
   if (!vehicle) throw new Error(`Vehicle ${input.vehicleId} not found`);
 
-  if (input.status !== undefined && vehicle.isProtected()) {
-    throw new Error(
-      `Cannot update protected vehicle ${vehicle.id} (${vehicle.status})`,
-    );
+  if (input.status !== undefined && input.status !== vehicle.status && vehicle.isStatusLocked()) {
+    throw new InvalidStatusTransitionError(vehicle.status, input.status);
   }
 
   const props: VehicleProps = {

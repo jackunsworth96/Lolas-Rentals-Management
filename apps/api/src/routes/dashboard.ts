@@ -4,6 +4,7 @@ import { Permission } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { formatManilaDate } from '../utils/manila-date.js';
 import { getPartnerCommissionStats } from '../lib/partner-commission.js';
+import { getDashboardAvailabilityModel } from '../lib/dashboard-availability-model.js';
 
 const router = Router();
 router.use(authenticate);
@@ -128,6 +129,10 @@ interface StoreMetrics {
   availableVehicles: number;
   ninepmReturns: { count: number; vehicles: NinePmVehicle[] };
   depositsWithheld: number;
+  depositsWithheldByMethod: {
+    cash: number;
+    gcash: number;
+  };
   fleetUtilisation: number;
   maintenanceVehicles: MaintenanceVehicle[];
   maintenancePartsCost: number | null;
@@ -164,6 +169,7 @@ function emptyMetrics(financial: boolean): StoreMetrics {
     availableVehicles: 0,
     ninepmReturns: { count: 0, vehicles: [] },
     depositsWithheld: 0,
+    depositsWithheldByMethod: { cash: 0, gcash: 0 },
     fleetUtilisation: 0,
     maintenanceVehicles: [],
     maintenancePartsCost: financial ? 0 : null,
@@ -189,6 +195,10 @@ router.get('/summary', authenticate, async (req, res, next) => {
     const storeIdParam = req.query.storeId as string | undefined;
     const userPerms = req.user?.permissions ?? [];
     const canViewFinancial = userPerms.includes(Permission.ViewDashboard);
+    const activeStoreIds = (await req.app.locals.deps.configRepo.getStores('active'))
+      .filter((store: { id: string }) => store.id !== 'company')
+      .map((store: { id: string }) => store.id);
+    const activeStoreSet = new Set(activeStoreIds);
 
     const manilaDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
     const firstDayOfMonth = manilaDate.slice(0, 7) + '-01';
@@ -206,7 +216,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
     const operationalQueries = [
       sb
         .from('orders')
-        .select('id, store_id, security_deposit, status')
+        .select('id, store_id, security_deposit, deposit_method_id, status')
         .eq('status', 'active')
         .then((r) => ({ key: 'activeOrders' as const, ...r })),
 
@@ -243,6 +253,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
             status,
             balance_due,
             security_deposit,
+            booking_customer_name,
             customers!customer_id(name, mobile)
           )
         `)
@@ -370,6 +381,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
         .select('store_id, is_locked')
         .eq('date', manilaDate);
       if (storeFilter) q = q.eq('store_id', storeFilter);
+      else q = q.in('store_id', activeStoreIds);
       return q;
     })();
 
@@ -378,6 +390,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
         .select('id', { count: 'exact', head: true })
         .neq('status', 'Closed');
       if (storeFilter) q = q.eq('store_id', storeFilter);
+      else q = q.in('store_id', activeStoreIds);
       return q;
     })();
 
@@ -387,6 +400,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
         .eq('service_date', manilaDate)
         .neq('status', 'Cancelled');
       if (storeFilter) q = q.eq('store_id', storeFilter);
+      else q = q.in('store_id', activeStoreIds);
       return q;
     })();
 
@@ -397,6 +411,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
         .eq('orders.status', 'active')
         .lt('dropoff_datetime', new Date().toISOString());
       if (storeFilter) q = q.eq('orders.store_id', storeFilter);
+      else q = q.in('orders.store_id', activeStoreIds);
       return q;
     })();
 
@@ -416,7 +431,16 @@ router.get('/summary', authenticate, async (req, res, next) => {
         if (r.error) {
           console.error(`Dashboard query ${r.key} failed: ${r.error.message}`);
         }
-        dataMap.set(r.key, (r.data ?? []) as Record<string, unknown>[]);
+        const rows = (r.data ?? []) as Record<string, unknown>[];
+        dataMap.set(r.key, storeFilter ? rows : rows.filter((row) => {
+          const directStoreId = row.store_id;
+          if (typeof directStoreId === 'string') return directStoreId === 'company' || activeStoreSet.has(directStoreId);
+          const order = row.orders as { store_id?: string } | null | undefined;
+          if (order?.store_id) return activeStoreSet.has(order.store_id);
+          const fleetRow = row.fleet as { store_id?: string } | null | undefined;
+          if (fleetRow?.store_id) return activeStoreSet.has(fleetRow.store_id);
+          return true;
+        }));
       }
     }
 
@@ -473,6 +497,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
           status: string;
           balance_due: number | null;
           security_deposit: number | null;
+          booking_customer_name: string | null;
           customers: { name: string; mobile: string | null } | null;
         } | null;
         if (!orderInfo || orderInfo.status !== 'active') continue;
@@ -490,7 +515,10 @@ router.get('/summary', authenticate, async (req, res, next) => {
         const vehicleModel = (vehicleId ? fleetModelMap.get(vehicleId) : null) ?? (item.vehicle_name as string) ?? '—';
         const returnTime = dropDate.toLocaleTimeString('en-GB', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit' });
 
-        const customerName = orderInfo.customers?.name ?? '—';
+        const customerName =
+          orderInfo.booking_customer_name?.trim()
+          || orderInfo.customers?.name
+          || '—';
         const customerMobile = orderInfo.customers?.mobile ?? null;
         const helmetNumbers = (item.helmet_numbers as string | null) ?? null;
         const balanceDue = Number(orderInfo.balance_due ?? 0);
@@ -600,6 +628,20 @@ router.get('/summary', authenticate, async (req, res, next) => {
 
       const depositsWithheld = storeActiveOrders.reduce(
         (sum, o) => sum + Number(o.security_deposit ?? 0), 0,
+      );
+      const depositsWithheldByMethod = storeActiveOrders.reduce<{ cash: number; gcash: number }>(
+        (totals, order) => {
+          const method = String(order.deposit_method_id ?? '')
+            .toLowerCase()
+            .replace(/[\s_-]/g, '');
+          const amount = Number(order.security_deposit ?? 0);
+
+          if (method === 'cash') totals.cash += amount;
+          if (method === 'gcash' || method === 'paymaya') totals.gcash += amount;
+
+          return totals;
+        },
+        { cash: 0, gcash: 0 },
       );
 
       const ninepmVehicles = buildNinepmVehicles(ninepmCandidates, ninePmAddonOrderIds, sid);
@@ -778,6 +820,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
         availableVehicles,
         ninepmReturns: { count: ninepmVehicles.length, vehicles: ninepmVehicles },
         depositsWithheld,
+        depositsWithheldByMethod,
         fleetUtilisation,
         maintenanceVehicles,
         maintenancePartsCost,
@@ -797,7 +840,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
       };
     }
 
-    const storeIds = ['store-lolas', 'store-bass'] as const;
+    const storeIds = activeStoreIds;
     const stores: Record<string, StoreMetrics> = {};
 
     stores['combined'] = buildStoreMetrics(undefined);
@@ -1028,14 +1071,16 @@ router.get('/availability-detail', async (req, res, next) => {
 
     const modelMap = new Map<string, {
       modelName: string;
+      isScooter: boolean;
       units: Array<{ id: string; name: string; surfRack: boolean; isBooked: boolean; dropoff: string | null }>;
     }>();
 
     for (const v of rentableFleet) {
-      const modelId = v.model_id as string | null;
-      if (!modelId) continue;
-      const modelName = modelNameMap.get(modelId) ?? 'Unknown';
-      if (!modelMap.has(modelId)) modelMap.set(modelId, { modelName, units: [] });
+      const rawModelId = v.model_id as string | null;
+      if (!rawModelId) continue;
+      const rawModelName = modelNameMap.get(rawModelId) ?? 'Unknown';
+      const { modelId, modelName, isScooter } = getDashboardAvailabilityModel(rawModelName);
+      if (!modelMap.has(modelId)) modelMap.set(modelId, { modelName, isScooter, units: [] });
       const isBooked = bookedVehicleIds.has(v.id as string);
       modelMap.get(modelId)!.units.push({
         id: v.id as string,
@@ -1046,7 +1091,7 @@ router.get('/availability-detail', async (req, res, next) => {
       });
     }
 
-    const models = [...modelMap.entries()].map(([modelId, { modelName, units }]) => {
+    const models = [...modelMap.entries()].map(([modelId, { modelName, isScooter, units }]) => {
       const availableUnits = units.filter((u) => !u.isBooked);
       const bookedUnits = units.filter((u) => u.isBooked && u.dropoff !== null);
 
@@ -1077,7 +1122,7 @@ router.get('/availability-detail', async (req, res, next) => {
         availableNow: availableUnits.length,
         withSurfRack: availableUnits.filter((u) => u.surfRack).length,
         withoutSurfRack: availableUnits.filter((u) => !u.surfRack).length,
-        isScooter: !modelName.toLowerCase().includes('tuk'),
+        isScooter,
         returningToday,
       };
     });

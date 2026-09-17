@@ -1,32 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useCharityImpact } from '../../api/impact.js';
 import CountUp from './CountUp.js';
 
 const FALLBACK_TOTAL = 325495;
-const PUBLIC_ENDPOINT = '/api/public/booking/charity-impact';
-
-interface CharityImpact {
-  totalRaised: number;
-}
 
 export function NgoImpactMeter() {
-  const [total, setTotal] = useState<number>(FALLBACK_TOTAL);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch(PUBLIC_ENDPOINT)
-      .then((r) => r.json())
-      .then((json: { success?: boolean; data?: CharityImpact }) => {
-        if (!cancelled && json?.data?.totalRaised != null) {
-          setTotal(json.data.totalRaised);
-        }
-      })
-      .catch(() => {
-        // silently fall back to hardcoded value
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { data } = useCharityImpact();
+  const total = data?.totalRaised ?? FALLBACK_TOTAL;
 
   return (
     <CountUp

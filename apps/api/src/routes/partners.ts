@@ -10,7 +10,7 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
 import { hashPin } from '../adapters/auth/password.js';
 import { sendEmail, INTERNAL_FROM_EMAIL, escapeHtml } from '../services/email.js';
-import { getPartnerCommissionStats } from '../lib/partner-commission.js';
+import { getPartnerCommissionStats, getPartnerCommissionsDue } from '../lib/partner-commission.js';
 
 const router = Router();
 const PARTNER_LOGO_MIMES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
@@ -275,8 +275,8 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
     const sb = getSupabaseClient();
     const { data, error } = await sb
       .from('accommodation_partners')
-      .select('id, name, deal_type, discount_type, discount_value, free_delivery, free_delivery_location_ids, advance_discount_days, early_bird_days, early_bird_discount_value, status, active, logo_url, welcome_message, logo_display_width, logo_display_height')
-      .eq('slug', slug)
+      .select('id, name, deal_type, discount_type, discount_value, free_delivery, free_delivery_location_ids, advance_booking_days, advance_discount_days, early_bird_days, early_bird_discount_value, status, active, logo_url, welcome_message, logo_display_width, logo_display_height')
+      .or(`slug.eq.${slug},portal_subdomain.eq.${slug}`)
       .eq('status', 'active')
       .eq('active', true)
       .maybeSingle();
@@ -298,6 +298,7 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
       discount_value: number | null;
       free_delivery: boolean;
       free_delivery_location_ids: number[] | null;
+      advance_booking_days: number | null;
       advance_discount_days: number | null;
       early_bird_days: number | null;
       early_bird_discount_value: number | null;
@@ -343,6 +344,7 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
         discountType: row.discount_type,
         discountValue: row.discount_value != null ? Number(row.discount_value) : null,
         freeDelivery: row.free_delivery,
+        advanceBookingDays: row.advance_booking_days,
         advanceDiscountDays: row.advance_discount_days,
         earlyBirdDays: row.early_bird_days,
         earlyBirdDiscountValue: row.early_bird_discount_value != null ? Number(row.early_bird_discount_value) : null,
@@ -414,6 +416,24 @@ router.get('/', async (req, res, next) => {
     if (error) throw new Error(`Failed to fetch partners: ${error.message}`);
 
     res.json({ success: true, data: data ?? [] });
+  } catch (err) { next(err); }
+});
+
+// ── GET /commissions-due — consolidated monthly payout ledger ───────────────
+router.get('/commissions-due', async (req, res, next) => {
+  try {
+    const { storeId, month } = req.query as { storeId?: string; month?: string };
+    const reportMonth = month ?? new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }).slice(0, 7);
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(reportMonth)) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_MONTH', message: 'Month must use YYYY-MM format.' },
+      });
+      return;
+    }
+
+    const data = await getPartnerCommissionsDue(storeId, reportMonth);
+    res.json({ success: true, data });
   } catch (err) { next(err); }
 });
 

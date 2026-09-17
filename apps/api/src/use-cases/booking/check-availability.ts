@@ -4,6 +4,7 @@ export interface CheckAvailabilityInput {
   storeId: string;
   pickupDatetime: string;
   dropoffDatetime: string;
+  requestedQuantity?: number;
   excludeOrderItemId?: string;
 }
 
@@ -30,6 +31,7 @@ export async function checkAvailability(
     storeId: input.storeId,
     pickupDatetime: input.pickupDatetime,
     dropoffDatetime: input.dropoffDatetime,
+    requestedQuantity: input.requestedQuantity,
     excludeOrderItemId: input.excludeOrderItemId,
   });
 }

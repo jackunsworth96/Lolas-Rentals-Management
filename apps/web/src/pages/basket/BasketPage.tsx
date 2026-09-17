@@ -4,8 +4,8 @@ import { api } from '../../api/client.js';
 import {
   getPartnerRef,
   clearPartnerRef,
-  getStoredPartnerBenefit,
 } from '../../utils/partnerRef.js';
+import { usePartnerRefCapture } from '../../hooks/usePartnerRefCapture.js';
 import { computePartnerBenefit } from '../../utils/partnerDiscount.js';
 import { useBookingStore, type BasketItem, type RenterDetails } from '../../stores/bookingStore.js';
 import { useToast } from '../../hooks/useToast.js';
@@ -457,8 +457,21 @@ export default function BasketPage() {
   const selectedPm = paymentMethods.find((pm) => pm.id === paymentMethodId);
   const surchargePercent = selectedPm?.surchargePercent ?? 0;
 
-  // ── Partner referral benefit (read once on mount, recompute when dates change) ──
-  const partnerBenefit = useMemo(() => getStoredPartnerBenefit(), []);
+  // ── Partner referral benefit (reactive so a fast booking flow does not outrun lookup) ──
+  const { benefit: partnerBenefit } = usePartnerRefCapture();
+
+  useEffect(() => {
+    const accommodationName = partnerBenefit?.name.trim();
+    if (!accommodationName || hydratingSession || renter.accommodationName?.trim()) return;
+
+    const nextRenter = { ...renter, accommodationName };
+    setRenterRaw(nextRenter);
+    setRenterDetailsInStore(nextRenter as RenterDetails);
+    void api.patch('/public/booking/session', {
+      sessionToken,
+      renterDetails: nextRenter,
+    }).catch(() => {});
+  }, [hydratingSession, partnerBenefit, renter, sessionToken, setRenterDetailsInStore]);
   const vehicleSubtotalForBenefit = basket.reduce((s, b) => s + b.dailyRate * rentalDays, 0);
   // Derive singleModelId here (before appliedPartnerBenefit) so it can be used
   // in the useMemo below without hitting a temporal dead zone error. The same
@@ -482,6 +495,13 @@ export default function BasketPage() {
   );
   const partnerRentalDiscount = appliedPartnerBenefit.applied ? appliedPartnerBenefit.rentalDiscount : 0;
   const partnerFreeDelivery = appliedPartnerBenefit.applied && appliedPartnerBenefit.freeDelivery;
+  const partnerFreeDeliveryLocationNames = useMemo(() => {
+    if (!partnerBenefit || !partnerBenefit.freeDeliveryLocationIds?.length) return [];
+    const names = locations
+      .filter((location) => partnerBenefit.freeDeliveryLocationIds?.includes(location.id))
+      .map((location) => location.name);
+    return Array.from(new Set(names));
+  }, [locations, partnerBenefit]);
 
   const [isMdUp, setIsMdUp] = useState(() =>
     typeof window !== 'undefined' ? window.matchMedia('(min-width: 768px)').matches : true,
@@ -1309,6 +1329,7 @@ export default function BasketPage() {
               onOpenMobileReview={handleOpenMobileReview}
               partnerBenefit={partnerBenefit}
               partnerBenefitApplied={appliedPartnerBenefit}
+              partnerFreeDeliveryLocationNames={partnerFreeDeliveryLocationNames}
             />
           </div>
         </div>

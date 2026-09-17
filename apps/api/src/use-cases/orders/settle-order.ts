@@ -49,9 +49,9 @@ export interface SettleOrderInput {
   /**
    * Peso amount of fuel, condition, or other return-time charges assessed
    * at the point of settlement. Bumped onto `orders.final_total` and
-   * `orders.return_charges` atomically in the RPC. The balance-before-
-   * deposit calculation adds this delta so the deposit cascade (applied /
-   * refund) and any remaining-to-collect amount all reflect the true debt.
+   * `orders.return_charges` atomically in the RPC. It is paired with a
+   * separately tendered return-charge payment, so it does not consume the
+   * security deposit.
    */
   returnChargesDelta?: number;
   /**
@@ -59,6 +59,10 @@ export interface SettleOrderInput {
    * e.g. "Fuel shortage", "Damage". Stored in orders.return_charges_note.
    */
   returnChargesNote?: string | null;
+  /** Cash or GCash method used to pay the return charge. */
+  returnChargesPaymentMethodId?: string | null;
+  /** Asset account receiving the return-charge payment. */
+  returnChargesAccountId?: string | null;
   settlementRef?: string | null;
   /**
    * Payment method used to return the security deposit to the customer
@@ -129,13 +133,21 @@ export async function settleOrder(
       ? Money.php(input.returnChargesDelta)
       : Money.zero();
 
+  if (
+    returnChargesDelta.isPositive() &&
+    (!input.returnChargesPaymentMethodId || !input.returnChargesAccountId)
+  ) {
+    throw new Error('Return-charge payment method and account are required');
+  }
+
   // Balance = rental/addon/extension charges not yet paid.
   //   (a) final_total − rentalPaid         — works when migration 091 has bumped final_total
   //   (b) pendingExtensionsTotal           — fallback if final_total is stale
   // Use the greater so the calc is resilient either way.
-  // Return charges increase what the customer owes before the deposit is applied,
-  // so they are added here rather than after the deposit cascade.
-  const balanceFromFinalTotal = order.calculateBalanceDue(rentalPaid).add(returnChargesDelta);
+  // Return charges are collected as a separate payment at settlement and do not
+  // consume the deposit. The order total and received payment are both bumped
+  // below, keeping the final balance unchanged by an already-paid charge.
+  const balanceFromFinalTotal = order.calculateBalanceDue(rentalPaid);
   const balanceBeforeDeposit =
     balanceFromFinalTotal.toNumber() >= pendingExtensionsTotal.toNumber()
       ? balanceFromFinalTotal
@@ -154,6 +166,50 @@ export async function settleOrder(
   let finalPayment: Payment | null = null;
   let cardSettlement: CardSettlement | null = null;
   let depositRefundPayment: Payment | null = null;
+  let returnChargePayment: Payment | null = null;
+
+  // Return charges are collected separately from the rental balance so an
+  // already-paid fuel/damage charge does not reduce the security-deposit refund.
+  // Persisting a payment row also puts the receipt in Cash-Up under its tender.
+  if (returnChargesDelta.isPositive()) {
+    returnChargePayment = {
+      id: crypto.randomUUID(),
+      storeId: order.storeId,
+      orderId: order.id,
+      rawOrderId: null,
+      orderItemId: null,
+      orderAddonId: null,
+      paymentType: 'return_charge',
+      amount: returnChargesDelta.toNumber(),
+      paymentMethodId: input.returnChargesPaymentMethodId!,
+      transactionDate: input.settlementDate,
+      settlementStatus: null,
+      settlementRef: input.returnChargesNote ?? null,
+      customerId: order.customerId,
+      accountId: input.returnChargesAccountId!,
+    };
+
+    legs.push(
+      {
+        entryId: crypto.randomUUID(),
+        accountId: input.returnChargesAccountId!,
+        debit: returnChargesDelta,
+        credit: Money.zero(),
+        description: `Order ${order.id} return charge received`,
+        referenceType: 'payment',
+        referenceId: returnChargePayment.id,
+      },
+      {
+        entryId: crypto.randomUUID(),
+        accountId: input.receivableAccountId,
+        debit: Money.zero(),
+        credit: returnChargesDelta,
+        description: `Order ${order.id} return charge receivable reduced`,
+        referenceType: 'payment',
+        referenceId: returnChargePayment.id,
+      },
+    );
+  }
 
   // ── Final payment (optional) ─────────────────────────────
   if (
@@ -318,6 +374,7 @@ export async function settleOrder(
   const paymentsAfter = rentalPaid
     .add(amountApplied)
     .add(absorbedExtensionTotal)
+    .add(returnChargePayment ? Money.php(returnChargePayment.amount) : Money.zero())
     .add(finalPayment ? Money.php(finalPayment.amount) : Money.zero());
   const adjustedFinalTotal = order.finalTotal.add(surchargeDelta).add(returnChargesDelta);
   const finalBalanceDue = adjustedFinalTotal.subtract(paymentsAfter);
@@ -386,6 +443,18 @@ export async function settleOrder(
           customer_id: depositRefundPayment.customerId,
           account_id: depositRefundPayment.accountId,
       }
+      : null,
+    p_return_charge_payment: returnChargePayment
+      ? {
+          id: returnChargePayment.id,
+          amount: returnChargePayment.amount,
+          payment_type: returnChargePayment.paymentType,
+          payment_method_id: returnChargePayment.paymentMethodId,
+          transaction_date: returnChargePayment.transactionDate,
+          settlement_ref: returnChargePayment.settlementRef,
+          customer_id: returnChargePayment.customerId,
+          account_id: returnChargePayment.accountId,
+        }
       : null,
   };
 

@@ -11,6 +11,7 @@ import { processRawOrder, type ProcessRawOrderDeps } from '../use-cases/orders/p
 import { sendEmail, bookingConfirmationHtml, bookingCancellationHtml, walkInStaffAlertHtml, walkInReservationConfirmationHtml, escapeHtml, NOTIFICATION_EMAIL, INTERNAL_FROM_EMAIL } from '../services/email.js';
 import { formatManilaDate, formatManilaDateTime } from '../utils/manila-date.js';
 import { sendTelegramAlert, sendTelegramAlertPaidOrdersStaggered, getTelegramChatId } from '../lib/telegram.js';
+import { deriveTransportService } from '../lib/transport-service.js';
 
 /** GET list / GET :id — explicit columns; excludes payload (V10-11). */
 const ORDERS_RAW_INBOX_COLUMNS =
@@ -586,6 +587,17 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       throw new Error(`activate_order_atomic RPC failed: ${rpcErr.message}`);
     }
 
+    // A walk-in can reuse an existing customer profile while naming a
+    // different renter for this booking. This path has no orders_raw row for
+    // the snapshot trigger to read, so preserve the submitted name explicitly.
+    const { error: bookingNameErr } = await supabase
+      .from('orders')
+      .update({ booking_customer_name: body.customerName.trim() })
+      .eq('id', orderId);
+    if (bookingNameErr) {
+      throw new Error(`Failed to preserve booking customer name: ${bookingNameErr.message}`);
+    }
+
     // 16. Return result
     res.status(201).json({
       success: true,
@@ -732,10 +744,31 @@ router.get('/', requirePermission(Permission.ViewInbox), async (req, res, next) 
     const { data, error, count } = await query;
     if (error) throw new Error(error.message);
 
+    const rawOrders = data ?? [];
+    const bookedLocationIds = [
+      ...new Set(
+        rawOrders
+          .flatMap((order) => [order.pickup_location_id, order.dropoff_location_id])
+          .filter((id): id is number => id !== null && id !== undefined),
+      ),
+    ];
+    const { data: transportLocations, error: locationsError } = bookedLocationIds.length > 0
+      ? await supabase
+          .from('locations')
+          .select('id, name, location_type, delivery_cost, collection_cost')
+          .in('id', bookedLocationIds)
+      : { data: [], error: null };
+    if (locationsError) throw new Error(locationsError.message);
+
+    const inboxOrders = rawOrders.map((order) => ({
+      ...order,
+      transport_service: deriveTransportService([order], transportLocations ?? []),
+    }));
+
     res.json({
       success: true,
       data: {
-        data: data ?? [],
+        data: inboxOrders,
         total: count ?? 0,
         page,
         limit,
@@ -1079,7 +1112,7 @@ router.post('/:id/collect-payment', requirePermission(Permission.EditOrders), as
 });
 
 const cancelBodySchema = z.object({
-  reason: z.string().optional(),
+  reason: z.string().trim().max(500).optional(),
 });
 
 router.patch('/:id/cancel', requirePermission(Permission.CancelOrders), async (req, res, next) => {
@@ -1094,6 +1127,30 @@ router.patch('/:id/cancel', requirePermission(Permission.CancelOrders), async (r
     }
 
     const id = req.params.id as string;
+
+    const { data: cancellationTarget, error: targetErr } = await supabase
+      .from('orders_raw')
+      .select('partner_ref')
+      .eq('id', id)
+      .maybeSingle();
+    if (targetErr) throw new Error(`Failed to check cancellation target: ${targetErr.message}`);
+    if (!cancellationTarget) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Raw order not found' },
+      });
+      return;
+    }
+    if (cancellationTarget.partner_ref && !parsed.data.reason) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'CANCELLATION_REASON_REQUIRED',
+          message: 'A cancellation reason is required for affiliate bookings.',
+        },
+      });
+      return;
+    }
 
     const { data: rpcResult, error: rpcErr } = await supabase
       .rpc('cancel_order_raw_atomic', {

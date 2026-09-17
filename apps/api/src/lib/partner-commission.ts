@@ -13,17 +13,44 @@ export interface PartnerCommissionBooking {
   commissionType: 'fixed' | 'percentage' | null;
   commissionValue: number | null;
   status: string;
+  cancelledReason: string | null;
+  cancelledAt: string | null;
   bookedAt: string;
   advanceDays: number | null;
   commissionable: boolean;
   commissionAmount: number;
+  isExtended: boolean;
+  extendedDropoffDatetime: string | null;
+  pendingCommissionAmount: number;
 }
 
 export interface PartnerCommissionStats {
   totalBookings: number;
   commissionableBookings: number;
   totalCommission: number;
+  totalPendingCommission: number;
+  totalVehiclesRented: number;
+  averageVehiclesPerDay: number;
   bookings: PartnerCommissionBooking[];
+}
+
+export interface PartnerCommissionDueRow {
+  partnerId: string;
+  partnerName: string;
+  contactName: string | null;
+  contactEmail: string | null;
+  totalBookings: number;
+  commissionableBookings: number;
+  amountDue: number;
+  pendingAmount: number;
+}
+
+export interface PartnerCommissionsDue {
+  month: string;
+  totalDue: number;
+  totalPending: number;
+  partnersDue: number;
+  partners: PartnerCommissionDueRow[];
 }
 
 interface PartnerTerms {
@@ -59,6 +86,61 @@ function monthBounds(month?: string): { from?: string; to?: string } {
   };
 }
 
+function daysInReportMonth(month?: string): number {
+  const source = month && /^\d{4}-\d{2}$/.test(month)
+    ? month
+    : new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }).slice(0, 7);
+  const [y, m] = source.split('-').map(Number);
+  if (!y || !m) return 30;
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+
+export async function getPartnerCommissionsDue(storeId: string | undefined, month: string): Promise<PartnerCommissionsDue> {
+  const sb = getSupabaseClient();
+  let query = sb
+    .from('accommodation_partners')
+    .select('id, name, contact_name, contact_email')
+    .eq('active', true)
+    .eq('status', 'active')
+    .in('deal_type', ['commission', 'combined', 'commission_delivery'])
+    .order('name', { ascending: true });
+
+  if (storeId) query = query.eq('store_id', storeId);
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Failed to fetch commission partners: ${error.message}`);
+
+  const partners = (data ?? []) as Array<{
+    id: string;
+    name: string;
+    contact_name: string | null;
+    contact_email: string | null;
+  }>;
+
+  const rows = await Promise.all(partners.map(async (partner) => {
+    const stats = await getPartnerCommissionStats(partner.id, month);
+    return {
+      partnerId: partner.id,
+      partnerName: partner.name,
+      contactName: partner.contact_name,
+      contactEmail: partner.contact_email,
+      totalBookings: stats.totalBookings,
+      commissionableBookings: stats.commissionableBookings,
+      amountDue: stats.totalCommission,
+      pendingAmount: stats.totalPendingCommission,
+    } satisfies PartnerCommissionDueRow;
+  }));
+
+  const visibleRows = rows.filter((row) => row.amountDue > 0 || row.pendingAmount > 0);
+  return {
+    month,
+    totalDue: roundMoney(visibleRows.reduce((sum, row) => sum + row.amountDue, 0)),
+    totalPending: roundMoney(visibleRows.reduce((sum, row) => sum + row.pendingAmount, 0)),
+    partnersDue: visibleRows.filter((row) => row.amountDue > 0).length,
+    partners: visibleRows,
+  };
+}
+
 export async function getPartnerCommissionStats(partnerId: string, month?: string): Promise<PartnerCommissionStats> {
   const sb = getSupabaseClient();
   const { data: partner, error: partnerErr } = await sb
@@ -89,7 +171,7 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
 
   let rawQuery = sb
     .from('orders_raw')
-    .select('id, order_reference, customer_name, vehicle_model_id, pickup_datetime, dropoff_datetime, rental_value_raw, web_quote_raw, status, created_at')
+    .select('id, order_reference, customer_name, vehicle_model_id, pickup_datetime, dropoff_datetime, rental_value_raw, web_quote_raw, status, cancelled_reason, cancelled_at, created_at')
     .eq('store_id', p.store_id)
     .eq('partner_ref', p.slug)
     .order('created_at', { ascending: false });
@@ -99,7 +181,11 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
   const { data: rawRows, error: rawErr } = await rawQuery;
   if (rawErr) throw new Error(`Failed to fetch partner bookings: ${rawErr.message}`);
 
-  let activeTotals = new Map<string, number>();
+  // Maps keyed by order_reference (booking_token) for extension data
+  let paidExtensionByRef = new Map<string, number>();    // confirmed/collected extension amounts
+  let pendingExtensionByRef = new Map<string, number>(); // pending (uncollected) extension amounts
+  let extDropoffByRef = new Map<string, string>();       // updated return date from order_items
+
   const anyVehicleOverrideIncludesExtensions = Array.from(vehicleTermsByModel.values())
     .some((term) => term.commission_includes_extensions);
   if (p.commission_includes_extensions || anyVehicleOverrideIncludesExtensions) {
@@ -107,20 +193,47 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
       .map((r: { order_reference?: string | null }) => r.order_reference)
       .filter(Boolean) as string[];
     if (refs.length > 0) {
-      const orderQuery = sb
+      const { data: orders } = await sb
         .from('orders')
-        .select('booking_token, final_total, security_deposit, partner_ref, store_id')
+        .select('id, booking_token')
         .eq('store_id', p.store_id)
         .eq('partner_ref', p.slug)
         .in('booking_token', refs);
 
-    const { data: orders } = await orderQuery;
-    activeTotals = new Map(
-      (orders ?? []).map((o: { booking_token: string | null; final_total: number | null; security_deposit: number | null }) => [
-        o.booking_token ?? '',
-        Math.max(0, Number(o.final_total ?? 0) - Number(o.security_deposit ?? 0)),
-      ]),
-    );
+      const orderRows = (orders ?? []) as Array<{ id: string; booking_token: string | null }>;
+      const orderIds = orderRows.map((o) => o.id).filter(Boolean);
+      const refByOrderId = new Map(orderRows.map((o) => [o.id, o.booking_token ?? '']));
+
+      if (orderIds.length > 0) {
+        // Extended return date from order_items (updated by the extend RPC)
+        const { data: items } = await sb
+          .from('order_items')
+          .select('order_id, dropoff_datetime')
+          .in('order_id', orderIds);
+        for (const item of (items ?? []) as Array<{ order_id: string; dropoff_datetime: string | null }>) {
+          const ref = refByOrderId.get(item.order_id);
+          if (ref && item.dropoff_datetime) extDropoffByRef.set(ref, item.dropoff_datetime);
+        }
+
+        // Extension payments split by settlement status:
+        //   pending   → customer hasn't paid yet (commission is pending)
+        //   anything else (absorbed/null) → collected (commission is confirmed)
+        const { data: extPmts } = await sb
+          .from('payments')
+          .select('order_id, amount, settlement_status')
+          .in('order_id', orderIds)
+          .eq('payment_type', 'extension');
+        for (const pmt of (extPmts ?? []) as Array<{ order_id: string; amount: number | null; settlement_status: string | null }>) {
+          const ref = refByOrderId.get(pmt.order_id);
+          if (!ref) continue;
+          const amt = Number(pmt.amount ?? 0);
+          if (pmt.settlement_status === 'pending') {
+            pendingExtensionByRef.set(ref, (pendingExtensionByRef.get(ref) ?? 0) + amt);
+          } else {
+            paidExtensionByRef.set(ref, (paidExtensionByRef.get(ref) ?? 0) + amt);
+          }
+        }
+      }
     }
   }
 
@@ -134,6 +247,8 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
     rental_value_raw: number | null;
     web_quote_raw: number | null;
     status: string;
+    cancelled_reason: string | null;
+    cancelled_at: string | null;
     created_at: string;
   }>).map((row) => {
     const advanceDays = row.pickup_datetime
@@ -159,15 +274,31 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
       commissionValue != null &&
       advanceDays !== null &&
       advanceDays >= advanceBookingDays;
+
+    // Extension amounts for this booking (only when the partner has the flag enabled)
+    const ref = row.order_reference ?? '';
+    const paidExtAmt = includesExtensions ? (paidExtensionByRef.get(ref) ?? 0) : 0;
+    const pendingExtAmt = includesExtensions ? (pendingExtensionByRef.get(ref) ?? 0) : 0;
+    const isExtended = includesExtensions && (paidExtAmt > 0 || pendingExtAmt > 0);
+    const extendedDropoffDatetime = isExtended ? (extDropoffByRef.get(ref) ?? null) : null;
+
+    // Commission base = original rental value + any collected extension amounts.
+    // Pending (uncollected) extensions are excluded from confirmed commission and
+    // surfaced separately so the portal can show a "Pending" indicator.
     const originalBase = Number(row.rental_value_raw ?? row.web_quote_raw ?? 0);
-    const extensionBase = row.order_reference ? activeTotals.get(row.order_reference) : undefined;
-    const base = includesExtensions && extensionBase != null ? extensionBase : originalBase;
+    const base = originalBase + paidExtAmt;
     const commissionBase = commissionType === 'fixed' ? null : base;
     const commissionAmount = !commissionable
       ? 0
       : commissionType === 'fixed'
         ? Number(commissionValue ?? 0)
         : roundMoney(base * Number(commissionValue ?? 0) / 100);
+
+    // Pending commission accrues only on percentage-type deals (fixed is per booking,
+    // so there is no extra commission due when an extension is later collected).
+    const pendingCommissionAmount = !commissionable || commissionType !== 'percentage'
+      ? 0
+      : roundMoney(pendingExtAmt * Number(commissionValue ?? 0) / 100);
 
     return {
       id: row.id,
@@ -182,18 +313,52 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
       commissionType,
       commissionValue,
       status: row.status,
+      cancelledReason: row.cancelled_reason,
+      cancelledAt: row.cancelled_at,
       bookedAt: row.created_at,
       advanceDays: advanceDays !== null ? Math.floor(advanceDays) : null,
       commissionable,
       commissionAmount,
+      isExtended,
+      extendedDropoffDatetime,
+      pendingCommissionAmount,
     };
   });
 
   const totalCommission = bookings.reduce((sum, b) => sum + b.commissionAmount, 0);
+  const totalPendingCommission = bookings.reduce((sum, b) => sum + b.pendingCommissionAmount, 0);
+  const totalVehiclesRented = bookings.filter((b) => b.status !== 'cancelled').length;
+  const monthDays = daysInReportMonth(month);
+
+  // Sum vehicle-days: duration of each non-cancelled rental, clamped to the report month
+  // so e.g. a booking that runs Jul 29 → Aug 2 only contributes 3 days to the July report.
+  const monthStart = bounds.from ? new Date(bounds.from).getTime() : null;
+  const monthEnd = bounds.to ? new Date(bounds.to).getTime() : null;
+
+  function clampedRentalDays(pickup: string | null, dropoff: string | null): number {
+    if (!pickup || !dropoff) return 0;
+    const start = monthStart !== null ? Math.max(new Date(pickup).getTime(), monthStart) : new Date(pickup).getTime();
+    const end = monthEnd !== null ? Math.min(new Date(dropoff).getTime(), monthEnd) : new Date(dropoff).getTime();
+    return Math.max(0, (end - start) / 86_400_000);
+  }
+
+  const totalVehicleDays = bookings
+    .filter((b) => b.status !== 'cancelled')
+    .reduce((sum, b) => {
+      // Use extended dropoff if the booking was extended, to reflect actual return date
+      const effectiveDropoff = b.isExtended && b.extendedDropoffDatetime
+        ? b.extendedDropoffDatetime
+        : b.dropoffDatetime;
+      return sum + clampedRentalDays(b.pickupDatetime, effectiveDropoff);
+    }, 0);
+
   return {
     totalBookings: bookings.length,
     commissionableBookings: bookings.filter((b) => b.commissionable).length,
     totalCommission: roundMoney(totalCommission),
+    totalPendingCommission: roundMoney(totalPendingCommission),
+    totalVehiclesRented,
+    averageVehiclesPerDay: roundMoney(totalVehicleDays / monthDays),
     bookings,
   };
 }

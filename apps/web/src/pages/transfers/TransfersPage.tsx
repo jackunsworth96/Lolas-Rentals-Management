@@ -51,10 +51,11 @@ type TransferTab = 'upcoming' | 'unpaid' | 'completed';
 
 export default function TransfersPage() {
   const storeId = useUIStore((s) => s.selectedStoreId) ?? '';
+  const archiveMode = useUIStore((s) => s.archiveMode);
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
 
-  const [activeTab, setActiveTab] = useState<TransferTab>('upcoming');
+  const [activeTab, setActiveTab] = useState<TransferTab>(archiveMode ? 'completed' : 'upcoming');
   const [completedDateFrom, setCompletedDateFrom] = useState('');
   const [completedDateTo, setCompletedDateTo] = useState('');
   const [search, setSearch] = useState('');
@@ -109,6 +110,7 @@ export default function TransfersPage() {
     setSavedPickupTimeId(null);
     try {
       await updatePickupTime(t.id, value || null);
+      await queryClient.invalidateQueries({ queryKey: ['transfers'] });
       setSavedPickupTimeId(t.id);
       setTimeout(() => setSavedPickupTimeId((prev) => (prev === t.id ? null : prev)), 2000);
     } catch {
@@ -209,12 +211,14 @@ export default function TransfersPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-gray-900">Transfers</h1>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-        >
-          + Add Transfer
-        </button>
+        {!archiveMode && (
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            + Add Transfer
+          </button>
+        )}
       </div>
 
       {/* Tabs */}
@@ -223,7 +227,7 @@ export default function TransfersPage() {
           { key: 'upcoming', label: 'Upcoming' },
           { key: 'unpaid', label: 'Unpaid to Driver' },
           { key: 'completed', label: 'Completed' },
-        ] as const).map((tab) => (
+        ] as const).filter((tab) => !archiveMode || tab.key === 'completed').map((tab) => (
           <button
             key={tab.key}
             onClick={() => switchTab(tab.key)}
@@ -456,7 +460,7 @@ export default function TransfersPage() {
                 <p className="mt-2 font-lato text-xs text-charcoal-brand/70">
                   {formatDate(t.serviceDate)}
                   {t.flightTime && (
-                    <span className="ml-1 text-charcoal-brand/50">{t.flightTime}</span>
+                    <span className="ml-1 text-charcoal-brand/50">✈ Flight: {t.flightTime}</span>
                   )}
                 </p>
                 {t.pickupTime && (
@@ -477,6 +481,14 @@ export default function TransfersPage() {
 
                 {/* Action buttons */}
                 <div className="mt-3 flex flex-wrap gap-2">
+                  {t.paymentStatus !== 'Paid' && !archiveMode && (
+                    <button
+                      onClick={() => setPaymentTarget(t)}
+                      className="rounded-lg bg-green-600 px-3 py-1.5 font-lato text-xs font-medium text-white hover:bg-green-700"
+                    >
+                      Record Payment
+                    </button>
+                  )}
                   {!t.collectedAt && (
                     <button
                       onClick={() => setCollectTarget(t)}
@@ -599,10 +611,21 @@ export default function TransfersPage() {
                       <td className="whitespace-nowrap px-3 py-3 text-right text-sm font-medium text-gray-900">
                         {total > 0 ? formatCurrency(netProfit) : '—'}
                       </td>
-                      <td className="px-3 py-3 text-sm">
-                        <Badge color={PAYMENT_STATUS_COLORS[t.paymentStatus] ?? 'gray'}>
-                          {t.paymentStatus}
-                        </Badge>
+                      <td className="px-3 py-3 text-sm" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex min-w-max flex-col items-start gap-1.5">
+                          <Badge color={PAYMENT_STATUS_COLORS[t.paymentStatus] ?? 'gray'}>
+                            {t.paymentStatus}
+                          </Badge>
+                          {t.paymentStatus !== 'Paid' && !archiveMode && (
+                            <button
+                              type="button"
+                              onClick={() => setPaymentTarget(t)}
+                              className="rounded-md bg-green-600 px-2 py-1 text-xs font-medium text-white hover:bg-green-700"
+                            >
+                              Record Payment
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td className="px-3 py-3 text-sm">
                         {t.driverPaidStatus === 'Paid' ? (
@@ -623,18 +646,20 @@ export default function TransfersPage() {
                           <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
                             ✓ {formatDate(t.collectedAt.slice(0, 10))}
                           </span>
-                        ) : (
+                        ) : !archiveMode ? (
                           <button
                             onClick={() => setCollectTarget(t)}
                             className="rounded-md bg-teal-brand px-2 py-1 text-xs font-medium text-white hover:bg-teal-brand/80"
                           >
                             Collect
                           </button>
+                        ) : (
+                          <span className="text-gray-300">—</span>
                         )}
                       </td>
                       <td className="px-3 py-3 text-sm text-gray-600">{t.bookingSource ?? '—'}</td>
                       <td className="px-3 py-3 text-sm" onClick={(e) => e.stopPropagation()}>
-                        {canCancelTransfer(t) ? (
+                        {!archiveMode && canCancelTransfer(t) ? (
                           <button
                             type="button"
                             disabled={cancellingId === t.id}
@@ -648,18 +673,10 @@ export default function TransfersPage() {
                         )}
                       </td>
                     </tr>
-                    {isExpanded && (
+                    {isExpanded && !archiveMode && (
                       <tr key={`${t.id}-actions`}>
                         <td colSpan={19} className="bg-gray-50 px-6 py-3">
                           <div className="flex flex-wrap items-center gap-3">
-                            {t.paymentStatus !== 'Paid' && (
-                              <button
-                                onClick={() => { setPaymentTarget(t); setExpandedRow(null); }}
-                                className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700"
-                              >
-                                Record Payment
-                              </button>
-                            )}
                             {t.driverPaidStatus !== 'Paid' && (
                               <button
                                 onClick={() => { setDriverTarget(t); setExpandedRow(null); }}
@@ -748,7 +765,7 @@ export default function TransfersPage() {
       )}
 
       {/* Modals */}
-      <AddTransferModal open={showAddModal} onClose={() => setShowAddModal(false)} storeId={storeId} />
+      {!archiveMode && <AddTransferModal open={showAddModal} onClose={() => setShowAddModal(false)} storeId={storeId} />}
       {paymentTarget && (
         <TransferPaymentModal
           open={!!paymentTarget}

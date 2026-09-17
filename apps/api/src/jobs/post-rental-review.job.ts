@@ -3,12 +3,14 @@
  *
  * Fires at 10:00 Asia/Manila every day.
  * Finds every completed rental whose dropoff_datetime fell yesterday
- * (Asia/Manila date boundaries) and sends a WhatsApp review request
+ * (Asia/Manila date boundaries) and sends a WhatsApp template review request
  * via the respond.io outbound API.
  *
- * Sources:
- *   1. orders_raw  — web / direct bookings (status = 'processed')
- *   2. orders + order_items + customers — staff-created bookings
+ * Source: orders + order_items + customers.
+ *
+ * Do not use orders_raw.status = 'processed' as a completion signal. That row
+ * stays processed after activation, including while the authoritative order is
+ * still active or has had its return time extended.
  *
  * Deduplication: post_rental_review_log prevents double-sending if
  * the job is restarted or runs more than once on the same day.
@@ -21,6 +23,7 @@
 import cron from 'node-cron';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { logger } from '../lib/logger.js';
+import { sendRespondIoTemplateMessage } from '../services/respond-io-outbound.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -35,58 +38,24 @@ interface ReviewCandidate {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/**
- * Normalises a Philippine mobile number to E.164 format (+639XXXXXXXXX).
- * Strips spaces, dashes, and parentheses, then applies country-code rules.
- */
-function sanitisePhone(raw: string): string {
-  const digits = raw.replace(/[\s\-().]/g, '');
-
-  if (digits.startsWith('+')) return digits;
-  if (digits.startsWith('0')) return `+63${digits.slice(1)}`;
-  if (digits.startsWith('63')) return `+${digits}`;
-  return `+63${digits}`;
-}
+const POST_RENTAL_REVIEW_TEMPLATE_CHANNEL_ID = Number(
+  process.env.RESPOND_IO_POST_RENTAL_REVIEW_CHANNEL_ID
+    ?? process.env.RESPOND_IO_WHATSAPP_CHANNEL_ID
+    ?? 501809,
+);
+const POST_RENTAL_REVIEW_TEMPLATE_NAME =
+  process.env.RESPOND_IO_POST_RENTAL_REVIEW_TEMPLATE_NAME ?? 'post_rental_review';
+const POST_RENTAL_REVIEW_TEMPLATE_LANGUAGE =
+  process.env.RESPOND_IO_POST_RENTAL_REVIEW_TEMPLATE_LANGUAGE ?? 'en';
+const POST_RENTAL_REVIEW_TEMPLATE_BODY =
+  "Hey {{1}}! Hope you had an amazing time on Siargao 🌊\n\n" +
+  "If you enjoyed your time with Lola's Rentals, a quick Google review would mean a lot to us — " +
+  "and if you snapped any photos on the road, throw them in too.\n\n" +
+  "g.page/r/CXtJhZFnjqBIEBM/review\n\n" +
+  "Thanks for riding with us — hope to see you back on the island! 🤙";
 
 function escapeIlike(value: string): string {
   return value.replace(/[%_\\]/g, '\\$&');
-}
-
-function buildMessage(customerName: string): string {
-  return (
-    `Hey ${customerName}! Hope you had an amazing time on Siargao 🌊\n\n` +
-    `If you enjoyed your time with Lola's Rentals, a quick Google review would mean a lot to us — ` +
-    `and if you snapped any photos on the road, throw them in too.\n\n` +
-    `g.page/r/CXtJhZFnjqBIEBM/review\n\n` +
-    `Thanks for riding with us — hope to see you back on the island! 🤙`
-  );
-}
-
-async function sendRespondIoMessage(phone: string, text: string): Promise<void> {
-  const baseUrl = process.env.RESPOND_IO_API_URL;
-  const token = process.env.RESPOND_IO_OUTBOUND_TOKEN;
-
-  if (!baseUrl || !token) {
-    throw new Error(
-      'Missing RESPOND_IO_API_URL or RESPOND_IO_OUTBOUND_TOKEN environment variable',
-    );
-  }
-
-  const url = `${baseUrl}/v2/contact/phone:${encodeURIComponent(phone)}/message`;
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ message: { type: 'text', text } }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`respond.io API error ${res.status}: ${body}`);
-  }
 }
 
 // ── Main job ──────────────────────────────────────────────────────────────────
@@ -111,20 +80,9 @@ export async function runPostRentalReviewJob(): Promise<void> {
   const windowStart = `${yesterdayPHT}T00:00:00+08:00`;
   const windowEnd   = `${yesterdayPHT}T23:59:59.999+08:00`;
 
-  // ── Query 1: orders_raw ───────────────────────────────────────────────────
-
-  const { data: rawRows, error: rawErr } = await sb
-    .from('orders_raw')
-    .select('order_reference, customer_name, customer_email, customer_mobile')
-    .eq('status', 'processed')
-    .gte('dropoff_datetime', windowStart)
-    .lte('dropoff_datetime', windowEnd);
-
-  if (rawErr) {
-    logger.warn({ error: rawErr.message }, '[post-rental-review] orders_raw query failed');
-  }
-
-  // ── Query 2: orders + order_items + customers ─────────────────────────────
+  // `orders` is authoritative after activation. In particular, the current
+  // order_items.dropoff_datetime reflects extensions while the processed raw
+  // row may still contain the original return time.
 
   const { data: itemRows, error: itemErr } = await sb
     .from('order_items')
@@ -142,22 +100,6 @@ export async function runPostRentalReviewJob(): Promise<void> {
   // ── Merge results ─────────────────────────────────────────────────────────
 
   const candidates: ReviewCandidate[] = [];
-
-  for (const row of rawRows ?? []) {
-    const name   = (row.customer_name as string | null)?.trim();
-    const mobile = (row.customer_mobile as string | null)?.trim();
-    const email  = (row.customer_email as string | null)?.trim() || null;
-    const ref    = row.order_reference as string | null;
-    if (!name || !mobile || !ref) continue;
-    candidates.push({
-      bookingReference: ref,
-      customerName: name,
-      customerMobile: mobile,
-      customerEmail: email,
-      customerId: null,
-      whatsappReviewOptOut: false,
-    });
-  }
 
   for (const row of itemRows ?? []) {
     const order = Array.isArray(row.orders) ? row.orders[0] : row.orders;
@@ -261,36 +203,35 @@ export async function runPostRentalReviewJob(): Promise<void> {
       }
     }
 
-    let phone: string;
     try {
-      phone = sanitisePhone(candidate.customerMobile);
-    } catch (err) {
-      logger.warn(
-        { ref: candidate.bookingReference, mobile: candidate.customerMobile, err },
-        '[post-rental-review] Could not sanitise phone — skipping',
-      );
-      continue;
-    }
-
-    const message = buildMessage(candidate.customerName);
-
-    try {
-      await sendRespondIoMessage(phone, message);
-
-      await sb.from('post_rental_review_log').insert({
-        booking_reference: candidate.bookingReference,
-        sent_at:           new Date().toISOString(),
+      const result = await sendRespondIoTemplateMessage({
+        phone: candidate.customerMobile,
+        channelId: POST_RENTAL_REVIEW_TEMPLATE_CHANNEL_ID,
+        templateName: POST_RENTAL_REVIEW_TEMPLATE_NAME,
+        languageCode: POST_RENTAL_REVIEW_TEMPLATE_LANGUAGE,
+        bodyText: POST_RENTAL_REVIEW_TEMPLATE_BODY,
+        parameters: [candidate.customerName],
+        logContext: { ref: candidate.bookingReference },
       });
 
+      if (result.delivered) {
+        await sb.from('post_rental_review_log').insert({
+          booking_reference: candidate.bookingReference,
+          sent_at:           new Date().toISOString(),
+        });
+      }
+
       logger.info(
-        { ref: candidate.bookingReference, phone },
-        '[post-rental-review] Review request sent',
+        { ref: candidate.bookingReference, delivered: result.delivered },
+        result.delivered
+          ? '[post-rental-review] Review request sent'
+          : '[post-rental-review] Review request simulated',
       );
     } catch (err) {
       logger.warn(
         {
           ref:   candidate.bookingReference,
-          phone,
+          phone: candidate.customerMobile,
           error: err instanceof Error ? err.message : String(err),
         },
         '[post-rental-review] Failed to send — continuing',

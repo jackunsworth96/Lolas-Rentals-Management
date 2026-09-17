@@ -94,14 +94,27 @@ export default function InclusionMarquee({
               minWidth: iconSize * 1.4,
             }}
           >
-            <div className="shrink-0" style={{ width: iconSize, height: iconSize }}>
+            <div
+              className="shrink-0"
+              style={{
+                width: iconSize,
+                height: iconSize,
+                borderRadius: '50%',
+                overflow: 'hidden',
+                backgroundColor: 'rgba(54,55,55,0.10)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: Math.round(iconSize * 0.1),
+              }}
+            >
               <img
                 src={item.icon}
                 alt={item.label}
                 className={knockOutIconWhiteMatte ? 'mix-blend-multiply' : undefined}
                 style={{
-                  width: iconSize,
-                  height: iconSize,
+                  width: '100%',
+                  height: '100%',
                   objectFit: 'contain',
                   opacity: item.isUpgrade ? 0.78 : 1,
                 }}

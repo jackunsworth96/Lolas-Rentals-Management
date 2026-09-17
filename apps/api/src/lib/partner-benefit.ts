@@ -28,7 +28,7 @@ export interface PartnerBenefitRow {
   discountType: PartnerDiscountType | null;
   discountValue: number | null;
   freeDelivery: boolean;
-  /** When set, free delivery only applies when both pickup and dropoff are in this list. */
+  /** When set, free delivery applies per delivery/collection leg for these locations. */
   freeDeliveryLocationIds: number[] | null;
   advanceDiscountDays: number | null;
   earlyBirdDays: number | null;
@@ -52,10 +52,10 @@ export interface ResolvedPartnerTerms {
 }
 
 /**
- * Look up an active accommodation partner by slug. Returns null when the slug
- * is missing/blank, when the partner does not exist, or when the partner is
- * pending/rejected/inactive — in any of those cases the booking should be
- * treated as if no partner referral was supplied (per spec).
+ * Look up an active accommodation partner by slug or portal subdomain. Returns
+ * null when the ref is missing/blank, when the partner does not exist, or when
+ * the partner is pending/rejected/inactive — in any of those cases the booking
+ * should be treated as if no partner referral was supplied (per spec).
  */
 export async function lookupActivePartnerBySlug(
   slug: string | null | undefined,
@@ -68,7 +68,7 @@ export async function lookupActivePartnerBySlug(
   const { data, error } = await sb
     .from('accommodation_partners')
     .select('id, slug, name, store_id, deal_type, discount_type, discount_value, free_delivery, free_delivery_location_ids, advance_discount_days, early_bird_days, early_bird_discount_value, status, active')
-    .eq('slug', trimmed)
+    .or(`slug.eq.${trimmed},portal_subdomain.eq.${trimmed}`)
     .eq('status', 'active')
     .eq('active', true)
     .maybeSingle();
@@ -153,10 +153,10 @@ export function resolveTerms(
         dealType: override.dealType,
         discountType: override.discountType,
         discountValue: override.discountValue,
-        freeDelivery: override.freeDelivery,
-        advanceDiscountDays: override.advanceDiscountDays,
-        earlyBirdDays: override.earlyBirdDays,
-        earlyBirdDiscountValue: override.earlyBirdDiscountValue,
+        freeDelivery: override.freeDelivery || partner.freeDelivery,
+        advanceDiscountDays: override.advanceDiscountDays ?? partner.advanceDiscountDays,
+        earlyBirdDays: override.earlyBirdDays ?? partner.earlyBirdDays,
+        earlyBirdDiscountValue: override.earlyBirdDiscountValue ?? partner.earlyBirdDiscountValue,
       };
     }
   }
@@ -186,9 +186,13 @@ export function isBenefitEligibleForPickup(
 ): boolean {
   const terms = resolveTerms(partner, vehicleModelId);
 
-  if (terms.dealType === 'commission') return false;
-  // commission_delivery has no rental discount but does apply free delivery —
-  // allow it through so applyPartnerBenefit can zero the delivery fees.
+  if (terms.dealType === 'commission' && !terms.freeDelivery) return false;
+  const hasRentalRateBenefit =
+    ((terms.dealType === 'discount' || terms.dealType === 'combined' || terms.dealType === 'discount_delivery') &&
+      terms.discountType != null &&
+      terms.discountValue != null) ||
+    (terms.earlyBirdDays != null && terms.earlyBirdDiscountValue != null);
+  if (!hasRentalRateBenefit) return true;
   if (terms.advanceDiscountDays == null || terms.advanceDiscountDays <= 0) return true;
 
   const pickup = new Date(pickupDatetime);
@@ -201,16 +205,13 @@ export function isBenefitEligibleForPickup(
 /**
  * Returns true when the selected locations are permitted for free delivery.
  * If no allowlist is configured (null or empty) all locations qualify.
- * When an allowlist is set, BOTH pickup and dropoff must be included.
  */
 function isLocationAllowed(
   ids: number[] | null,
-  pickupLocationId?: number | null,
-  dropoffLocationId?: number | null,
+  locationId?: number | null,
 ): boolean {
   if (!ids || ids.length === 0) return true;
-  return (pickupLocationId != null && ids.includes(pickupLocationId)) &&
-         (dropoffLocationId != null && ids.includes(dropoffLocationId));
+  return locationId != null && ids.includes(locationId);
 }
 
 export interface ApplyBenefitInput {
@@ -256,8 +257,12 @@ export function applyPartnerBenefit(input: ApplyBenefitInput): ApplyBenefitResul
   const applyFreeDelivery =
     terms.freeDelivery || terms.dealType === 'free_delivery' || terms.dealType === 'combined' ||
     terms.dealType === 'commission_delivery' || terms.dealType === 'discount_delivery';
+  const advanceQualified =
+    terms.advanceDiscountDays == null ||
+    terms.advanceDiscountDays <= 0 ||
+    (input.advanceDaysFromNow != null && input.advanceDaysFromNow >= terms.advanceDiscountDays);
 
-  if (applyDiscount && terms.discountType && terms.discountValue != null) {
+  if (applyDiscount && advanceQualified && terms.discountType && terms.discountValue != null) {
     // Use the early-bird (higher) value when the pickup qualifies for that tier.
     const effectiveDiscountValue =
       terms.earlyBirdDiscountValue != null &&
@@ -275,13 +280,12 @@ export function applyPartnerBenefit(input: ApplyBenefitInput): ApplyBenefitResul
     rentalSubtotal = Math.max(0, Math.round((rentalSubtotal - rentalDiscount) * 100) / 100);
   }
 
-  if (applyFreeDelivery && isLocationAllowed(
-    input.partner.freeDeliveryLocationIds,
-    input.pickupLocationId,
-    input.dropoffLocationId,
-  )) {
-    deliveryDiscount = pickupFee + dropoffFee;
+  if (applyFreeDelivery && isLocationAllowed(input.partner.freeDeliveryLocationIds, input.pickupLocationId)) {
+    deliveryDiscount += pickupFee;
     pickupFee = 0;
+  }
+  if (applyFreeDelivery && isLocationAllowed(input.partner.freeDeliveryLocationIds, input.dropoffLocationId)) {
+    deliveryDiscount += dropoffFee;
     dropoffFee = 0;
   }
 

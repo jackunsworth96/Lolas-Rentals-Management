@@ -32,6 +32,7 @@ export interface PartnerProfile {
   slug: string;
   name: string;
   store_id: string;
+  deal_type: 'commission' | 'discount' | 'free_delivery' | 'combined' | 'commission_delivery' | 'discount_delivery';
   logo_url: string | null;
   welcome_message: string | null;
   portal_subdomain: string | null;
@@ -39,6 +40,8 @@ export interface PartnerProfile {
   commission_value: number;
   advance_booking_days: number;
   commission_includes_extensions: boolean;
+  free_delivery: boolean;
+  free_delivery_location_ids: number[] | null;
 }
 
 export interface PartnerReportBooking {
@@ -47,19 +50,28 @@ export interface PartnerReportBooking {
   customerName: string | null;
   vehicleModelId: string | null;
   pickupDatetime: string | null;
+  dropoffDatetime: string | null;
   status: string;
+  cancelledReason: string | null;
+  cancelledAt: string | null;
   advanceDays: number | null;
   commissionable: boolean;
   commissionAmount: number;
   commissionBase: number | null;
   commissionType: 'fixed' | 'percentage' | null;
   commissionValue: number | null;
+  isExtended: boolean;
+  extendedDropoffDatetime: string | null;
+  pendingCommissionAmount: number;
 }
 
 export interface PartnerReport {
   totalBookings: number;
   commissionableBookings: number;
   totalCommission: number;
+  totalPendingCommission: number;
+  totalVehiclesRented: number;
+  averageVehiclesPerDay: number;
   bookings: PartnerReportBooking[];
 }
 
@@ -67,7 +79,11 @@ export interface AvailabilityModel {
   modelId: string;
   modelName: string;
   availableCount: number;
-  totalCount: number;
+  /** Earliest time the model is free again after being fully booked. */
+  nextAvailablePickup?: string;
+  /** Start of the first conflict within the requested window when at least one unit
+   * was free at the beginning of the period (partial availability). */
+  firstConflictAt?: string;
 }
 
 export interface PublicModel {
@@ -94,11 +110,50 @@ export interface PublicAddon {
   isActive: boolean;
 }
 
+export interface ModelPricingTier {
+  id: number | string;
+  modelId: string;
+  storeId: string;
+  minDays: number;
+  maxDays: number;
+  dailyRate: number;
+}
+
+export interface PartnerQuoteAddonLine {
+  id: number;
+  name: string;
+  type: 'per_day' | 'one_time';
+  unitPrice: number;
+  total: number;
+}
+
+export interface PartnerQuote {
+  rentalDays: number;
+  dailyRate: number;
+  originalRentalSubtotal: number;
+  rentalSubtotal: number;
+  effectiveRentalSubtotal: number;
+  pickupFee: number;
+  dropoffFee: number;
+  originalPickupFee: number;
+  originalDropoffFee: number;
+  effectivePickupFee: number;
+  effectiveDropoffFee: number;
+  rentalDiscount: number;
+  deliveryDiscount: number;
+  addons: PartnerQuoteAddonLine[];
+  addonsTotal: number;
+  securityDeposit: number;
+  grandTotal: number;
+  grandTotalWithFees: number;
+}
+
 export interface PartnerBookingInput {
   customerName: string;
   customerEmail: string;
   customerMobile: string;
   vehicleModelId: string;
+  vehicles?: Array<{ vehicleModelId: string; driverName?: string | null }>;
   pickupDatetime: string;
   dropoffDatetime: string;
   pickupLocationId: number;
@@ -109,8 +164,21 @@ export interface PartnerBookingInput {
   roomReference?: string;
 }
 
+export interface PartnerBookingResult {
+  id: string;
+  orderReference: string;
+  groupRef: string;
+  bookings: Array<{
+    id: string;
+    orderReference: string;
+    vehicleModelId: string;
+    driverName: string;
+  }>;
+}
+
 export function usePartnerLogin() {
   return useMutation({
+    meta: { suppressGlobalErrorBanner: true },
     mutationFn: (body: { partnerSlug: string; username: string; pin: string }) =>
       partnerRequest<{ token: string; user: PartnerAuthUser; partner: { id: string; slug: string; name: string; storeId: string } }>('/partner-auth/login', {
         method: 'POST',
@@ -147,7 +215,7 @@ export function usePartnerBook() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: PartnerBookingInput) =>
-      partnerRequest<{ id: string; orderReference: string }>('/partner/book', {
+      partnerRequest<PartnerBookingResult>('/partner/book', {
         method: 'POST',
         body: JSON.stringify(body),
       }),
@@ -155,6 +223,32 @@ export function usePartnerBook() {
       qc.invalidateQueries({ queryKey: ['partner', 'report'] });
       qc.invalidateQueries({ queryKey: ['partner', 'availability'] });
     },
+  });
+}
+
+export function usePartnerQuote(input: {
+  vehicleModelId: string;
+  pickupDatetime: string;
+  dropoffDatetime: string;
+  pickupLocationId: number;
+  dropoffLocationId: number;
+  addonIds?: number[];
+  enabled?: boolean;
+}) {
+  return useQuery<PartnerQuote>({
+    queryKey: ['partner', 'quote', input.vehicleModelId, input.pickupDatetime, input.dropoffDatetime, input.pickupLocationId, input.dropoffLocationId, input.addonIds ?? []],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        vehicleModelId: input.vehicleModelId,
+        pickupDatetime: input.pickupDatetime,
+        dropoffDatetime: input.dropoffDatetime,
+        pickupLocationId: String(input.pickupLocationId),
+        dropoffLocationId: String(input.dropoffLocationId),
+      });
+      if (input.addonIds && input.addonIds.length > 0) params.set('addonIds', input.addonIds.join(','));
+      return partnerRequest<PartnerQuote>(`/partner/quote?${params.toString()}`);
+    },
+    enabled: input.enabled !== false && !!input.vehicleModelId && !!input.pickupDatetime && !!input.dropoffDatetime && !!input.pickupLocationId && !!input.dropoffLocationId,
   });
 }
 
@@ -179,4 +273,12 @@ export async function fetchPublicAddons(storeId: string, vehicleModelId?: string
   const json = await res.json() as ApiResponse<PublicAddon[]>;
   if (!res.ok || !json.success) throw new Error(json.error?.message ?? 'Failed to load add-ons');
   return json.data ?? [];
+}
+
+export async function fetchPublicModelPricing(storeId: string, vehicleModelId: string): Promise<ModelPricingTier[]> {
+  const params = new URLSearchParams({ storeId, vehicleModelId });
+  const res = await fetch(`${BASE_URL}/public/booking/model-pricing?${params.toString()}`);
+  const json = await res.json() as ApiResponse<{ tiers: ModelPricingTier[] }>;
+  if (!res.ok || !json.success) throw new Error(json.error?.message ?? 'Failed to load pricing');
+  return json.data?.tiers ?? [];
 }

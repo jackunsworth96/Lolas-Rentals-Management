@@ -170,6 +170,32 @@ export function useRefundOrder() {
   });
 }
 
+export function useUpdateDepositMethod() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, paymentMethodId, accountId }: { id: string; paymentMethodId: string; accountId: string }) =>
+      api.patch(`/orders/${id}/deposit-method`, { paymentMethodId, accountId }),
+    onSuccess: (_data, { id, paymentMethodId }) => {
+      qc.setQueryData<Record<string, unknown>>(['orders', id], (current) =>
+        current ? { ...current, depositMethodId: paymentMethodId } : current,
+      );
+      qc.invalidateQueries({ queryKey: ['orders'] });
+    },
+  });
+}
+
+export function useCancelActivatedOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      api.patch(`/orders/${id}/cancel`, { reason }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['fleet'] });
+    },
+  });
+}
+
 export function useUpdateDropoffNote() {
   const qc = useQueryClient();
   return useMutation({

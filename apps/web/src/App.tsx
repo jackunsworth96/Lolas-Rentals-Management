@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { QueryClient, QueryClientProvider, MutationCache } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, MutationCache, type Mutation } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 import { AppRouter } from './router.js';
 import { ErrorBoundary } from './components/common/ErrorBoundary.js';
@@ -25,15 +25,20 @@ export function App() {
     if (BETA_ERROR_NOTICE) setShowBetaError(true);
   }, []);
 
+  const triggerMutationError = useCallback((_error: Error, _variables: unknown, _context: unknown, mutation: Mutation<unknown, Error, unknown, unknown>) => {
+    if (mutation.options.meta?.suppressGlobalErrorBanner) return;
+    triggerBetaError();
+  }, [triggerBetaError]);
+
   const queryClient = useMemo(
     () =>
       new QueryClient({
-        mutationCache: new MutationCache({ onError: triggerBetaError }),
+        mutationCache: new MutationCache({ onError: triggerMutationError }),
         defaultOptions: {
           queries: { staleTime: 30_000, retry: 1 },
         },
       }),
-    [triggerBetaError],
+    [triggerMutationError],
   );
 
   return (

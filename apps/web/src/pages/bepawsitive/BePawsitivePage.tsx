@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { SEO } from '../../components/seo/SEO.js';
 import { PesoSign } from '../../components/ui/PesoSign.js';
+import { useCharityImpact } from '../../api/impact.js';
 
 // Run photos
 import runPhoto1 from '../../assets/Be Pawsitive/Run 2025/Screenshot 2026-04-13 092746.png';
@@ -311,6 +312,7 @@ function FadeCard({
 // ---------------------------------------------------------------------------
 export default function BePawsitivePage() {
   const { t } = useTranslation();
+  const { data: charityImpact } = useCharityImpact();
   const [statsInView, setStatsInView] = useState(false);
   const [donationInView, setDonationInView] = useState(false);
   const [isMobile, setIsMobile] = useState(
@@ -352,7 +354,7 @@ export default function BePawsitivePage() {
   const vaccinated     = useCountUp(2746,   1800, statsInView);
   const eventsCount    = useCountUp(4,      1200, statsInView);
   const locationsCount = useCountUp(2,      1000, statsInView);
-  const donation       = useCountUp(307995, 2200, donationInView);
+  const donation       = useCountUp(charityImpact?.totalRaised ?? 325495, 2200, donationInView);
 
   const secPad  = isMobile ? '64px 20px' : '80px 48px';
 

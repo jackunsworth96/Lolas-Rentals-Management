@@ -30,6 +30,7 @@ interface FormState {
   instagramUrl: string;
   isFavourite: boolean;
   isHighValue: boolean;
+  cloudinaryPublicId: string;
 }
 
 function emptyForm(): FormState {
@@ -50,6 +51,7 @@ function emptyForm(): FormState {
     instagramUrl: '',
     isFavourite: false,
     isHighValue: false,
+    cloudinaryPublicId: '',
   };
 }
 
@@ -71,6 +73,7 @@ function rowToForm(row: EstablishmentRow): FormState {
     instagramUrl: String(row.instagramUrl ?? ''),
     isFavourite: Boolean(row.isFavourite),
     isHighValue: Boolean(row.isHighValue),
+    cloudinaryPublicId: String(row.cloudinaryPublicId ?? ''),
   };
 }
 
@@ -145,6 +148,7 @@ export function PawCardTab() {
       instagramUrl: form.instagramUrl || undefined,
       isFavourite: form.isFavourite,
       isHighValue: form.isHighValue,
+      cloudinaryPublicId: form.cloudinaryPublicId || null,
     };
     if (editing) {
       payload._method = 'PUT';
@@ -410,6 +414,19 @@ export function PawCardTab() {
                     className={inputCls}
                     placeholder="https://instagram.com/..."
                   />
+                </label>
+                <label className="col-span-3 block">
+                  <FieldLabel>Cloudinary public ID (logo)</FieldLabel>
+                  <input
+                    type="text"
+                    value={form.cloudinaryPublicId}
+                    onChange={(e) => set('cloudinaryPublicId', e.target.value)}
+                    className={inputCls}
+                    placeholder="e.g. paw_card/cocopelli_logo"
+                  />
+                  <p className="mt-1 text-xs text-gray-400">
+                    Upload the logo to Cloudinary first, then paste the public ID here.
+                  </p>
                 </label>
               </div>
             </div>

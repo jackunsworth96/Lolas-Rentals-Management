@@ -137,11 +137,12 @@ export async function processRawOrder(
       whatsappReviewOptOut: false,
     };
   } else {
-    // Refresh mutable fields from the latest input so the upsert
-    // inside the RPC keeps the customer record current.
+    // A booking name is not necessarily the customer's profile name (for
+    // example, a second scooter may be booked for a partner). Do not replace
+    // the shared customer identity with an order-specific renter label.
+    // Contact details remain safe to refresh from the latest booking.
     customer = {
       ...customer,
-      name: input.customer.name,
       email: input.customer.email ?? customer.email,
       mobile: input.customer.phone ?? customer.mobile,
     };
@@ -754,6 +755,33 @@ export async function processRawOrder(
     : (rpcData as { order_id: string; was_new: boolean } | null);
 
   const wasNew = resultRow?.was_new === true;
+
+  // The activation modal may intentionally change the renter name from the
+  // original Inbox booking (for example, Zane -> Reymar for one scooter).
+  // The insert trigger initially snapshots orders_raw.customer_name, so replace
+  // that snapshot with the final name explicitly submitted at activation.
+  const finalBookingCustomerName = input.customer.name.trim();
+  const { error: bookingNameErr } = await supabase
+    .from('orders')
+    .update({ booking_customer_name: finalBookingCustomerName })
+    .eq('id', orderId);
+  if (bookingNameErr) {
+    throw new Error(
+      `Failed to preserve activation customer name for order ${orderId}: ${bookingNameErr.message}`,
+    );
+  }
+
+  // Keep this booking's archived source row consistent with the activated
+  // order. The other raw booking is a different row and remains unchanged.
+  const { error: rawBookingNameErr } = await supabase
+    .from('orders_raw')
+    .update({ customer_name: finalBookingCustomerName })
+    .eq('id', input.rawOrderId);
+  if (rawBookingNameErr) {
+    throw new Error(
+      `Failed to preserve activation customer name for raw order ${input.rawOrderId}: ${rawBookingNameErr.message}`,
+    );
+  }
 
   const partnerRef = (rawOrder as { partner_ref?: string | null }).partner_ref?.trim() || null;
   if (partnerRef) {

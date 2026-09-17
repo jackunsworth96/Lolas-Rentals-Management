@@ -22,6 +22,14 @@ export function errorHandler(
   res: Response,
   _next: NextFunction,
 ): void {
+  if (err.message.includes('STORE_ARCHIVED')) {
+    res.status(409).json({
+      success: false,
+      error: { code: 'STORE_ARCHIVED', message: 'Archived stores are read-only' },
+    });
+    return;
+  }
+
   if (err instanceof DomainError) {
     const status = domainStatusMap.get(err.constructor) ?? 400;
     res.status(status).json({

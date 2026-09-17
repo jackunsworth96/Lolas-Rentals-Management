@@ -2,11 +2,12 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
-import { Permission } from '@lolas/shared';
+import { calculateBalanceDue, Permission } from '@lolas/shared';
 import { z } from 'zod';
 import { supabase } from '../adapters/supabase/client.js';
 import { sendTelegramAlert, sendTelegramAlertPaidOrdersStaggered, getTelegramChatId } from '../lib/telegram.js';
 import { escapeHtml } from '../services/email.js';
+import { deriveTransportService } from '../lib/transport-service.js';
 
 const router = Router();
 router.use(authenticate);
@@ -32,7 +33,7 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
 
     let query = sb
       .from('orders')
-      .select('id, store_id, order_date, customer_id, status, final_total, balance_due, web_notes, payment_method_id, security_deposit, card_fee_surcharge, woo_order_id, booking_token, partner_ref, customers!customer_id(name, mobile, email)')
+      .select('id, store_id, order_date, customer_id, booking_customer_name, status, final_total, balance_due, web_notes, payment_method_id, deposit_method_id, security_deposit, card_fee_surcharge, woo_order_id, booking_token, partner_ref, customers!customer_id(name, mobile, email)')
       .eq('store_id', storeId)
       .order('order_date', { ascending: false });
 
@@ -47,11 +48,25 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
 
     const orderIds = (orders ?? []).map((o: Record<string, unknown>) => o.id as string);
 
-    let itemsByOrder = new Map<string, Array<{ id: string; vehicle_id: string; vehicle_name: string; pickup_datetime: string | null; dropoff_datetime: string; discount: number }>>();
+    type EnrichedOrderItem = {
+      id: string;
+      vehicle_id: string;
+      vehicle_name: string;
+      pickup_datetime: string | null;
+      dropoff_datetime: string;
+      pickup_location_id: string | number | null;
+      dropoff_location_id: string | number | null;
+      pickup_location: string | null;
+      dropoff_location: string | null;
+      pickup_fee: number | string | null;
+      dropoff_fee: number | string | null;
+      discount: number;
+    };
+    let itemsByOrder = new Map<string, EnrichedOrderItem[]>();
     if (orderIds.length > 0) {
       const { data: items, error: itemsErr } = await sb
         .from('order_items')
-        .select('id, order_id, vehicle_id, vehicle_name, pickup_datetime, dropoff_datetime, discount')
+        .select('id, order_id, vehicle_id, vehicle_name, pickup_datetime, dropoff_datetime, pickup_location_id, dropoff_location_id, pickup_location, dropoff_location, pickup_fee, dropoff_fee, discount')
         .in('order_id', orderIds);
       if (itemsErr) throw new Error(`enriched items query failed: ${itemsErr.message}`);
       for (const item of (items ?? [])) {
@@ -60,6 +75,16 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
         itemsByOrder.set(item.order_id, list);
       }
     }
+
+    // Load location names as well as IDs. Older activated partner bookings lost
+    // their location IDs while keeping the names and zero (waived) fees.
+    const { data: transportLocations, error: locationsErr } = orderIds.length > 0
+      ? await sb
+          .from('locations')
+          .select('id, name, location_type, delivery_cost, collection_cost')
+          .or(`store_id.eq.${storeId},store_id.is.null`)
+      : { data: [], error: null };
+    if (locationsErr) throw new Error(`enriched locations query failed: ${locationsErr.message}`);
 
     let paymentsByOrder = new Map<string, number>();
     let pendingExtensionsByOrder = new Map<string, number>();
@@ -192,13 +217,10 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
 
       const finalTotalNum = Number(o.final_total ?? 0);
       const totalPaidNum = totalPaid;
-      // Balance = rental/addon charges not yet paid. Use max of:
-      //   (a) final_total - totalPaid (works when migration 091 applied and
-      //       extension RPC bumped final_total)
-      //   (b) pendingExtensionsTotal (fallback when final_total is stale —
-      //       the IOU rows authoritatively show outstanding extension debt)
-      const balanceFromFinalTotal = Math.max(0, finalTotalNum - totalPaidNum);
-      const balanceDueComputed = Math.max(balanceFromFinalTotal, pendingExtensionsTotal);
+      // Pending extension charges already increase final_total. Adding them
+      // again here overstates the balance when earlier payments cover part of
+      // the extension.
+      const balanceDueComputed = calculateBalanceDue(finalTotalNum, totalPaidNum);
 
       const token = (o.booking_token as string) ?? null;
       const waiverData = token ? waiverByReference.get(token) : undefined;
@@ -207,6 +229,13 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
       const inspectionStatus = insp?.status === 'completed' ? 'completed' : 'pending';
       const hasExtension = extendedOrderIds.has(o.id as string);
       const hasNinePmAddon = ninePmOrderIds.has(o.id as string);
+      const transportService = deriveTransportService(items, transportLocations ?? [], {
+        // Free partner delivery/collection is saved using the establishment
+        // name (for example, "Bravo Beach Resort"). It is intentionally not a
+        // configured pricing-zone name, and its fee is zero because it was
+        // waived, but the operational transport job still exists.
+        unknownNamedLocationsRequireTransport: Boolean(o.partner_ref),
+      });
 
       const pickupDatetime = primaryItem?.pickup_datetime ?? null;
 
@@ -214,7 +243,8 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
         id: o.id,
         storeId: o.store_id,
         orderDate: o.order_date,
-        customerName: customer?.name ?? '—',
+        customerName:
+          ((o.booking_customer_name as string | null)?.trim() || customer?.name) ?? '—',
         customerMobile: customer?.mobile ?? null,
         customerEmail: customer?.email?.trim() || null,
         vehicleNames: vehicleNames || '—',
@@ -231,11 +261,13 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
         status: o.status as string,
         webNotes: o.web_notes as string | null,
         paymentMethodId: o.payment_method_id as string | null,
+        depositMethodId: o.deposit_method_id as string | null,
         waiverStatus: (waiverData?.status as 'pending' | 'signed' | 'expired' | undefined) ?? 'pending',
         waiverSignedAt: waiverData?.agreed_at ?? null,
         inspectionStatus,
         hasExtension,
         hasNinePmAddon,
+        transportService,
         partnerRef: (o.partner_ref as string) ?? null,
         primaryVehicleId: primaryItem?.vehicle_id ?? null,
         primaryVehicleName: primaryItem?.vehicle_name ?? null,
@@ -285,6 +317,61 @@ router.get('/:id', requirePermission(Permission.ViewInbox), async (req, res, nex
   } catch (err) { next(err); }
 });
 
+router.patch('/:id/deposit-method', requirePermission(Permission.EditOrders), validateBody(z.object({
+  paymentMethodId: z.string().min(1),
+  accountId: z.string().min(1),
+})), async (req, res, next) => {
+  try {
+    const { paymentMethodId, accountId } = req.body as { paymentMethodId: string; accountId: string };
+    const [{ data: order, error: orderError }, { data: method, error: methodError }, { data: account, error: accountError }] = await Promise.all([
+      supabase.from('orders').select('store_id, status, security_deposit').eq('id', req.params.id).maybeSingle(),
+      supabase.from('payment_methods').select('id, name, is_active, is_deposit_eligible').eq('id', paymentMethodId).maybeSingle(),
+      supabase.from('chart_of_accounts').select('id, name, store_id, account_type, is_active').eq('id', accountId).maybeSingle(),
+    ]);
+    if (orderError) throw new Error(orderError.message);
+    if (methodError) throw new Error(methodError.message);
+    if (accountError) throw new Error(accountError.message);
+    if (!order) {
+      throw Object.assign(new Error('Order not found'), { statusCode: 404 });
+    }
+    if (order.status !== 'active' || Number(order.security_deposit ?? 0) <= 0) {
+      throw Object.assign(new Error('Only active orders with a held deposit can be changed'), { statusCode: 409 });
+    }
+
+    const methodIdKey = String(method?.id ?? '').toLowerCase().replace(/[\s_-]/g, '');
+    const methodNameKey = String(method?.name ?? '').toLowerCase().replace(/[\s_-]/g, '');
+    const isCashOrGcash = [methodIdKey, methodNameKey].some((key) => key === 'cash' || key === 'gcash');
+    if (!method || !method.is_active || !method.is_deposit_eligible || !isCashOrGcash) {
+      throw Object.assign(new Error('Select Cash or GCash for the deposit'), { statusCode: 400 });
+    }
+    if (
+      !account ||
+      !account.is_active ||
+      String(account.account_type).toLowerCase() !== 'asset' ||
+      ![order.store_id, 'company'].includes(String(account.store_id))
+    ) {
+      throw Object.assign(new Error('Select an active cash or GCash account for this store'), { statusCode: 400 });
+    }
+
+    const accountKey = String(account.name).toLowerCase().replace(/[\s_-]/g, '');
+    const selectedGcash = methodIdKey === 'gcash' || methodNameKey === 'gcash';
+    const accountMatchesMethod = selectedGcash
+      ? accountKey.includes('gcash')
+      : accountKey.includes('cash') && !accountKey.includes('gcash');
+    if (!accountMatchesMethod) {
+      throw Object.assign(new Error(`Select a ${selectedGcash ? 'GCash' : 'cash'} account for this deposit`), { statusCode: 400 });
+    }
+
+    const { data, error } = await supabase.rpc('correct_order_deposit_method', {
+      p_order_id: req.params.id,
+      p_payment_method_id: paymentMethodId,
+      p_account_id: accountId,
+    });
+    if (error) throw new Error(`Failed to update deposit method: ${error.message}`);
+    res.json({ success: true, data: { paymentMethodId, updatedPayments: Number(data ?? 0) } });
+  } catch (err) { next(err); }
+});
+
 router.patch('/:id/dropoff-note', requirePermission(Permission.EditOrders), validateBody(z.object({ note: z.string().max(500).nullable() })), async (req, res, next) => {
   try {
     const { error } = await supabase
@@ -316,7 +403,7 @@ router.get('/:id/history', requirePermission(Permission.ViewInbox), async (req, 
     const sb = supabase;
 
     const [orderRes, paymentsRes, swapsRes, addonsRes, accidentsRes] = await Promise.all([
-      sb.from('orders').select('id, status, order_date, created_at, employee_id').eq('id', orderId).maybeSingle(),
+      sb.from('orders').select('id, status, order_date, created_at, employee_id, cancelled_at, cancelled_reason').eq('id', orderId).maybeSingle(),
       sb.from('payments').select('id, payment_type, amount, payment_method_id, transaction_date, settlement_status, settlement_ref, created_at').eq('order_id', orderId).order('created_at', { ascending: true }),
       sb.from('vehicle_swaps').select('id, old_vehicle_name, new_vehicle_name, reason, swap_date, swap_time, employee_id, created_at').eq('order_id', orderId).order('created_at', { ascending: true }),
       sb.from('order_addons').select('id, addon_name, addon_price, addon_type, total_amount, added_at').eq('order_id', orderId).order('added_at', { ascending: true }),
@@ -399,6 +486,16 @@ router.get('/:id/history', requirePermission(Permission.ViewInbox), async (req, 
         timestamp: new Date().toISOString(),
         type: 'settled',
         description: 'Order settled',
+      });
+    }
+
+    if (orderRes.data && String((orderRes.data as Record<string, unknown>).status) === 'cancelled') {
+      const cancelledOrder = orderRes.data as Record<string, unknown>;
+      events.push({
+        timestamp: (cancelledOrder.cancelled_at ?? new Date().toISOString()) as string,
+        type: 'cancelled',
+        description: 'Booking cancelled',
+        detail: (cancelledOrder.cancelled_reason as string | null) ?? undefined,
       });
     }
 
@@ -546,6 +643,8 @@ router.post('/:id/settle', requirePermission(Permission.EditOrders), validateBod
   cardFeeSurchargeDelta: z.number().nonnegative().optional(),
   returnChargesDelta: z.number().nonnegative().optional(),
   returnChargesNote: z.string().max(200).nullable().optional(),
+  returnChargesPaymentMethodId: z.string().min(1).nullable().optional(),
+  returnChargesAccountId: z.string().min(1).nullable().optional(),
   settlementRef: z.string().nullable().optional(),
   depositRefundMethodId: z.string().nullable().optional(),
 })), async (req, res, next) => {
@@ -664,6 +763,62 @@ router.post('/:id/refund', requirePermission(Permission.EditOrders), validateBod
     const { refundOrder } = await import('../use-cases/orders/refund-order.js');
     const result = await refundOrder(req.app.locals.deps, { orderId: req.params.id, ...req.body });
     res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+router.patch('/:id/cancel', requirePermission(Permission.CancelOrders), validateBody(z.object({
+  reason: z.string().trim().min(1, 'Cancellation reason is required').max(500),
+})), async (req, res, next) => {
+  try {
+    const reason = (req.body as { reason: string }).reason;
+    const { data, error } = await supabase.rpc('cancel_activated_order_atomic', {
+      p_order_id: req.params.id,
+      p_cancelled_at: new Date().toISOString(),
+      p_cancelled_reason: reason,
+      p_cancelled_by: req.user!.employeeId,
+    });
+    if (error) {
+      const missingCancellationRpc =
+        error.code === 'PGRST202' || error.message.includes('cancel_activated_order_atomic');
+      if (missingCancellationRpc) {
+        res.status(503).json({
+          success: false,
+          error: {
+            code: 'DATABASE_MIGRATION_REQUIRED',
+            message: 'Activated-booking cancellation is not installed in this environment. Apply migration 20260815000000_cancel_activated_orders.sql, then try again.',
+          },
+        });
+        return;
+      }
+      throw new Error(`Cancel activated order RPC failed: ${error.message}`);
+    }
+
+    const result = data as { success: boolean; error?: string; order_reference?: string; customer_name?: string };
+    if (!result.success) {
+      if (result.error === 'Order not found') {
+        res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found' } });
+        return;
+      }
+      if (result.error === 'Already cancelled') {
+        res.status(409).json({ success: false, error: { code: 'ALREADY_CANCELLED', message: 'Booking is already cancelled' } });
+        return;
+      }
+      if (result.error === 'Order is not active') {
+        res.status(409).json({ success: false, error: { code: 'INVALID_ORDER_STATUS', message: 'Only active or confirmed bookings can be cancelled' } });
+        return;
+      }
+      throw new Error(result.error ?? 'Cancellation failed');
+    }
+
+    res.json({ success: true });
+
+    void sendTelegramAlert(
+      `❌ <b>Activated Booking Cancelled</b>\n` +
+        `Reference: ${escapeHtml(result.order_reference ?? String(req.params.id))}\n` +
+        `Customer: ${escapeHtml(result.customer_name ?? '—')}\n` +
+        `Reason: ${escapeHtml(reason)}`,
+      getTelegramChatId('ops'),
+    );
   } catch (err) { next(err); }
 });
 

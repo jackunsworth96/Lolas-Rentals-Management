@@ -20,7 +20,6 @@ import { logger } from '../../lib/logger.js';
 import { sendRespondIoTemplateMessage } from '../../services/respond-io-outbound.js';
 import {
   applyPartnerBenefit,
-  isBenefitEligibleForPickup,
   lookupActivePartnerBySlug,
 } from '../../lib/partner-benefit.js';
 
@@ -128,7 +127,7 @@ export interface SubmitDirectBookingResult {
 export async function submitDirectBooking(
   deps: SubmitDirectBookingDeps,
   input: SubmitDirectBookingInput,
-  context?: { deviceType?: 'mobile' | 'desktop' },
+  context?: { deviceType?: 'mobile' | 'desktop'; partnerBookingGroupRef?: string | null; driverName?: string | null },
 ): Promise<SubmitDirectBookingResult> {
   const { bookingPort } = deps;
 
@@ -195,12 +194,10 @@ export async function submitDirectBooking(
     effectivePickupFee = fullQuote.pickupFee;
     effectiveDropoffFee = fullQuote.dropoffFee;
 
-    // Apply the partner benefit (discount / free delivery / combined) to the
-    // rental subtotal and location fees if the partner is eligible.
-    if (
-      validatedPartner &&
-      isBenefitEligibleForPickup(validatedPartner, input.pickupDatetime, new Date(), input.vehicleModelId)
-    ) {
+    // Apply partner benefits independently: rental discounts respect the
+    // advance-days rule inside applyPartnerBenefit, while free delivery can
+    // still apply for eligible locations.
+    if (validatedPartner) {
       const advanceDaysFromNow =
         (new Date(input.pickupDatetime).getTime() - Date.now()) / 86_400_000;
       const benefit = applyPartnerBenefit({
@@ -290,6 +287,8 @@ export async function submitDirectBooking(
     deviceType: context?.deviceType ?? null,
     partnerRef: partnerRefToPersist,
     rentalValueRaw: rentalSubtotalForCommission ?? fullQuote?.rentalSubtotal ?? null,
+    partnerBookingGroupRef: context?.partnerBookingGroupRef ?? null,
+    driverName: context?.driverName ?? null,
   });
 
   // 5b. Auto-journal charity donation → wallet (best-effort; never blocks booking).
@@ -447,6 +446,7 @@ export async function submitDirectBooking(
     });
 
     if (input.customerMobile) {
+      const customerNameParts = input.customerName.trim().split(/\s+/).filter(Boolean);
       void sendRespondIoTemplateMessage({
         phone: input.customerMobile,
         channelId: RESPOND_IO_BOOKING_TEMPLATE_CHANNEL_ID,
@@ -463,6 +463,11 @@ export async function submitDirectBooking(
           dropoffLocation,
           waiverUrl,
         }),
+        createContactIfMissing: {
+          firstName: customerNameParts[0] || input.customerName,
+          lastName: customerNameParts.slice(1).join(' ') || undefined,
+          email: input.customerEmail,
+        },
         logContext: { orderReference, source: 'direct-booking-confirmation' },
       }).catch((err: unknown) => {
         logger.warn(

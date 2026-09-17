@@ -6,16 +6,27 @@ export interface AvailableModel {
    * This is a hint for re-checking, not proof that the model is available for
    * the same rental duration starting at this timestamp. */
   nextAvailablePickup?: string;
+  /** Latest return datetime that remains continuously bookable from the
+   * requested pickup for requestedQuantity. Present only when shortening an
+   * otherwise unavailable window produces a useful confirmed alternative. */
+  availableUntil?: string;
   /** Set when availableCount is 0 solely because active basket holds are consuming all capacity.
    * ISO timestamp of when the earliest blocking hold expires. Absent when a confirmed
    * booking (order_items / orders_raw) is the reason for unavailability. */
   holdExpiresAt?: string;
+  /** Set when availableCount is 0 but at least one unit was free at the very start of the
+   * requested window. Indicates the ISO timestamp when the first new conflict begins — so the
+   * caller can display "available [pickup] – [just before firstConflictAt], free again from
+   * nextAvailablePickup". Absent when the model was already fully blocked at pickup time. */
+  firstConflictAt?: string;
 }
 
 export interface AvailabilityQuery {
   storeId: string;
   pickupDatetime: string;
   dropoffDatetime: string;
+  /** Quantity used when calculating availableUntil. Defaults to 1. */
+  requestedQuantity?: number;
   /** When set, holds belonging to this session are excluded from the count.
    * Used during order submission so the customer's own hold is not counted
    * against their own booking. */
@@ -87,6 +98,10 @@ export interface DirectBookingInsert {
   /** Pure rental subtotal (days × daily rate) at booking time — excludes add-ons, fees, charity, transfer.
    * Used as the commission base for percentage commissions (migration 130). */
   rentalValueRaw?: number | null;
+  /** Shared reference for partner portal bookings that created multiple raw orders together. */
+  partnerBookingGroupRef?: string | null;
+  /** Driver/renter name for this specific vehicle in a grouped partner booking. */
+  driverName?: string | null;
 }
 
 export interface DirectBookingResult {

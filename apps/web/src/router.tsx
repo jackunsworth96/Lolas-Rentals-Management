@@ -69,6 +69,7 @@ const PartnerShell = lazy(() => import('./pages/partner/PartnerShell.js'));
 const PartnerDashboardPage = lazy(() => import('./pages/partner/PartnerDashboardPage.js'));
 const PartnerBookPage = lazy(() => import('./pages/partner/PartnerBookPage.js'));
 const PartnerReportsPage = lazy(() => import('./pages/partner/PartnerReportsPage.js'));
+const PartnerPricesPage = lazy(() => import('./pages/partner/PartnerPricesPage.js'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
@@ -142,6 +143,7 @@ export function AppRouter() {
           <Route element={<ProtectedPartnerRoute><PartnerShell /></ProtectedPartnerRoute>}>
             <Route path="/partner/dashboard" element={<PartnerDashboardPage />} />
             <Route path="/partner/book" element={<PartnerBookPage />} />
+            <Route path="/partner/prices" element={<PartnerPricesPage />} />
             <Route path="/partner/reports" element={<PartnerReportsPage />} />
           </Route>
 

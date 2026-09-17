@@ -5,7 +5,6 @@ import type { BasketItem } from '../../stores/bookingStore.js';
 import type { Addon, TransferDetails, PaymentMethodOption } from './basket-types.js';
 import type { PublicPartnerBenefit } from '../../api/partners.js';
 import type { AppliedPartnerBenefit } from '../../utils/partnerDiscount.js';
-import { describeBenefit } from '../../utils/partnerDiscount.js';
 import { formatPhpNumber } from '../../utils/currency.js';
 import { PesoSign } from '../ui/PesoSign.js';
 import { getIncludedItemsForModel } from '../../data/home-included-rental-items.js';
@@ -37,6 +36,7 @@ interface Props {
   /** Active partner referral benefit, when ?ref= was captured. */
   partnerBenefit?: PublicPartnerBenefit | null;
   partnerBenefitApplied?: AppliedPartnerBenefit | null;
+  partnerFreeDeliveryLocationNames?: string[];
 }
 
 const PM_ICON_CLASS = 'h-5 w-5 shrink-0 text-charcoal-brand/85';
@@ -81,6 +81,24 @@ function addonCost(addon: Addon, days: number): number {
   return addon.priceOneTime;
 }
 
+function partnerHasFreeDeliveryOffer(benefit: PublicPartnerBenefit | null) {
+  if (!benefit) return false;
+  return Boolean(
+    benefit.freeDelivery ||
+    benefit.dealType === 'free_delivery' ||
+    benefit.dealType === 'combined' ||
+    benefit.dealType === 'commission_delivery' ||
+    benefit.dealType === 'discount_delivery',
+  );
+}
+
+function formatFreeDeliveryLocations(names: string[]) {
+  if (names.length === 0) return 'an eligible delivery or collection location';
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} or ${names[1]}`;
+  return `${names.slice(0, -1).join(', ')}, or ${names[names.length - 1]}`;
+}
+
 export function OrderSummaryPanel({
   basket,
   rentalDays,
@@ -105,6 +123,7 @@ export function OrderSummaryPanel({
   vehicleCount = 1,
   partnerBenefit = null,
   partnerBenefitApplied = null,
+  partnerFreeDeliveryLocationNames = [],
 }: Props) {
   const vehicleSubtotal = basket.reduce((sum, b) => sum + b.dailyRate * rentalDays, 0);
 
@@ -120,6 +139,22 @@ export function OrderSummaryPanel({
   const applied = partnerBenefitApplied?.applied ?? false;
   const rentalDiscount = applied ? (partnerBenefitApplied?.rentalDiscount ?? 0) : 0;
   const freeDelivery = applied && (partnerBenefitApplied?.freeDelivery ?? false);
+  const freeDeliveryOffer = partnerHasFreeDeliveryOffer(partnerBenefit);
+  const freeDeliveryLocationLabel = formatFreeDeliveryLocations(partnerFreeDeliveryLocationNames);
+  const hasRentalDiscount = rentalDiscount > 0;
+  const hasVisiblePartnerBenefit = hasRentalDiscount || freeDelivery || (partnerBenefitApplied?.earlyBird ?? false);
+  const appliedPartnerTitle = freeDelivery && !hasRentalDiscount
+    ? `${partnerBenefit?.name ?? 'Your partner'} has organised free delivery and collection`
+    : partnerBenefitApplied?.earlyBird
+      ? `Early bird rate applied — ${partnerBenefit?.name ?? 'Partner'}`
+      : `Your ${partnerBenefit?.name ?? 'partner'} rate is applied`;
+  const appliedPartnerMessage = freeDelivery && !hasRentalDiscount
+    ? partnerFreeDeliveryLocationNames.length > 0
+      ? `Free delivery and collection have been applied for ${freeDeliveryLocationLabel}.`
+      : 'Free delivery and collection have been applied to this booking.'
+    : partnerBenefitApplied?.earlyBird
+      ? 'You planned way ahead — this is our best thank you for it.'
+      : 'Enjoy your exclusive discount — a little thank you for planning ahead.';
   const discountedVehicleSubtotal = Math.max(0, vehicleSubtotal - rentalDiscount);
   const effectivePickupFee = freeDelivery ? 0 : pickupFee;
   const effectiveDropoffFee = freeDelivery ? 0 : dropoffFee;
@@ -146,7 +181,7 @@ export function OrderSummaryPanel({
         )}
 
         {/* ── Partner gift reveal ── */}
-        {partnerBenefit && applied && (
+        {partnerBenefit && applied && hasVisiblePartnerBenefit && (
           <div className="mb-3 flex items-start gap-3 rounded-xl border border-teal-200/70 bg-teal-50 px-3 py-3">
             {partnerBenefit.logoUrl ? (
               <img
@@ -158,14 +193,30 @@ export function OrderSummaryPanel({
             <div>
               <p className="flex items-center gap-1.5 text-[12px] font-bold text-teal-800">
                 <Gift className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                {partnerBenefitApplied?.earlyBird
-                  ? `Early bird rate applied — ${partnerBenefit.name}`
-                  : `Your ${partnerBenefit.name} rate is applied`}
+                {appliedPartnerTitle}
               </p>
               <p className="mt-0.5 text-[11px] leading-relaxed text-teal-700/80">
-                {partnerBenefitApplied?.earlyBird
-                  ? 'You planned way ahead — this is our best thank you for it.'
-                  : 'Enjoy your exclusive discount — a little thank you for planning ahead.'}
+                {appliedPartnerMessage}
+              </p>
+            </div>
+          </div>
+        )}
+        {partnerBenefit && freeDeliveryOffer && !freeDelivery && !hasRentalDiscount && partnerBenefitApplied?.pendingReason !== 'advance_days' && (
+          <div className="mb-3 flex items-start gap-3 rounded-xl border border-teal-200/70 bg-teal-50 px-3 py-3">
+            {partnerBenefit.logoUrl ? (
+              <img
+                src={partnerBenefit.logoUrl}
+                alt={partnerBenefit.name}
+                className="mt-0.5 h-8 w-auto max-w-[72px] shrink-0 rounded object-contain"
+              />
+            ) : null}
+            <div>
+              <p className="flex items-center gap-1.5 text-[12px] font-bold text-teal-800">
+                <Gift className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                {partnerBenefit.name} has organised free delivery and collection for you
+              </p>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-teal-700/80">
+                Select {freeDeliveryLocationLabel} to claim this benefit.
               </p>
             </div>
           </div>
@@ -261,13 +312,23 @@ export function OrderSummaryPanel({
           )}
           {addonsTotal > 0 && <Row label={vehicleCount > 1 ? `Add-ons Total (×${vehicleCount})` : 'Add-ons Total'} amount={addonsTotal} />}
           {transferFee > 0 && <Row label="Transfer Fee" amount={transferFee} />}
-          {applied && (rentalDiscount > 0 || deliveryDiscount > 0) && (
+          {applied && rentalDiscount > 0 && (
             <div className="flex items-baseline justify-between gap-3 border-t border-dashed border-teal-200 pt-2">
               <span className="min-w-0 text-[13px] font-medium text-teal-700">
                 {partnerBenefitApplied?.earlyBird ? 'Early bird rate' : `${partnerBenefit?.name ?? 'Partner'} rate`}
               </span>
               <span className="shrink-0 text-[14px] font-semibold text-teal-700">
-                −<PesoSign />{formatPhpNumber(rentalDiscount + deliveryDiscount)}
+                −<PesoSign />{formatPhpNumber(rentalDiscount)}
+              </span>
+            </div>
+          )}
+          {applied && deliveryDiscount > 0 && (
+            <div className="flex items-baseline justify-between gap-3 border-t border-dashed border-teal-200 pt-2">
+              <span className="min-w-0 text-[13px] font-medium text-teal-700">
+                Free delivery/collection
+              </span>
+              <span className="shrink-0 text-[14px] font-semibold text-teal-700">
+                −<PesoSign />{formatPhpNumber(deliveryDiscount)}
               </span>
             </div>
           )}

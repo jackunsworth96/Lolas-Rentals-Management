@@ -46,6 +46,8 @@ export function CancelOrderModal({ open, onClose, rawOrder, onCancelled }: Props
   const reference = getReference(rawOrder);
   const customerName = getCustomerName(rawOrder);
   const canConfirm = confirmInput === 'CANCEL';
+  const isAffiliateBooking = Boolean(rawOrder.partner_ref);
+  const hasRequiredReason = !isAffiliateBooking || reason.trim().length > 0;
 
   useEffect(() => {
     if (!open) {
@@ -61,7 +63,7 @@ export function CancelOrderModal({ open, onClose, rawOrder, onCancelled }: Props
   }
 
   function handleConfirm() {
-    if (!canConfirm) return;
+    if (!canConfirm || !hasRequiredReason) return;
     cancel.mutate(
       { id: rawOrder.id, reason: reason.trim() || undefined },
       {
@@ -89,7 +91,9 @@ export function CancelOrderModal({ open, onClose, rawOrder, onCancelled }: Props
           </p>
 
           <label className="block">
-            <span className="text-sm font-medium text-gray-700">Reason (optional)</span>
+            <span className="text-sm font-medium text-gray-700">
+              Reason {isAffiliateBooking ? '(required for affiliate report)' : '(optional)'}
+            </span>
             <textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
@@ -97,6 +101,11 @@ export function CancelOrderModal({ open, onClose, rawOrder, onCancelled }: Props
               placeholder="e.g. Customer requested cancellation"
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-red-400 focus:outline-none focus:ring-1 focus:ring-red-400"
             />
+            {isAffiliateBooking && !reason.trim() && (
+              <span className="mt-1 block text-xs text-red-600">
+                Add a reason so the affiliate can see why their booking was cancelled.
+              </span>
+            )}
           </label>
 
           <div className="flex justify-end gap-2 border-t border-gray-200 pt-4">
@@ -110,7 +119,8 @@ export function CancelOrderModal({ open, onClose, rawOrder, onCancelled }: Props
             <button
               type="button"
               onClick={handleProceedToStep2}
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+              disabled={!hasRequiredReason}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Yes, Cancel Booking
             </button>
@@ -152,7 +162,7 @@ export function CancelOrderModal({ open, onClose, rawOrder, onCancelled }: Props
             <button
               type="button"
               onClick={handleConfirm}
-              disabled={!canConfirm || cancel.isPending}
+              disabled={!canConfirm || !hasRequiredReason || cancel.isPending}
               className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {cancel.isPending ? 'Cancelling…' : 'Confirm Cancellation'}
