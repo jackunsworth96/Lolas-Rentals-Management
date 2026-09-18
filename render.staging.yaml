@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: lolas-rentals-staging
+    runtime: node
+    plan: free
+    branch: staging
+    autoDeployTrigger: commit
+    buildCommand: npm install && npm run build:render-api
+    startCommand: node --import ./apps/api/dist/instrument.js ./apps/api/dist/server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: RUN_SCHEDULED_JOBS
+        value: "false"
+      - key: RESPOND_IO_CHAT_ENABLED
+        value: "false"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        sync: false
+      - key: ALLOWED_ORIGIN
+        sync: false
+      - key: WEB_URL
+        sync: false
+      - key: UNSUBSCRIBE_SECRET
+        generateValue: true

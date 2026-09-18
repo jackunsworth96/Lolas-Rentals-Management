@@ -181,17 +181,21 @@ const PORT = Number(process.env.PORT) || 3001;
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
     logger.info({ port: PORT }, 'API server listening');
-    startWaiverReminderJob();
-    startPostRentalEmailJob();
-    startDailySummaryJob();
-    startFleetSummaryJob();
-    startTransferReminderJob();
-    startDeliveryReminderJob();
-    startReturnReminderJob();
-    startReturnReminderTodayJob();
-    startPickupReminderJob();
-    startNinePmReturnReminderJob();
-    startPostRentalReviewJob();
+    if (process.env.RUN_SCHEDULED_JOBS !== 'false') {
+      startWaiverReminderJob();
+      startPostRentalEmailJob();
+      startDailySummaryJob();
+      startFleetSummaryJob();
+      startTransferReminderJob();
+      startDeliveryReminderJob();
+      startReturnReminderJob();
+      startReturnReminderTodayJob();
+      startPickupReminderJob();
+      startNinePmReturnReminderJob();
+      startPostRentalReviewJob();
+    } else {
+      logger.info('Scheduled jobs disabled');
+    }
   });
 }
 
