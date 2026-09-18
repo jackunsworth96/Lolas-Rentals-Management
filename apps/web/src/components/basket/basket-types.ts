@@ -49,4 +49,5 @@ export interface PaymentMethodOption {
   id: string;
   name: string;
   surchargePercent: number;
+  gatewayProvider: 'xendit' | null;
 }

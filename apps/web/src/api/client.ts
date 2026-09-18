@@ -26,6 +26,10 @@ function isAuthLoginPath(path: string): boolean {
   return path === '/auth/login' || path.startsWith('/auth/login?');
 }
 
+function isPublicApiPath(path: string): boolean {
+  return path === '/public/' || path.startsWith('/public/');
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -50,7 +54,7 @@ async function request<T>(
     headers,
   });
 
-  if (response.status === 401) {
+  if (response.status === 401 && !isPublicApiPath(path)) {
     if (isAuthLoginPath(path)) {
       let json: ApiResponse<T>;
       try {

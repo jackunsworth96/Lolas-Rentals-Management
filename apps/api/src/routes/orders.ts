@@ -5,12 +5,23 @@ import { validateBody, validateQuery } from '../middleware/validate.js';
 import { calculateBalanceDue, Permission } from '@lolas/shared';
 import { z } from 'zod';
 import { supabase } from '../adapters/supabase/client.js';
+import { findLiveXenditSessionForOrder, paymentInProgressError } from '../lib/xendit-session-lock.js';
 import { sendTelegramAlert, sendTelegramAlertPaidOrdersStaggered, getTelegramChatId } from '../lib/telegram.js';
 import { escapeHtml } from '../services/email.js';
 import { deriveTransportService } from '../lib/transport-service.js';
 
 const router = Router();
 router.use(authenticate);
+
+async function blockLiveXenditOrderMutation(req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) {
+  try {
+    if (await findLiveXenditSessionForOrder(req.params.id as string)) {
+      res.status(409).json(paymentInProgressError());
+      return;
+    }
+    next();
+  } catch (error) { next(error); }
+}
 
 const StoreQuerySchema = z.object({
   storeId: z.string(),
@@ -631,7 +642,7 @@ router.post('/:id/activate', requirePermission(Permission.EditOrders), validateB
   } catch (err) { next(err); }
 });
 
-router.post('/:id/settle', requirePermission(Permission.EditOrders), validateBody(z.object({
+router.post('/:id/settle', requirePermission(Permission.EditOrders), blockLiveXenditOrderMutation, validateBody(z.object({
   settlementDate: z.string(),
   depositLiabilityAccountId: z.string(),
   receivableAccountId: z.string(),
@@ -655,7 +666,7 @@ router.post('/:id/settle', requirePermission(Permission.EditOrders), validateBod
   } catch (err) { next(err); }
 });
 
-router.post('/:id/payment', requirePermission(Permission.EditOrders), validateBody(z.object({
+router.post('/:id/payment', requirePermission(Permission.EditOrders), blockLiveXenditOrderMutation, validateBody(z.object({
   amount: z.number().positive(), paymentMethodId: z.string(), accountId: z.string().nullable().optional(),
   paymentType: z.string(), transactionDate: z.string(), receivableAccountId: z.string(),
   isCardPayment: z.boolean().optional(), settlementRef: z.string().nullable().optional(),
@@ -707,7 +718,7 @@ router.post('/:id/payment', requirePermission(Permission.EditOrders), validateBo
   } catch (err) { next(err); }
 });
 
-router.post('/:id/modify-addons', requirePermission(Permission.EditOrders), validateBody(z.object({
+router.post('/:id/modify-addons', requirePermission(Permission.EditOrders), blockLiveXenditOrderMutation, validateBody(z.object({
   addons: z.array(z.object({
     addonName: z.string(), addonPrice: z.number(), addonType: z.enum(['per_day', 'one_time']),
     quantity: z.number().int().positive(), totalAmount: z.number(),
@@ -726,7 +737,7 @@ router.post('/:id/modify-addons', requirePermission(Permission.EditOrders), vali
   } catch (err) { next(err); }
 });
 
-router.post('/:id/adjust-dates', requirePermission(Permission.EditOrders), validateBody(z.object({
+router.post('/:id/adjust-dates', requirePermission(Permission.EditOrders), blockLiveXenditOrderMutation, validateBody(z.object({
   orderItemId: z.string(),
   pickupDatetime: z.string(),
   dropoffDatetime: z.string(),
@@ -750,7 +761,7 @@ router.post('/:id/swap-vehicle', requirePermission(Permission.EditOrders), valid
   } catch (err) { next(err); }
 });
 
-router.post('/:id/refund', requirePermission(Permission.EditOrders), validateBody(z.object({
+router.post('/:id/refund', requirePermission(Permission.EditOrders), blockLiveXenditOrderMutation, validateBody(z.object({
   amount: z.number().positive(),
   refundMethodId: z.string(),
   refundAccountId: z.string(),

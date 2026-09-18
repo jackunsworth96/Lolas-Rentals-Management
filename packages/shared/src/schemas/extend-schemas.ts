@@ -7,6 +7,13 @@ export const ExtendLookupRequestSchema = z.object({
 
 export type ExtendLookupRequest = z.infer<typeof ExtendLookupRequestSchema>;
 
+export const ExtensionPaymentAccessSchema = z.object({
+  orderReference: z.string().trim().min(1).max(64),
+  email: z.string().trim().email().transform((value) => value.toLowerCase()),
+});
+
+export type ExtensionPaymentAccess = z.infer<typeof ExtensionPaymentAccessSchema>;
+
 export interface ExtendLookupOrderAddon {
   addonName: string;
   addonPrice: number;

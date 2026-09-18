@@ -2,9 +2,9 @@ import { Banknote, CreditCard, Gift, Hotel, Landmark, Lock, Wallet } from 'lucid
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { BasketItem } from '../../stores/bookingStore.js';
-import type { Addon, TransferDetails, PaymentMethodOption } from './basket-types.js';
+import type { PaymentMethodOption } from './basket-types.js';
 import type { PublicPartnerBenefit } from '../../api/partners.js';
-import type { AppliedPartnerBenefit } from '../../utils/partnerDiscount.js';
+import type { BasketPricingTotals } from '../../utils/basket-pricing.js';
 import { formatPhpNumber } from '../../utils/currency.js';
 import { PesoSign } from '../ui/PesoSign.js';
 import { getIncludedItemsForModel } from '../../data/home-included-rental-items.js';
@@ -12,11 +12,7 @@ import { getIncludedItemsForModel } from '../../data/home-included-rental-items.
 interface Props {
   basket: BasketItem[];
   rentalDays: number;
-  selectedAddonIds: Set<number>;
-  addons: Addon[];
-  transfer: TransferDetails | null;
-  pickupFee: number;
-  dropoffFee: number;
+  pricing: BasketPricingTotals;
   paymentMethodId: string;
   onPaymentChange: (id: string) => void;
   paymentMethods: PaymentMethodOption[];
@@ -27,15 +23,12 @@ interface Props {
   /** When false, Place Order is disabled (no valid payment method selected). */
   canPlaceOrder?: boolean;
   priceChanged?: boolean;
-  charityDonation?: number;
   onCharityChange?: (amount: number) => void;
   /** When false (mobile), primary button opens review sheet instead of submitting. */
   isMdUp: boolean;
   onOpenMobileReview?: () => void;
-  vehicleCount?: number;
   /** Active partner referral benefit, when ?ref= was captured. */
   partnerBenefit?: PublicPartnerBenefit | null;
-  partnerBenefitApplied?: AppliedPartnerBenefit | null;
   partnerFreeDeliveryLocationNames?: string[];
 }
 
@@ -76,11 +69,6 @@ function PaymentMethodIcon({ id, name }: { id: string; name: string }) {
   return <Wallet {...props} />;
 }
 
-function addonCost(addon: Addon, days: number): number {
-  if (addon.addonType === 'per_day') return addon.pricePerDay * days;
-  return addon.priceOneTime;
-}
-
 function partnerHasFreeDeliveryOffer(benefit: PublicPartnerBenefit | null) {
   if (!benefit) return false;
   return Boolean(
@@ -102,11 +90,7 @@ function formatFreeDeliveryLocations(names: string[]) {
 export function OrderSummaryPanel({
   basket,
   rentalDays,
-  selectedAddonIds,
-  addons,
-  transfer,
-  pickupFee,
-  dropoffFee,
+  pricing,
   paymentMethodId,
   onPaymentChange,
   paymentMethods,
@@ -116,56 +100,45 @@ export function OrderSummaryPanel({
   paymentMethodError = '',
   canPlaceOrder = true,
   priceChanged,
-  charityDonation = 0,
   onCharityChange,
   isMdUp,
   onOpenMobileReview,
-  vehicleCount = 1,
   partnerBenefit = null,
-  partnerBenefitApplied = null,
   partnerFreeDeliveryLocationNames = [],
 }: Props) {
-  const vehicleSubtotal = basket.reduce((sum, b) => sum + b.dailyRate * rentalDays, 0);
+  const {
+    addonsTotal,
+    pickupFee,
+    dropoffFee,
+    rentalDiscount,
+    deliveryDiscount,
+    surchargeAmount,
+    transferFee,
+    charityDonation,
+    deposit,
+    grandTotal,
+    appliedPartnerBenefit,
+  } = pricing;
+  const vehicleCount = basket.length || 1;
 
-  const addonsTotal = addons
-    .filter((a) => selectedAddonIds.has(Number(a.id)))
-    .reduce((sum, a) => sum + addonCost(a, rentalDays), 0) * vehicleCount;
-
-  const transferFee = transfer?.totalPrice ?? 0;
-
-  const deposit = basket.reduce((sum, b) => sum + (b.securityDeposit ?? 0), 0);
-
-  // Apply partner benefit (if eligible) to rental subtotal + delivery fees
-  const applied = partnerBenefitApplied?.applied ?? false;
-  const rentalDiscount = applied ? (partnerBenefitApplied?.rentalDiscount ?? 0) : 0;
-  const freeDelivery = applied && (partnerBenefitApplied?.freeDelivery ?? false);
+  const applied = appliedPartnerBenefit.applied;
+  const freeDelivery = applied && appliedPartnerBenefit.freeDelivery;
   const freeDeliveryOffer = partnerHasFreeDeliveryOffer(partnerBenefit);
   const freeDeliveryLocationLabel = formatFreeDeliveryLocations(partnerFreeDeliveryLocationNames);
   const hasRentalDiscount = rentalDiscount > 0;
-  const hasVisiblePartnerBenefit = hasRentalDiscount || freeDelivery || (partnerBenefitApplied?.earlyBird ?? false);
+  const hasVisiblePartnerBenefit = hasRentalDiscount || freeDelivery || appliedPartnerBenefit.earlyBird;
   const appliedPartnerTitle = freeDelivery && !hasRentalDiscount
     ? `${partnerBenefit?.name ?? 'Your partner'} has organised free delivery and collection`
-    : partnerBenefitApplied?.earlyBird
+    : appliedPartnerBenefit.earlyBird
       ? `Early bird rate applied — ${partnerBenefit?.name ?? 'Partner'}`
       : `Your ${partnerBenefit?.name ?? 'partner'} rate is applied`;
   const appliedPartnerMessage = freeDelivery && !hasRentalDiscount
     ? partnerFreeDeliveryLocationNames.length > 0
       ? `Free delivery and collection have been applied for ${freeDeliveryLocationLabel}.`
       : 'Free delivery and collection have been applied to this booking.'
-    : partnerBenefitApplied?.earlyBird
+    : appliedPartnerBenefit.earlyBird
       ? 'You planned way ahead — this is our best thank you for it.'
       : 'Enjoy your exclusive discount — a little thank you for planning ahead.';
-  const discountedVehicleSubtotal = Math.max(0, vehicleSubtotal - rentalDiscount);
-  const effectivePickupFee = freeDelivery ? 0 : pickupFee;
-  const effectiveDropoffFee = freeDelivery ? 0 : dropoffFee;
-  const deliveryDiscount = freeDelivery ? pickupFee + dropoffFee : 0;
-
-  const subtotalBeforeSurcharge =
-    discountedVehicleSubtotal + addonsTotal + transferFee + effectivePickupFee + effectiveDropoffFee;
-  const surchargeAmount = surchargePercent > 0
-    ? Math.round(subtotalBeforeSurcharge * (surchargePercent / 100) * 100) / 100
-    : 0;
-  const grandTotal = subtotalBeforeSurcharge + surchargeAmount + charityDonation;
 
   return (
     <div className="sticky top-6 overflow-hidden rounded-xl border border-charcoal-brand/10 bg-white">
@@ -201,7 +174,7 @@ export function OrderSummaryPanel({
             </div>
           </div>
         )}
-        {partnerBenefit && freeDeliveryOffer && !freeDelivery && !hasRentalDiscount && partnerBenefitApplied?.pendingReason !== 'advance_days' && (
+        {partnerBenefit && freeDeliveryOffer && !freeDelivery && !hasRentalDiscount && appliedPartnerBenefit.pendingReason !== 'advance_days' && (
           <div className="mb-3 flex items-start gap-3 rounded-xl border border-teal-200/70 bg-teal-50 px-3 py-3">
             {partnerBenefit.logoUrl ? (
               <img
@@ -221,7 +194,7 @@ export function OrderSummaryPanel({
             </div>
           </div>
         )}
-        {partnerBenefit && partnerBenefitApplied?.pendingReason === 'advance_days' && (
+        {partnerBenefit && appliedPartnerBenefit.pendingReason === 'advance_days' && (
           <div className="mb-3 flex items-start gap-3 rounded-xl border border-charcoal-brand/10 bg-sand-brand/40 px-3 py-3">
             {partnerBenefit.logoUrl ? (
               <img
@@ -315,7 +288,7 @@ export function OrderSummaryPanel({
           {applied && rentalDiscount > 0 && (
             <div className="flex items-baseline justify-between gap-3 border-t border-dashed border-teal-200 pt-2">
               <span className="min-w-0 text-[13px] font-medium text-teal-700">
-                {partnerBenefitApplied?.earlyBird ? 'Early bird rate' : `${partnerBenefit?.name ?? 'Partner'} rate`}
+                {appliedPartnerBenefit.earlyBird ? 'Early bird rate' : `${partnerBenefit?.name ?? 'Partner'} rate`}
               </span>
               <span className="shrink-0 text-[14px] font-semibold text-teal-700">
                 −<PesoSign />{formatPhpNumber(rentalDiscount)}

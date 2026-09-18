@@ -9,6 +9,7 @@ type FakeData = {
   walkInOrders?: unknown[];
   ownerUse?: unknown[];
   holds?: unknown[];
+  fleetStatuses?: unknown[];
   models: unknown[];
 };
 
@@ -37,6 +38,7 @@ function fakeSupabase(data: FakeData): SupabaseClient {
       let rows: unknown[];
       switch (table) {
         case 'fleet': rows = data.fleet; break;
+        case 'fleet_statuses': rows = data.fleetStatuses ?? [{ id: 'Available', name: 'Available', is_rentable: true }]; break;
         case 'order_items': rows = data.orderItems ?? []; break;
         case 'orders_raw':
           rows = rawOrderCall++ === 0 ? (data.directOrders ?? []) : (data.walkInOrders ?? []);

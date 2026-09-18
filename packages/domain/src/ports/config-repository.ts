@@ -39,6 +39,7 @@ export interface PaymentMethod {
   isActive: boolean;
   surchargePercent: number;
   showOnCustomerWebsite: boolean;
+  gatewayProvider?: 'xendit' | null;
 }
 
 export interface VehicleModel {

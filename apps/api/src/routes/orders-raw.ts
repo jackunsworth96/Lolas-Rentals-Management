@@ -1,21 +1,120 @@
-import { Router } from 'express';
+import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { logger } from '../lib/logger.js';
 import { publicWebOriginFromEnv } from '../lib/public-web-url.js';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
-import { Permission, resolveStoreFromSource, resolveSourceFromStore } from '@lolas/shared';
+import { COMPANY_STORE_ID, Permission, resolveStoreFromSource, resolveSourceFromStore } from '@lolas/shared';
 import { supabase } from '../adapters/supabase/client.js';
 import { resolveCharityPayableAccount } from '../adapters/supabase/maintenance-expense-rpc.js';
 import { processRawOrder, type ProcessRawOrderDeps } from '../use-cases/orders/process-raw-order.js';
 import { sendEmail, bookingConfirmationHtml, bookingCancellationHtml, walkInStaffAlertHtml, walkInReservationConfirmationHtml, escapeHtml, NOTIFICATION_EMAIL, INTERNAL_FROM_EMAIL } from '../services/email.js';
 import { formatManilaDate, formatManilaDateTime } from '../utils/manila-date.js';
 import { sendTelegramAlert, sendTelegramAlertPaidOrdersStaggered, getTelegramChatId } from '../lib/telegram.js';
+import { resolveDirectBookingTerms, rentalDaysBetween, roundMoney, sameInstant, sameMoney, type DirectBookingTermsRow } from '../lib/direct-booking-terms.js';
+import { isFleetStatusRentable } from '../lib/fleet-status.js';
+import { findLiveXenditSessionForRawOrder, paymentInProgressError } from '../lib/xendit-session-lock.js';
 import { deriveTransportService } from '../lib/transport-service.js';
 
 /** GET list / GET :id — explicit columns; excludes payload (V10-11). */
 const ORDERS_RAW_INBOX_COLUMNS =
-  'id, order_reference, status, customer_name, customer_email, customer_mobile, pickup_datetime, dropoff_datetime, store_id, vehicle_model_id, vehicle_id, charity_donation, transfer_type, transfer_route, flight_arrival_time, transfer_pax_count, transfer_amount, cancellation_token_used, created_at, updated_at, source, booking_channel, pickup_location_id, dropoff_location_id, addon_ids, web_payment_method, flight_number, web_quote_raw, customer_company, customer_extra_comments, pickup_location_address, dropoff_location_address, partner_ref';
+  'id, order_reference, status, customer_name, customer_email, customer_mobile, pickup_datetime, dropoff_datetime, store_id, vehicle_model_id, vehicle_id, charity_donation, transfer_type, transfer_route, flight_arrival_time, transfer_pax_count, transfer_amount, cancellation_token_used, created_at, updated_at, source, booking_channel, pickup_location_id, dropoff_location_id, addon_ids, web_payment_method, flight_number, web_quote_raw, web_card_fee_surcharge, xendit_payment_session_id, customer_company, customer_extra_comments, pickup_location_address, dropoff_location_address, partner_ref, rental_value_raw';
+
+type RawInboxRow = Record<string, unknown> & { id: string };
+
+type OnlinePaymentRow = {
+  raw_order_id: string | null;
+  amount: number | string;
+  settlement_ref: string | null;
+  created_at: string;
+};
+
+async function withOnlinePaymentSummaries(rows: RawInboxRow[]) {
+  if (rows.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from('payments')
+    .select('raw_order_id, amount, settlement_ref, created_at')
+    .in('raw_order_id', rows.map((row) => row.id))
+    .eq('payment_type', 'card_xendit');
+
+  if (error) throw new Error(`Failed to load online payments: ${error.message}`);
+
+  const summaries = new Map<string, {
+    status: 'paid';
+    amount: number;
+    reference: string | null;
+    paidAt: string;
+  }>();
+
+  for (const payment of (data ?? []) as OnlinePaymentRow[]) {
+    if (!payment.raw_order_id) continue;
+    const existing = summaries.get(payment.raw_order_id);
+    const paidAt = payment.created_at;
+    summaries.set(payment.raw_order_id, {
+      status: 'paid',
+      amount: Number(payment.amount ?? 0) + (existing?.amount ?? 0),
+      reference:
+        !existing || paidAt >= existing.paidAt
+          ? payment.settlement_ref
+          : existing.reference,
+      paidAt: !existing || paidAt >= existing.paidAt ? paidAt : existing.paidAt,
+    });
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    online_payment: summaries.get(row.id) ?? null,
+  }));
+}
+
+type XenditSessionSummaryRow = {
+  id: string;
+  status: 'creating' | 'active' | 'completed' | 'expired' | 'cancelled' | 'failed' | 'reconciliation_required';
+};
+
+function xenditOperatorMessage(status: XenditSessionSummaryRow['status']): string {
+  switch (status) {
+    case 'creating':
+      return 'Checkout creation is unresolved. An authorized reconciler must verify and release it before booking changes.';
+    case 'active':
+      return 'A customer can still pay through Xendit. Booking changes remain locked until it is cancelled or reaches a terminal state.';
+    case 'reconciliation_required':
+      return 'Xendit payment verification is required. Finance must resolve this before booking changes or collection.';
+    case 'completed':
+      return 'Online payment was completed.';
+    default:
+      return 'This Xendit checkout is no longer active.';
+  }
+}
+
+async function withXenditSessionSummaries(rows: RawInboxRow[]) {
+  const sessionIds = [...new Set(rows
+    .map((row) => typeof row.xendit_payment_session_id === 'string' ? row.xendit_payment_session_id : null)
+    .filter((id): id is string => Boolean(id)))];
+  if (sessionIds.length === 0) return rows.map((row) => ({ ...row, xendit_session: null }));
+
+  const { data, error } = await supabase
+    .from('xendit_payment_sessions')
+    .select('id, status')
+    .in('id', sessionIds);
+  if (error) throw new Error(`Failed to load Xendit session summaries: ${error.message}`);
+
+  const sessions = new Map(
+    ((data ?? []) as XenditSessionSummaryRow[]).map((session) => [session.id, {
+      id: session.id,
+      status: session.status,
+      operatorMessage: xenditOperatorMessage(session.status),
+    }]),
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    xendit_session: typeof row.xendit_payment_session_id === 'string'
+      ? sessions.get(row.xendit_payment_session_id) ?? null
+      : null,
+  }));
+}
 
 function generateWalkInReference(source: string): string {
   const prefix = source === 'bass' ? 'BB' : 'LR';
@@ -37,6 +136,19 @@ async function uniqueWalkInReference(source: string): Promise<string> {
 
 const router = Router();
 router.use(authenticate);
+
+function hasRawOrderStoreAccess(req: { user?: { storeIds: string[] } }, storeId: string | null | undefined): boolean {
+  if (!storeId) return false;
+  const storeIds = req.user?.storeIds ?? [];
+  return storeIds.includes(COMPANY_STORE_ID) || storeIds.includes(storeId);
+}
+
+function rejectRawOrderStoreAccess(res: Response): void {
+  res.status(403).json({
+    success: false,
+    error: { code: 'FORBIDDEN', message: 'You do not have access to this booking.' },
+  });
+}
 
 const walkInBodySchema = z.object({
   customerName: z.string().min(1),
@@ -727,7 +839,16 @@ router.get('/', requirePermission(Permission.ViewInbox), async (req, res, next) 
       .select(ORDERS_RAW_INBOX_COLUMNS, { count: 'exact' })
       .order('created_at', { ascending: false });
 
-    if (store) query = query.eq('source', store);
+    const hasCompanyAccess = (req.user?.storeIds ?? []).includes(COMPANY_STORE_ID);
+    if (store) {
+      const requestedStoreId = resolveStoreFromSource(store);
+      if (!hasCompanyAccess && !hasRawOrderStoreAccess(req, requestedStoreId)) {
+        rejectRawOrderStoreAccess(res);
+        return;
+      }
+      query = query.eq('source', store);
+    }
+    if (!hasCompanyAccess) query = query.in('store_id', req.user?.storeIds ?? []);
     if (status) query = query.eq('status', status);
     else query = query.eq('status', 'unprocessed');
 
@@ -764,11 +885,14 @@ router.get('/', requirePermission(Permission.ViewInbox), async (req, res, next) 
       ...order,
       transport_service: deriveTransportService([order], transportLocations ?? []),
     }));
+    const enrichedRows = await withXenditSessionSummaries(
+      await withOnlinePaymentSummaries(inboxOrders as RawInboxRow[]),
+    );
 
     res.json({
       success: true,
       data: {
-        data: inboxOrders,
+        data: enrichedRows,
         total: count ?? 0,
         page,
         limit,
@@ -793,7 +917,21 @@ router.get('/:id', requirePermission(Permission.ViewInbox), async (req, res, nex
       return;
     }
 
-    res.json({ success: true, data });
+    if (!hasRawOrderStoreAccess(req, (data as { store_id?: string | null }).store_id)) {
+      rejectRawOrderStoreAccess(res);
+      return;
+    }
+
+    const [enriched] = await withXenditSessionSummaries(
+      await withOnlinePaymentSummaries([data as RawInboxRow]),
+    );
+    const bookingTerms = (data as { booking_channel?: string }).booking_channel === 'direct'
+      ? await resolveDirectBookingTerms(
+          data as unknown as DirectBookingTermsRow,
+          req.app.locals.deps.configRepo,
+        )
+      : null;
+    res.json({ success: true, data: { ...enriched, booking_terms: bookingTerms } });
   } catch (err) {
     next(err);
   }
@@ -853,7 +991,259 @@ const processBodySchema = z.object({
   transferAccommodation: z.string().max(500).nullable().optional(),
   dropoffLocationNote: z.string().max(500).nullable().optional(),
   partialPaymentAmount: z.number().min(0).optional(),
+  bookingOverride: z.object({
+    reason: z.string().trim().min(10).max(500),
+    acknowledgePaymentAdjustment: z.boolean().default(false),
+  }).optional(),
 });
+
+function normalizedLabel(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function addonSignature(addons: Array<{
+  addonName: string;
+  addonPrice: number;
+  addonType: 'per_day' | 'one_time';
+  quantity: number;
+  totalAmount: number;
+  }>): string[] {
+  return addons.map((addon) => [
+    normalizedLabel(addon.addonName),
+    addon.addonType,
+    roundMoney(addon.addonPrice),
+    addon.quantity,
+    roundMoney(addon.totalAmount),
+  ].join('|')).sort();
+}
+
+function sameStringArray(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function sendProcessGuardError(
+  res: Response,
+  status: number,
+  code: string,
+  message: string,
+): void {
+  res.status(status).json({ success: false, error: { code, message } });
+}
+
+type ProcessBody = z.infer<typeof processBodySchema>;
+
+interface DirectProcessGuardResult {
+  webNotes: string | null;
+  bookingOverrideApplied: boolean;
+  paymentAdjustment: { kind: 'none' | 'collect' | 'refund'; amount: number };
+}
+
+class ProcessGuardError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+export async function guardDirectBookingProcess(args: {
+  rawOrder: RawInboxRow & DirectBookingTermsRow & { status: string };
+  body: ProcessBody;
+  employeeId: string;
+  permissions: string[];
+  storeIds: string[];
+  configRepo: Parameters<typeof resolveDirectBookingTerms>[1];
+}): Promise<DirectProcessGuardResult> {
+  const { rawOrder, body, employeeId, permissions, storeIds, configRepo } = args;
+  const unchanged: DirectProcessGuardResult = {
+    webNotes: body.webNotes,
+    bookingOverrideApplied: false,
+    paymentAdjustment: { kind: 'none', amount: 0 },
+  };
+
+  if (rawOrder.booking_channel !== 'direct' || rawOrder.status !== 'unprocessed') return unchanged;
+  if (!rawOrder.store_id || (!storeIds.includes(COMPANY_STORE_ID) && !storeIds.includes(rawOrder.store_id))) {
+    throw new ProcessGuardError(403, 'FORBIDDEN', 'This booking belongs to a store you cannot access.');
+  }
+  if (body.storeId !== rawOrder.store_id) {
+    throw new ProcessGuardError(409, 'BOOKING_TERMS_CHANGED', 'The booking store cannot be changed during activation.');
+  }
+
+  let terms: Awaited<ReturnType<typeof resolveDirectBookingTerms>>;
+  try {
+    terms = await resolveDirectBookingTerms(rawOrder, configRepo);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Dropoff datetime')) {
+      throw new ProcessGuardError(422, 'BOOKING_TERMS_UNAVAILABLE', error.message);
+    }
+    throw error;
+  }
+  if (!terms) {
+    throw new ProcessGuardError(422, 'BOOKING_TERMS_UNAVAILABLE', 'The original direct-booking terms could not be reconstructed safely.');
+  }
+  if (body.vehicleAssignments.length !== 1) {
+    throw new ProcessGuardError(409, 'BOOKING_TERMS_CHANGED', 'A direct website booking must activate exactly one vehicle.');
+  }
+
+  const assignment = body.vehicleAssignments[0];
+  let calculatedDays: number;
+  try {
+    calculatedDays = rentalDaysBetween(assignment.pickupDatetime, assignment.dropoffDatetime);
+  } catch (error) {
+    throw new ProcessGuardError(422, 'BOOKING_TERMS_CHANGED', error instanceof Error ? error.message : 'Invalid booking dates.');
+  }
+  const { data: selectedVehicle, error: vehicleError } = await supabase
+    .from('fleet')
+    .select('id, model_id, store_id, status')
+    .eq('id', assignment.vehicleId)
+    .maybeSingle();
+  if (vehicleError) throw new Error(`Failed to validate selected vehicle: ${vehicleError.message}`);
+  if (!selectedVehicle || selectedVehicle.store_id !== rawOrder.store_id) {
+    throw new ProcessGuardError(422, 'VEHICLE_UNAVAILABLE', 'The selected vehicle is not available at this booking store.');
+  }
+  const fleetStatuses = await configRepo.getFleetStatuses();
+  if (!isFleetStatusRentable(selectedVehicle.status, fleetStatuses)) {
+    throw new ProcessGuardError(422, 'VEHICLE_UNAVAILABLE', 'The selected vehicle is not in a rentable state.');
+  }
+
+  const [activeItemsResult, reservedResult, ownerUseResult] = await Promise.all([
+    supabase
+      .from('order_items')
+      .select('id, orders!inner(status)')
+      .eq('vehicle_id', assignment.vehicleId)
+      .eq('orders.status', 'active')
+      .lt('pickup_datetime', assignment.dropoffDatetime)
+      .gt('dropoff_datetime', assignment.pickupDatetime)
+      .limit(1),
+    supabase
+      .from('orders_raw')
+      .select('id')
+      .neq('id', rawOrder.id)
+      .eq('vehicle_id', assignment.vehicleId)
+      .eq('booking_channel', 'walk_in')
+      .eq('status', 'unprocessed')
+      .lt('pickup_datetime', assignment.dropoffDatetime)
+      .gt('dropoff_datetime', assignment.pickupDatetime)
+      .limit(1),
+    supabase
+      .from('fleet_unavailability')
+      .select('id')
+      .eq('vehicle_id', assignment.vehicleId)
+      .eq('type', 'owner_use')
+      .is('cancelled_at', null)
+      .lt('starts_at', assignment.dropoffDatetime)
+      .gt('ends_at', assignment.pickupDatetime)
+      .limit(1),
+  ]);
+  const availabilityError = activeItemsResult.error ?? reservedResult.error ?? ownerUseResult.error;
+  if (availabilityError) throw new Error(`Failed to validate vehicle availability: ${availabilityError.message}`);
+  if ((activeItemsResult.data?.length ?? 0) > 0 || (reservedResult.data?.length ?? 0) > 0 || (ownerUseResult.data?.length ?? 0) > 0) {
+    throw new ProcessGuardError(409, 'VEHICLE_UNAVAILABLE', 'The selected vehicle is no longer available for this booking interval.');
+  }
+
+  const changedFields: string[] = [];
+  if (selectedVehicle.model_id !== terms.vehicleModelId) changedFields.push('vehicle model');
+  if (!sameInstant(assignment.pickupDatetime, terms.pickupDatetime)) changedFields.push('pickup date/time');
+  if (!sameInstant(assignment.dropoffDatetime, terms.dropoffDatetime)) changedFields.push('dropoff date/time');
+  if (normalizedLabel(assignment.pickupLocation) !== normalizedLabel(terms.pickupLocationName)) changedFields.push('pickup location');
+  if (normalizedLabel(assignment.dropoffLocation) !== normalizedLabel(terms.dropoffLocationName)) changedFields.push('dropoff location');
+  if (!sameMoney(assignment.pickupFee, terms.pickupFee)) changedFields.push('pickup fee');
+  if (!sameMoney(assignment.dropoffFee, terms.dropoffFee)) changedFields.push('dropoff fee');
+  if (!sameMoney(assignment.rentalRate * calculatedDays, terms.rentalSubtotal)) changedFields.push('rental rate');
+  if (!sameMoney(assignment.discount, terms.discount)) changedFields.push('discount');
+  if (assignment.rentalDaysCount !== calculatedDays) changedFields.push('rental days');
+
+  const { data: onlinePayments, error: paymentError } = await supabase
+    .from('payments')
+    .select('amount')
+    .eq('raw_order_id', rawOrder.id)
+    .eq('payment_type', 'card_xendit');
+  if (paymentError) throw new Error(`Failed to validate online payment: ${paymentError.message}`);
+  const confirmedOnlineAmount = roundMoney(
+    (onlinePayments ?? []).reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0),
+  );
+  const isPaidOnline = confirmedOnlineAmount > 0;
+
+  if (isPaidOnline) {
+    const expectedAddons = terms.addons.map((addon) => [
+      normalizedLabel(addon.name), addon.type, addon.unitPrice, addon.quantity, addon.total,
+    ].join('|')).sort();
+    if (!sameStringArray(addonSignature(body.addons), expectedAddons)) changedFields.push('add-ons');
+    if (body.excludeTransferFromBalance) changedFields.push('transfer billing');
+    if (!sameMoney(body.cardFeeSurcharge, terms.surcharge)) changedFields.push('card surcharge');
+    if (body.paymentMethodId !== null || body.partialPaymentAmount !== undefined) changedFields.push('rental payment collection');
+  }
+
+  const rentalTotal = roundMoney(
+    assignment.rentalRate * calculatedDays + assignment.pickupFee + assignment.dropoffFee - assignment.discount,
+  );
+  if (rentalTotal < 0) {
+    throw new ProcessGuardError(422, 'BOOKING_TERMS_CHANGED', 'The rental discount cannot make the rental total negative.');
+  }
+  const addonTotal = roundMoney(body.addons.reduce((sum, addon) => sum + addon.totalAmount, 0));
+  const surcharge = isPaidOnline ? terms.surcharge : roundMoney(body.cardFeeSurcharge);
+  const transfer = body.excludeTransferFromBalance ? 0 : terms.transferAmount;
+  const revisedTotal = roundMoney(rentalTotal + addonTotal + surcharge + transfer + terms.charityAmount);
+  const quotedTotal = terms.quotedTotal ?? terms.calculatedTotal;
+  const quoteMismatch = !sameMoney(revisedTotal, quotedTotal);
+  const paymentDelta = isPaidOnline ? roundMoney(revisedTotal - confirmedOnlineAmount) : 0;
+  const paymentMismatch = isPaidOnline && !sameMoney(paymentDelta, 0);
+  const overrideRequired = changedFields.length > 0 || quoteMismatch || paymentMismatch;
+
+  if (overrideRequired && !body.bookingOverride) {
+    throw new ProcessGuardError(
+      409,
+      changedFields.length > 0 ? 'BOOKING_TERMS_CHANGED' : 'BOOKING_TOTAL_MISMATCH',
+      changedFields.length > 0
+        ? `Protected booking terms changed: ${changedFields.join(', ')}.`
+        : 'The activation total does not match the original web quote.',
+    );
+  }
+  if (overrideRequired && !permissions.includes(Permission.OverrideBookingTerms)) {
+    throw new ProcessGuardError(403, 'BOOKING_OVERRIDE_PERMISSION_REQUIRED', 'You do not have permission to override customer booking terms.');
+  }
+
+  if (paymentMismatch && !body.bookingOverride?.acknowledgePaymentAdjustment) {
+    throw new ProcessGuardError(
+      409,
+      'PAYMENT_ADJUSTMENT_ACKNOWLEDGEMENT_REQUIRED',
+      'Acknowledge the additional balance or refund before activating this paid booking.',
+    );
+  }
+
+  if (!overrideRequired) {
+    return {
+      ...unchanged,
+      paymentAdjustment: paymentDelta > 0
+        ? { kind: 'collect', amount: paymentDelta }
+        : paymentDelta < 0
+          ? { kind: 'refund', amount: Math.abs(paymentDelta) }
+          : { kind: 'none', amount: 0 },
+    };
+  }
+
+  const reason = body.bookingOverride!.reason.trim();
+  const timestamp = new Date().toISOString();
+  const changeSummary = changedFields.length > 0 ? changedFields.join(', ') : 'activation total';
+  const overrideNote = [
+    `[Booking terms override ${timestamp} by ${employeeId}]`,
+    `Reason: ${reason}`,
+    `Changed: ${changeSummary}`,
+    `Original quote: PHP ${quotedTotal.toFixed(2)}; revised total: PHP ${revisedTotal.toFixed(2)}.`,
+  ].join('\n');
+
+  return {
+    webNotes: body.webNotes?.trim() ? `${body.webNotes.trim()}\n\n${overrideNote}` : overrideNote,
+    bookingOverrideApplied: true,
+    paymentAdjustment: paymentDelta > 0
+      ? { kind: 'collect', amount: paymentDelta }
+      : paymentDelta < 0
+        ? { kind: 'refund', amount: Math.abs(paymentDelta) }
+        : { kind: 'none', amount: 0 },
+  };
+}
 
 router.post('/:id/process', requirePermission(Permission.EditOrders), async (req, res, next) => {
   try {
@@ -866,16 +1256,46 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
       return;
     }
 
-    // Guard: block activation when a transfer add-on has no amount set.
+    const body = parsed.data;
+
+    // Load the authoritative source row once for transfer and direct-booking guards.
     const { data: rawOrderCheck, error: rawCheckErr } = await supabase
       .from('orders_raw')
-      .select('transfer_type, transfer_amount')
+      .select('id, status, booking_channel, store_id, vehicle_model_id, pickup_datetime, dropoff_datetime, pickup_location_id, dropoff_location_id, addon_ids, rental_value_raw, web_quote_raw, web_card_fee_surcharge, transfer_type, transfer_amount, charity_donation, partner_ref, created_at')
       .eq('id', req.params.id as string)
       .single();
 
     if (rawCheckErr || !rawOrderCheck) {
       res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Raw order not found' } });
       return;
+    }
+
+    if (!hasRawOrderStoreAccess(req, rawOrderCheck.store_id)) {
+      rejectRawOrderStoreAccess(res);
+      return;
+    }
+
+    if (await findLiveXenditSessionForRawOrder(rawOrderCheck.id)) {
+      res.status(409).json(paymentInProgressError());
+      return;
+    }
+
+    let directGuard: DirectProcessGuardResult;
+    try {
+      directGuard = await guardDirectBookingProcess({
+        rawOrder: rawOrderCheck as unknown as RawInboxRow & DirectBookingTermsRow & { status: string },
+        body,
+        employeeId: req.user!.employeeId,
+        permissions: req.user!.permissions,
+        storeIds: req.user!.storeIds,
+        configRepo: req.app.locals.deps.configRepo,
+      });
+    } catch (error) {
+      if (error instanceof ProcessGuardError) {
+        sendProcessGuardError(res, error.status, error.code, error.message);
+        return;
+      }
+      throw error;
     }
 
     const hasTransfer = rawOrderCheck.transfer_type != null && rawOrderCheck.transfer_type !== '';
@@ -904,7 +1324,6 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
       transferRepo: req.app.locals.deps.transferRepo,
     };
 
-    const body = parsed.data;
     const result = await processRawOrder(deps, {
       rawOrderId: req.params.id as string,
       storeId: body.storeId,
@@ -938,7 +1357,7 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
       })),
       securityDeposit: body.securityDeposit,
       webQuoteRaw: body.webQuoteRaw,
-      webNotes: body.webNotes,
+      webNotes: directGuard.webNotes,
       receivableAccountId: body.receivableAccountId,
       incomeAccountId: body.incomeAccountId,
       paymentMethodId: body.paymentMethodId,
@@ -961,7 +1380,14 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
         .eq('id', result.order.id as string);
     }
 
-    res.json({ success: true, data: result });
+    res.json({
+      success: true,
+      data: {
+        ...result,
+        bookingOverrideApplied: directGuard.bookingOverrideApplied,
+        paymentAdjustment: directGuard.paymentAdjustment,
+      },
+    });
 
     // Fire-and-forget Ops channel Telegram alert. Skip on idempotent retries
     // (alreadyProcessed) so the owner isn't pinged twice for the same order.
@@ -1048,7 +1474,7 @@ router.post('/:id/collect-payment', requirePermission(Permission.EditOrders), as
 
     const { data: rawOrder, error: findErr } = await supabase
       .from('orders_raw')
-      .select('id, source, status')
+      .select('id, source, status, store_id')
       .eq('id', req.params.id as string)
       .single();
 
@@ -1057,8 +1483,30 @@ router.post('/:id/collect-payment', requirePermission(Permission.EditOrders), as
       return;
     }
 
-    const storeId = resolveStoreFromSource(rawOrder.source);
+    if (!hasRawOrderStoreAccess(req, rawOrder.store_id as string | null | undefined)) {
+      rejectRawOrderStoreAccess(res);
+      return;
+    }
+
+    if (await findLiveXenditSessionForRawOrder(rawOrder.id as string)) {
+      res.status(409).json(paymentInProgressError());
+      return;
+    }
+
     const { paymentRepo, cardSettlementRepo } = req.app.locals.deps;
+    const existingPayments = await paymentRepo.findByRawOrderId(req.params.id as string);
+    if (existingPayments.some((payment) => payment.paymentType === 'card_xendit')) {
+      res.status(409).json({
+        success: false,
+        error: {
+          code: 'ONLINE_PAYMENT_ALREADY_CONFIRMED',
+          message: 'This booking has already been paid online',
+        },
+      });
+      return;
+    }
+
+    const storeId = (rawOrder.store_id as string | null) ?? resolveStoreFromSource(rawOrder.source);
     const txDate = formatManilaDate();
     const paymentId = crypto.randomUUID();
 
@@ -1128,20 +1576,26 @@ router.patch('/:id/cancel', requirePermission(Permission.CancelOrders), async (r
 
     const id = req.params.id as string;
 
-    const { data: cancellationTarget, error: targetErr } = await supabase
+    const { data: rawOrder, error: rawOrderError } = await supabase
       .from('orders_raw')
-      .select('partner_ref')
+      .select('store_id, partner_ref')
       .eq('id', id)
       .maybeSingle();
-    if (targetErr) throw new Error(`Failed to check cancellation target: ${targetErr.message}`);
-    if (!cancellationTarget) {
-      res.status(404).json({
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'Raw order not found' },
-      });
+    if (rawOrderError) throw new Error(`Raw order lookup failed: ${rawOrderError.message}`);
+    if (!rawOrder) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Raw order not found' } });
       return;
     }
-    if (cancellationTarget.partner_ref && !parsed.data.reason) {
+    if (!hasRawOrderStoreAccess(req, rawOrder.store_id as string | null | undefined)) {
+      rejectRawOrderStoreAccess(res);
+      return;
+    }
+
+    if (await findLiveXenditSessionForRawOrder(id)) {
+      res.status(409).json(paymentInProgressError());
+      return;
+    }
+    if (rawOrder.partner_ref && !parsed.data.reason) {
       res.status(400).json({
         success: false,
         error: {

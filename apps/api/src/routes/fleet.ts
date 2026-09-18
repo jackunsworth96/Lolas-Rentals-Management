@@ -5,6 +5,7 @@ import { validateBody, validateQuery } from '../middleware/validate.js';
 import { Permission } from '@lolas/shared';
 import { z } from 'zod';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
+import { isFleetStatusRentable } from '../lib/fleet-status.js';
 import { formatManilaDate } from '../utils/manila-date.js';
 import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
 import { escapeHtml } from '../services/email.js';
@@ -626,12 +627,16 @@ router.get(
       const sb = getSupabaseClient();
 
       // 1. Fetch all active fleet vehicles for the store
-      const { data: fleetRows, error: fleetErr } = await sb
-        .from('fleet')
-        .select('id, name, model_id, status, store_id, surf_rack')
-        .eq('store_id', storeId)
-        .not('status', 'in', '("Sold","Maintenance","Inactive")');
+      const [fleetResult, statusResult] = await Promise.all([
+        sb
+          .from('fleet')
+          .select('id, name, model_id, status, store_id, surf_rack')
+          .eq('store_id', storeId),
+        sb.from('fleet_statuses').select('id, name, is_rentable'),
+      ]);
+      const { data: fleetRows, error: fleetErr } = fleetResult;
       if (fleetErr) throw new Error(`Fleet query failed: ${fleetErr.message}`);
+      if (statusResult.error) throw new Error(`Fleet statuses query failed: ${statusResult.error.message}`);
 
       // 2. Find vehicles booked via order_items in the requested window
       const { data: bookedItemRows, error: bookedErr } = await sb
@@ -678,7 +683,7 @@ router.get(
       // 4. Filter fleet to only vehicles not in the booked set
       type FleetRow = { id: string; name: string; model_id: string | null; status: string; store_id: string; surf_rack: boolean | null };
       const availableVehicles = ((fleetRows ?? []) as FleetRow[]).filter(
-        (v) => !bookedVehicleIds.has(v.id),
+        (v) => isFleetStatusRentable(v.status, statusResult.data ?? []) && !bookedVehicleIds.has(v.id),
       );
 
       // 5. Return available vehicles

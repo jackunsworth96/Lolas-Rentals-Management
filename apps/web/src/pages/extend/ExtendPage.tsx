@@ -17,7 +17,7 @@ import { ExtendAddOnsSection } from '../../components/extend/ExtendAddOnsSection
 import { ExtendLocationPicker } from '../../components/extend/ExtendLocationPicker.js';
 import { useCustomerPawCardSavings } from '../../api/paw-card.js';
 import { isNinePmReturnAddonName } from '../../components/basket/AddOnsSection.js';
-import { formatPhpNumber } from '../../utils/currency.js';
+import { formatCurrency, formatPhpNumber } from '../../utils/currency.js';
 import { PesoSign } from '../../components/ui/PesoSign.js';
 import iconPawCard from '../../assets/Home/Paw Card Icon.svg';
 
@@ -246,6 +246,10 @@ export default function ExtendPage() {
         body,
       );
       if (res.success) {
+        sessionStorage.setItem(
+          `extension_payment_email_${order.orderReference}`,
+          lookupEmail.trim().toLowerCase(),
+        );
         setConfirmedDropoff(res.newDropoffDatetime ?? newDropoff);
         setConfirmedBalance(res.extensionCost ?? (extensionCost ?? 0) + (ninePmSelected && ninePmAddon ? ninePmAddon.price : 0) + perDayAddonDelta + newAddonLines.reduce((s, a) => s + a.cost, 0) + locationDelta);
         setConfirmedPaymentUrl(res.paymentUrl ?? `/book/extend/pay?ref=${encodeURIComponent(order.orderReference)}`);
@@ -480,7 +484,7 @@ function PawCardWidget({ savings }: { savings?: { hasPawCard: boolean; totalSave
   );
 }
 
-function ConfirmedView({
+export function ConfirmedView({
   dropoff,
   balance,
   paymentUrl,

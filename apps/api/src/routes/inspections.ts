@@ -21,6 +21,7 @@ const ITEM_TYPES = [
 const CreateInspectionBodySchema = z
   .object({
     orderId: z.string().min(1).optional(),
+    rawOrderId: z.string().min(1).optional(),
     orderReference: z.string().min(1).optional(),
     customerId: z.string().min(1).optional(),
     storeId: z.string().min(1),
@@ -41,10 +42,13 @@ const CreateInspectionBodySchema = z
       }),
     ),
   })
-  .refine((d) => d.orderId || d.customerId, {
-    message: 'Either orderId or customerId is required',
-    path: ['orderId'],
-  });
+  .refine(
+    (d) => [d.orderId, d.rawOrderId, d.customerId].filter(Boolean).length === 1,
+    {
+      message: 'Exactly one of orderId, rawOrderId, or customerId is required',
+      path: ['orderId'],
+    },
+  );
 
 const CreateInspectionItemBodySchema = z.object({
   name: z.string().min(1),
@@ -201,12 +205,82 @@ router.post(
     const createdMaintenanceIds: string[] = [];
 
     try {
+      let resolvedOrderId = body.orderId ?? null;
+      let resolvedOrderReference = body.orderReference ?? null;
+
+      if (body.rawOrderId) {
+        const { data: rawOrder, error: rawOrderErr } = await sb
+          .from('orders_raw')
+          .select('id, store_id, order_reference, status')
+          .eq('id', body.rawOrderId)
+          .maybeSingle();
+        if (rawOrderErr) throw new Error(rawOrderErr.message);
+        if (!rawOrder) {
+          res.status(422).json({
+            success: false,
+            error: {
+              code: 'RAW_ORDER_NOT_FOUND',
+              message: 'The pending booking linked to this inspection no longer exists.',
+            },
+          });
+          return;
+        }
+        if (rawOrder.store_id !== body.storeId) {
+          res.status(403).json({
+            success: false,
+            error: { code: 'FORBIDDEN', message: 'Booking does not belong to this store' },
+          });
+          return;
+        }
+        if (!rawOrder.order_reference) {
+          res.status(422).json({
+            success: false,
+            error: {
+              code: 'RAW_ORDER_REFERENCE_MISSING',
+              message: 'The pending booking does not have a booking reference.',
+            },
+          });
+          return;
+        }
+        if (rawOrder.status === 'cancelled' || rawOrder.status === 'skipped') {
+          res.status(422).json({
+            success: false,
+            error: {
+              code: 'RAW_ORDER_UNAVAILABLE',
+              message: 'The pending booking was cancelled or removed from processing.',
+            },
+          });
+          return;
+        }
+
+        resolvedOrderReference = rawOrder.order_reference;
+        if (rawOrder.status === 'processed') {
+          const { data: activatedOrder, error: activatedOrderErr } = await sb
+            .from('orders')
+            .select('id')
+            .eq('booking_token', resolvedOrderReference)
+            .maybeSingle();
+          if (activatedOrderErr) throw new Error(activatedOrderErr.message);
+          if (!activatedOrder) {
+            res.status(409).json({
+              success: false,
+              error: {
+                code: 'BOOKING_ACTIVATION_IN_PROGRESS',
+                message: 'The booking is being activated. Please submit the inspection again.',
+              },
+            });
+            return;
+          }
+          resolvedOrderId = activatedOrder.id;
+        }
+      }
+
       // Validate orderId and check for duplicates when a booking-linked inspection is submitted.
-      if (body.orderId) {
+      if (resolvedOrderId) {
         const { data: order, error: orderErr } = await sb
           .from('orders')
           .select('id')
-          .eq('id', body.orderId)
+          .eq('id', resolvedOrderId)
           .maybeSingle();
         if (orderErr) throw new Error(orderErr.message);
         if (!order) {
@@ -223,7 +297,7 @@ router.post(
         const { data: existing, error: exErr } = await sb
           .from('inspections')
           .select('id')
-          .eq('order_id', body.orderId)
+          .eq('order_id', resolvedOrderId)
           .maybeSingle();
         if (exErr) throw new Error(exErr.message);
         if (existing) {
@@ -233,11 +307,27 @@ router.post(
           });
           return;
         }
+      } else if (body.rawOrderId && resolvedOrderReference) {
+        const { data: existing, error: exErr } = await sb
+          .from('inspections')
+          .select('id')
+          .eq('order_reference', resolvedOrderReference)
+          .is('order_id', null)
+          .limit(1)
+          .maybeSingle();
+        if (exErr) throw new Error(exErr.message);
+        if (existing) {
+          res.status(409).json({
+            success: false,
+            error: { code: 'CONFLICT', message: 'Inspection already exists for this booking' },
+          });
+          return;
+        }
       }
 
       const inspectionRow: Record<string, unknown> = {
-        order_id: body.orderId ?? null,
-        order_reference: body.orderReference ?? null,
+        order_id: resolvedOrderId,
+        order_reference: resolvedOrderReference,
         customer_id: body.customerId ?? null,
         store_id: body.storeId,
         vehicle_id: body.vehicleId ?? null,
@@ -255,8 +345,34 @@ router.post(
         .insert(inspectionRow)
         .select('id')
         .single();
+      if (insErr?.code === '23505') {
+        res.status(409).json({
+          success: false,
+          error: { code: 'CONFLICT', message: 'Inspection already exists for this booking' },
+        });
+        return;
+      }
       if (insErr) throw new Error(insErr.message);
       inspectionId = inspection!.id as string;
+
+      // If activation completed after the raw-order lookup, attach the new
+      // inspection directly. Otherwise processRawOrder will link it by reference.
+      if (body.rawOrderId && !resolvedOrderId && resolvedOrderReference) {
+        const { data: activatedOrder, error: activatedOrderErr } = await sb
+          .from('orders')
+          .select('id')
+          .eq('booking_token', resolvedOrderReference)
+          .maybeSingle();
+        if (activatedOrderErr) throw new Error(activatedOrderErr.message);
+        if (activatedOrder) {
+          const { error: linkErr } = await sb
+            .from('inspections')
+            .update({ order_id: activatedOrder.id })
+            .eq('id', inspectionId);
+          if (linkErr) throw new Error(linkErr.message);
+          resolvedOrderId = activatedOrder.id;
+        }
+      }
 
       const resultRows = body.results.map((r) => ({
         inspection_id: inspectionId,
@@ -298,7 +414,7 @@ router.post(
             employeeId: req.user?.employeeId ?? null,
             storeId: body.storeId,
             downtimeStart: null,
-                notes: `Auto-logged from inspection ${body.orderReference ?? body.customerId ?? inspectionId}`,
+                notes: `Auto-logged from inspection ${resolvedOrderReference ?? body.customerId ?? inspectionId}`,
             partsCost: 0,
             laborCost: 0,
           },
@@ -338,8 +454,8 @@ router.post(
               `Notes: ${escapeHtml(truncatedNotes)}\n` +
               `Logged by: ${escapeHtml(loggedBy)}\n` +
               `Store: ${escapeHtml(body.storeId)}` +
-              (body.orderReference ? `\nRef: ${escapeHtml(body.orderReference)}` : '') +
-              (!body.orderReference && body.customerId ? `\nPre-booking (customer: ${escapeHtml(body.customerId)})` : ''),
+              (resolvedOrderReference ? `\nRef: ${escapeHtml(resolvedOrderReference)}` : '') +
+              (!resolvedOrderReference && body.customerId ? `\nPre-booking (customer: ${escapeHtml(body.customerId)})` : ''),
             getTelegramChatId('maintenance'),
           );
         } catch (tgErr) {
@@ -371,7 +487,7 @@ router.post(
               `🔩 <b>Maintenance Logged</b>\n` +
                 `Vehicle: ${escapeHtml(vehicleLabel)}\n` +
                 `Issues:\n${escapeHtml(issueLines)}\n` +
-                `From Inspection: ${escapeHtml(body.orderReference ?? inspectionId ?? '')}\n` +
+                `From Inspection: ${escapeHtml(resolvedOrderReference ?? inspectionId ?? '')}\n` +
                 `Logged by: ${escapeHtml(loggedBy)}\n` +
                 `Store: ${escapeHtml(body.storeId)}`,
               getTelegramChatId('maintenance'),
@@ -425,7 +541,7 @@ router.post(
 
             const hashContent = [
               inspectionId,
-              body.orderReference,
+              resolvedOrderReference,
               body.vehicleName ?? '',
               plateNumber,
               loggedAt,
@@ -442,10 +558,10 @@ router.post(
             await sendEmail({
               to: INSPECTION_LOG_EMAIL,
               from: INTERNAL_FROM_EMAIL,
-              subject: `🔍 Inspection — ${body.vehicleName ?? 'Vehicle'} — ${body.orderReference ?? 'PRE-BOOKING'} — ${loggedAt}`,
+              subject: `🔍 Inspection — ${body.vehicleName ?? 'Vehicle'} — ${resolvedOrderReference ?? 'PRE-BOOKING'} — ${loggedAt}`,
               html: inspectionLogHtml({
                 inspectionId,
-                orderReference: body.orderReference ?? 'Pre-booking check-in',
+                orderReference: resolvedOrderReference ?? 'Pre-booking check-in',
                 vehicleName: body.vehicleName ?? 'Unknown',
                 plateNumber,
                 engineNumber,
@@ -555,4 +671,5 @@ router.put(
   },
 );
 
+export { router as inspectionRoutes };
 export default router;

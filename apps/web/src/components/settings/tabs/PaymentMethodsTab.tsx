@@ -7,6 +7,7 @@ const columns = [
   { key: 'surchargePercent', header: 'Surcharge %', render: (r: Record<string, unknown>) => `${Number(r.surchargePercent ?? 0)}%` },
   { key: 'isDepositEligible', header: 'Deposit eligible', render: (r: Record<string, unknown>) => (r.isDepositEligible === false ? 'No' : 'Yes') },
   { key: 'showOnCustomerWebsite', header: 'Show on website', render: (r: Record<string, unknown>) => (r.showOnCustomerWebsite === false ? 'No' : 'Yes') },
+  { key: 'gatewayProvider', header: 'Gateway', render: (r: Record<string, unknown>) => String(r.gatewayProvider ?? 'Offline') },
   { key: 'isActive', header: 'Active', render: (r: Record<string, unknown>) => (r.isActive === false ? 'No' : 'Yes') },
 ];
 
@@ -16,6 +17,7 @@ const fields: FieldDef[] = [
   { key: 'surchargePercent', label: 'Surcharge % (e.g. 5 for card fee)', type: 'number' },
   { key: 'isDepositEligible', label: 'Deposit eligible', type: 'boolean' },
   { key: 'showOnCustomerWebsite', label: 'Show on customer website', type: 'boolean' },
+  { key: 'gatewayProvider', label: 'Online gateway', type: 'select', options: [{ value: '', label: 'Offline' }, { value: 'xendit', label: 'Xendit' }] },
   { key: 'isActive', label: 'Active', type: 'boolean' },
 ];
 
@@ -30,7 +32,10 @@ export function PaymentMethodsTab() {
       isLoading={isLoading}
       columns={columns}
       fields={fields}
-      onSave={(row) => save.mutate(row)}
+      onSave={(row) => save.mutate({
+        ...row,
+        gatewayProvider: row.gatewayProvider || null,
+      })}
       onDelete={(id) => del.mutate(id)}
       isSaving={save.isPending}
       saveError={save.error as Error | null}

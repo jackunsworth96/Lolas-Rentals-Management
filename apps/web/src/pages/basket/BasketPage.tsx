@@ -5,8 +5,8 @@ import {
   getPartnerRef,
   clearPartnerRef,
 } from '../../utils/partnerRef.js';
+import { calculateBasketPricing } from '../../utils/basket-pricing.js';
 import { usePartnerRefCapture } from '../../hooks/usePartnerRefCapture.js';
-import { computePartnerBenefit } from '../../utils/partnerDiscount.js';
 import { useBookingStore, type BasketItem, type RenterDetails } from '../../stores/bookingStore.js';
 import { useToast } from '../../hooks/useToast.js';
 import { BasketVehicleGroupCard } from '../../components/basket/BasketVehicleGroupCard.js';
@@ -451,8 +451,6 @@ export default function BasketPage() {
   const vehicleCount = basket.length || 1;
   const pickupFeePerVehicle = locations.find((l) => l.id === pickupLocationId)?.deliveryCost ?? 0;
   const dropoffFeePerVehicle = locations.find((l) => l.id === dropoffLocationId)?.collectionCost ?? 0;
-  const pickupFee = pickupFeePerVehicle * vehicleCount;
-  const dropoffFee = dropoffFeePerVehicle * vehicleCount;
 
   const selectedPm = paymentMethods.find((pm) => pm.id === paymentMethodId);
   const surchargePercent = selectedPm?.surchargePercent ?? 0;
@@ -472,29 +470,37 @@ export default function BasketPage() {
       renterDetails: nextRenter,
     }).catch(() => {});
   }, [hydratingSession, partnerBenefit, renter, sessionToken, setRenterDetailsInStore]);
-  const vehicleSubtotalForBenefit = basket.reduce((s, b) => s + b.dailyRate * rentalDays, 0);
-  // Derive singleModelId here (before appliedPartnerBenefit) so it can be used
-  // in the useMemo below without hitting a temporal dead zone error. The same
-  // value is also used later for add-on fetching.
   const _basketModelIds = [...new Set(basket.map((b) => b.vehicleModelId))];
   const singleModelId = _basketModelIds.length === 1 ? _basketModelIds[0] : null;
-  // Pass the vehicle model ID when the basket contains a single model type so
-  // per-vehicle overrides can be resolved. Mixed-model baskets fall back to
-  // global partner terms (singleModelId is null when models differ).
-  const appliedPartnerBenefit = useMemo(
-    () => computePartnerBenefit(
-      partnerBenefit,
-      vehicleSubtotalForBenefit,
-      pickupDatetime,
-      new Date(),
-      singleModelId,
-      pickupLocationId,
-      dropoffLocationId,
-    ),
-    [partnerBenefit, vehicleSubtotalForBenefit, pickupDatetime, singleModelId, pickupLocationId, dropoffLocationId],
-  );
-  const partnerRentalDiscount = appliedPartnerBenefit.applied ? appliedPartnerBenefit.rentalDiscount : 0;
-  const partnerFreeDelivery = appliedPartnerBenefit.applied && appliedPartnerBenefit.freeDelivery;
+  const basketPricing = useMemo(() => calculateBasketPricing({
+    basket,
+    rentalDays,
+    addons,
+    selectedAddonIds,
+    pickupFeePerVehicle,
+    dropoffFeePerVehicle,
+    pickupDatetime,
+    pickupLocationId,
+    dropoffLocationId,
+    surchargePercent,
+    transferFee: transfer?.totalPrice ?? 0,
+    charityDonation,
+    partnerBenefit,
+  }), [
+    basket,
+    rentalDays,
+    addons,
+    selectedAddonIds,
+    pickupFeePerVehicle,
+    dropoffFeePerVehicle,
+    pickupDatetime,
+    pickupLocationId,
+    dropoffLocationId,
+    surchargePercent,
+    transfer,
+    charityDonation,
+    partnerBenefit,
+  ]);
   const partnerFreeDeliveryLocationNames = useMemo(() => {
     if (!partnerBenefit || !partnerBenefit.freeDeliveryLocationIds?.length) return [];
     const names = locations
@@ -556,40 +562,8 @@ export default function BasketPage() {
     };
   }, [transfer]);
 
-  const reviewSheetGrandTotal = useMemo(() => {
-    const vehicleSubtotal = basket.reduce((s, b) => s + b.dailyRate * rentalDays, 0);
-    const addonsTotal = addons
-      .filter((a) => selectedAddonIds.has(Number(a.id)))
-      .reduce((s, a) => s + addonLineTotal(a, rentalDays), 0) * basket.length;
-    const transferFee = transfer?.totalPrice ?? 0;
-    const discountedVehicleSubtotal = Math.max(0, vehicleSubtotal - partnerRentalDiscount);
-    const effPickup = partnerFreeDelivery ? 0 : pickupFee;
-    const effDropoff = partnerFreeDelivery ? 0 : dropoffFee;
-    const subtotalBeforeSurcharge =
-      discountedVehicleSubtotal + addonsTotal + transferFee + effPickup + effDropoff;
-    const surchargeAmount =
-      surchargePercent > 0
-        ? Math.round(subtotalBeforeSurcharge * (surchargePercent / 100) * 100) / 100
-        : 0;
-    return subtotalBeforeSurcharge + surchargeAmount + charityDonation;
-  }, [
-    basket,
-    rentalDays,
-    addons,
-    selectedAddonIds,
-    transfer,
-    pickupFee,
-    dropoffFee,
-    surchargePercent,
-    charityDonation,
-    partnerRentalDiscount,
-    partnerFreeDelivery,
-  ]);
-
-  const reviewSheetDeposit = useMemo(
-    () => basket.reduce((s, b) => s + (b.securityDeposit ?? 0), 0),
-    [basket],
-  );
+  const reviewSheetGrandTotal = basketPricing.grandTotal;
+  const reviewSheetDeposit = basketPricing.deposit;
 
   function handleOpenMobileReview() {
     if (!validate()) return;
@@ -628,17 +602,19 @@ export default function BasketPage() {
         setPaymentMethods(
           data.filter(
             (pm) =>
-              !pm.id.toLowerCase().includes('card') &&
-              !pm.id.toLowerCase().includes('bank') &&
-              !pm.name.toLowerCase().includes('bank') &&
-              pm.surchargePercent === 0,
+              pm.gatewayProvider === 'xendit' || (
+                !pm.id.toLowerCase().includes('card') &&
+                !pm.id.toLowerCase().includes('bank') &&
+                !pm.name.toLowerCase().includes('bank') &&
+                pm.surchargePercent === 0
+              ),
           ),
         ),
       )
       .catch(() => {
         setPaymentMethods([
-          { id: 'cash', name: 'Cash on Arrival', surchargePercent: 0 },
-          { id: 'gcash', name: 'GCash', surchargePercent: 0 },
+          { id: 'cash', name: 'Cash on Arrival', surchargePercent: 0, gatewayProvider: null },
+          { id: 'gcash', name: 'GCash', surchargePercent: 0, gatewayProvider: null },
         ]);
       });
   }, [storeId, singleModelId]);
@@ -743,7 +719,7 @@ export default function BasketPage() {
     try {
       for (let i = 0; i < basket.length; i++) {
         const item = basket[i];
-        const result = await api.post<{ id: string; orderReference: string; cancellationToken: string; serverQuote: number | null; charityDonation: number }>(
+        const result = await api.post<{ id: string; orderReference: string; cancellationToken: string; serverQuote: number | null; surchargeAmount: number; charityDonation: number }>(
           '/public/booking/submit',
           {
             sessionToken, vehicleModelId: item.vehicleModelId,
@@ -754,17 +730,17 @@ export default function BasketPage() {
             dropoffDatetime: dropoffDatetime,
             pickupLocationId, dropoffLocationId, storeId,
             addonIds: allAddonIds.length > 0 ? allAddonIds : undefined,
-            transferType: transfer?.transferType ?? null,
-            flightNumber: transfer?.flightNumber || undefined,
-            flightArrivalTime: transfer?.flightArrivalTime
+            transferType: i === 0 ? transfer?.transferType ?? null : null,
+            flightNumber: i === 0 ? transfer?.flightNumber || undefined : undefined,
+            flightArrivalTime: i === 0 && transfer?.flightArrivalTime
               ? toManilaDatetime(transfer.flightArrivalTime)
               : undefined,
-            transferRoute: transfer?.transferRoute || undefined,
+            transferRoute: i === 0 ? transfer?.transferRoute || undefined : undefined,
             // Additional transfer fields (Zod strips unknown fields silently)
-            transferRouteId: transfer?.transferRouteId ?? undefined,
-            transferPaxCount: transfer?.paxCount ?? undefined,
+            transferRouteId: i === 0 ? transfer?.transferRouteId ?? undefined : undefined,
+            transferPaxCount: i === 0 ? transfer?.paxCount ?? undefined : undefined,
             charityDonation: i === 0 && charityDonation > 0 ? charityDonation : undefined,
-            transferAmount: (transfer?.totalPrice ?? 0) > 0 ? (transfer?.totalPrice ?? 0) : undefined,
+            transferAmount: i === 0 && (transfer?.totalPrice ?? 0) > 0 ? (transfer?.totalPrice ?? 0) : undefined,
             webPaymentMethod: paymentMethodId || undefined,
             ...(showHelmetSelector ? { helmet_count: helmetCount } : {}),
             ...(renter.accommodationName?.trim()
@@ -795,18 +771,11 @@ export default function BasketPage() {
       // Do NOT add pickupFee/dropoffFee again — already included in webQuoteRaw
       const submittedAddonIds = new Set(allAddonIds);
       const selAddons = addons.filter((a) => submittedAddonIds.has(Number(a.id)));
-      const clientTotal = basket.reduce((s, b) => s + b.dailyRate * rentalDays, 0)
-        + selAddons.reduce((s, a) => s + (a.addonType === 'per_day' ? a.pricePerDay * rentalDays : a.priceOneTime), 0) * basket.length
-        + (transfer?.totalPrice ?? 0)
-        + pickupFee + dropoffFee;
-      const baseTotal = serverTotal > 0 ? serverTotal : clientTotal;
-      const surchargeAmount = surchargePercent > 0
-        ? Math.round(baseTotal * (surchargePercent / 100) * 100) / 100
-        : 0;
-      const grandTotal = baseTotal + surchargeAmount;
+      const grandTotal = serverTotal > 0
+        ? serverTotal
+        : basketPricing.grandTotal;
       // Persist email for confirmation page refresh/bookmark recovery
       sessionStorage.setItem(`confirm_email_${orderRefs[0]}`, renter.email.trim());
-      clearPartnerRef();
       const confirmState = {
         orderReferences: orderRefs, customerName: renter.fullName.trim(), customerEmail: renter.email.trim(),
         vehicleModelName: basket[0]?.modelName ?? '', pickupDatetime, dropoffDatetime, pickupLocationId, rentalDays,
@@ -817,32 +786,29 @@ export default function BasketPage() {
         transferPrice: (transfer?.totalPrice ?? 0) > 0 ? (transfer?.totalPrice ?? 0) : undefined,
         charityDonation,
       };
-      const isCardPayment = surchargePercent > 0;
-      if (isCardPayment && orderIds[0]) {
-        // Store confirmation state in sessionStorage for when Maya redirects back
+      const isOnlinePayment = selectedPm?.gatewayProvider === 'xendit';
+      if (isOnlinePayment && orderIds.length > 0) {
+        // Store confirmation state for the hosted-checkout redirect.
         sessionStorage.setItem(
           `confirm_state_${orderRefs[0]}`,
           JSON.stringify(confirmState),
         );
-        try {
-          const mayaResult = await api.post<{ checkoutId: string; redirectUrl: string }>(
-            '/payments/maya/checkout',
-            {
-              orderId: orderIds[0],
-              amountPHP: grandTotal,
-              description: `Lola's Rentals – ${orderRefs[0]}`,
-            },
-          );
-          resetBookingSession();
-          clearRenterDetails();
-          window.location.href = mayaResult.redirectUrl;
-        } catch {
-          // If Maya checkout fails, fall back to normal confirmation
-          resetBookingSession();
-          clearRenterDetails();
-          navigate(`/book/confirmation/${encodeURIComponent(orderRefs[0])}`, { state: confirmState });
-        }
+        const xenditResult = await api.post<{ sessionId: string; checkoutUrl: string; expiresAt: string; amountPHP: number }>(
+          '/public/payments/xendit/sessions',
+          {
+            paymentMethodId,
+            orders: orderIds.map((id, index) => ({
+              id,
+              cancellationToken: submittedOrderTokens[orderRefs[index]] ?? '',
+            })),
+          },
+        );
+        clearPartnerRef();
+        resetBookingSession();
+        clearRenterDetails();
+        window.location.href = xenditResult.checkoutUrl;
       } else {
+        clearPartnerRef();
         resetBookingSession();
         clearRenterDetails();
         navigate(`/book/confirmation/${encodeURIComponent(orderRefs[0])}`, { state: confirmState });
@@ -1311,8 +1277,7 @@ export default function BasketPage() {
           {/* ── RIGHT COLUMN (summary + payment) — below main on mobile, sticky sidebar on lg ── */}
           <div className="order-2 lg:sticky lg:top-20 lg:self-start">
             <OrderSummaryPanel
-              basket={basket} rentalDays={rentalDays} selectedAddonIds={selectedAddonIds} addons={standardAddons}
-              transfer={transfer} pickupFee={pickupFee} dropoffFee={dropoffFee} vehicleCount={vehicleCount}
+              basket={basket} rentalDays={rentalDays} pricing={basketPricing}
               paymentMethodId={paymentMethodId}
               onPaymentChange={(id) => {
                 setPaymentMethodId(id);
@@ -1323,12 +1288,10 @@ export default function BasketPage() {
               paymentMethodError={paymentMethodError}
               canPlaceOrder={hasSelectedPaymentMethod && paymentMethods.length > 0}
               priceChanged={priceChanged}
-              charityDonation={charityDonation}
               onCharityChange={setCharityDonation}
               isMdUp={isMdUp}
               onOpenMobileReview={handleOpenMobileReview}
               partnerBenefit={partnerBenefit}
-              partnerBenefitApplied={appliedPartnerBenefit}
               partnerFreeDeliveryLocationNames={partnerFreeDeliveryLocationNames}
             />
           </div>

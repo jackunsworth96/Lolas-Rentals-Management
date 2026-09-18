@@ -207,9 +207,9 @@ export function useUpdateDropoffNote() {
   });
 }
 
-export function useCreateMayaCheckout() {
+export function useCreateXenditSession() {
   return useMutation({
-    mutationFn: (params: { orderId: string; amountPHP: number; description?: string }) =>
-      api.post<{ checkoutId: string; redirectUrl: string }>('/payments/maya/checkout', params),
+    mutationFn: (params: { orderId: string; principalAmountPHP: number; paymentMethodId: string; description?: string }) =>
+      api.post<{ sessionId: string; checkoutUrl: string; expiresAt: string; amountPHP: number }>('/payments/xendit/sessions', params),
   });
 }

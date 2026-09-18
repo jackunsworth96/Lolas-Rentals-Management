@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Check, Clipboard, FileSignature, CalendarPlus } from 'lucide-react';
-import { api } from '../../api/client.js';
+import { Check, Clipboard, FileSignature, CalendarPlus, Loader2 } from 'lucide-react';
+import { api, ApiError } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
 import { RentalSummaryCard } from '../../components/confirmation/RentalSummaryCard.js';
 import { BookingFeedbackForm } from '../../components/confirmation/BookingFeedbackForm.js';
@@ -56,7 +56,12 @@ export default function ConfirmationPage() {
 
   const navState = location.state as ConfirmationState | null;
   const [searchParams] = useSearchParams();
-  const paymentStatus = searchParams.get('payment') as 'success' | 'failed' | 'cancelled' | null;
+  const returnPaymentStatus = searchParams.get('payment') as 'processing' | 'failed' | 'cancelled' | null;
+  const paymentSessionId = searchParams.get('paymentSession');
+  const paymentState = searchParams.get('paymentState');
+  const [verifiedPaymentStatus, setVerifiedPaymentStatus] = useState<'processing' | 'success' | 'failed' | 'cancelled' | 'reconciliation_required' | 'verification_required' | null>(
+    returnPaymentStatus,
+  );
 
   const [state, setState] = useState<ConfirmationState | null>(navState);
   const [loading, setLoading] = useState(false);
@@ -66,6 +71,48 @@ export default function ConfirmationPage() {
   const carouselRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { resetBookingSession(); }, [resetBookingSession]);
+
+  useEffect(() => {
+    if (!paymentSessionId || !paymentState || returnPaymentStatus === 'cancelled') return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const poll = async () => {
+      try {
+        const result = await api.get<{ status: string }>(
+          `/public/payments/xendit/sessions/${encodeURIComponent(paymentSessionId)}/status?state=${encodeURIComponent(paymentState)}`,
+        );
+        if (cancelled) return;
+        if (result.status === 'completed') {
+          setVerifiedPaymentStatus('success');
+          return;
+        }
+        if (result.status === 'reconciliation_required') {
+          setVerifiedPaymentStatus('reconciliation_required');
+          return;
+        }
+        if (['expired', 'cancelled', 'failed'].includes(result.status)) {
+          setVerifiedPaymentStatus(result.status === 'cancelled' ? 'cancelled' : 'failed');
+          return;
+        }
+        setVerifiedPaymentStatus('processing');
+      } catch (error) {
+        if (cancelled) return;
+        if (error instanceof ApiError && ['INVALID_RETURN_STATE', 'SESSION_NOT_FOUND', 'FORBIDDEN'].includes(error.code ?? '')) {
+          setVerifiedPaymentStatus('verification_required');
+          return;
+        }
+        setVerifiedPaymentStatus('processing');
+      }
+      if (!cancelled) timer = setTimeout(() => void poll(), 2500);
+    };
+
+    void poll();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [paymentSessionId, paymentState, returnPaymentStatus]);
 
   useEffect(() => {
     if (state) return;
@@ -161,7 +208,7 @@ export default function ConfirmationPage() {
         <div className="relative z-10 mx-auto max-w-5xl pt-6">
 
           {/* ── Payment status banners ── */}
-          {paymentStatus === 'success' && (
+          {verifiedPaymentStatus === 'success' && (
             <div className="mb-6 rounded-xl border border-green-200 bg-green-50 px-5 py-4 flex items-center gap-3">
               <svg className="h-6 w-6 shrink-0 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -172,13 +219,31 @@ export default function ConfirmationPage() {
               </div>
             </div>
           )}
-          {(paymentStatus === 'failed' || paymentStatus === 'cancelled') && (
+          {verifiedPaymentStatus === 'processing' && (
+            <div className="mb-6 flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-5 py-4">
+              <Loader2 className="h-6 w-6 shrink-0 animate-spin text-blue-600" />
+              <div>
+                <p className="font-lato font-semibold text-blue-800">Confirming your payment</p>
+                <p className="font-lato text-sm text-blue-700">This page will update after Xendit confirms the payment.</p>
+              </div>
+            </div>
+          )}
+          {(verifiedPaymentStatus === 'reconciliation_required' || verifiedPaymentStatus === 'verification_required') && (
+            <div className="mb-6 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
+              <Loader2 className="h-6 w-6 shrink-0 text-amber-700" />
+              <div>
+                <p className="font-semibold text-amber-900 font-lato">Payment verification required</p>
+                <p className="text-sm text-amber-800 font-lato">Please keep your Xendit receipt and contact Lola's Rentals. Do not make another payment.</p>
+              </div>
+            </div>
+          )}
+          {(verifiedPaymentStatus === 'failed' || verifiedPaymentStatus === 'cancelled') && (
             <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-5 py-4 flex items-center gap-3">
               <svg className="h-6 w-6 shrink-0 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
               <div>
-                <p className="font-semibold text-red-800 font-lato">{paymentStatus === 'cancelled' ? t('confirmation.paymentCancelled') : t('confirmation.paymentFailed')}</p>
+                <p className="font-semibold text-red-800 font-lato">{verifiedPaymentStatus === 'cancelled' ? t('confirmation.paymentCancelled') : t('confirmation.paymentFailed')}</p>
                 <p className="text-sm text-red-700 font-lato">
                   {t('confirmation.paymentNotCompleted')}{' '}
                   <a href={WHATSAPP_URL} className="underline font-medium">{t('confirmation.contactOnWhatsapp')}</a> to arrange payment.

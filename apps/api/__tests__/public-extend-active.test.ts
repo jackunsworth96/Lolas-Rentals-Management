@@ -92,6 +92,8 @@ function activeBookingClient(options?: {
           return resultQuery(() => ({ data: options?.addons ?? [], error: null }));
         case 'payments':
           return resultQuery(() => ({ data: state.payments, error: null }));
+        case 'xendit_payment_sessions':
+          return resultQuery(() => ({ data: null, error: null }));
         default:
           throw new Error(`Unexpected table ${table}`);
       }

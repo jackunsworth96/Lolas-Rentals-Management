@@ -1,6 +1,12 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { ExtendLookupRequestSchema, PublicExtendConfirmSchema, StaffExtendConfirmSchema, Permission } from '@lolas/shared';
+import {
+  ExtendLookupRequestSchema,
+  ExtensionPaymentAccessSchema,
+  PublicExtendConfirmSchema,
+  StaffExtendConfirmSchema,
+  Permission,
+} from '@lolas/shared';
 import { validateBody } from '../middleware/validate.js';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
@@ -10,6 +16,7 @@ import { checkAvailability } from '../use-cases/booking/check-availability.js';
 import { publicWebOriginFromEnv } from '../lib/public-web-url.js';
 import { logger } from '../lib/logger.js';
 import { sendRespondIoTemplateMessage } from '../services/respond-io-outbound.js';
+import { isXenditEnabled } from '../services/xendit.js';
 import {
   escapeIlike,
   extDayCount,
@@ -194,91 +201,107 @@ router.get('/addons', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// ── Extension Payment Placeholder Summary ──
+// ── Extension Payment Summary ──
 
-router.get('/payment-summary', extendLookupLimiter, async (req, res, next) => {
+router.post(
+  '/payment-summary',
+  extendLookupLimiter,
+  validateBody(ExtensionPaymentAccessSchema),
+  async (req, res, next) => {
   try {
-    const ref = typeof req.query.ref === 'string' ? req.query.ref.trim() : '';
-    if (!ref) {
-      res.status(400).json({
-        success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'ref is required' },
-      });
-      return;
-    }
+    const { orderReference, email } = req.body as { orderReference: string; email: string };
 
     const sb = getSupabaseClient();
-    const refVariants = orderReferenceLookupVariants(ref);
-    let target: { source: 'active' | 'raw'; id: string; orderReference: string } | null = null;
+    const refVariants = orderReferenceLookupVariants(orderReference);
+    const { data: customers, error: customerError } = await sb
+      .from('customers')
+      .select('id')
+      .ilike('email', escapeIlike(email))
+      .limit(10);
+    if (customerError) throw new Error(`Extension customer lookup failed: ${customerError.message}`);
 
-    const { data: order } = await sb
-      .from('orders')
-      .select('id, booking_token')
-      .in('booking_token', refVariants)
-      .maybeSingle();
-
-    if (order) {
-      target = {
-        source: 'active',
-        id: (order as { id: string }).id,
-        orderReference: (order as { booking_token: string | null }).booking_token ?? ref,
-      };
-    } else {
-      const { data: rawOrder } = await sb
-        .from('orders_raw')
-        .select('id, order_reference')
-        .in('order_reference', refVariants)
-        .maybeSingle();
-      if (rawOrder) {
-        target = {
-          source: 'raw',
-          id: (rawOrder as { id: string }).id,
-          orderReference: (rawOrder as { order_reference: string }).order_reference,
-        };
-      }
-    }
-
-    if (!target) {
+    const customerIds = (customers ?? []).map((customer: { id: string }) => customer.id);
+    if (customerIds.length === 0) {
       res.status(404).json({
         success: false,
-        error: { code: 'NOT_FOUND', message: 'Booking not found' },
+        error: { code: 'NOT_FOUND', message: 'Active booking not found' },
       });
       return;
     }
 
-    let query = sb
+    const { data: order, error: orderError } = await sb
+      .from('orders')
+      .select('id, booking_token, store_id')
+      .in('booking_token', refVariants)
+      .in('customer_id', customerIds)
+      .eq('status', 'active')
+      .maybeSingle();
+    if (orderError) throw new Error(`Extension order lookup failed: ${orderError.message}`);
+
+    if (!order) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Active booking not found' },
+      });
+      return;
+    }
+
+    const typedOrder = order as { id: string; booking_token: string | null; store_id: string };
+    const { data: payments, error: paymentsError } = await sb
       .from('payments')
       .select('amount')
       .eq('payment_type', 'extension')
-      .eq('settlement_status', 'pending');
+      .eq('settlement_status', 'pending')
+      .eq('order_id', typedOrder.id)
+      .gt('amount', 0);
+    if (paymentsError) throw new Error(`Extension payment lookup failed: ${paymentsError.message}`);
 
-    query = target.source === 'active'
-      ? query.eq('order_id', target.id)
-      : query.eq('raw_order_id', target.id);
-
-    const { data: payments, error } = await query;
-    if (error) throw new Error(`Extension payment lookup failed: ${error.message}`);
-
-    const pendingAmount = (payments ?? []).reduce(
+    const principalAmountPHP = Math.round((payments ?? []).reduce(
       (sum, payment: { amount: number | string | null }) => sum + Number(payment.amount ?? 0),
       0,
+    ) * 100) / 100;
+
+    const { data: paymentMethod, error: paymentMethodError } = await sb
+      .from('payment_methods')
+      .select('id, surcharge_percent')
+      .eq('gateway_provider', 'xendit')
+      .eq('is_active', true)
+      .eq('show_on_customer_website', true)
+      .order('id')
+      .limit(1)
+      .maybeSingle();
+    if (paymentMethodError) throw new Error(`Xendit payment method lookup failed: ${paymentMethodError.message}`);
+
+    const surchargePercent = Number(
+      (paymentMethod as { surcharge_percent?: number | string | null } | null)?.surcharge_percent ?? 0,
     );
+    const surchargeAmountPHP = Math.round(principalAmountPHP * surchargePercent) / 100;
+    const totalAmountPHP = Math.round((principalAmountPHP + surchargeAmountPHP) * 100) / 100;
+    const paymentAvailable = principalAmountPHP > 0 && Boolean(paymentMethod) && isXenditEnabled();
 
     res.json({
       success: true,
       data: {
         found: true,
-        orderReference: target.orderReference,
-        pendingAmount: Math.round(pendingAmount * 100) / 100,
-        paymentAvailable: false,
+        orderReference: typedOrder.booking_token ?? orderReference,
+        principalAmountPHP,
+        surchargeAmountPHP,
+        totalAmountPHP,
+        surchargePercent,
+        paymentAvailable,
         provider: 'xendit',
-        message: 'Online extension payment is coming soon. You can still pay this balance when you return.',
+        message: principalAmountPHP <= 0
+          ? 'There is no pending extension balance for this booking.'
+          : paymentAvailable
+            ? 'Continue to Xendit to securely pay your extension balance.'
+            : 'Online payment is temporarily unavailable. You can still pay when you return your rental.',
       },
     });
   } catch (err) {
     next(err);
   }
-});
+  },
+);
 
 // ── Lookup ──
 

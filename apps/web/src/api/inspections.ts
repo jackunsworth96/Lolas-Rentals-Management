@@ -20,7 +20,7 @@ export interface InspectionItem {
 export interface Inspection {
   id: string;
   orderId: string | null;
-  orderReference: string;
+  orderReference: string | null;
   storeId: string;
   vehicleId: string | null;
   vehicleName: string | null;
