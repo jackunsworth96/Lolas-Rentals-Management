@@ -2,16 +2,25 @@ import { useState } from 'react';
 import {
   BarChart,
   Bar,
+  LineChart as RechartsLineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
+  Legend,
   ResponsiveContainer,
   Cell,
 } from 'recharts';
-import { TrendingUp, Bike, Users, Calendar, ArrowUp, ArrowDown, Minus } from 'lucide-react';
-import { useAnalytics, type FleetModelMetrics } from '../../api/analytics.js';
+import { TrendingUp, Bike, Users, Calendar, ArrowUp, ArrowDown, Minus, Link2, Target } from 'lucide-react';
+import {
+  useAnalytics,
+  useFleetForecast,
+  type FleetModelMetrics,
+} from '../../api/analytics.js';
 import { useUIStore } from '../../stores/ui-store.js';
+
+const CHART_COLORS = ['#0d9488', '#6366f1', '#d97706', '#dc2626', '#7c3aed'];
 
 const PERIODS = [
   { label: '30 days', value: 30 },
@@ -163,18 +172,33 @@ export default function AnalyticsPage() {
   const storeId = selectedStoreId && selectedStoreId !== 'all' ? selectedStoreId : undefined;
 
   const { data, isLoading, isError } = useAnalytics(storeId, days);
+  const { data: forecast, isLoading: isForecastLoading } = useFleetForecast(storeId);
 
   const analytics = data;
   const fleet = analytics?.fleet;
   const bookings = analytics?.bookings;
+  const affiliates = analytics?.affiliates;
 
-  // Channel split chart data
+  // Channel split chart data — system channel a booking was created through
+  // (WooCommerce was retired and is no longer tracked here).
   const channelData = bookings
     ? [
-        { name: 'Online booking', value: (bookings.channelSplit.direct ?? 0) + (bookings.channelSplit.woocommerce ?? 0), fill: '#0d9488' },
-        { name: 'Walk-in', value: bookings.channelSplit.walk_in ?? 0, fill: '#6366f1' },
+        { name: 'Online booking', value: bookings.channelSplit.direct ?? 0, fill: '#0d9488' },
+        { name: 'Walk-in (system)', value: bookings.channelSplit.walk_in ?? 0, fill: '#6366f1' },
       ]
     : [];
+
+  // Quarterly forecast chart data — one line per vehicle model, x-axis is quarter.
+  const forecastModelNames = Array.from(
+    new Set(forecast?.quarters.flatMap((q) => q.byModel.map((m) => m.modelName)) ?? []),
+  );
+  const forecastChartData = (forecast?.quarters ?? []).map((q) => {
+    const row: Record<string, string | number> = {
+      quarter: q.isCurrentQuarter ? `${q.label} (so far)` : q.label,
+    };
+    for (const m of q.byModel) row[m.modelName] = m.perDay;
+    return row;
+  });
 
   // Lead time chart data
   const leadTimeData = bookings
@@ -265,7 +289,7 @@ export default function AnalyticsPage() {
               <StatTile
                 label="Cancellation rate"
                 value={pct(fleet!.overall.cancellationRate)}
-                sub={`${fleet!.overall.totalRentals} active rentals in period`}
+                sub="Share of orders placed in period that were cancelled"
               />
             </div>
 
@@ -319,16 +343,10 @@ export default function AnalyticsPage() {
               </div>
               <div className="rounded-xl border border-gray-200 bg-white p-4">
                 <p className="text-xs font-medium text-gray-500">Walk-in vs online</p>
-                <p className="mt-1 text-2xl font-bold text-gray-900">
-                  {pct(
-                    (bookings!.channelSplit.walk_in ?? 0) /
-                    Math.max(
-                      Object.values(bookings!.channelSplit).reduce((s, v) => s + v, 0),
-                      1,
-                    ),
-                  )}
+                <p className="mt-1 text-2xl font-bold text-gray-900">{pct(bookings!.walkInShare)}</p>
+                <p className="mt-0.5 text-xs text-gray-400">
+                  customer-reported walk-in share ({bookings!.walkInResponses} responses)
                 </p>
-                <p className="mt-0.5 text-xs text-gray-400">walk-in share</p>
               </div>
             </div>
 
@@ -363,12 +381,13 @@ export default function AnalyticsPage() {
                     Online (direct app): <strong>{(bookings!.channelSplit.direct ?? 0)}</strong>
                   </span>
                   <span className="text-xs text-gray-500">
-                    WooCommerce: <strong>{bookings!.channelSplit.woocommerce ?? 0}</strong>
-                  </span>
-                  <span className="text-xs text-gray-500">
-                    Walk-in: <strong>{bookings!.channelSplit.walk_in ?? 0}</strong>
+                    Walk-in (system): <strong>{bookings!.channelSplit.walk_in ?? 0}</strong>
                   </span>
                 </div>
+                <p className="mt-2 text-[11px] text-gray-400">
+                  Reflects which internal tool created the booking — see "Walk-in vs online" above for the
+                  customer-reported figure, which captures walk-ins staff booked through the direct flow too.
+                </p>
               </div>
 
               {/* Lead time distribution chart */}
@@ -399,6 +418,183 @@ export default function AnalyticsPage() {
                 </p>
               </div>
             </div>
+          </section>
+
+          {/* ── SECTION 3: Affiliate Bookings ─────────────────────────────── */}
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <Link2 className="h-5 w-5 text-gray-400" />
+              <h2 className="text-base font-semibold text-gray-800">Affiliate Bookings</h2>
+              <span className="text-xs text-gray-400">last {days} days</span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+              <StatTile
+                label="Bookings via affiliates"
+                value={affiliates!.attributedBookings}
+                sub={`${pct(affiliates!.attributedSharePct)} of ${affiliates!.totalBookings} bookings in period`}
+                accent={affiliates!.attributedBookings > 0}
+              />
+              <StatTile
+                label="Affiliates with bookings"
+                value={affiliates!.byPartner.length}
+                sub="Partners with at least 1 attributed booking"
+              />
+              <StatTile
+                label="Top affiliate"
+                value={affiliates!.byPartner[0]?.partnerName ?? '—'}
+                sub={
+                  affiliates!.byPartner[0]
+                    ? `${affiliates!.byPartner[0].bookings} booking${affiliates!.byPartner[0].bookings !== 1 ? 's' : ''} — ${pct(
+                        affiliates!.byPartner[0].bookings / Math.max(affiliates!.attributedBookings, 1),
+                      )} of affiliate volume`
+                    : 'No attributed bookings yet'
+                }
+              />
+            </div>
+
+            {affiliates!.byPartner.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-gray-200 p-8 text-center text-sm text-gray-400">
+                No affiliate-attributed bookings in this period
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium text-gray-500">
+                      <th className="px-4 py-2.5">Affiliate</th>
+                      <th className="px-4 py-2.5 text-right">Bookings</th>
+                      <th className="px-4 py-2.5 text-right">Scooters needed/day</th>
+                      <th className="px-4 py-2.5 text-right">TukTuks needed/day</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {affiliates!.byPartner.map((p) => (
+                      <tr key={p.partnerId} className="border-b border-gray-50 last:border-0">
+                        <td className="px-4 py-2.5 font-medium text-gray-900">{p.partnerName}</td>
+                        <td className="px-4 py-2.5 text-right text-gray-700">{p.bookings}</td>
+                        <td className="px-4 py-2.5 text-right text-gray-700">
+                          {p.scooterAvgPerDay !== null ? p.scooterAvgPerDay.toFixed(2) : `${p.scooterDays}d total`}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-gray-700">
+                          {p.tuktukAvgPerDay !== null ? p.tuktukAvgPerDay.toFixed(2) : `${p.tuktukDays}d total`}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="px-4 py-2.5 text-[11px] text-gray-400 border-t border-gray-100">
+                  Units-needed-per-day is only shown once a partner has {affiliates!.minBookingsForDailyAvg}+
+                  attributed bookings in the period — below that, total rental-days are shown instead of a
+                  daily average, since the average would be more noise than signal.
+                </p>
+              </div>
+            )}
+          </section>
+
+          {/* ── SECTION 4: Quarterly Fleet Forecast ───────────────────────── */}
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <Target className="h-5 w-5 text-gray-400" />
+              <h2 className="text-base font-semibold text-gray-800">Quarterly Fleet Forecast</h2>
+              <span className="text-xs text-gray-400">70–80% target utilisation</span>
+            </div>
+
+            {isForecastLoading && (
+              <div className="rounded-xl border border-dashed border-gray-200 p-8 text-center text-sm text-gray-400">
+                Loading forecast…
+              </div>
+            )}
+
+            {!isForecastLoading && (!forecast || forecast.quarters.length === 0) && (
+              <div className="rounded-xl border border-dashed border-gray-200 p-8 text-center text-sm text-gray-400">
+                Not enough rental history yet to build a quarterly forecast
+              </div>
+            )}
+
+            {!isForecastLoading && forecast && forecast.quarters.length > 0 && (
+              <>
+                <div className="rounded-xl border border-gray-200 bg-white p-5 mb-4">
+                  <p className="text-sm font-semibold text-gray-800 mb-1">Rental-days per day, by quarter</p>
+                  <p className="text-xs text-gray-400 mb-4">
+                    Average daily demand for each vehicle type, per calendar quarter. Uses today's fleet size
+                    against historical demand — not a snapshot of the fleet at that time.
+                  </p>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsLineChart data={forecastChartData} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                        <XAxis dataKey="quarter" tick={{ fontSize: 11 }} />
+                        <YAxis allowDecimals={false} tick={{ fontSize: 11 }} label={{ value: 'units/day', angle: -90, position: 'insideLeft', fontSize: 11 }} />
+                        <Tooltip formatter={(v: number) => [v, 'units/day']} />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        {forecastModelNames.map((name, idx) => (
+                          <Line
+                            key={name}
+                            type="monotone"
+                            dataKey={name}
+                            stroke={CHART_COLORS[idx % CHART_COLORS.length]}
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                          />
+                        ))}
+                      </RechartsLineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {forecast.projection && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {forecast.projection.byModel.map((m) => (
+                      <div key={m.modelId} className="rounded-xl border border-gray-200 bg-white p-5">
+                        <p className="font-semibold text-gray-900">{m.modelName}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">Current fleet: {m.currentFleetSize} units</p>
+                        <p className="mt-3 text-2xl font-bold text-gray-900">
+                          {m.recommendedFleetRange.low === m.recommendedFleetRange.high
+                            ? `${m.recommendedFleetRange.low} units`
+                            : `${m.recommendedFleetRange.low}–${m.recommendedFleetRange.high} units`}
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          recommended for {forecast.projection!.label} to hold 70–80% utilisation
+                          (mid target: {m.recommendedFleetRange.mid})
+                        </p>
+                        <p className="text-xs text-gray-400 mt-2">
+                          Projected demand: {m.projectedPerDay} units/day &middot; ~{m.projectedRentalDays} rental-days
+                        </p>
+                        {m.currentFleetSize !== m.recommendedFleetRange.mid && (
+                          <div
+                            className={`mt-3 rounded-lg px-3 py-2 text-xs ${
+                              m.recommendedFleetRange.mid > m.currentFleetSize
+                                ? 'bg-amber-50 border border-amber-100 text-amber-700'
+                                : 'bg-blue-50 border border-blue-100 text-blue-700'
+                            }`}
+                          >
+                            {m.recommendedFleetRange.mid > m.currentFleetSize
+                              ? `Consider adding ${m.recommendedFleetRange.mid - m.currentFleetSize} unit(s) before ${forecast.projection!.label}.`
+                              : `Current fleet may be ${m.currentFleetSize - m.recommendedFleetRange.mid} unit(s) larger than projected demand needs.`}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {forecast.projection && (
+                  <div
+                    className={`mt-4 rounded-lg px-3 py-2 text-xs ${
+                      forecast.projection.confidence === 'low'
+                        ? 'bg-amber-50 border border-amber-100 text-amber-700'
+                        : 'bg-blue-50 border border-blue-100 text-blue-700'
+                    }`}
+                  >
+                    {forecast.projection.confidence === 'low' ? 'Low confidence: ' : 'Trend projection: '}
+                    based on {forecast.projection.basedOnQuarters.join(', ')} only. This is a trailing-trend
+                    projection, not a seasonal forecast — Siargao's high/low tourist season isn't detectable
+                    yet with this little history. Revisit once 12+ months of clean data have accumulated.
+                  </div>
+                )}
+              </>
+            )}
           </section>
         </div>
       )}
