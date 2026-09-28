@@ -23,6 +23,8 @@ DECLARE
   missing_columns text;
   problem_exists boolean;
   admin_role_count integer;
+  card_settlement_id_type text;
+  card_settlement_payment_id_type text;
 BEGIN
   SELECT string_agg(required.relation_name, ', ' ORDER BY required.relation_name)
   INTO missing_relations
@@ -55,8 +57,6 @@ BEGIN
       columns.data_type AS actual_type
     FROM (
       VALUES
-        ('card_settlements', 'id', 'text'),
-        ('card_settlements', 'payment_id', 'text'),
         ('card_settlements', 'store_id', 'text'),
         ('card_settlements', 'order_id', 'text'),
         ('card_settlements', 'customer_id', 'text'),
@@ -110,6 +110,34 @@ BEGIN
       COALESCE(mismatch.actual_type, 'missing');
   END LOOP;
 
+  SELECT data_type
+  INTO card_settlement_id_type
+  FROM information_schema.columns
+  WHERE table_schema = 'public'
+    AND table_name = 'card_settlements'
+    AND column_name = 'id';
+
+  IF card_settlement_id_type IS NULL
+     OR card_settlement_id_type NOT IN ('text', 'integer', 'bigint') THEN
+    RAISE EXCEPTION
+      'Xendit installation aborted. card_settlements.id must be text, integer, or bigint, found %',
+      COALESCE(card_settlement_id_type, 'missing');
+  END IF;
+
+  SELECT data_type
+  INTO card_settlement_payment_id_type
+  FROM information_schema.columns
+  WHERE table_schema = 'public'
+    AND table_name = 'card_settlements'
+    AND column_name = 'payment_id';
+
+  IF card_settlement_payment_id_type IS NOT NULL
+     AND card_settlement_payment_id_type <> 'text' THEN
+    RAISE EXCEPTION
+      'Xendit installation aborted. card_settlements.payment_id must have type text, found %',
+      card_settlement_payment_id_type;
+  END IF;
+
   SELECT count(*)
   INTO admin_role_count
   FROM public.roles
@@ -123,13 +151,21 @@ BEGIN
 
   IF EXISTS (
     SELECT 1
-    FROM public.card_settlements
-    WHERE payment_id IS NOT NULL
-    GROUP BY payment_id
-    HAVING count(*) > 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'card_settlements'
+      AND column_name = 'payment_id'
   ) THEN
-    RAISE EXCEPTION
-      'Xendit installation aborted. card_settlements contains duplicate non-null payment_id values';
+    IF EXISTS (
+      SELECT 1
+      FROM public.card_settlements
+      WHERE payment_id IS NOT NULL
+      GROUP BY payment_id
+      HAVING count(*) > 1
+    ) THEN
+      RAISE EXCEPTION
+        'Xendit installation aborted. card_settlements contains duplicate non-null payment_id values';
+    END IF;
   END IF;
 
   IF EXISTS (
@@ -291,14 +327,41 @@ ALTER TABLE public.payment_methods
 ALTER TABLE public.orders_raw
   ADD COLUMN IF NOT EXISTS web_card_fee_surcharge numeric(12,2) NOT NULL DEFAULT 0;
 
+ALTER TABLE public.card_settlements
+  ADD COLUMN IF NOT EXISTS payment_id text;
+
+DO $card_settlement_payment_preflight$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM public.card_settlements
+    WHERE payment_id IS NOT NULL
+    GROUP BY payment_id
+    HAVING count(*) > 1
+  ) THEN
+    RAISE EXCEPTION
+      'Xendit installation aborted. card_settlements contains duplicate non-null payment_id values';
+  END IF;
+END;
+$card_settlement_payment_preflight$;
+
 INSERT INTO public.payment_methods (
   id, name, is_deposit_eligible, is_active, surcharge_percent,
   show_on_customer_website, gateway_provider
 ) VALUES (
-  'xendit', 'Pay online', false, true, 0, true, 'xendit'
+  'xendit', 'Card Payment', false, true, 0, true, 'xendit'
 )
 ON CONFLICT (id) DO UPDATE
-SET gateway_provider = 'xendit';
+SET name = EXCLUDED.name,
+    is_active = true,
+    show_on_customer_website = true,
+    gateway_provider = 'xendit';
+
+-- Keep the legacy method for historical payment records while removing it
+-- from the public basket now that Xendit hosts card checkout.
+UPDATE public.payment_methods
+SET show_on_customer_website = false
+WHERE name = 'Visa Card';
 
 CREATE TABLE IF NOT EXISTS public.xendit_payment_sessions (
   id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -385,6 +448,7 @@ AS $$
 DECLARE
   order_customer_id text;
   order_customer_name text;
+  card_settlement_id_type text;
 BEGIN
   IF NEW.payment_type <> 'card_xendit' OR NEW.order_id IS NULL THEN
     RETURN NEW;
@@ -400,15 +464,34 @@ BEGIN
     RAISE EXCEPTION 'Cannot create Xendit settlement: order % not found', NEW.order_id;
   END IF;
 
-  INSERT INTO public.card_settlements (
-    id, store_id, order_id, customer_id, payment_id, name, amount,
-    ref_number, raw_date, is_paid
-  ) VALUES (
-    'CS-XENDIT-' || md5(NEW.id), NEW.store_id, NEW.order_id,
-    order_customer_id, NEW.id, COALESCE(order_customer_name, 'Xendit'),
-    NEW.amount, NEW.settlement_ref,
-    NEW.transaction_date::text, false
-  ) ON CONFLICT DO NOTHING;
+  SELECT data_type
+  INTO card_settlement_id_type
+  FROM information_schema.columns
+  WHERE table_schema = 'public'
+    AND table_name = 'card_settlements'
+    AND column_name = 'id';
+
+  IF card_settlement_id_type = 'text' THEN
+    INSERT INTO public.card_settlements (
+      id, store_id, order_id, customer_id, payment_id, name, amount,
+      ref_number, raw_date, is_paid
+    ) VALUES (
+      'CS-XENDIT-' || md5(NEW.id), NEW.store_id, NEW.order_id,
+      order_customer_id, NEW.id, COALESCE(order_customer_name, 'Xendit'),
+      NEW.amount, NEW.settlement_ref,
+      NEW.transaction_date::text, false
+    ) ON CONFLICT DO NOTHING;
+  ELSE
+    INSERT INTO public.card_settlements (
+      store_id, order_id, customer_id, payment_id, name, amount,
+      ref_number, raw_date, is_paid
+    ) VALUES (
+      NEW.store_id, NEW.order_id,
+      order_customer_id, NEW.id, COALESCE(order_customer_name, 'Xendit'),
+      NEW.amount, NEW.settlement_ref,
+      NEW.transaction_date::text, false
+    ) ON CONFLICT DO NOTHING;
+  END IF;
 
   RETURN NEW;
 END;
@@ -1652,7 +1735,7 @@ DECLARE
   allocation jsonb;
   raw_order record;
   staff_order record;
-  raw_order_id uuid;
+  v_raw_order_id uuid;
   seen_raw_order_ids uuid[] := ARRAY[]::uuid[];
   allocation_principal numeric(12,2);
   allocation_surcharge numeric(12,2);
@@ -1724,24 +1807,24 @@ BEGIN
       FROM jsonb_array_elements(p_allocations) AS allocation_rows(value)
       ORDER BY (value->>'raw_order_id')::uuid
     LOOP
-      raw_order_id := (allocation->>'raw_order_id')::uuid;
+      v_raw_order_id := (allocation->>'raw_order_id')::uuid;
       allocation_principal := (allocation->>'principal_amount_php')::numeric(12,2);
       allocation_surcharge := (allocation->>'surcharge_amount_php')::numeric(12,2);
       allocation_amount := (allocation->>'amount_php')::numeric(12,2);
 
-      IF raw_order_id = ANY(seen_raw_order_ids)
+      IF v_raw_order_id = ANY(seen_raw_order_ids)
          OR allocation_principal <= 0
          OR allocation_surcharge < 0
          OR allocation_amount <> allocation_principal + allocation_surcharge THEN
         RAISE EXCEPTION 'Invalid or duplicate public Xendit allocation';
       END IF;
-      seen_raw_order_ids := array_append(seen_raw_order_ids, raw_order_id);
+      seen_raw_order_ids := array_append(seen_raw_order_ids, v_raw_order_id);
 
       SELECT id, store_id, status, booking_channel, web_payment_method,
              web_quote_raw, web_card_fee_surcharge, xendit_payment_session_id
       INTO raw_order
       FROM public.orders_raw
-      WHERE id = raw_order_id
+      WHERE id = v_raw_order_id
       FOR UPDATE;
 
       IF NOT FOUND
@@ -1759,7 +1842,7 @@ BEGIN
            FROM public.xendit_payment_session_orders existing_allocation
            JOIN public.xendit_payment_sessions existing_session
              ON existing_session.id = existing_allocation.session_id
-           WHERE existing_allocation.raw_order_id = raw_order_id
+           WHERE existing_allocation.raw_order_id = v_raw_order_id
              AND existing_session.status IN ('creating', 'active', 'reconciliation_required')
          ) THEN
         RAISE EXCEPTION 'Raw booking is no longer payable through Xendit';
@@ -1794,17 +1877,17 @@ BEGIN
       FROM jsonb_array_elements(p_allocations) AS allocation_rows(value)
       ORDER BY (value->>'raw_order_id')::uuid
     LOOP
-      raw_order_id := (allocation->>'raw_order_id')::uuid;
+      v_raw_order_id := (allocation->>'raw_order_id')::uuid;
       UPDATE public.orders_raw
       SET xendit_payment_session_id = p_session_id
-      WHERE id = raw_order_id;
+      WHERE id = v_raw_order_id;
 
       INSERT INTO public.xendit_payment_session_orders (
         session_id, raw_order_id, principal_amount_php,
         surcharge_amount_php, amount_php
       ) VALUES (
         p_session_id,
-        raw_order_id,
+        v_raw_order_id,
         (allocation->>'principal_amount_php')::numeric(12,2),
         (allocation->>'surcharge_amount_php')::numeric(12,2),
         (allocation->>'amount_php')::numeric(12,2)
