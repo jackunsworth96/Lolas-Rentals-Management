@@ -1,6 +1,7 @@
 import type { BookingPort, AvailableModel } from '@lolas/domain';
 
 export interface CheckAvailabilityInput {
+  partnerRef?: string;
   storeId: string;
   pickupDatetime: string;
   dropoffDatetime: string;
@@ -28,6 +29,7 @@ export async function checkAvailability(
   }
 
   return deps.bookingPort.checkAvailability({
+    partnerRef: input.partnerRef,
     storeId: input.storeId,
     pickupDatetime: input.pickupDatetime,
     dropoffDatetime: input.dropoffDatetime,

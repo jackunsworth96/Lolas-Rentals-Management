@@ -1,3 +1,4 @@
+import { startPartnerAllocationJob } from './jobs/partner-allocations.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { config } from 'dotenv';
@@ -189,6 +190,7 @@ const PORT = Number(process.env.PORT) || 3001;
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
     logger.info({ port: PORT }, 'API server listening');
+    startPartnerAllocationJob();
     startWaiverReminderJob();
     startPostRentalEmailJob();
     startDailySummaryJob();

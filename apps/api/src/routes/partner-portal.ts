@@ -1,3 +1,4 @@
+import { createBookingAdapter } from '../adapters/supabase/booking-adapter.js';
 import { randomBytes } from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -7,7 +8,6 @@ import { validateBody, validateQuery } from '../middleware/validate.js';
 import { authenticatePartner } from '../middleware/authenticate-partner.js';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
-import { createHold } from '../use-cases/booking/create-hold.js';
 import { computeQuote } from '../use-cases/booking/compute-quote.js';
 import { submitDirectBooking } from '../use-cases/booking/submit-direct-booking.js';
 import { getPartnerCommissionStats } from '../lib/partner-commission.js';
@@ -54,6 +54,7 @@ const PartnerBookSchema = SubmitDirectBookingRequestSchema
       driverName: z.string().max(160).optional().nullable(),
     })).min(1).max(12).optional(),
     roomReference: z.string().max(120).optional(),
+    requestKey: z.string().uuid().optional(),
   })
   .refine((body) => Boolean(body.vehicleModelId || (body.vehicles && body.vehicles.length > 0)), {
     message: 'Select at least one vehicle',
@@ -132,7 +133,7 @@ router.get('/availability', validateQuery(AvailabilityQuerySchema), async (req, 
     assertPartnerLeadTime(pickupDatetime);
     const data = await checkAvailability(
       { bookingPort: req.app.locals.deps.bookingPort },
-      { storeId: req.partnerUser!.storeId, pickupDatetime, dropoffDatetime },
+      { storeId: req.partnerUser!.storeId, pickupDatetime, dropoffDatetime, partnerRef: req.partnerUser!.partnerSlug },
     );
     res.json({ success: true, data });
   } catch (err) { next(err); }
@@ -222,13 +223,29 @@ router.get('/reports', validateQuery(MonthQuerySchema), async (req, res, next) =
 router.post('/book', validateBody(PartnerBookSchema), async (req, res, next) => {
   try {
     const partner = req.partnerUser!;
-    const { roomReference, vehicles: requestedVehicles, ...body } = req.body as z.infer<typeof PartnerBookSchema>;
+    const { roomReference, requestKey, vehicles: requestedVehicles, ...body } = req.body as z.infer<typeof PartnerBookSchema>;
     assertPartnerLeadTime(body.pickupDatetime);
     const sessionToken = `partner-${randomBytes(24).toString('hex')}`;
     const vehicles = requestedVehicles && requestedVehicles.length > 0
       ? requestedVehicles
       : [{ vehicleModelId: body.vehicleModelId as string, driverName: body.customerName }];
     const groupRef = partnerGroupRef(partner.partnerSlug);
+    const bookingRequestKey = requestKey ?? crypto.randomUUID();
+    const findPriorGroup = async () => {
+      const { data, error } = await getSupabaseClient().from('orders_raw')
+        .select('id,order_reference,vehicle_model_id,driver_name,partner_booking_group_ref,booking_request_index')
+        .eq('store_id', partner.storeId).eq('partner_ref', partner.partnerSlug)
+        .eq('booking_request_key', bookingRequestKey).order('booking_request_index');
+      if (error) throw new Error(error.message);
+      if (!data?.length) return null;
+      if (data.length !== vehicles.length) throw new Error('A previous booking request is still completing. Retry shortly.');
+      return { id: data[0].id, orderReference: data[0].order_reference,
+        groupRef: data[0].partner_booking_group_ref,
+        bookings: data.map((row) => ({ id: row.id, orderReference: row.order_reference,
+          vehicleModelId: row.vehicle_model_id, driverName: row.driver_name })) };
+    };
+    const prior = await findPriorGroup();
+    if (prior) { res.status(200).json({ success: true, data: prior }); return; }
 
     const extraComments = [
       body.extraComments?.trim() || null,
@@ -251,19 +268,21 @@ router.post('/book', validateBody(PartnerBookSchema), async (req, res, next) => 
       vehicle: { vehicleModelId: string; driverName?: string | null };
       hold: HoldRow;
     }> = [];
-    for (const vehicle of vehicles) {
-      const hold = await createHold(
-        { bookingPort: req.app.locals.deps.bookingPort },
-        {
-          vehicleModelId: vehicle.vehicleModelId,
-          storeId: partner.storeId,
-          pickupDatetime: body.pickupDatetime,
-          dropoffDatetime: body.dropoffDatetime,
-          sessionToken,
-        },
-      );
-      holds.push({ vehicle, hold });
+    const { data: holdRows, error: holdError } = await getSupabaseClient().rpc('allocation_insert_holds', {
+      p_rows: vehicles.map((vehicle) => ({ vehicle_model_id: vehicle.vehicleModelId,
+        store_id: partner.storeId, pickup_datetime: body.pickupDatetime, dropoff_datetime: body.dropoffDatetime,
+        session_token: sessionToken, expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(), partner_ref: partner.partnerSlug })),
+    });
+    if (holdError) throw new Error(holdError.message);
+    for (let i = 0; i < vehicles.length; i++) {
+      const row = holdRows[i];
+      holds.push({ vehicle: vehicles[i], hold: { id: row.id, vehicleModelId: row.vehicle_model_id,
+        storeId: row.store_id, pickupDatetime: row.pickup_datetime, dropoffDatetime: row.dropoff_datetime,
+        sessionToken: row.session_token, expiresAt: row.expires_at, createdAt: row.created_at } });
     }
+    const pendingRows: Record<string, unknown>[] = [];
+    const afterCommit: Array<() => Promise<void>> = [];
+    const batchBookingPort = createBookingAdapter(pendingRows);
 
     const results: Array<{
       id: string;
@@ -274,7 +293,8 @@ router.post('/book', validateBody(PartnerBookSchema), async (req, res, next) => 
       vehicleModelId: string;
       driverName: string;
     }> = [];
-    for (const { vehicle, hold } of holds) {
+    try {
+    for (const [index, { vehicle, hold }] of holds.entries()) {
       const driverName = vehicle.driverName?.trim() || body.customerName;
       const input: SubmitDirectBookingInput = {
         ...commonInput,
@@ -284,18 +304,29 @@ router.post('/book', validateBody(PartnerBookSchema), async (req, res, next) => 
 
       const result = await submitDirectBooking(
         {
-          bookingPort: req.app.locals.deps.bookingPort,
+          bookingPort: batchBookingPort,
+          afterCommit,
           configRepo: req.app.locals.deps.configRepo,
           transferRepo: req.app.locals.deps.transferRepo,
           accountingPort: req.app.locals.deps.accountingPort,
         },
         input,
-        { deviceType: 'desktop', partnerBookingGroupRef: groupRef, driverName },
+        { deviceType: 'desktop', partnerBookingGroupRef: groupRef, driverName, bookingRequestKey, bookingRequestIndex: index },
       );
 
       results.push({ ...result, vehicleModelId: vehicle.vehicleModelId, driverName });
     }
 
+    const { error: batchError } = await getSupabaseClient().rpc('allocation_insert_bookings', { p_rows: pendingRows });
+    if (batchError) {
+      const existing = await findPriorGroup();
+      if (existing) {
+        await Promise.allSettled(holds.map(({ hold }) => getSupabaseClient().from('booking_holds').delete().eq('id', hold.id)));
+        res.status(200).json({ success: true, data: existing }); return;
+      }
+      throw new Error(batchError.message);
+    }
+    await Promise.all(afterCommit.map((run) => run()));
     res.status(201).json({
       success: true,
       data: {
@@ -305,6 +336,10 @@ router.post('/book', validateBody(PartnerBookSchema), async (req, res, next) => 
         bookings: results,
       },
     });
+    } catch (bookingError) {
+      await Promise.allSettled(holds.map(({ hold }) => getSupabaseClient().from('booking_holds').delete().eq('id', hold.id)));
+      throw bookingError;
+    }
   } catch (err) { next(err); }
 });
 

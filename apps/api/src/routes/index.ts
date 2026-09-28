@@ -1,3 +1,4 @@
+import { partnerAllocationRoutes } from './partner-allocations.js';
 import { Router } from 'express';
 import { authRoutes } from './auth.js';
 import { orderRoutes } from './orders.js';
@@ -88,6 +89,7 @@ routes.use('/customers', customerRoutes);
 routes.use('/unsubscribe', unsubscribeRouter);
 routes.use('/public/telegram', telegramWebhookRouter);
 routes.use('/public/stats', publicStatsRoutes);
+routes.use('/partner-allocations', partnerAllocationRoutes);
 routes.use('/partners', partnerRoutes);
 routes.use('/partner-auth', partnerAuthRoutes);
 routes.use('/partner', partnerPortalRoutes);

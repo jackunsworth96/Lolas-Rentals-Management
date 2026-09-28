@@ -1,3 +1,4 @@
+import { AllocationAvailability, type AllocationSummary } from '../../components/booking/AllocationAvailability.js';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
@@ -84,6 +85,7 @@ function useInclusionItems() {
 }
 
 interface AvailableModel {
+  allocation?: AllocationSummary;
   modelId: string;
   modelName: string;
   availableCount: number;
@@ -748,10 +750,10 @@ export default function BrowseBookPage() {
     isFetching: availFetching,
     refetch: refetchAvailability,
   } = useQuery<AvailableModel[]>({
-    queryKey: ['availability', searchParams],
+    queryKey: ['availability', searchParams, partnerRef],
     queryFn: () =>
       api.get(
-        `/public/booking/availability?storeId=${searchParams!.storeId}&pickupDatetime=${encodeURIComponent(searchParams!.pickup)}&dropoffDatetime=${encodeURIComponent(searchParams!.dropoff)}`,
+        `/public/booking/availability?storeId=${searchParams!.storeId}&pickupDatetime=${encodeURIComponent(searchParams!.pickup)}&dropoffDatetime=${encodeURIComponent(searchParams!.dropoff)}&partnerRef=${encodeURIComponent(partnerRef ?? '')}`,
       ),
     enabled: !!searchParams,
   });
@@ -1319,6 +1321,8 @@ export default function BrowseBookPage() {
                 {isSearched && !isLoading && (
                   <div>
                     {selectedAvailModel != null ? (
+                      <>
+                      <AllocationAvailability allocation={selectedAvailModel?.allocation} />
                       <VehicleCard
                         modelId={selectedModelId!}
                         modelName={selectedModel!.name}
@@ -1329,6 +1333,8 @@ export default function BrowseBookPage() {
                         holdExpiresAt={selectedAvailModel.holdExpiresAt}
                         onToast={pushToast}
                       />
+                      {selectedAvailModel.availableCount === 0 && availableModels?.filter((m) => m.availableCount > 0 && m.modelId !== selectedModelId && m.allocation?.vehicleType === selectedAvailModel.allocation?.vehicleType).map((m) => <button key={m.modelId} className="mt-3 mr-2 rounded border border-teal-500 px-3 py-1 text-sm text-teal-800" onClick={() => setSelectedModelId(m.modelId)}>Try {m.modelName}</button>)}
+                      </>
                     ) : (
                       <div className="rounded-2xl border border-gold-brand/30 bg-gold-brand/10 px-6 py-5 text-center">
                         <p className="font-lato font-bold text-charcoal-brand">
@@ -1337,6 +1343,9 @@ export default function BrowseBookPage() {
                         <p className="font-lato mt-1 text-sm text-charcoal-brand/70">
                           Try different dates or contact us on WhatsApp.
                         </p>
+                        {availableModels?.filter((m) => m.availableCount > 0 && m.modelId !== selectedModelId &&
+                          (selectedAvailModel?.allocation?.vehicleType ? m.allocation?.vehicleType === selectedAvailModel.allocation.vehicleType : false))
+                          .map((m) => <button key={m.modelId} className="mt-2 mr-2 rounded border border-teal-500 px-3 py-1 text-sm text-teal-800" onClick={() => setSelectedModelId(m.modelId)}>See {m.modelName}</button>)}
                       </div>
                     )}
                   </div>

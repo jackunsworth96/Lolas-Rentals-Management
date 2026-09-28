@@ -1,3 +1,4 @@
+import { lookupActivePartnerBySlug } from '../lib/partner-benefit.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import rateLimit from 'express-rate-limit';
@@ -30,6 +31,7 @@ const cancelLimiter = rateLimit({
 const router = Router();
 
 const AvailabilityQuerySchema = z.object({
+  partnerRef: z.string().max(80).optional(),
   storeId: z.string().min(1),
   pickupDatetime: z.string().min(1),
   dropoffDatetime: z.string().min(1),
@@ -90,9 +92,10 @@ router.get('/availability', validateQuery(AvailabilityQuerySchema), async (req, 
       dropoffDatetime: string;
     };
 
+    const partner = await lookupActivePartnerBySlug(req.query.partnerRef as string | undefined);
     const data = await checkAvailability(
       { bookingPort: req.app.locals.deps.bookingPort },
-      { storeId, pickupDatetime, dropoffDatetime },
+      { storeId, pickupDatetime, dropoffDatetime, partnerRef: partner?.storeId === storeId ? partner.slug : undefined },
     );
 
     res.json({ success: true, data });
@@ -160,6 +163,7 @@ router.get('/quote', validateQuery(QuoteQuerySchema), async (req, res, next) => 
 // ── Holds ──
 
 const CreateHoldBodySchema = z.object({
+  partnerRef: z.string().max(80).optional(),
   vehicleModelId: z.string().min(1),
   storeId: z.string().min(1),
   pickupDatetime: z.string().min(1),
@@ -177,9 +181,11 @@ router.post('/hold', holdLimiter, validateBody(CreateHoldBodySchema), async (req
       sessionToken: string;
     };
 
+    const partner = await lookupActivePartnerBySlug(req.body.partnerRef);
     const hold = await createHold(
       { bookingPort: req.app.locals.deps.bookingPort },
-      { vehicleModelId, storeId, pickupDatetime, dropoffDatetime, sessionToken },
+      { vehicleModelId, storeId, pickupDatetime, dropoffDatetime, sessionToken,
+        partnerRef: partner?.storeId === storeId ? partner.slug : undefined },
     );
 
     res.status(201).json({

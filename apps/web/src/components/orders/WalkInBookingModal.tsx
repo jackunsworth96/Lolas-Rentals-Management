@@ -1,3 +1,4 @@
+import { usePartners } from '../../api/partners.js';
 import { useState, useEffect } from 'react';
 import { Modal } from '../common/Modal.js';
 import { normalizeApiBase } from '../../api/normalize-api-base.js';
@@ -89,6 +90,8 @@ export function WalkInBookingModal({ open, onClose }: Props) {
   const storeId = useUIStore((s) => s.selectedStoreId) ?? '';
 
   // ── Form state ──
+  const { data: partners = [] } = usePartners(storeId);
+  const [partnerRef, setPartnerRef] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerMobile, setCustomerMobile] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
@@ -127,7 +130,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
   const { data: locations } = useLocations(storeId) as { data: Location[] | undefined };
   const { data: addonsRaw = [] } = useAddons(storeId) as { data: Addon[] };
   const { data: availableVehicles = [], isLoading: vehiclesLoading } =
-    useAvailableVehicles(storeId, pickupDatetime, dropoffDatetime);
+    useAvailableVehicles(storeId, pickupDatetime, dropoffDatetime, partnerRef);
 
   // ── Auto-set pickup/dropoff to the store's own location (zero-fee) ──
   // Runs only when the modal opens (or storeId changes) AND both location IDs
@@ -279,6 +282,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
   // ── Reset on close ──
   useEffect(() => {
     if (!open) {
+      setPartnerRef('');
       setCustomerName(''); setCustomerMobile(''); setCustomerEmail('');
       setPickupDate(todayDate()); setPickupTime('09:15');
       setDropoffDate(todayDate()); setDropoffTime('09:15');
@@ -304,6 +308,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
     const selectedVehicle = (availableVehicles ?? []).find((v) => v.id === selectedVehicleId);
     createWalkInDirect.mutate(
       {
+        partnerRef: partnerRef || undefined,
         customerName: customerName.trim(),
         customerMobile: customerMobile.trim(),
         customerEmail: customerEmail.trim() || undefined,
@@ -433,7 +438,8 @@ export function WalkInBookingModal({ open, onClose }: Props) {
           <section>
             <h3 className={SECTION_HDR_CLS}>Customer</h3>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label className="block sm:col-span-2">
+              <label className={LABEL_CLS}>Partner<select className={SELECT_CLS} value={partnerRef} onChange={(e) => setPartnerRef(e.target.value)}><option value="">Direct / walk-in</option>{partners.filter((p) => p.active && p.status === 'active').map((p) => <option key={p.id} value={p.slug}>{p.name}</option>)}</select></label>
+                  <label className="block sm:col-span-2">
                 <span className={LABEL_CLS}>Full name <span className="text-red-500">*</span></span>
                 <input
                   type="text"

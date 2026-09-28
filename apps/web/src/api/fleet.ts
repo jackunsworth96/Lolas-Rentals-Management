@@ -212,12 +212,13 @@ export function useAvailableVehicles(
   storeId: string,
   pickupDatetime: string,
   dropoffDatetime: string,
+  partnerRef?: string,
 ) {
   return useQuery<AvailableVehicle[]>({
-    queryKey: ['fleet', 'available', storeId, pickupDatetime, dropoffDatetime],
+    queryKey: ['fleet', 'available', storeId, pickupDatetime, dropoffDatetime, partnerRef],
     queryFn: () =>
       api.get(
-        `/fleet/available?storeId=${encodeURIComponent(storeId)}&pickupDatetime=${encodeURIComponent(pickupDatetime)}&dropoffDatetime=${encodeURIComponent(dropoffDatetime)}`,
+        `/fleet/available?storeId=${encodeURIComponent(storeId)}&pickupDatetime=${encodeURIComponent(pickupDatetime)}&dropoffDatetime=${encodeURIComponent(dropoffDatetime)}&partnerRef=${encodeURIComponent(partnerRef ?? '')}`,
       ),
     enabled: !!storeId && !!pickupDatetime && !!dropoffDatetime
       && pickupDatetime !== dropoffDatetime,

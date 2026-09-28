@@ -1,3 +1,4 @@
+import { AllocationAvailability } from '../../components/booking/AllocationAvailability.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Info, Plus, Trash2 } from 'lucide-react';
@@ -6,6 +7,7 @@ import {
   fetchPublicLocations,
   fetchPublicModels,
   usePartnerBook,
+  usePartnerAvailability,
   usePartnerMe,
   usePartnerQuote,
   type PartnerBookingInput,
@@ -204,6 +206,7 @@ export default function PartnerBookPage() {
     roomReference: '',
     extraComments: '',
   });
+  const bookingRequestKey = useRef(crypto.randomUUID());
   const [vehicleLines, setVehicleLines] = useState<VehicleLine[]>([
     { id: crypto.randomUUID(), vehicleModelId: '', driverName: '' },
   ]);
@@ -254,6 +257,7 @@ export default function PartnerBookPage() {
   const dropoffLocationId = form.dropoffLocationId || storeLocationId;
   const pickupDatetime = toManilaIso(form.pickupDate, form.pickupTime);
   const dropoffDatetime = toManilaIso(form.dropoffDate, form.dropoffTime);
+  const availability = usePartnerAvailability(pickupDatetime, dropoffDatetime);
   const leadTimeOk = hasLeadTime(pickupDatetime);
   const ninePmReturnEligible = form.dropoffTime === '16:45';
   const availableAddonIds = useMemo(() => new Set(
@@ -378,6 +382,7 @@ export default function PartnerBookPage() {
     }
     try {
       const body: PartnerBookingInput = {
+        requestKey: bookingRequestKey.current,
         customerName: form.customerName.trim(),
         customerEmail: form.customerEmail.trim(),
         customerMobile: form.customerMobile.trim(),
@@ -393,6 +398,7 @@ export default function PartnerBookPage() {
         extraComments: form.extraComments.trim() || undefined,
       };
       const result = await book.mutateAsync(body);
+      bookingRequestKey.current = crypto.randomUUID();
       setSuccess({ groupRef: result.groupRef, refs: result.bookings.map((b) => b.orderReference) });
       setForm((prev) => ({ ...prev, customerName: '', customerEmail: '', customerMobile: '', roomReference: '', extraComments: '' }));
       setVehicleLines([{ id: crypto.randomUUID(), vehicleModelId: '', driverName: '' }]);
@@ -403,8 +409,13 @@ export default function PartnerBookPage() {
     }
   }
 
+  const allocations = [...new Map((availability.data ?? []).filter((m) => m.allocation).map((m) => [m.allocation!.vehicleType, m.allocation!])).values()];
+
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      {availability.error && <p role="alert">{availability.error.message}</p>}
+      {allocations.length > 0 && <div className="grid gap-4 lg:col-span-2 lg:grid-cols-2">{allocations.map((allocation) => <AllocationAvailability key={allocation.vehicleType} allocation={allocation} />)}</div>}
+
       <form onSubmit={handleSubmit} className="rounded-lg bg-white p-4 shadow-sm">
         <h1 className="text-xl font-bold text-gray-900">Book for a Guest</h1>
         <p className="mt-1 text-sm text-gray-500">This booking will be automatically attributed to {me?.partner.name ?? 'your partner account'}.</p>
