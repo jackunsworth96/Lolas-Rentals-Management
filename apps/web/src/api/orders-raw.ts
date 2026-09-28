@@ -21,6 +21,7 @@ export function useOrdersRaw(store?: string, status?: string, search?: string, p
   return useQuery<RawOrdersPage>({
     queryKey: ['orders-raw', store, status, search, page],
     queryFn: () => api.get(`/orders-raw?${params}`),
+    refetchInterval: 30_000,
   });
 }
 
@@ -110,6 +111,7 @@ export interface CollectPaymentPayload {
   isCardPayment?: boolean;
   settlementRef?: string | null;
   customerName?: string | null;
+  accountId?: string | null;
 }
 
 export function useCollectPayment() {

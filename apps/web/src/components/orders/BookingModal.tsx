@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { LockKeyhole, RotateCcw, Unlock } from 'lucide-react';
 import { Modal } from '../common/Modal.js';
 import { Badge } from '../common/Badge.js';
@@ -208,6 +208,7 @@ function locationId(loc: Record<string, unknown> | undefined): number | null {
 }
 
 export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: BookingModalProps) {
+  const queryClient = useQueryClient();
   const storeId = storeIdFromSource(rawOrder.source);
   const isDirect = rawOrder.booking_channel === 'direct' || rawOrder.booking_channel === 'walk_in';
   const isDirectWebsite = rawOrder.booking_channel === 'direct';
@@ -239,7 +240,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
 
   const lineItems = useMemo(() => (isDirect ? [] : extractLineItems(payload)), [isDirect, payload]);
   const webQuote = isDirect
-    ? (rawOrder.web_quote_raw ?? 0)
+    ? (detailedRawOrder?.web_quote_raw ?? rawOrder.web_quote_raw ?? 0)
     : Number(payload.total ?? payload.order_total ?? payload.web_quote ?? 0) || 0;
   const onlinePayment = detailedRawOrder?.online_payment ?? rawOrder.online_payment;
   const confirmedOnlinePayment = onlinePayment?.status === 'paid'
@@ -285,6 +286,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const [checkoutActionLoading, setCheckoutActionLoading] = useState(false);
   const [checkoutActionError, setCheckoutActionError] = useState<string | null>(null);
   const [reconciliationReason, setReconciliationReason] = useState('');
+  const [acknowledgeCardTotal, setAcknowledgeCardTotal] = useState(false);
 
   const overrideUnlocked = isDirectWebsite && overrideRequested && overrideReason.trim().length >= 10;
   const directTermsLocked = isDirectWebsite && !overrideUnlocked;
@@ -305,6 +307,17 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const { data: storePricing } = useStorePricing(storeId) as { data: PricingTier[] | undefined };
   const { data: fleetStatuses } = useFleetStatuses() as { data: Array<{ id: string; name: string; isRentable?: boolean; is_rentable?: boolean }> | undefined };
   const { data: paymentMethods } = usePaymentMethods() as { data: Array<{ id: string; name: string; surchargePercent?: number; surcharge_percent?: number; isActive?: boolean; is_active?: boolean; isDepositEligible?: boolean; is_deposit_eligible?: boolean }> | undefined };
+  const selectedXendit = isDirectWebsite && paymentMethodId === 'xendit' && !confirmedOnlinePayment;
+  const { data: cardLinkPreview, error: cardLinkPreviewError } = useQuery({
+    queryKey: ['raw-card-link-preview', rawOrder.id],
+    queryFn: () => api.get<{ originalQuotePHP: number; principalPHP: number; surchargePHP: number; amountPHP: number; requiresAcknowledgement: boolean }>(`/payments/xendit/raw-orders/${rawOrder.id}/preview`),
+    enabled: open && selectedXendit && !hasBlockingXenditSession,
+  });
+  const { data: serverRouting, error: serverRoutingError } = useQuery({
+    queryKey: ['raw-payment-routing', rawOrder.id, paymentMethodId],
+    queryFn: () => api.get<{ accountId: string | null }>(`/orders-raw/${rawOrder.id}/payment-routing?paymentMethodId=${encodeURIComponent(paymentMethodId)}`),
+    enabled: open && Boolean(paymentMethodId) && !selectedXendit,
+  });
   const { data: partnerBenefit } = useQuery({
     queryKey: ['raw-order-partner-benefit', rawOrder.partner_ref],
     queryFn: () => fetchPublicPartnerBenefit(String(rawOrder.partner_ref ?? '')),
@@ -580,7 +593,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     }
   }, [depositLiabilityAccountOptions, depositLiabilityAccountId]);
 
-  const routedPaymentAcct = routing.getReceivedInto(storeId, paymentMethodId);
+  const routedPaymentAcct = serverRouting?.accountId ?? null;
   const routedDepositLiability = routing.resolveDepositLiability(
     storeAccounts as Array<{ id: string; name: string; accountType?: string; account_type?: string; storeId?: string | null; store_id?: string | null }>,
     storeId,
@@ -918,7 +931,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   }
 
   async function handleCollectPayment() {
-    if (!canEditOrders) return;
+    if (!canEditOrders || selectedXendit) return;
     if (!paymentMethodId) return;
     collectMutation.mutate(
       {
@@ -929,6 +942,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
         isCardPayment: surchargePercent > 0,
         settlementRef: surchargePercent > 0 ? (settlementRef || null) : null,
         customerName: customer.name || null,
+        accountId: serverRouting?.accountId ?? (paymentAccountId || null),
       },
       {
         onSuccess: () => {
@@ -939,6 +953,25 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     );
   }
 
+  async function handleGenerateCardLink() {
+    if (!canEditOrders || !selectedXendit || !cardLinkPreview) return;
+    setCheckoutActionLoading(true);
+    setCheckoutActionError(null);
+    try {
+      await api.post('/payments/xendit/raw-orders/sessions', {
+        rawOrderId: rawOrder.id,
+        acknowledgePriceChange: acknowledgeCardTotal,
+      });
+      await refetchRawOrder();
+      await queryClient.invalidateQueries({ queryKey: ['orders-raw'] });
+      setSuccessMessage('Card payment link is ready to copy. The booking remains unprocessed until the webhook confirms payment.');
+    } catch (error) {
+      setCheckoutActionError(error instanceof Error ? error.message : 'Could not create the card payment link.');
+    } finally {
+      setCheckoutActionLoading(false);
+    }
+  }
+
   async function handleCancelLiveCheckout() {
     if (!liveCheckoutSessionId) return;
     setCheckoutActionLoading(true);
@@ -946,6 +979,8 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     try {
       await api.post(`/payments/xendit/sessions/${encodeURIComponent(liveCheckoutSessionId)}/cancel`, {});
       await refetchRawOrder();
+      await queryClient.invalidateQueries({ queryKey: ['orders-raw'] });
+      await queryClient.invalidateQueries({ queryKey: ['raw-card-link-preview', rawOrder.id] });
       setSuccessMessage('The Xendit checkout was cancelled. You can continue processing this booking.');
     } catch (error) {
       setCheckoutActionError(error instanceof Error ? error.message : 'Could not cancel the Xendit checkout.');
@@ -964,6 +999,8 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
         { reason: reconciliationReason.trim() },
       );
       await refetchRawOrder();
+      await queryClient.invalidateQueries({ queryKey: ['orders-raw'] });
+      await queryClient.invalidateQueries({ queryKey: ['raw-card-link-preview', rawOrder.id] });
       setSuccessMessage(result.status === 'reconciliation_required'
         ? 'Xendit reported a completed payment. Finance reconciliation is now required.'
         : 'The provider-confirmed terminal checkout was released.');
@@ -984,6 +1021,8 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
         { reason: reconciliationReason.trim() },
       );
       await refetchRawOrder();
+      await queryClient.invalidateQueries({ queryKey: ['orders-raw'] });
+      await queryClient.invalidateQueries({ queryKey: ['raw-card-link-preview', rawOrder.id] });
       setSuccessMessage('The unresolved Xendit checkout draft was released after reconciliation.');
     } catch (error) {
       setCheckoutActionError(error instanceof Error ? error.message : 'Could not release the Xendit checkout draft.');
@@ -1370,9 +1409,21 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                     ? 'Online payment verification required'
                     : xenditSession.status === 'creating'
                       ? 'Online payment checkout creation unresolved'
-                      : 'Online payment checkout in progress'}
+                      : xenditSession.status === 'expired'
+                        ? 'Payment link expired; booking remains unprocessed'
+                        : xenditSession.status === 'cancelled'
+                          ? 'Payment link cancelled; booking remains unprocessed'
+                          : xenditSession.status === 'active'
+                            ? 'Online payment checkout in progress'
+                            : 'Online payment status'}
                 </p>
                 <p className="mt-1 text-xs">{xenditSession.operatorMessage}</p>
+                {xenditSession.status === 'active' && xenditSession.checkoutUrl && (
+                  <button type="button" onClick={() => void navigator.clipboard.writeText(xenditSession.checkoutUrl!)}
+                    className="mt-3 rounded-md border border-amber-500 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900">
+                    Copy payment link
+                  </button>
+                )}
                 {xenditSession.status === 'active' && canEditOrders && (
                   <button
                     type="button"
@@ -1452,7 +1503,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                       className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     >
                       <option value="">Select...</option>
-                      {activePaymentMethods.map((m) => (
+                      {activePaymentMethods.filter((method) => method.id !== 'xendit').map((m) => (
                         <option key={m.id} value={m.id}>{m.name}</option>
                       ))}
                     </select>
@@ -2095,11 +2146,11 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                   </div>
                 ) : (
                   <>
-                {rawOrder.web_payment_method && (
+                {(detailedRawOrder?.web_payment_method ?? rawOrder.web_payment_method) && (
                   <p className="mb-2 text-xs text-gray-500">
                     Customer selected:{' '}
                     <span className="font-medium text-gray-700">
-                      {rawOrder.web_payment_method}
+                      {detailedRawOrder?.web_payment_method ?? rawOrder.web_payment_method}
                     </span>
                   </p>
                 )}
@@ -2107,7 +2158,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                   <span className="text-sm font-medium text-gray-700">Rental Payment Method</span>
                   <select
                     value={paymentMethodId}
-                    onChange={(e) => { setPaymentMethodId(e.target.value); setWaiveCardFee(false); }}
+                    onChange={(e) => { setPaymentMethodId(e.target.value); setWaiveCardFee(false); setAcknowledgeCardTotal(false); }}
                     className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   >
                     <option value="">Select payment method...</option>
@@ -2116,12 +2167,12 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                     ))}
                   </select>
                 </label>
-                {surchargePercent > 0 && !waiveCardFee && (
+                {surchargePercent > 0 && !waiveCardFee && !selectedXendit && (
                   <p className="mt-2 text-xs text-amber-600">
                     {surchargePercent}% surcharge applies ({formatCurrency(cardSurchargeAmount)})
                   </p>
                 )}
-                {surchargePercent > 0 && (
+                {surchargePercent > 0 && !selectedXendit && (
                   <label className="mt-2 flex items-center gap-2 text-sm text-gray-600">
                     <input
                       type="checkbox"
@@ -2153,7 +2204,36 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
               </div>
             </div>
 
-            {!confirmedOnlinePayment && paymentMethodId && (
+            {selectedXendit && cardLinkPreview && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
+                <p className="font-medium">Card payment link</p>
+                <div className="mt-2 flex justify-between"><span>Original quote</span><span>{formatCurrency(cardLinkPreview.originalQuotePHP)}</span></div>
+                <div className="mt-1 flex justify-between"><span>Card surcharge</span><span>{formatCurrency(cardLinkPreview.surchargePHP)}</span></div>
+                <div className="mt-1 flex justify-between font-semibold"><span>Customer pays online</span><span>{formatCurrency(cardLinkPreview.amountPHP)}</span></div>
+                {cardLinkPreview.requiresAcknowledgement && (
+                  <label className="mt-3 flex items-start gap-2">
+                    <input type="checkbox" checked={acknowledgeCardTotal} onChange={(event) => setAcknowledgeCardTotal(event.target.checked)} />
+                    <span>I confirm the revised customer total before creating the link.</span>
+                  </label>
+                )}
+                <p className="mt-2 text-xs">Security deposit is collected separately. The booking stays unprocessed until payment is confirmed.</p>
+              </div>
+            )}
+            {selectedXendit && cardLinkPreviewError && (
+              <p className="text-sm font-medium text-red-700">Could not load the card-payment quote. Refresh the booking before creating a link.</p>
+            )}
+            {xenditSession?.status === 'active' && xenditSession.checkoutUrl && (
+              <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900">
+                <p className="font-medium">Payment link ready</p>
+                <p className="mt-1 break-all text-xs">{xenditSession.checkoutUrl}</p>
+                <button type="button" onClick={() => void navigator.clipboard.writeText(xenditSession.checkoutUrl!)}
+                  className="mt-2 rounded-md border border-green-500 bg-white px-3 py-1.5 text-xs font-semibold">
+                  Copy payment link
+                </button>
+              </div>
+            )}
+
+            {!confirmedOnlinePayment && paymentMethodId && !selectedXendit && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
                 <label className="block">
                   <span className="text-sm font-medium text-gray-700">Amount to collect now</span>
@@ -2182,9 +2262,9 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
               </div>
             )}
 
-            {((!confirmedOnlinePayment && paymentMethodId) || Number(securityDeposit) > 0) && (
+            {((!confirmedOnlinePayment && paymentMethodId && !selectedXendit) || Number(securityDeposit) > 0) && (
               <div className="grid grid-cols-2 gap-4">
-                {surchargePercent > 0 ? (
+                {surchargePercent > 0 && !selectedXendit ? (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
                     <label className="block">
                       <span className="text-sm font-medium text-gray-700">Card Reference Number</span>
@@ -2198,7 +2278,11 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                       <p className="mt-1 text-xs text-gray-500">Payment routes to Card Settlements for reconciliation</p>
                     </label>
                   </div>
-                ) : routedPaymentAcct ? null : (
+                ) : selectedXendit ? null : routedPaymentAcct ? (
+                  <div className="rounded-lg border border-gray-200 p-4 text-sm text-gray-700">
+                    Payment account: {String(storeAccounts.find((account) => String(account.id) === routedPaymentAcct)?.name ?? routedPaymentAcct)}
+                  </div>
+                ) : (
                   <div className="rounded-lg border border-gray-200 p-4">
                     <label className="block">
                       <span className="text-sm font-medium text-gray-700">Payment Account (Cash/Bank)</span>
@@ -2212,7 +2296,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                           <option key={a.id} value={a.id}>{(a as { name?: string }).name}</option>
                         ))}
                       </select>
-                      {paymentMethodId && <p className="mt-1 text-xs text-amber-600">No routing rule configured — select manually</p>}
+                      {paymentMethodId && <p className="mt-1 text-xs text-amber-600">{serverRoutingError ? 'Could not load payment routing; the API will still apply any configured rule.' : 'No routing rule configured — select manually in'} {!serverRoutingError && <a href="/settings?tab=payment-routing" className="underline">Payment Routing</a>}</p>}
                     </label>
                   </div>
                 )}
@@ -2345,6 +2429,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                 {xenditSession?.operatorMessage}
               </p>
             )}
+            {checkoutActionError && <p className="text-sm font-medium text-red-700">{checkoutActionError}</p>}
             {transferAmountMissing && (
               <p className="text-sm text-amber-700 font-medium">
                 Transfer amount is missing — please set it before activating.
@@ -2358,7 +2443,14 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
             )}
             {canEditOrders && (
               <div className="flex items-center gap-3">
-                {!confirmedOnlinePayment && (
+                {selectedXendit && !hasBlockingXenditSession && (
+                  <button type="button" onClick={() => void handleGenerateCardLink()}
+                    disabled={checkoutActionLoading || !cardLinkPreview || (cardLinkPreview.requiresAcknowledgement && !acknowledgeCardTotal)}
+                    className="rounded-lg border border-blue-600 px-5 py-2 text-sm font-medium text-blue-700 disabled:opacity-50">
+                    {checkoutActionLoading ? 'Creating link...' : 'Generate card payment link'}
+                  </button>
+                )}
+                {!confirmedOnlinePayment && !selectedXendit && (
                   <button
                     onClick={handleCollectPayment}
                     disabled={collectMutation.isPending || !paymentMethodId || hasBlockingXenditSession}
@@ -2372,6 +2464,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                   onClick={handleActivate}
                   disabled={
                     processMutation.isPending ||
+                    selectedXendit ||
                     hasBlockingXenditSession ||
                     !depositValid ||
                     transferAmountMissing ||

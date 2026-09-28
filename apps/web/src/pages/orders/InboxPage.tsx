@@ -75,6 +75,17 @@ function isWalkIn(r: RawOrder): boolean {
   return r.booking_channel === 'walk_in';
 }
 
+function paymentStatus(r: RawOrder): { label: string; color: 'gray' | 'yellow' | 'green' | 'red' } {
+  switch (r.payment_state) {
+    case 'paid': return { label: 'Paid online', color: 'green' };
+    case 'pending': return { label: 'Payment pending', color: 'yellow' };
+    case 'expired': return { label: 'Payment link expired', color: 'gray' };
+    case 'cancelled': return { label: 'Payment link cancelled', color: 'gray' };
+    case 'verification_required': return { label: 'Payment verification required', color: 'red' };
+    default: return { label: 'Unpaid', color: 'gray' };
+  }
+}
+
 export default function InboxPage() {
   const [storeFilter, setStoreFilter] = useState<string>('');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
@@ -102,7 +113,11 @@ export default function InboxPage() {
     if (page === 1) {
       setAllOrders(response.data);
     } else {
-      setAllOrders((prev) => [...prev, ...response.data]);
+      setAllOrders((prev) => {
+        const next = new Map(prev.map((order) => [order.id, order]));
+        for (const order of response.data) next.set(order.id, order);
+        return [...next.values()];
+      });
     }
   }, [response?.data, page]);
 
@@ -255,6 +270,11 @@ export default function InboxPage() {
           {r.status}
         </Badge>
       ),
+    },
+    {
+      key: 'payment',
+      header: 'Payment',
+      render: (r: RawOrder) => isDirect(r) ? <Badge color={paymentStatus(r).color}>{paymentStatus(r).label}</Badge> : '—',
     },
     ...(canEditOrders
       ? [
@@ -444,6 +464,7 @@ export default function InboxPage() {
                   <Badge color={r.status === 'unprocessed' ? 'yellow' : r.status === 'processed' ? 'green' : 'gray'}>
                     {r.status}
                   </Badge>
+                  {isDirect(r) && <Badge color={paymentStatus(r).color}>{paymentStatus(r).label}</Badge>}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-1.5 mb-2">

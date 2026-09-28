@@ -92,7 +92,11 @@ export interface XenditSessionSummary {
   id: string;
   status: 'creating' | 'active' | 'completed' | 'expired' | 'cancelled' | 'failed' | 'reconciliation_required';
   operatorMessage: string;
+  checkoutUrl?: string | null;
+  expiresAt?: string | null;
 }
+
+export type RawBookingPaymentState = 'unpaid' | 'pending' | 'expired' | 'cancelled' | 'paid' | 'verification_required';
 
 export interface DirectBookingTermAddon {
   id: number;
@@ -134,6 +138,7 @@ export interface DirectBookingTerms {
 /** Authenticated inbox response: database row plus webhook-confirmed online payment data. */
 export interface OrdersRawInboxRow extends OrdersRawRow {
   online_payment: OnlinePaymentSummary | null;
+  payment_state: RawBookingPaymentState;
   /** Included by authenticated inbox responses when the booking has a Xendit session. */
   xendit_session?: XenditSessionSummary | null;
   /** Included by the authenticated detail endpoint for direct bookings only. */

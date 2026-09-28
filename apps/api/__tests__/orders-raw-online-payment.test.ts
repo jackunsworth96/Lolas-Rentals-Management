@@ -73,6 +73,7 @@ describe('orders-raw online payment state', () => {
           error: null,
         });
       }
+      if (table === 'xendit_payment_session_orders') return chain({ data: [], error: null });
       throw new Error(`Unexpected table ${table}`);
     });
 
@@ -96,6 +97,7 @@ describe('orders-raw online payment state', () => {
             reference: 'xendit-payment-1',
             paidAt: '2026-09-10T01:00:00.000Z',
           },
+          payment_state: 'paid',
         })],
       }),
     }));
@@ -107,6 +109,7 @@ describe('orders-raw online payment state', () => {
         return chain({ data: { id: 'raw-1', status: 'unprocessed', store_id: 'store-lolas' }, error: null });
       }
       if (table === 'payments') return chain({ data: [], error: null });
+      if (table === 'xendit_payment_session_orders') return chain({ data: [], error: null });
       throw new Error(`Unexpected table ${table}`);
     });
 
@@ -119,8 +122,44 @@ describe('orders-raw online payment state', () => {
 
     expect(res.json).toHaveBeenCalledWith({
       success: true,
-      data: expect.objectContaining({ id: 'raw-1', online_payment: null }),
+      data: expect.objectContaining({ id: 'raw-1', online_payment: null, payment_state: 'unpaid' }),
     });
+  });
+
+  it('retains the latest expired checkout status after its claim was released', async () => {
+    mocks.supabase.from.mockImplementation((table: string) => {
+      if (table === 'orders_raw') return chain({ data: { id: 'raw-1', status: 'unprocessed', store_id: 'store-lolas', xendit_payment_session_id: null }, error: null });
+      if (table === 'payments') return chain({ data: [], error: null });
+      if (table === 'xendit_payment_session_orders') return chain({ data: [{ raw_order_id: 'raw-1', session_id: 'session-1' }], error: null });
+      if (table === 'xendit_payment_sessions') return chain({ data: [{ id: 'session-1', status: 'expired', payment_link_url: null, expires_at: null, created_at: '2026-09-10T00:00:00Z' }], error: null });
+      throw new Error(`Unexpected table ${table}`);
+    });
+    const res = response();
+    await routeHandler('/:id', 'get')(
+      { params: { id: 'raw-1' }, user: { permissions: ['can_view_inbox'], storeIds: ['store-lolas'] } },
+      res, vi.fn(),
+    );
+    expect(res.json).toHaveBeenCalledWith({ success: true, data: expect.objectContaining({ payment_state: 'expired' }) });
+  });
+
+  it.each([
+    ['active', 'pending'],
+    ['cancelled', 'cancelled'],
+    ['reconciliation_required', 'verification_required'],
+  ])('maps a %s checkout to %s without claiming it was paid', async (sessionStatus, expected) => {
+    mocks.supabase.from.mockImplementation((table: string) => {
+      if (table === 'orders_raw') return chain({ data: { id: 'raw-1', status: 'unprocessed', store_id: 'store-lolas', xendit_payment_session_id: 'session-1' }, error: null });
+      if (table === 'payments') return chain({ data: [], error: null });
+      if (table === 'xendit_payment_session_orders') return chain({ data: [{ raw_order_id: 'raw-1', session_id: 'session-1' }], error: null });
+      if (table === 'xendit_payment_sessions') return chain({ data: [{ id: 'session-1', status: sessionStatus, payment_link_url: 'https://checkout.test/link', expires_at: null, created_at: '2026-09-10T00:00:00Z' }], error: null });
+      throw new Error(`Unexpected table ${table}`);
+    });
+    const res = response();
+    await routeHandler('/:id', 'get')(
+      { params: { id: 'raw-1' }, user: { permissions: ['can_view_inbox'], storeIds: ['store-lolas'] } },
+      res, vi.fn(),
+    );
+    expect(res.json).toHaveBeenCalledWith({ success: true, data: expect.objectContaining({ payment_state: expected, online_payment: null }) });
   });
 
   it('rejects manual collection after a confirmed Xendit payment', async () => {
@@ -163,6 +202,24 @@ describe('orders-raw online payment state', () => {
     });
     expect(paymentRepo.save).not.toHaveBeenCalled();
     expect(cardSettlementRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('uses the configured receiving account over a browser account for manual collection', async () => {
+    mocks.supabase.from.mockImplementation((table: string) => {
+      if (table === 'orders_raw') return chain({ data: { id: 'raw-1', source: 'lolas', status: 'unprocessed', store_id: 'store-lolas' }, error: null });
+      if (table === 'xendit_payment_session_orders') return chain({ data: null, error: null });
+      if (table === 'payment_methods') return chain({ data: { gateway_provider: null }, error: null });
+      if (table === 'payment_routing_rules') return chain({ data: { received_into_account_id: 'routed-account' }, error: null });
+      throw new Error(`Unexpected table ${table}`);
+    });
+    const paymentRepo = { findByRawOrderId: vi.fn(async () => []), save: vi.fn(async () => undefined) };
+    const res = response();
+    await routeHandler('/:id/collect-payment', 'post')(
+      { params: { id: 'raw-1' }, body: { amount: 100, paymentMethodId: 'cash', accountId: 'browser-account' },
+        user: { storeIds: ['store-lolas'] }, app: { locals: { deps: { paymentRepo, cardSettlementRepo: { save: vi.fn() } } } } },
+      res, vi.fn(),
+    );
+    expect(paymentRepo.save).toHaveBeenCalledWith(expect.objectContaining({ accountId: 'routed-account' }));
   });
 
   it('does not expose another store through the raw-order inbox', async () => {
@@ -243,6 +300,7 @@ describe('orders-raw online payment state', () => {
         return chain({ data: { id: 'raw-other', status: 'unprocessed', store_id: 'store-bass' }, error: null });
       }
       if (table === 'payments') return chain({ data: [], error: null });
+      if (table === 'xendit_payment_session_orders') return chain({ data: [], error: null });
       throw new Error(`Unexpected table ${table}`);
     });
 
