@@ -302,8 +302,16 @@ export default function PartnerBookPage() {
   const dropoffLocationId = form.dropoffLocationId || storeLocationId;
   const pickupDatetime = toManilaIso(form.pickupDate, form.pickupTime);
   const dropoffDatetime = toManilaIso(form.dropoffDate, form.dropoffTime);
-  const availability = usePartnerAvailability(pickupDatetime, dropoffDatetime);
   const leadTimeOk = hasLeadTime(pickupDatetime);
+  // Skip the availability check entirely once we already know client-side that
+  // lead time isn't met — the backend rejects it too, and surfacing that as a
+  // raw error here is redundant with the friendlier inline notice below, and
+  // (being an unspanned grid item) was squashing the whole form into the
+  // 320px price-summary column when it rendered.
+  const availability = usePartnerAvailability(
+    leadTimeOk ? pickupDatetime : '',
+    leadTimeOk ? dropoffDatetime : '',
+  );
   const ninePmReturnEligible = form.dropoffTime === '16:45';
   const availableAddonIds = useMemo(() => new Set(
     (addons.data ?? [])
@@ -458,7 +466,11 @@ export default function PartnerBookPage() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-      {availability.error && <p role="alert">{availability.error.message}</p>}
+      {availability.error && (
+        <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 lg:col-span-2">
+          {availability.error.message}
+        </p>
+      )}
       {allocations.length > 0 && <div className="grid gap-4 lg:col-span-2 lg:grid-cols-2">{allocations.map((allocation) => <AllocationAvailability key={allocation.vehicleType} allocation={allocation} />)}</div>}
 
       <form onSubmit={handleSubmit} className="rounded-lg bg-white p-4 shadow-sm">
