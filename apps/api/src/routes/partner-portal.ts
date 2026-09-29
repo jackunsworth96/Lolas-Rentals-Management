@@ -61,7 +61,17 @@ const PartnerBookSchema = SubmitDirectBookingRequestSchema
     path: ['vehicles'],
   });
 
-const MIN_PARTNER_LEAD_MS = 2 * 60 * 60 * 1000;
+const MIN_PARTNER_LEAD_MS = 30 * 60 * 1000;
+
+/** Manila-time "9:15 AM" style label for a given instant. */
+function manilaTimeLabel(date: Date): string {
+  return date.toLocaleTimeString('en-PH', {
+    timeZone: 'Asia/Manila',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
 
 function assertPartnerLeadTime(pickupDatetime: string): void {
   const pickup = new Date(pickupDatetime);
@@ -71,7 +81,12 @@ function assertPartnerLeadTime(pickupDatetime: string): void {
     throw err;
   }
   if (pickup.getTime() - Date.now() < MIN_PARTNER_LEAD_MS) {
-    const err = new Error('Partner portal bookings need at least 2 hours notice from the pickup time.');
+    const earliestLabel = manilaTimeLabel(new Date(Date.now() + MIN_PARTNER_LEAD_MS));
+    const err = new Error(
+      `We need at least 30 minutes' notice, but it's likely we can get to you sooner than that — ` +
+      `go ahead and book for ${earliestLabel} or later and we'll aim to be there by then. ` +
+      `Need us there ASAP? Send us a message so we can make you a priority.`,
+    );
     (err as Error & { statusCode?: number }).statusCode = 422;
     throw err;
   }

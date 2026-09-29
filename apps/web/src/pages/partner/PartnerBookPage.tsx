@@ -18,6 +18,7 @@ import {
   type PublicModel,
 } from '../../api/partner-portal.js';
 import { PeaceOfMindModal } from '../../components/basket/PeaceOfMindModal.js';
+import { WHATSAPP_URL } from '../../config/contact.js';
 
 const BOOKING_TIMES = [
   '09:15', '09:45', '10:15', '10:45',
@@ -26,6 +27,7 @@ const BOOKING_TIMES = [
   '15:15', '15:45', '16:15', '16:45',
 ];
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const MIN_LEAD_MS = 30 * 60 * 1000;
 
 type VehicleLine = { id: string; vehicleModelId: string; driverName: string };
 
@@ -42,6 +44,39 @@ function manilaDate(offsetHours: number) {
 
 function toManilaIso(date: string, time: string) {
   return date && time ? `${date}T${time}:00+08:00` : '';
+}
+
+function timeToMinutes(time: string) {
+  const [h, m] = time.split(':').map(Number);
+  return h * 60 + m;
+}
+
+/** Current time-of-day in Manila, expressed as minutes since midnight. */
+function manilaMinutesNow() {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date()).reduce<Record<string, string>>((acc, p) => {
+    if (p.type !== 'literal') acc[p.type] = p.value;
+    return acc;
+  }, {});
+  return Number(parts.hour) * 60 + Number(parts.minute);
+}
+
+/** Earliest bookable pickup: the first fixed time slot today that clears the
+ * minimum lead time, or tomorrow's first slot if none remain today. Most
+ * partner bookings are for same-day guests, so default here instead of
+ * always jumping to tomorrow. */
+function defaultPickup(): { date: string; time: string } {
+  const earliestMinutes = manilaMinutesNow() + 30;
+  const slot = BOOKING_TIMES.find((t) => timeToMinutes(t) >= earliestMinutes);
+  if (slot) return { date: manilaDate(0), time: slot };
+  return { date: manilaDate(24), time: BOOKING_TIMES[0] };
+}
+
+/** Shift a YYYY-MM-DD Manila calendar date by N days without crossing timezones. */
+function addManilaDays(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toLocaleDateString('en-CA', { timeZone: 'UTC' });
 }
 
 function money(value: number) {
@@ -82,7 +117,14 @@ function isNinePmReturn(addon: PublicAddon) {
 function hasLeadTime(pickupIso: string) {
   if (!pickupIso) return false;
   const pickup = new Date(pickupIso);
-  return !Number.isNaN(pickup.getTime()) && pickup.getTime() - Date.now() >= 2 * 60 * 60 * 1000;
+  return !Number.isNaN(pickup.getTime()) && pickup.getTime() - Date.now() >= MIN_LEAD_MS;
+}
+
+/** Manila-time "9:15 AM" style label for the earliest pickup we can currently accept. */
+function earliestBookableLabel() {
+  return new Date(Date.now() + MIN_LEAD_MS).toLocaleTimeString('en-PH', {
+    timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit', hour12: true,
+  });
 }
 
 function rentalDaysBetween(pickupIso: string, dropoffIso: string) {
@@ -192,19 +234,22 @@ export default function PartnerBookPage() {
     return rows.find((l) => l.locationType === 'store')?.id ?? rows[0]?.id ?? 1;
   }, [locationOptions]);
 
-  const [form, setForm] = useState({
-    customerName: '',
-    customerEmail: '',
-    customerMobile: '',
-    pickupDate: manilaDate(24),
-    pickupTime: '09:15',
-    dropoffDate: manilaDate(72),
-    dropoffTime: '16:45',
-    pickupLocationId: 0,
-    dropoffLocationId: 0,
-    accommodationName: me?.partner.name ?? '',
-    roomReference: '',
-    extraComments: '',
+  const [form, setForm] = useState(() => {
+    const pickup = defaultPickup();
+    return {
+      customerName: '',
+      customerEmail: '',
+      customerMobile: '',
+      pickupDate: pickup.date,
+      pickupTime: pickup.time,
+      dropoffDate: addManilaDays(pickup.date, 2),
+      dropoffTime: '16:45',
+      pickupLocationId: 0,
+      dropoffLocationId: 0,
+      accommodationName: me?.partner.name ?? '',
+      roomReference: '',
+      extraComments: '',
+    };
   });
   const bookingRequestKey = useRef(crypto.randomUUID());
   const [vehicleLines, setVehicleLines] = useState<VehicleLine[]>([
@@ -370,7 +415,7 @@ export default function PartnerBookPage() {
     setError('');
     setSuccess(null);
     if (!leadTimeOk) {
-      setError('Pickup must be at least 2 hours from now.');
+      setError(`We need at least 30 minutes' notice — please choose ${earliestBookableLabel()} or later.`);
       return;
     }
     const vehicles = vehicleLines
@@ -448,7 +493,17 @@ export default function PartnerBookPage() {
                 })}
               </select>
             </div>
-            {!leadTimeOk && <p className="mt-1 text-xs font-semibold text-red-600">Partner bookings need at least 2 hours notice.</p>}
+            {!leadTimeOk && (
+              <p className="mt-1 text-xs text-amber-700">
+                We need at least 30 minutes' notice, but it's likely we can get to you sooner than that
+                — go ahead and book for {earliestBookableLabel()} or later and we'll aim to be there by then.
+                Need us there ASAP?{' '}
+                <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="font-semibold underline">
+                  Send us a message
+                </a>{' '}
+                so we can make you a priority.
+              </p>
+            )}
           </div>
           <div>
             <label className="mb-1 block text-xs font-semibold text-gray-500">Return</label>

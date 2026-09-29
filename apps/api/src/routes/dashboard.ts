@@ -5,6 +5,7 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { formatManilaDate } from '../utils/manila-date.js';
 import { getPartnerCommissionStats } from '../lib/partner-commission.js';
 import { getDashboardAvailabilityModel } from '../lib/dashboard-availability-model.js';
+import { ownerUseVehicleIdsOverlapping } from '../lib/owner-use-window.js';
 
 const router = Router();
 router.use(authenticate);
@@ -298,6 +299,15 @@ router.get('/summary', authenticate, async (req, res, next) => {
         .gte('created_at', `${manilaDate}T00:00:00+08:00`)
         .lt('created_at', `${manilaDate}T23:59:59.999+08:00`)
         .then((r) => ({ key: 'bookingSourceData' as const, ...r })),
+
+      sb
+        .from('fleet_unavailability')
+        .select('vehicle_id, store_id, starts_at, ends_at')
+        .eq('type', 'owner_use')
+        .is('cancelled_at', null)
+        .gt('ends_at', new Date().toISOString())
+        .lt('starts_at', `${tomorrowDate}T23:59:59.999+08:00`)
+        .then((r) => ({ key: 'ownerUse' as const, ...r })),
     ];
 
     const financialQueries = canViewFinancial
@@ -609,7 +619,20 @@ router.get('/summary', authenticate, async (req, res, next) => {
       }
 
       const bookedVehicleIds = new Set([...storeActiveVehicleIds, ...storeUpcomingVehicleIds]);
-      const availableVehicles = rentableFleet.filter((v) => !bookedVehicleIds.has(v.id as string)).length;
+      const ownerUseRows = (dataMap.get('ownerUse') ?? []) as Array<{
+        vehicle_id?: string | null;
+        store_id?: string | null;
+        starts_at?: string | null;
+        ends_at?: string | null;
+      }>;
+      const ownerUseNowIds = ownerUseVehicleIdsOverlapping(ownerUseRows, nowMs, nowMs + 1, sid);
+      const tomorrowStartMs = new Date(`${tomorrowDate}T00:00:00+08:00`).getTime();
+      const tomorrowEndMs = new Date(`${tomorrowDate}T23:59:59.999+08:00`).getTime();
+      const ownerUseTomorrowIds = ownerUseVehicleIdsOverlapping(ownerUseRows, tomorrowStartMs, tomorrowEndMs, sid);
+      const availableVehicles = rentableFleet.filter((v) => {
+        const id = v.id as string;
+        return !bookedVehicleIds.has(id) && !ownerUseNowIds.has(id);
+      }).length;
 
       const tomorrowBookedVehicleIds = new Set<string>();
       for (const item of (dataMap.get('tomorrowBookings') ?? [])) {
@@ -619,7 +642,10 @@ router.get('/summary', authenticate, async (req, res, next) => {
         const vid = item.vehicle_id as string | undefined;
         if (vid) tomorrowBookedVehicleIds.add(vid);
       }
-      const tomorrowAvailable = rentableFleet.filter((v) => !tomorrowBookedVehicleIds.has(v.id as string)).length;
+      const tomorrowAvailable = rentableFleet.filter((v) => {
+        const id = v.id as string;
+        return !tomorrowBookedVehicleIds.has(id) && !ownerUseTomorrowIds.has(id);
+      }).length;
 
       const activeCount = storeActiveOrders.length;
       const fleetUtilisation = totalRentable > 0
@@ -1001,7 +1027,16 @@ router.get('/availability-detail', async (req, res, next) => {
     const dateParam = req.query.date as string | undefined;
     const targetDate = dateParam ?? new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 
-    const [fleetRes, fleetStatusRes, orderItemsRes, vehicleModelsRes] = await Promise.all([
+    const manilaToday = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+    const countingNow = targetDate === manilaToday;
+    const rangeStartMs = countingNow
+      ? Date.now()
+      : new Date(`${targetDate}T00:00:00+08:00`).getTime();
+    const rangeEndMs = countingNow
+      ? rangeStartMs + 1
+      : new Date(`${targetDate}T23:59:59.999+08:00`).getTime();
+
+    const [fleetRes, fleetStatusRes, orderItemsRes, vehicleModelsRes, ownerUseRes] = await Promise.all([
       sb
         .from('fleet')
         .select('id, name, model_id, status, surf_rack, store_id'),
@@ -1025,15 +1060,30 @@ router.get('/availability-detail', async (req, res, next) => {
       sb
         .from('vehicle_models')
         .select('id, name'),
+
+      sb
+        .from('fleet_unavailability')
+        .select('vehicle_id, store_id, starts_at, ends_at')
+        .eq('type', 'owner_use')
+        .is('cancelled_at', null)
+        .gt('ends_at', new Date(rangeStartMs).toISOString())
+        .lt('starts_at', new Date(rangeEndMs).toISOString()),
     ]);
 
     if (fleetRes.error) throw new Error(fleetRes.error.message);
     if (fleetStatusRes.error) throw new Error(fleetStatusRes.error.message);
+    if (ownerUseRes.error) throw new Error(ownerUseRes.error.message);
 
     const allFleet = fleetRes.data ?? [];
     const fleetStatuses = fleetStatusRes.data ?? [];
     const orderItems = orderItemsRes.data ?? [];
     const vehicleModels = vehicleModelsRes.data ?? [];
+    const ownerUseIds = ownerUseVehicleIdsOverlapping(
+      ownerUseRes.data ?? [],
+      rangeStartMs,
+      rangeEndMs,
+      storeIdParam && storeIdParam !== 'all' ? storeIdParam : undefined,
+    );
 
     const rentableStatusIds = new Set(
       fleetStatuses.filter((s) => s.is_rentable).map((s) => s.id as string),
@@ -1081,7 +1131,7 @@ router.get('/availability-detail', async (req, res, next) => {
       const rawModelName = modelNameMap.get(rawModelId) ?? 'Unknown';
       const { modelId, modelName, isScooter } = getDashboardAvailabilityModel(rawModelName);
       if (!modelMap.has(modelId)) modelMap.set(modelId, { modelName, isScooter, units: [] });
-      const isBooked = bookedVehicleIds.has(v.id as string);
+      const isBooked = bookedVehicleIds.has(v.id as string) || ownerUseIds.has(v.id as string);
       modelMap.get(modelId)!.units.push({
         id: v.id as string,
         name: v.name as string,

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { usePartnerAvailability, usePartnerMe, usePartnerReport } from '../../api/partner-portal.js';
+import { WHATSAPP_URL } from '../../config/contact.js';
 
 const SITE_URL = (import.meta.env.VITE_SITE_URL as string | undefined) ?? window.location.origin;
 const PARTNER_ROOT_DOMAIN = (import.meta.env.VITE_PARTNER_ROOT_DOMAIN as string | undefined) ?? 'lolasrentals.com';
@@ -11,6 +12,8 @@ const BOOKING_TIMES = [
   '13:15', '13:45', '14:15', '14:45',
   '15:15', '15:45', '16:15', '16:45',
 ];
+
+const MIN_LEAD_MS = 30 * 60 * 1000;
 
 function manilaDate(offsetHours: number) {
   const d = new Date(Date.now() + offsetHours * 60 * 60 * 1000);
@@ -25,6 +28,52 @@ function manilaDate(offsetHours: number) {
 
 function toManilaIso(date: string, time: string) {
   return date && time ? `${date}T${time}:00+08:00` : '';
+}
+
+function timeToMinutes(time: string) {
+  const [h, m] = time.split(':').map(Number);
+  return h * 60 + m;
+}
+
+/** Current time-of-day in Manila, expressed as minutes since midnight. */
+function manilaMinutesNow() {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date()).reduce<Record<string, string>>((acc, p) => {
+    if (p.type !== 'literal') acc[p.type] = p.value;
+    return acc;
+  }, {});
+  return Number(parts.hour) * 60 + Number(parts.minute);
+}
+
+function hasLeadTime(pickupIso: string) {
+  if (!pickupIso) return false;
+  const pickup = new Date(pickupIso);
+  return !Number.isNaN(pickup.getTime()) && pickup.getTime() - Date.now() >= MIN_LEAD_MS;
+}
+
+/** Manila-time "9:15 AM" style label for the earliest pickup we can currently accept. */
+function earliestBookableLabel() {
+  return new Date(Date.now() + MIN_LEAD_MS).toLocaleTimeString('en-PH', {
+    timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit', hour12: true,
+  });
+}
+
+/** Earliest bookable pickup: the first fixed time slot today that clears the
+ * minimum lead time, or tomorrow's first slot if none remain today. Most
+ * partner searches are for a same-day guest, so default here instead of
+ * always jumping to tomorrow. */
+function defaultPickup(): { date: string; time: string } {
+  const earliestMinutes = manilaMinutesNow() + 30;
+  const slot = BOOKING_TIMES.find((t) => timeToMinutes(t) >= earliestMinutes);
+  if (slot) return { date: manilaDate(0), time: slot };
+  return { date: manilaDate(24), time: BOOKING_TIMES[0] };
+}
+
+/** Shift a YYYY-MM-DD Manila calendar date by N days without crossing timezones. */
+function addManilaDays(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toLocaleDateString('en-CA', { timeZone: 'UTC' });
 }
 
 function currentMonth() {
@@ -79,11 +128,13 @@ function partnerSubdomainBookingLink(subdomain: string) {
 export default function PartnerDashboardPage() {
   const { data: me } = usePartnerMe();
   const [copied, setCopied] = useState<'booking' | 'ref' | 'link' | null>(null);
-  const [pickupDate, setPickupDate] = useState(() => manilaDate(24));
-  const [pickupTime, setPickupTime] = useState('09:15');
-  const [dropoffDate, setDropoffDate] = useState(() => manilaDate(72));
+  const [pickupDate, setPickupDate] = useState(() => defaultPickup().date);
+  const [pickupTime, setPickupTime] = useState(() => defaultPickup().time);
+  const [dropoffDate, setDropoffDate] = useState(() => addManilaDays(defaultPickup().date, 2));
   const [dropoffTime, setDropoffTime] = useState('16:45');
-  const availability = usePartnerAvailability(toManilaIso(pickupDate, pickupTime), toManilaIso(dropoffDate, dropoffTime));
+  const pickupIso = toManilaIso(pickupDate, pickupTime);
+  const leadTimeOk = hasLeadTime(pickupIso);
+  const availability = usePartnerAvailability(pickupIso, toManilaIso(dropoffDate, dropoffTime));
   const report = usePartnerReport(currentMonth());
   const allModels = useMemo(() => availability.data ?? [], [availability.data]);
   const partnerSlug = me?.partner.slug ?? '';
@@ -164,7 +215,10 @@ export default function PartnerDashboardPage() {
             <div className="flex gap-2">
               <input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
               <select value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
-                {BOOKING_TIMES.map((time) => <option key={time} value={time}>{time}</option>)}
+                {BOOKING_TIMES.map((time) => {
+                  const disabled = !hasLeadTime(toManilaIso(pickupDate, time));
+                  return <option key={time} value={time} disabled={disabled}>{time}{disabled ? ' - too soon' : ''}</option>;
+                })}
               </select>
             </div>
           </div>
@@ -178,10 +232,21 @@ export default function PartnerDashboardPage() {
             </div>
           </div>
         </div>
+        {!leadTimeOk && (
+          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            We need at least 30 minutes' notice, but it's likely we can get to you sooner than that
+            — go ahead and book for {earliestBookableLabel()} or later and we'll aim to be there by then.
+            Need us there ASAP?{' '}
+            <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="font-semibold underline">
+              Send us a message
+            </a>{' '}
+            so we can make you a priority.
+          </p>
+        )}
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {availability.isLoading && <p className="col-span-full text-sm text-gray-500">Checking availability…</p>}
-          {!availability.isLoading && allModels.length === 0 && <p className="col-span-full text-sm text-gray-500">No vehicles configured for this store.</p>}
-          {!availability.isLoading && allModels.map((m) => {
+          {leadTimeOk && availability.isLoading && <p className="col-span-full text-sm text-gray-500">Checking availability…</p>}
+          {leadTimeOk && !availability.isLoading && allModels.length === 0 && <p className="col-span-full text-sm text-gray-500">No vehicles configured for this store.</p>}
+          {leadTimeOk && !availability.isLoading && allModels.map((m) => {
             // ── Available ───────────────────────────────────────────────────────
             if (m.availableCount > 0) {
               return (
