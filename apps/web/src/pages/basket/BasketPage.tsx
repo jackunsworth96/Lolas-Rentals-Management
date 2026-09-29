@@ -178,7 +178,7 @@ export default function BasketPage() {
     let avail: AvailableModel[];
     try {
       avail = await api.get<AvailableModel[]>(
-        `/public/booking/availability?storeId=${encodeURIComponent(storeId)}&pickupDatetime=${encodeURIComponent(pickup)}&dropoffDatetime=${encodeURIComponent(dropoff)}`,
+        `/public/booking/availability?storeId=${encodeURIComponent(storeId)}&pickupDatetime=${encodeURIComponent(pickup)}&dropoffDatetime=${encodeURIComponent(dropoff)}&partnerRef=${encodeURIComponent(getPartnerRef() ?? '')}`,
       );
     } catch {
       return false;
@@ -190,6 +190,7 @@ export default function BasketPage() {
     let newHold: { holdId: string; expiresAt: string };
     try {
       newHold = await api.post<{ holdId: string; expiresAt: string }>('/public/booking/hold', {
+        partnerRef: getPartnerRef() ?? undefined,
         vehicleModelId: item.vehicleModelId,
         storeId,
         pickupDatetime: pickup,

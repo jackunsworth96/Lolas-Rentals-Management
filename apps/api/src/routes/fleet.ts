@@ -615,14 +615,17 @@ router.get(
     storeId: z.string().min(1),
     pickupDatetime: z.string().min(1),
     dropoffDatetime: z.string().min(1),
+    partnerRef: z.string().max(80).optional(),
   })),
   async (req, res, next) => {
     try {
-      const { storeId, pickupDatetime, dropoffDatetime } = req.query as {
+      const { storeId, pickupDatetime, dropoffDatetime, partnerRef } = req.query as {
+        partnerRef?: string;
         storeId: string;
         pickupDatetime: string;
         dropoffDatetime: string;
       };
+      if (!req.user!.storeIds.includes(storeId)) { res.status(403).json({ success: false, error: { message: 'Store access required' } }); return; }
       const sb = getSupabaseClient();
 
       // 1. Fetch all active fleet vehicles for the store
@@ -681,10 +684,18 @@ router.get(
         (v) => !bookedVehicleIds.has(v.id),
       );
 
-      // 5. Return available vehicles
+      // Keep the staff picker aligned with the same protected/shared model counts.
+      const allocationModels = await req.app.locals.deps.bookingPort.checkAvailability({ storeId, pickupDatetime, dropoffDatetime, partnerRef });
+      const remaining = new Map<string, number>(allocationModels.map((m: { modelId: string; availableCount: number }): [string, number] => [m.modelId, m.availableCount]));
+      const bookableVehicles = availableVehicles.filter((v) => {
+        const count = remaining.get(v.model_id ?? '') ?? 0;
+        if (count < 1) return false;
+        remaining.set(v.model_id!, count - 1);
+        return true;
+      });
       res.json({
         success: true,
-        data: availableVehicles.map((v) => ({
+        data: bookableVehicles.map((v) => ({
           id: v.id,
           name: v.name,
           modelId: v.model_id,

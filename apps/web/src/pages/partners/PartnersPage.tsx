@@ -1,3 +1,4 @@
+import { PartnerAllocations } from './PartnerAllocations.js';
 import { useState, useCallback, useMemo } from 'react';
 import {
   Link2, Plus, Pencil, BarChart2, ToggleLeft, ToggleRight, Copy, CheckCheck,
@@ -2008,6 +2009,7 @@ function PartnerDetailPanel({ partner, onEdit, onClose, pushToast }: PartnerDeta
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+        <PartnerAllocations key={partner.id} partnerId={partner.id} />
         {/* Trackable link */}
         <div className="rounded-xl border border-teal-200 bg-teal-50 p-4">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-teal-700 flex items-center gap-1.5">

@@ -1,4 +1,12 @@
+export interface AllocationAvailability {
+  vehicleType: string;
+  protectedAvailable: number;
+  sharedAvailable: number;
+  segments: Array<{ startsAt: string; endsAt: string; protectedAvailable: number; sharedAvailable: number }>;
+}
+
 export interface AvailableModel {
+  allocation?: AllocationAvailability;
   modelId: string;
   modelName: string;
   availableCount: number;
@@ -22,6 +30,7 @@ export interface AvailableModel {
 }
 
 export interface AvailabilityQuery {
+  partnerRef?: string;
   storeId: string;
   pickupDatetime: string;
   dropoffDatetime: string;
@@ -49,6 +58,7 @@ export interface HoldRow {
 }
 
 export interface InsertHoldInput {
+  partnerRef?: string;
   vehicleModelId: string;
   storeId: string;
   pickupDatetime: string;
@@ -58,6 +68,10 @@ export interface InsertHoldInput {
 }
 
 export interface DirectBookingInsert {
+  bookingHoldId?: string;
+  bookingSessionToken?: string;
+  bookingRequestKey?: string;
+  bookingRequestIndex?: number;
   source: string;
   customerName: string;
   customerEmail: string;
@@ -110,7 +124,16 @@ export interface DirectBookingResult {
   cancellationToken: string;
 }
 
+export interface SubmittedBooking {
+  id: string;
+  orderReference: string;
+  cancellationToken: string;
+  serverQuote: number | null;
+  charityDonation: number;
+}
+
 export interface BookingPort {
+  findSubmittedBooking?(holdId: string, sessionToken: string): Promise<SubmittedBooking | null>;
   checkAvailability(query: AvailabilityQuery): Promise<AvailableModel[]>;
   insertHold(input: InsertHoldInput): Promise<HoldRow>;
   deleteHold(holdId: string, sessionToken: string): Promise<boolean>;

@@ -397,18 +397,38 @@ export async function evaluateAvailability(
   return { models: results, explanation: { models: detailModels, configurationExclusions } };
 }
 
-export function createBookingAdapter(): BookingPort {
+export function createBookingAdapter(pendingRows?: Record<string, unknown>[]): BookingPort {
   const sb = getSupabaseClient();
 
   return {
+    async findSubmittedBooking(holdId: string, sessionToken: string) {
+      const { data, error } = await sb.from('orders_raw')
+        .select('id,order_reference,cancellation_token,web_quote_raw,charity_donation')
+        .eq('booking_hold_id', holdId).eq('booking_session_token', sessionToken).maybeSingle();
+      if (error) throw new Error(`Failed to check completed booking: ${error.message}`);
+      return data ? { id: data.id, orderReference: data.order_reference, cancellationToken: data.cancellation_token,
+        serverQuote: data.web_quote_raw, charityDonation: data.charity_donation ?? 0 } : null;
+    },
     async checkAvailability(query: AvailabilityQuery): Promise<AvailableModel[]> {
-      return (await evaluateAvailability(query, sb)).models;
+      const physical = (await evaluateAvailability(query, sb)).models;
+      const { data, error } = await sb.rpc('allocation_availability', {
+        p_store: query.storeId, p_start: query.pickupDatetime, p_end: query.dropoffDatetime,
+        p_ref: query.partnerRef ?? null, p_exclude_session: query.excludeSessionToken ?? null,
+        p_exclude_item: query.excludeOrderItemId ?? null,
+      });
+      if (error) throw new Error(`Allocation availability failed: ${error.message}`);
+      if (data === null) return physical;
+      return (data as AvailableModel[]).map((model) => {
+        const existing = physical.find((m) => m.modelId === model.modelId);
+        return { ...existing, ...model, availableCount: Math.min(model.availableCount, existing?.availableCount ?? 0) };
+      });
     },
 
     async insertHold(input: InsertHoldInput): Promise<HoldRow> {
       const { data, error } = await sb
         .from('booking_holds')
         .insert({
+          partner_ref: input.partnerRef ?? null,
           vehicle_model_id: input.vehicleModelId,
           store_id: input.storeId,
           pickup_datetime: input.pickupDatetime,
@@ -501,9 +521,12 @@ export function createBookingAdapter(): BookingPort {
         return Object.keys(p).length > 0 ? p : null;
       })();
 
-      const { data, error } = await sb
-        .from('orders_raw')
-        .insert({
+      const rowInput = {
+          booking_hold_id: input.bookingHoldId ?? null,
+          booking_session_token: input.bookingSessionToken ?? null,
+          booking_request_key: input.bookingRequestKey ?? null,
+          booking_request_index: input.bookingRequestIndex ?? null,
+
           source: input.source,
           booking_channel: 'direct',
           payload,
@@ -544,10 +567,14 @@ export function createBookingAdapter(): BookingPort {
           rental_value_raw: input.rentalValueRaw ?? null,
           partner_booking_group_ref: input.partnerBookingGroupRef?.trim() || null,
           driver_name: input.driverName?.trim() || null,
-        })
-        .select('id, order_reference, cancellation_token')
-        .single();
-
+      };
+      if (pendingRows) {
+        const id = crypto.randomUUID();
+        pendingRows.push({ ...rowInput, id });
+        return { id, orderReference: input.orderReference, cancellationToken: input.cancellationToken };
+      }
+      const { data: rows, error } = await sb.rpc('allocation_insert_bookings', { p_rows: [rowInput] });
+      const data = rows?.[0];
       if (error) throw new Error(`Failed to insert direct booking: ${error.message}`);
       const row = data as { id: string; order_reference: string; cancellation_token: string };
       return {

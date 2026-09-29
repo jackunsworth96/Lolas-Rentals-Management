@@ -153,6 +153,7 @@ export function useCancelRawOrder() {
 }
 
 export interface WalkInDirectPayload {
+  partnerRef?: string;
   customerName: string;
   customerMobile: string;
   customerEmail?: string;

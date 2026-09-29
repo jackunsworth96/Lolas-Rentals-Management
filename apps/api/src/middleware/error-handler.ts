@@ -22,6 +22,11 @@ export function errorHandler(
   res: Response,
   _next: NextFunction,
 ): void {
+  if (err.message.includes('ALLOCATION_CONFLICT')) {
+    console.warn('[allocation-conflict]', err.message);
+    res.status(409).json({ success: false, error: { code: 'ALLOCATION_CONFLICT', message: err.message } });
+    return;
+  }
   if (err.message.includes('STORE_ARCHIVED')) {
     res.status(409).json({
       success: false,

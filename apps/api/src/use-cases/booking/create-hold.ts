@@ -1,6 +1,7 @@
 import type { BookingPort, HoldRow } from '@lolas/domain';
 
 export interface CreateHoldInput {
+  partnerRef?: string;
   vehicleModelId: string;
   storeId: string;
   pickupDatetime: string;
@@ -29,6 +30,7 @@ export async function createHold(
   }
 
   const available = await deps.bookingPort.checkAvailability({
+    partnerRef: input.partnerRef,
     storeId: input.storeId,
     pickupDatetime: input.pickupDatetime,
     dropoffDatetime: input.dropoffDatetime,
@@ -47,6 +49,7 @@ export async function createHold(
 
   return deps.bookingPort.insertHold({
     vehicleModelId: input.vehicleModelId,
+    partnerRef: input.partnerRef,
     storeId: input.storeId,
     pickupDatetime: input.pickupDatetime,
     dropoffDatetime: input.dropoffDatetime,

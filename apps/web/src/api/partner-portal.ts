@@ -1,3 +1,4 @@
+import type { AllocationSummary } from '../components/booking/AllocationAvailability.js';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { normalizeApiBase } from './normalize-api-base.js';
 import { usePartnerAuthStore, type PartnerAuthUser } from '../stores/partner-auth-store.js';
@@ -76,6 +77,7 @@ export interface PartnerReport {
 }
 
 export interface AvailabilityModel {
+  allocation?: AllocationSummary;
   modelId: string;
   modelName: string;
   availableCount: number;
@@ -149,6 +151,7 @@ export interface PartnerQuote {
 }
 
 export interface PartnerBookingInput {
+  requestKey?: string;
   customerName: string;
   customerEmail: string;
   customerMobile: string;

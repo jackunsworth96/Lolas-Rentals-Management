@@ -1,3 +1,4 @@
+import { lookupActivePartnerBySlug } from '../lib/partner-benefit.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import { logger } from '../lib/logger.js';
@@ -39,6 +40,7 @@ const router = Router();
 router.use(authenticate);
 
 const walkInBodySchema = z.object({
+  partnerRef: z.string().max(80).optional(),
   customerName: z.string().min(1),
   customerMobile: z.string().min(1),
   customerEmail: z.string().email().optional(),
@@ -63,6 +65,14 @@ router.post('/walk-in', requirePermission(Permission.EditOrders), async (req, re
     }
 
     const body = parsed.data;
+    if (!req.user!.storeIds.includes(body.storeId)) {
+      res.status(403).json({ success: false, error: { message: 'Store access required' } }); return;
+    }
+    const bookingPartner = await lookupActivePartnerBySlug(body.partnerRef);
+    if (body.partnerRef && (!bookingPartner || bookingPartner.storeId !== body.storeId)) {
+      res.status(400).json({ success: false, error: { message: 'Choose an active partner in this store' } }); return;
+    }
+
     const source = resolveSourceFromStore(body.storeId);
     const orderReference = await uniqueWalkInReference(source);
 
@@ -71,6 +81,7 @@ router.post('/walk-in', requirePermission(Permission.EditOrders), async (req, re
       .insert({
         source,
         booking_channel: 'walk_in',
+        partner_ref: bookingPartner?.slug ?? null,
         status: 'unprocessed',
         customer_name: body.customerName,
         customer_email: body.customerEmail ?? null,
@@ -105,6 +116,7 @@ router.post('/walk-in', requirePermission(Permission.EditOrders), async (req, re
    ──────────────────────────────────────────────────────────── */
 
 const walkInReservedBodySchema = z.object({
+  partnerRef: z.string().max(80).optional(),
   customerName: z.string().min(1),
   customerMobile: z.string().min(1),
   customerEmail: z.string().email().optional(),
@@ -137,6 +149,14 @@ router.post('/walk-in-reserved', requirePermission(Permission.EditOrders), async
     }
 
     const body = parsed.data;
+    if (!req.user!.storeIds.includes(body.storeId)) {
+      res.status(403).json({ success: false, error: { message: 'Store access required' } }); return;
+    }
+    const bookingPartner = await lookupActivePartnerBySlug(body.partnerRef);
+    if (body.partnerRef && (!bookingPartner || bookingPartner.storeId !== body.storeId)) {
+      res.status(400).json({ success: false, error: { message: 'Choose an active partner in this store' } }); return;
+    }
+
 
     // ── Server-side double-booking check ──────────────────────────
     // 1. Check active order_items for the exact vehicle overlapping the window
@@ -194,6 +214,7 @@ router.post('/walk-in-reserved', requirePermission(Permission.EditOrders), async
       .insert({
         source,
         booking_channel: 'walk_in',
+        partner_ref: bookingPartner?.slug ?? null,
         status: 'unprocessed',
         customer_name: body.customerName,
         customer_email: body.customerEmail ?? null,
@@ -303,6 +324,7 @@ router.post('/walk-in-reserved', requirePermission(Permission.EditOrders), async
    ──────────────────────────────────────────────────────────── */
 
 const walkInDirectSchema = z.object({
+  partnerRef: z.string().max(80).optional(),
   customerName: z.string().min(1),
   customerMobile: z.string().min(1),
   customerEmail: z.string().email().optional(),
@@ -344,6 +366,14 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
     }
 
     const body = parsed.data;
+    if (!req.user!.storeIds.includes(body.storeId)) {
+      res.status(403).json({ success: false, error: { message: 'Store access required' } }); return;
+    }
+    const bookingPartner = await lookupActivePartnerBySlug(body.partnerRef);
+    if (body.partnerRef && (!bookingPartner || bookingPartner.storeId !== body.storeId)) {
+      res.status(400).json({ success: false, error: { message: 'Choose an active partner in this store' } }); return;
+    }
+
     const employeeId = req.user!.employeeId;
 
     // 1. Upsert customer
@@ -544,7 +574,9 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
     const transactionDate = formatManilaDate();
 
     // 13. Call activate_order_atomic RPC (order + journal + payments in one tx)
-    const { error: rpcErr } = await supabase.rpc('activate_order_atomic', {
+    const { error: rpcErr } = await supabase.rpc('allocation_activate_order', {
+      p_partner_ref: bookingPartner?.slug ?? null,
+      p_args: {
       p_order_id: orderId,
       p_store_id: body.storeId,
       p_woo_order_id: null,
@@ -581,6 +613,7 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       p_deposit_payment_id: depositPaymentId,
       p_deposit_amount: body.depositCollected ? body.depositAmount : 0,
       p_deposit_collected: body.depositCollected,
+      },
     });
     if (rpcErr) {
       logger.error({ rpcCode: rpcErr.code, rpcMessage: rpcErr.message }, 'activate_order_atomic RPC failed');

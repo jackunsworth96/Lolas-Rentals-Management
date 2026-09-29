@@ -1,3 +1,4 @@
+import { getPartnerRef } from '../../utils/partnerRef.js';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client.js';
@@ -150,7 +151,7 @@ export function VehicleCard({
       for (let i = 0; i < clampedQty; i++) {
         const result = await api.post<{ holdId: string; sessionToken: string; expiresAt: string }>(
           '/public/booking/hold',
-          { vehicleModelId: modelId, storeId, pickupDatetime, dropoffDatetime, sessionToken },
+          { vehicleModelId: modelId, storeId, pickupDatetime, dropoffDatetime, sessionToken, partnerRef: getPartnerRef() ?? undefined },
         );
         addToBasket({
           holdId: result.holdId,

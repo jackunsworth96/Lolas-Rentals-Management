@@ -36,6 +36,7 @@ export interface SubmitDirectBookingDeps {
   configRepo: ConfigRepository;
   transferRepo: TransferRepository;
   accountingPort?: AccountingPort;
+  afterCommit?: Array<() => Promise<void>>;
 }
 
 function generateOrderReference(source: string): string {
@@ -127,9 +128,14 @@ export interface SubmitDirectBookingResult {
 export async function submitDirectBooking(
   deps: SubmitDirectBookingDeps,
   input: SubmitDirectBookingInput,
-  context?: { deviceType?: 'mobile' | 'desktop'; partnerBookingGroupRef?: string | null; driverName?: string | null },
+  context?: { deviceType?: 'mobile' | 'desktop'; partnerBookingGroupRef?: string | null; driverName?: string | null; bookingRequestKey?: string; bookingRequestIndex?: number },
 ): Promise<SubmitDirectBookingResult> {
   const { bookingPort } = deps;
+
+  if (input.holdId && bookingPort.findSubmittedBooking) {
+    const prior = await bookingPort.findSubmittedBooking(input.holdId, input.sessionToken);
+    if (prior) return prior;
+  }
 
   // 1. Verify an active, non-expired hold exists for this session + model + dates
   const hold = await bookingPort.findActiveHold(
@@ -154,6 +160,7 @@ export async function submitDirectBooking(
     pickupDatetime: input.pickupDatetime,
     dropoffDatetime: input.dropoffDatetime,
     excludeSessionToken: input.sessionToken,
+    partnerRef: input.partnerRef ?? undefined,
   });
 
   const match = available.find((m) => m.modelId === input.vehicleModelId);
@@ -173,7 +180,8 @@ export async function submitDirectBooking(
   // Resolve the partner referral against the live record so we never trust a
   // discount the client claims. When the partner is pending/inactive/missing
   // we drop the partnerRef entirely so the booking is treated as a normal one.
-  const validatedPartner = await lookupActivePartnerBySlug(input.partnerRef);
+  const resolvedPartner = await lookupActivePartnerBySlug(input.partnerRef);
+  const validatedPartner = resolvedPartner?.storeId === input.storeId ? resolvedPartner : null;
   let partnerRefToPersist: string | null = validatedPartner?.slug ?? null;
 
   try {
@@ -256,6 +264,10 @@ export async function submitDirectBooking(
 
   // 5. Insert into orders_raw
   const result = await bookingPort.insertDirectBooking({
+    bookingHoldId: hold.id,
+    bookingSessionToken: input.sessionToken,
+    bookingRequestKey: context?.bookingRequestKey,
+    bookingRequestIndex: context?.bookingRequestIndex,
     source,
     customerName: input.customerName,
     customerEmail: input.customerEmail,
@@ -291,6 +303,7 @@ export async function submitDirectBooking(
     driverName: context?.driverName ?? null,
   });
 
+  const afterCommit = async () => {
   // 5b. Auto-journal charity donation → wallet (best-effort; never blocks booking).
   if ((input.charityDonation ?? 0) > 0 && deps.accountingPort) {
     const donation = input.charityDonation!;
@@ -549,6 +562,10 @@ export async function submitDirectBooking(
       getTelegramChatId('ops'),
     );
   })();
+
+  };
+  if (deps.afterCommit) deps.afterCommit.push(afterCommit);
+  else await afterCommit();
 
   return { ...result, serverQuote: webQuoteRaw, charityDonation: input.charityDonation ?? 0, cancellationToken: result.cancellationToken };
 }
