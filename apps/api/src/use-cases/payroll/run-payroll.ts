@@ -127,6 +127,10 @@ export async function runPayroll(
   }> = [];
 
   for (const payslip of payslips) {
+    // Net pay can be 0 (fully absorbed by a cash advance) but never negative
+    // — calculatePayroll caps the advance deduction so it can't exceed net
+    // pay. A $0 payslip still gets persisted below; there is just no cash
+    // leg to post since nothing physically changes hands.
     if (payslip.netPay <= 0) continue;
 
     const detail = paymentMap.get(payslip.employeeId) ?? {
@@ -207,32 +211,58 @@ export async function runPayroll(
     });
   }
 
-  // Collect timesheet IDs of all paid employees to mark as Paid
-  const paidEmployeeIds = payslips
-    .filter((p) => p.netPay > 0)
-    .map((p) => p.employeeId);
+  // Every processed employee's Approved timesheets move to Paid — including
+  // $0 payslips, so they aren't re-picked-up and re-priced on the next run.
+  // Only Approved rows are included: Pending rows for the same employee must
+  // stay Pending, not be silently marked Paid without ever being priced in.
+  const processedEmployeeIds = payslips.map((p) => p.employeeId);
 
   const approvedTimesheetIds: string[] = [];
-  if (paidEmployeeIds.length > 0) {
-    for (const empId of paidEmployeeIds) {
-      const empTs = await deps.timesheets.findByEmployee(empId, period);
-      for (const ts of empTs) {
-        approvedTimesheetIds.push(ts.id);
-      }
+  for (const empId of processedEmployeeIds) {
+    const empTs = await deps.timesheets.findByEmployee(empId, period);
+    for (const ts of empTs) {
+      if (ts.payrollStatus === 'Approved') approvedTimesheetIds.push(ts.id);
     }
   }
 
-  if (payrollTransactions.length > 0 || approvedTimesheetIds.length > 0) {
-    await deps.timesheets.runPayrollAtomic(
-      payrollTransactions,
-      approvedTimesheetIds,
-      'Paid',
-      input.storeId,
-      input.periodStart,
-      input.periodEnd,
-      input.approvedBy,
-    );
-  }
+  const runId = randomUUID();
+  const payslipRows = payslips.map((p) => ({
+    employeeId: p.employeeId,
+    employeeName: p.employeeName,
+    basicPay: p.basicPay,
+    overtimePay: p.overtimePay,
+    ninePmBonus: p.ninePmBonus,
+    tips: p.tips,
+    commission: p.commission,
+    bikeAllowance: p.bikeAllowance,
+    silInflation: p.silInflation,
+    bonuses: p.bonuses,
+    holidayAdjustment: p.holidayAdjustment,
+    grossPay: p.grossPay,
+    sssDeduction: p.sssDeduction,
+    philhealthDeduction: p.philhealthDeduction,
+    pagibigDeduction: p.pagibigDeduction,
+    cashAdvanceDeduction: p.cashAdvanceDeduction,
+    otherDeductions: p.otherDeductions,
+    totalDeductions: p.totalDeductions,
+    netPay: p.netPay,
+    paidAs: p.paidAs,
+    paymentMethod: paymentMap.get(p.employeeId)?.paymentMethod ?? null,
+  }));
+
+  // Always record the run (header + payslips), even when no cash moved this
+  // period, so the idempotency guard and audit trail cover every attempt.
+  await deps.timesheets.runPayrollAtomic(
+    payrollTransactions,
+    approvedTimesheetIds,
+    'Paid',
+    input.storeId,
+    input.periodStart,
+    input.periodEnd,
+    input.approvedBy,
+    runId,
+    payslipRows,
+  );
 
   // Post-payroll: clear / reduce cash advance balances for employees whose
   // advances were actually deducted this run.

@@ -55,7 +55,9 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
 
   const overtimePay = computeOvertimePay(input);
   const ninePmBonus = input.ninePmBonusRate * input.ninePmCount;
-  const commission = input.pomRevenueShare * input.commissionRate;
+  // commissionRate is stored as a whole percentage (e.g. 5 means 5%), not a
+  // decimal fraction — divide by 100 before applying it to revenue.
+  const commission = input.pomRevenueShare * (input.commissionRate / 100);
   const tips = input.totalTips;
   const bikeAllowance = input.bikeAllowance;
   const bonuses = input.bonuses;
@@ -70,19 +72,30 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
     bonuses +
     input.holidayAdjustment;
 
-  const cashAdvanceDeduction = input.cashAdvanceDeduction;
   const sssDeduction = input.isEndOfMonth ? input.sssDeduction : 0;
   const philhealthDeduction = input.isEndOfMonth
     ? input.philhealthDeduction
     : 0;
   const pagibigDeduction = input.isEndOfMonth ? input.pagibigDeduction : 0;
+  const otherStatutoryDeductions =
+    sssDeduction + philhealthDeduction + pagibigDeduction;
 
-  const totalDeductions =
-    cashAdvanceDeduction + sssDeduction + philhealthDeduction + pagibigDeduction;
+  // Cap the cash-advance deduction so it can never push net pay below zero.
+  // Any amount that doesn't fit this period stays on the schedule's
+  // remaining_balance for the next run instead of creating a negative payslip.
+  const maxCashAdvance = Math.max(0, grossPay - otherStatutoryDeductions);
+  const cashAdvanceDeduction = Math.min(
+    Math.max(0, input.cashAdvanceDeduction),
+    maxCashAdvance,
+  );
+
+  const totalDeductions = cashAdvanceDeduction + otherStatutoryDeductions;
 
   const netPay = grossPay - totalDeductions;
-  const thirteenthMonthAccrual =
-    input.daysWorked > 0 ? (basicPay * input.daysWorked) / 12 : 0;
+  // 13th month pay accrues at 1/12 of basic pay earned this period, not
+  // 1/12 of (basic pay × days worked) — days worked is already priced into
+  // basicPay, so multiplying by it again inflated the accrual.
+  const thirteenthMonthAccrual = basicPay / 12;
 
   return {
     basicPay: round2(basicPay),

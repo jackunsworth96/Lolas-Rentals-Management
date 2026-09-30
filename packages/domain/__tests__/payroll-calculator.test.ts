@@ -6,7 +6,9 @@ const baseInput = {
   basicRate: 500,
   overtimeRate: 100,
   ninePmBonusRate: 50,
-  commissionRate: 0.1,
+  // Whole percentage points, matching production data (e.g. 5 = 5%), not a
+  // decimal fraction.
+  commissionRate: 10,
   daysWorked: 15,
   overtimeHours: 10,
   ninePmCount: 3,
@@ -20,6 +22,10 @@ const baseInput = {
   philhealthDeduction: 200,
   pagibigDeduction: 100,
   isEndOfMonth: true,
+  // Was missing from this fixture entirely, which silently made grossPay
+  // (and everything derived from it) NaN in any test that didn't override
+  // it — see payroll audit finding P-23.
+  holidayAdjustment: 0,
 };
 
 describe('calculatePayroll', () => {
@@ -68,9 +74,15 @@ describe('calculatePayroll', () => {
     expect(result.ninePmBonus).toBe(150);
   });
 
-  it('calculates POM commission from employee rate', () => {
+  it('calculates POM commission from employee rate (percent, not decimal)', () => {
     const result = calculatePayroll(baseInput);
+    // 5000 revenue share * 10% = 500, not 5000 * 10 = 50000.
     expect(result.commission).toBe(500);
+  });
+
+  it('treats a commissionRate of 100 as 100%, not 10000%', () => {
+    const result = calculatePayroll({ ...baseInput, commissionRate: 100 });
+    expect(result.commission).toBe(5000);
   });
 
   it('auto-includes tips', () => {
@@ -101,17 +113,30 @@ describe('calculatePayroll', () => {
     expect(result.netPay).toBe(expectedGross - expectedDeductions);
   });
 
-  it('calculates 13th month accrual', () => {
+  it('calculates 13th month accrual as basic pay / 12, not (basic pay * days) / 12', () => {
     const result = calculatePayroll(baseInput);
-    expect(result.thirteenthMonthAccrual).toBeCloseTo(
-      (7500 * 15) / 12,
-      2,
-    );
+    expect(result.thirteenthMonthAccrual).toBeCloseTo(7500 / 12, 2);
   });
 
   it('throws on negative basic rate', () => {
     expect(() =>
       calculatePayroll({ ...baseInput, basicRate: -100 }),
     ).toThrow('non-negative');
+  });
+
+  it('caps the cash advance deduction so net pay never goes negative', () => {
+    const result = calculatePayroll({
+      ...baseInput,
+      cashAdvanceDeduction: 50000,
+    });
+    // Gross 10850 - other statutory deductions 700 = 10150 max advance.
+    expect(result.cashAdvanceDeduction).toBe(10150);
+    expect(result.netPay).toBe(0);
+  });
+
+  it('leaves the cash advance deduction unchanged when it fits within net pay', () => {
+    const result = calculatePayroll(baseInput);
+    expect(result.cashAdvanceDeduction).toBe(500);
+    expect(result.netPay).toBeGreaterThan(0);
   });
 });

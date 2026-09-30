@@ -16,6 +16,26 @@ function dateStr(d: Date | string): string {
   return formatManilaDate(d);
 }
 
+/** Adds `days` calendar days to a 'YYYY-MM-DD' string. Pure date-string arithmetic, no timezone conversion. */
+function addDaysToDateStr(d: string, days: number): string {
+  const [y, m, dd] = d.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, dd + days)).toISOString().slice(0, 10);
+}
+
+/**
+ * Manila-day boundaries as UTC+8 ISO instants, for filtering timestamptz
+ * columns (e.g. order_addons.added_at) against a date-only period. Using
+ * bare 'YYYY-MM-DD' strings against a timestamptz column compares in UTC,
+ * which silently drops Manila-afternoon/evening activity on the last day of
+ * the period (UTC midnight is 8am Manila).
+ */
+function manilaDayBoundaries(start: string, end: string): { gte: string; lt: string } {
+  return {
+    gte: `${start}T00:00:00+08:00`,
+    lt: `${addDaysToDateStr(end, 1)}T00:00:00+08:00`,
+  };
+}
+
 /**
  * Supabase implementation of PayrollPort.
  *
@@ -80,18 +100,28 @@ export class SupabasePayrollAdapter implements PayrollPort {
 
   async aggregatePOMCommission(
     employeeId: string,
+    storeId: string,
     period: Period,
   ): Promise<CommissionSummary> {
     const sb = getSupabaseClient();
     const start = dateStr(period.start);
     const end = dateStr(period.end);
+    const { gte, lt } = manilaDayBoundaries(start, end);
 
+    // Per the business rule, this is intentionally a store-wide pool, not
+    // per-sale attribution: every employee with a configured commission_rate
+    // earns their own percentage of total Peace of Mind revenue for the
+    // store that month, regardless of who sold which unit. order_addons has
+    // no employee_id captured at all today (0 of 238 rows), so per-sale
+    // attribution isn't possible yet even if the business model called for
+    // it — scoping to store_id is what keeps a multi-store setup correct.
     const { data, error } = await sb
       .from('order_addons')
       .select('total_amount')
       .ilike('addon_name', '%peace of mind%')
-      .gte('added_at', start)
-      .lte('added_at', end);
+      .eq('store_id', storeId)
+      .gte('added_at', gte)
+      .lt('added_at', lt);
 
     if (error) throw new Error(`aggregatePOMCommission failed: ${error.message}`);
 

@@ -104,6 +104,8 @@ export function createTimesheetRepo(): TimesheetRepository {
       periodStart,
       periodEnd,
       runBy,
+      runId,
+      payslips,
     ) {
       const { error } = await sb.rpc('run_payroll_atomic', {
         p_transactions:  transactions,
@@ -113,6 +115,8 @@ export function createTimesheetRepo(): TimesheetRepository {
         p_period_start:  periodStart,
         p_period_end:    periodEnd,
         p_notes:         runBy,
+        p_run_id:        runId,
+        p_payslips:      payslips,
       });
 
       if (error) {

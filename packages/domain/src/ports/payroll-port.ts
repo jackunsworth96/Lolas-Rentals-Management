@@ -27,6 +27,8 @@ export interface PayslipBreakdown {
   netPay: number;
   paidAs: string | null;
   holidayAdjustment: number;
+  /** Timesheet rows (Approved, not yet Paid) counted for this period. Surfaced so reviewers can spot pay with zero days worked. */
+  daysWorked: number;
 }
 
 export interface TipsSummary {
@@ -68,6 +70,7 @@ export interface PayrollPort {
   aggregateTips(storeId: string, period: Period): Promise<TipsSummary>;
   aggregatePOMCommission(
     employeeId: string,
+    storeId: string,
     period: Period,
   ): Promise<CommissionSummary>;
   findBonuses(employeeId: string, period: Period): Promise<BonusRecord[]>;

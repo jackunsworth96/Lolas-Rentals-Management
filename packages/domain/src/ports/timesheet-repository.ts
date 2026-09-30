@@ -35,5 +35,34 @@ export interface TimesheetRepository {
     periodStart: string,
     periodEnd: string,
     runBy: string | null,
+    // Client-generated id for the payroll_runs header row. Passed through so
+    // the payslips rows below can reference it without a second round trip.
+    runId: string,
+    // Full per-employee breakdown, persisted in the same transaction as the
+    // journal entries and the payroll_runs header so a run can be reprinted
+    // or audited after the fact.
+    payslips: Array<{
+      employeeId: string;
+      employeeName: string;
+      basicPay: number;
+      overtimePay: number;
+      ninePmBonus: number;
+      tips: number;
+      commission: number;
+      bikeAllowance: number;
+      silInflation: number;
+      bonuses: number;
+      holidayAdjustment: number;
+      grossPay: number;
+      sssDeduction: number;
+      philhealthDeduction: number;
+      pagibigDeduction: number;
+      cashAdvanceDeduction: number;
+      otherDeductions: number;
+      totalDeductions: number;
+      netPay: number;
+      paidAs: string | null;
+      paymentMethod: string | null;
+    }>,
   ): Promise<void>;
 }

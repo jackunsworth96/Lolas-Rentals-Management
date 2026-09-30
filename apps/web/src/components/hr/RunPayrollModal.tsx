@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, Fragment } from 'react';
 import { Modal } from '../common/Modal.js';
 import {
   usePreviewPayroll,
@@ -49,6 +49,19 @@ interface PaymentRow {
   bonus: number;
   cashAdvance: number;
   holidayAdjustment: number;
+  // Full breakdown, carried through from the preview so operators can
+  // review how each figure was derived before confirming the run.
+  daysWorked: number;
+  basicPay: number;
+  overtimePay: number;
+  ninePmBonus: number;
+  tips: number;
+  commission: number;
+  bikeAllowance: number;
+  grossPay: number;
+  sssDeduction: number;
+  philhealthDeduction: number;
+  pagibigDeduction: number;
 }
 
 const METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -74,6 +87,16 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees }: Props) 
   // Step 2: per-employee payment methods
   const [paymentRows, setPaymentRows] = useState<PaymentRow[]>([]);
   const [result, setResult] = useState<RunPayrollResult | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  function toggleExpanded(employeeId: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(employeeId)) next.delete(employeeId);
+      else next.add(employeeId);
+      return next;
+    });
+  }
 
   const { periodStart, periodEnd } = derivePeriod(yearMonth, periodHalf);
   const isEndOfMonth = periodHalf === 'second';
@@ -107,6 +130,17 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees }: Props) 
           bonus: 0,
           cashAdvance: p.cashAdvanceDeduction ?? 0,
           holidayAdjustment: p.holidayAdjustment ?? 0,
+          daysWorked: p.daysWorked ?? 0,
+          basicPay: p.basicPay ?? 0,
+          overtimePay: p.overtimePay ?? 0,
+          ninePmBonus: p.ninePmBonus ?? 0,
+          tips: p.tips ?? 0,
+          commission: p.commission ?? 0,
+          bikeAllowance: p.bikeAllowance ?? 0,
+          grossPay: p.grossPay ?? 0,
+          sssDeduction: p.sssDeduction ?? 0,
+          philhealthDeduction: p.philhealthDeduction ?? 0,
+          pagibigDeduction: p.pagibigDeduction ?? 0,
         };
       }),
     );
@@ -167,6 +201,23 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees }: Props) 
     }
     return true;
   });
+
+  /**
+   * Flags rows that look wrong before they reach the confirm button:
+   * - net pay with zero approved days worked (e.g. mis-attributed commission)
+   * - commission that dwarfs basic pay for the same period (likely a rate/unit error)
+   */
+  function anomalyFor(row: PaymentRow): string | null {
+    if (row.daysWorked === 0 && row.grossPay > 0.01) {
+      return `No approved timesheets this period, but pay includes ${formatCurrency(row.grossPay)} — check commission attribution.`;
+    }
+    if (row.commission > 0 && row.basicPay > 0 && row.commission > row.basicPay * 3) {
+      return `Commission (${formatCurrency(row.commission)}) is much larger than basic pay (${formatCurrency(row.basicPay)}) — check the commission rate.`;
+    }
+    return null;
+  }
+
+  const anomalyCount = paymentRows.filter((r) => anomalyFor(r) !== null).length;
 
   function handleRun() {
     const employeePayments: EmployeePaymentDetail[] = paymentRows.map((r) => ({
@@ -253,11 +304,25 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees }: Props) 
             Period: <span className="font-medium text-gray-800">{periodStart} → {periodEnd}</span>
           </p>
 
+          {anomalyCount > 0 && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
+              <p className="text-sm font-semibold text-amber-800">
+                {anomalyCount} row{anomalyCount !== 1 ? 's' : ''} flagged for review
+              </p>
+              <p className="mt-1 text-xs text-amber-700">
+                Expand a flagged row (▸) to see its full breakdown before confirming.
+              </p>
+            </div>
+          )}
+
           <div className="overflow-x-auto rounded-lg border border-gray-200">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
                 <tr>
+                  <th className="px-3 py-2 text-left"></th>
                   <th className="px-3 py-2 text-left">Employee</th>
+                  <th className="px-3 py-2 text-right">Days</th>
+                  <th className="px-3 py-2 text-right">Gross</th>
                   <th className="px-3 py-2 text-right">Bonus</th>
                   <th className="px-3 py-2 text-right">Net Pay</th>
                   <th className="px-3 py-2 text-left">Payment method</th>
@@ -269,8 +334,21 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees }: Props) 
                 {paymentRows.map((row) => {
                   const isCash = row.paymentMethod === 'cash';
                   const splitError = isCash && Math.abs(row.fromTill + row.fromSafe - row.netPay) >= 0.01;
+                  const anomaly = anomalyFor(row);
+                  const expanded = expandedIds.has(row.employeeId);
                   return (
-                    <tr key={row.employeeId} className={splitError ? 'bg-red-50' : ''}>
+                    <Fragment key={row.employeeId}>
+                    <tr className={splitError ? 'bg-red-50' : anomaly ? 'bg-amber-50' : ''}>
+                      <td className="px-3 py-2 align-top">
+                        <button
+                          type="button"
+                          onClick={() => toggleExpanded(row.employeeId)}
+                          className="text-gray-400 hover:text-gray-700"
+                          aria-label={expanded ? 'Collapse breakdown' : 'Expand breakdown'}
+                        >
+                          {expanded ? '▾' : '▸'}
+                        </button>
+                      </td>
                       <td className="px-3 py-2">
                         <div className="font-medium text-gray-900">{row.employeeName}</div>
                         {row.cashAdvance > 0 && (
@@ -283,7 +361,14 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees }: Props) 
                             Includes {formatCurrency(row.holidayAdjustment)} holiday/SIL adjustment
                           </div>
                         )}
+                        {anomaly && (
+                          <div className="mt-1 text-xs font-medium text-amber-700">⚠ {anomaly}</div>
+                        )}
                       </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-gray-700">
+                        {row.daysWorked}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-gray-700">{formatCurrency(row.grossPay)}</td>
                       <td className="px-3 py-2 text-right">
                         <div className="flex items-center justify-end gap-0.5">
                           <span className="text-xs text-gray-400">₱</span>
@@ -350,12 +435,70 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees }: Props) 
                         )}
                       </td>
                     </tr>
+                    {expanded && (
+                      <tr className="bg-gray-50">
+                        <td />
+                        <td colSpan={8} className="px-3 py-3">
+                          <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-xs sm:grid-cols-4">
+                            <div className="flex justify-between gap-2">
+                              <span className="text-gray-500">Basic pay</span>
+                              <span className="tabular-nums text-gray-800">{formatCurrency(row.basicPay)}</span>
+                            </div>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-gray-500">Overtime</span>
+                              <span className="tabular-nums text-gray-800">{formatCurrency(row.overtimePay)}</span>
+                            </div>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-gray-500">9PM bonus</span>
+                              <span className="tabular-nums text-gray-800">{formatCurrency(row.ninePmBonus)}</span>
+                            </div>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-gray-500">Tips</span>
+                              <span className="tabular-nums text-gray-800">{formatCurrency(row.tips)}</span>
+                            </div>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-gray-500">Commission</span>
+                              <span className="tabular-nums text-gray-800">{formatCurrency(row.commission)}</span>
+                            </div>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-gray-500">Bike allowance</span>
+                              <span className="tabular-nums text-gray-800">{formatCurrency(row.bikeAllowance)}</span>
+                            </div>
+                            <div className="flex justify-between gap-2 border-t border-gray-200 pt-1 font-medium">
+                              <span className="text-gray-600">Gross pay</span>
+                              <span className="tabular-nums text-gray-900">{formatCurrency(row.grossPay)}</span>
+                            </div>
+                            <div />
+                            <div className="flex justify-between gap-2">
+                              <span className="text-gray-500">SSS</span>
+                              <span className="tabular-nums text-gray-800">−{formatCurrency(row.sssDeduction)}</span>
+                            </div>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-gray-500">PhilHealth</span>
+                              <span className="tabular-nums text-gray-800">−{formatCurrency(row.philhealthDeduction)}</span>
+                            </div>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-gray-500">Pag-IBIG</span>
+                              <span className="tabular-nums text-gray-800">−{formatCurrency(row.pagibigDeduction)}</span>
+                            </div>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-gray-500">Cash advance</span>
+                              <span className="tabular-nums text-gray-800">−{formatCurrency(row.cashAdvance)}</span>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
               </tbody>
               <tfoot className="border-t border-gray-200 bg-gray-50">
                 <tr>
-                  <td className="px-3 py-2 font-semibold text-gray-700">Total</td>
+                  <td colSpan={3} className="px-3 py-2 font-semibold text-gray-700">Total</td>
+                  <td className="px-3 py-2 text-right font-semibold tabular-nums text-gray-900">
+                    {formatCurrency(paymentRows.reduce((s, r) => s + r.grossPay, 0))}
+                  </td>
                   <td className="px-3 py-2 text-right tabular-nums font-medium text-gray-700">
                     {formatCurrency(paymentRows.reduce((s, r) => s + r.bonus, 0))}
                   </td>

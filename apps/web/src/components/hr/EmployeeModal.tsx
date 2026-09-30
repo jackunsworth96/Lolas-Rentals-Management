@@ -58,6 +58,19 @@ interface Props {
   onClose: () => void;
 }
 
+/**
+ * "Paid As" (the HR-facing record of how someone is paid) and
+ * "Default Payment Method" (what a payroll run defaults to for this
+ * employee) previously had no relationship and could silently drift apart —
+ * e.g. an employee marked "Bank Transfer" here still defaulting to a cash
+ * till pull during a payroll run. Selecting "Paid As" now drives this field.
+ */
+const PAID_AS_TO_PAYMENT_METHOD: Record<string, string> = {
+  Cash: 'cash',
+  GCash: 'gcash',
+  'Bank Transfer': 'bank_transfer',
+};
+
 type Tab = 'personal' | 'role' | 'government' | 'leave' | 'financial';
 
 const TABS: { key: Tab; label: string }[] = [
@@ -437,7 +450,20 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
                     <label className={labelCls}>Paid As</label>
                     <select
                       value={String(form.paidAs ?? '')}
-                      onChange={(e) => set('paidAs', e.target.value)}
+                      onChange={(e) => {
+                        const paidAs = e.target.value;
+                        // Keep the payroll-run payment method in sync with
+                        // this field by default — the two were allowed to
+                        // drift independently, so an employee's HR record
+                        // could say "Bank Transfer" while payroll runs still
+                        // defaulted to pulling cash from the till for them.
+                        const derivedMethod = PAID_AS_TO_PAYMENT_METHOD[paidAs];
+                        setForm((prev) => ({
+                          ...prev,
+                          paidAs,
+                          ...(derivedMethod ? { defaultPaymentMethod: derivedMethod } : {}),
+                        }));
+                      }}
                       disabled={!editing}
                       className={inputCls}
                     >
@@ -501,16 +527,21 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
                     />
                   </div>
                   <div>
-                    <label className={labelCls}>Commission Rate</label>
+                    <label className={labelCls}>Commission Rate (%)</label>
                     <input
                       type="number"
                       min={0}
-                      step={0.0001}
+                      max={100}
+                      step={0.01}
                       value={Number(form.commissionRate ?? 0)}
                       onChange={(e) => set('commissionRate', parseFloat(e.target.value) || 0)}
                       disabled={!editing}
                       className={inputCls}
                     />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Enter a whole percentage, e.g. <span className="font-medium">5</span> for 5% of
+                      Peace of Mind revenue sold — not a decimal fraction.
+                    </p>
                   </div>
                 </div>
                 <div>

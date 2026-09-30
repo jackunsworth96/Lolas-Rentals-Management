@@ -208,6 +208,7 @@ export interface PayslipPreview {
   totalDeductions: number;
   netPay: number;
   paidAs: string | null;
+  daysWorked: number;
 }
 
 export interface RunPayrollPayload {

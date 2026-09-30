@@ -57,8 +57,10 @@ export async function calculatePayslip(
     period,
   );
 
-  // Only count timesheets not yet paid — prevents double-counting on re-runs
-  const timesheets = allTimesheets.filter((t) => t.payrollStatus !== 'Paid');
+  // Only count Approved timesheets. Pending rows have not cleared review yet
+  // and must not be paid; Paid rows belong to a previous run and must not be
+  // double-counted.
+  const timesheets = allTimesheets.filter((t) => t.payrollStatus === 'Approved');
 
   const daysWorked = timesheets.length;
   const overtimeHours = timesheets.reduce((sum, t) => sum + t.overtimeHours, 0);
@@ -91,13 +93,24 @@ export async function calculatePayslip(
     0,
   );
 
-  // POM commission only accrues at end of month
+  // POM commission is a monthly figure — each employee with a configured
+  // commission_rate earns their own percentage of the store's total Peace of
+  // Mind revenue for the whole calendar month, paid once on the end-of-month
+  // run. Use the full month's window here, not just this run's 16–EOM half,
+  // so mid-month sales aren't dropped from the commission base.
+  const fullMonthPeriod = input.isEndOfMonth
+    ? Period.from(
+        new Date(`${input.periodEnd.slice(0, 7)}-01`),
+        new Date(input.periodEnd),
+      )
+    : period;
+
   // Bike allowance is a monthly benefit — only paid on the second-half run
   const [tipsSummary, commissionSummary, dbBonuses, cashAdvances] =
     await Promise.all([
       deps.payroll.aggregateTips(input.storeId, period),
       input.isEndOfMonth
-        ? deps.payroll.aggregatePOMCommission(input.employeeId, period)
+        ? deps.payroll.aggregatePOMCommission(input.employeeId, input.storeId, fullMonthPeriod)
         : Promise.resolve({ totalOrderValue: 0, commissionRate: 0, commissionAmount: 0, employeeId: input.employeeId, period: '' }),
       deps.payroll.findBonuses(input.employeeId, period),
       deps.payroll.findCashAdvanceSchedules(input.employeeId),
@@ -105,10 +118,11 @@ export async function calculatePayslip(
 
   const pomRevenueShare = input.isEndOfMonth ? commissionSummary.totalOrderValue : 0;
 
-  // Ad hoc bonuses from the modal override the DB bonus schedule
-  const totalBonuses = input.bonuses !== undefined
-    ? input.bonuses
-    : dbBonuses.reduce((sum, b) => sum + b.amount, 0);
+  // Ad hoc bonuses from the modal are additive on top of any DB-scheduled
+  // bonuses for the period (previously they silently replaced the DB
+  // bonuses on a real run but not in preview, so the two disagreed).
+  const dbBonusTotal = dbBonuses.reduce((sum, b) => sum + b.amount, 0);
+  const totalBonuses = dbBonusTotal + (input.bonuses ?? 0);
 
   // Cash advance: sum schedule rows tagged for the current payday type.
   // Legacy lump-sum advances stored on the employee record are also included
@@ -165,5 +179,6 @@ export async function calculatePayslip(
     totalDeductions: result.totalDeductions,
     netPay: result.netPay,
     paidAs: employee.paidAs,
+    daysWorked,
   };
 }
