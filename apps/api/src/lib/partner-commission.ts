@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../adapters/supabase/client.js';
+import { formatManilaDate } from '../utils/manila-date.js';
 
 export interface PartnerCommissionBooking {
   id: string;
@@ -84,6 +85,18 @@ function monthBounds(month?: string): { from?: string; to?: string } {
     from: new Date(Date.UTC(y, m - 1, 1)).toISOString(),
     to: new Date(Date.UTC(y, m, 1)).toISOString(),
   };
+}
+
+// Calendar-day gap (Asia/Manila) between when a booking was created and its
+// pickup date. Using calendar dates instead of raw millisecond diffs avoids
+// penalising bookings whose orders_raw row was logged a few minutes after the
+// scheduled pickup time (common for walk-in / on-site delivery hand-offs) —
+// those should still count as "booked same day" (0 days advance), not a
+// small negative number that fails an advance_booking_days >= 0 threshold.
+function calendarAdvanceDays(pickupIso: string, createdIso: string): number {
+  const pickupDate = new Date(formatManilaDate(new Date(pickupIso)) + 'T00:00:00Z').getTime();
+  const createdDate = new Date(formatManilaDate(new Date(createdIso)) + 'T00:00:00Z').getTime();
+  return Math.round((pickupDate - createdDate) / 86_400_000);
 }
 
 function daysInReportMonth(month?: string): number {
@@ -252,7 +265,7 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
     created_at: string;
   }>).map((row) => {
     const advanceDays = row.pickup_datetime
-      ? (new Date(row.pickup_datetime).getTime() - new Date(row.created_at).getTime()) / 86_400_000
+      ? calendarAdvanceDays(row.pickup_datetime, row.created_at)
       : null;
     const override = row.vehicle_model_id ? vehicleTermsByModel.get(row.vehicle_model_id) : undefined;
     const overrideHasCommission = override

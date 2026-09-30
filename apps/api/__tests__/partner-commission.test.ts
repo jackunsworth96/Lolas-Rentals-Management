@@ -18,6 +18,9 @@ type Fixture = {
   payments?: Array<{ order_id: string; amount: number; settlement_status: string | null }>;
   rawStatus?: string;
   cancelledReason?: string | null;
+  pickupDatetime?: string;
+  createdAt?: string;
+  advanceBookingDays?: number;
 };
 
 function queryResult<T>(data: T) {
@@ -43,7 +46,7 @@ function commissionClient(fixture: Fixture = {}) {
     id: 'partner-1',
     slug: 'bravo-beach-resort',
     store_id: 'store-lolas',
-    advance_booking_days: 0,
+    advance_booking_days: fixture.advanceBookingDays ?? 0,
     commission_type: fixture.commissionType ?? 'percentage',
     commission_value: fixture.commissionValue ?? 10,
     commission_includes_extensions: fixture.includesExtensions ?? true,
@@ -53,14 +56,14 @@ function commissionClient(fixture: Fixture = {}) {
     order_reference: 'LR-0720-2C2D',
     customer_name: 'Customer',
     vehicle_model_id: 'beat',
-    pickup_datetime: '2026-07-20T11:15:00+08:00',
+    pickup_datetime: fixture.pickupDatetime ?? '2026-07-20T11:15:00+08:00',
     dropoff_datetime: '2026-07-22T11:15:00+08:00',
     rental_value_raw: 10000,
     web_quote_raw: 10000,
     status: fixture.rawStatus ?? 'processed',
     cancelled_reason: fixture.cancelledReason ?? null,
     cancelled_at: fixture.rawStatus === 'cancelled' ? '2026-07-10T09:00:00+08:00' : null,
-    created_at: '2026-07-01T00:00:00+08:00',
+    created_at: fixture.createdAt ?? '2026-07-01T00:00:00+08:00',
   }];
   const from = vi.fn((table: string) => {
     switch (table) {
@@ -177,6 +180,47 @@ describe('partner extension commissions', () => {
       commissionAmount: 0,
       pendingCommissionAmount: 0,
     });
+  });
+});
+
+describe('partner commission advance-days eligibility', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('is still commissionable when the booking is logged a few minutes after pickup on the same calendar day', async () => {
+    // Pickup at 06:45 Manila time; orders_raw row created ~5 minutes later at
+    // 06:50 the same day (e.g. an on-site/delivery hand-off logged just after
+    // the rental started). Raw millisecond diff would be slightly negative,
+    // but same-day should count as 0 days' advance and remain commissionable
+    // against a 0-day threshold.
+    mocks.getSupabaseClient.mockReturnValue(commissionClient({
+      pickupDatetime: '2026-07-20T06:45:00+08:00',
+      createdAt: '2026-07-20T06:50:35+08:00',
+      advanceBookingDays: 0,
+    }));
+
+    const stats = await getPartnerCommissionStats('partner-1', '2026-07');
+
+    expect(stats.bookings[0]).toMatchObject({
+      advanceDays: 0,
+      commissionable: true,
+    });
+    expect(stats.commissionableBookings).toBe(1);
+  });
+
+  it('is not commissionable when the booking is logged a calendar day after pickup', async () => {
+    mocks.getSupabaseClient.mockReturnValue(commissionClient({
+      pickupDatetime: '2026-07-20T23:55:00+08:00',
+      createdAt: '2026-07-21T00:05:00+08:00',
+      advanceBookingDays: 0,
+    }));
+
+    const stats = await getPartnerCommissionStats('partner-1', '2026-07');
+
+    expect(stats.bookings[0]).toMatchObject({
+      advanceDays: -1,
+      commissionable: false,
+    });
+    expect(stats.commissionableBookings).toBe(0);
   });
 });
 
