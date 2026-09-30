@@ -64,6 +64,13 @@ export interface PartnerReportBooking {
   isExtended: boolean;
   extendedDropoffDatetime: string | null;
   pendingCommissionAmount: number;
+  /** True when this row was carried over from an earlier month's booking
+   * because some of its nights (extension, or a long original stay) land in
+   * this report month. Doesn't count toward totalBookings/commissionableBookings. */
+  isCarryover: boolean;
+  /** Explains a cross-month split, e.g. "Jul 25–Aug 1 of 11 total nights;
+   * remainder continues into August". Null when the stay is within one month. */
+  periodNote: string | null;
 }
 
 export interface PartnerReport {

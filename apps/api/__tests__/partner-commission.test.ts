@@ -224,6 +224,196 @@ describe('partner commission advance-days eligibility', () => {
   });
 });
 
+// ── A filter-aware mock for the month-rollover tests below ──
+// Unlike `queryResult` (which ignores its filter args and always returns the
+// same canned rows), this mock actually applies eq/in/gte/lt against a fixed
+// set of fixture rows per table, so the new carryover-detection queries
+// (which rely on real created_at/dropoff_datetime filtering to distinguish
+// "this month" from "an earlier month that spills into this month") behave
+// like the real database would.
+type FilterOp = 'eq' | 'in' | 'gte' | 'lt';
+type RecordedFilter = [FilterOp, string, unknown];
+
+function applyFilters<T extends Record<string, unknown>>(rows: T[], filters: RecordedFilter[]): T[] {
+  return rows.filter((row) => filters.every(([op, col, val]) => {
+    const rowVal = row[col];
+    if (op === 'eq') return rowVal === val;
+    if (op === 'in') return Array.isArray(val) && (val as unknown[]).includes(rowVal);
+    if (op === 'gte') return rowVal != null && new Date(rowVal as string).getTime() >= new Date(val as string).getTime();
+    if (op === 'lt') return rowVal != null && new Date(rowVal as string).getTime() < new Date(val as string).getTime();
+    return true;
+  }));
+}
+
+function dynamicTable<T extends Record<string, unknown>>(rows: T[]) {
+  return () => {
+    const filters: RecordedFilter[] = [];
+    const query = {
+      select: vi.fn(() => query),
+      order: vi.fn(() => query),
+      eq: vi.fn((col: string, val: unknown) => { filters.push(['eq', col, val]); return query; }),
+      in: vi.fn((col: string, val: unknown) => { filters.push(['in', col, val]); return query; }),
+      gte: vi.fn((col: string, val: unknown) => { filters.push(['gte', col, val]); return query; }),
+      lt: vi.fn((col: string, val: unknown) => { filters.push(['lt', col, val]); return query; }),
+      single: vi.fn(async () => ({ data: applyFilters(rows, filters)[0] ?? null, error: null })),
+      then: (
+        resolve: (value: { data: T[]; error: null }) => unknown,
+        reject: (reason: unknown) => unknown,
+      ) => Promise.resolve({ data: applyFilters(rows, filters), error: null }).then(resolve, reject),
+    };
+    return query;
+  };
+}
+
+function rolloverClient(opts: {
+  partner: Record<string, unknown>;
+  vehicleTerms?: Array<Record<string, unknown>>;
+  ordersRaw: Array<Record<string, unknown>>;
+  orders?: Array<Record<string, unknown>>;
+  orderItems?: Array<Record<string, unknown>>;
+  payments?: Array<Record<string, unknown>>;
+}) {
+  const partnerTable = dynamicTable([opts.partner]);
+  const vehicleTermsTable = dynamicTable(opts.vehicleTerms ?? []);
+  const ordersRawTable = dynamicTable(opts.ordersRaw);
+  const ordersTable = dynamicTable(opts.orders ?? []);
+  const orderItemsTable = dynamicTable(opts.orderItems ?? []);
+  const paymentsTable = dynamicTable(opts.payments ?? []);
+  const from = vi.fn((table: string) => {
+    switch (table) {
+      case 'accommodation_partners': return partnerTable();
+      case 'partner_vehicle_terms': return vehicleTermsTable();
+      case 'orders_raw': return ordersRawTable();
+      case 'orders': return ordersTable();
+      case 'order_items': return orderItemsTable();
+      case 'payments': return paymentsTable();
+      default: throw new Error(`Unexpected table ${table}`);
+    }
+  });
+  return { from };
+}
+
+describe('partner commission month-rollover (proration + carryover)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  // A booking made Jul 1, picked up Jul 25 for an original 3-night stay
+  // (Jul 25 → Jul 28, rental_value_raw 1500 = 500/night), then extended by
+  // 8 more nights to Aug 5 for a further 4000 (also 500/night) — so the
+  // whole 11-night stay is a clean 500/night blend, split 7 nights in July
+  // / 4 nights in August.
+  const partner = {
+    id: 'partner-1',
+    slug: 'bravo-beach-resort',
+    store_id: 'store-lolas',
+    advance_booking_days: 0,
+    commission_type: 'percentage',
+    commission_value: 10,
+    commission_includes_extensions: true,
+  };
+  const ordersRawRows = [{
+    id: 'raw-ext-1',
+    order_reference: 'LR-0725-TEST',
+    customer_name: 'Rollover Customer',
+    vehicle_model_id: 'beat',
+    pickup_datetime: '2026-07-25T00:00:00.000Z',
+    dropoff_datetime: '2026-07-28T00:00:00.000Z', // original, unextended
+    rental_value_raw: 1500,
+    web_quote_raw: 1500,
+    status: 'processed',
+    cancelled_reason: null,
+    cancelled_at: null,
+    created_at: '2026-07-01T00:00:00.000Z',
+    store_id: 'store-lolas',
+    partner_ref: 'bravo-beach-resort',
+  }];
+  const ordersRows = [{ id: 'order-ext-1', booking_token: 'LR-0725-TEST', store_id: 'store-lolas', partner_ref: 'bravo-beach-resort' }];
+  const orderItemsRows = [{ order_id: 'order-ext-1', dropoff_datetime: '2026-08-05T00:00:00.000Z' }];
+  const paymentsRows = [{ order_id: 'order-ext-1', amount: 4000, settlement_status: null, payment_type: 'extension' }];
+
+  it('prorates commission by nights when an extension spans into the next month', async () => {
+    mocks.getSupabaseClient.mockReturnValue(rolloverClient({
+      partner, ordersRaw: ordersRawRows, orders: ordersRows, orderItems: orderItemsRows, payments: paymentsRows,
+    }));
+
+    const stats = await getPartnerCommissionStats('partner-1', '2026-07');
+
+    expect(stats.totalBookings).toBe(1);
+    expect(stats.commissionableBookings).toBe(1);
+    expect(stats.bookings).toHaveLength(1);
+    expect(stats.bookings[0]).toMatchObject({
+      isCarryover: false,
+      isExtended: true,
+      commissionBase: 3500,   // 5500 total * 7/11 nights in July
+      commissionAmount: 350,  // 10% of 3500
+    });
+    expect(stats.bookings[0].periodNote).toMatch(/Jul 25.*Aug 1 of 11 total nights; remainder continues into August/);
+    expect(stats.totalCommission).toBe(350);
+  });
+
+  it('picks up the remaining nights/commission as a carryover row in the following month, without double-counting bookings', async () => {
+    mocks.getSupabaseClient.mockReturnValue(rolloverClient({
+      partner, ordersRaw: ordersRawRows, orders: ordersRows, orderItems: orderItemsRows, payments: paymentsRows,
+    }));
+
+    const stats = await getPartnerCommissionStats('partner-1', '2026-08');
+
+    // The booking was made (and counted) in July — August must not recount it.
+    expect(stats.totalBookings).toBe(0);
+    expect(stats.commissionableBookings).toBe(0);
+    expect(stats.bookings).toHaveLength(1);
+    expect(stats.bookings[0]).toMatchObject({
+      isCarryover: true,
+      commissionBase: 2000,   // 5500 total * 4/11 nights in August
+      commissionAmount: 200,  // 10% of 2000
+    });
+    expect(stats.bookings[0].periodNote).toMatch(/Continued from Jul 25 booking.*of 11 total nights/);
+    expect(stats.totalCommission).toBe(200);
+    // 4 of August's nights (Aug 1–5) came from this carried-over booking.
+    // (averageVehiclesPerDay is rounded to 2dp by the implementation.)
+    expect(stats.averageVehiclesPerDay).toBeCloseTo(4 / 31, 2);
+
+    // 350 (July) + 200 (August) = 550 = 10% of the full 5500 stay — no
+    // commission is lost or double-paid across the boundary.
+  });
+
+  it('rolls a long original (non-extended) booking into the next month too', async () => {
+    // No extension involved at all — just a 19-night booking that happens to
+    // straddle the boundary. commission_includes_extensions is irrelevant
+    // here since there's no `orders`/`order_items`/`payments` data at all.
+    const longStayPartner = { ...partner, commission_includes_extensions: false };
+    const longStayRaw = [{
+      id: 'raw-long-1',
+      order_reference: 'LR-0913-LONG',
+      customer_name: 'Long Stay Customer',
+      vehicle_model_id: 'beat',
+      pickup_datetime: '2026-09-13T00:00:00.000Z',
+      dropoff_datetime: '2026-10-03T00:00:00.000Z', // 20 nights, no extension
+      rental_value_raw: 10000, // 500/night * 20
+      web_quote_raw: 10000,
+      status: 'processed',
+      cancelled_reason: null,
+      cancelled_at: null,
+      created_at: '2026-09-13T00:00:00.000Z',
+      store_id: 'store-lolas',
+      partner_ref: 'bravo-beach-resort',
+    }];
+
+    mocks.getSupabaseClient.mockReturnValue(rolloverClient({
+      partner: longStayPartner, ordersRaw: longStayRaw,
+    }));
+
+    const octStats = await getPartnerCommissionStats('partner-1', '2026-10');
+
+    expect(octStats.totalBookings).toBe(0); // made in September, not October
+    expect(octStats.bookings).toHaveLength(1);
+    expect(octStats.bookings[0]).toMatchObject({
+      isCarryover: true,
+      commissionBase: 1000, // 10000 * 2/20 nights (Oct 1–3) in October
+      commissionAmount: 100,
+    });
+  });
+});
+
 describe('consolidated partner commissions', () => {
   beforeEach(() => vi.clearAllMocks());
 

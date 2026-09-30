@@ -2351,6 +2351,12 @@ function PartnerDetailPanel({ partner, onEdit, onClose, pushToast }: PartnerDeta
                                   {b.commissionType === 'fixed' && b.commissionValue !== null && (
                                     <p className="text-gray-400">{formatPhp(b.commissionValue)} fixed</p>
                                   )}
+                                  {b.isCarryover && (
+                                    <p className="text-purple-500">Carried over</p>
+                                  )}
+                                  {b.periodNote && (
+                                    <p className="text-gray-400 italic">{b.periodNote}</p>
+                                  )}
                                 </div>
                               ) : (
                                 <span className="text-gray-400">

@@ -134,10 +134,15 @@ export function generatePartnerReportPdf(
       b.isExtended && b.extendedDropoffDatetime ? b.extendedDropoffDatetime : b.dropoffDatetime;
     const dates =
       fmtDate(b.pickupDatetime) + (returnDate ? `\nReturn: ${fmtDate(returnDate)}` : '');
+    const tags = [
+      b.isExtended ? '[Extended]' : null,
+      b.isCarryover ? '[Carried over]' : null,
+    ].filter(Boolean).join(' ');
+    const periodLine = b.periodNote ? `\n${b.periodNote}` : '';
     return [
       b.orderReference ?? '—',
       b.customerName ?? '—',
-      dates + (b.isExtended ? '\n[Extended]' : ''),
+      dates + (tags ? `\n${tags}` : '') + periodLine,
       b.status.toLowerCase() === 'cancelled'
         ? `${statusLabel(b.status)}\n${cancellationReasonLabel(b.cancelledReason)}`
         : statusLabel(b.status),

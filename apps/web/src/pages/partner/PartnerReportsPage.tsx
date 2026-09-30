@@ -98,7 +98,13 @@ export default function PartnerReportsPage() {
                       {b.isExtended && (
                         <span className="ml-1 inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">Extended</span>
                       )}
+                      {b.isCarryover && (
+                        <span className="ml-1 inline-flex items-center rounded-full border border-purple-200 bg-purple-50 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700">Carried over</span>
+                      )}
                     </div>
+                  )}
+                  {b.periodNote && (
+                    <p className="mt-0.5 max-w-[14rem] text-[10px] leading-snug text-gray-400">{b.periodNote}</p>
                   )}
                 </td>
                 <td className="px-3 py-2">
