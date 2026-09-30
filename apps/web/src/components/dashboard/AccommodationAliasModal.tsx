@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Modal } from '../common/Modal.js';
 import {
   useAccommodationAliases,
@@ -24,6 +24,21 @@ export function AccommodationAliasModal({ open, onClose, unmatchedRawNames }: Pr
   const [formError, setFormError] = useState('');
 
   const aliasedRawNames = new Set(aliases.map((a) => a.raw_name));
+
+  // Distinct canonical names already in use, so staff can reuse an exact
+  // existing spelling instead of retyping it (and risking a mismatched
+  // case/whitespace variant that would split the stats into two rows).
+  const existingCanonicalNames = useMemo(() => {
+    const seen = new Set<string>();
+    const names: string[] = [];
+    for (const a of aliases) {
+      if (!seen.has(a.canonical_name)) {
+        seen.add(a.canonical_name);
+        names.push(a.canonical_name);
+      }
+    }
+    return names.sort((a, b) => a.localeCompare(b));
+  }, [aliases]);
 
   const handleSave = async () => {
     setFormError('');
@@ -106,7 +121,14 @@ export function AccommodationAliasModal({ open, onClose, unmatchedRawNames }: Pr
                 value={canonicalName}
                 onChange={(e) => setCanonicalName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') void handleSave(); }}
+                list="existing-canonical-names"
+                autoComplete="off"
               />
+              <datalist id="existing-canonical-names">
+                {existingCanonicalNames.map((name) => (
+                  <option key={name} value={name} />
+                ))}
+              </datalist>
             </div>
             <div className="flex items-end">
               <button
@@ -123,6 +145,21 @@ export function AccommodationAliasModal({ open, onClose, unmatchedRawNames }: Pr
           <p className="mt-1.5 text-xs text-gray-400">
             The raw name is normalised to lowercase before matching — capitalisation doesn't matter.
           </p>
+          {existingCanonicalNames.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-gray-400">Reuse:</span>
+              {existingCanonicalNames.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => setCanonicalName(name)}
+                  className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-xs text-gray-600 hover:border-teal-300 hover:bg-teal-50 hover:text-teal-700"
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Existing aliases */}
