@@ -27,7 +27,7 @@ const BOOKING_TIMES = [
   '15:15', '15:45', '16:15', '16:45',
 ];
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
-const MIN_LEAD_MS = 30 * 60 * 1000;
+const MIN_LEAD_MS = 15 * 60 * 1000;
 
 type VehicleLine = { id: string; vehicleModelId: string; driverName: string };
 
@@ -423,7 +423,7 @@ export default function PartnerBookPage() {
     setError('');
     setSuccess(null);
     if (!leadTimeOk) {
-      setError(`We need at least 30 minutes' notice — please choose ${earliestBookableLabel()} or later.`);
+      setError(`We need at least 15 minutes' notice — please choose ${earliestBookableLabel()} or later.`);
       return;
     }
     const vehicles = vehicleLines
@@ -507,7 +507,7 @@ export default function PartnerBookPage() {
             </div>
             {!leadTimeOk && (
               <p className="mt-1 text-xs text-amber-700">
-                We need at least 30 minutes' notice, but it's likely we can get to you sooner than that
+                We need at least 15 minutes' notice, but it's likely we can get to you sooner than that
                 — go ahead and book for {earliestBookableLabel()} or later and we'll aim to be there by then.
                 Need us there ASAP?{' '}
                 <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="font-semibold underline">

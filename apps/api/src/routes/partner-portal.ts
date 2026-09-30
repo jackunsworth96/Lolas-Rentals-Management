@@ -61,7 +61,7 @@ const PartnerBookSchema = SubmitDirectBookingRequestSchema
     path: ['vehicles'],
   });
 
-const MIN_PARTNER_LEAD_MS = 30 * 60 * 1000;
+const MIN_PARTNER_LEAD_MS = 15 * 60 * 1000;
 
 /** Manila-time "9:15 AM" style label for a given instant. */
 function manilaTimeLabel(date: Date): string {
@@ -83,7 +83,7 @@ function assertPartnerLeadTime(pickupDatetime: string): void {
   if (pickup.getTime() - Date.now() < MIN_PARTNER_LEAD_MS) {
     const earliestLabel = manilaTimeLabel(new Date(Date.now() + MIN_PARTNER_LEAD_MS));
     const err = new Error(
-      `We need at least 30 minutes' notice, but it's likely we can get to you sooner than that — ` +
+      `We need at least 15 minutes' notice, but it's likely we can get to you sooner than that — ` +
       `go ahead and book for ${earliestLabel} or later and we'll aim to be there by then. ` +
       `Need us there ASAP? Send us a message so we can make you a priority.`,
     );

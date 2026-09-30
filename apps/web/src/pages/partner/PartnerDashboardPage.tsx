@@ -13,7 +13,7 @@ const BOOKING_TIMES = [
   '15:15', '15:45', '16:15', '16:45',
 ];
 
-const MIN_LEAD_MS = 30 * 60 * 1000;
+const MIN_LEAD_MS = 15 * 60 * 1000;
 
 function manilaDate(offsetHours: number) {
   const d = new Date(Date.now() + offsetHours * 60 * 60 * 1000);
@@ -234,7 +234,7 @@ export default function PartnerDashboardPage() {
         </div>
         {!leadTimeOk && (
           <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-            We need at least 30 minutes' notice, but it's likely we can get to you sooner than that
+            We need at least 15 minutes' notice, but it's likely we can get to you sooner than that
             — go ahead and book for {earliestBookableLabel()} or later and we'll aim to be there by then.
             Need us there ASAP?{' '}
             <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="font-semibold underline">

@@ -31,6 +31,7 @@ import {
 import { PawCardLoginPanel, type PawCardAccess } from './PawCardLoginPanel.js';
 import { PawCardSavingsForm } from './PawCardSavingsForm.js';
 import { PawCardDashboard } from './PawCardDashboard.js';
+import { partnerSearchScore } from './partner-search.js';
 import BorderGlow from '../../components/home/BorderGlow.js';
 import separatorSvg from '../../assets/Original Assests/separator.svg';
 import pawPrintAsset from '../../assets/Paw Print.svg';
@@ -260,13 +261,23 @@ export default function PawCardPartnersPage() {
     }
 
     if (search.trim()) {
-      const q = search.toLowerCase();
-      items = items.filter(
-        (e) =>
-          (e.name ?? '').toLowerCase().includes(q) ||
-          (e.description ?? '').toLowerCase().includes(q) ||
-          (e.discount_headline ?? '').toLowerCase().includes(q),
-      );
+      return items
+        .map((e) => ({
+          e,
+          score: partnerSearchScore(search, {
+            name: e.name,
+            description: e.description,
+            discount_headline: e.discount_headline,
+            category: CATEGORY_MAP[e.category ?? ''] ?? e.category,
+          }),
+        }))
+        .filter((row) => row.score > 0)
+        .sort(
+          (a, b) =>
+            b.score - a.score ||
+            (a.e.name ?? '').localeCompare(b.e.name ?? '', undefined, { sensitivity: 'base' }),
+        )
+        .map((row) => row.e);
     }
 
     items.sort((a, b) =>
@@ -275,7 +286,11 @@ export default function PawCardPartnersPage() {
     return items;
   }, [establishments, activeFilter, search]);
 
-  const partnersByLetter = useMemo(() => groupPartnersByLetter(filtered), [filtered]);
+  const isSearching = search.trim().length > 0;
+  const partnersByLetter = useMemo(
+    () => (isSearching ? [] : groupPartnersByLetter(filtered)),
+    [filtered, isSearching],
+  );
 
   const lettersPresent = useMemo(
     () => new Set(partnersByLetter.map((g) => g.letter)),
@@ -446,10 +461,14 @@ export default function PawCardPartnersPage() {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search establishments..."
+                placeholder="Search partners..."
+                aria-label="Search partners"
                 className="w-full bg-white text-[#363737] border border-[rgba(54,55,55,0.2)] rounded-full pl-10 pr-4 py-2.5 font-lato text-sm placeholder:text-[rgba(54,55,55,0.4)] focus:outline-none focus:border-[rgba(54,55,55,0.35)] transition-colors"
               />
             </div>
+            <p className="font-lato text-xs text-center mt-2" style={{ color: 'rgba(54,55,55,0.5)' }}>
+              Close spellings, missing spaces, and small typos still show matches
+            </p>
           </div>
 
           {/* Filter pills */}
@@ -681,7 +700,7 @@ export default function PawCardPartnersPage() {
         {/* Results count */}
         {!isLoading && !error && (
           <p className="font-lato text-sm text-charcoal-brand/60 mb-6">
-            Showing {filtered.length} partner{filtered.length !== 1 ? 's' : ''}
+            {`Showing ${filtered.length} partner${filtered.length !== 1 ? 's' : ''}${isSearching && filtered.length > 0 ? ', closest matches first' : ''}`}
           </p>
         )}
 
@@ -714,8 +733,8 @@ export default function PawCardPartnersPage() {
           </div>
         )}
 
-        {/* A–Z jump nav */}
-        {!isLoading && !error && filtered.length > 0 && (
+        {/* A–Z jump nav (directory view). Search results stay in match order. */}
+        {!isLoading && !error && !isSearching && filtered.length > 0 && (
           <nav
             aria-label="Jump to partners by first letter"
             className="mb-6 flex flex-wrap items-center justify-center gap-1 sm:justify-start"
@@ -749,37 +768,48 @@ export default function PawCardPartnersPage() {
           </nav>
         )}
 
-        {/* Cards grid (A–Z, grouped by letter) */}
+        {/* Cards grid. A–Z when browsing; closest matches first while searching. */}
         {!isLoading && !error && filtered.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
-            {(() => {
-              let cardIndex = 0;
-              return partnersByLetter.map(({ letter, items: letterItems }) => (
-                <Fragment key={letter}>
-                  <div
-                    id={letterAnchorId(letter)}
-                    className="col-span-full scroll-mt-28 border-b border-charcoal-brand/10 pb-2 pt-4 first:pt-0"
-                  >
-                    <h3 className="font-headline text-lg font-bold text-teal-brand">
-                      {letter === '0-9' ? '0–9' : letter === '#' ? 'Other' : letter}
-                    </h3>
+            {isSearching
+              ? filtered.map((e, index) => (
+                  <div key={e.id} id={`establishment-${e.id}`} className="h-full min-w-0 flex flex-col">
+                    <EstablishmentCard
+                      establishment={e}
+                      index={index}
+                      isFavourite={topNames.has((e.name ?? '').toLowerCase().trim())}
+                      onLogSaving={handleLogSaving}
+                    />
                   </div>
-                  {letterItems.map((e) => {
-                    const index = cardIndex++;
-                    return (
-                      <div key={e.id} id={`establishment-${e.id}`} className="h-full min-w-0 flex flex-col">
-                        <EstablishmentCard
-                          establishment={e}
-                          index={index}
-                          isFavourite={topNames.has((e.name ?? '').toLowerCase().trim())}
-                          onLogSaving={handleLogSaving}
-                        />
+                ))
+              : (() => {
+                  let cardIndex = 0;
+                  return partnersByLetter.map(({ letter, items: letterItems }) => (
+                    <Fragment key={letter}>
+                      <div
+                        id={letterAnchorId(letter)}
+                        className="col-span-full scroll-mt-28 border-b border-charcoal-brand/10 pb-2 pt-4 first:pt-0"
+                      >
+                        <h3 className="font-headline text-lg font-bold text-teal-brand">
+                          {letter === '0-9' ? '0–9' : letter === '#' ? 'Other' : letter}
+                        </h3>
                       </div>
-                    );
-                  })}
-                </Fragment>
-              ));
-            })()}
+                      {letterItems.map((e) => {
+                        const index = cardIndex++;
+                        return (
+                          <div key={e.id} id={`establishment-${e.id}`} className="h-full min-w-0 flex flex-col">
+                            <EstablishmentCard
+                              establishment={e}
+                              index={index}
+                              isFavourite={topNames.has((e.name ?? '').toLowerCase().trim())}
+                              onLogSaving={handleLogSaving}
+                            />
+                          </div>
+                        );
+                      })}
+                    </Fragment>
+                  ));
+                })()}
           </div>
         )}
 

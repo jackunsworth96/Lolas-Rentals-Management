@@ -71,16 +71,24 @@ export interface PartnerBookingRow {
   commissionType: 'fixed' | 'percentage' | null;
   commissionValue: number | null;
   status: string;
+  cancelledReason: string | null;
+  cancelledAt: string | null;
   bookedAt: string;
   advanceDays: number | null;
   commissionable: boolean;
   commissionAmount: number;
+  isExtended: boolean;
+  extendedDropoffDatetime: string | null;
+  pendingCommissionAmount: number;
 }
 
 export interface PartnerStats {
   totalBookings: number;
   commissionableBookings: number;
   totalCommission: number;
+  totalPendingCommission: number;
+  totalVehiclesRented: number;
+  averageVehiclesPerDay: number;
   bookings: PartnerBookingRow[];
 }
 
@@ -142,6 +150,12 @@ export function usePartnerStats(partnerId: string, month?: string, enabled = tru
     staleTime: 60_000,
     enabled,
   });
+}
+
+/** One-off fetch (not a hook) for on-demand actions like generating a PDF report. */
+export function fetchPartnerStats(partnerId: string, month?: string): Promise<PartnerStats> {
+  const params = month ? `?month=${encodeURIComponent(month)}` : '';
+  return api.get<PartnerStats>(`/partners/${partnerId}/stats${params}`);
 }
 
 export function usePartnerCommissionsDue(storeId: string, month: string, enabled = true) {

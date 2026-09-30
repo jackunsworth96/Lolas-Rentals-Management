@@ -4,7 +4,7 @@ import {
   Link2, Plus, Pencil, BarChart2, ToggleLeft, ToggleRight, Copy, CheckCheck,
   ExternalLink, Send, Check, X, Clock, ChevronDown, ChevronUp, Trash2,
   UserPlus, KeyRound,
-  WalletCards, ArrowRight, AlertCircle,
+  WalletCards, ArrowRight, AlertCircle, Download, Loader2,
 } from 'lucide-react';
 import {
   usePartners,
@@ -12,6 +12,7 @@ import {
   useUpdatePartner,
   useDeletePartner,
   usePartnerStats,
+  fetchPartnerStats,
   usePartnerCommissionsDue,
   useSendMonthlyReport,
   useApprovePartner,
@@ -38,6 +39,7 @@ import { useUIStore } from '../../stores/ui-store.js';
 import { Badge } from '../../components/common/Badge.js';
 import { Modal } from '../../components/common/Modal.js';
 import { useToast } from '../../hooks/useToast.js';
+import { generatePartnerReportPdf } from '../../utils/partnerReportPdf.js';
 
 const SITE_URL = (import.meta.env.VITE_SITE_URL as string | undefined) ?? window.location.origin;
 
@@ -90,6 +92,22 @@ function CommissionsDueModal({ open, onClose, storeId, onOpenPartner }: Commissi
   const payable = data?.partners.filter((partner) => partner.amountDue > 0) ?? [];
   const awaitingCollection = data?.partners.filter((partner) => partner.amountDue === 0 && partner.pendingAmount > 0) ?? [];
 
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  const handleDownloadPdf = async (partnerId: string, partnerName: string) => {
+    setDownloadError(null);
+    setDownloadingId(partnerId);
+    try {
+      const stats = await fetchPartnerStats(partnerId, month);
+      generatePartnerReportPdf(partnerName, month, stats);
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : 'Failed to generate PDF');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   return (
     <Modal open={open} onClose={onClose} title="Commission payouts" size="xl">
       <div className="max-h-[72vh] overflow-y-auto pr-1">
@@ -103,7 +121,7 @@ function CommissionsDueModal({ open, onClose, storeId, onOpenPartner }: Commissi
             <input
               type="month"
               value={month}
-              onChange={(event) => { if (event.target.value) setMonth(event.target.value); }}
+              onChange={(event) => { if (event.target.value) { setMonth(event.target.value); setDownloadError(null); } }}
               className="mt-1 block rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500"
             />
           </label>
@@ -151,6 +169,7 @@ function CommissionsDueModal({ open, onClose, storeId, onOpenPartner }: Commissi
                       <th className="px-4 py-3 font-medium text-gray-500">Partner</th>
                       <th className="hidden px-4 py-3 text-right font-medium text-gray-500 sm:table-cell">Bookings</th>
                       <th className="px-4 py-3 text-right font-medium text-gray-500">Amount due</th>
+                      <th className="w-12 px-3 py-3"><span className="sr-only">Download PDF</span></th>
                       <th className="w-12 px-3 py-3"><span className="sr-only">Open partner</span></th>
                     </tr>
                   </thead>
@@ -176,6 +195,20 @@ function CommissionsDueModal({ open, onClose, storeId, onOpenPartner }: Commissi
                         </td>
                         <td className="px-3 py-3 text-right">
                           <button
+                            onClick={() => void handleDownloadPdf(partner.partnerId, partner.partnerName)}
+                            disabled={downloadingId === partner.partnerId}
+                            className="rounded-lg p-2 text-gray-400 hover:bg-white hover:text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:cursor-not-allowed disabled:opacity-50"
+                            title={`Download ${partner.partnerName} PDF report`}
+                          >
+                            {downloadingId === partner.partnerId ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Download className="h-4 w-4" />
+                            )}
+                          </button>
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          <button
                             onClick={() => onOpenPartner(partner.partnerId)}
                             className="rounded-lg p-2 text-gray-400 hover:bg-white hover:text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500"
                             title={`View ${partner.partnerName} bookings`}
@@ -194,6 +227,10 @@ function CommissionsDueModal({ open, onClose, storeId, onOpenPartner }: Commissi
                 <p className="font-medium text-gray-700">No commission payouts for {monthLabel(month)}</p>
                 <p className="mt-1 text-sm text-gray-400">There are no confirmed commissionable bookings to pay.</p>
               </div>
+            )}
+
+            {downloadError && (
+              <p className="mt-2 text-xs text-red-600">{downloadError}</p>
             )}
 
             {awaitingCollection.length > 0 && (
