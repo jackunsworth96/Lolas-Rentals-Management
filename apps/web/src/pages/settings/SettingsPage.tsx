@@ -78,7 +78,10 @@ const TAB_COMPONENT: Record<TabKey, React.FC> = {
 };
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<TabKey>('stores');
+  const [activeTab, setActiveTab] = useState<TabKey>(() => {
+    const requested = new URLSearchParams(window.location.search).get('tab');
+    return TABS.find((tab) => tab.key === requested)?.key ?? 'stores';
+  });
   const ActiveComponent = TAB_COMPONENT[activeTab];
 
   return (

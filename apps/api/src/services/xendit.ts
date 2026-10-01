@@ -222,6 +222,48 @@ export async function getXenditPaymentSession(paymentSessionId: string): Promise
   }
 }
 
+export async function getXenditPaymentRequest(paymentRequestId: string): Promise<{
+  paymentRequestId: string;
+  businessId: string;
+  channelCode: string | null;
+  currency: string;
+  amount: number;
+}> {
+  const secretKey = process.env.XENDIT_SECRET_KEY?.trim();
+  if (!secretKey) throw new Error('XENDIT_SECRET_KEY environment variable is not set');
+  const baseUrl = (process.env.XENDIT_BASE_URL ?? 'https://api.xendit.co').replace(/\/+$/, '');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await fetch(`${baseUrl}/v3/payment_requests/${encodeURIComponent(paymentRequestId)}`, {
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${secretKey}:`).toString('base64')}`,
+        'api-version': '2024-11-11',
+      },
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`Xendit payment request lookup failed: HTTP ${response.status}`);
+    const body = await response.json();
+    const parsed = z.object({
+      payment_request_id: z.string(),
+      business_id: z.string(),
+      channel_code: z.string().nullable().optional(),
+      currency: z.string(),
+      request_amount: z.number(),
+    }).parse(body);
+    if (parsed.payment_request_id !== paymentRequestId) throw new Error('Xendit returned a mismatched payment request');
+    return {
+      paymentRequestId: parsed.payment_request_id,
+      businessId: parsed.business_id,
+      channelCode: parsed.channel_code ?? null,
+      currency: parsed.currency,
+      amount: parsed.request_amount,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export function verifyXenditCallbackToken(token: string | undefined): boolean {
   const expected = process.env.XENDIT_CALLBACK_TOKEN?.trim();
   if (!expected) throw new Error('XENDIT_CALLBACK_TOKEN environment variable is not set');

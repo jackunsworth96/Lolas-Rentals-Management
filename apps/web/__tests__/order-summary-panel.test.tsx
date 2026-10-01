@@ -44,7 +44,12 @@ describe('OrderSummaryPanel', () => {
         }}
         paymentMethodId="xendit-card"
         onPaymentChange={() => {}}
-        paymentMethods={[]}
+        paymentMethods={[{
+          id: 'xendit',
+          name: 'Card Payment',
+          surchargePercent: 3,
+          gatewayProvider: 'xendit',
+        }]}
         surchargePercent={3}
         onPlaceOrder={() => {}}
         submitting={false}
@@ -57,5 +62,7 @@ describe('OrderSummaryPanel', () => {
     expect(markup).toContain('Transfer Fee');
     expect(markup).toContain('>1,530.00</span>');
     expect(markup).not.toContain('>45.00</span>');
+    expect(markup).toContain('Card Payment');
+    expect(markup).not.toContain('Card payments coming soon');
   });
 });

@@ -29,6 +29,7 @@ import {
 import { formatCurrency } from '../../utils/currency.js';
 import { formatTime } from '../../utils/date.js';
 import { Button } from '../../components/common/Button.js';
+import { api } from '../../api/client.js';
 
 const DENOMINATIONS = [1000, 500, 200, 100, 50, 20, 10, 5, 1] as const;
 const LOLAS_PRIORITY = /lola/i;
@@ -409,6 +410,9 @@ export default function CashupPage() {
               }`}
             >
               {s.name}
+              {sortedStores.filter((candidate) => candidate.name.trim().toLowerCase() === s.name.trim().toLowerCase()).length > 1 && (
+                <span className="ml-1 text-xs text-gray-500">({s.id})</span>
+              )}
             </button>
           ))}
         </div>
@@ -647,6 +651,14 @@ export default function CashupPage() {
               rows={summary.transactions.cardSales}
               total={summary.totals.cardSalesTotal}
               color="purple"
+            />
+            <TransactionSection
+              title="Online Payments (Xendit)"
+              subtitle="Gross paid amount; provider settlement may occur later"
+              icon="💳"
+              rows={summary.transactions.onlineSales ?? []}
+              total={summary.totals.onlineSalesTotal ?? 0}
+              color="blue"
             />
             {(summary.transactions.miscSales?.card?.length ?? 0) > 0 && (
               <MiscSalesSection
@@ -1104,6 +1116,36 @@ function TransactionSection({
   color: string;
   affectsTill?: boolean;
 }) {
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [providerDetails, setProviderDetails] = useState<{
+    sessionId: string;
+    providerPaymentId: string | null;
+    providerSessionId: string | null;
+    providerReferenceId: string;
+    channelCode: string | null;
+  } | null>(null);
+  const [providerError, setProviderError] = useState<{ sessionId: string; message: string } | null>(null);
+
+  async function showProviderDetails(sessionId: string) {
+    if (selectedSessionId === sessionId) {
+      setSelectedSessionId(null);
+      return;
+    }
+    setSelectedSessionId(sessionId);
+    setProviderDetails(null);
+    setProviderError(null);
+    try {
+      const details = await api.get<{
+        providerPaymentId: string | null;
+        providerSessionId: string | null;
+        providerReferenceId: string;
+        channelCode: string | null;
+      }>(`/payments/xendit/sessions/${encodeURIComponent(sessionId)}/provider-details`);
+      setProviderDetails({ ...details, sessionId });
+    } catch {
+      setProviderError({ sessionId, message: 'Provider details could not be verified right now.' });
+    }
+  }
   const borderColor: Record<string, string> = {
     green: 'border-l-green-500',
     blue: 'border-l-blue-500',
@@ -1142,12 +1184,29 @@ function TransactionSection({
                 <p className="truncate text-sm font-medium text-gray-800">
                   {tx.customerName ?? 'Unknown'}
                   {tx.wooOrderId && <span className="ml-1 text-xs text-gray-400">#{tx.wooOrderId}</span>}
+                  {tx.bookingReference && <span className="ml-1 text-xs text-gray-400">{tx.bookingReference}</span>}
                 </p>
                 <p className="text-xs text-gray-500">
                   {tx.paymentType}
                   {tx.settlementRef && ` · ${tx.settlementRef}`}
+                  {tx.providerSessionId && ` · Session ${tx.providerSessionId}`}
+                  {tx.providerReferenceId && ` · ${tx.providerReferenceId}`}
+                  {tx.providerPaymentId && ` · Channel ${tx.providerChannel ?? 'not reported'}`}
                   {tx.createdAt && ` · ${formatTime(tx.createdAt)}`}
                 </p>
+                {tx.localXenditSessionId && (
+                  <>
+                    <button type="button" className="mt-1 text-xs font-medium text-teal-700 underline" onClick={() => void showProviderDetails(tx.localXenditSessionId!)}>
+                      {selectedSessionId === tx.localXenditSessionId ? 'Hide provider details' : 'Verify provider details'}
+                    </button>
+                    {selectedSessionId === tx.localXenditSessionId && providerDetails?.sessionId === tx.localXenditSessionId && (
+                      <p className="mt-1 break-all text-xs text-gray-600">
+                        Channel: {providerDetails.channelCode ?? 'Not reported'} · Payment: {providerDetails.providerPaymentId ?? 'Unavailable'} · Session: {providerDetails.providerSessionId ?? 'Unavailable'} · Reference: {providerDetails.providerReferenceId}
+                      </p>
+                    )}
+                    {selectedSessionId === tx.localXenditSessionId && providerError?.sessionId === tx.localXenditSessionId && <p className="mt-1 text-xs text-red-700">{providerError.message}</p>}
+                  </>
+                )}
               </div>
               <span className="ml-3 whitespace-nowrap text-sm font-medium text-gray-900">
                 {formatCurrency(tx.amount)}

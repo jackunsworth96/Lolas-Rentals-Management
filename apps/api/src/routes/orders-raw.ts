@@ -71,7 +71,21 @@ async function withOnlinePaymentSummaries(rows: RawInboxRow[]) {
 type XenditSessionSummaryRow = {
   id: string;
   status: 'creating' | 'active' | 'completed' | 'expired' | 'cancelled' | 'failed' | 'reconciliation_required';
+  payment_link_url: string | null;
+  expires_at: string | null;
+  created_at: string;
 };
+
+function rawPaymentState(onlinePayment: unknown, session: XenditSessionSummaryRow | null): string {
+  if (onlinePayment) return 'paid';
+  switch (session?.status) {
+    case 'creating': case 'active': return 'pending';
+    case 'expired': return 'expired';
+    case 'cancelled': return 'cancelled';
+    case 'reconciliation_required': case 'completed': return 'verification_required';
+    default: return 'unpaid';
+  }
+}
 
 function xenditOperatorMessage(status: XenditSessionSummaryRow['status']): string {
   switch (status) {
@@ -89,31 +103,51 @@ function xenditOperatorMessage(status: XenditSessionSummaryRow['status']): strin
 }
 
 async function withXenditSessionSummaries(rows: RawInboxRow[]) {
-  const sessionIds = [...new Set(rows
+  if (rows.length === 0) return [];
+  const { data: allocations, error: allocationError } = await supabase
+    .from('xendit_payment_session_orders')
+    .select('raw_order_id, session_id')
+    .in('raw_order_id', rows.map((row) => row.id));
+  if (allocationError) throw new Error(`Failed to load Xendit booking claims: ${allocationError.message}`);
+  const sessionIds = [...new Set([...rows
     .map((row) => typeof row.xendit_payment_session_id === 'string' ? row.xendit_payment_session_id : null)
-    .filter((id): id is string => Boolean(id)))];
-  if (sessionIds.length === 0) return rows.map((row) => ({ ...row, xendit_session: null }));
+    .filter((id): id is string => Boolean(id)), ...(allocations ?? []).map((a: { session_id: string }) => a.session_id)])];
+  if (sessionIds.length === 0) return rows.map((row) => ({ ...row, xendit_session: null, payment_state: rawPaymentState(row.online_payment, null) }));
 
   const { data, error } = await supabase
     .from('xendit_payment_sessions')
-    .select('id, status')
+    .select('id, status, payment_link_url, expires_at, created_at')
     .in('id', sessionIds);
   if (error) throw new Error(`Failed to load Xendit session summaries: ${error.message}`);
 
+  const sessionRows = new Map(((data ?? []) as XenditSessionSummaryRow[]).map((session) => [session.id, session]));
+  const latestByRaw = new Map<string, XenditSessionSummaryRow>();
+  for (const allocation of (allocations ?? []) as Array<{ raw_order_id: string; session_id: string }>) {
+    const candidate = sessionRows.get(allocation.session_id);
+    if (!candidate) continue;
+    const current = latestByRaw.get(allocation.raw_order_id);
+    if (!current || candidate.created_at > current.created_at) latestByRaw.set(allocation.raw_order_id, candidate);
+  }
   const sessions = new Map(
     ((data ?? []) as XenditSessionSummaryRow[]).map((session) => [session.id, {
       id: session.id,
       status: session.status,
       operatorMessage: xenditOperatorMessage(session.status),
+      checkoutUrl: session.status === 'active' ? session.payment_link_url : null,
+      expiresAt: session.expires_at,
     }]),
   );
 
-  return rows.map((row) => ({
-    ...row,
-    xendit_session: typeof row.xendit_payment_session_id === 'string'
-      ? sessions.get(row.xendit_payment_session_id) ?? null
-      : null,
-  }));
+  return rows.map((row) => {
+    const session = (typeof row.xendit_payment_session_id === 'string'
+      ? sessionRows.get(row.xendit_payment_session_id)
+      : null) ?? latestByRaw.get(row.id) ?? null;
+    return {
+      ...row,
+      xendit_session: session ? sessions.get(session.id) ?? null : null,
+      payment_state: rawPaymentState(row.online_payment, session),
+    };
+  });
 }
 
 function generateWalkInReference(source: string): string {
@@ -148,6 +182,25 @@ function rejectRawOrderStoreAccess(res: Response): void {
     success: false,
     error: { code: 'FORBIDDEN', message: 'You do not have access to this booking.' },
   });
+}
+
+async function routedAccountId(storeId: string, paymentMethodId: string | null | undefined): Promise<string | null> {
+  if (!paymentMethodId) return null;
+  const { data, error } = await supabase.from('payment_routing_rules')
+    .select('received_into_account_id')
+    .eq('store_id', storeId)
+    .eq('payment_method_id', paymentMethodId)
+    .maybeSingle();
+  if (error) throw new Error(`Failed to resolve payment routing: ${error.message}`);
+  return (data?.received_into_account_id as string | null) ?? null;
+}
+
+async function isXenditMethod(paymentMethodId: string | null | undefined): Promise<boolean> {
+  if (!paymentMethodId) return false;
+  const { data, error } = await supabase.from('payment_methods')
+    .select('gateway_provider').eq('id', paymentMethodId).maybeSingle();
+  if (error) throw new Error(`Failed to resolve payment method: ${error.message}`);
+  return data?.gateway_provider === 'xendit';
 }
 
 const walkInBodySchema = z.object({
@@ -1280,6 +1333,11 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
       return;
     }
 
+    if (await isXenditMethod(body.paymentMethodId)) {
+      res.status(409).json({ success: false, error: { code: 'ONLINE_PAYMENT_LINK_REQUIRED', message: 'Card Payment must be confirmed by the Xendit webhook before activation.' } });
+      return;
+    }
+
     let directGuard: DirectProcessGuardResult;
     try {
       directGuard = await guardDirectBookingProcess({
@@ -1363,7 +1421,7 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
       paymentMethodId: body.paymentMethodId,
       depositMethodId: body.depositMethodId,
       cardFeeSurcharge: body.cardFeeSurcharge,
-      paymentAccountId: body.paymentAccountId ?? null,
+      paymentAccountId: await routedAccountId(rawOrderCheck.store_id, body.paymentMethodId) ?? body.paymentAccountId ?? null,
       depositLiabilityAccountId: body.depositLiabilityAccountId ?? null,
       isCardPayment: body.isCardPayment ?? false,
       settlementRef: body.settlementRef ?? null,
@@ -1459,6 +1517,23 @@ const collectPaymentSchema = z.object({
   isCardPayment: z.boolean().optional().default(false),
   settlementRef: z.string().nullable().optional(),
   customerName: z.string().nullable().optional(),
+  accountId: z.string().min(1).nullable().optional(),
+});
+
+router.get('/:id/payment-routing', requirePermission(Permission.EditOrders), async (req, res, next) => {
+  try {
+    const paymentMethodId = z.string().min(1).safeParse(req.query.paymentMethodId);
+    if (!paymentMethodId.success) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Payment method is required' } });
+      return;
+    }
+    const { data: rawOrder, error } = await supabase.from('orders_raw').select('store_id').eq('id', req.params.id as string).maybeSingle();
+    if (error) throw new Error(`Failed to load booking: ${error.message}`);
+    if (!rawOrder) { res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Booking not found' } }); return; }
+    if (!hasRawOrderStoreAccess(req, rawOrder.store_id)) { rejectRawOrderStoreAccess(res); return; }
+    const accountId = await routedAccountId(rawOrder.store_id, paymentMethodId.data);
+    res.json({ success: true, data: { accountId } });
+  } catch (error) { next(error); }
 });
 
 router.post('/:id/collect-payment', requirePermission(Permission.EditOrders), async (req, res, next) => {
@@ -1493,6 +1568,11 @@ router.post('/:id/collect-payment', requirePermission(Permission.EditOrders), as
       return;
     }
 
+    if (await isXenditMethod(parsed.data.paymentMethodId)) {
+      res.status(409).json({ success: false, error: { code: 'ONLINE_PAYMENT_LINK_REQUIRED', message: 'Create a Xendit link instead of recording a manual card payment.' } });
+      return;
+    }
+
     const { paymentRepo, cardSettlementRepo } = req.app.locals.deps;
     const existingPayments = await paymentRepo.findByRawOrderId(req.params.id as string);
     if (existingPayments.some((payment) => payment.paymentType === 'card_xendit')) {
@@ -1524,7 +1604,7 @@ router.post('/:id/collect-payment', requirePermission(Permission.EditOrders), as
       settlementStatus: parsed.data.isCardPayment ? 'pending' : null,
       settlementRef: parsed.data.settlementRef ?? null,
       customerId: null,
-      accountId: null,
+      accountId: await routedAccountId(storeId, parsed.data.paymentMethodId) ?? parsed.data.accountId ?? null,
     };
 
     await paymentRepo.save(payment);

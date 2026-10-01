@@ -73,6 +73,7 @@ export interface CashupSummary {
   transactions: {
     cashSales: TransactionRow[];
     cardSales: TransactionRow[];
+    onlineSales: TransactionRow[];
     gcashSales: TransactionRow[];
     bankTransfer: TransactionRow[];
     pendingExtensions: TransactionRow[];
@@ -98,6 +99,7 @@ export interface CashupSummary {
     cashDepositsHeldTotal: number;
     totalCashIn: number;
     cardSalesTotal: number;
+    onlineSalesTotal: number;
     gcashSalesTotal: number;
     bankTransferTotal: number;
     pendingExtensionsTotal: number;
@@ -145,6 +147,12 @@ export interface TransactionRow {
   settlementRef: string | null;
   settlementStatus: string | null;
   customerName: string | null;
+  bookingReference?: string | null;
+  providerPaymentId?: string | null;
+  localXenditSessionId?: string | null;
+  providerSessionId?: string | null;
+  providerReferenceId?: string | null;
+  providerChannel?: string | null;
   wooOrderId: string | null;
   orderId: string | null;
   createdAt: string;
