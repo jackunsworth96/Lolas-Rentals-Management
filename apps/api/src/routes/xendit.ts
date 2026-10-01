@@ -11,6 +11,7 @@ import { escapeIlike, orderReferenceLookupVariants } from './public-extend-helpe
 import {
   createXenditPaymentSession,
   getXenditPaymentSession,
+  getXenditPaymentRequest,
   cancelXenditPaymentSession,
   createXenditReturnState,
   isXenditDashboardTestWebhook,
@@ -1091,6 +1092,56 @@ staffXenditRouter.get(
             }
           : null,
       });
+    } catch (error) { next(error); }
+  },
+);
+
+staffXenditRouter.get(
+  '/sessions/:id/provider-details',
+  authenticate,
+  requirePermission(Permission.ViewCashup),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = z.string().uuid().safeParse(req.params.id);
+      if (!id.success) {
+        res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid session id' } });
+        return;
+      }
+      const { data, error } = await getSupabaseClient()
+        .from('xendit_payment_sessions')
+        .select('id, store_id, status, payment_id, payment_request_id, payment_session_id, reference_id, amount_php')
+        .eq('id', id.data)
+        .maybeSingle();
+      if (error) throw new Error(`Failed to load Xendit transaction: ${error.message}`);
+      const session = data as {
+        id: string; store_id: string; status: string; payment_id: string | null;
+        payment_request_id: string | null; payment_session_id: string | null;
+        reference_id: string; amount_php: number | string;
+      } | null;
+      const stores = req.user?.storeIds ?? [];
+      if (!session || (!stores.includes(COMPANY_STORE_ID) && !stores.includes(session.store_id))) {
+        res.status(404).json({ success: false, error: { code: 'SESSION_NOT_FOUND', message: 'Payment session not found' } });
+        return;
+      }
+      let channelCode: string | null = null;
+      if (session.status === 'completed' && session.payment_request_id) {
+        const provider = await getXenditPaymentRequest(session.payment_request_id);
+        const businessId = process.env.XENDIT_BUSINESS_ID?.trim();
+        if (!businessId || !secureEqual(provider.businessId, businessId)
+          || provider.currency !== 'PHP'
+          || roundMoney(provider.amount) !== roundMoney(Number(session.amount_php))) {
+          throw new Error('Xendit payment request differs from the stored session');
+        }
+        channelCode = provider.channelCode;
+      }
+      res.json({ success: true, data: {
+        sessionId: session.id,
+        status: session.status,
+        providerSessionId: session.payment_session_id,
+        providerPaymentId: session.payment_id,
+        providerReferenceId: session.reference_id,
+        channelCode,
+      } });
     } catch (error) { next(error); }
   },
 );

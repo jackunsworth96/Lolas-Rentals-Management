@@ -507,6 +507,11 @@ export function OrderDetailSummaryTab({
   const vehicleNames = enrichedData?.vehicleNames ?? null;
   const returnDatetime = enrichedData?.returnDatetime ?? null;
   const securityDeposit = enrichedData?.securityDeposit ?? moneyAmount(order.securityDeposit);
+  const depositCollected = payments.reduce((sum, payment) =>
+    payment.paymentType === 'deposit' || payment.paymentType === 'security_deposit'
+      ? sum + (payment.amount ?? 0)
+      : sum, 0);
+  const depositDue = Math.max(0, securityDeposit - depositCollected);
   const surcharge = enrichedData?.cardFeeSurcharge ?? moneyAmount(order.cardFeeSurcharge);
   const paymentMethodName = order.paymentMethodId ? pmLookup.get(order.paymentMethodId)?.name ?? order.paymentMethodId : null;
 
@@ -1591,15 +1596,21 @@ export function OrderDetailSummaryTab({
                         <span className="font-medium text-gray-900">Balance Due</span>
                         <span className={`font-bold ${settleBalance > 0 ? 'text-red-600' : 'text-green-600'}`}>{formatCurrency(settleBalance)}</span>
                       </div>
-                      {securityDeposit > 0 && (
+                      {depositCollected > 0 && (
                         <div className="flex justify-between px-4 py-2.5">
                           <span className="text-gray-600">
-                            Security Deposit Held
+                            Security Deposit Collected
                             <span className={`ml-2 text-xs font-medium ${depositMethodLabel ? 'text-teal-700' : 'text-amber-600'}`}>
                               ({depositMethodLabel ?? 'Method not recorded'})
                             </span>
                           </span>
-                          <span className="font-medium">{formatCurrency(securityDeposit)}</span>
+                          <span className="font-medium">{formatCurrency(depositCollected)}</span>
+                        </div>
+                      )}
+                      {depositDue > 0 && (
+                        <div className="flex justify-between px-4 py-2.5 bg-amber-50">
+                          <span className="text-amber-900">Security Deposit Due at Pickup (separate from rental balance)</span>
+                          <span className="font-medium text-amber-900">{formatCurrency(depositDue)}</span>
                         </div>
                       )}
                       {depositApplied > 0 && (

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, ApiError } from '../../api/client.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
@@ -86,6 +86,7 @@ function formatNewReturn(date: string, time: string): string {
 
 export default function ExtendPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [pageState, setPageState] = useState<PageState>('lookup');
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
@@ -250,9 +251,14 @@ export default function ExtendPage() {
           `extension_payment_email_${order.orderReference}`,
           lookupEmail.trim().toLowerCase(),
         );
+        const confirmedAmount = res.extensionCost ?? (extensionCost ?? 0) + (ninePmSelected && ninePmAddon ? ninePmAddon.price : 0) + perDayAddonDelta + newAddonLines.reduce((s, a) => s + a.cost, 0) + locationDelta;
         setConfirmedDropoff(res.newDropoffDatetime ?? newDropoff);
-        setConfirmedBalance(res.extensionCost ?? (extensionCost ?? 0) + (ninePmSelected && ninePmAddon ? ninePmAddon.price : 0) + perDayAddonDelta + newAddonLines.reduce((s, a) => s + a.cost, 0) + locationDelta);
+        setConfirmedBalance(confirmedAmount);
         setConfirmedPaymentUrl(res.paymentUrl ?? `/book/extend/pay?ref=${encodeURIComponent(order.orderReference)}`);
+        if (confirmedAmount > 0) {
+          navigate(`/book/extend/pay?ref=${encodeURIComponent(order.orderReference)}`);
+          return;
+        }
         setPageState('confirmed');
       } else {
         setLookupError(res.reason ?? t('extend.extensionFailed'));

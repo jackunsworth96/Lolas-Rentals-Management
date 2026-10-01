@@ -10,6 +10,7 @@ import {
   CashupQuerySchema,
 } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
+import { cashupCustomerName, cashupPaymentCategory } from '../lib/cashup-payment.js';
 
 const router = Router();
 router.use(authenticate);
@@ -37,7 +38,7 @@ router.get(
           sb
             .from('payments')
             .select(
-              'id, payment_type, amount, payment_method_id, transaction_date, settlement_ref, settlement_status, customer_id, order_id, created_at, customers!customer_id(name), orders!order_id(woo_order_id)',
+              'id, payment_type, amount, payment_method_id, transaction_date, settlement_ref, settlement_status, customer_id, order_id, raw_order_id, created_at, customers!customer_id(name), orders!order_id(woo_order_id)',
             )
             .eq('store_id', storeId)
             .eq('transaction_date', date)
@@ -191,6 +192,40 @@ router.get(
         throw new Error(`Deposit-applied journal query failed: ${depositAppliedRes.error.message}`);
 
       const payments = (paymentsRes.data ?? []) as Record<string, unknown>[];
+      const rawOrderIds = [...new Set(payments.map((payment) => payment.raw_order_id).filter((id): id is string => typeof id === 'string'))];
+      const rawOrderById = new Map<string, { customer_name: string | null; order_reference: string | null }>();
+      if (rawOrderIds.length > 0) {
+        const { data: rawOrders, error: rawOrdersError } = await sb
+          .from('orders_raw')
+          .select('id, customer_name, order_reference')
+          .in('id', rawOrderIds);
+        if (rawOrdersError) throw new Error(`Raw booking customer lookup failed: ${rawOrdersError.message}`);
+        for (const rawOrder of rawOrders ?? []) {
+          rawOrderById.set(rawOrder.id as string, {
+            customer_name: rawOrder.customer_name as string | null,
+            order_reference: rawOrder.order_reference as string | null,
+          });
+        }
+      }
+      const xenditPaymentIds = [...new Set(payments
+        .filter((payment) => payment.payment_type === 'card_xendit')
+        .map((payment) => payment.settlement_ref)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0))];
+      const xenditSessionByPaymentId = new Map<string, { id: string; payment_session_id: string | null; reference_id: string }>();
+      if (xenditPaymentIds.length > 0) {
+        const { data: sessions, error: sessionsError } = await sb
+          .from('xendit_payment_sessions')
+          .select('id, payment_id, payment_session_id, reference_id')
+          .in('payment_id', xenditPaymentIds);
+        if (sessionsError) throw new Error(`Xendit transaction lookup failed: ${sessionsError.message}`);
+        for (const session of sessions ?? []) {
+          xenditSessionByPaymentId.set(session.payment_id as string, {
+            id: session.id as string,
+            payment_session_id: session.payment_session_id as string | null,
+            reference_id: session.reference_id as string,
+          });
+        }
+      }
       const expenses = (expensesRes.data ?? []) as Record<string, unknown>[];
       const depositEntries = (depositsRes.data ?? []) as Record<string, unknown>[];
       const transferEntries = (transfersRes.data ?? []) as Record<string, unknown>[];
@@ -238,11 +273,13 @@ router.get(
       // Income buckets (by method)
       const cashSalesTx: unknown[] = [];
       const cardSalesTx: unknown[] = [];
+      const onlineSalesTx: unknown[] = [];
       const gcashSalesTx: unknown[] = [];
       const bankTransferTx: unknown[] = [];
       const pendingExtensionsTx: unknown[] = [];
       let cashSalesTotal = 0;
       let cardSalesTotal = 0;
+      let onlineSalesTotal = 0;
       let gcashSalesTotal = 0;
       let bankTransferTotal = 0;
       let pendingExtensionsTotal = 0;
@@ -273,10 +310,8 @@ router.get(
       }
 
       function resolveMethodCategory(key: string): 'cash' | 'card' | 'gcash' | 'bank' {
-        if (key === 'cash') return 'cash';
-        if (key === 'card' || key === 'creditcard' || key === 'debitcard') return 'card';
-        if (GCASH_IDS.has(key)) return 'gcash';
-        return 'bank';
+        const category = cashupPaymentCategory('', key);
+        return category === 'online' ? 'bank' : category;
       }
 
       for (const p of payments) {
@@ -286,6 +321,9 @@ router.get(
         const amount = Number(p.amount ?? 0);
         const customer = p.customers as { name: string } | null;
         const order = p.orders as { woo_order_id: string | null } | null;
+        const rawOrder = typeof p.raw_order_id === 'string' ? rawOrderById.get(p.raw_order_id) : null;
+        const xenditSession = typeof p.settlement_ref === 'string' && paymentType === 'card_xendit'
+          ? xenditSessionByPaymentId.get(p.settlement_ref) : null;
 
         const row = {
           id: p.id,
@@ -294,7 +332,13 @@ router.get(
           methodId: rawMethodId,
           settlementRef: p.settlement_ref ?? null,
           settlementStatus: p.settlement_status ?? null,
-          customerName: customer?.name ?? null,
+          customerName: cashupCustomerName(customer?.name, rawOrder?.customer_name),
+          bookingReference: rawOrder?.order_reference ?? null,
+          providerPaymentId: paymentType === 'card_xendit' ? p.settlement_ref : null,
+          localXenditSessionId: xenditSession?.id ?? null,
+          providerSessionId: xenditSession?.payment_session_id ?? null,
+          providerReferenceId: xenditSession?.reference_id ?? null,
+          providerChannel: null,
           wooOrderId: order?.woo_order_id ?? null,
           orderId: p.order_id ?? null,
           createdAt: p.created_at,
@@ -369,6 +413,9 @@ router.get(
           depositsHeldByMethod[label].rows.push(row);
           depositsHeldByMethod[label].total += amount;
           depositsHeldTotal += amount;
+        } else if (cashupPaymentCategory(paymentType, rawMethodId) === 'online') {
+          onlineSalesTx.push(row);
+          onlineSalesTotal += amount;
         } else {
           const cat = resolveMethodCategory(methodKey);
           if (cat === 'cash') {
@@ -843,6 +890,7 @@ router.get(
           transactions: {
             cashSales: cashSalesTx,
             cardSales: cardSalesTx,
+            onlineSales: onlineSalesTx,
             gcashSales: gcashSalesTx,
             bankTransfer: bankTransferTx,
             pendingExtensions: pendingExtensionsTx,
@@ -867,6 +915,7 @@ router.get(
             cashDepositsHeldTotal,
             totalCashIn,
             cardSalesTotal,
+            onlineSalesTotal,
             gcashSalesTotal,
             bankTransferTotal,
             pendingExtensionsTotal,

@@ -234,7 +234,7 @@ export default function ExtensionPaymentPage() {
             {returnState === 'cancelled' && !paymentCompleted && (
               <div className="mt-5 flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-amber-800">
                 <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
-                <p className="text-sm font-semibold">Payment was cancelled. Your extension remains confirmed and unpaid.</p>
+                <p className="text-sm font-semibold">Payment was cancelled. Your extension is still effective, but the balance remains unpaid. You can retry online or message the team to arrange cash payment.</p>
               </div>
             )}
 
@@ -260,7 +260,7 @@ export default function ExtensionPaymentPage() {
               <div className="mt-5 flex gap-3 rounded-2xl bg-red-50 px-4 py-4 text-red-700">
                 <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
                 <p className="text-sm font-semibold">
-                  We could not confirm this payment session. Check your Xendit receipt before retrying, or message the team for help.
+                  Your extension is still effective, but this payment has not been confirmed. Check your Xendit receipt before retrying, or message the team to arrange cash payment.
                 </p>
               </div>
             )}
@@ -312,7 +312,7 @@ export default function ExtensionPaymentPage() {
                   <div className="mt-5 flex gap-3 rounded-2xl border border-gold-brand/20 bg-gold-brand/10 px-4 py-4">
                     <Clock className="mt-0.5 h-5 w-5 shrink-0 text-gold-brand" />
                     <p className="text-sm font-semibold leading-relaxed text-charcoal-brand/70">
-                      Online payment is temporarily unavailable. You can still pay when you return your rental.
+                      Your extension remains effective. Online payment is temporarily unavailable; message the team to arrange cash payment or pay when you return your rental.
                     </p>
                   </div>
                 )}

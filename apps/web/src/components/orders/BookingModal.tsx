@@ -2131,6 +2131,14 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
             )}
 
             {/* Payment Methods */}
+            <div className="border-y border-gray-200 py-3 text-sm">
+              <div className="flex justify-between"><span>Rental paid online</span><span className="font-medium text-green-700">{formatCurrency(confirmedOnlinePayment?.amount ?? 0)}</span></div>
+              <div className="mt-1 flex justify-between"><span>Rental balance due</span><span className="font-medium">{formatCurrency(confirmedOnlinePayment ? Math.max(0, paymentDifference) : selectedXendit ? finalTotal : previewBalanceDue)}</span></div>
+              {!waiveDeposit && Number(securityDeposit) > 0 && (
+                <div className="mt-1 flex justify-between"><span>Security deposit due at pickup</span><span className="font-medium">{formatCurrency(Number(securityDeposit))}</span></div>
+              )}
+              <p className="mt-1 text-xs text-gray-500">The refundable security deposit is separate from the rental payment.</p>
+            </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="rounded-lg border border-gray-200 p-4">
                 {confirmedOnlinePayment ? (

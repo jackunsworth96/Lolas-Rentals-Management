@@ -3,6 +3,7 @@ import {
   cancelXenditPaymentSession,
   createXenditReturnState,
   getXenditPaymentSession,
+  getXenditPaymentRequest,
   createXenditPaymentSession,
   isXenditDashboardTestWebhook,
   parseXenditWebhookPayload,
@@ -121,6 +122,28 @@ describe('Xendit service', () => {
       status: 200, headers: { 'Content-Type': 'application/json' },
     })));
     await expect(getXenditPaymentSession('ps-test-1')).resolves.toEqual({ status: 'COMPLETED' });
+  });
+
+  it('loads the verified payment-request channel without exposing credentials', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      payment_request_id: 'pr-test-1', business_id: 'business-1', channel_code: 'GCASH',
+      currency: 'PHP', request_amount: 1500,
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(getXenditPaymentRequest('pr-test-1')).resolves.toEqual({
+      paymentRequestId: 'pr-test-1', businessId: 'business-1', channelCode: 'GCASH',
+      currency: 'PHP', amount: 1500,
+    });
+    expect(fetchMock.mock.calls[0][0]).toBe('https://api.xendit.test/v3/payment_requests/pr-test-1');
+    expect(fetchMock.mock.calls[0][1].headers['api-version']).toBe('2024-11-11');
+  });
+
+  it('rejects mismatched payment-request IDs', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      payment_request_id: 'pr-other', business_id: 'business-1', channel_code: 'CARDS',
+      currency: 'PHP', request_amount: 1500,
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+    await expect(getXenditPaymentRequest('pr-test-1')).rejects.toThrow('mismatched payment request');
   });
 
   it('aborts a cancellation request that exceeds the provider timeout', async () => {
