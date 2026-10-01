@@ -1,0 +1,44 @@
+openapi: 3.1.0
+info:
+  title: Lola's Rentals vehicle pricing
+  version: 1.0.0
+servers:
+  - url: https://api.lolasrentals.com
+paths:
+  /api/public/booking/pricing:
+    get:
+      operationId: getVehiclePricing
+      summary: Get current rental rates by vehicle model
+      description: Returns public PHP daily rates for active vehicle models in Lola's fleet. Each rate applies when rental length is between minDays and maxDays, inclusive. This is a price list, not an availability or booking quote.
+      responses:
+        '200':
+          description: Vehicle models and their daily rates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  currency:
+                    type: string
+                    const: PHP
+                  vehicles:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        model:
+                          type: string
+                        rates:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              minDays:
+                                type: integer
+                              maxDays:
+                                type: integer
+                              dailyRate:
+                                type: number
+                            required: [minDays, maxDays, dailyRate]
+                      required: [model, rates]
+                required: [currency, vehicles]

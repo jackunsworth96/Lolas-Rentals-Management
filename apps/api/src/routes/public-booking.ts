@@ -30,6 +30,35 @@ const cancelLimiter = rateLimit({
 
 const router = Router();
 
+// Simple public price list for LoloDesk Actions. Rates are PHP per rental day.
+router.get('/pricing', async (req, res, next) => {
+  try {
+    const storeId = 'store-lolas';
+    const { configRepo, fleetRepo } = req.app.locals.deps;
+    const [models, pricing, vehicles] = await Promise.all([
+      configRepo.getVehicleModels(),
+      configRepo.getStorePricing(storeId),
+      fleetRepo.findByStore(storeId),
+    ]);
+    const fleetModelIds = new Set(vehicles.map((vehicle: { modelId: string | null }) => vehicle.modelId));
+    const result = models
+      .filter((model: { id: string }) => fleetModelIds.has(model.id))
+      .map((model: { id: string; name: string }) => ({
+        model: model.name,
+        rates: pricing
+          .filter((tier: { modelId: string }) => tier.modelId === model.id)
+          .sort((a: { minDays: number }, b: { minDays: number }) => a.minDays - b.minDays)
+          .map((tier: { minDays: number; maxDays: number; dailyRate: number }) => ({
+            minDays: tier.minDays,
+            maxDays: tier.maxDays,
+            dailyRate: Number(tier.dailyRate),
+          })),
+      }))
+      .filter((model: { rates: unknown[] }) => model.rates.length > 0);
+    res.json({ currency: 'PHP', vehicles: result });
+  } catch (err) { next(err); }
+});
+
 const AvailabilityQuerySchema = z.object({
   partnerRef: z.string().max(80).optional(),
   storeId: z.string().min(1),
