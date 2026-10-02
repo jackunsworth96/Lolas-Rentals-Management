@@ -31,22 +31,7 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
     const { storeId, status } = req.query as { storeId: string; status?: string };
     const sb = supabase;
 
-    let query = sb
-      .from('orders')
-      .select('id, store_id, order_date, customer_id, booking_customer_name, status, final_total, balance_due, web_notes, payment_method_id, deposit_method_id, security_deposit, card_fee_surcharge, woo_order_id, booking_token, partner_ref, customers!customer_id(name, mobile, email)')
-      .eq('store_id', storeId)
-      .order('order_date', { ascending: false });
-
-    if (status) {
-      const statuses = status.split(',').map((s) => s.trim()).filter(Boolean);
-      if (statuses.length === 1) query = query.eq('status', statuses[0]);
-      else if (statuses.length > 1) query = query.in('status', statuses);
-    }
-
-    const { data: orders, error } = await query;
-    if (error) throw new Error(`enriched orders query failed: ${error.message}`);
-
-    const orderIds = (orders ?? []).map((o: Record<string, unknown>) => o.id as string);
+    const statuses = status ? status.split(',').map((s) => s.trim()).filter(Boolean) : null;
 
     type EnrichedOrderItem = {
       id: string;
@@ -62,23 +47,52 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
       dropoff_fee: number | string | null;
       discount: number;
     };
-    let itemsByOrder = new Map<string, EnrichedOrderItem[]>();
-    if (orderIds.length > 0) {
-      const { data: items, error: itemsErr } = await sb
-        .from('order_items')
-        .select('id, order_id, vehicle_id, vehicle_name, pickup_datetime, dropoff_datetime, pickup_location_id, dropoff_location_id, pickup_location, dropoff_location, pickup_fee, dropoff_fee, discount')
-        .in('order_id', orderIds);
-      if (itemsErr) throw new Error(`enriched items query failed: ${itemsErr.message}`);
-      for (const item of (items ?? [])) {
-        const list = itemsByOrder.get(item.order_id) ?? [];
-        list.push(item);
-        itemsByOrder.set(item.order_id, list);
-      }
-    }
+    type EnrichedOrderRow = {
+      id: string;
+      store_id: string;
+      order_date: string;
+      customer_id: string | null;
+      booking_customer_name: string | null;
+      status: string;
+      final_total: number | string | null;
+      web_notes: string | null;
+      payment_method_id: string | null;
+      deposit_method_id: string | null;
+      security_deposit: number | string | null;
+      card_fee_surcharge: number | string | null;
+      woo_order_id: string | null;
+      booking_token: string | null;
+      partner_ref: string | null;
+      customer_name: string | null;
+      customer_mobile: string | null;
+      customer_email: string | null;
+      items: EnrichedOrderItem[] | null;
+      total_paid: number | string | null;
+      pending_extensions_total: number | string | null;
+      has_extension: boolean;
+      has_nine_pm_addon: boolean;
+      waiver_status: string;
+      waiver_signed_at: string | null;
+      inspection_status: 'pending' | 'completed';
+    };
+
+    // A single server-side aggregation (see migration
+    // 20261002000000_get_enriched_orders_rpc.sql) replaces the old
+    // fetch-then-`.in('order_id', orderIds)` follow-up queries, whose request
+    // URLs grew with the number of matching orders and blew past the ~16KB
+    // HTTP header limit once a store accumulated a few hundred completed
+    // orders — which silently emptied this list.
+    const { data: rows, error } = await sb.rpc('get_enriched_orders', {
+      p_store_id: storeId,
+      p_statuses: statuses,
+    });
+    if (error) throw new Error(`enriched orders query failed: ${error.message}`);
+
+    const orderRows = (rows ?? []) as EnrichedOrderRow[];
 
     // Load location names as well as IDs. Older activated partner bookings lost
     // their location IDs while keeping the names and zero (waived) fees.
-    const { data: transportLocations, error: locationsErr } = orderIds.length > 0
+    const { data: transportLocations, error: locationsErr } = orderRows.length > 0
       ? await sb
           .from('locations')
           .select('id, name, location_type, delivery_cost, collection_cost')
@@ -86,149 +100,24 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
       : { data: [], error: null };
     if (locationsErr) throw new Error(`enriched locations query failed: ${locationsErr.message}`);
 
-    let paymentsByOrder = new Map<string, number>();
-    let pendingExtensionsByOrder = new Map<string, number>();
-    let extendedOrderIds = new Set<string>();
-    if (orderIds.length > 0) {
-      const { data: payments, error: payErr } = await sb
-        .from('payments')
-        .select('order_id, amount, payment_type, settlement_status, payment_method_id')
-        .in('order_id', orderIds);
-      if (!payErr && payments) {
-        for (const p of payments as Array<{ order_id: string; amount: number | string | null; payment_type: string | null; settlement_status: string | null; payment_method_id: string | null }>) {
-          if (p.payment_type === 'extension') {
-            extendedOrderIds.add(p.order_id);
-          }
-          // Track pending extension IOUs separately — these are amounts the
-          // customer still owes that aren't in orders.balance_due until the
-          // extension RPC bumps it (see migration 091).
-          const isUnpaidExtension =
-            p.payment_type === 'extension' && p.settlement_status === 'pending';
-          if (isUnpaidExtension) {
-            pendingExtensionsByOrder.set(
-              p.order_id,
-              (pendingExtensionsByOrder.get(p.order_id) ?? 0) + Number(p.amount ?? 0),
-            );
-            continue;
-          }
-          // Absorbed extensions were rolled into a final settlement payment —
-          // the cash is captured by the settlement payment row, so skip here
-          // (see migration 092).
-          if (p.payment_type === 'extension' && p.settlement_status === 'absorbed') {
-            continue;
-          }
-          // Deposits are held against orders.security_deposit, not against
-          // final_total — counting them here would mask unpaid rental charges.
-          // Pending extension IOUs are excluded because no cash was received yet.
-          if (p.payment_type === 'deposit') continue;
-          // Addon with payment_method_id='pending' is an unpaid IOU (collect later) — no cash received yet.
-          if (p.payment_type === 'addon' && p.payment_method_id === 'pending' && p.settlement_status === 'pending') continue;
-          // Refunds represent money returned to the customer — subtract from net received.
-          if (p.payment_type === 'refund') {
-            paymentsByOrder.set(
-              p.order_id,
-              (paymentsByOrder.get(p.order_id) ?? 0) - Number(p.amount ?? 0),
-            );
-            continue;
-          }
-          paymentsByOrder.set(
-            p.order_id,
-            (paymentsByOrder.get(p.order_id) ?? 0) + Number(p.amount ?? 0),
-          );
-        }
-      }
-    }
-
-    const bookingTokens = [
-      ...new Set(
-        (orders ?? [])
-          .map((o: Record<string, unknown>) => (o.booking_token as string | null) ?? null)
-          .filter((t): t is string => typeof t === 'string' && t.length > 0),
-      ),
-    ];
-
-    type WaiverRow = { order_reference: string; status: string; agreed_at: string | null; created_at: string };
-    const waiverByReference = new Map<string, { status: string; agreed_at: string | null }>();
-    if (bookingTokens.length > 0) {
-      const { data: waiverRows, error: waiverErr } = await sb
-        .from('waivers')
-        .select('order_reference, status, agreed_at, created_at')
-        .in('order_reference', bookingTokens);
-      if (waiverErr) throw new Error(`enriched waivers query failed: ${waiverErr.message}`);
-      const bestByRef = new Map<string, WaiverRow>();
-      for (const row of (waiverRows ?? []) as WaiverRow[]) {
-        const cur = bestByRef.get(row.order_reference);
-        if (!cur || (row.created_at ?? '') > (cur.created_at ?? '')) {
-          bestByRef.set(row.order_reference, row);
-        }
-      }
-      for (const [ref, row] of bestByRef) {
-        waiverByReference.set(ref, { status: row.status, agreed_at: row.agreed_at });
-      }
-    }
-
-    const inspectionByOrderId = new Map<string, { status: string }>();
-    if (orderIds.length > 0) {
-      const { data: inspectionRows, error: inspErr } = await sb
-        .from('inspections')
-        .select('order_id, status, created_at')
-        .in('order_id', orderIds);
-      if (inspErr) throw new Error(`enriched inspections query failed: ${inspErr.message}`);
-      type InspRow = { order_id: string; status: string; created_at: string };
-      const bestInsp = new Map<string, InspRow>();
-      for (const row of (inspectionRows ?? []) as InspRow[]) {
-        const cur = bestInsp.get(row.order_id);
-        if (!cur || (row.created_at ?? '') > (cur.created_at ?? '')) {
-          bestInsp.set(row.order_id, row);
-        }
-      }
-      for (const [oid, row] of bestInsp) {
-        inspectionByOrderId.set(oid, { status: row.status });
-      }
-    }
-
-    const ninePmOrderIds = new Set<string>();
-    if (orderIds.length > 0) {
-      const { data: ninePmAddons } = await sb
-        .from('order_addons')
-        .select('order_id, addon_name')
-        .in('order_id', orderIds);
-      for (const a of (ninePmAddons ?? []) as Array<{ order_id: string; addon_name: string }>) {
-        const n = (a.addon_name ?? '').toLowerCase();
-        if (n.includes('9pm') || n.includes('21:00') || n.includes('ninepm')) {
-          ninePmOrderIds.add(a.order_id);
-        }
-      }
-    }
-
-    const enriched = (orders ?? []).map((o: Record<string, unknown>) => {
-      const customer = o.customers as { name: string; mobile: string | null; email: string | null } | null;
-      const items = itemsByOrder.get(o.id as string) ?? [];
+    const enriched = orderRows.map((o) => {
+      const items = o.items ?? [];
       const vehicleNames = items.map((i) => i.vehicle_name).filter(Boolean).join(', ');
       const primaryItem = items[0] ?? null;
       const returnDatetime = items.reduce<string | null>((latest, i) => {
         if (!i.dropoff_datetime) return latest;
         return !latest || i.dropoff_datetime > latest ? i.dropoff_datetime : latest;
       }, null);
-      const totalPaid = paymentsByOrder.get(o.id as string) ?? 0;
-      const pendingExtensionsTotal = pendingExtensionsByOrder.get(o.id as string) ?? 0;
 
       const totalDiscount = items.reduce((sum, i) => sum + Number(i.discount ?? 0), 0);
 
       const finalTotalNum = Number(o.final_total ?? 0);
-      const totalPaidNum = totalPaid;
+      const totalPaidNum = Number(o.total_paid ?? 0);
       // Pending extension charges already increase final_total. Adding them
       // again here overstates the balance when earlier payments cover part of
       // the extension.
       const balanceDueComputed = calculateBalanceDue(finalTotalNum, totalPaidNum);
 
-      const token = (o.booking_token as string) ?? null;
-      const waiverData = token ? waiverByReference.get(token) : undefined;
-
-      const insp = inspectionByOrderId.get(o.id as string);
-      const inspectionStatus = insp?.status === 'completed' ? 'completed' : 'pending';
-      const hasExtension = extendedOrderIds.has(o.id as string);
-      const hasNinePmAddon = ninePmOrderIds.has(o.id as string);
       const transportService = deriveTransportService(items, transportLocations ?? [], {
         // Free partner delivery/collection is saved using the establishment
         // name (for example, "Bravo Beach Resort"). It is intentionally not a
@@ -243,32 +132,31 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
         id: o.id,
         storeId: o.store_id,
         orderDate: o.order_date,
-        customerName:
-          ((o.booking_customer_name as string | null)?.trim() || customer?.name) ?? '—',
-        customerMobile: customer?.mobile ?? null,
-        customerEmail: customer?.email?.trim() || null,
+        customerName: (o.booking_customer_name?.trim() || o.customer_name) ?? '—',
+        customerMobile: o.customer_mobile ?? null,
+        customerEmail: o.customer_email?.trim() || null,
         vehicleNames: vehicleNames || '—',
         returnDatetime,
         pickupDatetime,
-        wooOrderId: (o.woo_order_id as string) ?? null,
-        bookingToken: token,
+        wooOrderId: o.woo_order_id ?? null,
+        bookingToken: o.booking_token,
         finalTotal: finalTotalNum,
         balanceDue: balanceDueComputed,
         totalPaid: totalPaidNum,
-        pendingExtensionsTotal,
+        pendingExtensionsTotal: Number(o.pending_extensions_total ?? 0),
         securityDeposit: Number(o.security_deposit ?? 0),
         cardFeeSurcharge: Number(o.card_fee_surcharge ?? 0),
-        status: o.status as string,
-        webNotes: o.web_notes as string | null,
-        paymentMethodId: o.payment_method_id as string | null,
-        depositMethodId: o.deposit_method_id as string | null,
-        waiverStatus: (waiverData?.status as 'pending' | 'signed' | 'expired' | undefined) ?? 'pending',
-        waiverSignedAt: waiverData?.agreed_at ?? null,
-        inspectionStatus,
-        hasExtension,
-        hasNinePmAddon,
+        status: o.status,
+        webNotes: o.web_notes,
+        paymentMethodId: o.payment_method_id,
+        depositMethodId: o.deposit_method_id,
+        waiverStatus: (o.waiver_status as 'pending' | 'signed' | 'expired' | undefined) ?? 'pending',
+        waiverSignedAt: o.waiver_signed_at ?? null,
+        inspectionStatus: o.inspection_status,
+        hasExtension: o.has_extension,
+        hasNinePmAddon: o.has_nine_pm_addon,
         transportService,
-        partnerRef: (o.partner_ref as string) ?? null,
+        partnerRef: o.partner_ref ?? null,
         primaryVehicleId: primaryItem?.vehicle_id ?? null,
         primaryVehicleName: primaryItem?.vehicle_name ?? null,
         primaryOrderItemId: primaryItem?.id ?? null,
