@@ -21,6 +21,13 @@ export function useDeliveryReminders() {
     queryKey: DELIVERY_REMINDERS_KEY,
     queryFn: () => api.get<DeliveryReminderEvent[]>('/orders/delivery-reminders'),
     refetchInterval: 60_000,
+    // Without this, polling pauses the moment the tab isn't the visible/
+    // focused one — which is how this alert went unacknowledged 100% of the
+    // time historically (every delivery_reminder_log row had acknowledged_at
+    // = null). Keep polling even in a background tab so the alert is ready
+    // the instant the user switches back, instead of depending on
+    // refetchOnWindowFocus to catch up after the fact.
+    refetchIntervalInBackground: true,
     staleTime: 55_000,
   });
 }

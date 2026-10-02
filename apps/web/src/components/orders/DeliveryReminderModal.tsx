@@ -6,6 +6,54 @@ import {
 } from '../../api/delivery-reminders.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 
+/**
+ * Plays a short attention-grabbing chime using the Web Audio API — no
+ * external asset needed. Best-effort only: browsers may block audio until
+ * the user has interacted with the page at least once, which is fine here
+ * since this just adds to the (still-shown) visual modal rather than
+ * replacing it.
+ */
+function playAlertChime() {
+  try {
+    const AudioCtx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    [880, 660].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.value = 0.15;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      const start = ctx.currentTime + i * 0.18;
+      osc.start(start);
+      osc.stop(start + 0.15);
+    });
+  } catch {
+    // Audio not available — the visual modal (and Telegram escalation) still apply.
+  }
+}
+
+/** Shows a system-level notification so the alert surfaces even if this tab isn't focused. */
+function notifyIfHidden(count: number) {
+  if (typeof Notification === 'undefined') return;
+  if (Notification.permission === 'default') {
+    void Notification.requestPermission();
+    return;
+  }
+  if (Notification.permission !== 'granted') return;
+  if (!document.hidden) return;
+  try {
+    new Notification('⚠️ Off-site pickup/collection due soon', {
+      body: `${count} event${count > 1 ? 's' : ''} need acknowledgment.`,
+      tag: 'delivery-reminder',
+    });
+  } catch {
+    // Notifications unsupported/blocked — Telegram escalation remains the fallback.
+  }
+}
+
 function minutesUntil(datetime: string): number {
   return Math.round((new Date(datetime).getTime() - Date.now()) / 60_000);
 }
@@ -132,6 +180,7 @@ export function DeliveryReminderModal() {
   const { data: events = [] } = useDeliveryReminders();
   const acknowledge = useAcknowledgeDeliveryReminder();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const seenKeysRef = useRef<Set<string>>(new Set());
 
   const isOpen = isLoggedIn && events.length > 0;
 
@@ -144,6 +193,22 @@ export function DeliveryReminderModal() {
       dialog.close();
     }
   }, [isOpen]);
+
+  // Alert (sound + system notification) whenever a *new* event enters the
+  // list — not on every poll — so a silently-opened <dialog> can't go
+  // unnoticed on a backgrounded/unfocused tab. This is the modal's biggest
+  // historical gap: it previously relied entirely on someone already
+  // looking at the screen, with zero acknowledgments ever recorded.
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const currentKeys = events.map((e) => `${e.orderItemId}:${e.eventType}`);
+    const hasNew = currentKeys.some((k) => !seenKeysRef.current.has(k));
+    if (hasNew && events.length > 0) {
+      playAlertChime();
+      notifyIfHidden(events.length);
+    }
+    seenKeysRef.current = new Set(currentKeys);
+  }, [events, isLoggedIn]);
 
   if (!isLoggedIn) return null;
 

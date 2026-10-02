@@ -13,7 +13,7 @@
 
 import cron from 'node-cron';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
-import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
+import { sendTelegramMessage, getTelegramChatId } from '../lib/telegram.js';
 import { escapeHtml } from '../services/email.js';
 import { logger } from '../lib/logger.js';
 
@@ -147,7 +147,19 @@ async function runDeliveryReminderJob(): Promise<void> {
       `🎫 <b>Ref:</b> ${escapeHtml(String((order.booking_token as string | null) ?? order.id))}`,
     ];
 
-    void sendTelegramAlert(lines.join('\n'), getTelegramChatId('ops'));
+    // Inline "Acknowledge" button lets ops confirm directly from Telegram —
+    // the on-screen backoffice modal requires an actively-watched open tab,
+    // which historically never happened (every past reminder escalated to
+    // Telegram with acknowledged_at left null). Telegram is where ops
+    // actually looks, so acknowledgment needs to work from there too.
+    void sendTelegramMessage(lines.join('\n'), getTelegramChatId('ops') ?? '', {
+      inline_keyboard: [[
+        {
+          text: '✓ Acknowledge',
+          callback_data: `ack_delivery_${candidate.id}_${candidate.eventType}`,
+        },
+      ]],
+    });
 
     await sb.from('delivery_reminder_log').upsert(
       {

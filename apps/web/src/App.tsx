@@ -49,7 +49,13 @@ export function App() {
         <ErrorBoundary onError={triggerBetaError}>
           <AppRouter />
         </ErrorBoundary>
-        <DeliveryReminderModal />
+        {/* Isolated boundary: a crash here must never take down the whole app,
+            and must never silently vanish either — it still reports via
+            triggerBetaError. fallback=null keeps it invisible rather than
+            covering the screen with an error card. */}
+        <ErrorBoundary onError={triggerBetaError} fallback={null}>
+          <DeliveryReminderModal />
+        </ErrorBoundary>
         <ChatLauncherTooltip />
         {BETA_ERROR_NOTICE && showBetaError && (
           <BetaErrorBanner onClose={() => setShowBetaError(false)} />
