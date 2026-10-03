@@ -25,6 +25,8 @@ export type OrderItem = {
 };
 
 export type OrderPayment = {
+  id: string;
+  orderItemId?: string | null;
   transactionDate: string;
   amount: number;
   paymentMethodId: string;

@@ -8,6 +8,7 @@ import { supabase } from '../adapters/supabase/client.js';
 import { sendTelegramAlert, sendTelegramAlertPaidOrdersStaggered, getTelegramChatId } from '../lib/telegram.js';
 import { escapeHtml } from '../services/email.js';
 import { deriveTransportService } from '../lib/transport-service.js';
+import { loadEnrichedOrdersFallback } from '../lib/enriched-orders-fallback.js';
 
 const router = Router();
 router.use(authenticate);
@@ -82,11 +83,13 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
     // URLs grew with the number of matching orders and blew past the ~16KB
     // HTTP header limit once a store accumulated a few hundred completed
     // orders — which silently emptied this list.
-    const { data: rows, error } = await sb.rpc('get_enriched_orders', {
+    const { data: rpcRows, error } = await sb.rpc('get_enriched_orders', {
       p_store_id: storeId,
       p_statuses: statuses,
     });
-    if (error) throw new Error(`enriched orders query failed: ${error.message}`);
+    const missingRpc = error && (error.code === 'PGRST202' || error.message.includes('Could not find the function public.get_enriched_orders'));
+    if (error && !missingRpc) throw new Error(`enriched orders query failed: ${error.message}`);
+    const rows = missingRpc ? await loadEnrichedOrdersFallback(sb, storeId, statuses) : rpcRows;
 
     const orderRows = (rows ?? []) as EnrichedOrderRow[];
 
@@ -644,6 +647,11 @@ router.post('/:id/refund', requirePermission(Permission.EditOrders), validateBod
   refundAccountId: z.string(),
   receivableAccountId: z.string(),
   reason: z.string().max(500).nullable().optional(),
+  affectsRentalRevenue: z.boolean().optional(),
+  revenueSource: z.enum(['original', 'extension']).nullable().optional(),
+  sourcePaymentId: z.string().nullable().optional(),
+  orderItemId: z.string().nullable().optional(),
+  actualReturnDatetime: z.string().datetime({ offset: true }).nullable().optional(),
   cancelOrder: z.boolean().optional(),
   transactionDate: z.string(),
 })), async (req, res, next) => {

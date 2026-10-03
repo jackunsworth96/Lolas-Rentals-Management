@@ -23,6 +23,11 @@ export interface RefundOrderInput {
   receivableAccountId: string;
   /** Optional free-text reason shown in the payments list and journal description. */
   reason?: string | null;
+  affectsRentalRevenue?: boolean;
+  revenueSource?: 'original' | 'extension' | null;
+  sourcePaymentId?: string | null;
+  orderItemId?: string | null;
+  actualReturnDatetime?: string | null;
   /** When true, the order is set to 'cancelled' in the same operation. */
   cancelOrder?: boolean;
   transactionDate: string;
@@ -84,7 +89,7 @@ export async function refundOrder(
   const journalDate = input.transactionDate;
   const journalPeriod = journalDate.slice(0, 7);
 
-  const { error: rpcErr } = await supabase.rpc('collect_payment_atomic', {
+  const { error: rpcErr } = await supabase.rpc('record_refund_atomic', {
     p_payment_id: paymentId,
     p_order_id: order.id,
     p_store_id: order.storeId,
@@ -93,15 +98,19 @@ export async function refundOrder(
     p_account_id: input.refundAccountId,
     p_transaction_date: input.transactionDate,
     p_customer_id: order.customerId,
-    p_payment_type: 'refund',
     p_journal_transaction_id: journalTransactionId,
     p_journal_period: journalPeriod,
     p_journal_date: journalDate,
     p_journal_legs: legs.map(serialiseLeg),
     p_notes: input.reason?.trim() ?? null,
+    p_affects_rental_revenue: input.affectsRentalRevenue ?? false,
+    p_revenue_source: input.affectsRentalRevenue ? input.revenueSource ?? null : null,
+    p_source_payment_id: input.affectsRentalRevenue ? input.sourcePaymentId ?? null : null,
+    p_order_item_id: input.orderItemId ?? null,
+    p_actual_return_datetime: input.actualReturnDatetime ?? null,
   });
 
-  if (rpcErr) throw new Error(`collect_payment_atomic RPC failed: ${rpcErr.message}`);
+  if (rpcErr) throw new Error(`record_refund_atomic RPC failed: ${rpcErr.message}`);
 
   // Recompute balance_due from the full payments list using the same filtering
   // as collectPayment and settle-order so the stored value is always consistent:
@@ -118,8 +127,10 @@ export async function refundOrder(
     return sum.add(Money.php(p.amount));
   }, Money.zero());
 
-  order.applyPayments(totalPaid);
-  await orderRepo.save(order);
+  const updatedOrder = await orderRepo.findById(order.id);
+  if (!updatedOrder) throw new Error(`Order ${order.id} not found after refund`);
+  updatedOrder.applyPayments(totalPaid);
+  await orderRepo.save(updatedOrder);
 
   if (input.cancelOrder) {
     const { error: cancelErr } = await supabase

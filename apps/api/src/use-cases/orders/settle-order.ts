@@ -458,6 +458,18 @@ export async function settleOrder(
       : null,
   };
 
+  const journalAccountIds = [...new Set(legs.map((leg) => leg.accountId))];
+  if (journalAccountIds.length > 0) {
+    const { data: accounts, error: accountError } = await supabase
+      .from('chart_of_accounts')
+      .select('id')
+      .in('id', journalAccountIds);
+    if (accountError) throw new Error(`Could not verify settlement accounts: ${accountError.message}`);
+    const existingIds = new Set((accounts ?? []).map((account: { id: string }) => account.id));
+    const missingId = journalAccountIds.find((id) => !existingIds.has(id));
+    if (missingId) throw new Error(`Settlement account ${missingId} no longer exists. Refresh the order and select a current account.`);
+  }
+
   let { error: rpcErr } = await supabase.rpc('settle_order_atomic', rpcPayload);
 
   if (
@@ -473,7 +485,7 @@ export async function settleOrder(
   }
 
   if (rpcErr) {
-    throw new Error(`settle_order_atomic RPC failed: ${rpcErr.message}`);
+    throw new Error(`settle_order_atomic RPC failed: ${rpcErr.message}${rpcErr.details ? ` (${rpcErr.details})` : ''}`);
   }
 
   // Reload the order so we return a fresh domain object that

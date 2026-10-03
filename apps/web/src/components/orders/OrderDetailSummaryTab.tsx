@@ -80,6 +80,12 @@ export function OrderDetailSummaryTab({
   const [refundMethodId, setRefundMethodId] = useState('');
   const [refundAccountId, setRefundAccountId] = useState('');
   const [refundReason, setRefundReason] = useState('');
+  const [refundAffectsRevenue, setRefundAffectsRevenue] = useState(false);
+  const [refundReturnedEarly, setRefundReturnedEarly] = useState(false);
+  const [refundItemId, setRefundItemId] = useState('');
+  const [refundCharge, setRefundCharge] = useState('');
+  const [refundActualReturn, setRefundActualReturn] = useState('');
+  const [refundSuccess, setRefundSuccess] = useState<string | null>(null);
 
   // ── Settle order state ──
   const [settlementDate, setSettlementDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -400,12 +406,20 @@ export function OrderDetailSummaryTab({
     e.preventDefault();
     const amt = Number(refundAmount);
     if (!amt || amt <= 0 || !refundMethodId || !refundAccountId || !defaultReceivableId) return;
+    if ((refundAffectsRevenue || refundReturnedEarly) &&
+        (items.length !== 1 && !refundItemId)) return;
+    if (refundAffectsRevenue && !refundCharge && payments.some((p) => p.paymentType === 'extension' && p.settlementStatus !== 'pending')) return;
+    if (refundReturnedEarly && (!refundActualReturn || refundReturnError)) return;
+    refundOrderMut.reset();
     setShowRefundConfirm(true);
   };
 
   const handleRefundConfirmed = () => {
     const amt = Number(refundAmount);
     if (!amt || amt <= 0 || !refundMethodId || !refundAccountId || !defaultReceivableId) return;
+    const selectedItemId = refundItemId || (items.length === 1 ? items[0].id : null);
+    const selectedCharge = refundCharge || 'original';
+    setRefundSuccess(null);
     refundOrderMut.mutate(
       {
         id: orderId,
@@ -414,6 +428,11 @@ export function OrderDetailSummaryTab({
         refundAccountId,
         receivableAccountId: defaultReceivableId,
         reason: refundReason.trim() || null,
+        affectsRentalRevenue: refundAffectsRevenue,
+        revenueSource: refundAffectsRevenue ? (selectedCharge === 'original' ? 'original' : 'extension') : null,
+        sourcePaymentId: refundAffectsRevenue && selectedCharge !== 'original' ? selectedCharge : null,
+        orderItemId: refundAffectsRevenue || refundReturnedEarly ? selectedItemId : null,
+        actualReturnDatetime: refundReturnedEarly ? new Date(`${refundActualReturn}+08:00`).toISOString() : null,
         cancelOrder: false,
         transactionDate: new Date().toISOString().slice(0, 10),
       },
@@ -424,11 +443,15 @@ export function OrderDetailSummaryTab({
           setRefundMethodId('');
           setRefundAccountId('');
           setRefundReason('');
-          pushToast('Refund recorded successfully.', 'success');
+          setRefundAffectsRevenue(false);
+          setRefundReturnedEarly(false);
+          setRefundItemId('');
+          setRefundCharge('');
+          setRefundActualReturn('');
+          setRefundSuccess(`Refund of ${formatCurrency(amt)} recorded successfully.`);
         },
-        onError: (err) => {
+        onError: () => {
           setShowRefundConfirm(false);
-          pushToast((err as Error).message, 'error');
         },
       },
     );
@@ -520,6 +543,20 @@ export function OrderDetailSummaryTab({
   const statusVal = (order.status as { value?: string } | undefined)?.value ?? order.status;
 
   const itemsList = items;
+  const refundSelectedItem = itemsList.find((item) => item.id === refundItemId)
+    ?? (itemsList.length === 1 ? itemsList[0] : null);
+  const refundReturnError = (() => {
+    if (!refundReturnedEarly || !refundActualReturn || !refundSelectedItem) return null;
+    const actual = new Date(`${refundActualReturn}+08:00`).getTime();
+    if (!Number.isFinite(actual)) return 'Enter a valid return date and time.';
+    if (statusVal !== 'active') return 'Only active rentals can have their return date changed.';
+    if (actual <= new Date(refundSelectedItem.pickupDatetime).getTime())
+      return `Return must be after pickup (${formatDateTime(refundSelectedItem.pickupDatetime)}).`;
+    if (actual >= new Date(refundSelectedItem.dropoffDatetime).getTime())
+      return `Return must be before the current recorded end (${formatDateTime(refundSelectedItem.dropoffDatetime)}). If it was already updated, leave this box unchecked for another refund.`;
+    if (actual > Date.now()) return 'Return cannot be in the future.';
+    return null;
+  })();
   // Rental subtotal = original rate × originally-booked days. Extensions are
   // modelled separately so the breakdown stays transparent: you can see what
   // the base rental cost vs what was added through extensions.
@@ -1388,6 +1425,55 @@ export function OrderDetailSummaryTab({
                     />
                   </label>
                 </div>
+                <div className="space-y-2 text-sm text-gray-700">
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={refundAffectsRevenue} onChange={(e) => { setRefundAffectsRevenue(e.target.checked); setRefundCharge(''); }} />
+                    Reduces rental or extension charge (adjust partner commission)
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={refundReturnedEarly} onChange={(e) => {
+                      setRefundReturnedEarly(e.target.checked);
+                      if (e.target.checked) setRefundAffectsRevenue(true);
+                    }} />
+                    Vehicle returned early (update rental end date)
+                  </label>
+                </div>
+                {(refundAffectsRevenue || refundReturnedEarly) && itemsList.length > 1 && (
+                  <label className="block text-sm text-gray-700">
+                    Vehicle
+                    <select required value={refundItemId} onChange={(e) => { setRefundItemId(e.target.value); setRefundCharge(''); }} className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2">
+                      <option value="">Select vehicle</option>
+                      {itemsList.map((item) => <option key={item.id} value={item.id}>{item.vehicleName}</option>)}
+                    </select>
+                  </label>
+                )}
+                {refundAffectsRevenue && payments.some((p) => p.paymentType === 'extension' && p.settlementStatus !== 'pending') && (
+                  <label className="block text-sm text-gray-700">
+                    Charge being refunded
+                    <select required value={refundCharge} onChange={(e) => setRefundCharge(e.target.value)} className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2">
+                      <option value="">Select charge</option>
+                      <option value="original">Original rental</option>
+                      {payments.filter((p) => p.paymentType === 'extension' && p.settlementStatus !== 'pending' &&
+                        (!p.orderItemId || p.orderItemId === (refundItemId || (itemsList.length === 1 ? itemsList[0].id : ''))))
+                        .map((p) => <option key={p.id} value={p.id}>Extension {formatDate(p.transactionDate)} · {formatCurrency(p.amount)}</option>)}
+                    </select>
+                  </label>
+                )}
+                {refundAffectsRevenue && !payments.some((p) => p.paymentType === 'extension' && p.settlementStatus !== 'pending') && (
+                  <p className="text-sm text-gray-600">Charge: original rental</p>
+                )}
+                {refundReturnedEarly && (
+                  <label className="block text-sm text-gray-700">
+                    Actual return date and time (Philippines)
+                    <input type="datetime-local" required value={refundActualReturn} onChange={(e) => setRefundActualReturn(e.target.value)} className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2" />
+                    {refundSelectedItem && (
+                      <span className="mt-1 block text-xs text-gray-600">
+                        Pickup: {formatDateTime(refundSelectedItem.pickupDatetime)}. Current recorded end: {formatDateTime(refundSelectedItem.dropoffDatetime)}.
+                      </span>
+                    )}
+                    {refundReturnError && <span role="alert" className="mt-1 block text-xs text-red-700">{refundReturnError}</span>}
+                  </label>
+                )}
                 <Button
                   type="submit"
                   variant="danger"
@@ -1396,8 +1482,13 @@ export function OrderDetailSummaryTab({
                 >
                   {refundOrderMut.isPending ? 'Processing…' : 'Issue Refund'}
                 </Button>
+                {refundSuccess && (
+                  <p role="status" className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+                    {refundSuccess}
+                  </p>
+                )}
                 {refundOrderMut.error && (
-                  <p className="text-sm text-red-600">{(refundOrderMut.error as Error).message}</p>
+                  <p role="alert" className="text-sm text-red-600">{(refundOrderMut.error as Error).message}</p>
                 )}
               </form>
             </section>
@@ -1881,6 +1972,11 @@ export function OrderDetailSummaryTab({
                   <dd className="text-right font-medium">{refundReason.trim()}</dd>
                 </div>
               )}
+              <div className="flex justify-between gap-4">
+                <dt>Partner commission</dt>
+                <dd className="text-right">{refundAffectsRevenue ? 'Recalculate rental revenue' : 'Unchanged (rental charge not reduced)'}</dd>
+              </div>
+              {refundReturnedEarly && <div className="flex justify-between gap-4"><dt>Actual return</dt><dd>{refundActualReturn.replace('T', ' ')} PHT</dd></div>}
             </dl>
             <div className="flex gap-3">
               <Button

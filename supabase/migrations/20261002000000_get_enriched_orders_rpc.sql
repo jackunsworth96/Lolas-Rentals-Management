@@ -167,3 +167,5 @@ $$;
 
 REVOKE ALL ON FUNCTION public.get_enriched_orders(text, text[]) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_enriched_orders(text, text[]) TO service_role;
+
+NOTIFY pgrst, 'reload schema';
