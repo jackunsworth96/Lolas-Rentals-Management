@@ -3,14 +3,13 @@
  *
  * Fires at 09:00 Asia/Manila every day.
  * Finds every booking whose pickup_datetime falls tomorrow
- * (Asia/Manila date boundaries) and sends a WhatsApp template message via
- * the respond.io outbound API.
+ * (Asia/Manila date boundaries) and sends a WhatsApp template through Meta.
  */
 
 import cron from 'node-cron';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { logger } from '../lib/logger.js';
-import { sendRespondIoTemplateMessage } from '../services/respond-io-outbound.js';
+import { sendWhatsAppTemplate } from '../services/whatsapp-template.js';
 
 interface ReminderCandidate {
   bookingReference: string;
@@ -19,11 +18,8 @@ interface ReminderCandidate {
   pickupDatetime: string;
 }
 
-const PICKUP_REMINDER_TEMPLATE_CHANNEL_ID = Number(
-  process.env.RESPOND_IO_PICKUP_REMINDER_CHANNEL_ID ?? process.env.RESPOND_IO_WHATSAPP_CHANNEL_ID ?? 501809,
-);
-const PICKUP_REMINDER_TEMPLATE_NAME = process.env.RESPOND_IO_PICKUP_REMINDER_TEMPLATE_NAME ?? 'pickup_reminder_tomorrow';
-const PICKUP_REMINDER_TEMPLATE_LANGUAGE = process.env.RESPOND_IO_PICKUP_REMINDER_TEMPLATE_LANGUAGE ?? 'en';
+const PICKUP_REMINDER_TEMPLATE_NAME = process.env.WHATSAPP_PICKUP_REMINDER_TEMPLATE_NAME ?? 'pickup_reminder_tomorrow';
+const PICKUP_REMINDER_TEMPLATE_LANGUAGE = process.env.WHATSAPP_PICKUP_REMINDER_TEMPLATE_LANGUAGE ?? 'en';
 const PICKUP_REMINDER_TEMPLATE_BODY =
   "Hi {{1}}, we look forward to seeing you tomorrow.\n\nJust message us here if you need anything before your arrival. We will have your rental vehicle ready at {{2}}.\n\nSee you then!";
 
@@ -148,9 +144,9 @@ export async function runPickupReminderJob(): Promise<void> {
     const pickupTime = formatPickupTime(candidate.pickupDatetime);
 
     try {
-      const result = await sendRespondIoTemplateMessage({
+      const result = await sendWhatsAppTemplate({
+        operationKey: `pickup-reminder:${candidate.bookingReference}`,
         phone: candidate.customerMobile,
-        channelId: PICKUP_REMINDER_TEMPLATE_CHANNEL_ID,
         templateName: PICKUP_REMINDER_TEMPLATE_NAME,
         languageCode: PICKUP_REMINDER_TEMPLATE_LANGUAGE,
         bodyText: PICKUP_REMINDER_TEMPLATE_BODY,

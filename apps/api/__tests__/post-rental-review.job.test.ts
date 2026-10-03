@@ -2,15 +2,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   getSupabaseClient: vi.fn(),
-  sendRespondIoTemplateMessage: vi.fn(),
+  sendWhatsAppTemplate: vi.fn(),
 }));
 
 vi.mock('../src/adapters/supabase/client.js', () => ({
   getSupabaseClient: mocks.getSupabaseClient,
 }));
 
-vi.mock('../src/services/respond-io-outbound.js', () => ({
-  sendRespondIoTemplateMessage: mocks.sendRespondIoTemplateMessage,
+vi.mock('../src/services/whatsapp-template.js', () => ({
+  sendWhatsAppTemplate: mocks.sendWhatsAppTemplate,
 }));
 
 const { runPostRentalReviewJob } = await import('../src/jobs/post-rental-review.job.js');
@@ -47,6 +47,6 @@ describe('runPostRentalReviewJob', () => {
     expect(from).toHaveBeenCalledOnce();
     expect(from).toHaveBeenCalledWith('order_items');
     expect(orderItemsQuery.eq).toHaveBeenCalledWith('orders.status', 'completed');
-    expect(mocks.sendRespondIoTemplateMessage).not.toHaveBeenCalled();
+    expect(mocks.sendWhatsAppTemplate).not.toHaveBeenCalled();
   });
 });

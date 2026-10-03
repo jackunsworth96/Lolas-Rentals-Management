@@ -3,14 +3,13 @@
  *
  * Fires at 09:00 Asia/Manila every day.
  * Finds every active rental whose dropoff_datetime falls today
- * (Asia/Manila date boundaries) and sends a WhatsApp template message via
- * the respond.io outbound API.
+ * (Asia/Manila date boundaries) and sends a WhatsApp template through Meta.
  */
 
 import cron from 'node-cron';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { logger } from '../lib/logger.js';
-import { sendRespondIoTemplateMessage } from '../services/respond-io-outbound.js';
+import { sendWhatsAppTemplate } from '../services/whatsapp-template.js';
 
 interface ReminderCandidate {
   bookingReference: string;
@@ -21,11 +20,8 @@ interface ReminderCandidate {
   hasNinePmReturnAddon: boolean;
 }
 
-const RETURN_REMINDER_TODAY_TEMPLATE_CHANNEL_ID = Number(
-  process.env.RESPOND_IO_RETURN_REMINDER_TODAY_CHANNEL_ID ?? process.env.RESPOND_IO_WHATSAPP_CHANNEL_ID ?? 501809,
-);
-const RETURN_REMINDER_TODAY_TEMPLATE_NAME = process.env.RESPOND_IO_RETURN_REMINDER_TODAY_TEMPLATE_NAME ?? 'return_reminder_today';
-const RETURN_REMINDER_TODAY_TEMPLATE_LANGUAGE = process.env.RESPOND_IO_RETURN_REMINDER_TODAY_TEMPLATE_LANGUAGE ?? 'en';
+const RETURN_REMINDER_TODAY_TEMPLATE_NAME = process.env.WHATSAPP_RETURN_REMINDER_TODAY_TEMPLATE_NAME ?? 'return_reminder_today';
+const RETURN_REMINDER_TODAY_TEMPLATE_LANGUAGE = process.env.WHATSAPP_RETURN_REMINDER_TODAY_TEMPLATE_LANGUAGE ?? 'en';
 const RETURN_REMINDER_TODAY_TEMPLATE_BODY =
   "Hey {{1}}, hope you're still enjoying the island! 🌴\n\nJust a friendly reminder that your rental is due back today at {{2}}.\n\nNeed a little more island time? Just reply here with how long you'd like to extend, and we'll help sort it out.\n\nAny questions, just message us!";
 const NINE_PM_RETURN_ADDON_ID = 9;
@@ -180,9 +176,9 @@ export async function runReturnReminderTodayJob(): Promise<void> {
     const returnTime = formatReturnTime(candidate.dropoffDatetime);
 
     try {
-      const result = await sendRespondIoTemplateMessage({
+      const result = await sendWhatsAppTemplate({
+        operationKey: `return-reminder-today:${candidate.bookingReference}`,
         phone: candidate.customerMobile,
-        channelId: RETURN_REMINDER_TODAY_TEMPLATE_CHANNEL_ID,
         templateName: RETURN_REMINDER_TODAY_TEMPLATE_NAME,
         languageCode: RETURN_REMINDER_TODAY_TEMPLATE_LANGUAGE,
         bodyText: RETURN_REMINDER_TODAY_TEMPLATE_BODY,

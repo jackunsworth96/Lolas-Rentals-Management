@@ -45,6 +45,7 @@ import { startReturnReminderTodayJob } from './jobs/return-reminder-today.job.js
 import { startPickupReminderJob } from './jobs/pickup-reminder.job.js';
 import { startNinePmReturnReminderJob } from './jobs/nine-pm-return-reminder.job.js';
 import { startPostRentalReviewJob } from './jobs/post-rental-review.job.js';
+import { startLoloDeskReportJob } from './services/whatsapp-template.js';
 import { publicLimiter } from './middleware/rate-limit.js';
 import { authenticate } from './middleware/authenticate.js';
 import { authenticateApiKey } from './middleware/authenticateApiKey.js';
@@ -202,6 +203,7 @@ if (process.env.NODE_ENV !== 'test') {
     startPickupReminderJob();
     startNinePmReturnReminderJob();
     startPostRentalReviewJob();
+    startLoloDeskReportJob();
   });
 }
 

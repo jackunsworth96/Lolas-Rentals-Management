@@ -4,7 +4,7 @@
  * Fires at 10:00 Asia/Manila every day.
  * Finds every completed rental whose dropoff_datetime fell yesterday
  * (Asia/Manila date boundaries) and sends a WhatsApp template review request
- * via the respond.io outbound API.
+ * through Meta.
  *
  * Source: orders + order_items + customers.
  *
@@ -15,15 +15,13 @@
  * Deduplication: post_rental_review_log prevents double-sending if
  * the job is restarted or runs more than once on the same day.
  *
- * Required env vars:
- *   RESPOND_IO_API_URL         e.g. https://app.respond.io
- *   RESPOND_IO_OUTBOUND_TOKEN  Bearer token for outbound messages
+ * Required env vars are listed in .env.example.
  */
 
 import cron from 'node-cron';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { logger } from '../lib/logger.js';
-import { sendRespondIoTemplateMessage } from '../services/respond-io-outbound.js';
+import { sendWhatsAppTemplate } from '../services/whatsapp-template.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -38,15 +36,10 @@ interface ReviewCandidate {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const POST_RENTAL_REVIEW_TEMPLATE_CHANNEL_ID = Number(
-  process.env.RESPOND_IO_POST_RENTAL_REVIEW_CHANNEL_ID
-    ?? process.env.RESPOND_IO_WHATSAPP_CHANNEL_ID
-    ?? 501809,
-);
 const POST_RENTAL_REVIEW_TEMPLATE_NAME =
-  process.env.RESPOND_IO_POST_RENTAL_REVIEW_TEMPLATE_NAME ?? 'post_rental_review';
+  process.env.WHATSAPP_POST_RENTAL_REVIEW_TEMPLATE_NAME ?? 'post_rental_review';
 const POST_RENTAL_REVIEW_TEMPLATE_LANGUAGE =
-  process.env.RESPOND_IO_POST_RENTAL_REVIEW_TEMPLATE_LANGUAGE ?? 'en';
+  process.env.WHATSAPP_POST_RENTAL_REVIEW_TEMPLATE_LANGUAGE ?? 'en';
 const POST_RENTAL_REVIEW_TEMPLATE_BODY =
   "Hey {{1}}! Hope you had an amazing time on Siargao 🌊\n\n" +
   "If you enjoyed your time with Lola's Rentals, a quick Google review would mean a lot to us — " +
@@ -204,9 +197,9 @@ export async function runPostRentalReviewJob(): Promise<void> {
     }
 
     try {
-      const result = await sendRespondIoTemplateMessage({
+      const result = await sendWhatsAppTemplate({
+        operationKey: `post-rental-review:${candidate.bookingReference}`,
         phone: candidate.customerMobile,
-        channelId: POST_RENTAL_REVIEW_TEMPLATE_CHANNEL_ID,
         templateName: POST_RENTAL_REVIEW_TEMPLATE_NAME,
         languageCode: POST_RENTAL_REVIEW_TEMPLATE_LANGUAGE,
         bodyText: POST_RENTAL_REVIEW_TEMPLATE_BODY,

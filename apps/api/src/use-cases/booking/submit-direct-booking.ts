@@ -17,7 +17,7 @@ import { formatManilaDate } from '../../utils/manila-date.js';
 import { publicWebOriginFromEnv } from '../../lib/public-web-url.js';
 import { getTelegramChatId, sendTelegramAlert } from '../../lib/telegram.js';
 import { logger } from '../../lib/logger.js';
-import { sendRespondIoTemplateMessage } from '../../services/respond-io-outbound.js';
+import { sendWhatsAppTemplate } from '../../services/whatsapp-template.js';
 import {
   applyPartnerBenefit,
   lookupActivePartnerBySlug,
@@ -68,12 +68,9 @@ function httpError(message: string, statusCode: number): Error {
   return err;
 }
 
-const RESPOND_IO_BOOKING_TEMPLATE_CHANNEL_ID = Number(
-  process.env.RESPOND_IO_BOOKING_TEMPLATE_CHANNEL_ID ?? process.env.RESPOND_IO_WHATSAPP_CHANNEL_ID ?? 501809,
-);
-const RESPOND_IO_BOOKING_TEMPLATE_NAME = process.env.RESPOND_IO_BOOKING_TEMPLATE_NAME ?? 'booking_recieved';
-const RESPOND_IO_BOOKING_TEMPLATE_LANGUAGE = process.env.RESPOND_IO_BOOKING_TEMPLATE_LANGUAGE ?? 'en';
-export const RESPOND_IO_BOOKING_TEMPLATE_BODY = [
+const WHATSAPP_BOOKING_TEMPLATE_NAME = process.env.WHATSAPP_BOOKING_TEMPLATE_NAME ?? 'booking_recieved';
+const WHATSAPP_BOOKING_TEMPLATE_LANGUAGE = process.env.WHATSAPP_BOOKING_TEMPLATE_LANGUAGE ?? 'en';
+export const WHATSAPP_BOOKING_TEMPLATE_BODY = [
   "Hi {{1}}, your Lola's Rentals booking is confirmed.",
   '',
   'Reference: {{2}}',
@@ -85,7 +82,7 @@ export const RESPOND_IO_BOOKING_TEMPLATE_BODY = [
   'We have also sent the full confirmation to your email.',
 ].join('\n');
 
-function buildRespondIoBookingTemplateParameters({
+function buildBookingTemplateParameters({
   customerName,
   orderReference,
   vehicleName,
@@ -459,14 +456,13 @@ export async function submitDirectBooking(
     });
 
     if (input.customerMobile) {
-      const customerNameParts = input.customerName.trim().split(/\s+/).filter(Boolean);
-      void sendRespondIoTemplateMessage({
+      void sendWhatsAppTemplate({
+        operationKey: `booking:${orderReference}`,
         phone: input.customerMobile,
-        channelId: RESPOND_IO_BOOKING_TEMPLATE_CHANNEL_ID,
-        templateName: RESPOND_IO_BOOKING_TEMPLATE_NAME,
-        languageCode: RESPOND_IO_BOOKING_TEMPLATE_LANGUAGE,
-        bodyText: RESPOND_IO_BOOKING_TEMPLATE_BODY,
-        parameters: buildRespondIoBookingTemplateParameters({
+        templateName: WHATSAPP_BOOKING_TEMPLATE_NAME,
+        languageCode: WHATSAPP_BOOKING_TEMPLATE_LANGUAGE,
+        bodyText: WHATSAPP_BOOKING_TEMPLATE_BODY,
+        parameters: buildBookingTemplateParameters({
           customerName: input.customerName,
           orderReference,
           vehicleName,
@@ -476,11 +472,6 @@ export async function submitDirectBooking(
           dropoffLocation,
           waiverUrl,
         }),
-        createContactIfMissing: {
-          firstName: customerNameParts[0] || input.customerName,
-          lastName: customerNameParts.slice(1).join(' ') || undefined,
-          email: input.customerEmail,
-        },
         logContext: { orderReference, source: 'direct-booking-confirmation' },
       }).catch((err: unknown) => {
         logger.warn(
@@ -489,7 +480,7 @@ export async function submitDirectBooking(
             orderReference,
             phoneLast4: input.customerMobile.replace(/\D/g, '').slice(-4),
           },
-          '[respond-io-booking-confirmation] send failed',
+          '[whatsapp-booking-confirmation] send failed',
         );
       });
     }
