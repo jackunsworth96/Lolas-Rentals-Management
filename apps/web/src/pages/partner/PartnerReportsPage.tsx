@@ -7,7 +7,7 @@ function currentMonth() {
 }
 
 function money(value: number) {
-  return `₱${value.toLocaleString('en-PH', { maximumFractionDigits: 0 })}`;
+  return `₱${value.toLocaleString('en-PH', { maximumFractionDigits: 2 })}`;
 }
 
 function statusLabel(status: string) {
@@ -126,10 +126,10 @@ export default function PartnerReportsPage() {
                   ) : b.commissionable ? (
                     <div>
                       <span className="font-semibold text-teal-700">{money(b.commissionAmount)}</span>
-                      {b.commissionType === 'percentage' && b.commissionBase !== null && (
+                      {b.eligibleRefundAmount === 0 && b.commissionType === 'percentage' && b.commissionBase !== null && (
                         <p className="text-xs text-gray-400">{b.commissionValue ?? 0}% on {money(b.commissionBase)}</p>
                       )}
-                      {b.commissionType === 'fixed' && b.commissionValue !== null && (
+                      {b.eligibleRefundAmount === 0 && b.commissionType === 'fixed' && b.commissionValue !== null && (
                         <p className="text-xs text-gray-400">{money(b.commissionValue)} fixed</p>
                       )}
                       {b.pendingCommissionAmount > 0 && (
@@ -138,6 +138,32 @@ export default function PartnerReportsPage() {
                     </div>
                   ) : (
                     <span className="text-gray-400">Not eligible</span>
+                  )}
+                  {b.eligibleRefundAmount > 0 && (
+                    <details className="mt-1 text-xs text-gray-500">
+                      <summary className="cursor-pointer list-none rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600 [&::-webkit-details-marker]:hidden">
+                        <span className="border-b border-dashed border-gray-400 hover:border-teal-600 hover:text-teal-700">
+                          {!isCancelled && b.commissionable && b.commissionType === 'percentage' && b.commissionBase !== null
+                            ? `${b.commissionValue ?? 0}% on ${money(b.commissionBase)}`
+                            : !isCancelled && b.commissionable && b.commissionType === 'fixed' && b.commissionValue !== null
+                              ? `${money(b.commissionValue)} fixed`
+                              : 'Refund details'}
+                        </span>
+                      </summary>
+                      <div className="mt-2 space-y-0.5 border-t border-gray-100 pt-2">
+                        <p className="mb-1 text-[10px]">Whole booking rental, deposit excluded</p>
+                        <div className="flex justify-between gap-3"><span>Before refund</span><span>{money(b.grossRentalRevenue)}</span></div>
+                        <div className="flex justify-between gap-3"><span>Refunded</span><span>−{money(b.eligibleRefundAmount)}</span></div>
+                        <div className="flex justify-between gap-3 font-medium text-gray-700"><span>After refund</span><span>{money(b.netRentalRevenue)}</span></div>
+                        <p className="pt-1 text-gray-600">
+                          {isCancelled || !b.commissionable
+                            ? 'No commission due.'
+                            : b.commissionType === 'percentage' && b.commissionBase !== null
+                              ? `${b.commissionValue ?? 0}% × ${money(b.commissionBase)} = ${money(b.commissionAmount)}${b.periodNote || b.isCarryover ? ' for this month' : ''}`
+                              : `Fixed commission: ${money(b.commissionAmount)} this month`}
+                        </p>
+                      </div>
+                    </details>
                   )}
                 </td>
               </tr>

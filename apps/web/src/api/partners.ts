@@ -67,6 +67,9 @@ export interface PartnerBookingRow {
   dropoffDatetime: string | null;
   rentalValue: number;
   bookingValue: number;
+  grossRentalRevenue: number;
+  eligibleRefundAmount: number;
+  netRentalRevenue: number;
   commissionBase: number | null;
   commissionType: 'fixed' | 'percentage' | null;
   commissionValue: number | null;

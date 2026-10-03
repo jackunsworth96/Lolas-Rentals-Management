@@ -3,7 +3,7 @@ import autoTable from 'jspdf-autotable';
 import type { PartnerReport, PartnerReportBooking } from '../api/partner-portal.js';
 
 function money(value: number): string {
-  return `PHP ${value.toLocaleString('en-PH', { maximumFractionDigits: 0 })}`;
+  return `PHP ${value.toLocaleString('en-PH', { maximumFractionDigits: 2 })}`;
 }
 
 function fmtDate(iso: string | null | undefined): string {
@@ -26,17 +26,24 @@ function cancellationReasonLabel(reason: string | null): string {
 }
 
 function commissionCell(b: PartnerReportBooking): string {
-  if (b.status.toLowerCase() === 'cancelled') return `${money(0)}\nRemoved from payout`;
-  if (!b.commissionable) return 'Not eligible';
-
-  let line = money(b.commissionAmount);
-  if (b.commissionType === 'percentage' && b.commissionBase !== null) {
-    line += `\n${b.commissionValue ?? 0}% on ${money(b.commissionBase)}`;
-  } else if (b.commissionType === 'fixed' && b.commissionValue !== null) {
-    line += `\n${money(b.commissionValue)} fixed`;
+  let line = b.status.toLowerCase() === 'cancelled'
+    ? `${money(0)}\nRemoved from payout`
+    : b.commissionable ? money(b.commissionAmount) : 'Not eligible';
+  if (b.commissionable && b.status.toLowerCase() !== 'cancelled') {
+    if (b.commissionType === 'percentage' && b.commissionBase !== null) {
+      line += `\n${b.commissionValue ?? 0}% on ${money(b.commissionBase)}`;
+    } else if (b.commissionType === 'fixed' && b.commissionValue !== null) {
+      line += `\n${money(b.commissionValue)} fixed`;
+    }
+    if (b.pendingCommissionAmount > 0) {
+      line += `\n+ ${money(b.pendingCommissionAmount)} pending`;
+    }
   }
-  if (b.pendingCommissionAmount > 0) {
-    line += `\n+ ${money(b.pendingCommissionAmount)} pending`;
+  if (b.eligibleRefundAmount > 0) {
+    line += `\nRental, no deposit\nBefore refund: ${money(b.grossRentalRevenue)}\nRefunded: -${money(b.eligibleRefundAmount)}\nAfter refund: ${money(b.netRentalRevenue)}`;
+    if (b.commissionable && b.status.toLowerCase() !== 'cancelled' && b.commissionType === 'percentage' && b.commissionBase !== null) {
+      line += `\n${b.commissionValue ?? 0}% x ${money(b.commissionBase)} = ${money(b.commissionAmount)}`;
+    }
   }
   return line;
 }

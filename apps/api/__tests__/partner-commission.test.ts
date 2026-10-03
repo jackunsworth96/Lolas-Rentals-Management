@@ -15,8 +15,9 @@ type Fixture = {
   commissionType?: 'fixed' | 'percentage';
   commissionValue?: number;
   includesExtensions?: boolean;
-  payments?: Array<{ order_id: string; amount: number; settlement_status: string | null }>;
+  payments?: Array<{ order_id: string; amount: number; settlement_status: string | null; payment_type?: string; refund_revenue_source?: string; refund_affects_rental_revenue?: boolean }>;
   rawStatus?: string;
+  orderStatus?: string;
   cancelledReason?: string | null;
   pickupDatetime?: string;
   createdAt?: string;
@@ -74,14 +75,14 @@ function commissionClient(fixture: Fixture = {}) {
       case 'orders_raw':
         return queryResult(rawRows);
       case 'orders':
-        return queryResult([{ id: 'order-1', booking_token: 'LR-0720-2C2D' }]);
+        return queryResult([{ id: 'order-1', booking_token: 'LR-0720-2C2D', status: fixture.orderStatus ?? 'active' }]);
       case 'order_items':
         return queryResult([{
           order_id: 'order-1',
           dropoff_datetime: '2026-07-28T11:15:00+08:00',
         }]);
       case 'payments':
-        return queryResult(fixture.payments ?? []);
+        return dynamicTable((fixture.payments ?? []).map((p) => ({ payment_type: 'extension', ...p })))();
       default:
         throw new Error(`Unexpected table ${table}`);
     }
@@ -135,7 +136,60 @@ describe('partner extension commissions', () => {
     });
   });
 
-  it('does not load or expose extension data when extension commission is disabled', async () => {
+  it('keeps fixed commission unchanged for a classified refund', async () => {
+    mocks.getSupabaseClient.mockReturnValue(commissionClient({
+      commissionType: 'fixed',
+      commissionValue: 750,
+      payments: [{ order_id: 'order-1', amount: 1000, settlement_status: null, payment_type: 'refund', refund_revenue_source: 'original', refund_affects_rental_revenue: true }],
+    }));
+    expect((await getPartnerCommissionStats('partner-1', '2026-07')).totalCommission).toBe(750);
+  });
+
+  it('deducts only classified rental refunds from percentage commission', async () => {
+    mocks.getSupabaseClient.mockReturnValue(commissionClient({
+      payments: [
+        { order_id: 'order-1', amount: 5115, settlement_status: null },
+        { order_id: 'order-1', amount: 3255, settlement_status: null, payment_type: 'refund', refund_revenue_source: 'extension', refund_affects_rental_revenue: true },
+        { order_id: 'order-1', amount: 500, settlement_status: null, payment_type: 'refund', refund_revenue_source: 'original', refund_affects_rental_revenue: false },
+      ],
+    }));
+
+    const stats = await getPartnerCommissionStats('partner-1', '2026-07');
+    expect(stats.bookings[0]).toMatchObject({
+      grossRentalRevenue: 15115,
+      eligibleRefundAmount: 3255,
+      netRentalRevenue: 11860,
+      commissionBase: 11860,
+    });
+    expect(stats.totalCommission).toBe(1186);
+  });
+
+  it('shows the settled order status while keeping the net rental commission', async () => {
+    mocks.getSupabaseClient.mockReturnValue(commissionClient({
+      rawStatus: 'processed',
+      orderStatus: 'completed',
+      payments: [{ order_id: 'order-1', amount: 1000, settlement_status: null, payment_type: 'refund', refund_revenue_source: 'original', refund_affects_rental_revenue: true }],
+    }));
+
+    const stats = await getPartnerCommissionStats('partner-1', '2026-07');
+    expect(stats.bookings[0]).toMatchObject({
+      status: 'completed',
+      grossRentalRevenue: 10000,
+      eligibleRefundAmount: 1000,
+      netRentalRevenue: 9000,
+      commissionBase: 9000,
+      commissionAmount: 900,
+    });
+  });
+
+  it('removes commission when the live order was cancelled after raw processing', async () => {
+    mocks.getSupabaseClient.mockReturnValue(commissionClient({ rawStatus: 'processed', orderStatus: 'cancelled' }));
+
+    const stats = await getPartnerCommissionStats('partner-1', '2026-07');
+    expect(stats.bookings[0]).toMatchObject({ status: 'cancelled', commissionable: false, commissionAmount: 0 });
+  });
+
+  it('uses the current return date for utilization even when extension commission is disabled', async () => {
     const client = commissionClient({
       includesExtensions: false,
       payments: [{ order_id: 'order-1', amount: 1000, settlement_status: 'pending' }],
@@ -152,8 +206,9 @@ describe('partner extension commissions', () => {
       extendedDropoffDatetime: null,
       pendingCommissionAmount: 0,
     });
-    expect(client.from).not.toHaveBeenCalledWith('orders');
-    expect(client.from).not.toHaveBeenCalledWith('payments');
+    expect(stats.averageVehiclesPerDay).toBeCloseTo(8 / 31, 2);
+    expect(client.from).toHaveBeenCalledWith('order_items');
+    expect(client.from).toHaveBeenCalledWith('payments');
   });
 
   it('keeps cancelled affiliate bookings visible with their reason and removes all commission', async () => {
@@ -376,6 +431,28 @@ describe('partner commission month-rollover (proration + carryover)', () => {
     // commission is lost or double-paid across the boundary.
   });
 
+  it('prorates net revenue and shortened vehicle-days across the month boundary', async () => {
+    const client = rolloverClient({
+      partner,
+      ordersRaw: ordersRawRows,
+      orders: ordersRows,
+      orderItems: [{ order_id: 'order-ext-1', dropoff_datetime: '2026-08-02T00:00:00.000Z' }],
+      payments: [
+        ...paymentsRows,
+        { order_id: 'order-ext-1', amount: 1500, payment_type: 'refund', refund_revenue_source: 'extension', refund_affects_rental_revenue: true },
+      ],
+    });
+    mocks.getSupabaseClient.mockReturnValue(client);
+
+    const july = await getPartnerCommissionStats('partner-1', '2026-07');
+    const august = await getPartnerCommissionStats('partner-1', '2026-08');
+    expect(july.bookings[0]).toMatchObject({ grossRentalRevenue: 5500, eligibleRefundAmount: 1500, netRentalRevenue: 4000 });
+    expect(august.bookings[0]).toMatchObject({ grossRentalRevenue: 5500, eligibleRefundAmount: 1500, netRentalRevenue: 4000 });
+    expect(july.totalCommission).toBe(350);
+    expect(august.totalCommission).toBe(50);
+    expect(august.averageVehiclesPerDay).toBeCloseTo(1 / 31, 2);
+  });
+
   it('rolls a long original (non-extended) booking into the next month too', async () => {
     // No extension involved at all — just a 19-night booking that happens to
     // straddle the boundary. commission_includes_extensions is irrelevant
@@ -411,6 +488,41 @@ describe('partner commission month-rollover (proration + carryover)', () => {
       commissionBase: 1000, // 10000 * 2/20 nights (Oct 1–3) in October
       commissionAmount: 100,
     });
+  });
+
+  it('carries vehicle-days into the next month when extension commission is disabled', async () => {
+    mocks.getSupabaseClient.mockReturnValue(rolloverClient({
+      partner: { ...partner, commission_includes_extensions: false },
+      ordersRaw: ordersRawRows,
+      orders: ordersRows,
+      orderItems: orderItemsRows,
+      payments: paymentsRows,
+    }));
+
+    const stats = await getPartnerCommissionStats('partner-1', '2026-08');
+
+    expect(stats.bookings).toHaveLength(1);
+    expect(stats.bookings[0].isCarryover).toBe(true);
+    expect(stats.totalCommission).toBe(0);
+    expect(stats.averageVehiclesPerDay).toBeCloseTo(4 / 31, 2);
+  });
+
+  it('uses an early return before the original end for month proration', async () => {
+    const raw = [{ ...ordersRawRows[0], dropoff_datetime: '2026-08-05T00:00:00.000Z', rental_value_raw: 5500 }];
+    mocks.getSupabaseClient.mockReturnValue(rolloverClient({
+      partner: { ...partner, commission_includes_extensions: false },
+      ordersRaw: raw,
+      orders: ordersRows,
+      orderItems: [{ order_id: 'order-ext-1', dropoff_datetime: '2026-07-29T00:00:00.000Z' }],
+      payments: [{ order_id: 'order-ext-1', amount: 3500, payment_type: 'refund', refund_revenue_source: 'original', refund_affects_rental_revenue: true }],
+    }));
+
+    const july = await getPartnerCommissionStats('partner-1', '2026-07');
+    expect(july.bookings[0].dropoffDatetime).toBe('2026-07-29T00:00:00.000Z');
+    const august = await getPartnerCommissionStats('partner-1', '2026-08');
+    expect(august.bookings).toHaveLength(0);
+    expect(august.totalCommission).toBe(0);
+    expect(august.averageVehiclesPerDay).toBe(0);
   });
 });
 

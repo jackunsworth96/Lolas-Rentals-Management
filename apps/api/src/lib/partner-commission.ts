@@ -10,6 +10,9 @@ export interface PartnerCommissionBooking {
   dropoffDatetime: string | null;
   rentalValue: number;
   bookingValue: number;
+  grossRentalRevenue: number;
+  eligibleRefundAmount: number;
+  netRentalRevenue: number;
   commissionBase: number | null;
   commissionType: 'fixed' | 'percentage' | null;
   commissionValue: number | null;
@@ -272,29 +275,26 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
       if (row.order_reference) carryoverRefs.add(row.order_reference);
     }
 
-    // Only worth the extra orders/order_items round-trip when extensions
-    // actually count toward commission for this partner — otherwise an
-    // extended dropoff never affects money or (today) vehicle-days anyway.
-    if (extensionsMatterForCommission) {
-      const { data: partnerOrders } = await sb
-        .from('orders')
-        .select('id, booking_token')
-        .eq('store_id', p.store_id)
-        .eq('partner_ref', p.slug);
-      const orderRowsAll = (partnerOrders ?? []) as Array<{ id: string; booking_token: string | null }>;
-      const tokenByOrderId = new Map(orderRowsAll.map((o) => [o.id, o.booking_token]));
-      const orderIdsAll = orderRowsAll.map((o) => o.id).filter(Boolean);
+    // Vehicle-days follow the current order item dates even when this
+    // partner does not earn commission on extensions.
+    const { data: partnerOrders } = await sb
+      .from('orders')
+      .select('id, booking_token')
+      .eq('store_id', p.store_id)
+      .eq('partner_ref', p.slug);
+    const orderRowsAll = (partnerOrders ?? []) as Array<{ id: string; booking_token: string | null }>;
+    const tokenByOrderId = new Map(orderRowsAll.map((o) => [o.id, o.booking_token]));
+    const orderIdsAll = orderRowsAll.map((o) => o.id).filter(Boolean);
 
-      if (orderIdsAll.length > 0) {
-        const { data: extendedItems } = await sb
-          .from('order_items')
-          .select('order_id, dropoff_datetime')
-          .in('order_id', orderIdsAll)
-          .gte('dropoff_datetime', bounds.from);
-        for (const item of (extendedItems ?? []) as Array<{ order_id: string; dropoff_datetime: string | null }>) {
-          const ref = tokenByOrderId.get(item.order_id);
-          if (ref) carryoverRefs.add(ref);
-        }
+    if (orderIdsAll.length > 0) {
+      const { data: extendedItems } = await sb
+        .from('order_items')
+        .select('order_id, dropoff_datetime')
+        .in('order_id', orderIdsAll)
+        .gte('dropoff_datetime', bounds.from);
+      for (const item of (extendedItems ?? []) as Array<{ order_id: string; dropoff_datetime: string | null }>) {
+        const ref = tokenByOrderId.get(item.order_id);
+        if (ref) carryoverRefs.add(ref);
       }
     }
   }
@@ -339,38 +339,43 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
   // Maps keyed by order_reference (booking_token) for extension data
   let paidExtensionByRef = new Map<string, number>();    // confirmed/collected extension amounts
   let pendingExtensionByRef = new Map<string, number>(); // pending (uncollected) extension amounts
-  let extDropoffByRef = new Map<string, string>();       // updated return date from order_items
+  const originalRefundByRef = new Map<string, number>();
+  const extensionRefundByRef = new Map<string, number>();
+  let itemDropoffByRef = new Map<string, string>();      // current return date from order_items
+  const orderStatusByRef = new Map<string, string>();
 
-  if (extensionsMatterForCommission) {
-    const refs = rawRows
-      .map((r) => r.order_reference)
-      .filter(Boolean) as string[];
-    if (refs.length > 0) {
-      const { data: orders } = await sb
-        .from('orders')
-        .select('id, booking_token')
-        .eq('store_id', p.store_id)
-        .eq('partner_ref', p.slug)
-        .in('booking_token', refs);
+  const refs = rawRows
+    .map((r) => r.order_reference)
+    .filter(Boolean) as string[];
+  if (refs.length > 0) {
+    const { data: orders, error: ordersErr } = await sb
+      .from('orders')
+      .select('id, booking_token, status')
+      .eq('store_id', p.store_id)
+      .eq('partner_ref', p.slug)
+      .in('booking_token', refs);
+    if (ordersErr) throw new Error(`Failed to fetch partner order statuses: ${ordersErr.message}`);
 
-      const orderRows = (orders ?? []) as Array<{ id: string; booking_token: string | null }>;
-      const orderIds = orderRows.map((o) => o.id).filter(Boolean);
-      const refByOrderId = new Map(orderRows.map((o) => [o.id, o.booking_token ?? '']));
+    const orderRows = (orders ?? []) as Array<{ id: string; booking_token: string | null; status: string }>;
+    const orderIds = orderRows.map((o) => o.id).filter(Boolean);
+    const refByOrderId = new Map(orderRows.map((o) => [o.id, o.booking_token ?? '']));
+    for (const order of orderRows) {
+      if (order.booking_token && order.status) orderStatusByRef.set(order.booking_token, order.status);
+    }
 
-      if (orderIds.length > 0) {
-        // Extended return date from order_items (updated by the extend RPC)
-        const { data: items } = await sb
-          .from('order_items')
-          .select('order_id, dropoff_datetime')
-          .in('order_id', orderIds);
-        for (const item of (items ?? []) as Array<{ order_id: string; dropoff_datetime: string | null }>) {
-          const ref = refByOrderId.get(item.order_id);
-          if (ref && item.dropoff_datetime) extDropoffByRef.set(ref, item.dropoff_datetime);
-        }
+    if (orderIds.length > 0) {
+      // Current return date from order_items (updated by the extend RPC).
+      const { data: items } = await sb
+        .from('order_items')
+        .select('order_id, dropoff_datetime')
+        .in('order_id', orderIds);
+      for (const item of (items ?? []) as Array<{ order_id: string; dropoff_datetime: string | null }>) {
+        const ref = refByOrderId.get(item.order_id);
+        if (ref && item.dropoff_datetime) itemDropoffByRef.set(ref, item.dropoff_datetime);
+      }
 
-        // Extension payments split by settlement status:
-        //   pending   → customer hasn't paid yet (commission is pending)
-        //   anything else (absorbed/null) → collected (commission is confirmed)
+      if (extensionsMatterForCommission) {
+        // Pending extensions are uncollected; all other statuses are confirmed.
         const { data: extPmts } = await sb
           .from('payments')
           .select('order_id, amount, settlement_status')
@@ -386,6 +391,20 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
             paidExtensionByRef.set(ref, (paidExtensionByRef.get(ref) ?? 0) + amt);
           }
         }
+      }
+
+      const { data: refundPayments, error: refundErr } = await sb
+        .from('payments')
+        .select('order_id, amount, refund_revenue_source')
+        .in('order_id', orderIds)
+        .eq('payment_type', 'refund')
+        .eq('refund_affects_rental_revenue', true);
+      if (refundErr) throw new Error(`Failed to fetch rental refunds: ${refundErr.message}`);
+      for (const refund of (refundPayments ?? []) as Array<{ order_id: string; amount: number | null; refund_revenue_source: string | null }>) {
+        const ref = refByOrderId.get(refund.order_id);
+        if (!ref) continue;
+        const target = refund.refund_revenue_source === 'extension' ? extensionRefundByRef : originalRefundByRef;
+        target.set(ref, (target.get(ref) ?? 0) + Number(refund.amount ?? 0));
       }
     }
   }
@@ -411,6 +430,8 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
 
   const bookings = rawRows.map((row) => {
     const isCarryover = carryoverIds.has(row.id);
+    const ref = row.order_reference ?? '';
+    const status = row.status === 'cancelled' ? 'cancelled' : orderStatusByRef.get(ref) ?? row.status;
     const advanceDays = row.pickup_datetime
       ? calendarAdvanceDays(row.pickup_datetime, row.created_at)
       : null;
@@ -429,24 +450,26 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
     const advanceBookingDays = override?.advance_booking_days ?? p.advance_booking_days;
     const includesExtensions = override ? override.commission_includes_extensions : p.commission_includes_extensions;
     const commissionable =
-      row.status !== 'cancelled' &&
+      status !== 'cancelled' &&
       commissionType != null &&
       commissionValue != null &&
       advanceDays !== null &&
       advanceDays >= advanceBookingDays;
 
     // Extension amounts for this booking (only when the partner has the flag enabled)
-    const ref = row.order_reference ?? '';
     const paidExtAmt = includesExtensions ? (paidExtensionByRef.get(ref) ?? 0) : 0;
     const pendingExtAmt = includesExtensions ? (pendingExtensionByRef.get(ref) ?? 0) : 0;
     const isExtended = includesExtensions && (paidExtAmt > 0 || pendingExtAmt > 0);
-    const extendedDropoffDatetime = isExtended ? (extDropoffByRef.get(ref) ?? null) : null;
+    const extendedDropoffDatetime = isExtended ? (itemDropoffByRef.get(ref) ?? null) : null;
 
     // Commission base = original rental value + any collected extension amounts.
     // Pending (uncollected) extensions are excluded from confirmed commission and
     // surfaced separately so the portal can show a "Pending" indicator.
     const originalBase = Number(row.rental_value_raw ?? row.web_quote_raw ?? 0);
-    const wholeStayBase = originalBase + paidExtAmt;
+    const eligibleRefund = roundMoney((originalRefundByRef.get(ref) ?? 0)
+      + (includesExtensions ? (extensionRefundByRef.get(ref) ?? 0) : 0));
+    const grossRentalRevenue = roundMoney(originalBase + paidExtAmt);
+    const wholeStayBase = roundMoney(Math.max(0, grossRentalRevenue - eligibleRefund));
 
     // ── Prorate by nights actually falling in this report month ──
     // A booking entirely within one month has monthNights === totalNights,
@@ -454,7 +477,10 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
     // that spans a month boundary (extension, or a long original stay) only
     // has its in-month share billed here; the remainder is picked up by the
     // carryover logic on whichever month(s) those nights actually fall in.
-    const effectiveDropoff = extendedDropoffDatetime ?? row.dropoff_datetime;
+    const currentDropoff = itemDropoffByRef.get(ref);
+    const effectiveDropoff = extendedDropoffDatetime
+      ?? (currentDropoff && row.dropoff_datetime && new Date(currentDropoff).getTime() < new Date(row.dropoff_datetime).getTime()
+        ? currentDropoff : row.dropoff_datetime);
     const totalNights = totalRentalDays(row.pickup_datetime, effectiveDropoff);
     const monthNights = clampedRentalDays(row.pickup_datetime, effectiveDropoff);
     // monthNights can be 0 with totalNights > 0 for a *primary* (this-month
@@ -510,13 +536,16 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
       customerName: row.customer_name,
       vehicleModelId: row.vehicle_model_id,
       pickupDatetime: row.pickup_datetime,
-      dropoffDatetime: row.dropoff_datetime,
+      dropoffDatetime: currentDropoff ?? row.dropoff_datetime,
       rentalValue: Number(row.rental_value_raw ?? 0),
       bookingValue: Number(row.web_quote_raw ?? 0),
+      grossRentalRevenue,
+      eligibleRefundAmount: eligibleRefund,
+      netRentalRevenue: wholeStayBase,
       commissionBase,
       commissionType,
       commissionValue,
-      status: row.status,
+      status,
       cancelledReason: row.cancelled_reason,
       cancelledAt: row.cancelled_at,
       bookedAt: row.created_at,
@@ -529,7 +558,10 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
       isCarryover,
       periodNote,
     } satisfies PartnerCommissionBooking;
-  });
+  }).filter((booking) => !booking.isCarryover || clampedRentalDays(
+    booking.pickupDatetime,
+    itemDropoffByRef.get(booking.orderReference ?? '') ?? booking.dropoffDatetime,
+  ) > 0);
 
   const primaryBookings = bookings.filter((b) => !b.isCarryover);
   const totalCommission = bookings.reduce((sum, b) => sum + b.commissionAmount, 0);
@@ -543,9 +575,7 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
   const totalVehicleDays = bookings
     .filter((b) => b.status !== 'cancelled')
     .reduce((sum, b) => {
-      const effectiveDropoff = b.isExtended && b.extendedDropoffDatetime
-        ? b.extendedDropoffDatetime
-        : b.dropoffDatetime;
+      const effectiveDropoff = itemDropoffByRef.get(b.orderReference ?? '') ?? b.dropoffDatetime;
       return sum + clampedRentalDays(b.pickupDatetime, effectiveDropoff);
     }, 0);
 

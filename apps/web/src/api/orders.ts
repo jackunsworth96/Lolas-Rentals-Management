@@ -166,6 +166,8 @@ export function useRefundOrder() {
     mutationFn: ({ id, ...body }: { id: string } & Record<string, unknown>) => api.post(`/orders/${id}/refund`, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['fleet'] });
+      qc.invalidateQueries({ queryKey: ['partners'] });
     },
   });
 }

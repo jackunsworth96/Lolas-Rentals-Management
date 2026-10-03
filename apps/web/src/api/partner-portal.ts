@@ -59,6 +59,9 @@ export interface PartnerReportBooking {
   commissionable: boolean;
   commissionAmount: number;
   commissionBase: number | null;
+  grossRentalRevenue: number;
+  eligibleRefundAmount: number;
+  netRentalRevenue: number;
   commissionType: 'fixed' | 'percentage' | null;
   commissionValue: number | null;
   isExtended: boolean;
