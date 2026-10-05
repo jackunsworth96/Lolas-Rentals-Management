@@ -4,6 +4,8 @@ import {
   type JournalLeg,
   Money,
 } from '@lolas/domain';
+import { summarizeOrderPayments } from '@lolas/shared';
+import { assertManualRefundMethod } from '../../lib/manual-refund-method.js';
 import { supabase } from '../../adapters/supabase/client.js';
 
 export interface RefundOrderDeps {
@@ -48,6 +50,7 @@ export async function refundOrder(
 
   const order = await orderRepo.findById(input.orderId);
   if (!order) throw new Error(`Order ${input.orderId} not found`);
+  await assertManualRefundMethod(input.refundMethodId);
 
   const refundAmount = Money.php(input.amount);
   const paymentId = crypto.randomUUID();
@@ -109,14 +112,7 @@ export async function refundOrder(
   //   • pending/absorbed extension IOUs excluded (amounts owed, not received)
   //   • refunds subtracted (reduce net cash collected)
   const allPayments = await paymentRepo.findByOrderId(order.id);
-  const totalPaid = allPayments.reduce((sum, p) => {
-    if (p.paymentType === 'deposit') return sum;
-    if (p.paymentType === 'extension' &&
-        (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return sum;
-    if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return sum;
-    if (p.paymentType === 'refund') return sum.subtract(Money.php(p.amount));
-    return sum.add(Money.php(p.amount));
-  }, Money.zero());
+  const totalPaid = Money.php(summarizeOrderPayments(allPayments).rentalPaid);
 
   order.applyPayments(totalPaid);
   await orderRepo.save(order);

@@ -10,6 +10,7 @@ import {
   type JournalLeg,
   Money,
 } from '@lolas/domain';
+import { summarizeOrderPayments } from '@lolas/shared';
 import { formatManilaDate } from '../../utils/manila-date.js';
 
 export interface ModifyAddonsDeps {
@@ -157,10 +158,7 @@ export async function modifyAddons(
     if (!isPending) {
       // Recalculate balance from all payments
       const allPayments = await paymentRepo.findByOrderId(order.id);
-      const totalPaid = allPayments.reduce(
-        (sum, p) => sum.add(Money.php(p.amount)),
-        Money.zero(),
-      );
+      const totalPaid = Money.php(summarizeOrderPayments(allPayments).rentalPaid);
       order.applyPayments(totalPaid);
     }
     // When pending: adjustTotal already increased balanceDue correctly.

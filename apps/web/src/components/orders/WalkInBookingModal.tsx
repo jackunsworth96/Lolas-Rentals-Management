@@ -6,6 +6,7 @@ import { useLocations, useAddons } from '../../api/config.js';
 import { useAvailableVehicles } from '../../api/fleet.js';
 import { useUIStore } from '../../stores/ui-store.js';
 import surfRackIcon from '../../assets/Home/Surf Rack Icon.svg';
+import { StaffPaymentLink } from './StaffPaymentLink.js';
 
 interface Props {
   open: boolean;
@@ -111,6 +112,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
 
   // ── Success state ──
   const [createdRef, setCreatedRef] = useState<string | null>(null);
+  const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
 
   // ── Quote state ──
@@ -292,7 +294,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
       setNationality('');
       setHelmetNumbers('');
       setDepositAmount(0);
-      setCreatedRef(null); setCopiedLink(false);
+      setCreatedRef(null); setCreatedOrderId(null); setCopiedLink(false);
       setQuote(null); setQuoteLoading(false);
       createWalkInDirect.reset();
     }
@@ -319,9 +321,10 @@ export function WalkInBookingModal({ open, onClose }: Props) {
         addonIds: Object.entries(selectedAddonIds)
           .filter(([, qty]) => qty > 0)
           .map(([id]) => Number(id)),
+        addonQuantities: selectedAddonIds,
         helmetNumbers: helmetNumbers.trim() || undefined,
         staffNotes: staffNotes.trim() || undefined,
-        paymentMethod: paymentMethod as 'cash' | 'gcash' | 'card' | 'bank_transfer',
+        paymentMethod: paymentMethod as 'cash' | 'gcash' | 'card' | 'bank_transfer' | 'xendit',
         depositCollected: depositPaid,
         depositAmount: depositPaid ? depositAmount : 0,
         depositMethod: depositMethod as 'cash' | 'gcash' | 'card' | 'bank_transfer',
@@ -334,6 +337,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
       {
         onSuccess: (data) => {
           setCreatedRef(data.orderReference ?? data.orderId);
+          setCreatedOrderId(data.orderId);
         },
       },
     );
@@ -388,7 +392,11 @@ export function WalkInBookingModal({ open, onClose }: Props) {
             </p>
           </div>
 
-          <div>
+          {paymentMethod === 'xendit' && createdOrderId && (
+            <StaffPaymentLink target={{ kind: 'rental', id: createdOrderId }} />
+          )}
+
+          {paymentMethod !== 'xendit' && <div>
             <p className="mb-2 font-lato text-sm font-semibold text-gray-700">Share with customer</p>
             <div className="space-y-2">
               <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
@@ -413,7 +421,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
                 Send via WhatsApp
               </a>
             </div>
-          </div>
+          </div>}
 
           <div className="flex justify-end border-t border-gray-200 pt-4">
             <button
@@ -837,6 +845,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
                     <option value="cash">Cash</option>
                     <option value="gcash">GCash</option>
                     <option value="card">Card</option>
+                    <option value="xendit">Card Payment (Xendit link)</option>
                     <option value="bank_transfer">Bank Transfer</option>
                   </select>
                 </div>
@@ -907,9 +916,11 @@ export function WalkInBookingModal({ open, onClose }: Props) {
                     </div>
                   )}
                   <div className="flex justify-between border-t border-gray-200 pt-2">
-                    <span className="font-lato text-sm font-bold text-gray-900">Total to collect now</span>
+                    <span className="font-lato text-sm font-bold text-gray-900">
+                      {paymentMethod === 'xendit' ? 'Deposit to collect now' : 'Total to collect now'}
+                    </span>
                     <span className="font-lato text-sm font-bold text-teal-700">
-                      {formatCurrency(grandTotalLocal + (depositPaid ? depositAmount : 0))}
+                      {formatCurrency((paymentMethod === 'xendit' ? 0 : grandTotalLocal) + (depositPaid ? depositAmount : 0))}
                     </span>
                   </div>
                 </div>

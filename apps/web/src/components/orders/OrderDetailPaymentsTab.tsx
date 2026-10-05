@@ -39,7 +39,8 @@ export function OrderDetailPaymentsTab({ payments, totalPaid }: OrderDetailPayme
             const isExt = p.paymentType === 'extension';
             const isRefund = p.paymentType === 'refund';
             const isReturnCharge = p.paymentType === 'return_charge';
-            const isAddonIou = p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending';
+            const isAddonIou = p.paymentType === 'addon' && ['pending', 'xendit'].includes(p.paymentMethodId)
+              && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed');
             return (
               <tr key={idx} className={`border-b hover:bg-sand-brand ${isExt ? 'bg-amber-50' : ''} ${isRefund ? 'bg-red-50' : ''}`}>
                 <td className="py-2 pr-4">{formatDate(p.transactionDate)}</td>
@@ -58,7 +59,9 @@ export function OrderDetailPaymentsTab({ payments, totalPaid }: OrderDetailPayme
                   ) : isAddonIou ? (
                     <span className="inline-flex items-center gap-1.5">
                       <span className="capitalize">{p.paymentType}</span>
-                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">Unpaid</span>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${p.settlementStatus === 'absorbed' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                        {p.settlementStatus === 'absorbed' ? 'Included in card payment' : 'Unpaid'}
+                      </span>
                     </span>
                   ) : (
                     <span className="capitalize">{p.paymentType ?? 'rental'}</span>
@@ -67,7 +70,9 @@ export function OrderDetailPaymentsTab({ payments, totalPaid }: OrderDetailPayme
                 <td className={`py-2 pr-4 font-medium ${isRefund ? 'text-red-700' : ''}`}>
                   {isRefund ? `−${formatCurrency(p.amount)}` : formatCurrency(p.amount)}
                 </td>
-                <td className="py-2 pr-4">{(isExt || isAddonIou) && p.paymentMethodId === 'pending' ? '—' : (pmLookup.get(p.paymentMethodId)?.name ?? p.paymentMethodId)}</td>
+                <td className="py-2 pr-4">{isAddonIou
+                  ? p.settlementStatus === 'absorbed' ? 'Covered by card payment' : 'Awaiting card payment'
+                  : isExt && p.paymentMethodId === 'pending' ? '—' : (pmLookup.get(p.paymentMethodId)?.name ?? p.paymentMethodId)}</td>
                 <td className="py-2 text-charcoal-brand/60">{p.settlementRef ?? '—'}</td>
               </tr>
             );

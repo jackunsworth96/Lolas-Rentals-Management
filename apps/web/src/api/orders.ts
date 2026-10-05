@@ -149,6 +149,18 @@ export function useCollectPayment() {
   });
 }
 
+export function useCollectDeposit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; amount: number; paymentMethodId: string; receivingAccountId: string; liabilityAccountId: string; transactionDate: string }) =>
+      api.post(`/orders/${id}/deposit`, body),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['orders', id] });
+    },
+  });
+}
+
 export function useSwapVehicle() {
   const qc = useQueryClient();
   return useMutation({

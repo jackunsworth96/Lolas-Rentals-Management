@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Modal } from '../common/Modal.js';
 import { normalizeApiBase } from '../../api/normalize-api-base.js';
 import { useCreateWalkInReserved } from '../../api/orders-raw.js';
+import { StaffPaymentLink } from './StaffPaymentLink.js';
 import { useAvailableVehicles } from '../../api/fleet.js';
 import { useLocations } from '../../api/config.js';
 import { useUIStore } from '../../stores/ui-store.js';
@@ -106,6 +107,8 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
 
   // ── Success state ──
   const [createdRef, setCreatedRef] = useState<string | null>(null);
+  const [createdRawId, setCreatedRawId] = useState<string | null>(null);
+  const [offerCardLink, setOfferCardLink] = useState(false);
 
   // ── Derived datetimes ──
   const pickupDatetime =
@@ -188,6 +191,8 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
     setStaffNotes('');
     setQuote(null);
     setCreatedRef(null);
+    setCreatedRawId(null);
+    setOfferCardLink(false);
     createWalkInReserved.reset();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -233,7 +238,7 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
       {
         onSuccess: (data) => {
           setCreatedRef(data.order_reference ?? null);
-          setTimeout(() => onClose(), 2500);
+          setCreatedRawId(data.id);
         },
       },
     );
@@ -268,6 +273,10 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
               is in the inbox. The vehicle is held until you activate the booking.
             </p>
           </div>
+
+          {offerCardLink && createdRawId && (
+            <StaffPaymentLink target={{ kind: 'raw', id: createdRawId }} />
+          )}
 
           {(depositAmount > 0 || quote) && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 space-y-1">
@@ -643,6 +652,12 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
             will be marked as unavailable for the selected dates immediately.
           </p>
         </div>
+
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" checked={offerCardLink}
+            onChange={(event) => setOfferCardLink(event.target.checked)} />
+          Offer a Card Payment link for the full rental after reserving
+        </label>
 
         {/* Error */}
         {error && (

@@ -72,11 +72,14 @@ export interface EnrichedOrder {
   /** Sum of extension IOUs (payments with type 'extension' + settlement_status 'pending'). */
   pendingExtensionsTotal?: number;
   securityDeposit: number;
+  /** Recorded deposit receipts, distinct from the amount required. */
+  depositCollected?: number;
+  depositCollectionMethods?: string[];
   cardFeeSurcharge: number;
   status: string;
   webNotes: string | null;
   paymentMethodId: string | null;
-  /** Payment method used to collect the refundable security deposit. */
+  /** Planned deposit method; collection is established by payment records. */
   depositMethodId: string | null;
   waiverStatus: 'pending' | 'signed' | 'expired';
   waiverSignedAt: string | null;

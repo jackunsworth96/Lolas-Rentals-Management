@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { calculateBalanceDue } from '@lolas/shared';
+import { calculateBalanceDue, summarizeOrderPayments } from '@lolas/shared';
 import { CheckCircle2, AlertTriangle, Phone, MessageCircle } from 'lucide-react';
 import { Badge } from '../common/Badge.js';
 import { Modal } from '../common/Modal.js';
@@ -12,7 +12,7 @@ import { XenditPaymentModal } from './XenditPaymentModal.js';
 import { WaiverViewModal } from './WaiverViewModal.js';
 import { useSignedWaiverDetails, useResendWaiverConfirmation } from '../../api/waivers.js';
 import { useInspectionByOrder } from '../../api/inspections.js';
-import { useCollectPayment, useRefundOrder, useSettleOrder, useSwapHelmet, useSwapVehicle, useUpdateDepositMethod, useUpdateDropoffNote } from '../../api/orders.js';
+import { useCollectDeposit, useCollectPayment, useRefundOrder, useSettleOrder, useSwapHelmet, useSwapVehicle, useUpdateDepositMethod, useUpdateDropoffNote } from '../../api/orders.js';
 import { useFleet } from '../../api/fleet.js';
 import { usePaymentMethods, useChartOfAccounts, useFleetStatuses } from '../../api/config.js';
 import { formatCurrency } from '../../utils/currency.js';
@@ -70,6 +70,8 @@ export function OrderDetailSummaryTab({
   const [paymentMethodId, setPaymentMethodId] = useState('');
   const [paymentAccountId, setPaymentAccountId] = useState('');
   const [settlementRef, setSettlementRef] = useState('');
+  const [depositCollectionMethodId, setDepositCollectionMethodId] = useState('');
+  const [depositCollectionAccountId, setDepositCollectionAccountId] = useState('');
 
   // ── Swap vehicle state ──
   const [swapNewVehicleId, setSwapNewVehicleId] = useState('');
@@ -123,6 +125,7 @@ export function OrderDetailSummaryTab({
   const { data: fleetStatuses = [] } = useFleetStatuses() as { data: Array<{ id: string; name: string; isRentable?: boolean; is_rentable?: boolean }> | undefined };
 
   const collectPaymentMut = useCollectPayment();
+  const collectDepositMut = useCollectDeposit();
   const refundOrderMut = useRefundOrder();
   const updateDepositMethod = useUpdateDepositMethod();
   const settleOrder = useSettleOrder();
@@ -231,6 +234,11 @@ export function OrderDetailSummaryTab({
     }),
     [activePaymentMethods],
   );
+  const depositCollectionMethods = useMemo(() => activePaymentMethods.filter((method) => {
+    const key = `${method.id} ${method.name}`.toLowerCase().replace(/[^a-z]/g, '');
+    return (key.includes('cash') || key.includes('gcash'))
+      && !key.includes('card') && !(method.gatewayProvider ?? method.gateway_provider);
+  }), [activePaymentMethods]);
   const selectedPM = paymentMethodId ? pmLookup.get(paymentMethodId) : null;
   const surchargePercent = selectedPM ? Number(selectedPM.surchargePercent ?? selectedPM.surcharge_percent ?? 0) : 0;
   const isCardPayment = surchargePercent > 0;
@@ -264,7 +272,9 @@ export function OrderDetailSummaryTab({
   const refundPaymentMethods = useMemo(
     () => activePaymentMethods.filter((m) => {
       const s = Number(m.surchargePercent ?? m.surcharge_percent ?? 0);
-      return s === 0;
+      const label = `${m.id} ${m.name}`.toLowerCase();
+      return s === 0 && !(m.gatewayProvider ?? m.gateway_provider)
+        && !/card|visa|master|xendit/.test(label);
     }),
     [activePaymentMethods],
   );
@@ -279,9 +289,6 @@ export function OrderDetailSummaryTab({
   );
 
   const depositMethodId = order.depositMethodId ?? enrichedData?.depositMethodId ?? null;
-  const depositMethodLabel = depositMethodId
-    ? pmLookup.get(depositMethodId)?.name ?? depositMethodId
-    : null;
   const depositMethodDraft = depositMethodDraftId ? pmLookup.get(depositMethodDraftId) : null;
   const routedDepositMethodAccountId = depositMethodDraftId
     ? routing.resolveReceivedIntoForStore(storeId, depositMethodDraftId, depositMethodDraft?.name ?? null)
@@ -303,13 +310,6 @@ export function OrderDetailSummaryTab({
 
   // Returning a deposit through its original method is the common case. Preselect
   // it once when available, while keeping the selector editable for exceptions.
-  useEffect(() => {
-    if (depositRefundDefaultApplied.current || !depositMethodId) return;
-    if (!refundPaymentMethods.some((method) => method.id === depositMethodId)) return;
-    depositRefundDefaultApplied.current = true;
-    setSettleRefundMethodId(depositMethodId);
-  }, [depositMethodId, refundPaymentMethods]);
-
   useEffect(() => {
     if (routedCollectAcct && !paymentAccountId) setPaymentAccountId(routedCollectAcct);
   }, [routedCollectAcct, paymentAccountId]);
@@ -471,17 +471,8 @@ export function OrderDetailSummaryTab({
   //  • Pending extension IOUs are already included in `final_total`, so the
   //    balance must not add them a second time.
   const total = enrichedData?.finalTotal ?? moneyAmount(order.finalTotal);
-  const totalPaid = payments.reduce((s, p) => {
-    if (p.paymentType === 'deposit') return s;
-    // 'pending' → IOU not yet collected. 'absorbed' → rolled into the
-    // settlement payment row (captured there, not here). Either way skip.
-    if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return s;
-    // Addon with payment_method_id='pending' is an unpaid IOU (collect later) — no cash received yet.
-    if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return s;
-    // Refunds reduce the net amount received from the customer.
-    if (p.paymentType === 'refund') return s - (p.amount ?? 0);
-    return s + (p.amount ?? 0);
-  }, 0);
+  const paymentSummary = summarizeOrderPayments(payments);
+  const totalPaid = paymentSummary.rentalPaid;
   const pendingExtensionsTotal =
     enrichedData?.pendingExtensionsTotal ??
     payments.reduce((s, p) => {
@@ -507,11 +498,20 @@ export function OrderDetailSummaryTab({
   const vehicleNames = enrichedData?.vehicleNames ?? null;
   const returnDatetime = enrichedData?.returnDatetime ?? null;
   const securityDeposit = enrichedData?.securityDeposit ?? moneyAmount(order.securityDeposit);
-  const depositCollected = payments.reduce((sum, payment) =>
-    payment.paymentType === 'deposit' || payment.paymentType === 'security_deposit'
-      ? sum + (payment.amount ?? 0)
-      : sum, 0);
+  const depositCollected = paymentSummary.depositCollected;
+  const depositHeld = paymentSummary.depositHeld;
+  const collectedDepositMethodId = payments.find((payment) =>
+    payment.paymentType === 'deposit' || payment.paymentType === 'security_deposit')?.paymentMethodId ?? null;
+  const collectedDepositMethodLabel = collectedDepositMethodId
+    ? pmLookup.get(collectedDepositMethodId)?.name ?? collectedDepositMethodId
+    : null;
   const depositDue = Math.max(0, securityDeposit - depositCollected);
+  useEffect(() => {
+    if (depositRefundDefaultApplied.current || depositHeld <= 0 || !collectedDepositMethodId) return;
+    if (!refundPaymentMethods.some((method) => method.id === collectedDepositMethodId)) return;
+    depositRefundDefaultApplied.current = true;
+    setSettleRefundMethodId(collectedDepositMethodId);
+  }, [collectedDepositMethodId, depositHeld, refundPaymentMethods]);
   const surcharge = enrichedData?.cardFeeSurcharge ?? moneyAmount(order.cardFeeSurcharge);
   const paymentMethodName = order.paymentMethodId ? pmLookup.get(order.paymentMethodId)?.name ?? order.paymentMethodId : null;
 
@@ -552,7 +552,7 @@ export function OrderDetailSummaryTab({
   // These are included in final_total (via the extension totalDelta RPC param) but are
   // NOT recorded as extension payment rows — they adjust order_addons.total_amount instead.
   // We surface them as the residual: total − rental − extensions − addons − deposit − surcharge.
-  const explicitTotal = rentalSubtotal + extensionCharges + addonTotal + securityDeposit + surcharge;
+  const explicitTotal = rentalSubtotal + extensionCharges + addonTotal + surcharge;
   const addonExtensionAdjustment = Math.round((total - explicitTotal) * 100) / 100;
 
   // ── Late return & duration ──
@@ -578,7 +578,7 @@ export function OrderDetailSummaryTab({
 
   // ── Jump-to-Settle visibility ──
   // Show only when rental balance is fully paid and there is a deposit to return.
-  const showJumpToSettle = canAct && balance === 0 && securityDeposit > 0;
+  const showJumpToSettle = canAct && balance === 0 && depositHeld > 0;
 
   const handleJumpToSettle = () => {
     settleRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -595,21 +595,14 @@ export function OrderDetailSummaryTab({
 
     const returnChargesAmount = Math.max(0, Number(returnCharges) || 0);
 
-    // Mirror the backend settle-order RPC: refund payments are included as positive
-    // amounts in rentalPaid, which can push balance negative (fully overpaid after
-    // refund), resulting in the full deposit being returned to the customer.
-    const settleRentalPaidH = payments.reduce((s, p) => {
-      if (p.paymentType === 'deposit') return s;
-      if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return s;
-      if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return s;
-      return s + (p.amount ?? 0);
-    }, 0);
+    // Mirror the backend settlement calculation using rental receipts only.
+    const settleRentalPaidH = paymentSummary.rentalPaid;
     // Return charges are collected separately using their selected tender, so
     // they do not consume the security deposit or alter the rental balance.
     const settleBalanceH = calculateBalanceDue(total, settleRentalPaidH);
 
-    const depositApplied = Math.min(securityDeposit, settleBalanceH);
-    const depositRefund = Math.max(0, securityDeposit - settleBalanceH);
+    const depositApplied = Math.min(depositHeld, settleBalanceH);
+    const depositRefund = Math.max(0, depositHeld - settleBalanceH);
     const remainingAfterDeposit = Math.max(0, settleBalanceH - depositApplied);
     const needsFinalPayment = remainingAfterDeposit > 0;
 
@@ -643,7 +636,7 @@ export function OrderDetailSummaryTab({
       }
       if (settleBalanceH > 0) parts.push(`Rental Balance Due: ${formatCurrency(settleBalanceH)}`);
       if (pendingExtensionsTotal > 0) parts.push(`Unpaid Extensions: ${formatCurrency(pendingExtensionsTotal)}`);
-      if (securityDeposit > 0) parts.push(`Security Deposit Held: ${formatCurrency(securityDeposit)}`);
+      if (depositHeld > 0) parts.push(`Security Deposit Held: ${formatCurrency(depositHeld)}`);
       if (depositApplied > 0) parts.push(`Deposit Applied: ${formatCurrency(depositApplied)}`);
       if (remainingAfterDeposit > 0) {
         if (cardFeeSurchargeDelta > 0) {
@@ -711,7 +704,7 @@ export function OrderDetailSummaryTab({
         {showJumpToSettle && (
           <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-4 py-2.5">
             <p className="text-sm font-medium text-green-800">
-              Balance settled — deposit of {formatCurrency(securityDeposit)} ready to return.
+              Balance settled — collected deposit of {formatCurrency(depositHeld)} ready to return.
             </p>
             <button
               type="button"
@@ -1218,7 +1211,8 @@ export function OrderDetailSummaryTab({
                     <select value={paymentMethodId} onChange={(e) => { setPaymentMethodId(e.target.value); setPaymentAccountId(''); setSettlementRef(''); }} required
                       className="mt-1 block w-full sm:w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
                       <option value="">Select method</option>
-                      {activePaymentMethods.map((pm) => <option key={pm.id} value={pm.id}>{pm.name}</option>)}
+                      {activePaymentMethods.filter((pm) => !(pm.gatewayProvider ?? pm.gateway_provider))
+                        .map((pm) => <option key={pm.id} value={pm.id}>{pm.name}</option>)}
                     </select>
                   </label>
                   {paymentMethodId && isCardPayment && (
@@ -1253,6 +1247,59 @@ export function OrderDetailSummaryTab({
                 {collectPaymentMut.error && <p className="text-sm text-red-600">{(collectPaymentMut.error as Error).message}</p>}
               </form>
             </section>
+
+            {depositDue > 0 && (
+              <section className="border-t border-gray-200 pt-5">
+                <h3 className="mb-1 font-medium text-gray-900">Collect Security Deposit</h3>
+                <p className="mb-3 text-sm text-gray-600">{formatCurrency(depositDue)} due at pickup. Record only money actually received.</p>
+                <form className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end" onSubmit={(event) => {
+                  event.preventDefault();
+                  if (!depositCollectionMethodId || !depositCollectionAccountId || !settleDepositAccountId) return;
+                  collectDepositMut.mutate({
+                    id: orderId,
+                    amount: depositDue,
+                    paymentMethodId: depositCollectionMethodId,
+                    receivingAccountId: depositCollectionAccountId,
+                    liabilityAccountId: settleDepositAccountId,
+                    transactionDate: settlementDate,
+                  }, {
+                    onSuccess: () => {
+                      setDepositCollectionMethodId('');
+                      setDepositCollectionAccountId('');
+                      pushToast('Security deposit recorded.', 'success');
+                    },
+                    onError: (error) => pushToast((error as Error).message, 'error'),
+                  });
+                }}>
+                  <label className="block text-sm text-gray-600">Method
+                    <select className="mt-1 block w-full rounded border border-gray-300 px-3 py-2" value={depositCollectionMethodId}
+                      onChange={(event) => { setDepositCollectionMethodId(event.target.value); setDepositCollectionAccountId(''); }} required>
+                      <option value="">Select method</option>
+                      {depositCollectionMethods.map((method) => <option key={method.id} value={method.id}>{method.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="block text-sm text-gray-600">Receiving account
+                    <select className="mt-1 block w-full rounded border border-gray-300 px-3 py-2" value={depositCollectionAccountId}
+                      onChange={(event) => setDepositCollectionAccountId(event.target.value)} required>
+                      <option value="">Select account</option>
+                      {paymentAccountOptions.map((account) => <option key={String(account.id)} value={String(account.id)}>{String(account.name)}</option>)}
+                    </select>
+                  </label>
+                  <label className="block text-sm text-gray-600">Deposit liability
+                    <select className="mt-1 block w-full rounded border border-gray-300 px-3 py-2" value={settleDepositAccountId}
+                      onChange={(event) => setSettleDepositAccountId(event.target.value)} required>
+                      <option value="">Select account</option>
+                      {depositLiabilityOptions.map((account) => <option key={String(account.id)} value={String(account.id)}>{String(account.name)}</option>)}
+                    </select>
+                  </label>
+                  <button type="submit" disabled={collectDepositMut.isPending || !settleDepositAccountId}
+                    className="rounded bg-teal-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+                    {collectDepositMut.isPending ? 'Recording...' : `Record ${formatCurrency(depositDue)} deposit`}
+                  </button>
+                </form>
+                {collectDepositMut.error && <p className="mt-2 text-sm text-red-600">{(collectDepositMut.error as Error).message}</p>}
+              </section>
+            )}
 
             {/* ─── REQUEST PAYMENT VIA XENDIT ─── */}
             <section>
@@ -1364,7 +1411,7 @@ export function OrderDetailSummaryTab({
                       className="mt-1 block w-full sm:w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-red-400 focus:outline-none focus:ring-1 focus:ring-red-400"
                     >
                       <option value="">Select method</option>
-                      {activePaymentMethods.map((pm) => (
+                      {refundPaymentMethods.map((pm) => (
                         <option key={pm.id} value={pm.id}>{pm.name}</option>
                       ))}
                     </select>
@@ -1431,16 +1478,11 @@ export function OrderDetailSummaryTab({
                 // settleBalance uses the same formula as the backend: add refunds
                 // as positive received payments, which reduces effective balance.
                 // Return charges are paid separately by their selected tender.
-                const settleRentalPaid = payments.reduce((s, p) => {
-                  if (p.paymentType === 'deposit') return s;
-                  if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return s;
-                  if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return s;
-                  return s + (p.amount ?? 0);
-                }, 0);
+                const settleRentalPaid = paymentSummary.rentalPaid;
                 const settleBalance = calculateBalanceDue(total, settleRentalPaid);
 
-                const depositApplied = Math.min(securityDeposit, settleBalance);
-                const depositRefund = Math.max(0, securityDeposit - settleBalance);
+                const depositApplied = Math.min(depositHeld, settleBalance);
+                const depositRefund = Math.max(0, depositHeld - settleBalance);
                 const remainingAfterDeposit = Math.max(0, settleBalance - depositApplied);
                 const isFullyPaid = remainingAfterDeposit <= 0 && depositRefund <= 0;
 
@@ -1600,8 +1642,8 @@ export function OrderDetailSummaryTab({
                         <div className="flex justify-between px-4 py-2.5">
                           <span className="text-gray-600">
                             Security Deposit Collected
-                            <span className={`ml-2 text-xs font-medium ${depositMethodLabel ? 'text-teal-700' : 'text-amber-600'}`}>
-                              ({depositMethodLabel ?? 'Method not recorded'})
+                            <span className={`ml-2 text-xs font-medium ${collectedDepositMethodLabel ? 'text-teal-700' : 'text-amber-600'}`}>
+                              ({collectedDepositMethodLabel ?? 'Method not recorded'})
                             </span>
                           </span>
                           <span className="font-medium">{formatCurrency(depositCollected)}</span>
@@ -1609,7 +1651,7 @@ export function OrderDetailSummaryTab({
                       )}
                       {depositDue > 0 && (
                         <div className="flex justify-between px-4 py-2.5 bg-amber-50">
-                          <span className="text-amber-900">Security Deposit Due at Pickup (separate from rental balance)</span>
+                          <span className="text-amber-900">Security Deposit Not Collected (separate from rental balance)</span>
                           <span className="font-medium text-amber-900">{formatCurrency(depositDue)}</span>
                         </div>
                       )}
@@ -1663,7 +1705,7 @@ export function OrderDetailSummaryTab({
                         <div className="flex justify-between px-4 py-2.5 bg-amber-50">
                           <span className="font-medium text-amber-800">
                             Deposit to Refund
-                            {depositMethodLabel && <span className="ml-2 text-xs">(paid via {depositMethodLabel})</span>}
+                            {collectedDepositMethodLabel && <span className="ml-2 text-xs">(paid via {collectedDepositMethodLabel})</span>}
                           </span>
                           <span className="font-bold text-amber-800">{formatCurrency(depositRefund)}</span>
                         </div>
@@ -1787,9 +1829,9 @@ export function OrderDetailSummaryTab({
                         <p className="text-sm font-medium text-amber-900">
                           Refund {formatCurrency(depositRefund)} deposit to customer
                         </p>
-                        {depositMethodLabel && (
+                        {collectedDepositMethodLabel && (
                           <p className="text-xs text-amber-800">
-                            Deposit is recorded as <span className="font-semibold">{depositMethodLabel}</span>.
+                            Deposit was collected via <span className="font-semibold">{collectedDepositMethodLabel}</span>.
                           </p>
                         )}
                         <label className="block">

@@ -66,6 +66,8 @@ export interface ProcessRawOrderPayload {
   incomeAccountId: string;
   paymentMethodId: string | null;
   depositMethodId: string | null;
+  depositCollected: boolean;
+  depositReceivingAccountId?: string | null;
   cardFeeSurcharge: number;
   paymentAccountId?: string | null;
   depositLiabilityAccountId?: string | null;
@@ -180,9 +182,10 @@ export interface WalkInDirectPayload {
   pickupLocationId?: number;
   dropoffLocationId?: number;
   addonIds?: number[];
+  addonQuantities?: Record<string, number>;
   helmetNumbers?: string;
   staffNotes?: string;
-  paymentMethod: 'cash' | 'gcash' | 'card' | 'bank_transfer';
+  paymentMethod: 'cash' | 'gcash' | 'card' | 'bank_transfer' | 'xendit';
   depositCollected: boolean;
   depositAmount: number;
   depositMethod: 'cash' | 'gcash' | 'card' | 'bank_transfer';

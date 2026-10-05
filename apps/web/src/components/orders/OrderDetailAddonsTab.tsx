@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useModifyAddons } from '../../api/orders.js';
+import { api, ApiError } from '../../api/client.js';
 import { useAddons, useChartOfAccounts, usePaymentMethods } from '../../api/config.js';
 import { usePaymentRouting } from '../../hooks/use-payment-routing.js';
 import { formatCurrency } from '../../utils/currency.js';
-import type { OrderAddon, OrderItem } from './useOrderDetail.js';
+import type { OrderAddon, OrderItem, OrderPayment } from './useOrderDetail.js';
+import { StaffPaymentLink } from './StaffPaymentLink.js';
 
 type ConfigAddon = {
   id: number;
@@ -27,17 +30,21 @@ type PaymentMethod = {
   surcharge_percent?: number;
   isActive?: boolean;
   is_active?: boolean;
+  gatewayProvider?: string | null;
+  gateway_provider?: string | null;
 };
 
 interface OrderDetailAddonsTabProps {
   orderId: string;
   storeId: string;
   orderAddons: OrderAddon[];
+  payments: OrderPayment[];
   items: OrderItem[];
   canAct: boolean;
 }
 
-export function OrderDetailAddonsTab({ orderId, storeId, orderAddons, items, canAct }: OrderDetailAddonsTabProps) {
+export function OrderDetailAddonsTab({ orderId, storeId, orderAddons, payments, items, canAct }: OrderDetailAddonsTabProps) {
+  const queryClient = useQueryClient();
   const { data: configAddons = [] } = useAddons(storeId) as { data: ConfigAddon[] | undefined };
   const { data: paymentMethods = [] } = usePaymentMethods() as { data: PaymentMethod[] | undefined };
   const { data: accounts = [] } = useChartOfAccounts() as { data: Array<Record<string, unknown>> | undefined };
@@ -48,8 +55,12 @@ export function OrderDetailAddonsTab({ orderId, storeId, orderAddons, items, can
   const [addonPaymentMethodId, setAddonPaymentMethodId] = useState('');
   const [addonAccountId, setAddonAccountId] = useState('');
   const [addonSettlementRef, setAddonSettlementRef] = useState('');
-  const [pendingAddonAdds, setPendingAddonAdds] = useState<Array<{ addonName: string; addonPrice: number; addonType: 'per_day' | 'one_time'; quantity: number; totalAmount: number }>>([]);
+  const [pendingAddonAdds, setPendingAddonAdds] = useState<Array<{ configAddonId: number; addonName: string; addonPrice: number; addonType: 'per_day' | 'one_time'; quantity: number; totalAmount: number }>>([]);
   const [pendingAddonRemoves, setPendingAddonRemoves] = useState<string[]>([]);
+  const [onlineSaving, setOnlineSaving] = useState(false);
+  const [onlineError, setOnlineError] = useState<string | null>(null);
+  const [showOnlineLink, setShowOnlineLink] = useState(false);
+  const [onlineLinkRevision, setOnlineLinkRevision] = useState(0);
 
   const pmLookup = useMemo(
     () => new Map(paymentMethods.map((pm) => [pm.id, pm])),
@@ -93,6 +104,8 @@ export function OrderDetailAddonsTab({ orderId, storeId, orderAddons, items, can
   const routedAddonAcct = routing.getReceivedInto(storeId, addonPaymentMethodId);
 
   const selectedAddonPM = addonPaymentMethodId ? pmLookup.get(addonPaymentMethodId) : null;
+  const isOnlinePayment = selectedAddonPM?.gatewayProvider === 'xendit'
+    || selectedAddonPM?.gateway_provider === 'xendit' || addonPaymentMethodId === 'xendit';
   const addonSurchargePercent = selectedAddonPM ? Number(selectedAddonPM.surchargePercent ?? selectedAddonPM.surcharge_percent ?? 0) : 0;
   const isAddonCardPayment = addonSurchargePercent > 0;
 
@@ -113,6 +126,16 @@ export function OrderDetailAddonsTab({ orderId, storeId, orderAddons, items, can
     () => new Set(pendingAddonAdds.map((a) => a.addonName.toLowerCase())),
     [pendingAddonAdds],
   );
+  const protectedAddonIds = useMemo(() => new Set(payments
+    .filter((payment) => payment.paymentType === 'addon'
+      && (payment.settlementStatus === 'absorbed'
+        || (payment.settlementStatus === 'pending' && payment.paymentMethodId === 'xendit'))
+      && payment.orderAddonId)
+    .map((payment) => payment.orderAddonId as string)), [payments]);
+  const paidAddonIds = useMemo(() => new Set(payments
+    .filter((payment) => payment.paymentType === 'addon'
+      && payment.settlementStatus === 'absorbed' && payment.orderAddonId)
+    .map((payment) => payment.orderAddonId as string)), [payments]);
 
   const toggleAddon = (addon: ConfigAddon) => {
     const name = addon.name;
@@ -123,25 +146,48 @@ export function OrderDetailAddonsTab({ orderId, storeId, orderAddons, items, can
 
     if (activeOrderAddonNames.has(lowerName)) {
       const match = orderAddons.find((a) => a.addonName.toLowerCase() === lowerName);
-      if (match) {
+      if (match && !protectedAddonIds.has(match.id)) {
         setPendingAddonRemoves((prev) => prev.includes(match.id) ? prev.filter((id) => id !== match.id) : [...prev, match.id]);
       }
     } else if (pendingAddonAddNames.has(lowerName)) {
       setPendingAddonAdds((prev) => prev.filter((a) => a.addonName.toLowerCase() !== lowerName));
     } else {
-      setPendingAddonAdds((prev) => [...prev, { addonName: name, addonPrice: price, addonType: type, quantity: 1, totalAmount: total }]);
+      setPendingAddonAdds((prev) => [...prev, { configAddonId: addon.id, addonName: name, addonPrice: price, addonType: type, quantity: 1, totalAmount: total }]);
     }
   };
 
   const hasPendingAddonChanges = pendingAddonAdds.length > 0 || pendingAddonRemoves.length > 0;
   const pendingAddonAddTotal = pendingAddonAdds.reduce((s, a) => s + a.totalAmount, 0);
 
-  const handleSaveAddons = () => {
+  const handleSaveAddons = async () => {
     if (!hasPendingAddonChanges) return;
+    if (isOnlinePayment) {
+      if (pendingAddonRemoves.length > 0) {
+        setOnlineError('Save removals separately. A card add-on link can only add configured items.');
+        return;
+      }
+      setOnlineSaving(true);
+      setOnlineError(null);
+      try {
+        await api.post(`/payments/xendit/orders/${encodeURIComponent(orderId)}/online-addons`, {
+          addons: pendingAddonAdds.map((addon) => ({ id: addon.configAddonId, quantity: addon.quantity })),
+        });
+        setPendingAddonAdds([]);
+        setAddonPaymentMethodId('');
+        setShowOnlineLink(true);
+        setOnlineLinkRevision((revision) => revision + 1);
+        void queryClient.invalidateQueries({ queryKey: ['orders'] });
+      } catch (cause) {
+        setOnlineError(cause instanceof ApiError ? cause.message : 'Could not create the unpaid add-on balance.');
+      } finally {
+        setOnlineSaving(false);
+      }
+      return;
+    }
     modifyAddonsMut.mutate(
       {
         id: orderId,
-        addons: pendingAddonAdds,
+        addons: pendingAddonAdds.map(({ configAddonId: _id, ...addon }) => addon),
         removedAddonIds: pendingAddonRemoves,
         paymentMethodId: pendingAddonAdds.length > 0
           ? (addonPaymentMethodId || 'pending')
@@ -196,10 +242,14 @@ export function OrderDetailAddonsTab({ orderId, storeId, orderAddons, items, can
                       <td className="py-2">
                         <button
                           type="button"
+                          disabled={protectedAddonIds.has(a.id)}
+                          title={protectedAddonIds.has(a.id)
+                            ? paidAddonIds.has(a.id) ? 'Paid online; finance refund required before removal' : 'Pending card payment; resolve before removal'
+                            : undefined}
                           onClick={() => setPendingAddonRemoves((prev) => prev.includes(a.id) ? prev.filter((id) => id !== a.id) : [...prev, a.id])}
-                          className={`text-xs font-medium ${isMarkedForRemoval ? 'text-teal-brand hover:text-teal-brand/80' : 'text-red-600 hover:text-red-800'}`}
+                          className={`text-xs font-medium disabled:text-gray-400 ${isMarkedForRemoval ? 'text-teal-brand hover:text-teal-brand/80' : 'text-red-600 hover:text-red-800'}`}
                         >
-                          {isMarkedForRemoval ? 'Undo' : 'Remove'}
+                          {paidAddonIds.has(a.id) ? 'Refund required' : protectedAddonIds.has(a.id) ? 'Payment pending' : isMarkedForRemoval ? 'Undo' : 'Remove'}
                         </button>
                       </td>
                     )}
@@ -293,7 +343,7 @@ export function OrderDetailAddonsTab({ orderId, storeId, orderAddons, items, can
                   {activePaymentMethods.map((pm) => <option key={pm.id} value={pm.id}>{pm.name}</option>)}
                 </select>
               </label>
-              {addonPaymentMethodId && isAddonCardPayment && (
+              {addonPaymentMethodId && !isOnlinePayment && isAddonCardPayment && (
                 <label className="block">
                   <span className="text-xs font-medium text-blue-800">Card Reference #</span>
                   <input type="text" value={addonSettlementRef} onChange={(e) => setAddonSettlementRef(e.target.value)}
@@ -301,7 +351,7 @@ export function OrderDetailAddonsTab({ orderId, storeId, orderAddons, items, can
                     className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
                 </label>
               )}
-              {addonPaymentMethodId && !isAddonCardPayment && !routedAddonAcct && (
+              {addonPaymentMethodId && !isOnlinePayment && !isAddonCardPayment && !routedAddonAcct && (
                 <label className="block">
                   <span className="text-xs font-medium text-blue-800">Account</span>
                   <select value={addonAccountId} onChange={(e) => setAddonAccountId(e.target.value)}
@@ -317,17 +367,18 @@ export function OrderDetailAddonsTab({ orderId, storeId, orderAddons, items, can
                   ⚠ Balance will increase by {formatCurrency(pendingAddonAddTotal)} — collect payment later via "Collect Payment"
                 </p>
               )}
+              {isOnlinePayment && <p className="text-xs text-blue-800">No payment is recorded now. Generate and share the card link after saving.</p>}
             </div>
           )}
 
           <div className="flex items-center gap-3 pt-2">
             <button
               type="button"
-              onClick={handleSaveAddons}
-              disabled={modifyAddonsMut.isPending || (pendingAddonAdds.length > 0 && (!!addonPaymentMethodId && !isAddonCardPayment && !routedAddonAcct && !addonAccountId))}
+              onClick={() => void handleSaveAddons()}
+              disabled={modifyAddonsMut.isPending || onlineSaving || (pendingAddonAdds.length > 0 && (!!addonPaymentMethodId && !isOnlinePayment && !isAddonCardPayment && !routedAddonAcct && !addonAccountId))}
               className="rounded-lg bg-teal-brand px-5 py-2 text-sm font-medium text-white hover:bg-teal-brand/90 disabled:opacity-50"
             >
-              {modifyAddonsMut.isPending ? 'Saving...' : 'Save Changes'}
+              {modifyAddonsMut.isPending || onlineSaving ? 'Saving...' : 'Save Changes'}
             </button>
             <button
               type="button"
@@ -338,6 +389,14 @@ export function OrderDetailAddonsTab({ orderId, storeId, orderAddons, items, can
             </button>
           </div>
           {modifyAddonsMut.error && <p className="text-sm text-red-600">{(modifyAddonsMut.error as Error).message}</p>}
+          {onlineError && <p role="alert" className="text-sm text-red-600">{onlineError}</p>}
+        </div>
+      )}
+      {canAct && (
+        <div>
+          {!showOnlineLink && <button type="button" onClick={() => setShowOnlineLink(true)}
+            className="text-sm font-medium text-teal-700 underline">Generate link for pending add-ons</button>}
+          {showOnlineLink && <StaffPaymentLink key={onlineLinkRevision} target={{ kind: 'addon', id: orderId }} />}
         </div>
       )}
     </div>

@@ -15,6 +15,8 @@ import { resolveDirectBookingTerms, rentalDaysBetween, roundMoney, sameInstant, 
 import { isFleetStatusRentable } from '../lib/fleet-status.js';
 import { findLiveXenditSessionForRawOrder, paymentInProgressError } from '../lib/xendit-session-lock.js';
 import { deriveTransportService } from '../lib/transport-service.js';
+import { computeQuote } from '../use-cases/booking/compute-quote.js';
+import { isXenditEnabled } from '../services/xendit.js';
 
 /** GET list / GET :id — explicit columns; excludes payload (V10-11). */
 const ORDERS_RAW_INBOX_COLUMNS =
@@ -302,6 +304,24 @@ router.post('/walk-in-reserved', requirePermission(Permission.EditOrders), async
     }
 
     const body = parsed.data;
+    if (!req.user!.storeIds.includes(COMPANY_STORE_ID) && !req.user!.storeIds.includes(body.storeId)) {
+      res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You cannot reserve for this store' } });
+      return;
+    }
+    if (!body.pickupLocationId || !body.dropoffLocationId) {
+      res.status(422).json({ success: false, error: { code: 'QUOTE_REQUIRED', message: 'Choose pickup and return locations' } });
+      return;
+    }
+    const reservationQuote = await computeQuote({ configRepo: req.app.locals.deps.configRepo }, {
+      storeId: body.storeId, vehicleModelId: body.vehicleModelId,
+      pickupDatetime: body.pickupDatetime, dropoffDatetime: body.dropoffDatetime,
+      pickupLocationId: body.pickupLocationId, dropoffLocationId: body.dropoffLocationId,
+    });
+    const rentalQuote = roundMoney((reservationQuote.grandTotalWithFees ?? 0) - body.discount);
+    if (rentalQuote <= 0 || body.discount > (reservationQuote.grandTotalWithFees ?? 0)) {
+      res.status(422).json({ success: false, error: { code: 'INVALID_RENTAL_QUOTE', message: 'The reservation discount exceeds the rental quote' } });
+      return;
+    }
 
     // ── Server-side double-booking check ──────────────────────────
     // 1. Check active order_items for the exact vehicle overlapping the window
@@ -347,9 +367,9 @@ router.post('/walk-in-reserved', requirePermission(Permission.EditOrders), async
     const payload: Record<string, unknown> = {
       deposit_amount: body.depositAmount,
       ...(body.depositMethod ? { deposit_method: body.depositMethod } : {}),
-      ...(body.grandTotal != null ? { grand_total: body.grandTotal } : {}),
-      ...(body.rentalDays != null ? { rental_days: body.rentalDays } : {}),
-      ...(body.dailyRate != null ? { daily_rate: body.dailyRate } : {}),
+      grand_total: rentalQuote,
+      rental_days: reservationQuote.rentalDays,
+      daily_rate: reservationQuote.dailyRate,
       ...(body.discount > 0 ? { discount: body.discount } : {}),
       ...(body.staffNotes ? { staff_notes: body.staffNotes } : {}),
     };
@@ -371,7 +391,7 @@ router.post('/walk-in-reserved', requirePermission(Permission.EditOrders), async
         pickup_location_id: body.pickupLocationId ?? null,
         dropoff_location_id: body.dropoffLocationId ?? null,
         order_reference: orderReference,
-        web_quote_raw: body.grandTotal ?? null,
+        web_quote_raw: rentalQuote,
         payload,
       })
       .select()
@@ -401,9 +421,7 @@ router.post('/walk-in-reserved', requirePermission(Permission.EditOrders), async
         ? `\n💵 <b>Deposit:</b> ₱${body.depositAmount.toLocaleString('en-PH')}` +
           (body.depositMethod ? ` (${body.depositMethod})` : '')
         : '';
-      const totalLine = body.grandTotal != null
-        ? `\n💰 <b>Est. Total:</b> ₱${body.grandTotal.toLocaleString('en-PH')}`
-        : '';
+      const totalLine = `\n💰 <b>Est. Total:</b> ₱${rentalQuote.toLocaleString('en-PH')}`;
       const discountLine = body.discount > 0
         ? `\n🏷️ <b>Discount:</b> ₱${body.discount.toLocaleString('en-PH')}`
         : '';
@@ -426,10 +444,7 @@ router.post('/walk-in-reserved', requirePermission(Permission.EditOrders), async
     // ── Fire-and-forget customer confirmation email ───────────────
     if (body.customerEmail) {
       const whatsappNumber = process.env.WHATSAPP_NUMBER ?? '639694443413';
-      const rentalSubtotal =
-        body.rentalDays != null && body.dailyRate != null
-          ? body.rentalDays * body.dailyRate
-          : undefined;
+      const rentalSubtotal = reservationQuote.rentalSubtotal;
       void sendEmail({
         to: body.customerEmail,
         subject: `Reservation Confirmed — ${orderReference} | Lola's Rentals`,
@@ -441,13 +456,13 @@ router.post('/walk-in-reserved', requirePermission(Permission.EditOrders), async
           dropoffDatetime: formatManilaDateTime(body.dropoffDatetime),
           pickupLocation,
           dropoffLocation,
-          rentalDays: body.rentalDays,
-          dailyRate: body.dailyRate,
+          rentalDays: reservationQuote.rentalDays,
+          dailyRate: reservationQuote.dailyRate,
           rentalSubtotal,
           pickupFee: undefined,
           dropoffFee: undefined,
           discount: body.discount > 0 ? body.discount : undefined,
-          estimatedTotal: body.grandTotal,
+          estimatedTotal: rentalQuote,
           depositAmount: body.depositAmount > 0 ? body.depositAmount : undefined,
           depositMethod: body.depositMethod,
           whatsappNumber,
@@ -481,9 +496,10 @@ const walkInDirectSchema = z.object({
   pickupLocationId: z.number().int().positive().optional(),
   dropoffLocationId: z.number().int().positive().optional(),
   addonIds: z.array(z.number()).optional(),
+  addonQuantities: z.record(z.string(), z.number().int().min(1).max(10)).optional(),
   helmetNumbers: z.string().optional(),
   staffNotes: z.string().optional(),
-  paymentMethod: z.enum(['cash', 'gcash', 'card', 'bank_transfer']),
+  paymentMethod: z.enum(['cash', 'gcash', 'card', 'bank_transfer', 'xendit']),
   depositCollected: z.boolean(),
   depositAmount: z.number().min(0),
   depositMethod: z.enum(['cash', 'gcash', 'card', 'bank_transfer']),
@@ -508,7 +524,47 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       return;
     }
 
-    const body = parsed.data;
+    if (!req.user!.storeIds.includes(COMPANY_STORE_ID) && !req.user!.storeIds.includes(parsed.data.storeId)) {
+      res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You cannot reserve for this store' } });
+      return;
+    }
+    if (parsed.data.paymentMethod === 'xendit' && !isXenditEnabled()) {
+      res.status(503).json({ success: false, error: { code: 'XENDIT_DISABLED', message: 'Card payment is unavailable' } });
+      return;
+    }
+    if (!parsed.data.pickupLocationId || !parsed.data.dropoffLocationId) {
+      res.status(422).json({ success: false, error: { code: 'QUOTE_REQUIRED', message: 'Choose pickup and return locations' } });
+      return;
+    }
+    const serverQuote = await computeQuote({ configRepo: req.app.locals.deps.configRepo }, {
+      storeId: parsed.data.storeId, vehicleModelId: parsed.data.vehicleModelId,
+      pickupDatetime: parsed.data.pickupDatetime, dropoffDatetime: parsed.data.dropoffDatetime,
+      pickupLocationId: parsed.data.pickupLocationId, dropoffLocationId: parsed.data.dropoffLocationId,
+      addonIds: parsed.data.addonIds,
+    });
+    const selectedAddonIds = parsed.data.addonIds ?? [];
+    const selectedAddonIdSet = new Set(selectedAddonIds);
+    const addonQuantities = parsed.data.addonQuantities ?? {};
+    if (selectedAddonIdSet.size !== selectedAddonIds.length
+      || Object.keys(addonQuantities).some((id) => !selectedAddonIdSet.has(Number(id)))) {
+      res.status(422).json({ success: false, error: { code: 'INVALID_ADDON_QUANTITY', message: 'Add-on quantities do not match the selected add-ons' } });
+      return;
+    }
+    const extraAddonTotal = serverQuote.addons.reduce((sum, addon) =>
+      sum + addon.total * ((addonQuantities[String(addon.id)] ?? 1) - 1), 0);
+    const serverTotal = roundMoney((serverQuote.grandTotalWithFees ?? 0) + extraAddonTotal);
+    if (serverTotal <= 0 || !sameMoney(serverTotal, parsed.data.grandTotal)) {
+      res.status(409).json({ success: false, error: { code: 'QUOTE_CHANGED', message: 'The rental quote changed. Refresh before reserving.' } });
+      return;
+    }
+    const body = {
+      ...parsed.data,
+      grandTotal: serverTotal,
+      dailyRate: serverQuote.dailyRate,
+      rentalDays: serverQuote.rentalDays,
+      pickupFee: serverQuote.pickupFee,
+      dropoffFee: serverQuote.dropoffFee,
+    };
     const employeeId = req.user!.employeeId;
 
     // 1. Upsert customer
@@ -597,14 +653,15 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       }>).map((addon) => {
         const isPerDay = addon.addon_type === 'per_day';
         const price = isPerDay ? addon.price_per_day : addon.price_one_time;
-        const total = isPerDay ? price * rentalDaysCount : price;
+        const quantity = addonQuantities[String(addon.id)] ?? 1;
+        const total = (isPerDay ? price * rentalDaysCount : price) * quantity;
         return {
           id: crypto.randomUUID(),
           order_id: orderId,
           addon_name: addon.name,
           addon_price: price,
           addon_type: addon.addon_type,
-          quantity: 1,
+          quantity,
           total_amount: total,
           store_id: body.storeId,
         };
@@ -703,7 +760,7 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
     const orderDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 
     // 12. Payment ids & transaction date for the atomic RPC
-    const rentalPaymentId = crypto.randomUUID();
+    const rentalPaymentId = body.paymentMethod === 'xendit' ? null : crypto.randomUUID();
     const depositPaymentId =
       body.depositCollected && body.depositAmount > 0 ? crypto.randomUUID() : null;
     const transactionDate = formatManilaDate();
@@ -725,7 +782,7 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       p_card_fee_surcharge: 0,
       p_return_charges: 0,
       p_final_total: body.grandTotal,
-      p_balance_due: body.depositCollected ? 0 : body.grandTotal,
+      p_balance_due: rentalPaymentId === null ? body.grandTotal : 0,
       p_payment_method_id: body.paymentMethod,
       p_deposit_method_id: body.depositMethod,
       p_booking_token: orderReference,
@@ -1035,6 +1092,8 @@ const processBodySchema = z.object({
   incomeAccountId: z.string().default(''),
   paymentMethodId: z.string().nullable().default(null),
   depositMethodId: z.string().nullable().default(null),
+  depositCollected: z.boolean().default(false),
+  depositReceivingAccountId: z.string().min(1).nullable().optional(),
   cardFeeSurcharge: z.number().min(0).default(0),
   paymentAccountId: z.string().nullable().optional(),
   depositLiabilityAccountId: z.string().nullable().optional(),
@@ -1338,6 +1397,32 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
       return;
     }
 
+    if (rawOrderCheck.booking_channel === 'walk_in') {
+      const { data: paidRows, error: paidError } = await supabase.from('payments')
+        .select('amount').eq('raw_order_id', rawOrderCheck.id).eq('payment_type', 'card_xendit');
+      if (paidError) throw new Error(`Failed to verify reservation payment: ${paidError.message}`);
+      if (paidRows && paidRows.length > 0) {
+        const confirmed = roundMoney(paidRows.reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0));
+        const revisedRental = roundMoney(body.vehicleAssignments.reduce((sum, assignment) =>
+          sum + assignment.rentalRate * assignment.rentalDaysCount
+            + assignment.pickupFee + assignment.dropoffFee - assignment.discount, 0));
+        const revisedTotal = roundMoney(revisedRental
+          + body.addons.reduce((sum, addon) => sum + addon.totalAmount, 0)
+          + Number(rawOrderCheck.web_card_fee_surcharge ?? 0)
+          + Number(rawOrderCheck.charity_donation ?? 0)
+          + (body.excludeTransferFromBalance ? 0 : Number(rawOrderCheck.transfer_amount ?? 0)));
+        if (body.paymentMethodId || body.partialPaymentAmount !== undefined
+          || !sameMoney(confirmed, Number(rawOrderCheck.web_quote_raw ?? 0))
+          || !sameMoney(revisedTotal, confirmed)) {
+          res.status(409).json({ success: false, error: {
+            code: 'BOOKING_TOTAL_MISMATCH',
+            message: 'The paid reservation must activate at its confirmed rental total without another payment.',
+          } });
+          return;
+        }
+      }
+    }
+
     let directGuard: DirectProcessGuardResult;
     try {
       directGuard = await guardDirectBookingProcess({
@@ -1368,6 +1453,45 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
         },
       });
       return;
+    }
+
+    let depositReceivingAccountId: string | null = null;
+    if (body.depositCollected) {
+      if (body.securityDeposit <= 0 || !body.depositMethodId || !body.depositLiabilityAccountId) {
+        sendProcessGuardError(res, 400, 'INVALID_DEPOSIT_COLLECTION', 'Confirm a positive deposit amount, method, and liability account');
+        return;
+      }
+      depositReceivingAccountId = await routedAccountId(rawOrderCheck.store_id, body.depositMethodId)
+        ?? body.depositReceivingAccountId ?? null;
+      if (!depositReceivingAccountId) {
+        sendProcessGuardError(res, 400, 'INVALID_DEPOSIT_COLLECTION', 'Select a receiving account for the collected deposit');
+        return;
+      }
+      const [{ data: method, error: methodError }, { data: receiving, error: receivingError },
+        { data: liability, error: liabilityError }] = await Promise.all([
+        supabase.from('payment_methods')
+          .select('id,name,is_active,is_deposit_eligible,gateway_provider')
+          .eq('id', body.depositMethodId).maybeSingle(),
+        supabase.from('chart_of_accounts')
+          .select('id,store_id,account_type,is_active')
+          .eq('id', depositReceivingAccountId).maybeSingle(),
+        supabase.from('chart_of_accounts')
+          .select('id,store_id,account_type,is_active')
+          .eq('id', body.depositLiabilityAccountId).maybeSingle(),
+      ]);
+      if (methodError || receivingError || liabilityError) {
+        throw new Error(`Failed to validate deposit collection: ${methodError?.message ?? receivingError?.message ?? liabilityError?.message}`);
+      }
+      const methodLabel = `${method?.id ?? ''} ${method?.name ?? ''}`.toLowerCase().replace(/[^a-z]/g, '');
+      const validMethod = method?.is_active === true && method?.is_deposit_eligible === true
+        && !method.gateway_provider && !/card|visa|master|xendit/.test(methodLabel);
+      const validAccount = (account: typeof receiving, type: string) => account?.is_active === true
+        && String(account.account_type).toLowerCase() === type
+        && [rawOrderCheck.store_id, COMPANY_STORE_ID].includes(account.store_id);
+      if (!validMethod || !validAccount(receiving, 'asset') || !validAccount(liability, 'liability')) {
+        sendProcessGuardError(res, 400, 'INVALID_DEPOSIT_COLLECTION', 'Select an eligible manual deposit method and active receiving and liability accounts for this store');
+        return;
+      }
     }
 
     const deps: ProcessRawOrderDeps = {
@@ -1419,7 +1543,9 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
       receivableAccountId: body.receivableAccountId,
       incomeAccountId: body.incomeAccountId,
       paymentMethodId: body.paymentMethodId,
-      depositMethodId: body.depositMethodId,
+      depositMethodId: body.depositCollected ? body.depositMethodId : null,
+      depositCollected: body.depositCollected,
+      depositReceivingAccountId,
       cardFeeSurcharge: body.cardFeeSurcharge,
       paymentAccountId: await routedAccountId(rawOrderCheck.store_id, body.paymentMethodId) ?? body.paymentAccountId ?? null,
       depositLiabilityAccountId: body.depositLiabilityAccountId ?? null,

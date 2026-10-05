@@ -18,6 +18,7 @@ import {
   NonRentableVehicleError,
 } from '@lolas/domain';
 import { v5 as uuidv5 } from 'uuid';
+import { summarizeOrderPayments } from '@lolas/shared';
 import { supabase } from '../../adapters/supabase/client.js';
 import { resolveCharityPayableAccount } from '../../adapters/supabase/maintenance-expense-rpc.js';
 import { type VehicleAssignment } from './activate-order.js';
@@ -66,6 +67,8 @@ export interface ProcessRawOrderInput {
   incomeAccountId: string;
   paymentMethodId: string | null;
   depositMethodId: string | null;
+  depositCollected: boolean;
+  depositReceivingAccountId?: string | null;
   cardFeeSurcharge: number;
   paymentAccountId?: string | null;
   depositLiabilityAccountId?: string | null;
@@ -92,6 +95,12 @@ export async function processRawOrder(
   deps: ProcessRawOrderDeps,
   input: ProcessRawOrderInput,
 ) {
+  if (input.depositCollected && (
+    input.securityDeposit <= 0 || !input.depositMethodId ||
+    !input.depositReceivingAccountId || !input.depositLiabilityAccountId
+  )) {
+    throw new Error('Confirmed deposit collection requires a deposit amount, manual method, receiving account, and liability account');
+  }
   // ── 1. Load raw order payload ─────────────────────────────
   const { data: rawOrder, error: rawErr } = await supabase
     .from('orders_raw')
@@ -206,10 +215,7 @@ export async function processRawOrder(
   // Previous pre-activation payments (e.g. deposit paid at
   // /collect-payment) also reduce the remaining balance. Pull them
   // now so balance_due is computed once up front.
-  const preActivationPaid = preActivationPayments.reduce(
-    (sum, p) => sum + Number(p.amount ?? 0),
-    0,
-  );
+  const preActivationPaid = summarizeOrderPayments(preActivationPayments).rentalPaid;
 
   // Determine which fresh payments will be inserted by the RPC —
   // we must include them in balance_due so the order lands in the
@@ -231,17 +237,12 @@ export async function processRawOrder(
     input.partialPaymentAmount !== undefined && input.partialPaymentAmount < finalTotal
       ? input.partialPaymentAmount
       : finalTotal;
-  const willCreateDepositPayment =
-    input.securityDeposit > 0 &&
-    !!input.depositMethodId &&
-    !!input.paymentAccountId &&
-    !!input.depositLiabilityAccountId;
+  const willCreateDepositPayment = input.depositCollected;
   const depositAmount = input.securityDeposit;
 
   const totalPaid =
     preActivationPaid +
-    (willCreateRentalPayment ? rentalAmount : 0) +
-    (willCreateDepositPayment ? depositAmount : 0);
+    (willCreateRentalPayment ? rentalAmount : 0);
   const balanceDue = Math.max(0, finalTotal - totalPaid);
 
   const orderEntity = OrderEntity.create({
@@ -262,7 +263,7 @@ export async function processRawOrder(
     finalTotal: Money.php(finalTotal),
     balanceDue: Money.php(balanceDue),
     paymentMethodId: effectivePaymentMethodId,
-    depositMethodId: input.depositMethodId,
+    depositMethodId: willCreateDepositPayment ? input.depositMethodId : null,
     bookingToken: (rawOrder.order_reference as string | null) ?? null,
     tips: Money.zero(),
     charityDonation: Money.php(charityAmount),
@@ -421,7 +422,7 @@ export async function processRawOrder(
       settlement_status: null,
       settlement_ref: null,
       customer_id: customer.id,
-      account_id: input.paymentAccountId ?? null,
+      account_id: input.depositReceivingAccountId ?? null,
     };
   }
 
@@ -498,13 +499,13 @@ export async function processRawOrder(
   if (
     willCreateDepositPayment &&
     depositPaymentId &&
-    input.paymentAccountId &&
+    input.depositReceivingAccountId &&
     input.depositLiabilityAccountId
   ) {
     const depositLegs: JournalLeg[] = [
       {
         entryId: crypto.randomUUID(),
-        accountId: input.paymentAccountId,
+        accountId: input.depositReceivingAccountId,
         debit: Money.php(depositAmount),
         credit: Money.zero(),
         description: `Order ${orderId} deposit received`,

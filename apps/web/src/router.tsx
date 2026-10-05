@@ -38,6 +38,7 @@ const BasketPage = lazy(() => import('./pages/basket/BasketPage.js'));
 const ConfirmationPage = lazy(() => import('./pages/confirmation/ConfirmationPage.js'));
 const ExtendPage = lazy(() => import('./pages/extend/ExtendPage.js'));
 const ExtensionPaymentPage = lazy(() => import('./pages/extend/ExtensionPaymentPage.js'));
+const StaffPaymentReturnPage = lazy(() => import('./pages/payment/StaffPaymentReturnPage.js'));
 const HomePage = lazy(() => import('./pages/home/HomePage.js'));
 const TransferBookingPage = lazy(() => import('./pages/TransferBookingPage.js'));
 const RepairsPage = lazy(() => import('./pages/repairs/RepairsPage.js'));
@@ -118,6 +119,7 @@ export function AppRouter() {
           <Route path="/book/confirmation/:reference" element={<ConfirmationPage />} />
           <Route path="/book/extend" element={<ExtendPage />} />
           <Route path="/book/extend/pay" element={<ExtensionPaymentPage />} />
+          <Route path="/book/payment-return/:reference" element={<StaffPaymentReturnPage />} />
           <Route path="/book/paw-card" element={<Navigate to="/paw-card/partners" replace />} />
           <Route path="/paw-card/partners" element={<PawCardPartnersPage />} />
           <Route path="/book/transfers" element={<TransferBookingPage />} />

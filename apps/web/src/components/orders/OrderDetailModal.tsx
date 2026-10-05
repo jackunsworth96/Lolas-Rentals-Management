@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { summarizeOrderPayments } from '@lolas/shared';
 import { createPortal } from 'react-dom';
 import { Modal } from '../common/Modal.js';
 import type { EnrichedOrder } from '../../types/api.js';
@@ -59,13 +60,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
   const canCancel = !readOnly && canCancelOrders && (isActive || orderStatusStr === 'confirmed');
 
   const total = enrichedData?.finalTotal ?? moneyAmount(order.finalTotal);
-  const totalPaid = enrichedData?.totalPaid ?? payments.reduce((s, p) => {
-    if (p.paymentType === 'deposit') return s;
-    if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return s;
-    if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return s;
-    if (p.paymentType === 'refund') return s - (p.amount ?? 0);
-    return s + (p.amount ?? 0);
-  }, 0);
+  const totalPaid = enrichedData?.totalPaid ?? summarizeOrderPayments(payments).rentalPaid;
 
   const extensionCount = payments.filter((p) => p.paymentType === 'extension').length;
 
@@ -154,6 +149,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
             orderId={orderId}
             storeId={storeId}
             orderAddons={orderAddons}
+            payments={payments}
             items={items}
             canAct={canAct}
           />

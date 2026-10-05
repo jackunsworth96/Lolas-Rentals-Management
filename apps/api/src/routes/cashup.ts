@@ -396,7 +396,8 @@ router.get(
         // paid (e.g. a "9pm return" fee added at booking time). No cash received
         // yet; mirroring the same guard used in collect-payment, settle-order,
         // and the orders route to avoid counting them as income or Bank Transfers.
-        const isUnpaidAddon = paymentType === 'addon' && rawMethodId === 'pending' && p.settlement_status === 'pending';
+        const isUnpaidAddon = paymentType === 'addon' && ['pending', 'xendit'].includes(rawMethodId)
+          && (p.settlement_status === 'pending' || p.settlement_status === 'absorbed');
         if (isUnpaidAddon) {
           continue;
         }

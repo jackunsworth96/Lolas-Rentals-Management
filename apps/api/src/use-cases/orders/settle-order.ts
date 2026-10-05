@@ -12,6 +12,8 @@ import {
   calculateRefundableDeposit,
 } from '@lolas/domain';
 import { supabase } from '../../adapters/supabase/client.js';
+import { summarizeOrderPayments } from '@lolas/shared';
+import { assertManualRefundMethod } from '../../lib/manual-refund-method.js';
 import { formatManilaDate } from '../../utils/manila-date.js';
 
 export interface SettleOrderDeps {
@@ -112,21 +114,13 @@ export async function settleOrder(
   const pendingExtensions = payments.filter(
     (p) => p.paymentType === 'extension' && p.settlementStatus === 'pending',
   );
-  const paidNonDepositPayments = payments.filter((p) => {
-    if (p.paymentType === 'deposit') return false;
-    if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return false;
-    if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return false;
-    return true;
-  });
-
-  const rentalPaid = paidNonDepositPayments.reduce(
-    (sum, p) => sum.add(Money.php(p.amount)),
-    Money.zero(),
-  );
-  const pendingExtensionsTotal = pendingExtensions.reduce(
-    (sum, p) => sum.add(Money.php(p.amount)),
-    Money.zero(),
-  );
+  const paymentSummary = summarizeOrderPayments(payments);
+  if (paymentSummary.depositCollected > order.securityDeposit.toNumber()
+    || paymentSummary.depositRefunded > paymentSummary.depositCollected) {
+    throw new Error('Deposit ledger does not match the required deposit; reconcile before settlement');
+  }
+  const rentalPaid = Money.php(paymentSummary.rentalPaid);
+  const pendingExtensionsTotal = Money.php(paymentSummary.pendingExtensions);
 
   const returnChargesDelta =
     input.returnChargesDelta && input.returnChargesDelta > 0
@@ -154,9 +148,13 @@ export async function settleOrder(
       : pendingExtensionsTotal;
 
   const { amountApplied, refund } = calculateRefundableDeposit(
-    order.securityDeposit,
+    Money.php(paymentSummary.depositHeld),
     balanceBeforeDeposit,
   );
+  if (refund.isPositive()) {
+    if (!input.depositRefundMethodId) throw new Error('A verified manual deposit refund method is required');
+    await assertManualRefundMethod(input.depositRefundMethodId);
+  }
 
   const balanceAfterDeposit = balanceBeforeDeposit.subtract(amountApplied);
 
@@ -458,22 +456,10 @@ export async function settleOrder(
       : null,
   };
 
-  let { error: rpcErr } = await supabase.rpc('settle_order_atomic', rpcPayload);
-
-  if (
-    rpcErr &&
-    rpcErr.message.includes('settle_order_atomic') &&
-    rpcErr.message.includes('p_return_charges_note')
-  ) {
-    const legacyPayload: Omit<typeof rpcPayload, 'p_return_charges_note'> &
-      Partial<Pick<typeof rpcPayload, 'p_return_charges_note'>> = { ...rpcPayload };
-    delete legacyPayload.p_return_charges_note;
-    const retry = await supabase.rpc('settle_order_atomic', legacyPayload);
-    rpcErr = retry.error;
-  }
+  const { error: rpcErr } = await supabase.rpc('settle_order_checked_atomic', rpcPayload);
 
   if (rpcErr) {
-    throw new Error(`settle_order_atomic RPC failed: ${rpcErr.message}`);
+    throw new Error(`settle_order_checked_atomic RPC failed: ${rpcErr.message}`);
   }
 
   // Reload the order so we return a fresh domain object that
@@ -481,7 +467,7 @@ export async function settleOrder(
   const reloaded = await orderRepo.findById(order.id);
   if (!reloaded) {
     throw new Error(
-      `settle_order_atomic succeeded but order ${order.id} could not be reloaded`,
+      `settle_order_checked_atomic succeeded but order ${order.id} could not be reloaded`,
     );
   }
 
