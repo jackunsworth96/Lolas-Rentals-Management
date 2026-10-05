@@ -292,6 +292,7 @@ router.post('/walk-in-reserved', requirePermission(Permission.EditOrders), async
         html: walkInReservationConfirmationHtml({
           customerName: body.customerName,
           orderReference,
+          waiverUrl: `${publicWebOriginFromEnv(process.env.WEB_URL)}/waiver/${encodeURIComponent(orderReference)}`,
           vehicleName: body.vehicleName ?? body.vehicleModelId,
           pickupDatetime: formatManilaDateTime(body.pickupDatetime),
           dropoffDatetime: formatManilaDateTime(body.dropoffDatetime),

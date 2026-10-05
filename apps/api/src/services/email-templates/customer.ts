@@ -758,6 +758,7 @@ export function extendConfirmationHtml({
 export function walkInReservationConfirmationHtml({
   customerName,
   orderReference,
+  waiverUrl,
   vehicleName,
   pickupDatetime,
   dropoffDatetime,
@@ -790,6 +791,7 @@ export function walkInReservationConfirmationHtml({
   estimatedTotal?: number;
   depositAmount?: number;
   depositMethod?: string;
+  waiverUrl: string;
   whatsappNumber: string;
 }): string {
   const hasBreakdown = rentalDays != null && dailyRate != null;
@@ -908,6 +910,21 @@ export function walkInReservationConfirmationHtml({
 
         ${priceBreakdown}
         ${depositRow}
+
+        <div style="background: #00577C; border-radius: 12px; padding: 20px; margin: 20px 0; text-align: center;">
+          <p style="margin: 0 0 6px; font-size: 15px; font-weight: 700; color: white;">
+            Complete your waiver before pickup
+          </p>
+          <p style="margin: 0 0 16px; font-size: 13px; color: rgba(255,255,255,0.85); line-height: 1.5;">
+            You can sign your waiver now while your reservation is pending activation.
+            If you haven't completed it by pickup, use this same link or ask our staff for help.
+          </p>
+          <a href="${escapeHtml(waiverUrl)}"
+            style="display: inline-block; background: #FCBC5A; color: #363737; text-decoration: none;
+              font-weight: 800; font-size: 14px; padding: 12px 28px; border-radius: 8px;">
+            Complete My Waiver
+          </a>
+        </div>
 
         <div style="background: #00577C; border-radius: 12px; padding: 20px; margin: 20px 0; text-align: center;">
           <p style="margin: 0 0 6px; font-size: 15px; font-weight: 700; color: white;">
