@@ -265,6 +265,8 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const [payloadDropoffLoc, setPayloadDropoffLoc] = useState('');
   const [paymentMethodId, setPaymentMethodId] = useState('');
   const [depositMethodId, setDepositMethodId] = useState('');
+  const [depositCollected, setDepositCollected] = useState(false);
+  const [depositReceivingAccountId, setDepositReceivingAccountId] = useState('');
   const [paymentAccountId, setPaymentAccountId] = useState('');
   const [depositLiabilityAccountId, setDepositLiabilityAccountId] = useState('');
   const [waiveCardFee, setWaiveCardFee] = useState(false);
@@ -306,8 +308,8 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const { data: accounts } = useChartOfAccounts() as { data: Array<Record<string, unknown>> | undefined };
   const { data: storePricing } = useStorePricing(storeId) as { data: PricingTier[] | undefined };
   const { data: fleetStatuses } = useFleetStatuses() as { data: Array<{ id: string; name: string; isRentable?: boolean; is_rentable?: boolean }> | undefined };
-  const { data: paymentMethods } = usePaymentMethods() as { data: Array<{ id: string; name: string; surchargePercent?: number; surcharge_percent?: number; isActive?: boolean; is_active?: boolean; isDepositEligible?: boolean; is_deposit_eligible?: boolean }> | undefined };
-  const selectedXendit = isDirectWebsite && paymentMethodId === 'xendit' && !confirmedOnlinePayment;
+  const { data: paymentMethods } = usePaymentMethods() as { data: Array<{ id: string; name: string; surchargePercent?: number; surcharge_percent?: number; isActive?: boolean; is_active?: boolean; isDepositEligible?: boolean; is_deposit_eligible?: boolean; gatewayProvider?: string | null; gateway_provider?: string | null }> | undefined };
+  const selectedXendit = isDirect && paymentMethodId === 'xendit' && !confirmedOnlinePayment;
   const { data: cardLinkPreview, error: cardLinkPreviewError } = useQuery({
     queryKey: ['raw-card-link-preview', rawOrder.id],
     queryFn: () => api.get<{ originalQuotePHP: number; principalPHP: number; surchargePHP: number; amountPHP: number; requiresAcknowledgement: boolean }>(`/payments/xendit/raw-orders/${rawOrder.id}/preview`),
@@ -317,6 +319,11 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     queryKey: ['raw-payment-routing', rawOrder.id, paymentMethodId],
     queryFn: () => api.get<{ accountId: string | null }>(`/orders-raw/${rawOrder.id}/payment-routing?paymentMethodId=${encodeURIComponent(paymentMethodId)}`),
     enabled: open && Boolean(paymentMethodId) && !selectedXendit,
+  });
+  const { data: serverDepositRouting, error: serverDepositRoutingError } = useQuery({
+    queryKey: ['raw-deposit-routing', rawOrder.id, depositMethodId],
+    queryFn: () => api.get<{ accountId: string | null }>(`/orders-raw/${rawOrder.id}/payment-routing?paymentMethodId=${encodeURIComponent(depositMethodId)}`),
+    enabled: open && depositCollected && Boolean(depositMethodId),
   });
   const { data: partnerBenefit } = useQuery({
     queryKey: ['raw-order-partner-benefit', rawOrder.partner_ref],
@@ -380,6 +387,8 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     setSuccessMessage('');
     setPaymentMethodId('');
     setDepositMethodId('');
+    setDepositCollected(false);
+    setDepositReceivingAccountId('');
     setPaymentAccountId('');
     setDepositLiabilityAccountId('');
     setWaiveCardFee(false);
@@ -490,8 +499,10 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
       dropoffLocation: dropoffLocName,
       pickupFee: locPickupFee,
       dropoffFee: locDropoffFee,
-      rentalRate: bookingTerms?.effectiveDailyRate ?? 0,
-      discount: bookingTerms?.discount ?? 0,
+      rentalRate: bookingTerms?.effectiveDailyRate
+        ?? (rawOrder.booking_channel === 'walk_in' ? Number(payload.daily_rate ?? 0) : 0),
+      discount: bookingTerms?.discount
+        ?? (rawOrder.booking_channel === 'walk_in' ? Number(payload.discount ?? 0) : 0),
     }]);
   }, [open, rawOrder?.id, locations, partnerBenefit, bookingTerms, isDirectWebsite]);
 
@@ -594,6 +605,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   }, [depositLiabilityAccountOptions, depositLiabilityAccountId]);
 
   const routedPaymentAcct = serverRouting?.accountId ?? null;
+  const routedDepositAcct = serverDepositRouting?.accountId ?? null;
   const routedDepositLiability = routing.resolveDepositLiability(
     storeAccounts as Array<{ id: string; name: string; accountType?: string; account_type?: string; storeId?: string | null; store_id?: string | null }>,
     storeId,
@@ -612,7 +624,11 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     [paymentMethods],
   );
   const depositEligibleMethods = useMemo(
-    () => activePaymentMethods.filter((m) => m.isDepositEligible !== false && m.is_deposit_eligible !== false),
+    () => activePaymentMethods.filter((m) => {
+      const label = `${m.id} ${m.name}`.toLowerCase().replace(/[^a-z]/g, '');
+      return m.isDepositEligible !== false && m.is_deposit_eligible !== false
+        && !m.gatewayProvider && !m.gateway_provider && !/card|visa|master|xendit/.test(label);
+    }),
     [activePaymentMethods],
   );
 
@@ -803,7 +819,8 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
       }
 
       // Auto-fill rate from pricing tiers when vehicle or dates change, unless the user has already set a manual rate
-      if (!patch.rentalRate && !directTermsLocked) {
+      if (!patch.rentalRate && !directTermsLocked
+        && !(rawOrder.booking_channel === 'walk_in' && confirmedOnlinePayment)) {
         const mid = modelId ?? (fleet?.find((v) => v.id === merged.vehicleId)?.modelId as string | null);
         const rate = findRate(mid, merged.rentalDaysCount, storePricing ?? []);
         if (rate !== null) merged.rentalRate = rate;
@@ -879,10 +896,12 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
       receivableAccountId: (receivableAccount?.id as string) ?? '',
       incomeAccountId: (incomeAccount?.id as string) ?? '',
       paymentMethodId: confirmedOnlinePayment ? null : (paymentMethodId || null),
-      depositMethodId: depositMethodId || null,
+      depositMethodId: depositCollected ? (depositMethodId || null) : null,
+      depositCollected,
+      depositReceivingAccountId: depositCollected ? ((routedDepositAcct ?? depositReceivingAccountId) || null) : null,
       cardFeeSurcharge: cardSurchargeAmount,
       paymentAccountId: confirmedOnlinePayment || surchargePercent > 0 ? null : (paymentAccountId || null),
-      depositLiabilityAccountId: depositLiabilityAccountId || null,
+      depositLiabilityAccountId: depositCollected ? (depositLiabilityAccountId || null) : null,
       isCardPayment: confirmedOnlinePayment ? false : surchargePercent > 0,
       settlementRef: confirmedOnlinePayment ? null : (surchargePercent > 0 ? (settlementRef || null) : null),
       excludeTransferFromBalance: transferPaidByCustomer,
@@ -898,7 +917,10 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     };
   }
 
-  const depositValid = waiveDeposit || (Number(securityDeposit) > 0);
+  const depositValid = waiveDeposit || (Number(securityDeposit) > 0 && (
+    !depositCollected || Boolean(depositMethodId && (routedDepositAcct || depositReceivingAccountId)
+      && depositLiabilityAccountId && !serverDepositRoutingError)
+  ));
 
   const transferAmountMissing =
     !!rawOrder.transfer_type &&
@@ -2135,7 +2157,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
               <div className="flex justify-between"><span>Rental paid online</span><span className="font-medium text-green-700">{formatCurrency(confirmedOnlinePayment?.amount ?? 0)}</span></div>
               <div className="mt-1 flex justify-between"><span>Rental balance due</span><span className="font-medium">{formatCurrency(confirmedOnlinePayment ? Math.max(0, paymentDifference) : selectedXendit ? finalTotal : previewBalanceDue)}</span></div>
               {!waiveDeposit && Number(securityDeposit) > 0 && (
-                <div className="mt-1 flex justify-between"><span>Security deposit due at pickup</span><span className="font-medium">{formatCurrency(Number(securityDeposit))}</span></div>
+                <div className="mt-1 flex justify-between"><span>{depositCollected ? 'Security deposit collected now' : 'Security deposit due at pickup'}</span><span className="font-medium">{formatCurrency(Number(securityDeposit))}</span></div>
               )}
               <p className="mt-1 text-xs text-gray-500">The refundable security deposit is separate from the rental payment.</p>
             </div>
@@ -2195,21 +2217,6 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                 )}
               </div>
 
-              <div className="rounded-lg border border-gray-200 p-4">
-                <label className="block">
-                  <span className="text-sm font-medium text-gray-700">Deposit Payment Method</span>
-                  <select
-                    value={depositMethodId}
-                    onChange={(e) => setDepositMethodId(e.target.value)}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  >
-                    <option value="">Select deposit method...</option>
-                    {depositEligibleMethods.map((m) => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
             </div>
 
             {selectedXendit && cardLinkPreview && (
@@ -2270,7 +2277,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
               </div>
             )}
 
-            {((!confirmedOnlinePayment && paymentMethodId && !selectedXendit) || Number(securityDeposit) > 0) && (
+            {!confirmedOnlinePayment && paymentMethodId && !selectedXendit && (
               <div className="grid grid-cols-2 gap-4">
                 {surchargePercent > 0 && !selectedXendit ? (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
@@ -2301,30 +2308,12 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                       >
                         <option value="">Select account...</option>
                         {paymentAccountOptions.map((a) => (
-                          <option key={a.id} value={a.id}>{(a as { name?: string }).name}</option>
+                          <option key={String(a.id)} value={String(a.id)}>{(a as { name?: string }).name}</option>
                         ))}
                       </select>
                       {paymentMethodId && <p className="mt-1 text-xs text-amber-600">{serverRoutingError ? 'Could not load payment routing; the API will still apply any configured rule.' : 'No routing rule configured — select manually in'} {!serverRoutingError && <a href="/settings?tab=payment-routing" className="underline">Payment Routing</a>}</p>}
                     </label>
                   </div>
-                )}
-                {!routedDepositLiability && (
-                <div className="rounded-lg border border-gray-200 p-4">
-                  <label className="block">
-                    <span className="text-sm font-medium text-gray-700">Deposit Liability Account</span>
-                    <select
-                      value={depositLiabilityAccountId}
-                      onChange={(e) => setDepositLiabilityAccountId(e.target.value)}
-                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-                      <option value="">Select account...</option>
-                      {depositLiabilityAccountOptions.map((a) => (
-                        <option key={a.id} value={a.id}>{(a as { name?: string }).name}</option>
-                      ))}
-                    </select>
-                    <p className="mt-1 text-xs text-gray-500">Required when security deposit &gt; 0</p>
-                  </label>
-                </div>
                 )}
               </div>
             )}
@@ -2351,12 +2340,23 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                     checked={waiveDeposit}
                     onChange={(e) => {
                       setWaiveDeposit(e.target.checked);
-                      if (e.target.checked) setSecurityDeposit(0);
+                      if (e.target.checked) {
+                        setSecurityDeposit(0);
+                        setDepositCollected(false);
+                      }
                     }}
                     className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />
                   Waive deposit
                 </label>
+                {!waiveDeposit && Number(securityDeposit) > 0 && (
+                  <label className="mt-3 flex items-center gap-2 text-sm text-gray-700">
+                    <input type="checkbox" checked={depositCollected}
+                      onChange={(event) => setDepositCollected(event.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                    Deposit collected now
+                  </label>
+                )}
               </div>
 
               {webQuote > 0 && (
@@ -2382,6 +2382,55 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                 </div>
               )}
             </div>
+
+            {depositCollected && !waiveDeposit && (
+              <div className="grid grid-cols-1 gap-4 rounded-lg border border-gray-200 p-4 sm:grid-cols-3">
+                <label className="block text-sm font-medium text-gray-700">
+                  Deposit Payment Method
+                  <select value={depositMethodId}
+                    onChange={(event) => { setDepositMethodId(event.target.value); setDepositReceivingAccountId(''); }}
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal">
+                    <option value="">Select method...</option>
+                    {depositEligibleMethods.map((method) => <option key={method.id} value={method.id}>{method.name}</option>)}
+                  </select>
+                </label>
+                {routedDepositAcct ? (
+                  <div className="text-sm text-gray-700">
+                    <span className="font-medium">Deposit Receiving Account</span>
+                    <p className="mt-2">{String(storeAccounts.find((account) => String(account.id) === routedDepositAcct)?.name ?? routedDepositAcct)}</p>
+                  </div>
+                ) : (
+                  <label className="block text-sm font-medium text-gray-700">
+                    Deposit Receiving Account
+                    <select value={depositReceivingAccountId}
+                      onChange={(event) => setDepositReceivingAccountId(event.target.value)}
+                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal">
+                      <option value="">Select account...</option>
+                      {paymentAccountOptions.map((account) => <option key={String(account.id)} value={String(account.id)}>{String(account.name)}</option>)}
+                    </select>
+                    {depositMethodId && <span className="mt-1 block text-xs font-normal text-amber-700">
+                      {serverDepositRoutingError ? 'Could not load deposit routing.' : 'No routing rule configured.'}
+                    </span>}
+                  </label>
+                )}
+                {routedDepositLiability ? (
+                  <div className="text-sm text-gray-700">
+                    <span className="font-medium">Deposit Liability Account</span>
+                    <p className="mt-2">{String(storeAccounts.find((account) => String(account.id) === routedDepositLiability)?.name ?? routedDepositLiability)}</p>
+                  </div>
+                ) : (
+                  <label className="block text-sm font-medium text-gray-700">
+                    Deposit Liability Account
+                    <select value={depositLiabilityAccountId}
+                      onChange={(event) => setDepositLiabilityAccountId(event.target.value)}
+                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal">
+                      <option value="">Select account...</option>
+                      {depositLiabilityAccountOptions.map((account) => <option key={String(account.id)} value={String(account.id)}>{String(account.name)}</option>)}
+                    </select>
+                  </label>
+                )}
+              </div>
+            )}
 
             {/* Dropoff meeting point */}
             <div className="rounded-lg border border-gray-200 p-4">

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
-import { calculateBalanceDue, Permission } from '@lolas/shared';
+import { calculateBalanceDue, COMPANY_STORE_ID, Permission } from '@lolas/shared';
 import { z } from 'zod';
 import { supabase } from '../adapters/supabase/client.js';
 import { findLiveXenditSessionForOrder, paymentInProgressError } from '../lib/xendit-session-lock.js';
@@ -17,6 +17,25 @@ async function blockLiveXenditOrderMutation(req: import('express').Request, res:
   try {
     if (await findLiveXenditSessionForOrder(req.params.id as string)) {
       res.status(409).json(paymentInProgressError());
+      return;
+    }
+    next();
+  } catch (error) { next(error); }
+}
+
+async function blockPendingOnlineAddonCollection(req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) {
+  try {
+    const { data, error } = await supabase.from('payments')
+      .select('id').eq('order_id', req.params.id as string)
+      .eq('payment_type', 'addon').eq('settlement_status', 'pending')
+      .eq('payment_method_id', 'xendit')
+      .not('order_addon_id', 'is', null).limit(1);
+    if (error) throw new Error(`Failed to inspect pending add-on balance: ${error.message}`);
+    if (data && data.length > 0) {
+      res.status(409).json({ success: false, error: {
+        code: 'ADDON_PAYMENT_LINK_REQUIRED',
+        message: 'Resolve the pending add-on card payment before collecting or settling this order.',
+      } });
       return;
     }
     next();
@@ -98,6 +117,7 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
     if (locationsErr) throw new Error(`enriched locations query failed: ${locationsErr.message}`);
 
     let paymentsByOrder = new Map<string, number>();
+    const depositByOrder = new Map<string, { collected: number; methods: string[] }>();
     let pendingExtensionsByOrder = new Map<string, number>();
     let extendedOrderIds = new Set<string>();
     if (orderIds.length > 0) {
@@ -105,7 +125,8 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
         .from('payments')
         .select('order_id, amount, payment_type, settlement_status, payment_method_id')
         .in('order_id', orderIds);
-      if (!payErr && payments) {
+      if (payErr) throw new Error(`enriched payments query failed: ${payErr.message}`);
+      if (payments) {
         for (const p of payments as Array<{ order_id: string; amount: number | string | null; payment_type: string | null; settlement_status: string | null; payment_method_id: string | null }>) {
           if (p.payment_type === 'extension') {
             extendedOrderIds.add(p.order_id);
@@ -131,9 +152,17 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
           // Deposits are held against orders.security_deposit, not against
           // final_total — counting them here would mask unpaid rental charges.
           // Pending extension IOUs are excluded because no cash was received yet.
-          if (p.payment_type === 'deposit') continue;
-          // Addon with payment_method_id='pending' is an unpaid IOU (collect later) — no cash received yet.
-          if (p.payment_type === 'addon' && p.payment_method_id === 'pending' && p.settlement_status === 'pending') continue;
+          if (p.payment_type === 'deposit' || p.payment_type === 'security_deposit') {
+            const previous = depositByOrder.get(p.order_id) ?? { collected: 0, methods: [] };
+            previous.collected += Number(p.amount ?? 0);
+            if (p.payment_method_id && !previous.methods.includes(p.payment_method_id)) previous.methods.push(p.payment_method_id);
+            depositByOrder.set(p.order_id, previous);
+            continue;
+          }
+          if (p.payment_type === 'deposit_refund') continue;
+          // Pending and Xendit-intended add-on IOUs are not received payments.
+          if (p.payment_type === 'addon' && ['pending', 'xendit'].includes(p.payment_method_id ?? '')
+            && (p.settlement_status === 'pending' || p.settlement_status === 'absorbed')) continue;
           // Refunds represent money returned to the customer — subtract from net received.
           if (p.payment_type === 'refund') {
             paymentsByOrder.set(
@@ -268,6 +297,8 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
         totalPaid: totalPaidNum,
         pendingExtensionsTotal,
         securityDeposit: Number(o.security_deposit ?? 0),
+        depositCollected: depositByOrder.get(o.id as string)?.collected ?? 0,
+        depositCollectionMethods: depositByOrder.get(o.id as string)?.methods ?? [],
         cardFeeSurcharge: Number(o.card_fee_surcharge ?? 0),
         status: o.status as string,
         webNotes: o.web_notes as string | null,
@@ -345,8 +376,20 @@ router.patch('/:id/deposit-method', requirePermission(Permission.EditOrders), va
     if (!order) {
       throw Object.assign(new Error('Order not found'), { statusCode: 404 });
     }
+    if (!req.user!.storeIds.includes(COMPANY_STORE_ID) && !req.user!.storeIds.includes(order.store_id)) {
+      throw Object.assign(new Error('Store access required'), { statusCode: 403 });
+    }
     if (order.status !== 'active' || Number(order.security_deposit ?? 0) <= 0) {
       throw Object.assign(new Error('Only active orders with a held deposit can be changed'), { statusCode: 409 });
+    }
+    const { data: depositRows, error: depositError } = await supabase.from('payments')
+      .select('amount, payment_type').eq('order_id', req.params.id)
+      .in('payment_type', ['deposit', 'security_deposit', 'deposit_refund']);
+    if (depositError) throw new Error(`Failed to verify held deposit: ${depositError.message}`);
+    const held = (depositRows ?? []).reduce((sum, row) =>
+      sum + (row.payment_type === 'deposit_refund' ? -1 : 1) * Number(row.amount), 0);
+    if (held <= 0) {
+      throw Object.assign(new Error('No collected deposit exists to correct'), { statusCode: 409 });
     }
 
     const methodIdKey = String(method?.id ?? '').toLowerCase().replace(/[\s_-]/g, '');
@@ -380,6 +423,48 @@ router.patch('/:id/deposit-method', requirePermission(Permission.EditOrders), va
     });
     if (error) throw new Error(`Failed to update deposit method: ${error.message}`);
     res.json({ success: true, data: { paymentMethodId, updatedPayments: Number(data ?? 0) } });
+  } catch (err) { next(err); }
+});
+
+router.post('/:id/deposit', requirePermission(Permission.EditOrders), blockLiveXenditOrderMutation, validateBody(z.object({
+  amount: z.number().positive(),
+  paymentMethodId: z.string().min(1),
+  receivingAccountId: z.string().min(1),
+  liabilityAccountId: z.string().min(1),
+  transactionDate: z.string().date(),
+})), async (req, res, next) => {
+  try {
+    const { data: order, error: orderError } = await supabase.from('orders')
+      .select('store_id').eq('id', req.params.id).maybeSingle();
+    if (orderError) throw new Error(`Deposit order lookup failed: ${orderError.message}`);
+    if (!order) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found' } });
+      return;
+    }
+    if (!req.user!.storeIds.includes(COMPANY_STORE_ID) && !req.user!.storeIds.includes(order.store_id)) {
+      res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Store access required' } });
+      return;
+    }
+    const { amount, paymentMethodId, receivingAccountId, liabilityAccountId, transactionDate } = req.body as {
+      amount: number; paymentMethodId: string; receivingAccountId: string;
+      liabilityAccountId: string; transactionDate: string;
+    };
+    const paymentId = crypto.randomUUID();
+    const { error } = await supabase.rpc('collect_order_deposit_atomic', {
+      p_order_id: req.params.id,
+      p_store_id: order.store_id,
+      p_payment_id: paymentId,
+      p_amount: amount,
+      p_payment_method_id: paymentMethodId,
+      p_receiving_account_id: receivingAccountId,
+      p_liability_account_id: liabilityAccountId,
+      p_transaction_date: transactionDate,
+      p_journal_transaction_id: crypto.randomUUID(),
+      p_debit_entry_id: crypto.randomUUID(),
+      p_credit_entry_id: crypto.randomUUID(),
+    });
+    if (error) throw new Error(`Deposit collection failed: ${error.message}`);
+    res.json({ success: true, data: { paymentId } });
   } catch (err) { next(err); }
 });
 
@@ -642,7 +727,7 @@ router.post('/:id/activate', requirePermission(Permission.EditOrders), validateB
   } catch (err) { next(err); }
 });
 
-router.post('/:id/settle', requirePermission(Permission.EditOrders), blockLiveXenditOrderMutation, validateBody(z.object({
+router.post('/:id/settle', requirePermission(Permission.EditOrders), blockLiveXenditOrderMutation, blockPendingOnlineAddonCollection, validateBody(z.object({
   settlementDate: z.string(),
   depositLiabilityAccountId: z.string(),
   receivableAccountId: z.string(),
@@ -666,9 +751,9 @@ router.post('/:id/settle', requirePermission(Permission.EditOrders), blockLiveXe
   } catch (err) { next(err); }
 });
 
-router.post('/:id/payment', requirePermission(Permission.EditOrders), blockLiveXenditOrderMutation, validateBody(z.object({
+router.post('/:id/payment', requirePermission(Permission.EditOrders), blockLiveXenditOrderMutation, blockPendingOnlineAddonCollection, validateBody(z.object({
   amount: z.number().positive(), paymentMethodId: z.string(), accountId: z.string().nullable().optional(),
-  paymentType: z.string(), transactionDate: z.string(), receivableAccountId: z.string(),
+  paymentType: z.literal('rental'), transactionDate: z.string(), receivableAccountId: z.string(),
   isCardPayment: z.boolean().optional(), settlementRef: z.string().nullable().optional(),
 })), async (req, res, next) => {
   try {
@@ -731,6 +816,44 @@ router.post('/:id/modify-addons', requirePermission(Permission.EditOrders), bloc
   settlementRef: z.string().nullable().optional(),
 })), async (req, res, next) => {
   try {
+    const { data: order, error: orderError } = await supabase.from('orders')
+      .select('store_id').eq('id', req.params.id).maybeSingle();
+    if (orderError) throw new Error(`Failed to verify order store: ${orderError.message}`);
+    if (!order) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found' } });
+      return;
+    }
+    if (!req.user!.storeIds.includes(COMPANY_STORE_ID) && !req.user!.storeIds.includes(order.store_id)) {
+      res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You cannot modify this order' } });
+      return;
+    }
+    const methodId = req.body.paymentMethodId as string | null | undefined;
+    if (methodId && methodId !== 'pending') {
+      const { data: method, error: methodError } = await supabase.from('payment_methods')
+        .select('gateway_provider').eq('id', methodId).maybeSingle();
+      if (methodError) throw new Error(`Failed to verify payment method: ${methodError.message}`);
+      if (method?.gateway_provider === 'xendit' || methodId === 'xendit') {
+        res.status(409).json({ success: false, error: { code: 'ONLINE_LINK_REQUIRED', message: 'Generate a card payment link instead of recording an immediate payment' } });
+        return;
+      }
+    }
+    const removedAddonIds = req.body.removedAddonIds as string[];
+    if (removedAddonIds.length > 0) {
+      const { data: paidAddons, error: paidError } = await supabase.from('payments')
+        .select('order_addon_id,settlement_status,payment_method_id').eq('order_id', req.params.id)
+        .eq('payment_type', 'addon').in('settlement_status', ['pending', 'absorbed'])
+        .in('order_addon_id', removedAddonIds);
+      if (paidError) throw new Error(`Failed to verify add-on payments: ${paidError.message}`);
+      const onlineAddons = (paidAddons ?? []).filter((payment) =>
+        payment.settlement_status === 'absorbed' || payment.payment_method_id === 'xendit');
+      if (onlineAddons.length > 0) {
+        const paid = onlineAddons.some((payment) => payment.settlement_status === 'absorbed');
+        res.status(409).json({ success: false, error: { code: paid ? 'REFUND_REQUIRED' : 'ADDON_PAYMENT_LINK_REQUIRED', message: paid
+          ? 'A paid card add-on requires the finance refund workflow before removal'
+          : 'A pending card add-on cannot be removed until its payment is resolved' } });
+        return;
+      }
+    }
     const { modifyAddons } = await import('../use-cases/orders/modify-addons.js');
     const result = await modifyAddons(req.app.locals.deps, { orderId: req.params.id, ...req.body });
     res.json({ success: true, data: result });

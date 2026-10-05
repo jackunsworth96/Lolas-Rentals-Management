@@ -66,6 +66,11 @@ type RawStaffBooking = {
   charity_donation: number | null;
 };
 
+const onlineAddonsSchema = z.object({
+  addons: z.array(z.object({ id: z.number().int().positive(), quantity: z.number().int().min(1).max(20) }))
+    .min(1).max(20),
+});
+
 function staffRawQuote(booking: RawStaffBooking, method: PaymentMethodRow) {
   const originalQuotePHP = roundMoney(Number(booking.web_quote_raw ?? 0));
   const principalPHP = roundMoney(originalQuotePHP - Number(booking.web_card_fee_surcharge ?? 0));
@@ -781,8 +786,14 @@ staffXenditRouter.get('/raw-orders/:rawOrderId/preview', authenticate, requirePe
       if (!booking) { res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Booking not found' } }); return; }
       if (!canAccessStaffBooking(req, booking.store_id)) { res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You cannot access this booking' } }); return; }
       const method = await loadXenditPaymentMethod('xendit');
-      if (!method || booking.status !== 'unprocessed' || booking.booking_channel !== 'direct') {
+      if (!method || booking.status !== 'unprocessed' || !['direct', 'walk_in'].includes(booking.booking_channel ?? '')) {
         res.status(409).json({ success: false, error: { code: 'BOOKING_NOT_PAYABLE', message: 'This booking cannot use a card payment link' } }); return;
+      }
+      const { data: existingPayments, error: paymentError } = await getSupabaseClient().from('payments')
+        .select('id').eq('raw_order_id', booking.id).eq('payment_type', 'card_xendit').limit(1);
+      if (paymentError) throw new Error(`Failed to inspect booking payment: ${paymentError.message}`);
+      if (existingPayments && existingPayments.length > 0) {
+        res.status(409).json({ success: false, error: { code: 'BOOKING_ALREADY_PAID', message: 'This booking has already been paid online' } }); return;
       }
       res.json({ success: true, data: staffRawQuote(booking, method) });
     } catch (error) { next(error); }
@@ -800,7 +811,7 @@ staffXenditRouter.post('/raw-orders/sessions', authenticate, requirePermission(P
       if (!booking) { res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Booking not found' } }); return; }
       if (!canAccessStaffBooking(req, booking.store_id)) { res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You cannot create a link for this booking' } }); return; }
       const method = await loadXenditPaymentMethod('xendit');
-      if (!method || booking.status !== 'unprocessed' || booking.booking_channel !== 'direct') {
+      if (!method || booking.status !== 'unprocessed' || !['direct', 'walk_in'].includes(booking.booking_channel ?? '')) {
         res.status(409).json({ success: false, error: { code: 'BOOKING_NOT_PAYABLE', message: 'This booking cannot use a card payment link' } }); return;
       }
       const quote = staffRawQuote(booking, method);
@@ -815,6 +826,12 @@ staffXenditRouter.post('/raw-orders/sessions', authenticate, requirePermission(P
           .eq('id', claim.xendit_payment_session_id).maybeSingle();
         if (existingError) throw new Error(`Failed to inspect booking checkout: ${existingError.message}`);
         const session = existing as ExistingSessionRow | null;
+        if (session?.status === 'completed') {
+          res.status(409).json({ success: false, error: { code: 'BOOKING_ALREADY_PAID', message: 'This booking has already been paid online' } }); return;
+        }
+        if (session?.status === 'reconciliation_required') {
+          res.status(409).json({ success: false, error: { code: 'PAYMENT_VERIFICATION_REQUIRED', message: 'Finance must verify this checkout before another link is created' } }); return;
+        }
         if (session?.status === 'active' && session.payment_link_url && !hasExpiredLocally(session)) {
           res.json({ success: true, data: { sessionId: session.id, checkoutUrl: session.payment_link_url, expiresAt: session.expires_at, amountPHP: Number(session.amount_php) } });
           return;
@@ -829,7 +846,10 @@ staffXenditRouter.post('/raw-orders/sessions', authenticate, requirePermission(P
       }
       sessionId = crypto.randomUUID();
       const referenceId = `XEN${sessionId.replaceAll('-', '')}`;
-      const { data: frozen, error: draftError } = await getSupabaseClient().rpc('create_xendit_raw_staff_session_draft', {
+      const draftRpc = booking.booking_channel === 'walk_in'
+        ? 'create_xendit_walkin_staff_session_draft'
+        : 'create_xendit_raw_staff_session_draft';
+      const { data: frozen, error: draftError } = await getSupabaseClient().rpc(draftRpc, {
         p_session_id: sessionId, p_reference_id: referenceId, p_raw_order_id: booking.id,
         p_store_id: booking.store_id, p_payment_method_id: method.id, p_created_by: req.user!.employeeId,
         p_expected_amount_php: quote.amountPHP,
@@ -844,7 +864,7 @@ staffXenditRouter.post('/raw-orders/sessions', authenticate, requirePermission(P
       }
       const amountPHP = Number((frozen as { amountPHP: number }).amountPHP);
       const webOrigin = publicWebOriginFromEnv(process.env.WEB_URL);
-      const path = `/book/confirmation/${encodeURIComponent(booking.order_reference)}`;
+      const path = `/book/payment-return/${encodeURIComponent(booking.order_reference)}`;
       const checkout = await createXenditPaymentSession({
         referenceId, amountPHP, description: `Lola's Rentals - ${booking.order_reference}`,
         successReturnUrl: returnUrl(webOrigin, path, 'processing', sessionId),
@@ -863,6 +883,232 @@ staffXenditRouter.post('/raw-orders/sessions', authenticate, requirePermission(P
       logger.error({ error, sessionId }, 'Staff raw-booking Xendit session creation failed');
       next(error);
     }
+  });
+
+staffXenditRouter.post('/orders/:orderId/online-addons', authenticate, requirePermission(Permission.EditOrders),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const parsed = onlineAddonsSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Select configured add-ons and quantities' } });
+        return;
+      }
+      const orderId = req.params.orderId as string;
+      const { data: order, error: orderError } = await getSupabaseClient().from('orders')
+        .select('store_id').eq('id', orderId).maybeSingle();
+      if (orderError) throw new Error(`Failed to verify order store: ${orderError.message}`);
+      if (!order) {
+        res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found' } });
+        return;
+      }
+      if (!canAccessStaffBooking(req, order.store_id)) {
+        res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You cannot modify this order' } });
+        return;
+      }
+      if (!isXenditEnabled()) {
+        res.status(503).json({ success: false, error: { code: 'XENDIT_DISABLED', message: 'Card payment is unavailable' } });
+        return;
+      }
+      const { data: method, error: methodError } = await getSupabaseClient().from('payment_methods')
+        .select('is_active,gateway_provider').eq('id', 'xendit').maybeSingle();
+      if (methodError) throw new Error(`Failed to verify Xendit payment method: ${methodError.message}`);
+      if (method?.is_active !== true || method.gateway_provider !== 'xendit') {
+        res.status(503).json({ success: false, error: { code: 'PAYMENT_METHOD_UNAVAILABLE', message: 'Card payment method is unavailable' } });
+        return;
+      }
+      const { data, error } = await getSupabaseClient().rpc('create_online_addons_atomic', {
+        p_order_id: orderId, p_store_id: order.store_id, p_addons: parsed.data.addons,
+      });
+      if (error) {
+        if (isBlockingSessionError(error)) {
+          res.status(409).json({ success: false, error: { code: 'PAYMENT_ALREADY_IN_PROGRESS', message: 'A checkout is already active for this order' } });
+          return;
+        }
+        throw new Error(`Failed to create online add-ons: ${error.message}`);
+      }
+      res.status(201).json({ success: true, data });
+    } catch (error) { next(error); }
+  });
+
+staffXenditRouter.get('/orders/:orderId/:kind-preview', authenticate, requirePermission(Permission.EditOrders),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const kind = req.params.kind;
+      if (kind !== 'rental' && kind !== 'addon') {
+        res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Payment preview not found' } });
+        return;
+      }
+      const supabase = getSupabaseClient();
+      const { data: order, error: orderError } = await supabase.from('orders')
+        .select('id,store_id,status,balance_due,payment_method_id')
+        .eq('id', req.params.orderId).maybeSingle();
+      if (orderError) throw new Error(`Failed to load order: ${orderError.message}`);
+      if (!order || order.status !== 'active') {
+        res.status(404).json({ success: false, error: { code: 'ORDER_NOT_PAYABLE', message: 'Active order not found' } });
+        return;
+      }
+      if (!canAccessStaffBooking(req, order.store_id)) {
+        res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You cannot access this order' } });
+        return;
+      }
+      const method = await loadXenditPaymentMethod('xendit');
+      if (!method) {
+        res.status(503).json({ success: false, error: { code: 'XENDIT_PAYMENT_METHOD_UNAVAILABLE', message: 'Card payment is unavailable' } });
+        return;
+      }
+      const { data: pending, error: paymentError } = await supabase.from('payments')
+        .select('id,amount,order_addon_id,payment_type,settlement_status,payment_method_id')
+        .eq('order_id', order.id);
+      if (paymentError) throw new Error(`Failed to load order payments: ${paymentError.message}`);
+      const payments = pending ?? [];
+      let principal: number;
+      if (kind === 'rental') {
+        if (order.payment_method_id !== method.id
+          || payments.some((payment) => ['rental', 'card_xendit'].includes(payment.payment_type))
+          || payments.some((payment) => payment.payment_type === 'addon' && payment.settlement_status === 'pending')) {
+          res.status(409).json({ success: false, error: { code: 'RENTAL_LINK_UNAVAILABLE', message: 'This order needs staff review before a full-rental link' } });
+          return;
+        }
+        principal = roundMoney(Number(order.balance_due ?? 0));
+      } else {
+        const addons = payments.filter((payment) => payment.payment_type === 'addon' && payment.settlement_status === 'pending');
+        if (addons.some((payment) => !payment.order_addon_id || payment.payment_method_id !== method.id)) {
+          res.status(409).json({ success: false, error: { code: 'ADDON_REVIEW_REQUIRED', message: 'A legacy add-on balance needs staff review' } });
+          return;
+        }
+        principal = roundMoney(addons.reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0));
+      }
+      if (principal <= 0 || principal > roundMoney(Number(order.balance_due ?? 0))) {
+        res.status(409).json({ success: false, error: { code: 'NO_PAYABLE_BALANCE', message: 'There is no payable balance for this link' } });
+        return;
+      }
+      const surcharge = roundMoney(principal * Number(method.surcharge_percent ?? 0) / 100);
+      res.json({ success: true, data: {
+        principalPHP: principal, surchargePHP: surcharge, amountPHP: roundMoney(principal + surcharge),
+      } });
+    } catch (error) { next(error); }
+  });
+
+async function createStaffDerivedSession(
+  req: Request, res: Response, next: NextFunction,
+  target: 'staff_addon' | 'staff_order',
+): Promise<void> {
+  let sessionId: string | null = null;
+  let closeDraftOnFailure = true;
+  try {
+    if (!isXenditEnabled()) {
+      res.status(503).json({ success: false, error: { code: 'XENDIT_DISABLED', message: 'Card payment is unavailable' } });
+      return;
+    }
+    const orderId = z.string().min(1).safeParse(req.params.orderId);
+    if (!orderId.success) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid order ID' } });
+      return;
+    }
+    const supabase = getSupabaseClient();
+    const { data: order, error: orderError } = await supabase.from('orders')
+      .select('id,store_id,booking_token,status,balance_due')
+      .eq('id', orderId.data).maybeSingle();
+    if (orderError) throw new Error(`Failed to load order: ${orderError.message}`);
+    if (!order || order.status !== 'active') {
+      res.status(404).json({ success: false, error: { code: 'ORDER_NOT_PAYABLE', message: 'Active order not found' } });
+      return;
+    }
+    if (!canAccessStaffBooking(req, order.store_id)) {
+      res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You cannot create a link for this order' } });
+      return;
+    }
+    const method = await loadXenditPaymentMethod('xendit');
+    if (!method) {
+      res.status(503).json({ success: false, error: { code: 'XENDIT_PAYMENT_METHOD_UNAVAILABLE', message: 'Card payment is unavailable' } });
+      return;
+    }
+    const { data: existingData, error: existingError } = await supabase.from('xendit_payment_sessions')
+      .select('id,target_type,status,payment_link_url,expires_at,payment_session_id,store_id,created_at,amount_php')
+      .eq('order_id', order.id).in('status', ['creating','active','reconciliation_required']).maybeSingle();
+    if (existingError) throw new Error(`Failed to inspect checkout: ${existingError.message}`);
+    const existing = existingData as ExistingSessionRow | null;
+    if (existing?.target_type === target && existing.status === 'active'
+        && existing.payment_link_url && !hasExpiredLocally(existing)) {
+      res.json({ success: true, data: {
+        sessionId: existing.id, checkoutUrl: existing.payment_link_url,
+        expiresAt: existing.expires_at, amountPHP: Number(existing.amount_php),
+      } });
+      return;
+    }
+    if (existing && !(await resolveExpiredActiveSession(existing, 'Staff checkout retry after local expiry'))) {
+      res.status(409).json({ success: false, error: { code: 'PAYMENT_ALREADY_IN_PROGRESS', message: 'A checkout is already attached to this order' } });
+      return;
+    }
+
+    sessionId = crypto.randomUUID();
+    const referenceId = `XEN${sessionId.replaceAll('-', '')}`;
+    const rpc = target === 'staff_addon'
+      ? 'create_xendit_addon_session_draft' : 'create_xendit_full_rental_session_draft';
+    const { data: frozen, error: draftError } = await supabase.rpc(rpc, {
+      p_session_id: sessionId, p_reference_id: referenceId, p_order_id: order.id,
+      p_store_id: order.store_id, p_payment_method_id: method.id,
+      p_created_by: req.user!.employeeId,
+    });
+    if (draftError) {
+      sessionId = null;
+      if (isRetryableDraftError(draftError) || isBlockingSessionError(draftError)) {
+        res.status(409).json({ success: false, error: { code: 'PAYMENT_SESSION_RETRY', message: 'Payment state changed. Refresh and try again.' } });
+        return;
+      }
+      throw new Error(`Failed to reserve ${target} checkout: ${draftError.message}`);
+    }
+    const amountPHP = Number((frozen as { amountPHP: number }).amountPHP);
+    const reference = order.booking_token ?? order.id;
+    const path = `/book/payment-return/${encodeURIComponent(reference)}`;
+    const webOrigin = publicWebOriginFromEnv(process.env.WEB_URL);
+    const checkout = await createXenditPaymentSession({
+      referenceId, amountPHP,
+      description: `Lola's Rentals ${target === 'staff_addon' ? 'add-ons' : 'rental'} - ${reference}`,
+      successReturnUrl: returnUrl(webOrigin, path, 'processing', sessionId),
+      cancelReturnUrl: returnUrl(webOrigin, path, 'cancelled', sessionId),
+      items: [{ referenceId: reference, name: target === 'staff_addon' ? 'Rental add-ons' : 'Vehicle rental', amountPHP }],
+    });
+    closeDraftOnFailure = false;
+    try { await activateXenditSession(sessionId, checkout); }
+    catch (error) {
+      if (await cancelCheckoutAfterActivationFailure(sessionId, referenceId, checkout, error)) sessionId = null;
+      throw error;
+    }
+    res.status(201).json({ success: true, data: {
+      sessionId, checkoutUrl: checkout.checkoutUrl, expiresAt: checkout.expiresAt,
+      amountPHP, principalAmountPHP: Number((frozen as { principalPHP: number }).principalPHP),
+      surchargeAmountPHP: Number((frozen as { surchargePHP: number }).surchargePHP),
+    } });
+  } catch (error) {
+    if (sessionId && closeDraftOnFailure) await closeFailedDraft(sessionId, error);
+    logger.error({ error, sessionId, target }, 'Staff derived Xendit session creation failed');
+    next(error);
+  }
+}
+
+staffXenditRouter.post('/orders/:orderId/addon-session', authenticate, requirePermission(Permission.EditOrders),
+  async (req, res, next) => createStaffDerivedSession(req, res, next, 'staff_addon'));
+staffXenditRouter.post('/orders/:orderId/rental-session', authenticate, requirePermission(Permission.EditOrders),
+  async (req, res, next) => createStaffDerivedSession(req, res, next, 'staff_order'));
+
+staffXenditRouter.get('/sessions/:id/status', authenticate, requirePermission(Permission.EditOrders),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = z.string().uuid().safeParse(req.params.id);
+      if (!id.success) {
+        res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid payment session id' } });
+        return;
+      }
+      const { data, error } = await getSupabaseClient().from('xendit_payment_sessions')
+        .select('status,store_id').eq('id', id.data).maybeSingle();
+      if (error) throw new Error(`Failed to load staff checkout status: ${error.message}`);
+      if (!data || !canAccessStaffBooking(req, data.store_id)) {
+        res.status(404).json({ success: false, error: { code: 'SESSION_NOT_FOUND', message: 'Payment session not found' } });
+        return;
+      }
+      res.json({ success: true, data: { status: data.status } });
+    } catch (error) { next(error); }
   });
 
 staffXenditRouter.post(
@@ -908,6 +1154,17 @@ staffXenditRouter.post(
           success: false,
           error: { code: 'FORBIDDEN', message: 'You cannot create a payment session for this order' },
         });
+        return;
+      }
+
+      const { data: pendingAddons, error: addonError } = await supabase.from('payments')
+        .select('id').eq('order_id', order.id).eq('payment_type', 'addon')
+        .eq('settlement_status', 'pending').limit(1);
+      if (addonError) throw new Error(`Failed to verify pending add-ons: ${addonError.message}`);
+      if (pendingAddons && pendingAddons.length > 0) {
+        res.status(409).json({ success: false, error: {
+          code: 'ADDON_LINK_REQUIRED', message: 'Pending add-ons need a dedicated card payment link',
+        } });
         return;
       }
 
@@ -982,8 +1239,8 @@ staffXenditRouter.post(
         referenceId,
         amountPHP,
         description: parsed.data.description ?? `Lola's Rentals - ${reference}`,
-        successReturnUrl: returnUrl(webOrigin, `/book/confirmation/${encodeURIComponent(reference)}`, 'processing', sessionId),
-        cancelReturnUrl: returnUrl(webOrigin, `/book/confirmation/${encodeURIComponent(reference)}`, 'cancelled', sessionId),
+        successReturnUrl: returnUrl(webOrigin, `/book/payment-return/${encodeURIComponent(reference)}`, 'processing', sessionId),
+        cancelReturnUrl: returnUrl(webOrigin, `/book/payment-return/${encodeURIComponent(reference)}`, 'cancelled', sessionId),
         items: [{ referenceId: reference, name: `Vehicle rental ${reference}`, amountPHP }],
       });
       closeDraftOnFailure = false;
@@ -1073,7 +1330,7 @@ staffXenditRouter.get(
         .from('xendit_payment_sessions')
         .select('id, status, payment_link_url')
         .eq('order_id', order.id)
-        .eq('target_type', 'staff_order')
+        .in('target_type', ['staff_order', 'staff_addon'])
         .in('status', ['creating', 'active', 'reconciliation_required'])
         .order('created_at', { ascending: false })
         .limit(1)

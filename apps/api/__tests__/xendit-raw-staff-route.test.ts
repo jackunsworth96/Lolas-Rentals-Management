@@ -49,6 +49,12 @@ function fixture(options: { existingSession?: Record<string, unknown> | null; ac
     from: vi.fn((table: string) => {
       if (table === 'orders_raw') return query(() => raw);
       if (table === 'payment_methods') return query(() => method);
+      if (table === 'payments') {
+        const paymentQuery = query(() => []);
+        paymentQuery.limit = vi.fn(() => paymentQuery);
+        paymentQuery.then = (resolve: (value: unknown) => unknown) => resolve({ data: [], error: null });
+        return paymentQuery;
+      }
       if (table === 'xendit_payment_sessions') {
         const sessionQuery = query(() => options.existingSession ?? null);
         sessionQuery.update = vi.fn(() => ({ eq: vi.fn(async () => ({ error: options.activationError ?? null })) }));
@@ -56,7 +62,9 @@ function fixture(options: { existingSession?: Record<string, unknown> | null; ac
       }
       throw new Error(`Unexpected table ${table}`);
     }),
-    rpc: vi.fn(async () => ({ data: { amountPHP: 1042.5 }, error: null })),
+    rpc: vi.fn(async (_name: string, args: { p_expected_amount_php?: number }) => ({
+      data: { amountPHP: args.p_expected_amount_php ?? 1042.5 }, error: null,
+    })),
   };
   mocks.client.mockReturnValue(client);
   return { client, raw };
@@ -124,9 +132,28 @@ describe('staff raw-booking Xendit links', () => {
       p_raw_order_id: RAW_ID, p_store_id: 'store-lolas', p_expected_amount_php: 1042.5,
     }));
     expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ amountPHP: 1042.5 }));
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({
+      successReturnUrl: expect.stringContaining('/book/payment-return/LR-TEST'),
+    }));
     expect(res.status).toHaveBeenCalledWith(201);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true,
       data: expect.objectContaining({ checkoutUrl: 'https://checkout.example.test/ps-1' }) }));
+  });
+
+  it('uses the walk-in draft contract for an unprocessed reservation', async () => {
+    const { client, raw } = fixture();
+    raw.booking_channel = 'walk_in';
+    raw.transfer_amount = 0;
+    raw.charity_donation = 0;
+    const res = response();
+    await handler('/raw-orders/sessions')(
+      { body: { rawOrderId: RAW_ID, acknowledgePriceChange: true }, user: { storeIds: ['store-lolas'], employeeId: 'employee-1' } },
+      res, vi.fn(),
+    );
+    expect(client.rpc).toHaveBeenCalledWith('create_xendit_walkin_staff_session_draft', expect.objectContaining({
+      p_raw_order_id: RAW_ID, p_expected_amount_php: 1050,
+    }));
+    expect(res.status).toHaveBeenCalledWith(201);
   });
 
   it('reuses an active link instead of creating a second payable session', async () => {

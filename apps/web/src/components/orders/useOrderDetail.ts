@@ -31,6 +31,7 @@ export type OrderPayment = {
   paymentType?: string;
   settlementStatus?: string | null;
   settlementRef?: string | null;
+  orderAddonId?: string | null;
 };
 
 export type OrderAddon = {

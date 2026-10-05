@@ -9,6 +9,7 @@ import {
   Money,
 } from '@lolas/domain';
 import { supabase } from '../../adapters/supabase/client.js';
+import { summarizeOrderPayments } from '@lolas/shared';
 import { formatManilaDate } from '../../utils/manila-date.js';
 
 function serialiseLeg(leg: JournalLeg): Record<string, unknown> {
@@ -48,6 +49,16 @@ export async function collectPayment(
 ) {
   const { orderRepo, paymentRepo } = deps;
 
+  if (input.paymentType !== 'rental') {
+    throw new Error('Use the dedicated workflow for deposits, refunds, and other payment types');
+  }
+  const { data: method, error: methodError } = await supabase.from('payment_methods')
+    .select('id, is_active, gateway_provider').eq('id', input.paymentMethodId).maybeSingle();
+  if (methodError) throw new Error(`Payment method lookup failed: ${methodError.message}`);
+  if (!method || method.is_active === false || method.gateway_provider) {
+    throw new Error('Gateway payments must be confirmed by their provider webhook');
+  }
+
   const order = await orderRepo.findById(input.orderId);
   if (!order) throw new Error(`Order ${input.orderId} not found`);
 
@@ -57,14 +68,7 @@ export async function collectPayment(
 
   // Compute the net rental-cash already received (mirrors the display formula:
   // exclude deposits, exclude pending/absorbed extension IOUs, subtract refunds).
-  const paidBefore = existingPayments.reduce((sum, p) => {
-    if (p.paymentType === 'deposit') return sum;
-    if (p.paymentType === 'extension' &&
-        (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return sum;
-    if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return sum;
-    if (p.paymentType === 'refund') return sum - p.amount;
-    return sum + p.amount;
-  }, 0);
+  const paidBefore = summarizeOrderPayments(existingPayments).rentalPaid;
 
   // After this payment, check whether the full rental obligation is covered.
   const finalTotalNum = order.finalTotal.toNumber();
@@ -179,14 +183,7 @@ export async function collectPayment(
   // deposits are held against security_deposit (not final_total), pending/absorbed
   // extension IOUs represent amounts owed (not cash received), and refunds reduce
   // the net amount collected.
-  const totalPaid = allPayments.reduce((sum, p) => {
-    if (p.paymentType === 'deposit') return sum;
-    if (p.paymentType === 'extension' &&
-        (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return sum;
-    if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return sum;
-    if (p.paymentType === 'refund') return sum.subtract(Money.php(p.amount));
-    return sum.add(Money.php(p.amount));
-  }, Money.zero());
+  const totalPaid = Money.php(summarizeOrderPayments(allPayments).rentalPaid);
 
   order.applyPayments(totalPaid);
   await orderRepo.save(order);

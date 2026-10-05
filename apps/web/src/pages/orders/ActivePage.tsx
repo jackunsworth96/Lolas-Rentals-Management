@@ -245,14 +245,14 @@ export default function ActivePage() {
       header: 'Deposit',
       render: (r: EnrichedOrder) => {
         if (r.securityDeposit <= 0) return <span className="text-gray-400">—</span>;
-        const methodName = r.depositMethodId
-          ? paymentMethodNames.get(r.depositMethodId) ?? r.depositMethodId
-          : 'Method not recorded';
+        const collected = r.depositCollected ?? 0;
+        const methods = (r.depositCollectionMethods ?? []).map((id) => paymentMethodNames.get(id) ?? id);
+        const due = Math.max(0, r.securityDeposit - collected);
         return (
           <div className="flex flex-col items-start gap-0.5">
-            <span>{formatCurrency(r.securityDeposit)}</span>
-            <span className={`text-xs font-medium ${r.depositMethodId ? 'text-teal-700' : 'text-amber-600'}`}>
-              {methodName}
+            <span>{collected > 0 ? `${formatCurrency(collected)} held` : `${formatCurrency(due)} due`}</span>
+            <span className={`text-xs font-medium ${collected > 0 ? 'text-teal-700' : 'text-amber-600'}`}>
+              {collected > 0 ? methods.join(', ') || 'Method not recorded' : 'Not collected'}
             </span>
           </div>
         );
@@ -460,10 +460,10 @@ export default function ActivePage() {
                     {r.securityDeposit > 0 && (
                       <div className="mt-1.5 flex items-center justify-between text-xs">
                         <span className="text-gray-500">Security deposit</span>
-                        <span className={`font-medium ${r.depositMethodId ? 'text-teal-700' : 'text-amber-600'}`}>
-                          {formatCurrency(r.securityDeposit)} · {r.depositMethodId
-                            ? paymentMethodNames.get(r.depositMethodId) ?? r.depositMethodId
-                            : 'Method not recorded'}
+                        <span className={`font-medium ${(r.depositCollected ?? 0) > 0 ? 'text-teal-700' : 'text-amber-600'}`}>
+                          {(r.depositCollected ?? 0) > 0
+                            ? `${formatCurrency(r.depositCollected ?? 0)} held`
+                            : `${formatCurrency(r.securityDeposit)} due at pickup`}
                         </span>
                       </div>
                     )}
