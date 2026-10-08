@@ -37,6 +37,11 @@ export function extDayCount(msA: number, msB: number): number {
 export type ExtensionInputs = {
   orderReference: string;
   trimmedEmail: string;
+  orderId?: string;
+  expectedStoreId?: string;
+  previewOnly?: boolean;
+  expectedCurrentDropoffDatetime?: string;
+  expectedExtensionTotal?: number;
   newDropoffDatetime: string;
   overrideDailyRate: number | undefined;
   discountType?: 'percentage' | 'fixed';
@@ -60,7 +65,7 @@ export type ExtensionInputs = {
 export type ExtensionOutcome =
   | { kind: 'not_found' }
   | { kind: 'error'; reason: string }
-  | { kind: 'success'; extensionDays: number; extensionCost: number; outstandingBalance: number; newDropoffDatetime: string };
+  | { kind: 'success'; extensionDays: number; extensionCost: number; outstandingBalance: number; newDropoffDatetime: string; dailyRate?: number };
 
 export function calculateExtensionDiscount(
   subtotal: number,
@@ -286,20 +291,25 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
   const newDropoff = new Date(newDropoffDatetime);
   const refVariants = orderReferenceLookupVariants(orderReference);
 
-  const { data: custRows } = await sb
-    .from('customers').select('id').ilike('email', escapeIlike(trimmedEmail)).limit(10);
-  const custIds = (custRows ?? []).map((c: { id: string }) => c.id).filter(Boolean);
-
-  if (custIds.length === 0) return { kind: 'not_found' };
-
-  const { data: orderRows } = await sb
-    .from('orders')
-    .select('id, customer_id, store_id, booking_token')
-    .in('customer_id', custIds)
-    .eq('status', 'active')
-    .in('booking_token', refVariants);
+  let orderRows: Array<{ id: string; customer_id: string; store_id: string; booking_token: string | null }> | null;
+  if (args.orderId) {
+    const { data } = await sb.from('orders')
+      .select('id, customer_id, store_id, booking_token')
+      .eq('id', args.orderId).eq('status', 'active');
+    orderRows = data;
+  } else {
+    const { data: custRows } = await sb
+      .from('customers').select('id').ilike('email', escapeIlike(trimmedEmail)).limit(10);
+    const custIds = (custRows ?? []).map((c: { id: string }) => c.id).filter(Boolean);
+    if (custIds.length === 0) return { kind: 'not_found' };
+    const { data } = await sb.from('orders')
+      .select('id, customer_id, store_id, booking_token')
+      .in('customer_id', custIds).eq('status', 'active').in('booking_token', refVariants);
+    orderRows = data;
+  }
 
   for (const ord of (orderRows ?? []) as Array<{ id: string; customer_id: string; store_id: string; booking_token: string | null }>) {
+    if (args.expectedStoreId && ord.store_id !== args.expectedStoreId) return { kind: 'not_found' };
     if (await findLiveXenditSessionForOrder(ord.id)) {
       return { kind: 'error', reason: 'An online payment checkout is already in progress for this booking. Please complete or cancel it before changing the extension.' };
     }
@@ -320,6 +330,10 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
     if (!item) continue;
 
     const currentDropoff = new Date(item.dropoff_datetime as string);
+    if (!args.previewOnly && args.expectedCurrentDropoffDatetime
+      && currentDropoff.getTime() !== new Date(args.expectedCurrentDropoffDatetime).getTime()) {
+      return { kind: 'error', reason: 'The booking return date changed. Refresh the extension quote before confirming.' };
+    }
     if (newDropoff <= currentDropoff) {
       return { kind: 'error', reason: 'New return date must be after the current return date.' };
     }
@@ -397,12 +411,15 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
       effectiveDailyRate = storedDailyRate;
       extensionCost = Math.round(storedDailyRate * extDays * 100) / 100;
     }
+    if (!Number.isFinite(extensionCost) || effectiveDailyRate <= 0) {
+      return { kind: 'error', reason: 'The rental rate cannot be verified. Please contact the team before extending.' };
+    }
 
     const pickup = new Date(item.pickup_datetime as string);
     const oldDays = (item.rental_days_count as number) ?? extDayCount(pickup.getTime(), currentDropoff.getTime());
     const newDays = extDayCount(pickup.getTime(), newDropoff.getTime());
 
-    type AddonUpdate = { id: string; new_total: number; name: string; delta: number };
+    type AddonUpdate = { id: string; new_total: number; expected_total: number; name: string; delta: number };
     const addonUpdates: AddonUpdate[] = [];
     let addonDelta = 0;
     if (oldDays !== newDays) {
@@ -421,7 +438,8 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
           const newTotal = Math.round(perDayRate * newDays * 100) / 100;
           const delta = Math.round((newTotal - oldTotal) * 100) / 100;
           addonDelta += delta;
-          addonUpdates.push({ id: addon.id as string, new_total: newTotal, name: addon.addon_name as string, delta });
+          addonUpdates.push({ id: addon.id as string, new_total: newTotal, expected_total: oldTotal,
+            name: addon.addon_name as string, delta });
         }
       }
     }
@@ -434,11 +452,14 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
         .from('addons')
         .select('id, name, price_one_time')
         .eq('id', args.ninePmAddonId)
+        .or(`store_id.eq.${storeId},store_id.is.null`)
         .eq('is_active', true)
         .maybeSingle();
       if (addonCatalog) {
         ninePmAddonRow = addonCatalog as { id: number; name: string; price_one_time: number };
         ninePmCost = Number(ninePmAddonRow.price_one_time ?? 0);
+      } else {
+        return { kind: 'error', reason: 'The selected late-return add-on is no longer available.' };
       }
     }
 
@@ -455,11 +476,15 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
         .from('addons')
         .select('id, name, price_one_time, addon_type')
         .in('id', allNewOneTimeIds)
+        .or(`store_id.eq.${storeId},store_id.is.null`)
         .eq('is_active', true)
         .eq('addon_type', 'one_time');
       for (const row of (catalogRows ?? []) as CatalogAddonRow[]) {
         newOneTimeRows.push(row);
         newOneTimeCost += Number(row.price_one_time ?? 0);
+      }
+      if (newOneTimeRows.length !== new Set(allNewOneTimeIds).size) {
+        return { kind: 'error', reason: 'A selected add-on is no longer available.' };
       }
     }
 
@@ -472,11 +497,15 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
         .from('addons')
         .select('id, name, price_per_day, addon_type')
         .in('id', newPerDayAddonIds)
+        .or(`store_id.eq.${storeId},store_id.is.null`)
         .eq('is_active', true)
         .eq('addon_type', 'per_day');
       for (const row of (pdRows ?? []) as PerDayCatalogRow[]) {
         newPerDayRows.push(row);
         newPerDayCost += Math.round(Number(row.price_per_day ?? 0) * extDays * 100) / 100;
+      }
+      if (newPerDayRows.length !== new Set(newPerDayAddonIds).size) {
+        return { kind: 'error', reason: 'A selected per-day add-on is no longer available.' };
       }
     }
 
@@ -488,18 +517,34 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
         .from('locations')
         .select('collection_cost')
         .eq('id', newDropoffLocationId)
+        .or(`store_id.eq.${storeId},store_id.is.null`)
         .eq('is_active', true)
         .maybeSingle();
       if (locRow) {
         newLocationCollectionCost = Number((locRow as { collection_cost: number }).collection_cost ?? 0);
         const currentDropoffFee = Number(item.dropoff_fee ?? 0);
         locationDelta = Math.round((newLocationCollectionCost - currentDropoffFee) * 100) / 100;
+      } else {
+        return { kind: 'error', reason: 'The selected return location is no longer available.' };
       }
     }
 
     const extensionSubtotal = extensionCost + addonDelta + ninePmCost + newOneTimeCost + newPerDayCost + locationDelta;
     const discountAmount = calculateExtensionDiscount(extensionSubtotal, discountType, discountValue);
     const totalDelta = Math.round((extensionSubtotal - discountAmount) * 100) / 100;
+    if (!Number.isFinite(totalDelta) || totalDelta < 0) {
+      return { kind: 'error', reason: 'The extension total cannot be verified.' };
+    }
+    if (!args.previewOnly && args.expectedExtensionTotal !== undefined
+      && totalDelta !== Math.round(args.expectedExtensionTotal * 100) / 100) {
+      return { kind: 'error', reason: 'The extension price changed. Refresh the quote before confirming.' };
+    }
+    if (args.previewOnly) {
+      return {
+        kind: 'success', extensionDays: extDays, extensionCost: totalDelta,
+        outstandingBalance: totalDelta, newDropoffDatetime, dailyRate: effectiveDailyRate,
+      };
+    }
     const paymentId = crypto.randomUUID();
     const journalTxId = crypto.randomUUID();
     const now = new Date();
@@ -507,34 +552,32 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
     const journalPeriod = journalDate.slice(0, 7);
     const accounts = await resolveStoreAccounts(storeId);
 
+    const newAddons = [
+      ...(ninePmAddonRow && ninePmCost > 0 ? [{ id: crypto.randomUUID(), name: ninePmAddonRow.name,
+        price: ninePmCost, type: 'one_time', quantity: 1, total: ninePmCost }] : []),
+      ...newOneTimeRows.map((row) => ({ id: crypto.randomUUID(), name: row.name,
+        price: Number(row.price_one_time), type: 'one_time', quantity: 1,
+        total: Number(row.price_one_time) })),
+      ...newPerDayRows.map((row) => ({ id: crypto.randomUUID(), name: row.name,
+        price: Number(row.price_per_day), type: 'per_day', quantity: extDays,
+        total: Math.round(Number(row.price_per_day) * extDays * 100) / 100 })),
+    ];
     const { data: rpcResult, error: rpcErr } = await sb
-      .rpc('confirm_extend_order_atomic', {
-        p_order_id:          ord.id,
-        p_order_item_id:     item.id as string,
-        p_new_dropoff:       newDropoffDatetime,
-        p_new_days:          newDays,
-        p_addon_updates:     addonUpdates,
-        p_total_delta:       totalDelta,
-        p_payment_id:        paymentId,
-        p_store_id:          storeId,
-        // The pending payment drives the customer-facing outstanding balance.
-        // It must match the full order delta, including recurring add-ons such
-        // as Peace of Mind Cover, not only the vehicle rental charge.
-        p_amount:            totalDelta,
-        p_payment_method_id: paymentMethodId,
-        p_transaction_date:  journalDate,
-        p_settlement_status: isPaid ? null : 'pending',
-        p_settlement_ref:    `Extension: ${formatManilaDate(currentDropoff)} → ${formatManilaDate(newDropoff)}`,
-        p_customer_id:       ord.customer_id,
-        p_order_item_id_fk:  item.id as string,
-        p_is_paid:           isPaid,
-        p_receivable_acct:   accounts?.receivableAccountId ?? null,
-        p_income_acct:       accounts?.incomeAccountId ?? null,
-        p_journal_tx_id:     journalTxId,
-        p_journal_date:      journalDate,
-        p_journal_period:    journalPeriod,
-        p_ext_description:   `Extension: order ${ord.id} (${oldDays}→${newDays} days)${discountAmount > 0 ? `; discount ₱${discountAmount}` : ''}`,
-      });
+      .rpc('confirm_extend_order_guarded_atomic', { p_payload: {
+        orderId: ord.id, orderItemId: item.id, expectedDropoff: item.dropoff_datetime,
+        newDropoff: newDropoffDatetime, newDays, addonUpdates, totalDelta,
+        paymentId, storeId, amount: totalDelta, paymentMethodId,
+        transactionDate: journalDate, settlementStatus: isPaid ? null : 'pending',
+        settlementRef: `Extension: ${formatManilaDate(currentDropoff)} → ${formatManilaDate(newDropoff)}`,
+        isPaid, receivableAcct: accounts?.receivableAccountId ?? null,
+        incomeAcct: accounts?.incomeAccountId ?? null, journalTxId,
+        journalDate, journalPeriod,
+        extDescription: `Extension: order ${ord.id} (${oldDays}→${newDays} days)${discountAmount > 0 ? `; discount ₱${discountAmount}` : ''}`,
+        newAddons,
+        newDropoffLocationId: newDropoffLocationId ?? null,
+        newDropoffLocationFee: newDropoffLocationId ? newLocationCollectionCost : null,
+        newDropoffLocationAddress: newDropoffLocationAddress ?? null,
+      } });
 
     if (rpcErr) {
       console.error('[extend-active] RPC network error:', rpcErr.message, { orderId: ord.id, itemId: item.id as string, extDays, totalDelta, storeId });
@@ -544,83 +587,6 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
     if (!extResult.success) {
       console.error('[extend-active] RPC returned failure:', extResult.error, { orderId: ord.id, itemId: item.id as string, extDays, newDays, totalDelta, storeId });
       return { kind: 'error', reason: extResult.error ?? 'Extension failed. Please try again or contact us on WhatsApp.' };
-    }
-
-    // Ratchet rental_rate down to the effective extension daily rate so that
-    // future extensions are capped at this rate rather than the original booking
-    // rate. This ensures that a customer who earned a cheaper bracket (e.g. 7+
-    // days at ₱465) keeps that rate as their cap on any subsequent short extension,
-    // instead of reverting to the original booking rate (e.g. ₱535).
-    // Only applies to computed rates — staff overrides are one-time concessions.
-    if (overrideDailyRate === undefined && effectiveDailyRate > 0 && effectiveDailyRate < Number(item.rental_rate ?? 0)) {
-      await sb.from('order_items').update({ rental_rate: effectiveDailyRate }).eq('id', item.id as string);
-    }
-
-    // ── Post-RPC inserts / updates (fire sequentially, non-blocking on errors) ──
-
-    // Insert 9PM addon row
-    if (ninePmAddonRow && ninePmCost > 0) {
-      await sb.from('order_addons').insert({
-        id: crypto.randomUUID(),
-        order_id: ord.id,
-        addon_name: ninePmAddonRow.name,
-        addon_price: ninePmCost,
-        addon_type: 'one_time',
-        quantity: 1,
-        total_amount: ninePmCost,
-        store_id: storeId,
-      });
-    }
-
-    // Insert new one-time add-on rows
-    for (const row of newOneTimeRows) {
-      const price = Number(row.price_one_time ?? 0);
-      await sb.from('order_addons').insert({
-        id: crypto.randomUUID(),
-        order_id: ord.id,
-        addon_name: row.name,
-        addon_price: price,
-        addon_type: 'one_time',
-        quantity: 1,
-        total_amount: price,
-        store_id: storeId,
-      });
-    }
-
-    // Insert new per-day add-on rows (charged for extension days only)
-    for (const row of newPerDayRows) {
-      const pricePerDay = Number(row.price_per_day ?? 0);
-      const total = Math.round(pricePerDay * extDays * 100) / 100;
-      await sb.from('order_addons').insert({
-        id: crypto.randomUUID(),
-        order_id: ord.id,
-        addon_name: row.name,
-        addon_price: pricePerDay,
-        addon_type: 'per_day',
-        quantity: extDays,
-        total_amount: total,
-        store_id: storeId,
-      });
-    }
-
-    // Update order_items dropoff location + fee if location changed
-    if (newDropoffLocationId) {
-      await sb
-        .from('order_items')
-        .update({ dropoff_location_id: String(newDropoffLocationId), dropoff_fee: newLocationCollectionCost })
-        .eq('id', item.id as string);
-
-      // Best-effort update on orders_raw (may not exist for walk-in orders)
-      if (newDropoffLocationAddress || newDropoffLocationId) {
-        const refVariants = orderReferenceLookupVariants(ord.booking_token ?? orderReference);
-        await sb
-          .from('orders_raw')
-          .update({
-            dropoff_location_id: newDropoffLocationId,
-            ...(newDropoffLocationAddress ? { dropoff_location_address: newDropoffLocationAddress } : {}),
-          })
-          .in('order_reference', refVariants);
-      }
     }
 
     // addonDelta = per-day addon adjustment for extended days (e.g. Peace of Mind × extra days).

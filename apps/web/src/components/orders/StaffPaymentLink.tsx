@@ -3,10 +3,11 @@ import { Copy, CreditCard, ExternalLink } from 'lucide-react';
 import { api, ApiError } from '../../api/client.js';
 import { formatCurrency } from '../../utils/currency.js';
 
-type Target = { kind: 'raw'; id: string } | { kind: 'rental' | 'addon'; id: string };
+type Target = { kind: 'raw'; id: string } | { kind: 'rental' | 'addon' | 'deposit'; id: string };
 type Preview = {
   principalPHP: number;
   surchargePHP: number;
+  depositPHP?: number;
   amountPHP: number;
   originalQuotePHP?: number;
   requiresAcknowledgement?: boolean;
@@ -26,7 +27,7 @@ function paths(target: Target): { preview: string; create: string } {
       };
 }
 
-export function StaffPaymentLink({ target }: { target: Target }) {
+export function StaffPaymentLink({ target, includeDeposit = false }: { target: Target; includeDeposit?: boolean }) {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [sessionStatus, setSessionStatus] = useState<SessionStatus | null>(null);
@@ -42,11 +43,13 @@ export function StaffPaymentLink({ target }: { target: Target }) {
     setSessionStatus(null);
     setError(null);
     setAcknowledged(false);
-    void api.get<Preview>(paths(target).preview)
+    const previewPath = includeDeposit
+      ? `${paths(target).preview}?includeDeposit=true` : paths(target).preview;
+    void api.get<Preview>(previewPath)
       .then((value) => { if (mounted) setPreview(value); })
       .catch((cause) => { if (mounted) setError(cause instanceof ApiError ? cause.message : 'Could not load the card payment total.'); });
     return () => { mounted = false; };
-  }, [target.kind, target.id]);
+  }, [target.kind, target.id, includeDeposit]);
 
   useEffect(() => {
     if (!session?.sessionId || (sessionStatus && !['creating', 'active'].includes(sessionStatus))) return;
@@ -69,8 +72,8 @@ export function StaffPaymentLink({ target }: { target: Target }) {
     setError(null);
     try {
       const body = target.kind === 'raw'
-        ? { rawOrderId: target.id, acknowledgePriceChange: acknowledged }
-        : {};
+        ? { rawOrderId: target.id, acknowledgePriceChange: acknowledged, includeDeposit }
+        : { includeDeposit };
       const created = await api.post<Session>(paths(target).create, body);
       setSession(created);
       setSessionStatus('active');
@@ -100,6 +103,7 @@ export function StaffPaymentLink({ target }: { target: Target }) {
         <div className="mt-3 space-y-1 text-sm text-gray-700">
           <p>Rental/add-on balance: {formatCurrency(preview.principalPHP)}</p>
           <p>Card surcharge: {formatCurrency(preview.surchargePHP)}</p>
+          {(preview.depositPHP ?? 0) > 0 && <p>Refundable security deposit: {formatCurrency(preview.depositPHP ?? 0)}</p>}
           <p className="font-semibold">Customer pays: {formatCurrency(preview.amountPHP)}</p>
           {preview.requiresAcknowledgement && (
             <label className="mt-2 flex items-start gap-2">

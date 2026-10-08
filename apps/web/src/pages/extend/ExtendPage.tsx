@@ -94,6 +94,7 @@ export default function ExtendPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedTime, setSelectedTime] = useState(DEFAULT_TIME);
   const [extensionCost, setExtensionCost] = useState<number | null>(null);
+  const [extensionRentalCost, setExtensionRentalCost] = useState<number | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [confirmedDropoff, setConfirmedDropoff] = useState('');
@@ -166,30 +167,41 @@ export default function ExtendPage() {
   const effectiveTime = ninePmSelected ? '21:00' : selectedTime;
 
   useEffect(() => {
-    if (!order || !selectedDate || !lookupEmail) { setExtensionCost(null); return; }
+    if (!order || !selectedDate || !lookupEmail) { setExtensionCost(null); setExtensionRentalCost(null); return; }
     const newDropoff = `${selectedDate}T${effectiveTime}:00+08:00`;
     let cancelled = false;
     setQuoteLoading(true);
     setExtensionCost(null);
+    setExtensionRentalCost(null);
     (async () => {
       try {
-        const params = new URLSearchParams({
+        const q = await api.post<{ extensionTotal: number; dailyRate: number; extensionDays: number }>(
+          '/public/extend/preview', {
           orderReference: order.orderReference,
           email: lookupEmail,
           newDropoffDatetime: newDropoff,
-        });
-        const q = await api.get<{ extensionTotal: number; dailyRate: number; extensionDays: number; bracketLabel: string }>(
-          `/public/extend/preview?${params.toString()}`,
+          ...(ninePmSelected && ninePmAddon ? { ninePmAddonId: ninePmAddon.id } : {}),
+          newOneTimeAddonIds: selectedAddonIds.filter((id) => id !== (ninePmAddon?.id ?? -1)),
+          ...(selectedLocationId != null && selectedLocationId !== order.currentDropoffLocationId
+            ? { newDropoffLocationId: selectedLocationId } : {}),
+          },
         );
-        if (!cancelled) setExtensionCost(q.extensionTotal);
-      } catch {
-        if (!cancelled) setExtensionCost(null);
+        if (!cancelled) {
+          setExtensionCost(q.extensionTotal);
+          setExtensionRentalCost(Math.round(q.dailyRate * q.extensionDays * 100) / 100);
+          setLookupError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setExtensionCost(null);
+          setLookupError(err instanceof ApiError ? err.message : t('extend.somethingWrong'));
+        }
       } finally {
         if (!cancelled) setQuoteLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [order, selectedDate, effectiveTime, lookupEmail]);
+  }, [order, selectedDate, effectiveTime, lookupEmail, ninePmSelected, ninePmAddon, selectedAddonIds, selectedLocationId, t]);
 
   const extensionDays = selectedDate && order
     ? Math.max(1, Math.ceil(
@@ -227,14 +239,25 @@ export default function ExtendPage() {
   const effectiveReturnLocationName = selectedLocData?.name ?? currentDropoffLocName ?? order?.pickupLocationName ?? '';
 
   async function handleConfirm() {
-    if (!order || !selectedDate) return;
+    if (!order || !selectedDate || extensionCost == null) return;
     setConfirmLoading(true);
     const newDropoff = `${selectedDate}T${effectiveTime}:00+08:00`;
     try {
+      const latest = await api.post<{ found: boolean; order?: OrderData }>('/public/extend/lookup', {
+        email: lookupEmail, orderReference: order.orderReference,
+      });
+      if (!latest.found || !latest.order) throw new Error('Unable to verify the current return date. Please try again.');
+      if (new Date(latest.order.currentDropoffDatetime).getTime() !== new Date(order.currentDropoffDatetime).getTime()) {
+        setOrder(latest.order);
+        setLookupError('The booking return date changed. Check the extension payment page, then refresh the quote before submitting again.');
+        return;
+      }
       const body: Record<string, unknown> = {
         orderReference: order.orderReference,
         email: lookupEmail,
         newDropoffDatetime: newDropoff,
+        expectedCurrentDropoffDatetime: order.currentDropoffDatetime,
+        expectedExtensionTotal: extensionCost,
       };
       if (ninePmSelected && ninePmAddon) body.ninePmAddonId = ninePmAddon.id;
       if (selectedAddonIds.length > 0) body.newOneTimeAddonIds = selectedAddonIds.filter((id) => id !== (ninePmAddon?.id ?? -1));
@@ -251,7 +274,7 @@ export default function ExtendPage() {
           `extension_payment_email_${order.orderReference}`,
           lookupEmail.trim().toLowerCase(),
         );
-        const confirmedAmount = res.extensionCost ?? (extensionCost ?? 0) + (ninePmSelected && ninePmAddon ? ninePmAddon.price : 0) + perDayAddonDelta + newAddonLines.reduce((s, a) => s + a.cost, 0) + locationDelta;
+        const confirmedAmount = res.extensionCost ?? extensionCost;
         setConfirmedDropoff(res.newDropoffDatetime ?? newDropoff);
         setConfirmedBalance(confirmedAmount);
         setConfirmedPaymentUrl(res.paymentUrl ?? `/book/extend/pay?ref=${encodeURIComponent(order.orderReference)}`);
@@ -267,7 +290,7 @@ export default function ExtendPage() {
       if (err instanceof ApiError && err.code === 'ORDER_NOT_ACTIVE') {
         setLookupError(t('extend.notActiveError'));
       } else {
-        setLookupError(t('extend.somethingWrong'));
+        setLookupError(err instanceof Error ? err.message : t('extend.somethingWrong'));
       }
     } finally { setConfirmLoading(false); }
   }
@@ -317,7 +340,7 @@ export default function ExtendPage() {
               newAddonLines={newAddonLines}
               ninePmCost={ninePmSelected && ninePmAddon ? ninePmAddon.price : undefined}
               locationDelta={locationDelta !== 0 ? locationDelta : undefined}
-              extensionRentalCost={extensionCost ?? undefined}
+              extensionRentalCost={extensionRentalCost ?? undefined}
             />
           </div>
         ) : (
@@ -406,7 +429,8 @@ export default function ExtendPage() {
                       <FadeUpSection>
                         <ExtensionSummary
                           originalTotal={order.originalTotal}
-                          extensionCost={extensionCost}
+                          extensionCost={extensionRentalCost}
+                          extensionTotal={extensionCost}
                           extensionDays={extensionDays}
                           originalDays={order.rentalDays}
                           newReturnDisplay={formatNewReturn(selectedDate, effectiveTime)}

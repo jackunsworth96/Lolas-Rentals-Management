@@ -131,7 +131,8 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
         )}
 
         {tab === 'payments' && (
-          <OrderDetailPaymentsTab payments={payments} totalPaid={totalPaid} />
+          <OrderDetailPaymentsTab orderId={orderId} storeId={storeId} payments={payments} totalPaid={totalPaid}
+            securityDeposit={enrichedData?.securityDeposit ?? moneyAmount(order.securityDeposit)} />
         )}
 
         {tab === 'vehicles' && (
@@ -212,6 +213,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
           customerName={customerName}
           vehicleNames={items.map((item) => item.vehicleName).filter(Boolean).join(', ') || 'No assigned vehicle'}
           recordedPaymentTotal={totalPaid}
+          payments={payments}
           onCancelled={() => {
             onClose();
             onCancelled?.();

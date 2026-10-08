@@ -9,6 +9,7 @@ import { Button } from '../common/Button.js';
 import { ExtendOrderModal } from './ExtendOrderModal.js';
 import { InspectionModal } from './InspectionModal.js';
 import { XenditPaymentModal } from './XenditPaymentModal.js';
+import { StaffPaymentLink } from './StaffPaymentLink.js';
 import { WaiverViewModal } from './WaiverViewModal.js';
 import { useSignedWaiverDetails, useResendWaiverConfirmation } from '../../api/waivers.js';
 import { useInspectionByOrder } from '../../api/inspections.js';
@@ -1252,6 +1253,7 @@ export function OrderDetailSummaryTab({
               <section className="border-t border-gray-200 pt-5">
                 <h3 className="mb-1 font-medium text-gray-900">Collect Security Deposit</h3>
                 <p className="mb-3 text-sm text-gray-600">{formatCurrency(depositDue)} due at pickup. Record only money actually received.</p>
+                {balance <= 0 && <StaffPaymentLink target={{ kind: 'deposit', id: orderId }} />}
                 <form className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end" onSubmit={(event) => {
                   event.preventDefault();
                   if (!depositCollectionMethodId || !depositCollectionAccountId || !settleDepositAccountId) return;
@@ -1368,7 +1370,8 @@ export function OrderDetailSummaryTab({
             </section>
 
             {/* ─── ISSUE REFUND ─── */}
-            <section className="rounded-lg border border-red-200 bg-red-50 p-4">
+            {!payments.some((payment) => payment.paymentMethodId === 'xendit'
+              && ['card_xendit', 'deposit'].includes(payment.paymentType ?? '')) && <section className="rounded-lg border border-red-200 bg-red-50 p-4">
               <div className="mb-3 flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0 text-red-600" aria-hidden />
                 <h3 className="font-medium text-red-900">Issue Refund</h3>
@@ -1457,7 +1460,7 @@ export function OrderDetailSummaryTab({
                   <p className="text-sm text-red-600">{(refundOrderMut.error as Error).message}</p>
                 )}
               </form>
-            </section>
+            </section>}
 
             {/* ─── SETTLE ORDER ─── */}
             <section ref={settleRef as React.RefObject<HTMLElement>}>

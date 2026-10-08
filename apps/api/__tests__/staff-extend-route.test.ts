@@ -27,7 +27,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-key';
 
 const { staffExtendRoutes } = await import('../src/routes/public-extend.js');
 const { calculateExtensionDiscount } = await import('../src/routes/public-extend-helpers.js');
-const { StaffExtendConfirmSchema } = await import('@lolas/shared');
+const { StaffExtendOrderSchema } = await import('@lolas/shared');
 
 function extensionMessageLogClient() {
   const query = {
@@ -38,8 +38,19 @@ function extensionMessageLogClient() {
   };
   return {
     from: vi.fn((table: string) => {
-      if (table !== 'extension_message_log') throw new Error(`Unexpected table ${table}`);
-      return query;
+      if (table === 'extension_message_log') return query;
+      if (table === 'orders') return {
+        select: () => ({ eq: () => ({ maybeSingle: async () => ({
+          data: { id: 'order-1', store_id: 'store-lolas', booking_token: 'LR-0720-2C2D',
+            customer_id: 'customer-1', status: 'active' }, error: null,
+        }) }) }),
+      };
+      if (table === 'customers') return {
+        select: () => ({ eq: () => ({ maybeSingle: async () => ({
+          data: { email: 'customer@example.com' }, error: null,
+        }) }) }),
+      };
+      throw new Error(`Unexpected table ${table}`);
     }),
   };
 }
@@ -66,15 +77,15 @@ async function invokeConfirm(body: Record<string, unknown> = {}) {
   await confirmHandler()(
     {
       body: {
-        orderReference: 'LR-0720-2C2D',
-        email: 'customer@example.com',
+        orderId: 'order-1',
         newDropoffDatetime: '2026-07-28T11:15:00+08:00',
         paymentStatus: 'unpaid',
         ...body,
       },
       app: { locals: { deps: { bookingPort: {}, configRepo: {} } } },
+      user: { storeIds: ['store-lolas'], employeeId: 'employee-1' },
     },
-    { json },
+    { json, status: vi.fn().mockReturnThis() },
     next,
   );
   expect(next).not.toHaveBeenCalled();
@@ -125,7 +136,7 @@ describe('staff extension route resolution', () => {
     });
   });
 
-  it('falls back to the raw resolver only when no active booking matches', async () => {
+  it('does not extend a raw booking when the active order cannot be resolved', async () => {
     const calls: string[] = [];
     mocks.resolveExtensionForActive.mockImplementation(async () => {
       calls.push('active');
@@ -144,15 +155,9 @@ describe('staff extension route resolution', () => {
 
     const json = await invokeConfirm();
 
-    expect(calls).toEqual(['active', 'raw']);
-    expect(json).toHaveBeenCalledWith({
-      success: true,
-      data: {
-        success: true,
-        newDropoffDatetime: '2026-07-28T11:15:00+08:00',
-        extensionCost: 2675,
-      },
-    });
+    expect(calls).toEqual(['active']);
+    expect(mocks.resolveExtensionForRaw).not.toHaveBeenCalled();
+    expect(json).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
   });
 
   it('passes a staff discount to the extension resolver', async () => {
@@ -162,13 +167,11 @@ describe('staff extension route resolution', () => {
     await invokeConfirm({ discountType: 'percentage', discountValue: 15 });
 
     expect(mocks.resolveExtensionForActive).toHaveBeenCalledWith(expect.objectContaining({
+      orderId: 'order-1',
       discountType: 'percentage',
       discountValue: 15,
     }));
-    expect(mocks.resolveExtensionForRaw).toHaveBeenCalledWith(expect.objectContaining({
-      discountType: 'percentage',
-      discountValue: 15,
-    }));
+    expect(mocks.resolveExtensionForRaw).not.toHaveBeenCalled();
   });
 });
 
@@ -190,17 +193,16 @@ describe('extension discount calculation', () => {
 
   it('validates complete staff discounts and caps percentages at 100', () => {
     const base = {
-      orderReference: 'LR-0720-2C2D',
-      email: 'customer@example.com',
+      orderId: 'order-1',
       newDropoffDatetime: '2026-07-28T11:15:00+08:00',
     };
-    expect(StaffExtendConfirmSchema.safeParse({
+    expect(StaffExtendOrderSchema.safeParse({
       ...base,
       discountType: 'fixed',
       discountValue: 250,
     }).success).toBe(true);
-    expect(StaffExtendConfirmSchema.safeParse({ ...base, discountType: 'fixed' }).success).toBe(false);
-    expect(StaffExtendConfirmSchema.safeParse({
+    expect(StaffExtendOrderSchema.safeParse({ ...base, discountType: 'fixed' }).success).toBe(false);
+    expect(StaffExtendOrderSchema.safeParse({
       ...base,
       discountType: 'percentage',
       discountValue: 101,

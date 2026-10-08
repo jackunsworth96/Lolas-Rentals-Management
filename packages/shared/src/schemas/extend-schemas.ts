@@ -58,6 +58,8 @@ export const PublicExtendConfirmSchema = z.object({
   newOneTimeAddonIds: z.array(z.number().int().positive()).optional(),
   newDropoffLocationId: z.number().int().positive().optional(),
   newDropoffLocationAddress: z.string().max(500).optional(),
+  expectedCurrentDropoffDatetime: z.string().datetime({ offset: true }).optional(),
+  expectedExtensionTotal: z.number().min(0).optional(),
 });
 
 export const StaffExtendConfirmSchema = PublicExtendConfirmSchema.extend({
@@ -85,6 +87,35 @@ export const StaffExtendConfirmSchema = PublicExtendConfirmSchema.extend({
       message: 'Percentage discount cannot exceed 100%.',
       path: ['discountValue'],
     });
+  }
+});
+
+export const StaffExtendOrderSchema = z.object({
+  orderId: z.string().min(1),
+  newDropoffDatetime: z.string().datetime({ offset: true }),
+  overrideDailyRate: z.number().positive().optional(),
+  discountType: z.enum(['percentage', 'fixed']).optional(),
+  discountValue: z.number().positive().optional(),
+  paymentStatus: z.enum(['paid', 'unpaid']).optional(),
+  paymentMethod: z.string().optional(),
+  newOneTimeAddonIds: z.array(z.number().int().positive()).optional(),
+  newPerDayAddonIds: z.array(z.number().int().positive()).optional(),
+  newDropoffLocationId: z.number().int().positive().optional(),
+  newDropoffLocationAddress: z.string().max(500).optional(),
+  expectedCurrentDropoffDatetime: z.string().datetime({ offset: true }).optional(),
+  expectedExtensionTotal: z.number().min(0).optional(),
+}).superRefine((value, ctx) => {
+  if ((value.discountType === undefined) !== (value.discountValue === undefined)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['discountValue'],
+      message: 'Discount type and value must be provided together.' });
+  }
+  if (value.discountType === 'percentage' && (value.discountValue ?? 0) > 100) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['discountValue'],
+      message: 'Percentage discount cannot exceed 100%.' });
+  }
+  if (value.paymentStatus === 'paid' && !value.paymentMethod) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['paymentMethod'],
+      message: 'Select the payment method used to collect the extension.' });
   }
 });
 

@@ -178,6 +178,15 @@ export async function processRawOrder(
     (payment) => payment.paymentType === 'card_xendit',
   );
   const hasXenditPrepayment = xenditPrepayments.length > 0;
+  const xenditDepositPrepayments = preActivationPayments.filter(
+    (payment) => payment.paymentType === 'deposit' && payment.paymentMethodId === 'xendit',
+  );
+  const prepaidDeposit = xenditDepositPrepayments.reduce(
+    (sum, payment) => sum + Number(payment.amount), 0,
+  );
+  if (prepaidDeposit > 0 && (input.depositCollected || prepaidDeposit !== input.securityDeposit)) {
+    throw new Error('Confirmed online deposit must match the stated deposit and cannot be collected again');
+  }
   const effectiveCardFeeSurcharge = hasXenditPrepayment
     ? Number((rawOrder as { web_card_fee_surcharge?: number | null }).web_card_fee_surcharge ?? 0)
     : input.cardFeeSurcharge;
@@ -257,13 +266,13 @@ export async function processRawOrder(
     quantity: input.vehicleAssignments.length,
     webQuoteRaw: input.webQuoteRaw,
     securityDeposit: Money.php(input.securityDeposit),
-    depositStatus: willCreateDepositPayment ? 'paid' : null,
+    depositStatus: willCreateDepositPayment || prepaidDeposit > 0 ? 'paid' : null,
     cardFeeSurcharge: Money.php(effectiveCardFeeSurcharge),
     returnCharges: Money.zero(),
     finalTotal: Money.php(finalTotal),
     balanceDue: Money.php(balanceDue),
     paymentMethodId: effectivePaymentMethodId,
-    depositMethodId: willCreateDepositPayment ? input.depositMethodId : null,
+    depositMethodId: prepaidDeposit > 0 ? 'xendit' : willCreateDepositPayment ? input.depositMethodId : null,
     bookingToken: (rawOrder.order_reference as string | null) ?? null,
     tips: Money.zero(),
     charityDonation: Money.php(charityAmount),

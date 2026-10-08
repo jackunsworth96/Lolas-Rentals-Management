@@ -9,6 +9,7 @@ export interface NewAddonLine {
 interface Props {
   originalTotal: number;
   extensionCost: number | null;
+  extensionTotal: number | null;
   extensionDays: number;
   originalDays: number;
   newReturnDisplay: string;
@@ -29,6 +30,7 @@ interface Props {
 export function ExtensionSummary({
   originalTotal,
   extensionCost,
+  extensionTotal,
   extensionDays,
   originalDays,
   newReturnDisplay,
@@ -47,7 +49,7 @@ export function ExtensionSummary({
   const locDelta = locationDelta ?? 0;
   const addOnsCost = (newAddons ?? []).reduce((s, a) => s + a.cost, 0);
 
-  const totalBalance = extCost + ninePm + addonDelta + addOnsCost + locDelta;
+  const totalBalance = extensionTotal ?? extCost + ninePm + addonDelta + addOnsCost + locDelta;
   const updatedTotal = originalTotal + totalBalance;
 
   return (
@@ -158,7 +160,7 @@ export function ExtensionSummary({
       <PrimaryCtaButton
         type="button"
         onClick={onConfirm}
-        disabled={loading || extensionCost == null}
+        disabled={loading || extensionCost == null || extensionTotal == null}
         className="flex w-full items-center justify-center gap-2 py-4 text-base shadow-lg"
       >
         {loading ? (

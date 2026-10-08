@@ -1,25 +1,23 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import {
+  COMPANY_STORE_ID,
   ExtendLookupRequestSchema,
   ExtensionPaymentAccessSchema,
   PublicExtendConfirmSchema,
-  StaffExtendConfirmSchema,
+  StaffExtendOrderSchema,
   Permission,
 } from '@lolas/shared';
 import { validateBody } from '../middleware/validate.js';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
-import { computeQuote } from '../use-cases/booking/compute-quote.js';
-import { checkAvailability } from '../use-cases/booking/check-availability.js';
 import { publicWebOriginFromEnv } from '../lib/public-web-url.js';
 import { logger } from '../lib/logger.js';
 import { sendRespondIoTemplateMessage } from '../services/respond-io-outbound.js';
 import { isXenditEnabled } from '../services/xendit.js';
 import {
   escapeIlike,
-  extDayCount,
   orderReferenceLookupVariants,
   resolveExtensionForRaw,
   resolveExtensionForActive,
@@ -457,132 +455,40 @@ router.post('/lookup', extendLookupLimiter, validateBody(ExtendLookupRequestSche
 
 // ── Preview Extension (read-only, no DB writes) ──
 
-router.get('/preview', extendLookupLimiter, async (req, res, next) => {
+router.post('/preview', extendLookupLimiter, validateBody(PublicExtendConfirmSchema), async (req, res, next) => {
   try {
-    const { orderReference, email, newDropoffDatetime } = req.query as {
-      orderReference?: string; email?: string; newDropoffDatetime?: string;
+    const { orderReference, email, newDropoffDatetime, ninePmAddonId,
+      newOneTimeAddonIds, newDropoffLocationId } = req.body as {
+      orderReference: string; email: string; newDropoffDatetime: string;
+      ninePmAddonId?: number; newOneTimeAddonIds?: number[]; newDropoffLocationId?: number;
     };
-
-    if (!orderReference || !email || !newDropoffDatetime) {
-      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'orderReference, email, and newDropoffDatetime are required' } });
-      return;
-    }
-
     const trimmedEmail = email.trim().toLowerCase();
     const sb = getSupabaseClient();
-    const newDropoff = new Date(newDropoffDatetime);
     const refVariants = orderReferenceLookupVariants(orderReference);
-
-    // ── Block extensions on raw (unactivated) bookings ──
     const { data: rawRows } = await sb
-      .from('orders_raw')
-      .select('id')
-      .in('order_reference', refVariants)
-      .ilike('customer_email', escapeIlike(trimmedEmail))
-      .in('status', ['unprocessed']);
-
+      .from('orders_raw').select('id').in('order_reference', refVariants)
+      .ilike('customer_email', escapeIlike(trimmedEmail)).in('status', ['unprocessed']);
     if (rawRows && rawRows.length > 0) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'ORDER_NOT_ACTIVE',
-          message: 'Extensions are only available once your rental has started. Please contact us if you need to make changes to your booking.',
-        },
-      });
+      res.status(400).json({ success: false, error: { code: 'ORDER_NOT_ACTIVE',
+        message: 'Extensions are only available once your rental has started.' } });
       return;
     }
-
-    // ── Try processed orders ──
-    const { data: custRows } = await sb.from('customers').select('id').ilike('email', escapeIlike(trimmedEmail)).limit(10);
-    const custIds = (custRows ?? []).map((c: { id: string }) => c.id).filter(Boolean);
-
-    if (custIds.length > 0) {
-      const { data: orderRows } = await sb
-        .from('orders')
-        .select('id, customer_id, store_id, booking_token')
-        .in('customer_id', custIds)
-        .eq('status', 'active')
-        .in('booking_token', refVariants);
-
-      for (const ord of (orderRows ?? []) as Array<{ id: string; customer_id: string; store_id: string }>) {
-        const { data: items } = await sb
-          .from('order_items')
-          .select('id, vehicle_id, pickup_datetime, dropoff_datetime, store_id, rental_days_count, rental_rate')
-          .eq('order_id', ord.id).not('pickup_datetime', 'is', null);
-
-        const item = (items ?? [])[0] as Record<string, unknown> | undefined;
-        if (!item) continue;
-
-        const currentDropoff = new Date(item.dropoff_datetime as string);
-        if (newDropoff <= currentDropoff) {
-          res.status(400).json({ success: false, error: { code: 'INVALID_DATE', message: 'New return date must be after the current return date.' } });
-          return;
-        }
-
-        let modelId = '';
-        if (item.vehicle_id) {
-          const { data: veh } = await sb.from('fleet').select('model_id').eq('id', item.vehicle_id as string).single();
-          if (veh) modelId = (veh as { model_id: string }).model_id;
-        }
-
-        if (modelId) {
-          const avail = await checkAvailability(
-            { bookingPort: req.app.locals.deps.bookingPort },
-            {
-              storeId: item.store_id as string,
-              pickupDatetime: item.dropoff_datetime as string,
-              dropoffDatetime: newDropoffDatetime,
-              excludeOrderItemId: item.id as string,
-            },
-          );
-          const m = avail.find((a) => a.modelId === modelId);
-          if (!m || m.availableCount === 0) {
-            res.status(409).json({ success: false, error: { code: 'NOT_AVAILABLE', message: 'Sorry, this vehicle is not available for the extended dates.' } });
-            return;
-          }
-        }
-
-        const storeId = item.store_id as string;
-        const locRows = await req.app.locals.deps.configRepo.getLocations(storeId);
-        const storeLoc = locRows.find((l: { deliveryCost: number; collectionCost: number }) =>
-          Number(l.deliveryCost) === 0 && Number(l.collectionCost) === 0,
-        );
-        const locId = storeLoc ? Number(storeLoc.id) : (locRows[0] ? Number(locRows[0].id) : 1);
-
-        const extDays = extDayCount(currentDropoff.getTime(), newDropoff.getTime());
-        const origDailyRate = Number(item.rental_rate ?? 0);
-        let dailyRate = 0;
-
-        if (modelId) {
-          const quote = await computeQuote({ configRepo: req.app.locals.deps.configRepo }, {
-            storeId, vehicleModelId: modelId,
-            pickupDatetime: item.dropoff_datetime as string, dropoffDatetime: newDropoffDatetime,
-            pickupLocationId: locId, dropoffLocationId: locId,
-          });
-          const computedExtDailyRate = extDays > 0 ? quote.rentalSubtotal / extDays : quote.rentalSubtotal;
-          // Daily rate = bracket rate for extension days, capped at the original rate
-          // (never higher), but if the extension bracket is cheaper the customer keeps it.
-          dailyRate = Math.round((origDailyRate > 0 ? Math.min(computedExtDailyRate, origDailyRate) : computedExtDailyRate) * 100) / 100;
-        } else if (origDailyRate > 0) {
-          // Model ID unavailable (e.g. fleet record missing model_id) — fall back to the
-          // stored original daily rate so the preview shows the correct charge instead of ₱0.
-          dailyRate = origDailyRate;
-        }
-
-        res.json({
-          success: true,
-          data: {
-            extensionDays: extDays,
-            dailyRate,
-            extensionTotal: Math.round(dailyRate * extDays * 100) / 100,
-            bracketLabel: getDayBracketLabel(extDays),
-          },
-        });
-        return;
-      }
+    const outcome = await resolveExtensionForActive({
+      orderReference, trimmedEmail, newDropoffDatetime, ninePmAddonId,
+      newOneTimeAddonIds, newDropoffLocationId, overrideDailyRate: undefined,
+      previewOnly: true, isPaid: false, paymentMethodId: 'pending',
+      emailErrorLabel: '[extend-preview]', deps: req.app.locals.deps,
+    });
+    if (outcome.kind === 'not_found') {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Booking not found.' } });
+    } else if (outcome.kind === 'error') {
+      res.status(409).json({ success: false, error: { code: 'EXTENSION_UNAVAILABLE', message: outcome.reason } });
+    } else {
+      res.json({ success: true, data: {
+        extensionDays: outcome.extensionDays, dailyRate: outcome.dailyRate,
+        extensionTotal: outcome.extensionCost, bracketLabel: getDayBracketLabel(outcome.extensionDays),
+      } });
     }
-
-    res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Booking not found. Please check the order reference and email.' } });
   } catch (err) {
     next(err);
   }
@@ -595,6 +501,7 @@ router.post('/confirm', extendConfirmLimiter, validateBody(PublicExtendConfirmSc
     const {
       orderReference, email, newDropoffDatetime, ninePmAddonId,
       newOneTimeAddonIds, newDropoffLocationId, newDropoffLocationAddress,
+      expectedCurrentDropoffDatetime, expectedExtensionTotal,
     } = req.body as {
       orderReference: string;
       email: string;
@@ -603,6 +510,8 @@ router.post('/confirm', extendConfirmLimiter, validateBody(PublicExtendConfirmSc
       newOneTimeAddonIds?: number[];
       newDropoffLocationId?: number;
       newDropoffLocationAddress?: string;
+      expectedCurrentDropoffDatetime?: string;
+      expectedExtensionTotal?: number;
     };
     const trimmedEmail = email.trim().toLowerCase();
     const deps = req.app.locals.deps;
@@ -643,6 +552,8 @@ router.post('/confirm', extendConfirmLimiter, validateBody(PublicExtendConfirmSc
       newOneTimeAddonIds,
       newDropoffLocationId,
       newDropoffLocationAddress,
+      expectedCurrentDropoffDatetime,
+      expectedExtensionTotal,
       deps,
     });
     if (activeOutcome.kind === 'error') {
@@ -721,18 +632,66 @@ router.post('/confirm', extendConfirmLimiter, validateBody(PublicExtendConfirmSc
   }
 });
 
-// ── Staff Extend Confirm (authenticated, supports overrideDailyRate + payment) ──
+async function loadStaffExtensionTarget(orderId: string) {
+  const sb = getSupabaseClient();
+  const { data: order, error } = await sb.from('orders')
+    .select('id,store_id,booking_token,customer_id,status').eq('id', orderId).maybeSingle();
+  if (error) throw new Error(`Failed to load extension order: ${error.message}`);
+  if (!order || order.status !== 'active') return null;
+  const { data: customer, error: customerError } = await sb.from('customers')
+    .select('email').eq('id', order.customer_id).maybeSingle();
+  if (customerError) throw new Error(`Failed to load extension customer: ${customerError.message}`);
+  return { ...order, email: String(customer?.email ?? '').trim().toLowerCase() };
+}
+
+staffRouter.post('/preview', authenticate, requirePermission(Permission.EditOrders),
+  validateBody(StaffExtendOrderSchema), async (req, res, next) => {
+    try {
+      const body = req.body as {
+        orderId: string; newDropoffDatetime: string; overrideDailyRate?: number;
+        discountType?: 'percentage' | 'fixed'; discountValue?: number;
+        newOneTimeAddonIds?: number[]; newPerDayAddonIds?: number[];
+        newDropoffLocationId?: number;
+      };
+      const order = await loadStaffExtensionTarget(body.orderId);
+      if (!order) {
+        res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Active order not found.' } });
+        return;
+      }
+      if (!req.user!.storeIds.includes(COMPANY_STORE_ID) && !req.user!.storeIds.includes(order.store_id)) {
+        res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Store access required.' } });
+        return;
+      }
+      const outcome = await resolveExtensionForActive({
+        ...body, orderReference: order.booking_token ?? order.id, orderId: order.id,
+        expectedStoreId: order.store_id, trimmedEmail: order.email,
+        overrideDailyRate: body.overrideDailyRate, previewOnly: true,
+        isPaid: false, paymentMethodId: 'pending',
+        emailErrorLabel: '[extend-staff-preview]', deps: req.app.locals.deps,
+      });
+      if (outcome.kind !== 'success') {
+        res.status(409).json({ success: false, error: { code: 'EXTENSION_UNAVAILABLE',
+          message: outcome.kind === 'error' ? outcome.reason : 'Active order not found.' } });
+        return;
+      }
+      res.json({ success: true, data: {
+        extensionDays: outcome.extensionDays, dailyRate: outcome.dailyRate,
+        extensionTotal: outcome.extensionCost, bracketLabel: getDayBracketLabel(outcome.extensionDays),
+      } });
+    } catch (err) { next(err); }
+  });
+
+// ── Staff Extend Confirm (authenticated, order-ID based) ──
 
 staffRouter.post(
   '/confirm',
   authenticate,
   requirePermission(Permission.EditOrders),
-  validateBody(StaffExtendConfirmSchema),
+  validateBody(StaffExtendOrderSchema),
   async (req, res, next) => {
     try {
       const {
-        orderReference,
-        email,
+        orderId,
         newDropoffDatetime,
         overrideDailyRate,
         discountType,
@@ -744,15 +703,13 @@ staffRouter.post(
         newDropoffLocationId,
         newDropoffLocationAddress,
       } = req.body as {
-        orderReference: string;
-        email: string;
+        orderId: string;
         newDropoffDatetime: string;
         overrideDailyRate?: number;
         discountType?: 'percentage' | 'fixed';
         discountValue?: number;
         paymentStatus?: 'paid' | 'unpaid';
         paymentMethod?: string;
-        paymentAccountId?: string;
         newOneTimeAddonIds?: number[];
         newPerDayAddonIds?: number[];
         newDropoffLocationId?: number;
@@ -761,12 +718,23 @@ staffRouter.post(
 
       const isPaid = paymentStatus === 'paid';
       const effectivePaymentMethodId = isPaid && paymentMethod ? paymentMethod : 'pending';
-
-      const trimmedEmail = email.trim().toLowerCase();
+      const order = await loadStaffExtensionTarget(orderId);
+      if (!order) {
+        res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Active order not found.' } });
+        return;
+      }
+      if (!req.user!.storeIds.includes(COMPANY_STORE_ID) && !req.user!.storeIds.includes(order.store_id)) {
+        res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Store access required.' } });
+        return;
+      }
+      const orderReference = order.booking_token ?? order.id;
+      const trimmedEmail = order.email;
       const deps = req.app.locals.deps;
 
       const activeOutcome = await resolveExtensionForActive({
         orderReference,
+        orderId,
+        expectedStoreId: order.store_id,
         trimmedEmail,
         newDropoffDatetime,
         overrideDailyRate,
@@ -786,7 +754,7 @@ staffRouter.post(
         return;
       }
       if (activeOutcome.kind === 'success') {
-        void sendExtensionReceivedMessage({
+        if (trimmedEmail) void sendExtensionReceivedMessage({
           orderReference,
           email: trimmedEmail,
           newDropoffDatetime: activeOutcome.newDropoffDatetime,
@@ -810,40 +778,7 @@ staffRouter.post(
         return;
       }
 
-      const rawOutcome = await resolveExtensionForRaw({
-        orderReference,
-        trimmedEmail,
-        newDropoffDatetime,
-        overrideDailyRate,
-        discountType,
-        discountValue,
-        isPaid,
-        paymentMethodId: effectivePaymentMethodId,
-        emailErrorLabel: '[extend-email] Staff raw path error:',
-        deps,
-      });
-      if (rawOutcome.kind === 'error') {
-        res.json({ success: true, data: { success: false, reason: rawOutcome.reason } });
-        return;
-      }
-      if (rawOutcome.kind === 'success') {
-        void sendExtensionReceivedMessage({
-          orderReference,
-          email: trimmedEmail,
-          newDropoffDatetime: rawOutcome.newDropoffDatetime,
-          outstandingBalance: rawOutcome.outstandingBalance,
-        }).catch((err) => {
-          logger.warn(
-            { orderReference, error: err instanceof Error ? err.message : String(err) },
-            '[extend-whatsapp] Failed to send staff raw extension message',
-          );
-        });
-
-        res.json({ success: true, data: { success: true, newDropoffDatetime: rawOutcome.newDropoffDatetime, extensionCost: rawOutcome.extensionCost } });
-        return;
-      }
-
-      res.json({ success: true, data: { success: false, reason: 'Booking not found. Please check your details and try again.' } });
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Active order not found.' } });
     } catch (err) {
       next(err);
     }

@@ -275,7 +275,7 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
           </div>
 
           {offerCardLink && createdRawId && (
-            <StaffPaymentLink target={{ kind: 'raw', id: createdRawId }} />
+        <StaffPaymentLink target={{ kind: 'raw', id: createdRawId }} includeDeposit={depositAmount > 0} />
           )}
 
           {(depositAmount > 0 || quote) && (

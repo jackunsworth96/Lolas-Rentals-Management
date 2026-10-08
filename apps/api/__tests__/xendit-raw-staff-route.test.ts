@@ -94,11 +94,11 @@ describe('staff raw-booking Xendit links', () => {
     fixture();
     const res = response();
     await handler('/raw-orders/:rawOrderId/preview')(
-      { params: { rawOrderId: RAW_ID }, user: { storeIds: ['store-lolas'] } }, res, vi.fn(),
+      { params: { rawOrderId: RAW_ID }, query: {}, user: { storeIds: ['store-lolas'] } }, res, vi.fn(),
     );
     expect(res.json).toHaveBeenCalledWith({ success: true, data: {
       originalQuotePHP: 1000, principalPHP: 1000, surchargePHP: 42.5,
-      amountPHP: 1042.5, requiresAcknowledgement: true,
+      depositPHP: 0, amountPHP: 1042.5, requiresAcknowledgement: true,
     } });
   });
 
