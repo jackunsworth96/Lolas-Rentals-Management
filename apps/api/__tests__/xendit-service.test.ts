@@ -6,6 +6,7 @@ import {
   getXenditPaymentRequest,
   createXenditPaymentSession,
   isXenditDashboardTestWebhook,
+  isXenditDashboardRefundTestWebhook,
   parseXenditWebhookPayload,
   verifyXenditCallbackToken,
   verifyXenditReturnState,
@@ -262,6 +263,33 @@ describe('Xendit service', () => {
         currency: 'PHP',
         status: 'COMPLETED',
       },
+    })).toBe(false);
+  });
+
+  it.each([
+    ['refund.succeeded', 'SUCCEEDED'],
+    ['refund.failed', 'FAILED'],
+  ])('recognizes the %s dashboard refund fixture only', (event, status) => {
+    const fixture = {
+      event,
+      business_id: 'sample_business_id',
+      created: '2021-12-31T04:08:38.833Z',
+      data: {
+        id: 'rfd-bec34fbf-5623-4994-8c51-7249fb43f0d7',
+        payment_id: 'ddpy-6664d032-b92a-43ca-b0e1-6e341707abc0',
+        reference_id: '239605b3-48dd-4bb2-9f4b-518c51dc9cdd',
+        amount: '1500',
+        currency: 'IDR',
+        status,
+      },
+    };
+    expect(isXenditDashboardRefundTestWebhook(fixture)).toBe(true);
+    expect(isXenditDashboardRefundTestWebhook({ ...fixture, business_id: 'real-business-id' })).toBe(false);
+    expect(isXenditDashboardRefundTestWebhook({
+      ...fixture, data: { ...fixture.data, currency: 'PHP' },
+    })).toBe(false);
+    expect(isXenditDashboardRefundTestWebhook({
+      ...fixture, data: { ...fixture.data, status: status === 'SUCCEEDED' ? 'FAILED' : 'SUCCEEDED' },
     })).toBe(false);
   });
 });

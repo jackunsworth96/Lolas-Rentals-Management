@@ -41,6 +41,19 @@ const XenditDashboardTestWebhookSchema = z.object({
   }).passthrough(),
 }).passthrough();
 
+const XenditDashboardRefundTestWebhookSchema = z.object({
+  event: z.enum(['refund.succeeded', 'refund.failed']),
+  business_id: z.literal('sample_business_id'),
+  created: z.string().datetime(),
+  data: z.object({
+    id: z.string().startsWith('rfd-'),
+    reference_id: z.string().min(1),
+    payment_id: z.string().min(1),
+    currency: z.literal('IDR'),
+    status: z.enum(['SUCCEEDED', 'FAILED']),
+  }).passthrough(),
+}).passthrough();
+
 export interface XenditSessionItem {
   referenceId: string;
   name: string;
@@ -283,6 +296,14 @@ export function isXenditDashboardTestWebhook(body: unknown): boolean {
   return parsed.data.event === 'payment_session.completed'
     ? parsed.data.data.status === 'COMPLETED'
     : parsed.data.data.status === 'EXPIRED';
+}
+
+export function isXenditDashboardRefundTestWebhook(body: unknown): boolean {
+  const parsed = XenditDashboardRefundTestWebhookSchema.safeParse(body);
+  if (!parsed.success) return false;
+  return parsed.data.event === 'refund.succeeded'
+    ? parsed.data.data.status === 'SUCCEEDED'
+    : parsed.data.data.status === 'FAILED';
 }
 
 export function parseXenditWebhookPayload(body: unknown): XenditWebhookPayload {

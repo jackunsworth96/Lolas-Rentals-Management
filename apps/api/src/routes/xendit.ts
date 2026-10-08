@@ -16,6 +16,7 @@ import {
   cancelXenditPaymentSession,
   createXenditReturnState,
   isXenditDashboardTestWebhook,
+  isXenditDashboardRefundTestWebhook,
   isXenditEnabled,
   parseXenditWebhookPayload,
   verifyXenditCallbackToken,
@@ -1802,7 +1803,7 @@ publicXenditRouter.post(
         return;
       }
 
-      if (isXenditDashboardTestWebhook(req.body)) {
+      if (isXenditDashboardTestWebhook(req.body) || isXenditDashboardRefundTestWebhook(req.body)) {
         logger.info('Acknowledged Xendit dashboard webhook verification');
         res.json({ success: true, data: { received: true, verification: true } });
         return;
