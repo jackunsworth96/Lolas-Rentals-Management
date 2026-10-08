@@ -9,6 +9,7 @@ export interface OrderPaymentSummary {
   rentalPaid: number;
   depositCollected: number;
   depositRefunded: number;
+  depositApplied: number;
   depositHeld: number;
   pendingExtensions: number;
 }
@@ -17,6 +18,7 @@ export function summarizeOrderPayments(payments: readonly OrderPaymentAmount[]):
   let rentalCents = 0;
   let collectedCents = 0;
   let refundedCents = 0;
+  let appliedCents = 0;
   let pendingExtensionCents = 0;
 
   for (const payment of payments) {
@@ -27,6 +29,9 @@ export function summarizeOrderPayments(payments: readonly OrderPaymentAmount[]):
       collectedCents += amountCents;
     } else if (type === 'deposit_refund') {
       refundedCents += amountCents;
+    } else if (type === 'deposit_applied') {
+      appliedCents += amountCents;
+      rentalCents += amountCents;
     } else if (type === 'refund') {
       rentalCents -= amountCents;
     } else if (type === 'extension' && payment.settlementStatus === 'pending') {
@@ -46,7 +51,8 @@ export function summarizeOrderPayments(payments: readonly OrderPaymentAmount[]):
     rentalPaid: rentalCents / 100,
     depositCollected: collectedCents / 100,
     depositRefunded: refundedCents / 100,
-    depositHeld: Math.max(0, collectedCents - refundedCents) / 100,
+    depositApplied: appliedCents / 100,
+    depositHeld: Math.max(0, collectedCents - refundedCents - appliedCents) / 100,
     pendingExtensions: pendingExtensionCents / 100,
   };
 }

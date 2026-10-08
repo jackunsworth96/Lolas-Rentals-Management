@@ -1402,6 +1402,17 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
         .select('amount').eq('raw_order_id', rawOrderCheck.id).eq('payment_type', 'card_xendit');
       if (paidError) throw new Error(`Failed to verify reservation payment: ${paidError.message}`);
       if (paidRows && paidRows.length > 0) {
+        const { data: depositRows, error: depositError } = await supabase.from('payments')
+          .select('amount').eq('raw_order_id', rawOrderCheck.id)
+          .eq('payment_type', 'deposit').eq('payment_method_id', 'xendit');
+        if (depositError) throw new Error(`Failed to verify reservation deposit: ${depositError.message}`);
+        const depositPaid = roundMoney((depositRows ?? []).reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0));
+        if (depositPaid > 0 && (body.depositCollected || !sameMoney(depositPaid, body.securityDeposit))) {
+          res.status(409).json({ success: false, error: {
+            code: 'DEPOSIT_TOTAL_MISMATCH', message: 'The confirmed online deposit must match this reservation and cannot be collected again.',
+          } });
+          return;
+        }
         const confirmed = roundMoney(paidRows.reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0));
         const revisedRental = roundMoney(body.vehicleAssignments.reduce((sum, assignment) =>
           sum + assignment.rentalRate * assignment.rentalDaysCount

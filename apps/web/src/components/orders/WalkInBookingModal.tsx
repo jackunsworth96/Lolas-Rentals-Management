@@ -325,7 +325,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
         helmetNumbers: helmetNumbers.trim() || undefined,
         staffNotes: staffNotes.trim() || undefined,
         paymentMethod: paymentMethod as 'cash' | 'gcash' | 'card' | 'bank_transfer' | 'xendit',
-        depositCollected: depositPaid,
+        depositCollected: paymentMethod === 'xendit' ? false : depositPaid,
         depositAmount: depositPaid ? depositAmount : 0,
         depositMethod: depositMethod as 'cash' | 'gcash' | 'card' | 'bank_transfer',
         grandTotal: grandTotalLocal,
@@ -393,7 +393,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
           </div>
 
           {paymentMethod === 'xendit' && createdOrderId && (
-            <StaffPaymentLink target={{ kind: 'rental', id: createdOrderId }} />
+        <StaffPaymentLink target={{ kind: 'rental', id: createdOrderId }} includeDeposit={depositPaid && depositAmount > 0} />
           )}
 
           {paymentMethod !== 'xendit' && <div>

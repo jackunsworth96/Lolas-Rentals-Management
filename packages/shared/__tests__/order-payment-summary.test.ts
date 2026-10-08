@@ -7,6 +7,7 @@ describe('summarizeOrderPayments', () => {
       rentalPaid: 500,
       depositCollected: 0,
       depositRefunded: 0,
+      depositApplied: 0,
       depositHeld: 0,
       pendingExtensions: 0,
     });
@@ -22,6 +23,7 @@ describe('summarizeOrderPayments', () => {
       rentalPaid: 400,
       depositCollected: 1000,
       depositRefunded: 250,
+      depositApplied: 0,
       depositHeld: 750,
       pendingExtensions: 0,
     });
@@ -34,5 +36,14 @@ describe('summarizeOrderPayments', () => {
       { paymentType: 'addon', amount: 50, paymentMethodId: 'xendit', settlementStatus: 'pending' },
       { paymentType: 'card_xendit', amount: 150 },
     ])).toMatchObject({ rentalPaid: 150, pendingExtensions: 75 });
+  });
+
+  it('moves an applied deposit from held liability into rental paid without a new receipt', () => {
+    expect(summarizeOrderPayments([
+      { paymentType: 'card_xendit', amount: 500 },
+      { paymentType: 'deposit', amount: 1000 },
+      { paymentType: 'deposit_refund', amount: 600 },
+      { paymentType: 'deposit_applied', amount: 400 },
+    ])).toMatchObject({ rentalPaid: 900, depositHeld: 0, depositApplied: 400, depositRefunded: 600 });
   });
 });

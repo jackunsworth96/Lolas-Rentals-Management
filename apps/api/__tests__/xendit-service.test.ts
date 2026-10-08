@@ -74,6 +74,30 @@ describe('Xendit service', () => {
     });
   });
 
+  it('restricts a deposit checkout to cards even when global channels include wallets', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      payment_session_id: 'ps-deposit', reference_id: 'XEN123', status: 'ACTIVE',
+      payment_link_url: 'https://checkout.xendit.test/ps-deposit',
+      expires_at: '2026-10-09T12:00:00.000Z',
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await createXenditPaymentSession({
+      referenceId: 'XEN123', amountPHP: 1200, description: 'Rental and deposit',
+      successReturnUrl: 'https://example.test/success',
+      cancelReturnUrl: 'https://example.test/cancel',
+      items: [
+        { referenceId: 'rental', name: 'Rental', amountPHP: 200 },
+        { referenceId: 'deposit', name: 'Refundable deposit', amountPHP: 1000 },
+      ],
+      allowedPaymentChannels: ['CARDS'],
+    });
+
+    const body = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(body.allowed_payment_channels).toEqual(['CARDS']);
+    expect(body.items).toHaveLength(2);
+  });
+
   it('surfaces the Xendit error code and message', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
       error_code: 'INVALID_REQUEST',

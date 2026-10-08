@@ -54,6 +54,7 @@ export interface CreateXenditSessionParams {
   successReturnUrl: string;
   cancelReturnUrl: string;
   items: XenditSessionItem[];
+  allowedPaymentChannels?: string[];
 }
 
 export interface XenditSessionResult {
@@ -105,10 +106,11 @@ export async function createXenditPaymentSession(
   if (!secretKey) throw new Error('XENDIT_SECRET_KEY environment variable is not set');
   const baseUrl = (process.env.XENDIT_BASE_URL ?? 'https://api.xendit.co').replace(/\/+$/, '');
 
-  const allowedChannels = process.env.XENDIT_ALLOWED_PAYMENT_CHANNELS
+  const configuredChannels = process.env.XENDIT_ALLOWED_PAYMENT_CHANNELS
     ?.split(',')
     .map((value) => value.trim())
     .filter(Boolean);
+  const allowedChannels = params.allowedPaymentChannels ?? configuredChannels;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
@@ -295,3 +297,60 @@ export function parseXenditWebhookPayload(body: unknown): XenditWebhookPayload {
   }
   return parsed;
 }
+
+const XenditRefundSchema = z.object({
+  id: z.string().min(1),
+  reference_id: z.string().min(1),
+  payment_request_id: z.string().min(1),
+  amount: z.number().positive(),
+  currency: z.literal('PHP'),
+  status: z.enum(['PENDING', 'SUCCEEDED', 'FAILED', 'CANCELLED']),
+});
+
+export type XenditRefundResult = z.infer<typeof XenditRefundSchema>;
+
+export async function createXenditRefund(input: {
+  referenceId: string; paymentRequestId: string; amountPHP: number;
+  reason: 'CANCELLATION' | 'REQUESTED_BY_CUSTOMER' | 'OTHERS';
+}): Promise<XenditRefundResult> {
+  const secretKey = process.env.XENDIT_SECRET_KEY?.trim();
+  if (!secretKey) throw new Error('XENDIT_SECRET_KEY environment variable is not set');
+  const baseUrl = (process.env.XENDIT_BASE_URL ?? 'https://api.xendit.co').replace(/\/+$/, '');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await fetch(`${baseUrl}/refunds`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${secretKey}:`).toString('base64')}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        reference_id: input.referenceId,
+        payment_request_id: input.paymentRequestId,
+        currency: 'PHP', amount: input.amountPHP, reason: input.reason,
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`Xendit refund request failed: HTTP ${response.status}`);
+    const refund = XenditRefundSchema.parse(await response.json());
+    if (refund.reference_id !== input.referenceId
+      || refund.payment_request_id !== input.paymentRequestId
+      || refund.amount !== input.amountPHP) {
+      throw new Error('Xendit refund response differs from the reserved request');
+    }
+    return refund;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export const XenditRefundWebhookSchema = z.object({
+  event: z.enum(['refund.succeeded', 'refund.failed']),
+  business_id: z.string().min(1),
+  created: z.string().datetime(),
+  data: XenditRefundSchema.extend({
+    payment_id: z.string().nullable().optional(),
+    payment_request_id: z.string().min(1).nullable().optional(),
+  }).passthrough(),
+}).passthrough();

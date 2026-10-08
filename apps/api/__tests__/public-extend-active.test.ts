@@ -35,6 +35,7 @@ function resultQuery<T>(getResult: () => { data: T; error: null }) {
     select: vi.fn(() => query),
     in: vi.fn(() => query),
     eq: vi.fn(() => query),
+    or: vi.fn(() => query),
     not: vi.fn(() => query),
     ilike: vi.fn(() => query),
     limit: vi.fn(async () => getResult()),
@@ -99,19 +100,20 @@ function activeBookingClient(options?: {
       }
     }),
     rpc: vi.fn(async (name: string, args: Record<string, unknown>) => {
-      expect(name).toBe('confirm_extend_order_atomic');
-      state.item.dropoff_datetime = String(args.p_new_dropoff);
-      state.item.rental_days_count = Number(args.p_new_days);
-      state.order.final_total += Number(args.p_total_delta);
-      state.order.balance_due += Number(args.p_total_delta);
+      expect(name).toBe('confirm_extend_order_guarded_atomic');
+      const payload = args.p_payload as Record<string, unknown>;
+      state.item.dropoff_datetime = String(payload.newDropoff);
+      state.item.rental_days_count = Number(payload.newDays);
+      state.order.final_total += Number(payload.totalDelta);
+      state.order.balance_due += Number(payload.totalDelta);
       state.payments.push({
-        id: args.p_payment_id,
-        order_id: args.p_order_id,
+        id: payload.paymentId,
+        order_id: payload.orderId,
         raw_order_id: null,
-        order_item_id: args.p_order_item_id_fk,
-        amount: args.p_amount,
+        order_item_id: payload.orderItemId,
+        amount: payload.amount,
         payment_type: 'extension',
-        settlement_status: args.p_settlement_status,
+        settlement_status: payload.settlementStatus,
       });
       return { data: { success: true }, error: null };
     }),
@@ -173,6 +175,25 @@ describe('active booking extension resolver', () => {
     expect(client.rpc).toHaveBeenCalledTimes(1);
   });
 
+  it('charges a cheaper extension bracket without replacing the original rental rate', async () => {
+    const { client, state } = activeBookingClient();
+    mocks.computeQuote.mockResolvedValue({ rentalSubtotal: 800 });
+    mocks.getSupabaseClient.mockReturnValue(client);
+
+    const result = await resolveExtensionForActive({
+      orderReference: 'LR-0720-2C2D', trimmedEmail: 'customer@example.com',
+      newDropoffDatetime: '2026-07-24T11:15:00+08:00', isPaid: false,
+      paymentMethodId: 'pending', emailErrorLabel: '[test]',
+      deps: { bookingPort: {}, configRepo: {
+        getLocations: async () => [{ id: 1, deliveryCost: 0, collectionCost: 0 }],
+      } },
+    });
+
+    expect(result).toMatchObject({ kind: 'success', extensionCost: 800 });
+    expect(state.item.rental_rate).toBe(500);
+    expect((client.rpc.mock.calls[0][1].p_payload as Record<string, unknown>).newRentalRate).toBeUndefined();
+  });
+
   it('includes recurring per-day add-ons in the pending balance and customer-facing extension total', async () => {
     const { client, state } = activeBookingClient({
       addons: [{
@@ -217,17 +238,76 @@ describe('active booking extension resolver', () => {
       settlement_status: 'pending',
     });
     expect(client.rpc).toHaveBeenCalledWith(
-      'confirm_extend_order_atomic',
+      'confirm_extend_order_guarded_atomic',
       expect.objectContaining({
-        p_total_delta: 1120,
-        p_amount: 1120,
-        p_addon_updates: [{
+        p_payload: expect.objectContaining({
+        totalDelta: 1120,
+        amount: 1120,
+        addonUpdates: [{
           id: 'addon-pom',
           name: 'Peace of Mind Cover',
           delta: 190,
           new_total: 380,
+          expected_total: 190,
         }],
+        }),
       }),
     );
+  });
+
+  it('previews the same full total as confirmation without mutating the booking', async () => {
+    const { client, state } = activeBookingClient({ addons: [{
+      id: 'addon-pom', addon_name: 'Peace of Mind Cover', addon_type: 'per_day',
+      addon_price: 95, quantity: 2, total_amount: 190,
+    }] });
+    mocks.getSupabaseClient.mockReturnValue(client);
+    const input = {
+      orderReference: 'LR-0720-2C2D', trimmedEmail: 'customer@example.com',
+      newDropoffDatetime: '2026-07-24T11:15:00+08:00',
+      overrideDailyRate: undefined, isPaid: false, paymentMethodId: 'pending',
+      emailErrorLabel: '[test]', deps: {
+        bookingPort: {}, configRepo: { getLocations: async () => [{
+          id: 1, deliveryCost: 0, collectionCost: 0,
+        }] },
+      },
+    };
+    const preview = await resolveExtensionForActive({ ...input, previewOnly: true });
+    expect(preview).toMatchObject({ kind: 'success', extensionCost: 1190, extensionDays: 2 });
+    expect(client.rpc).not.toHaveBeenCalled();
+    expect(state.item.dropoff_datetime).toBe('2026-07-22T11:15:00+08:00');
+    const confirmed = await resolveExtensionForActive(input);
+    expect(confirmed).toMatchObject({ kind: 'success', extensionCost: 1190 });
+  });
+
+  it('rejects a repeated confirmation after the stored return date changes', async () => {
+    const { client } = activeBookingClient();
+    mocks.getSupabaseClient.mockReturnValue(client);
+    const result = await resolveExtensionForActive({
+      orderReference: 'LR-0720-2C2D', trimmedEmail: 'customer@example.com',
+      newDropoffDatetime: '2026-07-24T11:15:00+08:00',
+      expectedCurrentDropoffDatetime: '2026-07-21T11:15:00+08:00',
+      overrideDailyRate: undefined, isPaid: false, paymentMethodId: 'pending',
+      emailErrorLabel: '[test]', deps: {
+        bookingPort: {}, configRepo: { getLocations: async () => [{ id: 1, deliveryCost: 0, collectionCost: 0 }] },
+      },
+    });
+    expect(result).toMatchObject({ kind: 'error', reason: expect.stringContaining('return date changed') });
+    expect(client.rpc).not.toHaveBeenCalled();
+  });
+
+  it('rejects a quote changed between preview and confirmation', async () => {
+    const { client } = activeBookingClient();
+    mocks.getSupabaseClient.mockReturnValue(client);
+    const result = await resolveExtensionForActive({
+      orderReference: 'LR-0720-2C2D', trimmedEmail: 'customer@example.com',
+      newDropoffDatetime: '2026-07-24T11:15:00+08:00',
+      expectedExtensionTotal: 900,
+      overrideDailyRate: undefined, isPaid: false, paymentMethodId: 'pending',
+      emailErrorLabel: '[test]', deps: {
+        bookingPort: {}, configRepo: { getLocations: async () => [{ id: 1, deliveryCost: 0, collectionCost: 0 }] },
+      },
+    });
+    expect(result).toMatchObject({ kind: 'error', reason: expect.stringContaining('price changed') });
+    expect(client.rpc).not.toHaveBeenCalled();
   });
 });

@@ -1,29 +1,34 @@
 import { usePaymentMethods } from '../../api/config.js';
+import { summarizeOrderPayments } from '@lolas/shared';
 import { formatCurrency } from '../../utils/currency.js';
 import { formatDate } from '../../utils/date.js';
+import { XenditRefundPanel } from './XenditRefundPanel.js';
 import type { OrderPayment } from './useOrderDetail.js';
 
 interface OrderDetailPaymentsTabProps {
+  orderId: string;
+  storeId: string;
   payments: OrderPayment[];
   totalPaid: number;
+  securityDeposit: number;
 }
 
-export function OrderDetailPaymentsTab({ payments, totalPaid }: OrderDetailPaymentsTabProps) {
+export function OrderDetailPaymentsTab({ orderId, storeId, payments, totalPaid, securityDeposit }: OrderDetailPaymentsTabProps) {
   const { data: paymentMethods = [] } = usePaymentMethods() as {
     data: Array<{ id: string; name: string }> | undefined;
   };
   const pmLookup = new Map(paymentMethods.map((pm) => [pm.id, pm]));
-
-  if (payments.length === 0) {
-    return (
-      <div className="space-y-2">
-        <p className="text-sm text-charcoal-brand/60">No payments recorded.</p>
-      </div>
-    );
-  }
+  const summary = summarizeOrderPayments(payments);
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
+      <dl className="grid grid-cols-2 gap-x-5 gap-y-2 border-b border-gray-200 pb-4 text-sm sm:grid-cols-4">
+        <div><dt className="text-gray-600">Rental paid</dt><dd className="font-semibold">{formatCurrency(summary.rentalPaid)}</dd></div>
+        <div><dt className="text-gray-600">Deposit held</dt><dd className="font-semibold">{formatCurrency(summary.depositHeld)}</dd></div>
+        <div><dt className="text-gray-600">Deposit due</dt><dd className="font-semibold">{formatCurrency(Math.max(0, securityDeposit - summary.depositCollected))}</dd></div>
+        <div><dt className="text-gray-600">Deposit refunded</dt><dd className="font-semibold">{formatCurrency(summary.depositRefunded)}</dd></div>
+      </dl>
+      {payments.length === 0 ? <p className="text-sm text-charcoal-brand/60">No payments recorded.</p> : (
       <table className="min-w-full text-sm">
         <thead>
           <tr className="border-b text-left text-charcoal-brand/60">
@@ -37,7 +42,7 @@ export function OrderDetailPaymentsTab({ payments, totalPaid }: OrderDetailPayme
         <tbody>
           {payments.map((p, idx) => {
             const isExt = p.paymentType === 'extension';
-            const isRefund = p.paymentType === 'refund';
+            const isRefund = p.paymentType === 'refund' || p.paymentType === 'deposit_refund';
             const isReturnCharge = p.paymentType === 'return_charge';
             const isAddonIou = p.paymentType === 'addon' && ['pending', 'xendit'].includes(p.paymentMethodId)
               && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed');
@@ -48,7 +53,11 @@ export function OrderDetailPaymentsTab({ payments, totalPaid }: OrderDetailPayme
                   {isReturnCharge ? (
                     <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-800">Return charge</span>
                   ) : isRefund ? (
-                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">Refund</span>
+                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">
+                      {p.paymentType === 'deposit_refund' ? 'Deposit refund' : 'Rental refund'}
+                    </span>
+                  ) : p.paymentType === 'deposit_applied' ? (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Deposit applied to charge</span>
                   ) : isExt ? (
                     <span className="inline-flex items-center gap-1.5">
                       <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Extension</span>
@@ -86,6 +95,8 @@ export function OrderDetailPaymentsTab({ payments, totalPaid }: OrderDetailPayme
           </tr>
         </tfoot>
       </table>
+      )}
+      <XenditRefundPanel orderId={orderId} storeId={storeId} payments={payments} />
     </div>
   );
 }

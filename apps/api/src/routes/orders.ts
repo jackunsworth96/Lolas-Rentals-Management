@@ -894,16 +894,36 @@ router.post('/:id/refund', requirePermission(Permission.EditOrders), blockLiveXe
   transactionDate: z.string(),
 })), async (req, res, next) => {
   try {
+    const { data: onlinePayments, error: onlineError } = await supabase.from('payments')
+      .select('id').eq('order_id', req.params.id).eq('payment_method_id', 'xendit')
+      .in('payment_type', ['card_xendit', 'deposit']).limit(1);
+    if (onlineError) throw new Error(`Failed to verify online payment: ${onlineError.message}`);
+    if (onlinePayments && onlinePayments.length > 0) {
+      res.status(409).json({ success: false, error: {
+        code: 'XENDIT_REFUND_REQUIRED', message: 'Use the administrator Xendit refund workflow for this online-paid order.',
+      } });
+      return;
+    }
     const { refundOrder } = await import('../use-cases/orders/refund-order.js');
     const result = await refundOrder(req.app.locals.deps, { orderId: req.params.id, ...req.body });
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });
 
-router.patch('/:id/cancel', requirePermission(Permission.CancelOrders), validateBody(z.object({
+router.patch('/:id/cancel', requirePermission(Permission.CancelOrders), blockLiveXenditOrderMutation, validateBody(z.object({
   reason: z.string().trim().min(1, 'Cancellation reason is required').max(500),
 })), async (req, res, next) => {
   try {
+    const { data: onlinePayments, error: onlineError } = await supabase.from('payments')
+      .select('id').eq('order_id', req.params.id).eq('payment_method_id', 'xendit')
+      .in('payment_type', ['card_xendit', 'deposit']).limit(1);
+    if (onlineError) throw new Error(`Failed to verify online payment: ${onlineError.message}`);
+    if (onlinePayments && onlinePayments.length > 0) {
+      res.status(409).json({ success: false, error: {
+        code: 'XENDIT_CANCELLATION_DECISION_REQUIRED', message: 'An administrator must choose the online refund and deposit disposition before cancellation.',
+      } });
+      return;
+    }
     const reason = (req.body as { reason: string }).reason;
     const { data, error } = await supabase.rpc('cancel_activated_order_atomic', {
       p_order_id: req.params.id,

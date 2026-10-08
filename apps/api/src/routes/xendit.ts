@@ -10,6 +10,7 @@ import { requirePermission } from '../middleware/authorize.js';
 import { escapeIlike, orderReferenceLookupVariants } from './public-extend-helpers.js';
 import {
   createXenditPaymentSession,
+  createXenditRefund,
   getXenditPaymentSession,
   getXenditPaymentRequest,
   cancelXenditPaymentSession,
@@ -19,6 +20,7 @@ import {
   parseXenditWebhookPayload,
   verifyXenditCallbackToken,
   verifyXenditReturnState,
+  XenditRefundWebhookSchema,
   type XenditSessionResult,
 } from '../services/xendit.js';
 
@@ -51,6 +53,7 @@ const reconciliationReleaseSchema = z.object({
 const rawStaffSessionSchema = z.object({
   rawOrderId: z.string().uuid(),
   acknowledgePriceChange: z.boolean().default(false),
+  includeDeposit: z.boolean().default(false),
 });
 
 type RawStaffBooking = {
@@ -64,6 +67,7 @@ type RawStaffBooking = {
   web_card_fee_surcharge: number | null;
   transfer_amount: number | null;
   charity_donation: number | null;
+  payload: { deposit_amount?: number | string } | null;
 };
 
 const onlineAddonsSchema = z.object({
@@ -71,14 +75,30 @@ const onlineAddonsSchema = z.object({
     .min(1).max(20),
 });
 
-function staffRawQuote(booking: RawStaffBooking, method: PaymentMethodRow) {
+const refundRequestSchema = z.object({
+  sourcePaymentId: z.string().min(1),
+  amountPHP: z.number().positive().refine((amount) => roundMoney(amount) === amount),
+  reason: z.string().trim().min(10).max(500),
+});
+
+const cancelWithRefundsSchema = z.object({
+  reason: z.string().trim().min(10).max(500),
+  refunds: z.array(refundRequestSchema.pick({ sourcePaymentId: true, amountPHP: true })).max(20),
+  depositChargePHP: z.number().min(0).refine((amount) => roundMoney(amount) === amount),
+  depositChargeReason: z.string().trim().max(500).nullable().optional(),
+});
+
+function staffRawQuote(booking: RawStaffBooking, method: PaymentMethodRow, includeDeposit = false) {
   const originalQuotePHP = roundMoney(Number(booking.web_quote_raw ?? 0));
   const principalPHP = roundMoney(originalQuotePHP - Number(booking.web_card_fee_surcharge ?? 0));
   const surchargePHP = booking.web_payment_method === method.id
     ? roundMoney(Number(booking.web_card_fee_surcharge ?? 0))
     : roundMoney(Math.max(0, principalPHP - Number(booking.transfer_amount ?? 0)
       - Number(booking.charity_donation ?? 0)) * Number(method.surcharge_percent ?? 0) / 100);
-  return { originalQuotePHP, principalPHP, surchargePHP, amountPHP: roundMoney(principalPHP + surchargePHP),
+  const depositPHP = includeDeposit && booking.booking_channel === 'walk_in'
+    ? roundMoney(Number(booking.payload?.deposit_amount ?? 0)) : 0;
+  return { originalQuotePHP, principalPHP, surchargePHP, depositPHP,
+    amountPHP: roundMoney(principalPHP + surchargePHP + depositPHP),
     requiresAcknowledgement: booking.web_payment_method !== method.id && roundMoney(principalPHP + surchargePHP) > originalQuotePHP };
 }
 
@@ -766,7 +786,7 @@ publicXenditRouter.post(
 
 async function loadStaffRawBooking(rawOrderId: string): Promise<RawStaffBooking | null> {
   const { data, error } = await getSupabaseClient().from('orders_raw')
-    .select('id, store_id, status, booking_channel, order_reference, web_payment_method, web_quote_raw, web_card_fee_surcharge, transfer_amount, charity_donation')
+    .select('id, store_id, status, booking_channel, order_reference, web_payment_method, web_quote_raw, web_card_fee_surcharge, transfer_amount, charity_donation, payload')
     .eq('id', rawOrderId).maybeSingle();
   if (error) throw new Error(`Failed to load raw booking: ${error.message}`);
   return data as RawStaffBooking | null;
@@ -795,7 +815,11 @@ staffXenditRouter.get('/raw-orders/:rawOrderId/preview', authenticate, requirePe
       if (existingPayments && existingPayments.length > 0) {
         res.status(409).json({ success: false, error: { code: 'BOOKING_ALREADY_PAID', message: 'This booking has already been paid online' } }); return;
       }
-      res.json({ success: true, data: staffRawQuote(booking, method) });
+      const includeDeposit = req.query.includeDeposit === 'true';
+      if (includeDeposit && booking.booking_channel !== 'walk_in') {
+        res.status(400).json({ success: false, error: { code: 'DEPOSIT_LINK_UNAVAILABLE', message: 'Combined checkout is for staff reservations only' } }); return;
+      }
+      res.json({ success: true, data: staffRawQuote(booking, method, includeDeposit) });
     } catch (error) { next(error); }
   });
 
@@ -814,7 +838,10 @@ staffXenditRouter.post('/raw-orders/sessions', authenticate, requirePermission(P
       if (!method || booking.status !== 'unprocessed' || !['direct', 'walk_in'].includes(booking.booking_channel ?? '')) {
         res.status(409).json({ success: false, error: { code: 'BOOKING_NOT_PAYABLE', message: 'This booking cannot use a card payment link' } }); return;
       }
-      const quote = staffRawQuote(booking, method);
+      if (parsed.data.includeDeposit && booking.booking_channel !== 'walk_in') {
+        res.status(400).json({ success: false, error: { code: 'DEPOSIT_LINK_UNAVAILABLE', message: 'Combined checkout is for staff reservations only' } }); return;
+      }
+      const quote = staffRawQuote(booking, method, parsed.data.includeDeposit);
       if (quote.principalPHP <= 0) { res.status(409).json({ success: false, error: { code: 'BOOKING_NOT_PAYABLE', message: 'The booking quote is not payable' } }); return; }
 
       const { data: claim, error: claimError } = await getSupabaseClient().from('orders_raw')
@@ -847,7 +874,7 @@ staffXenditRouter.post('/raw-orders/sessions', authenticate, requirePermission(P
       sessionId = crypto.randomUUID();
       const referenceId = `XEN${sessionId.replaceAll('-', '')}`;
       const draftRpc = booking.booking_channel === 'walk_in'
-        ? 'create_xendit_walkin_staff_session_draft'
+        ? parsed.data.includeDeposit ? 'create_xendit_raw_deposit_draft' : 'create_xendit_walkin_staff_session_draft'
         : 'create_xendit_raw_staff_session_draft';
       const { data: frozen, error: draftError } = await getSupabaseClient().rpc(draftRpc, {
         p_session_id: sessionId, p_reference_id: referenceId, p_raw_order_id: booking.id,
@@ -869,7 +896,13 @@ staffXenditRouter.post('/raw-orders/sessions', authenticate, requirePermission(P
         referenceId, amountPHP, description: `Lola's Rentals - ${booking.order_reference}`,
         successReturnUrl: returnUrl(webOrigin, path, 'processing', sessionId),
         cancelReturnUrl: returnUrl(webOrigin, path, 'cancelled', sessionId),
-        items: [{ referenceId: booking.order_reference, name: `Vehicle rental ${booking.order_reference}`, amountPHP }],
+        items: parsed.data.includeDeposit && quote.depositPHP > 0
+          ? [
+              { referenceId: `${booking.order_reference}-rental`, name: 'Vehicle rental', amountPHP: roundMoney(amountPHP - quote.depositPHP) },
+              { referenceId: `${booking.order_reference}-deposit`, name: 'Refundable security deposit', amountPHP: quote.depositPHP },
+            ]
+          : [{ referenceId: booking.order_reference, name: `Vehicle rental ${booking.order_reference}`, amountPHP }],
+        ...(parsed.data.includeDeposit ? { allowedPaymentChannels: ['CARDS'] } : {}),
       });
       closeDraftOnFailure = false;
       try { await activateXenditSession(sessionId, checkout); }
@@ -934,13 +967,13 @@ staffXenditRouter.get('/orders/:orderId/:kind-preview', authenticate, requirePer
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const kind = req.params.kind;
-      if (kind !== 'rental' && kind !== 'addon') {
+      if (kind !== 'rental' && kind !== 'addon' && kind !== 'deposit') {
         res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Payment preview not found' } });
         return;
       }
       const supabase = getSupabaseClient();
       const { data: order, error: orderError } = await supabase.from('orders')
-        .select('id,store_id,status,balance_due,payment_method_id')
+        .select('id,store_id,status,balance_due,payment_method_id,security_deposit')
         .eq('id', req.params.orderId).maybeSingle();
       if (orderError) throw new Error(`Failed to load order: ${orderError.message}`);
       if (!order || order.status !== 'active') {
@@ -962,6 +995,7 @@ staffXenditRouter.get('/orders/:orderId/:kind-preview', authenticate, requirePer
       if (paymentError) throw new Error(`Failed to load order payments: ${paymentError.message}`);
       const payments = pending ?? [];
       let principal: number;
+      let depositPHP = 0;
       if (kind === 'rental') {
         if (order.payment_method_id !== method.id
           || payments.some((payment) => ['rental', 'card_xendit'].includes(payment.payment_type))
@@ -970,6 +1004,25 @@ staffXenditRouter.get('/orders/:orderId/:kind-preview', authenticate, requirePer
           return;
         }
         principal = roundMoney(Number(order.balance_due ?? 0));
+        if (req.query.includeDeposit === 'true') {
+          depositPHP = roundMoney(Number(order.security_deposit ?? 0) - payments
+            .filter((payment) => ['deposit', 'security_deposit'].includes(payment.payment_type))
+            .reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0));
+          if (depositPHP <= 0) {
+            res.status(409).json({ success: false, error: { code: 'NO_DEPOSIT_DUE', message: 'No refundable deposit remains to collect' } }); return;
+          }
+        }
+      } else if (kind === 'deposit') {
+        if (Number(order.balance_due ?? 0) > 0) {
+          res.status(409).json({ success: false, error: { code: 'RENTAL_BALANCE_DUE', message: 'Collect the rental balance before a deposit-only link' } }); return;
+        }
+        principal = 0;
+        depositPHP = roundMoney(Number(order.security_deposit ?? 0) - payments
+          .filter((payment) => ['deposit', 'security_deposit'].includes(payment.payment_type))
+          .reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0));
+        if (depositPHP <= 0) {
+          res.status(409).json({ success: false, error: { code: 'NO_DEPOSIT_DUE', message: 'No refundable deposit remains to collect' } }); return;
+        }
       } else {
         const addons = payments.filter((payment) => payment.payment_type === 'addon' && payment.settlement_status === 'pending');
         if (addons.some((payment) => !payment.order_addon_id || payment.payment_method_id !== method.id)) {
@@ -978,20 +1031,21 @@ staffXenditRouter.get('/orders/:orderId/:kind-preview', authenticate, requirePer
         }
         principal = roundMoney(addons.reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0));
       }
-      if (principal <= 0 || principal > roundMoney(Number(order.balance_due ?? 0))) {
+      if ((kind !== 'deposit' && principal <= 0) || principal > roundMoney(Number(order.balance_due ?? 0))) {
         res.status(409).json({ success: false, error: { code: 'NO_PAYABLE_BALANCE', message: 'There is no payable balance for this link' } });
         return;
       }
-      const surcharge = roundMoney(principal * Number(method.surcharge_percent ?? 0) / 100);
+      const surcharge = kind === 'deposit' ? 0 : roundMoney(principal * Number(method.surcharge_percent ?? 0) / 100);
       res.json({ success: true, data: {
-        principalPHP: principal, surchargePHP: surcharge, amountPHP: roundMoney(principal + surcharge),
+        principalPHP: principal, surchargePHP: surcharge, depositPHP,
+        amountPHP: roundMoney(principal + surcharge + depositPHP),
       } });
     } catch (error) { next(error); }
   });
 
 async function createStaffDerivedSession(
   req: Request, res: Response, next: NextFunction,
-  target: 'staff_addon' | 'staff_order',
+  target: 'staff_addon' | 'staff_order' | 'staff_rental_deposit' | 'staff_deposit',
 ): Promise<void> {
   let sessionId: string | null = null;
   let closeDraftOnFailure = true;
@@ -1044,11 +1098,15 @@ async function createStaffDerivedSession(
     sessionId = crypto.randomUUID();
     const referenceId = `XEN${sessionId.replaceAll('-', '')}`;
     const rpc = target === 'staff_addon'
-      ? 'create_xendit_addon_session_draft' : 'create_xendit_full_rental_session_draft';
+      ? 'create_xendit_addon_session_draft'
+      : target === 'staff_order' ? 'create_xendit_full_rental_session_draft'
+        : 'create_xendit_order_deposit_draft';
     const { data: frozen, error: draftError } = await supabase.rpc(rpc, {
       p_session_id: sessionId, p_reference_id: referenceId, p_order_id: order.id,
       p_store_id: order.store_id, p_payment_method_id: method.id,
       p_created_by: req.user!.employeeId,
+      ...(target === 'staff_rental_deposit' || target === 'staff_deposit'
+        ? { p_include_rental: target === 'staff_rental_deposit' } : {}),
     });
     if (draftError) {
       sessionId = null;
@@ -1062,12 +1120,19 @@ async function createStaffDerivedSession(
     const reference = order.booking_token ?? order.id;
     const path = `/book/payment-return/${encodeURIComponent(reference)}`;
     const webOrigin = publicWebOriginFromEnv(process.env.WEB_URL);
+    const depositPHP = Number((frozen as { depositPHP?: number }).depositPHP ?? 0);
     const checkout = await createXenditPaymentSession({
       referenceId, amountPHP,
-      description: `Lola's Rentals ${target === 'staff_addon' ? 'add-ons' : 'rental'} - ${reference}`,
+      description: `Lola's Rentals ${target === 'staff_addon' ? 'add-ons' : target === 'staff_deposit' ? 'deposit' : 'rental'} - ${reference}`,
       successReturnUrl: returnUrl(webOrigin, path, 'processing', sessionId),
       cancelReturnUrl: returnUrl(webOrigin, path, 'cancelled', sessionId),
-      items: [{ referenceId: reference, name: target === 'staff_addon' ? 'Rental add-ons' : 'Vehicle rental', amountPHP }],
+      items: depositPHP > 0
+        ? [
+            ...(amountPHP > depositPHP ? [{ referenceId: `${reference}-rental`, name: 'Vehicle rental', amountPHP: roundMoney(amountPHP - depositPHP) }] : []),
+            { referenceId: `${reference}-deposit`, name: 'Refundable security deposit', amountPHP: depositPHP },
+          ]
+        : [{ referenceId: reference, name: target === 'staff_addon' ? 'Rental add-ons' : 'Vehicle rental', amountPHP }],
+      ...(depositPHP > 0 ? { allowedPaymentChannels: ['CARDS'] } : {}),
     });
     closeDraftOnFailure = false;
     try { await activateXenditSession(sessionId, checkout); }
@@ -1079,6 +1144,7 @@ async function createStaffDerivedSession(
       sessionId, checkoutUrl: checkout.checkoutUrl, expiresAt: checkout.expiresAt,
       amountPHP, principalAmountPHP: Number((frozen as { principalPHP: number }).principalPHP),
       surchargeAmountPHP: Number((frozen as { surchargePHP: number }).surchargePHP),
+      depositAmountPHP: depositPHP,
     } });
   } catch (error) {
     if (sessionId && closeDraftOnFailure) await closeFailedDraft(sessionId, error);
@@ -1090,7 +1156,193 @@ async function createStaffDerivedSession(
 staffXenditRouter.post('/orders/:orderId/addon-session', authenticate, requirePermission(Permission.EditOrders),
   async (req, res, next) => createStaffDerivedSession(req, res, next, 'staff_addon'));
 staffXenditRouter.post('/orders/:orderId/rental-session', authenticate, requirePermission(Permission.EditOrders),
-  async (req, res, next) => createStaffDerivedSession(req, res, next, 'staff_order'));
+  async (req, res, next) => createStaffDerivedSession(req, res, next,
+    req.body?.includeDeposit === true ? 'staff_rental_deposit' : 'staff_order'));
+staffXenditRouter.post('/orders/:orderId/deposit-session', authenticate, requirePermission(Permission.EditOrders),
+  async (req, res, next) => createStaffDerivedSession(req, res, next, 'staff_deposit'));
+
+staffXenditRouter.get('/orders/:orderId/refunds', authenticate, requirePermission(Permission.ViewInbox),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const supabase = getSupabaseClient();
+      const { data: order, error: orderError } = await supabase.from('orders')
+        .select('id,store_id').eq('id', req.params.orderId).maybeSingle();
+      if (orderError) throw new Error(`Failed to load refund order: ${orderError.message}`);
+      if (!order || !canAccessStaffBooking(req, order.store_id)) {
+        res.status(404).json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'Order not found' } }); return;
+      }
+      const { data: rows, error } = await supabase.from('xendit_refund_requests')
+        .select('id,source_payment_id,amount_php,kind,status,reason,created_at,processing_error')
+        .eq('order_id', order.id).order('created_at', { ascending: false });
+      if (error) throw new Error(`Failed to load Xendit refunds: ${error.message}`);
+      res.json({ success: true, data: rows ?? [] });
+    } catch (error) { next(error); }
+  });
+
+staffXenditRouter.get('/orders/:orderId/cancellation-decision', authenticate,
+  requirePermission(Permission.ViewInbox), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const supabase = getSupabaseClient();
+      const { data: order, error: orderError } = await supabase.from('orders')
+        .select('id,store_id').eq('id', req.params.orderId).maybeSingle();
+      if (orderError) throw new Error(`Failed to load cancellation order: ${orderError.message}`);
+      if (!order || !canAccessStaffBooking(req, order.store_id)) {
+        res.status(404).json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'Order not found' } }); return;
+      }
+      const { data, error } = await supabase.from('xendit_cancellation_decisions')
+        .select('deposit_charge_php,deposit_charge_reason,deposit_charge_status')
+        .eq('order_id', order.id).maybeSingle();
+      if (error) throw new Error(`Failed to load cancellation decision: ${error.message}`);
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  });
+
+staffXenditRouter.post('/orders/:orderId/resolve-deposit-charge', authenticate,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (req.user?.roleId !== 'role-admin') {
+        res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Only an administrator can resolve an online deposit charge' } }); return;
+      }
+      const parsed = z.object({ incomeAccountId: z.string().min(1) }).safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Select an income account' } }); return;
+      }
+      const supabase = getSupabaseClient();
+      const { data: order, error: orderError } = await supabase.from('orders')
+        .select('id,store_id').eq('id', req.params.orderId).maybeSingle();
+      if (orderError) throw new Error(`Failed to load deposit charge order: ${orderError.message}`);
+      if (!order || !canAccessStaffBooking(req, order.store_id)) {
+        res.status(404).json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'Order not found' } }); return;
+      }
+      const { data, error } = await supabase.rpc('resolve_xendit_cancellation_deposit_charge_atomic', {
+        p_order_id: order.id, p_income_account_id: parsed.data.incomeAccountId,
+        p_employee_id: req.user.employeeId,
+      });
+      if (error) {
+        res.status(409).json({ success: false, error: { code: 'DEPOSIT_CHARGE_REVIEW_REQUIRED', message: error.message } }); return;
+      }
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  });
+
+staffXenditRouter.post('/orders/:orderId/refunds', authenticate,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (req.user?.roleId !== 'role-admin') {
+        res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Only an administrator can request an online refund' } }); return;
+      }
+      if (!isXenditEnabled()) {
+        res.status(503).json({ success: false, error: { code: 'XENDIT_DISABLED', message: 'Online refunds are unavailable' } }); return;
+      }
+      const parsed = refundRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'A payment, positive amount and 10-500 character reason are required' } }); return;
+      }
+      const supabase = getSupabaseClient();
+      const { data: order, error: orderError } = await supabase.from('orders')
+        .select('id,store_id').eq('id', req.params.orderId).maybeSingle();
+      if (orderError) throw new Error(`Failed to load refund order: ${orderError.message}`);
+      if (!order || !canAccessStaffBooking(req, order.store_id)) {
+        res.status(404).json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'Order not found' } }); return;
+      }
+      const refundId = crypto.randomUUID();
+      const referenceId = `XRF${refundId.replaceAll('-', '')}`;
+      const { data: reservation, error: reserveError } = await supabase.rpc('reserve_xendit_refund_atomic', {
+        p_refund_id: refundId, p_reference_id: referenceId, p_order_id: order.id,
+        p_source_payment_id: parsed.data.sourcePaymentId, p_amount_php: parsed.data.amountPHP,
+        p_reason: parsed.data.reason, p_employee_id: req.user.employeeId,
+      });
+      if (reserveError) {
+        res.status(409).json({ success: false, error: { code: 'REFUND_REVIEW_REQUIRED', message: reserveError.message } }); return;
+      }
+      const paymentRequestId = (reservation as { paymentRequestId: string }).paymentRequestId;
+      try {
+        const provider = await createXenditRefund({
+          referenceId, paymentRequestId, amountPHP: parsed.data.amountPHP,
+          reason: 'REQUESTED_BY_CUSTOMER',
+        });
+        const { data: state, error: markError } = await supabase.rpc('mark_xendit_refund_requested_atomic', {
+          p_refund_id: refundId, p_provider_refund_id: provider.id,
+          p_provider_status: provider.status, p_payload: provider,
+        });
+        if (markError) throw new Error(`Provider refund needs reconciliation: ${markError.message}`);
+        res.status(202).json({ success: true, data: { refundId, status: state, amountPHP: parsed.data.amountPHP } });
+      } catch (providerError) {
+        const { error: uncertainError } = await supabase.rpc('mark_xendit_refund_uncertain_atomic', {
+          p_refund_id: refundId, p_error: providerError instanceof Error ? providerError.message : 'Provider outcome unknown',
+        });
+        if (uncertainError) logger.error({ refundId, uncertainError }, 'Could not persist ambiguous refund outcome');
+        logger.error({ refundId, providerError }, 'Xendit refund needs finance verification');
+        res.status(202).json({ success: true, data: { refundId, status: 'reconciliation_required', amountPHP: parsed.data.amountPHP } });
+      }
+    } catch (error) { next(error); }
+  });
+
+staffXenditRouter.post('/orders/:orderId/cancel-with-refunds', authenticate,
+  requirePermission(Permission.CancelOrders), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (req.user?.roleId !== 'role-admin') {
+        res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Only an administrator can cancel an online-paid order' } }); return;
+      }
+      const parsed = cancelWithRefundsSchema.safeParse(req.body);
+      if (!parsed.success || (parsed.data.depositChargePHP > 0
+        && (parsed.data.depositChargeReason?.length ?? 0) < 10)) {
+        res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Choose refund amounts and document any retained deposit charge' } }); return;
+      }
+      if (parsed.data.refunds.length > 0 && !isXenditEnabled()) {
+        res.status(503).json({ success: false, error: { code: 'XENDIT_DISABLED', message: 'Online refunds are unavailable' } }); return;
+      }
+      const supabase = getSupabaseClient();
+      const { data: order, error: orderError } = await supabase.from('orders')
+        .select('id,store_id').eq('id', req.params.orderId).maybeSingle();
+      if (orderError) throw new Error(`Failed to load cancellation order: ${orderError.message}`);
+      if (!order || !canAccessStaffBooking(req, order.store_id)) {
+        res.status(404).json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'Order not found' } }); return;
+      }
+      const refunds = parsed.data.refunds.map((refund) => {
+        const refundId = crypto.randomUUID();
+        return { ...refund, refundId, referenceId: `XRF${refundId.replaceAll('-', '')}` };
+      });
+      const { data: decision, error: decisionError } = await supabase.rpc('cancel_xendit_order_with_refunds_atomic', {
+        p_order_id: order.id, p_reason: parsed.data.reason,
+        p_employee_id: req.user.employeeId, p_refunds: refunds,
+        p_deposit_charge_php: parsed.data.depositChargePHP,
+        p_deposit_charge_reason: parsed.data.depositChargeReason ?? null,
+      });
+      if (decisionError) {
+        res.status(409).json({ success: false, error: { code: 'CANCELLATION_REVIEW_REQUIRED', message: decisionError.message } }); return;
+      }
+      const reserved = (decision as { refunds: Array<{ refundId: string; referenceId: string;
+        paymentRequestId: string; amountPHP: number }> }).refunds;
+      const outcomes: Array<{ refundId: string; status: string }> = [];
+      for (const reservation of reserved) {
+        try {
+          const provider = await createXenditRefund({
+            referenceId: reservation.referenceId,
+            paymentRequestId: reservation.paymentRequestId,
+            amountPHP: Number(reservation.amountPHP), reason: 'CANCELLATION',
+          });
+          const { data: state, error: markError } = await supabase.rpc('mark_xendit_refund_requested_atomic', {
+            p_refund_id: reservation.refundId, p_provider_refund_id: provider.id,
+            p_provider_status: provider.status, p_payload: provider,
+          });
+          if (markError) throw new Error(`Provider refund needs reconciliation: ${markError.message}`);
+          outcomes.push({ refundId: reservation.refundId, status: String(state) });
+        } catch (providerError) {
+          await supabase.rpc('mark_xendit_refund_uncertain_atomic', {
+            p_refund_id: reservation.refundId,
+            p_error: providerError instanceof Error ? providerError.message : 'Provider outcome unknown',
+          });
+          logger.error({ refundId: reservation.refundId, providerError }, 'Cancellation refund needs finance verification');
+          outcomes.push({ refundId: reservation.refundId, status: 'reconciliation_required' });
+        }
+      }
+      res.status(202).json({ success: true, data: {
+        cancelled: true, refunds: outcomes,
+        depositChargePendingFinancePHP: (decision as { depositChargePendingFinancePHP: number }).depositChargePendingFinancePHP,
+      } });
+    } catch (error) { next(error); }
+  });
 
 staffXenditRouter.get('/sessions/:id/status', authenticate, requirePermission(Permission.EditOrders),
   async (req: Request, res: Response, next: NextFunction) => {
@@ -1330,7 +1582,7 @@ staffXenditRouter.get(
         .from('xendit_payment_sessions')
         .select('id, status, payment_link_url')
         .eq('order_id', order.id)
-        .in('target_type', ['staff_order', 'staff_addon'])
+        .in('target_type', ['staff_order', 'staff_addon', 'staff_rental_deposit', 'staff_deposit'])
         .in('status', ['creating', 'active', 'reconciliation_required'])
         .order('created_at', { ascending: false })
         .limit(1)
@@ -1553,6 +1805,32 @@ publicXenditRouter.post(
       if (isXenditDashboardTestWebhook(req.body)) {
         logger.info('Acknowledged Xendit dashboard webhook verification');
         res.json({ success: true, data: { received: true, verification: true } });
+        return;
+      }
+
+      if (req.body?.event === 'refund.succeeded' || req.body?.event === 'refund.failed') {
+        const refund = XenditRefundWebhookSchema.parse(req.body);
+        const expectedBusinessId = process.env.XENDIT_BUSINESS_ID?.trim();
+        if (!expectedBusinessId || !secureEqual(refund.business_id, expectedBusinessId)) {
+          res.status(401).json({ success: false, error: { code: 'INVALID_BUSINESS_ID', message: 'Invalid Xendit business id' } }); return;
+        }
+        const header = req.headers['webhook-id'];
+        const webhookId = Array.isArray(header) ? header[0] : header;
+        const eventKey = webhookId?.trim()
+          ? `xendit:${webhookId.trim()}`
+          : `${refund.event}:${refund.data.id}:${refund.created}`;
+        const { error } = await getSupabaseClient().rpc('complete_xendit_refund_atomic', {
+          p_reference_id: refund.data.reference_id,
+          p_provider_refund_id: refund.data.id,
+          p_payment_request_id: refund.data.payment_request_id ?? null,
+          p_amount_php: refund.data.amount,
+          p_currency: refund.data.currency,
+          p_status: refund.data.status,
+          p_event_key: eventKey,
+          p_payload: refund,
+        });
+        if (error) throw new Error(`Failed to record Xendit refund: ${error.message}`);
+        res.json({ success: true, data: { received: true } });
         return;
       }
 

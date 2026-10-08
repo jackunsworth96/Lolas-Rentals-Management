@@ -136,17 +136,6 @@ const PAYMENT_METHODS = [
   { id: 'bank_transfer', label: 'Bank Transfer' },
 ];
 
-function getAccountId(method: string, storeId: string): string {
-  const isBass = storeId === 'store-bass';
-  switch (method) {
-    case 'cash': return isBass ? 'CASH-BASS' : 'CASH-LOLA';
-    case 'gcash': return 'GCASH-store-lolas';
-    case 'card': return 'CARD-TERMINAL-store-lolas';
-    case 'bank_transfer': return 'BANK-UNION-BANK-store-lolas';
-    default: return '';
-  }
-}
-
 function isStoreLocation(loc: ConfigLocation): boolean {
   const collection = Number(loc.collectionCost ?? loc.collection_cost ?? 0);
   const delivery = Number(loc.deliveryCost ?? loc.delivery_cost ?? 0);
@@ -165,7 +154,6 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
   const [step, setStep] = useState<Step>('dates');
   const [newDate, setNewDate] = useState(() => defaultNewDate(currentDropoff));
   const [newTime, setNewTime] = useState(() => defaultReturnTime(currentDropoff));
-  const [overrideEmail, setOverrideEmail] = useState('');
 
   // Add-on state
   const [selectedOneTimeAddonIds, setSelectedOneTimeAddonIds] = useState<number[]>([]);
@@ -178,6 +166,7 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
   // Review / payment state
   const [previewData, setPreviewData] = useState<PreviewData | null>(null);
   const [overrideRate, setOverrideRate] = useState('');
+  const [baseDailyRate, setBaseDailyRate] = useState<number | null>(null);
   const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
   const [discountValue, setDiscountValue] = useState('');
   const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid'>('unpaid');
@@ -185,11 +174,10 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
 
   // Shared state
   const [loading, setLoading] = useState(false);
+  const [quoteRefreshing, setQuoteRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successResult, setSuccessResult] = useState<{ datetime: string; extensionCost: number } | null>(null);
 
-  const emailToUse = enrichedData.customerEmail?.trim() || overrideEmail.trim();
-  const orderReference = enrichedData.bookingToken ?? enrichedData.wooOrderId;
 
   // Fetch catalog data
   const { data: configAddonsRaw = [] } = useAddons(storeId) as { data: ConfigAddon[] };
@@ -278,7 +266,6 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
       setStep('dates');
       setNewDate(defaultNewDate(currentDropoff));
       setNewTime(defaultReturnTime(currentDropoff));
-      setOverrideEmail('');
       setSelectedOneTimeAddonIds([]);
       setSelectedPerDayAddonIds([]);
       setSelectedLocationId(null);
@@ -311,7 +298,7 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
   }
 
   async function handleCalculate() {
-    if (!newDropoffDatetime || !emailToUse || !orderReference) return;
+    if (!newDropoffDatetime || !orderId) return;
 
     if (currentDropoff && new Date(newDropoffDatetime) <= new Date(currentDropoff)) {
       setError('New return date/time must be after the current return date.');
@@ -321,11 +308,15 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
     setLoading(true);
     setError(null);
 
-    const params = new URLSearchParams({ orderReference, email: emailToUse, newDropoffDatetime });
-
     try {
-      const data = await api.get<PreviewData>(`/public/extend/preview?${params}`);
+      const data = await api.post<PreviewData>('/extend/preview', {
+        orderId, newDropoffDatetime,
+        newOneTimeAddonIds: selectedOneTimeAddonIds,
+        newPerDayAddonIds: selectedPerDayAddonIds,
+        ...(selectedLocationId != null ? { newDropoffLocationId: selectedLocationId } : {}),
+      });
       setPreviewData(data);
+      setBaseDailyRate(data.dailyRate);
       setOverrideRate(String(data.dailyRate));
       setStep('review');
     } catch (err) {
@@ -335,35 +326,72 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
     }
   }
 
+  useEffect(() => {
+    if (!open || step !== 'review' || !newDropoffDatetime) return;
+    const parsedRate = Number(overrideRate);
+    const parsedDiscount = Number(discountValue);
+    if ((overrideRate && (!Number.isFinite(parsedRate) || parsedRate <= 0))
+      || (discountValue && (!Number.isFinite(parsedDiscount) || parsedDiscount <= 0
+        || (discountType === 'percentage' && parsedDiscount > 100)))) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      setQuoteRefreshing(true);
+      api.post<PreviewData>('/extend/preview', {
+        orderId, newDropoffDatetime,
+        ...(baseDailyRate != null && Math.abs(parsedRate - baseDailyRate) > 0.001
+          ? { overrideDailyRate: parsedRate } : {}),
+        ...(discountValue ? { discountType, discountValue: parsedDiscount } : {}),
+        newOneTimeAddonIds: selectedOneTimeAddonIds,
+        newPerDayAddonIds: selectedPerDayAddonIds,
+        ...(selectedLocationId != null ? { newDropoffLocationId: selectedLocationId } : {}),
+      }).then((quote) => {
+        if (!cancelled) { setPreviewData(quote); setError(null); }
+      }).catch((err: Error) => {
+        if (!cancelled) { setPreviewData(null); setError(err.message); }
+      }).finally(() => { if (!cancelled) setQuoteRefreshing(false); });
+    }, 250);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [open, step, orderId, newDropoffDatetime, overrideRate, discountType, discountValue,
+    selectedOneTimeAddonIds, selectedPerDayAddonIds, selectedLocationId, baseDailyRate]);
+
   async function handleConfirm() {
-    if (!previewData || !newDropoffDatetime || !emailToUse || !orderReference) return;
+    if (!previewData || quoteRefreshing || !newDropoffDatetime || !orderId) return;
     if (paymentStatus === 'paid' && !paymentMethod) return;
 
     const rateNum = parseFloat(overrideRate);
     const effectiveRate = !isNaN(rateNum) && rateNum > 0 ? rateNum : previewData.dailyRate;
-    const isOverride = Math.abs(effectiveRate - previewData.dailyRate) > 0.001;
+    const isOverride = baseDailyRate != null && Math.abs(effectiveRate - baseDailyRate) > 0.001;
     const discountNum = parseFloat(discountValue);
     const hasDiscount = !isNaN(discountNum) && discountNum > 0;
-    const accountId = paymentStatus === 'paid' && paymentMethod
-      ? getAccountId(paymentMethod, storeId)
-      : undefined;
 
     setLoading(true);
     setError(null);
 
     try {
+      const latestQuote = await api.post<PreviewData>('/extend/preview', {
+        orderId, newDropoffDatetime,
+        ...(isOverride ? { overrideDailyRate: effectiveRate } : {}),
+        ...(hasDiscount ? { discountType, discountValue: discountNum } : {}),
+        newOneTimeAddonIds: selectedOneTimeAddonIds,
+        newPerDayAddonIds: selectedPerDayAddonIds,
+        ...(selectedLocationId != null ? { newDropoffLocationId: selectedLocationId } : {}),
+      });
+      if (Math.abs(latestQuote.extensionTotal - previewData.extensionTotal) > 0.009) {
+        setPreviewData(latestQuote);
+        setError('The extension total changed. Review the new amount before confirming.');
+        return;
+      }
       const res = await api.post<{ success: boolean; newDropoffDatetime?: string; extensionCost?: number; reason?: string }>(
         '/extend/confirm',
         {
-          orderReference,
-          email: emailToUse,
+          orderId,
           newDropoffDatetime,
+          expectedCurrentDropoffDatetime: currentDropoff,
+          expectedExtensionTotal: previewData.extensionTotal,
           ...(isOverride ? { overrideDailyRate: effectiveRate } : {}),
           ...(hasDiscount ? { discountType, discountValue: discountNum } : {}),
           paymentStatus,
-          ...(paymentStatus === 'paid' && paymentMethod
-            ? { paymentMethod, paymentAccountId: accountId }
-            : {}),
+          ...(paymentStatus === 'paid' && paymentMethod ? { paymentMethod } : {}),
           ...(selectedOneTimeAddonIds.length > 0 ? { newOneTimeAddonIds: selectedOneTimeAddonIds } : {}),
           ...(selectedPerDayAddonIds.length > 0 ? { newPerDayAddonIds: selectedPerDayAddonIds } : {}),
           ...(selectedLocationId != null ? { newDropoffLocationId: selectedLocationId } : {}),
@@ -416,9 +444,9 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
           : parsedDiscountValue) * 100) / 100,
       )
     : 0;
-  const computedTotal = Math.round((extensionSubtotal - discountAmount) * 100) / 100;
+  const computedTotal = previewData?.extensionTotal ?? Math.round((extensionSubtotal - discountAmount) * 100) / 100;
 
-  const step1Valid = !!(newDate && newTime && emailToUse && orderReference);
+  const step1Valid = !!(newDate && newTime && orderId);
   const discountIsValid = discountValue === '' || (
     !isNaN(parsedDiscountValue)
     && parsedDiscountValue > 0
@@ -481,30 +509,6 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
               </span>
             </div>
           </div>
-
-          {/* Email override */}
-          {!enrichedData.customerEmail?.trim() && (
-            <label className="block">
-              <span className="text-sm font-medium text-gray-700">
-                Customer email <span className="text-red-500">*</span>
-                <span className="ml-1 text-xs font-normal text-gray-400">(not on record — required)</span>
-              </span>
-              <input
-                type="email"
-                required
-                value={overrideEmail}
-                onChange={(e) => setOverrideEmail(e.target.value)}
-                placeholder="customer@example.com"
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-              />
-            </label>
-          )}
-
-          {!orderReference && (
-            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-              No order reference on this booking — extension may not be available via this flow.
-            </p>
-          )}
 
           {/* New return date & time */}
           <div>
@@ -861,7 +865,7 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
             <button
               type="button"
               onClick={handleConfirm}
-              disabled={loading || !step2Valid}
+              disabled={loading || quoteRefreshing || !step2Valid || !previewData}
               className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? 'Confirming…' : 'Confirm Extension'}

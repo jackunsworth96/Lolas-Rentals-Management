@@ -376,6 +376,10 @@ router.get(
           continue;
         }
 
+        // Deposit application moves an existing liability into income; no new
+        // customer money arrives. Its journal credit is shown separately below.
+        if (paymentType === 'deposit_applied') continue;
+
         // Unpaid extension IOUs — customer hasn't paid yet, no cash received.
         // Keep them separate so cashup isn't inflated; staff can see what to collect.
         const isUnpaidExtension = paymentType === 'extension' && p.settlement_status === 'pending';
