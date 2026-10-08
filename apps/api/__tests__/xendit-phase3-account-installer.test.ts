@@ -7,6 +7,13 @@ const resolver = phase3.split('CREATE OR REPLACE FUNCTION public.resolve_xendit_
   ?.split('CREATE OR REPLACE FUNCTION public.create_xendit_order_deposit_draft')[0];
 
 describe('Phase 3 manual account contracts', () => {
+  it('does not cast the deposit allocation table before the installer creates it', () => {
+    const preflight = phase3.split('DO $preflight$')[1]?.split('$preflight$;')[0];
+    expect(preflight).toBeDefined();
+    expect(preflight).toContain("IF to_regclass('public.xendit_payment_session_deposits') IS NOT NULL THEN");
+    expect(preflight).not.toContain("'public.xendit_payment_session_deposits'::regclass");
+  });
+
   it('selects only one active, store-owned designated security deposit liability', () => {
     expect(resolver).toBeDefined();
     expect(resolver).toContain('a.store_id = p_store_id AND a.is_active');

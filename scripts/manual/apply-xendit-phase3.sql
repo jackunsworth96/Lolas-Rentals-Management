@@ -37,13 +37,14 @@ BEGIN
         v_check.table_name,v_check.column_name,v_check.data_type,COALESCE(v_actual,'missing');
     END IF;
   END LOOP;
-  IF to_regclass('public.xendit_payment_session_deposits') IS NOT NULL
-     AND NOT EXISTS (SELECT 1 FROM pg_constraint
-       WHERE conrelid = 'public.xendit_payment_session_deposits'::regclass
-         AND contype = 'p' AND conkey = ARRAY[(SELECT attnum FROM pg_attribute
-           WHERE attrelid = 'public.xendit_payment_session_deposits'::regclass
-             AND attname = 'session_id')]::smallint[]) THEN
-    RAISE EXCEPTION 'Existing Phase 3 deposit allocation table has an incompatible primary key';
+  IF to_regclass('public.xendit_payment_session_deposits') IS NOT NULL THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+      WHERE conrelid = to_regclass('public.xendit_payment_session_deposits')
+        AND contype = 'p' AND conkey = ARRAY[(SELECT attnum FROM pg_attribute
+          WHERE attrelid = to_regclass('public.xendit_payment_session_deposits')
+            AND attname = 'session_id')]::smallint[]) THEN
+      RAISE EXCEPTION 'Existing Phase 3 deposit allocation table has an incompatible primary key';
+    END IF;
   END IF;
 END;
 $preflight$;
