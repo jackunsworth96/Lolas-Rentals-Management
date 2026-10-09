@@ -13,6 +13,7 @@ import { OrderDetailHistoryTab } from './OrderDetailHistoryTab.js';
 import { OrderDetailTransferTab } from './OrderDetailTransferTab.js';
 import { OrderDetailExtensionsTab } from './OrderDetailExtensionsTab.js';
 import { AccidentReportModal } from '../accidents/AccidentReportModal.js';
+import { BreakdownReportModal } from '../breakdowns/BreakdownReportModal.js';
 import { CancelActivatedOrderModal } from './CancelActivatedOrderModal.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 
@@ -37,6 +38,7 @@ type TabKey = 'summary' | 'payments' | 'vehicles' | 'addons' | 'extensions' | 't
 export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = false, enrichedData, onCancelled }: OrderDetailModalProps) {
   const [tab, setTab] = useState<TabKey>('summary');
   const [accidentReportOpen, setAccidentReportOpen] = useState(false);
+  const [breakdownReportOpen, setBreakdownReportOpen] = useState(false);
   const [cancelBookingOpen, setCancelBookingOpen] = useState(false);
   const canCancelOrders = useAuthStore((state) => state.hasPermission('can_cancel_orders'));
   const { toasts, pushToast } = useToast();
@@ -81,21 +83,14 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
 
   return (
     <>
-      <Modal open onClose={onClose} title={`Order — ${customerName}`} size="xl">
-        <div className="mb-4 flex items-center gap-2 border-b border-gray-200">
-          <div className="flex flex-1 gap-2 overflow-x-auto">
-            {tabs.map((t) => (
-              <button
-                key={t.key}
-                onClick={() => setTab(t.key)}
-                className={`shrink-0 border-b-2 px-4 py-2 text-sm font-medium ${tab === t.key ? 'border-teal-brand text-teal-brand' : 'border-transparent text-charcoal-brand/60 hover:text-charcoal-brand'}`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-          {(canAct || canCancel) && (
-            <div className="mb-1 flex shrink-0 items-center gap-2">
+      <Modal
+        open
+        onClose={onClose}
+        title={`Order — ${customerName}`}
+        size="xl"
+        headerActions={
+          (canAct || canCancel) ? (
+            <>
               {canCancel && (
                 <button
                   type="button"
@@ -108,14 +103,37 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
               {canAct && (
                 <button
                   type="button"
+                  onClick={() => setBreakdownReportOpen(true)}
+                  className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                >
+                  Report Breakdown
+                </button>
+              )}
+              {canAct && (
+                <button
+                  type="button"
                   onClick={() => setAccidentReportOpen(true)}
                   className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-300"
                 >
-                  🚨 Report Accident
+                  Report Accident
                 </button>
               )}
-            </div>
-          )}
+            </>
+          ) : undefined
+        }
+      >
+        <div className="mb-4 flex items-center gap-2 border-b border-gray-200">
+          <div className="flex flex-1 gap-2 overflow-x-auto">
+            {tabs.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`shrink-0 border-b-2 px-4 py-2 text-sm font-medium ${tab === t.key ? 'border-teal-brand text-teal-brand' : 'border-transparent text-charcoal-brand/60 hover:text-charcoal-brand'}`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {tab === 'summary' && (
@@ -204,6 +222,22 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
             peaceOfMindActive: orderAddons.some((a) => a.addonName.toLowerCase().includes('peace')),
           } : undefined}
           onSuccess={() => setAccidentReportOpen(false)}
+        />
+      )}
+
+      {breakdownReportOpen && (
+        <BreakdownReportModal
+          open
+          onClose={() => setBreakdownReportOpen(false)}
+          prefillOrder={items[0] ? {
+            orderId,
+            orderReference: (order.bookingToken ?? order.booking_token ?? '') as string,
+            vehicleId: items[0].vehicleId,
+            vehicleName: items[0].vehicleName,
+            customerId: (order.customerId ?? null) as string | null,
+            customerName,
+          } : undefined}
+          onSuccess={() => setBreakdownReportOpen(false)}
         />
       )}
 

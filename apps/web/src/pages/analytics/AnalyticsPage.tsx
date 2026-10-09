@@ -12,10 +12,11 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts';
-import { TrendingUp, Bike, Users, Calendar, ArrowUp, ArrowDown, Minus, Link2, Target } from 'lucide-react';
+import { TrendingUp, Bike, Users, Calendar, ArrowUp, ArrowDown, Minus, Link2, Target, ShieldCheck } from 'lucide-react';
 import {
   useAnalytics,
   useFleetForecast,
+  useConfidenceReport,
   type FleetModelMetrics,
 } from '../../api/analytics.js';
 import { useUIStore } from '../../stores/ui-store.js';
@@ -173,6 +174,7 @@ export default function AnalyticsPage() {
 
   const { data, isLoading, isError } = useAnalytics(storeId, days);
   const { data: forecast, isLoading: isForecastLoading } = useFleetForecast(storeId);
+  const { data: confidence, isLoading: isConfidenceLoading } = useConfidenceReport(storeId);
 
   const analytics = data;
   const fleet = analytics?.fleet;
@@ -595,6 +597,161 @@ export default function AnalyticsPage() {
                 )}
               </>
             )}
+          </section>
+
+          {/* ── SECTION 5: Customer Confidence ───────────────────────────── */}
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <ShieldCheck className="h-5 w-5 text-gray-400" />
+              <h2 className="text-base font-semibold text-gray-800">Customer Confidence</h2>
+              <span className="text-xs text-gray-400">issue-free rentals by quarter</span>
+            </div>
+
+            {isConfidenceLoading && (
+              <div className="rounded-xl border border-dashed border-gray-200 p-8 text-center text-sm text-gray-400">
+                Loading confidence report…
+              </div>
+            )}
+
+            {!isConfidenceLoading && (!confidence || confidence.quarters.length === 0) && (
+              <div className="rounded-xl border border-dashed border-gray-200 p-8 text-center text-sm text-gray-400">
+                No quarterly customer data yet. Log breakdowns as they happen to start building this report.
+              </div>
+            )}
+
+            {!isConfidenceLoading && confidence && confidence.quarters.length > 0 && (() => {
+              const latestElapsed = [...confidence.quarters].reverse().find((q) => !q.isCurrentQuarter)
+                ?? confidence.quarters[confidence.quarters.length - 1];
+              const chartData = confidence.quarters.map((q) => ({
+                quarter: q.isCurrentQuarter ? `${q.label} (so far)` : q.label,
+                issueFreePct: Math.round(q.issueFreeRate * 100),
+              }));
+              const ISSUE_LABELS: Record<string, string> = {
+                flat_tyre: 'Flat tyre',
+                flat_battery: 'Flat / dead battery',
+                engine_mechanical: 'Engine / mechanical',
+                electrical: 'Electrical fault',
+                other: 'Other',
+              };
+
+              function formatMins(mins: number | null): string {
+                if (mins == null) return '—';
+                if (mins < 60) return `${mins} min`;
+                const h = Math.floor(mins / 60);
+                const m = mins % 60;
+                return m > 0 ? `${h}h ${m}m` : `${h}h`;
+              }
+
+              return (
+                <>
+                  <p className="text-xs text-gray-400 mb-4">
+                    Headline numbers use {latestElapsed.isCurrentQuarter ? 'the current quarter so far' : latestElapsed.label}{' '}
+                    (the latest fully elapsed quarter when available). Issue-free = customers whose rental had no accident and no breakdown.
+                  </p>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
+                    <StatTile
+                      label="Customers served"
+                      value={latestElapsed.totalCustomers.toLocaleString()}
+                      sub={latestElapsed.label}
+                    />
+                    <StatTile
+                      label="Issue-free rate"
+                      value={pct(latestElapsed.issueFreeRate)}
+                      sub={`${latestElapsed.affectedCustomers} customer${latestElapsed.affectedCustomers !== 1 ? 's' : ''} had an issue`}
+                      accent={latestElapsed.issueFreeRate >= 0.95}
+                    />
+                    <StatTile
+                      label="Accidents"
+                      value={latestElapsed.accidentCount}
+                      sub="reports in quarter"
+                    />
+                    <StatTile
+                      label="Breakdowns"
+                      value={latestElapsed.breakdownCount}
+                      sub="reports in quarter"
+                    />
+                    <StatTile
+                      label="Avg. resolution"
+                      value={formatMins(latestElapsed.avgResolutionMinutes)}
+                      sub={
+                        latestElapsed.pctResolvedWithin30Min != null
+                          ? `${pct(latestElapsed.pctResolvedWithin30Min)} resolved in 30 min`
+                          : 'no resolved breakdowns yet'
+                      }
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div className="rounded-xl border border-gray-200 bg-white p-5">
+                      <p className="text-sm font-semibold text-gray-800 mb-4">Issue-free rate by quarter</p>
+                      <div className="h-48">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                            <XAxis dataKey="quarter" tick={{ fontSize: 11 }} />
+                            <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
+                            <Tooltip formatter={(v: number) => [`${v}%`, 'Issue-free']} />
+                            <Bar dataKey="issueFreePct" fill="#0d9488" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-gray-200 bg-white p-5">
+                      <p className="text-sm font-semibold text-gray-800 mb-1">Breakdown types — {latestElapsed.label}</p>
+                      <p className="text-xs text-gray-400 mb-4">
+                        {latestElapsed.breakdownCount} breakdown{latestElapsed.breakdownCount !== 1 ? 's' : ''} logged
+                      </p>
+                      {latestElapsed.breakdownCount === 0 ? (
+                        <p className="text-sm text-gray-400 py-8 text-center">No breakdowns in this quarter</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {Object.entries(latestElapsed.issueTypeSplit).map(([key, count]) => (
+                            <div key={key} className="flex items-center justify-between text-sm">
+                              <span className="text-gray-600">{ISSUE_LABELS[key] ?? key}</span>
+                              <span className="font-semibold text-gray-900">{count}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium text-gray-500">
+                          <th className="px-4 py-2.5">Quarter</th>
+                          <th className="px-4 py-2.5 text-right">Customers</th>
+                          <th className="px-4 py-2.5 text-right">Issue-free %</th>
+                          <th className="px-4 py-2.5 text-right">Accidents</th>
+                          <th className="px-4 py-2.5 text-right">Breakdowns</th>
+                          <th className="px-4 py-2.5 text-right">Avg resolution</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {confidence.quarters.map((q) => (
+                          <tr key={q.label} className="border-b border-gray-50 last:border-0">
+                            <td className="px-4 py-2.5 font-medium text-gray-900">
+                              {q.label}{q.isCurrentQuarter ? ' (so far)' : ''}
+                            </td>
+                            <td className="px-4 py-2.5 text-right text-gray-700">{q.totalCustomers.toLocaleString()}</td>
+                            <td className="px-4 py-2.5 text-right font-semibold text-gray-900">{pct(q.issueFreeRate)}</td>
+                            <td className="px-4 py-2.5 text-right text-gray-700">{q.accidentCount}</td>
+                            <td className="px-4 py-2.5 text-right text-gray-700">{q.breakdownCount}</td>
+                            <td className="px-4 py-2.5 text-right text-gray-700">{formatMins(q.avgResolutionMinutes)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <p className="px-4 py-2.5 text-[11px] text-gray-400 border-t border-gray-100">
+                      Copy these numbers for quarterly marketing — e.g. &ldquo;{latestElapsed.totalCustomers.toLocaleString()} customers, {pct(latestElapsed.issueFreeRate)} issue-free.&rdquo;
+                    </p>
+                  </div>
+                </>
+              );
+            })()}
           </section>
         </div>
       )}

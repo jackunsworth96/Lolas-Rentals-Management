@@ -152,3 +152,44 @@ export function useFleetForecast(storeId?: string) {
     staleTime: 15 * 60_000,
   });
 }
+
+// ── Quarterly customer confidence (issue-free rate) ─────────────────────────
+
+export interface ConfidenceIssueTypeSplit {
+  flat_tyre: number;
+  flat_battery: number;
+  engine_mechanical: number;
+  electrical: number;
+  other: number;
+}
+
+export interface ConfidenceQuarter {
+  label: string;
+  start: string;
+  end: string;
+  isCurrentQuarter: boolean;
+  totalCustomers: number;
+  accidentCount: number;
+  breakdownCount: number;
+  affectedCustomers: number;
+  issueFreeRate: number;
+  issueTypeSplit: ConfidenceIssueTypeSplit;
+  avgResolutionMinutes: number | null;
+  pctResolvedWithin30Min: number | null;
+  resolvedBreakdowns: number;
+}
+
+export interface ConfidenceReportData {
+  quarters: ConfidenceQuarter[];
+}
+
+export function useConfidenceReport(storeId?: string) {
+  const params = new URLSearchParams();
+  if (storeId && storeId !== 'all') params.set('storeId', storeId);
+
+  return useQuery<ConfidenceReportData>({
+    queryKey: ['analytics-confidence', storeId],
+    queryFn: () => api.get<ConfidenceReportData>(`/analytics/confidence-report?${params.toString()}`),
+    staleTime: 15 * 60_000,
+  });
+}

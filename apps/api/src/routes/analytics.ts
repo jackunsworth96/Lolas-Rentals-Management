@@ -673,4 +673,191 @@ router.get('/fleet-forecast', async (req, res, next) => {
   }
 });
 
+// ── GET /confidence-report — quarterly issue-free / breakdown stats ─────────
+// Denominator: distinct orders with status active/confirmed/completed whose
+// earliest pickup falls in the quarter. Accidents + breakdowns are counted
+// against the same order set so marketing can publish "% of customers with
+// zero issues" and a breakdown-type split.
+router.get('/confidence-report', async (req, res, next) => {
+  try {
+    const user = (req as { user?: { permissions?: string[] } }).user;
+    if (!user?.permissions?.includes(Permission.ViewDashboard)) {
+      res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Requires ViewDashboard permission' } });
+      return;
+    }
+
+    const { storeId } = req.query as { storeId?: string };
+    const filterByStore = storeId && storeId !== 'all';
+    const sb = getSupabaseClient();
+    const activeStoreIds = filterByStore
+      ? []
+      : (await req.app.locals.deps.configRepo.getStores('active'))
+          .filter((store: { id: string }) => store.id !== 'company')
+          .map((store: { id: string }) => store.id);
+
+    const MAX_QUARTERS = 8;
+
+    let ordersQ = sb
+      .from('orders')
+      .select('id, store_id, status')
+      .in('status', ['active', 'confirmed', 'completed']);
+    if (filterByStore) ordersQ = ordersQ.eq('store_id', storeId);
+    else ordersQ = ordersQ.in('store_id', activeStoreIds);
+
+    let itemsQ = sb
+      .from('order_items')
+      .select('order_id, store_id, pickup_datetime');
+    if (filterByStore) itemsQ = itemsQ.eq('store_id', storeId);
+    else itemsQ = itemsQ.in('store_id', activeStoreIds);
+
+    let accidentsQ = sb
+      .from('accident_reports')
+      .select('id, order_id, store_id, accident_at');
+    if (filterByStore) accidentsQ = accidentsQ.eq('store_id', storeId);
+    else accidentsQ = accidentsQ.in('store_id', activeStoreIds);
+
+    let breakdownsQ = sb
+      .from('breakdown_reports')
+      .select('id, order_id, store_id, breakdown_at, issue_type, resolved_at');
+    if (filterByStore) breakdownsQ = breakdownsQ.eq('store_id', storeId);
+    else breakdownsQ = breakdownsQ.in('store_id', activeStoreIds);
+
+    const [ordersRes, itemsRes, accidentsRes, breakdownsRes] = await Promise.all([
+      ordersQ,
+      itemsQ,
+      accidentsQ,
+      breakdownsQ,
+    ]);
+
+    for (const r of [ordersRes, itemsRes, accidentsRes, breakdownsRes]) {
+      if (r.error) throw new Error(r.error.message);
+    }
+
+    type OrderRow = { id: string; store_id: string; status: string };
+    type ItemRow = { order_id: string; store_id: string; pickup_datetime: string | null };
+    type AccidentRow = { id: string; order_id: string; store_id: string; accident_at: string };
+    type BreakdownRow = {
+      id: string; order_id: string; store_id: string;
+      breakdown_at: string; issue_type: string; resolved_at: string | null;
+    };
+
+    const validOrderIds = new Set(((ordersRes.data ?? []) as OrderRow[]).map((o) => o.id));
+    const items = ((itemsRes.data ?? []) as ItemRow[]).filter(
+      (i) => validOrderIds.has(i.order_id) && i.pickup_datetime,
+    );
+    const accidents = ((accidentsRes.data ?? []) as AccidentRow[]).filter((a) => a.accident_at);
+    const breakdowns = ((breakdownsRes.data ?? []) as BreakdownRow[]).filter((b) => b.breakdown_at);
+
+    const pickupByOrder = new Map<string, number>();
+    for (const item of items) {
+      const ms = new Date(item.pickup_datetime as string).getTime();
+      const prev = pickupByOrder.get(item.order_id);
+      if (prev == null || ms < prev) pickupByOrder.set(item.order_id, ms);
+    }
+
+    const now = new Date();
+    const currentQuarterStart = quarterStart(now);
+    const earliestMs = [
+      ...Array.from(pickupByOrder.values()),
+      ...accidents.map((a) => new Date(a.accident_at).getTime()),
+      ...breakdowns.map((b) => new Date(b.breakdown_at).getTime()),
+    ];
+    const firstQuarterStart = earliestMs.length > 0
+      ? quarterStart(new Date(Math.min(...earliestMs)))
+      : currentQuarterStart;
+
+    const allQuarterStarts: Date[] = [];
+    for (let cursor = firstQuarterStart; cursor.getTime() <= currentQuarterStart.getTime(); cursor = addQuarters(cursor, 1)) {
+      allQuarterStarts.push(cursor);
+    }
+    const quarterStarts = allQuarterStarts.slice(-MAX_QUARTERS);
+
+    const ISSUE_TYPES = ['flat_tyre', 'flat_battery', 'engine_mechanical', 'electrical', 'other'] as const;
+
+    const quarters = quarterStarts.map((qStart) => {
+      const qEndExclusive = addQuarters(qStart, 1);
+      const qStartMs = qStart.getTime();
+      const qEndMs = qEndExclusive.getTime();
+      const isCurrentQuarter = qStartMs === currentQuarterStart.getTime();
+
+      const customerOrderIds = new Set<string>();
+      for (const [orderId, pickupMs] of pickupByOrder) {
+        if (pickupMs >= qStartMs && pickupMs < qEndMs) customerOrderIds.add(orderId);
+      }
+
+      const accidentOrderIds = new Set<string>();
+      let accidentCount = 0;
+      for (const a of accidents) {
+        const ms = new Date(a.accident_at).getTime();
+        if (ms >= qStartMs && ms < qEndMs) {
+          accidentCount += 1;
+          accidentOrderIds.add(a.order_id);
+        }
+      }
+
+      const breakdownOrderIds = new Set<string>();
+      let breakdownCount = 0;
+      const issueTypeSplit: Record<(typeof ISSUE_TYPES)[number], number> = {
+        flat_tyre: 0,
+        flat_battery: 0,
+        engine_mechanical: 0,
+        electrical: 0,
+        other: 0,
+      };
+      const resolvedMinutes: number[] = [];
+
+      for (const b of breakdowns) {
+        const ms = new Date(b.breakdown_at).getTime();
+        if (ms < qStartMs || ms >= qEndMs) continue;
+        breakdownCount += 1;
+        breakdownOrderIds.add(b.order_id);
+        const key = (ISSUE_TYPES as readonly string[]).includes(b.issue_type)
+          ? (b.issue_type as (typeof ISSUE_TYPES)[number])
+          : 'other';
+        issueTypeSplit[key] += 1;
+        if (b.resolved_at) {
+          resolvedMinutes.push(
+            Math.max(0, Math.round((new Date(b.resolved_at).getTime() - ms) / 60000)),
+          );
+        }
+      }
+
+      const affectedOrderIds = new Set([...accidentOrderIds, ...breakdownOrderIds]);
+      const totalCustomers = customerOrderIds.size;
+      const issueFreeRate = totalCustomers > 0
+        ? Math.round((1 - affectedOrderIds.size / totalCustomers) * 1000) / 1000
+        : 1;
+      const avgResolutionMinutes = resolvedMinutes.length > 0
+        ? Math.round(resolvedMinutes.reduce((s, v) => s + v, 0) / resolvedMinutes.length)
+        : null;
+      const pctResolvedWithin30Min = resolvedMinutes.length > 0
+        ? Math.round((resolvedMinutes.filter((m) => m <= 30).length / resolvedMinutes.length) * 1000) / 1000
+        : null;
+
+      return {
+        label: quarterLabel(qStart),
+        start: qStart.toISOString(),
+        end: qEndExclusive.toISOString(),
+        isCurrentQuarter,
+        totalCustomers,
+        accidentCount,
+        breakdownCount,
+        affectedCustomers: affectedOrderIds.size,
+        issueFreeRate,
+        issueTypeSplit,
+        avgResolutionMinutes,
+        pctResolvedWithin30Min,
+        resolvedBreakdowns: resolvedMinutes.length,
+      };
+    });
+
+    res.json({
+      success: true,
+      data: { quarters },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export { router as analyticsRoutes };
