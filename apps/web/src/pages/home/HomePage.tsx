@@ -38,8 +38,8 @@ import pesoSignMark from '../../assets/Peso Sign.svg';
 import lolasLogo from '../../assets/Lolas Original Logo.svg';
 import { CloudinaryImage } from '../../components/ui/CloudinaryImage.js';
 import { PesoSign } from '../../components/ui/PesoSign.js';
-import { normalizeApiBase } from '../../api/normalize-api-base.js';
 import { usePartnerRefCapture } from '../../hooks/usePartnerRefCapture.js';
+import { useLiveCustomerCount, CUSTOMER_COUNT_FLOOR } from '../../hooks/useLiveCustomerCount.js';
 
 const BE_PAW_PUBLIC_IDS = [
   '1_q903kw', '2_ppjkhm', '3_hgnjpm', '4_fpx4je', '5_ittwb7', '6_klj8zq',
@@ -49,7 +49,7 @@ const BE_PAW_PUBLIC_IDS = [
   '25_acqfde', '26_pamvyd', '27_p9c1yg', '28_dm49i6', '29_b15s72', '30_smef1w',
   '31_vzjory', '32_k4iacn',
 ];
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   motion,
@@ -80,34 +80,13 @@ function HeroSection() {
   const heroRef = useRef<HTMLElement>(null);
   const { benefit: affiliateBenefit } = usePartnerRefCapture();
 
-  // ── Live order count (matches DB total; rounds display by 25; poll refreshes) ──
-  const ORDER_COUNT_FLOOR = 6300;
+  // ── Live customer count (legacy offset + active/confirmed/completed orders; rounds display by 25) ──
   const DISPLAY_ROUND_STEP = 25;
-  const ORDER_COUNT_POLL_MS = 2 * 60 * 1000;
-  const [totalOrders, setTotalOrders] = useState<number>(ORDER_COUNT_FLOOR);
-
-  const fetchOrderCount = useCallback(() => {
-    const apiBase = normalizeApiBase(import.meta.env.VITE_API_URL as string | undefined);
-    fetch(`${apiBase}/stats/order-count`)
-      .then((r) => r.json())
-      .then((json) => {
-        const count = json?.data?.totalOrders;
-        if (typeof count === 'number' && !Number.isNaN(count) && count >= 0) {
-          setTotalOrders(Math.max(ORDER_COUNT_FLOOR, count));
-        }
-      })
-      .catch(() => { /* keep last value */ });
-  }, []);
-
-  useEffect(() => {
-    fetchOrderCount();
-    const id = setInterval(fetchOrderCount, ORDER_COUNT_POLL_MS);
-    return () => clearInterval(id);
-  }, [fetchOrderCount]);
+  const totalOrders = useLiveCustomerCount();
 
   const roundedCustomers = Math.floor(totalOrders / DISPLAY_ROUND_STEP) * DISPLAY_ROUND_STEP;
   const countUpFrom = Math.max(
-    ORDER_COUNT_FLOOR - 10 * DISPLAY_ROUND_STEP,
+    CUSTOMER_COUNT_FLOOR - 10 * DISPLAY_ROUND_STEP,
     roundedCustomers - 10 * DISPLAY_ROUND_STEP,
   );
 

@@ -13,6 +13,7 @@ import {
   markPartnerLocationDefaultHandled,
 } from '../../utils/partnerRef.js';
 import { usePartnerRefCapture } from '../../hooks/usePartnerRefCapture.js';
+import { useLiveCustomerCount } from '../../hooks/useLiveCustomerCount.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
 import { SEO } from '../../components/seo/SEO.js';
 import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
@@ -425,21 +426,9 @@ function ReviewTestimonialCard() {
 const LOLAS_GOOGLE_REVIEWS_URL =
   'https://www.google.com/search?gs_ssp=eJzj4tVP1zc0LLbMsiyIzyszYLRSNagwNjYwMbA0MDCzTDFJTjJJsTKoMLFINLBINTO3NLQwNbE0T_LizcnPSSxWKErNK0nMKQYAj74TwQ&q=lolas+rentals&oq=&sourceid=chrome&ie=UTF-8';
 
-/** Static trust pill: 6300+ explorers · ★★★★★ · 5.0 Google Reviews */
+/** Live trust pill: legacy offset + active/confirmed/completed bookings · ★★★★★ · 5.0 Google Reviews */
 function TrustPill() {
-  const [count, setCount] = useState(6300);
-  useEffect(() => {
-    const apiBase = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
-    const base = apiBase.replace(/\/+$/, '');
-    fetch(`${base}/stats/order-count`)
-      .then((r) => r.json())
-      .then((json) => {
-        const n = json?.data?.totalOrders;
-        if (typeof n === 'number' && n >= 6300) setCount(n);
-      })
-      .catch(() => {});
-  }, []);
-
+  const count = useLiveCustomerCount();
   const rounded = Math.floor(count / 25) * 25;
 
   return (
