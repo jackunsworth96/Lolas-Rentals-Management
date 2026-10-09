@@ -14,7 +14,7 @@ const photoUpload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
 });
 
-const ISSUE_TYPES = ['flat_tyre', 'flat_battery', 'engine_mechanical', 'electrical', 'other'] as const;
+const ISSUE_TYPES = ['flat_tyre', 'flat_battery', 'engine_mechanical', 'electrical', 'user_error', 'other'] as const;
 const RESOLUTION_TYPES = ['roadside_fix', 'vehicle_swap', 'towed', 'customer_continued', 'other'] as const;
 
 const CreateBreakdownSchema = z.object({
@@ -103,6 +103,7 @@ const ISSUE_TYPE_LABEL: Record<string, string> = {
   flat_battery: 'Flat / dead battery',
   engine_mechanical: 'Engine / mechanical issue',
   electrical: 'Electrical fault',
+  user_error: 'User error',
   other: 'Other issue',
 };
 

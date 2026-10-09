@@ -138,7 +138,7 @@ export default function BreakdownsPage() {
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-700">{r.customerName ?? '—'}</td>
                   <td className="px-4 py-3">
-                    <Badge color="amber">{ISSUE_TYPE_LABELS[r.issueType]}</Badge>
+                    <Badge color={r.issueType === 'user_error' ? 'gray' : 'amber'}>{ISSUE_TYPE_LABELS[r.issueType]}</Badge>
                   </td>
                   <td className="px-4 py-3">
                     {r.status === 'open' ? (

@@ -23,7 +23,7 @@ interface BreakdownReportModalProps {
 
 type Step = 1 | 2 | 3;
 
-const ISSUE_TYPES: BreakdownIssueType[] = ['flat_tyre', 'flat_battery', 'engine_mechanical', 'electrical', 'other'];
+const ISSUE_TYPES: BreakdownIssueType[] = ['flat_tyre', 'flat_battery', 'engine_mechanical', 'electrical', 'user_error', 'other'];
 const RESOLUTION_TYPES: BreakdownResolutionType[] = ['roadside_fix', 'vehicle_swap', 'towed', 'customer_continued', 'other'];
 
 interface FormState {
@@ -350,7 +350,9 @@ export function BreakdownReportModal({ open, onClose, prefillOrder, onSuccess }:
                   onClick={() => set('issueType', t)}
                   className={`rounded-full border px-3 py-1.5 text-sm font-medium transition ${
                     form.issueType === t
-                      ? 'border-amber-500 bg-amber-50 text-amber-700'
+                      ? t === 'user_error'
+                        ? 'border-gray-500 bg-gray-100 text-gray-800'
+                        : 'border-amber-500 bg-amber-50 text-amber-700'
                       : 'border-gray-200 text-gray-600 hover:bg-gray-50'
                   }`}
                 >
@@ -358,6 +360,12 @@ export function BreakdownReportModal({ open, onClose, prefillOrder, onSuccess }:
                 </button>
               ))}
             </div>
+            {form.issueType === 'user_error' && (
+              <p className="mt-2 text-xs text-gray-500">
+                Vehicle was actually fine — e.g. kickstand left down, kill switch, or similar customer mistake.
+                These are logged but do not count as a real issue in quarterly stats.
+              </p>
+            )}
             {form.issueType === 'other' && (
               <input
                 type="text"

@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './client.js';
 
-export type BreakdownIssueType = 'flat_tyre' | 'flat_battery' | 'engine_mechanical' | 'electrical' | 'other';
+export type BreakdownIssueType = 'flat_tyre' | 'flat_battery' | 'engine_mechanical' | 'electrical' | 'user_error' | 'other';
 export type BreakdownResolutionType = 'roadside_fix' | 'vehicle_swap' | 'towed' | 'customer_continued' | 'other';
 export type BreakdownStatus = 'open' | 'resolved';
 
@@ -10,6 +10,7 @@ export const ISSUE_TYPE_LABELS: Record<BreakdownIssueType, string> = {
   flat_battery: 'Flat / dead battery',
   engine_mechanical: 'Engine / mechanical',
   electrical: 'Electrical fault',
+  user_error: 'User error',
   other: 'Other',
 };
 

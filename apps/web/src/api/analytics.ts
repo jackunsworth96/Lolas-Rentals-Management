@@ -160,6 +160,7 @@ export interface ConfidenceIssueTypeSplit {
   flat_battery: number;
   engine_mechanical: number;
   electrical: number;
+  user_error: number;
   other: number;
 }
 

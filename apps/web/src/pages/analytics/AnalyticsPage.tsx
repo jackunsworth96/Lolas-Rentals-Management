@@ -631,6 +631,7 @@ export default function AnalyticsPage() {
                 flat_battery: 'Flat / dead battery',
                 engine_mechanical: 'Engine / mechanical',
                 electrical: 'Electrical fault',
+                user_error: 'User error',
                 other: 'Other',
               };
 

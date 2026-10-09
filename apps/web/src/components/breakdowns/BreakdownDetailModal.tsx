@@ -131,7 +131,7 @@ export function BreakdownDetailModal({ open, onClose, reportId }: BreakdownDetai
           {r.location && <Field label="Location" value={r.location} />}
           <Field
             label="Issue Type"
-            value={<Badge color="amber">{ISSUE_TYPE_LABELS[r.issueType]}{r.issueDetail ? ` — ${r.issueDetail}` : ''}</Badge>}
+            value={<Badge color={r.issueType === 'user_error' ? 'gray' : 'amber'}>{ISSUE_TYPE_LABELS[r.issueType]}{r.issueDetail ? ` — ${r.issueDetail}` : ''}</Badge>}
           />
           <Field label="What happened" value={<p className="mt-1 whitespace-pre-wrap text-sm text-gray-900">{r.description}</p>} />
         </Section>

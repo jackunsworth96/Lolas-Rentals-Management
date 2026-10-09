@@ -772,7 +772,7 @@ router.get('/confidence-report', async (req, res, next) => {
     }
     const quarterStarts = allQuarterStarts.slice(-MAX_QUARTERS);
 
-    const ISSUE_TYPES = ['flat_tyre', 'flat_battery', 'engine_mechanical', 'electrical', 'other'] as const;
+    const ISSUE_TYPES = ['flat_tyre', 'flat_battery', 'engine_mechanical', 'electrical', 'user_error', 'other'] as const;
 
     const quarters = quarterStarts.map((qStart) => {
       const qEndExclusive = addQuarters(qStart, 1);
@@ -802,6 +802,7 @@ router.get('/confidence-report', async (req, res, next) => {
         flat_battery: 0,
         engine_mechanical: 0,
         electrical: 0,
+        user_error: 0,
         other: 0,
       };
       const resolvedMinutes: number[] = [];
@@ -810,7 +811,8 @@ router.get('/confidence-report', async (req, res, next) => {
         const ms = new Date(b.breakdown_at).getTime();
         if (ms < qStartMs || ms >= qEndMs) continue;
         breakdownCount += 1;
-        breakdownOrderIds.add(b.order_id);
+        // User error (kickstand, etc.) is logged but is not a real vehicle issue.
+        if (b.issue_type !== 'user_error') breakdownOrderIds.add(b.order_id);
         const key = (ISSUE_TYPES as readonly string[]).includes(b.issue_type)
           ? (b.issue_type as (typeof ISSUE_TYPES)[number])
           : 'other';
