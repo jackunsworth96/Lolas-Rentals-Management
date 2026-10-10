@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { assessMileageChange, maintenanceOdometerSyncsFleet, type MileageChangeAssessment } from '@lolas/shared';
 import { Modal } from '../common/Modal.js';
 import { Badge } from '../common/Badge.js';
-import { useFleet } from '../../api/fleet.js';
+import { useFleet, useVehicle } from '../../api/fleet.js';
 import { useEmployees } from '../../api/hr.js';
 import {
   useMaintenanceRecord,
@@ -39,6 +40,49 @@ const STATUS_COLOR: Record<string, 'gray' | 'yellow' | 'green'> = {
   Completed: 'green',
 };
 
+function OdometerMileageNotice({
+  previousMileage,
+  loading,
+  check,
+  confirmed,
+  onConfirm,
+}: {
+  previousMileage: number | null;
+  loading: boolean;
+  check: MileageChangeAssessment | null;
+  confirmed: boolean;
+  onConfirm: (checked: boolean) => void;
+}) {
+  if (loading) return <p className="mt-1 text-xs text-gray-500">Loading last mileage…</p>;
+  return (
+    <div className="mt-1 space-y-2">
+      {previousMileage != null && previousMileage > 0 && (
+        <p className="text-xs text-gray-500">Last recorded: {previousMileage.toLocaleString('en-PH')} km</p>
+      )}
+      {check?.firstReading && check.message && (
+        <p className="text-xs text-gray-500">{check.message}</p>
+      )}
+      {previousMileage === 0 && !check?.firstReading && (
+        <p className="text-xs text-gray-500">No previous mileage — confirm this is the odometer.</p>
+      )}
+      {check?.warn && check.message && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 space-y-2">
+          <p className="text-sm text-amber-900">{check.message}</p>
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={confirmed}
+              onChange={(e) => onConfirm(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-amber-400 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm text-amber-900">I have checked this reading on the odometer</span>
+          </label>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function moneyVal(v: number | { amount: number } | null | undefined): number {
   if (v == null) return 0;
   return typeof v === 'number' ? v : (v.amount ?? 0);
@@ -64,6 +108,7 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
   const [mechanic, setMechanic] = useState('');
   const [mechanicMode, setMechanicMode] = useState<'employee' | 'custom'>('custom');
   const [odometer, setOdometer] = useState('');
+  const [mileageConfirmed, setMileageConfirmed] = useState(false);
   const [nextServiceDue, setNextServiceDue] = useState('');
   const [nextServiceDueDate, setNextServiceDueDate] = useState('');
   const [downtimeTracked, setDowntimeTracked] = useState(false);
@@ -78,6 +123,7 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
 
   const [parts, setParts] = useState<PartEntry[]>([]);
   const [customPartName, setCustomPartName] = useState('');
+  const { data: mileageVehicle, isLoading: mileageLoading } = useVehicle(assetId);
 
   const populateFromRecord = useCallback((rec: Record<string, unknown>) => {
     setAssetId((rec.assetId as string) ?? '');
@@ -85,6 +131,7 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
     setStatus((rec.status as string) ?? 'Reported');
     setMechanic((rec.mechanic as string) ?? '');
     setOdometer(rec.odometer != null ? String(rec.odometer) : '');
+    setMileageConfirmed(false);
     setNextServiceDue(rec.nextServiceDue != null ? String(rec.nextServiceDue) : '');
     setNextServiceDueDate((rec.nextServiceDueDate as string) ?? '');
     setDowntimeTracked((rec.downtimeTracked as boolean) ?? false);
@@ -122,6 +169,22 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
   const empList = employees as Array<{ id: string; fullName: string }>;
   const partOptions = workTypes as Array<{ id: number; name: string }>;
 
+  const previousMileage = mileageVehicle
+    ? Number((mileageVehicle as { currentMileage?: number | null }).currentMileage ?? 0)
+    : null;
+  const proposedOdometer = odometer.trim() === '' ? null : Number(odometer);
+  const proposedKm = proposedOdometer != null && Number.isFinite(proposedOdometer) && proposedOdometer > 0
+    ? proposedOdometer
+    : null;
+  const savedRaw = (record as { odometer?: number | null } | undefined)?.odometer;
+  const savedOdometer = mode === 'create' || savedRaw == null ? null : Number(savedRaw);
+  const willSyncMileage = maintenanceOdometerSyncsFleet(savedOdometer, proposedKm);
+  const mileageCheck = willSyncMileage && previousMileage != null && proposedKm != null
+    ? assessMileageChange(previousMileage, proposedKm)
+    : null;
+  const needsMileageConfirm = Boolean(mileageCheck?.warn && !mileageConfirmed);
+  const mileageBlocksSave = Boolean(assetId) && willSyncMileage && mileageLoading;
+
   const totalPartsCost = useMemo(() => parts.reduce((sum, p) => sum + (p.cost || 0), 0), [parts]);
   const totalCost = useMemo(() => totalPartsCost + (Number(laborCost) || 0), [totalPartsCost, laborCost]);
 
@@ -152,6 +215,7 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!assetId || !issueDescription.trim() || !storeId) return;
+    if (needsMileageConfirm || mileageBlocksSave) return;
     logMaintenance.mutate(
       {
         assetId,
@@ -174,7 +238,7 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!recordId) return;
+    if (!recordId || needsMileageConfirm || mileageBlocksSave) return;
     saveMaintenance.mutate(
       {
         id: recordId,
@@ -217,7 +281,7 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="text-sm font-medium text-gray-700">Vehicle *</span>
-              <select value={assetId} onChange={(e) => setAssetId(e.target.value)} required
+              <select value={assetId} onChange={(e) => { setAssetId(e.target.value); setMileageConfirmed(false); }} required
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                 <option value="">Select vehicle</option>
                 {vehList.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
@@ -225,8 +289,15 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
             </label>
             <label className="block">
               <span className="text-sm font-medium text-gray-700">Odometer</span>
-              <input type="number" min={0} step="0.1" value={odometer} onChange={(e) => setOdometer(e.target.value)}
+              <input type="number" min={0} step="0.1" value={odometer} onChange={(e) => { setOdometer(e.target.value); setMileageConfirmed(false); }}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="km" />
+              <OdometerMileageNotice
+                previousMileage={assetId ? previousMileage : null}
+                loading={Boolean(assetId) && mileageLoading}
+                check={mileageCheck}
+                confirmed={mileageConfirmed}
+                onConfirm={setMileageConfirmed}
+              />
             </label>
           </div>
 
@@ -391,7 +462,7 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
           {logMaintenance.error && <p className="text-sm text-red-600">{(logMaintenance.error as Error).message}</p>}
           <div className="flex justify-end gap-2 border-t pt-4">
             <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm">Cancel</button>
-            <button type="submit" disabled={logMaintenance.isPending}
+            <button type="submit" disabled={logMaintenance.isPending || needsMileageConfirm || mileageBlocksSave}
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50">
               {logMaintenance.isPending ? 'Saving...' : 'Log Maintenance'}
             </button>
@@ -531,8 +602,15 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
           </label>
           <label className="block">
             <span className="text-sm font-medium text-gray-700">Odometer</span>
-            <input type="number" min={0} step="0.1" value={odometer} onChange={(e) => setOdometer(e.target.value)}
+            <input type="number" min={0} step="0.1" value={odometer} onChange={(e) => { setOdometer(e.target.value); setMileageConfirmed(false); }}
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="km" />
+            <OdometerMileageNotice
+              previousMileage={assetId ? previousMileage : null}
+              loading={Boolean(assetId) && mileageLoading}
+              check={mileageCheck}
+              confirmed={mileageConfirmed}
+              onConfirm={setMileageConfirmed}
+            />
           </label>
         </div>
 
@@ -726,7 +804,7 @@ export function MaintenanceLogModal({ open, onClose, mode, storeId, recordId }: 
         <div className="flex justify-end gap-2 border-t pt-4">
           <button type="button" onClick={() => { setEditing(false); if (record) populateFromRecord(rec); }}
             className="rounded-lg border border-gray-300 px-4 py-2 text-sm">Cancel</button>
-          <button type="submit" disabled={saveMaintenance.isPending}
+          <button type="submit" disabled={saveMaintenance.isPending || needsMileageConfirm || mileageBlocksSave}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50">
             {saveMaintenance.isPending ? 'Saving...' : 'Save Changes'}
           </button>

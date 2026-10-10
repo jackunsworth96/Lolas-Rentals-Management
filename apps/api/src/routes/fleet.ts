@@ -732,7 +732,7 @@ router.get('/:id/mileage-events', requirePermission(Permission.ViewFleet), async
       id: string;
       previous_mileage: number | string;
       new_mileage: number | string;
-      source: 'manual' | 'inspection';
+      source: 'manual' | 'inspection' | 'maintenance';
       reason: string | null;
       employee_id: string | null;
       created_at: string;

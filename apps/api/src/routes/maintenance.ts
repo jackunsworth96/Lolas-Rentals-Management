@@ -14,6 +14,7 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { sendEmail, maintenanceLogHtml, escapeHtml, NOTIFICATION_EMAIL, INTERNAL_FROM_EMAIL } from '../services/email.js';
 import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
 import { formatManilaDateTime } from '../utils/manila-date.js';
+import { syncFleetMileageFromMaintenance } from '../services/mileage-events.js';
 
 function toDto(r: MaintenanceRecord) {
   return {
@@ -74,6 +75,15 @@ router.post('/', requirePermission(Permission.EditMaintenance), validateBody(Log
     const result = await logMaintenance(req.body, {
       maintenance: req.app.locals.deps.maintenanceRepo,
       fleet: req.app.locals.deps.fleetRepo,
+    });
+
+    await syncFleetMileageFromMaintenance({
+      vehicleId: result.assetId,
+      storeId: result.storeId,
+      previousRecordOdometer: null,
+      nextOdometer: result.odometer,
+      maintenanceId: result.id,
+      employeeId: req.user?.employeeId ?? null,
     });
 
     // Fire-and-forget tamper-evident maintenance log email + Maintenance channel alert.
@@ -172,6 +182,15 @@ router.put('/:id', requirePermission(Permission.EditMaintenance), validateBody(S
     const result = await saveMaintenance(req.params.id as string, req.body, {
       maintenance: req.app.locals.deps.maintenanceRepo,
       fleet: req.app.locals.deps.fleetRepo,
+    });
+
+    await syncFleetMileageFromMaintenance({
+      vehicleId: result.assetId,
+      storeId: result.storeId,
+      previousRecordOdometer: existing?.odometer ?? null,
+      nextOdometer: result.odometer,
+      maintenanceId: result.id,
+      employeeId: req.user?.employeeId ?? null,
     });
 
     // Fire-and-forget Telegram alert only when the status actually changed.

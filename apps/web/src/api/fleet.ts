@@ -171,7 +171,7 @@ export interface MileageEvent {
   id: string;
   previousMileage: number;
   newMileage: number;
-  source: 'manual' | 'inspection';
+  source: 'manual' | 'inspection' | 'maintenance';
   reason: string | null;
   employeeName: string | null;
   createdAt: string;

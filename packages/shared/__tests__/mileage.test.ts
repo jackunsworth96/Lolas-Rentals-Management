@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assessMileageChange, parseInspectionKm } from '../src/utils/mileage.js';
+import { assessMileageChange, maintenanceOdometerSyncsFleet, parseInspectionKm } from '../src/utils/mileage.js';
 
 describe('assessMileageChange', () => {
   it('flags Tanggol’s extra digit typed as a missing digit on the way back down', () => {
@@ -55,6 +55,26 @@ describe('assessMileageChange', () => {
   it('does not warn when the reading is unchanged', () => {
     expect(assessMileageChange(21000, 21000).warn).toBe(false);
     expect(assessMileageChange(21000.04, 21000).warn).toBe(false);
+  });
+});
+
+describe('maintenanceOdometerSyncsFleet', () => {
+  it('updates the fleet when a new job records a positive odometer', () => {
+    expect(maintenanceOdometerSyncsFleet(null, 4231)).toBe(true);
+  });
+
+  it('does not update the fleet when the job is saved again with the same reading', () => {
+    expect(maintenanceOdometerSyncsFleet(4231, 4231)).toBe(false);
+    expect(maintenanceOdometerSyncsFleet(4231.04, 4231)).toBe(false);
+  });
+
+  it('updates the fleet when an existing job’s reading changes', () => {
+    expect(maintenanceOdometerSyncsFleet(4000, 4231)).toBe(true);
+  });
+
+  it('ignores a blank or zero reading', () => {
+    expect(maintenanceOdometerSyncsFleet(null, null)).toBe(false);
+    expect(maintenanceOdometerSyncsFleet(null, 0)).toBe(false);
   });
 });
 

@@ -214,7 +214,7 @@ export function VehicleModal({ open, onClose, vehicleId }: VehicleModalProps) {
                 <li key={event.id} className="text-xs text-gray-600">
                   <span className="text-gray-500">{formatDateTime(event.createdAt)}</span>
                   {' · '}
-                  {event.source === 'inspection' ? 'Inspection' : 'Manual edit'}
+                  {event.source === 'inspection' ? 'Inspection' : event.source === 'maintenance' ? 'Maintenance' : 'Manual edit'}
                   {' · '}
                   <span className="font-medium text-gray-800">
                     {event.previousMileage.toLocaleString('en-PH')} → {event.newMileage.toLocaleString('en-PH')} km

@@ -4,7 +4,7 @@ export const MILEAGE_JUMP_KM = 2000;
 export interface MileageChangeAssessment {
   /** The new reading should be confirmed before it is saved. */
   warn: boolean;
-  /** A vehicle-record edit must include a reason. Inspections do not. */
+  /** A vehicle-record edit must include a reason. Inspection and maintenance readings do not. */
   reasonRequired: boolean;
   /** The vehicle has no previous mileage yet. */
   firstReading: boolean;
@@ -30,6 +30,20 @@ export function normalizeMileage(value: number): number {
  * Whole-kilometer reading that an inspection will write onto the vehicle.
  * Blank and 0 do not update the vehicle, so they return null.
  */
+/**
+ * A maintenance odometer updates the fleet mileage when a new positive reading
+ * is logged, or when an existing job's reading is changed. Saving the job
+ * again without changing that number does not move the fleet mileage.
+ */
+export function maintenanceOdometerSyncsFleet(
+  previousRecordOdometer: number | null,
+  nextOdometer: number | null,
+): boolean {
+  if (nextOdometer == null || !Number.isFinite(nextOdometer) || nextOdometer <= 0) return false;
+  if (previousRecordOdometer == null || !Number.isFinite(previousRecordOdometer)) return true;
+  return normalizeMileage(nextOdometer) !== normalizeMileage(previousRecordOdometer);
+}
+
 export function parseInspectionKm(raw: string | null | undefined): number | null {
   if (raw == null) return null;
   const n = Number.parseInt(raw, 10);

@@ -37,7 +37,11 @@ export function useLogMaintenance() {
   return useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       api.post('/maintenance', body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['maintenance'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['maintenance'] });
+      qc.invalidateQueries({ queryKey: ['fleet'] });
+      qc.invalidateQueries({ queryKey: ['inspection-vehicle-mileage'] });
+    },
   });
 }
 
@@ -46,7 +50,11 @@ export function useSaveMaintenance() {
   return useMutation({
     mutationFn: ({ id, ...body }: { id: string } & Record<string, unknown>) =>
       api.put(`/maintenance/${id}`, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['maintenance'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['maintenance'] });
+      qc.invalidateQueries({ queryKey: ['fleet'] });
+      qc.invalidateQueries({ queryKey: ['inspection-vehicle-mileage'] });
+    },
   });
 }
 
