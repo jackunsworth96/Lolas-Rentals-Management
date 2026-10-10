@@ -47,6 +47,13 @@ const STATUS_COLOR: Record<string, 'green' | 'blue' | 'yellow' | 'gray' | 'red'>
   'Pending ORCR': 'yellow',
 };
 
+function renderMissing(value: string | null | undefined) {
+  if (!value?.trim()) {
+    return <span className="font-medium text-amber-900">Missing</span>;
+  }
+  return value;
+}
+
 function renderOrcrExpiry(dateStr: string | null | undefined) {
   if (!dateStr?.trim()) {
     return <span className="font-medium text-amber-900">Missing</span>;
@@ -56,6 +63,13 @@ function renderOrcrExpiry(dateStr: string | null | undefined) {
     return <span className="font-medium text-red-900">{label}</span>;
   }
   return label;
+}
+
+function fleetAlertTone(vehicle: VehicleSummary) {
+  const orcr = orcrExpiryTone(vehicle.orcrExpiryDate);
+  if (orcr === 'red') return 'red';
+  if (orcr === 'amber' || !vehicle.gpsId?.trim()) return 'amber';
+  return null;
 }
 
 export default function FleetPage() {
@@ -134,7 +148,7 @@ export default function FleetPage() {
       },
     },
     { key: 'currentMileage', header: 'Mileage', render: (r: VehicleSummary) => r.currentMileage ?? '—' },
-    { key: 'gpsId', header: 'GPS ID', render: (r: VehicleSummary) => r.gpsId ?? '—' },
+    { key: 'gpsId', header: 'GPS ID', render: (r: VehicleSummary) => renderMissing(r.gpsId) },
     {
       key: 'orcrExpiryDate',
       header: 'ORCR expiry',
@@ -229,7 +243,7 @@ export default function FleetPage() {
     },
   ];
 
-  const getRowClassName = (r: VehicleSummary) => orcrRowClass(orcrExpiryTone(r.orcrExpiryDate));
+  const getRowClassName = (r: VehicleSummary) => orcrRowClass(fleetAlertTone(r));
 
   if (isLoading) return <div className="py-12 text-center text-gray-500">Loading fleet...</div>;
 
@@ -335,7 +349,7 @@ export default function FleetPage() {
         <p className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
           <span className="inline-flex items-center gap-1.5">
             <span className="inline-block h-3 w-3 rounded-sm bg-amber-100 ring-1 ring-amber-300" />
-            Amber: expires within 2 months, or the expiry date is missing
+            Amber: ORCR expires within 2 months, or ORCR expiry or GPS ID is missing
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span className="inline-block h-3 w-3 rounded-sm bg-red-100 ring-1 ring-red-300" />
@@ -361,7 +375,7 @@ export default function FleetPage() {
             <div
               key={v.id}
               onClick={() => setEditVehicleId(v.id)}
-              className={`cursor-pointer rounded-lg border p-4 shadow-sm transition hover:shadow-md ${orcrCardClass(orcrExpiryTone(v.orcrExpiryDate))}`}
+              className={`cursor-pointer rounded-lg border p-4 shadow-sm transition hover:shadow-md ${orcrCardClass(fleetAlertTone(v))}`}
             >
               <div className="flex items-start justify-between">
                 <div>
@@ -384,6 +398,8 @@ export default function FleetPage() {
                 <dd>{getStoreName(v.storeId)}</dd>
                 <dt>Mileage</dt>
                 <dd>{v.currentMileage ?? '—'}</dd>
+                <dt>GPS ID</dt>
+                <dd>{renderMissing(v.gpsId)}</dd>
                 <dt>ORCR expiry</dt>
                 <dd>{renderOrcrExpiry(v.orcrExpiryDate)}</dd>
                 <dt>Surf rack</dt>
