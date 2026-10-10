@@ -108,6 +108,14 @@ export function useUpdateInspectionItem() {
   });
 }
 
+export function useVehicleMileage(vehicleId: string, enabled: boolean) {
+  return useQuery<{ currentMileage: number }>({
+    queryKey: ['inspection-vehicle-mileage', vehicleId],
+    queryFn: () => api.get(`/inspections/vehicle-mileage?vehicleId=${encodeURIComponent(vehicleId)}`),
+    enabled: enabled && !!vehicleId,
+  });
+}
+
 export const inspectionsApi = {
   getItems: () => api.get<InspectionItem[]>('/inspections/items'),
   getItemsAll: () => api.get<InspectionItem[]>('/inspections/items/all'),

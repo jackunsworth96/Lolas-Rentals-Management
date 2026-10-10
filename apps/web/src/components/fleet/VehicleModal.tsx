@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
+import { assessMileageChange } from '@lolas/shared';
 import { Modal } from '../common/Modal.js';
-import { useVehicle, useUpdateVehicle } from '../../api/fleet.js';
+import { useMileageEvents, useVehicle, useUpdateVehicle } from '../../api/fleet.js';
 import { useStores, useVehicleModels } from '../../api/config.js';
+import { formatDateTime } from '../../utils/date.js';
 
 const STATUS_OPTIONS = ['Available', 'Active', 'Under Maintenance', 'Service Vehicle', 'Pending ORCR', 'Sold', 'Closed'];
 const PROTECTED_STATUSES = ['Sold', 'Closed'];
@@ -14,6 +16,7 @@ interface VehicleModalProps {
 
 export function VehicleModal({ open, onClose, vehicleId }: VehicleModalProps) {
   const { data: vehicle, isLoading } = useVehicle(vehicleId);
+  const { data: mileageEvents = [] } = useMileageEvents(vehicleId);
   const updateVehicle = useUpdateVehicle();
   const { data: stores = [] } = useStores();
   const { data: models = [] } = useVehicleModels();
@@ -27,6 +30,7 @@ export function VehicleModal({ open, onClose, vehicleId }: VehicleModalProps) {
   const [storeId, setStoreId] = useState('');
   const [modelId, setModelId] = useState('');
   const [currentMileage, setCurrentMileage] = useState('');
+  const [mileageReason, setMileageReason] = useState('');
   const [orcrExpiryDate, setOrcrExpiryDate] = useState('');
   const [surfRack, setSurfRack] = useState(false);
   const [owner, setOwner] = useState('');
@@ -46,14 +50,24 @@ export function VehicleModal({ open, onClose, vehicleId }: VehicleModalProps) {
       setStoreId(vehicle.storeId ?? '');
       setModelId(vehicle.modelId ?? '');
       setCurrentMileage(String(vehicle.currentMileage ?? ''));
+      setMileageReason('');
       setOrcrExpiryDate(vehicle.orcrExpiryDate ?? '');
       setSurfRack(vehicle.surfRack ?? false);
       setOwner(vehicle.owner ?? '');
     }
   }, [vehicle]);
 
+  const previousMileage = Number(vehicle?.currentMileage ?? 0);
+  const parsedMileage = currentMileage.trim() === '' ? null : Number(currentMileage);
+  const mileageCheck = assessMileageChange(
+    previousMileage,
+    parsedMileage != null && Number.isFinite(parsedMileage) ? parsedMileage : previousMileage,
+  );
+  const mileageReasonMissing = mileageCheck.reasonRequired && mileageReason.trim() === '';
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (mileageReasonMissing) return;
     updateVehicle.mutate(
       {
         id: vehicleId,
@@ -65,7 +79,8 @@ export function VehicleModal({ open, onClose, vehicleId }: VehicleModalProps) {
         status: isProtected ? undefined : (status || undefined),
         storeId: storeId || undefined,
         modelId: modelId || null,
-        currentMileage: currentMileage === '' ? undefined : Number(currentMileage),
+        currentMileage: parsedMileage != null && Number.isFinite(parsedMileage) ? parsedMileage : undefined,
+        ...(mileageCheck.reasonRequired ? { mileageChangeReason: mileageReason.trim() } : {}),
         orcrExpiryDate: orcrExpiryDate.trim() || null,
         surfRack,
         owner: owner.trim() || null,
@@ -146,11 +161,35 @@ export function VehicleModal({ open, onClose, vehicleId }: VehicleModalProps) {
             </select>
             {isProtected && <p className="mt-1 text-xs text-amber-600">Sold and Closed status cannot be changed.</p>}
           </label>
-          <label className="block">
-            <span className="text-sm font-medium text-gray-700">Current mileage</span>
-            <input type="number" min={0} value={currentMileage} onChange={(e) => setCurrentMileage(e.target.value)}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-          </label>
+          <div className="col-span-2 space-y-2">
+            <label className="block">
+              <span className="text-sm font-medium text-gray-700">Current mileage</span>
+              <input type="number" min={0} value={currentMileage} onChange={(e) => setCurrentMileage(e.target.value)}
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </label>
+            {previousMileage > 0 ? (
+              <p className="text-xs text-gray-500">Last recorded: {previousMileage.toLocaleString('en-PH')} km</p>
+            ) : (
+              <p className="text-xs text-gray-500">{mileageCheck.message}</p>
+            )}
+            {mileageCheck.warn && mileageCheck.message && (
+              <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">{mileageCheck.message}</p>
+            )}
+            {mileageCheck.reasonRequired && (
+              <label className="block">
+                <span className="text-sm font-medium text-gray-700">Reason for this change</span>
+                <textarea
+                  required
+                  maxLength={1000}
+                  rows={2}
+                  value={mileageReason}
+                  onChange={(e) => setMileageReason(e.target.value)}
+                  placeholder="Extra digit on inspection, odometer is 2100"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </label>
+            )}
+          </div>
           <label className="block">
             <span className="text-sm font-medium text-gray-700">ORCR expiry date</span>
             <input type="date" value={orcrExpiryDate} onChange={(e) => setOrcrExpiryDate(e.target.value)}
@@ -167,10 +206,30 @@ export function VehicleModal({ open, onClose, vehicleId }: VehicleModalProps) {
             <span className="text-sm font-medium text-gray-700">Surf rack</span>
           </label>
         </div>
+        {mileageEvents.length > 0 && (
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <p className="text-sm font-medium text-gray-700">Mileage history</p>
+            <ul className="mt-2 space-y-2">
+              {mileageEvents.map((event) => (
+                <li key={event.id} className="text-xs text-gray-600">
+                  <span className="text-gray-500">{formatDateTime(event.createdAt)}</span>
+                  {' · '}
+                  {event.source === 'inspection' ? 'Inspection' : 'Manual edit'}
+                  {' · '}
+                  <span className="font-medium text-gray-800">
+                    {event.previousMileage.toLocaleString('en-PH')} → {event.newMileage.toLocaleString('en-PH')} km
+                  </span>
+                  {event.reason ? ` · ${event.reason}` : ''}
+                  {event.employeeName ? ` · ${event.employeeName}` : ''}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {updateVehicle.error && <p className="text-sm text-red-600">{(updateVehicle.error as Error).message}</p>}
         <div className="flex justify-end gap-2 border-t border-gray-200 pt-4">
           <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
-          <button type="submit" disabled={updateVehicle.isPending} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">Save</button>
+          <button type="submit" disabled={updateVehicle.isPending || mileageReasonMissing} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">Save</button>
         </div>
       </form>
     </Modal>

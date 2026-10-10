@@ -2,8 +2,9 @@ import { Router } from 'express';
 import { z } from 'zod';
 import crypto from 'crypto';
 import { requirePermission } from '../middleware/authorize.js';
-import { validateBody } from '../middleware/validate.js';
-import { Permission } from '@lolas/shared';
+import { validateBody, validateQuery } from '../middleware/validate.js';
+import { Permission, parseInspectionKm } from '@lolas/shared';
+import { recordMileageEvent } from '../services/mileage-events.js';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { logMaintenance } from '../use-cases/maintenance/log-maintenance.js';
 import { sendEmail, inspectionLogHtml, escapeHtml, INTERNAL_FROM_EMAIL } from '../services/email.js';
@@ -178,6 +179,43 @@ router.get('/order/:orderId', requirePermission(Permission.ViewOrders), async (r
   }
 });
 
+router.get(
+  '/vehicle-mileage',
+  requirePermission(Permission.EditOrders),
+  validateQuery(z.object({ vehicleId: z.string().min(1) })),
+  async (req, res, next) => {
+    try {
+      const vehicleId = req.query.vehicleId as string;
+      const userStoreIds = req.user?.storeIds ?? [];
+      const sb = getSupabaseClient();
+      const { data, error } = await sb
+        .from('fleet')
+        .select('id, store_id, current_mileage')
+        .eq('id', vehicleId)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!data) {
+        res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Vehicle not found' } });
+        return;
+      }
+      const storeId = (data as { store_id: string }).store_id;
+      if (!userStoreIds.includes(storeId)) {
+        res.status(403).json({
+          success: false,
+          error: { code: 'FORBIDDEN', message: 'Store not allowed for this user' },
+        });
+        return;
+      }
+      res.json({
+        success: true,
+        data: { currentMileage: Number((data as { current_mileage: number | string }).current_mileage) },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 router.post(
   '/',
   requirePermission(Permission.EditOrders),
@@ -273,8 +311,17 @@ router.post(
         if (resErr) throw new Error(resErr.message);
       }
 
-      const kmNum = parseInt(body.kmReading ?? '', 10);
-      if (body.vehicleId && !Number.isNaN(kmNum) && kmNum > 0) {
+      const kmNum = parseInspectionKm(body.kmReading);
+      if (body.vehicleId && kmNum != null) {
+        const { data: mileageRow, error: mileageReadErr } = await sb
+          .from('fleet')
+          .select('current_mileage, store_id')
+          .eq('id', body.vehicleId)
+          .maybeSingle();
+        if (mileageReadErr) throw new Error(mileageReadErr.message);
+        const previousMileage = Number(
+          (mileageRow as { current_mileage?: number | string } | null)?.current_mileage ?? 0,
+        );
         const { error: fleetOdoErr } = await sb
           .from('fleet')
           .update({
@@ -283,6 +330,29 @@ router.post(
           })
           .eq('id', body.vehicleId);
         if (fleetOdoErr) throw new Error(fleetOdoErr.message);
+        if (previousMileage !== kmNum) {
+          try {
+            await recordMileageEvent({
+              vehicleId: body.vehicleId,
+              storeId: (mileageRow as { store_id?: string } | null)?.store_id ?? body.storeId,
+              previousMileage,
+              newMileage: kmNum,
+              source: 'inspection',
+              reason: null,
+              employeeId: req.user?.employeeId ?? null,
+              inspectionId,
+            });
+          } catch (eventErr) {
+            await sb
+              .from('fleet')
+              .update({
+                current_mileage: previousMileage,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', body.vehicleId);
+            throw eventErr;
+          }
+        }
       }
 
       const odometer = parseOdometer(body.kmReading);

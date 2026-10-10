@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
-import { Permission } from '@lolas/shared';
+import { Permission, assessMileageChange, normalizeMileage } from '@lolas/shared';
+import { recordMileageEvent } from '../services/mileage-events.js';
 import { z } from 'zod';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { formatManilaDate } from '../utils/manila-date.js';
@@ -710,6 +711,60 @@ router.get(
   },
 );
 
+router.get('/:id/mileage-events', requirePermission(Permission.ViewFleet), async (req, res, next) => {
+  try {
+    const vehicleId = req.params.id as string;
+    const vehicle = await req.app.locals.deps.fleetRepo.findById(vehicleId);
+    if (!vehicle) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Vehicle not found' } });
+      return;
+    }
+    const sb = getSupabaseClient();
+    const { data, error } = await sb
+      .from('fleet_mileage_events')
+      .select('id, previous_mileage, new_mileage, source, reason, employee_id, created_at')
+      .eq('vehicle_id', vehicleId)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    if (error) throw new Error(error.message);
+
+    const rows = (data ?? []) as Array<{
+      id: string;
+      previous_mileage: number | string;
+      new_mileage: number | string;
+      source: 'manual' | 'inspection';
+      reason: string | null;
+      employee_id: string | null;
+      created_at: string;
+    }>;
+    const employeeIds = [...new Set(rows.map((row) => row.employee_id).filter((id): id is string => !!id))];
+    const names = new Map<string, string>();
+    if (employeeIds.length > 0) {
+      const { data: employees, error: empErr } = await sb
+        .from('employees')
+        .select('id, full_name')
+        .in('id', employeeIds);
+      if (empErr) throw new Error(empErr.message);
+      for (const employee of (employees ?? []) as Array<{ id: string; full_name: string | null }>) {
+        if (employee.full_name) names.set(employee.id, employee.full_name);
+      }
+    }
+
+    res.json({
+      success: true,
+      data: rows.map((row) => ({
+        id: row.id,
+        previousMileage: Number(row.previous_mileage),
+        newMileage: Number(row.new_mileage),
+        source: row.source,
+        reason: row.reason,
+        employeeName: row.employee_id ? names.get(row.employee_id) ?? null : null,
+        createdAt: row.created_at,
+      })),
+    });
+  } catch (err) { next(err); }
+});
+
 router.get('/:id', requirePermission(Permission.ViewFleet), async (req, res, next) => {
   try {
     const vehicle = await req.app.locals.deps.fleetRepo.findById(req.params.id);
@@ -739,21 +794,69 @@ router.put('/:id', requirePermission(Permission.EditFleet), validateBody(z.objec
   name: z.string().optional(), plateNumber: z.string().nullable().optional(),
   engineNumber: z.string().nullable().optional(), chassisNumber: z.string().nullable().optional(),
   gpsId: z.string().nullable().optional(), status: z.string().optional(),
-  currentMileage: z.number().optional(), orcrExpiryDate: z.string().nullable().optional(),
+  currentMileage: z.number().nonnegative().optional(),
+  mileageChangeReason: z.string().trim().max(1000).optional(),
+  orcrExpiryDate: z.string().nullable().optional(),
   surfRack: z.boolean().optional(), owner: z.string().nullable().optional(),
   storeId: z.string().optional(), modelId: z.string().nullable().optional(),
 })), async (req, res, next) => {
   try {
     const vehicleId = req.params.id as string;
+    const mileageTouched = req.body?.currentMileage !== undefined;
     // Capture old status before the update so we can detect the specific
     // transition Available → non-Available without a second full refetch.
-    const priorVehicle = req.body?.status !== undefined
+    const priorVehicle = req.body?.status !== undefined || mileageTouched
       ? await req.app.locals.deps.fleetRepo.findById(vehicleId)
       : null;
     const oldStatus = priorVehicle?.status ?? null;
 
+    const previousMileage = priorVehicle ? Number(priorVehicle.currentMileage) : null;
+    const nextMileage = mileageTouched ? Number(req.body.currentMileage) : null;
+    const mileageChanged = previousMileage != null
+      && nextMileage != null
+      && normalizeMileage(previousMileage) !== normalizeMileage(nextMileage);
+    const mileageCheck = mileageChanged && previousMileage != null && nextMileage != null
+      ? assessMileageChange(previousMileage, nextMileage)
+      : null;
+    if (mileageCheck?.reasonRequired && !req.body.mileageChangeReason) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'MILEAGE_REASON_REQUIRED',
+          message: 'Enter a reason for this mileage change.',
+        },
+      });
+      return;
+    }
+
+    const { mileageChangeReason, ...vehicleFields } = req.body;
     const { updateVehicle } = await import('../use-cases/fleet/update-vehicle.js');
-    const result = await updateVehicle({ fleetRepo: req.app.locals.deps.fleetRepo }, { vehicleId, ...req.body });
+    const result = await updateVehicle(
+      { fleetRepo: req.app.locals.deps.fleetRepo },
+      { vehicleId, ...vehicleFields },
+    );
+
+    if (mileageChanged && priorVehicle && nextMileage != null && previousMileage != null) {
+      try {
+        await recordMileageEvent({
+          vehicleId,
+          storeId: priorVehicle.storeId,
+          previousMileage: normalizeMileage(previousMileage),
+          newMileage: normalizeMileage(nextMileage),
+          source: 'manual',
+          reason: mileageCheck?.reasonRequired ? mileageChangeReason : null,
+          employeeId: req.user?.employeeId ?? null,
+          inspectionId: null,
+        });
+      } catch (eventErr) {
+        await updateVehicle(
+          { fleetRepo: req.app.locals.deps.fleetRepo },
+          { vehicleId, currentMileage: previousMileage },
+        );
+        throw eventErr;
+      }
+    }
+
     res.json({ success: true, data: result });
 
     // Fleet channel Telegram alerts — fired on significant status transitions.

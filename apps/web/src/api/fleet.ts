@@ -167,11 +167,32 @@ export function useVehicle(id: string) {
   });
 }
 
+export interface MileageEvent {
+  id: string;
+  previousMileage: number;
+  newMileage: number;
+  source: 'manual' | 'inspection';
+  reason: string | null;
+  employeeName: string | null;
+  createdAt: string;
+}
+
+export function useMileageEvents(vehicleId: string) {
+  return useQuery<MileageEvent[]>({
+    queryKey: ['fleet', vehicleId, 'mileage-events'],
+    queryFn: () => api.get(`/fleet/${vehicleId}/mileage-events`),
+    enabled: !!vehicleId,
+  });
+}
+
 export function useUpdateVehicle() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...body }: { id: string } & Record<string, unknown>) => api.put(`/fleet/${id}`, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['fleet'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fleet'] });
+      qc.invalidateQueries({ queryKey: ['inspection-vehicle-mileage'] });
+    },
   });
 }
 

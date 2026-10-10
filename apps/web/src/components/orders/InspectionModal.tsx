@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { assessMileageChange, parseInspectionKm } from '@lolas/shared';
 import { api } from '../../api/client.js';
 import type { AvailableVehicle } from '../../api/fleet.js';
-import type { InspectionItem } from '../../api/inspections.js';
+import { useVehicleMileage, type InspectionItem } from '../../api/inspections.js';
 
 interface InspectionResult {
   result: 'accepted' | 'issue_noted' | 'na' | 'declined';
@@ -76,6 +77,7 @@ export function InspectionModal({
   const [vehicleId, setVehicleId] = useState('');
   const [vehicleName, setVehicleName] = useState('');
   const [kmReading, setKmReading] = useState('');
+  const [mileageConfirmed, setMileageConfirmed] = useState(false);
   const [damageNotes, setDamageNotes] = useState('');
   const [damageLogMaintenance, setDamageLogMaintenance] = useState(false);
   const [helmetNumbers, setHelmetNumbers] = useState('');
@@ -87,6 +89,14 @@ export function InspectionModal({
   const dialogRef = useRef<HTMLDialogElement>(null);
   const isClosingRef = useRef(false);
   const isDrawingRef = useRef(false);
+  const mileageQuery = useVehicleMileage(vehicleId, open);
+  const previousMileage = mileageQuery.data ? Number(mileageQuery.data.currentMileage) : null;
+  const proposedKm = parseInspectionKm(kmReading);
+  const mileageCheck = previousMileage != null
+    ? assessMileageChange(previousMileage, proposedKm ?? previousMileage)
+    : null;
+  const mileagePending = Boolean(vehicleId) && mileageQuery.isLoading;
+  const needsMileageConfirm = Boolean(mileageCheck?.warn && !mileageConfirmed);
 
   useEffect(() => {
     const d = dialogRef.current;
@@ -107,6 +117,7 @@ export function InspectionModal({
     setVehicleId(preAssignedVehicleId ?? '');
     setVehicleName(preAssignedVehicleName ?? '');
     setKmReading('');
+    setMileageConfirmed(false);
     setDamageNotes('');
     setDamageLogMaintenance(false);
     setHelmetNumbers('');
@@ -244,6 +255,10 @@ export function InspectionModal({
       setError('Please select a vehicle.');
       return;
     }
+    if (mileageCheck?.warn && !mileageConfirmed) {
+      setError('Check the KM reading before submitting.');
+      return;
+    }
     if (!hasSignature) {
       setError('Customer signature is required.');
       return;
@@ -306,6 +321,7 @@ export function InspectionModal({
         results: resultsArray,
       });
       void queryClient.invalidateQueries({ queryKey: ['fleet'] });
+      void queryClient.invalidateQueries({ queryKey: ['inspection-vehicle-mileage'] });
       if (vehicleId && vehicleName) {
         onVehicleAssigned?.(vehicleId, vehicleName);
       }
@@ -357,7 +373,7 @@ export function InspectionModal({
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={!hasSignature || submitting}
+            disabled={!hasSignature || submitting || mileagePending || needsMileageConfirm}
             className="bg-gold-brand text-charcoal-brand font-lato font-semibold text-sm px-5 py-2 rounded-lg transition-colors hover:bg-gold-brand/90 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {submitting ? 'Saving…' : 'Submit'}
@@ -400,6 +416,7 @@ export function InspectionModal({
                 const v = availableVehicles.find((x) => x.id === e.target.value);
                 setVehicleId(e.target.value);
                 setVehicleName(v?.name ?? '');
+                setMileageConfirmed(false);
               }}
               className="block w-full rounded-lg border border-charcoal-brand/20 bg-white px-3 py-2.5 text-sm font-lato text-charcoal-brand focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand appearance-none"
             >
@@ -418,11 +435,40 @@ export function InspectionModal({
               type="number"
               min={0}
               value={kmReading}
-              onChange={(e) => setKmReading(e.target.value)}
+              onChange={(e) => {
+                setKmReading(e.target.value);
+                setMileageConfirmed(false);
+              }}
               placeholder="e.g. 12450"
               className="mt-1.5 block w-full rounded-lg border border-charcoal-brand/20 bg-white px-3 py-2.5 text-sm font-lato text-charcoal-brand placeholder:text-charcoal-brand/30 focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand"
             />
           </label>
+          {mileagePending && (
+            <p className="font-lato text-xs text-charcoal-brand/50">Loading last mileage…</p>
+          )}
+          {mileageQuery.isError && (
+            <p className="font-lato text-xs text-amber-700">Could not load the last mileage. Check the odometer carefully before submitting.</p>
+          )}
+          {previousMileage != null && previousMileage > 0 && (
+            <p className="font-lato text-xs text-charcoal-brand/60">Last recorded: {previousMileage.toLocaleString('en-PH')} km</p>
+          )}
+          {mileageCheck?.firstReading && mileageCheck.message && (
+            <p className="font-lato text-xs text-charcoal-brand/60">{mileageCheck.message}</p>
+          )}
+          {mileageCheck?.warn && mileageCheck.message && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 space-y-2">
+              <p className="font-lato text-sm text-amber-900">{mileageCheck.message}</p>
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={mileageConfirmed}
+                  onChange={(e) => setMileageConfirmed(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-amber-400 text-teal-brand focus:ring-teal-brand"
+                />
+                <span className="font-lato text-sm text-amber-900">I have checked this reading on the odometer</span>
+              </label>
+            </div>
+          )}
         </div>
 
         {/* Section 3 — Checklist */}
@@ -599,7 +645,7 @@ export function InspectionModal({
         <button
           type="button"
           onClick={handleSubmit}
-          disabled={!hasSignature || submitting}
+          disabled={!hasSignature || submitting || mileagePending || needsMileageConfirm}
           className="w-full bg-gold-brand text-charcoal-brand font-lato font-semibold text-sm py-3 rounded-xl transition-colors hover:bg-gold-brand/90 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {submitting ? 'Saving…' : 'Submit Inspection'}
