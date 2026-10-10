@@ -34,24 +34,30 @@ export function Table<T>({ columns, data, keyFn, onRowClick, getRowClassName, em
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200 bg-white">
-          {data.map((row) => (
-            <tr
-              key={keyFn(row)}
-              onClick={() => onRowClick?.(row)}
-              className={[onRowClick ? 'cursor-pointer hover:bg-gray-50' : '', getRowClassName?.(row) ?? ''].filter(Boolean).join(' ')}
-            >
-              {columns.map((col) => (
-                <td
-                  key={col.key}
-                  className={`px-4 py-3 text-sm text-gray-900 align-top ${
-                    col.cellClassName ?? 'whitespace-nowrap'
-                  } ${col.className ?? ''}`}
-                >
-                  {col.render ? col.render(row) : String((row as Record<string, unknown>)[col.key] ?? '')}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {data.map((row) => {
+            const customClass = getRowClassName?.(row) ?? '';
+            return (
+              <tr
+                key={keyFn(row)}
+                onClick={() => onRowClick?.(row)}
+                className={[
+                  onRowClick ? 'cursor-pointer' : '',
+                  customClass || (onRowClick ? 'hover:bg-gray-50' : ''),
+                ].filter(Boolean).join(' ')}
+              >
+                {columns.map((col) => (
+                  <td
+                    key={col.key}
+                    className={`px-4 py-3 text-sm text-gray-900 align-top ${
+                      col.cellClassName ?? 'whitespace-nowrap'
+                    } ${col.className ?? ''}`}
+                  >
+                    {col.render ? col.render(row) : String((row as Record<string, unknown>)[col.key] ?? '')}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

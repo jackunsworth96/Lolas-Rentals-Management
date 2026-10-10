@@ -16,6 +16,7 @@ import { OwnerUseModal } from '../../components/fleet/OwnerUseModal.js';
 import { AvailabilityExplanationModal } from '../../components/fleet/AvailabilityExplanationModal.js';
 import { formatDate } from '../../utils/date.js';
 import { formatCurrency } from '../../utils/currency.js';
+import { orcrCardClass, orcrExpiryTone, orcrRowClass } from '../../utils/orcr-expiry.js';
 import type { VehicleSummary } from '../../types/api.js';
 
 function calcMonthlyDep(v: VehicleSummary): number {
@@ -46,13 +47,15 @@ const STATUS_COLOR: Record<string, 'green' | 'blue' | 'yellow' | 'gray' | 'red'>
   'Pending ORCR': 'yellow',
 };
 
-function isOrcrExpiringSoon(dateStr: string | null | undefined): boolean {
-  if (!dateStr) return false;
-  const expiry = new Date(dateStr);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const diffDays = Math.ceil((expiry.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
-  return diffDays >= 0 && diffDays <= 30;
+function renderOrcrExpiry(dateStr: string | null | undefined) {
+  if (!dateStr?.trim()) {
+    return <span className="font-medium text-amber-900">Missing</span>;
+  }
+  const label = formatDate(dateStr);
+  if (orcrExpiryTone(dateStr) === 'red') {
+    return <span className="font-medium text-red-900">{label}</span>;
+  }
+  return label;
 }
 
 export default function FleetPage() {
@@ -135,7 +138,7 @@ export default function FleetPage() {
     {
       key: 'orcrExpiryDate',
       header: 'ORCR expiry',
-      render: (r: VehicleSummary) => (r.orcrExpiryDate ? formatDate(r.orcrExpiryDate) : '—'),
+      render: (r: VehicleSummary) => renderOrcrExpiry(r.orcrExpiryDate),
     },
     {
       key: 'surfRack',
@@ -226,8 +229,7 @@ export default function FleetPage() {
     },
   ];
 
-  const getRowClassName = (r: VehicleSummary) =>
-    isOrcrExpiringSoon(r.orcrExpiryDate) ? 'bg-amber-50' : '';
+  const getRowClassName = (r: VehicleSummary) => orcrRowClass(orcrExpiryTone(r.orcrExpiryDate));
 
   if (isLoading) return <div className="py-12 text-center text-gray-500">Loading fleet...</div>;
 
@@ -329,6 +331,19 @@ export default function FleetPage() {
         </div>
       )}
 
+      {(viewMode === 'list' || viewMode === 'grid') && (
+        <p className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block h-3 w-3 rounded-sm bg-amber-100 ring-1 ring-amber-300" />
+            Amber: expires within 2 months, or the expiry date is missing
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block h-3 w-3 rounded-sm bg-red-100 ring-1 ring-red-300" />
+            Red: expires within 2 weeks, or overdue
+          </span>
+        </p>
+      )}
+
       {viewMode === 'list' && (
         <Table
           columns={columns}
@@ -346,7 +361,7 @@ export default function FleetPage() {
             <div
               key={v.id}
               onClick={() => setEditVehicleId(v.id)}
-              className={`cursor-pointer rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md ${getRowClassName(v)}`}
+              className={`cursor-pointer rounded-lg border p-4 shadow-sm transition hover:shadow-md ${orcrCardClass(orcrExpiryTone(v.orcrExpiryDate))}`}
             >
               <div className="flex items-start justify-between">
                 <div>
@@ -370,7 +385,7 @@ export default function FleetPage() {
                 <dt>Mileage</dt>
                 <dd>{v.currentMileage ?? '—'}</dd>
                 <dt>ORCR expiry</dt>
-                <dd>{v.orcrExpiryDate ? formatDate(v.orcrExpiryDate) : '—'}</dd>
+                <dd>{renderOrcrExpiry(v.orcrExpiryDate)}</dd>
                 <dt>Surf rack</dt>
                 <dd>
                   {v.surfRack
