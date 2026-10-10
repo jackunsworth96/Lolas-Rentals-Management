@@ -4,10 +4,13 @@ import { Badge } from '../common/Badge.js';
 import { useVehicleServiceHistory } from '../../api/maintenance.js';
 import { useVehicleAccidents } from '../../api/accidents.js';
 import type { AccidentReport } from '../../api/accidents.js';
+import { useVehicleBreakdowns, ISSUE_TYPE_LABELS, RESOLUTION_TYPE_LABELS } from '../../api/breakdowns.js';
+import type { BreakdownReport } from '../../api/breakdowns.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { formatDate } from '../../utils/date.js';
 import { generateServiceHistoryPdf } from '../../utils/serviceHistoryPdf.js';
 import { AccidentDetailModal } from '../accidents/AccidentDetailModal.js';
+import { BreakdownDetailModal } from '../breakdowns/BreakdownDetailModal.js';
 
 interface ServiceHistoryModalProps {
   open: boolean;
@@ -42,6 +45,23 @@ interface MaintenanceRow {
   createdAt: string;
 }
 
+function formatWhen(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('en-PH', {
+    timeZone: 'Asia/Manila',
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
+
+function formatResolutionMinutes(mins: number | null): string | null {
+  if (mins == null) return null;
+  if (mins < 60) return `${mins} min`;
+  const hours = Math.floor(mins / 60);
+  const minutes = mins % 60;
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+}
+
 function moneyVal(v: number | { amount: number } | null | undefined): number {
   if (v == null) return 0;
   return typeof v === 'number' ? v : (v.amount ?? 0);
@@ -54,12 +74,15 @@ const STATUS_COLOR: Record<string, 'gray' | 'yellow' | 'green'> = {
 };
 
 export function ServiceHistoryModal({ open, onClose, vehicleId, vehicleName, storeId }: ServiceHistoryModalProps) {
-  const [tab, setTab] = useState<'maintenance' | 'accidents'>('maintenance');
+  const [tab, setTab] = useState<'maintenance' | 'accidents' | 'breakdowns'>('maintenance');
   const [accidentDetailId, setAccidentDetailId] = useState<string | null>(null);
+  const [breakdownDetailId, setBreakdownDetailId] = useState<string | null>(null);
   const { data, isLoading } = useVehicleServiceHistory(vehicleId, storeId);
   const { data: accidentData, isLoading: accidentsLoading } = useVehicleAccidents(vehicleId, storeId);
+  const { data: breakdownData, isLoading: breakdownsLoading } = useVehicleBreakdowns(vehicleId, storeId);
   const records = (data ?? []) as MaintenanceRow[];
   const accidents = (accidentData ?? []) as AccidentReport[];
+  const breakdowns = (breakdownData ?? []) as BreakdownReport[];
 
   if (!open) return null;
 
@@ -83,6 +106,14 @@ export function ServiceHistoryModal({ open, onClose, vehicleId, vehicleName, sto
           }`}
         >
           Accidents ({accidents.length})
+        </button>
+        <button
+          onClick={() => setTab('breakdowns')}
+          className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+            tab === 'breakdowns' ? 'border-amber-600 text-amber-700' : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Breakdowns ({breakdowns.length})
         </button>
       </div>
 
@@ -183,13 +214,7 @@ export function ServiceHistoryModal({ open, onClose, vehicleId, vehicleName, sto
           ) : (
             <div className="space-y-3">
               {accidents.map((a) => {
-                const accidentDate = a.accidentAt
-                  ? new Date(a.accidentAt).toLocaleString('en-PH', {
-                      timeZone: 'Asia/Manila',
-                      dateStyle: 'medium',
-                      timeStyle: 'short',
-                    })
-                  : '—';
+                const accidentDate = formatWhen(a.accidentAt);
                 return (
                   <button
                     key={a.id}
@@ -220,6 +245,55 @@ export function ServiceHistoryModal({ open, onClose, vehicleId, vehicleName, sto
         </div>
       )}
 
+      {/* ── Breakdowns tab ── */}
+      {tab === 'breakdowns' && (
+        <div className="max-h-[60vh] overflow-y-auto">
+          {breakdownsLoading ? (
+            <div className="py-8 text-center text-gray-500">Loading...</div>
+          ) : breakdowns.length === 0 ? (
+            <div className="py-8 text-center text-gray-500">No breakdown reports for this vehicle</div>
+          ) : (
+            <div className="space-y-3">
+              {breakdowns.map((b) => {
+                const resolutionTime = formatResolutionMinutes(b.resolutionMinutes);
+                return (
+                  <button
+                    key={b.id}
+                    type="button"
+                    onClick={() => setBreakdownDetailId(b.id)}
+                    className="w-full rounded-lg border border-amber-200 bg-amber-50 p-4 text-left hover:bg-amber-100 transition-colors"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge color={b.issueType === 'user_error' ? 'gray' : 'amber'}>
+                            {ISSUE_TYPE_LABELS[b.issueType]}
+                          </Badge>
+                          {b.status === 'open' ? (
+                            <Badge color="red">Open</Badge>
+                          ) : (
+                            <Badge color="green">
+                              {b.resolutionType ? RESOLUTION_TYPE_LABELS[b.resolutionType] : 'Resolved'}
+                            </Badge>
+                          )}
+                          <span className="text-sm font-mono text-gray-600">{b.orderReference ?? '—'}</span>
+                          {b.customerName && <span className="text-sm text-gray-500">· {b.customerName}</span>}
+                        </div>
+                        <p className="mt-1 text-sm font-medium text-gray-900 line-clamp-2">{b.description}</p>
+                        {resolutionTime && (
+                          <p className="mt-1 text-xs text-gray-500">Resolved in {resolutionTime}</p>
+                        )}
+                      </div>
+                      <span className="shrink-0 text-xs text-gray-400">{formatWhen(b.breakdownAt)}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {tab === 'maintenance' && !isLoading && records.length > 0 && (
         <div className="mt-4 flex justify-end border-t border-gray-200 pt-4">
           <button
@@ -241,6 +315,13 @@ export function ServiceHistoryModal({ open, onClose, vehicleId, vehicleName, sto
         open={!!accidentDetailId}
         onClose={() => setAccidentDetailId(null)}
         reportId={accidentDetailId}
+      />
+    )}
+    {breakdownDetailId && (
+      <BreakdownDetailModal
+        open={!!breakdownDetailId}
+        onClose={() => setBreakdownDetailId(null)}
+        reportId={breakdownDetailId}
       />
     )}
     </>
