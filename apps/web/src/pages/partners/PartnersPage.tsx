@@ -100,7 +100,7 @@ function CommissionsDueModal({ open, onClose, storeId, onOpenPartner }: Commissi
     setDownloadingId(partnerId);
     try {
       const stats = await fetchPartnerStats(partnerId, month);
-      generatePartnerReportPdf(partnerName, month, stats);
+      await generatePartnerReportPdf(partnerName, month, stats);
     } catch (err) {
       setDownloadError(err instanceof Error ? err.message : 'Failed to generate PDF');
     } finally {
@@ -663,8 +663,8 @@ const EMPTY_FORM = {
   contact_whatsapp: '',
   commission_type: 'percentage' as 'fixed' | 'percentage',
   commission_value: 0,
-  advance_booking_days: 7,
-  commission_includes_extensions: false,
+  advance_booking_days: 0,
+  commission_includes_extensions: true,
   deal_type: 'commission' as PartnerDealType,
   discount_type: 'percentage' as PartnerDiscountType,
   discount_value: 0,
@@ -1198,6 +1198,13 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
           )}
         </div>
 
+        <VehicleOverridesSection
+          partnerId={isEdit && editing ? editing.id : null}
+          draftTerms={draftOverrides}
+          onDraftTermsChange={setDraftOverrides}
+          pushToast={pushToast}
+        />
+
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Partner logo
@@ -1293,13 +1300,6 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
             placeholder="Any agreement details, renewal dates, etc."
           />
         </div>
-
-        <VehicleOverridesSection
-          partnerId={isEdit && editing ? editing.id : null}
-          draftTerms={draftOverrides}
-          onDraftTermsChange={setDraftOverrides}
-          pushToast={pushToast}
-        />
 
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">

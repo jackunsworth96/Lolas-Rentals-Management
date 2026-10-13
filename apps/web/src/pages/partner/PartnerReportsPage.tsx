@@ -38,7 +38,7 @@ export default function PartnerReportsPage() {
 
   function handleDownloadPdf() {
     if (!data) return;
-    generatePartnerReportPdf(partnerName, month, data);
+    void generatePartnerReportPdf(partnerName, month, data);
   }
 
   return (

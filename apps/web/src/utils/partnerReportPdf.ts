@@ -1,6 +1,38 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { PartnerReport, PartnerReportBooking } from '../api/partner-portal.js';
+import lolasLogoUrl from '../assets/Lolas Original Logo.svg';
+
+const LOGO_ASPECT = 282.96 / 120.96;
+const LOGO_HEIGHT_MM = 16;
+const LOGO_WIDTH_MM = LOGO_HEIGHT_MM * LOGO_ASPECT;
+
+async function loadCompanyLogoPng(): Promise<string | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const w = img.naturalWidth || 378;
+        const h = img.naturalHeight || 151;
+        const scale = 3;
+        canvas.width = Math.max(1, Math.round(w * scale));
+        canvas.height = Math.max(1, Math.round(h * scale));
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(null);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/png'));
+      } catch {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = lolasLogoUrl;
+  });
+}
 
 function money(value: number): string {
   return `PHP ${value.toLocaleString('en-PH', { maximumFractionDigits: 2 })}`;
@@ -48,11 +80,11 @@ function commissionCell(b: PartnerReportBooking): string {
   return line;
 }
 
-export function generatePartnerReportPdf(
+export async function generatePartnerReportPdf(
   partnerName: string,
   month: string,
   report: PartnerReport,
-): void {
+): Promise<void> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
   const pageW = doc.internal.pageSize.getWidth();
@@ -67,38 +99,46 @@ export function generatePartnerReportPdf(
   });
 
   // ── Header ─────────────────────────────────────────────────────────────────
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.setTextColor(17, 24, 39);
-  doc.text("Lola's Rentals", margin, 18);
+  const logoPng = await loadCompanyLogoPng();
+  const logoTop = 8;
+  if (logoPng) {
+    doc.addImage(logoPng, 'PNG', margin, logoTop, LOGO_WIDTH_MM, LOGO_HEIGHT_MM);
+  } else {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.setTextColor(17, 24, 39);
+    doc.text("Lola's Rentals", margin, 18);
+  }
 
+  const titleY = logoPng ? logoTop + LOGO_HEIGHT_MM + 5 : 25;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(11);
   doc.setTextColor(75, 85, 99);
-  doc.text('Partner Commission Report', margin, 25);
+  doc.text('Partner Commission Report', margin, titleY);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(17, 24, 39);
-  doc.text(partnerName, pageW - margin, 18, { align: 'right' });
+  doc.text(partnerName, pageW - margin, 14, { align: 'right' });
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(107, 114, 128);
-  doc.text(monthLabel, pageW - margin, 24, { align: 'right' });
+  doc.text(monthLabel, pageW - margin, 20, { align: 'right' });
   doc.text(
     `Generated: ${new Date().toLocaleDateString('en-PH', { day: '2-digit', month: 'short', year: 'numeric' })}`,
     pageW - margin,
-    29,
+    25,
     { align: 'right' },
   );
 
+  const headerLineY = Math.max(titleY + 4, 30);
   doc.setDrawColor(209, 213, 219);
   doc.setLineWidth(0.3);
-  doc.line(margin, 33, pageW - margin, 33);
+  doc.line(margin, headerLineY, pageW - margin, headerLineY);
 
   // ── Summary cards ──────────────────────────────────────────────────────────
-  const summaryY = 39;
+  const summaryY = headerLineY + 6;
   const colW = contentW / 4;
 
   const summaryItems = [
