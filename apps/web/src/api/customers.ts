@@ -72,11 +72,12 @@ export interface CustomerDetail {
   pawCard: CustomerPawCard;
 }
 
-export function useCustomers(storeId: string, query: string) {
+export function useCustomers(storeId: string, query: string, blacklistedOnly = false) {
   const params = new URLSearchParams({ storeId });
   if (query) params.set('q', query);
+  if (blacklistedOnly) params.set('blacklisted', 'true');
   return useQuery<CustomerSummary[]>({
-    queryKey: ['customers', storeId, query],
+    queryKey: ['customers', storeId, query, blacklistedOnly],
     queryFn: () => api.get(`/customers?${params.toString()}`),
     enabled: !!storeId,
   });

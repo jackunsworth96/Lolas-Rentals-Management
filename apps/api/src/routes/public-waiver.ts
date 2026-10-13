@@ -11,6 +11,7 @@ import { sendEmail, waiverConfirmationHtml, escapeHtml } from '../services/email
 import { normalizePublicWebOrigin, publicWebOriginFromEnv } from '../lib/public-web-url.js';
 import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
 import { formatManilaDateTime } from '../utils/manila-date.js';
+import { freshWaiverLicenceUrl, licenceUrlForStorage, waiverDocumentsStorage } from '../lib/waiver-licence-url.js';
 
 const waiverLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -344,8 +345,8 @@ waiverRouter.post('/:orderReference/sign', validateBody(WaiverSignBodySchema), a
         agreed_at: new Date().toISOString(),
         ip_address: ip,
         user_agent: userAgent,
-        licence_front_url: body.licenceFrontUrl ?? null,
-        licence_back_url: body.licenceBackUrl ?? null,
+        licence_front_url: licenceUrlForStorage(body.licenceFrontUrl),
+        licence_back_url: licenceUrlForStorage(body.licenceBackUrl),
         driver_signature_url: body.driverSignatureDataUrl,
         passenger_signatures: passengerSigs,
         referral_source: body.referralSource,
@@ -502,6 +503,12 @@ waiverRouter.get(
         referral_detail: string | null;
       };
 
+      const licenceStorage = waiverDocumentsStorage(sb);
+      const [licenceFrontUrl, licenceBackUrl] = await Promise.all([
+        freshWaiverLicenceUrl(licenceStorage, w.licence_front_url),
+        freshWaiverLicenceUrl(licenceStorage, w.licence_back_url),
+      ]);
+
       res.json({
         success: true,
         data: {
@@ -511,8 +518,8 @@ waiverRouter.get(
           agreedAt: w.agreed_at,
           driverSignatureUrl: w.driver_signature_url,
           passengerSignatures: Array.isArray(w.passenger_signatures) ? (w.passenger_signatures as string[]) : [],
-          licenceFrontUrl: w.licence_front_url,
-          licenceBackUrl: w.licence_back_url,
+          licenceFrontUrl,
+          licenceBackUrl,
           referralSource: w.referral_source,
           referralDetail: w.referral_detail,
         },

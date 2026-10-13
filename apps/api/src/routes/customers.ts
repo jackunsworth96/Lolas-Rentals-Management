@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { authenticate } from '../middleware/authenticate.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
+import { freshWaiverLicenceUrl, waiverDocumentsStorage } from '../lib/waiver-licence-url.js';
 import { sendEmail, escapeHtml, INTERNAL_FROM_EMAIL } from '../services/email.js';
 
 const router = Router();
@@ -25,6 +26,7 @@ function toCustomerDto(row: Record<string, unknown>) {
 const ListQuerySchema = z.object({
   storeId: z.string().min(1),
   q: z.string().optional(),
+  blacklisted: z.enum(['true', 'false']).optional(),
 });
 
 const PatchBodySchema = z.object({
@@ -42,8 +44,10 @@ const ReviewOptOutBodySchema = z.object({
 // GET /customers?storeId=&q=
 router.get('/', validateQuery(ListQuerySchema), async (req, res, next) => {
   try {
-    const { storeId, q = '' } = req.query as { storeId: string; q?: string };
-    const customers = await req.app.locals.deps.customerRepo.search(storeId, q);
+    const { storeId, q = '', blacklisted } = req.query as { storeId: string; q?: string; blacklisted?: string };
+    const customers = await req.app.locals.deps.customerRepo.search(storeId, q, {
+      blacklistedOnly: blacklisted === 'true',
+    });
 
     if (customers.length === 0) {
       res.json({ success: true, data: [] });
@@ -399,7 +403,8 @@ router.get('/:id/documents', async (req, res, next) => {
       ...(inspByOrderRes.data ?? []),
     ] as Record<string, unknown>[];
 
-    const waiverDtos = allWaivers.map((w) => ({
+    const licenceStorage = waiverDocumentsStorage(sb);
+    const waiverDtos = await Promise.all(allWaivers.map(async (w) => ({
       id: w.id,
       type: 'waiver' as const,
       orderReference: w.order_reference ?? null,
@@ -407,13 +412,13 @@ router.get('/:id/documents', async (req, res, next) => {
       driverEmail: w.driver_email ?? null,
       driverMobile: w.driver_mobile ?? null,
       agreedAt: w.agreed_at ?? null,
-      licenceFrontUrl: w.licence_front_url ?? null,
-      licenceBackUrl: w.licence_back_url ?? null,
+      licenceFrontUrl: await freshWaiverLicenceUrl(licenceStorage, w.licence_front_url as string | null),
+      licenceBackUrl: await freshWaiverLicenceUrl(licenceStorage, w.licence_back_url as string | null),
       driverSignatureUrl: w.driver_signature_url ?? null,
       passengerSignatures: (w.passenger_signatures as string[] | null) ?? [],
       status: w.status,
       createdAt: w.created_at,
-    }));
+    })));
 
     const inspectionDtos = allInspections.map((i) => ({
       id: i.id,
@@ -499,6 +504,11 @@ router.post('/:id/documents/email', validateBody(EmailDocBodySchema), async (req
       }
 
       const waiver = w as Record<string, unknown>;
+      const licenceStorage = waiverDocumentsStorage(sb);
+      const [licenceFrontUrl, licenceBackUrl] = await Promise.all([
+        freshWaiverLicenceUrl(licenceStorage, waiver.licence_front_url as string | null),
+        freshWaiverLicenceUrl(licenceStorage, waiver.licence_back_url as string | null),
+      ]);
       const ref = (waiver.order_reference as string | null) ?? 'Pre-booking';
       const agreedDate = waiver.agreed_at
         ? new Date(waiver.agreed_at as string).toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' })
@@ -509,8 +519,8 @@ router.post('/:id/documents/email', validateBody(EmailDocBodySchema), async (req
         : '';
 
       const licenceBlock = [
-        waiver.licence_front_url ? `<a href="${escapeHtml(waiver.licence_front_url as string)}" style="display:inline-block;margin-right:8px;color:#0d9488;font-size:13px">Licence Front ↗</a>` : '',
-        waiver.licence_back_url ? `<a href="${escapeHtml(waiver.licence_back_url as string)}" style="color:#0d9488;font-size:13px">Licence Back ↗</a>` : '',
+        licenceFrontUrl ? `<a href="${escapeHtml(licenceFrontUrl)}" style="display:inline-block;margin-right:8px;color:#0d9488;font-size:13px">Licence Front ↗</a>` : '',
+        licenceBackUrl ? `<a href="${escapeHtml(licenceBackUrl)}" style="color:#0d9488;font-size:13px">Licence Back ↗</a>` : '',
       ].filter(Boolean).join('');
 
       const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f9fafb;font-family:sans-serif">

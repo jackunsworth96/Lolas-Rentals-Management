@@ -736,6 +736,7 @@ export default function CustomersPage() {
   const [storeFilter, setStoreFilter] = useState<string>(defaultStoreId || 'all');
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [blacklistedOnly, setBlacklistedOnly] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const { data: stores = [] } = useStores();
@@ -751,7 +752,7 @@ export default function CustomersPage() {
   // Search requires a storeId; if "all" is selected, we query each store or show an empty guide
   const canSearch = !!storeIdForApi;
 
-  const { data: customers = [], isLoading } = useCustomers(storeIdForApi, debouncedSearch);
+  const { data: customers = [], isLoading } = useCustomers(storeIdForApi, debouncedSearch, blacklistedOnly);
 
   const filtered = useMemo(() => {
     return customers as CustomerSummary[];
@@ -820,12 +821,32 @@ export default function CustomersPage() {
           ))}
         </select>
 
+        <button
+          type="button"
+          disabled={!canSearch}
+          aria-pressed={blacklistedOnly}
+          onClick={() => setBlacklistedOnly((value) => !value)}
+          className={`rounded-md border px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50 disabled:text-gray-400 ${
+            blacklistedOnly
+              ? 'border-red-300 bg-red-50 font-medium text-red-700'
+              : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+          }`}
+        >
+          Blacklisted
+        </button>
+
         {/* Search */}
         <div className="relative flex-1 min-w-52">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder={canSearch ? 'Search by name, email or mobile…' : 'Select a store to search'}
+            placeholder={
+              !canSearch
+                ? 'Select a store to search'
+                : blacklistedOnly
+                  ? 'Search blacklisted customers…'
+                  : 'Search by name, email or mobile…'
+            }
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             disabled={!canSearch}
@@ -864,9 +885,13 @@ export default function CustomersPage() {
           keyFn={(r) => r.id}
           onRowClick={(r) => setSelectedId(r.id)}
           emptyMessage={
-            debouncedSearch
-              ? `No customers found for "${debouncedSearch}".`
-              : 'No customers found. Try searching by name, email or mobile.'
+            blacklistedOnly
+              ? debouncedSearch
+                ? `No blacklisted customers found for "${debouncedSearch}".`
+                : 'No blacklisted customers for this store.'
+              : debouncedSearch
+                ? `No customers found for "${debouncedSearch}".`
+                : 'No customers found. Try searching by name, email or mobile.'
           }
         />
       )}

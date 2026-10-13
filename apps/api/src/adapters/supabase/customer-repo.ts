@@ -79,17 +79,19 @@ export class SupabaseCustomerRepository implements CustomerRepository {
     return data && data.length > 0 ? rowToCustomer(data[0] as CustomerRow) : null;
   }
 
-  async search(storeId: string, query: string): Promise<Customer[]> {
+  async search(storeId: string, query: string, options?: { blacklistedOnly?: boolean }): Promise<Customer[]> {
     const sb = getSupabaseClient();
     const safe = query.trim().replace(/[%_\\,()]/g, '\\$&');
     const pattern = `%${safe}%`;
-    const { data, error } = await sb
+    let request = sb
       .from('customers')
       .select('*')
-      .eq('store_id', storeId)
+      .eq('store_id', storeId);
+    if (options?.blacklistedOnly) request = request.eq('blacklisted', true);
+    const { data, error } = await request
       .or(`name.ilike.${pattern},email.ilike.${pattern},mobile.ilike.${pattern}`)
       .order('name')
-      .limit(50);
+      .limit(options?.blacklistedOnly ? 500 : 50);
 
     if (error) throw new Error(`search failed: ${error.message}`);
     return (data as CustomerRow[]).map(rowToCustomer);
