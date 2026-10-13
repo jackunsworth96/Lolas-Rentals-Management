@@ -101,22 +101,25 @@ export async function getFleetUtilization(
   }
 
   const orderIds = [...new Set(orderItems.map((r) => r.order_id))];
-  let completedOrActiveOrderIds = new Set<string>();
+  const completedOrActiveOrderIds = new Set<string>();
   if (orderIds.length > 0) {
     console.info('[fleet-utilization] orders lookup', {
       orderItemCount: orderItems.length,
       orderIdCount: orderIds.length,
     });
-    const { data: ordersData, error: ordErr } = await sb
-      .from('orders')
-      .select('id, status')
-      .in('id', orderIds)
-      .in('status', ['active', 'completed']);
-    if (ordErr) {
-      console.error('[fleet-utilization] orders query failed', ordErr);
-      throw new Error(`Orders query failed: ${ordErr.message}`);
+    // Keep ID filters small to avoid oversized URLs and response headers.
+    for (let i = 0; i < orderIds.length; i += 100) {
+      const { data: ordersData, error: ordErr } = await sb
+        .from('orders')
+        .select('id, status')
+        .in('id', orderIds.slice(i, i + 100))
+        .in('status', ['active', 'completed']);
+      if (ordErr) {
+        console.error('[fleet-utilization] orders query failed', ordErr);
+        throw new Error(`Orders query failed: ${ordErr.message}`);
+      }
+      for (const order of ordersData ?? []) completedOrActiveOrderIds.add(order.id);
     }
-    completedOrActiveOrderIds = new Set((ordersData ?? []).map((o: { id: string }) => o.id));
   }
 
   const rentalByVehicle: Record<string, { rentalDays: number; revenue: number }> = {};
