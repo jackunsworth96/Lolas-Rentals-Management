@@ -10,6 +10,7 @@ import { ExtendOrderModal } from './ExtendOrderModal.js';
 import { InspectionModal } from './InspectionModal.js';
 import { MayaPaymentModal } from './MayaPaymentModal.js';
 import { WaiverViewModal } from './WaiverViewModal.js';
+import { AssignPartnerModal } from './AssignPartnerModal.js';
 import { useSignedWaiverDetails, useResendWaiverConfirmation } from '../../api/waivers.js';
 import { useInspectionByOrder } from '../../api/inspections.js';
 import { useCollectPayment, useRefundOrder, useSettleOrder, useSwapHelmet, useSwapVehicle, useUpdateDepositMethod, useUpdateDropoffNote } from '../../api/orders.js';
@@ -154,6 +155,8 @@ export function OrderDetailSummaryTab({
   const queryClient = useQueryClient();
   const authUser = useAuthStore((s) => s.user);
   const canEditOrders = useAuthStore((s) => s.hasPermission('can_edit_orders'));
+  const canAssignPartner = useAuthStore((s) => s.hasPermission('can_edit_settings'));
+  const [assignPartnerOpen, setAssignPartnerOpen] = useState(false);
 
   const { data: inspectionOrderPayload, isLoading: inspectionOrderLoading, refetch: refetchInspection } =
     useInspectionByOrder(orderId);
@@ -788,6 +791,16 @@ export function OrderDetailSummaryTab({
             <div className="flex shrink-0 flex-wrap items-center gap-1.5">
               {enrichedData?.partnerRef && (
                 <span title={`Affiliate / partner booking (${enrichedData.partnerRef}) — handle with extra care`} className="inline-flex items-center gap-1 rounded-full border border-orange-300 bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-700">★ Affiliate</span>
+              )}
+              {!enrichedData?.partnerRef && canAssignPartner && statusVal !== 'cancelled' && (
+                <button
+                  type="button"
+                  onClick={() => setAssignPartnerOpen(true)}
+                  title="Attribute this booking to a partner/affiliate after the fact — applies their discount and commission retroactively"
+                  className="inline-flex items-center gap-1 rounded-full border border-dashed border-orange-300 px-2 py-0.5 text-xs font-semibold text-orange-600 hover:bg-orange-50"
+                >
+                  + Assign partner
+                </button>
               )}
               {enrichedData?.hasNinePmAddon && (
                 <span title="9PM late return add-on" className="inline-flex items-center rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-xs font-semibold text-purple-700">9PM</span>
@@ -2007,6 +2020,17 @@ export function OrderDetailSummaryTab({
           open={extendOpen}
           onClose={() => setExtendOpen(false)}
           enrichedData={enrichedData}
+        />
+      )}
+
+      {/* ─── Retroactive partner/affiliate assignment ─── */}
+      {assignPartnerOpen && (
+        <AssignPartnerModal
+          open={assignPartnerOpen}
+          onClose={() => setAssignPartnerOpen(false)}
+          orderId={orderId}
+          storeId={storeId}
+          onAssigned={(message) => pushToast(message, 'success')}
         />
       )}
 

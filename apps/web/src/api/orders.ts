@@ -172,6 +172,38 @@ export function useRefundOrder() {
   });
 }
 
+export interface AssignPartnerPreview {
+  partnerName: string;
+  partnerSlug: string;
+  rentalDiscount: number;
+  deliveryDiscount: number;
+  totalDiscount: number;
+  currentFinalTotal: number;
+  newFinalTotal: number;
+  totalPaid: number;
+  overpaidAmount: number;
+}
+
+/** Computation-only — never mutates. Call before showing the confirm step so
+ * the UI knows whether a refund method needs to be collected. */
+export function usePreviewAssignPartner() {
+  return useMutation({
+    mutationFn: ({ id, partnerSlug }: { id: string; partnerSlug: string }) =>
+      api.get<AssignPartnerPreview>(`/orders/${id}/assign-partner/preview?partnerSlug=${encodeURIComponent(partnerSlug)}`),
+  });
+}
+
+export function useAssignPartnerToOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string } & Record<string, unknown>) => api.post(`/orders/${id}/assign-partner`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['partners'] });
+    },
+  });
+}
+
 export function useUpdateDepositMethod() {
   const qc = useQueryClient();
   return useMutation({

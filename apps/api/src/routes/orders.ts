@@ -662,6 +662,65 @@ router.post('/:id/refund', requirePermission(Permission.EditOrders), validateBod
   } catch (err) { next(err); }
 });
 
+// ── Retroactive partner/affiliate assignment ─────────────────────────────────
+// For guests who actually stayed at (or were referred by) a partner property
+// but booked through the plain site without the ?ref= link, so no partner_ref
+// was ever captured. Only fillable when the order has no partner yet — this
+// never reassigns/overwrites an existing attribution.
+
+router.get('/:id/assign-partner/preview', requirePermission(Permission.EditSettings), validateQuery(z.object({
+  partnerSlug: z.string().min(1).max(80),
+})), async (req, res, next) => {
+  try {
+    const { previewAssignPartnerToOrder } = await import('../use-cases/orders/assign-partner-to-order.js');
+    const data = await previewAssignPartnerToOrder({
+      orderId: String(req.params.id),
+      partnerSlug: (req.query as { partnerSlug: string }).partnerSlug,
+    });
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+router.post('/:id/assign-partner', requirePermission(Permission.EditSettings), validateBody(z.object({
+  partnerSlug: z.string().min(1).max(80),
+  refund: z.object({
+    refundMethodId: z.string().min(1),
+    refundAccountId: z.string().min(1),
+    receivableAccountId: z.string().min(1),
+    reason: z.string().max(500).nullable().optional(),
+  }).optional(),
+})), async (req, res, next) => {
+  try {
+    const { previewAssignPartnerToOrder, assignPartnerToOrder } = await import('../use-cases/orders/assign-partner-to-order.js');
+    const body = req.body as { partnerSlug: string; refund?: Record<string, unknown> };
+
+    // Re-check the overpayment requirement server-side right before committing
+    // (never trust a stale client-side preview) so we can return the specific
+    // REFUND_REQUIRED shape the frontend needs before any data is mutated.
+    if (!body.refund) {
+      const preview = await previewAssignPartnerToOrder({ orderId: String(req.params.id), partnerSlug: body.partnerSlug });
+      if (preview.overpaidAmount > 0) {
+        res.status(422).json({
+          success: false,
+          error: {
+            code: 'REFUND_REQUIRED',
+            message: 'This discount creates an overpayment — a refund method is required to complete the assignment.',
+            overpaidAmount: preview.overpaidAmount,
+          },
+        });
+        return;
+      }
+    }
+
+    const data = await assignPartnerToOrder(req.app.locals.deps, {
+      orderId: req.params.id,
+      employeeId: req.user!.employeeId,
+      ...req.body,
+    });
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
 router.patch('/:id/cancel', requirePermission(Permission.CancelOrders), validateBody(z.object({
   reason: z.string().trim().min(1, 'Cancellation reason is required').max(500),
 })), async (req, res, next) => {
