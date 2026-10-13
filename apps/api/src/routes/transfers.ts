@@ -1,5 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { z } from 'zod';
+import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
@@ -28,6 +29,33 @@ const FlightTimeBodySchema = z.object({
 
 const router = Router();
 router.use(authenticate);
+
+async function recordCheckedManualTransferPayment(req: Request, input: {
+  transferId: string; amount: number; paymentMethod: string; date: string;
+  cashAccountId: string; transferIncomeAccountId: string;
+}, markCollected: boolean) {
+  const sb = getSupabaseClient();
+  const { data: transfer, error: transferError } = await sb.from('transfers')
+    .select('id,store_id').eq('id', input.transferId).maybeSingle();
+  if (transferError) throw new Error(transferError.message);
+  if (!transfer) return { status: 404, message: 'Transfer not found' };
+  const storeIds = req.user?.storeIds ?? [];
+  if (!storeIds.includes('company') && !storeIds.includes(transfer.store_id)) {
+    return { status: 403, message: 'You cannot collect this transfer' };
+  }
+  const { error } = await sb.rpc('record_transfer_manual_payment_atomic', {
+    p_transfer_id: transfer.id,
+    p_store_id: transfer.store_id,
+    p_method_id: input.paymentMethod,
+    p_amount: input.amount,
+    p_date: input.date,
+    p_receiving_id: input.cashAccountId,
+    p_income_id: input.transferIncomeAccountId,
+    p_mark_collected: markCollected,
+  });
+  if (error) return { status: 409, message: error.message };
+  return { status: 200, transfer: await req.app.locals.deps.transferRepo.findById(transfer.id) };
+}
 
 router.get('/', requirePermission(Permission.ViewTransfers), validateQuery(TransferQuerySchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -137,12 +165,9 @@ router.post('/', requirePermission(Permission.EditTransfers), validateBody(Creat
 
 router.post('/payment', requirePermission(Permission.EditTransfers), validateBody(RecordTransferPaymentRequestSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { recordTransferPayment } = await import('../use-cases/transfers/record-payment.js');
-    const result = await recordTransferPayment(req.body, {
-      transfers: req.app.locals.deps.transferRepo,
-      accounting: req.app.locals.deps.accountingPort,
-    });
-    res.json({ success: true, data: result });
+    const result = await recordCheckedManualTransferPayment(req, req.body, false);
+    if (result.status !== 200) { res.status(result.status).json({ success: false, error: { code: 'TRANSFER_PAYMENT_REJECTED', message: result.message } }); return; }
+    res.json({ success: true, data: { transfer: result.transfer, paymentStatus: result.transfer?.paymentStatus } });
   } catch (err) { next(err); }
 });
 
@@ -233,38 +258,13 @@ router.patch('/:id/collect', requirePermission(Permission.EditTransfers), valida
       transferIncomeAccountId: string;
       date: string;
     };
-    const transferRepo = req.app.locals.deps.transferRepo;
-    const accountingPort = req.app.locals.deps.accountingPort;
-
-    const existing = await transferRepo.findById(id);
-    if (!existing) {
-      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Transfer not found' } });
-      return;
-    }
-    if (existing.collectedAt) {
-      res.status(409).json({
-        success: false,
-        error: { code: 'ALREADY_COLLECTED', message: 'Transfer payment has already been collected' },
-      });
-      return;
-    }
-
-    const { recordTransferPayment } = await import('../use-cases/transfers/record-payment.js');
-    await recordTransferPayment(
-      {
-        transferId: id,
-        amount: body.collectedAmount,
-        paymentMethod: body.paymentMethod,
-        date: body.date,
-        cashAccountId: body.cashAccountId,
-        transferIncomeAccountId: body.transferIncomeAccountId,
-      },
-      { transfers: transferRepo, accounting: accountingPort },
-    );
-
-    await transferRepo.save(existing.withCollected(new Date(), body.collectedAmount));
-    const refreshed = await transferRepo.findById(id);
-    res.json({ success: true, data: refreshed });
+    const result = await recordCheckedManualTransferPayment(req, {
+      transferId: id, amount: body.collectedAmount, paymentMethod: body.paymentMethod,
+      date: body.date, cashAccountId: body.cashAccountId,
+      transferIncomeAccountId: body.transferIncomeAccountId,
+    }, true);
+    if (result.status !== 200) { res.status(result.status).json({ success: false, error: { code: 'TRANSFER_PAYMENT_REJECTED', message: result.message } }); return; }
+    res.json({ success: true, data: result.transfer });
   } catch (err) { next(err); }
 });
 
@@ -279,7 +279,6 @@ router.patch('/:id/pickup-time', requirePermission(Permission.EditTransfers), va
       res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Transfer not found' } });
       return;
     }
-
     const updated = existing.withPickupTime(pickupTime);
     await transferRepo.save(updated);
     const refreshed = await transferRepo.findById(id);
@@ -374,6 +373,19 @@ router.delete('/:id', requirePermission(Permission.EditTransfers), async (req: R
       res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Transfer not found' } });
       return;
     }
+    const storeIds = req.user?.storeIds ?? [];
+    if (!storeIds.includes('company') && !storeIds.includes(existing.storeId)) {
+      res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You cannot cancel this transfer' } });
+      return;
+    }
+    const { data: blockingSessions, error: sessionError } = await getSupabaseClient()
+      .from('xendit_payment_sessions').select('id').eq('transfer_id', id)
+      .in('status', ['creating','active','reconciliation_required']).limit(1);
+    if (sessionError) throw new Error(sessionError.message);
+    if (blockingSessions?.length) {
+      res.status(409).json({ success: false, error: { code: 'PAYMENT_IN_PROGRESS', message: 'Resolve the Xendit checkout before cancelling this transfer' } });
+      return;
+    }
     if (existing.status === 'cancelled') {
       res.status(409).json({
         success: false,
@@ -381,10 +393,10 @@ router.delete('/:id', requirePermission(Permission.EditTransfers), async (req: R
       });
       return;
     }
-    if (existing.collectedAt) {
+    if (existing.collectedAt || existing.paymentStatus === 'Paid') {
       res.status(409).json({
         success: false,
-        error: { code: 'COLLECTED', message: 'Cannot cancel a collected transfer' },
+        error: { code: 'COLLECTED', message: 'A paid transfer requires finance review before cancellation or refund' },
       });
       return;
     }

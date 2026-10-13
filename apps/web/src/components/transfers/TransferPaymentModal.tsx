@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Modal } from '../common/Modal.js';
-import { useRecordTransferPayment, moneyAmount, type TransferRow } from '../../api/transfers.js';
+import { useRecordTransferPayment, useTransferPaymentLink, generateTransferPaymentLink,
+  emailTransferPaymentLink, cancelTransferPaymentLink, moneyAmount, type TransferRow } from '../../api/transfers.js';
 import { usePaymentMethods, useChartOfAccounts } from '../../api/config.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { Badge } from '../common/Badge.js';
@@ -15,10 +17,14 @@ interface Props {
 
 export function TransferPaymentModal({ open, onClose, transfer, storeId }: Props) {
   const mutation = useRecordTransferPayment();
+  const queryClient = useQueryClient();
+  const link = useTransferPaymentLink(transfer.id, open);
+  const [linkBusy, setLinkBusy] = useState(false);
   const { data: paymentMethods = [] } = usePaymentMethods();
   const { data: accounts = [] } = useChartOfAccounts();
 
-  const pmList = paymentMethods as Array<{ id: string; name: string }>;
+  const pmList = (paymentMethods as Array<{ id: string; name: string; gatewayProvider?: string | null; isActive?: boolean }>)
+    .filter((method) => method.isActive !== false && !method.gatewayProvider && !method.name.toLowerCase().includes('card'));
   const accList = accounts as Array<{ id: string; name: string; accountType?: string; storeId?: string | null }>;
 
   const storeAccounts = useMemo(
@@ -36,8 +42,38 @@ export function TransferPaymentModal({ open, onClose, transfer, storeId }: Props
   const [amount, setAmount] = useState<number | ''>(totalPrice);
   const [cashAccountId, setCashAccountId] = useState('');
   const [incomeAccountId, setIncomeAccountId] = useState('');
-  const [settlementRef, setSettlementRef] = useState('');
   const [error, setError] = useState('');
+
+  async function createLink() {
+    setLinkBusy(true); setError('');
+    try {
+      await generateTransferPaymentLink(transfer.id);
+      await queryClient.invalidateQueries({ queryKey: ['transfer-payment-link', transfer.id] });
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not generate payment link'); }
+    finally { setLinkBusy(false); }
+  }
+
+  async function sendLink(resend: boolean) {
+    const session = link.data?.session;
+    if (!session) return;
+    setLinkBusy(true); setError('');
+    try {
+      await emailTransferPaymentLink(transfer.id, session.sessionId, resend);
+      await queryClient.invalidateQueries({ queryKey: ['transfer-payment-link', transfer.id] });
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not email payment link'); }
+    finally { setLinkBusy(false); }
+  }
+
+  async function cancelLink() {
+    const session = link.data?.session;
+    if (!session || !window.confirm('Cancel this hosted payment link?')) return;
+    setLinkBusy(true); setError('');
+    try {
+      await cancelTransferPaymentLink(transfer.id, session.sessionId);
+      await queryClient.invalidateQueries({ queryKey: ['transfer-payment-link', transfer.id] });
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not cancel checkout'); }
+    finally { setLinkBusy(false); }
+  }
 
   useEffect(() => {
     if (open) {
@@ -45,7 +81,6 @@ export function TransferPaymentModal({ open, onClose, transfer, storeId }: Props
       setAmount(totalPrice);
       setCashAccountId('');
       setIncomeAccountId('');
-      setSettlementRef('');
       setError('');
     }
   }, [open, totalPrice]);
@@ -57,22 +92,12 @@ export function TransferPaymentModal({ open, onClose, transfer, storeId }: Props
     if (routedCashAcct && !cashAccountId) setCashAccountId(routedCashAcct);
   }, [routedCashAcct, cashAccountId]);
 
-  const isCard = useMemo(() => {
-    const pm = pmList.find((p) => p.id === paymentMethodId);
-    return pm ? pm.name.toLowerCase().includes('card') : false;
-  }, [paymentMethodId, pmList]);
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
 
     if (!paymentMethodId) { setError('Select a payment method'); return; }
     if (!amount || amount <= 0) { setError('Amount must be positive'); return; }
-
-    if (isCard) {
-      setError('Card payment recording is not yet implemented. Use the Card Settlements page after recording.');
-      return;
-    }
 
     if (!cashAccountId || !incomeAccountId) {
       setError('Select both debit and credit accounts');
@@ -113,7 +138,29 @@ export function TransferPaymentModal({ open, onClose, transfer, storeId }: Props
         </div>
       </div>
 
+      <div className="mb-5 border-b pb-5 text-sm">
+        <h3 className="font-semibold">Card payment link</h3>
+        {link.data?.session && <p className="mt-1">{link.data.session.status === 'reconciliation_required' ? 'Payment verification required. Contact finance.'
+          : link.data.session.status === 'completed' ? 'Paid online'
+          : link.data.session.status === 'creating' ? 'Checkout is being prepared; contact finance before releasing it.'
+          : link.data.session.status === 'active' ? 'Payment pending' : `Previous link ${link.data.session.status}`}</p>}
+        {link.data?.amountPHP != null && <p className="mt-1">Rental {formatCurrency(link.data.principalPHP)} + card surcharge {formatCurrency(link.data.surchargePHP ?? 0)} = {formatCurrency(link.data.amountPHP)}</p>}
+        {link.data?.session?.checkoutUrl ? <div className="mt-2 flex flex-wrap items-center gap-3">
+          <button type="button" className="text-blue-700 underline" onClick={() => void navigator.clipboard.writeText(link.data!.session!.checkoutUrl!)}>Copy link</button>
+          <button type="button" disabled={linkBusy || !transfer.customerEmail} className="text-blue-700 underline disabled:opacity-40" onClick={() => void sendLink(Boolean(link.data?.session?.emailAcceptedAt))}>
+            {link.data.session.emailAcceptedAt ? 'Resend email' : 'Email customer'}
+          </button>
+          <button type="button" disabled={linkBusy} className="text-red-700 underline disabled:opacity-40" onClick={() => void cancelLink()}>Cancel link</button>
+          {link.data.session.expiresAt && <span>Expires {new Date(link.data.session.expiresAt).toLocaleString()}</span>}
+          {link.data.session.emailAcceptedAt && <span>Email accepted for sending</span>}
+        </div> : !['creating', 'completed', 'reconciliation_required'].includes(link.data?.session?.status ?? '')
+          && link.data?.amountPHP != null && transfer.paymentStatus !== 'Paid' && <button type="button" disabled={linkBusy} onClick={() => void createLink()} className="mt-2 text-blue-700 underline disabled:opacity-40">Generate payment link</button>}
+      </div>
+
       <form onSubmit={handleSubmit} className="space-y-4">
+        {['creating', 'active', 'reconciliation_required'].includes(link.data?.session?.status ?? '') &&
+          <p className="text-sm text-amber-700">Manual collection is blocked while checkout is pending verification or requires finance review.</p>}
+        <fieldset disabled={['creating', 'active', 'reconciliation_required', 'completed'].includes(link.data?.session?.status ?? '')} className="space-y-4 disabled:opacity-50">
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
             <span className="text-xs font-medium text-gray-600">Payment Method *</span>
@@ -143,23 +190,7 @@ export function TransferPaymentModal({ open, onClose, transfer, storeId }: Props
           </label>
         </div>
 
-        {isCard && (
-          <label className="block">
-            <span className="text-xs font-medium text-gray-600">Settlement Reference</span>
-            <input
-              type="text"
-              value={settlementRef}
-              onChange={(e) => setSettlementRef(e.target.value)}
-              placeholder="Card terminal reference number"
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            />
-            <p className="mt-1 text-xs text-yellow-700">
-              Card payments create a pending settlement — no journal entry until settlement is matched.
-            </p>
-          </label>
-        )}
-
-        {!isCard && paymentMethodId && (
+        {paymentMethodId && (
           <div className="grid grid-cols-2 gap-3">
             {!routedCashAcct && (
             <label className="block">
@@ -209,6 +240,7 @@ export function TransferPaymentModal({ open, onClose, transfer, storeId }: Props
             {mutation.isPending ? 'Recording...' : 'Record Payment'}
           </button>
         </div>
+        </fieldset>
       </form>
     </Modal>
   );

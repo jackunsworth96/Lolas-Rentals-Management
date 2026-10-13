@@ -33,6 +33,9 @@ export default function PublicBookingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [bookingRef, setBookingRef] = useState('');
+  const [onlineCard] = useState(true);
+  const [cardSurchargePercent, setCardSurchargePercent] = useState<number | null>(null);
+  const [pendingCheckout, setPendingCheckout] = useState<{ transferId: string; checkoutToken: string } | null>(null);
 
   useEffect(() => {
     if (!token) { setLoading(false); return; }
@@ -47,12 +50,19 @@ export default function PublicBookingPage() {
     }).finally(() => setLoading(false));
   }, [token]);
 
+  useEffect(() => {
+    void api.get<Array<{ gatewayProvider?: string | null; surchargePercent?: number }>>('/public/booking/payment-methods')
+      .then((methods) => setCardSurchargePercent(methods.find((method) => method.gatewayProvider === 'xendit')?.surchargePercent ?? null))
+      .catch(() => setCardSurchargePercent(null));
+  }, []);
+
   const selectedRoute = useMemo(
     () => routes.find((r) => String(r.id) === selectedRouteId),
     [routes, selectedRouteId],
   );
 
-  const isPerHead = selectedRoute?.pricingType === 'per_head';
+  const isPerHead = selectedRoute?.pricingType === 'per_head'
+    || (!selectedRoute?.pricingType && (selectedRoute?.vanType ?? '').toLowerCase().includes('shared'));
   const totalPrice = selectedRoute
     ? (isPerHead ? selectedRoute.price * paxCount : selectedRoute.price)
     : 0;
@@ -61,6 +71,9 @@ export default function PublicBookingPage() {
     e.preventDefault();
     setError('');
     if (!selectedRoute) { setError(t('transfer.selectRouteError')); return; }
+    if (onlineCard && (!customerEmail.trim() || cardSurchargePercent === null)) {
+      setError('A guest email and an available card method are required for online payment'); return;
+    }
 
     // Block last-minute after-hours bookings for early morning pick-ups.
     // If it's after 5pm and the customer is booking for tomorrow before 9am,
@@ -80,7 +93,7 @@ export default function PublicBookingPage() {
 
     setSubmitting(true);
     try {
-      const result = await api.post<{ id: string }>('/public/transfer-booking', {
+      const result = await api.post<{ id: string; checkoutToken?: string | null }>('/public/transfer-booking', {
         serviceDate,
         customerName: customerName.trim(),
         contactNumber: contactNumber.trim() || null,
@@ -93,14 +106,29 @@ export default function PublicBookingPage() {
         totalPrice,
         opsNotes: opsNotes.trim() || null,
         token,
+        onlineCard,
       });
       setBookingRef(result.id?.slice(0, 8).toUpperCase() ?? '');
       setSubmitted(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (onlineCard && result.checkoutToken) {
+        const checkout = { transferId: result.id, checkoutToken: result.checkoutToken };
+        setPendingCheckout(checkout);
+        await startCheckout(checkout);
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t('transfer.bookingFailed'));
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function startCheckout(checkout: { transferId: string; checkoutToken: string }) {
+    try {
+      const session = await api.post<{ checkoutUrl: string }>('/public/payments/xendit/transfers/sessions', checkout);
+      window.location.assign(session.checkoutUrl);
+    } catch (err) {
+      setError(`Transfer created but payment is still due. ${err instanceof Error ? err.message : 'Checkout failed.'}`);
     }
   }
 
@@ -135,14 +163,17 @@ export default function PublicBookingPage() {
   if (submitted) {
     const confirmedRoute = selectedRoute;
     return (
-      <PageLayout title={t('transfer.confirmedTitle')} showFloralRight={false}>
+      <PageLayout title={onlineCard ? 'Payment pending' : t('transfer.confirmedTitle')} showFloralRight={false}>
         <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 text-center">
           <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-teal-brand/10">
             <svg className="h-10 w-10 text-teal-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h2 className="font-headline text-3xl font-bold text-teal-brand mb-2">{t('transfer.bookingConfirmed')}</h2>
+          <h2 className="font-headline text-3xl font-bold text-teal-brand mb-2">Transfer booking created</h2>
+          <p className="font-lato text-sm">Payment is not confirmed yet.</p>
+          {error && <p className="mt-2 text-sm text-red-700">{error}</p>}
+          {pendingCheckout && <button type="button" onClick={() => void startCheckout(pendingCheckout)} className="mt-2 text-teal-brand underline">Retry card checkout</button>}
           {bookingRef && (
             <p className="mb-2 text-sm text-charcoal-brand/60 font-lato">
               {t('transfer.reference')} <span className="font-mono font-semibold text-charcoal-brand">{bookingRef}</span>
@@ -181,7 +212,7 @@ export default function PublicBookingPage() {
             {confirmedRoute && (
               <div className="flex justify-between text-sm font-lato border-t border-charcoal-brand/10 pt-2 mt-1">
                 <span className="font-semibold text-charcoal-brand">{t('transfer.total')}</span>
-                <span className="font-bold text-teal-brand"><PesoSign />{formatPhpNumber(totalPrice)}</span>
+                <span className="font-bold text-teal-brand"><PesoSign />{formatPhpNumber(totalPrice + (onlineCard ? Math.round(totalPrice * (cardSurchargePercent ?? 0)) / 100 : 0))}</span>
               </div>
             )}
           </div>
@@ -275,14 +306,19 @@ export default function PublicBookingPage() {
               </p>
             </div>
 
+            <fieldset className="space-y-2 text-sm font-lato">
+              <legend className="font-semibold">Payment</legend>
+              <p>Pay by card through a secure payment link</p>
+            </fieldset>
             {selectedRoute && (
               <div className="rounded-xl bg-teal-brand/10 border border-teal-brand/20 px-4 py-3 flex items-center justify-between">
                 <span className="text-sm font-medium text-teal-brand font-lato">{t('transfer.total')}</span>
                 <span className="text-xl font-bold text-teal-brand font-headline">
-                  <PesoSign />{formatPhpNumber(totalPrice)}
+                  <PesoSign />{formatPhpNumber(totalPrice + (onlineCard ? Math.round(totalPrice * (cardSurchargePercent ?? 0)) / 100 : 0))}
                 </span>
               </div>
             )}
+            {onlineCard && <p className="text-sm">Card surcharge: {formatCurrency(Math.round(totalPrice * (cardSurchargePercent ?? 0)) / 100)}</p>}
           </div>
 
           <div className="rounded-2xl bg-sand-brand p-6 space-y-4">

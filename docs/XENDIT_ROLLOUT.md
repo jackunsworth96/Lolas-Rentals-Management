@@ -102,3 +102,24 @@ On staging, verify Reserve Now and Reserve for Later combined checkouts, later a
 For the refund release gate, test two deposit receipts on one order and verify both the per-receipt and order-wide limits. Cancel with a partial refund and documented charge, then attempt another refund against the charged portion: it must fail before any provider request. Race a second refund request against charge resolution; only one allocation may consume the remaining liability. Rerun charge resolution and duplicate success/failure webhooks: neither may create a second payment or journal pair. Verify a failed refund releases only its own reservation. Repeat missing-routing, missing/inactive-income, and missing/inactive-deposit-account cases and confirm no Xendit refund request is sent. Compare receipt, refund, unresolved intent, applied charge, and journal totals after each case.
 
 If installation fails, leave checkout paused and inspect the preflight error; the SQL transaction rolls back. If provider refund initiation is ambiguous, retain the reserved amount and verify the provider state in Xendit before finance acts. Do not reset the database, rewrite applied migration history, automatically retry an uncertain refund, or treat a redirect as a payment confirmation.
+
+## Phase 4 partner and transfer payments
+
+Phase 4 uses explicit card payment links for partner guest bookings and staff-created transfers. Partners generate a link after creating the guest group, then copy it or separately email it with the waiver links. Staff can generate, copy, or email a transfer link. Email acceptance is recorded separately from payment; a failed send does not recreate the booking or checkout. Public self-booked transfers continue directly to card checkout. Existing staff cash/GCash collection is separate; no EFTPOS terminal is assumed. A redirect or email is not proof of payment. Only the verified webhook records the transfer receipt, Card Settlement, clearing/income journal, collected amount/time, and confirmation email. Transfer refunds remain a manual finance review rather than using the order-only Phase 3 refund API.
+
+Before staging deployment, back up staging and pause new checkout and transfer financial actions. Inspect live sessions against the Xendit Dashboard; do not directly rewrite their statuses. Inspect the existing chart and routes:
+
+```sql
+SELECT id, status, target_type, payment_session_id FROM public.xendit_payment_sessions
+WHERE status IN ('creating','active','reconciliation_required');
+SELECT id, name, account_type, store_id, is_active FROM public.chart_of_accounts
+WHERE id IN ('INCOME-TRANSFER-store-lolas','MISC-INCOME-store-lolas','XENDIT-CLEARING-store-lolas');
+SELECT store_id,payment_method_id,received_into_account_id,card_settlement_account_id
+FROM public.payment_routing_rules WHERE store_id = 'store-lolas';
+```
+
+If staging still lacks `INCOME-TRANSFER-store-lolas`, review and run `scripts/manual/prepare-xendit-phase4-staging-account.sql`, then rerun it to verify idempotency. This staging-only helper adds no balance or journal entries; do not run it in production. Keep the Xendit route pointed at Xendit Clearing. Production accounts and routes require a separate review.
+
+Review and manually run `scripts/manual/apply-xendit-phase4.sql` after the Phase 3 installer, then rerun it. The Phase 4 installer is transactional, service-role-only, and preserves Phase 3 completion behind the new transfer-aware wrapper. It is not a Supabase migration. Check the returned receipt/session queries and verify the new functions and indexes before deploying the matching API and web code together. Do not deploy the API before this installer; it expects the new transfer schema and RPCs.
+
+On staging, test partner group link generation, copy, explicit email and resend after reload; staff transfer link generation, copy and email; both public transfer pages; online completion, cancellation/expiry, duplicate webhooks, and checkout-versus-manual-collection races. Verify an unpriceable Xendit booking inserts no raw booking and an email does not mark payment received. Compare transfer receipts and journal entries with Cash Up Online Payments; these are not bank payouts. If a refund is requested for an online-paid transfer, stop and refer it to finance. Do not activate Phase 4 in production until staging accounting and provider records agree.

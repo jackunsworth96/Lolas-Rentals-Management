@@ -222,8 +222,14 @@ export async function submitDirectBooking(
       effectivePickupFee +
       effectiveDropoffFee +
       fullQuote.addonsTotal;
+    if (input.webPaymentMethod === 'xendit' && (!Number.isFinite(webQuoteRaw) || webQuoteRaw <= 0)) {
+      throw new Error('Card checkout quote is not payable');
+    }
   } catch {
-    // Non-fatal: booking still proceeds even if quote computation fails
+    if (input.webPaymentMethod === 'xendit') {
+      throw httpError('Card checkout quote is unavailable. Please retry before creating the booking.', 409);
+    }
+    // Non-card bookings retain the existing best-effort quote behavior.
   }
 
   // 3b. Apply payment method surcharge to webQuoteRaw if applicable
@@ -231,12 +237,16 @@ export async function submitDirectBooking(
     try {
       const paymentMethods = await deps.configRepo.getPaymentMethods();
       const pm = paymentMethods.find((m) => m.id === input.webPaymentMethod);
+      if (input.webPaymentMethod === 'xendit' && (!pm || !pm.isActive || pm.gatewayProvider !== 'xendit')) {
+        throw httpError('Card payment method is unavailable.', 409);
+      }
       if (pm && pm.surchargePercent > 0) {
         surchargeAmount = Math.round(webQuoteRaw * (pm.surchargePercent / 100) * 100) / 100;
         webQuoteRaw = webQuoteRaw + surchargeAmount;
       }
-    } catch {
-      // Non-fatal: proceed with base quote if surcharge config cannot be fetched
+    } catch (error) {
+      if (input.webPaymentMethod === 'xendit') throw error;
+      // Non-card bookings retain the existing best-effort surcharge behavior.
     }
   }
 
@@ -249,6 +259,9 @@ export async function submitDirectBooking(
     if (input.charityDonation && input.charityDonation > 0) {
       webQuoteRaw += input.charityDonation;
     }
+  }
+  if (input.webPaymentMethod === 'xendit' && (webQuoteRaw === null || !Number.isFinite(webQuoteRaw) || webQuoteRaw <= 0)) {
+    throw httpError('Card checkout quote is unavailable. Please retry before creating the booking.', 409);
   }
 
   // 4. Generate a unique order reference + cancellation token

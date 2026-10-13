@@ -8,6 +8,7 @@ import { logger } from '../lib/logger.js';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { escapeIlike, orderReferenceLookupVariants } from './public-extend-helpers.js';
+import { escapeHtml, sendEmailChecked, transferBookingConfirmationHtml } from '../services/email.js';
 import {
   createXenditPaymentSession,
   createXenditRefund,
@@ -33,7 +34,7 @@ const publicSessionSchema = z.object({
   orders: z.array(z.object({
     id: z.string().uuid(),
     cancellationToken: z.string().regex(/^[a-f0-9]{64}$/i),
-  })).min(1).max(10),
+  })).min(1).max(12),
 }).superRefine((value, ctx) => {
   if (new Set(value.orders.map((order) => order.id)).size !== value.orders.length) {
     ctx.addIssue({ code: 'custom', path: ['orders'], message: 'Duplicate booking ids are not allowed' });
@@ -55,6 +56,11 @@ const rawStaffSessionSchema = z.object({
   rawOrderId: z.string().uuid(),
   acknowledgePriceChange: z.boolean().default(false),
   includeDeposit: z.boolean().default(false),
+});
+
+const transferSessionSchema = z.object({
+  transferId: z.string().min(1),
+  checkoutToken: z.string().min(1),
 });
 
 type RawStaffBooking = {
@@ -126,6 +132,7 @@ type RawOrderRow = {
   web_card_fee_surcharge: number | null;
   web_payment_method: string | null;
   xendit_payment_session_id: string | null;
+  partner_booking_group_ref?: string | null;
 };
 
 type ExistingSessionRow = {
@@ -408,6 +415,47 @@ async function cancelCheckoutAfterActivationFailure(
   }
 }
 
+async function sendConfirmedTransferEmail(sessionId: string): Promise<void> {
+  const sb = getSupabaseClient();
+  const staleClaim = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const { data: receipt, error: claimError } = await sb.from('transfer_xendit_receipts')
+    .update({ confirmation_email_claimed_at: new Date().toISOString() })
+    .eq('session_id', sessionId).is('confirmation_email_sent_at', null)
+    .or(`confirmation_email_claimed_at.is.null,confirmation_email_claimed_at.lt.${staleClaim}`)
+    .select('transfer_id,amount_php').maybeSingle();
+  if (claimError) throw new Error(`Failed to claim transfer confirmation email: ${claimError.message}`);
+  if (!receipt) return;
+  try {
+    const { data: transfer, error } = await sb.from('transfers')
+      .select('id,customer_name,customer_email,service_date,route,pax_count,van_type,flight_time,accommodation')
+      .eq('id', receipt.transfer_id).single();
+    if (error || !transfer?.customer_email) throw new Error('Transfer customer email is unavailable');
+    await sendEmailChecked({
+      to: transfer.customer_email,
+      subject: `Transfer Booking Confirmed - ${transfer.route} | Lola's Rentals`,
+      html: transferBookingConfirmationHtml({
+        customerName: transfer.customer_name,
+        serviceDate: transfer.service_date,
+        route: transfer.route,
+        paxCount: transfer.pax_count,
+        vanType: transfer.van_type,
+        flightTime: transfer.flight_time,
+        accommodation: transfer.accommodation,
+        totalPrice: Number(receipt.amount_php),
+        whatsappNumber: process.env.WHATSAPP_NUMBER ?? '639XXXXXXXXX',
+      }),
+    });
+    const { error: markError } = await sb.from('transfer_xendit_receipts')
+      .update({ confirmation_email_sent_at: new Date().toISOString() })
+      .eq('session_id', sessionId);
+    if (markError) throw new Error(`Failed to confirm transfer email send: ${markError.message}`);
+  } catch (error) {
+    await sb.from('transfer_xendit_receipts').update({ confirmation_email_claimed_at: null })
+      .eq('session_id', sessionId).is('confirmation_email_sent_at', null);
+    logger.error({ error, sessionId }, 'Confirmed transfer email could not be delivered');
+  }
+}
+
 publicXenditRouter.post(
   '/extension-sessions',
   async (req: Request, res: Response, next: NextFunction) => {
@@ -579,9 +627,11 @@ publicXenditRouter.post(
   },
 );
 
-publicXenditRouter.post(
-  '/sessions',
-  async (req: Request, res: Response, next: NextFunction) => {
+export async function createBookingPaymentSession(
+  orders: z.infer<typeof publicSessionSchema>['orders'],
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
     let sessionId: string | null = null;
     let closeDraftOnFailure = true;
     try {
@@ -593,7 +643,7 @@ publicXenditRouter.post(
         return;
       }
 
-      const parsed = publicSessionSchema.safeParse(req.body);
+      const parsed = publicSessionSchema.safeParse({ paymentMethodId: 'xendit', orders });
       if (!parsed.success) {
         res.status(400).json({
           success: false,
@@ -615,7 +665,7 @@ publicXenditRouter.post(
       const ids = parsed.data.orders.map((order) => order.id);
       const { data, error } = await supabase
         .from('orders_raw')
-        .select('id, order_reference, cancellation_token, booking_channel, status, store_id, customer_email, customer_mobile, pickup_datetime, dropoff_datetime, web_quote_raw, web_card_fee_surcharge, web_payment_method, xendit_payment_session_id')
+        .select('id, order_reference, cancellation_token, booking_channel, status, store_id, customer_email, customer_mobile, pickup_datetime, dropoff_datetime, web_quote_raw, web_card_fee_surcharge, web_payment_method, xendit_payment_session_id, partner_booking_group_ref')
         .in('id', ids);
       if (error) throw new Error(`Failed to load bookings for payment: ${error.message}`);
 
@@ -638,6 +688,7 @@ publicXenditRouter.post(
           || row.customer_mobile !== first.customer_mobile
           || row.pickup_datetime !== first.pickup_datetime
           || row.dropoff_datetime !== first.dropoff_datetime
+          || row.partner_booking_group_ref !== first.partner_booking_group_ref
           || row.web_payment_method !== paymentMethod.id;
       });
       if (invalidBooking) {
@@ -646,6 +697,16 @@ publicXenditRouter.post(
           error: { code: 'BOOKING_NOT_PAYABLE', message: 'The selected bookings cannot be paid together' },
         });
         return;
+      }
+      if (first.partner_booking_group_ref) {
+        const { data: group, error: groupError } = await supabase.from('partner_booking_groups')
+          .select('status,expected_count,store_id').eq('group_ref', first.partner_booking_group_ref).maybeSingle();
+        if (groupError) throw new Error(`Failed to verify partner booking group: ${groupError.message}`);
+        if (!group || group.status !== 'complete' || group.expected_count !== rows.length
+          || group.store_id !== first.store_id) {
+          res.status(409).json({ success: false, error: { code: 'INCOMPLETE_BOOKING', message: 'This booking group requires staff review' } });
+          return;
+        }
       }
 
       const claimedSessionIds = [...new Set(rows
@@ -741,13 +802,16 @@ publicXenditRouter.post(
       }
 
       const webOrigin = publicWebOriginFromEnv(process.env.WEB_URL);
-      const confirmationPath = `/book/confirmation/${encodeURIComponent(first.order_reference)}`;
+      const confirmationPath = first.partner_booking_group_ref
+        ? `/book/payment-return/${encodeURIComponent(first.order_reference)}`
+        : `/book/confirmation/${encodeURIComponent(first.order_reference)}`;
       const xenditSession = await createXenditPaymentSession({
         referenceId,
         amountPHP,
         description: `Lola's Rentals - ${rows.map((row) => row.order_reference).join(', ')}`,
         successReturnUrl: returnUrl(webOrigin, confirmationPath, 'processing', sessionId),
         cancelReturnUrl: returnUrl(webOrigin, confirmationPath, 'cancelled', sessionId),
+        allowedPaymentChannels: first.partner_booking_group_ref ? ['CARDS'] : undefined,
         items: allocations.map((allocation) => ({
           referenceId: allocation.referenceId,
           name: `Vehicle rental ${allocation.referenceId}`,
@@ -782,8 +846,20 @@ publicXenditRouter.post(
       logger.error({ error, sessionId }, 'Public Xendit payment session creation failed');
       next(error);
     }
-  },
-);
+}
+
+publicXenditRouter.post('/sessions', async (req: Request, res: Response, next: NextFunction) => {
+  const parsed = publicSessionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid payment request' } });
+    return;
+  }
+  if (parsed.data.paymentMethodId !== 'xendit') {
+    res.status(400).json({ success: false, error: { code: 'INVALID_PAYMENT_METHOD', message: 'Invalid payment method' } });
+    return;
+  }
+  await createBookingPaymentSession(parsed.data.orders, res, next);
+});
 
 async function loadStaffRawBooking(rawOrderId: string): Promise<RawStaffBooking | null> {
   const { data, error } = await getSupabaseClient().from('orders_raw')
@@ -1793,6 +1869,192 @@ staffXenditRouter.post(
   },
 );
 
+async function createTransferPaymentSession(
+  transferId: string, res: Response, next: NextFunction,
+): Promise<void> {
+    let sessionId: string | null = null;
+    let closeDraftOnFailure = true;
+    try {
+      if (!isXenditEnabled()) { res.status(503).json({ success: false, error: { code: 'XENDIT_DISABLED', message: 'Card checkout is unavailable' } }); return; }
+      const sb = getSupabaseClient();
+      const { data: transfer, error: transferError } = await sb.from('transfers')
+        .select('id,store_id,customer_name,total_price,payment_status,status')
+        .eq('id', transferId).maybeSingle();
+      if (transferError) throw new Error(`Failed to load transfer: ${transferError.message}`);
+      if (!transfer || transfer.payment_status !== 'Pending' || transfer.status === 'Cancelled') {
+        res.status(409).json({ success: false, error: { code: 'TRANSFER_NOT_PAYABLE', message: 'Transfer is no longer payable online' } }); return;
+      }
+      const method = await loadXenditPaymentMethod('xendit');
+      if (!method) { res.status(409).json({ success: false, error: { code: 'CARD_PAYMENT_UNAVAILABLE', message: 'Card checkout is unavailable' } }); return; }
+      const { data: existingRows, error: existingError } = await sb.from('xendit_payment_sessions')
+        .select('id,status,payment_link_url,expires_at,payment_session_id,store_id,created_at,amount_php')
+        .eq('transfer_id', transfer.id)
+        .in('status', ['creating','active','completed','reconciliation_required'])
+        .order('created_at', { ascending: false }).limit(1);
+      if (existingError) throw new Error(`Failed to inspect transfer checkout: ${existingError.message}`);
+      const existing = existingRows?.[0] as ExistingSessionRow | undefined;
+      if (existing) {
+        if (existing.status === 'active' && existing.payment_link_url && !hasExpiredLocally(existing)) {
+          res.json({ success: true, data: { sessionId: existing.id, checkoutUrl: existing.payment_link_url, expiresAt: existing.expires_at, amountPHP: Number(existing.amount_php) } }); return;
+        }
+        if (existing.status !== 'active' || !await resolveExpiredActiveSession(existing, 'Transfer checkout retry')) {
+          res.status(409).json({ success: false, error: { code: 'PAYMENT_ALREADY_IN_PROGRESS', message: 'Transfer payment is in progress or requires verification' } }); return;
+        }
+      }
+      const principalPHP = roundMoney(Number(transfer.total_price));
+      const surchargePHP = roundMoney(principalPHP * Number(method.surcharge_percent ?? 0) / 100);
+      const amountPHP = roundMoney(principalPHP + surchargePHP);
+      if (principalPHP <= 0) throw new Error('Transfer has no payable server quote');
+      sessionId = crypto.randomUUID();
+      const referenceId = `XEN${sessionId.replaceAll('-', '')}`;
+      const { error: draftError } = await sb.rpc('create_xendit_transfer_session_draft', {
+        p_session_id: sessionId, p_reference_id: referenceId, p_transfer_id: transfer.id,
+        p_store_id: transfer.store_id, p_payment_method_id: method.id,
+        p_principal_amount_php: principalPHP, p_surcharge_amount_php: surchargePHP,
+      });
+      if (draftError) {
+        if (isRetryableDraftError(draftError) || isBlockingSessionError(draftError)) {
+          sessionId = null;
+          res.status(409).json({ success: false, error: { code: 'PAYMENT_SESSION_RETRY', message: 'Checkout is already in progress. Please retry.' } }); return;
+        }
+        throw new Error(`Failed to reserve transfer checkout: ${draftError.message}`);
+      }
+      const path = `/book/payment-return/${encodeURIComponent(transfer.id)}`;
+      const webOrigin = publicWebOriginFromEnv(process.env.WEB_URL);
+      const checkout = await createXenditPaymentSession({
+        referenceId, amountPHP, description: `Lola's Rentals transfer ${transfer.id}`,
+        successReturnUrl: returnUrl(webOrigin, path, 'processing', sessionId),
+        cancelReturnUrl: returnUrl(webOrigin, path, 'cancelled', sessionId),
+        allowedPaymentChannels: ['CARDS'],
+        items: [{ referenceId: transfer.id, name: `Airport transfer ${transfer.id}`, amountPHP }],
+      });
+      closeDraftOnFailure = false;
+      try { await activateXenditSession(sessionId, checkout); }
+      catch (activationError) {
+        if (await cancelCheckoutAfterActivationFailure(sessionId, referenceId, checkout, activationError)) sessionId = null;
+        throw activationError;
+      }
+      res.status(201).json({ success: true, data: { sessionId, checkoutUrl: checkout.checkoutUrl, expiresAt: checkout.expiresAt, amountPHP } });
+    } catch (error) {
+      if (sessionId && closeDraftOnFailure) await closeFailedDraft(sessionId, error);
+      next(error);
+    }
+}
+
+publicXenditRouter.post('/transfers/sessions', async (req: Request, res: Response, next: NextFunction) => {
+  const parsed = transferSessionSchema.safeParse(req.body);
+  if (!parsed.success || !verifyXenditReturnState(parsed.data.checkoutToken, `transfer:${parsed.data.transferId}`)) {
+    res.status(403).json({ success: false, error: { code: 'INVALID_CHECKOUT_TOKEN', message: 'Transfer checkout link is invalid or expired' } }); return;
+  }
+  await createTransferPaymentSession(parsed.data.transferId, res, next);
+});
+
+async function loadOwnedTransfer(req: Request, res: Response, transferId: string) {
+  const { data, error } = await getSupabaseClient().from('transfers')
+    .select('id,store_id,customer_name,customer_email,total_price,payment_status,status')
+    .eq('id', transferId).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) { res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Transfer not found' } }); return null; }
+  const stores = req.user?.storeIds ?? [];
+  if (!stores.includes(COMPANY_STORE_ID) && !stores.includes(data.store_id)) {
+    res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Transfer belongs to another store' } }); return null;
+  }
+  return data;
+}
+
+staffXenditRouter.get('/transfers/:id/session', authenticate, requirePermission(Permission.ViewTransfers), async (req, res, next) => {
+  try {
+    const transfer = await loadOwnedTransfer(req, res, req.params.id as string);
+    if (!transfer) return;
+    const sb = getSupabaseClient();
+    const { data: method, error: methodError } = await sb.from('payment_methods')
+      .select('surcharge_percent').eq('id', 'xendit').eq('gateway_provider', 'xendit').eq('is_active', true).maybeSingle();
+    if (methodError) throw new Error(methodError.message);
+    const principalPHP = roundMoney(Number(transfer.total_price));
+    const surchargePHP = method ? roundMoney(principalPHP * Number(method.surcharge_percent ?? 0) / 100) : null;
+    const { data: sessions, error } = await sb.from('xendit_payment_sessions')
+      .select('id,status,payment_link_url,expires_at,amount_php,link_email_sent_at,link_email_attempts')
+      .eq('transfer_id', transfer.id).order('created_at', { ascending: false }).limit(1);
+    if (error) throw new Error(error.message);
+    const session = sessions?.[0];
+    res.json({ success: true, data: { principalPHP, surchargePHP,
+      amountPHP: surchargePHP === null ? null : roundMoney(principalPHP + surchargePHP),
+      session: session ? { sessionId: session.id, status: session.status,
+        checkoutUrl: session.status === 'active' && session.expires_at && new Date(session.expires_at).getTime() > Date.now() ? session.payment_link_url : null,
+        expiresAt: session.expires_at, emailAcceptedAt: session.link_email_sent_at,
+        emailAttempts: session.link_email_attempts } : null } });
+  } catch (error) { next(error); }
+});
+
+staffXenditRouter.post('/transfers/:id/session', authenticate, requirePermission(Permission.EditTransfers), async (req, res, next) => {
+  try {
+    const transfer = await loadOwnedTransfer(req, res, req.params.id as string);
+    if (!transfer) return;
+    await createTransferPaymentSession(transfer.id, res, next);
+  } catch (error) { next(error); }
+});
+
+staffXenditRouter.post('/transfers/:id/send-link', authenticate, requirePermission(Permission.EditTransfers), async (req, res, next) => {
+  try {
+    const parsed = z.object({ sessionId: z.string().uuid(), resend: z.boolean().default(false) }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid send request' } }); return; }
+    const transfer = await loadOwnedTransfer(req, res, req.params.id as string);
+    if (!transfer) return;
+    const sb = getSupabaseClient();
+    const { data: session, error } = await sb.from('xendit_payment_sessions')
+      .select('id,status,payment_link_url,expires_at').eq('id', parsed.data.sessionId).eq('transfer_id', transfer.id).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!session || session.status !== 'active' || !session.payment_link_url || !session.expires_at
+      || new Date(session.expires_at).getTime() <= Date.now() || !transfer.customer_email) {
+      res.status(409).json({ success: false, error: { code: 'LINK_UNAVAILABLE', message: 'Active checkout or customer email is unavailable' } }); return;
+    }
+    const { data: claimed, error: claimError } = await sb.rpc('claim_xendit_link_email', {
+      p_session_id: session.id, p_resend: parsed.data.resend,
+    });
+    if (claimError) throw new Error(claimError.message);
+    if (!claimed) { res.status(409).json({ success: false, error: { code: 'EMAIL_NOT_AVAILABLE', message: 'Email already accepted or another send is in progress' } }); return; }
+    try {
+      await sendEmailChecked({ to: transfer.customer_email,
+        subject: `Payment link for your Lola's Rentals transfer`,
+        html: `<p>Hello ${escapeHtml(transfer.customer_name)},</p><p><a href="${escapeHtml(session.payment_link_url)}">Pay your transfer by card</a></p>`,
+      });
+    } catch (sendError) {
+      await sb.from('xendit_payment_sessions').update({ link_email_claimed_at: null }).eq('id', session.id);
+      logger.error({ error: sendError, sessionId: session.id }, 'Transfer link email was not accepted');
+      res.status(502).json({ success: false, error: { code: 'EMAIL_NOT_ACCEPTED', message: 'Email was not accepted. The payment link is still available.' } });
+      return;
+    }
+    const { error: markError } = await sb.from('xendit_payment_sessions')
+      .update({ link_email_sent_at: new Date().toISOString(), link_email_claimed_at: null }).eq('id', session.id);
+    if (markError) throw new Error(`Email was accepted but send status could not be recorded: ${markError.message}`);
+    res.json({ success: true, data: { accepted: true } });
+  } catch (error) { next(error); }
+});
+
+staffXenditRouter.post('/transfers/:id/cancel-link', authenticate, requirePermission(Permission.EditTransfers), async (req, res, next) => {
+  try {
+    const transfer = await loadOwnedTransfer(req, res, req.params.id as string);
+    if (!transfer) return;
+    const parsed = z.object({ sessionId: z.string().uuid() }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid session' } }); return; }
+    const { data, error } = await getSupabaseClient().from('xendit_payment_sessions')
+      .select('id,status,payment_session_id,store_id,created_at,amount_php,payment_link_url,expires_at')
+      .eq('id', parsed.data.sessionId).eq('transfer_id', transfer.id).maybeSingle();
+    if (error) throw new Error(error.message);
+    const session = data as ExistingSessionRow | null;
+    if (!session || session.status !== 'active' || !session.payment_session_id) {
+      res.status(409).json({ success: false, error: { code: 'SESSION_NOT_CANCELLABLE', message: 'Only an active checkout can be cancelled' } }); return;
+    }
+    try { await cancelXenditPaymentSession(session.payment_session_id); }
+    catch (cancelError) { logger.warn({ error: cancelError, sessionId: session.id }, 'Transfer cancellation needs provider-status recovery'); }
+    const outcome = await closeProviderTerminalSession(session, 'Staff cancelled transfer checkout', req.user!.employeeId);
+    if (outcome === 'still_active') {
+      res.status(409).json({ success: false, error: { code: 'SESSION_STILL_ACTIVE', message: 'Xendit still reports the checkout active. It remains locked.' } }); return;
+    }
+    res.json({ success: true, data: { status: outcome === 'closed' ? 'cancelled' : outcome } });
+  } catch (error) { next(error); }
+});
+
 publicXenditRouter.post(
   '/webhook',
   async (req: Request, res: Response) => {
@@ -1848,11 +2110,11 @@ publicXenditRouter.post(
       const supabase = getSupabaseClient();
       const { data, error } = await supabase
         .from('xendit_payment_sessions')
-        .select('id, payment_session_id')
+        .select('id, payment_session_id, target_type')
         .eq('reference_id', payload.data.reference_id)
         .maybeSingle();
       if (error) throw new Error(`Failed to locate Xendit session: ${error.message}`);
-      const session = data as { id: string; payment_session_id: string | null } | null;
+      const session = data as { id: string; payment_session_id: string | null; target_type: string } | null;
       const webhookIdHeader = req.headers['webhook-id'];
       const webhookId = Array.isArray(webhookIdHeader) ? webhookIdHeader[0] : webhookIdHeader;
       const eventKey = webhookId?.trim()
@@ -1903,6 +2165,8 @@ publicXenditRouter.post(
         p_currency: payload.data.currency,
       });
       if (completeError) throw new Error(`Failed to complete Xendit payment: ${completeError.message}`);
+
+      if (session.target_type === 'public_transfer') await sendConfirmedTransferEmail(session.id);
 
       res.json({ success: true, data: { received: true } });
     } catch (error) {

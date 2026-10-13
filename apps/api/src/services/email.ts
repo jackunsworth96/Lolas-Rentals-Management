@@ -49,6 +49,25 @@ export const INTERNAL_FROM_EMAIL =
 export const NOTIFICATION_EMAIL =
   process.env.NOTIFICATION_EMAIL ?? 'jack@lolasrentals.com';
 
+export async function sendEmailChecked({
+  to, from, subject, html, text,
+}: {
+  to: string | string[];
+  from?: string;
+  subject: string;
+  html: string;
+  text?: string;
+}): Promise<void> {
+  const result = await getResend().emails.send({
+    from: from ?? CUSTOMER_FROM_EMAIL,
+    to: Array.isArray(to) ? to : [to],
+    subject,
+    html,
+    text: text ?? html.replace(/<[^>]+>/g, ''),
+  });
+  if (result.error) throw new Error(`Email provider rejected delivery: ${result.error.name}`);
+}
+
 export async function sendEmail({
   to,
   from,
@@ -67,13 +86,7 @@ export async function sendEmail({
     return;
   }
   try {
-    await getResend().emails.send({
-      from: from ?? CUSTOMER_FROM_EMAIL,
-      to: Array.isArray(to) ? to : [to],
-      subject,
-      html,
-      text: text ?? html.replace(/<[^>]+>/g, ''),
-    });
+    await sendEmailChecked({ to, from, subject, html, text });
   } catch (err) {
     console.error('Email send failed:', err);
     // Don't throw — email failure should never break the main flow
