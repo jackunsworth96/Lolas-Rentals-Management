@@ -379,6 +379,14 @@ export function usePartnerVehicleTerms(partnerId: string | null) {
   });
 }
 
+/**
+ * One-off fetch (not a hook) for creating a vehicle term override right after a new
+ * partner has been created, before any component has a stable partnerId to key a hook on.
+ */
+export function createPartnerVehicleTerm(partnerId: string, body: PartnerVehicleTermInput): Promise<PartnerVehicleTerm> {
+  return api.post<PartnerVehicleTerm>(`/partners/${partnerId}/vehicle-terms`, body);
+}
+
 export function useCreatePartnerVehicleTerm(partnerId: string) {
   const qc = useQueryClient();
   return useMutation({

@@ -508,7 +508,7 @@ router.post('/', edit, validateBody(PartnerBodySchema), async (req, res, next) =
         contact_name: body.contact_name ?? null,
         contact_email: body.contact_email ?? null,
         contact_whatsapp: body.contact_whatsapp ?? null,
-        commission_type: body.commission_type ?? 'fixed',
+        commission_type: body.commission_type ?? 'percentage',
         commission_value: body.commission_value ?? 0,
         advance_booking_days: body.advance_booking_days ?? 7,
         commission_includes_extensions: body.commission_includes_extensions ?? false,

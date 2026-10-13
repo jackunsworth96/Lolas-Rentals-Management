@@ -20,6 +20,7 @@ import {
   usePartnerEnrollmentDetails,
   usePartnerVehicleTerms,
   useCreatePartnerVehicleTerm,
+  createPartnerVehicleTerm,
   useUpdatePartnerVehicleTerm,
   useDeletePartnerVehicleTerm,
   useVehicleModels,
@@ -32,7 +33,6 @@ import {
   type PartnerInput,
   type PartnerDealType,
   type PartnerDiscountType,
-  type PartnerVehicleTerm,
   type PartnerVehicleTermInput,
 } from '../../api/partners.js';
 import { useUIStore } from '../../stores/ui-store.js';
@@ -301,17 +301,32 @@ const EMPTY_VT_FORM: PartnerVehicleTermInput = {
   free_delivery: false,
 };
 
+/** A vehicle override row, whether persisted (has a real `id` from the API) or still a
+ * local draft kept in the Add Partner form before the partner itself has been saved. */
+type VehicleTermRow = PartnerVehicleTermInput & { id: string };
+
+function newDraftId() {
+  return `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 interface VehicleOverridesSectionProps {
-  partnerId: string;
+  /** Null while adding a brand-new partner that hasn't been saved yet — overrides are
+   * then kept as local drafts (see draftTerms/onDraftTermsChange) instead of hitting the API. */
+  partnerId: string | null;
+  draftTerms?: VehicleTermRow[];
+  onDraftTermsChange?: (terms: VehicleTermRow[]) => void;
   pushToast: (msg: string, type: 'success' | 'error') => void;
 }
 
-function VehicleOverridesSection({ partnerId, pushToast }: VehicleOverridesSectionProps) {
-  const { data: terms = [], isLoading } = usePartnerVehicleTerms(partnerId);
+function VehicleOverridesSection({ partnerId, draftTerms, onDraftTermsChange, pushToast }: VehicleOverridesSectionProps) {
+  const isDraft = partnerId == null;
+  const { data: fetchedTerms = [], isLoading } = usePartnerVehicleTerms(partnerId);
   const { data: models = [] } = useVehicleModels();
-  const createVt = useCreatePartnerVehicleTerm(partnerId);
-  const updateVt = useUpdatePartnerVehicleTerm(partnerId);
-  const deleteVt = useDeletePartnerVehicleTerm(partnerId);
+  const createVt = useCreatePartnerVehicleTerm(partnerId ?? '');
+  const updateVt = useUpdatePartnerVehicleTerm(partnerId ?? '');
+  const deleteVt = useDeletePartnerVehicleTerm(partnerId ?? '');
+
+  const terms: VehicleTermRow[] = isDraft ? (draftTerms ?? []) : fetchedTerms;
 
   const [expanded, setExpanded] = useState(false);
   const [addingNew, setAddingNew] = useState(false);
@@ -325,7 +340,7 @@ function VehicleOverridesSection({ partnerId, pushToast }: VehicleOverridesSecti
     ? models.filter((m) => !usedModelIds.has(m.id) || m.id === editingTerm.vehicle_model_id)
     : availableModels;
 
-  function resetForm(source?: PartnerVehicleTerm) {
+  function resetForm(source?: VehicleTermRow) {
     if (source) {
       setForm({
         vehicle_model_id: source.vehicle_model_id,
@@ -352,6 +367,21 @@ function VehicleOverridesSection({ partnerId, pushToast }: VehicleOverridesSecti
 
   async function handleSave() {
     if (!form.vehicle_model_id) { pushToast('Select a vehicle model', 'error'); return; }
+
+    if (isDraft) {
+      if (editingId) {
+        onDraftTermsChange?.((draftTerms ?? []).map((t) => (t.id === editingId ? { ...form, id: editingId } : t)));
+        pushToast('Override updated', 'success');
+        setEditingId(null);
+      } else {
+        onDraftTermsChange?.([...(draftTerms ?? []), { ...form, id: newDraftId() }]);
+        pushToast('Override added', 'success');
+        setAddingNew(false);
+      }
+      resetForm();
+      return;
+    }
+
     try {
       if (editingId) {
         await updateVt.mutateAsync({ id: editingId, ...form });
@@ -369,6 +399,11 @@ function VehicleOverridesSection({ partnerId, pushToast }: VehicleOverridesSecti
   }
 
   async function handleDelete(id: string) {
+    if (isDraft) {
+      onDraftTermsChange?.((draftTerms ?? []).filter((t) => t.id !== id));
+      pushToast('Override removed', 'success');
+      return;
+    }
     try {
       await deleteVt.mutateAsync(id);
       pushToast('Override removed', 'success');
@@ -385,7 +420,7 @@ function VehicleOverridesSection({ partnerId, pushToast }: VehicleOverridesSecti
     return models.find((m) => m.id === id)?.name ?? id;
   }
 
-  function vtSummary(t: PartnerVehicleTerm) {
+  function vtSummary(t: VehicleTermRow) {
     const parts: string[] = [];
     if (t.deal_type === 'commission' || t.deal_type === 'combined' || t.deal_type === 'commission_delivery') {
       if (t.commission_value != null && t.commission_value > 0) {
@@ -542,9 +577,10 @@ function VehicleOverridesSection({ partnerId, pushToast }: VehicleOverridesSecti
         <div className="mt-3 space-y-2">
           <p className="text-[11px] text-gray-400">
             Overrides apply to specific vehicle models. For models without an override the global deal terms above are used.
+            {isDraft && ' Saved together with the partner below.'}
           </p>
 
-          {isLoading && <p className="text-xs text-gray-400">Loading…</p>}
+          {!isDraft && isLoading && <p className="text-xs text-gray-400">Loading…</p>}
 
           {terms.length > 0 && (
             <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
@@ -625,7 +661,7 @@ const EMPTY_FORM = {
   contact_name: '',
   contact_email: '',
   contact_whatsapp: '',
-  commission_type: 'fixed' as 'fixed' | 'percentage',
+  commission_type: 'percentage' as 'fixed' | 'percentage',
   commission_value: 0,
   advance_booking_days: 7,
   commission_includes_extensions: false,
@@ -651,9 +687,13 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  // Vehicle overrides for a brand-new partner, held locally until the partner is created
+  // (they have no partnerId to attach to yet) and then written right after.
+  const [draftOverrides, setDraftOverrides] = useState<VehicleTermRow[]>([]);
   const createPartner = useCreatePartner();
   const updatePartner = useUpdatePartner();
   const { data: deliveryLocations = [] } = useDeliveryLocations(editing?.store_id ?? defaultStoreId);
+  const { data: vehicleModels = [] } = useVehicleModels();
 
   const isEdit = !!editing;
 
@@ -690,6 +730,7 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
     } else {
       setForm({ ...EMPTY_FORM });
       setSlugManuallyEdited(false);
+      setDraftOverrides([]);
     }
   }, [editing]);
 
@@ -775,11 +816,34 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
       if (isEdit && editing) {
         await updatePartner.mutateAsync({ id: editing.id, ...payload });
         pushToast('Partner updated', 'success');
+        onClose();
       } else {
-        await createPartner.mutateAsync(payload);
-        pushToast('Partner added', 'success');
+        const created = await createPartner.mutateAsync(payload);
+
+        if (draftOverrides.length > 0) {
+          const failedModelNames: string[] = [];
+          for (const draft of draftOverrides) {
+            const { id: _draftId, ...overrideBody } = draft;
+            try {
+              await createPartnerVehicleTerm(created.id, overrideBody);
+            } catch {
+              const modelName = vehicleModels.find((m) => m.id === draft.vehicle_model_id)?.name ?? draft.vehicle_model_id;
+              failedModelNames.push(modelName);
+            }
+          }
+          if (failedModelNames.length > 0) {
+            pushToast(
+              `Partner added, but these vehicle overrides failed to save: ${failedModelNames.join(', ')}. Edit the partner to add them.`,
+              'error',
+            );
+          } else {
+            pushToast('Partner and vehicle overrides added', 'success');
+          }
+        } else {
+          pushToast('Partner added', 'success');
+        }
+        onClose();
       }
-      onClose();
     } catch (err) {
       pushToast((err as Error).message ?? 'Failed to save partner', 'error');
     }
@@ -1230,15 +1294,12 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
           />
         </div>
 
-        {isEdit && editing && (
-          <VehicleOverridesSection partnerId={editing.id} pushToast={pushToast} />
-        )}
-
-        {!isEdit && (
-          <p className="text-[11px] text-gray-400 border-t border-gray-100 pt-3">
-            Save the partner first, then re-open to configure vehicle-specific overrides.
-          </p>
-        )}
+        <VehicleOverridesSection
+          partnerId={isEdit && editing ? editing.id : null}
+          draftTerms={draftOverrides}
+          onDraftTermsChange={setDraftOverrides}
+          pushToast={pushToast}
+        />
 
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
