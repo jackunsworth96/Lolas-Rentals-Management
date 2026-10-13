@@ -41,6 +41,7 @@ export default function UtilizationDashboard() {
       revenue: number;
       downtimeDays: number;
       utilisationRate: number;
+      activeDays: number;
     }>;
     previousPeriod?: { fleetKpis: typeof result.fleetKpis };
     deltas?: {
@@ -161,6 +162,7 @@ export default function UtilizationDashboard() {
               <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Vehicle</th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Store</th>
               <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Rental days</th>
+              <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Active days</th>
               <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Revenue</th>
               <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Downtime (days)</th>
               <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Utilization %</th>
@@ -172,6 +174,7 @@ export default function UtilizationDashboard() {
                 <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">{v.vehicleName}</td>
                 <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-600">{getStoreName(v.storeId)}</td>
                 <td className="whitespace-nowrap px-4 py-3 text-sm text-right text-gray-900">{v.rentalDays}</td>
+                <td className="whitespace-nowrap px-4 py-3 text-sm text-right text-gray-500" title="Days this vehicle was actually in the rentable fleet during this period">{v.activeDays}</td>
                 <td className="whitespace-nowrap px-4 py-3 text-sm text-right text-gray-900">{formatCurrency(v.revenue)}</td>
                 <td className="whitespace-nowrap px-4 py-3 text-sm text-right text-gray-900">{v.downtimeDays}</td>
                 <td className="whitespace-nowrap px-4 py-3 text-sm text-right text-gray-900">{v.utilisationRate}%</td>

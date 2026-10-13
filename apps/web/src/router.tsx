@@ -62,6 +62,7 @@ const NotFoundPage = lazy(() => import('./pages/not-found/NotFoundPage.js'));
 const CustomersPage = lazy(() => import('./pages/customers/CustomersPage.js'));
 const UnsubscribePage = lazy(() => import('./pages/unsubscribe/UnsubscribePage.js'));
 const PartnersPage = lazy(() => import('./pages/partners/PartnersPage.js'));
+const PartnerUtilizationPage = lazy(() => import('./pages/partners/PartnerUtilizationPage.js'));
 const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage.js'));
 const AffiliatesPage = lazy(() => import('./pages/affiliates/AffiliatesPage.js'));
 const AffiliatesDetailsPage = lazy(() => import('./pages/affiliates/AffiliatesDetailsPage.js'));
@@ -195,6 +196,7 @@ export function AppRouter() {
             <Route path="directory" element={<DirectoryPage />} />
             <Route path="customers" element={<CustomersPage />} />
             <Route path="partners" element={<PartnersPage />} />
+            <Route path="partners/utilization" element={<PartnerUtilizationPage />} />
             <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="impact" element={<ImpactAdminPage />} />
           </Route>

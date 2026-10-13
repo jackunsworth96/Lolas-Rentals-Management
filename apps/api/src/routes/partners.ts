@@ -419,6 +419,32 @@ router.get('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── GET /utilization-summary — rental activity + quota usage per partner ────
+const UtilizationSummaryQuery = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'from must be YYYY-MM-DD'),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'to must be YYYY-MM-DD'),
+});
+
+router.get('/utilization-summary', async (req, res, next) => {
+  try {
+    const parsed = UtilizationSummaryQuery.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: { message: parsed.error.message } });
+      return;
+    }
+    const { from, to } = parsed.data;
+    if (to <= from) {
+      res.status(400).json({ success: false, error: { message: '`to` must be after `from`' } });
+      return;
+    }
+    const userStoreIds = req.user?.storeIds ?? [];
+    const storeIds = userStoreIds.includes('company') ? undefined : userStoreIds;
+    const { getPartnerUtilization } = await import('../use-cases/partners/get-partner-utilization.js');
+    const result = await getPartnerUtilization(from, to, storeIds);
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
 // ── GET /commissions-due — consolidated monthly payout ledger ───────────────
 router.get('/commissions-due', async (req, res, next) => {
   try {

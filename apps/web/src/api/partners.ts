@@ -143,6 +143,38 @@ export function usePartners(storeId?: string) {
   });
 }
 
+export interface PartnerQuotaRow {
+  vehicleType: string;
+  allocatedHours: number;
+  guaranteedHours: number;
+  overflowHours: number;
+  quotaUtilizationPercent: number | null;
+}
+
+export interface PartnerUtilizationRow {
+  partnerId: string;
+  partnerName: string;
+  storeId: string;
+  bookingsCount: number;
+  rentalDays: number;
+  revenue: number;
+  quota: PartnerQuotaRow[];
+}
+
+export interface PartnerUtilizationResult {
+  from: string;
+  to: string;
+  partners: PartnerUtilizationRow[];
+}
+
+export function usePartnerUtilization(from: string, to: string) {
+  return useQuery<PartnerUtilizationResult>({
+    queryKey: ['partners', 'utilization-summary', from, to],
+    queryFn: () => api.get<PartnerUtilizationResult>(`/partners/utilization-summary?from=${from}&to=${to}`),
+    enabled: !!from && !!to,
+  });
+}
+
 export function usePartnerEnrollmentDetails(partnerId: string | null) {
   return useQuery<PartnerEnrollmentDetails | null>({
     queryKey: ['partner-enrollment-details', partnerId],

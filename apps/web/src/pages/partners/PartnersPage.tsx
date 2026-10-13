@@ -1,5 +1,6 @@
 import { PartnerAllocations } from './PartnerAllocations.js';
 import { useState, useCallback, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Link2, Plus, Pencil, BarChart2, ToggleLeft, ToggleRight, Copy, CheckCheck,
   ExternalLink, Send, Check, X, Clock, ChevronDown, ChevronUp, Trash2,
@@ -2507,6 +2508,14 @@ export default function PartnersPage() {
             <p className="mt-0.5 text-sm text-gray-500">Trackable affiliate links for advance booking referrals</p>
           </div>
           <div className="flex items-center gap-2">
+            <Link
+              to="/partners/utilization"
+              className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:border-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-500"
+            >
+              <BarChart2 className="h-4 w-4" />
+              <span className="hidden sm:inline">Utilization</span>
+              <span className="sm:hidden">Util.</span>
+            </Link>
             <button
               onClick={() => setShowCommissionsDue(true)}
               className="flex items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-4 py-2 text-sm font-semibold text-teal-700 hover:border-teal-300 hover:bg-teal-100 focus:outline-none focus:ring-2 focus:ring-teal-500"

@@ -98,6 +98,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Customers', path: '/customers', perm: null, icon: UserSearch },
       { label: 'Partners', path: '/partners', perm: 'can_edit_settings', icon: Hotel },
+      { label: 'Partner Utilization', path: '/partners/utilization', perm: 'can_edit_settings', icon: BarChart2 },
       { label: 'Analytics', path: '/analytics', perm: 'can_view_dashboard', icon: LineChart },
       { label: 'Impact Articles', path: '/impact', perm: 'can_edit_settings', icon: Heart },
       { label: 'Merchandise', path: '/merchandise', perm: 'can_view_miscsales', icon: Package },
