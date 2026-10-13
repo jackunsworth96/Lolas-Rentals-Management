@@ -7,6 +7,7 @@ import { Badge } from '../common/Badge.js';
 import { Modal } from '../common/Modal.js';
 import { Button } from '../common/Button.js';
 import { ExtendOrderModal } from './ExtendOrderModal.js';
+import { AddCollectionModal } from './AddCollectionModal.js';
 import { InspectionModal } from './InspectionModal.js';
 import { MayaPaymentModal } from './MayaPaymentModal.js';
 import { WaiverViewModal } from './WaiverViewModal.js';
@@ -113,6 +114,7 @@ export function OrderDetailSummaryTab({
 
   // ── Modal open/close ──
   const [extendOpen, setExtendOpen] = useState(false);
+  const [addCollectionOpen, setAddCollectionOpen] = useState(false);
   const [inspectionModalOpen, setInspectionModalOpen] = useState(false);
   const [showMayaModal, setShowMayaModal] = useState(false);
   const [showRefundConfirm, setShowRefundConfirm] = useState(false);
@@ -1327,6 +1329,21 @@ export function OrderDetailSummaryTab({
               </button>
             </section>
 
+            {/* ─── ADD COLLECTION ─── */}
+            <section>
+              <h3 className="mb-3 font-medium text-gray-900">Add Collection</h3>
+              <p className="mb-3 text-sm text-charcoal-brand/60">
+                Customer changed their mind and wants us to collect the vehicle instead of returning it to the store. The return date doesn't change.
+              </p>
+              <button
+                type="button"
+                onClick={() => setAddCollectionOpen(true)}
+                className="w-full sm:w-auto rounded-lg bg-sky-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700"
+              >
+                Add Collection…
+              </button>
+            </section>
+
             {/* ─── SWAP VEHICLE ─── */}
             <section>
               <h3 className="mb-3 font-medium text-gray-900">Swap Vehicle</h3>
@@ -2019,6 +2036,15 @@ export function OrderDetailSummaryTab({
         <ExtendOrderModal
           open={extendOpen}
           onClose={() => setExtendOpen(false)}
+          enrichedData={enrichedData}
+        />
+      )}
+
+      {/* ─── Add Collection modal ─── */}
+      {enrichedData && (
+        <AddCollectionModal
+          open={addCollectionOpen}
+          onClose={() => setAddCollectionOpen(false)}
           enrichedData={enrichedData}
         />
       )}

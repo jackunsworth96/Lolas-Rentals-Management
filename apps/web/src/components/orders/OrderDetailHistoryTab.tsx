@@ -23,6 +23,7 @@ export function OrderDetailHistoryTab({ history }: OrderDetailHistoryTabProps) {
             evt.type === 'payment' ? 'bg-green-500' :
             evt.type === 'swap' ? 'bg-amber-500' :
             evt.type === 'addon' ? 'bg-purple-500' :
+            evt.type === 'collection' ? 'bg-sky-500' :
             evt.type === 'settled' ? 'bg-teal-brand' :
             evt.type === 'activated' ? 'bg-blue-500' :
             evt.type === 'accident' ? 'bg-red-600' :

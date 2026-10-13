@@ -323,12 +323,19 @@ router.get('/:id/history', requirePermission(Permission.ViewInbox), async (req, 
     for (const p of (paymentsRes.data ?? []) as Array<Record<string, unknown>>) {
       const pType = p.payment_type as string;
       const isExtension = pType === 'extension';
+      const settlementRef = (p.settlement_ref as string | null) ?? '';
+      // Collection charges added via /add-collection are recorded as 'addon' payments
+      // (so they flow through the same balance/settlement/refund logic) tagged with
+      // a "Collection fee: ..." settlement ref — give them a clearer history label.
+      const isCollectionFee = pType === 'addon' && settlementRef.startsWith('Collection fee:');
       events.push({
         timestamp: (p.created_at ?? p.transaction_date) as string,
-        type: isExtension ? 'extension' : 'payment',
+        type: isExtension ? 'extension' : isCollectionFee ? 'collection' : 'payment',
         description: isExtension
           ? `Rental extended (+${p.settlement_ref ?? ''})`
-          : `Payment received (${pType})`,
+          : isCollectionFee
+            ? settlementRef
+            : `Payment received (${pType})`,
         amount: p.amount as number,
         detail: isExtension
           ? `${
@@ -338,7 +345,9 @@ router.get('/:id/history', requirePermission(Permission.ViewInbox), async (req, 
                   ? 'Paid via settlement'
                   : 'Paid'
             } — ${p.settlement_ref ?? ''}`
-          : (p.settlement_ref ? `Ref: ${p.settlement_ref}` : undefined),
+          : isCollectionFee
+            ? (p.settlement_status === 'pending' ? 'Unpaid' : 'Paid')
+            : (p.settlement_ref ? `Ref: ${p.settlement_ref}` : undefined),
       });
     }
 
@@ -625,6 +634,28 @@ router.post('/:id/adjust-dates', requirePermission(Permission.EditOrders), valid
   try {
     const { adjustDates } = await import('../use-cases/orders/adjust-dates.js');
     const result = await adjustDates(req.app.locals.deps, { orderId: req.params.id, ...req.body });
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+// Adds (or changes) an off-site collection/return location on an active order,
+// independent of extending the return date — e.g. the customer changes their
+// mind after pickup and now wants the vehicle collected. The fee defaults to
+// the configured location fee, and is automatically waived when the order's
+// partner/affiliate benefit qualifies for free collection at that location.
+router.post('/:id/add-collection', requirePermission(Permission.EditOrders), validateBody(z.object({
+  orderItemId: z.string(),
+  locationId: z.number().int().positive(),
+  locationAddress: z.string().max(500).nullable().optional(),
+  paymentMethodId: z.string().nullable().optional(),
+  accountId: z.string().nullable().optional(),
+  receivableAccountId: z.string().optional(),
+  isCardPayment: z.boolean().optional(),
+  settlementRef: z.string().nullable().optional(),
+})), async (req, res, next) => {
+  try {
+    const { addCollection } = await import('../use-cases/orders/add-collection.js');
+    const result = await addCollection(req.app.locals.deps, { orderId: req.params.id, ...req.body });
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });

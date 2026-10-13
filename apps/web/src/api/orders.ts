@@ -93,6 +93,31 @@ export function useAdjustDates() {
   });
 }
 
+export interface AddCollectionResult {
+  locationName: string;
+  fee: number;
+  isFree: boolean;
+  freeReason: string | null;
+  delta: number;
+  finalTotal: number;
+  balanceDue: number;
+}
+
+export function useAddCollection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string } & Record<string, unknown>) =>
+      api.post<AddCollectionResult>(`/orders/${id}/add-collection`, body),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['orders', id] });
+      qc.invalidateQueries({ queryKey: ['orders', id, 'items'] });
+      qc.invalidateQueries({ queryKey: ['orders', id, 'payments'] });
+      qc.invalidateQueries({ queryKey: ['orders', id, 'history'] });
+    },
+  });
+}
+
 export function useOrderSwaps(orderId: string) {
   return useQuery({
     queryKey: ['orders', orderId, 'swaps'],
