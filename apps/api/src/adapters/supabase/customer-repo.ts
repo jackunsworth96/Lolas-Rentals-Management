@@ -81,15 +81,20 @@ export class SupabaseCustomerRepository implements CustomerRepository {
 
   async search(storeId: string, query: string, options?: { blacklistedOnly?: boolean }): Promise<Customer[]> {
     const sb = getSupabaseClient();
-    const safe = query.trim().replace(/[%_\\,()]/g, '\\$&');
-    const pattern = `%${safe}%`;
+    const term = query.trim();
     let request = sb
       .from('customers')
       .select('*')
       .eq('store_id', storeId);
     if (options?.blacklistedOnly) request = request.eq('blacklisted', true);
+    // An empty search must not add a match-all text filter. That kept the
+    // blacklist button dependent on typing a name, email, or mobile.
+    if (term) {
+      const safe = term.replace(/[%_\\,()]/g, '\\$&');
+      const pattern = `%${safe}%`;
+      request = request.or(`name.ilike.${pattern},email.ilike.${pattern},mobile.ilike.${pattern}`);
+    }
     const { data, error } = await request
-      .or(`name.ilike.${pattern},email.ilike.${pattern},mobile.ilike.${pattern}`)
       .order('name')
       .limit(options?.blacklistedOnly ? 500 : 50);
 

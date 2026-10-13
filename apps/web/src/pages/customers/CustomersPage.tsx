@@ -752,7 +752,7 @@ export default function CustomersPage() {
   // Search requires a storeId; if "all" is selected, we query each store or show an empty guide
   const canSearch = !!storeIdForApi;
 
-  const { data: customers = [], isLoading } = useCustomers(storeIdForApi, debouncedSearch, blacklistedOnly);
+  const { data: customers = [], isLoading, isError, error } = useCustomers(storeIdForApi, debouncedSearch, blacklistedOnly);
 
   const filtered = useMemo(() => {
     return customers as CustomerSummary[];
@@ -825,14 +825,17 @@ export default function CustomersPage() {
           type="button"
           disabled={!canSearch}
           aria-pressed={blacklistedOnly}
-          onClick={() => setBlacklistedOnly((value) => !value)}
+          onClick={() => {
+            setBlacklistedOnly((value) => !value);
+            setSearchInput('');
+          }}
           className={`rounded-md border px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50 disabled:text-gray-400 ${
             blacklistedOnly
               ? 'border-red-300 bg-red-50 font-medium text-red-700'
               : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
           }`}
         >
-          Blacklisted
+          {blacklistedOnly ? 'Showing blacklisted' : 'Show blacklisted'}
         </button>
 
         {/* Search */}
@@ -840,13 +843,7 @@ export default function CustomersPage() {
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder={
-              !canSearch
-                ? 'Select a store to search'
-                : blacklistedOnly
-                  ? 'Search blacklisted customers…'
-                  : 'Search by name, email or mobile…'
-            }
+            placeholder={canSearch ? 'Search by name, email or mobile…' : 'Select a store to search'}
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             disabled={!canSearch}
@@ -870,6 +867,12 @@ export default function CustomersPage() {
         </div>
       )}
 
+      {canSearch && blacklistedOnly && !isLoading && !isError && (
+        <p className="text-sm text-gray-600">
+          {filtered.length === 1 ? '1 blacklisted customer' : `${filtered.length} blacklisted customers`}
+        </p>
+      )}
+
       {/* Loading */}
       {canSearch && isLoading && (
         <div className="flex h-32 items-center justify-center">
@@ -877,8 +880,14 @@ export default function CustomersPage() {
         </div>
       )}
 
+      {canSearch && isError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error instanceof Error ? error.message : 'Could not load customers.'}
+        </div>
+      )}
+
       {/* Table */}
-      {canSearch && !isLoading && (
+      {canSearch && !isLoading && !isError && (
         <Table
           columns={columns}
           data={filtered}
