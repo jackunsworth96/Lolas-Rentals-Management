@@ -8,6 +8,15 @@ export interface FleetUtilizationDeps {
   storeId?: string;
 }
 
+export interface ModelUtilizationKpis {
+  modelId: string;
+  modelName: string;
+  vehicleCount: number;
+  utilisationPercent: number;
+  averageRevenuePerVehicle: number;
+  totalDowntimeDays: number;
+}
+
 export interface UtilizationKpis {
   utilisationPercent: number;
   averageRevenuePerVehicle: number;
@@ -15,12 +24,18 @@ export interface UtilizationKpis {
   totalRentalDays: number;
   totalRevenue: number;
   vehicleCount: number;
+  /** Breakdown of the KPIs above by vehicle model, so a small high-value fleet
+   * (e.g. tuktuks) doesn't skew the blended numbers for a large low-value one
+   * (e.g. scooters). Sorted by vehicleCount descending. */
+  byModel: ModelUtilizationKpis[];
 }
 
 export interface VehicleUtilizationRow {
   vehicleId: string;
   vehicleName: string;
   storeId: string;
+  modelId: string | null;
+  modelName: string;
   rentalDays: number;
   revenue: number;
   downtimeDays: number;
@@ -66,7 +81,7 @@ export async function getFleetUtilization(
   // that partial window is resolved per-vehicle below via rentable_start_date / date_sold.
   let fleetQuery = sb
     .from('fleet')
-    .select('id, name, store_id, rentable_start_date, date_sold, status');
+    .select('id, name, store_id, model_id, rentable_start_date, date_sold, status');
   if (storeId && storeId !== 'all') {
     fleetQuery = fleetQuery.eq('store_id', storeId);
   }
@@ -77,6 +92,7 @@ export async function getFleetUtilization(
     id: string;
     name: string;
     store_id: string;
+    model_id: string | null;
     rentable_start_date: string | null;
     date_sold: string | null;
     status: string;
@@ -96,6 +112,21 @@ export async function getFleetUtilization(
     return true;
   });
   const vehicleIds = rentableVehicles.map((v) => v.id);
+
+  // Vehicle model names, for grouping KPIs by model (e.g. tuktuk vs. scooter)
+  // so a small high-value fleet doesn't skew the blended per-vehicle numbers.
+  const modelIds = [...new Set(rentableVehicles.map((v) => v.model_id).filter((id): id is string => !!id))];
+  const modelNameById = new Map<string, string>();
+  if (modelIds.length > 0) {
+    const { data: modelRows, error: modelErr } = await sb
+      .from('vehicle_models')
+      .select('id, name')
+      .in('id', modelIds);
+    if (modelErr) throw new Error(`Vehicle models query failed: ${modelErr.message}`);
+    for (const m of (modelRows ?? []) as Array<{ id: string; name: string }>) {
+      modelNameById.set(m.id, m.name);
+    }
+  }
 
   // Order items overlapping the period: completed or active orders only.
   interface OrderItemRow {
@@ -236,6 +267,8 @@ export async function getFleetUtilization(
       vehicleId: v.id,
       vehicleName: v.name,
       storeId: v.store_id,
+      modelId: v.model_id,
+      modelName: (v.model_id && modelNameById.get(v.model_id)) || 'Unassigned',
       rentalDays: rental.rentalDays,
       revenue: Math.round(rental.revenue * 100) / 100,
       downtimeDays: downtime,
@@ -254,6 +287,36 @@ export async function getFleetUtilization(
     : 0;
   const averageRevenuePerVehicle = totalRevenue / n;
 
+  // Group the same KPIs by vehicle model so a small high-value fleet (e.g. tuktuks)
+  // doesn't get blended into — and skewed by — a large low-value one (e.g. scooters).
+  const modelGroups = new Map<
+    string,
+    { modelId: string; modelName: string; vehicleCount: number; totalRevenue: number; totalDowntimeDays: number; totalRentalDays: number; totalActiveDays: number }
+  >();
+  for (const v of vehicles) {
+    const key = v.modelId ?? 'unassigned';
+    let group = modelGroups.get(key);
+    if (!group) {
+      group = { modelId: key, modelName: v.modelName, vehicleCount: 0, totalRevenue: 0, totalDowntimeDays: 0, totalRentalDays: 0, totalActiveDays: 0 };
+      modelGroups.set(key, group);
+    }
+    group.vehicleCount += 1;
+    group.totalRevenue += v.revenue;
+    group.totalDowntimeDays += v.downtimeDays;
+    group.totalRentalDays += v.rentalDays;
+    group.totalActiveDays += v.activeDays;
+  }
+  const byModel: ModelUtilizationKpis[] = [...modelGroups.values()]
+    .map((g) => ({
+      modelId: g.modelId,
+      modelName: g.modelName,
+      vehicleCount: g.vehicleCount,
+      utilisationPercent: g.totalActiveDays > 0 ? Math.round(Math.min(100, (g.totalRentalDays / g.totalActiveDays) * 100) * 10) / 10 : 0,
+      averageRevenuePerVehicle: Math.round((g.totalRevenue / g.vehicleCount) * 100) / 100,
+      totalDowntimeDays: g.totalDowntimeDays,
+    }))
+    .sort((a, b) => b.vehicleCount - a.vehicleCount);
+
   const fleetKpis: UtilizationKpis = {
     utilisationPercent: Math.round(utilisationPercent * 10) / 10,
     averageRevenuePerVehicle: Math.round(averageRevenuePerVehicle * 100) / 100,
@@ -261,6 +324,7 @@ export async function getFleetUtilization(
     totalRentalDays,
     totalRevenue: Math.round(totalRevenue * 100) / 100,
     vehicleCount: vehicles.length,
+    byModel,
   };
 
   const result: UtilizationResult = { from, to, fleetKpis, vehicles };

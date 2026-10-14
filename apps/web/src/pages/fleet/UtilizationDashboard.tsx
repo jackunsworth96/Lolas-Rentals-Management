@@ -6,6 +6,15 @@ import { formatCurrency } from '../../utils/currency.js';
 
 type Period = '7d' | '30d' | '90d' | 'custom';
 
+type ModelKpis = {
+  modelId: string;
+  modelName: string;
+  vehicleCount: number;
+  utilisationPercent: number;
+  averageRevenuePerVehicle: number;
+  totalDowntimeDays: number;
+};
+
 export default function UtilizationDashboard() {
   const [period, setPeriod] = useState<Period>('30d');
   const [from, setFrom] = useState('');
@@ -32,11 +41,14 @@ export default function UtilizationDashboard() {
       totalRentalDays: number;
       totalRevenue: number;
       vehicleCount: number;
+      byModel: ModelKpis[];
     };
     vehicles: Array<{
       vehicleId: string;
       vehicleName: string;
       storeId: string;
+      modelId: string | null;
+      modelName: string;
       rentalDays: number;
       revenue: number;
       downtimeDays: number;
@@ -130,6 +142,7 @@ export default function UtilizationDashboard() {
               {deltas.utilisationPercentDelta >= 0 ? '↑' : '↓'} {Math.abs(deltas.utilisationPercentDelta)}% vs previous period
             </p>
           )}
+          <ModelBreakdown rows={fleetKpis.byModel} render={(m) => `${m.utilisationPercent}%`} />
         </div>
         <div className="rounded-lg bg-white p-4 shadow-sm">
           <p className="text-sm text-gray-500">Avg revenue per vehicle</p>
@@ -139,6 +152,7 @@ export default function UtilizationDashboard() {
               {deltas.averageRevenuePerVehicleDelta >= 0 ? '↑' : '↓'} {formatCurrency(Math.abs(deltas.averageRevenuePerVehicleDelta))} vs previous period
             </p>
           )}
+          <ModelBreakdown rows={fleetKpis.byModel} render={(m) => formatCurrency(m.averageRevenuePerVehicle)} />
         </div>
         <div className="rounded-lg bg-white p-4 shadow-sm">
           <p className="text-sm text-gray-500">Total downtime (days)</p>
@@ -148,10 +162,12 @@ export default function UtilizationDashboard() {
               {deltas.totalDowntimeDaysDelta >= 0 ? '↑' : '↓'} {Math.abs(deltas.totalDowntimeDaysDelta)} days vs previous period
             </p>
           )}
+          <ModelBreakdown rows={fleetKpis.byModel} render={(m) => `${m.totalDowntimeDays}d`} />
         </div>
         <div className="rounded-lg bg-white p-4 shadow-sm">
           <p className="text-sm text-gray-500">Vehicles</p>
           <p className="text-2xl font-bold text-gray-900">{fleetKpis.vehicleCount}</p>
+          <ModelBreakdown rows={fleetKpis.byModel} render={(m) => `${m.vehicleCount}`} />
         </div>
       </div>
 
@@ -160,6 +176,7 @@ export default function UtilizationDashboard() {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Vehicle</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Model</th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Store</th>
               <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Rental days</th>
               <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Active days</th>
@@ -172,6 +189,7 @@ export default function UtilizationDashboard() {
             {vehicles.map((v) => (
               <tr key={v.vehicleId}>
                 <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">{v.vehicleName}</td>
+                <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-600">{v.modelName}</td>
                 <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-600">{getStoreName(v.storeId)}</td>
                 <td className="whitespace-nowrap px-4 py-3 text-sm text-right text-gray-900">{v.rentalDays}</td>
                 <td className="whitespace-nowrap px-4 py-3 text-sm text-right text-gray-500" title="Days this vehicle was actually in the rentable fleet during this period">{v.activeDays}</td>
@@ -184,6 +202,24 @@ export default function UtilizationDashboard() {
         </table>
       </div>
       {vehicles.length === 0 && <div className="py-8 text-center text-sm text-gray-500">No vehicles in scope for this period.</div>}
+    </div>
+  );
+}
+
+/** Small per-model breakdown shown under a KPI headline, so one vehicle type
+ * (e.g. tuktuks) doesn't hide inside a blended average with another (e.g. scooters). */
+function ModelBreakdown({ rows, render }: { rows: ModelKpis[]; render: (m: ModelKpis) => string }) {
+  if (!rows || rows.length <= 1) return null;
+  return (
+    <div className="mt-3 space-y-1 border-t border-gray-100 pt-2">
+      {rows.map((m) => (
+        <div key={m.modelId} className="flex items-center justify-between gap-2 text-xs text-gray-500">
+          <span className="truncate" title={m.modelName}>
+            {m.modelName} <span className="text-gray-400">({m.vehicleCount})</span>
+          </span>
+          <span className="shrink-0 font-medium text-gray-700">{render(m)}</span>
+        </div>
+      ))}
     </div>
   );
 }
