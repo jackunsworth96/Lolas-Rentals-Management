@@ -27,7 +27,13 @@ import { CloudinaryImage } from '../../components/ui/CloudinaryImage.js';
 import { resolvePublicId } from '../../utils/vehicle-images.js';
 import { formatPhpNumber } from '../../utils/currency.js';
 import { BrandCard } from '../../components/public/BrandCard.js';
+import { LocationFeeMenu } from '../../components/booking/LocationFeeMenu.js';
 import { PesoSign } from '../../components/ui/PesoSign.js';
+import {
+  customerFreeDeliveryNote,
+  freeDeliveryOffer,
+  pairReceivesFreeDelivery,
+} from '../../utils/locationFeeDisplay.js';
 import iconPeaceOfMind from '../../assets/Home/Peace of Mind.svg';
 import iconHelmet from '../../assets/Home/Helmet Icon.svg';
 import iconFuel from '../../assets/Home/Fuel Icon.svg';
@@ -883,10 +889,20 @@ export default function BrowseBookPage() {
     else setDateError('');
   }
 
-  const pickupLoc = locations?.find((l) => l.id === pickupLocationId);
-  const dropoffLoc = locations?.find((l) => l.id === dropoffLocationId);
-  const pickupFee = pickupLoc ? Number(pickupLoc.deliveryCost) : 0;
-  const dropoffFee = dropoffLoc ? Number(dropoffLoc.collectionCost) : 0;
+  const freeDelivery = useMemo(
+    () => freeDeliveryOffer(partnerBenefit, selectedModelId, locations ?? []),
+    [partnerBenefit, selectedModelId, locations],
+  );
+  const pairIsFree = pairReceivesFreeDelivery(freeDelivery, pickupLocationId, dropoffLocationId);
+  const freeDeliveryNote = customerFreeDeliveryNote(
+    freeDelivery,
+    partnerBenefit?.name ?? '',
+    pairIsFree,
+  );
+  const offerLocationIds = useMemo(
+    () => new Set(freeDelivery?.locationIds ?? []),
+    [freeDelivery],
+  );
 
   const canSearch =
     !!storeId &&
@@ -1166,52 +1182,35 @@ export default function BrowseBookPage() {
 
                   {/* Location pickers */}
                   {locations && locations.length > 0 && (
-                    <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <div className="space-y-1.5">
-                        <label className="ml-1 text-xs font-bold uppercase tracking-wider text-teal-700">
-                          Pickup Location
-                        </label>
-                        <div className="relative">
-                          <select
-                            value={pickupLocationId ?? ''}
-                            onChange={(e) => handlePickupLocationChange(Number(e.target.value))}
-                            className={`${inputClass} appearance-none`}
-                          >
-                            <option value="">Select…</option>
-                            {locations.map((l) => (
-                              <option key={l.id} value={l.id}>{l.name}</option>
-                            ))}
-                          </select>
-                          <span className="pointer-events-none absolute right-2.5 top-2.5 text-charcoal-brand/40 text-xs">▾</span>
-                        </div>
-                        {pickupFee > 0 && (
-                          <p className="ml-1 text-xs font-semibold text-teal-700">
-                            Delivery fee: <PesoSign />{pickupFee.toLocaleString()}
-                          </p>
-                        )}
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="ml-1 text-xs font-bold uppercase tracking-wider text-teal-700">
-                          Return Location
-                        </label>
-                        <div className="relative">
-                          <select
-                            value={dropoffLocationId ?? ''}
-                            onChange={(e) => handleDropoffLocationChange(Number(e.target.value))}
-                            className={`${inputClass} appearance-none`}
-                          >
-                            <option value="">Select…</option>
-                            {locations.map((l) => (
-                              <option key={l.id} value={l.id}>{l.name}</option>
-                            ))}
-                          </select>
-                          <span className="pointer-events-none absolute right-2.5 top-2.5 text-charcoal-brand/40 text-xs">▾</span>
-                        </div>
-                        {dropoffFee > 0 && (
-                          <p className="ml-1 text-xs font-semibold text-teal-700">
-                            Collection fee: <PesoSign />{dropoffFee.toLocaleString()}
-                          </p>
-                        )}
+                    <div className="relative z-20 mb-4">
+                      {freeDeliveryNote && (
+                        <p id="partner-free-delivery-note" className="mb-2 ml-1 text-xs font-semibold leading-relaxed text-teal-700">
+                          {freeDeliveryNote}
+                        </p>
+                      )}
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <LocationFeeMenu
+                          label="Pickup Location"
+                          feeLabel="Delivery fee"
+                          locations={locations}
+                          value={pickupLocationId}
+                          kind="delivery"
+                          offerLocationIds={offerLocationIds}
+                          pairIsFree={pairIsFree}
+                          describedBy={freeDeliveryNote ? 'partner-free-delivery-note' : undefined}
+                          onChange={handlePickupLocationChange}
+                        />
+                        <LocationFeeMenu
+                          label="Return Location"
+                          feeLabel="Collection fee"
+                          locations={locations}
+                          value={dropoffLocationId}
+                          kind="collection"
+                          offerLocationIds={offerLocationIds}
+                          pairIsFree={pairIsFree}
+                          describedBy={freeDeliveryNote ? 'partner-free-delivery-note' : undefined}
+                          onChange={handleDropoffLocationChange}
+                        />
                       </div>
                     </div>
                   )}

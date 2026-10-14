@@ -1,20 +1,28 @@
-import type { PublicPartnerBenefit } from '../api/partners.js';
+import type { PublicPartnerBenefit, PublicPartnerVehicleTerm } from '../api/partners.js';
 
-const FREE_DELIVERY_DEALS = new Set([
+const FREE_DELIVERY_DEALS = new Set<PublicPartnerBenefit['dealType']>([
   'free_delivery',
   'combined',
   'commission_delivery',
   'discount_delivery',
 ]);
 
+/** Guest-facing free-delivery fields. Portal profiles and public benefits both satisfy this. */
+export interface FreeDeliverySource {
+  freeDelivery: boolean;
+  dealType: PublicPartnerBenefit['dealType'];
+  freeDeliveryLocationIds?: number[] | null;
+  vehicleTerms?: PublicPartnerVehicleTerm[];
+}
+
 export function hasPartnerFreeDelivery(
-  benefit: PublicPartnerBenefit | null | undefined,
+  benefit: FreeDeliverySource | null | undefined,
   vehicleModelId?: string | null,
 ): boolean {
   if (!benefit) return false;
 
   const vehicleTerms = vehicleModelId
-    ? benefit.vehicleTerms.find((term) => term.vehicleModelId === vehicleModelId)
+    ? benefit.vehicleTerms?.find((term) => term.vehicleModelId === vehicleModelId)
     : undefined;
 
   return Boolean(
@@ -25,7 +33,7 @@ export function hasPartnerFreeDelivery(
 }
 
 export function partnerAllowsFreeDeliveryLocation(
-  benefit: PublicPartnerBenefit | null | undefined,
+  benefit: FreeDeliverySource | null | undefined,
   locationId: number | null,
   vehicleModelId?: string | null,
 ): boolean {

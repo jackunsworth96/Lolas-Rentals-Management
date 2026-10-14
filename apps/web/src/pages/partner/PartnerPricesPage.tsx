@@ -11,6 +11,12 @@ import {
   type PublicAddon,
 } from '../../api/partner-portal.js';
 import { PeaceOfMindModal } from '../../components/basket/PeaceOfMindModal.js';
+import { fetchPublicPartnerBenefit } from '../../api/partners.js';
+import {
+  portalDeliveryOffer,
+  portalFreeDeliveryNote,
+  presentPortalLeg,
+} from '../../utils/locationFeeDisplay.js';
 
 const BOOKING_TIMES = ['09:15', '10:15', '11:15', '12:15', '13:15', '14:15', '15:15', '16:45'];
 
@@ -39,6 +45,24 @@ function addonPrice(addon: PublicAddon) {
     : `${money(addon.priceOneTime)} one-time`;
 }
 
+function LocationLeg({ label, amount, covered }: { label: string; amount: number; covered: boolean }) {
+  const view = presentPortalLeg(amount, covered);
+  return (
+    <span>
+      {label}{' '}
+      {view.type === 'included' && 'Free'}
+      {view.type === 'price' && money(view.amount)}
+      {view.type === 'waived' && (
+        <>
+          <span className="text-gray-400 line-through">{money(view.amount)}</span>
+          {' '}
+          <span className="font-semibold text-teal-700">Free for guests</span>
+        </>
+      )}
+    </span>
+  );
+}
+
 function addonDescription(name: string) {
   const n = name.toLowerCase();
   if (n.includes('peace')) return 'Damage cover upgrade. Use details for inclusions and exclusions.';
@@ -62,6 +86,35 @@ export default function PartnerPricesPage() {
   const [dropoffTime, setDropoffTime] = useState('16:45');
   const [peaceOpen, setPeaceOpen] = useState(false);
   const locationRows = locations.data ?? [];
+  const publicBenefit = useQuery({
+    queryKey: ['partner', 'public-benefit', me?.partner.slug],
+    queryFn: () => fetchPublicPartnerBenefit(me!.partner.slug),
+    enabled: !!me?.partner.slug,
+  });
+  const benefitSource = useMemo(() => {
+    if (publicBenefit.data) return publicBenefit.data;
+    const partner = me?.partner;
+    if (!partner) return null;
+    return {
+      freeDelivery: partner.free_delivery,
+      dealType: partner.deal_type,
+      freeDeliveryLocationIds: partner.free_delivery_location_ids,
+      vehicleTerms: [],
+    };
+  }, [publicBenefit.data, me?.partner]);
+  const modelNames = useMemo(() => {
+    const names: Record<string, string> = {};
+    for (const model of models.data ?? []) names[model.id] = model.name;
+    return names;
+  }, [models.data]);
+  const deliveryOffer = useMemo(
+    () => portalDeliveryOffer(benefitSource, modelId || null, locationRows, modelNames),
+    [benefitSource, modelId, locationRows, modelNames],
+  );
+  const coveredLocationIds = useMemo(
+    () => new Set(deliveryOffer?.offer.locationIds ?? []),
+    [deliveryOffer],
+  );
   const defaultLocationId = useMemo(() => locationRows.find((l) => l.locationType === 'store')?.id ?? locationRows[0]?.id ?? 1, [locationRows]);
   const pricing = useQuery({
     queryKey: ['partner', 'model-pricing', storeId, modelId],
@@ -147,14 +200,22 @@ export default function PartnerPricesPage() {
       <section className="grid gap-6 lg:grid-cols-2">
         <div className="rounded-lg bg-white p-4 shadow-sm">
           <h2 className="text-sm font-bold text-gray-900">Delivery and Collection</h2>
+          {deliveryOffer && (
+            <p className="mt-2 text-sm font-medium text-teal-700">{portalFreeDeliveryNote(deliveryOffer)}</p>
+          )}
           <div className="mt-3 divide-y divide-gray-100 rounded-lg border border-gray-200">
-            {locationRows.map((l) => (
-              <div key={l.id} className="grid grid-cols-[1fr_auto_auto] gap-3 px-3 py-2 text-sm">
-                <span className="font-semibold text-gray-800">{l.name}</span>
-                <span className="text-gray-500">Delivery {l.deliveryCost > 0 ? money(l.deliveryCost) : 'Free'}</span>
-                <span className="text-gray-500">Collection {l.collectionCost > 0 ? money(l.collectionCost) : 'Free'}</span>
-              </div>
-            ))}
+            {locationRows.map((l) => {
+              const covered = coveredLocationIds.has(l.id);
+              return (
+                <div key={l.id} className="px-3 py-2 text-sm">
+                  <p className="font-semibold text-gray-800">{l.name}</p>
+                  <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-gray-500">
+                    <LocationLeg label="Delivery" amount={l.deliveryCost} covered={covered} />
+                    <LocationLeg label="Collection" amount={l.collectionCost} covered={covered} />
+                  </p>
+                </div>
+              );
+            })}
           </div>
         </div>
 
