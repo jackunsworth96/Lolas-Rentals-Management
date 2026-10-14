@@ -127,7 +127,9 @@ export class Vehicle {
   }
 
   canAutoUpdateStatus(): boolean {
-    return !this.isProtected();
+    // Retired is not locked (staff can correct it) and still depreciates, but
+    // maintenance and the nightly sync must not flip it back to Available.
+    return !this.isProtected() && this._status !== 'Retired';
   }
 
   applyDepreciation(amount: number): void {

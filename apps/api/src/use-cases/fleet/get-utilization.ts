@@ -2,7 +2,12 @@ import { getSupabaseClient } from '../../adapters/supabase/client.js';
 import { addDaysToDateStr, manilaMidnightMs } from '../../utils/manila-date.js';
 import { DAY_MS, computeOrderItemOverlap, attributeAddonRevenue, type AddonRow } from '../shared/rental-period-overlap.js';
 
-const NON_RENTABLE = ['Sold', 'Closed'];
+/** Bikes still in the operating fleet. Active means out on a rental, not off the fleet. */
+const CURRENT_STATUSES = new Set(['Available', 'Active', 'Under Maintenance', 'Pending ORCR']);
+/** Left the rental fleet. Shown only in the sold & retired view, never in the main KPIs. */
+const ARCHIVE_STATUSES = new Set(['Sold', 'Closed', 'Retired']);
+
+export type UtilizationScope = 'current' | 'archive';
 
 export interface FleetUtilizationDeps {
   storeId?: string;
@@ -47,6 +52,11 @@ export interface VehicleUtilizationRow {
 export interface UtilizationResult {
   from: string;
   to: string;
+  scope: UtilizationScope;
+  /** True when each vehicle is measured from its own rentable start through `to`. */
+  lifetime: boolean;
+  /** Sold, Closed, and Retired vehicles in the store filter, ignoring the period window. */
+  archiveCount: number;
   fleetKpis: UtilizationKpis;
   vehicles: VehicleUtilizationRow[];
   previousPeriod?: {
@@ -67,21 +77,23 @@ export async function getFleetUtilization(
   to: string,
   storeId?: string,
   includePreviousPeriod = true,
+  scope: UtilizationScope = 'current',
+  lifetime = false,
 ): Promise<UtilizationResult> {
   const sb = getSupabaseClient();
   // Period boundaries anchored to Manila midnight (not UTC midnight — see
   // manilaMidnightMs doc comment). `to` is treated as an exclusive upper bound,
   // i.e. the period covers [from 00:00, to 00:00) Manila time.
-  const periodStartMs = manilaMidnightMs(from);
-  const periodEndMs = manilaMidnightMs(to);
-  const periodDays = Math.max(1, Math.ceil((periodEndMs - periodStartMs) / DAY_MS));
+  // Lifetime replaces `from` once the in-scope fleet is known (below).
+  let periodFrom = from;
+  let periodTo = to;
 
   // Fleet: vehicles that were part of the rentable fleet at some point during [from, to).
   // A vehicle can be partially in-scope (sold mid-period, or just became rentable mid-period);
   // that partial window is resolved per-vehicle below via rentable_start_date / date_sold.
   let fleetQuery = sb
     .from('fleet')
-    .select('id, name, store_id, model_id, rentable_start_date, date_sold, status');
+    .select('id, name, store_id, model_id, rentable_start_date, date_sold, status, stores(is_active)');
   if (storeId && storeId !== 'all') {
     fleetQuery = fleetQuery.eq('store_id', storeId);
   }
@@ -96,19 +108,47 @@ export async function getFleetUtilization(
     rentable_start_date: string | null;
     date_sold: string | null;
     status: string;
+    stores?: { is_active: boolean } | Array<{ is_active: boolean }> | null;
   };
 
-  const rentableVehicles = ((fleetRows ?? []) as FleetRow[]).filter((r) => {
+  const storeIsActive = (r: FleetRow) => {
+    const store = Array.isArray(r.stores) ? r.stores[0] : r.stores;
+    return store?.is_active !== false;
+  };
+
+  // A closed store is not part of the operating fleet, even if a bike was left
+  // marked Available. Service vehicles stay out of both views.
+  const inArchive = (r: FleetRow) => {
     const status = String(r.status ?? '');
+    if (status === 'Service Vehicle') return false;
+    if (!storeIsActive(r)) return true;
+    return ARCHIVE_STATUSES.has(status);
+  };
+  const inCurrent = (r: FleetRow) => storeIsActive(r) && CURRENT_STATUSES.has(String(r.status ?? ''));
+
+  const allFleetRows = (fleetRows ?? []) as unknown as FleetRow[];
+  const archiveCount = allFleetRows.filter(inArchive).length;
+  const scopedVehicles = allFleetRows.filter(scope === 'archive' ? inArchive : inCurrent);
+
+  if (lifetime) {
+    const starts = scopedVehicles
+      .map((v) => v.rentable_start_date)
+      .filter((d): d is string => !!d)
+      .sort();
+    if (starts.length > 0) periodFrom = starts[0];
+  }
+
+  const periodStartMs = manilaMidnightMs(periodFrom);
+  const periodEndMs = manilaMidnightMs(periodTo);
+  const periodDays = Math.max(1, Math.ceil((periodEndMs - periodStartMs) / DAY_MS));
+
+  const rentableVehicles = scopedVehicles.filter((r) => {
     const dateSoldMs = r.date_sold ? manilaMidnightMs(r.date_sold) : null;
     const rentableStartMs = r.rentable_start_date ? manilaMidnightMs(r.rentable_start_date) : null;
-    // Fully sold/closed before this period started — not part of this period's fleet.
+    // Already sold before this period started — nothing of theirs falls in the window.
     if (dateSoldMs != null && dateSoldMs <= periodStartMs) return false;
     // Not rentable yet by the time this period ends.
     if (rentableStartMs != null && rentableStartMs >= periodEndMs) return false;
-    // Marked Sold/Closed with no recorded date_sold to anchor a partial window —
-    // conservatively exclude rather than guess when it left the fleet.
-    if (NON_RENTABLE.includes(status) && dateSoldMs == null) return false;
     return true;
   });
   const vehicleIds = rentableVehicles.map((v) => v.id);
@@ -327,12 +367,20 @@ export async function getFleetUtilization(
     byModel,
   };
 
-  const result: UtilizationResult = { from, to, fleetKpis, vehicles };
+  const result: UtilizationResult = {
+    from: periodFrom,
+    to: periodTo,
+    scope,
+    lifetime,
+    archiveCount,
+    fleetKpis,
+    vehicles,
+  };
 
-  if (includePreviousPeriod && from && to) {
-    const prevTo = addDaysToDateStr(from, -1);
+  if (includePreviousPeriod && !lifetime && periodFrom && periodTo) {
+    const prevTo = addDaysToDateStr(periodFrom, -1);
     const prevFrom = addDaysToDateStr(prevTo, -periodDays + 1);
-    const prev = await getFleetUtilization(prevFrom, prevTo, storeId, false);
+    const prev = await getFleetUtilization(prevFrom, prevTo, storeId, false, scope, false);
     result.previousPeriod = {
       from: prev.from,
       to: prev.to,

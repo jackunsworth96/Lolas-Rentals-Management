@@ -174,12 +174,12 @@ router.get('/', async (req, res, next) => {
 
     // ── Fleet lifecycle — what counts as part of the operating fleet ─────────
     // `fleet.status` is a free-text label (e.g. "Available", "Active", "Sold",
-    // "Closed", "Under Maintenance"). Only "Sold" and "Closed" mean the unit has
-    // permanently left the business — everything else (including "Active", i.e.
+    // "Closed", "Under Maintenance"). "Sold", "Closed", and "Retired" mean the
+    // unit has left the rental fleet — everything else (including "Active", i.e.
     // currently out on a rental) is still an owned, working vehicle and must
     // count toward fleet size. Using "currently idle" as a proxy for "fleet
     // size" made utilisation swing with every checkout/return.
-    const RETIRED_STATUSES = new Set(['sold', 'closed']);
+    const RETIRED_STATUSES = new Set(['sold', 'closed', 'retired']);
     const isOperatingFleet = (status: string) => !RETIRED_STATUSES.has(status.toLowerCase().trim());
 
     // ── Vehicle model lookup ─────────────────────────────────────────────────

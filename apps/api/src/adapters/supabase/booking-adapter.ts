@@ -92,7 +92,7 @@ export async function evaluateAvailability(
   const { storeId, pickupDatetime, dropoffDatetime, excludeSessionToken, excludeOrderItemId } = query;
   const BUFFER_MS = 30 * 60 * 1000;
   const pickupBuffered = new Date(new Date(pickupDatetime).getTime() - BUFFER_MS).toISOString();
-  const NON_RENTABLE = ['Under Maintenance', 'Sold', 'Service Vehicle', 'Closed', 'Pending ORCR'];
+  const NON_RENTABLE = ['Under Maintenance', 'Sold', 'Service Vehicle', 'Closed', 'Retired', 'Pending ORCR'];
 
   type FleetRow = { id: string; name: string; model_id: string | null; status: string };
   const { data: fleet, error: fleetErr } = await sb

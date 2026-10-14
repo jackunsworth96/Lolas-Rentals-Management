@@ -147,12 +147,13 @@ export function useFleetCalendar(params: { storeId?: string; from: string; to: s
   });
 }
 
-export function useFleetUtilization(params: { from?: string; to?: string; period?: string; storeId?: string }) {
+export function useFleetUtilization(params: { from?: string; to?: string; period?: string; storeId?: string; scope?: 'current' | 'archive' }) {
   const search = new URLSearchParams();
   if (params.from) search.set('from', params.from);
   if (params.to) search.set('to', params.to);
   if (params.period) search.set('period', params.period);
   if (params.storeId) search.set('storeId', params.storeId);
+  if (params.scope) search.set('scope', params.scope);
   return useQuery({
     queryKey: ['fleet', 'utilization', params],
     queryFn: () => api.get(`/fleet/utilization?${search.toString()}`),

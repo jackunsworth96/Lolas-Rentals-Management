@@ -43,6 +43,7 @@ const STATUS_COLOR: Record<string, 'green' | 'blue' | 'yellow' | 'gray' | 'red'>
   'Under Maintenance': 'yellow',
   'Service Vehicle': 'gray',
   Sold: 'red',
+  Retired: 'gray',
   Closed: 'red',
   'Pending ORCR': 'yellow',
 };

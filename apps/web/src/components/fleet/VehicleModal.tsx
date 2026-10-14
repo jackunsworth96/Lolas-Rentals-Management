@@ -5,7 +5,7 @@ import { useMileageEvents, useVehicle, useUpdateVehicle } from '../../api/fleet.
 import { useStores, useVehicleModels } from '../../api/config.js';
 import { formatDateTime } from '../../utils/date.js';
 
-const STATUS_OPTIONS = ['Available', 'Active', 'Under Maintenance', 'Service Vehicle', 'Pending ORCR', 'Sold', 'Closed'];
+const STATUS_OPTIONS = ['Available', 'Active', 'Under Maintenance', 'Service Vehicle', 'Pending ORCR', 'Sold', 'Retired', 'Closed'];
 const PROTECTED_STATUSES = ['Sold', 'Closed'];
 
 interface VehicleModalProps {

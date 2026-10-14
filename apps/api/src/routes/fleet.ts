@@ -6,7 +6,7 @@ import { Permission, assessMileageChange, normalizeMileage } from '@lolas/shared
 import { recordMileageEvent } from '../services/mileage-events.js';
 import { z } from 'zod';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
-import { formatManilaDate } from '../utils/manila-date.js';
+import { addDaysToDateStr, formatManilaDate } from '../utils/manila-date.js';
 import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
 import { escapeHtml } from '../services/email.js';
 import { evaluateAvailability } from '../adapters/supabase/booking-adapter.js';
@@ -301,16 +301,25 @@ router.get('/availability-explanation', requirePermission(Permission.ViewFleet),
 router.get('/utilization', requirePermission(Permission.ViewFleet), validateQuery(z.object({
   from: z.string().optional(),
   to: z.string().optional(),
-  period: z.enum(['7d', '30d', '90d']).optional(),
+  period: z.enum(['7d', '30d', '90d', 'lifetime']).optional(),
   storeId: z.string().optional(),
+  scope: z.enum(['current', 'archive']).optional(),
 })), async (req, res, next) => {
   try {
     const { getFleetUtilization } = await import('../use-cases/fleet/get-utilization.js');
-    const { from, to, period, storeId } = req.query as { from?: string; to?: string; period?: string; storeId?: string };
+    const { from, to, period, storeId, scope } = req.query as {
+      from?: string; to?: string; period?: string; storeId?: string; scope?: 'current' | 'archive';
+    };
+    const lifetime = period === 'lifetime';
     let fromDate: string;
     let toDate: string;
     const today = formatManilaDate();
-    if (from && to) {
+    if (lifetime) {
+      // `to` is an exclusive bound. Tomorrow so today's rentals are included.
+      // `from` is replaced per vehicle inside getFleetUtilization.
+      fromDate = today;
+      toDate = addDaysToDateStr(today, 1);
+    } else if (from && to) {
       fromDate = from;
       toDate = to;
     } else if (period === '7d') {
@@ -329,7 +338,7 @@ router.get('/utilization', requirePermission(Permission.ViewFleet), validateQuer
       fromDate = formatManilaDate(d);
       toDate = today;
     }
-    const result = await getFleetUtilization(fromDate, toDate, storeId, true);
+    const result = await getFleetUtilization(fromDate, toDate, storeId, !lifetime, scope === 'archive' ? 'archive' : 'current', lifetime);
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });

@@ -77,8 +77,8 @@ export async function runFleetSummary(): Promise<void> {
       }
     }
 
-    // Count statuses (exclude Sold/Closed as they are permanently off-fleet)
-    const EXCLUDED_STATUSES = new Set(['Sold', 'Closed']);
+    // Count statuses (exclude Sold/Closed/Retired — they are off the rental fleet)
+    const EXCLUDED_STATUSES = new Set(['Sold', 'Closed', 'Retired']);
     const activeVehicles = fleetRows.filter((v) => !EXCLUDED_STATUSES.has(v.status) && v.status === 'Active');
     const availableVehicles = fleetRows.filter((v) => v.status === 'Available');
     const outOfServiceVehicles = fleetRows.filter(

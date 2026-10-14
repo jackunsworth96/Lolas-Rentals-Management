@@ -153,20 +153,69 @@ it('does not inflate rental days beyond the booking length when the whole bookin
   expect(result.vehicles[0].revenue).toBe(0);
 });
 
-it('excludes a vehicle sold entirely before the period and prorates one sold mid-period', async () => {
+it('keeps sold vehicles out of the current fleet, even when the sale falls inside the period', async () => {
   mockTables({
     fleet: [
-      { id: 'sold-before', name: 'Sold Before', store_id: 'store', status: 'Sold', rentable_start_date: null, date_sold: '2026-09-01' },
+      { id: 'still-here', name: 'Still Here', store_id: 'store', status: 'Available', rentable_start_date: null, date_sold: null },
       { id: 'sold-mid', name: 'Sold Mid', store_id: 'store', status: 'Sold', rentable_start_date: null, date_sold: '2026-10-11' },
+      { id: 'retired', name: 'Retired', store_id: 'store', status: 'Retired', rentable_start_date: null, date_sold: null },
+      { id: 'service', name: 'Service', store_id: 'store', status: 'Service Vehicle', rentable_start_date: null, date_sold: null },
     ],
   });
-  const result = await getFleetUtilization('2026-10-01', '2026-10-21', undefined, false);
+  const result = await getFleetUtilization('2026-10-01', '2026-10-21', undefined, false, 'current');
+  expect(result.vehicles.map((v) => v.vehicleId)).toEqual(['still-here']);
+  expect(result.fleetKpis.vehicleCount).toBe(1);
+  expect(result.archiveCount).toBe(2);
+});
+
+it('shows sold and retired vehicles only in the archive, and prorates a mid-period sale', async () => {
+  mockTables({
+    fleet: [
+      { id: 'still-here', name: 'Still Here', store_id: 'store', status: 'Available', rentable_start_date: null, date_sold: null },
+      { id: 'sold-before', name: 'Sold Before', store_id: 'store', status: 'Sold', rentable_start_date: null, date_sold: '2026-09-01' },
+      { id: 'sold-mid', name: 'Sold Mid', store_id: 'store', status: 'Sold', rentable_start_date: null, date_sold: '2026-10-11' },
+      { id: 'retired', name: 'Retired', store_id: 'store', status: 'Retired', rentable_start_date: '2026-10-01', date_sold: null },
+    ],
+  });
+  const result = await getFleetUtilization('2026-10-01', '2026-10-21', undefined, false, 'archive');
   const ids = result.vehicles.map((v) => v.vehicleId);
+  expect(ids).not.toContain('still-here');
   expect(ids).not.toContain('sold-before');
   expect(ids).toContain('sold-mid');
+  expect(ids).toContain('retired');
   const soldMid = result.vehicles.find((v) => v.vehicleId === 'sold-mid')!;
   // Period is 20 days (Oct 1 -> Oct 21), vehicle only active through Oct 11 -> 10 active days.
   expect(soldMid.activeDays).toBe(10);
+});
+
+it('treats bikes on an inactive store as archive, even while their status is still Available', async () => {
+  mockTables({
+    fleet: [
+      { id: 'closed-store', name: 'Old Stock', store_id: 'store-bass', status: 'Available', rentable_start_date: null, date_sold: null, stores: { is_active: false } },
+      { id: 'open-store', name: 'Current', store_id: 'store-lolas', status: 'Available', rentable_start_date: null, date_sold: null, stores: { is_active: true } },
+    ],
+  });
+  const current = await getFleetUtilization('2026-10-01', '2026-10-21', undefined, false, 'current');
+  expect(current.vehicles.map((v) => v.vehicleId)).toEqual(['open-store']);
+  const archive = await getFleetUtilization('2026-10-01', '2026-10-21', undefined, false, 'archive');
+  expect(archive.vehicles.map((v) => v.vehicleId)).toEqual(['closed-store']);
+});
+
+it('measures lifetime from each vehicle rentable start, and skips the previous-period comparison', async () => {
+  mockTables({
+    fleet: [
+      { id: 'early', name: 'Early', store_id: 'store', status: 'Available', rentable_start_date: '2026-10-01', date_sold: null },
+      { id: 'late', name: 'Late', store_id: 'store', status: 'Active', rentable_start_date: '2026-10-11', date_sold: null },
+    ],
+  });
+  const result = await getFleetUtilization('2026-10-01', '2026-10-21', undefined, true, 'current', true);
+  expect(result.lifetime).toBe(true);
+  expect(result.deltas).toBeUndefined();
+  expect(result.from).toBe('2026-10-01');
+  const early = result.vehicles.find((v) => v.vehicleId === 'early')!;
+  const late = result.vehicles.find((v) => v.vehicleId === 'late')!;
+  expect(early.activeDays).toBe(20);
+  expect(late.activeDays).toBe(10);
 });
 
 it('excludes a vehicle not yet rentable by period end and prorates one that becomes rentable mid-period', async () => {

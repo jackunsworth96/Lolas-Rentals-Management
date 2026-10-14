@@ -4,7 +4,8 @@ import { useFleetUtilization } from '../../api/fleet.js';
 import { useStores } from '../../api/config.js';
 import { formatCurrency } from '../../utils/currency.js';
 
-type Period = '7d' | '30d' | '90d' | 'custom';
+type Period = '7d' | '30d' | '90d' | 'lifetime' | 'custom';
+type FleetScope = 'current' | 'archive';
 
 type ModelKpis = {
   modelId: string;
@@ -20,20 +21,24 @@ export default function UtilizationDashboard() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [storeId, setStoreId] = useState<string>('all');
+  const [scope, setScope] = useState<FleetScope>('current');
 
   const { data: stores = [] } = useStores();
   const storeList = stores as Array<{ id: string; name: string }>;
 
   const params =
     period === 'custom' && from && to
-      ? { from, to, storeId: storeId === 'all' ? undefined : storeId }
-      : { period: period === 'custom' ? '30d' : period, storeId: storeId === 'all' ? undefined : storeId };
+      ? { from, to, storeId: storeId === 'all' ? undefined : storeId, scope }
+      : { period: period === 'custom' ? '30d' : period, storeId: storeId === 'all' ? undefined : storeId, scope };
 
   const { data, isLoading, error } = useFleetUtilization(params);
 
   const result = data as {
     from: string;
     to: string;
+    scope: FleetScope;
+    lifetime: boolean;
+    archiveCount: number;
     fleetKpis: {
       utilisationPercent: number;
       averageRevenuePerVehicle: number;
@@ -98,14 +103,26 @@ export default function UtilizationDashboard() {
             <p className="mt-1 text-xs text-gray-400">Overrides your default store for this page</p>
           </div>
           <div className="flex rounded-lg border border-gray-300 p-0.5">
-            {(['7d', '30d', '90d', 'custom'] as const).map((p) => (
+            {(['current', 'archive'] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setScope(s)}
+                className={`rounded-md px-3 py-1.5 text-sm ${scope === s ? 'bg-gray-200 font-medium' : 'text-gray-600'}`}
+              >
+                {s === 'current' ? 'Current fleet' : `Sold & retired (${result.archiveCount})`}
+              </button>
+            ))}
+          </div>
+          <div className="flex rounded-lg border border-gray-300 p-0.5">
+            {(['7d', '30d', '90d', 'lifetime', 'custom'] as const).map((p) => (
               <button
                 key={p}
                 type="button"
                 onClick={() => setPeriod(p)}
                 className={`rounded-md px-3 py-1.5 text-sm ${period === p ? 'bg-gray-200 font-medium' : 'text-gray-600'}`}
               >
-                {p === 'custom' ? 'Custom' : p}
+                {p === 'custom' ? 'Custom' : p === 'lifetime' ? 'Lifetime' : p}
               </button>
             ))}
           </div>
@@ -129,15 +146,22 @@ export default function UtilizationDashboard() {
         </div>
       </div>
 
-      <p className="mb-4 text-sm text-gray-500">
-        Period: {result.from} to {result.to}
-      </p>
+      <div className="mb-4 space-y-1">
+        <p className="text-sm text-gray-500">
+          {result.lifetime
+            ? `Lifetime: each vehicle from its rentable start through today${scope === 'archive' ? ', or through its sale date' : ''}.`
+            : `Period: ${result.from} to ${result.to}`}
+        </p>
+        {scope === 'archive' && (
+          <p className="text-sm text-amber-800">Sold and retired vehicles only. These figures are not part of the current fleet.</p>
+        )}
+      </div>
 
       <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-lg bg-white p-4 shadow-sm">
           <p className="text-sm text-gray-500">Utilization %</p>
           <p className="text-2xl font-bold text-gray-900">{fleetKpis.utilisationPercent}%</p>
-          {deltas && (
+          {deltas && !result.lifetime && (
             <p className={`text-xs ${deltas.utilisationPercentDelta >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               {deltas.utilisationPercentDelta >= 0 ? '↑' : '↓'} {Math.abs(deltas.utilisationPercentDelta)}% vs previous period
             </p>
@@ -147,7 +171,7 @@ export default function UtilizationDashboard() {
         <div className="rounded-lg bg-white p-4 shadow-sm">
           <p className="text-sm text-gray-500">Avg revenue per vehicle</p>
           <p className="text-2xl font-bold text-gray-900">{formatCurrency(fleetKpis.averageRevenuePerVehicle)}</p>
-          {deltas && (
+          {deltas && !result.lifetime && (
             <p className={`text-xs ${deltas.averageRevenuePerVehicleDelta >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               {deltas.averageRevenuePerVehicleDelta >= 0 ? '↑' : '↓'} {formatCurrency(Math.abs(deltas.averageRevenuePerVehicleDelta))} vs previous period
             </p>
@@ -157,7 +181,7 @@ export default function UtilizationDashboard() {
         <div className="rounded-lg bg-white p-4 shadow-sm">
           <p className="text-sm text-gray-500">Total downtime (days)</p>
           <p className="text-2xl font-bold text-gray-900">{fleetKpis.totalDowntimeDays}</p>
-          {deltas && (
+          {deltas && !result.lifetime && (
             <p className={`text-xs ${deltas.totalDowntimeDaysDelta <= 0 ? 'text-green-600' : 'text-red-600'}`}>
               {deltas.totalDowntimeDaysDelta >= 0 ? '↑' : '↓'} {Math.abs(deltas.totalDowntimeDaysDelta)} days vs previous period
             </p>
@@ -201,7 +225,13 @@ export default function UtilizationDashboard() {
           </tbody>
         </table>
       </div>
-      {vehicles.length === 0 && <div className="py-8 text-center text-sm text-gray-500">No vehicles in scope for this period.</div>}
+      {vehicles.length === 0 && (
+        <div className="py-8 text-center text-sm text-gray-500">
+          {scope === 'archive'
+            ? 'No sold or retired vehicles were in the fleet during this period. Choose Lifetime to see their full history.'
+            : 'No vehicles in scope for this period.'}
+        </div>
+      )}
     </div>
   );
 }

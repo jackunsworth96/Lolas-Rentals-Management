@@ -125,6 +125,11 @@ describe('Vehicle', () => {
       const v = Vehicle.create(makeVehicleProps({ status: 'Closed' }));
       expect(v.canAutoUpdateStatus()).toBe(false);
     });
+
+    it('returns false for Retired so sync jobs leave it alone', () => {
+      const v = Vehicle.create(makeVehicleProps({ status: 'Retired' }));
+      expect(v.canAutoUpdateStatus()).toBe(false);
+    });
   });
 
   describe('applyDepreciation', () => {
