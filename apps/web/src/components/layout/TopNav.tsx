@@ -122,7 +122,11 @@ export default function TopNav({ items, rightSlot, partnerBenefit }: TopNavProps
   return (
     <>
       <header
-        className="fixed top-0 left-0 right-0 z-50 h-16 w-full overflow-visible border-b border-charcoal-brand/10 shadow-sm"
+        className={`fixed top-0 left-0 right-0 z-50 h-16 w-full overflow-visible ${
+          partnerBenefit?.logoUrl
+            ? 'md:border-b md:border-charcoal-brand/10 md:shadow-sm'
+            : 'border-b border-charcoal-brand/10 shadow-sm'
+        }`}
         style={{ backgroundColor: '#f1e6d6' }}
       >
 
@@ -211,13 +215,13 @@ export default function TopNav({ items, rightSlot, partnerBenefit }: TopNavProps
         </div>
       </header>
 
-      {/* Mobile partner banner — sits flush below the fixed nav, only when partner has a logo */}
+      {/* Phone and narrow tablet: bar meets the nav. Extra top padding keeps the logo clear of the menu paw. */}
       <AnimatePresence>
         {partnerBenefit?.logoUrl && (
           <motion.div
             key="mobile-partner-banner"
-            className="md:hidden fixed left-0 right-0 z-40 flex items-center justify-center gap-2.5 px-4 py-1.5 border-b border-charcoal-brand/10"
-            style={{ top: '88px', backgroundColor: '#f1e6d6' }}
+            className="fixed left-0 right-0 top-16 z-40 flex items-center justify-center gap-2.5 border-b border-charcoal-brand/10 px-4 pb-1.5 pt-[calc(1.5rem+0.375rem)] md:hidden"
+            style={{ backgroundColor: '#f1e6d6' }}
             initial={{ opacity: 0, y: -6 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
