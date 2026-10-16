@@ -6,6 +6,7 @@ import { useBookingStore } from '../../stores/bookingStore.js';
 import { resolvePublicId } from '../../utils/vehicle-images.js';
 import { CloudinaryImage } from '../ui/CloudinaryImage.js';
 import { formatPhpNumber } from '../../utils/currency.js';
+import { bookingLeadTimeMessage, hasBookingLeadTime } from '@lolas/shared';
 import { hasBookingDatetimeWithTime } from '../../utils/booking-datetime.js';
 import { BrandCard } from '../public/BrandCard.js';
 import { PesoSign } from '../ui/PesoSign.js';
@@ -140,6 +141,10 @@ export function VehicleCard({
       !hasBookingDatetimeWithTime(pickupDatetime) ||
       !hasBookingDatetimeWithTime(dropoffDatetime)
     ) return;
+    if (!hasBookingLeadTime(pickupDatetime)) {
+      onToast(bookingLeadTimeMessage(), 'error');
+      return;
+    }
 
     setPressDown(true);
     await new Promise((r) => setTimeout(r, 100));
@@ -198,6 +203,10 @@ export function VehicleCard({
     const newDropoff = new Date(pickup.getTime() + Math.max(rentalMs, 86400000));
 
     const pickupStr = toManilaDatetimeStr(pickup);
+    if (!hasBookingLeadTime(pickupStr)) {
+      onToast(bookingLeadTimeMessage(), 'error');
+      return;
+    }
     const dropoffStr = toManilaDatetimeStr(newDropoff);
     setDates(pickupStr, dropoffStr);
     triggerSearch();

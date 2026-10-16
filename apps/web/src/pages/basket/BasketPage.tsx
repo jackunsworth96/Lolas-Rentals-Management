@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { bookingLeadTimeMessage, hasBookingLeadTime, manilaCalendarDate } from '@lolas/shared';
 import { api } from '../../api/client.js';
 import {
   getPartnerRef,
@@ -24,6 +25,7 @@ import type { Addon, TransferDetails, RenterInfo, PaymentMethodOption } from '..
 import pawPrint from '../../assets/Paw Print.svg';
 import { PesoSign } from '../../components/ui/PesoSign.js';
 import { hasBookingDatetimeWithTime } from '../../utils/booking-datetime.js';
+import { BookingLeadTimeNotice, useBookingLeadClock } from '../../components/booking/BookingLeadTimeNotice.js';
 
 interface QuoteResponse {
   dailyRate: number;
@@ -162,6 +164,10 @@ export default function BasketPage() {
   const [newDropoffLocationAddress, setNewDropoffLocationAddress] = useState('');
   const [dateChangeError, setDateChangeError] = useState('');
   const [dateChangeLoading, setDateChangeLoading] = useState(false);
+  const nowMs = useBookingLeadClock();
+  const pickupChangeIso = newPickupDate && newPickupTime ? `${newPickupDate}T${newPickupTime}:00+08:00` : '';
+  const pickupChangeTooSoon = Boolean(pickupChangeIso) && !hasBookingLeadTime(pickupChangeIso, nowMs);
+  const manilaToday = manilaCalendarDate(nowMs);
 
   // Address inputs for non-store locations (set from basket page main view)
   const [pickupLocationAddress, setPickupLocationAddress] = useState('');
@@ -215,6 +221,10 @@ export default function BasketPage() {
     const dropoff = `${newDropoffDate}T${newDropoffTime}:00+08:00`;
     if (new Date(dropoff) <= new Date(pickup)) {
       setDateChangeError('Return date must be after pick-up date.');
+      return;
+    }
+    if (!hasBookingLeadTime(pickup)) {
+      setDateChangeError(bookingLeadTimeMessage());
       return;
     }
     setDateChangeLoading(true);
@@ -727,6 +737,10 @@ export default function BasketPage() {
 
   async function handlePlaceOrder() {
     if (submittingRef.current) return;
+    if (!hasBookingLeadTime(pickupDatetime)) {
+      pushToast(bookingLeadTimeMessage(), 'error');
+      return;
+    }
     if (!validate()) return;
     submittingRef.current = true;
     setSubmitting(true);
@@ -1004,11 +1018,19 @@ export default function BasketPage() {
                         onChange={(e) => setNewPickupTime(e.target.value)}
                         className="w-[110px] shrink-0 rounded-lg border border-charcoal-brand/15 bg-white px-2 py-2 font-lato text-sm text-charcoal-brand outline-none focus:ring-2 focus:ring-teal-brand"
                       >
-                        {TIME_SLOTS.map((s) => (
-                          <option key={s.value} value={s.value}>{s.label}</option>
-                        ))}
+                        {TIME_SLOTS.map((s) => {
+                          const tooSoon = Boolean(newPickupDate) && newPickupDate <= manilaToday && !hasBookingLeadTime(`${newPickupDate}T${s.value}:00+08:00`, nowMs);
+                          return (
+                            <option key={s.value} value={s.value} disabled={tooSoon}>
+                              {tooSoon ? `${s.label} — too soon` : s.label}
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
+                    {pickupChangeTooSoon && (
+                      <BookingLeadTimeNotice nowMs={nowMs} />
+                    )}
                   </div>
 
                   {/* Pick-up location row */}
@@ -1145,7 +1167,7 @@ export default function BasketPage() {
                     </button>
                     <button
                       type="button"
-                      disabled={dateChangeLoading || !newPickupDate || !newDropoffDate || (locations.length > 0 && (!newPickupLocationId || !newDropoffLocationId))}
+                      disabled={dateChangeLoading || pickupChangeTooSoon || !newPickupDate || !newDropoffDate || (locations.length > 0 && (!newPickupLocationId || !newDropoffLocationId))}
                       onClick={() => { void handleChangeDates(); }}
                       className="flex-[2] rounded-[6px] border-2 border-charcoal-brand bg-gold-brand font-lato text-xs font-extrabold uppercase tracking-[0.05em] text-charcoal-brand transition-all duration-150 disabled:pointer-events-none disabled:opacity-40"
                       style={{ padding: '10px 16px', boxShadow: dateChangeLoading || !newPickupDate || !newDropoffDate ? 'none' : '3px 3px 0 #363737' }}

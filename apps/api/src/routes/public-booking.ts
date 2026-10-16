@@ -4,7 +4,7 @@ import { z } from 'zod';
 import rateLimit from 'express-rate-limit';
 import { sendEmail, bookingCancellationHtml, escapeHtml } from '../services/email.js';
 import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
-import { SubmitDirectBookingRequestSchema, type SubmitDirectBookingInput } from '@lolas/shared';
+import { SubmitDirectBookingRequestSchema, type SubmitDirectBookingInput, assertBookingLeadTime } from '@lolas/shared';
 import { validateQuery, validateBody } from '../middleware/validate.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
 import { computeQuote } from '../use-cases/booking/compute-quote.js';
@@ -121,6 +121,8 @@ router.get('/availability', validateQuery(AvailabilityQuerySchema), async (req, 
       dropoffDatetime: string;
     };
 
+    assertBookingLeadTime(pickupDatetime);
+
     const partner = await lookupActivePartnerBySlug(req.query.partnerRef as string | undefined);
     const data = await checkAvailability(
       { bookingPort: req.app.locals.deps.bookingPort },
@@ -209,6 +211,8 @@ router.post('/hold', holdLimiter, validateBody(CreateHoldBodySchema), async (req
       dropoffDatetime: string;
       sessionToken: string;
     };
+
+    assertBookingLeadTime(pickupDatetime);
 
     const partner = await lookupActivePartnerBySlug(req.body.partnerRef);
     const hold = await createHold(
@@ -575,6 +579,7 @@ router.post('/submit', submitLimiter, validateBody(SubmitDirectBookingRequestSch
   try {
     const deviceType = detectDeviceType(req.headers['user-agent']);
     const body = req.body as SubmitDirectBookingInput;
+    assertBookingLeadTime(body.pickupDatetime);
     const result: SubmitDirectBookingResult = await submitDirectBooking(
       {
         bookingPort: req.app.locals.deps.bookingPort,

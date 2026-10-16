@@ -2,7 +2,7 @@ import { createBookingAdapter } from '../adapters/supabase/booking-adapter.js';
 import { randomBytes } from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
-import { SubmitDirectBookingRequestSchema, type SubmitDirectBookingInput } from '@lolas/shared';
+import { SubmitDirectBookingRequestSchema, type SubmitDirectBookingInput, assertBookingLeadTime } from '@lolas/shared';
 import type { HoldRow } from '@lolas/domain';
 import { validateBody, validateQuery } from '../middleware/validate.js';
 import { authenticatePartner } from '../middleware/authenticate-partner.js';
@@ -61,35 +61,8 @@ const PartnerBookSchema = SubmitDirectBookingRequestSchema
     path: ['vehicles'],
   });
 
-const MIN_PARTNER_LEAD_MS = 15 * 60 * 1000;
-
-/** Manila-time "9:15 AM" style label for a given instant. */
-function manilaTimeLabel(date: Date): string {
-  return date.toLocaleTimeString('en-PH', {
-    timeZone: 'Asia/Manila',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  });
-}
-
 function assertPartnerLeadTime(pickupDatetime: string): void {
-  const pickup = new Date(pickupDatetime);
-  if (Number.isNaN(pickup.getTime())) {
-    const err = new Error('Invalid pickup datetime');
-    (err as Error & { statusCode?: number }).statusCode = 422;
-    throw err;
-  }
-  if (pickup.getTime() - Date.now() < MIN_PARTNER_LEAD_MS) {
-    const earliestLabel = manilaTimeLabel(new Date(Date.now() + MIN_PARTNER_LEAD_MS));
-    const err = new Error(
-      `We need at least 15 minutes' notice, but it's likely we can get to you sooner than that — ` +
-      `go ahead and book for ${earliestLabel} or later and we'll aim to be there by then. ` +
-      `Need us there ASAP? Send us a message so we can make you a priority.`,
-    );
-    (err as Error & { statusCode?: number }).statusCode = 422;
-    throw err;
-  }
+  assertBookingLeadTime(pickupDatetime);
 }
 
 function partnerGroupRef(slug: string): string {

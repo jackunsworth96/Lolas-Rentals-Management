@@ -1,5 +1,6 @@
 import { AllocationAvailability, type AllocationSummary } from '../../components/booking/AllocationAvailability.js';
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { hasBookingLeadTime } from '@lolas/shared';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client.js';
@@ -18,6 +19,7 @@ import { PageLayout } from '../../components/layout/PageLayout.js';
 import { SEO } from '../../components/seo/SEO.js';
 import { HeroFloatingClouds } from '../../components/ui/HeroFloatingClouds.js';
 import { hasBookingDatetimeWithTime } from '../../utils/booking-datetime.js';
+import { BookingLeadTimeNotice, useBookingLeadClock } from '../../components/booking/BookingLeadTimeNotice.js';
 import SectionDivider from '../../components/home/SectionDivider.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import InclusionMarquee from '../../components/home/InclusionMarquee.js';
@@ -144,19 +146,8 @@ function generateTimeSlots(): { value: string; label: string }[] {
 
 const ALL_TIME_SLOTS = generateTimeSlots();
 
-function todayStr(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
-}
-
-function nowTimeMinutes(): number {
-  const manilaTime = new Date().toLocaleTimeString('en-GB', {
-    timeZone: 'Asia/Manila',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
-  const [h, m] = manilaTime.split(':').map(Number);
-  return h * 60 + m;
+function todayStr(nowMs = Date.now()): string {
+  return new Date(nowMs).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 }
 
 function timeToMinutes(t: string): number {
@@ -164,11 +155,20 @@ function timeToMinutes(t: string): number {
   return h * 60 + m;
 }
 
-function getAvailablePickupSlots(pickupDate: string): { value: string; label: string }[] {
-  if (!pickupDate || pickupDate > todayStr()) return ALL_TIME_SLOTS;
-  if (pickupDate < todayStr()) return ALL_TIME_SLOTS;
-  const now = nowTimeMinutes();
-  return ALL_TIME_SLOTS.filter((s) => timeToMinutes(s.value) > now);
+function getAvailablePickupSlots(
+  pickupDate: string,
+  nowMs: number,
+): { value: string; label: string; disabled: boolean }[] {
+  const today = todayStr(nowMs);
+  if (!pickupDate || pickupDate !== today) {
+    return ALL_TIME_SLOTS.map((s) => ({ ...s, disabled: false }));
+  }
+  return ALL_TIME_SLOTS.flatMap((s) => {
+    const iso = `${pickupDate}T${s.value}:00+08:00`;
+    if (new Date(iso).getTime() <= nowMs) return [];
+    const ok = hasBookingLeadTime(iso, nowMs);
+    return [{ ...s, label: ok ? s.label : `${s.label} — too soon`, disabled: !ok }];
+  });
 }
 
 function getAvailableDropoffSlots(
@@ -759,6 +759,7 @@ export default function BrowseBookPage() {
     const pickup = state.pickupDatetime;
     const dropoff = state.dropoffDatetime;
     if (!sid || !pickup || !dropoff || !hasBookingDatetimeWithTime(pickup) || !hasBookingDatetimeWithTime(dropoff)) return;
+    if (!hasBookingLeadTime(pickup)) return;
     setSearching(true);
     setSearchParams({ storeId: sid, pickup, dropoff });
     await refetchAvailability();
@@ -848,7 +849,9 @@ export default function BrowseBookPage() {
       ? dropoffDatetime.slice(11, 16)
       : '';
 
-  const availablePickupSlots = useMemo(() => getAvailablePickupSlots(pickupDate), [pickupDate]);
+  const nowMs = useBookingLeadClock();
+  const availablePickupSlots = useMemo(() => getAvailablePickupSlots(pickupDate, nowMs), [pickupDate, nowMs]);
+  const leadTimeOk = !pickupTime || hasBookingLeadTime(`${pickupDate}T${pickupTime}:00+08:00`, nowMs);
   const availableDropoffSlots = useMemo(
     () => getAvailableDropoffSlots(pickupDate, pickupTime, dropoffDate),
     [pickupDate, pickupTime, dropoffDate],
@@ -910,6 +913,7 @@ export default function BrowseBookPage() {
     dropoffLocationId != null &&
     hasBookingDatetimeWithTime(pickupDatetime) &&
     hasBookingDatetimeWithTime(dropoffDatetime) &&
+    leadTimeOk &&
     !dateError;
 
   const selectedModel = allModels?.find((m) => m.id === selectedModelId) ?? null;
@@ -952,6 +956,12 @@ export default function BrowseBookPage() {
       detailRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }, [selectedModelId]);
+
+  useEffect(() => {
+    if (hasBookingDatetimeWithTime(pickupDatetime) && !hasBookingLeadTime(pickupDatetime, nowMs)) {
+      setSearchParams(null);
+    }
+  }, [pickupDatetime, nowMs]);
 
   // Auto-search: fire handleSearch 500 ms after all required fields are complete
   const autoSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1239,7 +1249,7 @@ export default function BrowseBookPage() {
                         >
                           <option value="">Select time…</option>
                           {availablePickupSlots.map((s) => (
-                            <option key={s.value} value={s.value}>{s.label}</option>
+                            <option key={s.value} value={s.value} disabled={s.disabled}>{s.label}</option>
                           ))}
                         </select>
                         <span className="pointer-events-none absolute right-2.5 top-2.5 text-charcoal-brand/40 text-xs">▾</span>
@@ -1267,6 +1277,12 @@ export default function BrowseBookPage() {
                       )}
                     </div>
                   </div>
+
+                  {pickupTime && !leadTimeOk && (
+                    <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                      <BookingLeadTimeNotice nowMs={nowMs} />
+                    </div>
+                  )}
 
                   {/* Live running total — shown once dates are selected */}
                   {rentalDays > 0 && (() => {
