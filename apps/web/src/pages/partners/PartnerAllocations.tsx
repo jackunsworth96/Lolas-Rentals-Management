@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client.js';
+import { usePartnerStats } from '../../api/partners.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 
 type Tier = { name: string; qty: number; startMonth: number; endMonth: number };
@@ -25,6 +26,8 @@ export function PartnerAllocations({ partnerId }: { partnerId: string }) {
   const [tiers, setTiers] = useState<Tier[] | null>(null);
   const [override, setOverride] = useState({ startsOn: today(), endsOn: today(), qty: 0, reason: '' });
   const [busy, setBusy] = useState(false), [message, setMessage] = useState(''), [ready, setReady] = useState(false);
+  const demandMonth = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }).slice(0, 7);
+  const demand = usePartnerStats(partnerId, demandMonth);
   const endpoint = `/partner-allocations/${partnerId}`;
   const config = useQuery({ queryKey: ['partner-allocations', partnerId], queryFn: () => api.get<Config>(endpoint) });
   const monthEnd = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1)).toISOString().slice(0, 10);
@@ -52,6 +55,7 @@ export function PartnerAllocations({ partnerId }: { partnerId: string }) {
     {data?.shortfall && <p role="alert" className="rounded bg-red-50 p-2 text-sm text-red-900">Fleet capacity shortfall: {data.shortfall.message}</p>}
     <label className="block text-sm">Vehicle type<select className={inputClass} value={vehicleType} onChange={(e) => { setVehicleType(e.target.value); setTiers(null); setReady(false); }}><option value="bike">Bike</option><option value="tuktuk">Tuktuk</option></select></label>
     <p className="text-sm">Today’s scheduled quantity: {baseline?.scheduled_qty ?? 0}. Current quantity: {activeOverride?.qty ?? baseline?.scheduled_qty ?? 0}.{activeOverride && ` Reason: ${activeOverride.reason}`}</p>
+    <p className="text-sm">This month’s booked average: <span className="font-semibold">{demand.isLoading ? '—' : (demand.data?.averageHondasPerDay ?? 0).toFixed(2)}</span> Hondas/day (bike allocation) · <span className="font-semibold">{demand.isLoading ? '—' : (demand.data?.averageTuktuksPerDay ?? 0).toFixed(2)}</span> Tuktuks/day.</p>
     <fieldset disabled={!canEdit || busy} className="space-y-3">
       <legend className="font-medium text-sm">Seasonal schedule</legend>
       <p className="text-xs text-gray-500">Cover all 12 months exactly once. October to April can be one range; May and September need separate rows. Existing schedules change from next month. Use an override for this month.</p>

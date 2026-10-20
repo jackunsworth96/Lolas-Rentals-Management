@@ -80,6 +80,7 @@ export interface PartnerBookingRow {
   advanceDays: number | null;
   commissionable: boolean;
   commissionAmount: number;
+  awaitingActivationAmount: number;
   isExtended: boolean;
   extendedDropoffDatetime: string | null;
   pendingCommissionAmount: number;
@@ -97,8 +98,11 @@ export interface PartnerStats {
   commissionableBookings: number;
   totalCommission: number;
   totalPendingCommission: number;
+  totalAwaitingActivation: number;
   totalVehiclesRented: number;
   averageVehiclesPerDay: number;
+  averageHondasPerDay: number;
+  averageTuktuksPerDay: number;
   bookings: PartnerBookingRow[];
 }
 

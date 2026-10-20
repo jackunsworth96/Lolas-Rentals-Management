@@ -58,6 +58,7 @@ export interface PartnerReportBooking {
   advanceDays: number | null;
   commissionable: boolean;
   commissionAmount: number;
+  awaitingActivationAmount: number;
   commissionBase: number | null;
   grossRentalRevenue: number;
   eligibleRefundAmount: number;
@@ -81,8 +82,11 @@ export interface PartnerReport {
   commissionableBookings: number;
   totalCommission: number;
   totalPendingCommission: number;
+  totalAwaitingActivation: number;
   totalVehiclesRented: number;
   averageVehiclesPerDay: number;
+  averageHondasPerDay: number;
+  averageTuktuksPerDay: number;
   bookings: PartnerReportBooking[];
 }
 

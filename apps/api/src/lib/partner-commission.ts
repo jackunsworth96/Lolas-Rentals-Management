@@ -28,6 +28,9 @@ export interface PartnerCommissionBooking {
    * long original stay) this is prorated by the share of nights that
    * actually fall in this month — see `periodNote`. */
   commissionAmount: number;
+  /** Commission for an eligible booking that is still unprocessed. Shown on
+   * the report, and excluded from commissionAmount until staff activate it. */
+  awaitingActivationAmount: number;
   isExtended: boolean;
   extendedDropoffDatetime: string | null;
   pendingCommissionAmount: number;
@@ -51,8 +54,15 @@ export interface PartnerCommissionStats {
   commissionableBookings: number;
   totalCommission: number;
   totalPendingCommission: number;
+  /** Eligible commission still on unprocessed bookings. Not part of totalCommission. */
+  totalAwaitingActivation: number;
   totalVehiclesRented: number;
+  /** Honda and tuktuk averages added together. Scooters, bikes, and motorcycles count as Hondas. */
   averageVehiclesPerDay: number;
+  /** Average Honda Beats (allocation type "bike") on rent per day this month. */
+  averageHondasPerDay: number;
+  /** Average tuktuks on rent per day this month. */
+  averageTuktuksPerDay: number;
   bookings: PartnerCommissionBooking[];
 }
 
@@ -136,6 +146,29 @@ function calendarAdvanceDays(pickupIso: string, createdIso: string): number {
   const pickupDate = new Date(formatManilaDate(new Date(pickupIso)) + 'T00:00:00Z').getTime();
   const createdDate = new Date(formatManilaDate(new Date(createdIso)) + 'T00:00:00Z').getTime();
   return Math.round((pickupDate - createdDate) / 86_400_000);
+}
+
+/**
+ * Same buckets as partner_allocation_type_map: scooter, bike, and motorcycle
+ * are the bike pool (Honda Beats). Tuktuks stay in their own pool. A model
+ * with no type falls back to its name, then to Honda, so every rented day
+ * still lands in one of the two allocation stats.
+ */
+function allocationBucket(model: { name: string; type: string | null } | undefined): 'honda' | 'tuktuk' {
+  const type = model?.type?.toLowerCase() ?? '';
+  if (type === 'tuktuk') return 'tuktuk';
+  if (type === 'scooter' || type === 'bike' || type === 'motorcycle') return 'honda';
+  const name = (model?.name ?? '').toLowerCase();
+  if (
+    name.includes('tuktuk') ||
+    name.includes('tuk-tuk') ||
+    name.includes('tuk tuk') ||
+    name.includes('bajaj') ||
+    name.includes('tvs')
+  ) {
+    return 'tuktuk';
+  }
+  return 'honda';
 }
 
 function daysInReportMonth(month?: string): number {
@@ -449,12 +482,17 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
       : Number(p.commission_value ?? 0);
     const advanceBookingDays = override?.advance_booking_days ?? p.advance_booking_days;
     const includesExtensions = override ? override.commission_includes_extensions : p.commission_includes_extensions;
-    const commissionable =
+    const meetsCommissionRules =
       status !== 'cancelled' &&
       commissionType != null &&
       commissionValue != null &&
       advanceDays !== null &&
       advanceDays >= advanceBookingDays;
+    // Unprocessed bookings have not been activated, so the rental payment is
+    // not recorded yet and the guest can still cancel. Keep them on the
+    // report, but hold the commission out of the payout.
+    const awaitingActivation = meetsCommissionRules && status.toLowerCase() === 'unprocessed';
+    const commissionable = meetsCommissionRules && !awaitingActivation;
 
     // Extension amounts for this booking (only when the partner has the flag enabled)
     const paidExtAmt = includesExtensions ? (paidExtensionByRef.get(ref) ?? 0) : 0;
@@ -499,7 +537,7 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
 
     const monthBase = roundMoney(wholeStayBase * monthShare);
     const commissionBase = commissionType === 'fixed' ? null : monthBase;
-    const commissionAmount = !commissionable
+    const calculatedCommission = !meetsCommissionRules
       ? 0
       : commissionType === 'fixed'
         // Fixed commission is a flat per-booking fee, not day-based — it is
@@ -507,6 +545,8 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
         // repeated for a carryover month.
         ? (isCarryover ? 0 : Number(commissionValue ?? 0))
         : roundMoney(monthBase * Number(commissionValue ?? 0) / 100);
+    const commissionAmount = commissionable ? calculatedCommission : 0;
+    const awaitingActivationAmount = awaitingActivation ? calculatedCommission : 0;
 
     // Pending commission accrues only on percentage-type deals (fixed is per booking,
     // so there is no extra commission due when an extension is later collected).
@@ -552,6 +592,7 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
       advanceDays: advanceDays !== null ? Math.floor(advanceDays) : null,
       commissionable,
       commissionAmount,
+      awaitingActivationAmount,
       isExtended,
       extendedDropoffDatetime,
       pendingCommissionAmount,
@@ -566,26 +607,49 @@ export async function getPartnerCommissionStats(partnerId: string, month?: strin
   const primaryBookings = bookings.filter((b) => !b.isCarryover);
   const totalCommission = bookings.reduce((sum, b) => sum + b.commissionAmount, 0);
   const totalPendingCommission = bookings.reduce((sum, b) => sum + b.pendingCommissionAmount, 0);
+  const totalAwaitingActivation = bookings.reduce((sum, b) => sum + b.awaitingActivationAmount, 0);
   const totalVehiclesRented = primaryBookings.filter((b) => b.status !== 'cancelled').length;
   const monthDays = daysInReportMonth(month);
+
+  const modelIds = [...new Set(bookings.map((b) => b.vehicleModelId).filter((id): id is string => Boolean(id)))];
+  const modelById = new Map<string, { name: string; type: string | null }>();
+  if (modelIds.length > 0) {
+    const { data: modelRows, error: modelErr } = await sb
+      .from('vehicle_models')
+      .select('id, name, type')
+      .in('id', modelIds);
+    if (modelErr) throw new Error(`Failed to fetch vehicle models: ${modelErr.message}`);
+    for (const model of (modelRows ?? []) as Array<{ id: string; name: string; type: string | null }>) {
+      modelById.set(model.id, { name: model.name, type: model.type });
+    }
+  }
 
   // Sum vehicle-days across BOTH primary and carryover bookings so nights
   // that spill into this month from an earlier booking are actually counted
   // here, instead of disappearing between the two months' reports.
-  const totalVehicleDays = bookings
-    .filter((b) => b.status !== 'cancelled')
-    .reduce((sum, b) => {
-      const effectiveDropoff = itemDropoffByRef.get(b.orderReference ?? '') ?? b.dropoffDatetime;
-      return sum + clampedRentalDays(b.pickupDatetime, effectiveDropoff);
-    }, 0);
+  // Split by allocation pool so a partner's Honda demand is not mixed with tuktuks.
+  let hondaDays = 0;
+  let tuktukDays = 0;
+  for (const booking of bookings) {
+    if (booking.status === 'cancelled') continue;
+    const effectiveDropoff = itemDropoffByRef.get(booking.orderReference ?? '') ?? booking.dropoffDatetime;
+    const days = clampedRentalDays(booking.pickupDatetime, effectiveDropoff);
+    const bucket = allocationBucket(booking.vehicleModelId ? modelById.get(booking.vehicleModelId) : undefined);
+    if (bucket === 'tuktuk') tuktukDays += days;
+    else hondaDays += days;
+  }
+  const totalVehicleDays = hondaDays + tuktukDays;
 
   return {
     totalBookings: primaryBookings.length,
     commissionableBookings: primaryBookings.filter((b) => b.commissionable).length,
     totalCommission: roundMoney(totalCommission),
     totalPendingCommission: roundMoney(totalPendingCommission),
+    totalAwaitingActivation: roundMoney(totalAwaitingActivation),
     totalVehiclesRented,
     averageVehiclesPerDay: roundMoney(totalVehicleDays / monthDays),
+    averageHondasPerDay: roundMoney(hondaDays / monthDays),
+    averageTuktuksPerDay: roundMoney(tuktukDays / monthDays),
     bookings,
   };
 }

@@ -58,10 +58,13 @@ function cancellationReasonLabel(reason: string | null): string {
 }
 
 function commissionCell(b: PartnerReportBooking): string {
+  const awaitingActivation = (b.awaitingActivationAmount ?? 0) > 0;
   let line = b.status.toLowerCase() === 'cancelled'
     ? `${money(0)}\nRemoved from payout`
-    : b.commissionable ? money(b.commissionAmount) : 'Not eligible';
-  if (b.commissionable && b.status.toLowerCase() !== 'cancelled') {
+    : awaitingActivation
+      ? `${money(b.awaitingActivationAmount)}\nPayable when activated`
+      : b.commissionable ? money(b.commissionAmount) : 'Not eligible';
+  if ((b.commissionable || awaitingActivation) && b.status.toLowerCase() !== 'cancelled') {
     if (b.commissionType === 'percentage' && b.commissionBase !== null) {
       line += `\n${b.commissionValue ?? 0}% on ${money(b.commissionBase)}`;
     } else if (b.commissionType === 'fixed' && b.commissionValue !== null) {
@@ -73,8 +76,8 @@ function commissionCell(b: PartnerReportBooking): string {
   }
   if (b.eligibleRefundAmount > 0) {
     line += `\nRental, no deposit\nBefore refund: ${money(b.grossRentalRevenue)}\nRefunded: -${money(b.eligibleRefundAmount)}\nAfter refund: ${money(b.netRentalRevenue)}`;
-    if (b.commissionable && b.status.toLowerCase() !== 'cancelled' && b.commissionType === 'percentage' && b.commissionBase !== null) {
-      line += `\n${b.commissionValue ?? 0}% x ${money(b.commissionBase)} = ${money(b.commissionAmount)}`;
+    if ((b.commissionable || awaitingActivation) && b.status.toLowerCase() !== 'cancelled' && b.commissionType === 'percentage' && b.commissionBase !== null) {
+      line += `\n${b.commissionValue ?? 0}% x ${money(b.commissionBase)} = ${money(awaitingActivation ? b.awaitingActivationAmount : b.commissionAmount)}`;
     }
   }
   return line;
@@ -139,19 +142,20 @@ export async function generatePartnerReportPdf(
 
   // ── Summary cards ──────────────────────────────────────────────────────────
   const summaryY = headerLineY + 6;
-  const colW = contentW / 4;
+  const colW = contentW / 5;
 
   const summaryItems = [
     { label: 'Total Bookings', value: String(report.totalBookings) },
     { label: 'Commissionable', value: String(report.commissionableBookings) },
     { label: 'Commission Due', value: money(report.totalCommission) },
-    { label: 'Avg Vehicles/Day', value: report.averageVehiclesPerDay.toFixed(2) },
+    { label: 'Avg Hondas/Day', value: (report.averageHondasPerDay ?? 0).toFixed(2) },
+    { label: 'Avg Tuktuks/Day', value: (report.averageTuktuksPerDay ?? 0).toFixed(2) },
   ];
 
   summaryItems.forEach(({ label, value }, i) => {
     const x = margin + i * colW + colW / 2;
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(13);
+    doc.setFontSize(11);
     doc.setTextColor(17, 24, 39);
     doc.text(value, x, summaryY, { align: 'center' });
     doc.setFont('helvetica', 'normal');
@@ -160,20 +164,25 @@ export async function generatePartnerReportPdf(
     doc.text(label, x, summaryY + 5, { align: 'center' });
   });
 
-  if (report.totalPendingCommission > 0) {
+  const summaryNotes = [
+    report.totalPendingCommission > 0 ? `+ ${money(report.totalPendingCommission)} pending commission` : null,
+    (report.totalAwaitingActivation ?? 0) > 0 ? `+ ${money(report.totalAwaitingActivation)} payable when activated` : null,
+  ].filter((note): note is string => note !== null);
+
+  let noteY = summaryY + 12;
+  if (summaryNotes.length > 0) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(217, 119, 6); // amber-600
-    doc.text(
-      `+ ${money(report.totalPendingCommission)} pending commission`,
-      margin + contentW / 2,
-      summaryY + 12,
-      { align: 'center' },
-    );
+    for (const note of summaryNotes) {
+      doc.text(note, margin + contentW / 2, noteY, { align: 'center' });
+      noteY += 4;
+    }
   }
 
+  const summaryRuleY = summaryNotes.length > 0 ? noteY + 2 : summaryY + 16;
   doc.setDrawColor(209, 213, 219);
-  doc.line(margin, summaryY + 16, pageW - margin, summaryY + 16);
+  doc.line(margin, summaryRuleY, pageW - margin, summaryRuleY);
 
   // ── Bookings table ─────────────────────────────────────────────────────────
   const tableBody = report.bookings.map((b) => {
@@ -198,7 +207,7 @@ export async function generatePartnerReportPdf(
   });
 
   autoTable(doc, {
-    startY: summaryY + 20,
+    startY: summaryRuleY + 4,
     margin: { left: margin, right: margin },
     tableWidth: contentW,
     head: [['Ref', 'Customer', 'Dates', 'Status', 'Commission']],
@@ -226,6 +235,8 @@ export async function generatePartnerReportPdf(
       if (!b) return;
       if (b.status.toLowerCase() === 'cancelled') {
         data.cell.styles.textColor = [185, 28, 28];
+      } else if (data.column.index === 4 && (b.awaitingActivationAmount ?? 0) > 0) {
+        data.cell.styles.textColor = [180, 83, 9]; // amber-700
       } else if (data.column.index === 4 && b.commissionable) {
         data.cell.styles.textColor = [15, 118, 110]; // teal-700
       }

@@ -63,7 +63,7 @@ export default function PartnerReportsPage() {
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-4">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <div className="rounded-lg border border-gray-200 p-3"><p className="text-xs text-gray-500">Total</p><p className="text-xl font-bold">{data?.totalBookings ?? 0}</p></div>
         <div className="rounded-lg border border-green-200 bg-green-50 p-3"><p className="text-xs text-green-700">Commissionable</p><p className="text-xl font-bold text-green-700">{data?.commissionableBookings ?? 0}</p></div>
         <div className="rounded-lg border border-teal-200 bg-teal-50 p-3">
@@ -72,8 +72,12 @@ export default function PartnerReportsPage() {
           {(data?.totalPendingCommission ?? 0) > 0 && (
             <p className="mt-0.5 text-xs font-medium text-amber-600">+ {money(data?.totalPendingCommission ?? 0)} pending</p>
           )}
+          {(data?.totalAwaitingActivation ?? 0) > 0 && (
+            <p className="mt-0.5 text-xs font-medium text-amber-700">+ {money(data?.totalAwaitingActivation ?? 0)} payable when activated</p>
+          )}
         </div>
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-3"><p className="text-xs text-blue-700">Avg vehicles/day</p><p className="text-xl font-bold text-blue-700">{(data?.averageVehiclesPerDay ?? 0).toFixed(2)}</p></div>
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-3"><p className="text-xs text-blue-700">Avg Hondas/day</p><p className="text-xl font-bold text-blue-700">{(data?.averageHondasPerDay ?? 0).toFixed(2)}</p></div>
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3"><p className="text-xs text-amber-700">Avg Tuktuks/day</p><p className="text-xl font-bold text-amber-700">{(data?.averageTuktuksPerDay ?? 0).toFixed(2)}</p></div>
       </div>
 
       <div className="mt-4 overflow-hidden rounded-lg border border-gray-200">
@@ -122,6 +126,17 @@ export default function PartnerReportsPage() {
                     <div>
                       <span className="font-semibold text-red-700">{money(0)}</span>
                       <p className="text-xs text-gray-400">Removed from payout</p>
+                    </div>
+                  ) : (b.awaitingActivationAmount ?? 0) > 0 ? (
+                    <div>
+                      <span className="font-semibold text-amber-700">{money(b.awaitingActivationAmount)}</span>
+                      <p className="text-xs font-medium text-amber-700">Payable when activated</p>
+                      {b.eligibleRefundAmount === 0 && b.commissionType === 'percentage' && b.commissionBase !== null && (
+                        <p className="text-xs text-gray-400">{b.commissionValue ?? 0}% on {money(b.commissionBase)}</p>
+                      )}
+                      {b.eligibleRefundAmount === 0 && b.commissionType === 'fixed' && b.commissionValue !== null && (
+                        <p className="text-xs text-gray-400">{money(b.commissionValue)} fixed</p>
+                      )}
                     </div>
                   ) : b.commissionable ? (
                     <div>

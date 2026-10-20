@@ -314,7 +314,7 @@ export default function PartnerDashboardPage() {
         </div>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-4">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <div className="rounded-lg bg-white p-4 shadow-sm">
           <p className="text-xs font-semibold text-gray-500">Bookings this month</p>
           <p className="mt-1 text-2xl font-bold text-gray-900">{report.data?.totalBookings ?? 0}</p>
@@ -326,10 +326,17 @@ export default function PartnerDashboardPage() {
         <div className="rounded-lg bg-white p-4 shadow-sm">
           <p className="text-xs font-semibold text-gray-500">Commission due</p>
           <p className="mt-1 text-2xl font-bold text-teal-700">{money(report.data?.totalCommission ?? 0)}</p>
+          {(report.data?.totalAwaitingActivation ?? 0) > 0 && (
+            <p className="mt-1 text-xs font-medium text-amber-700">+ {money(report.data?.totalAwaitingActivation ?? 0)} payable when activated</p>
+          )}
         </div>
         <div className="rounded-lg bg-white p-4 shadow-sm">
-          <p className="text-xs font-semibold text-gray-500">Avg vehicles per day</p>
-          <p className="mt-1 text-2xl font-bold text-blue-700">{(report.data?.averageVehiclesPerDay ?? 0).toFixed(2)}</p>
+          <p className="text-xs font-semibold text-gray-500">Avg Hondas/day</p>
+          <p className="mt-1 text-2xl font-bold text-blue-700">{(report.data?.averageHondasPerDay ?? 0).toFixed(2)}</p>
+        </div>
+        <div className="rounded-lg bg-white p-4 shadow-sm">
+          <p className="text-xs font-semibold text-gray-500">Avg Tuktuks/day</p>
+          <p className="mt-1 text-2xl font-bold text-amber-700">{(report.data?.averageTuktuksPerDay ?? 0).toFixed(2)}</p>
         </div>
       </section>
     </div>

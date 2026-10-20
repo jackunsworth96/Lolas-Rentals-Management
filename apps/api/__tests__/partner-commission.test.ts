@@ -83,6 +83,12 @@ function commissionClient(fixture: Fixture = {}) {
         }]);
       case 'payments':
         return dynamicTable((fixture.payments ?? []).map((p) => ({ payment_type: 'extension', ...p })))();
+      case 'vehicle_models':
+        return queryResult([
+          { id: 'beat', name: 'Honda Beat', type: 'scooter' },
+          { id: 'tuktuk', name: 'TukTuk (RE)', type: 'tuktuk' },
+          { id: 'legacy-tuk', name: 'Bajaj RE', type: null },
+        ]);
       default:
         throw new Error(`Unexpected table ${table}`);
     }
@@ -207,6 +213,8 @@ describe('partner extension commissions', () => {
       pendingCommissionAmount: 0,
     });
     expect(stats.averageVehiclesPerDay).toBeCloseTo(8 / 31, 2);
+    expect(stats.averageHondasPerDay).toBeCloseTo(8 / 31, 2);
+    expect(stats.averageTuktuksPerDay).toBe(0);
     expect(client.from).toHaveBeenCalledWith('order_items');
     expect(client.from).toHaveBeenCalledWith('payments');
   });
@@ -342,6 +350,12 @@ function rolloverClient(opts: {
       case 'orders': return ordersTable();
       case 'order_items': return orderItemsTable();
       case 'payments': return paymentsTable();
+      case 'vehicle_models':
+        return dynamicTable([
+          { id: 'beat', name: 'Honda Beat', type: 'scooter' },
+          { id: 'tuktuk', name: 'TukTuk (RE)', type: 'tuktuk' },
+          { id: 'legacy-tuk', name: 'Bajaj RE', type: null },
+        ])();
       default: throw new Error(`Unexpected table ${table}`);
     }
   });
@@ -523,6 +537,85 @@ describe('partner commission month-rollover (proration + carryover)', () => {
     expect(august.bookings).toHaveLength(0);
     expect(august.totalCommission).toBe(0);
     expect(august.averageVehiclesPerDay).toBe(0);
+    expect(august.averageHondasPerDay).toBe(0);
+    expect(august.averageTuktuksPerDay).toBe(0);
+  });
+
+  it('splits average vehicles per day into Honda and tuktuk allocation pools', async () => {
+    const row = {
+      status: 'processed',
+      cancelled_reason: null,
+      cancelled_at: null,
+      created_at: '2026-07-01T00:00:00.000Z',
+      store_id: 'store-lolas',
+      partner_ref: 'bravo-beach-resort',
+      rental_value_raw: 1000,
+      web_quote_raw: 1000,
+      pickup_datetime: '2026-07-10T00:00:00.000Z',
+    };
+    mocks.getSupabaseClient.mockReturnValue(rolloverClient({
+      partner,
+      ordersRaw: [
+        { ...row, id: 'raw-honda', order_reference: 'LR-HONDA', customer_name: 'Honda Guest', vehicle_model_id: 'beat', dropoff_datetime: '2026-07-12T00:00:00.000Z' },
+        { ...row, id: 'raw-tuk', order_reference: 'LR-TUK', customer_name: 'Tuk Guest', vehicle_model_id: 'tuktuk', dropoff_datetime: '2026-07-14T00:00:00.000Z' },
+        { ...row, id: 'raw-legacy', order_reference: 'LR-LEGACY', customer_name: 'Legacy Guest', vehicle_model_id: 'legacy-tuk', dropoff_datetime: '2026-07-11T00:00:00.000Z' },
+      ],
+    }));
+
+    const stats = await getPartnerCommissionStats('partner-1', '2026-07');
+
+    expect(stats.averageHondasPerDay).toBeCloseTo(2 / 31, 2);
+    expect(stats.averageTuktuksPerDay).toBeCloseTo(5 / 31, 2);
+    expect(stats.averageVehiclesPerDay).toBeCloseTo(7 / 31, 2);
+  });
+
+  it('holds unprocessed commission out of the payout until the booking is activated', async () => {
+    const raw = [{
+      id: 'raw-unprocessed',
+      order_reference: 'LR-UNPROC',
+      customer_name: 'Future Guest',
+      vehicle_model_id: 'beat',
+      pickup_datetime: '2026-07-20T00:00:00.000Z',
+      dropoff_datetime: '2026-07-22T00:00:00.000Z',
+      rental_value_raw: 10000,
+      web_quote_raw: 10000,
+      status: 'unprocessed',
+      cancelled_reason: null,
+      cancelled_at: null,
+      created_at: '2026-07-01T00:00:00.000Z',
+      store_id: 'store-lolas',
+      partner_ref: 'bravo-beach-resort',
+    }];
+
+    mocks.getSupabaseClient.mockReturnValue(rolloverClient({ partner, ordersRaw: raw }));
+    const held = await getPartnerCommissionStats('partner-1', '2026-07');
+    expect(held.totalBookings).toBe(1);
+    expect(held.commissionableBookings).toBe(0);
+    expect(held.totalCommission).toBe(0);
+    expect(held.totalAwaitingActivation).toBe(1000);
+    expect(held.bookings[0]).toMatchObject({
+      status: 'unprocessed',
+      commissionable: false,
+      commissionAmount: 0,
+      awaitingActivationAmount: 1000,
+    });
+    expect(held.averageHondasPerDay).toBeCloseTo(2 / 31, 2);
+
+    mocks.getSupabaseClient.mockReturnValue(rolloverClient({
+      partner,
+      ordersRaw: raw,
+      orders: [{ id: 'order-unproc', booking_token: 'LR-UNPROC', status: 'active', store_id: 'store-lolas', partner_ref: 'bravo-beach-resort' }],
+    }));
+    const activated = await getPartnerCommissionStats('partner-1', '2026-07');
+    expect(activated.commissionableBookings).toBe(1);
+    expect(activated.totalCommission).toBe(1000);
+    expect(activated.totalAwaitingActivation).toBe(0);
+    expect(activated.bookings[0]).toMatchObject({
+      status: 'active',
+      commissionable: true,
+      commissionAmount: 1000,
+      awaitingActivationAmount: 0,
+    });
   });
 });
 

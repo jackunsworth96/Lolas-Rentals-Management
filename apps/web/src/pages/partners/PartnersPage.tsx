@@ -2362,7 +2362,7 @@ function PartnerDetailPanel({ partner, onEdit, onClose, pushToast }: PartnerDeta
               <div className="rounded-lg border border-gray-200 p-4 text-center text-sm text-gray-400">Loading…</div>
             ) : stats ? (
               <>
-                <div className="grid grid-cols-3 gap-2 mb-3">
+                <div className="grid grid-cols-3 gap-2 mb-2">
                   <div className="rounded-lg border border-gray-200 p-3 text-center">
                     <p className="text-xs text-gray-400">Total</p>
                     <p className="text-xl font-bold text-gray-900">{stats.totalBookings}</p>
@@ -2374,6 +2374,22 @@ function PartnerDetailPanel({ partner, onEdit, onClose, pushToast }: PartnerDeta
                   <div className="rounded-lg border border-teal-200 bg-teal-50 p-3 text-center">
                     <p className="text-xs text-teal-600">Commission due</p>
                     <p className="text-xl font-bold text-teal-700">{formatPhp(stats.totalCommission)}</p>
+                    {(stats.totalPendingCommission ?? 0) > 0 && (
+                      <p className="mt-0.5 text-[10px] font-medium text-amber-600">+ {formatPhp(stats.totalPendingCommission)} pending</p>
+                    )}
+                    {(stats.totalAwaitingActivation ?? 0) > 0 && (
+                      <p className="mt-0.5 text-[10px] font-medium text-amber-700">+ {formatPhp(stats.totalAwaitingActivation)} when activated</p>
+                    )}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-center">
+                    <p className="text-xs text-blue-600">Avg Hondas/day</p>
+                    <p className="text-xl font-bold text-blue-700">{(stats.averageHondasPerDay ?? 0).toFixed(2)}</p>
+                  </div>
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-center">
+                    <p className="text-xs text-amber-700">Avg Tuktuks/day</p>
+                    <p className="text-xl font-bold text-amber-700">{(stats.averageTuktuksPerDay ?? 0).toFixed(2)}</p>
                   </div>
                 </div>
 
@@ -2402,7 +2418,17 @@ function PartnerDetailPanel({ partner, onEdit, onClose, pushToast }: PartnerDeta
                               )}
                             </td>
                             <td className="px-3 py-2 text-right">
-                              {b.commissionable ? (
+                              {(b.awaitingActivationAmount ?? 0) > 0 ? (
+                                <div>
+                                  <span className="font-semibold text-amber-700">{formatPhp(b.awaitingActivationAmount)}</span>
+                                  <p className="text-amber-700">Payable when activated</p>
+                                  {b.commissionType === 'percentage' && b.commissionBase !== null && (
+                                    <p className="text-gray-400">
+                                      {b.commissionValue ?? 0}% on {formatPhp(b.commissionBase)}
+                                    </p>
+                                  )}
+                                </div>
+                              ) : b.commissionable ? (
                                 <div>
                                   <span className="font-semibold text-teal-700">{formatPhp(b.commissionAmount)}</span>
                                   {b.commissionType === 'percentage' && b.commissionBase !== null && (

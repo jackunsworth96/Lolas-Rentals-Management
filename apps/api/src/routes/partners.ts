@@ -780,7 +780,7 @@ router.post('/:id/send-monthly-report', edit, async (req, res, next) => {
     });
 
     const stats = await getPartnerCommissionStats(p.id, reportMonth);
-    const { totalBookings, commissionableBookings, totalCommission } = stats;
+    const { totalBookings, commissionableBookings, totalCommission, totalAwaitingActivation } = stats;
 
     const commissionDisplay = p.commission_type === 'fixed'
       ? `₱${p.commission_value.toLocaleString('en-PH')} per booking`
@@ -798,6 +798,9 @@ router.post('/:id/send-monthly-report', edit, async (req, res, next) => {
       `💰 <b>Commission</b>`,
       `Rate: ${commissionDisplay}`,
       `<b>Total due: ₱${totalCommission.toLocaleString('en-PH', { minimumFractionDigits: 0 })}</b>`,
+      ...(totalAwaitingActivation > 0
+        ? [`Payable when activated: <b>₱${totalAwaitingActivation.toLocaleString('en-PH', { minimumFractionDigits: 0 })}</b>`]
+        : []),
       ``,
       `Commission applies to bookings made at least ${p.advance_booking_days} day${p.advance_booking_days !== 1 ? 's' : ''} before pickup. Same-day/walk-in referrals are acknowledged but not commissionable.`,
       ``,
@@ -818,6 +821,9 @@ router.post('/:id/send-monthly-report', edit, async (req, res, next) => {
           `<p>Total attributed bookings: <strong>${totalBookings}</strong></p>`,
           `<p>Commissionable bookings: <strong>${commissionableBookings}</strong></p>`,
           `<p>Total due: <strong>₱${totalCommission.toLocaleString('en-PH', { minimumFractionDigits: 0 })}</strong></p>`,
+          totalAwaitingActivation > 0
+            ? `<p>Payable when activated: <strong>₱${totalAwaitingActivation.toLocaleString('en-PH', { minimumFractionDigits: 0 })}</strong></p>`
+            : '',
           `<p>Commission applies to bookings made at least ${p.advance_booking_days} day${p.advance_booking_days !== 1 ? 's' : ''} before pickup.</p>`,
         ].join('\n'),
       });
