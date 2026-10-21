@@ -148,10 +148,14 @@ export function AddOnsSection({
                 tabIndex={rowDisabled ? -1 : 0}
                 aria-pressed={selected}
                 aria-disabled={rowDisabled || undefined}
-                className={`flex w-full items-center gap-3 rounded-lg py-3 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-brand/40 ${
+                className={`flex w-full gap-3 rounded-lg py-3 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-brand/40 ${
+                  isPeaceOfMind ? 'items-start' : 'items-center'
+                } ${
                   rowDisabled
                     ? 'cursor-not-allowed opacity-50'
-                    : 'cursor-pointer hover:bg-sand-brand/30'
+                    : isPeaceOfMind
+                      ? '-mx-2 cursor-pointer bg-teal-brand/[0.06] px-2 hover:bg-teal-brand/10'
+                      : 'cursor-pointer hover:bg-sand-brand/30'
                 }`}
                 onClick={() => {
                   if (!rowDisabled) onToggle(id);
@@ -175,34 +179,43 @@ export function AddOnsSection({
 
                 {/* Name + type */}
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-medium text-charcoal-brand">
-                    {addon.name}
-                    {isPeaceOfMind && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setPomcModalOpen(true);
-                        }}
-                        className="ml-2 font-lato text-xs text-teal-brand underline underline-offset-2 hover:text-teal-brand/70"
-                      >
-                        What&apos;s included?
-                      </button>
-                    )}
-                  </p>
-                  <p className="text-[12px] text-charcoal-brand/50">
-                    {addon.addonType === 'per_day' ? 'Per day' : 'One-time charge'}
-                  </p>
+                  <p className="text-[13px] font-medium leading-snug text-charcoal-brand">{addon.name}</p>
+                  {isPeaceOfMind && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPomcModalOpen(true);
+                      }}
+                      className="mt-0.5 font-lato text-xs text-teal-brand underline underline-offset-2 hover:text-teal-brand/70"
+                    >
+                      What&apos;s included?
+                    </button>
+                  )}
+                  {isPeaceOfMind ? (
+                    <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] leading-snug text-charcoal-brand/60">
+                      <span className="rounded-full bg-teal-brand/10 px-2 py-0.5 text-[11px] font-medium text-teal-brand">
+                        Recommended
+                      </span>
+                      <span>Covers scratches, mirrors, flats, and theft</span>
+                    </p>
+                  ) : (
+                    <p className="text-[12px] text-charcoal-brand/50">
+                      {addon.addonType === 'per_day' ? 'Per day' : 'One-time charge'}
+                    </p>
+                  )}
                 </div>
 
                 {/* Price */}
-                <span className="mr-3 shrink-0 text-[14px] font-medium text-charcoal-brand/70">
+                <span className={`shrink-0 text-[14px] font-medium text-charcoal-brand/70 ${isPeaceOfMind ? 'mr-1 mt-0.5' : 'mr-3'}`}>
                   {priceLabel(addon)}
                 </span>
 
                 {/* Custom toggle */}
                 <div
                   className={`relative h-[22px] w-[40px] shrink-0 rounded-full transition-colors ${
+                    isPeaceOfMind ? 'mt-0.5' : ''
+                  } ${
                     selected ? 'bg-teal-brand' : 'bg-charcoal-brand/15'
                   }`}
                 >

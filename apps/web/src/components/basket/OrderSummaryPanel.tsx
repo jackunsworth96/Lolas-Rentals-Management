@@ -37,6 +37,11 @@ interface Props {
   partnerBenefit?: PublicPartnerBenefit | null;
   partnerBenefitApplied?: AppliedPartnerBenefit | null;
   partnerFreeDeliveryLocationNames?: string[];
+  /** Scooter bookings can request a second helmet. Hidden for tuktuk baskets. */
+  showHelmetSelector?: boolean;
+  /** 1 = included helmet only, 2 = included plus one extra. */
+  helmetCount?: number;
+  onHelmetCountChange?: (count: 1 | 2) => void;
 }
 
 const PM_ICON_CLASS = 'h-5 w-5 shrink-0 text-charcoal-brand/85';
@@ -124,6 +129,9 @@ export function OrderSummaryPanel({
   partnerBenefit = null,
   partnerBenefitApplied = null,
   partnerFreeDeliveryLocationNames = [],
+  showHelmetSelector = false,
+  helmetCount = 1,
+  onHelmetCountChange,
 }: Props) {
   const vehicleSubtotal = basket.reduce((sum, b) => sum + b.dailyRate * rentalDays, 0);
 
@@ -370,13 +378,56 @@ export function OrderSummaryPanel({
       {basket.length > 0 && (() => {
         const primaryModel = basket[0].modelName;
         const items = getIncludedItemsForModel(primaryModel);
+        const helmetItem = showHelmetSelector
+          ? items.find((item) => item.label.trim().toLowerCase() === 'helmet')
+          : undefined;
+        const staticItems = helmetItem
+          ? items.filter((item) => item !== helmetItem)
+          : items;
+        const extraHelmet = helmetCount === 2;
         return (
           <div className="border-t border-charcoal-brand/10 px-5 py-4 md:px-6">
             <p className="font-lato mb-3 text-center text-[9px] font-black uppercase tracking-wider text-charcoal-brand/50">
               What&apos;s included
             </p>
+            {helmetItem && onHelmetCountChange && (
+              <div className="mb-3 flex items-center gap-2.5 rounded-lg border border-charcoal-brand/[0.08] bg-sand-brand/30 px-2.5 py-2">
+                <img
+                  src={helmetItem.icon}
+                  alt=""
+                  className="h-7 w-7 shrink-0 object-contain"
+                  width={28}
+                  height={28}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-medium leading-tight text-charcoal-brand">Helmet</p>
+                  <p className="text-[11px] leading-snug text-charcoal-brand/55">
+                    {extraHelmet
+                      ? 'Two helmets — one included, one extra'
+                      : 'One sanitised helmet included'}
+                  </p>
+                </div>
+                <span className="shrink-0 text-[11px] font-medium text-charcoal-brand/60">Extra</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={extraHelmet}
+                  aria-label="Add a second helmet"
+                  onClick={() => onHelmetCountChange(extraHelmet ? 1 : 2)}
+                  className={`relative h-[22px] w-[40px] shrink-0 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-brand/40 ${
+                    extraHelmet ? 'bg-teal-brand' : 'bg-charcoal-brand/15'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-[3px] h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                      extraHelmet ? 'translate-x-[19px]' : 'translate-x-[3px]'
+                    }`}
+                  />
+                </button>
+              </div>
+            )}
             <div className="flex flex-wrap justify-around gap-x-2 gap-y-3">
-              {items.map(({ icon, label }) => (
+              {staticItems.map(({ icon, label }) => (
                 <div key={label} className="flex flex-col items-center gap-1">
                   <img src={icon} alt={label} className="h-7 w-7 object-contain" width={28} height={28} />
                   <span className="font-lato text-center text-[9px] font-semibold leading-tight text-charcoal-brand/70">{label}</span>
