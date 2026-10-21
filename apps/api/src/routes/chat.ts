@@ -459,7 +459,7 @@ RULES AND RIDER REQUIREMENTS
 - A valid driver's licence is required at pickup — international licences are accepted.
 - Provisional licences are NOT accepted under any circumstances.
 - An International Driving Permit (IDP) is NOT mandatory in the Philippines. A standard licence is fine.
-- If customers are travelling to other SE Asian countries, those countries may require an IDP: https://go.idaoffers.com/aff_c?offer_id=13&aff_id=62491
+- If customers are travelling to other SE Asian countries, those countries may require an IDP: https://internationaldriversassociation.com/?linkId=lp_138843&sourceId=lolasrentals&tenantId=expedify
 - For scooters and two-wheel motorbikes: helmets must be worn at all times — it's the law. (Not applicable to TukTuk.)
 - Ride sober, ride safely, and respect local speed limits.
 

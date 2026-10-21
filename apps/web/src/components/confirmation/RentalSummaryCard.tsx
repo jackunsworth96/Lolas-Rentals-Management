@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown } from 'lucide-react';
-import { formatCurrency } from '../../utils/currency.js';
+import { CalendarPlus, ChevronDown } from 'lucide-react';
+import { formatCurrency, formatPhpNumber } from '../../utils/currency.js';
+import { PesoSign } from '../ui/PesoSign.js';
 import { RentalIncludedIconsGrid } from '../public/RentalIncludedIconsGrid.js';
 
 interface Props {
@@ -92,7 +93,8 @@ export function RentalSummaryCard({
           rel="noopener noreferrer"
           className="mb-3 inline-flex items-center gap-1.5 text-xs font-bold text-gold-brand hover:underline font-lato"
         >
-          <span>📅</span> + {t('common.addToCalendar')}
+          <CalendarPlus size={14} className="shrink-0" strokeWidth={2} aria-hidden />
+          + {t('common.addToCalendar')}
         </a>
       )}
 
@@ -175,7 +177,8 @@ export function RentalSummaryCard({
         <div className="flex items-end justify-between gap-4">
           <p className="text-xs font-black uppercase tracking-widest text-charcoal-brand/50 font-lato">{t('common.grandTotal')}</p>
           <p className="font-headline text-4xl font-black text-charcoal-brand">
-            {formatCurrency(grandTotal)}
+            <PesoSign />
+            {formatPhpNumber(grandTotal)}
           </p>
         </div>
       </div>

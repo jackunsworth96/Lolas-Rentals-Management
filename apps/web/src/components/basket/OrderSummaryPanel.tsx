@@ -419,7 +419,7 @@ export function OrderSummaryPanel({
                   }`}
                 >
                   <span
-                    className={`absolute top-[3px] h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                    className={`absolute left-0 top-[3px] h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
                       extraHelmet ? 'translate-x-[19px]' : 'translate-x-[3px]'
                     }`}
                   />

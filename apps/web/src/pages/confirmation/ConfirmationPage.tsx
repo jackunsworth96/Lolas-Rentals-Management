@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Check, Clipboard, FileSignature, CalendarPlus } from 'lucide-react';
+import { Banknote, Check, Clipboard, FileSignature, CalendarPlus } from 'lucide-react';
 import { api } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
 import { RentalSummaryCard } from '../../components/confirmation/RentalSummaryCard.js';
@@ -296,7 +296,7 @@ export default function ConfirmationPage() {
                   {/* Deposit reminder */}
                   {(state.depositAmount ?? 0) > 0 && (
                     <div className="mb-4 flex items-start gap-3 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
-                      <span className="text-lg">💰</span>
+                      <Banknote className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" strokeWidth={2} aria-hidden />
                       <p className="text-xs font-semibold leading-relaxed text-amber-800 font-lato">
                         {t('confirmation.depositReminder')}
                       </p>
@@ -492,7 +492,7 @@ export default function ConfirmationPage() {
                   <strong className="text-charcoal-brand">{t('confirmation.bringLicence')}</strong>{' '}
                   {t('confirmation.licenceNote')}{' '}
                   <a
-                    href="https://go.idaoffers.com/aff_c?offer_id=13&aff_id=62491"
+                    href="https://internationaldriversassociation.com/?linkId=lp_138843&sourceId=lolasrentals&tenantId=expedify"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="font-medium text-teal-brand hover:underline"
