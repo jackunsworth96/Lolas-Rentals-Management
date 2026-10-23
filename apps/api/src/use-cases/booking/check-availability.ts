@@ -7,6 +7,9 @@ export interface CheckAvailabilityInput {
   dropoffDatetime: string;
   requestedQuantity?: number;
   excludeOrderItemId?: string;
+  /** When set, active booking holds belonging to this session are excluded from the
+   * count so the caller's own (soon to be released) hold doesn't block the new window. */
+  excludeSessionToken?: string;
 }
 
 export interface CheckAvailabilityDeps {
@@ -35,5 +38,6 @@ export async function checkAvailability(
     dropoffDatetime: input.dropoffDatetime,
     requestedQuantity: input.requestedQuantity,
     excludeOrderItemId: input.excludeOrderItemId,
+    excludeSessionToken: input.excludeSessionToken,
   });
 }

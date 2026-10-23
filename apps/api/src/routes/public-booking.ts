@@ -64,6 +64,10 @@ const AvailabilityQuerySchema = z.object({
   storeId: z.string().min(1),
   pickupDatetime: z.string().min(1),
   dropoffDatetime: z.string().min(1),
+  /** When set, the caller's own active holds are excluded from the availability count.
+   * Used when a customer is changing dates/locations on a basket item they already
+   * hold, so their own (soon to be released) hold doesn't block the new window. */
+  excludeSessionToken: z.string().min(1).optional(),
 });
 
 router.get('/model-pricing', async (req, res, next) => {
@@ -115,10 +119,11 @@ router.get('/models', async (req, res, next) => {
 
 router.get('/availability', validateQuery(AvailabilityQuerySchema), async (req, res, next) => {
   try {
-    const { storeId, pickupDatetime, dropoffDatetime } = req.query as {
+    const { storeId, pickupDatetime, dropoffDatetime, excludeSessionToken } = req.query as {
       storeId: string;
       pickupDatetime: string;
       dropoffDatetime: string;
+      excludeSessionToken?: string;
     };
 
     assertBookingLeadTime(pickupDatetime);
@@ -126,7 +131,13 @@ router.get('/availability', validateQuery(AvailabilityQuerySchema), async (req, 
     const partner = await lookupActivePartnerBySlug(req.query.partnerRef as string | undefined);
     const data = await checkAvailability(
       { bookingPort: req.app.locals.deps.bookingPort },
-      { storeId, pickupDatetime, dropoffDatetime, partnerRef: partner?.storeId === storeId ? partner.slug : undefined },
+      {
+        storeId,
+        pickupDatetime,
+        dropoffDatetime,
+        partnerRef: partner?.storeId === storeId ? partner.slug : undefined,
+        excludeSessionToken,
+      },
     );
 
     res.json({ success: true, data });

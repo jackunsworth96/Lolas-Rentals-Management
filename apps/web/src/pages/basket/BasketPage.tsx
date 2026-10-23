@@ -180,11 +180,13 @@ export default function BasketPage() {
     pickup: string,
     dropoff: string,
   ): Promise<boolean> {
-    // 1. Check availability before touching the existing hold
+    // 1. Check availability before touching the existing hold.
+    // excludeSessionToken ensures our own still-active hold (not yet released below)
+    // isn't counted against itself when the new window overlaps the current one.
     let avail: AvailableModel[];
     try {
       avail = await api.get<AvailableModel[]>(
-        `/public/booking/availability?storeId=${encodeURIComponent(storeId)}&pickupDatetime=${encodeURIComponent(pickup)}&dropoffDatetime=${encodeURIComponent(dropoff)}&partnerRef=${encodeURIComponent(getPartnerRef() ?? '')}`,
+        `/public/booking/availability?storeId=${encodeURIComponent(storeId)}&pickupDatetime=${encodeURIComponent(pickup)}&dropoffDatetime=${encodeURIComponent(dropoff)}&partnerRef=${encodeURIComponent(getPartnerRef() ?? '')}&excludeSessionToken=${encodeURIComponent(sessionToken ?? '')}`,
       );
     } catch {
       return false;
