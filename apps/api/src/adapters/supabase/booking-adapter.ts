@@ -9,6 +9,7 @@ import type {
 } from '@lolas/domain';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseClient } from './client.js';
+import { ownerUseNotEndedBy } from '../../lib/owner-use-window.js';
 
 interface HoldDbRow {
   id: string;
@@ -252,14 +253,14 @@ export async function evaluateAvailability(
     .from('fleet_unavailability').select('vehicle_id, starts_at, ends_at')
     .eq('store_id', storeId).eq('type', 'owner_use').is('cancelled_at', null)
     .in('vehicle_id', vehicleIds)
-    .lt('starts_at', dropoffDatetime).gt('ends_at', pickupDatetime);
+    .lt('starts_at', dropoffDatetime).or(ownerUseNotEndedBy(pickupDatetime));
   if (ownerUseErr) throw new Error(`fleet unavailability query failed: ${ownerUseErr.message}`);
-  for (const row of (ownerUseRows ?? []) as Array<{ vehicle_id: string; starts_at: string; ends_at: string }>) {
+  for (const row of (ownerUseRows ?? []) as Array<{ vehicle_id: string; starts_at: string; ends_at: string | null }>) {
     addExactBlocker(row.vehicle_id, 'owner_use');
     trackVehicleBlockStart(row.vehicle_id, row.starts_at);
     const modelId = vehicleToModel.get(row.vehicle_id);
     if (modelId) {
-      trackDrop(modelId, row.ends_at);
+      if (row.ends_at) trackDrop(modelId, row.ends_at);
       trackConflictStart(modelId, row.starts_at);
       trackExactVehicleFromStart(row.vehicle_id, modelId, row.starts_at);
     }

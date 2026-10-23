@@ -40,13 +40,13 @@ export interface VehicleSummary {
   activeOwnerUse?: {
     id: string;
     startsAt: string;
-    endsAt: string;
+    endsAt: string | null;
     note: string | null;
   } | null;
   ownerUsePeriods?: Array<{
     id: string;
     startsAt: string;
-    endsAt: string;
+    endsAt: string | null;
     note: string | null;
   }>;
 }

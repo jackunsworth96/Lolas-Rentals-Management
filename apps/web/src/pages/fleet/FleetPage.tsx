@@ -132,8 +132,12 @@ export default function FleetPage() {
     const scheduled = vehicle.ownerUsePeriods?.[0];
     return scheduled ? { label: 'Owner Use scheduled', active: false, period: scheduled } : null;
   };
-  const ownerUseDates = (period: { startsAt: string; endsAt: string }) =>
-    `${new Date(period.startsAt).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' })}–${new Date(period.endsAt).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' })}`;
+  const ownerUseDates = (period: { startsAt: string; endsAt: string | null }) => {
+    const start = new Date(period.startsAt).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' });
+    if (!period.endsAt) return `${start}–until further notice`;
+    const end = new Date(period.endsAt).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' });
+    return `${start}–${end}`;
+  };
 
   const fleetSummary = useMemo(() => {
     const totalFleetCost = filtered.reduce((sum, v) => {

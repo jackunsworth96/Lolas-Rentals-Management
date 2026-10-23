@@ -46,6 +46,7 @@ export function OwnerUseModal({ open, onClose, vehicleId, vehicleName, storeId }
   const [editing, setEditing] = useState<FleetUnavailability | null>(null);
   const [startsAt, setStartsAt] = useState('');
   const [endsAt, setEndsAt] = useState('');
+  const [untilFurtherNotice, setUntilFurtherNotice] = useState(false);
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
 
@@ -56,6 +57,7 @@ export function OwnerUseModal({ open, onClose, vehicleId, vehicleName, storeId }
     setEditing(null);
     setStartsAt(manilaInputValue(start));
     setEndsAt(manilaInputValue(end));
+    setUntilFurtherNotice(false);
     setNote('');
     setError('');
   };
@@ -67,7 +69,8 @@ export function OwnerUseModal({ open, onClose, vehicleId, vehicleName, storeId }
   const startEditing = (period: FleetUnavailability) => {
     setEditing(period);
     setStartsAt(manilaInputValue(period.startsAt));
-    setEndsAt(manilaInputValue(period.endsAt));
+    setUntilFurtherNotice(period.endsAt == null);
+    setEndsAt(period.endsAt ? manilaInputValue(period.endsAt) : '');
     setNote(period.note ?? '');
     setError('');
   };
@@ -76,8 +79,8 @@ export function OwnerUseModal({ open, onClose, vehicleId, vehicleName, storeId }
     event.preventDefault();
     setError('');
     const startIso = toManilaIso(startsAt);
-    const endIso = toManilaIso(endsAt);
-    if (!startIso || !endIso || new Date(startIso) >= new Date(endIso)) {
+    const endIso = untilFurtherNotice ? null : toManilaIso(endsAt);
+    if (!startIso || (!untilFurtherNotice && (!endIso || new Date(startIso) >= new Date(endIso)))) {
       setError('End must be after start.');
       return;
     }
@@ -107,18 +110,23 @@ export function OwnerUseModal({ open, onClose, vehicleId, vehicleName, storeId }
   };
 
   const now = Date.now();
-  const activeOrUpcoming = (periods.data ?? []).filter((period) => new Date(period.endsAt).getTime() > now);
+  const activeOrUpcoming = (periods.data ?? []).filter((period) =>
+    period.endsAt == null || new Date(period.endsAt).getTime() > now,
+  );
 
   return (
     <Modal open={open} onClose={onClose} title={`Owner Use — ${vehicleName}`} size="lg">
       <div className="space-y-5">
         <p className="text-sm text-gray-600">
-          Owner use removes this vehicle from customer and partner availability only for the selected period.
+          Owner use removes this vehicle from bookings for the selected period.
+          Choose until further notice to leave it marked until you cancel the period.
           Times are shown in Manila time.
         </p>
 
         <form onSubmit={save} className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
-          <h3 className="text-sm font-semibold text-gray-900">{editing ? 'Edit owner use' : 'Schedule owner use'}</h3>
+          <h3 className="text-sm font-semibold text-gray-900">
+            {editing ? 'Edit owner use' : untilFurtherNotice ? 'Mark owner use' : 'Schedule owner use'}
+          </h3>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm text-gray-700">
               Start
@@ -127,10 +135,15 @@ export function OwnerUseModal({ open, onClose, vehicleId, vehicleName, storeId }
             </label>
             <label className="text-sm text-gray-700">
               End
-              <input required type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" />
+              <input required={!untilFurtherNotice} disabled={untilFurtherNotice} type="datetime-local" value={untilFurtherNotice ? '' : endsAt}
+                onChange={(event) => setEndsAt(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100 disabled:text-gray-400" />
             </label>
           </div>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" checked={untilFurtherNotice} onChange={(event) => setUntilFurtherNotice(event.target.checked)} />
+            Until further notice
+          </label>
           <label className="block text-sm text-gray-700">
             Note (optional)
             <textarea value={note} maxLength={500} onChange={(event) => setNote(event.target.value)} rows={2}
@@ -146,7 +159,7 @@ export function OwnerUseModal({ open, onClose, vehicleId, vehicleName, storeId }
             )}
             <button type="submit" disabled={createPeriod.isPending || updatePeriod.isPending}
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
-              {editing ? 'Save changes' : 'Schedule owner use'}
+              {editing ? 'Save changes' : untilFurtherNotice ? 'Mark as owner use' : 'Schedule owner use'}
             </button>
           </div>
         </form>
@@ -166,7 +179,9 @@ export function OwnerUseModal({ open, onClose, vehicleId, vehicleName, storeId }
                     <div>
                       <div className="flex items-center gap-2 text-sm font-medium text-amber-900">
                         <span>{active ? 'Owner Use' : 'Scheduled Owner Use'}</span>
-                        <span className="font-normal text-amber-700">{displayDate(period.startsAt)} — {displayDate(period.endsAt)}</span>
+                        <span className="font-normal text-amber-700">
+                          {displayDate(period.startsAt)} — {period.endsAt ? displayDate(period.endsAt) : 'until further notice'}
+                        </span>
                       </div>
                       {period.note && <p className="mt-1 text-xs text-amber-800">{period.note}</p>}
                     </div>

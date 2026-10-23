@@ -10,6 +10,7 @@ import {
 } from '@lolas/domain';
 import { resolveCharityPayableAccount } from '../../adapters/supabase/maintenance-expense-rpc.js';
 import { formatManilaDate } from '../../utils/manila-date.js';
+import { assertAssignmentsNotOnOwnerUse } from '../../lib/assert-owner-use-assignment.js';
 
 export interface ActivateOrderDeps {
   orderRepo: OrderRepository;
@@ -68,6 +69,7 @@ export async function activateOrder(
       throw new NonRentableVehicleError(vehicle.id, vehicle.status);
     }
   }
+  await assertAssignmentsNotOnOwnerUse(input.vehicleAssignments);
 
   const orderItems: OrderItem[] = input.vehicleAssignments.map((a) => ({
     id: a.id,

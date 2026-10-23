@@ -8,7 +8,7 @@ export interface FleetUnavailability {
   storeId: string;
   type: 'owner_use';
   startsAt: string;
-  endsAt: string;
+  endsAt: string | null;
   note: string | null;
   createdBy: string | null;
   cancelledAt: string | null;
@@ -81,7 +81,7 @@ export function useCreateFleetUnavailability() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: {
-      vehicleId: string; storeId: string; type: 'owner_use'; startsAt: string; endsAt: string; note?: string | null;
+      vehicleId: string; storeId: string; type: 'owner_use'; startsAt: string; endsAt: string | null; note?: string | null;
     }) => api.post<FleetUnavailability>('/fleet/unavailability', body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['fleet'] });
@@ -93,7 +93,7 @@ export function useCreateFleetUnavailability() {
 export function useUpdateFleetUnavailability() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...body }: { id: string; startsAt: string; endsAt: string; note?: string | null }) =>
+    mutationFn: ({ id, ...body }: { id: string; startsAt: string; endsAt: string | null; note?: string | null }) =>
       api.put<FleetUnavailability>(`/fleet/unavailability/${id}`, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['fleet'] });

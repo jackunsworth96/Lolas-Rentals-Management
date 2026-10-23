@@ -27,6 +27,7 @@ def query(sql, success=True):
 query('DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;')
 query((Path(__file__).parent / 'fixtures/allocation-schema.sql').read_text())
 query((root / 'supabase/migrations/20260927000000_partner_allocations.sql').read_text())
+query((root / 'supabase/migrations/20261023023957_owner_use_open_ended.sql').read_text())
 partner = '00000000-0000-0000-0000-000000000001'
 query(f"""
 INSERT INTO stores VALUES ('test');
@@ -133,6 +134,12 @@ query("INSERT INTO fleet_unavailability(store_id,vehicle_id,starts_at,ends_at) V
 assert json.loads(query("SELECT allocation_availability('season','2027-03-10T09:00:00+08:00','2027-03-11T09:00:00+08:00')"))[0]['availableCount'] == 0
 query("UPDATE fleet_unavailability SET cancelled_at=now() WHERE vehicle_id='season-v2'")
 assert json.loads(query("SELECT allocation_availability('season','2027-03-10T09:00:00+08:00','2027-03-11T09:00:00+08:00')"))[0]['availableCount'] == 1
+# Open-ended owner use stays blocked until it is cancelled.
+before = json.loads(query("SELECT allocation_availability('season','2027-04-10T09:00:00+08:00','2027-04-11T09:00:00+08:00')"))[0]['availableCount']
+query("INSERT INTO fleet_unavailability(store_id,vehicle_id,starts_at,ends_at) VALUES ('season','season-v3','2027-04-01T09:00:00+08:00',NULL)")
+assert json.loads(query("SELECT allocation_availability('season','2027-04-10T09:00:00+08:00','2027-04-11T09:00:00+08:00')"))[0]['availableCount'] == before - 1
+query("UPDATE fleet_unavailability SET cancelled_at=now() WHERE vehicle_id='season-v3' AND ends_at IS NULL")
+assert json.loads(query("SELECT allocation_availability('season','2027-04-10T09:00:00+08:00','2027-04-11T09:00:00+08:00')"))[0]['availableCount'] == before
 # A newly added, unclassified model can be classified after activation.
 query("INSERT INTO vehicle_models VALUES ('new-bike','New Bike',NULL,true); INSERT INTO fleet VALUES ('season-new','season','new-bike','Available')")
 assert query("SELECT count(*) FROM partner_allocation_shortfalls WHERE store_id='season'") == '1'

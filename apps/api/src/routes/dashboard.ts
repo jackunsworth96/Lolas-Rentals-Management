@@ -5,7 +5,7 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { formatManilaDate } from '../utils/manila-date.js';
 import { getPartnerCommissionStats } from '../lib/partner-commission.js';
 import { getDashboardAvailabilityModel } from '../lib/dashboard-availability-model.js';
-import { ownerUseVehicleIdsOverlapping } from '../lib/owner-use-window.js';
+import { ownerUseNotEndedBy, ownerUseVehicleIdsOverlapping } from '../lib/owner-use-window.js';
 
 const router = Router();
 router.use(authenticate);
@@ -305,7 +305,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
         .select('vehicle_id, store_id, starts_at, ends_at')
         .eq('type', 'owner_use')
         .is('cancelled_at', null)
-        .gt('ends_at', new Date().toISOString())
+        .or(ownerUseNotEndedBy(new Date().toISOString()))
         .lt('starts_at', `${tomorrowDate}T23:59:59.999+08:00`)
         .then((r) => ({ key: 'ownerUse' as const, ...r })),
     ];
@@ -1066,7 +1066,7 @@ router.get('/availability-detail', async (req, res, next) => {
         .select('vehicle_id, store_id, starts_at, ends_at')
         .eq('type', 'owner_use')
         .is('cancelled_at', null)
-        .gt('ends_at', new Date(rangeStartMs).toISOString())
+        .or(ownerUseNotEndedBy(new Date(rangeStartMs).toISOString()))
         .lt('starts_at', new Date(rangeEndMs).toISOString()),
     ]);
 

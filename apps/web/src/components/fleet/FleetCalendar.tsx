@@ -18,7 +18,7 @@ interface CalendarBooking {
 interface CalendarOwnerUse {
   id: string;
   startsAt: string;
-  endsAt: string;
+  endsAt: string | null;
   note: string | null;
 }
 
@@ -208,8 +208,16 @@ const GanttOwnerUseBar = memo(function GanttOwnerUseBar({
   rangeFrom: Date;
   daysCount: number;
 }) {
-  const { left, width } = computeBarStyle({ pickupDatetime: period.startsAt, dropoffDatetime: period.endsAt }, rangeFrom, daysCount);
-  const title = `Owner Use\n${new Date(period.startsAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })} → ${new Date(period.endsAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}${period.note ? `\n${period.note}` : ''}`;
+  const visibleEnd = new Date(rangeFrom.getTime() + daysCount * 24 * 60 * 60 * 1000).toISOString();
+  const { left, width } = computeBarStyle(
+    { pickupDatetime: period.startsAt, dropoffDatetime: period.endsAt ?? visibleEnd },
+    rangeFrom,
+    daysCount,
+  );
+  const endLabel = period.endsAt
+    ? new Date(period.endsAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })
+    : 'until further notice';
+  const title = `Owner Use\n${new Date(period.startsAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })} → ${endLabel}${period.note ? `\n${period.note}` : ''}`;
   return (
     <div
       className="absolute z-20 flex items-center truncate rounded border border-amber-500 bg-amber-200 px-1.5 text-[9px] font-semibold text-amber-900"

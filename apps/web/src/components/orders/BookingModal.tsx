@@ -24,6 +24,10 @@ import {
   partnerAllowsFreeDeliveryLocation,
   partnerEstablishmentLocation,
 } from '../../utils/partnerDeliveryLocation.js';
+import {
+  ownerUseOverlapsBooking,
+  ownerUsePeriodsFromVehicle,
+} from '../../utils/owner-use-availability.js';
 
 // ── AM/PM datetime helpers ──
 
@@ -590,9 +594,23 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const canGoNext = stepIndex < STEPS.length - 1;
   const canGoBack = stepIndex > 0;
 
+  function vehicleBlockedByOwnerUse(row: VehicleRow): boolean {
+    if (!row.vehicleId || !fleet) return false;
+    const vehicle = fleet.find((fv) => fv.id === row.vehicleId);
+    if (!vehicle) return false;
+    return ownerUseOverlapsBooking(
+      ownerUsePeriodsFromVehicle(vehicle),
+      row.pickupDatetime,
+      row.dropoffDatetime,
+    );
+  }
+
+  const ownerUseConflict = vehicles.some(vehicleBlockedByOwnerUse);
+
   function goNext() {
     if (step === 'review' && !customer.name.trim()) return;
     if (step === 'vehicles' && vehicles.every((v) => !v.vehicleId)) return;
+    if (step === 'vehicles' && ownerUseConflict) return;
 
     if (step === 'vehicles') {
       initAddons();
@@ -772,6 +790,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   async function handleActivate() {
     if (!canEditOrders) return;
     if (!depositValid) return;
+    if (ownerUseConflict) return;
     processMutation.mutate(buildPayload(), {
       onSuccess: () => {
         setSuccessMessage('Order activated successfully!');
@@ -1260,6 +1279,15 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                 const merged = { ...dropoffParts, ...patch };
                 updateVehicle(i, { dropoffDatetime: combineFromParts(merged) });
               };
+              const ownerUseVehicles = availableVehicles.filter((fv) => ownerUseOverlapsBooking(
+                ownerUsePeriodsFromVehicle(fv),
+                v.pickupDatetime,
+                v.dropoffDatetime,
+              ));
+              const selectableVehicles = availableVehicles.filter((fv) =>
+                !ownerUseVehicles.some((blocked) => blocked.id === fv.id),
+              );
+              const selectedOwnerUse = ownerUseVehicles.find((fv) => String(fv.id) === v.vehicleId);
 
               return (
               <div key={i} className="rounded-lg border border-gray-200 p-4">
@@ -1281,12 +1309,23 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                       className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     >
                       <option value="">Select vehicle...</option>
-                      {availableVehicles.map((fv) => (
+                      {selectableVehicles.map((fv) => (
                         <option key={String(fv.id)} value={String(fv.id)}>
                           {String(fv.name ?? fv.id)}
                         </option>
                       ))}
+                      {selectedOwnerUse && (
+                        <option value={String(selectedOwnerUse.id)} disabled>
+                          {String(selectedOwnerUse.name ?? selectedOwnerUse.id)} (owner use)
+                        </option>
+                      )}
                     </select>
+                    {ownerUseVehicles.length > 0 && (
+                      <p className="mt-1 text-xs text-amber-700">
+                        {ownerUseVehicles.map((fv) => String(fv.name ?? fv.id)).join(', ')}{' '}
+                        {ownerUseVehicles.length === 1 ? 'is' : 'are'} reserved for owner use during these dates.
+                      </p>
+                    )}
                     {v.vehicleId && !fleet?.find((fv) => fv.id === v.vehicleId)?.modelId && (
                       <p className="mt-1 text-xs text-amber-600">No model linked — set vehicle model in fleet settings to auto-fill rate.</p>
                     )}
@@ -1913,10 +1952,12 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                 </button>
                 <button
                   onClick={handleActivate}
-                  disabled={processMutation.isPending || !depositValid || transferAmountMissing}
+                  disabled={processMutation.isPending || !depositValid || transferAmountMissing || ownerUseConflict}
                   className="rounded-lg bg-green-600 px-6 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
                   title={
-                    transferAmountMissing
+                    ownerUseConflict
+                      ? 'Choose a vehicle that is not reserved for owner use'
+                      : transferAmountMissing
                       ? 'Set the transfer amount before activating'
                       : !depositValid
                         ? 'Security deposit is required (or waive it)'
@@ -1931,7 +1972,9 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
         ) : (
           <button
             onClick={goNext}
-            className="rounded-lg bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            disabled={step === 'vehicles' && ownerUseConflict}
+            title={step === 'vehicles' && ownerUseConflict ? 'Choose a vehicle that is not reserved for owner use' : undefined}
+            className="rounded-lg bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
             Next
           </button>
