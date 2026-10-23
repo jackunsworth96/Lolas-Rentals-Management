@@ -85,15 +85,41 @@ export interface AvailabilityEvaluation {
   explanation: AvailabilityExplanation;
 }
 
+type CapacityPeriod = { start: number; end: number; hold: boolean };
+
+function peakCapacity(periods: CapacityPeriod[], start: number, end: number): number {
+  const events = new Map<number, number>();
+  for (const period of periods) {
+    const from = Math.max(start, period.start);
+    const until = Math.min(end, period.end);
+    if (from >= until) continue;
+    events.set(from, (events.get(from) ?? 0) + 1);
+    events.set(until, (events.get(until) ?? 0) - 1);
+  }
+  let current = 0;
+  let peak = 0;
+  for (const [, delta] of [...events].sort(([a], [b]) => a - b)) {
+    current += delta;
+    peak = Math.max(peak, current);
+  }
+  return peak;
+}
+
 /** Single source of truth for public counts and staff-only availability diagnostics. */
 export async function evaluateAvailability(
   query: AvailabilityQuery,
   sb: SupabaseClient = getSupabaseClient(),
 ): Promise<AvailabilityEvaluation> {
-  const { storeId, pickupDatetime, dropoffDatetime, excludeSessionToken, excludeOrderItemId } = query;
+  const { storeId, pickupDatetime, dropoffDatetime, excludeSessionToken, excludeOrderItemId, excludeRawOrderId } = query;
   const BUFFER_MS = 30 * 60 * 1000;
+  const pickupMs = new Date(pickupDatetime).getTime();
+  const dropoffMs = new Date(dropoffDatetime).getTime() + BUFFER_MS;
+  if (!Number.isFinite(pickupMs) || !Number.isFinite(dropoffMs) || dropoffMs - BUFFER_MS <= pickupMs) {
+    throw Object.assign(new Error('Dropoff must be after a valid pickup datetime'), { statusCode: 422 });
+  }
   const pickupBuffered = new Date(new Date(pickupDatetime).getTime() - BUFFER_MS).toISOString();
-  const NON_RENTABLE = ['Under Maintenance', 'Sold', 'Service Vehicle', 'Closed', 'Retired', 'Pending ORCR'];
+  const dropoffBuffered = new Date(dropoffMs).toISOString();
+  const NON_RENTABLE = ['Under Maintenance', 'Maintenance', 'Inactive', 'Sold', 'Service Vehicle', 'Closed', 'Retired', 'Pending ORCR'];
 
   type FleetRow = { id: string; name: string; model_id: string | null; status: string };
   const { data: fleet, error: fleetErr } = await sb
@@ -134,22 +160,22 @@ export async function evaluateAvailability(
   const minDropoff = new Map<string, string>();
   const trackDrop = (modelId: string, dropoff: string) => {
     const previous = minDropoff.get(modelId);
-    if (!previous || dropoff < previous) minDropoff.set(modelId, dropoff);
+    if (!previous || new Date(dropoff).getTime() < new Date(previous).getTime()) minDropoff.set(modelId, dropoff);
   };
 
   // Track earliest blocker that starts AFTER the user's pickup (for partial-availability detection)
   const minConflictStart = new Map<string, string>();
   const trackConflictStart = (modelId: string, blockerPickup: string) => {
-    if (blockerPickup <= pickupDatetime) return;
+    if (new Date(blockerPickup).getTime() <= pickupMs) return;
     const previous = minConflictStart.get(modelId);
-    if (!previous || blockerPickup < previous) minConflictStart.set(modelId, blockerPickup);
+    if (!previous || new Date(blockerPickup).getTime() < new Date(previous).getTime()) minConflictStart.set(modelId, blockerPickup);
   };
 
   // Track units that were already blocked AT the start of the window (pickup ≤ user's pickupDatetime)
   // Used to verify that at least one unit was actually free at pickup time before claiming partial availability.
   const exactVehicleBlockedFromStart = new Map<string, Set<string>>(); // model → set of vehicle IDs
   const trackExactVehicleFromStart = (vehicleId: string, modelId: string, blockerPickup: string) => {
-    if (blockerPickup > pickupDatetime) return;
+    if (new Date(blockerPickup).getTime() > pickupMs) return;
     const set = exactVehicleBlockedFromStart.get(modelId) ?? new Set<string>();
     set.add(vehicleId);
     exactVehicleBlockedFromStart.set(modelId, set);
@@ -163,7 +189,8 @@ export async function evaluateAvailability(
   const initiallyBlockedVehicles = new Set<string>();
   const futureVehicleBlockStarts = new Map<string, string>();
   const initialCapacityDeductions = new Map<string, number>();
-  const futureCapacityBlockStarts = new Map<string, string[]>();
+  const futureCapacityBlockStarts = new Map<string, Array<{ at: string; deduction: number }>>();
+  const capacityPeriods = new Map<string, CapacityPeriod[]>();
 
   const trackVehicleBlockStart = (vehicleId: string, startsAt: string | null | undefined) => {
     if (!startsAt) return;
@@ -173,17 +200,22 @@ export async function evaluateAvailability(
       return;
     }
     const previous = futureVehicleBlockStarts.get(vehicleId);
-    if (!previous || startsAt < previous) futureVehicleBlockStarts.set(vehicleId, startsAt);
+    if (!previous || startsMs < new Date(previous).getTime()) futureVehicleBlockStarts.set(vehicleId, new Date(startsMs).toISOString());
   };
-  const trackCapacityBlockStart = (modelId: string, startsAt: string | null | undefined) => {
+  const trackCapacityBlockStart = (modelId: string, startsAt: string, endsAt: string, hold: boolean) => {
     if (!startsAt) return;
     const startsMs = new Date(startsAt).getTime();
+    const endsMs = new Date(endsAt).getTime() + BUFFER_MS;
+    const periods = capacityPeriods.get(modelId) ?? [];
+    periods.push({ start: startsMs, end: endsMs, hold });
+    capacityPeriods.set(modelId, periods);
+    const starts = futureCapacityBlockStarts.get(modelId) ?? [];
     if (startsMs <= requestedPickupMs) {
       initialCapacityDeductions.set(modelId, (initialCapacityDeductions.get(modelId) ?? 0) + 1);
-      return;
+    } else {
+      starts.push({ at: new Date(startsMs).toISOString(), deduction: 1 });
     }
-    const starts = futureCapacityBlockStarts.get(modelId) ?? [];
-    starts.push(startsAt);
+    starts.push({ at: new Date(endsMs).toISOString(), deduction: -1 });
     futureCapacityBlockStarts.set(modelId, starts);
   };
   const addExactBlocker = (vehicleId: string, reason: ExactAvailabilityReason) => {
@@ -196,7 +228,7 @@ export async function evaluateAvailability(
     .from('order_items').select('id, vehicle_id, pickup_datetime, dropoff_datetime, orders!inner(status)')
     .eq('store_id', storeId).not('vehicle_id', 'is', null)
     .not('pickup_datetime', 'is', null).not('dropoff_datetime', 'is', null)
-    .lt('pickup_datetime', dropoffDatetime).gt('dropoff_datetime', pickupBuffered);
+    .lt('pickup_datetime', dropoffBuffered).gt('dropoff_datetime', pickupBuffered);
   if (bookedErr) throw new Error(`order_items overlap query failed: ${bookedErr.message}`);
   for (const row of (bookedRows ?? []) as Array<{ id: string; vehicle_id: string; pickup_datetime: string; dropoff_datetime: string; orders: unknown }>) {
     if (excludeOrderItemId && row.id === excludeOrderItemId) continue;
@@ -215,29 +247,29 @@ export async function evaluateAvailability(
   }
 
   const { data: directRows, error: directErr } = await sb
-    .from('orders_raw').select('vehicle_model_id, pickup_datetime, dropoff_datetime')
+    .from('orders_raw').select('id, vehicle_model_id, pickup_datetime, dropoff_datetime')
     .eq('store_id', storeId).eq('booking_channel', 'direct').eq('status', 'unprocessed')
     .not('vehicle_model_id', 'is', null)
-    .lt('pickup_datetime', dropoffDatetime).gt('dropoff_datetime', pickupBuffered);
+    .lt('pickup_datetime', dropoffBuffered).gt('dropoff_datetime', pickupBuffered);
   if (directErr) throw new Error(`orders_raw direct overlap query failed: ${directErr.message}`);
-  const directReservedByModel = new Map<string, number>();
-  for (const row of (directRows ?? []) as Array<{ vehicle_model_id: string; pickup_datetime: string; dropoff_datetime: string }>) {
-    directReservedByModel.set(row.vehicle_model_id, (directReservedByModel.get(row.vehicle_model_id) ?? 0) + 1);
+  for (const row of (directRows ?? []) as Array<{ id: string; vehicle_model_id: string; pickup_datetime: string; dropoff_datetime: string }>) {
+    if (excludeRawOrderId && row.id === excludeRawOrderId) continue;
     trackDrop(row.vehicle_model_id, row.dropoff_datetime);
-    trackCapacityBlockStart(row.vehicle_model_id, row.pickup_datetime);
+    trackCapacityBlockStart(row.vehicle_model_id, row.pickup_datetime, row.dropoff_datetime, false);
     trackConflictStart(row.vehicle_model_id, row.pickup_datetime);
-    if (row.pickup_datetime <= pickupDatetime) {
+    if (new Date(row.pickup_datetime).getTime() <= pickupMs) {
       directFromStart.set(row.vehicle_model_id, (directFromStart.get(row.vehicle_model_id) ?? 0) + 1);
     }
   }
 
   const { data: walkInRows, error: walkInErr } = await sb
-    .from('orders_raw').select('vehicle_id, pickup_datetime, dropoff_datetime')
+    .from('orders_raw').select('id, vehicle_id, pickup_datetime, dropoff_datetime')
     .eq('store_id', storeId).eq('booking_channel', 'walk_in').eq('status', 'unprocessed')
     .not('vehicle_id', 'is', null)
-    .lt('pickup_datetime', dropoffDatetime).gt('dropoff_datetime', pickupBuffered);
+    .lt('pickup_datetime', dropoffBuffered).gt('dropoff_datetime', pickupBuffered);
   if (walkInErr) throw new Error(`orders_raw walk-in overlap query failed: ${walkInErr.message}`);
-  for (const row of (walkInRows ?? []) as Array<{ vehicle_id: string; pickup_datetime: string; dropoff_datetime: string }>) {
+  for (const row of (walkInRows ?? []) as Array<{ id: string; vehicle_id: string; pickup_datetime: string; dropoff_datetime: string }>) {
+    if (excludeRawOrderId && row.id === excludeRawOrderId) continue;
     addExactBlocker(row.vehicle_id, 'walk_in');
     const modelId = vehicleToModel.get(row.vehicle_id);
     if (modelId) {
@@ -253,7 +285,7 @@ export async function evaluateAvailability(
     .from('fleet_unavailability').select('vehicle_id, starts_at, ends_at')
     .eq('store_id', storeId).eq('type', 'owner_use').is('cancelled_at', null)
     .in('vehicle_id', vehicleIds)
-    .lt('starts_at', dropoffDatetime).or(ownerUseNotEndedBy(pickupDatetime));
+    .lt('starts_at', dropoffBuffered).or(ownerUseNotEndedBy(pickupDatetime));
   if (ownerUseErr) throw new Error(`fleet unavailability query failed: ${ownerUseErr.message}`);
   for (const row of (ownerUseRows ?? []) as Array<{ vehicle_id: string; starts_at: string; ends_at: string | null }>) {
     addExactBlocker(row.vehicle_id, 'owner_use');
@@ -270,20 +302,18 @@ export async function evaluateAvailability(
   let holdsQuery = sb
     .from('booking_holds').select('vehicle_model_id, pickup_datetime, dropoff_datetime, expires_at')
     .eq('store_id', storeId).gt('expires_at', nowIso)
-    .lt('pickup_datetime', dropoffDatetime).gt('dropoff_datetime', pickupDatetime);
+    .lt('pickup_datetime', dropoffBuffered).gt('dropoff_datetime', pickupBuffered);
   if (excludeSessionToken) holdsQuery = holdsQuery.neq('session_token', excludeSessionToken);
   const { data: holdRows, error: holdErr } = await holdsQuery;
   if (holdErr) throw new Error(`booking_holds overlap query failed: ${holdErr.message}`);
-  const holdsByModel = new Map<string, number>();
   const minHoldExpiry = new Map<string, string>();
   for (const row of (holdRows ?? []) as Array<{ vehicle_model_id: string; pickup_datetime: string; dropoff_datetime: string; expires_at: string }>) {
-    holdsByModel.set(row.vehicle_model_id, (holdsByModel.get(row.vehicle_model_id) ?? 0) + 1);
     trackDrop(row.vehicle_model_id, row.dropoff_datetime);
-    trackCapacityBlockStart(row.vehicle_model_id, row.pickup_datetime);
+    trackCapacityBlockStart(row.vehicle_model_id, row.pickup_datetime, row.dropoff_datetime, true);
     trackConflictStart(row.vehicle_model_id, row.pickup_datetime);
     const previous = minHoldExpiry.get(row.vehicle_model_id);
     if (!previous || row.expires_at < previous) minHoldExpiry.set(row.vehicle_model_id, row.expires_at);
-    if (row.pickup_datetime <= pickupDatetime) {
+    if (new Date(row.pickup_datetime).getTime() <= pickupMs) {
       holdsFromStart.set(row.vehicle_model_id, (holdsFromStart.get(row.vehicle_model_id) ?? 0) + 1);
     }
   }
@@ -319,8 +349,10 @@ export async function evaluateAvailability(
         reasons: [...exactBlockers.get(vehicleId)!],
       }));
     let available = ids.size - excludedVehicles.length;
-    const directReservations = directReservedByModel.get(modelId) ?? 0;
-    const holds = holdsByModel.get(modelId) ?? 0;
+    const periods = capacityPeriods.get(modelId) ?? [];
+    const directReservations = peakCapacity(periods.filter((period) => !period.hold), pickupMs, dropoffMs);
+    // Holds only deduct the extra peak demand beyond confirmed reservations.
+    const holds = peakCapacity(periods, pickupMs, dropoffMs) - directReservations;
     available -= directReservations;
     const confirmedAvailable = available;
     available = Math.max(0, available - holds);
@@ -340,13 +372,14 @@ export async function evaluateAvailability(
           const startsAt = futureVehicleBlockStarts.get(vehicleId);
           if (startsAt) events.set(startsAt, (events.get(startsAt) ?? 0) + 1);
         }
-        for (const startsAt of futureCapacityBlockStarts.get(modelId) ?? []) {
-          events.set(startsAt, (events.get(startsAt) ?? 0) + 1);
+        for (const event of futureCapacityBlockStarts.get(modelId) ?? []) {
+          events.set(event.at, (events.get(event.at) ?? 0) + event.deduction);
         }
-        for (const [startsAt, deduction] of [...events].sort(([a], [b]) => a.localeCompare(b))) {
+        for (const [startsAt, deduction] of [...events].sort(([a], [b]) => new Date(a).getTime() - new Date(b).getTime())) {
           continuousCapacity -= deduction;
           if (continuousCapacity < requestedQuantity) {
-            entry.availableUntil = startsAt;
+            const latestReturn = new Date(startsAt).getTime() - BUFFER_MS;
+            if (latestReturn > pickupMs) entry.availableUntil = new Date(latestReturn).toISOString();
             break;
           }
         }

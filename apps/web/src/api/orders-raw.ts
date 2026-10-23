@@ -86,6 +86,7 @@ export function useProcessRawOrder() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['orders-raw'] });
       qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['fleet'] });
     },
   });
 }

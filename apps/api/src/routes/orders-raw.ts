@@ -13,6 +13,7 @@ import { sendEmail, bookingConfirmationHtml, bookingCancellationHtml, walkInStaf
 import { formatManilaDate, formatManilaDateTime } from '../utils/manila-date.js';
 import { sendTelegramAlert, sendTelegramAlertPaidOrdersStaggered, getTelegramChatId } from '../lib/telegram.js';
 import { deriveTransportService } from '../lib/transport-service.js';
+import { assertAssignmentsAvailable } from '../lib/assert-vehicle-assignment.js';
 
 /** GET list / GET :id — explicit columns; excludes payload (V10-11). */
 const ORDERS_RAW_INBOX_COLUMNS =
@@ -158,43 +159,7 @@ router.post('/walk-in-reserved', requirePermission(Permission.EditOrders), async
     }
 
 
-    // ── Server-side double-booking check ──────────────────────────
-    // 1. Check active order_items for the exact vehicle overlapping the window
-    const { data: overlappingItems } = await supabase
-      .from('order_items')
-      .select('id')
-      .eq('vehicle_id', body.vehicleId)
-      .lt('pickup_datetime', body.dropoffDatetime)
-      .gt('dropoff_datetime', body.pickupDatetime)
-      .limit(1);
-
-    if (overlappingItems && overlappingItems.length > 0) {
-      res.status(409).json({
-        success: false,
-        error: { code: 'VEHICLE_UNAVAILABLE', message: 'This vehicle is already booked for the selected dates. Please choose different dates or another vehicle.' },
-      });
-      return;
-    }
-
-    // 2. Check unprocessed walk-in reservations for the same vehicle and window
-    const { data: overlappingReserved } = await supabase
-      .from('orders_raw')
-      .select('id')
-      .eq('vehicle_id', body.vehicleId)
-      .eq('booking_channel', 'walk_in')
-      .eq('status', 'unprocessed')
-      .lt('pickup_datetime', body.dropoffDatetime)
-      .gt('dropoff_datetime', body.pickupDatetime)
-      .limit(1);
-
-    if (overlappingReserved && overlappingReserved.length > 0) {
-      res.status(409).json({
-        success: false,
-        error: { code: 'VEHICLE_UNAVAILABLE', message: 'This vehicle already has a pending reservation for the selected dates. Please choose different dates or another vehicle.' },
-      });
-      return;
-    }
-    // ─────────────────────────────────────────────────────────────
+    await assertAssignmentsAvailable([body]);
 
     const source = resolveSourceFromStore(body.storeId);
     const orderReference = await uniqueWalkInReference(source);
@@ -373,6 +338,8 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
     if (body.partnerRef && (!bookingPartner || bookingPartner.storeId !== body.storeId)) {
       res.status(400).json({ success: false, error: { message: 'Choose an active partner in this store' } }); return;
     }
+
+    await assertAssignmentsAvailable([body]);
 
     const employeeId = req.user!.employeeId;
 

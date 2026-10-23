@@ -44,6 +44,8 @@ export interface AvailabilityQuery {
    * Used by extension flows so the rental being extended does not block itself,
    * especially because availability applies a 30-minute handover buffer. */
   excludeOrderItemId?: string;
+  /** Raw reservation being assigned by staff, so it does not block itself. */
+  excludeRawOrderId?: string;
 }
 
 export interface HoldRow {

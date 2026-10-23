@@ -118,8 +118,18 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
   );
 
   // ── Data hooks ──
-  const { data: availableVehicles = [], isLoading: vehiclesLoading } =
+  const { data: availableVehicles = [], isFetching: vehiclesLoading, isError: vehiclesError } =
     useAvailableVehicles(storeId, pickupDatetime, dropoffDatetime);
+  const selectedVehicleAvailable = !vehiclesLoading && !vehiclesError
+    && availableVehicles.some((vehicle) => vehicle.id === selectedVehicleId);
+
+  useEffect(() => {
+    if (selectedVehicleId && !vehiclesLoading && !vehiclesError && !selectedVehicleAvailable) {
+      setSelectedVehicleId('');
+      setVehicleModelId('');
+      setSelectedVehicleName('');
+    }
+  }, [selectedVehicleId, vehiclesLoading, vehiclesError, selectedVehicleAvailable]);
   const { data: locations } = useLocations(storeId) as { data: Location[] | undefined };
 
   // ── Auto-select store location (zero-fee) on open / locations load ──
@@ -202,7 +212,7 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!selectedVehicleId || !datesValid) return;
+    if (!selectedVehicleAvailable || !datesValid) return;
     const baseTotal = quote?.grandTotalWithFees ?? quote?.grandTotal ?? undefined;
     const discountedTotal = baseTotal != null
       ? Math.max(0, baseTotal - discount)
@@ -663,7 +673,7 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
           </button>
           <button
             type="submit"
-            disabled={isSubmitting || !customerName.trim() || !customerMobile.trim() || !selectedVehicleId || !datesValid}
+            disabled={isSubmitting || !customerName.trim() || !customerMobile.trim() || !selectedVehicleAvailable || !datesValid}
             className="rounded-lg bg-teal-600 px-5 py-2 font-lato text-sm font-semibold text-white transition-colors hover:bg-teal-700 disabled:opacity-50"
           >
             {isSubmitting ? 'Reserving…' : 'Reserve for Later'}

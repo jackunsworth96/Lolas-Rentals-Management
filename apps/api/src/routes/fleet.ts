@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
-import { Permission, assessMileageChange, normalizeMileage } from '@lolas/shared';
+import { Permission, assessMileageChange, normalizeMileage, resolveStoreFromSource } from '@lolas/shared';
 import { recordMileageEvent } from '../services/mileage-events.js';
 import { z } from 'zod';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
@@ -630,81 +630,44 @@ router.get(
   requirePermission(Permission.ViewFleet),
   validateQuery(z.object({
     storeId: z.string().min(1),
-    pickupDatetime: z.string().min(1),
-    dropoffDatetime: z.string().min(1),
+    pickupDatetime: z.string().datetime({ offset: true }),
+    dropoffDatetime: z.string().datetime({ offset: true }),
     partnerRef: z.string().max(80).optional(),
+    excludeRawOrderId: z.string().min(1).optional(),
   })),
   async (req, res, next) => {
     try {
-      const { storeId, pickupDatetime, dropoffDatetime, partnerRef } = req.query as {
+      const { storeId, pickupDatetime, dropoffDatetime, partnerRef, excludeRawOrderId } = req.query as {
         partnerRef?: string;
+        excludeRawOrderId?: string;
         storeId: string;
         pickupDatetime: string;
         dropoffDatetime: string;
       };
       if (!req.user!.storeIds.includes(storeId)) { res.status(403).json({ success: false, error: { message: 'Store access required' } }); return; }
       const sb = getSupabaseClient();
-
-      // 1. Fetch all active fleet vehicles for the store
-      const { data: fleetRows, error: fleetErr } = await sb
-        .from('fleet')
-        .select('id, name, model_id, status, store_id, surf_rack')
-        .eq('store_id', storeId)
-        .not('status', 'in', '("Sold","Maintenance","Inactive")');
+      if (excludeRawOrderId) {
+        const { data: raw, error } = await sb.from('orders_raw').select('id, store_id, source')
+          .eq('id', excludeRawOrderId).eq('status', 'unprocessed').maybeSingle();
+        if (error) throw new Error(`Reservation lookup failed: ${error.message}`);
+        const rawStoreId = raw?.store_id ?? (raw ? resolveStoreFromSource(raw.source) : null);
+        if (!raw || rawStoreId !== storeId) { res.status(404).json({ success: false, error: { message: 'Pending reservation not found' } }); return; }
+      }
+      const evaluation = await evaluateAvailability({ storeId, pickupDatetime, dropoffDatetime, excludeRawOrderId }, sb);
+      const blocked = new Set([
+        ...evaluation.explanation.configurationExclusions.map((v) => v.vehicleId),
+        ...evaluation.explanation.models.flatMap((m) => m.exactVehicleExclusions.map((v) => v.vehicleId)),
+      ]);
+      const { data: fleetRows, error: fleetErr } = await sb.from('fleet')
+        .select('id, name, model_id, status, store_id, surf_rack').eq('store_id', storeId);
       if (fleetErr) throw new Error(`Fleet query failed: ${fleetErr.message}`);
-
-      // 2. Find vehicles booked via order_items in the requested window
-      const { data: bookedItemRows, error: bookedErr } = await sb
-        .from('order_items')
-        .select('vehicle_id, orders!inner(status)')
-        .eq('orders.status', 'active')
-        .eq('store_id', storeId)
-        .lt('pickup_datetime', dropoffDatetime)
-        .gt('dropoff_datetime', pickupDatetime);
-      if (bookedErr) throw new Error(`Booked vehicles query failed: ${bookedErr.message}`);
-
-      // 3. Combine booked vehicle IDs from order_items into a Set
-      const bookedVehicleIds = new Set<string>();
-      for (const row of (bookedItemRows ?? []) as Array<{ vehicle_id: string }>) {
-        bookedVehicleIds.add(row.vehicle_id);
-      }
-
-      // 3b. Also exclude vehicles held by unprocessed walk-in reservations
-      const { data: reservedRows, error: reservedErr } = await sb
-        .from('orders_raw')
-        .select('vehicle_id')
-        .eq('store_id', storeId)
-        .eq('booking_channel', 'walk_in')
-        .eq('status', 'unprocessed')
-        .not('vehicle_id', 'is', null)
-        .lt('pickup_datetime', dropoffDatetime)
-        .gt('dropoff_datetime', pickupDatetime);
-      if (reservedErr) throw new Error(`Walk-in reserved query failed: ${reservedErr.message}`);
-
-      for (const row of (reservedRows ?? []) as Array<{ vehicle_id: string }>) {
-        bookedVehicleIds.add(row.vehicle_id);
-      }
-
-      // 3c. Exclude exact vehicles with an overlapping owner-use period.
-      const { data: ownerUseRows, error: ownerUseErr } = await sb
-        .from('fleet_unavailability').select('vehicle_id')
-        .eq('store_id', storeId).eq('type', 'owner_use').is('cancelled_at', null)
-        .lt('starts_at', dropoffDatetime).or(ownerUseNotEndedBy(pickupDatetime));
-      if (ownerUseErr) throw new Error(`Owner use query failed: ${ownerUseErr.message}`);
-      for (const row of (ownerUseRows ?? []) as Array<{ vehicle_id: string }>) {
-        bookedVehicleIds.add(row.vehicle_id);
-      }
-
-      // 4. Filter fleet to only vehicles not in the booked set
+      // An inbox reservation already consumes capacity; assigning it must not reserve a second unit.
+      const allocationModels = excludeRawOrderId ? null : await req.app.locals.deps.bookingPort.checkAvailability({ storeId, pickupDatetime, dropoffDatetime, partnerRef });
+      const remaining = new Map<string, number>((allocationModels ?? []).map((m: { modelId: string; availableCount: number }): [string, number] => [m.modelId, m.availableCount]));
       type FleetRow = { id: string; name: string; model_id: string | null; status: string; store_id: string; surf_rack: boolean | null };
-      const availableVehicles = ((fleetRows ?? []) as FleetRow[]).filter(
-        (v) => !bookedVehicleIds.has(v.id),
-      );
-
-      // Keep the staff picker aligned with the same protected/shared model counts.
-      const allocationModels = await req.app.locals.deps.bookingPort.checkAvailability({ storeId, pickupDatetime, dropoffDatetime, partnerRef });
-      const remaining = new Map<string, number>(allocationModels.map((m: { modelId: string; availableCount: number }): [string, number] => [m.modelId, m.availableCount]));
-      const bookableVehicles = availableVehicles.filter((v) => {
+      const bookableVehicles = ((fleetRows ?? []) as FleetRow[]).filter((v) => {
+        if (blocked.has(v.id)) return false;
+        if (excludeRawOrderId) return true;
         const count = remaining.get(v.model_id ?? '') ?? 0;
         if (count < 1) return false;
         remaining.set(v.model_id!, count - 1);
@@ -713,17 +676,11 @@ router.get(
       res.json({
         success: true,
         data: bookableVehicles.map((v) => ({
-          id: v.id,
-          name: v.name,
-          modelId: v.model_id,
-          status: v.status,
-          storeId: v.store_id,
-          surfRack: v.surf_rack ?? false,
+          id: v.id, name: v.name, modelId: v.model_id, status: v.status,
+          storeId: v.store_id, surfRack: v.surf_rack ?? false,
         })),
       });
-    } catch (err) {
-      next(err);
-    }
+    } catch (err) { next(err); }
   },
 );
 

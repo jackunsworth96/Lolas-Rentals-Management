@@ -230,19 +230,24 @@ export interface AvailableVehicle {
   surfRack: boolean;
 }
 
-export function useAvailableVehicles(
+export function availableVehiclesQuery(
   storeId: string,
   pickupDatetime: string,
   dropoffDatetime: string,
   partnerRef?: string,
+  excludeRawOrderId?: string,
 ) {
-  return useQuery<AvailableVehicle[]>({
-    queryKey: ['fleet', 'available', storeId, pickupDatetime, dropoffDatetime, partnerRef],
+  return {
+    queryKey: ['fleet', 'available', storeId, pickupDatetime, dropoffDatetime, partnerRef, excludeRawOrderId],
     queryFn: () =>
-      api.get(
-        `/fleet/available?storeId=${encodeURIComponent(storeId)}&pickupDatetime=${encodeURIComponent(pickupDatetime)}&dropoffDatetime=${encodeURIComponent(dropoffDatetime)}&partnerRef=${encodeURIComponent(partnerRef ?? '')}`,
+      api.get<AvailableVehicle[]>(
+        `/fleet/available?storeId=${encodeURIComponent(storeId)}&pickupDatetime=${encodeURIComponent(pickupDatetime)}&dropoffDatetime=${encodeURIComponent(dropoffDatetime)}&partnerRef=${encodeURIComponent(partnerRef ?? '')}${excludeRawOrderId ? `&excludeRawOrderId=${encodeURIComponent(excludeRawOrderId)}` : ''}`,
       ),
     enabled: !!storeId && !!pickupDatetime && !!dropoffDatetime
-      && pickupDatetime !== dropoffDatetime,
-  });
+      && new Date(dropoffDatetime).getTime() > new Date(pickupDatetime).getTime(),
+  };
+}
+
+export function useAvailableVehicles(storeId: string, pickupDatetime: string, dropoffDatetime: string, partnerRef?: string) {
+  return useQuery(availableVehiclesQuery(storeId, pickupDatetime, dropoffDatetime, partnerRef));
 }

@@ -21,13 +21,14 @@ def query(sql, success=True):
     if success and result.returncode:
         raise AssertionError(result.stderr + '\nSQL: ' + sql[:300])
     if not success:
-        assert result.returncode and ('ALLOCATION_CONFLICT' in result.stderr or 'Seasons must' in result.stderr or 'overlap' in result.stderr), result.stderr
+        assert result.returncode and ('ALLOCATION_CONFLICT' in result.stderr or 'VEHICLE_UNAVAILABLE' in result.stderr or 'Seasons must' in result.stderr or 'overlap' in result.stderr), result.stderr
     return result.stdout.strip()
 
 query('DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;')
 query((Path(__file__).parent / 'fixtures/allocation-schema.sql').read_text())
 query((root / 'supabase/migrations/20260927000000_partner_allocations.sql').read_text())
 query((root / 'supabase/migrations/20261023023957_owner_use_open_ended.sql').read_text())
+query((root / 'supabase/migrations/20261023050000_booking_capacity_and_assignment_conflicts.sql').read_text())
 partner = '00000000-0000-0000-0000-000000000001'
 query(f"""
 INSERT INTO stores VALUES ('test');
@@ -146,4 +147,62 @@ assert query("SELECT count(*) FROM partner_allocation_shortfalls WHERE store_id=
 query(f"SELECT allocation_configure('season','{other}','tester','classify','"+json.dumps({'modelId':'new-bike','modelType':'scooter'})+"'::jsonb)")
 assert query("SELECT type FROM vehicle_models WHERE id='new-bike'") == 'scooter'
 assert query("SELECT count(*) FROM partner_allocation_shortfalls WHERE store_id='season'") == '0'
-print('PASS: rollout, concurrency, pool protection, cancellation and return, hold conversion/retry, activation, edit rollback, fleet loss, cross-date segments, seasonal schedule, atomic groups, staff activation, partner deactivation, owner-use cancellation, post-activation classification')
+print('PASS: existing allocation, activation, cancellation, owner-use and concurrency regressions')
+
+# Sequential model commitments reuse capacity, including holds at checkout.
+query("INSERT INTO stores VALUES ('capacity'); INSERT INTO fleet SELECT 'capacity-v'||n,'capacity','bike','Available' FROM generate_series(1,10) n; INSERT INTO partner_allocation_settings(store_id,enabled) VALUES ('capacity',true);")
+early_start, early_end = '2027-05-01T09:00:00+08:00', '2027-05-02T09:00:00+08:00'
+late_start, late_end = '2027-05-03T09:00:00+08:00', '2027-05-04T09:00:00+08:00'
+window_start, window_end = '2027-05-01T09:00:00+08:00', '2027-05-05T09:00:00+08:00'
+for start, end in [(early_start, early_end), (late_start, late_end)]:
+    query(f"INSERT INTO orders_raw(store_id,vehicle_model_id,pickup_datetime,dropoff_datetime,booking_channel) SELECT 'capacity','bike','{start}','{end}','direct' FROM generate_series(1,5)")
+def capacity():
+    return json.loads(query(f"SELECT allocation_availability('capacity','{window_start}','{window_end}')"))[0]['availableCount']
+assert capacity() == 5
+query(f"INSERT INTO booking_holds(store_id,vehicle_model_id,pickup_datetime,dropoff_datetime,session_token,expires_at) VALUES ('capacity','bike','{window_start}','{window_end}','checkout',now()+interval '10 minutes')")
+assert capacity() == 4
+query("DELETE FROM booking_holds WHERE store_id='capacity'; UPDATE orders_raw SET status='cancelled' WHERE store_id='capacity'")
+for start, end in [(early_start, early_end), (late_start, late_end)]:
+    query(f"INSERT INTO booking_holds(store_id,vehicle_model_id,pickup_datetime,dropoff_datetime,session_token,expires_at) SELECT 'capacity','bike','{start}','{end}','staggered',now()+interval '10 minutes' FROM generate_series(1,5)")
+assert capacity() == 5
+query(f"INSERT INTO booking_holds(store_id,vehicle_model_id,pickup_datetime,dropoff_datetime,session_token,expires_at) VALUES ('capacity','bike','{window_start}','{window_end}','checkout',now()+interval '10 minutes')")
+assert capacity() == 4
+print('PASS: staggered reservations and holds admit a full-window checkout')
+
+# Exact-vehicle conflicts are protected even when partner allocations are off.
+query("INSERT INTO stores VALUES ('plain'); INSERT INTO fleet SELECT 'plain-v'||n,'plain','bike','Available' FROM generate_series(1,3) n;")
+def assigned_order(key, vehicle='plain-v1', start=early_start, end=early_end):
+    return f"BEGIN; INSERT INTO orders VALUES ('{key}','plain',NULL,'active','{key}'); INSERT INTO order_items(id,store_id,order_id,vehicle_id,pickup_datetime,dropoff_datetime) VALUES ('{key}-item','plain','{key}','{vehicle}','{start}','{end}'); COMMIT;"
+assert query("SELECT coalesce((SELECT enabled FROM partner_allocation_settings WHERE store_id='plain'),false)") == 'f'
+query(assigned_order('plain-first'))
+query(assigned_order('plain-conflict'), success=False)
+assert query("SELECT count(*) FROM orders WHERE id='plain-conflict'") == '0'
+query(assigned_order('handover-conflict', start='2027-05-02T09:29:00+08:00', end=late_end), success=False)
+query(assigned_order('handover-ok', start='2027-05-02T09:30:00+08:00', end=late_end))
+# A date edit ignores its own item, then rejects a genuine overlapping extension.
+query("UPDATE order_items SET dropoff_datetime=dropoff_datetime-interval '1 minute' WHERE id='plain-first-item'")
+query("UPDATE order_items SET dropoff_datetime='2027-05-02T09:01:00+08:00' WHERE id='plain-first-item'", success=False)
+assert query("SELECT extract(minute FROM dropoff_datetime AT TIME ZONE 'Asia/Manila') FROM order_items WHERE id='plain-first-item'") == '59'
+
+# Competing staff transactions cannot assign the same bike.
+with concurrent.futures.ThreadPoolExecutor(2) as pool:
+    races = list(pool.map(lambda key: subprocess.run([psql,url,'-X','-q','-v','ON_ERROR_STOP=1'], input=assigned_order(key, vehicle='plain-v2').replace('COMMIT;', "SELECT pg_sleep(0.2); COMMIT;"), text=True, capture_output=True), ['race-a','race-b']))
+assert sum(r.returncode == 0 for r in races) == 1, [r.stderr for r in races]
+assert any('VEHICLE_UNAVAILABLE' in r.stderr for r in races)
+assert query("SELECT count(*) FROM order_items WHERE vehicle_id='plain-v2'") == '1'
+
+# A pending walk-in can become an active rental without conflicting with itself.
+query(f"INSERT INTO orders_raw(store_id,vehicle_model_id,vehicle_id,pickup_datetime,dropoff_datetime,booking_channel,order_reference) VALUES ('plain','bike','plain-v3','{early_start}','{early_end}','walk_in','OWN-RAW')")
+query(assigned_order('pending-conflict', vehicle='plain-v3'), success=False)
+query(f"BEGIN; INSERT INTO orders VALUES ('converted','plain',NULL,'active','OWN-RAW'); INSERT INTO order_items(id,store_id,order_id,vehicle_id,pickup_datetime,dropoff_datetime) VALUES ('converted-item','plain','converted','plain-v3','{early_start}','{early_end}'); UPDATE orders_raw SET status='processed' WHERE order_reference='OWN-RAW'; COMMIT;")
+assert query("SELECT count(*) FROM allocation_booking_sources WHERE vehicle_id='plain-v3'") == '1'
+query("UPDATE orders SET status='cancelled' WHERE id='converted'")
+query(assigned_order('after-cancellation', vehicle='plain-v3'))
+
+# Open-ended owner use and non-rentable fleet statuses also apply without allocations.
+query("INSERT INTO fleet_unavailability(store_id,vehicle_id,starts_at,ends_at) VALUES ('plain','plain-v3','2027-06-01T09:00:00+08:00',NULL)")
+query(assigned_order('owner-conflict', vehicle='plain-v3', start='2027-06-02T09:00:00+08:00', end='2027-06-03T09:00:00+08:00'), success=False)
+query("UPDATE fleet_unavailability SET cancelled_at=now() WHERE vehicle_id='plain-v3'")
+query("UPDATE fleet SET status='Under Maintenance' WHERE id='plain-v3'")
+query(assigned_order('maintenance-conflict', vehicle='plain-v3', start=late_start, end=late_end), success=False)
+print('PASS: mandatory assignment guard, concurrent staff race, atomic rollback, self edits, handover, raw conversion, cancellation and owner use')

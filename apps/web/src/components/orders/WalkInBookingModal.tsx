@@ -129,8 +129,16 @@ export function WalkInBookingModal({ open, onClose }: Props) {
   // ── Data hooks ──
   const { data: locations } = useLocations(storeId) as { data: Location[] | undefined };
   const { data: addonsRaw = [] } = useAddons(storeId) as { data: Addon[] };
-  const { data: availableVehicles = [], isLoading: vehiclesLoading } =
+  const { data: availableVehicles = [], isFetching: vehiclesLoading, isError: vehiclesError } =
     useAvailableVehicles(storeId, pickupDatetime, dropoffDatetime, partnerRef);
+
+  useEffect(() => {
+    if (selectedVehicleId && !vehiclesLoading && !vehiclesError
+      && !availableVehicles.some((vehicle) => vehicle.id === selectedVehicleId)) {
+      setSelectedVehicleId('');
+      setVehicleModelId('');
+    }
+  }, [availableVehicles, selectedVehicleId, vehiclesLoading, vehiclesError]);
 
   // ── Auto-set pickup/dropoff to the store's own location (zero-fee) ──
   // Runs only when the modal opens (or storeId changes) AND both location IDs
@@ -306,6 +314,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const selectedVehicle = (availableVehicles ?? []).find((v) => v.id === selectedVehicleId);
+    if (!selectedVehicle || vehiclesLoading || vehiclesError) return;
     createWalkInDirect.mutate(
       {
         partnerRef: partnerRef || undefined,
@@ -346,7 +355,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
 
   const isValid =
     customerName.trim() && customerMobile.trim() &&
-    storeId && vehicleModelId && selectedVehicleId &&
+    storeId && vehicleModelId && availableVehicles.some((vehicle) => vehicle.id === selectedVehicleId) && !vehiclesLoading && !vehiclesError &&
     pickupDate && pickupTime &&
     dropoffDate && dropoffTime &&
     pickupLocationId && dropoffLocationId;

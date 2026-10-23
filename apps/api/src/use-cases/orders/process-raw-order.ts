@@ -22,7 +22,7 @@ import { supabase } from '../../adapters/supabase/client.js';
 import { resolveCharityPayableAccount } from '../../adapters/supabase/maintenance-expense-rpc.js';
 import { type VehicleAssignment } from './activate-order.js';
 import { formatManilaDate } from '../../utils/manila-date.js';
-import { assertAssignmentsNotOnOwnerUse } from '../../lib/assert-owner-use-assignment.js';
+import { assertAssignmentsAvailable } from '../../lib/assert-vehicle-assignment.js';
 
 // Deterministic namespace for order ids derived from raw order ids.
 // Generated once and frozen — changing this value would break
@@ -116,7 +116,7 @@ export async function processRawOrder(
       throw new NonRentableVehicleError(vehicle.id, vehicle.status);
     }
   }
-  await assertAssignmentsNotOnOwnerUse(input.vehicleAssignments);
+  await assertAssignmentsAvailable(input.vehicleAssignments, { excludeRawOrderId: input.rawOrderId, excludeOrderId: orderId });
 
   // ── 4. Resolve or build the customer record. ──────────────
   let customer: Customer | null = null;

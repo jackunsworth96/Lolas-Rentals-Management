@@ -22,6 +22,10 @@ export function errorHandler(
   res: Response,
   _next: NextFunction,
 ): void {
+  if (err.message.includes('VEHICLE_UNAVAILABLE')) {
+    res.status(409).json({ success: false, error: { code: 'VEHICLE_UNAVAILABLE', message: 'This motorcycle is already booked or unavailable for the selected dates. Please choose another motorcycle or change the dates.' } });
+    return;
+  }
   if (err.message.includes('ALLOCATION_CONFLICT')) {
     console.warn('[allocation-conflict]', err.message);
     res.status(409).json({ success: false, error: { code: 'ALLOCATION_CONFLICT', message: err.message } });

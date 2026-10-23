@@ -78,10 +78,10 @@ export function AvailabilityExplanationModal({ open, onClose, storeId }: Props) 
                     </div>
                   ))}
                   {model.capacityDeductions.directReservations > 0 && (
-                    <div className="flex justify-between gap-3"><span>Unassigned direct reservations</span><span>−{model.capacityDeductions.directReservations}</span></div>
+                    <div className="flex justify-between gap-3"><span>Peak simultaneous reservations</span><span>−{model.capacityDeductions.directReservations}</span></div>
                   )}
                   {model.capacityDeductions.holds > 0 && (
-                    <div className="flex justify-between gap-3"><span>Active customer holds</span><span>−{model.capacityDeductions.holds}</span></div>
+                    <div className="flex justify-between gap-3"><span>Additional capacity held in customer baskets</span><span>−{model.capacityDeductions.holds}</span></div>
                   )}
                   {model.exactVehicleExclusions.length === 0 && model.capacityDeductions.directReservations === 0 && model.capacityDeductions.holds === 0 && (
                     <p className="text-gray-400">No availability deductions.</p>

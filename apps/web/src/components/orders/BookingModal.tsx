@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueries } from '@tanstack/react-query';
 import { Modal } from '../common/Modal.js';
 import { Badge } from '../common/Badge.js';
-import { useFleet } from '../../api/fleet.js';
+import { useFleet, availableVehiclesQuery } from '../../api/fleet.js';
+import { bookingDatetimeISO } from '../../utils/booking-datetime.js';
 import {
   extractPickupDropoffFromPayload,
   extractPickupLocation,
@@ -11,7 +12,7 @@ import {
   normalizeLocationName,
   toDatetimeLocal,
 } from '../../utils/raw-order-payload.js';
-import { useAddons, useLocations, useChartOfAccounts, useStorePricing, useFleetStatuses, usePaymentMethods, useVehicleModels } from '../../api/config.js';
+import { useAddons, useLocations, useChartOfAccounts, useStorePricing, usePaymentMethods, useVehicleModels } from '../../api/config.js';
 import { useProcessRawOrder, useCollectPayment, type RawOrder, type ProcessRawOrderPayload } from '../../api/orders-raw.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { formatPickupDatetimeManila } from '../../utils/date.js';
@@ -24,10 +25,6 @@ import {
   partnerAllowsFreeDeliveryLocation,
   partnerEstablishmentLocation,
 } from '../../utils/partnerDeliveryLocation.js';
-import {
-  ownerUseOverlapsBooking,
-  ownerUsePeriodsFromVehicle,
-} from '../../utils/owner-use-availability.js';
 
 // ── AM/PM datetime helpers ──
 
@@ -268,7 +265,6 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const { data: locations } = useLocations(storeId) as { data: Array<Record<string, unknown>> | undefined };
   const { data: accounts } = useChartOfAccounts() as { data: Array<Record<string, unknown>> | undefined };
   const { data: storePricing } = useStorePricing(storeId) as { data: PricingTier[] | undefined };
-  const { data: fleetStatuses } = useFleetStatuses() as { data: Array<{ id: string; name: string; isRentable?: boolean; is_rentable?: boolean }> | undefined };
   const { data: paymentMethods } = usePaymentMethods() as { data: Array<{ id: string; name: string; surchargePercent?: number; surcharge_percent?: number; isActive?: boolean; is_active?: boolean; isDepositEligible?: boolean; is_deposit_eligible?: boolean }> | undefined };
   const { data: partnerBenefit } = useQuery({
     queryKey: ['raw-order-partner-benefit', rawOrder.partner_ref],
@@ -433,26 +429,25 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     }]);
   }, [open, rawOrder?.id, locations, partnerBenefit]);
 
-  const rentableStatusSet = useMemo(() => {
-    const statuses = fleetStatuses ?? [];
-    if (statuses.length === 0) return new Set(['available', 'rentable']);
-    const set = new Set<string>();
-    for (const s of statuses) {
-      const rentable = s.isRentable ?? s.is_rentable ?? false;
-      if (rentable) {
-        set.add(s.id.toLowerCase());
-        set.add(s.name.toLowerCase());
-      }
-    }
-    return set.size > 0 ? set : new Set(['available', 'rentable']);
-  }, [fleetStatuses]);
+  const vehicleAvailability = useQueries({
+    queries: vehicles.map((vehicle) => {
+      const options = availableVehiclesQuery(storeId, bookingDatetimeISO(vehicle.pickupDatetime), bookingDatetimeISO(vehicle.dropoffDatetime), rawOrder.partner_ref ?? undefined, rawOrder.id);
+      return { ...options, enabled: open && options.enabled };
+    }),
+  });
 
-  const filteredByStatus = useMemo(
-    () => (fleet ?? []).filter((v) => rentableStatusSet.has(String(v.status ?? '').toLowerCase())),
-    [fleet, rentableStatusSet],
-  );
-  const vehicleFilterFallback = filteredByStatus.length === 0 && (fleet ?? []).length > 0;
-  const availableVehicles = vehicleFilterFallback ? (fleet ?? []) : filteredByStatus;
+  useEffect(() => {
+    const invalid = vehicles.some((vehicle, index) => vehicle.vehicleId
+      && vehicleAvailability[index]?.isSuccess && !vehicleAvailability[index].isFetching
+      && !vehicleAvailability[index].data?.some((candidate) => candidate.id === vehicle.vehicleId));
+    if (!invalid) return;
+    setVehicles((current) => current.map((vehicle, index) => {
+      const result = vehicleAvailability[index];
+      return vehicle.vehicleId && result?.isSuccess && !result.isFetching
+        && !result.data?.some((candidate) => candidate.id === vehicle.vehicleId)
+        ? { ...vehicle, vehicleId: '', vehicleName: '' } : vehicle;
+    }));
+  }, [vehicleAvailability, vehicles]);
 
   const storeAccounts = useMemo(
     () => (accounts ?? []).filter((a) => {
@@ -594,23 +589,17 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const canGoNext = stepIndex < STEPS.length - 1;
   const canGoBack = stepIndex > 0;
 
-  function vehicleBlockedByOwnerUse(row: VehicleRow): boolean {
-    if (!row.vehicleId || !fleet) return false;
-    const vehicle = fleet.find((fv) => fv.id === row.vehicleId);
-    if (!vehicle) return false;
-    return ownerUseOverlapsBooking(
-      ownerUsePeriodsFromVehicle(vehicle),
-      row.pickupDatetime,
-      row.dropoffDatetime,
-    );
-  }
-
-  const ownerUseConflict = vehicles.some(vehicleBlockedByOwnerUse);
+  const assignmentConflict = vehicles.some((vehicle, index) => {
+    const result = vehicleAvailability[index];
+    return !vehicle.vehicleId || result?.isFetching || !result?.isSuccess
+      || !result.data?.some((candidate) => candidate.id === vehicle.vehicleId)
+      || vehicles.slice(0, index).some((other) => other.vehicleId === vehicle.vehicleId);
+  });
 
   function goNext() {
     if (step === 'review' && !customer.name.trim()) return;
     if (step === 'vehicles' && vehicles.every((v) => !v.vehicleId)) return;
-    if (step === 'vehicles' && ownerUseConflict) return;
+    if (step === 'vehicles' && assignmentConflict) return;
 
     if (step === 'vehicles') {
       initAddons();
@@ -726,12 +715,8 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
         .map((v) => ({
           vehicleId: v.vehicleId,
           vehicleName: v.vehicleName,
-          pickupDatetime: v.pickupDatetime.includes('+') || v.pickupDatetime.endsWith('Z')
-            ? v.pickupDatetime
-            : `${v.pickupDatetime}:00+08:00`,
-          dropoffDatetime: v.dropoffDatetime.includes('+') || v.dropoffDatetime.endsWith('Z')
-            ? v.dropoffDatetime
-            : `${v.dropoffDatetime}:00+08:00`,
+          pickupDatetime: bookingDatetimeISO(v.pickupDatetime),
+          dropoffDatetime: bookingDatetimeISO(v.dropoffDatetime),
           rentalDaysCount: v.rentalDaysCount,
           pickupLocation: v.pickupLocation,
           dropoffLocation: v.dropoffLocation,
@@ -790,7 +775,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   async function handleActivate() {
     if (!canEditOrders) return;
     if (!depositValid) return;
-    if (ownerUseConflict) return;
+    if (assignmentConflict) return;
     processMutation.mutate(buildPayload(), {
       onSuccess: () => {
         setSuccessMessage('Order activated successfully!');
@@ -1247,13 +1232,6 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
         {/* Step 2: Vehicles */}
         {step === 'vehicles' && (
           <div className="space-y-4">
-            {vehicleFilterFallback && (
-              <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-2 text-sm text-amber-800">
-                Fleet status filter could not match any vehicles — showing all fleet vehicles.
-                Check Settings &gt; Fleet Statuses to ensure status categories are configured correctly.
-              </div>
-            )}
-
             <div className="flex justify-end">
               <button
                 type="button"
@@ -1279,15 +1257,10 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                 const merged = { ...dropoffParts, ...patch };
                 updateVehicle(i, { dropoffDatetime: combineFromParts(merged) });
               };
-              const ownerUseVehicles = availableVehicles.filter((fv) => ownerUseOverlapsBooking(
-                ownerUsePeriodsFromVehicle(fv),
-                v.pickupDatetime,
-                v.dropoffDatetime,
-              ));
-              const selectableVehicles = availableVehicles.filter((fv) =>
-                !ownerUseVehicles.some((blocked) => blocked.id === fv.id),
+              const availability = vehicleAvailability[i];
+              const selectableVehicles = (availability?.data ?? []).filter((candidate) =>
+                !vehicles.some((other, index) => index !== i && other.vehicleId === candidate.id),
               );
-              const selectedOwnerUse = ownerUseVehicles.find((fv) => String(fv.id) === v.vehicleId);
 
               return (
               <div key={i} className="rounded-lg border border-gray-200 p-4">
@@ -1304,7 +1277,9 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                   <div className="block">
                     <span className="text-sm text-gray-600">Vehicle</span>
                     <select
+                      aria-label={`Vehicle ${i + 1}`}
                       value={v.vehicleId}
+                      disabled={availability?.isFetching || !availability?.isSuccess}
                       onChange={(e) => updateVehicle(i, { vehicleId: e.target.value })}
                       className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     >
@@ -1314,17 +1289,11 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                           {String(fv.name ?? fv.id)}
                         </option>
                       ))}
-                      {selectedOwnerUse && (
-                        <option value={String(selectedOwnerUse.id)} disabled>
-                          {String(selectedOwnerUse.name ?? selectedOwnerUse.id)} (owner use)
-                        </option>
-                      )}
                     </select>
-                    {ownerUseVehicles.length > 0 && (
-                      <p className="mt-1 text-xs text-amber-700">
-                        {ownerUseVehicles.map((fv) => String(fv.name ?? fv.id)).join(', ')}{' '}
-                        {ownerUseVehicles.length === 1 ? 'is' : 'are'} reserved for owner use during these dates.
-                      </p>
+                    {availability?.isFetching && <p className="mt-1 text-xs text-gray-500" role="status">Checking available motorcycles...</p>}
+                    {availability?.isError && <p className="mt-1 text-xs text-red-600" role="alert">Could not check availability. <button type="button" onClick={() => void availability.refetch()} className="underline">Retry</button></p>}
+                    {availability?.isSuccess && !availability.isFetching && selectableVehicles.length === 0 && (
+                      <p className="mt-1 text-xs text-amber-700">No motorcycles are available for these dates.</p>
                     )}
                     {v.vehicleId && !fleet?.find((fv) => fv.id === v.vehicleId)?.modelId && (
                       <p className="mt-1 text-xs text-amber-600">No model linked — set vehicle model in fleet settings to auto-fill rate.</p>
@@ -1347,6 +1316,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                     <div className="mt-1 flex items-center gap-1.5">
                       <input
                         type="date"
+                        aria-label={`Vehicle ${i + 1} pickup date`}
                         value={pickupParts.date}
                         onChange={(e) => updatePickupPart({ date: e.target.value })}
                         className="block w-[130px] rounded-lg border border-gray-300 px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -1382,6 +1352,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                     <div className="mt-1 flex items-center gap-1.5">
                       <input
                         type="date"
+                        aria-label={`Vehicle ${i + 1} return date`}
                         value={dropoffParts.date}
                         onChange={(e) => updateDropoffPart({ date: e.target.value })}
                         className="block w-[130px] rounded-lg border border-gray-300 px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -1952,11 +1923,11 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                 </button>
                 <button
                   onClick={handleActivate}
-                  disabled={processMutation.isPending || !depositValid || transferAmountMissing || ownerUseConflict}
+                  disabled={processMutation.isPending || !depositValid || transferAmountMissing || assignmentConflict}
                   className="rounded-lg bg-green-600 px-6 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
                   title={
-                    ownerUseConflict
-                      ? 'Choose a vehicle that is not reserved for owner use'
+                    assignmentConflict
+                      ? 'Choose an available vehicle for every rental'
                       : transferAmountMissing
                       ? 'Set the transfer amount before activating'
                       : !depositValid
@@ -1972,8 +1943,8 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
         ) : (
           <button
             onClick={goNext}
-            disabled={step === 'vehicles' && ownerUseConflict}
-            title={step === 'vehicles' && ownerUseConflict ? 'Choose a vehicle that is not reserved for owner use' : undefined}
+            disabled={step === 'vehicles' && assignmentConflict}
+            title={step === 'vehicles' && assignmentConflict ? 'Choose an available vehicle for every rental' : undefined}
             className="rounded-lg bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
             Next

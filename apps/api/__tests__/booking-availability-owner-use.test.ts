@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import type { AvailabilityQuery, BookingPort, ConfigRepository, HoldRow, InsertHoldInput, TransferRepository } from '@lolas/domain';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { evaluateAvailability } from '../src/adapters/supabase/booking-adapter.js';
+import { createHold } from '../src/use-cases/booking/create-hold.js';
+import { submitDirectBooking } from '../src/use-cases/booking/submit-direct-booking.js';
 
 type FakeData = {
   fleet: unknown[];
@@ -21,7 +24,11 @@ class FakeQuery implements PromiseLike<{ data: unknown[]; error: null }> {
   gt() { return this; }
   in() { return this; }
   is() { return this; }
-  neq() { return this; }
+  neq(key: string, value: unknown) {
+    this.result.data = this.result.data.filter((row) => (row as Record<string, unknown>)[key] !== value);
+    return this;
+  }
+  or() { return this; }
   then<TResult1 = { data: unknown[]; error: null }, TResult2 = never>(
     onfulfilled?: ((value: { data: unknown[]; error: null }) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
@@ -143,7 +150,132 @@ describe('owner-use availability blocks', () => {
     expect(result.models[0]).toMatchObject({
       modelId: 'tuktuk',
       availableCount: 0,
-      availableUntil: '2026-08-03T10:15:00+08:00',
+      availableUntil: '2026-08-03T01:45:00.000Z',
     });
+  });
+});
+
+describe('simultaneous model demand', () => {
+  const tenBikes = Array.from({ length: 10 }, (_, index) => ({
+    id: `beat-${index}`, name: `Beat ${index}`, model_id: 'honda-beat', status: 'Available',
+  }));
+  const early = {
+    vehicle_model_id: 'honda-beat', pickup_datetime: '2026-07-21T09:15:00+08:00',
+    dropoff_datetime: '2026-07-21T16:00:00+08:00', expires_at: '2099-01-01T00:00:00Z',
+  };
+  const late = { ...early, pickup_datetime: '2026-07-22T09:15:00+08:00', dropoff_datetime: '2026-07-22T16:00:00+08:00' };
+  const five = (period: typeof early) => Array.from({ length: 5 }, () => ({ ...period }));
+  const data = (extra: Partial<FakeData> = {}): FakeData => ({
+    fleet: tenBikes, models: [{ id: 'honda-beat', name: 'Honda Beat' }], ...extra,
+  });
+
+  it('keeps five of ten bikes bookable across two sequential groups of five reservations', async () => {
+    const result = await evaluateAvailability(query, fakeSupabase(data({ directOrders: [...five(early), ...five(late)] })));
+    expect(result.models[0].availableCount).toBe(5);
+    expect(result.explanation.models[0].capacityDeductions).toEqual({ directReservations: 5, holds: 0 });
+  });
+
+  it('completes hold and checkout with staggered reservations, preserving the quote', async () => {
+    const storage = data({ directOrders: [...five(early), ...five(late)], holds: [] });
+    let hold: HoldRow;
+    const insertDirectBooking = vi.fn(async () => ({ id: 'booked', orderReference: 'LR-TEST', cancellationToken: 'cancel-test' }));
+    const bookingPort = {
+      checkAvailability: async (input: AvailabilityQuery) => (await evaluateAvailability(input, fakeSupabase(storage))).models,
+      insertHold: async (input: InsertHoldInput) => {
+        hold = { ...input, id: 'hold-test', createdAt: new Date().toISOString() };
+        storage.holds!.push({ vehicle_model_id: input.vehicleModelId, pickup_datetime: input.pickupDatetime,
+          dropoff_datetime: input.dropoffDatetime, expires_at: input.expiresAt, session_token: input.sessionToken });
+        return hold;
+      },
+      findActiveHold: async () => hold,
+      isOrderReferenceUnique: async () => true,
+      insertDirectBooking,
+    } as unknown as BookingPort;
+    const input = { ...query, vehicleModelId: 'honda-beat', sessionToken: 'customer' };
+    const held = await createHold({ bookingPort }, input);
+    const configRepo = {
+      getVehicleModelById: async () => ({ id: 'honda-beat', name: 'Honda Beat', securityDeposit: 500 }),
+      getModelPricing: async () => [{ minDays: 1, maxDays: 99, dailyRate: 500 }],
+      getLocations: async () => [],
+    } as unknown as ConfigRepository;
+    const afterCommit: Array<() => Promise<void>> = [];
+    const result = await submitDirectBooking({ bookingPort, configRepo, transferRepo: {} as TransferRepository, afterCommit }, {
+      ...input, holdId: held.id, customerName: 'Guest', customerEmail: 'guest@example.invalid', customerMobile: '+639000000000',
+      pickupLocationId: 1, dropoffLocationId: 1,
+    });
+    expect(result.id).toBe('booked');
+    expect(result.serverQuote).toBe(1000);
+    expect(insertDirectBooking).toHaveBeenCalledWith(expect.objectContaining({ bookingHoldId: held.id, webQuoteRaw: 1000 }));
+    expect(afterCommit).toHaveLength(1);
+  });
+
+  it('counts the peak of staggered holds', async () => {
+    const result = await evaluateAvailability(query, fakeSupabase(data({ holds: [...five(early), ...five(late)] })));
+    expect(result.models[0].availableCount).toBe(5);
+  });
+
+  it('combines reservations and holds before taking their peak', async () => {
+    const result = await evaluateAvailability(query, fakeSupabase(data({ directOrders: five(early), holds: five(late) })));
+    expect(result.models[0].availableCount).toBe(5);
+    expect(result.explanation.models[0].capacityDeductions).toEqual({ directReservations: 5, holds: 0 });
+  });
+
+  it('still blocks ten simultaneous reservations and holds', async () => {
+    const result = await evaluateAvailability(query, fakeSupabase(data({ directOrders: five(early), holds: five(early) })));
+    expect(result.models[0].availableCount).toBe(0);
+    expect(result.explanation.models[0].capacityDeductions).toEqual({ directReservations: 5, holds: 5 });
+    expect(result.models[0].holdExpiresAt).toBe(early.expires_at);
+  });
+
+  it.each([
+    ['16:29', 0], ['16:30', 5],
+  ])('respects the 30-minute handover when the next group starts at %s', async (time, expected) => {
+    const next = { ...early, pickup_datetime: `2026-07-21T${time}:00+08:00`, dropoff_datetime: '2026-07-22T09:15:00+08:00' };
+    const result = await evaluateAvailability(query, fakeSupabase(data({ directOrders: [...five(early), ...five(next)] })));
+    expect(result.models[0].availableCount).toBe(expected);
+  });
+
+  it('compares equivalent timestamps across offsets', async () => {
+    const next = { ...early, pickup_datetime: '2026-07-21T08:30:00.000Z', dropoff_datetime: '2026-07-22T01:15:00.000Z' };
+    const result = await evaluateAvailability(query, fakeSupabase(data({ directOrders: [...five(early), ...five(next)] })));
+    expect(result.models[0].availableCount).toBe(5);
+  });
+
+  it('requires the same bike to remain free throughout the rental', async () => {
+    const result = await evaluateAvailability(query, fakeSupabase(data({
+      fleet: tenBikes.slice(0, 2),
+      orderItems: [early, late].map((period, index) => ({ ...period, id: `item-${index}`, vehicle_id: `beat-${index}`, orders: { status: 'active' } })),
+    })));
+    expect(result.models[0].availableCount).toBe(0);
+  });
+
+  it('excludes the current reservation when assigning its bike', async () => {
+    const result = await evaluateAvailability({ ...query, excludeRawOrderId: 'own' }, fakeSupabase(data({
+      fleet: tenBikes.slice(0, 1), walkInOrders: [{ ...early, id: 'own', vehicle_id: 'beat-0' }],
+    })));
+    expect(result.models[0].availableCount).toBe(1);
+  });
+
+  it('excludes the customer session without excluding other holds', async () => {
+    const result = await evaluateAvailability({ ...query, excludeSessionToken: 'own' }, fakeSupabase(data({
+      holds: [{ ...early, session_token: 'own' }, { ...early, session_token: 'other' }],
+    })));
+    expect(result.models[0].availableCount).toBe(9);
+  });
+
+  it('keeps the rental being extended from blocking itself', async () => {
+    const result = await evaluateAvailability({ ...query, excludeOrderItemId: 'own' }, fakeSupabase(data({
+      fleet: tenBikes.slice(0, 1), orderItems: [{ ...early, id: 'own', vehicle_id: 'beat-0', orders: { status: 'active' } }],
+    })));
+    expect(result.models[0].availableCount).toBe(1);
+  });
+
+  it('releases earlier demand when calculating a shorter rental alternative', async () => {
+    const last = { ...early, pickup_datetime: '2026-07-23T12:00:00+08:00', dropoff_datetime: '2026-07-24T09:15:00+08:00' };
+    const result = await evaluateAvailability({ ...query, dropoffDatetime: last.dropoff_datetime }, fakeSupabase(data({
+      directOrders: [...five(early), ...five(late), ...five(last), ...five(last)],
+    })));
+    expect(result.models[0].availableUntil).toBe('2026-07-23T03:30:00.000Z');
+    expect(result.models[0].availableCount).toBe(0);
   });
 });
