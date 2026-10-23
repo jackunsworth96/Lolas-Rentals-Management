@@ -14,18 +14,25 @@ import { useAuthStore } from '../../stores/auth-store.js';
  * the user has interacted with the page at least once, which is fine here
  * since this just adds to the (still-shown) visual modal rather than
  * replacing it.
+ *
+ * `urgent` plays a louder, 3-note variant used for the periodic re-nag (see
+ * REPEAT_ALERT_MS below) and for anything already overdue, so the sound
+ * itself communicates escalating urgency rather than feeling identical
+ * every time.
  */
-function playAlertChime() {
+function playAlertChime(urgent = false) {
   try {
     const AudioCtx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AudioCtx) return;
     const ctx = new AudioCtx();
-    [880, 660].forEach((freq, i) => {
+    const notes = urgent ? [880, 660, 880] : [880, 660];
+    const gainLevel = urgent ? 0.28 : 0.15;
+    notes.forEach((freq, i) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'sine';
       osc.frequency.value = freq;
-      gain.gain.value = 0.15;
+      gain.gain.value = gainLevel;
       osc.connect(gain);
       gain.connect(ctx.destination);
       const start = ctx.currentTime + i * 0.18;
@@ -33,11 +40,17 @@ function playAlertChime() {
       osc.stop(start + 0.15);
     });
   } catch {
-    // Audio not available — the visual modal (and Telegram escalation) still apply.
+    // Audio not available — the visual modal (and title flash) still apply.
   }
 }
 
-/** Shows a system-level notification so the alert surfaces even if this tab isn't focused. */
+/**
+ * Shows a system-level notification so the alert surfaces even if this tab
+ * isn't focused — `requireInteraction` keeps it on screen until someone
+ * dismisses it (rather than auto-vanishing after a few seconds), and the
+ * shared `tag` means repeated calls refresh/re-bubble the same notification
+ * instead of stacking duplicates.
+ */
 function notifyIfHidden(count: number) {
   if (typeof Notification === 'undefined') return;
   if (Notification.permission === 'default') {
@@ -47,14 +60,25 @@ function notifyIfHidden(count: number) {
   if (Notification.permission !== 'granted') return;
   if (!document.hidden) return;
   try {
-    new Notification('⚠️ Off-site pickup/collection due soon', {
-      body: `${count} event${count > 1 ? 's' : ''} need acknowledgment.`,
+    new Notification('⚠️ Action required on the back office', {
+      body: `${count} event${count > 1 ? 's' : ''} need acknowledgment right now.`,
       tag: 'delivery-reminder',
-    });
+      requireInteraction: true,
+    } as NotificationOptions);
   } catch {
-    // Notifications unsupported/blocked — Telegram escalation remains the fallback.
+    // Notifications unsupported/blocked — the audio/title-flash loop while the tab is open still applies.
   }
 }
+
+// How often to re-nag while events remain unacknowledged and the modal is
+// still open. Telegram was meant to be the fallback for "nobody's watching
+// the browser tab" — but on this team Telegram notifications are routinely
+// missed on the work phone, so the backoffice tab itself has to be the
+// primary, relentless channel: it re-sounds, re-fires the system
+// notification, and flashes the tab title on a loop until someone
+// acknowledges every event — not just once when it first appears.
+const REPEAT_ALERT_MS = 45_000;
+const TITLE_FLASH_MS = 900;
 
 function minutesUntil(datetime: string): number {
   return Math.round((new Date(datetime).getTime() - Date.now()) / 60_000);
@@ -186,8 +210,10 @@ export function DeliveryReminderModal() {
   const acknowledge = useAcknowledgeDeliveryReminder();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const seenKeysRef = useRef<Set<string>>(new Set());
+  const baseTitleRef = useRef<string>(typeof document !== 'undefined' ? document.title : '');
 
   const isOpen = isLoggedIn && events.length > 0;
+  const anyOverdue = events.some((e) => minutesUntil(e.eventDatetime) < 0);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -215,12 +241,49 @@ export function DeliveryReminderModal() {
     seenKeysRef.current = new Set(currentKeys);
   }, [events, isLoggedIn]);
 
+  // Re-nag on a loop for as long as anything remains unacknowledged. Relying
+  // on Telegram as the "someone isn't watching the browser" fallback doesn't
+  // hold up in practice here — Telegram notifications are routinely missed
+  // on the team's work phone. So the backoffice tab has to carry the full
+  // weight itself: it keeps re-sounding and re-flashing on its own, rather
+  // than alerting once and going quiet.
+  useEffect(() => {
+    if (!isOpen) return;
+    const interval = setInterval(() => {
+      playAlertChime(true);
+      notifyIfHidden(events.length);
+    }, REPEAT_ALERT_MS);
+    return () => clearInterval(interval);
+  }, [isOpen, events.length]);
+
+  // Flash the browser tab title while anything is unacknowledged, so the
+  // alert is visible even if this tab is minimized or sitting behind
+  // another window — not just when the modal itself is in view.
+  useEffect(() => {
+    if (!isOpen) {
+      document.title = baseTitleRef.current;
+      return;
+    }
+    const alertTitle = `🚨 (${events.length}) ACTION REQUIRED`;
+    let showingAlert = false;
+    const interval = setInterval(() => {
+      showingAlert = !showingAlert;
+      document.title = showingAlert ? alertTitle : baseTitleRef.current;
+    }, TITLE_FLASH_MS);
+    return () => {
+      clearInterval(interval);
+      document.title = baseTitleRef.current;
+    };
+  }, [isOpen, events.length]);
+
   if (!isLoggedIn) return null;
 
   return (
     <dialog
       ref={dialogRef}
-      className="w-full max-w-lg rounded-xl border-0 bg-white p-0 shadow-2xl backdrop:bg-black/60"
+      className={`w-full max-w-lg rounded-xl border-0 bg-white p-0 shadow-2xl backdrop:bg-black/60 ${
+        anyOverdue ? 'ring-4 ring-red-500' : ''
+      }`}
     >
       {/* Header — urgent red banner */}
       <div className="flex items-center gap-3 rounded-t-xl bg-red-600 px-6 py-4">
@@ -230,7 +293,9 @@ export function DeliveryReminderModal() {
             Action Required — {events.length} Event{events.length > 1 ? 's' : ''} Today
           </h2>
           <p className="text-sm text-red-100">
-            Prepare your team and acknowledge each one below.
+            {anyOverdue
+              ? 'One or more events are already overdue — acknowledge and action now.'
+              : 'Prepare your team and acknowledge each one below.'}
           </p>
         </div>
       </div>
