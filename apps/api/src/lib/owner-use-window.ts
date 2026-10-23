@@ -32,7 +32,7 @@ export function ownerUseVehicleIdsOverlapping(
   for (const row of rows) {
     if (storeId && row.store_id !== storeId) continue;
     if (!row.vehicle_id || !row.starts_at) continue;
-    if (ownerUseOverlapsRange(row.starts_at, row.ends_at, rangeStartMs, rangeEndMs)) {
+    if (ownerUseOverlapsRange(row.starts_at, row.ends_at ?? null, rangeStartMs, rangeEndMs)) {
       ids.add(row.vehicle_id);
     }
   }
