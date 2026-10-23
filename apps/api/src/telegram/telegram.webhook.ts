@@ -28,6 +28,7 @@ import { answerCallbackQuery, editMessageReplyMarkup } from '../lib/telegram.js'
 import { logger } from '../lib/logger.js';
 import { telegramCompleteTask } from '../use-cases/todo/telegram-complete-task.js';
 import { telegramAcknowledgeDeliveryReminder } from '../use-cases/orders/telegram-acknowledge-delivery-reminder.js';
+import { telegramAcknowledgeTransferReminder } from '../use-cases/orders/telegram-acknowledge-transfer-reminder.js';
 
 const router = Router();
 
@@ -55,8 +56,9 @@ router.post('/', async (req: Request, res: Response) => {
     const transferMatch = data.match(/^confirm_transfer_(.+)$/);
     const taskMatch = data.match(/^complete_task_(.+)$/);
     const deliveryAckMatch = data.match(/^ack_delivery_(.+)_(pickup|dropoff)$/);
+    const transferAckMatch = data.match(/^ack_transfer_(.+)$/);
 
-    if (!transferMatch && !taskMatch && !deliveryAckMatch) {
+    if (!transferMatch && !taskMatch && !deliveryAckMatch && !transferAckMatch) {
       // Not a recognised action — still answer so Telegram clears any spinner.
       await answerCallbackQuery(callbackQueryId);
       res.sendStatus(200);
@@ -77,6 +79,56 @@ router.post('/', async (req: Request, res: Response) => {
       const result = await telegramAcknowledgeDeliveryReminder({
         orderItemId,
         eventType,
+        telegramUserId: fromId,
+        tapperLabel,
+      });
+
+      if (!result.ok) {
+        const toastMessages: Record<string, string> = {
+          already_acknowledged: result.reason === 'already_acknowledged'
+            ? `Already acknowledged${result.acknowledgedBy ? ` by ${result.acknowledgedBy}` : ''}.`
+            : 'Something went wrong — please try again.',
+          db_error: 'Something went wrong — please try again.',
+        };
+        await answerCallbackQuery(callbackQueryId, toastMessages[result.reason] ?? 'Something went wrong.');
+        if (result.reason === 'already_acknowledged' && chatId && rawMessageId) {
+          await editMessageReplyMarkup(chatId, String(rawMessageId), {
+            inline_keyboard: [[
+              {
+                text: `✅ Acknowledged${result.acknowledgedBy ? ` by ${result.acknowledgedBy}` : ''}`,
+                callback_data: 'noop',
+              },
+            ]],
+          });
+        }
+        res.sendStatus(200);
+        return;
+      }
+
+      await answerCallbackQuery(callbackQueryId, '✅ Acknowledged!');
+      if (chatId && rawMessageId) {
+        await editMessageReplyMarkup(chatId, String(rawMessageId), {
+          inline_keyboard: [[
+            { text: `✅ Acknowledged by ${result.acknowledgedBy}`, callback_data: 'noop' },
+          ]],
+        });
+      }
+      res.sendStatus(200);
+      return;
+    }
+
+    // ── Airport transfer reminder acknowledgment via Telegram ──
+    if (transferAckMatch) {
+      const transferId = transferAckMatch[1];
+      const from = callbackQuery.from as Record<string, unknown> | undefined;
+      const fromId = String(from?.id ?? '');
+      const tapperLabel =
+        (from?.first_name as string | undefined) ??
+        (from?.username as string | undefined) ??
+        'Telegram';
+
+      const result = await telegramAcknowledgeTransferReminder({
+        transferId,
         telegramUserId: fromId,
         tapperLabel,
       });

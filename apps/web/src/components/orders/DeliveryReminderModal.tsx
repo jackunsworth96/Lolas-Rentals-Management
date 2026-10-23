@@ -2,7 +2,9 @@ import { useEffect, useRef } from 'react';
 import {
   useDeliveryReminders,
   useAcknowledgeDeliveryReminder,
+  reminderEventKey,
   type DeliveryReminderEvent,
+  type ReminderCategory,
 } from '../../api/delivery-reminders.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 
@@ -66,6 +68,14 @@ function formatTime(datetime: string): string {
   });
 }
 
+const CATEGORY_META: Record<ReminderCategory, { label: string; badgeClass: string; icon: string }> = {
+  offsite_delivery: { label: 'DELIVERY OUT', badgeClass: 'bg-blue-100 text-blue-800', icon: '🚗' },
+  offsite_collection: { label: 'COLLECTION', badgeClass: 'bg-purple-100 text-purple-800', icon: '🔁' },
+  instore_pickup: { label: 'CUSTOMER ARRIVING — PICKUP', badgeClass: 'bg-green-100 text-green-800', icon: '🏬' },
+  instore_return: { label: 'CUSTOMER ARRIVING — RETURN', badgeClass: 'bg-amber-100 text-amber-800', icon: '🏬' },
+  airport_transfer: { label: 'AIRPORT TRANSFER', badgeClass: 'bg-sky-100 text-sky-800', icon: '✈️' },
+};
+
 function EventRow({
   event,
   onAcknowledge,
@@ -77,13 +87,8 @@ function EventRow({
 }) {
   const mins = minutesUntil(event.eventDatetime);
   const isOverdue = mins < 0;
-  const isDelivery = event.eventType === 'pickup';
 
-  const badgeClass = isDelivery
-    ? 'bg-blue-100 text-blue-800'
-    : 'bg-purple-100 text-purple-800';
-
-  const badgeLabel = isDelivery ? 'DELIVERY OUT' : 'COLLECTION';
+  const { label: badgeLabel, badgeClass } = CATEGORY_META[event.category];
 
   const timeLabel = isOverdue
     ? `${Math.abs(mins)} min overdue`
@@ -201,7 +206,7 @@ export function DeliveryReminderModal() {
   // looking at the screen, with zero acknowledgments ever recorded.
   useEffect(() => {
     if (!isLoggedIn) return;
-    const currentKeys = events.map((e) => `${e.orderItemId}:${e.eventType}`);
+    const currentKeys = events.map(reminderEventKey);
     const hasNew = currentKeys.some((k) => !seenKeysRef.current.has(k));
     if (hasNew && events.length > 0) {
       playAlertChime();
@@ -222,7 +227,7 @@ export function DeliveryReminderModal() {
         <span className="animate-pulse text-2xl">⚠️</span>
         <div>
           <h2 className="text-lg font-bold text-white">
-            Action Required — Off-Site Event{events.length > 1 ? 's' : ''}
+            Action Required — {events.length} Event{events.length > 1 ? 's' : ''} Today
           </h2>
           <p className="text-sm text-red-100">
             Prepare your team and acknowledge each one below.
@@ -234,13 +239,14 @@ export function DeliveryReminderModal() {
       <div className="space-y-3 p-5">
         {events.map((event) => (
           <EventRow
-            key={`${event.orderItemId}:${event.eventType}`}
+            key={reminderEventKey(event)}
             event={event}
             onAcknowledge={() =>
-              acknowledge.mutate({
-                orderItemId: event.orderItemId,
-                eventType: event.eventType,
-              })
+              acknowledge.mutate(
+                event.source === 'transfer'
+                  ? { transferId: event.transferId! }
+                  : { orderItemId: event.orderItemId!, eventType: event.eventType! },
+              )
             }
             isPending={acknowledge.isPending}
           />
