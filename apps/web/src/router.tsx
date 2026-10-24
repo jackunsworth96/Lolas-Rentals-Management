@@ -97,6 +97,12 @@ function RequireAccounts({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function RequireDirectory({ children }: { children: React.ReactNode }) {
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  if (!hasPermission('can_view_directory')) return <Navigate to="/fleet" replace />;
+  return <>{children}</>;
+}
+
 const Loading = () => (
   <div className="flex h-screen items-center justify-center">
     <div className="h-8 w-8 animate-spin rounded-full border-4 border-teal-brand border-t-transparent" />
@@ -193,7 +199,7 @@ export function AppRouter() {
             <Route path="settings" element={<SettingsPage />} />
             <Route path="ui-errors" element={<UIErrorsPage />} />
             <Route path="dev-tools" element={<DevToolsPage />} />
-            <Route path="directory" element={<DirectoryPage />} />
+            <Route path="directory" element={<RequireDirectory><DirectoryPage /></RequireDirectory>} />
             <Route path="customers" element={<CustomersPage />} />
             <Route path="partners" element={<PartnersPage />} />
             <Route path="partners/utilization" element={<PartnerUtilizationPage />} />

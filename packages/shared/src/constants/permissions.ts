@@ -27,6 +27,7 @@ export const Permission = {
   EditAccounts: 'can_edit_accounts',
   ViewPayroll: 'can_view_payroll',
   ViewAccounts: 'can_view_accounts',
+  ViewDirectory: 'can_view_directory',
   ViewDashboard: 'can_view_dashboard',
   ViewFleetBookValue: 'can_view_fleet_book_value',
   OverrideCashup: 'can_override_cashup',

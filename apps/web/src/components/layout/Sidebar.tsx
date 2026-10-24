@@ -102,7 +102,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Analytics', path: '/analytics', perm: 'can_view_dashboard', icon: LineChart },
       { label: 'Impact Articles', path: '/impact', perm: 'can_edit_settings', icon: Heart },
       { label: 'Merchandise', path: '/merchandise', perm: 'can_view_miscsales', icon: Package },
-      { label: 'Directory', path: '/directory', perm: null, icon: BookOpen },
+      { label: 'Directory', path: '/directory', perm: 'can_view_directory', icon: BookOpen },
     ],
   },
   {
