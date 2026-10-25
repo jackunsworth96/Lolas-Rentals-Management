@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 
 const CLOUDINARY_BASE = 'https://res.cloudinary.com/dk3c78pro/image/upload';
 const CUSTOMER_IMAGE_PATH = 'v1777723254/Lola_s_Style_Guide_Creative_7_slfvlj.png';
-const BACKOFFICE_IMAGE_PATH = 'v1777724927/Lola_s_Style_Guide_Creative_8_j1sv1c.png';
+const BACKOFFICE_IMAGE_PATH = 'v1792894773/Lola_s_Style_Guide_Creative_1_e3qstl.png';
 
 const CUSTOMER_THEME_COLOR = '#f1e6d6';
 const BACKOFFICE_THEME_COLOR = '#14506e';
