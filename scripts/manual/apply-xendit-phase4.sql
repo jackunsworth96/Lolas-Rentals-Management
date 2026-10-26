@@ -130,7 +130,10 @@ BEGIN
      OR v_transfer.payment_status <> 'Pending'
      OR v_transfer.total_price IS DISTINCT FROM p_principal_amount_php
      OR p_principal_amount_php <= 0 OR p_surcharge_amount_php < 0
-     OR EXISTS (SELECT 1 FROM public.journal_entries WHERE reference_type IN ('transfer','transfer_xendit') AND reference_id = p_transfer_id)
+     OR EXISTS (SELECT 1 FROM public.journal_entries j
+       JOIN public.chart_of_accounts a ON a.id = j.account_id
+       WHERE j.reference_type IN ('transfer','transfer_xendit') AND j.reference_id = p_transfer_id
+         AND j.credit > 0 AND a.account_type = 'Income')
      OR EXISTS (SELECT 1 FROM public.card_settlements WHERE transfer_id = p_transfer_id)
      OR EXISTS (SELECT 1 FROM public.transfer_xendit_receipts WHERE transfer_id = p_transfer_id)
      OR EXISTS (SELECT 1 FROM public.xendit_payment_sessions WHERE transfer_id = p_transfer_id
@@ -195,8 +198,10 @@ BEGIN
       AND is_active AND account_type = 'Income' AND store_id IN (p_store_id,'company')) THEN
     RAISE EXCEPTION 'Transfer payment account routing is unavailable';
   END IF;
-  SELECT COALESCE(sum(credit),0) INTO v_paid FROM public.journal_entries
-    WHERE reference_type = 'transfer' AND reference_id = p_transfer_id AND credit > 0;
+  SELECT COALESCE(sum(j.credit),0) INTO v_paid FROM public.journal_entries j
+    JOIN public.chart_of_accounts a ON a.id = j.account_id
+    WHERE j.reference_type = 'transfer' AND j.reference_id = p_transfer_id
+      AND j.credit > 0 AND a.account_type = 'Income';
   IF v_paid + p_amount > v_transfer.total_price THEN
     RAISE EXCEPTION 'Transfer payment exceeds the remaining balance';
   END IF;
@@ -274,7 +279,10 @@ BEGIN
      OR v_transfer.id IS NULL OR v_transfer.store_id <> v_session.store_id
      OR v_transfer.payment_status <> 'Pending' OR lower(v_transfer.status) IN ('cancelled','completed')
      OR v_transfer.total_price IS DISTINCT FROM v_session.principal_amount_php
-     OR EXISTS (SELECT 1 FROM public.journal_entries WHERE reference_type IN ('transfer','transfer_xendit') AND reference_id = v_transfer_id)
+     OR EXISTS (SELECT 1 FROM public.journal_entries j
+       JOIN public.chart_of_accounts a ON a.id = j.account_id
+       WHERE j.reference_type IN ('transfer','transfer_xendit') AND j.reference_id = v_transfer_id
+         AND j.credit > 0 AND a.account_type = 'Income')
      OR EXISTS (SELECT 1 FROM public.card_settlements WHERE transfer_id = v_transfer_id)
      OR EXISTS (SELECT 1 FROM public.transfer_xendit_receipts WHERE transfer_id = v_transfer_id) THEN
     v_rejection := 'Transfer or provider payment differs from frozen checkout';

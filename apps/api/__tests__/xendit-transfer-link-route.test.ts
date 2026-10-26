@@ -43,9 +43,9 @@ function fixture(session: Record<string, unknown> | null = null) {
   return { client, transfer };
 }
 
-function handler(path: string) {
+function handler(path: string, method: 'get' | 'post' = 'post') {
   const layer = (staffXenditRouter as unknown as { stack: Array<{ route?: { path: string; methods: Record<string, boolean>; stack: Array<{ handle: (...args: any[]) => Promise<void> }> } }> }).stack
-    .find((entry) => entry.route?.path === path && entry.route.methods.post);
+    .find((entry) => entry.route?.path === path && entry.route.methods[method]);
   if (!layer?.route) throw new Error(`Missing route ${path}`);
   return layer.route.stack.at(-1)!.handle;
 }
@@ -75,6 +75,18 @@ describe('staff transfer Xendit links', () => {
     await handler('/transfers/:id/session')({ params: { id: ID }, user: { storeIds: ['store-lolas'] } }, res, vi.fn());
     expect(res.json).toHaveBeenCalledWith({ success: true, data: expect.objectContaining({ checkoutUrl: 'https://checkout.example.test/old' }) });
     expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it('shows the frozen amount after a transfer has been paid', async () => {
+    const { transfer } = fixture({ id: 'session-1', status: 'completed', payment_link_url: 'https://checkout.example.test/old',
+      expires_at: '2099-01-01T00:00:00Z', principal_amount_php: 500, surcharge_amount_php: 15, amount_php: 515 });
+    transfer.total_price = 515;
+    transfer.payment_status = 'Paid';
+    const res = response();
+    await handler('/transfers/:id/session', 'get')({ params: { id: ID }, user: { storeIds: ['store-lolas'] } }, res, vi.fn());
+    expect(res.json).toHaveBeenCalledWith({ success: true, data: expect.objectContaining({
+      principalPHP: 500, surchargePHP: 15, amountPHP: 515,
+    }) });
   });
 
   it('claims an active session before accepting an explicit email', async () => {

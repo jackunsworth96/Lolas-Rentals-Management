@@ -1970,15 +1970,17 @@ staffXenditRouter.get('/transfers/:id/session', authenticate, requirePermission(
     const { data: method, error: methodError } = await sb.from('payment_methods')
       .select('surcharge_percent').eq('id', 'xendit').eq('gateway_provider', 'xendit').eq('is_active', true).maybeSingle();
     if (methodError) throw new Error(methodError.message);
-    const principalPHP = roundMoney(Number(transfer.total_price));
-    const surchargePHP = method ? roundMoney(principalPHP * Number(method.surcharge_percent ?? 0) / 100) : null;
     const { data: sessions, error } = await sb.from('xendit_payment_sessions')
-      .select('id,status,payment_link_url,expires_at,amount_php,link_email_sent_at,link_email_attempts')
+      .select('id,status,payment_link_url,expires_at,principal_amount_php,surcharge_amount_php,amount_php,link_email_sent_at,link_email_attempts')
       .eq('transfer_id', transfer.id).order('created_at', { ascending: false }).limit(1);
     if (error) throw new Error(error.message);
     const session = sessions?.[0];
+    const quotedSession = session && ['creating', 'active', 'completed', 'reconciliation_required'].includes(session.status) ? session : null;
+    const principalPHP = quotedSession ? Number(quotedSession.principal_amount_php) : roundMoney(Number(transfer.total_price));
+    const surchargePHP = quotedSession ? Number(quotedSession.surcharge_amount_php)
+      : method ? roundMoney(principalPHP * Number(method.surcharge_percent ?? 0) / 100) : null;
     res.json({ success: true, data: { principalPHP, surchargePHP,
-      amountPHP: surchargePHP === null ? null : roundMoney(principalPHP + surchargePHP),
+      amountPHP: quotedSession ? Number(quotedSession.amount_php) : surchargePHP === null ? null : roundMoney(principalPHP + surchargePHP),
       session: session ? { sessionId: session.id, status: session.status,
         checkoutUrl: session.status === 'active' && session.expires_at && new Date(session.expires_at).getTime() > Date.now() ? session.payment_link_url : null,
         expiresAt: session.expires_at, emailAcceptedAt: session.link_email_sent_at,

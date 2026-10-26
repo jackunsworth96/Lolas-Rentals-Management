@@ -38,4 +38,11 @@ describe('Phase 4 transfer checkout boundaries', () => {
     expect(sql).toContain("status IN ('creating','active','reconciliation_required')");
     expect(sql).toContain('GRANT EXECUTE ON FUNCTION public.create_xendit_transfer_session_draft');
   });
+
+  it('counts customer income credits without treating driver payouts as receipts', () => {
+    const sql = readFileSync(new URL('../../../scripts/manual/apply-xendit-phase4.sql', import.meta.url), 'utf8');
+    expect(sql.match(/JOIN public.chart_of_accounts a ON a.id = j.account_id/g)).toHaveLength(3);
+    expect(sql.match(/j.credit > 0 AND a.account_type = 'Income'/g)).toHaveLength(3);
+    expect(sql).not.toMatch(/FROM public.journal_entries\s+WHERE reference_type = 'transfer'/);
+  });
 });

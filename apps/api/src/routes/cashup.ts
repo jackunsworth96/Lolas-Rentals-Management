@@ -10,7 +10,7 @@ import {
   CashupQuerySchema,
 } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
-import { cashupCustomerName, cashupPaymentCategory } from '../lib/cashup-payment.js';
+import { cashupCustomerName, cashupPaymentCategory, nextCalendarDate } from '../lib/cashup-payment.js';
 
 const router = Router();
 router.use(authenticate);
@@ -270,7 +270,7 @@ router.get(
           .select('id,transfer_id,session_id,provider_payment_id,principal_php,surcharge_php,amount_php,created_at')
           .eq('store_id', storeId)
           .gte('created_at', `${date}T00:00:00+08:00`)
-          .lt('created_at', `${date}T23:59:59.999+08:00`);
+          .lt('created_at', `${nextCalendarDate(date)}T00:00:00+08:00`);
       if (transferOnlineRes.error) throw new Error(`Online transfer lookup failed: ${transferOnlineRes.error.message}`);
 
       const GCASH_IDS = new Set(['gcash', 'paymaya']);
