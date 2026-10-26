@@ -155,6 +155,38 @@ export function useRecordTransferPayment() {
   });
 }
 
+export interface TransferPaymentLinkState {
+  principalPHP: number;
+  surchargePHP: number | null;
+  amountPHP: number | null;
+  session: { sessionId: string; status: string; checkoutUrl: string | null;
+    expiresAt: string | null; emailAcceptedAt: string | null; emailAttempts: number } | null;
+}
+
+export function useTransferPaymentLink(transferId: string, enabled: boolean) {
+  return useQuery<TransferPaymentLinkState>({
+    queryKey: ['transfer-payment-link', transferId],
+    queryFn: () => api.get(`/payments/xendit/transfers/${encodeURIComponent(transferId)}/session`),
+    enabled,
+  });
+}
+
+export function generateTransferPaymentLink(transferId: string) {
+  return api.post<{ sessionId: string; checkoutUrl: string; amountPHP: number; expiresAt: string }>(
+    `/payments/xendit/transfers/${encodeURIComponent(transferId)}/session`, {},
+  );
+}
+
+export function emailTransferPaymentLink(transferId: string, sessionId: string, resend = false) {
+  return api.post<{ accepted: boolean }>(`/payments/xendit/transfers/${encodeURIComponent(transferId)}/send-link`,
+    { sessionId, resend });
+}
+
+export function cancelTransferPaymentLink(transferId: string, sessionId: string) {
+  return api.post<{ status: string }>(`/payments/xendit/transfers/${encodeURIComponent(transferId)}/cancel-link`,
+    { sessionId });
+}
+
 export function useRecordDriverPayment() {
   const qc = useQueryClient();
   return useMutation({

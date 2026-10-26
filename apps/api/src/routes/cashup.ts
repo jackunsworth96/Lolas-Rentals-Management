@@ -10,7 +10,7 @@ import {
   CashupQuerySchema,
 } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
-import { cashupCustomerName, cashupPaymentCategory } from '../lib/cashup-payment.js';
+import { cashupCustomerName, cashupPaymentCategory, nextCalendarDate } from '../lib/cashup-payment.js';
 
 const router = Router();
 router.use(authenticate);
@@ -266,6 +266,12 @@ router.get(
       const refundJournalEntries = (refundJournalRes.data ?? []) as Record<string, unknown>[];
       const transferIncomeEntries = (transferIncomeRes.data ?? []) as Record<string, unknown>[];
       const depositAppliedEntries = (depositAppliedRes.data ?? []) as Record<string, unknown>[];
+      const transferOnlineRes = await sb.from('transfer_xendit_receipts')
+          .select('id,transfer_id,session_id,provider_payment_id,principal_php,surcharge_php,amount_php,created_at')
+          .eq('store_id', storeId)
+          .gte('created_at', `${date}T00:00:00+08:00`)
+          .lt('created_at', `${nextCalendarDate(date)}T00:00:00+08:00`);
+      if (transferOnlineRes.error) throw new Error(`Online transfer lookup failed: ${transferOnlineRes.error.message}`);
 
       const GCASH_IDS = new Set(['gcash', 'paymaya']);
       const DEPOSIT_TYPES = new Set(['deposit', 'security_deposit']);
@@ -283,6 +289,24 @@ router.get(
       let gcashSalesTotal = 0;
       let bankTransferTotal = 0;
       let pendingExtensionsTotal = 0;
+      const onlineTransfers = transferOnlineRes.data ?? [];
+      const transferIds = [...new Set(onlineTransfers.map((row) => row.transfer_id as string))];
+      const transferNames = new Map<string, string>();
+      if (transferIds.length > 0) {
+        const { data: transferRows, error: transferError } = await sb.from('transfers')
+          .select('id,customer_name').in('id', transferIds);
+        if (transferError) throw new Error(`Transfer customer lookup failed: ${transferError.message}`);
+        for (const row of transferRows ?? []) transferNames.set(row.id as string, row.customer_name as string);
+      }
+      for (const receipt of onlineTransfers) {
+        const amount = Number(receipt.amount_php);
+        onlineSalesTx.push({ id: receipt.id, paymentType: 'card_xendit', amount,
+          methodId: 'xendit', settlementRef: receipt.provider_payment_id,
+          settlementStatus: 'pending', customerName: transferNames.get(receipt.transfer_id) ?? null,
+          bookingReference: receipt.transfer_id, providerPaymentId: receipt.provider_payment_id,
+          localXenditSessionId: receipt.session_id, orderId: null, createdAt: receipt.created_at });
+        onlineSalesTotal += amount;
+      }
 
       // Refund outflow buckets (manual refunds via Issue Refund — payments rows)
       const refundTx: unknown[] = [];

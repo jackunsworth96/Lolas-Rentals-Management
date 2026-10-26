@@ -146,9 +146,11 @@ export interface PartnerQuote {
   securityDeposit: number;
   grandTotal: number;
   grandTotalWithFees: number;
+  cardSurcharge: number | null;
 }
 
 export interface PartnerBookingInput {
+  paymentMode: 'at_lolas' | 'remote_card';
   customerName: string;
   customerEmail: string;
   customerMobile: string;
@@ -168,12 +170,35 @@ export interface PartnerBookingResult {
   id: string;
   orderReference: string;
   groupRef: string;
+  paymentMode: 'at_lolas' | 'remote_card';
+  incomplete: boolean;
   bookings: Array<{
     id: string;
     orderReference: string;
     vehicleModelId: string;
     driverName: string;
   }>;
+}
+
+export function createPartnerCheckout(groupRef: string) {
+  return partnerRequest<{ sessionId: string; checkoutUrl: string; amountPHP: number; expiresAt: string }>(
+    `/partner/book/${encodeURIComponent(groupRef)}/checkout`, { method: 'POST' },
+  );
+}
+
+export function getPartnerCheckout(groupRef: string) {
+  return partnerRequest<{ sessionId: string | null; status: string; checkoutUrl: string | null;
+    expiresAt: string | null; amountPHP: number | null; emailAcceptedAt: string | null;
+    emailAttempts: number; waiverLinks: Array<{ reference: string; url: string }> }>(
+    `/partner/book/${encodeURIComponent(groupRef)}/checkout`,
+  );
+}
+
+export function sendPartnerBookingLinks(groupRef: string, sessionId: string, resend = false) {
+  return partnerRequest<{ checkoutUrl: string; waiverLinks: Array<{ reference: string; url: string }>; accepted: boolean }>(
+    `/partner/book/${encodeURIComponent(groupRef)}/send-links`,
+    { method: 'POST', body: JSON.stringify({ sessionId, resend }) },
+  );
 }
 
 export function usePartnerLogin() {

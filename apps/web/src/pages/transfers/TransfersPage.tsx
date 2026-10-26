@@ -32,7 +32,11 @@ function isGlToIao(route: string): boolean {
 }
 
 function canCancelTransfer(t: TransferRow): boolean {
-  return !t.collectedAt && t.status !== 'cancelled';
+  return !isTransferCollected(t) && t.status !== 'cancelled';
+}
+
+function isTransferCollected(t: TransferRow): boolean {
+  return t.paymentStatus === 'Paid' || Boolean(t.collectedAt);
 }
 
 const PAYMENT_STATUS_COLORS: Record<string, 'green' | 'yellow' | 'red'> = {
@@ -301,7 +305,7 @@ export default function TransfersPage() {
                 onClick={() => {
                   setBulkPayError('');
                   const selected = filtered.filter((t) => selectedIds.has(t.id));
-                  const uncollected = selected.filter((t) => !t.collectedAt);
+                  const uncollected = selected.filter((t) => !isTransferCollected(t));
                   if (uncollected.length > 0) {
                     setBulkPayError(
                       `${uncollected.length} selected transfer${uncollected.length !== 1 ? 's have' : ' has'} not been collected yet. Collect payment from the customer first.`,
@@ -436,7 +440,7 @@ export default function TransfersPage() {
                     {t.customerName}
                   </p>
                   <div className="flex shrink-0 flex-col items-end gap-1">
-                    {t.collectedAt ? (
+                    {isTransferCollected(t) ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
                         ✓ Collected
                       </span>
@@ -489,7 +493,7 @@ export default function TransfersPage() {
                       Record Payment
                     </button>
                   )}
-                  {!t.collectedAt && (
+                  {!isTransferCollected(t) && (
                     <button
                       onClick={() => setCollectTarget(t)}
                       className="rounded-lg bg-teal-brand px-3 py-1.5 font-lato text-xs font-medium text-white hover:bg-teal-brand/80"
@@ -642,9 +646,9 @@ export default function TransfersPage() {
                         )}
                       </td>
                       <td className="px-3 py-3 text-sm" onClick={(e) => e.stopPropagation()}>
-                        {t.collectedAt ? (
+                        {isTransferCollected(t) ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
-                            ✓ {formatDate(t.collectedAt.slice(0, 10))}
+                            ✓ {t.collectedAt ? formatDate(t.collectedAt.slice(0, 10)) : 'Paid'}
                           </span>
                         ) : !archiveMode ? (
                           <button

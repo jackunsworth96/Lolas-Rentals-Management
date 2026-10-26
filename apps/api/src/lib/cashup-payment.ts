@@ -10,3 +10,7 @@ export function cashupPaymentCategory(paymentType: string, paymentMethodId: stri
 export function cashupCustomerName(customerName: string | null | undefined, rawBookingName: string | null | undefined): string | null {
   return customerName?.trim() || rawBookingName?.trim() || null;
 }
+
+export function nextCalendarDate(date: string): string {
+  return new Date(Date.parse(`${date}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+}

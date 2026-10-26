@@ -6,6 +6,22 @@ import type { Store, ConfigRepository } from '@lolas/domain';
 import { PublicTransferBookingSchema } from '@lolas/shared';
 import { sendEmail, transferBookingConfirmationHtml } from '../services/email.js';
 import { normaliseVanType } from '../transfers/pickup-time.js';
+import { getSupabaseClient } from '../adapters/supabase/client.js';
+import { createXenditReturnState, isXenditEnabled } from '../services/xendit.js';
+
+type TransferRoutePrice = { route: string; vanType: string | null; price: number; pricingType: string; isActive: boolean };
+
+export function configuredTransferPrice(routes: TransferRoutePrice[], route: string, vanType: string | null, paxCount: number): number | null {
+  const matches = routes.filter((candidate) => candidate.isActive
+    && candidate.route === route
+    && normaliseVanType(candidate.vanType) === normaliseVanType(vanType));
+  if (matches.length !== 1 || !Number.isInteger(paxCount) || paxCount < 1) return null;
+  const match = matches[0]!;
+  const perHead = match.pricingType === 'per_head'
+    || (!['per_head', 'fixed'].includes(match.pricingType) && normaliseVanType(match.vanType) === 'shared_van');
+  const price = Number(match.price) * (perHead ? paxCount : 1);
+  return Number.isFinite(price) && price > 0 ? Math.round((price + Number.EPSILON) * 100) / 100 : null;
+}
 
 const flightLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -28,6 +44,7 @@ const bookingLimiter = rateLimit({
 const router = Router();
 
 const PublicBookingSchema = z.object({
+  onlineCard: z.literal(true),
   serviceDate: z.string().min(1),
   customerName: z.string().min(1),
   contactNumber: z.string().min(7),
@@ -41,6 +58,21 @@ const PublicBookingSchema = z.object({
   opsNotes: z.string().nullable().default(null),
   token: z.string().min(1),
 });
+
+async function cardCheckoutAvailable(): Promise<boolean> {
+  if (!isXenditEnabled()) return false;
+  const { data, error } = await getSupabaseClient().from('payment_methods')
+    .select('id').eq('id', 'xendit').eq('gateway_provider', 'xendit').eq('is_active', true).maybeSingle();
+  if (error) throw new Error(error.message);
+  return Boolean(data);
+}
+
+function transferCheckoutToken(transferId: string): string {
+  return createXenditReturnState({
+    sessionId: `transfer:${transferId}`,
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+  });
+}
 
 async function resolveToken(
   configRepo: ConfigRepository,
@@ -63,6 +95,7 @@ router.get('/transfer-routes', async (req, res, next) => {
       res.status(404).json({ success: false, error: { code: 'INVALID_LINK', message: 'This booking link is not valid or has been disabled.' } });
       return;
     }
+
     const routes = await req.app.locals.deps.configRepo.getTransferRoutes(store.id);
     res.json({ success: true, data: routes });
   } catch (err) { next(err); }
@@ -91,19 +124,16 @@ router.post('/transfer-booking', bookingLimiter, validateBody(PublicBookingSchem
       res.status(404).json({ success: false, error: { code: 'INVALID_LINK', message: 'This booking link is not valid or has been disabled.' } });
       return;
     }
+    if (req.body.onlineCard && !await cardCheckoutAvailable()) {
+      res.status(503).json({ success: false, error: { code: 'CARD_PAYMENT_UNAVAILABLE', message: 'Online card payment is unavailable' } });
+      return;
+    }
 
     const routes = await req.app.locals.deps.configRepo.getTransferRoutes(store.id);
-    const matchedRoute = routes.find((r: { route: string; vanType: string | null; price: number }) =>
-      r.route === req.body.route && (!req.body.vanType || r.vanType === req.body.vanType),
-    );
-    if (matchedRoute) {
-      const expectedPrice = (matchedRoute as { pricingType?: string; price: number }).pricingType === 'per_head'
-        ? matchedRoute.price * (req.body.paxCount ?? 1)
-        : matchedRoute.price;
-      if (req.body.totalPrice < expectedPrice) {
-        res.status(400).json({ success: false, error: { code: 'PRICE_MISMATCH', message: 'Submitted price is below the configured rate' } });
-        return;
-      }
+    const expectedPrice = configuredTransferPrice(routes, req.body.route, req.body.vanType, req.body.paxCount);
+    if (expectedPrice === null || Math.round(req.body.totalPrice * 100) !== Math.round(expectedPrice * 100)) {
+      res.status(409).json({ success: false, error: { code: 'PRICE_MISMATCH', message: 'Transfer rate changed or is unavailable. Refresh the quote.' } });
+      return;
     }
 
     const normalisedVanType = normaliseVanType(req.body.vanType ?? null);
@@ -143,7 +173,8 @@ router.post('/transfer-booking', bookingLimiter, validateBody(PublicBookingSchem
       }
     }
 
-    res.status(201).json({ success: true, data: { id: result.id, pickupTime, pickupTimeEnd } });
+    res.status(201).json({ success: true, data: { id: result.id, pickupTime, pickupTimeEnd,
+      checkoutToken: req.body.onlineCard ? transferCheckoutToken(result.id) : null } });
 
     // Fire-and-forget: Telegram notification + single combined confirmation email.
     void (async () => {
@@ -176,7 +207,7 @@ router.post('/transfer-booking', bookingLimiter, validateBody(PublicBookingSchem
         }
 
         const emailTo = req.body.customerEmail as string | null;
-        if (emailTo) {
+        if (emailTo && !req.body.onlineCard) {
           const whatsappNumber = process.env.WHATSAPP_NUMBER ?? '639XXXXXXXXX';
           await sendEmail({
             to: emailTo,
@@ -188,7 +219,7 @@ router.post('/transfer-booking', bookingLimiter, validateBody(PublicBookingSchem
               paxCount:      result.paxCount,
               vanType:       normalisedVanType,
               flightTime:    result.flightTime,
-              totalPrice:    req.body.totalPrice,
+        totalPrice:    expectedPrice,
               whatsappNumber,
               pickupTime,
               pickupTimeEnd,
@@ -228,18 +259,15 @@ router.post('/public-transfer-booking', bookingLimiter, validateBody(PublicTrans
       res.status(401).json({ success: false, error: { code: 'MISSING_TOKEN', message: 'token or storeId is required' } });
       return;
     }
+    if (req.body.onlineCard && !await cardCheckoutAvailable()) {
+      res.status(503).json({ success: false, error: { code: 'CARD_PAYMENT_UNAVAILABLE', message: 'Online card payment is unavailable' } });
+      return;
+    }
     const routes = await req.app.locals.deps.configRepo.getTransferRoutes(store.id);
-    const matchedRoute = routes.find((r: { route: string; vanType: string | null; price: number }) =>
-      r.route === req.body.route && (!req.body.vanType || r.vanType === req.body.vanType),
-    );
-    if (matchedRoute) {
-      const expectedPrice = (matchedRoute as { pricingType?: string; price: number }).pricingType === 'per_head'
-        ? matchedRoute.price * (req.body.paxCount ?? 1)
-        : matchedRoute.price;
-      if (req.body.totalPrice < expectedPrice) {
-        res.status(400).json({ success: false, error: { code: 'PRICE_MISMATCH', message: 'Submitted price is below the configured rate' } });
-        return;
-      }
+    const expectedPrice = configuredTransferPrice(routes, req.body.route, req.body.vanType, req.body.paxCount);
+    if (expectedPrice === null || Math.round(req.body.totalPrice * 100) !== Math.round(expectedPrice * 100)) {
+      res.status(409).json({ success: false, error: { code: 'PRICE_MISMATCH', message: 'Transfer rate changed or is unavailable. Refresh the quote.' } });
+      return;
     }
 
     const normalisedVanType = normaliseVanType(req.body.vanType ?? null);
@@ -259,7 +287,7 @@ router.post('/public-transfer-booking', bookingLimiter, validateBody(PublicTrans
         vanType:        normalisedVanType,
         accommodation:  req.body.accommodation ?? null,
         opsNotes:       req.body.opsNotes,
-        totalPrice:     req.body.totalPrice,
+        totalPrice:     expectedPrice,
         paymentMethod:  null,
         bookingSource:  'Online',
         bookingToken:   token ?? null,
@@ -288,7 +316,8 @@ router.post('/public-transfer-booking', bookingLimiter, validateBody(PublicTrans
       }
     }
 
-    res.status(201).json({ success: true, data: { reference: result.id, pickupTime, pickupTimeEnd } });
+    res.status(201).json({ success: true, data: { reference: result.id, pickupTime, pickupTimeEnd,
+      checkoutToken: req.body.onlineCard ? transferCheckoutToken(result.id) : null } });
 
     // Fire-and-forget: Telegram notification + single combined confirmation email.
     void (async () => {
@@ -321,7 +350,7 @@ router.post('/public-transfer-booking', bookingLimiter, validateBody(PublicTrans
         }
 
         const emailTo = result.customerEmail;
-        if (emailTo) {
+        if (emailTo && !req.body.onlineCard) {
           const whatsappNumber = process.env.WHATSAPP_NUMBER ?? '639XXXXXXXXX';
           await sendEmail({
             to: emailTo,
@@ -333,7 +362,7 @@ router.post('/public-transfer-booking', bookingLimiter, validateBody(PublicTrans
               paxCount:      result.paxCount,
               vanType:       normalisedVanType,
               flightTime:    result.flightTime,
-              totalPrice:    req.body.totalPrice,
+              totalPrice:    expectedPrice,
               whatsappNumber,
               pickupTime,
               pickupTimeEnd,

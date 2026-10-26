@@ -150,6 +150,9 @@ export default function TransferBookingPage() {
   const [confirmedPickupTime, setConfirmedPickupTime] = useState<string | null>(null);
   const [confirmedPickupTimeEnd, setConfirmedPickupTimeEnd] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [onlineCard] = useState(true);
+  const [cardSurchargePercent, setCardSurchargePercent] = useState<number | null>(null);
+  const [pendingCheckout, setPendingCheckout] = useState<{ transferId: string; checkoutToken: string } | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -175,6 +178,12 @@ export default function TransferBookingPage() {
     };
   }, []);
 
+  useEffect(() => {
+    void api.get<Array<{ gatewayProvider?: string | null; surchargePercent?: number }>>('/public/booking/payment-methods')
+      .then((methods) => setCardSurchargePercent(methods.find((method) => method.gatewayProvider === 'xendit')?.surchargePercent ?? null))
+      .catch(() => setCardSurchargePercent(null));
+  }, []);
+
   const uniqueRouteStrings = useMemo(() => {
     const set = new Set(allRows.map((r) => r.route));
     return Array.from(set).sort();
@@ -198,6 +207,7 @@ export default function TransferBookingPage() {
     if (!contactNumber.trim()) errs.contactNumber = 'WhatsApp number is required';
     if (!serviceDate) errs.serviceDate = 'Date is required';
     if (!flightTime) errs.flightTime = 'Time is required';
+    if (onlineCard && !customerEmail.trim()) errs.customerEmail = 'Email is required for online payment';
 
     // Block last-minute after-hours bookings for early morning pick-ups.
     // If it's after 5pm and the customer is booking for tomorrow before 9am,
@@ -220,11 +230,15 @@ export default function TransferBookingPage() {
 
   async function handleSubmit() {
     if (!validateForm() || !route || !vanSelection) return;
+    if (cardSurchargePercent === null) {
+      setSubmitError('Card checkout is unavailable. Please try again later.');
+      return;
+    }
     setIsSubmitting(true);
     setSubmitError(null);
 
     try {
-      const resp = await api.post<{ pickupTime?: string | null; pickupTimeEnd?: string | null }>('/public/public-transfer-booking', {
+      const resp = await api.post<{ reference: string; checkoutToken?: string | null; pickupTime?: string | null; pickupTimeEnd?: string | null }>('/public/public-transfer-booking', {
         customerName: customerName.trim(),
         contactNumber: contactNumber.trim(),
         customerEmail: customerEmail.trim() || null,
@@ -238,11 +252,17 @@ export default function TransferBookingPage() {
         accommodation: accommodation.trim() || null,
         opsNotes: opsNotes.trim() || null,
         storeId: TRANSFER_STORE_ID,
+        onlineCard,
       });
       setConfirmedPickupTime(resp?.pickupTime ?? null);
       setConfirmedPickupTimeEnd(resp?.pickupTimeEnd ?? null);
       setIsConfirmed(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (onlineCard && resp.checkoutToken) {
+        const checkout = { transferId: resp.reference, checkoutToken: resp.checkoutToken };
+        setPendingCheckout(checkout);
+        await startCheckout(checkout);
+      }
     } catch (err: unknown) {
       setSubmitError(err instanceof Error ? err.message : 'Something went wrong. Please try again or WhatsApp us directly.');
     } finally {
@@ -250,7 +270,18 @@ export default function TransferBookingPage() {
     }
   }
 
+  async function startCheckout(checkout: { transferId: string; checkoutToken: string }) {
+    try {
+      const session = await api.post<{ checkoutUrl: string }>('/public/payments/xendit/transfers/sessions', checkout);
+      window.location.assign(session.checkoutUrl);
+    } catch (err) {
+      setSubmitError(`Transfer created but payment is still due. ${err instanceof Error ? err.message : 'Checkout failed.'}`);
+    }
+  }
+
   function resetAll() {
+    setPendingCheckout(null);
+    setSubmitError(null);
     setStep(1);
     setRoute(null);
     setVanSelection(null);
@@ -277,10 +308,12 @@ export default function TransferBookingPage() {
           <FadeUpSection>
             <div className="flex flex-col items-center text-center">
               <CheckCircle2 className="mb-4 text-teal-brand" size={64} />
-              <h2 className="font-headline text-2xl font-black text-teal-brand">Booking Confirmed!</h2>
+              <h2 className="font-headline text-2xl font-black text-teal-brand">Transfer booking created</h2>
               <p className="mt-2 font-lato text-sm text-charcoal-brand/70">
-                Your pick-up time has been automatically confirmed — see your booking summary below.
+                Card payment is still being verified. Your transfer remains unpaid until confirmation.
               </p>
+              {submitError && <p className="mt-3 text-sm text-red-700">{submitError}</p>}
+              {pendingCheckout && <button type="button" onClick={() => void startCheckout(pendingCheckout)} className="mt-3 font-semibold text-teal-brand underline">Retry card checkout</button>}
 
               <div className="mt-8 w-full rounded-2xl border border-charcoal-brand/10 bg-sand-brand p-5">
                 <div className="space-y-3 text-left font-lato text-sm">
@@ -299,7 +332,7 @@ export default function TransferBookingPage() {
                     <div className="flex items-center justify-between">
                       <span className="font-semibold text-charcoal-brand">Total</span>
                       <span className="font-headline text-xl font-bold text-teal-brand">
-                        <PesoSign />{calcTotal(vanSelection, paxCount).toLocaleString()}
+                        <PesoSign />{(calcTotal(vanSelection, paxCount) + (onlineCard ? Math.round(calcTotal(vanSelection, paxCount) * (cardSurchargePercent ?? 0)) / 100 : 0)).toLocaleString()}
                       </span>
                     </div>
                   </div>
@@ -667,16 +700,21 @@ export default function TransferBookingPage() {
               </div>
 
               {/* Price summary */}
+              <fieldset className="space-y-2 font-lato text-sm">
+                <legend className="font-semibold">Payment</legend>
+                <p>Pay by card through a secure payment link</p>
+              </fieldset>
               <div className="rounded-2xl border border-charcoal-brand/10 bg-sand-brand p-5">
                 <div className="space-y-3 font-lato text-sm">
                   <Row label="Route" value={route ?? ''} />
                   <Row label="Transport" value={vanTypeLabel(vanSelection.vanType)} />
                   <Row label="Passengers" value={String(paxCount)} />
+                  {onlineCard && <Row label="Card surcharge" value={`₱${(Math.round(calcTotal(vanSelection, paxCount) * (cardSurchargePercent ?? 0)) / 100).toFixed(2)}`} />}
                   <div className="border-t border-charcoal-brand/10 pt-3">
                     <div className="flex items-center justify-between">
                       <span className="font-semibold text-charcoal-brand">Total</span>
                       <span className="font-headline text-xl font-bold text-teal-brand">
-                        <PesoSign />{calcTotal(vanSelection, paxCount).toLocaleString()}
+                        <PesoSign />{(calcTotal(vanSelection, paxCount) + (onlineCard ? Math.round(calcTotal(vanSelection, paxCount) * (cardSurchargePercent ?? 0)) / 100 : 0)).toLocaleString()}
                       </span>
                     </div>
                   </div>

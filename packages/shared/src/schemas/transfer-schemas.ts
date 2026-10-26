@@ -88,6 +88,7 @@ export const TransferSummaryQuerySchema = z.object({
 export type TransferSummaryQuery = z.infer<typeof TransferSummaryQuerySchema>;
 
 export const PublicTransferBookingSchema = z.object({
+  onlineCard: z.literal(true),
   customerName:  z.string().min(1),
   contactNumber: z.string().min(1),
   customerEmail: z.union([z.string().email(), z.literal(''), z.null()]).default(null).transform((v) => v || null),

@@ -5,10 +5,14 @@ import {
   fetchPublicAddons,
   fetchPublicLocations,
   fetchPublicModels,
+  createPartnerCheckout,
+  getPartnerCheckout,
+  sendPartnerBookingLinks,
   usePartnerBook,
   usePartnerMe,
   usePartnerQuote,
   type PartnerBookingInput,
+  type PartnerBookingResult,
   type PartnerQuote,
   type PartnerProfile,
   type PublicAddon,
@@ -209,10 +213,36 @@ export default function PartnerBookPage() {
   ]);
   const [quotesByLine, setQuotesByLine] = useState<Record<string, PartnerQuote | null>>({});
   const [selectedAddonIds, setSelectedAddonIds] = useState<Set<number>>(() => new Set());
-  const [success, setSuccess] = useState<{ groupRef: string; refs: string[] } | null>(null);
+  const [paymentMode] = useState<'remote_card'>('remote_card');
+  const [success, setSuccess] = useState<{
+    booking: PartnerBookingResult;
+    sessionId?: string;
+    checkoutUrl?: string;
+    amountPHP?: number;
+    expiresAt?: string;
+    status?: string;
+    waiverLinks: Array<{ reference: string; url: string }>;
+    emailStatus?: 'sent' | 'failed';
+  } | null>(null);
+  const [linkBusy, setLinkBusy] = useState(false);
   const [error, setError] = useState('');
   const [peaceOpen, setPeaceOpen] = useState(false);
   const locationDefaultHandledRef = useRef(false);
+
+  useEffect(() => {
+    const saved = sessionStorage.getItem('partnerLastBooking');
+    if (!saved) return;
+    try {
+      const booking = JSON.parse(saved) as PartnerBookingResult;
+      if (!booking.groupRef) return;
+      void getPartnerCheckout(booking.groupRef).then((checkout) => setSuccess({ booking,
+        sessionId: checkout.sessionId ?? undefined, checkoutUrl: checkout.checkoutUrl ?? undefined,
+        amountPHP: checkout.amountPHP ?? undefined, expiresAt: checkout.expiresAt ?? undefined,
+        status: checkout.status, waiverLinks: checkout.waiverLinks,
+        emailStatus: checkout.emailAcceptedAt ? 'sent' : undefined,
+      })).catch(() => sessionStorage.removeItem('partnerLastBooking'));
+    } catch { sessionStorage.removeItem('partnerLastBooking'); }
+  }, []);
 
   const firstVehicleModelId = vehicleLines.find((v) => v.vehicleModelId)?.vehicleModelId ?? '';
   const addons = useQuery({
@@ -282,6 +312,7 @@ export default function PartnerBookPage() {
   const fallbackDeliveryDiscount =
     (fallbackPickupFee - fallbackPickupEffectiveFee) + (fallbackDropoffFee - fallbackDropoffEffectiveFee);
   const selectedQuotes = vehicleLines.map((line) => quotesByLine[line.id]).filter(Boolean) as PartnerQuote[];
+  const cardSurcharge = selectedQuotes.reduce((sum, quote) => sum + Number(quote.cardSurcharge ?? 0), 0);
   const selectedVehicleCount = Math.max(1, vehicleLines.filter((line) => line.vehicleModelId).length);
   const summaryRentalDays = selectedQuotes[0]?.rentalDays ?? rentalDaysBetween(pickupDatetime, dropoffDatetime);
   const summaryAddonsTotal = useMemo(() => {
@@ -296,28 +327,26 @@ export default function PartnerBookPage() {
     }, 0);
   }, [addons.data, selectedAddonIdList, selectedVehicleCount, summaryRentalDays]);
   const totals = selectedQuotes.reduce(
-    (acc, quote, index) => {
+    (acc, quote) => {
       acc.rental += quote.effectiveRentalSubtotal;
       acc.rentalDiscount += quote.rentalDiscount;
       acc.deposit += quote.securityDeposit;
-      if (index === 0) {
-        acc.pickupOriginal = fallbackPickupFee;
-        acc.dropoffOriginal = fallbackDropoffFee;
-        acc.pickupEffective = quote.deliveryDiscount > 0 ? quote.effectivePickupFee : fallbackPickupEffectiveFee;
-        acc.dropoffEffective = quote.deliveryDiscount > 0 ? quote.effectiveDropoffFee : fallbackDropoffEffectiveFee;
-        acc.deliveryDiscount = quote.deliveryDiscount;
-      }
+      acc.pickupOriginal += fallbackPickupFee;
+      acc.dropoffOriginal += fallbackDropoffFee;
+      acc.pickupEffective += quote.deliveryDiscount > 0 ? quote.effectivePickupFee : fallbackPickupEffectiveFee;
+      acc.dropoffEffective += quote.deliveryDiscount > 0 ? quote.effectiveDropoffFee : fallbackDropoffEffectiveFee;
+      acc.deliveryDiscount += quote.deliveryDiscount;
       return acc;
     },
     {
       rental: 0,
       rentalDiscount: 0,
       deposit: 0,
-      pickupOriginal: fallbackPickupFee,
-      dropoffOriginal: fallbackDropoffFee,
-      pickupEffective: fallbackPickupEffectiveFee,
-      dropoffEffective: fallbackDropoffEffectiveFee,
-      deliveryDiscount: fallbackDeliveryDiscount,
+      pickupOriginal: 0,
+      dropoffOriginal: 0,
+      pickupEffective: 0,
+      dropoffEffective: 0,
+      deliveryDiscount: 0,
     },
   );
   const grandTotal = totals.rental + summaryAddonsTotal + totals.pickupEffective + totals.dropoffEffective;
@@ -361,10 +390,40 @@ export default function PartnerBookPage() {
     return money(effective);
   }
 
+  async function finishRemoteBooking(booking: PartnerBookingResult) {
+    setLinkBusy(true);
+    try {
+      const checkout = await createPartnerCheckout(booking.groupRef);
+      setSuccess((current) => current && current.booking.groupRef === booking.groupRef
+        ? { ...current, sessionId: checkout.sessionId, checkoutUrl: checkout.checkoutUrl,
+          amountPHP: checkout.amountPHP, expiresAt: checkout.expiresAt, status: 'active' } : current);
+    } catch (err) {
+      setError(`Booking was created. ${err instanceof Error ? err.message : 'Could not prepare the payment link.'} Retry from this booking, not by creating another.`);
+    } finally {
+      setLinkBusy(false);
+    }
+  }
+
+  async function emailGuest(resend: boolean) {
+    if (!success?.sessionId) return;
+    setLinkBusy(true);
+    setError('');
+    try {
+      const links = await sendPartnerBookingLinks(success.booking.groupRef, success.sessionId, resend);
+      setSuccess((current) => current ? { ...current, waiverLinks: links.waiverLinks,
+        emailStatus: links.accepted ? 'sent' : 'failed' } : current);
+      if (!links.accepted) setError('Email was not accepted. The booking and payment link remain available.');
+    } catch (err) {
+      setSuccess((current) => current ? { ...current, emailStatus: 'failed' } : current);
+      setError(err instanceof Error ? err.message : 'Could not email guest');
+    }
+    finally { setLinkBusy(false); }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
-    setSuccess(null);
+    if (success) { setError('Start a new booking before creating another group.'); return; }
     if (!leadTimeOk) {
       setError('Pickup must be at least 2 hours from now.');
       return;
@@ -378,6 +437,7 @@ export default function PartnerBookPage() {
     }
     try {
       const body: PartnerBookingInput = {
+        paymentMode,
         customerName: form.customerName.trim(),
         customerEmail: form.customerEmail.trim(),
         customerMobile: form.customerMobile.trim(),
@@ -393,7 +453,12 @@ export default function PartnerBookPage() {
         extraComments: form.extraComments.trim() || undefined,
       };
       const result = await book.mutateAsync(body);
-      setSuccess({ groupRef: result.groupRef, refs: result.bookings.map((b) => b.orderReference) });
+      sessionStorage.setItem('partnerLastBooking', JSON.stringify(result));
+      setSuccess({ booking: result, waiverLinks: result.bookings.map((b) => ({
+        reference: b.orderReference,
+        url: `${window.location.origin}/waiver/${encodeURIComponent(b.orderReference)}`,
+      })) });
+      if (result.incomplete) setError("Only part of this group was created. Do not submit again; contact Lola's staff with the references above.");
       setForm((prev) => ({ ...prev, customerName: '', customerEmail: '', customerMobile: '', roomReference: '', extraComments: '' }));
       setVehicleLines([{ id: crypto.randomUUID(), vehicleModelId: '', driverName: '' }]);
       setSelectedAddonIds(new Set());
@@ -408,6 +473,11 @@ export default function PartnerBookPage() {
       <form onSubmit={handleSubmit} className="rounded-lg bg-white p-4 shadow-sm">
         <h1 className="text-xl font-bold text-gray-900">Book for a Guest</h1>
         <p className="mt-1 text-sm text-gray-500">This booking will be automatically attributed to {me?.partner.name ?? 'your partner account'}.</p>
+
+        <fieldset className="mt-5">
+          <legend className="mb-2 text-xs font-semibold text-gray-500">Guest payment</legend>
+          <p className="text-sm">Card payment link</p>
+        </fieldset>
 
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
           <div>
@@ -565,9 +635,18 @@ export default function PartnerBookPage() {
         </div>
 
         <div className="mt-5">
-          {success && <p className="mb-3 rounded-lg bg-green-50 px-3 py-2 text-sm font-semibold text-green-700">Booking group {success.groupRef}: {success.refs.join(', ')}</p>}
+          {success && <div className="mb-3 space-y-2 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800">
+            <p className="font-semibold">Booking group {success.booking.groupRef}: {success.booking.bookings.map((b) => b.orderReference).join(', ')}</p>
+            <p>{success.booking.incomplete ? 'Incomplete group. Staff review required before payment.' : success.status === 'completed' ? 'Paid online.' : success.status === 'reconciliation_required' ? 'Payment verification required. Contact staff.' : success.emailStatus === 'sent' ? 'Payment and waiver email accepted for sending.' : success.emailStatus === 'failed' ? 'Email was not accepted; share the links below or retry.' : success.checkoutUrl ? 'Payment pending. Share the link with the guest.' : 'Unpaid. Generate a payment link.'}</p>
+            {success.amountPHP != null && <p>Card total: {money(success.amountPHP)}{success.expiresAt ? ` · Expires ${new Date(success.expiresAt).toLocaleString()}` : ''}</p>}
+            {success.checkoutUrl && <div className="flex items-center gap-2"><a className="break-all underline" href={success.checkoutUrl} target="_blank" rel="noreferrer">Payment link</a><button type="button" onClick={() => void navigator.clipboard.writeText(success.checkoutUrl!)} className="underline">Copy</button></div>}
+            {success.waiverLinks.map((link) => <div key={link.reference} className="flex items-center gap-2"><a className="underline" href={link.url} target="_blank" rel="noreferrer">Waiver {link.reference}</a><button type="button" onClick={() => void navigator.clipboard.writeText(link.url)} className="underline">Copy</button></div>)}
+            {!success.booking.incomplete && !success.checkoutUrl && !['completed', 'reconciliation_required', 'creating'].includes(success.status ?? '') && <button type="button" disabled={linkBusy} onClick={() => { setError(''); void finishRemoteBooking(success.booking); }} className="underline disabled:opacity-50">{linkBusy ? 'Working...' : 'Generate payment link'}</button>}
+            {success.checkoutUrl && <button type="button" disabled={linkBusy} onClick={() => void emailGuest(success.emailStatus === 'sent')} className="underline disabled:opacity-50">{linkBusy ? 'Sending...' : success.emailStatus === 'sent' ? 'Resend email' : 'Email guest'}</button>}
+            <button type="button" onClick={() => { sessionStorage.removeItem('partnerLastBooking'); setSuccess(null); setError(''); }} className="underline">New booking</button>
+          </div>}
           {error && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-          <button disabled={book.isPending || !leadTimeOk} className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+          <button disabled={book.isPending || !leadTimeOk || !!success} className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
             {book.isPending ? 'Creating booking...' : 'Create booking'}
           </button>
         </div>
@@ -595,7 +674,8 @@ export default function PartnerBookPage() {
           </div>
           {totals.deliveryDiscount > 0 && <p className="rounded-lg bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-700">Free delivery discount applied: {money(totals.deliveryDiscount)}</p>}
           <div className="border-t border-gray-200 pt-3">
-            <div className="flex justify-between gap-4 text-base"><span className="font-bold text-gray-900">Guest total</span><span className="font-bold text-teal-700">{money(grandTotal)}</span></div>
+            {paymentMode === 'remote_card' && <div className="mb-2 flex justify-between gap-4"><span>Card surcharge</span><span>{money(cardSurcharge)}</span></div>}
+            <div className="flex justify-between gap-4 text-base"><span className="font-bold text-gray-900">Guest total</span><span className="font-bold text-teal-700">{money(grandTotal + (paymentMode === 'remote_card' ? cardSurcharge : 0))}</span></div>
             <div className="mt-2 flex justify-between gap-4"><span className="text-gray-500">Refundable deposit</span><span className="font-semibold">{money(totals.deposit)}</span></div>
           </div>
         </div>
