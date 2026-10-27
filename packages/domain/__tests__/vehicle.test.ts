@@ -94,9 +94,9 @@ describe('Vehicle', () => {
       expect(v.isStatusLocked()).toBe(true);
     });
 
-    it('returns true for Closed', () => {
+    it('returns false for Closed (still owned, can be put back into service)', () => {
       const v = Vehicle.create(makeVehicleProps({ status: 'Closed' }));
-      expect(v.isStatusLocked()).toBe(true);
+      expect(v.isStatusLocked()).toBe(false);
     });
 
     it('returns false for Service Vehicle (can be manually changed back)', () => {

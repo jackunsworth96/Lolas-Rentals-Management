@@ -4,9 +4,9 @@ const PROTECTED_STATUSES = ['Sold', 'Closed', 'Service Vehicle'] as const;
 
 // Truly terminal statuses that should never be changed again (e.g. from the
 // fleet edit form). Unlike PROTECTED_STATUSES (which also blocks
-// depreciation/auto status sync for Service Vehicle), a vehicle manually
-// marked "Service Vehicle" should still be editable back to "Available".
-const LOCKED_STATUSES = ['Sold', 'Closed'] as const;
+// depreciation/auto status sync), "Service Vehicle" and "Closed" (still owned,
+// just not rented) must remain editable back to "Available".
+const LOCKED_STATUSES = ['Sold'] as const;
 
 const NON_RENTABLE_STATUSES = ['Sold', 'Closed', 'Maintenance', 'Retired', 'Pending ORCR'] as const;
 
@@ -121,7 +121,7 @@ export class Vehicle {
     return (PROTECTED_STATUSES as readonly string[]).includes(this._status);
   }
 
-  /** True only for terminal statuses (Sold/Closed) that must never change again. */
+  /** True only for terminal statuses (Sold) that must never change again. */
   isStatusLocked(): boolean {
     return (LOCKED_STATUSES as readonly string[]).includes(this._status);
   }
