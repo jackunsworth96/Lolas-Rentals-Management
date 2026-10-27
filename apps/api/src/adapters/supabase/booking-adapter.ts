@@ -431,6 +431,57 @@ export async function evaluateAvailability(
   return { models: results, explanation: { models: detailModels, configurationExclusions } };
 }
 
+const MAX_SUGGESTION_ATTEMPTS = 4;
+
+/**
+ * `nextAvailablePickup` is derived from the earliest return inside the searched
+ * window, which ignores bookings that start later. Re-check each suggestion for
+ * the same rental length and walk forward until it actually fits; drop it if no
+ * fitting start is found within a few steps rather than suggest full dates.
+ */
+export async function verifyNextAvailableSuggestions(
+  query: AvailabilityQuery,
+  models: AvailableModel[],
+  check: (q: AvailabilityQuery) => Promise<AvailableModel[]>,
+): Promise<AvailableModel[]> {
+  const requested = Math.max(1, query.requestedQuantity ?? 1);
+  const durationMs = new Date(query.dropoffDatetime).getTime() - new Date(query.pickupDatetime).getTime();
+  const cache = new Map<string, Promise<AvailableModel[]>>();
+  const checkFrom = (pickup: string) => {
+    let pending = cache.get(pickup);
+    if (!pending) {
+      pending = check({
+        ...query,
+        pickupDatetime: pickup,
+        dropoffDatetime: new Date(new Date(pickup).getTime() + durationMs).toISOString(),
+      });
+      cache.set(pickup, pending);
+    }
+    return pending;
+  };
+
+  return Promise.all(models.map(async (model) => {
+    if (model.availableCount >= requested || !model.nextAvailablePickup) return model;
+    // Partial-availability responses use nextAvailablePickup as "free again from" inside the window.
+    if (model.firstConflictAt) return model;
+    let candidate: string | undefined = model.nextAvailablePickup;
+    let verified: string | undefined;
+    for (let attempt = 0; candidate && attempt < MAX_SUGGESTION_ATTEMPTS; attempt++) {
+      const shifted = (await checkFrom(candidate)).find((m) => m.modelId === model.modelId);
+      if (shifted && shifted.availableCount >= requested) {
+        verified = candidate;
+        break;
+      }
+      const next: string | undefined = shifted?.nextAvailablePickup;
+      candidate = next && new Date(next).getTime() > new Date(candidate).getTime() ? next : undefined;
+    }
+    const result: AvailableModel = { ...model };
+    if (verified) result.nextAvailablePickup = verified;
+    else delete result.nextAvailablePickup;
+    return result;
+  }));
+}
+
 export function createBookingAdapter(pendingRows?: Record<string, unknown>[]): BookingPort {
   const sb = getSupabaseClient();
 
@@ -444,18 +495,21 @@ export function createBookingAdapter(pendingRows?: Record<string, unknown>[]): B
         serverQuote: data.web_quote_raw, charityDonation: data.charity_donation ?? 0 } : null;
     },
     async checkAvailability(query: AvailabilityQuery): Promise<AvailableModel[]> {
-      const physical = (await evaluateAvailability(query, sb)).models;
-      const { data, error } = await sb.rpc('allocation_availability', {
-        p_store: query.storeId, p_start: query.pickupDatetime, p_end: query.dropoffDatetime,
-        p_ref: query.partnerRef ?? null, p_exclude_session: query.excludeSessionToken ?? null,
-        p_exclude_item: query.excludeOrderItemId ?? null,
-      });
-      if (error) throw new Error(`Allocation availability failed: ${error.message}`);
-      if (data === null) return physical;
-      return (data as AvailableModel[]).map((model) => {
-        const existing = physical.find((m) => m.modelId === model.modelId);
-        return { ...existing, ...model, availableCount: Math.min(model.availableCount, existing?.availableCount ?? 0) };
-      });
+      const checkOnce = async (q: AvailabilityQuery): Promise<AvailableModel[]> => {
+        const physical = (await evaluateAvailability(q, sb)).models;
+        const { data, error } = await sb.rpc('allocation_availability', {
+          p_store: q.storeId, p_start: q.pickupDatetime, p_end: q.dropoffDatetime,
+          p_ref: q.partnerRef ?? null, p_exclude_session: q.excludeSessionToken ?? null,
+          p_exclude_item: q.excludeOrderItemId ?? null,
+        });
+        if (error) throw new Error(`Allocation availability failed: ${error.message}`);
+        if (data === null) return physical;
+        return (data as AvailableModel[]).map((model) => {
+          const existing = physical.find((m) => m.modelId === model.modelId);
+          return { ...existing, ...model, availableCount: Math.min(model.availableCount, existing?.availableCount ?? 0) };
+        });
+      };
+      return verifyNextAvailableSuggestions(query, await checkOnce(query), checkOnce);
     },
 
     async insertHold(input: InsertHoldInput): Promise<HoldRow> {
