@@ -163,9 +163,16 @@ export function InspectionModal({
     });
   }, [open, storeId]);
 
+  // Prefer the vehicle's model id to decide the checklist type — pet names (e.g. a
+  // tuktuk named "Pepper") don't reliably contain "tuk", but model ids do (e.g.
+  // "Bajaj RE TukTuk"). Fall back to the vehicle name only if the model id isn't
+  // known yet (e.g. a synthetic pre-assigned entry before the fleet list loads).
+  const selectedVehicleModelId = availableVehicles.find((v) => v.id === vehicleId)?.modelId ?? '';
+
   useEffect(() => {
     if (!open) return;
-    const type = vehicleName.toLowerCase().includes('tuk') ? 'tuktuk' : 'scooter';
+    const typeSource = selectedVehicleModelId || vehicleName;
+    const type = typeSource.toLowerCase().includes('tuk') ? 'tuktuk' : 'scooter';
     api
       .get<InspectionItem[]>(`/inspections/items?vehicleType=${type}`)
       .then((data) => {
@@ -178,7 +185,7 @@ export function InspectionModal({
         setResults(initial);
       })
       .catch((err: unknown) => console.error('Items error:', err));
-  }, [vehicleName, open]);
+  }, [vehicleName, selectedVehicleModelId, open]);
 
   // ── Signature drawing ──────────────────────────────────────────────────────
 

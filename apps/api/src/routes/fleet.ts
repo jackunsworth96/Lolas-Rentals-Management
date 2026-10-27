@@ -637,7 +637,9 @@ router.get(
   })),
   async (req, res, next) => {
     try {
-      const { storeId, pickupDatetime, dropoffDatetime, partnerRef, excludeRawOrderId } = req.query as {
+      // `partnerRef` is accepted for backwards compatibility with existing callers but is no
+      // longer used here — see the comment below on why the model-level allocation check was removed.
+      const { storeId, pickupDatetime, dropoffDatetime, excludeRawOrderId } = req.query as {
         partnerRef?: string;
         excludeRawOrderId?: string;
         storeId: string;
@@ -661,18 +663,21 @@ router.get(
       const { data: fleetRows, error: fleetErr } = await sb.from('fleet')
         .select('id, name, model_id, status, store_id, surf_rack').eq('store_id', storeId);
       if (fleetErr) throw new Error(`Fleet query failed: ${fleetErr.message}`);
-      // An inbox reservation already consumes capacity; assigning it must not reserve a second unit.
-      const allocationModels = excludeRawOrderId ? null : await req.app.locals.deps.bookingPort.checkAvailability({ storeId, pickupDatetime, dropoffDatetime, partnerRef });
-      const remaining = new Map<string, number>((allocationModels ?? []).map((m: { modelId: string; availableCount: number }): [string, number] => [m.modelId, m.availableCount]));
       type FleetRow = { id: string; name: string; model_id: string | null; status: string; store_id: string; surf_rack: boolean | null };
-      const bookableVehicles = ((fleetRows ?? []) as FleetRow[]).filter((v) => {
-        if (blocked.has(v.id)) return false;
-        if (excludeRawOrderId) return true;
-        const count = remaining.get(v.model_id ?? '') ?? 0;
-        if (count < 1) return false;
-        remaining.set(v.model_id!, count - 1);
-        return true;
-      });
+      // `blocked` already reflects an exact, per-vehicle check (real order_items/walk-in/
+      // owner-use conflicts for this precise window, plus non-rentable statuses) — that is
+      // the correct gate for "can staff hand over/inspect this named vehicle right now."
+      //
+      // We intentionally do NOT additionally clamp this list down to bookingPort.checkAvailability()'s
+      // pooled, model-level count. That number is a forward-looking sales cap meant to stop a
+      // *model* (e.g. "Honda Beat") from being oversold to new customers across a date range —
+      // it has nothing to do with whether this specific physical vehicle is free, and it has no
+      // knowledge of which exact vehicles are in a partner's protected pool. Applying it here
+      // used to silently drop genuinely conflict-free, "Available" vehicles from this exact-vehicle
+      // picker (staff walk-in check-in, vehicle inspection, reserve-for-later) depending on unrelated
+      // pending web reservations/model-wide demand elsewhere in the window and arbitrary row order.
+      // See docs/AVAILABILITY_INVENTORY_BUG_FIX.md (Bug #2) for the investigation.
+      const bookableVehicles = ((fleetRows ?? []) as FleetRow[]).filter((v) => !blocked.has(v.id));
       res.json({
         success: true,
         data: bookableVehicles.map((v) => ({
