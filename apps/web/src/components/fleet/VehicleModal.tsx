@@ -6,7 +6,7 @@ import { useStores, useVehicleModels } from '../../api/config.js';
 import { formatDateTime } from '../../utils/date.js';
 
 const STATUS_OPTIONS = ['Available', 'Active', 'Under Maintenance', 'Service Vehicle', 'Pending ORCR', 'Sold', 'Retired', 'Closed'];
-const PROTECTED_STATUSES = ['Sold', 'Closed'];
+const PROTECTED_STATUSES = ['Sold'];
 
 interface VehicleModalProps {
   open: boolean;
@@ -159,7 +159,7 @@ export function VehicleModal({ open, onClose, vehicleId }: VehicleModalProps) {
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
-            {isProtected && <p className="mt-1 text-xs text-amber-600">Sold and Closed status cannot be changed.</p>}
+            {isProtected && <p className="mt-1 text-xs text-amber-600">Sold status cannot be changed.</p>}
           </label>
           <div className="col-span-2 space-y-2">
             <label className="block">

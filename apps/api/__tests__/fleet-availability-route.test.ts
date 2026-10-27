@@ -49,11 +49,15 @@ describe('staff vehicle availability', () => {
     });
   });
 
-  it('uses shared exact conflicts and model capacity for a new walk-in', async () => {
+  it('uses shared exact conflicts for a new walk-in, without re-clamping by pooled model capacity', async () => {
     const response = await request(app()).get('/fleet/available').query(dates);
     expect(response.status).toBe(200);
     expect(response.body.data.map((vehicle: { id: string }) => vehicle.id)).toEqual(['free']);
-    expect(mocks.checkAvailability).toHaveBeenCalledWith(expect.objectContaining(dates));
+    // The per-vehicle exact-conflict check (from evaluateAvailability) is the only gate here.
+    // bookingPort.checkAvailability() is a pooled, model-level sales cap unrelated to whether
+    // this specific vehicle is free, and must not be used to hide conflict-free vehicles from
+    // staff tools (see docs/AVAILABILITY_INVENTORY_BUG_FIX.md, Bug #2).
+    expect(mocks.checkAvailability).not.toHaveBeenCalled();
   });
 
   it('assigns an existing reservation without making it consume capacity twice', async () => {
