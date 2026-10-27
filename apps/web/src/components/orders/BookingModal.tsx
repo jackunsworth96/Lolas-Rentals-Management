@@ -19,6 +19,7 @@ import { formatPickupDatetimeManila } from '../../utils/date.js';
 import { usePaymentRouting } from '../../hooks/use-payment-routing.js';
 import { resolveStoreFromSource } from '@lolas/shared';
 import { InspectionModal } from './InspectionModal.js';
+import { InactiveModelNotice } from '../fleet/InactiveModelNotice.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 import { fetchPublicPartnerBenefit } from '../../api/partners.js';
 import {
@@ -314,6 +315,9 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     const match = vehicleModels.find((m) => m.id === rawOrder.vehicle_model_id);
     return match?.name ?? null;
   }, [isDirect, rawOrder.vehicle_model_id, vehicleModels]);
+  const bookedModelId = isDirect ? (rawOrder.vehicle_model_id ?? null) : null;
+  const modelNameFor = (modelId: string | null | undefined) =>
+    vehicleModels?.find((m) => m.id === modelId)?.name ?? modelId ?? 'no model';
 
   const processMutation = useProcessRawOrder();
   const collectMutation = useCollectPayment();
@@ -674,9 +678,12 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
         }
       }
 
-      // Auto-fill rate from pricing tiers when vehicle or dates change, unless the user has already set a manual rate
+      // Auto-fill rate from pricing tiers when vehicle or dates change, unless the user has already set a manual rate.
+      // A booking made for a specific model is priced at that model even if a different vehicle is handed over.
       if (!patch.rentalRate) {
-        const mid = modelId ?? (fleet?.find((v) => v.id === merged.vehicleId)?.modelId as string | null);
+        const mid = bookedModelId
+          ?? modelId
+          ?? (fleet?.find((v) => v.id === merged.vehicleId)?.modelId as string | null);
         const rate = findRate(mid, merged.rentalDaysCount, storePricing ?? []);
         if (rate !== null) merged.rentalRate = rate;
       }
@@ -1261,6 +1268,17 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
               const selectableVehicles = (availability?.data ?? []).filter((candidate) =>
                 !vehicles.some((other, index) => index !== i && other.vehicleId === candidate.id),
               );
+              const bookedModelVehicles = bookedModelId
+                ? selectableVehicles.filter((fv) => fv.modelId === bookedModelId)
+                : selectableVehicles;
+              const otherModelVehicles = bookedModelId
+                ? selectableVehicles.filter((fv) => fv.modelId !== bookedModelId)
+                : [];
+              const selectedModelId = v.vehicleId
+                ? (selectableVehicles.find((fv) => fv.id === v.vehicleId)?.modelId
+                  ?? (fleet?.find((fv) => fv.id === v.vehicleId)?.modelId as string | undefined))
+                : undefined;
+              const modelMismatch = Boolean(bookedModelId && v.vehicleId && selectedModelId !== bookedModelId);
 
               return (
               <div key={i} className="rounded-lg border border-gray-200 p-4">
@@ -1284,17 +1302,51 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                       className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     >
                       <option value="">Select vehicle...</option>
-                      {selectableVehicles.map((fv) => (
-                        <option key={String(fv.id)} value={String(fv.id)}>
-                          {String(fv.name ?? fv.id)}
-                        </option>
-                      ))}
+                      {otherModelVehicles.length === 0 ? (
+                        bookedModelVehicles.map((fv) => (
+                          <option key={String(fv.id)} value={String(fv.id)}>
+                            {String(fv.name ?? fv.id)}
+                          </option>
+                        ))
+                      ) : (
+                        <>
+                          <optgroup label={`Booked model: ${modelNameFor(bookedModelId)}`}>
+                            {bookedModelVehicles.map((fv) => (
+                              <option key={String(fv.id)} value={String(fv.id)}>
+                                {String(fv.name ?? fv.id)}
+                              </option>
+                            ))}
+                          </optgroup>
+                          <optgroup label="Other models (not what the customer booked)">
+                            {otherModelVehicles.map((fv) => (
+                              <option key={String(fv.id)} value={String(fv.id)}>
+                                {`${String(fv.name ?? fv.id)} (${modelNameFor(fv.modelId)})`}
+                              </option>
+                            ))}
+                          </optgroup>
+                        </>
+                      )}
                     </select>
+                    {modelMismatch && (
+                      <p className="mt-1 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900" role="alert">
+                        The customer booked a {modelNameFor(bookedModelId)}, but this is a {modelNameFor(selectedModelId)}.
+                        The rate stays at the booked {modelNameFor(bookedModelId)} price. Only continue if the customer
+                        is really being given this vehicle.
+                      </p>
+                    )}
+                    {bookedModelId && availability?.isSuccess && !availability.isFetching
+                      && bookedModelVehicles.length === 0 && otherModelVehicles.length > 0 && (
+                      <p className="mt-1 text-xs text-amber-700">
+                        No {modelNameFor(bookedModelId)} is free for these dates. If the customer has a vehicle that isn&apos;t
+                        in the fleet yet (e.g. a sub-leased one), add it in Fleet first instead of using another model.
+                      </p>
+                    )}
                     {availability?.isFetching && <p className="mt-1 text-xs text-gray-500" role="status">Checking available motorcycles...</p>}
                     {availability?.isError && <p className="mt-1 text-xs text-red-600" role="alert">Could not check availability. <button type="button" onClick={() => void availability.refetch()} className="underline">Retry</button></p>}
                     {availability?.isSuccess && !availability.isFetching && selectableVehicles.length === 0 && (
                       <p className="mt-1 text-xs text-amber-700">No motorcycles are available for these dates.</p>
                     )}
+                    {i === 0 && <InactiveModelNotice storeId={storeId} />}
                     {v.vehicleId && !fleet?.find((fv) => fv.id === v.vehicleId)?.modelId && (
                       <p className="mt-1 text-xs text-amber-600">No model linked — set vehicle model in fleet settings to auto-fill rate.</p>
                     )}

@@ -16,7 +16,8 @@ import { useSignedWaiverDetails, useResendWaiverConfirmation } from '../../api/w
 import { useInspectionByOrder } from '../../api/inspections.js';
 import { useCollectPayment, useRefundOrder, useSettleOrder, useSwapHelmet, useSwapVehicle, useUpdateDepositMethod, useUpdateDropoffNote } from '../../api/orders.js';
 import { useFleet } from '../../api/fleet.js';
-import { usePaymentMethods, useChartOfAccounts, useFleetStatuses } from '../../api/config.js';
+import { usePaymentMethods, useChartOfAccounts, useFleetStatuses, useStorePricing, useVehicleModels } from '../../api/config.js';
+import { findRate } from './BookingModal.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { usePaymentRouting } from '../../hooks/use-payment-routing.js';
 import { formatDate, formatDateTime } from '../../utils/date.js';
@@ -76,6 +77,7 @@ export function OrderDetailSummaryTab({
   // ── Swap vehicle state ──
   const [swapNewVehicleId, setSwapNewVehicleId] = useState('');
   const [swapReason, setSwapReason] = useState('');
+  const [swapReprice, setSwapReprice] = useState(false);
 
   // ── Issue refund state ──
   const [refundAmount, setRefundAmount] = useState('');
@@ -127,6 +129,8 @@ export function OrderDetailSummaryTab({
   const cardSurchargePercent = Number(paymentMethods.find((m) => m.id === 'Card')?.surcharge_percent ?? paymentMethods.find((m) => m.id === 'Card')?.surchargePercent ?? 0);
   const { data: accounts = [] } = useChartOfAccounts() as { data: Array<Record<string, unknown>> | undefined };
   const { data: fleetStatuses = [] } = useFleetStatuses() as { data: Array<{ id: string; name: string; isRentable?: boolean; is_rentable?: boolean }> | undefined };
+  const { data: storePricing = [] } = useStorePricing(storeId) as { data: Array<{ modelId: string; minDays: number; maxDays: number; dailyRate: number }> | undefined };
+  const { data: vehicleModels = [] } = useVehicleModels() as { data: Array<{ id: string; name: string }> | undefined };
 
   const collectPaymentMut = useCollectPayment();
   const refundOrderMut = useRefundOrder();
@@ -717,16 +721,37 @@ export function OrderDetailSummaryTab({
     );
   };
 
+  const swapCurrentItem = itemsList[0];
+  const swapCurrentModelId = vehicles.find((v) => v.id === swapCurrentItem?.vehicleId)?.modelId ?? null;
+  const swapNewModelId = vehicles.find((v) => v.id === swapNewVehicleId)?.modelId ?? null;
+  const swapModelChanges = Boolean(swapNewVehicleId && swapCurrentModelId && swapNewModelId !== swapCurrentModelId);
+  const swapNewModelRate = swapModelChanges && swapCurrentItem
+    ? findRate(swapNewModelId, swapCurrentItem.rentalDaysCount, storePricing)
+    : null;
+  const swapRateDelta = swapNewModelRate !== null && swapCurrentItem
+    ? (swapNewModelRate - swapCurrentItem.rentalRate) * swapCurrentItem.rentalDaysCount
+    : 0;
+  const swapModelName = (modelId: string | null) =>
+    vehicleModels.find((m) => m.id === modelId)?.name ?? modelId ?? 'no model';
+
   const handleSwapVehicle = (e: React.FormEvent) => {
     e.preventDefault();
     const currentItem = itemsList[0];
     if (!currentItem || !swapNewVehicleId || !swapReason.trim()) return;
+    const reprice = swapReprice && swapModelChanges && swapNewModelRate !== null;
     swapVehicle.mutate(
-      { id: orderId, orderItemId: currentItem.id, newVehicleId: swapNewVehicleId, reason: swapReason.trim() },
+      {
+        id: orderId,
+        orderItemId: currentItem.id,
+        newVehicleId: swapNewVehicleId,
+        reason: swapReason.trim(),
+        ...(reprice ? { newRentalRate: swapNewModelRate } : {}),
+      },
       {
         onSuccess: () => {
           setSwapNewVehicleId('');
           setSwapReason('');
+          setSwapReprice(false);
         },
       },
     );
@@ -1374,6 +1399,31 @@ export function OrderDetailSummaryTab({
                   {swapVehicle.isPending ? 'Swapping...' : 'Swap Vehicle'}
                 </button>
               </form>
+              {swapModelChanges && swapCurrentItem && (
+                <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                  <p>
+                    This changes the model from {swapModelName(swapCurrentModelId)} to {swapModelName(swapNewModelId)}.
+                    The rental currently costs {formatCurrency(swapCurrentItem.rentalRate)}/day.
+                  </p>
+                  {swapNewModelRate !== null ? (
+                    <label className="mt-2 flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={swapReprice}
+                        onChange={(e) => setSwapReprice(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded border-gray-300"
+                      />
+                      <span>
+                        Charge the {swapModelName(swapNewModelId)} rate instead: {formatCurrency(swapNewModelRate)}/day
+                        ({swapRateDelta >= 0 ? '+' : '−'}{formatCurrency(Math.abs(swapRateDelta))} on the order total).
+                        Leave unticked for a free upgrade or breakdown replacement.
+                      </span>
+                    </label>
+                  ) : (
+                    <p className="mt-1">No {swapModelName(swapNewModelId)} rate is set up for {swapCurrentItem.rentalDaysCount} days, so the current rate will be kept.</p>
+                  )}
+                </div>
+              )}
               {swapVehicle.error && <p className="mt-2 text-sm text-red-600">{(swapVehicle.error as Error).message}</p>}
             </section>
 

@@ -5,6 +5,7 @@ import { normalizeApiBase } from '../../api/normalize-api-base.js';
 import { useCreateWalkInDirect } from '../../api/orders-raw.js';
 import { useLocations, useAddons } from '../../api/config.js';
 import { useAvailableVehicles } from '../../api/fleet.js';
+import { InactiveModelNotice } from '../fleet/InactiveModelNotice.js';
 import { useUIStore } from '../../stores/ui-store.js';
 import surfRackIcon from '../../assets/Home/Surf Rack Icon.svg';
 
@@ -606,7 +607,10 @@ export function WalkInBookingModal({ open, onClose }: Props) {
               {vehiclesLoading ? (
                 <p className="font-lato text-sm text-gray-400">Checking availability…</p>
               ) : availableVehicles.length === 0 ? (
-                <p className="font-lato text-sm text-amber-600">No vehicles available for selected dates.</p>
+                <>
+                  <p className="font-lato text-sm text-amber-600">No vehicles available for selected dates.</p>
+                  <InactiveModelNotice storeId={storeId} />
+                </>
               ) : (
                 <>
                   <div>
@@ -641,6 +645,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
                           </label>
                         ))}
                     </div>
+                    <InactiveModelNotice storeId={storeId} />
                   </div>
                   <label className="mt-3 block">
                     <span className={LABEL_CLS}>

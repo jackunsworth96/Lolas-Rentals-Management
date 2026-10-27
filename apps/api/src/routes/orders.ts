@@ -662,6 +662,7 @@ router.post('/:id/add-collection', requirePermission(Permission.EditOrders), val
 
 router.post('/:id/swap-vehicle', requirePermission(Permission.EditOrders), validateBody(z.object({
   orderItemId: z.string(), newVehicleId: z.string(), reason: z.string(),
+  newRentalRate: z.number().nonnegative().optional(),
 })), async (req, res, next) => {
   try {
     const { swapVehicle } = await import('../use-cases/orders/swap-vehicle.js');

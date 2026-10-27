@@ -7,6 +7,7 @@ import { formatDateTime } from '../../utils/date.js';
 
 const STATUS_OPTIONS = ['Available', 'Active', 'Under Maintenance', 'Service Vehicle', 'Pending ORCR', 'Sold', 'Retired', 'Closed'];
 const PROTECTED_STATUSES = ['Sold'];
+const NON_RENTABLE_STATUSES = ['Under Maintenance', 'Maintenance', 'Inactive', 'Sold', 'Service Vehicle', 'Closed', 'Retired', 'Pending ORCR'];
 
 interface VehicleModalProps {
   open: boolean;
@@ -19,7 +20,7 @@ export function VehicleModal({ open, onClose, vehicleId }: VehicleModalProps) {
   const { data: mileageEvents = [] } = useMileageEvents(vehicleId);
   const updateVehicle = useUpdateVehicle();
   const { data: stores = [] } = useStores();
-  const { data: models = [] } = useVehicleModels();
+  const { data: models = [], isSuccess: modelsLoaded } = useVehicleModels();
 
   const [name, setName] = useState('');
   const [plateNumber, setPlateNumber] = useState('');
@@ -38,6 +39,7 @@ export function VehicleModal({ open, onClose, vehicleId }: VehicleModalProps) {
   const storeList = stores as Array<{ id: string; name: string }>;
   const modelList = models as Array<{ id: string; name: string }>;
   const isProtected = vehicle && PROTECTED_STATUSES.includes(vehicle.status ?? '');
+  const modelInactive = Boolean(modelId) && modelsLoaded && !modelList.some((m) => m.id === modelId);
 
   useEffect(() => {
     if (vehicle) {
@@ -145,7 +147,14 @@ export function VehicleModal({ open, onClose, vehicleId }: VehicleModalProps) {
               {modelList.map((m) => (
                 <option key={m.id} value={m.id}>{m.name ?? m.id}</option>
               ))}
+              {modelInactive && <option value={modelId}>{modelId} (switched off)</option>}
             </select>
+            {modelInactive && !NON_RENTABLE_STATUSES.includes(status) && (
+              <p className="mt-1 text-xs text-amber-600">
+                This model is switched off, so this vehicle won&apos;t appear in booking or walk-in lists even when
+                Available. Turn the model on in Settings or pick a different model.
+              </p>
+            )}
           </label>
           <label className="block">
             <span className="text-sm font-medium text-gray-700">Status</span>
