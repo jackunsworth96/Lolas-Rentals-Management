@@ -655,10 +655,13 @@ router.get(
         const rawStoreId = raw?.store_id ?? (raw ? resolveStoreFromSource(raw.source) : null);
         if (!raw || rawStoreId !== storeId) { res.status(404).json({ success: false, error: { message: 'Pending reservation not found' } }); return; }
       }
-      const evaluation = await evaluateAvailability({ storeId, pickupDatetime, dropoffDatetime, excludeRawOrderId }, sb);
+      const evaluation = await evaluateAvailability(
+        { storeId, pickupDatetime, dropoffDatetime, excludeRawOrderId }, sb, { vehicleAssignments: true },
+      );
       const blocked = new Set([
         ...evaluation.explanation.configurationExclusions.map((v) => v.vehicleId),
         ...evaluation.explanation.models.flatMap((m) => m.exactVehicleExclusions.map((v) => v.vehicleId)),
+        ...evaluation.explanation.models.flatMap((m) => (m.reservedForBookings ?? []).map((v) => v.vehicleId)),
       ]);
       const { data: fleetRows, error: fleetErr } = await sb.from('fleet')
         .select('id, name, model_id, status, store_id, surf_rack').eq('store_id', storeId);
@@ -667,6 +670,8 @@ router.get(
       // `blocked` already reflects an exact, per-vehicle check (real order_items/walk-in/
       // owner-use conflicts for this precise window, plus non-rentable statuses) — that is
       // the correct gate for "can staff hand over/inspect this named vehicle right now."
+      // It also holds back a vehicle only when giving it out would leave a pending
+      // model-level booking with no vehicle at all (the database rejects that too).
       //
       // We intentionally do NOT additionally clamp this list down to bookingPort.checkAvailability()'s
       // pooled, model-level count. That number is a forward-looking sales cap meant to stop a

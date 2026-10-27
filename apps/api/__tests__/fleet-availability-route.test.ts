@@ -65,8 +65,22 @@ describe('staff vehicle availability', () => {
     const response = await request(app()).get('/fleet/available').query({ ...dates, excludeRawOrderId: 'own' });
     expect(response.status).toBe(200);
     expect(response.body.data.map((vehicle: { id: string }) => vehicle.id)).toEqual(['free']);
-    expect(mocks.evaluateAvailability).toHaveBeenCalledWith(expect.objectContaining({ excludeRawOrderId: 'own' }), expect.anything());
+    expect(mocks.evaluateAvailability).toHaveBeenCalledWith(
+      expect.objectContaining({ excludeRawOrderId: 'own' }), expect.anything(), { vehicleAssignments: true },
+    );
     expect(mocks.checkAvailability).not.toHaveBeenCalled();
+  });
+
+  it('holds back a free vehicle that a pending booking needs', async () => {
+    mocks.evaluateAvailability.mockResolvedValue({
+      models: [{ modelId: 'beat', availableCount: 0 }],
+      explanation: {
+        configurationExclusions: [],
+        models: [{ exactVehicleExclusions: [], reservedForBookings: [{ vehicleId: 'busy', vehicleName: 'busy' }] }],
+      },
+    });
+    const response = await request(app()).get('/fleet/available').query(dates);
+    expect(response.body.data.map((vehicle: { id: string }) => vehicle.id)).toEqual(['free', 'retired']);
   });
 
   it('does not expose another store', async () => {

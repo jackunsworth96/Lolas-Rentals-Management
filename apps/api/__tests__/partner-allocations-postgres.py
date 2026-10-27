@@ -29,6 +29,7 @@ query((Path(__file__).parent / 'fixtures/allocation-schema.sql').read_text())
 query((root / 'supabase/migrations/20260927000000_partner_allocations.sql').read_text())
 query((root / 'supabase/migrations/20261023023957_owner_use_open_ended.sql').read_text())
 query((root / 'supabase/migrations/20261023050000_booking_capacity_and_assignment_conflicts.sql').read_text())
+query((root / 'supabase/migrations/20261027075518_assignment_aware_model_capacity.sql').read_text())
 partner = '00000000-0000-0000-0000-000000000001'
 query(f"""
 INSERT INTO stores VALUES ('test');
@@ -206,3 +207,19 @@ query("UPDATE fleet_unavailability SET cancelled_at=now() WHERE vehicle_id='plai
 query("UPDATE fleet SET status='Under Maintenance' WHERE id='plain-v3'")
 query(assigned_order('maintenance-conflict', vehicle='plain-v3', start=late_start, end=late_end), success=False)
 print('PASS: mandatory assignment guard, concurrent staff race, atomic rollback, self edits, handover, raw conversion, cancellation and owner use')
+
+# Returning vehicles serve later model bookings, and a free vehicle a pending booking needs is held back.
+query("INSERT INTO stores VALUES ('tuk'); INSERT INTO vehicle_models VALUES ('re','RE','tuktuk',true); INSERT INTO fleet VALUES ('pepper','tuk','re','Available','Pepper'),('nawa','tuk','re','Available','Nawa'),('lease','tuk','re','Available','Lease'); INSERT INTO partner_allocation_settings(store_id,enabled) VALUES ('tuk',true);")
+for key, vehicle in [('edison', 'nawa'), ('stanley', 'lease')]:
+    query(f"BEGIN; INSERT INTO orders VALUES ('{key}','tuk',NULL,'active','{key}'); INSERT INTO order_items(id,store_id,order_id,vehicle_id,pickup_datetime,dropoff_datetime) VALUES ('{key}-item','tuk','{key}','{vehicle}','2027-07-01T09:00:00+08:00','2027-07-03T16:45:00+08:00'); COMMIT;")
+query("INSERT INTO orders_raw(store_id,vehicle_model_id,pickup_datetime,dropoff_datetime,booking_channel) VALUES ('tuk','re','2027-07-04T09:15:00+08:00','2027-07-16T09:15:00+08:00','direct'),('tuk','re','2027-07-06T12:15:00+08:00','2027-07-09T10:15:00+08:00','direct')")
+def tuk_hold(token):
+    return f"INSERT INTO booking_holds(store_id,vehicle_model_id,pickup_datetime,dropoff_datetime,session_token,expires_at) VALUES ('tuk','re','2027-07-02T09:15:00+08:00','2027-07-15T16:45:00+08:00','{token}',now()+interval '10 minutes');"
+query(tuk_hold('fortnight'))
+query(tuk_hold('fourth'), success=False)
+query("DELETE FROM booking_holds WHERE store_id='tuk'")
+def tuk_walk_in(vehicle, start):
+    return f"INSERT INTO orders_raw(store_id,vehicle_model_id,vehicle_id,pickup_datetime,dropoff_datetime,booking_channel,order_reference) VALUES ('tuk','re','{vehicle}','{start}','2027-07-15T16:45:00+08:00','walk_in','TUK-{vehicle}')"
+query(tuk_walk_in('pepper', '2027-07-02T09:15:00+08:00'))
+query(tuk_walk_in('nawa', '2027-07-04T09:15:00+08:00'), success=False)
+print('PASS: assignment-aware model capacity across returns, and stranded-booking guard')

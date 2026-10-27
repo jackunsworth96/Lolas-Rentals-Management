@@ -10,6 +10,7 @@ import type {
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseClient } from './client.js';
 import { ownerUseNotEndedBy } from '../../lib/owner-use-window.js';
+import { additionalUnitsThatFit, canAssignAll, type Period } from '../../lib/fleet-assignment.js';
 
 interface HoldDbRow {
   id: string;
@@ -71,6 +72,8 @@ export interface AvailabilityExplanation {
       reasons: ExactAvailabilityReason[];
     }>;
     capacityDeductions: { directReservations: number; holds: number };
+    /** Free vehicles that, if assigned for this window, would leave an unassigned booking without a vehicle. */
+    reservedForBookings?: Array<{ vehicleId: string; vehicleName: string }>;
   }>;
   configurationExclusions: Array<{
     vehicleId: string;
@@ -109,6 +112,7 @@ function peakCapacity(periods: CapacityPeriod[], start: number, end: number): nu
 export async function evaluateAvailability(
   query: AvailabilityQuery,
   sb: SupabaseClient = getSupabaseClient(),
+  options: { vehicleAssignments?: boolean } = {},
 ): Promise<AvailabilityEvaluation> {
   const { storeId, pickupDatetime, dropoffDatetime, excludeSessionToken, excludeOrderItemId, excludeRawOrderId } = query;
   const BUFFER_MS = 30 * 60 * 1000;
@@ -224,28 +228,6 @@ export async function evaluateAvailability(
     exactBlockers.set(vehicleId, reasons);
   };
 
-  const { data: bookedRows, error: bookedErr } = await sb
-    .from('order_items').select('id, vehicle_id, pickup_datetime, dropoff_datetime, orders!inner(status)')
-    .eq('store_id', storeId).not('vehicle_id', 'is', null)
-    .not('pickup_datetime', 'is', null).not('dropoff_datetime', 'is', null)
-    .lt('pickup_datetime', dropoffBuffered).gt('dropoff_datetime', pickupBuffered);
-  if (bookedErr) throw new Error(`order_items overlap query failed: ${bookedErr.message}`);
-  for (const row of (bookedRows ?? []) as Array<{ id: string; vehicle_id: string; pickup_datetime: string; dropoff_datetime: string; orders: unknown }>) {
-    if (excludeOrderItemId && row.id === excludeOrderItemId) continue;
-    const orders = row.orders as { status: string } | { status: string }[] | null;
-    const status = Array.isArray(orders) ? orders[0]?.status : orders?.status;
-    if (status && status !== 'cancelled' && status !== 'completed') {
-      addExactBlocker(row.vehicle_id, 'order');
-      const modelId = vehicleToModel.get(row.vehicle_id);
-      if (modelId) {
-        trackDrop(modelId, row.dropoff_datetime);
-        trackVehicleBlockStart(row.vehicle_id, row.pickup_datetime);
-        trackConflictStart(modelId, row.pickup_datetime);
-        trackExactVehicleFromStart(row.vehicle_id, modelId, row.pickup_datetime);
-      }
-    }
-  }
-
   const { data: directRows, error: directErr } = await sb
     .from('orders_raw').select('id, vehicle_model_id, pickup_datetime, dropoff_datetime')
     .eq('store_id', storeId).eq('booking_channel', 'direct').eq('status', 'unprocessed')
@@ -259,42 +241,6 @@ export async function evaluateAvailability(
     trackConflictStart(row.vehicle_model_id, row.pickup_datetime);
     if (new Date(row.pickup_datetime).getTime() <= pickupMs) {
       directFromStart.set(row.vehicle_model_id, (directFromStart.get(row.vehicle_model_id) ?? 0) + 1);
-    }
-  }
-
-  const { data: walkInRows, error: walkInErr } = await sb
-    .from('orders_raw').select('id, vehicle_id, pickup_datetime, dropoff_datetime')
-    .eq('store_id', storeId).eq('booking_channel', 'walk_in').eq('status', 'unprocessed')
-    .not('vehicle_id', 'is', null)
-    .lt('pickup_datetime', dropoffBuffered).gt('dropoff_datetime', pickupBuffered);
-  if (walkInErr) throw new Error(`orders_raw walk-in overlap query failed: ${walkInErr.message}`);
-  for (const row of (walkInRows ?? []) as Array<{ id: string; vehicle_id: string; pickup_datetime: string; dropoff_datetime: string }>) {
-    if (excludeRawOrderId && row.id === excludeRawOrderId) continue;
-    addExactBlocker(row.vehicle_id, 'walk_in');
-    const modelId = vehicleToModel.get(row.vehicle_id);
-    if (modelId) {
-      trackDrop(modelId, row.dropoff_datetime);
-      trackVehicleBlockStart(row.vehicle_id, row.pickup_datetime);
-      trackConflictStart(modelId, row.pickup_datetime);
-      trackExactVehicleFromStart(row.vehicle_id, modelId, row.pickup_datetime);
-    }
-  }
-
-  const vehicleIds = rentableFleet.map((vehicle) => vehicle.id);
-  const { data: ownerUseRows, error: ownerUseErr } = await sb
-    .from('fleet_unavailability').select('vehicle_id, starts_at, ends_at')
-    .eq('store_id', storeId).eq('type', 'owner_use').is('cancelled_at', null)
-    .in('vehicle_id', vehicleIds)
-    .lt('starts_at', dropoffBuffered).or(ownerUseNotEndedBy(pickupDatetime));
-  if (ownerUseErr) throw new Error(`fleet unavailability query failed: ${ownerUseErr.message}`);
-  for (const row of (ownerUseRows ?? []) as Array<{ vehicle_id: string; starts_at: string; ends_at: string | null }>) {
-    addExactBlocker(row.vehicle_id, 'owner_use');
-    trackVehicleBlockStart(row.vehicle_id, row.starts_at);
-    const modelId = vehicleToModel.get(row.vehicle_id);
-    if (modelId) {
-      if (row.ends_at) trackDrop(modelId, row.ends_at);
-      trackConflictStart(modelId, row.starts_at);
-      trackExactVehicleFromStart(row.vehicle_id, modelId, row.starts_at);
     }
   }
 
@@ -315,6 +261,98 @@ export async function evaluateAvailability(
     if (!previous || row.expires_at < previous) minHoldExpiry.set(row.vehicle_model_id, row.expires_at);
     if (new Date(row.pickup_datetime).getTime() <= pickupMs) {
       holdsFromStart.set(row.vehicle_model_id, (holdsFromStart.get(row.vehicle_model_id) ?? 0) + 1);
+    }
+  }
+
+  // Vehicle-specific blocks are loaded across every unassigned booking's full
+  // span, so a booking that runs past the searched dates is placed correctly.
+  let horizonStartMs = pickupMs;
+  let horizonEndMs = dropoffMs;
+  for (const periods of capacityPeriods.values()) {
+    for (const period of periods) {
+      horizonStartMs = Math.min(horizonStartMs, period.start);
+      horizonEndMs = Math.max(horizonEndMs, period.end);
+    }
+  }
+  const horizonStart = new Date(horizonStartMs).toISOString();
+  const horizonStartBuffered = new Date(horizonStartMs - BUFFER_MS).toISOString();
+  const horizonEnd = new Date(horizonEndMs).toISOString();
+  const timeOr = (iso: string | null | undefined, fallback: number) => (iso ? new Date(iso).getTime() : fallback);
+  const fixedBlocks = new Map<string, Period[]>();
+  const addFixedBlock = (vehicleId: string, start: number, end: number) => {
+    const blocks = fixedBlocks.get(vehicleId) ?? [];
+    blocks.push({ start, end });
+    fixedBlocks.set(vehicleId, blocks);
+  };
+  /** Rental blocks [pickup, dropoff + handover); true when that overlaps the searched window. */
+  const addRentalBlock = (vehicleId: string, pickup: string | null | undefined, dropoff: string | null | undefined) => {
+    const start = timeOr(pickup, Number.NEGATIVE_INFINITY);
+    const end = timeOr(dropoff, Number.POSITIVE_INFINITY) + BUFFER_MS;
+    addFixedBlock(vehicleId, start, end);
+    return start < dropoffMs && end > pickupMs;
+  };
+
+  const { data: bookedRows, error: bookedErr } = await sb
+    .from('order_items').select('id, vehicle_id, pickup_datetime, dropoff_datetime, orders!inner(status)')
+    .eq('store_id', storeId).not('vehicle_id', 'is', null)
+    .not('pickup_datetime', 'is', null).not('dropoff_datetime', 'is', null)
+    .lt('pickup_datetime', horizonEnd).gt('dropoff_datetime', horizonStartBuffered);
+  if (bookedErr) throw new Error(`order_items overlap query failed: ${bookedErr.message}`);
+  for (const row of (bookedRows ?? []) as Array<{ id: string; vehicle_id: string; pickup_datetime: string; dropoff_datetime: string; orders: unknown }>) {
+    if (excludeOrderItemId && row.id === excludeOrderItemId) continue;
+    const orders = row.orders as { status: string } | { status: string }[] | null;
+    const status = Array.isArray(orders) ? orders[0]?.status : orders?.status;
+    if (status && status !== 'cancelled' && status !== 'completed') {
+      if (!addRentalBlock(row.vehicle_id, row.pickup_datetime, row.dropoff_datetime)) continue;
+      addExactBlocker(row.vehicle_id, 'order');
+      const modelId = vehicleToModel.get(row.vehicle_id);
+      if (modelId) {
+        trackDrop(modelId, row.dropoff_datetime);
+        trackVehicleBlockStart(row.vehicle_id, row.pickup_datetime);
+        trackConflictStart(modelId, row.pickup_datetime);
+        trackExactVehicleFromStart(row.vehicle_id, modelId, row.pickup_datetime);
+      }
+    }
+  }
+
+  const { data: walkInRows, error: walkInErr } = await sb
+    .from('orders_raw').select('id, vehicle_id, pickup_datetime, dropoff_datetime')
+    .eq('store_id', storeId).eq('booking_channel', 'walk_in').eq('status', 'unprocessed')
+    .not('vehicle_id', 'is', null)
+    .lt('pickup_datetime', horizonEnd).gt('dropoff_datetime', horizonStartBuffered);
+  if (walkInErr) throw new Error(`orders_raw walk-in overlap query failed: ${walkInErr.message}`);
+  for (const row of (walkInRows ?? []) as Array<{ id: string; vehicle_id: string; pickup_datetime: string; dropoff_datetime: string }>) {
+    if (excludeRawOrderId && row.id === excludeRawOrderId) continue;
+    if (!addRentalBlock(row.vehicle_id, row.pickup_datetime, row.dropoff_datetime)) continue;
+    addExactBlocker(row.vehicle_id, 'walk_in');
+    const modelId = vehicleToModel.get(row.vehicle_id);
+    if (modelId) {
+      trackDrop(modelId, row.dropoff_datetime);
+      trackVehicleBlockStart(row.vehicle_id, row.pickup_datetime);
+      trackConflictStart(modelId, row.pickup_datetime);
+      trackExactVehicleFromStart(row.vehicle_id, modelId, row.pickup_datetime);
+    }
+  }
+
+  const vehicleIds = rentableFleet.map((vehicle) => vehicle.id);
+  const { data: ownerUseRows, error: ownerUseErr } = await sb
+    .from('fleet_unavailability').select('vehicle_id, starts_at, ends_at')
+    .eq('store_id', storeId).eq('type', 'owner_use').is('cancelled_at', null)
+    .in('vehicle_id', vehicleIds)
+    .lt('starts_at', horizonEnd).or(ownerUseNotEndedBy(horizonStart));
+  if (ownerUseErr) throw new Error(`fleet unavailability query failed: ${ownerUseErr.message}`);
+  for (const row of (ownerUseRows ?? []) as Array<{ vehicle_id: string; starts_at: string; ends_at: string | null }>) {
+    const start = timeOr(row.starts_at, Number.NEGATIVE_INFINITY);
+    const end = timeOr(row.ends_at, Number.POSITIVE_INFINITY);
+    addFixedBlock(row.vehicle_id, start, end);
+    if (!(start < dropoffMs && end > pickupMs)) continue;
+    addExactBlocker(row.vehicle_id, 'owner_use');
+    trackVehicleBlockStart(row.vehicle_id, row.starts_at);
+    const modelId = vehicleToModel.get(row.vehicle_id);
+    if (modelId) {
+      if (row.ends_at) trackDrop(modelId, row.ends_at);
+      trackConflictStart(modelId, row.starts_at);
+      trackExactVehicleFromStart(row.vehicle_id, modelId, row.starts_at);
     }
   }
 
@@ -348,14 +386,29 @@ export async function evaluateAvailability(
         vehicleName: vehicleName.get(vehicleId) ?? vehicleId,
         reasons: [...exactBlockers.get(vehicleId)!],
       }));
-    let available = ids.size - excludedVehicles.length;
     const periods = capacityPeriods.get(modelId) ?? [];
     const directReservations = peakCapacity(periods.filter((period) => !period.hold), pickupMs, dropoffMs);
     // Holds only deduct the extra peak demand beyond confirmed reservations.
     const holds = peakCapacity(periods, pickupMs, dropoffMs) - directReservations;
-    available -= directReservations;
-    const confirmedAvailable = available;
-    available = Math.max(0, available - holds);
+    const modelVehicleIds = [...ids];
+    const blocks = modelVehicleIds.map((vehicleId) => fixedBlocks.get(vehicleId) ?? []);
+    const request: Period = { start: pickupMs, end: dropoffMs };
+    const confirmedAvailable = additionalUnitsThatFit(blocks, periods.filter((period) => !period.hold), request);
+    const available = additionalUnitsThatFit(blocks, periods, request);
+
+    let reservedForBookings: Array<{ vehicleId: string; vehicleName: string }> | undefined;
+    if (options.vehicleAssignments) {
+      reservedForBookings = [];
+      if (periods.length > 0 && canAssignAll(blocks, periods)) {
+        modelVehicleIds.forEach((vehicleId, index) => {
+          if (exactBlockers.has(vehicleId)) return;
+          const withAssignment = blocks.map((list, i) => (i === index ? [...list, request] : list));
+          if (!canAssignAll(withAssignment, periods)) {
+            reservedForBookings!.push({ vehicleId, vehicleName: vehicleName.get(vehicleId) ?? vehicleId });
+          }
+        });
+      }
+    }
 
     const entry: AvailableModel = { modelId, modelName, availableCount: available };
     if (available < requestedQuantity) {
@@ -423,6 +476,7 @@ export async function evaluateAvailability(
       availableCount: available,
       exactVehicleExclusions: excludedVehicles,
       capacityDeductions: { directReservations, holds },
+      ...(reservedForBookings ? { reservedForBookings } : {}),
     });
   }
 
