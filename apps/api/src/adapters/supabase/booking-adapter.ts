@@ -343,7 +343,9 @@ export async function evaluateAvailability(
   if (ownerUseErr) throw new Error(`fleet unavailability query failed: ${ownerUseErr.message}`);
   for (const row of (ownerUseRows ?? []) as Array<{ vehicle_id: string; starts_at: string; ends_at: string | null }>) {
     const start = timeOr(row.starts_at, Number.NEGATIVE_INFINITY);
-    const end = timeOr(row.ends_at, Number.POSITIVE_INFINITY);
+    // Same 30-minute handover buffer applied to rental dropoffs — an owner-use
+    // vehicle isn't actually ready to hand to a customer the instant it's due back.
+    const end = row.ends_at ? timeOr(row.ends_at, Number.POSITIVE_INFINITY) + BUFFER_MS : Number.POSITIVE_INFINITY;
     addFixedBlock(row.vehicle_id, start, end);
     if (!(start < dropoffMs && end > pickupMs)) continue;
     addExactBlocker(row.vehicle_id, 'owner_use');

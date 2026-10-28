@@ -110,6 +110,27 @@ describe('owner-use availability blocks', () => {
     expect(result.explanation.models[0].exactVehicleExclusions).toEqual([]);
   });
 
+  it.each([
+    ['10:14', 0], // still inside the 30-minute handover buffer after owner-use ends at 10:15
+    ['10:15', 1], // buffer has fully elapsed
+  ])('applies the 30-minute handover buffer after owner use ends (pickup %s)', async (time, expected) => {
+    const result = await evaluateAvailability({
+      storeId: 'store-lolas',
+      pickupDatetime: `2026-07-21T${time}:00+08:00`,
+      dropoffDatetime: '2026-07-23T09:15:00+08:00',
+    }, fakeSupabase({
+      fleet: [{ id: 'tuktuk-1', name: 'TukTuk 1', model_id: 'tuktuk', status: 'Available' }],
+      ownerUse: [{
+        vehicle_id: 'tuktuk-1',
+        starts_at: '2026-07-20T09:15:00+08:00',
+        ends_at: '2026-07-21T09:45:00+08:00',
+      }],
+      models: [{ id: 'tuktuk', name: 'TukTuk' }],
+    }));
+
+    expect(result.models[0].availableCount).toBe(expected);
+  });
+
   it('returns the next booking slot when owner use fully books a model', async () => {
     const result = await evaluateAvailability(query, fakeSupabase({
       fleet: [{ id: 'tuktuk-1', name: 'TukTuk 1', model_id: 'tuktuk', status: 'Available' }],
