@@ -263,6 +263,25 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const { data: vehicleModels } = useVehicleModels() as { data: Array<{ id: string; name: string }> | undefined };
   const { data: fleet } = useFleet(storeId) as { data: Array<Record<string, unknown>> | undefined };
   const { data: storeAddons } = useAddons(storeId) as { data: Array<Record<string, unknown>> | undefined };
+  const requestedAddonNames = useMemo(() => {
+    const ids = rawOrder.addon_ids ?? [];
+    if (!isDirect || ids.length === 0 || !storeAddons) return null;
+    const byId = new Map<number, string>();
+    for (const addon of storeAddons) {
+      const name = String(addon.name ?? '').trim();
+      const id = Number(addon.id);
+      if (name && Number.isInteger(id)) byId.set(id, name);
+    }
+    const seen = new Set<number>();
+    const names: Array<{ id: number; name: string }> = [];
+    for (const rawId of ids) {
+      const id = Number(rawId);
+      if (!Number.isInteger(id) || seen.has(id)) continue;
+      seen.add(id);
+      names.push({ id, name: byId.get(id) ?? `Add-on #${id}` });
+    }
+    return names;
+  }, [isDirect, rawOrder.addon_ids, storeAddons]);
   const { data: locations } = useLocations(storeId) as { data: Array<Record<string, unknown>> | undefined };
   const { data: accounts } = useChartOfAccounts() as { data: Array<Record<string, unknown>> | undefined };
   const { data: storePricing } = useStorePricing(storeId) as { data: PricingTier[] | undefined };
@@ -1103,9 +1122,19 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                         <dd className="font-medium">{rawOrder.dropoff_datetime ? formatPickupDatetimeManila(rawOrder.dropoff_datetime) : '—'}</dd>
                       </div>
                       {rawOrder.addon_ids && rawOrder.addon_ids.length > 0 && (
-                        <div className="flex justify-between">
-                          <dt className="text-gray-500">Add-ons selected</dt>
-                          <dd className="font-medium">{rawOrder.addon_ids.length}</dd>
+                        <div className="flex items-start justify-between gap-3">
+                          <dt className="shrink-0 text-gray-500">Add-ons selected</dt>
+                          <dd className="min-w-0 text-right font-medium">
+                            {requestedAddonNames ? (
+                              <ul className="space-y-1">
+                                {requestedAddonNames.map((addon) => (
+                                  <li key={addon.id}>{addon.name}</li>
+                                ))}
+                              </ul>
+                            ) : (
+                              rawOrder.addon_ids.length
+                            )}
+                          </dd>
                         </div>
                       )}
                     </dl>

@@ -5,6 +5,7 @@ import type { RawOrder } from '../src/api/orders-raw.js';
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(), empty: [] as unknown[],
+  addons: [] as Array<Record<string, unknown>>,
   fleet: [
     { id: 'free', name: 'Free bike', modelId: 'beat', status: 'Available' },
     { id: 'busy', name: 'Busy bike', modelId: 'beat', status: 'Rented' },
@@ -16,7 +17,14 @@ vi.mock('../src/api/fleet.js', async (original) => ({
 }));
 vi.mock('../src/api/config.js', () => {
   const empty = () => ({ data: mocks.empty });
-  return { useAddons: empty, useLocations: empty, useChartOfAccounts: empty, useStorePricing: empty, usePaymentMethods: empty, useVehicleModels: empty };
+  return {
+    useAddons: () => ({ data: mocks.addons }),
+    useLocations: empty,
+    useChartOfAccounts: empty,
+    useStorePricing: empty,
+    usePaymentMethods: empty,
+    useVehicleModels: empty,
+  };
 });
 vi.mock('../src/api/orders-raw.js', () => ({
   useProcessRawOrder: () => ({ mutate: vi.fn(), isPending: false }),
@@ -43,10 +51,38 @@ function showModal() {
   return client;
 }
 
+describe('direct booking review', () => {
+  beforeEach(() => {
+    mocks.addons = [
+      { id: 4, name: 'Phone Holder' },
+      { id: 9, name: '9PM Return' },
+      { id: 2, name: 'Full Insurance' },
+    ];
+  });
+  afterEach(cleanup);
+
+  it('lists the add-ons the customer requested', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <BookingModal
+          open
+          onClose={() => {}}
+          rawOrder={{ ...rawOrder, addon_ids: [9, 2, 4, 9] }}
+        />
+      </QueryClientProvider>,
+    );
+
+    const names = screen.getAllByRole('listitem').map((item) => item.textContent);
+    expect(names).toEqual(['9PM Return', 'Full Insurance', 'Phone Holder']);
+  });
+});
+
 describe('date-aware inbox assignment', () => {
   beforeEach(() => {
     mocks.get.mockReset();
     mocks.get.mockResolvedValue([mocks.fleet[0]]);
+    mocks.addons = [];
   });
   afterEach(cleanup);
 
