@@ -42,6 +42,9 @@ router.get('/pricing', async (req, res, next) => {
     ]);
     const fleetModelIds = new Set(vehicles.map((vehicle: { modelId: string | null }) => vehicle.modelId));
     const result = models
+      // Hide models kept active for back-office booking only (e.g. Walk-in/Reserve for
+      // later) but switched off for customers — this feeds the public Lolo chat agent.
+      .filter((model: { showOnCustomerWebsite?: boolean }) => model.showOnCustomerWebsite !== false)
       .filter((model: { id: string }) => fleetModelIds.has(model.id))
       .map((model: { id: string; name: string }) => ({
         model: model.name,
@@ -99,7 +102,7 @@ router.get('/models', async (req, res, next) => {
     const { configRepo, fleetRepo } = req.app.locals.deps;
     const [vehicles, models, pricingRows] = await Promise.all([
       fleetRepo.findByStore(storeId) as Promise<Array<{ modelId: string | null }>>,
-      configRepo.getVehicleModels() as Promise<Array<{ id: string; name: string }>>,
+      configRepo.getVehicleModels() as Promise<Array<{ id: string; name: string; showOnCustomerWebsite?: boolean }>>,
       configRepo.getStorePricing(storeId) as Promise<Array<{ modelId: string; dailyRate: number }>>,
     ]);
     // Only include models that have at least one fleet vehicle at this store
@@ -107,6 +110,9 @@ router.get('/models', async (req, res, next) => {
       vehicles.filter((v) => v.modelId != null).map((v) => v.modelId as string),
     );
     const result = models
+      // `getVehicleModels()` is already is_active-only; also hide models kept active for
+      // back-office booking (e.g. Walk-in/Reserve for later) but switched off for customers.
+      .filter((m) => m.showOnCustomerWebsite !== false)
       .filter((m) => storeModelIds.has(m.id))
       .map((m) => {
         const rows = pricingRows.filter((p) => p.modelId === m.id);
