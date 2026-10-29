@@ -300,7 +300,11 @@ router.get('/availability-explanation', requirePermission(Permission.ViewFleet),
       storeId: string; pickupDatetime: string; dropoffDatetime: string;
     };
     assertStoreAccess(req, storeId);
-    const result = await evaluateAvailability({ storeId, pickupDatetime, dropoffDatetime });
+    // Staff-facing diagnostic — show the full back-office picture, including models
+    // that are active but hidden from the customer website (e.g. Bogart).
+    const result = await evaluateAvailability(
+      { storeId, pickupDatetime, dropoffDatetime }, undefined, { includeHiddenFromWebsite: true },
+    );
     res.json({ success: true, data: result.explanation });
   } catch (err) { next(err); }
 });
@@ -655,8 +659,12 @@ router.get(
         const rawStoreId = raw?.store_id ?? (raw ? resolveStoreFromSource(raw.source) : null);
         if (!raw || rawStoreId !== storeId) { res.status(404).json({ success: false, error: { message: 'Pending reservation not found' } }); return; }
       }
+      // Back-office exact-vehicle picker (staff walk-in check-in, vehicle inspection,
+      // reserve-for-later) — include models that are active but hidden from the
+      // customer-facing website, since staff may still book them deliberately.
       const evaluation = await evaluateAvailability(
-        { storeId, pickupDatetime, dropoffDatetime, excludeRawOrderId }, sb, { vehicleAssignments: true },
+        { storeId, pickupDatetime, dropoffDatetime, excludeRawOrderId }, sb,
+        { vehicleAssignments: true, includeHiddenFromWebsite: true },
       );
       const blocked = new Set([
         ...evaluation.explanation.configurationExclusions.map((v) => v.vehicleId),

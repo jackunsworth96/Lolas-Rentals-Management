@@ -7,12 +7,14 @@ import { Modal } from '../../common/Modal.js';
 const modelColumns = [
   { key: 'id', header: 'ID' },
   { key: 'name', header: 'Name' },
+  { key: 'showOnCustomerWebsite', header: 'Show on website', render: (r: Record<string, unknown>) => (r.showOnCustomerWebsite === false ? 'No' : 'Yes') },
   { key: 'isActive', header: 'Active', render: (r: Record<string, unknown>) => (r.isActive === false ? 'No' : 'Yes') },
 ];
 
 const modelFields: FieldDef[] = [
   { key: 'id', label: 'Model ID', type: 'text', required: true, readOnlyOnEdit: true },
   { key: 'name', label: 'Name', type: 'text', required: true },
+  { key: 'showOnCustomerWebsite', label: 'Show on customer website', type: 'boolean' },
   { key: 'isActive', label: 'Active', type: 'boolean' },
 ];
 

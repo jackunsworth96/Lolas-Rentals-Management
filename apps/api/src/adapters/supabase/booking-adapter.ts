@@ -112,7 +112,7 @@ function peakCapacity(periods: CapacityPeriod[], start: number, end: number): nu
 export async function evaluateAvailability(
   query: AvailabilityQuery,
   sb: SupabaseClient = getSupabaseClient(),
-  options: { vehicleAssignments?: boolean } = {},
+  options: { vehicleAssignments?: boolean; includeHiddenFromWebsite?: boolean } = {},
 ): Promise<AvailabilityEvaluation> {
   const { storeId, pickupDatetime, dropoffDatetime, excludeSessionToken, excludeOrderItemId, excludeRawOrderId } = query;
   const BUFFER_MS = 30 * 60 * 1000;
@@ -359,8 +359,14 @@ export async function evaluateAvailability(
   }
 
   const modelIds = [...fleetByModel.keys()];
-  const { data: models, error: modelErr } = await sb
-    .from('vehicle_models').select('id, name').in('id', modelIds).eq('is_active', true);
+  // `is_active` gates whether a model can be rented at all. `show_on_customer_website`
+  // additionally hides an active model from the public booking site and partner portal
+  // (e.g. a vehicle rented at a discount only via back-office walk-in/reserve-later while
+  // it's being phased out). Staff-facing callers pass `includeHiddenFromWebsite: true` to
+  // see those models too.
+  let modelsQuery = sb.from('vehicle_models').select('id, name').in('id', modelIds).eq('is_active', true);
+  if (!options.includeHiddenFromWebsite) modelsQuery = modelsQuery.eq('show_on_customer_website', true);
+  const { data: models, error: modelErr } = await modelsQuery;
   if (modelErr) throw new Error(`vehicle_models query failed: ${modelErr.message}`);
   const modelNameMap = new Map<string, string>();
   for (const model of (models ?? []) as Array<{ id: string; name: string }>) modelNameMap.set(model.id, model.name);

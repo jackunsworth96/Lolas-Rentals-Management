@@ -66,7 +66,8 @@ describe('staff vehicle availability', () => {
     expect(response.status).toBe(200);
     expect(response.body.data.map((vehicle: { id: string }) => vehicle.id)).toEqual(['free']);
     expect(mocks.evaluateAvailability).toHaveBeenCalledWith(
-      expect.objectContaining({ excludeRawOrderId: 'own' }), expect.anything(), { vehicleAssignments: true },
+      expect.objectContaining({ excludeRawOrderId: 'own' }), expect.anything(),
+      { vehicleAssignments: true, includeHiddenFromWebsite: true },
     );
     expect(mocks.checkAvailability).not.toHaveBeenCalled();
   });
