@@ -47,6 +47,13 @@ export interface VehicleModel {
   isActive: boolean;
   /** Refundable security deposit (PHP); not included in rental grand total */
   securityDeposit?: number;
+  /**
+   * When false, the model is hidden from the customer-facing booking website
+   * (and partner portal) but remains bookable by staff via the back-office
+   * Walk-in / Reserve-later flows, as long as `isActive` is true. Mirrors
+   * `PaymentMethod.showOnCustomerWebsite`. Defaults to true in the database.
+   */
+  showOnCustomerWebsite?: boolean;
 }
 
 export interface ModelPricing {
