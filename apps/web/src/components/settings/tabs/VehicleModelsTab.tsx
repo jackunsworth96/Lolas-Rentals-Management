@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useVehicleModels, useSaveVehicleModel, useDeleteVehicleModel, useModelPricing, useSaveModelPricing, useDeleteModelPricing, useStores } from '../../../api/config.js';
+import { useAllVehicleModels, useSaveVehicleModel, useDeleteVehicleModel, useModelPricing, useSaveModelPricing, useDeleteModelPricing, useStores } from '../../../api/config.js';
 import { useUIStore } from '../../../stores/ui-store.js';
 import { ConfigSection, type FieldDef } from '../ConfigSection.js';
 import { Modal } from '../../common/Modal.js';
@@ -20,7 +20,7 @@ const modelFields: FieldDef[] = [
 
 export function VehicleModelsTab() {
   const storeId = useUIStore((s) => s.selectedStoreId) ?? '';
-  const { data: models, isLoading } = useVehicleModels();
+  const { data: models, isLoading } = useAllVehicleModels();
   const saveModel = useSaveVehicleModel();
   const delModel = useDeleteVehicleModel();
   const [pricingModelId, setPricingModelId] = useState<string | null>(null);

@@ -55,6 +55,11 @@ export function usePaymentMethods() {
 export function useVehicleModels() {
   return useQuery({ queryKey: ['config', 'vehicle-models'], queryFn: () => api.get('/config/vehicle-models') });
 }
+/** Includes inactive models — for the Settings admin list, so a switched-off model stays
+ * visible (shown as "No") instead of disappearing and becoming impossible to turn back on. */
+export function useAllVehicleModels() {
+  return useQuery({ queryKey: ['config', 'vehicle-models', 'all'], queryFn: () => api.get('/config/vehicle-models?includeInactive=true') });
+}
 export function useModelPricing(modelId: string, storeId: string) {
   return useQuery({ queryKey: ['config', 'model-pricing', modelId, storeId], queryFn: () => api.get(`/config/model-pricing?modelId=${modelId}&storeId=${storeId}`), enabled: !!modelId && !!storeId });
 }
