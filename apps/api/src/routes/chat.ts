@@ -69,7 +69,7 @@ async function fetchLivePricing(): Promise<string> {
   const [vehicleResult, transferResult] = await Promise.all([
     sb
       .from('vehicle_model_pricing')
-      .select('daily_rate, min_days, max_days, vehicle_models!inner(name)')
+      .select('daily_rate, min_days, max_days, vehicle_models!inner(name, show_on_customer_website)')
       .eq('store_id', STORE_ID)
       .order('min_days'),
     sb
@@ -90,12 +90,15 @@ async function fetchLivePricing(): Promise<string> {
     daily_rate: number;
     min_days: number;
     max_days: number;
-    vehicle_models: { name: string };
+    vehicle_models: { name: string; show_on_customer_website: boolean | null };
   }>;
 
   // Group brackets by model name, preserving insertion order.
   const byModel = new Map<string, VehiclePricingRow[]>();
   for (const row of rawRows) {
+    // Hide models kept active for back-office booking only (e.g. Walk-in/Reserve for
+    // later) but switched off for customers — the chat widget is customer-facing.
+    if (row.vehicle_models?.show_on_customer_website === false) continue;
     const name = row.vehicle_models?.name ?? 'Unknown';
     if (!byModel.has(name)) byModel.set(name, []);
     byModel.get(name)!.push({
