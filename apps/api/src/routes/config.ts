@@ -223,7 +223,15 @@ router.delete('/payment-methods/:id', edit, async (req, res, next) => {
 
 // ── Vehicle Models ──
 router.get('/vehicle-models', async (req, res, next) => {
-  try { res.json({ success: true, data: await req.app.locals.deps.configRepo.getVehicleModels() }); } catch (e) { next(e); }
+  try {
+    // `includeInactive=true` is for the Settings admin list, so a model that was
+    // switched off doesn't disappear and become impossible to turn back on.
+    const includeInactive = req.query.includeInactive === 'true';
+    const data = includeInactive
+      ? await req.app.locals.deps.configRepo.getAllVehicleModels()
+      : await req.app.locals.deps.configRepo.getVehicleModels();
+    res.json({ success: true, data });
+  } catch (e) { next(e); }
 });
 router.post('/vehicle-models', edit, validateBody(z.object({
   id: z.string().min(1), name: z.string().min(1), isActive: z.boolean().optional(),

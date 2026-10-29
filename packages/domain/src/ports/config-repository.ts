@@ -162,6 +162,8 @@ export interface ConfigRepository {
   getLocations(storeId: string): Promise<Location[]>;
   getPaymentMethods(): Promise<PaymentMethod[]>;
   getVehicleModels(): Promise<VehicleModel[]>;
+  /** Includes inactive models too — for the Settings admin list, so a model can be re-enabled after being switched off. */
+  getAllVehicleModels(): Promise<VehicleModel[]>;
   getVehicleModelById(id: string): Promise<VehicleModel | null>;
   getModelPricing(modelId: string, storeId: string): Promise<ModelPricing[]>;
   getStorePricing(storeId: string): Promise<ModelPricing[]>;

@@ -151,6 +151,7 @@ export function createConfigRepo(): ConfigRepository {
     },
     getPaymentMethods: () => selectAllActive<PaymentMethod>('payment_methods'),
     getVehicleModels: () => selectAllActive<VehicleModel>('vehicle_models'),
+    getAllVehicleModels: () => selectAll<VehicleModel>('vehicle_models'),
 
     async getVehicleModelById(id: string): Promise<VehicleModel | null> {
       const { data, error } = await sb()
