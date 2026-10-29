@@ -5,6 +5,7 @@ import type { CreateAccidentBody } from '../../api/accidents.js';
 import { useEnrichedOrders } from '../../api/orders.js';
 import type { EnrichedOrder } from '../../types/api.js';
 import { useUIStore } from '../../stores/ui-store.js';
+import { manilaToday, manilaNowTime, manilaLocalToISO } from '../../utils/date.js';
 
 interface AccidentReportModalProps {
   open: boolean;
@@ -61,8 +62,8 @@ const DEFAULT_FORM: FormState = {
   customerId: null,
   customerName: '',
   peaceOfMindActive: null,
-  accidentDate: new Date().toISOString().slice(0, 10),
-  accidentTime: new Date().toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: false }),
+  accidentDate: manilaToday(),
+  accidentTime: manilaNowTime(),
   location: '',
   description: '',
   damageDescription: '',
@@ -250,7 +251,7 @@ export function AccidentReportModal({ open, onClose, prefillOrder, onSuccess }: 
     try {
       // Convert local datetime to UTC ISO so Postgres stores it correctly.
       // new Date("YYYY-MM-DDTHH:MM:SS") parses as local time in JS.
-      const accidentAt = new Date(`${form.accidentDate}T${form.accidentTime}:00`).toISOString();
+      const accidentAt = manilaLocalToISO(`${form.accidentDate}T${form.accidentTime}`);
       const body: CreateAccidentBody = {
         storeId,
         orderId: form.orderId,
@@ -377,7 +378,7 @@ export function AccidentReportModal({ open, onClose, prefillOrder, onSuccess }: 
                 type="date"
                 value={form.accidentDate}
                 onChange={(e) => set('accidentDate', e.target.value)}
-                max={new Date().toISOString().slice(0, 10)}
+                max={manilaToday()}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-red-400 focus:outline-none focus:ring-1 focus:ring-red-400"
               />
             </div>

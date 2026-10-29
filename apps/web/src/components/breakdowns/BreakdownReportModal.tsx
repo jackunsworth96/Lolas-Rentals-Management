@@ -5,6 +5,7 @@ import type { CreateBreakdownBody, BreakdownIssueType, BreakdownResolutionType }
 import { useEnrichedOrders } from '../../api/orders.js';
 import type { EnrichedOrder } from '../../types/api.js';
 import { useUIStore } from '../../stores/ui-store.js';
+import { manilaToday, manilaNowTime, manilaLocalToISO } from '../../utils/date.js';
 
 interface BreakdownReportModalProps {
   open: boolean;
@@ -52,10 +53,10 @@ interface FormState {
 }
 
 function nowDate(): string {
-  return new Date().toISOString().slice(0, 10);
+  return manilaToday();
 }
 function nowTime(): string {
-  return new Date().toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return manilaNowTime();
 }
 
 const DEFAULT_FORM: FormState = {
@@ -187,10 +188,12 @@ export function BreakdownReportModal({ open, onClose, prefillOrder, onSuccess }:
     setError(null);
     setSubmitting(true);
     try {
-      // Convert local datetime to UTC ISO so Postgres stores it correctly.
-      const breakdownAt = new Date(`${form.breakdownDate}T${form.breakdownTime}:00`).toISOString();
+      // Convert Manila local datetime to UTC ISO so Postgres stores it correctly.
+      // (Treated as Manila time explicitly — not the browser/OS's own timezone —
+      // since these always describe real-world events in Siargao.)
+      const breakdownAt = manilaLocalToISO(`${form.breakdownDate}T${form.breakdownTime}`);
       const resolvedAt = form.alreadyResolved
-        ? new Date(`${form.resolvedDate}T${form.resolvedTime}:00`).toISOString()
+        ? manilaLocalToISO(`${form.resolvedDate}T${form.resolvedTime}`)
         : null;
 
       const body: CreateBreakdownBody = {
@@ -309,7 +312,7 @@ export function BreakdownReportModal({ open, onClose, prefillOrder, onSuccess }:
                 type="date"
                 value={form.breakdownDate}
                 onChange={(e) => set('breakdownDate', e.target.value)}
-                max={new Date().toISOString().slice(0, 10)}
+                max={manilaToday()}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
               />
             </div>
@@ -499,7 +502,7 @@ export function BreakdownReportModal({ open, onClose, prefillOrder, onSuccess }:
                       type="date"
                       value={form.resolvedDate}
                       onChange={(e) => set('resolvedDate', e.target.value)}
-                      max={new Date().toISOString().slice(0, 10)}
+                      max={manilaToday()}
                       className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-green-400 focus:outline-none focus:ring-1 focus:ring-green-400"
                     />
                   </div>

@@ -8,6 +8,7 @@ import {
   RESOLUTION_TYPE_LABELS,
 } from '../../api/breakdowns.js';
 import type { BreakdownReport, BreakdownResolutionType } from '../../api/breakdowns.js';
+import { manilaNowDateTimeLocal, manilaLocalToISO } from '../../utils/date.js';
 
 interface BreakdownDetailModalProps {
   open: boolean;
@@ -62,7 +63,7 @@ export function BreakdownDetailModal({ open, onClose, reportId }: BreakdownDetai
   const [resolving, setResolving] = useState(false);
   const [resolutionType, setResolutionType] = useState<BreakdownResolutionType | null>(null);
   const [resolutionNotes, setResolutionNotes] = useState('');
-  const [resolvedAt, setResolvedAt] = useState(() => new Date().toISOString().slice(0, 16));
+  const [resolvedAt, setResolvedAt] = useState(() => manilaNowDateTimeLocal());
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -89,7 +90,7 @@ export function BreakdownDetailModal({ open, onClose, reportId }: BreakdownDetai
         body: {
           resolutionType,
           resolutionNotes: resolutionNotes || null,
-          resolvedAt: new Date(resolvedAt).toISOString(),
+          resolvedAt: manilaLocalToISO(resolvedAt),
         },
       });
       setResolving(false);
