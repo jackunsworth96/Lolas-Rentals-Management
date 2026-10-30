@@ -748,7 +748,7 @@ export default function BrowseBookPage() {
     queryKey: ['availability', searchParams, partnerRef],
     queryFn: () =>
       api.get(
-        `/public/booking/availability?storeId=${searchParams!.storeId}&pickupDatetime=${encodeURIComponent(searchParams!.pickup)}&dropoffDatetime=${encodeURIComponent(searchParams!.dropoff)}&partnerRef=${encodeURIComponent(partnerRef ?? '')}`,
+        `/public/booking/availability?storeId=${searchParams!.storeId}&pickupDatetime=${encodeURIComponent(searchParams!.pickup)}&dropoffDatetime=${encodeURIComponent(searchParams!.dropoff)}&partnerRef=${encodeURIComponent(partnerRef ?? '')}&logDemand=1`,
       ),
     enabled: !!searchParams,
   });

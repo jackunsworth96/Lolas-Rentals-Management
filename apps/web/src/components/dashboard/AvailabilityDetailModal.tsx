@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { Clock } from 'lucide-react';
 import { Modal } from '../common/Modal.js';
 import {
   useAvailabilityDetail,
+  useRecordTurnedAway,
   type AvailabilityModelRow,
 } from '../../api/dashboard-availability.js';
 
@@ -39,7 +41,29 @@ function formatDropoffTime(iso: string): string {
   });
 }
 
-function ModelCard({ model }: { model: AvailabilityModelRow }) {
+function TurnedAwayButton({ storeId, modelId }: { storeId: string; modelId: string }) {
+  const record = useRecordTurnedAway();
+  const [logged, setLogged] = useState(0);
+
+  return (
+    <div className="mt-2 flex items-center gap-2">
+      <button
+        type="button"
+        disabled={record.isPending}
+        onClick={() =>
+          record.mutate({ storeId, vehicleModelId: modelId }, { onSuccess: () => setLogged((n) => n + 1) })
+        }
+        className="rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+      >
+        {record.isPending ? 'Saving…' : 'Customer turned away'}
+      </button>
+      {logged > 0 && <span className="text-xs text-green-700">Logged{logged > 1 ? ` ×${logged}` : ''} ✓</span>}
+      {record.isError && <span className="text-xs text-red-600">Couldn&apos;t save — try again</span>}
+    </div>
+  );
+}
+
+function ModelCard({ model, turnedAwayStoreId }: { model: AvailabilityModelRow; turnedAwayStoreId: string | null }) {
   const hasReturns = model.returningToday.length > 0;
   const fullyUnavailable = model.availableNow === 0 && !hasReturns;
 
@@ -91,12 +115,19 @@ function ModelCard({ model }: { model: AvailabilityModelRow }) {
           <p className="text-xs text-gray-400">No units returning today</p>
         )
       )}
+
+      {model.availableNow === 0 && turnedAwayStoreId && (
+        <TurnedAwayButton storeId={turnedAwayStoreId} modelId={model.modelId} />
+      )}
     </div>
   );
 }
 
 export function AvailabilityDetailModal({ open, onClose, storeId, date }: Props) {
   const { data, isLoading } = useAvailabilityDetail(storeId, open, date);
+  // Turn-aways are only meaningful for a walk-in standing at the counter today,
+  // and need a concrete store to attribute them to.
+  const turnedAwayStoreId = !date && storeId && storeId !== 'all' ? storeId : null;
 
   return (
     <Modal open={open} onClose={onClose} title="Fleet Availability" size="lg">
@@ -113,7 +144,7 @@ export function AvailabilityDetailModal({ open, onClose, storeId, date }: Props)
       {!isLoading && data && data.models.length > 0 && (
         <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
           {data.models.map((model) => (
-            <ModelCard key={model.modelId} model={model} />
+            <ModelCard key={model.modelId} model={model} turnedAwayStoreId={turnedAwayStoreId} />
           ))}
         </div>
       )}

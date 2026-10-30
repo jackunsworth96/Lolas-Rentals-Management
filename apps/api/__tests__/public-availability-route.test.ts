@@ -4,10 +4,16 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   checkAvailability: vi.fn(),
+  recordSoldOutSearch: vi.fn(),
 }));
 
 vi.mock('../src/use-cases/booking/check-availability.js', () => ({
   checkAvailability: mocks.checkAvailability,
+}));
+
+vi.mock('../src/lib/demand-misses.js', () => ({
+  recordSoldOutSearch: mocks.recordSoldOutSearch,
+  visitorKeyFor: () => 'visitor-1',
 }));
 
 const { publicBookingRoutes } = await import('../src/routes/public-booking.js');
@@ -62,5 +68,31 @@ describe('GET /public/booking/availability', () => {
       expect.anything(),
       expect.objectContaining({ excludeSessionToken: undefined }),
     );
+  });
+
+  it('records sold-out models only for an explicit customer date search', async () => {
+    const models = [
+      { modelId: 'beat', modelName: 'Honda Beat', availableCount: 0 },
+      { modelId: 'tuktuk', modelName: 'TukTuk', availableCount: 2 },
+    ];
+    mocks.checkAvailability.mockResolvedValue(models);
+    const app = express();
+    app.locals.deps = { bookingPort: {} };
+    app.use('/api/public/booking', publicBookingRoutes);
+
+    await request(app)
+      .get('/api/public/booking/availability')
+      .query({ storeId: 'store-lolas', pickupDatetime, dropoffDatetime });
+    expect(mocks.recordSoldOutSearch).not.toHaveBeenCalled();
+
+    await request(app)
+      .get('/api/public/booking/availability')
+      .query({ storeId: 'store-lolas', pickupDatetime, dropoffDatetime, logDemand: '1' });
+    expect(mocks.recordSoldOutSearch).toHaveBeenCalledWith(expect.objectContaining({
+      source: 'website',
+      storeId: 'store-lolas',
+      models,
+      visitorKey: 'visitor-1',
+    }));
   });
 });

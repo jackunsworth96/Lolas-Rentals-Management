@@ -71,17 +71,19 @@ beforeEach(() => {
 describe('swapVehicle', () => {
   it('keeps the current rate by default', async () => {
     const { deps, saved, orderRepo } = setup();
-    const result = await swapVehicle(deps, { orderId: 'order-1', orderItemId: 'item-1', newVehicleId: 'SUB', reason: 'fix', employeeId: 'e1' });
+    const result = await swapVehicle(deps, { orderId: 'order-1', orderItemId: 'item-1', newVehicleId: 'SUB', reason: 'fix', reasonCategory: 'vehicle_fault', employeeId: 'e1' });
     expect(saved[0].vehicleName).toBe('Sub-lease TukTuk');
     expect(saved[0].rentalRate).toBe(535);
     expect(result.totalDelta).toBe(0);
     expect(orderRepo.save).not.toHaveBeenCalled();
+    const swapRow = tables.inserts.find((i) => i.table === 'vehicle_swaps')?.row as { reason_category: string };
+    expect(swapRow.reason_category).toBe('vehicle_fault');
   });
 
   it('re-prices the rental and adjusts the order total when a new rate is given', async () => {
     const { deps, saved, order } = setup();
     const result = await swapVehicle(deps, {
-      orderId: 'order-1', orderItemId: 'item-1', newVehicleId: 'SUB', reason: 'fix', employeeId: 'e1', newRentalRate: 1695,
+      orderId: 'order-1', orderItemId: 'item-1', newVehicleId: 'SUB', reason: 'fix', reasonCategory: 'vehicle_fault', employeeId: 'e1', newRentalRate: 1695,
     });
     expect(saved[0].rentalRate).toBe(1695);
     expect(result.totalDelta).toBe(4640);
@@ -94,7 +96,7 @@ describe('swapVehicle', () => {
   it('explains when the new vehicle is on a switched-off model', async () => {
     tables.data.vehicle_models = { name: 'TukTuk (TVS)', is_active: false };
     const { deps, saved } = setup();
-    await expect(swapVehicle(deps, { orderId: 'order-1', orderItemId: 'item-1', newVehicleId: 'VEH21', reason: 'x', employeeId: 'e1' }))
+    await expect(swapVehicle(deps, { orderId: 'order-1', orderItemId: 'item-1', newVehicleId: 'VEH21', reason: 'x', reasonCategory: 'vehicle_fault', employeeId: 'e1' }))
       .rejects.toThrow('Bogart is a TukTuk (TVS), which is switched off');
     expect(saved).toHaveLength(0);
   });
@@ -102,7 +104,7 @@ describe('swapVehicle', () => {
   it('refuses a vehicle already booked on another active rental for those dates', async () => {
     tables.data.order_items = [{ id: 'other', orders: { status: 'active', booking_customer_name: 'Edison' } }];
     const { deps, saved } = setup();
-    await expect(swapVehicle(deps, { orderId: 'order-1', orderItemId: 'item-1', newVehicleId: 'SUB', reason: 'x', employeeId: 'e1' }))
+    await expect(swapVehicle(deps, { orderId: 'order-1', orderItemId: 'item-1', newVehicleId: 'SUB', reason: 'x', reasonCategory: 'vehicle_fault', employeeId: 'e1' }))
       .rejects.toThrow('already booked on another rental (Edison)');
     expect(saved).toHaveLength(0);
   });
@@ -111,14 +113,14 @@ describe('swapVehicle', () => {
     tables.data.order_items = [{ id: 'old', orders: { status: 'completed', booking_customer_name: 'Fedde' } }];
     tables.data.fleet_unavailability = [{ id: 'u1', ends_at: '2026-10-20T00:00:00.000Z' }];
     const { deps, saved } = setup();
-    await swapVehicle(deps, { orderId: 'order-1', orderItemId: 'item-1', newVehicleId: 'SUB', reason: 'x', employeeId: 'e1' });
+    await swapVehicle(deps, { orderId: 'order-1', orderItemId: 'item-1', newVehicleId: 'SUB', reason: 'x', reasonCategory: 'vehicle_fault', employeeId: 'e1' });
     expect(saved).toHaveLength(1);
   });
 
   it('refuses a vehicle reserved for open-ended owner use', async () => {
     tables.data.fleet_unavailability = [{ id: 'u1', ends_at: null }];
     const { deps } = setup();
-    await expect(swapVehicle(deps, { orderId: 'order-1', orderItemId: 'item-1', newVehicleId: 'SUB', reason: 'x', employeeId: 'e1' }))
+    await expect(swapVehicle(deps, { orderId: 'order-1', orderItemId: 'item-1', newVehicleId: 'SUB', reason: 'x', reasonCategory: 'vehicle_fault', employeeId: 'e1' }))
       .rejects.toThrow('reserved for owner use');
   });
 });

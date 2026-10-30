@@ -312,6 +312,7 @@ export function InspectionModal({
           orderItemId,
           newVehicleId: vehicleId,
           reason: 'Changed at inspection',
+          reasonCategory: 'other',
         });
       }
 

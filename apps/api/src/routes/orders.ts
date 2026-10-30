@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
-import { calculateBalanceDue, Permission } from '@lolas/shared';
+import { calculateBalanceDue, Permission, SWAP_REASON_CATEGORIES } from '@lolas/shared';
 import { z } from 'zod';
 import { supabase } from '../adapters/supabase/client.js';
 import { sendTelegramAlert, sendTelegramAlertPaidOrdersStaggered, getTelegramChatId } from '../lib/telegram.js';
@@ -432,6 +432,7 @@ router.get('/:id/swaps', requirePermission(Permission.ViewInbox), async (req, re
       swapDate: r.swap_date,
       swapTime: r.swap_time,
       reason: r.reason,
+      reasonCategory: r.reason_category,
       employeeId: r.employee_id,
       createdAt: r.created_at,
     }));
@@ -662,6 +663,7 @@ router.post('/:id/add-collection', requirePermission(Permission.EditOrders), val
 
 router.post('/:id/swap-vehicle', requirePermission(Permission.EditOrders), validateBody(z.object({
   orderItemId: z.string(), newVehicleId: z.string(), reason: z.string(),
+  reasonCategory: z.enum(SWAP_REASON_CATEGORIES),
   newRentalRate: z.number().nonnegative().optional(),
 })), async (req, res, next) => {
   try {

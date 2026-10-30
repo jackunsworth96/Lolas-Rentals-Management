@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { authenticate } from '../middleware/authenticate.js';
+import { validateBody } from '../middleware/validate.js';
 import { Permission } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { formatManilaDate } from '../utils/manila-date.js';
@@ -1183,6 +1185,35 @@ router.get('/availability-detail', async (req, res, next) => {
     });
 
     res.json({ success: true, data: { models } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── POST /turned-away ─────────────────────────────────────────────────────────
+// One tap from Fleet Availability when a walk-in wanted a model we had none of.
+const TurnedAwaySchema = z.object({
+  storeId: z.string().min(1),
+  vehicleModelId: z.string().min(1),
+});
+
+router.post('/turned-away', validateBody(TurnedAwaySchema), async (req, res, next) => {
+  try {
+    const { storeId, vehicleModelId } = req.body as z.infer<typeof TurnedAwaySchema>;
+    const user = req.user!;
+    if (!user.storeIds.includes(storeId)) {
+      res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Wrong store' } });
+      return;
+    }
+    const { error } = await getSupabaseClient().from('demand_misses').insert({
+      store_id: storeId,
+      vehicle_model_id: vehicleModelId,
+      source: 'walk_in',
+      pickup_datetime: new Date().toISOString(),
+      employee_id: user.employeeId || null,
+    });
+    if (error) throw new Error(`Failed to record turned-away customer: ${error.message}`);
+    res.status(201).json({ success: true, data: { recorded: true } });
   } catch (err) {
     next(err);
   }
