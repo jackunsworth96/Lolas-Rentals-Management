@@ -95,6 +95,13 @@ function ModelCard({ model, turnedAwayStoreId }: { model: AvailabilityModelRow; 
         </div>
       )}
 
+      {model.awaitingAssignment > 0 && (
+        <p className="mb-2 text-xs text-amber-700">
+          {model.awaitingAssignment} held for {model.awaitingAssignment === 1 ? 'a booking' : 'bookings'} awaiting
+          collection (no vehicle assigned yet)
+        </p>
+      )}
+
       {/* Row 3 — returning today */}
       {hasReturns ? (
         <div>

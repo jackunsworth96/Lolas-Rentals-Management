@@ -14,6 +14,8 @@ export interface AvailabilityModelRow {
   availableNow: number;
   withSurfRack: number;
   withoutSurfRack: number;
+  /** Booked units not yet assigned a vehicle (awaiting collection); already excluded from availableNow. */
+  awaitingAssignment: number;
   isScooter: boolean;
   returningToday: ReturningTodayEntry[];
 }

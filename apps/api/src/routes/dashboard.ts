@@ -6,7 +6,8 @@ import { Permission } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { formatManilaDate } from '../utils/manila-date.js';
 import { getPartnerCommissionStats } from '../lib/partner-commission.js';
-import { getDashboardAvailabilityModel } from '../lib/dashboard-availability-model.js';
+import { getDashboardAvailabilityModel, type DashboardAvailabilityModel } from '../lib/dashboard-availability-model.js';
+import { availableAfterUnassignedHolds, unprocessedBookingHolds } from '../lib/dashboard-unprocessed-bookings.js';
 import { ownerUseNotEndedBy, ownerUseVehicleIdsOverlapping } from '../lib/owner-use-window.js';
 
 const router = Router();
@@ -310,6 +311,20 @@ router.get('/summary', authenticate, async (req, res, next) => {
         .or(ownerUseNotEndedBy(new Date().toISOString()))
         .lt('starts_at', `${tomorrowDate}T23:59:59.999+08:00`)
         .then((r) => ({ key: 'ownerUse' as const, ...r })),
+
+      sb
+        .from('orders_raw')
+        .select('store_id, vehicle_id, vehicle_model_id, pickup_datetime, dropoff_datetime')
+        .eq('status', 'unprocessed')
+        .is('cancelled_at', null)
+        .lt('pickup_datetime', `${tomorrowDate}T23:59:59.999+08:00`)
+        .gt('dropoff_datetime', new Date().toISOString())
+        .then((r) => ({ key: 'unprocessedBookings' as const, ...r })),
+
+      sb
+        .from('vehicle_models')
+        .select('id, name')
+        .then((r) => ({ key: 'vehicleModels' as const, ...r })),
     ];
 
     const financialQueries = canViewFinancial
@@ -488,6 +503,11 @@ router.get('/summary', authenticate, async (req, res, next) => {
       if (modelData) fleetModelMap.set(fm.id as string, modelData.name);
     }
 
+    const vehicleModelNameById = new Map<string, string>();
+    for (const m of dataMap.get('vehicleModels') ?? []) {
+      vehicleModelNameById.set(m.id as string, m.name as string);
+    }
+
     const activeVehicleIds = new Set(
       activeOrders.length > 0
         ? ninepmCandidates.map((i) => i.vehicle_id as string).filter(Boolean)
@@ -631,10 +651,27 @@ router.get('/summary', authenticate, async (req, res, next) => {
       const tomorrowStartMs = new Date(`${tomorrowDate}T00:00:00+08:00`).getTime();
       const tomorrowEndMs = new Date(`${tomorrowDate}T23:59:59.999+08:00`).getTime();
       const ownerUseTomorrowIds = ownerUseVehicleIdsOverlapping(ownerUseRows, tomorrowStartMs, tomorrowEndMs, sid);
-      const availableVehicles = rentableFleet.filter((v) => {
-        const id = v.id as string;
-        return !bookedVehicleIds.has(id) && !ownerUseNowIds.has(id);
-      }).length;
+      const todayEndMs = new Date(`${manilaDate}T23:59:59.999+08:00`).getTime();
+      const unprocessedRows = dataMap.get('unprocessedBookings') ?? [];
+      const unprocessedToday = unprocessedBookingHolds(unprocessedRows, vehicleModelNameById, nowMs, todayEndMs, sid);
+      const unprocessedTomorrow = unprocessedBookingHolds(unprocessedRows, vehicleModelNameById, tomorrowStartMs, tomorrowEndMs, sid);
+
+      const freeUnitsByModel = (isTaken: (id: string) => boolean) => {
+        const counts = new Map<DashboardAvailabilityModel['modelId'], number>();
+        for (const v of rentableFleet) {
+          const id = v.id as string;
+          if (isTaken(id)) continue;
+          const { modelId } = getDashboardAvailabilityModel(fleetModelMap.get(id) ?? 'Unknown');
+          counts.set(modelId, (counts.get(modelId) ?? 0) + 1);
+        }
+        return counts;
+      };
+
+      const availableVehicles = availableAfterUnassignedHolds(
+        freeUnitsByModel((id) =>
+          bookedVehicleIds.has(id) || ownerUseNowIds.has(id) || unprocessedToday.vehicleIds.has(id)),
+        unprocessedToday.modelCounts,
+      );
 
       const tomorrowBookedVehicleIds = new Set<string>();
       for (const item of (dataMap.get('tomorrowBookings') ?? [])) {
@@ -644,10 +681,11 @@ router.get('/summary', authenticate, async (req, res, next) => {
         const vid = item.vehicle_id as string | undefined;
         if (vid) tomorrowBookedVehicleIds.add(vid);
       }
-      const tomorrowAvailable = rentableFleet.filter((v) => {
-        const id = v.id as string;
-        return !tomorrowBookedVehicleIds.has(id) && !ownerUseTomorrowIds.has(id);
-      }).length;
+      const tomorrowAvailable = availableAfterUnassignedHolds(
+        freeUnitsByModel((id) =>
+          tomorrowBookedVehicleIds.has(id) || ownerUseTomorrowIds.has(id) || unprocessedTomorrow.vehicleIds.has(id)),
+        unprocessedTomorrow.modelCounts,
+      );
 
       const activeCount = storeActiveOrders.length;
       const fleetUtilisation = totalRentable > 0
@@ -1038,7 +1076,9 @@ router.get('/availability-detail', async (req, res, next) => {
       ? rangeStartMs + 1
       : new Date(`${targetDate}T23:59:59.999+08:00`).getTime();
 
-    const [fleetRes, fleetStatusRes, orderItemsRes, vehicleModelsRes, ownerUseRes] = await Promise.all([
+    const dayEndMs = new Date(`${targetDate}T23:59:59.999+08:00`).getTime();
+
+    const [fleetRes, fleetStatusRes, orderItemsRes, vehicleModelsRes, ownerUseRes, unprocessedRes] = await Promise.all([
       sb
         .from('fleet')
         .select('id, name, model_id, status, surf_rack, store_id'),
@@ -1070,11 +1110,20 @@ router.get('/availability-detail', async (req, res, next) => {
         .is('cancelled_at', null)
         .or(ownerUseNotEndedBy(new Date(rangeStartMs).toISOString()))
         .lt('starts_at', new Date(rangeEndMs).toISOString()),
+
+      sb
+        .from('orders_raw')
+        .select('store_id, vehicle_id, vehicle_model_id, pickup_datetime, dropoff_datetime')
+        .eq('status', 'unprocessed')
+        .is('cancelled_at', null)
+        .lt('pickup_datetime', new Date(dayEndMs).toISOString())
+        .gt('dropoff_datetime', new Date(rangeStartMs).toISOString()),
     ]);
 
     if (fleetRes.error) throw new Error(fleetRes.error.message);
     if (fleetStatusRes.error) throw new Error(fleetStatusRes.error.message);
     if (ownerUseRes.error) throw new Error(ownerUseRes.error.message);
+    if (unprocessedRes.error) throw new Error(unprocessedRes.error.message);
 
     const allFleet = fleetRes.data ?? [];
     const fleetStatuses = fleetStatusRes.data ?? [];
@@ -1121,6 +1170,14 @@ router.get('/availability-detail', async (req, res, next) => {
     const modelNameMap = new Map<string, string>();
     for (const m of vehicleModels) modelNameMap.set(m.id as string, m.name as string);
 
+    const unprocessedHolds = unprocessedBookingHolds(
+      unprocessedRes.data ?? [],
+      modelNameMap,
+      rangeStartMs,
+      dayEndMs,
+      storeIdParam && storeIdParam !== 'all' ? storeIdParam : undefined,
+    );
+
     const modelMap = new Map<string, {
       modelName: string;
       isScooter: boolean;
@@ -1133,7 +1190,10 @@ router.get('/availability-detail', async (req, res, next) => {
       const rawModelName = modelNameMap.get(rawModelId) ?? 'Unknown';
       const { modelId, modelName, isScooter } = getDashboardAvailabilityModel(rawModelName);
       if (!modelMap.has(modelId)) modelMap.set(modelId, { modelName, isScooter, units: [] });
-      const isBooked = bookedVehicleIds.has(v.id as string) || ownerUseIds.has(v.id as string);
+      const isBooked =
+        bookedVehicleIds.has(v.id as string)
+        || ownerUseIds.has(v.id as string)
+        || unprocessedHolds.vehicleIds.has(v.id as string);
       modelMap.get(modelId)!.units.push({
         id: v.id as string,
         name: v.name as string,
@@ -1167,13 +1227,21 @@ router.get('/availability-detail', async (req, res, next) => {
         })
         .sort((a, b) => a.dropoffDatetime.localeCompare(b.dropoffDatetime));
 
+      // Unassigned bookings take units without a surf rack first, so rack bikes stay visible for surfers.
+      const awaitingAssignment = unprocessedHolds.modelCounts.get(modelId as DashboardAvailabilityModel['modelId']) ?? 0;
+      const freeWithRack = availableUnits.filter((u) => u.surfRack).length;
+      const freeWithoutRack = availableUnits.length - freeWithRack;
+      const heldWithoutRack = Math.min(awaitingAssignment, freeWithoutRack);
+      const heldWithRack = Math.min(awaitingAssignment - heldWithoutRack, freeWithRack);
+
       return {
         modelId,
         modelName,
         totalUnits: units.length,
-        availableNow: availableUnits.length,
-        withSurfRack: availableUnits.filter((u) => u.surfRack).length,
-        withoutSurfRack: availableUnits.filter((u) => !u.surfRack).length,
+        availableNow: availableUnits.length - heldWithoutRack - heldWithRack,
+        withSurfRack: freeWithRack - heldWithRack,
+        withoutSurfRack: freeWithoutRack - heldWithoutRack,
+        awaitingAssignment,
         isScooter,
         returningToday,
       };
