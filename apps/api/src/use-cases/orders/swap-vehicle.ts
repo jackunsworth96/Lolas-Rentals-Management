@@ -5,6 +5,7 @@ import {
   NonRentableVehicleError,
   Money,
 } from '@lolas/domain';
+import type { SwapReasonCategory } from '@lolas/shared';
 import { supabase } from '../../adapters/supabase/client.js';
 import { formatManilaDate, formatManilaTime } from '../../utils/manila-date.js';
 
@@ -19,6 +20,7 @@ export interface SwapVehicleInput {
   orderItemId: string;
   newVehicleId: string;
   reason: string;
+  reasonCategory: SwapReasonCategory;
   employeeId: string;
   /**
    * New daily rate for the rental. Omit to keep the current rate (e.g. a free
@@ -176,6 +178,7 @@ export async function swapVehicle(
     swap_date: formatManilaDate(now),
     swap_time: formatManilaTime(now),
     reason: repricing ? `${input.reason} (rate ${oldRentalRate} → ${newRentalRate}/day)` : input.reason,
+    reason_category: input.reasonCategory,
     employee_id: input.employeeId,
   });
 

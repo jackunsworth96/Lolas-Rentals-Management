@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { calculateBalanceDue } from '@lolas/shared';
+import { calculateBalanceDue, SWAP_REASON_CATEGORIES, SWAP_REASON_CATEGORY_LABELS, type SwapReasonCategory } from '@lolas/shared';
 import { CheckCircle2, AlertTriangle, Phone, MessageCircle } from 'lucide-react';
 import { Badge } from '../common/Badge.js';
 import { Modal } from '../common/Modal.js';
@@ -77,6 +77,7 @@ export function OrderDetailSummaryTab({
   // ── Swap vehicle state ──
   const [swapNewVehicleId, setSwapNewVehicleId] = useState('');
   const [swapReason, setSwapReason] = useState('');
+  const [swapReasonCategory, setSwapReasonCategory] = useState<SwapReasonCategory | ''>('');
   const [swapReprice, setSwapReprice] = useState(false);
 
   // ── Issue refund state ──
@@ -737,7 +738,7 @@ export function OrderDetailSummaryTab({
   const handleSwapVehicle = (e: React.FormEvent) => {
     e.preventDefault();
     const currentItem = itemsList[0];
-    if (!currentItem || !swapNewVehicleId || !swapReason.trim()) return;
+    if (!currentItem || !swapNewVehicleId || !swapReason.trim() || !swapReasonCategory) return;
     const reprice = swapReprice && swapModelChanges && swapNewModelRate !== null;
     swapVehicle.mutate(
       {
@@ -745,12 +746,14 @@ export function OrderDetailSummaryTab({
         orderItemId: currentItem.id,
         newVehicleId: swapNewVehicleId,
         reason: swapReason.trim(),
+        reasonCategory: swapReasonCategory,
         ...(reprice ? { newRentalRate: swapNewModelRate } : {}),
       },
       {
         onSuccess: () => {
           setSwapNewVehicleId('');
           setSwapReason('');
+          setSwapReasonCategory('');
           setSwapReprice(false);
         },
       },
@@ -1390,8 +1393,18 @@ export function OrderDetailSummaryTab({
                   </select>
                 </label>
                 <label className="block">
-                  <span className="text-sm text-gray-600">Reason</span>
-                  <input type="text" value={swapReason} onChange={(e) => setSwapReason(e.target.value)} required placeholder="e.g. customer request"
+                  <span className="text-sm text-gray-600">Why</span>
+                  <select value={swapReasonCategory} onChange={(e) => setSwapReasonCategory(e.target.value as SwapReasonCategory)} required
+                    className="mt-1 block w-full sm:w-56 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    <option value="">Select a reason</option>
+                    {SWAP_REASON_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>{SWAP_REASON_CATEGORY_LABELS[c]}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-sm text-gray-600">Details</span>
+                  <input type="text" value={swapReason} onChange={(e) => setSwapReason(e.target.value)} required placeholder="e.g. won't start, brakes stuck"
                     className="mt-1 block w-full sm:w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
                 </label>
                 <button type="submit" disabled={swapVehicle.isPending || !itemsList[0]}

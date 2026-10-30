@@ -10,15 +10,15 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  Cell,
 } from 'recharts';
-import { TrendingUp, Bike, Users, Calendar, ArrowUp, ArrowDown, Minus, Link2, Target, ShieldCheck } from 'lucide-react';
+import { TrendingUp, Bike, Users, Calendar, ArrowUp, ArrowDown, Minus, Link2, Target, ShieldCheck, Ban } from 'lucide-react';
 import {
   useAnalytics,
   useFleetForecast,
   useConfidenceReport,
   type FleetModelMetrics,
 } from '../../api/analytics.js';
+import { useBasketAbandonmentSummary } from '../../api/dashboard.js';
 import { useUIStore } from '../../stores/ui-store.js';
 
 const CHART_COLORS = ['#0d9488', '#6366f1', '#d97706', '#dc2626', '#7c3aed'];
@@ -176,17 +176,25 @@ export default function AnalyticsPage() {
   const { data: forecast, isLoading: isForecastLoading } = useFleetForecast(storeId);
   const { data: confidence, isLoading: isConfidenceLoading } = useConfidenceReport(storeId);
 
+  const [selectedQuarter, setSelectedQuarter] = useState<string | null>(null);
+
   const analytics = data;
   const fleet = analytics?.fleet;
   const bookings = analytics?.bookings;
   const affiliates = analytics?.affiliates;
+  const unmetDemand = analytics?.unmetDemand;
 
-  // Channel split chart data — system channel a booking was created through
-  // (WooCommerce was retired and is no longer tracked here).
-  const channelData = bookings
+  // Online checkout funnel for the same period as the rest of the page. The
+  // timestamps are pinned to the start of the day so the query key stays stable.
+  const periodFrom = analytics ? `${analytics.period.from.slice(0, 10)}T00:00:00.000Z` : undefined;
+  const periodTo = analytics ? `${analytics.period.to.slice(0, 10)}T23:59:59.999Z` : undefined;
+  const { data: funnel } = useBasketAbandonmentSummary(storeId, periodFrom, periodTo);
+  const funnelStages = funnel
     ? [
-        { name: 'Online booking', value: bookings.channelSplit.direct ?? 0, fill: '#0d9488' },
-        { name: 'Walk-in (system)', value: bookings.channelSplit.walk_in ?? 0, fill: '#6366f1' },
+        { label: 'Added a vehicle to basket', count: funnel.total },
+        { label: 'Viewed basket', count: funnel.basketViewed },
+        { label: 'Started entering details', count: funnel.renterStarted },
+        { label: 'Submitted booking', count: funnel.converted },
       ]
     : [];
 
@@ -291,7 +299,7 @@ export default function AnalyticsPage() {
               <StatTile
                 label="Cancellation rate"
                 value={pct(fleet!.overall.cancellationRate)}
-                sub="Share of orders placed in period that were cancelled"
+                sub={`${fleet!.overall.cancelledBookings} of ${fleet!.overall.bookingsPlaced} bookings placed in period`}
               />
             </div>
 
@@ -354,42 +362,42 @@ export default function AnalyticsPage() {
 
             {/* Charts row */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Booking channel chart */}
+              {/* Online checkout funnel */}
               <div className="rounded-xl border border-gray-200 bg-white p-5">
                 <p className="text-sm font-semibold text-gray-800 mb-4 flex items-center gap-1.5">
-                  <Users className="h-4 w-4 text-gray-400" /> Booking channel split
+                  <Users className="h-4 w-4 text-gray-400" /> Online checkout funnel
                 </p>
-                {channelData.every((d) => d.value === 0) ? (
-                  <p className="text-sm text-gray-400 py-8 text-center">No booking data</p>
+                {!funnel || funnel.total === 0 ? (
+                  <p className="text-sm text-gray-400 py-8 text-center">No website baskets in this period</p>
                 ) : (
-                  <div className="h-48">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={channelData} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                        <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                        <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                        <Tooltip formatter={(v: number) => [v, 'Bookings']} />
-                        <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                          {channelData.map((entry, idx) => (
-                            <Cell key={idx} fill={entry.fill} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
+                  <div className="space-y-3">
+                    {funnelStages.map((stage, idx) => {
+                      const share = stage.count / Math.max(funnel.total, 1);
+                      const prev = idx > 0 ? funnelStages[idx - 1].count : null;
+                      const dropped = prev != null ? prev - stage.count : 0;
+                      return (
+                        <div key={stage.label}>
+                          <div className="flex items-center justify-between text-xs mb-1">
+                            <span className="text-gray-600">{stage.label}</span>
+                            <span className="font-semibold text-gray-900">
+                              {stage.count}
+                              {dropped > 0 && <span className="ml-2 font-normal text-red-500">−{dropped}</span>}
+                            </span>
+                          </div>
+                          <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                            <div className="h-full rounded-full bg-teal-500" style={{ width: `${share * 100}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
-                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
-                  <span className="text-xs text-gray-500">
-                    Online (direct app): <strong>{(bookings!.channelSplit.direct ?? 0)}</strong>
-                  </span>
-                  <span className="text-xs text-gray-500">
-                    Walk-in (system): <strong>{bookings!.channelSplit.walk_in ?? 0}</strong>
-                  </span>
-                </div>
-                <p className="mt-2 text-[11px] text-gray-400">
-                  Reflects which internal tool created the booking — see "Walk-in vs online" above for the
-                  customer-reported figure, which captures walk-ins staff booked through the direct flow too.
-                </p>
+                {funnel && funnel.total > 0 && (
+                  <p className="mt-3 text-xs text-gray-400">
+                    {funnel.conversionRate}% of website visitors who chose a vehicle went on to book.
+                    {' '}{funnel.total - funnel.converted} left without booking.
+                  </p>
+                )}
               </div>
 
               {/* Lead time distribution chart */}
@@ -420,6 +428,63 @@ export default function AnalyticsPage() {
                 </p>
               </div>
             </div>
+          </section>
+
+          {/* ── Demand we couldn't serve ─────────────────────────────────── */}
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <Ban className="h-5 w-5 text-gray-400" />
+              <h2 className="text-base font-semibold text-gray-800">Demand We Couldn&apos;t Serve</h2>
+              <span className="text-xs text-gray-400">last {days} days</span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              <StatTile
+                label="Turned away"
+                value={unmetDemand!.total}
+                sub="sold-out searches + walk-ins"
+              />
+              <StatTile label="Website searches" value={unmetDemand!.website} sub="dates searched, model sold out" />
+              <StatTile label="Walk-ins" value={unmetDemand!.walkIn} sub="logged by staff from Fleet Availability" />
+              <StatTile
+                label="Most wanted"
+                value={unmetDemand!.byModel[0]?.modelName ?? '—'}
+                sub={unmetDemand!.byModel[0] ? `${unmetDemand!.byModel[0].total} turned away` : 'nothing turned away'}
+              />
+            </div>
+
+            {unmetDemand!.byModel.length > 0 && (
+              <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white mb-3">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium text-gray-500">
+                      <th className="px-4 py-2.5">Vehicle</th>
+                      <th className="px-4 py-2.5 text-right">Website searches</th>
+                      <th className="px-4 py-2.5 text-right">Walk-ins</th>
+                      <th className="px-4 py-2.5 text-right">Rental-days requested online</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {unmetDemand!.byModel.map((m) => (
+                      <tr key={m.modelId} className="border-b border-gray-50 last:border-0">
+                        <td className="px-4 py-2.5 font-medium text-gray-900">{m.modelName}</td>
+                        <td className="px-4 py-2.5 text-right text-gray-700">{m.website}</td>
+                        <td className="px-4 py-2.5 text-right text-gray-700">{m.walkIn}</td>
+                        <td className="px-4 py-2.5 text-right text-gray-700">{m.requestedDays}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <p className="text-xs text-gray-400">
+              {unmetDemand!.trackingSince
+                ? `Recorded automatically since ${new Date(unmetDemand!.trackingSince).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}. `
+                : 'Tracking started 30 Oct 2026 — numbers will appear as customers search. '}
+              A website search counts once per visitor per date range. Staff log walk-ins with the
+              &ldquo;Customer turned away&rdquo; button in Dashboard → Fleet Availability.
+            </p>
           </section>
 
           {/* ── SECTION 3: Affiliate Bookings ─────────────────────────────── */}
@@ -615,12 +680,12 @@ export default function AnalyticsPage() {
 
             {!isConfidenceLoading && (!confidence || confidence.quarters.length === 0) && (
               <div className="rounded-xl border border-dashed border-gray-200 p-8 text-center text-sm text-gray-400">
-                No quarterly customer data yet. Log breakdowns as they happen to start building this report.
+                No quarterly rental data yet.
               </div>
             )}
 
             {!isConfidenceLoading && confidence && confidence.quarters.length > 0 && (() => {
-              const latestElapsed = [...confidence.quarters].reverse().find((q) => !q.isCurrentQuarter)
+              const selected = confidence.quarters.find((q) => q.label === selectedQuarter)
                 ?? confidence.quarters[confidence.quarters.length - 1];
               const chartData = confidence.quarters.map((q) => ({
                 quarter: q.isCurrentQuarter ? `${q.label} (so far)` : q.label,
@@ -645,40 +710,53 @@ export default function AnalyticsPage() {
 
               return (
                 <>
-                  <p className="text-xs text-gray-400 mb-4">
-                    Headline numbers use {latestElapsed.isCurrentQuarter ? 'the current quarter so far' : latestElapsed.label}{' '}
-                    (the latest fully elapsed quarter when available). Issue-free = customers whose rental had no accident and no breakdown.
-                  </p>
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <p className="text-xs text-gray-400 max-w-3xl">
+                      A rental has an issue if it had an accident, a breakdown report (other than user error), or a
+                      vehicle swap logged as a vehicle fault. Rentals count in the quarter they were picked up.
+                    </p>
+                    <select
+                      value={selected.label}
+                      onChange={(e) => setSelectedQuarter(e.target.value)}
+                      className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700"
+                    >
+                      {[...confidence.quarters].reverse().map((q) => (
+                        <option key={q.label} value={q.label}>
+                          {q.label}{q.isCurrentQuarter ? ' (so far)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
                     <StatTile
-                      label="Customers served"
-                      value={latestElapsed.totalCustomers.toLocaleString()}
-                      sub={latestElapsed.label}
+                      label="Rentals"
+                      value={selected.totalRentals.toLocaleString()}
+                      sub={`${selected.uniqueCustomers.toLocaleString()} unique customers`}
                     />
                     <StatTile
                       label="Issue-free rate"
-                      value={pct(latestElapsed.issueFreeRate)}
-                      sub={`${latestElapsed.affectedCustomers} customer${latestElapsed.affectedCustomers !== 1 ? 's' : ''} had an issue`}
-                      accent={latestElapsed.issueFreeRate >= 0.95}
+                      value={pct(selected.issueFreeRate)}
+                      sub={`${selected.affectedRentals} rental${selected.affectedRentals !== 1 ? 's' : ''} had an issue`}
+                      accent={selected.issueFreeRate >= 0.95}
                     />
                     <StatTile
                       label="Accidents"
-                      value={latestElapsed.accidentCount}
+                      value={selected.accidentCount}
                       sub="reports in quarter"
                     />
                     <StatTile
                       label="Breakdowns"
-                      value={latestElapsed.breakdownCount}
-                      sub="reports in quarter"
+                      value={selected.breakdownCount + selected.unreportedFaultSwaps}
+                      sub={`${selected.breakdownCount} reported + ${selected.unreportedFaultSwaps} from vehicle swaps`}
                     />
                     <StatTile
                       label="Avg. resolution"
-                      value={formatMins(latestElapsed.avgResolutionMinutes)}
+                      value={formatMins(selected.avgResolutionMinutes)}
                       sub={
-                        latestElapsed.pctResolvedWithin30Min != null
-                          ? `${pct(latestElapsed.pctResolvedWithin30Min)} resolved in 30 min`
-                          : 'no resolved breakdowns yet'
+                        selected.pctResolvedWithin30Min != null
+                          ? `${pct(selected.pctResolvedWithin30Min)} resolved in 30 min`
+                          : 'no resolution times logged'
                       }
                     />
                   </div>
@@ -700,15 +778,17 @@ export default function AnalyticsPage() {
                     </div>
 
                     <div className="rounded-xl border border-gray-200 bg-white p-5">
-                      <p className="text-sm font-semibold text-gray-800 mb-1">Breakdown types — {latestElapsed.label}</p>
+                      <p className="text-sm font-semibold text-gray-800 mb-1">Breakdown types — {selected.label}</p>
                       <p className="text-xs text-gray-400 mb-4">
-                        {latestElapsed.breakdownCount} breakdown{latestElapsed.breakdownCount !== 1 ? 's' : ''} logged
+                        {selected.breakdownCount} breakdown report{selected.breakdownCount !== 1 ? 's' : ''} logged
+                        {selected.unreportedFaultSwaps > 0 &&
+                          ` · ${selected.unreportedFaultSwaps} more fault${selected.unreportedFaultSwaps !== 1 ? 's' : ''} only recorded as a vehicle swap (no type)`}
                       </p>
-                      {latestElapsed.breakdownCount === 0 ? (
+                      {selected.breakdownCount === 0 ? (
                         <p className="text-sm text-gray-400 py-8 text-center">No breakdowns in this quarter</p>
                       ) : (
                         <div className="space-y-2">
-                          {Object.entries(latestElapsed.issueTypeSplit).map(([key, count]) => (
+                          {Object.entries(selected.issueTypeSplit).map(([key, count]) => (
                             <div key={key} className="flex items-center justify-between text-sm">
                               <span className="text-gray-600">{ISSUE_LABELS[key] ?? key}</span>
                               <span className="font-semibold text-gray-900">{count}</span>
@@ -724,7 +804,7 @@ export default function AnalyticsPage() {
                       <thead>
                         <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium text-gray-500">
                           <th className="px-4 py-2.5">Quarter</th>
-                          <th className="px-4 py-2.5 text-right">Customers</th>
+                          <th className="px-4 py-2.5 text-right">Rentals</th>
                           <th className="px-4 py-2.5 text-right">Issue-free %</th>
                           <th className="px-4 py-2.5 text-right">Accidents</th>
                           <th className="px-4 py-2.5 text-right">Breakdowns</th>
@@ -737,17 +817,17 @@ export default function AnalyticsPage() {
                             <td className="px-4 py-2.5 font-medium text-gray-900">
                               {q.label}{q.isCurrentQuarter ? ' (so far)' : ''}
                             </td>
-                            <td className="px-4 py-2.5 text-right text-gray-700">{q.totalCustomers.toLocaleString()}</td>
+                            <td className="px-4 py-2.5 text-right text-gray-700">{q.totalRentals.toLocaleString()}</td>
                             <td className="px-4 py-2.5 text-right font-semibold text-gray-900">{pct(q.issueFreeRate)}</td>
                             <td className="px-4 py-2.5 text-right text-gray-700">{q.accidentCount}</td>
-                            <td className="px-4 py-2.5 text-right text-gray-700">{q.breakdownCount}</td>
+                            <td className="px-4 py-2.5 text-right text-gray-700">{q.breakdownCount + q.unreportedFaultSwaps}</td>
                             <td className="px-4 py-2.5 text-right text-gray-700">{formatMins(q.avgResolutionMinutes)}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                     <p className="px-4 py-2.5 text-[11px] text-gray-400 border-t border-gray-100">
-                      Copy these numbers for quarterly marketing — e.g. &ldquo;{latestElapsed.totalCustomers.toLocaleString()} customers, {pct(latestElapsed.issueFreeRate)} issue-free.&rdquo;
+                      Copy these numbers for quarterly marketing — e.g. &ldquo;{selected.totalRentals.toLocaleString()} rentals, {pct(selected.issueFreeRate)} issue-free.&rdquo;
                     </p>
                   </div>
                 </>

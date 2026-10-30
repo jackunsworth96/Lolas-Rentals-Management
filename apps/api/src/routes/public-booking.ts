@@ -7,6 +7,7 @@ import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
 import { SubmitDirectBookingRequestSchema, type SubmitDirectBookingInput, assertBookingLeadTime } from '@lolas/shared';
 import { validateQuery, validateBody } from '../middleware/validate.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
+import { recordSoldOutSearch, visitorKeyFor } from '../lib/demand-misses.js';
 import { computeQuote } from '../use-cases/booking/compute-quote.js';
 import { createHold } from '../use-cases/booking/create-hold.js';
 import { releaseHold } from '../use-cases/booking/release-hold.js';
@@ -71,6 +72,9 @@ const AvailabilityQuerySchema = z.object({
    * Used when a customer is changing dates/locations on a basket item they already
    * hold, so their own (soon to be released) hold doesn't block the new window. */
   excludeSessionToken: z.string().min(1).optional(),
+  /** Set only by the booking page's date search, so the homepage preview (which
+   * uses placeholder dates) isn't recorded as demand. */
+  logDemand: z.literal('1').optional(),
 });
 
 router.get('/model-pricing', async (req, res, next) => {
@@ -125,11 +129,12 @@ router.get('/models', async (req, res, next) => {
 
 router.get('/availability', validateQuery(AvailabilityQuerySchema), async (req, res, next) => {
   try {
-    const { storeId, pickupDatetime, dropoffDatetime, excludeSessionToken } = req.query as {
+    const { storeId, pickupDatetime, dropoffDatetime, excludeSessionToken, logDemand } = req.query as {
       storeId: string;
       pickupDatetime: string;
       dropoffDatetime: string;
       excludeSessionToken?: string;
+      logDemand?: '1';
     };
 
     assertBookingLeadTime(pickupDatetime);
@@ -145,6 +150,18 @@ router.get('/availability', validateQuery(AvailabilityQuerySchema), async (req, 
         excludeSessionToken,
       },
     );
+
+    if (logDemand === '1') {
+      recordSoldOutSearch({
+        source: 'website',
+        storeId,
+        pickupDatetime,
+        dropoffDatetime,
+        models: data,
+        visitorKey: visitorKeyFor(req),
+        partnerRef: partner?.storeId === storeId ? partner.slug : null,
+      });
+    }
 
     res.json({ success: true, data });
   } catch (err) {

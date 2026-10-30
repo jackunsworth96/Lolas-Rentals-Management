@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from './client.js';
 
 export interface ReturningTodayEntry {
@@ -32,5 +32,12 @@ export function useAvailabilityDetail(storeId: string, enabled: boolean, date?: 
     queryFn: () => api.get<AvailabilityDetail>(`/dashboard/availability-detail${q}`),
     enabled,
     staleTime: 60_000,
+  });
+}
+
+export function useRecordTurnedAway() {
+  return useMutation({
+    mutationFn: (body: { storeId: string; vehicleModelId: string }) =>
+      api.post<{ recorded: boolean }>('/dashboard/turned-away', body),
   });
 }

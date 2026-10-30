@@ -20,14 +20,11 @@ export interface FleetOverallMetrics {
   utilisationRate: number;
   revPAB: number;
   extensionRate: number;
+  /** Cancelled booking requests ÷ all booking requests placed in the period (orders_raw). */
   cancellationRate: number;
+  cancelledBookings: number;
+  bookingsPlaced: number;
   totalRentals: number;
-}
-
-export interface ChannelSplit {
-  walk_in: number;
-  direct: number;
-  [key: string]: number;
 }
 
 export interface LeadTimeBuckets {
@@ -38,7 +35,6 @@ export interface LeadTimeBuckets {
 }
 
 export interface BookingMetrics {
-  channelSplit: ChannelSplit;
   leadTimeBuckets: LeadTimeBuckets;
   addonAttachRate: number;
   repeatCustomerRate: number;
@@ -71,6 +67,27 @@ export interface AffiliateMetrics {
   byPartner: AffiliatePartnerMetrics[];
 }
 
+export interface UnmetDemandModel {
+  modelId: string;
+  modelName: string;
+  website: number;
+  partnerPortal: number;
+  walkIn: number;
+  total: number;
+  /** Sum of rental-days requested in sold-out website searches. */
+  requestedDays: number;
+}
+
+export interface UnmetDemand {
+  /** Timestamp of the first ever recorded miss — null until tracking produces data. */
+  trackingSince: string | null;
+  total: number;
+  website: number;
+  partnerPortal: number;
+  walkIn: number;
+  byModel: UnmetDemandModel[];
+}
+
 export interface AnalyticsData {
   period: { days: number; from: string; to: string };
   fleet: {
@@ -79,6 +96,7 @@ export interface AnalyticsData {
   };
   bookings: BookingMetrics;
   affiliates: AffiliateMetrics;
+  unmetDemand: UnmetDemand;
 }
 
 export function useAnalytics(storeId?: string, days = 30) {
@@ -169,11 +187,17 @@ export interface ConfidenceQuarter {
   start: string;
   end: string;
   isCurrentQuarter: boolean;
-  totalCustomers: number;
-  accidentCount: number;
-  breakdownCount: number;
-  affectedCustomers: number;
+  /** Rentals whose first pickup falls in the quarter. */
+  totalRentals: number;
+  uniqueCustomers: number;
+  /** Rentals with an accident, a breakdown report, or a vehicle-fault swap. */
+  affectedRentals: number;
   issueFreeRate: number;
+  accidentCount: number;
+  /** Breakdown reports logged in the quarter. */
+  breakdownCount: number;
+  /** Vehicle-fault swaps in the quarter with no breakdown report on the same rental. */
+  unreportedFaultSwaps: number;
   issueTypeSplit: ConfidenceIssueTypeSplit;
   avgResolutionMinutes: number | null;
   pctResolvedWithin30Min: number | null;
