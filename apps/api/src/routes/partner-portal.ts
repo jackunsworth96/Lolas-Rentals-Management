@@ -10,6 +10,11 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
 import { computeQuote } from '../use-cases/booking/compute-quote.js';
 import { submitDirectBooking } from '../use-cases/booking/submit-direct-booking.js';
+import {
+  assertSurfRacksAvailable,
+  countRackAddons,
+  getSurfRackAddonIds,
+} from '../use-cases/surf-racks/get-surf-rack-availability.js';
 import { getPartnerCommissionStats } from '../lib/partner-commission.js';
 import {
   applyPartnerBenefit,
@@ -251,6 +256,17 @@ router.post('/book', validateBody(PartnerBookSchema), async (req, res, next) => 
     };
     delete (commonInput as { vehicles?: unknown }).vehicles;
     delete (commonInput as { vehicleModelId?: unknown }).vehicleModelId;
+
+    if (commonInput.addonIds && commonInput.addonIds.length > 0) {
+      const sb = getSupabaseClient();
+      const rackAddonIds = await getSurfRackAddonIds(sb, partner.storeId);
+      await assertSurfRacksAvailable(sb, {
+        storeId: partner.storeId,
+        pickupDatetime: body.pickupDatetime,
+        dropoffDatetime: body.dropoffDatetime,
+        requested: countRackAddons(commonInput.addonIds, rackAddonIds) * vehicles.length,
+      });
+    }
 
     const holds: Array<{
       vehicle: { vehicleModelId: string; driverName?: string | null };

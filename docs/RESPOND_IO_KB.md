@@ -141,7 +141,7 @@ When sharing pricing, always mention the Paw Card.
 - Peace of Mind Cover: optional, PHP 95/day
 - Helmets: included and legally required
 - Second helmet: can be requested
-- Surf rack: available as an add-on
+- Surf rack: available as an add-on, subject to availability (limited stock)
 - Free riding orientation: available at pickup
 - Inclusions: helmets, rain coats, dry bag, first aid kit, mini cool box, umbrella
 
@@ -164,7 +164,7 @@ When sharing pricing, always mention the Paw Card.
 ### Optional add-ons
 
 Available to add at checkout:
-- Surf Rack: PHP 250
+- Surf Rack: PHP 250 (subject to availability — racks are limited and never guaranteed in chat)
 - Bungee Cord: PHP 25
 - Peace of Mind Cover: PHP 95/day for Honda Beat, or PHP 200/day for TukTuk
 
@@ -178,6 +178,7 @@ Rules:
 - Do not call booking handoff until the customer has accepted one or more add-ons, or clearly declined add-ons.
 - Always include the price beside each add-on you offer. Do not upsell add-ons without prices.
 - Use live prices from `/api/public/respond/addons`: add-ons come from `addons[].price` and `addons[].price_type`; match customer choices using `addons[].key` such as `peace_of_mind`, `surf_rack`, or `bungee_cord`.
+- Surf racks are limited stock. When `/api/public/respond/addons` is called with `pickupDatetime` and `dropoffDatetime` and the surf rack is fully booked, it is omitted from the list. Do not offer it, and tell the customer racks are fully booked for those dates. Never promise a rack is guaranteed.
 - Prefer storing `resolved_vehicle_model_id` from the add-on lookup and using that exact ID as `vehicleModelId` in booking handoff. Booking handoff can also resolve an exact vehicle display name such as `Honda Beat V3` if Respond.io only has the name.
 - If the customer accepts add-ons, pass their selected add-on IDs in `addonIds` when calling `/api/public/respond/booking-handoff`. In Respond.io, define `addonIds` as a string field and send a JSON-array string such as `"[11]"` or `"[10,11]"`.
 - If the customer declines, call booking handoff with `addonIds` as the string `"[]"`.

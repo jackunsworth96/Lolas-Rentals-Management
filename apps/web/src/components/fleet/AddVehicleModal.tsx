@@ -134,7 +134,7 @@ export function AddVehicleModal({ open, onClose }: AddVehicleModalProps) {
               onChange={(e) => setSurfRack(e.target.checked)}
               className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
-            <span className="text-sm font-medium text-gray-700">Surf rack</span>
+            <span className="text-sm font-medium text-gray-700">Surf rack mount (a rack can be fitted)</span>
           </label>
         </div>
         {createVehicle.error && (

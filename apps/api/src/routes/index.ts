@@ -43,6 +43,7 @@ import { publicImpactRoutes } from './public-impact.js';
 import { impactAdminRoutes } from './impact-admin.js';
 import { accidentRoutes } from './accidents.js';
 import { breakdownRoutes } from './breakdowns.js';
+import { surfRackRoutes } from './surf-racks.js';
 import { loginLimiter, publicLimiter, apiLimiter } from '../middleware/rate-limit.js';
 import { telegramWebhookRouter } from '../telegram/telegram.webhook.js';
 import { requireOperationalStore } from '../middleware/operational-store.js';
@@ -100,5 +101,6 @@ routes.use('/public/impact', publicImpactRoutes);
 routes.use('/impact', impactAdminRoutes);
 routes.use('/accidents', accidentRoutes);
 routes.use('/breakdowns', breakdownRoutes);
+routes.use('/surf-racks', surfRackRoutes);
 
 export { routes };

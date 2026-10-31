@@ -18,6 +18,7 @@ interface StoreRow {
   isActive: boolean;
   bookingToken: string;
   publicBookingEnabled: boolean;
+  surfRackCount: number;
 }
 
 function rowFromApi(r: Record<string, unknown>): StoreRow {
@@ -30,6 +31,7 @@ function rowFromApi(r: Record<string, unknown>): StoreRow {
     isActive: r.isActive !== false && r.is_active !== false,
     bookingToken: String(r.bookingToken ?? r.booking_token ?? ''),
     publicBookingEnabled: Boolean(r.publicBookingEnabled ?? r.public_booking_enabled),
+    surfRackCount: Number(r.surfRackCount ?? r.surf_rack_count ?? 0),
   };
 }
 
@@ -139,6 +141,7 @@ const columns = [
   { key: 'location', header: 'Location' },
   { key: 'defaultFloatAmount', header: 'Default Float', render: (r: Record<string, unknown>) => `₱${Number(r.defaultFloatAmount ?? r.default_float_amount ?? 3000).toLocaleString()}` },
   { key: 'publicBookingEnabled', header: 'Public Booking', render: (r: Record<string, unknown>) => r.publicBookingEnabled ? 'On' : 'Off' },
+  { key: 'surfRackCount', header: 'Surf Racks', render: (r: Record<string, unknown>) => Number(r.surfRackCount ?? 0) > 0 ? String(r.surfRackCount) : 'Not tracked' },
   { key: 'isActive', header: 'Active', render: (r: Record<string, unknown>) => (r.isActive === false ? 'No' : 'Yes') },
 ];
 
@@ -147,6 +150,7 @@ const fields: FieldDef[] = [
   { key: 'name', label: 'Name', type: 'text', required: true },
   { key: 'location', label: 'Location', type: 'text' },
   { key: 'defaultFloatAmount', label: 'Default Float Amount (₱)', type: 'number' },
+  { key: 'surfRackCount', label: 'Surf racks owned (0 = not tracked, shows "subject to availability")', type: 'number' },
   { key: 'isActive', label: 'Active', type: 'boolean' },
 ];
 

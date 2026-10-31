@@ -14,6 +14,7 @@ import { ServiceHistoryModal } from '../../components/fleet/ServiceHistoryModal.
 import { FleetCalendar } from '../../components/fleet/FleetCalendar.js';
 import { OwnerUseModal } from '../../components/fleet/OwnerUseModal.js';
 import { AvailabilityExplanationModal } from '../../components/fleet/AvailabilityExplanationModal.js';
+import { SurfRackStockCard } from '../../components/fleet/SurfRackStockCard.js';
 import { formatDate } from '../../utils/date.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { orcrCardClass, orcrExpiryTone, orcrRowClass } from '../../utils/orcr-expiry.js';
@@ -343,6 +344,13 @@ export default function FleetPage() {
           </button>
         </div>
       </div>
+
+      {storeIdForApi !== 'all' && (
+        <SurfRackStockCard
+          storeId={storeIdForApi}
+          mountCount={(vehicles ?? []).filter((v) => v.surfRack && !isSoldVehicle(v.status)).length}
+        />
+      )}
 
       {viewMode === 'list' && filtered.length > 0 && hasPermission('can_view_accounts') && (
         <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">

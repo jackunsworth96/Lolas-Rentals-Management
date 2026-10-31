@@ -53,6 +53,12 @@ export function AddonsTab() {
     { key: 'storeId', label: 'Store', type: 'select', options: storeOpts, default: storeId },
     { key: 'applicableModelIds', label: 'Applicable Vehicle Models (leave blank for all)', type: 'multiselect', options: modelOpts },
     { key: 'mutualExclusivityGroup', label: 'Mutual exclusivity group', type: 'text', placeholder: 'e.g. peace_of_mind' },
+    {
+      key: 'inventoryType',
+      label: 'Inventory tracking',
+      type: 'select',
+      options: [{ value: '', label: 'Not tracked' }, { value: 'surf_rack', label: 'Surf rack stock' }],
+    },
     { key: 'isActive', label: 'Active', type: 'boolean' },
   ];
 
@@ -62,6 +68,7 @@ export function AddonsTab() {
       ...row,
       storeId: sid == null || sid === '' ? (storesList[0]?.id ?? '') : sid,
       applicableModelIds: (row.applicableModelIds as string[] | null) ?? [],
+      inventoryType: (row.inventoryType as string | null) ?? '',
     };
   }
 
@@ -71,6 +78,7 @@ export function AddonsTab() {
     const payload = {
       ...row,
       applicableModelIds: modelIds.length > 0 ? modelIds : null,
+      inventoryType: row.inventoryType ? row.inventoryType : null,
     };
 
     if (storeIdValue === '__all__') {

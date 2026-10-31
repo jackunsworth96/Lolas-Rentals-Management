@@ -14,6 +14,13 @@ import { formatManilaDate, formatManilaDateTime } from '../utils/manila-date.js'
 import { sendTelegramAlert, sendTelegramAlertPaidOrdersStaggered, getTelegramChatId } from '../lib/telegram.js';
 import { deriveTransportService } from '../lib/transport-service.js';
 import { assertAssignmentsAvailable } from '../lib/assert-vehicle-assignment.js';
+import {
+  assertSurfRacksAvailable,
+  countRackAddonLines,
+  countRackAddons,
+  getSurfRackAddonIds,
+  loadSurfRackAddons,
+} from '../use-cases/surf-racks/get-surf-rack-availability.js';
 
 /** GET list / GET :id — explicit columns; excludes payload (V10-11). */
 const ORDERS_RAW_INBOX_COLUMNS =
@@ -340,6 +347,16 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
     }
 
     await assertAssignmentsAvailable([body]);
+
+    if (body.addonIds && body.addonIds.length > 0) {
+      const rackAddonIds = await getSurfRackAddonIds(supabase, body.storeId);
+      await assertSurfRacksAvailable(supabase, {
+        storeId: body.storeId,
+        pickupDatetime: body.pickupDatetime,
+        dropoffDatetime: body.dropoffDatetime,
+        requested: countRackAddons(body.addonIds, rackAddonIds),
+      });
+    }
 
     const employeeId = req.user!.employeeId;
 
@@ -905,6 +922,22 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
     };
 
     const body = parsed.data;
+
+    const racksRequested = body.addons.length > 0
+      ? countRackAddonLines(body.addons, (await loadSurfRackAddons(supabase, body.storeId)).map((a) => a.name))
+      : 0;
+    if (racksRequested > 0) {
+      const pickups = body.vehicleAssignments.map((v) => new Date(v.pickupDatetime).getTime());
+      const dropoffs = body.vehicleAssignments.map((v) => new Date(v.dropoffDatetime).getTime());
+      await assertSurfRacksAvailable(supabase, {
+        storeId: body.storeId,
+        pickupDatetime: new Date(Math.min(...pickups)).toISOString(),
+        dropoffDatetime: new Date(Math.max(...dropoffs)).toISOString(),
+        excludeRawOrderId: req.params.id as string,
+        requested: racksRequested,
+      });
+    }
+
     const result = await processRawOrder(deps, {
       rawOrderId: req.params.id as string,
       storeId: body.storeId,

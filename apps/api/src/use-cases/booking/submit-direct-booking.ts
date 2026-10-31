@@ -14,6 +14,11 @@ import {
 } from '../../services/email.js';
 import { getSupabaseClient } from '../../adapters/supabase/client.js';
 import { formatManilaDate } from '../../utils/manila-date.js';
+import {
+  assertSurfRacksAvailable,
+  countRackAddons,
+  getSurfRackAddonIds,
+} from '../surf-racks/get-surf-rack-availability.js';
 import { publicWebOriginFromEnv } from '../../lib/public-web-url.js';
 import { getTelegramChatId, sendTelegramAlert } from '../../lib/telegram.js';
 import { logger } from '../../lib/logger.js';
@@ -169,6 +174,20 @@ export async function submitDirectBooking(
       'This vehicle model is no longer available for the selected dates. Please choose different dates or another vehicle.',
       409,
     );
+  }
+
+  // 2b. Surf racks are limited, store-wide stock.
+  if (input.addonIds && input.addonIds.length > 0) {
+    const sb = getSupabaseClient();
+    const rackAddonIds = await getSurfRackAddonIds(sb, input.storeId);
+    await assertSurfRacksAvailable(sb, {
+      storeId: input.storeId,
+      pickupDatetime: input.pickupDatetime,
+      dropoffDatetime: input.dropoffDatetime,
+      vehicleModelId: input.vehicleModelId,
+      excludeSessionToken: input.sessionToken,
+      requested: countRackAddons(input.addonIds, rackAddonIds),
+    });
   }
 
   // 3. Compute quote so the total is persisted with the order

@@ -9,6 +9,11 @@ import { sendTelegramAlert, sendTelegramAlertPaidOrdersStaggered, getTelegramCha
 import { escapeHtml } from '../services/email.js';
 import { deriveTransportService } from '../lib/transport-service.js';
 import { loadEnrichedOrdersFallback } from '../lib/enriched-orders-fallback.js';
+import {
+  assertSurfRacksAvailable,
+  countRackAddonLines,
+  loadSurfRackAddons,
+} from '../use-cases/surf-racks/get-surf-rack-availability.js';
 
 const router = Router();
 router.use(authenticate);
@@ -621,6 +626,36 @@ router.post('/:id/modify-addons', requirePermission(Permission.EditOrders), vali
   settlementRef: z.string().nullable().optional(),
 })), async (req, res, next) => {
   try {
+    const added = (req.body.addons ?? []) as Array<{ addonName: string; quantity: number }>;
+    if (added.length > 0) {
+      const { data: order, error: orderErr } = await supabase
+        .from('orders').select('store_id').eq('id', req.params.id).maybeSingle();
+      if (orderErr) throw new Error(orderErr.message);
+      if (order) {
+        const storeId = (order as { store_id: string }).store_id;
+        const rackNames = (await loadSurfRackAddons(supabase, storeId)).map((a) => a.name);
+        const requested = countRackAddonLines(added, rackNames);
+        if (requested > 0) {
+          const { data: items, error: itemsErr } = await supabase
+            .from('order_items').select('pickup_datetime, dropoff_datetime').eq('order_id', req.params.id);
+          if (itemsErr) throw new Error(itemsErr.message);
+          const rows = (items ?? []) as Array<{ pickup_datetime: string | null; dropoff_datetime: string | null }>;
+          const pickups = rows.map((r) => new Date(r.pickup_datetime ?? '').getTime()).filter(Number.isFinite);
+          const dropoffs = rows.map((r) => new Date(r.dropoff_datetime ?? '').getTime()).filter(Number.isFinite);
+          const end = dropoffs.length > 0 ? Math.max(...dropoffs) : NaN;
+          // Mid-rental additions only need a rack from now on.
+          const start = pickups.length > 0 ? Math.max(Math.min(...pickups), Date.now()) : NaN;
+          if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+            await assertSurfRacksAvailable(supabase, {
+              storeId,
+              pickupDatetime: new Date(start).toISOString(),
+              dropoffDatetime: new Date(end).toISOString(),
+              requested,
+            });
+          }
+        }
+      }
+    }
     const { modifyAddons } = await import('../use-cases/orders/modify-addons.js');
     const result = await modifyAddons(req.app.locals.deps, { orderId: req.params.id, ...req.body });
     res.json({ success: true, data: result });

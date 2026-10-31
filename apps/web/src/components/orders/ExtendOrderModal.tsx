@@ -4,6 +4,8 @@ import { Modal } from '../common/Modal.js';
 import { api } from '../../api/client.js';
 import { useAddons, useLocations } from '../../api/config.js';
 import { useOrderAddons, useOrderItems } from '../../api/orders.js';
+import { useOrderSurfRackAllocations, useSurfRackAvailability } from '../../api/surf-racks.js';
+import { surfRackShortfall } from './SurfRackAvailabilityNote.js';
 import type { EnrichedOrder } from '../../types/api.js';
 import { formatCurrency } from '../../utils/currency.js';
 
@@ -219,6 +221,18 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
     const ms = new Date(newDropoffDatetime).getTime() - new Date(currentDropoff).getTime();
     return Math.max(1, Math.ceil(ms / 86400000));
   }, [newDropoffDatetime, currentDropoff]);
+
+  const { data: rackAllocData } = useOrderSurfRackAllocations(open ? orderId : '');
+  const racksOnOrder = (rackAllocData?.allocations ?? [])
+    .filter((a) => !a.releasedAt)
+    .reduce((s, a) => s + a.quantity, 0);
+  const extensionValid = !!newDropoffDatetime && !!currentDropoff
+    && new Date(newDropoffDatetime).getTime() > new Date(currentDropoff).getTime();
+  const { data: rackAvailability } = useSurfRackAvailability(
+    { storeId, pickupDatetime: currentDropoff, dropoffDatetime: newDropoffDatetime, excludeOrderId: orderId },
+    open && racksOnOrder > 0 && extensionValid,
+  );
+  const rackExtensionShort = racksOnOrder > 0 && surfRackShortfall(rackAvailability, racksOnOrder);
 
   const availableTimeSlots = useMemo(() => {
     if (!newTime || TIME_SLOTS.includes(newTime)) return TIME_SLOTS;
@@ -481,6 +495,13 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
               </span>
             </div>
           </div>
+
+          {rackExtensionShort && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              This booking has a surf rack, and every rack is already booked by other customers for part of the
+              extra time. You can still extend, but arrange to get the rack back or release it from the order.
+            </p>
+          )}
 
           {/* Email override */}
           {!enrichedData.customerEmail?.trim() && (

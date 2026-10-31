@@ -6,6 +6,7 @@ import {
   useRecordTurnedAway,
   type AvailabilityModelRow,
 } from '../../api/dashboard-availability.js';
+import { useSurfRackAvailability } from '../../api/surf-racks.js';
 
 interface Props {
   open: boolean;
@@ -63,6 +64,19 @@ function TurnedAwayButton({ storeId, modelId }: { storeId: string; modelId: stri
   );
 }
 
+function SurfRackStockBanner({ storeId, date }: { storeId: string; date?: string }) {
+  const day = date ?? new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+  const [openedAt] = useState(() => new Date().toISOString());
+  const start = date ? `${day}T00:00:00+08:00` : openedAt;
+  const { data } = useSurfRackAvailability({ storeId, pickupDatetime: start, dropoffDatetime: `${day}T23:59:59+08:00` });
+  if (!data?.tracked) return null;
+  return (
+    <p className={`mb-3 rounded-lg px-3 py-2 text-sm ${data.remaining === 0 ? 'bg-red-50 text-red-700' : 'bg-teal-50 text-teal-800'}`}>
+      🏄 Surf racks: {data.remaining} of {data.total} free {date ? 'all day' : 'for the rest of today'}
+    </p>
+  );
+}
+
 function ModelCard({ model, turnedAwayStoreId }: { model: AvailabilityModelRow; turnedAwayStoreId: string | null }) {
   const hasReturns = model.returningToday.length > 0;
   const fullyUnavailable = model.availableNow === 0 && !hasReturns;
@@ -87,10 +101,10 @@ function ModelCard({ model, turnedAwayStoreId }: { model: AvailabilityModelRow; 
       {model.isScooter && model.availableNow > 0 && (
         <div className="mb-2 flex flex-wrap gap-2">
           <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-medium text-teal-700">
-            🏄 {model.withSurfRack} with surf rack
+            🏄 {model.withSurfRack} with rack mount
           </span>
           <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
-            {model.withoutSurfRack} without surf rack
+            {model.withoutSurfRack} without rack mount
           </span>
         </div>
       )}
@@ -139,6 +153,8 @@ export function AvailabilityDetailModal({ open, onClose, storeId, date }: Props)
   return (
     <Modal open={open} onClose={onClose} title="Fleet Availability" size="lg">
       <p className="mb-4 -mt-1 text-sm text-gray-500">{dateLabelFor(date)}</p>
+
+      {open && storeId && storeId !== 'all' && <SurfRackStockBanner storeId={storeId} date={date} />}
 
       {isLoading && (
         <div className="space-y-3">

@@ -20,6 +20,9 @@ import { usePaymentRouting } from '../../hooks/use-payment-routing.js';
 import { resolveStoreFromSource } from '@lolas/shared';
 import { InspectionModal } from './InspectionModal.js';
 import { InactiveModelNotice } from '../fleet/InactiveModelNotice.js';
+import { useSurfRackAvailability } from '../../api/surf-racks.js';
+import { isSurfRackAddon } from '../basket/AddOnsSection.js';
+import { SurfRackAvailabilityNote, surfRackShortfall } from './SurfRackAvailabilityNote.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 import { fetchPublicPartnerBenefit } from '../../api/partners.js';
 import {
@@ -618,6 +621,36 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
       || !result.data?.some((candidate) => candidate.id === vehicle.vehicleId)
       || vehicles.slice(0, index).some((other) => other.vehicleId === vehicle.vehicleId);
   });
+
+  const rackRequested = selectedAddons
+    .filter((a) => a.enabled && isSurfRackAddon({ name: a.addonName }))
+    .reduce((s, a) => s + (a.addonType === 'one_time' ? Math.max(1, a.quantity) : 1), 0);
+  const rackWindow = useMemo(() => {
+    const starts = vehicles.map((v) => new Date(bookingDatetimeISO(v.pickupDatetime)).getTime()).filter(Number.isFinite);
+    const ends = vehicles.map((v) => new Date(bookingDatetimeISO(v.dropoffDatetime)).getTime()).filter(Number.isFinite);
+    if (starts.length === 0 || ends.length === 0) return null;
+    return { pickup: new Date(Math.min(...starts)).toISOString(), dropoff: new Date(Math.max(...ends)).toISOString() };
+  }, [vehicles]);
+  const hasRackAddon = (storeAddons ?? []).some((a) => isSurfRackAddon({
+    name: String(a.name ?? ''), inventoryType: (a.inventoryType as string | null | undefined) ?? null,
+  }));
+  const { data: rackAvailability, isFetching: rackLoading } = useSurfRackAvailability(
+    {
+      storeId,
+      pickupDatetime: rackWindow?.pickup ?? '',
+      dropoffDatetime: rackWindow?.dropoff ?? '',
+      excludeRawOrderId: rawOrder.id,
+    },
+    open && hasRackAddon && !!rackWindow,
+  );
+  const rackShort = surfRackShortfall(rackAvailability, rackRequested);
+  const assignedVehicleHasMount = (() => {
+    const assigned = vehicles
+      .map((v, i) => vehicleAvailability[i]?.data?.find((c) => c.id === v.vehicleId))
+      .filter((c): c is NonNullable<typeof c> => !!c);
+    if (assigned.length === 0) return null;
+    return assigned.some((c) => c.surfRack);
+  })();
 
   function goNext() {
     if (step === 'review' && !customer.name.trim()) return;
@@ -1611,6 +1644,14 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                           <Badge color="gray" className="ml-2">{addon.mutualExclusivityGroup}</Badge>
                         )}
                       </div>
+                      {isSurfRackAddon({ name: addon.addonName }) && (
+                        <SurfRackAvailabilityNote
+                          availability={rackAvailability}
+                          loading={rackLoading && !rackAvailability}
+                          requested={addon.enabled ? rackRequested : 0}
+                          vehicleHasMount={assignedVehicleHasMount}
+                        />
+                      )}
                     </div>
                   </div>
                   <div className="text-right">
@@ -2004,11 +2045,13 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                 </button>
                 <button
                   onClick={handleActivate}
-                  disabled={processMutation.isPending || !depositValid || transferAmountMissing || assignmentConflict}
+                  disabled={processMutation.isPending || !depositValid || transferAmountMissing || assignmentConflict || rackShort}
                   className="rounded-lg bg-green-600 px-6 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
                   title={
                     assignmentConflict
                       ? 'Choose an available vehicle for every rental'
+                      : rackShort
+                      ? 'Not enough surf racks free for these dates — untick the surf rack add-on'
                       : transferAmountMissing
                       ? 'Set the transfer amount before activating'
                       : !depositValid

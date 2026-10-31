@@ -67,6 +67,7 @@ router.post('/stores', edit, validateBody(z.object({
   id: z.string().min(1), name: z.string().min(1), location: z.string().nullable().optional(),
   isActive: z.boolean().optional(), publicBookingEnabled: z.boolean().optional(),
   defaultFloatAmount: z.number().nonnegative().optional(),
+  surfRackCount: z.number().int().nonnegative().optional(),
   bookingToken: z.string().optional(),
 })), async (req, res, next) => {
   try {
@@ -79,6 +80,7 @@ router.put('/stores/:id', edit, validateBody(z.object({
   name: z.string().min(1), location: z.string().nullable().optional(),
   isActive: z.boolean().optional(), publicBookingEnabled: z.boolean().optional(),
   defaultFloatAmount: z.number().nonnegative().optional(),
+  surfRackCount: z.number().int().nonnegative().optional(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveStore({ id: req.params.id, ...req.body }); res.json({ success: true }); } catch (e) { next(e); }
 });
@@ -102,6 +104,7 @@ const addonBodySchema = z.object({
   addonType: z.enum(['per_day', 'one_time']), storeId: z.string().nullable().optional(),
   mutualExclusivityGroup: z.string().nullable().optional(), isActive: z.boolean().optional(),
   applicableModelIds: z.array(z.string()).nullable().optional(),
+  inventoryType: z.enum(['surf_rack']).nullable().optional(),
 });
 router.post('/addons', edit, validateBody(addonBodySchema), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveAddon(req.body); res.json({ success: true }); } catch (e) { next(e); }

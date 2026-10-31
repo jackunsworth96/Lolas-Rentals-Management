@@ -5,6 +5,7 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { createHold } from '../use-cases/booking/create-hold.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
 import { computeQuote } from '../use-cases/booking/compute-quote.js';
+import { getSurfRackAvailability } from '../use-cases/surf-racks/get-surf-rack-availability.js';
 import { logger } from '../lib/logger.js';
 import { publicWebOriginFromEnv } from '../lib/public-web-url.js';
 import {
@@ -1010,6 +1011,8 @@ const router = Router();
 const RespondAddonsQuerySchema = z.object({
   storeId: z.string().trim().min(1).optional().default(STORE_ID),
   vehicleModelId: z.string().trim().min(1).optional(),
+  pickupDatetime: z.string().trim().min(1).optional(),
+  dropoffDatetime: z.string().trim().min(1).optional(),
 });
 
 /**
@@ -1172,7 +1175,7 @@ router.get('/addons', async (req, res, next) => {
       return;
     }
 
-    const { storeId, vehicleModelId } = parsed.data;
+    const { storeId, vehicleModelId, pickupDatetime, dropoffDatetime } = parsed.data;
     const resolvedVehicle = await resolveVehicleModelForRespondAddons(
       req.app.locals.deps.configRepo,
       vehicleModelId,
@@ -1203,10 +1206,25 @@ router.get('/addons', async (req, res, next) => {
       })
       .sort((a, b) => a.name.localeCompare(b.name));
 
+    let surfRackStatus: 'available' | 'fully_booked' | 'subject_to_availability' | null = null;
+    let visibleAddons = addons;
+    if (pickupDatetime && dropoffDatetime && addons.some((a) => a.key === 'surf_rack')) {
+      try {
+        const racks = await getSurfRackAvailability(getSupabaseClient(), {
+          storeId, pickupDatetime, dropoffDatetime, vehicleModelId: resolvedVehicleModelId,
+        });
+        surfRackStatus = !racks.tracked ? 'subject_to_availability' : racks.soldOut ? 'fully_booked' : 'available';
+        if (surfRackStatus === 'fully_booked') visibleAddons = addons.filter((a) => a.key !== 'surf_rack');
+      } catch (err) {
+        logger.warn({ err }, '[respond-addons] surf rack availability lookup failed');
+      }
+    }
+
     res.json({
       resolved_vehicle_model_id: resolvedVehicleModelId,
       resolved_vehicle_model_name: vehicleModel?.name ?? null,
-      addons,
+      addons: visibleAddons,
+      surf_rack_status: surfRackStatus,
       guidance: {
         addonIds: 'Pass selected add-on IDs as addonIds in booking-handoff, e.g. [] or [11].',
         match_by: 'Use key first, then aliases/name if needed.',

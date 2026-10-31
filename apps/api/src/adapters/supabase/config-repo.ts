@@ -270,7 +270,30 @@ export function createConfigRepo(): ConfigRepository {
     },
 
     // ── Writes ──
-    saveStore: (store) => upsertRow('stores', store),
+    async saveStore(store) {
+      const row = rowFromCamel(store);
+      const id = row.id;
+      if (id == null || id === '') throw new Error('Store id is required');
+
+      // Upsert would INSERT a partial row first, and booking_token is NOT NULL
+      // with no default — so editing name/float/rack count would fail.
+      const { data: existing, error: lookupErr } = await sb()
+        .from('stores')
+        .select('id')
+        .eq('id', id)
+        .maybeSingle();
+      if (lookupErr) throw new Error(`Failed to save to stores: ${lookupErr.message}`);
+
+      if (existing) {
+        const { id: _id, ...patch } = row;
+        const { error } = await sb().from('stores').update(patch).eq('id', id);
+        if (error) throw new Error(`Failed to save to stores: ${error.message}`);
+        return;
+      }
+
+      const { error } = await sb().from('stores').insert(row);
+      if (error) throw new Error(`Failed to save to stores: ${error.message}`);
+    },
     deleteStore: (id) => softDelete('stores', id),
     saveAddon: (addon) => upsertRowSerialPk('addons', addon),
     deleteAddon: (id) => softDelete('addons', id),

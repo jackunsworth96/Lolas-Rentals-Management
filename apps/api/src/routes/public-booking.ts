@@ -12,6 +12,7 @@ import { computeQuote } from '../use-cases/booking/compute-quote.js';
 import { createHold } from '../use-cases/booking/create-hold.js';
 import { releaseHold } from '../use-cases/booking/release-hold.js';
 import { submitDirectBooking, type SubmitDirectBookingResult } from '../use-cases/booking/submit-direct-booking.js';
+import { getSurfRackAvailability } from '../use-cases/surf-racks/get-surf-rack-availability.js';
 
 const holdLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
@@ -803,11 +804,16 @@ router.patch('/cancel/:orderReference', cancelLimiter, async (req, res, next) =>
 const AddonsQuerySchema = z.object({
   storeId: z.string().min(1),
   vehicleModelId: z.string().optional(),
+  pickupDatetime: z.string().optional(),
+  dropoffDatetime: z.string().optional(),
+  sessionToken: z.string().optional(),
 });
 
 router.get('/addons', validateQuery(AddonsQuerySchema), async (req, res, next) => {
   try {
-    const { storeId, vehicleModelId } = req.query as { storeId: string; vehicleModelId?: string };
+    const { storeId, vehicleModelId, pickupDatetime, dropoffDatetime, sessionToken } = req.query as {
+      storeId: string; vehicleModelId?: string; pickupDatetime?: string; dropoffDatetime?: string; sessionToken?: string;
+    };
     const allAddons = await req.app.locals.deps.configRepo.getAddons(storeId);
     const filtered = vehicleModelId
       ? allAddons.filter((a: { applicableModelIds?: string[] | null }) => {
@@ -815,7 +821,31 @@ router.get('/addons', validateQuery(AddonsQuerySchema), async (req, res, next) =
           return !ids || ids.length === 0 || ids.includes(vehicleModelId);
         })
       : allAddons;
-    res.json({ success: true, data: filtered });
+
+    const hasRack = filtered.some((a: { name: string; inventoryType?: string | null }) =>
+      a.inventoryType === 'surf_rack' || /surf\s*rack/i.test(a.name));
+    if (!hasRack || !pickupDatetime || !dropoffDatetime) {
+      res.json({ success: true, data: filtered });
+      return;
+    }
+    const { getSupabaseClient } = await import('../adapters/supabase/client.js');
+    let inventory: Awaited<ReturnType<typeof getSurfRackAvailability>>;
+    try {
+      inventory = await getSurfRackAvailability(getSupabaseClient(), {
+        storeId, pickupDatetime, dropoffDatetime,
+        vehicleModelId: vehicleModelId ?? null,
+        excludeSessionToken: sessionToken ?? null,
+      });
+    } catch {
+      // Never hide the add-on list over a rack lookup failure; /submit re-checks.
+      res.json({ success: true, data: filtered });
+      return;
+    }
+    const withInventory = filtered.map((a: { name: string; inventoryType?: string | null }) =>
+      a.inventoryType === 'surf_rack' || /surf\s*rack/i.test(a.name)
+        ? { ...a, inventory: { tracked: inventory.tracked, remaining: inventory.remaining, soldOut: inventory.soldOut } }
+        : a);
+    res.json({ success: true, data: withInventory });
   } catch (err) {
     next(err);
   }

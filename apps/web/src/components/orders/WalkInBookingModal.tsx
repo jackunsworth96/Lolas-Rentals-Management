@@ -8,6 +8,9 @@ import { useAvailableVehicles } from '../../api/fleet.js';
 import { InactiveModelNotice } from '../fleet/InactiveModelNotice.js';
 import { useUIStore } from '../../stores/ui-store.js';
 import surfRackIcon from '../../assets/Home/Surf Rack Icon.svg';
+import { useSurfRackAvailability } from '../../api/surf-racks.js';
+import { isSurfRackAddon } from '../basket/AddOnsSection.js';
+import { SurfRackAvailabilityNote, surfRackShortfall } from './SurfRackAvailabilityNote.js';
 
 interface Props {
   open: boolean;
@@ -30,6 +33,7 @@ interface Addon {
   applicableModelIds: string[] | null;
   mutualExclusivityGroup: string | null;
   isActive: boolean;
+  inventoryType?: 'surf_rack' | null;
 }
 
 interface QuoteBreakdown {
@@ -210,6 +214,17 @@ export function WalkInBookingModal({ open, onClose }: Props) {
     return true;
   });
 
+  const surfRackAddon = filteredAddons.find((a) => isSurfRackAddon(a));
+  const surfRackQty = surfRackAddon ? (selectedAddonIds[String(surfRackAddon.id)] ?? 0) : 0;
+  const { data: rackAvailability, isFetching: rackLoading } = useSurfRackAvailability(
+    { storeId, pickupDatetime, dropoffDatetime, vehicleModelId },
+    open && !!surfRackAddon && !!vehicleModelId,
+  );
+  const rackShort = surfRackShortfall(rackAvailability, surfRackQty);
+  const selectedVehicleHasMount = selectedVehicleId
+    ? (availableVehicles.find((v) => v.id === selectedVehicleId)?.surfRack ?? null)
+    : null;
+
   const addonsTotalLocal = filteredAddons.reduce((sum, addon) => {
     const qty = selectedAddonIds[String(addon.id)] ?? 0;
     if (!qty) return sum;
@@ -359,7 +374,8 @@ export function WalkInBookingModal({ open, onClose }: Props) {
     storeId && vehicleModelId && availableVehicles.some((vehicle) => vehicle.id === selectedVehicleId) && !vehiclesLoading && !vehiclesError &&
     pickupDate && pickupTime &&
     dropoffDate && dropoffTime &&
-    pickupLocationId && dropoffLocationId;
+    pickupLocationId && dropoffLocationId &&
+    !rackShort;
 
   // ── Confirmation / share ──
   const confirmationLink = createdRef ? `${SITE_URL}/book/confirmation/${createdRef}` : '';
@@ -719,11 +735,24 @@ export function WalkInBookingModal({ open, onClose }: Props) {
                   const qty = selectedAddonIds[String(addon.id)] ?? 0;
                   const price = addon.addonType === 'per_day' ? addon.pricePerDay : addon.priceOneTime;
                   const priceLabel = addon.addonType === 'per_day' ? '/day' : ' one-time';
+                  const isRack = surfRackAddon?.id === addon.id;
+                  // One bike per walk-in, so at most one rack; none when stock is exhausted.
+                  const maxQty = isRack
+                    ? (rackAvailability?.tracked ? Math.min(1, rackAvailability.remaining) : 1)
+                    : 10;
                   return (
                     <div key={addon.id} className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
                       <div className="min-w-0 flex-1">
                         <p className="font-lato text-sm font-medium text-gray-800">{addon.name}</p>
                         <p className="font-lato text-xs text-gray-500">{formatCurrency(price)}{priceLabel}</p>
+                        {isRack && (
+                          <SurfRackAvailabilityNote
+                            availability={rackAvailability}
+                            loading={rackLoading && !rackAvailability}
+                            requested={qty}
+                            vehicleHasMount={selectedVehicleHasMount}
+                          />
+                        )}
                       </div>
                       <div className="ml-3 flex items-center gap-2">
                         <button
@@ -738,7 +767,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
                         <button
                           type="button"
                           onClick={() => setAddonQty(addon.id, qty + 1)}
-                          disabled={qty >= 10}
+                          disabled={qty >= maxQty}
                           className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-300 bg-white font-lato text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           +

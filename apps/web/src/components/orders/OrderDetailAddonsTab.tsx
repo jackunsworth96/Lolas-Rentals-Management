@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useModifyAddons } from '../../api/orders.js';
 import { useAddons, useChartOfAccounts, usePaymentMethods } from '../../api/config.js';
+import { useOrderSurfRackAllocations, useReleaseSurfRack } from '../../api/surf-racks.js';
 import { usePaymentRouting } from '../../hooks/use-payment-routing.js';
 import { formatCurrency } from '../../utils/currency.js';
+import { formatDateTime } from '../../utils/date.js';
 import type { OrderAddon, OrderItem } from './useOrderDetail.js';
 
 type ConfigAddon = {
@@ -44,6 +47,10 @@ export function OrderDetailAddonsTab({ orderId, storeId, orderAddons, items, can
 
   const modifyAddonsMut = useModifyAddons();
   const routing = usePaymentRouting();
+  const queryClient = useQueryClient();
+  const { data: rackData } = useOrderSurfRackAllocations(orderId);
+  const releaseRack = useReleaseSurfRack();
+  const rackAllocations = rackData?.allocations ?? [];
 
   const [addonPaymentMethodId, setAddonPaymentMethodId] = useState('');
   const [addonAccountId, setAddonAccountId] = useState('');
@@ -153,6 +160,7 @@ export function OrderDetailAddonsTab({ orderId, storeId, orderAddons, items, can
       },
       {
         onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: ['surf-racks'] });
           setPendingAddonAdds([]);
           setPendingAddonRemoves([]);
           setAddonPaymentMethodId('');
@@ -216,6 +224,48 @@ export function OrderDetailAddonsTab({ orderId, storeId, orderAddons, items, can
           </table>
         )}
       </div>
+
+      {rackAllocations.length > 0 && (
+        <div>
+          <h3 className="mb-2 text-sm font-medium text-charcoal-brand">Surf Rack</h3>
+          <div className="space-y-2">
+            {rackAllocations.map((r) => (
+              <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm">
+                <div>
+                  <p className="font-medium text-charcoal-brand">
+                    {r.quantity > 1 ? `${r.quantity} racks` : '1 rack'}
+                    {r.vehicleName ? ` on ${r.vehicleName}` : ' (no bike assigned yet)'}
+                  </p>
+                  <p className="text-xs text-charcoal-brand/60">
+                    {formatDateTime(r.startsAt)} – {formatDateTime(r.endsAt)}
+                  </p>
+                </div>
+                {r.releasedAt ? (
+                  <span className="text-xs text-charcoal-brand/60">
+                    {r.releasedReason === 'returned_early' ? 'Returned' : r.releasedReason === 'cancelled' ? 'Cancelled' : 'Removed'} {formatDateTime(r.releasedAt)}
+                  </span>
+                ) : canAct ? (
+                  <button
+                    type="button"
+                    disabled={releaseRack.isPending}
+                    onClick={() => {
+                      if (confirm('Mark this surf rack as returned? It becomes available for other bookings straight away. The price is not changed.')) {
+                        releaseRack.mutate({ id: r.id, reason: 'returned_early' });
+                      }
+                    }}
+                    className="rounded-lg border border-teal-brand px-3 py-1.5 text-xs font-medium text-teal-brand hover:bg-teal-brand/10 disabled:opacity-50"
+                  >
+                    Mark rack returned
+                  </button>
+                ) : (
+                  <span className="text-xs text-green-700">Rack out</span>
+                )}
+              </div>
+            ))}
+          </div>
+          {releaseRack.error && <p className="mt-1 text-sm text-red-600">{(releaseRack.error as Error).message}</p>}
+        </div>
+      )}
 
       {/* Available add-ons to toggle */}
       {canAct && configAddons.length > 0 && (

@@ -28,6 +28,15 @@ export function isNinePmReturnAddonName(name: string): boolean {
   return hasReturn && hasNinePm;
 }
 
+/** Matches the Surf Rack add-on, preferring the catalog's inventory tag over its name. */
+export function isSurfRackAddon(addon: { name: string; inventoryType?: string | null }): boolean {
+  if (addon.inventoryType === 'surf_rack') return true;
+  return /surf\s*rack/i.test(addon.name);
+}
+
+export const SURF_RACK_UNTRACKED_NOTICE =
+  "Surf racks are subject to availability. We're still building inventory tracking for racks and will confirm before pickup.";
+
 interface Props {
   addons: Addon[];
   loading: boolean;
@@ -37,6 +46,8 @@ interface Props {
   ninePmReturnEligible: boolean;
   ninePmRemovedNotice?: boolean;
   onDismissNinePmRemovedNotice?: () => void;
+  surfRackRemovedNotice?: boolean;
+  onDismissSurfRackRemovedNotice?: () => void;
 }
 
 const ICON_MAP: Record<string, string> = {
@@ -111,6 +122,8 @@ export function AddOnsSection({
   ninePmReturnEligible,
   ninePmRemovedNotice = false,
   onDismissNinePmRemovedNotice,
+  surfRackRemovedNotice = false,
+  onDismissSurfRackRemovedNotice,
 }: Props) {
   const [pomcModalOpen, setPomcModalOpen] = useState(false);
 
@@ -140,7 +153,10 @@ export function AddOnsSection({
           const selected = selectedIds.has(id);
           const isNinePm = isNinePmReturnAddonName(addon.name);
           const isPeaceOfMind = isPeaceOfMindAddonName(addon.name);
-          const rowDisabled = isNinePm && !ninePmReturnEligible;
+          const isSurfRack = isSurfRackAddon(addon);
+          const surfRackSoldOut = isSurfRack && addon.inventory?.soldOut === true;
+          const surfRackUntracked = isSurfRack && addon.inventory?.tracked !== true;
+          const rowDisabled = (isNinePm && !ninePmReturnEligible) || (surfRackSoldOut && !selected);
           return (
             <div key={id} className="first:pt-1 last:pb-1">
               <div
@@ -227,10 +243,46 @@ export function AddOnsSection({
                 </div>
               </div>
 
-              {rowDisabled && (
+              {rowDisabled && isNinePm && (
                 <p className="pb-2 pl-12 pr-2 text-[11px] leading-snug text-charcoal-brand/55">
                   Only available with a 4:45pm return time — update your return time to unlock this option
                 </p>
+              )}
+
+              {surfRackSoldOut && (
+                <p className="pb-2 pl-12 pr-2 text-[11px] leading-snug text-charcoal-brand/55">
+                  Fully booked for these dates
+                </p>
+              )}
+
+              {isSurfRack && !surfRackSoldOut && addon.inventory?.tracked && addon.inventory.remaining <= 2 && (
+                <p className="pb-2 pl-12 pr-2 text-[11px] leading-snug text-amber-700">
+                  Only {addon.inventory.remaining} left for these dates
+                </p>
+              )}
+
+              {isSurfRack && selected && surfRackUntracked && (
+                <div className="mb-2 rounded-lg border border-amber-200/80 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+                  {SURF_RACK_UNTRACKED_NOTICE}
+                </div>
+              )}
+
+              {isSurfRack && surfRackRemovedNotice && (
+                <div className="mb-2 flex items-start gap-2 rounded-lg border border-amber-200/80 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+                  <span className="min-w-0 flex-1">
+                    Surf rack removed — all racks are booked for your new dates
+                  </span>
+                  {onDismissSurfRackRemovedNotice && (
+                    <button
+                      type="button"
+                      onClick={onDismissSurfRackRemovedNotice}
+                      className="shrink-0 rounded p-0.5 text-amber-800/70 hover:bg-amber-100 hover:text-amber-900"
+                      aria-label="Dismiss"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               )}
 
               {isNinePm &&

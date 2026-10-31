@@ -6,6 +6,7 @@ export interface Store {
   defaultFloatAmount: number;
   bookingToken: string;
   publicBookingEnabled: boolean;
+  surfRackCount?: number;
 }
 
 export type StoreScope = 'active' | 'archived' | 'all';
@@ -20,6 +21,7 @@ export interface Addon {
   mutualExclusivityGroup: string | null;
   isActive: boolean;
   applicableModelIds: string[] | null;
+  inventoryType?: 'surf_rack' | null;
 }
 
 export interface Location {

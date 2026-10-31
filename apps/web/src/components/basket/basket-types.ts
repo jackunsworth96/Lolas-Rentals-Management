@@ -8,6 +8,16 @@ export interface Addon {
   mutualExclusivityGroup: string | null;
   isActive: boolean;
   applicableModelIds: string[] | null;
+  inventoryType?: 'surf_rack' | null;
+  /** Present on inventory-tracked add-ons when the request included rental dates. */
+  inventory?: AddonInventory | null;
+}
+
+export interface AddonInventory {
+  /** False when the store has no rack stock configured yet. */
+  tracked: boolean;
+  remaining: number;
+  soldOut: boolean;
 }
 
 export interface TransferDetails {

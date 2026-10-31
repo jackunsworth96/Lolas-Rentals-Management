@@ -11,7 +11,7 @@ import { computePartnerBenefit } from '../../utils/partnerDiscount.js';
 import { useBookingStore, type BasketItem, type RenterDetails } from '../../stores/bookingStore.js';
 import { useToast } from '../../hooks/useToast.js';
 import { BasketVehicleGroupCard } from '../../components/basket/BasketVehicleGroupCard.js';
-import { AddOnsSection, isNinePmReturnAddonName } from '../../components/basket/AddOnsSection.js';
+import { AddOnsSection, isNinePmReturnAddonName, isSurfRackAddon } from '../../components/basket/AddOnsSection.js';
 import { TransferSection } from '../../components/basket/TransferSection.js';
 import { RenterDetailsForm } from '../../components/basket/RenterDetailsForm.js';
 import { OrderSummaryPanel } from '../../components/basket/OrderSummaryPanel.js';
@@ -344,6 +344,30 @@ export default function BasketPage() {
     const t = window.setTimeout(() => setNinePmRemovedNotice(false), 4000);
     return () => window.clearTimeout(t);
   }, [ninePmRemovedNotice]);
+
+  // One rack per bike in the basket, so a rack is sold out when fewer remain than bikes.
+  const rackVehicleCount = Math.max(1, basket.length);
+  const addonsWithRackStock = useMemo(
+    () => addons.map((a) => {
+      if (!isSurfRackAddon(a) || !a.inventory?.tracked) return a;
+      return { ...a, inventory: { ...a.inventory, soldOut: a.inventory.remaining < rackVehicleCount } };
+    }),
+    [addons, rackVehicleCount],
+  );
+  const [surfRackRemovedNotice, setSurfRackRemovedNotice] = useState(false);
+  useEffect(() => {
+    const rack = addonsWithRackStock.find((a) => isSurfRackAddon(a));
+    if (!rack?.inventory?.soldOut) return;
+    const rid = Number(rack.id);
+    if (!selectedAddonIdsRef.current.has(rid)) return;
+    setSelectedAddonIds((sel) => {
+      if (!sel.has(rid)) return sel;
+      const next = new Set(sel);
+      next.delete(rid);
+      return next;
+    });
+    setSurfRackRemovedNotice(true);
+  }, [addonsWithRackStock]);
   const [transfer, setTransfer] = useState<TransferDetails | null>(null);
   const [renter, setRenterRaw] = useState<RenterInfo>(storedRenterDetails);
   const renterDetailsStartedRef = useRef(false);
@@ -616,15 +640,29 @@ export default function BasketPage() {
 
   const basketModelIds = _basketModelIds;
 
+  const addonPickup = hasBookingDatetimeWithTime(pickupDatetime) ? pickupDatetime : '';
+  const addonDropoff = hasBookingDatetimeWithTime(dropoffDatetime) ? dropoffDatetime : '';
   useEffect(() => {
     if (!storeId) return;
-    setAddonsLoading(true);
+    let cancelled = false;
+    if (addons.length === 0) setAddonsLoading(true);
     const addonParams = new URLSearchParams({ storeId });
     if (singleModelId) addonParams.set('vehicleModelId', singleModelId);
+    if (addonPickup && addonDropoff) {
+      addonParams.set('pickupDatetime', addonPickup);
+      addonParams.set('dropoffDatetime', addonDropoff);
+      if (sessionToken) addonParams.set('sessionToken', sessionToken);
+    }
     api.get<Addon[]>(`/public/booking/addons?${addonParams}`)
-      .then((data) => setAddons(data))
+      .then((data) => { if (!cancelled) setAddons(data); })
       .catch(() => pushToast('Failed to load add-ons. Please refresh the page.', 'error'))
-      .finally(() => setAddonsLoading(false));
+      .finally(() => { if (!cancelled) setAddonsLoading(false); });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeId, singleModelId, addonPickup, addonDropoff, sessionToken]);
+
+  useEffect(() => {
+    if (!storeId) return;
     api.get<Array<{ id: number; name: string; deliveryCost: number; collectionCost: number; locationType: string | null }>>(`/public/booking/locations?storeId=${storeId}`)
       .then((data) => {
         // Ensure store-type location always appears first
@@ -657,7 +695,7 @@ export default function BasketPage() {
   }, [storeId, singleModelId]);
 
   // All addons passed to AddOnsSection — it filters out transfer-named items internally
-  const standardAddons = addons;
+  const standardAddons = addonsWithRackStock;
 
   const basketHasTuktuk = basket.some((b) =>
     b.modelName.toLowerCase().includes('tuk'),
@@ -1285,6 +1323,8 @@ export default function BasketPage() {
                   ninePmReturnEligible={ninePmReturnEligible}
                   ninePmRemovedNotice={ninePmRemovedNotice}
                   onDismissNinePmRemovedNotice={() => setNinePmRemovedNotice(false)}
+                  surfRackRemovedNotice={surfRackRemovedNotice}
+                  onDismissSurfRackRemovedNotice={() => setSurfRackRemovedNotice(false)}
                 />
               </div>
             </FadeUpSection>

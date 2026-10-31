@@ -331,6 +331,7 @@ TukTuk is an enclosed vehicle — helmet rules and inclusions for two-wheel scoo
 
 EXTRAS RULES
 - Surf Rack and Bungee Cord are scooter-only extras — never offer or imply these for TukTuk.
+- Surf racks are limited stock and subject to availability. Never promise a rack is guaranteed; the website shows whether racks are still free for the customer's dates.
 - TukTuk extras: Peace of Mind Cover (TukTuk), Delivery and Collection, Late Return (9 PM). Nothing else from the scooter list.
 - TukTuk cannot carry a surfboard and has no surf rack.
 - All extras are added in the basket when booking on the website.

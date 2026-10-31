@@ -212,7 +212,7 @@ export function VehicleModal({ open, onClose, vehicleId }: VehicleModalProps) {
           <label className="flex items-center gap-2 pt-6">
             <input type="checkbox" checked={surfRack} onChange={(e) => setSurfRack(e.target.checked)}
               className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-            <span className="text-sm font-medium text-gray-700">Surf rack</span>
+            <span className="text-sm font-medium text-gray-700">Surf rack mount (a rack can be fitted)</span>
           </label>
         </div>
         {mileageEvents.length > 0 && (

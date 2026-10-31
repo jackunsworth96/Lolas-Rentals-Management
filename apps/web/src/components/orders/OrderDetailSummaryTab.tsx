@@ -12,6 +12,7 @@ import { InspectionModal } from './InspectionModal.js';
 import { MayaPaymentModal } from './MayaPaymentModal.js';
 import { WaiverViewModal } from './WaiverViewModal.js';
 import { AssignPartnerModal } from './AssignPartnerModal.js';
+import { isSurfRackAddon } from '../basket/AddOnsSection.js';
 import { useSignedWaiverDetails, useResendWaiverConfirmation } from '../../api/waivers.js';
 import { useInspectionByOrder } from '../../api/inspections.js';
 import { useCollectPayment, useRefundOrder, useSettleOrder, useSwapHelmet, useSwapVehicle, useUpdateDepositMethod, useUpdateDropoffNote } from '../../api/orders.js';
@@ -732,6 +733,9 @@ export function OrderDetailSummaryTab({
   const swapRateDelta = swapNewModelRate !== null && swapCurrentItem
     ? (swapNewModelRate - swapCurrentItem.rentalRate) * swapCurrentItem.rentalDaysCount
     : 0;
+  const orderHasSurfRack = orderAddons.some((a) => isSurfRackAddon({ name: a.addonName }));
+  const swapNewVehicleLacksMount = orderHasSurfRack && Boolean(swapNewVehicleId)
+    && vehicles.find((v) => v.id === swapNewVehicleId)?.surfRack === false;
   const swapModelName = (modelId: string | null) =>
     vehicleModels.find((m) => m.id === modelId)?.name ?? modelId ?? 'no model';
 
@@ -1387,8 +1391,13 @@ export function OrderDetailSummaryTab({
                   <select value={swapNewVehicleId} onChange={(e) => setSwapNewVehicleId(e.target.value)} required
                     className="mt-1 block w-full sm:w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
                     <option value="">Select available vehicle</option>
-                    {availableVehicles.map((v) => (
-                      <option key={String(v.id)} value={String(v.id)}>{String(v.name)}</option>
+                    {(orderHasSurfRack
+                      ? [...availableVehicles].sort((a, b) => Number(Boolean(b.surfRack)) - Number(Boolean(a.surfRack)))
+                      : availableVehicles
+                    ).map((v) => (
+                      <option key={String(v.id)} value={String(v.id)}>
+                        {String(v.name)}{orderHasSurfRack && v.surfRack ? ' (rack mount)' : ''}
+                      </option>
                     ))}
                   </select>
                 </label>
@@ -1412,6 +1421,11 @@ export function OrderDetailSummaryTab({
                   {swapVehicle.isPending ? 'Swapping...' : 'Swap Vehicle'}
                 </button>
               </form>
+              {swapNewVehicleLacksMount && (
+                <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                  This booking has a surf rack, but the selected bike has no rack mount. Pick a bike marked "(rack mount)" or remove the rack from the order.
+                </p>
+              )}
               {swapModelChanges && swapCurrentItem && (
                 <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
                   <p>
