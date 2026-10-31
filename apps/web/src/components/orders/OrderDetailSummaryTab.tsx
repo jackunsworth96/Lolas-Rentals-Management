@@ -119,6 +119,7 @@ export function OrderDetailSummaryTab({
   // ── Modal open/close ──
   const [extendOpen, setExtendOpen] = useState(false);
   const [addCollectionOpen, setAddCollectionOpen] = useState(false);
+  const [addDeliveryOpen, setAddDeliveryOpen] = useState(false);
   const [inspectionModalOpen, setInspectionModalOpen] = useState(false);
   const [showMayaModal, setShowMayaModal] = useState(false);
   const [showRefundConfirm, setShowRefundConfirm] = useState(false);
@@ -1361,19 +1362,28 @@ export function OrderDetailSummaryTab({
               </button>
             </section>
 
-            {/* ─── ADD COLLECTION ─── */}
+            {/* ─── ADD DELIVERY / COLLECTION ─── */}
             <section>
-              <h3 className="mb-3 font-medium text-gray-900">Add Collection</h3>
+              <h3 className="mb-3 font-medium text-gray-900">Add Delivery or Collection</h3>
               <p className="mb-3 text-sm text-charcoal-brand/60">
-                Customer changed their mind and wants us to collect the vehicle instead of returning it to the store. The return date doesn't change.
+                Use these when we delivered or collected the vehicle but the booking was activated as store pickup / store return. The rental dates don’t change.
               </p>
-              <button
-                type="button"
-                onClick={() => setAddCollectionOpen(true)}
-                className="w-full sm:w-auto rounded-lg bg-sky-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700"
-              >
-                Add Collection…
-              </button>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => setAddDeliveryOpen(true)}
+                  className="w-full sm:w-auto rounded-lg bg-sky-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700"
+                >
+                  Add Delivery…
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAddCollectionOpen(true)}
+                  className="w-full sm:w-auto rounded-lg bg-sky-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700"
+                >
+                  Add Collection…
+                </button>
+              </div>
             </section>
 
             {/* ─── SWAP VEHICLE ─── */}
@@ -2117,7 +2127,15 @@ export function OrderDetailSummaryTab({
         />
       )}
 
-      {/* ─── Add Collection modal ─── */}
+      {/* ─── Add Delivery / Collection modals ─── */}
+      {enrichedData && (
+        <AddCollectionModal
+          open={addDeliveryOpen}
+          onClose={() => setAddDeliveryOpen(false)}
+          enrichedData={enrichedData}
+          kind="delivery"
+        />
+      )}
       {enrichedData && (
         <AddCollectionModal
           open={addCollectionOpen}

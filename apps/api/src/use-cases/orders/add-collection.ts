@@ -25,8 +25,12 @@ export interface AddCollectionDeps {
   configRepo: Pick<ConfigRepository, 'getLocations'>;
 }
 
+export type TransportLeg = 'collection' | 'delivery';
+
 export interface AddCollectionInput {
   orderId: string;
+  /** `delivery` charges the pickup leg (we brought the vehicle out); defaults to `collection`. */
+  kind?: TransportLeg;
   orderItemId: string;
   locationId: number;
   locationAddress?: string | null;
@@ -58,12 +62,17 @@ export interface AddCollectionResult {
  * (orders.partner_ref) whose deal grants free delivery/collection for that
  * location — mirroring the same eligibility rules used when a booking is
  * first processed (see lib/partner-benefit.ts).
+ *
+ * With `kind: 'delivery'` the same flow sets the pickup leg instead, for when
+ * staff delivered the vehicle but the booking was activated as a store pickup.
  */
 export async function addCollection(
   deps: AddCollectionDeps,
   input: AddCollectionInput,
 ): Promise<AddCollectionResult> {
   const { orderRepo, orderItemRepo, fleetRepo, paymentRepo, accountingPort, cardSettlementRepo, configRepo } = deps;
+  const isDelivery = input.kind === 'delivery';
+  const label = isDelivery ? 'Delivery' : 'Collection';
 
   const order = await orderRepo.findById(input.orderId);
   if (!order) throw new Error(`Order ${input.orderId} not found`);
@@ -76,7 +85,7 @@ export async function addCollection(
   const location = locations.find((l) => String(l.id) === String(input.locationId) && l.isActive !== false);
   if (!location) throw new Error('Selected location was not found or is no longer active');
 
-  let fee = Math.round(Number(location.collectionCost ?? 0) * 100) / 100;
+  let fee = Math.round(Number((isDelivery ? location.deliveryCost : location.collectionCost) ?? 0) * 100) / 100;
   let isFree = false;
   let freeReason: string | null = null;
 
@@ -99,12 +108,14 @@ export async function addCollection(
         const benefit = applyPartnerBenefit({
           partner,
           rentalSubtotal: 0,
-          pickupFee: 0,
-          dropoffFee: fee,
+          pickupFee: isDelivery ? fee : 0,
+          dropoffFee: isDelivery ? 0 : fee,
           vehicleModelId: vehicle?.modelId ?? null,
-          dropoffLocationId: Number(input.locationId),
+          ...(isDelivery
+            ? { pickupLocationId: Number(input.locationId) }
+            : { dropoffLocationId: Number(input.locationId) }),
         });
-        if (benefit.dropoffFee === 0) {
+        if ((isDelivery ? benefit.pickupFee : benefit.dropoffFee) === 0) {
           isFree = true;
           freeReason = `Partner benefit (${partner.name})`;
           fee = 0;
@@ -113,29 +124,30 @@ export async function addCollection(
     }
   }
 
-  const oldFee = Math.round(Number(item.dropoffFee ?? 0) * 100) / 100;
+  const oldFee = Math.round(Number((isDelivery ? item.pickupFee : item.dropoffFee) ?? 0) * 100) / 100;
   const delta = Math.round((fee - oldFee) * 100) / 100;
 
-  // order_items.dropoff_location_id/dropoff_location aren't part of the
-  // OrderItem domain mapping (see adapters/supabase/order-item-repo.ts), so
-  // update them directly — same approach the extend-booking flow uses.
+  // order_items location id/name columns aren't part of the OrderItem domain
+  // mapping (see adapters/supabase/order-item-repo.ts), so update them
+  // directly — same approach the extend-booking flow uses.
+  const leg = isDelivery ? 'pickup' : 'dropoff';
   const { error: itemErr } = await sb
     .from('order_items')
     .update({
-      dropoff_location_id: String(input.locationId),
-      dropoff_location: location.name,
-      dropoff_fee: fee,
+      [`${leg}_location_id`]: String(input.locationId),
+      [`${leg}_location`]: location.name,
+      [`${leg}_fee`]: fee,
     })
     .eq('id', item.id);
-  if (itemErr) throw new Error(`Failed to update return location: ${itemErr.message}`);
+  if (itemErr) throw new Error(`Failed to update ${isDelivery ? 'delivery' : 'return'} location: ${itemErr.message}`);
 
   // Best-effort: keep orders_raw in sync (address/receipt lookups read from here).
   if (order.bookingToken) {
     await sb
       .from('orders_raw')
       .update({
-        dropoff_location_id: Number(input.locationId),
-        ...(input.locationAddress?.trim() ? { dropoff_location_address: input.locationAddress.trim() } : {}),
+        [`${leg}_location_id`]: Number(input.locationId),
+        ...(input.locationAddress?.trim() ? { [`${leg}_location_address`]: input.locationAddress.trim() } : {}),
       })
       .eq('order_reference', order.bookingToken);
   }
@@ -149,7 +161,7 @@ export async function addCollection(
   if (delta > 0) {
     const paymentAmount = Money.php(delta);
     const isPending = !input.paymentMethodId || input.paymentMethodId === 'pending';
-    const settlementRef = input.settlementRef ?? `Collection fee: ${location.name}`;
+    const settlementRef = input.settlementRef ?? `${label} fee: ${location.name}`;
     const payment: Payment = {
       id: crypto.randomUUID(),
       storeId: order.storeId,
@@ -175,7 +187,7 @@ export async function addCollection(
           accountId: input.accountId,
           debit: paymentAmount,
           credit: Money.zero(),
-          description: `Order ${order.id} collection fee received`,
+          description: `Order ${order.id} ${label.toLowerCase()} fee received`,
           referenceType: 'payment',
           referenceId: payment.id,
         },
@@ -184,7 +196,7 @@ export async function addCollection(
           accountId: input.receivableAccountId!,
           debit: Money.zero(),
           credit: paymentAmount,
-          description: `Order ${order.id} collection fee receivable reduced`,
+          description: `Order ${order.id} ${label.toLowerCase()} fee receivable reduced`,
           referenceType: 'payment',
           referenceId: payment.id,
         },

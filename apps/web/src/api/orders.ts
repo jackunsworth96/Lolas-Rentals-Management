@@ -103,11 +103,11 @@ export interface AddCollectionResult {
   balanceDue: number;
 }
 
-export function useAddCollection() {
+export function useAddCollection(kind: 'collection' | 'delivery' = 'collection') {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...body }: { id: string } & Record<string, unknown>) =>
-      api.post<AddCollectionResult>(`/orders/${id}/add-collection`, body),
+      api.post<AddCollectionResult>(`/orders/${id}/add-${kind}`, body),
     onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: ['orders'] });
       qc.invalidateQueries({ queryKey: ['orders', id] });

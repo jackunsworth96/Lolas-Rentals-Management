@@ -13,6 +13,8 @@ interface Props {
   open: boolean;
   onClose: () => void;
   enrichedData: EnrichedOrder;
+  /** `delivery` charges the pickup leg instead of the return leg. */
+  kind?: 'collection' | 'delivery';
 }
 
 type ConfigLocation = {
@@ -31,6 +33,8 @@ type ConfigLocation = {
 type OrderItemRow = {
   id: string;
   vehicleName: string;
+  pickupLocation?: string | null;
+  pickupFee?: number;
   dropoffLocation?: string | null;
   dropoffFee?: number;
 };
@@ -44,9 +48,14 @@ function isStoreLocation(loc: ConfigLocation): boolean {
   return collection === 0 && delivery === 0 && (type === 'store' || type === null);
 }
 
-export function AddCollectionModal({ open, onClose, enrichedData }: Props) {
+export function AddCollectionModal({ open, onClose, enrichedData, kind = 'collection' }: Props) {
   const storeId = enrichedData.storeId;
   const orderId = enrichedData.id;
+  const isDelivery = kind === 'delivery';
+  const label = isDelivery ? 'Delivery' : 'Collection';
+  const legFee = (loc: ConfigLocation) => Number(
+    (isDelivery ? (loc.deliveryCost ?? loc.delivery_cost) : (loc.collectionCost ?? loc.collection_cost)) ?? 0,
+  );
 
   const { data: configLocationsRaw = [] } = useLocations(storeId) as { data: ConfigLocation[] };
   const { data: orderItemsRaw = [] } = useOrderItems(orderId) as { data: OrderItemRow[] };
@@ -55,7 +64,7 @@ export function AddCollectionModal({ open, onClose, enrichedData }: Props) {
   };
   const { data: accounts = [] } = useChartOfAccounts() as { data: Array<Record<string, unknown>> | undefined };
   const routing = usePaymentRouting();
-  const addCollectionMut = useAddCollection();
+  const addCollectionMut = useAddCollection(kind);
 
   const { data: partnerBenefit } = useQuery({
     queryKey: ['order-partner-benefit', enrichedData.partnerRef],
@@ -113,14 +122,14 @@ export function AddCollectionModal({ open, onClose, enrichedData }: Props) {
     [configLocationsRaw],
   );
 
-  // Only off-site (non-store) locations make sense for "add collection".
+  // Only off-site (non-store) locations make sense for adding a delivery or collection.
   const collectionLocations = useMemo(
     () => configLocations.filter((l) => !isStoreLocation(l)),
     [configLocations],
   );
 
   const selectedLoc = locationId != null ? configLocations.find((l) => l.id === locationId) ?? null : null;
-  const configuredFee = selectedLoc ? Number(selectedLoc.collectionCost ?? selectedLoc.collection_cost ?? 0) : 0;
+  const configuredFee = selectedLoc ? legFee(selectedLoc) : 0;
 
   const isPartnerFree = Boolean(
     partnerBenefit && locationId != null &&
@@ -202,14 +211,14 @@ export function AddCollectionModal({ open, onClose, enrichedData }: Props) {
       });
       setSuccessResult(result);
     } catch (err) {
-      setError((err as Error).message ?? 'Could not add collection. Please try again.');
+      setError((err as Error).message ?? `Could not add ${label.toLowerCase()}. Please try again.`);
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Add Collection" size={successResult ? 'sm' : 'md'}>
+    <Modal open={open} onClose={onClose} title={`Add ${label}`} size={successResult ? 'sm' : 'md'}>
       {successResult ? (
         <div className="space-y-4 text-center">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-green-100">
@@ -218,8 +227,8 @@ export function AddCollectionModal({ open, onClose, enrichedData }: Props) {
             </svg>
           </div>
           <div className="space-y-1">
-            <p className="text-base font-semibold text-gray-900">Collection Added!</p>
-            <p className="text-sm text-gray-500">Return location</p>
+            <p className="text-base font-semibold text-gray-900">{label} Added!</p>
+            <p className="text-sm text-gray-500">{isDelivery ? 'Delivery location' : 'Return location'}</p>
             <p className="text-sm font-semibold text-teal-700">{successResult.locationName}</p>
           </div>
           <div className="rounded-lg bg-gray-50 py-2 text-center">
@@ -227,7 +236,7 @@ export function AddCollectionModal({ open, onClose, enrichedData }: Props) {
               <span className="text-sm font-semibold text-teal-700">Free — {successResult.freeReason}</span>
             ) : (
               <>
-                <span className="text-xs text-gray-500">Collection fee: </span>
+                <span className="text-xs text-gray-500">{label} fee: </span>
                 <span className={`text-sm font-semibold ${paymentStatus === 'paid' ? 'text-green-700' : 'text-amber-700'}`}>
                   {formatCurrency(successResult.fee)}{' '}
                   {paymentStatus === 'paid' ? '— Paid' : '— Pending'}
@@ -240,8 +249,9 @@ export function AddCollectionModal({ open, onClose, enrichedData }: Props) {
       ) : (
         <div className="space-y-5">
           <p className="text-sm text-charcoal-brand/60">
-            Use this when the customer changes their mind after pickup and wants us to collect the vehicle
-            instead of returning it to the store. The return date doesn't need to change.
+            {isDelivery
+              ? 'Use this when we delivered the vehicle but the booking was activated as a store pickup. The rental dates don’t change.'
+              : 'Use this when the customer changes their mind after pickup and wants us to collect the vehicle instead of returning it to the store. The return date doesn’t need to change.'}
           </p>
 
           <div className="rounded-lg bg-gray-50 p-4 space-y-1.5 text-sm">
@@ -267,14 +277,24 @@ export function AddCollectionModal({ open, onClose, enrichedData }: Props) {
                 <option value="">Select vehicle…</option>
                 {items.map((i) => (
                   <option key={i.id} value={i.id}>
-                    {i.vehicleName}{i.dropoffLocation ? ` — currently returns to ${i.dropoffLocation}` : ''}
+                    {i.vehicleName}
+                    {isDelivery
+                      ? (i.pickupLocation ? ` — currently picked up at ${i.pickupLocation}` : '')
+                      : (i.dropoffLocation ? ` — currently returns to ${i.dropoffLocation}` : '')}
                   </option>
                 ))}
               </select>
             </label>
           )}
 
-          {selectedItem?.dropoffLocation && (
+          {isDelivery && selectedItem?.pickupLocation && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              This vehicle currently shows pickup at <strong>{selectedItem.pickupLocation}</strong>
+              {Number(selectedItem.pickupFee ?? 0) > 0 ? ` (${formatCurrency(Number(selectedItem.pickupFee))} fee already applied)` : ''}.
+              Choosing a new location below will replace it.
+            </p>
+          )}
+          {!isDelivery && selectedItem?.dropoffLocation && (
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
               This vehicle currently returns to <strong>{selectedItem.dropoffLocation}</strong>
               {Number(selectedItem.dropoffFee ?? 0) > 0 ? ` (${formatCurrency(Number(selectedItem.dropoffFee))} fee already applied)` : ''}.
@@ -283,7 +303,7 @@ export function AddCollectionModal({ open, onClose, enrichedData }: Props) {
           )}
 
           <label className="block">
-            <span className="text-sm font-medium text-gray-700">Collection location <span className="text-red-500">*</span></span>
+            <span className="text-sm font-medium text-gray-700">{label} location <span className="text-red-500">*</span></span>
             <select
               required
               value={locationId ?? ''}
@@ -319,10 +339,10 @@ export function AddCollectionModal({ open, onClose, enrichedData }: Props) {
           {locationId != null && (
             <div className={`rounded-lg px-3 py-2 text-sm font-medium ${isPartnerFree ? 'bg-teal-50 text-teal-700' : previewFee > 0 ? 'bg-amber-50 text-amber-700' : 'bg-gray-50 text-gray-600'}`}>
               {isPartnerFree
-                ? `Free — this booking's partner benefit covers collection here.`
+                ? `Free — this booking's partner benefit covers ${label.toLowerCase()} here.`
                 : previewFee > 0
-                  ? `Collection fee: ${formatCurrency(previewFee)}`
-                  : 'No collection fee for this location.'}
+                  ? `${label} fee: ${formatCurrency(previewFee)}`
+                  : `No ${label.toLowerCase()} fee for this location.`}
             </div>
           )}
 
@@ -412,7 +432,7 @@ export function AddCollectionModal({ open, onClose, enrichedData }: Props) {
               disabled={loading || !canSubmit}
               className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {loading ? 'Adding…' : 'Add Collection'}
+              {loading ? 'Adding…' : `Add ${label}`}
             </button>
           </div>
         </div>

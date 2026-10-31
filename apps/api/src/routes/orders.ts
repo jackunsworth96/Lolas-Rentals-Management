@@ -332,7 +332,8 @@ router.get('/:id/history', requirePermission(Permission.ViewInbox), async (req, 
       // Collection charges added via /add-collection are recorded as 'addon' payments
       // (so they flow through the same balance/settlement/refund logic) tagged with
       // a "Collection fee: ..." settlement ref — give them a clearer history label.
-      const isCollectionFee = pType === 'addon' && settlementRef.startsWith('Collection fee:');
+      const isCollectionFee = pType === 'addon'
+        && (settlementRef.startsWith('Collection fee:') || settlementRef.startsWith('Delivery fee:'));
       events.push({
         timestamp: (p.created_at ?? p.transaction_date) as string,
         type: isExtension ? 'extension' : isCollectionFee ? 'collection' : 'payment',
@@ -679,7 +680,7 @@ router.post('/:id/adjust-dates', requirePermission(Permission.EditOrders), valid
 // mind after pickup and now wants the vehicle collected. The fee defaults to
 // the configured location fee, and is automatically waived when the order's
 // partner/affiliate benefit qualifies for free collection at that location.
-router.post('/:id/add-collection', requirePermission(Permission.EditOrders), validateBody(z.object({
+const AddTransportLegSchema = z.object({
   orderItemId: z.string(),
   locationId: z.number().int().positive(),
   locationAddress: z.string().max(500).nullable().optional(),
@@ -688,10 +689,22 @@ router.post('/:id/add-collection', requirePermission(Permission.EditOrders), val
   receivableAccountId: z.string().optional(),
   isCardPayment: z.boolean().optional(),
   settlementRef: z.string().nullable().optional(),
-})), async (req, res, next) => {
+});
+
+router.post('/:id/add-collection', requirePermission(Permission.EditOrders), validateBody(AddTransportLegSchema), async (req, res, next) => {
   try {
     const { addCollection } = await import('../use-cases/orders/add-collection.js');
-    const result = await addCollection(req.app.locals.deps, { orderId: req.params.id, ...req.body });
+    const result = await addCollection(req.app.locals.deps, { orderId: req.params.id, ...req.body, kind: 'collection' });
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+// Charges a delivery on an active order that was activated as a store pickup
+// but which staff actually delivered.
+router.post('/:id/add-delivery', requirePermission(Permission.EditOrders), validateBody(AddTransportLegSchema), async (req, res, next) => {
+  try {
+    const { addCollection } = await import('../use-cases/orders/add-collection.js');
+    const result = await addCollection(req.app.locals.deps, { orderId: req.params.id, ...req.body, kind: 'delivery' });
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });
