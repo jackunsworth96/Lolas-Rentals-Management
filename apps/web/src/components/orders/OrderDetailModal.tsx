@@ -16,6 +16,7 @@ import { AccidentReportModal } from '../accidents/AccidentReportModal.js';
 import { BreakdownReportModal } from '../breakdowns/BreakdownReportModal.js';
 import { CancelActivatedOrderModal } from './CancelActivatedOrderModal.js';
 import { useAuthStore } from '../../stores/auth-store.js';
+import { OrderInvoicesBar } from '../invoices/OrderInvoicesBar.js';
 
 function moneyAmount(val: unknown): number {
   if (val == null) return 0;
@@ -122,6 +123,8 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
           ) : undefined
         }
       >
+        <OrderInvoicesBar orderReference={(order.bookingToken ?? order.booking_token ?? orderId) as string} />
+
         <div className="mb-4 flex items-center gap-2 border-b border-gray-200">
           <div className="flex flex-1 gap-2 overflow-x-auto">
             {tabs.map((t) => (

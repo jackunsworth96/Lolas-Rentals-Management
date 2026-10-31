@@ -1,42 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { PartnerReport, PartnerReportBooking } from '../api/partner-portal.js';
-import lolasLogoUrl from '../assets/Lolas Original Logo.svg';
-
-const LOGO_ASPECT = 282.96 / 120.96;
-const LOGO_HEIGHT_MM = 16;
-const LOGO_WIDTH_MM = LOGO_HEIGHT_MM * LOGO_ASPECT;
-
-async function loadCompanyLogoPng(): Promise<string | null> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        const w = img.naturalWidth || 378;
-        const h = img.naturalHeight || 151;
-        const scale = 3;
-        canvas.width = Math.max(1, Math.round(w * scale));
-        canvas.height = Math.max(1, Math.round(h * scale));
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          resolve(null);
-          return;
-        }
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL('image/png'));
-      } catch {
-        resolve(null);
-      }
-    };
-    img.onerror = () => resolve(null);
-    img.src = lolasLogoUrl;
-  });
-}
-
-function money(value: number): string {
-  return `PHP ${value.toLocaleString('en-PH', { maximumFractionDigits: 2 })}`;
-}
+import { LOGO_HEIGHT_MM, LOGO_WIDTH_MM, loadCompanyLogoPng, money } from './pdfShared.js';
 
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—';

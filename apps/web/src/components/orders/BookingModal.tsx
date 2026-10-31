@@ -24,6 +24,7 @@ import { useSurfRackAvailability } from '../../api/surf-racks.js';
 import { isSurfRackAddon } from '../basket/AddOnsSection.js';
 import { SurfRackAvailabilityNote, surfRackShortfall } from './SurfRackAvailabilityNote.js';
 import { useAuthStore } from '../../stores/auth-store.js';
+import { OrderInvoicesBar } from '../invoices/OrderInvoicesBar.js';
 import { fetchPublicPartnerBenefit } from '../../api/partners.js';
 import {
   partnerAllowsFreeDeliveryLocation,
@@ -939,6 +940,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
         {/* Step 1: Review */}
         {step === 'review' && (
           <div className="space-y-6">
+            <OrderInvoicesBar orderReference={rawOrder.order_reference ?? rawOrder.id} />
             <div className="rounded-lg border border-gray-200 p-4">
               <h3 className="mb-3 font-medium text-gray-900">Customer Details</h3>
               <div className="grid grid-cols-3 gap-4">

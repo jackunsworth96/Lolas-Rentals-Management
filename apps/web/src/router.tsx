@@ -72,6 +72,7 @@ const PartnerDashboardPage = lazy(() => import('./pages/partner/PartnerDashboard
 const PartnerBookPage = lazy(() => import('./pages/partner/PartnerBookPage.js'));
 const PartnerReportsPage = lazy(() => import('./pages/partner/PartnerReportsPage.js'));
 const PartnerPricesPage = lazy(() => import('./pages/partner/PartnerPricesPage.js'));
+const InvoicesPage = lazy(() => import('./pages/invoices/InvoicesPage.js'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
@@ -94,6 +95,12 @@ function RequireFleetBookValue({ children }: { children: React.ReactNode }) {
 function RequireAccounts({ children }: { children: React.ReactNode }) {
   const hasPermission = useAuthStore((s) => s.hasPermission);
   if (!hasPermission('can_view_accounts')) return <Navigate to="/fleet" replace />;
+  return <>{children}</>;
+}
+
+function RequireInvoices({ children }: { children: React.ReactNode }) {
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  if (!hasPermission('can_manage_invoices')) return <Navigate to="/orders/inbox" replace />;
   return <>{children}</>;
 }
 
@@ -161,6 +168,7 @@ export function AppRouter() {
             <Route path="orders/inbox" element={<InboxPage />} />
             <Route path="orders/active" element={<ActivePage />} />
             <Route path="orders/completed" element={<CompletedPage />} />
+            <Route path="invoices" element={<RequireInvoices><InvoicesPage /></RequireInvoices>} />
             <Route path="fleet" element={<FleetPage />} />
             <Route
               path="fleet/utilization"

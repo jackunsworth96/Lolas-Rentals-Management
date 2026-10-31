@@ -22,6 +22,7 @@ import { InspectionChecklistTab } from '../../components/settings/tabs/Inspectio
 import { PickupRulesTab } from '../../components/settings/tabs/PickupRulesTab.js';
 import { FleetAccountingTab } from '../../components/settings/tabs/FleetAccountingTab.js';
 import { AccommodationDirectoryTab } from '../../components/settings/tabs/AccommodationDirectoryTab.js';
+import { InvoicesTab } from '../../components/settings/tabs/InvoicesTab.js';
 
 const TABS = [
   { key: 'stores', label: 'Stores' },
@@ -43,6 +44,7 @@ const TABS = [
   { key: 'pickup-rules', label: 'Pickup Rules' },
   { key: 'chart-of-accounts', label: 'Chart of Accounts' },
   { key: 'payment-routing', label: 'Payment Routing' },
+  { key: 'invoices', label: 'Invoices' },
   { key: 'fleet-accounting', label: 'Fleet Accounting' },
   { key: 'paw-card', label: 'Paw Card Establishments' },
   { key: 'day-types', label: 'Day Types' },
@@ -71,6 +73,7 @@ const TAB_COMPONENT: Record<TabKey, React.FC> = {
   'pickup-rules': PickupRulesTab,
   'chart-of-accounts': ChartOfAccountsTab,
   'payment-routing': PaymentRoutingTab,
+  invoices: InvoicesTab,
   'fleet-accounting': FleetAccountingTab,
   'paw-card': PawCardTab,
   'day-types': DayTypesTab,

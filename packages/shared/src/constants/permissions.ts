@@ -34,6 +34,7 @@ export const Permission = {
   ManageTodo: 'can_manage_todo',
   ManageEmployees: 'can_manage_employees',
   EditSettings: 'can_edit_settings',
+  ManageInvoices: 'can_manage_invoices',
 } as const;
 
 export type PermissionType = (typeof Permission)[keyof typeof Permission];

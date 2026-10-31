@@ -30,3 +30,4 @@ export * from './schemas/lost-opportunity-schemas.js';
 export * from './schemas/extend-schemas.js';
 export * from './schemas/directory-schemas.js';
 export * from './schemas/budget-schemas.js';
+export * from './schemas/invoice-schemas.js';

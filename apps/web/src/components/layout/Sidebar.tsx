@@ -30,6 +30,7 @@ import {
   Heart,
   Siren,
   BatteryWarning,
+  FileText,
   type LucideIcon,
 } from 'lucide-react';
 import { useUIStore } from '../../stores/ui-store.js';
@@ -59,6 +60,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Inbox', path: '/orders/inbox', perm: 'can_view_inbox', icon: Inbox },
       { label: 'Active', path: '/orders/active', perm: 'can_view_active', icon: Car },
       { label: 'Completed', path: '/orders/completed', perm: 'can_view_completed', icon: CheckSquare },
+      { label: 'Invoices', path: '/invoices', perm: 'can_manage_invoices', icon: FileText },
       { label: 'Transfers', path: '/transfers', perm: 'can_view_transfers', icon: Plane },
       { label: 'Lost Opportunity', path: '/lost-opportunity', perm: 'can_view_lostopportunity', icon: AlertCircle },
     ],
