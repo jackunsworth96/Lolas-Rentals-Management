@@ -9,7 +9,7 @@ import { computeQuote } from '../use-cases/booking/compute-quote.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
 import { publicWebOriginFromEnv } from '../lib/public-web-url.js';
 import { logger } from '../lib/logger.js';
-import { sendRespondIoTemplateMessage } from '../services/respond-io-outbound.js';
+import { sendWhatsAppTemplate } from '../services/whatsapp-template.js';
 import {
   escapeIlike,
   extDayCount,
@@ -24,11 +24,8 @@ const EXTENSION_PAYMENT_ORIGIN = publicWebOriginFromEnv(
   process.env.WEB_URL,
   'http://localhost:3002',
 );
-const EXTENSION_TEMPLATE_CHANNEL_ID = Number(
-  process.env.RESPOND_IO_EXTENSION_TEMPLATE_CHANNEL_ID ?? process.env.RESPOND_IO_WHATSAPP_CHANNEL_ID ?? 501809,
-);
-const EXTENSION_TEMPLATE_NAME = process.env.RESPOND_IO_EXTENSION_TEMPLATE_NAME ?? 'extension_recieved';
-const EXTENSION_TEMPLATE_LANGUAGE = process.env.RESPOND_IO_EXTENSION_TEMPLATE_LANGUAGE ?? 'en';
+const EXTENSION_TEMPLATE_NAME = process.env.WHATSAPP_EXTENSION_TEMPLATE_NAME ?? 'extension_recieved';
+const EXTENSION_TEMPLATE_LANGUAGE = process.env.WHATSAPP_EXTENSION_TEMPLATE_LANGUAGE ?? 'en';
 const EXTENSION_TEMPLATE_BODY =
   "Hey {{1}}! Thanks so much for extending with us. More island time is always a good idea! 🌴\n\nYour new return date and time is {{2}}.\n\nYour extension has an outstanding balance of {{3}}. You're welcome to drop by and settle it with us, or we can send you a Wise payment link if that's easier.\n\nThanks again for extending. See you soon!";
 
@@ -146,9 +143,9 @@ async function sendExtensionReceivedMessage({
     return;
   }
 
-  const result = await sendRespondIoTemplateMessage({
+  const result = await sendWhatsAppTemplate({
+    operationKey: `extension:${contact.bookingReference}:${newDropoffDatetime}`,
     phone: contact.customerMobile,
-    channelId: EXTENSION_TEMPLATE_CHANNEL_ID,
     templateName: EXTENSION_TEMPLATE_NAME,
     languageCode: EXTENSION_TEMPLATE_LANGUAGE,
     bodyText: EXTENSION_TEMPLATE_BODY,

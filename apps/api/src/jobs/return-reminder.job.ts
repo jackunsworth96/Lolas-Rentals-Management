@@ -3,8 +3,7 @@
  *
  * Fires at 09:00 Asia/Manila every day.
  * Finds every active rental whose dropoff_datetime falls tomorrow
- * (Asia/Manila date boundaries) and sends a WhatsApp message via
- * the respond.io outbound API.
+ * (Asia/Manila date boundaries) and sends a WhatsApp template through Meta.
  *
  * Sources:
  *   1. orders_raw  — web / direct / walk-in bookings
@@ -13,14 +12,13 @@
  * Deduplication: return_reminder_log prevents double-sending if
  * the job is restarted or runs more than once on the same day.
  *
- * Required env vars outside NODE_ENV=development:
- *   RESPOND_IO_API_URL         e.g. https://api.respond.io
- *   RESPOND_IO_OUTBOUND_TOKEN  Bearer token for outbound messages
+ * Required env vars outside NODE_ENV=development are listed in .env.example.
  */
 
 import cron from 'node-cron';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { logger } from '../lib/logger.js';
+import { sendWhatsAppTemplate } from '../services/whatsapp-template.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -33,27 +31,6 @@ interface ReminderCandidate {
   hasNinePmReturnAddon: boolean;
 }
 
-interface RespondIoTemplatePayload {
-  channelId: number;
-  message: {
-    type: 'whatsapp_template';
-    template: {
-      name: string;
-      languageCode: string;
-      components: Array<{
-        type: 'body';
-        text: string;
-        parameters: Array<{ type: 'text'; text: string }>;
-      }>;
-    };
-  };
-}
-
-interface SendRespondIoResult {
-  delivered: boolean;
-}
-
-const RETURN_REMINDER_TEMPLATE_CHANNEL_ID = 501809;
 const RETURN_REMINDER_TEMPLATE_NAME = 'return_reminder_tomorrow';
 const RETURN_REMINDER_TEMPLATE_LANGUAGE = 'en';
 const RETURN_REMINDER_TEMPLATE_BODY =
@@ -82,72 +59,6 @@ function formatReturnTime(isoString: string): string {
     minute: '2-digit',
     hour12: true,
   });
-}
-
-function buildReturnReminderTemplatePayload(
-  customerName: string,
-  returnTime: string,
-): RespondIoTemplatePayload {
-  return {
-    channelId: RETURN_REMINDER_TEMPLATE_CHANNEL_ID,
-    message: {
-      type: 'whatsapp_template',
-      template: {
-        name:         RETURN_REMINDER_TEMPLATE_NAME,
-        languageCode: RETURN_REMINDER_TEMPLATE_LANGUAGE,
-        components: [
-          {
-            type:       'body',
-            text:       RETURN_REMINDER_TEMPLATE_BODY,
-            parameters: [
-              { type: 'text', text: customerName },
-              { type: 'text', text: returnTime },
-            ],
-          },
-        ],
-      },
-    },
-  };
-}
-
-async function sendRespondIoMessage(phone: string, payload: RespondIoTemplatePayload): Promise<SendRespondIoResult> {
-  if (process.env.NODE_ENV === 'development') {
-    logger.info(
-      {
-        phone,
-        payload,
-      },
-      '[return-reminder] Development mode: simulated Respond.io return reminder send',
-    );
-    return { delivered: false };
-  }
-
-  const baseUrl = process.env.RESPOND_IO_API_URL;
-  const token = process.env.RESPOND_IO_OUTBOUND_TOKEN;
-
-  if (!baseUrl || !token) {
-    throw new Error(
-      'Missing RESPOND_IO_API_URL or RESPOND_IO_OUTBOUND_TOKEN environment variable',
-    );
-  }
-
-  const url = `${baseUrl}/v2/contact/phone:${encodeURIComponent(phone)}/message`;
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`respond.io API error ${res.status}: ${body}`);
-  }
-
-  return { delivered: true };
 }
 
 // ── Main job ──────────────────────────────────────────────────────────────────
@@ -311,10 +222,15 @@ export async function runReturnReminderJob(): Promise<void> {
     const returnTime = candidate.hasNinePmReturnAddon
       ? '9:00 PM'
       : formatReturnTime(candidate.dropoffDatetime);
-    const payload    = buildReturnReminderTemplatePayload(candidate.customerName, returnTime);
-
     try {
-      const result = await sendRespondIoMessage(phone, payload);
+      const result = await sendWhatsAppTemplate({
+        operationKey: `return-reminder:${candidate.bookingReference}`,
+        phone,
+        templateName: RETURN_REMINDER_TEMPLATE_NAME,
+        languageCode: RETURN_REMINDER_TEMPLATE_LANGUAGE,
+        bodyText: RETURN_REMINDER_TEMPLATE_BODY,
+        parameters: [candidate.customerName, returnTime],
+      });
 
       if (result.delivered) {
         await sb.from('return_reminder_log').insert({
