@@ -1,7 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable, { type RowInput } from 'jspdf-autotable';
 import type { Invoice, InvoiceSettings } from '../api/invoices.js';
-import { LOGO_HEIGHT_MM, LOGO_WIDTH_MM, loadCompanyLogoPng, moneyExact } from './pdfShared.js';
+import { LOGO_HEIGHT_MM, LOGO_WIDTH_MM, loadCompanyLogoPng, moneyExact, pdfSafeText } from './pdfShared.js';
 
 const INK: [number, number, number] = [17, 24, 39];
 const MUTED: [number, number, number] = [107, 114, 128];
@@ -194,12 +194,18 @@ export async function generateInvoicePdf(invoice: Invoice, settings: InvoiceSett
   }
 
   // ── Notes & payment instructions ─────────────────────────────────────────
+  const lineH = 4.2;
   const blocks: [string, string][] = [];
   if (invoice.notes) blocks.push(['Notes', invoice.notes]);
   if (settings.paymentInstructions) blocks.push(['How to pay', settings.paymentInstructions]);
   for (const [title, text] of blocks) {
-    const wrapped = doc.splitTextToSize(text, contentW) as string[];
-    if (y + 6 + wrapped.length * 4 > pageH - 16) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    const paragraphs = pdfSafeText(text).split('\n');
+    const wrapped = paragraphs.flatMap((para) =>
+      para.trim() === '' ? [''] : (doc.splitTextToSize(para, contentW) as string[]),
+    );
+    if (y + 8 + wrapped.length * lineH > pageH - 16) {
       doc.addPage();
       y = 20;
     }
@@ -207,10 +213,19 @@ export async function generateInvoicePdf(invoice: Invoice, settings: InvoiceSett
     doc.setFontSize(8.5);
     doc.setTextColor(...INK);
     doc.text(title, margin, y);
+    y += 5;
     doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
     doc.setTextColor(75, 85, 99);
-    doc.text(wrapped, margin, y + 4.5);
-    y += 8 + wrapped.length * 4;
+    for (const line of wrapped) {
+      if (y > pageH - 16) {
+        doc.addPage();
+        y = 20;
+      }
+      if (line) doc.text(line, margin, y);
+      y += lineH;
+    }
+    y += 4;
   }
 
   // ── Footer & void stamp on every page ────────────────────────────────────
@@ -229,7 +244,7 @@ export async function generateInvoicePdf(invoice: Invoice, settings: InvoiceSett
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(156, 163, 175);
-    doc.text(settings.footerNote || `Thank you for choosing ${settings.legalName}.`, margin, pageH - 6);
+    doc.text(pdfSafeText(settings.footerNote || `Thank you for choosing ${settings.legalName}.`), margin, pageH - 6);
     doc.text(`${invoice.invoiceNumber} · Page ${p} of ${pageCount}`, pageW - margin, pageH - 6, { align: 'right' });
   }
 

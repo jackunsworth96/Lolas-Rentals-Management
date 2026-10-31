@@ -40,3 +40,19 @@ export function moneyExact(value: number): string {
   const sign = value < 0 ? '-' : '';
   return `${sign}PHP ${Math.abs(value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
+
+/**
+ * Helvetica in jsPDF is WinAnsi only. Characters like ₱ make it drop spaces
+ * and glue the rest of the line together. Map common extras, then strip the rest.
+ */
+export function pdfSafeText(value: string): string {
+  return value
+    .replace(/\r\n/g, '\n')
+    .replace(/\u00a0/g, ' ')
+    .replace(/₱/g, 'PHP ')
+    .replace(/[–—]/g, '-')
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/…/g, '...')
+    .replace(/[^\t\n\r\x20-\x7E]/g, '');
+}
