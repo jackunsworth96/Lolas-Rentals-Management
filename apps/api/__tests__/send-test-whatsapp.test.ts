@@ -17,20 +17,26 @@ it('previews by default and requires an explicit send flag', async () => {
   expect(mocks.getSupabaseClient).not.toHaveBeenCalled();
   expect(process.env.NODE_ENV).toBe('development');
   await expect(sendTestWhatsApp(['not-a-phone', '--send'])).rejects.toThrow('Usage:');
+  await expect(sendTestWhatsApp(['+639171234567', '--key', ' ', '--send'])).rejects.toThrow('Usage:');
 });
 
-it('uses the existing template, a stable test key, and prints the saved Meta ID and report status', async () => {
+it.each([
+  { args: [], operationKey: 'manual-test:pickup-reminder:+639171234567', reportedAt: '2026-10-31T02:00:00Z' },
+  { args: ['--key', 'new-account-1'], operationKey: 'manual-test:pickup-reminder:+639171234567:new-account-1', reportedAt: '2026-10-31T02:00:00Z' },
+  { args: ['--key', 'pending'], operationKey: 'manual-test:pickup-reminder:+639171234567:pending', reportedAt: null },
+])('uses the stable test key $operationKey and prints the saved Meta ID and report status', async ({ args, operationKey, reportedAt }) => {
   process.env.NODE_ENV = 'development';
-  const single = vi.fn().mockResolvedValue({ data: { external_message_id: 'wamid.test', reported_at: '2026-10-31T02:00:00Z' }, error: null });
+  const single = vi.fn().mockResolvedValue({ data: { external_message_id: 'wamid.test', reported_at: reportedAt }, error: null });
   const eq = vi.fn(() => ({ single }));
   mocks.getSupabaseClient.mockReturnValue({ from: () => ({ select: () => ({ eq }) }) });
-  await sendTestWhatsApp(['+639171234567', 'Ada', '9:00 AM', '--send']);
+  await sendTestWhatsApp(['+639171234567', 'Ada', '9:00 AM', '--send', ...args]);
   expect(mocks.send).toHaveBeenCalledOnce();
   expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
-    operationKey: 'manual-test:pickup-reminder:+639171234567', phone: '+639171234567',
+    operationKey, phone: '+639171234567',
     parameters: ['Ada', '9:00 AM'],
   }));
   expect(process.env.NODE_ENV).toBe('production');
-  expect(eq).toHaveBeenCalledWith('operation_key', 'manual-test:pickup-reminder:+639171234567');
+  expect(eq).toHaveBeenCalledWith('operation_key', operationKey);
   expect(console.log).toHaveBeenCalledWith(expect.stringContaining('wamid.test'));
+  expect(console.log).toHaveBeenCalledWith(expect.stringContaining(reportedAt ? 'LoloDesk confirmed the report' : 'same database as this test'));
 });

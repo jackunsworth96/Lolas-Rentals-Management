@@ -111,10 +111,14 @@ export async function sendWhatsAppTemplate({
   }
 
   const phoneNumberId = process.env.META_WHATSAPP_PHONE_NUMBER_ID;
+  const messagingAccountId = process.env.META_WHATSAPP_MESSAGING_ACCOUNT_ID;
   const token = process.env.META_WHATSAPP_ACCESS_TOKEN;
   const version = process.env.META_GRAPH_API_VERSION;
   if (!phoneNumberId || !token || !version || !/^v\d+\.\d+$/.test(version)) {
     throw new Error('Missing or invalid Meta WhatsApp configuration');
+  }
+  if (messagingAccountId && !/^\d+$/.test(messagingAccountId)) {
+    throw new Error('Invalid Meta WhatsApp Messaging account ID');
   }
   loloDeskConfig();
 
@@ -138,6 +142,7 @@ export async function sendWhatsAppTemplate({
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({
       messaging_product: 'whatsapp', to: recipient.slice(1), type: 'template',
+      ...(messagingAccountId ? { messaging_account_id: messagingAccountId } : {}),
       template: {
         name: templateName, language: { code: languageCode },
         ...(parameters.length ? { components: [{ type: 'body', parameters: parameters.map((text) => ({ type: 'text', text })) }] } : {}),

@@ -18,9 +18,14 @@ describe('direct WhatsApp templates', () => {
     expect(() => renderTemplate('Hi {{2}}', ['Ada'])).toThrow();
   });
 
-  it('sends once to Meta and retries only the LoloDesk report', async () => {
+  it.each([
+    { accountId: undefined },
+    { accountId: '1829458421577802' },
+  ])('sends once with Messaging account $accountId and retries only the LoloDesk report', async ({ accountId }) => {
     process.env.NODE_ENV = 'test';
     process.env.META_WHATSAPP_PHONE_NUMBER_ID = '1234567890';
+    if (accountId) process.env.META_WHATSAPP_MESSAGING_ACCOUNT_ID = accountId;
+    else delete process.env.META_WHATSAPP_MESSAGING_ACCOUNT_ID;
     process.env.META_WHATSAPP_ACCESS_TOKEN = 'meta-token';
     process.env.META_GRAPH_API_VERSION = 'v25.0';
     process.env.LOLODESK_API_URL = 'https://desk.example';
@@ -60,9 +65,12 @@ describe('direct WhatsApp templates', () => {
     expect(await sendWhatsAppTemplate(input)).toEqual({ delivered: true });
     expect(row).toMatchObject({ external_message_id: 'wamid.123', reported_at: null });
     expect(fetchSpy.mock.calls[0][0]).toBe('https://graph.facebook.com/v25.0/1234567890/messages');
-    expect(JSON.parse(String(fetchSpy.mock.calls[0][1]?.body))).toMatchObject({
+    const payload = JSON.parse(String(fetchSpy.mock.calls[0][1]?.body));
+    expect(payload).toMatchObject({
       to: '639171234567', type: 'template', template: { name: 'booking_recieved' },
     });
+    if (accountId) expect(payload.messaging_account_id).toBe(accountId);
+    else expect(payload).not.toHaveProperty('messaging_account_id');
 
     await retryLoloDeskReports();
     expect(fetchSpy).toHaveBeenCalledTimes(3);
@@ -74,5 +82,22 @@ describe('direct WhatsApp templates', () => {
     expect(row?.reported_at).toBeTruthy();
     expect(await sendWhatsAppTemplate(input)).toEqual({ delivered: true });
     expect(fetchSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it('rejects an invalid Messaging account ID before reserving or sending a message', async () => {
+    process.env.NODE_ENV = 'test';
+    process.env.META_WHATSAPP_PHONE_NUMBER_ID = '1234567890';
+    process.env.META_WHATSAPP_MESSAGING_ACCOUNT_ID = 'not-an-account';
+    process.env.META_WHATSAPP_ACCESS_TOKEN = 'meta-token';
+    process.env.META_GRAPH_API_VERSION = 'v25.0';
+    mocks.getSupabaseClient.mockClear();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected network request'));
+
+    await expect(sendWhatsAppTemplate({
+      operationKey: 'invalid-account', phone: '+639171234567', templateName: 'test',
+      bodyText: 'Hi {{1}}', parameters: ['Ada'],
+    })).rejects.toThrow('Invalid Meta WhatsApp Messaging account ID');
+    expect(mocks.getSupabaseClient).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

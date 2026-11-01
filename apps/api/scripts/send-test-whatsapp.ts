@@ -3,11 +3,12 @@ import { pathToFileURL } from 'node:url';
 
 export async function sendTestWhatsApp(args: string[]): Promise<void> {
   const { values, positionals } = parseArgs({
-    args, options: { send: { type: 'boolean', default: false } }, allowPositionals: true,
+    args, options: { send: { type: 'boolean', default: false }, key: { type: 'string' } }, allowPositionals: true,
   });
   const [phone, name = 'Test Guest', pickupTime = '9:00 AM'] = positionals;
-  if (!phone || !/^\+[1-9]\d{7,14}$/.test(phone) || positionals.length > 3 || !name.trim() || !pickupTime.trim()) {
-    throw new Error('Usage: npm run whatsapp:test -w apps/api -- +639171234567 "Your Name" "9:00 AM" [--send]');
+  if (!phone || !/^\+[1-9]\d{7,14}$/.test(phone) || positionals.length > 3 || !name.trim() || !pickupTime.trim()
+    || (values.key !== undefined && !values.key.trim())) {
+    throw new Error('Usage: npm run whatsapp:test -w apps/api -- +639171234567 "Your Name" "9:00 AM" [--send] [--key label]');
   }
 
   // Import first so the existing Supabase client loads the server .env files.
@@ -16,7 +17,7 @@ export async function sendTestWhatsApp(args: string[]): Promise<void> {
   const { PICKUP_REMINDER_TEMPLATE_NAME, PICKUP_REMINDER_TEMPLATE_LANGUAGE, PICKUP_REMINDER_TEMPLATE_BODY } =
     await import('../src/jobs/pickup-reminder.job.js');
   const input = {
-    operationKey: `manual-test:pickup-reminder:${phone}`,
+    operationKey: `manual-test:pickup-reminder:${phone}${values.key ? `:${values.key.trim()}` : ''}`,
     phone,
     templateName: PICKUP_REMINDER_TEMPLATE_NAME,
     languageCode: PICKUP_REMINDER_TEMPLATE_LANGUAGE,
@@ -40,8 +41,8 @@ export async function sendTestWhatsApp(args: string[]): Promise<void> {
   console.log(JSON.stringify(data, null, 2));
   console.log(data.reported_at
     ? 'Meta accepted the message and LoloDesk confirmed the report. Check WhatsApp and the LoloDesk inbox or review queue.'
-    : 'Meta accepted the message. The LoloDesk report is pending; the deployed API retries reports every five minutes.');
-  console.log('Rerunning this command with the same number will not send a second message.');
+    : 'Meta accepted the message. The LoloDesk report is pending. Automatic retries require a running API using the same database as this test.');
+  console.log('Rerunning with the same number and key will not send a second message. Use a new --key label only for an intentional new test.');
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
