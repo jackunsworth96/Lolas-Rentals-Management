@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { OptionalWhatsAppNumberSchema } from './whatsapp-schemas.js';
 
 export const PawCardLookupQuerySchema = z.object({
   email: z.string().optional(),
@@ -33,7 +34,7 @@ export type PawCardMySubmissionsQuery = z.infer<typeof PawCardMySubmissionsQuery
 export const PawCardRegisterSchema = z.object({
   fullName: z.string().min(1),
   email: z.string().email(),
-  mobile: z.string().optional(),
+  mobile: OptionalWhatsAppNumberSchema,
   orderId: z.string().optional(),
 });
 

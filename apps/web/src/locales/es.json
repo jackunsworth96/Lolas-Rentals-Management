@@ -223,6 +223,7 @@
     "submitError": "No se pudo enviar la exención.",
     "emailRequired": "Se requiere una dirección de correo válida",
     "signatureRequired": "Por favor, añade tu firma.",
+    "whatsappInvalid": "Revisa tu número de WhatsApp: elige tu país y luego escribe tu número de móvil.",
     "uploadFailed": "Error al subir"
   },
   "waiverAgreement": {

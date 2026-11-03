@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { WhatsAppNumberSchema } from './whatsapp-schemas.js';
 
 export const BookingChannel = {
   WooCommerce: 'woocommerce',
@@ -84,7 +85,7 @@ export const SubmitDirectBookingRequestSchema = z.object({
   sessionToken: z.string().min(1),
   customerName: z.string().min(1),
   customerEmail: z.string().email(),
-  customerMobile: z.string().min(1),
+  customerMobile: WhatsAppNumberSchema,
   vehicleModelId: z.string().min(1),
   pickupDatetime: z.string().min(1),
   dropoffDatetime: z.string().min(1),

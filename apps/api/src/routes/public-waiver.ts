@@ -2,7 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { Permission } from '@lolas/shared';
+import { OptionalWhatsAppNumberSchema, Permission } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { validateBody } from '../middleware/validate.js';
 import { authenticate } from '../middleware/authenticate.js';
@@ -39,7 +39,7 @@ const licenceUpload = multer({
 const WaiverSignBodySchema = z.object({
   driverName: z.string().min(1),
   driverEmail: z.string().email({ message: 'A valid email address is required' }),
-  driverMobile: z.string().optional(),
+  driverMobile: OptionalWhatsAppNumberSchema,
   referralSource: z.string().min(1),
   referralDetail: z.string().optional(),
   agreedToTerms: z.boolean().refine((v) => v === true),
@@ -150,7 +150,7 @@ const StaffCheckInWaiverBodySchema = z.object({
   storeId: z.string().min(1),
   driverName: z.string().min(1),
   driverEmail: z.string().email().optional(),
-  driverMobile: z.string().optional(),
+  driverMobile: OptionalWhatsAppNumberSchema,
   agreedToTerms: z.boolean().refine((v) => v === true),
   driverSignatureDataUrl: z.string().min(1),
 });

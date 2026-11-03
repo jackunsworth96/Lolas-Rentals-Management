@@ -19,6 +19,7 @@ import {
 } from '../../api/partner-portal.js';
 import { PeaceOfMindModal } from '../../components/basket/PeaceOfMindModal.js';
 import { WHATSAPP_URL } from '../../config/contact.js';
+import { WhatsAppNumberInput, whatsAppNumberError } from '../../components/common/WhatsAppNumberInput.js';
 
 const BOOKING_TIMES = [
   '09:15', '09:45', '10:15', '10:45',
@@ -433,6 +434,11 @@ export default function PartnerBookPage() {
       setError('Select at least one vehicle.');
       return;
     }
+    const mobileError = whatsAppNumberError(form.customerMobile, true);
+    if (mobileError) {
+      setError(mobileError);
+      return;
+    }
     try {
       const body: PartnerBookingInput = {
         requestKey: bookingRequestKey.current,
@@ -483,8 +489,14 @@ export default function PartnerBookPage() {
             <input required value={form.customerName} onChange={(e) => set('customerName', e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-semibold text-gray-500">Guest phone / WhatsApp</label>
-            <input required value={form.customerMobile} onChange={(e) => set('customerMobile', e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            <label className="mb-1 block text-xs font-semibold text-gray-500">Guest WhatsApp number</label>
+            <WhatsAppNumberInput
+              required
+              value={form.customerMobile}
+              onChange={(value) => set('customerMobile', value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              helperText="Booking confirmation and reminders go to this WhatsApp number."
+            />
           </div>
           <div>
             <label className="mb-1 block text-xs font-semibold text-gray-500">Guest email</label>

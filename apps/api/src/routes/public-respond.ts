@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
+import { normalizeWhatsAppNumber } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { createHold } from '../use-cases/booking/create-hold.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
@@ -1354,10 +1355,12 @@ function normaliseRenterDetails(
 ): Record<string, string> | null {
   if (!customer) return null;
 
+  const rawPhone = customer.phone?.trim() ?? '';
+  const normalizedPhone = normalizeWhatsAppNumber(rawPhone, { allowRecovery: true });
   const renter = {
     fullName:          customer.fullName?.trim() ?? '',
     email:             customer.email?.trim() ?? '',
-    phone:             customer.phone?.trim() ?? '',
+    phone:             normalizedPhone.ok ? normalizedPhone.e164 : rawPhone,
     nationality:       customer.nationality?.trim() ?? '',
     accommodationName: customer.accommodationName?.trim() ?? '',
     company:           customer.company?.trim() ?? '',

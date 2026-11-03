@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import type { ZodSchema } from 'zod';
+import { INVALID_WHATSAPP_NUMBER, WHATSAPP_NUMBER_ERROR_MESSAGE } from '@lolas/shared';
 
 function sanitizeErrors(error: import('zod').ZodError): unknown {
   if (process.env.NODE_ENV === 'production') {
@@ -13,11 +14,14 @@ export function validateBody(schema: ZodSchema) {
     const result = schema.safeParse(req.body);
 
     if (!result.success) {
+      const invalidWhatsApp = result.error.issues.some(
+        (issue) => issue.code === 'custom' && issue.params?.code === INVALID_WHATSAPP_NUMBER,
+      );
       res.status(400).json({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
-          message: 'Invalid request body',
+          code: invalidWhatsApp ? INVALID_WHATSAPP_NUMBER : 'VALIDATION_ERROR',
+          message: invalidWhatsApp ? WHATSAPP_NUMBER_ERROR_MESSAGE : 'Invalid request body',
           details: sanitizeErrors(result.error),
         },
       });

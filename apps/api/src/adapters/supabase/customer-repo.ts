@@ -1,5 +1,7 @@
 import type { Customer, CustomerRepository } from '@lolas/domain';
+import { isValidWhatsAppE164 } from '@lolas/shared';
 import { getSupabaseClient } from './client.js';
+import { phoneLookupVariants } from '../../utils/phone-lookup.js';
 
 interface CustomerRow {
   id: string;
@@ -11,6 +13,7 @@ interface CustomerRow {
   notes: string | null;
   blacklisted: boolean;
   whatsapp_review_opt_out: boolean;
+  mobile_needs_review?: boolean | null;
 }
 
 function rowToCustomer(row: CustomerRow): Customer {
@@ -24,6 +27,7 @@ function rowToCustomer(row: CustomerRow): Customer {
     notes: row.notes,
     blacklisted: row.blacklisted ?? false,
     whatsappReviewOptOut: row.whatsapp_review_opt_out ?? false,
+    mobileNeedsReview: row.mobile_needs_review ?? false,
   };
 }
 
@@ -38,6 +42,7 @@ function customerToRow(customer: Customer): Record<string, unknown> {
     notes: customer.notes,
     blacklisted: customer.blacklisted,
     whatsapp_review_opt_out: customer.whatsappReviewOptOut,
+    ...(isValidWhatsAppE164(customer.mobile) && { mobile_needs_review: false }),
   };
 }
 
@@ -72,14 +77,18 @@ export class SupabaseCustomerRepository implements CustomerRepository {
     const { data, error } = await sb
       .from('customers')
       .select('*')
-      .ilike('mobile', mobile)
+      .in('mobile', phoneLookupVariants(mobile))
       .limit(1);
 
     if (error) throw new Error(`findByMobile failed: ${error.message}`);
     return data && data.length > 0 ? rowToCustomer(data[0] as CustomerRow) : null;
   }
 
-  async search(storeId: string, query: string, options?: { blacklistedOnly?: boolean }): Promise<Customer[]> {
+  async search(
+    storeId: string,
+    query: string,
+    options?: { blacklistedOnly?: boolean; needsWhatsAppFixOnly?: boolean },
+  ): Promise<Customer[]> {
     const sb = getSupabaseClient();
     const term = query.trim();
     let request = sb
@@ -87,6 +96,9 @@ export class SupabaseCustomerRepository implements CustomerRepository {
       .select('*')
       .eq('store_id', storeId);
     if (options?.blacklistedOnly) request = request.eq('blacklisted', true);
+    if (options?.needsWhatsAppFixOnly) {
+      request = request.or('mobile_needs_review.eq.true,mobile.not.like.+*');
+    }
     // An empty search must not add a match-all text filter. That kept the
     // blacklist button dependent on typing a name, email, or mobile.
     if (term) {
@@ -96,7 +108,7 @@ export class SupabaseCustomerRepository implements CustomerRepository {
     }
     const { data, error } = await request
       .order('name')
-      .limit(options?.blacklistedOnly ? 500 : 50);
+      .limit(options?.blacklistedOnly || options?.needsWhatsAppFixOnly ? 500 : 50);
 
     if (error) throw new Error(`search failed: ${error.message}`);
     return (data as CustomerRow[]).map(rowToCustomer);

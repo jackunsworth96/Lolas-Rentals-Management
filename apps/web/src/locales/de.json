@@ -223,6 +223,7 @@
     "submitError": "Verzichtserklärung konnte nicht eingereicht werden.",
     "emailRequired": "Eine gültige E-Mail-Adresse ist erforderlich",
     "signatureRequired": "Bitte fügen Sie Ihre Unterschrift hinzu.",
+    "whatsappInvalid": "Bitte prüfen Sie Ihre WhatsApp-Nummer – wählen Sie Ihr Land und geben Sie dann Ihre Handynummer ein.",
     "uploadFailed": "Upload fehlgeschlagen"
   },
   "waiverAgreement": {

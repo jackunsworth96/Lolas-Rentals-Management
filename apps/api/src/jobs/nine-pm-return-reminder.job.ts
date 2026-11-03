@@ -28,6 +28,7 @@
 import cron from 'node-cron';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { logger } from '../lib/logger.js';
+import { InvalidWhatsAppNumberError, resolveWhatsAppRecipient } from '../services/whatsapp-template.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -39,31 +40,9 @@ interface ReminderCandidate {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function sanitisePhone(raw: string): string {
-  const digits = raw.replace(/[\s\-().]/g, '');
-
-  if (digits.startsWith('+')) return digits;
-  if (digits.startsWith('0')) return `+63${digits.slice(1)}`;
-  if (digits.startsWith('63')) return `+${digits}`;
-  return `+63${digits}`;
-}
-
-function buildMessage(customerName: string): string {
-  return (
-    `Hi ${customerName} 👋 Just a reminder that your vehicle is due back at 9PM tonight. ` +
-    `A team member will arrive at 8:15pm so you're welcome to arrive anytime from then.\n\n` +
-    `A few things to keep in mind:\n\n` +
-    `🛵 Please return with a full tank of fuel\n` +
-    `⏰ Please do not return at an alternative time without our acknowledgement\n` +
-    `⏱ If you are more than 10 minutes late, the team will wait an additional 5 minutes — after that, the deposit will not be refunded\n` +
-    `🚫 Collection & Delivery is not valid on 9PM returns\n\n` +
-    `Thank you for respecting our policies — see you tonight!`
-  );
-}
-
 async function sendRespondIoMessage(phone: string, text: string): Promise<void> {
   const baseUrl = process.env.RESPOND_IO_API_URL;
-  const token   = process.env.RESPOND_IO_OUTBOUND_TOKEN;
+  const token = process.env.RESPOND_IO_OUTBOUND_TOKEN;
 
   if (!baseUrl || !token) {
     throw new Error(
@@ -86,6 +65,19 @@ async function sendRespondIoMessage(phone: string, text: string): Promise<void> 
     const body = await res.text().catch(() => '');
     throw new Error(`respond.io API error ${res.status}: ${body}`);
   }
+}
+
+function buildMessage(customerName: string): string {
+  return (
+    `Hi ${customerName} 👋 Just a reminder that your vehicle is due back at 9PM tonight. ` +
+    `A team member will arrive at 8:15pm so you're welcome to arrive anytime from then.\n\n` +
+    `A few things to keep in mind:\n\n` +
+    `🛵 Please return with a full tank of fuel\n` +
+    `⏰ Please do not return at an alternative time without our acknowledgement\n` +
+    `⏱ If you are more than 10 minutes late, the team will wait an additional 5 minutes — after that, the deposit will not be refunded\n` +
+    `🚫 Collection & Delivery is not valid on 9PM returns\n\n` +
+    `Thank you for respecting our policies — see you tonight!`
+  );
 }
 
 // ── Main job ──────────────────────────────────────────────────────────────────
@@ -241,36 +233,25 @@ async function runNinePmReturnReminderJob(): Promise<void> {
       continue;
     }
 
-    let phone: string;
-    try {
-      phone = sanitisePhone(candidate.customerMobile);
-    } catch (err) {
-      logger.warn(
-        { ref: candidate.bookingReference, mobile: candidate.customerMobile, err },
-        '[9pm-reminder] Could not sanitise phone — skipping',
-      );
-      continue;
-    }
-
     const message = buildMessage(candidate.customerName);
 
     try {
+      const phone = await resolveWhatsAppRecipient(candidate.customerMobile, {
+        automation: 'nine_pm_return_reminder',
+        bookingReference: candidate.bookingReference,
+        customerName: candidate.customerName,
+      });
       await sendRespondIoMessage(phone, message);
-
       await sb.from('nine_pm_reminder_log').insert({
         booking_reference: candidate.bookingReference,
-        sent_at:           new Date().toISOString(),
+        sent_at: new Date().toISOString(),
       });
-
-      logger.info(
-        { ref: candidate.bookingReference, phone },
-        '[9pm-reminder] Reminder sent',
-      );
+      logger.info({ ref: candidate.bookingReference }, '[9pm-reminder] Reminder sent');
     } catch (err) {
+      if (err instanceof InvalidWhatsAppNumberError) continue;
       logger.warn(
         {
           ref:   candidate.bookingReference,
-          phone,
           error: err instanceof Error ? err.message : String(err),
         },
         '[9pm-reminder] Failed to send reminder — continuing',

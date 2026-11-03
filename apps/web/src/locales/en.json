@@ -221,6 +221,7 @@
     "returnHome": "Return home",
     "emailRequired": "A valid email address is required",
     "signatureRequired": "Please add your signature.",
+    "whatsappInvalid": "Please check your WhatsApp number — pick your country, then enter your mobile number.",
     "uploadFailed": "Upload failed",
     "loadingError": "Something went wrong loading your booking. Please try again.",
     "submitError": "Could not submit waiver."

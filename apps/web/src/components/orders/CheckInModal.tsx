@@ -7,6 +7,7 @@ import { useUIStore } from '../../stores/ui-store.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 import { InspectionModal } from './InspectionModal.js';
 import type { CustomerSummary } from '../../api/customers.js';
+import { WhatsAppNumberInput, whatsAppNumberError } from '../common/WhatsAppNumberInput.js';
 
 interface CheckInModalProps {
   open: boolean;
@@ -206,6 +207,11 @@ export function CheckInModal({ open, onClose }: CheckInModalProps) {
 
   async function handleLookup() {
     if (!email.trim() || !storeId) return;
+    const mobileError = whatsAppNumberError(mobile, false);
+    if (mobileError) {
+      setLookupError(mobileError);
+      return;
+    }
     setLookupError('');
     setLooking(true);
     try {
@@ -228,6 +234,11 @@ export function CheckInModal({ open, onClose }: CheckInModalProps) {
     const sigDataUrl = sig.getDataUrl();
     if (!sig.hasSig || !sigDataUrl) {
       setWaiverError('Please sign the waiver before submitting.');
+      return;
+    }
+    const driverMobileError = whatsAppNumberError(driverMobile, false);
+    if (driverMobileError) {
+      setWaiverError(driverMobileError);
       return;
     }
     setWaiverError('');
@@ -356,14 +367,12 @@ export function CheckInModal({ open, onClose }: CheckInModalProps) {
                 {/* Mobile */}
                 <div>
                   <label className="mb-1 block text-xs font-medium text-charcoal-brand/60">
-                    Mobile <span className="text-charcoal-brand/40">(optional)</span>
+                    WhatsApp number <span className="text-charcoal-brand/40">(optional)</span>
                   </label>
-                  <input
-                    type="tel"
+                  <WhatsAppNumberInput
                     value={mobile}
-                    onChange={(e) => setMobile(e.target.value)}
-                    placeholder="+63 900 000 0000"
-                    className="w-full rounded-xl border border-charcoal-brand/20 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-brand"
+                    onChange={(value) => setMobile(value)}
+                    className="w-full rounded-xl border border-charcoal-brand/20 bg-white px-3 py-2.5 text-sm"
                   />
                 </div>
               </div>
@@ -506,12 +515,12 @@ export function CheckInModal({ open, onClose }: CheckInModalProps) {
                       />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs font-medium text-charcoal-brand/60">Driver Mobile</label>
-                      <input
-                        type="tel"
+                      <label className="mb-1 block text-xs font-medium text-charcoal-brand/60">Driver WhatsApp number</label>
+                      <WhatsAppNumberInput
                         value={driverMobile}
-                        onChange={(e) => setDriverMobile(e.target.value)}
-                        className="w-full rounded-xl border border-charcoal-brand/20 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-brand"
+                        onChange={(value) => setDriverMobile(value)}
+                        className="w-full rounded-xl border border-charcoal-brand/20 bg-white px-3 py-2.5 text-sm"
+                        showPreview={false}
                       />
                     </div>
                   </div>

@@ -9,7 +9,7 @@
 import cron from 'node-cron';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { logger } from '../lib/logger.js';
-import { sendWhatsAppTemplate } from '../services/whatsapp-template.js';
+import { InvalidWhatsAppNumberError, sendWhatsAppTemplate } from '../services/whatsapp-template.js';
 
 interface ReminderCandidate {
   bookingReference: string;
@@ -184,6 +184,11 @@ export async function runReturnReminderTodayJob(): Promise<void> {
         bodyText: RETURN_REMINDER_TODAY_TEMPLATE_BODY,
         parameters: [candidate.customerName, returnTime],
         logContext: { ref: candidate.bookingReference },
+        failureContext: {
+          automation: 'return_reminder_today',
+          bookingReference: candidate.bookingReference,
+          customerName: candidate.customerName,
+        },
       });
 
       if (result.delivered) {
@@ -198,6 +203,7 @@ export async function runReturnReminderTodayJob(): Promise<void> {
         result.delivered ? '[return-reminder-today] Reminder sent' : '[return-reminder-today] Reminder simulated',
       );
     } catch (err) {
+      if (err instanceof InvalidWhatsAppNumberError) continue;
       logger.warn(
         {
           ref: candidate.bookingReference,

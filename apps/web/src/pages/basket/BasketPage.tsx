@@ -26,6 +26,7 @@ import pawPrint from '../../assets/Paw Print.svg';
 import { PesoSign } from '../../components/ui/PesoSign.js';
 import { hasBookingDatetimeWithTime } from '../../utils/booking-datetime.js';
 import { BookingLeadTimeNotice, useBookingLeadClock } from '../../components/booking/BookingLeadTimeNotice.js';
+import { whatsAppNumberError } from '../../components/common/WhatsAppNumberInput.js';
 
 interface QuoteResponse {
   dailyRate: number;
@@ -724,7 +725,8 @@ export default function BasketPage() {
     const fe: Record<string, string> = {};
     if (!renter.fullName.trim()) fe.fullName = 'Name is required';
     if (!renter.email.trim() || !renter.email.includes('@')) fe.email = 'Valid email is required';
-    if (!renter.phone.trim()) fe.phone = 'Phone number is required';
+    const phoneError = whatsAppNumberError(renter.phone, true);
+    if (phoneError) fe.phone = phoneError;
     if (!renter.nationality) fe.nationality = 'Nationality is required';
 
     const pickupLoc = locations.find((l) => l.id === pickupLocationId);

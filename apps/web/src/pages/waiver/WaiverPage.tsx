@@ -14,6 +14,7 @@ import { SEO } from '../../components/seo/SEO.js';
 import { WaiverSigningTermsContent } from '../../components/waiver/WaiverSigningTermsContent.js';
 import { formatPickupDatetimeManila } from '../../utils/date.js';
 import { api } from '../../api/client.js';
+import { WhatsAppNumberInput, whatsAppNumberError } from '../../components/common/WhatsAppNumberInput.js';
 
 interface OrderWaiverPayload {
   orderReference: string;
@@ -290,6 +291,10 @@ export default function WaiverPage() {
       setError(t('waiver.emailRequired'));
       return;
     }
+    if (whatsAppNumberError(driverMobile, false)) {
+      setError(t('waiver.whatsappInvalid'));
+      return;
+    }
     if (isCanvasBlank(signatureCanvasRef.current)) {
       setError(t('waiver.signatureRequired'));
       return;
@@ -438,12 +443,11 @@ export default function WaiverPage() {
                   <label className="font-lato text-sm font-medium text-charcoal-brand block mb-1">
                     {t('waiver.whatsappNumber')}
                   </label>
-                  <input
-                    type="tel"
-                    className={inputClass}
+                  <WhatsAppNumberInput
                     value={driverMobile}
-                    onChange={(e) => setDriverMobile(e.target.value)}
-                    autoComplete="tel"
+                    onChange={(value) => setDriverMobile(value)}
+                    className={inputClass}
+                    showPreview={false}
                   />
                 </div>
                 <div>

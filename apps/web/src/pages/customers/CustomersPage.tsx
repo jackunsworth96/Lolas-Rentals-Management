@@ -18,6 +18,8 @@ import { useStores } from '../../api/config.js';
 import { useUIStore } from '../../stores/ui-store.js';
 import { Table } from '../../components/common/Table.js';
 import { Badge } from '../../components/common/Badge.js';
+import { WhatsAppNumberInput, whatsAppNumberError } from '../../components/common/WhatsAppNumberInput.js';
+import { WhatsAppNumberText } from '../../components/common/WhatsAppNumberText.js';
 import { formatDate } from '../../utils/date.js';
 import { OrderDetailModal } from '../../components/orders/OrderDetailModal.js';
 
@@ -102,12 +104,19 @@ function CustomerDetailPanel({ customerId, onClose, onSaved }: CustomerDetailPan
     if (!customerId || !customer) return;
     setSaveError(null);
     setCascadeResult(null);
+    // Only send the mobile when it was edited, so a legacy number never blocks saving notes etc.
+    const mobileChanged = form.mobile.trim() !== (customer.mobile ?? '').trim();
+    const mobileError = mobileChanged ? whatsAppNumberError(form.mobile, false) : null;
+    if (mobileError) {
+      setSaveError(mobileError);
+      return;
+    }
     try {
       const result = await updateCustomer.mutateAsync({
         id: customerId,
         name: form.name.trim(),
         email: form.email.trim() || null,
-        mobile: form.mobile.trim() || null,
+        ...(mobileChanged && { mobile: form.mobile.trim() || null }),
         notes: form.notes.trim() || null,
         blacklisted: form.blacklisted,
       });
@@ -207,11 +216,12 @@ function CustomerDetailPanel({ customerId, onClose, onSaved }: CustomerDetailPan
                       onChange={(e) => handleChange('email', e.target.value)}
                     />
                   </Field>
-                  <Field label="Mobile">
-                    <input
-                      className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  <Field label="WhatsApp number">
+                    <WhatsAppNumberInput
+                      className="w-full rounded border border-gray-300 bg-white px-3 py-1.5 text-sm"
                       value={form.mobile}
-                      onChange={(e) => handleChange('mobile', e.target.value)}
+                      onChange={(value) => handleChange('mobile', value)}
+                      showPreview={false}
                     />
                   </Field>
                   <Field label="Notes">
@@ -737,6 +747,7 @@ export default function CustomersPage() {
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [blacklistedOnly, setBlacklistedOnly] = useState(false);
+  const [needsWhatsAppFixOnly, setNeedsWhatsAppFixOnly] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const { data: stores = [] } = useStores();
@@ -752,7 +763,12 @@ export default function CustomersPage() {
   // Search requires a storeId; if "all" is selected, we query each store or show an empty guide
   const canSearch = !!storeIdForApi;
 
-  const { data: customers = [], isLoading, isError, error } = useCustomers(storeIdForApi, debouncedSearch, blacklistedOnly);
+  const { data: customers = [], isLoading, isError, error } = useCustomers(
+    storeIdForApi,
+    debouncedSearch,
+    blacklistedOnly,
+    needsWhatsAppFixOnly,
+  );
 
   const filtered = useMemo(() => {
     return customers as CustomerSummary[];
@@ -773,8 +789,11 @@ export default function CustomersPage() {
     },
     {
       key: 'mobile',
-      header: 'Mobile',
-      render: (r: CustomerSummary) => r.mobile ?? <span className="text-gray-400">—</span>,
+      header: 'WhatsApp',
+      render: (r: CustomerSummary) =>
+        r.mobile
+          ? <WhatsAppNumberText value={r.mobile} needsReview={r.mobileNeedsReview} />
+          : <span className="text-gray-400">—</span>,
     },
     {
       key: 'totalSpent',
@@ -838,6 +857,24 @@ export default function CustomersPage() {
           {blacklistedOnly ? 'Showing blacklisted' : 'Show blacklisted'}
         </button>
 
+        <button
+          type="button"
+          disabled={!canSearch}
+          aria-pressed={needsWhatsAppFixOnly}
+          onClick={() => {
+            setNeedsWhatsAppFixOnly((value) => !value);
+            setSearchInput('');
+          }}
+          className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50 disabled:text-gray-400 ${
+            needsWhatsAppFixOnly
+              ? 'border-amber-300 bg-amber-50 font-medium text-amber-800'
+              : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+          }`}
+        >
+          <AlertTriangle className="h-4 w-4" aria-hidden />
+          {needsWhatsAppFixOnly ? 'Showing numbers to fix' : 'Needs WhatsApp fix'}
+        </button>
+
         {/* Search */}
         <div className="relative flex-1 min-w-52">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -873,6 +910,13 @@ export default function CustomersPage() {
         </p>
       )}
 
+      {canSearch && needsWhatsAppFixOnly && !isLoading && !isError && (
+        <p className="text-sm text-gray-600">
+          {filtered.length === 1 ? '1 customer' : `${filtered.length} customers`} with a WhatsApp number automations
+          can&apos;t use. Open a customer and correct the number — linked bookings update automatically.
+        </p>
+      )}
+
       {/* Loading */}
       {canSearch && isLoading && (
         <div className="flex h-32 items-center justify-center">
@@ -894,7 +938,9 @@ export default function CustomersPage() {
           keyFn={(r) => r.id}
           onRowClick={(r) => setSelectedId(r.id)}
           emptyMessage={
-            blacklistedOnly
+            needsWhatsAppFixOnly
+              ? 'No customers with invalid WhatsApp numbers for this store.'
+              : blacklistedOnly
               ? debouncedSearch
                 ? `No blacklisted customers found for "${debouncedSearch}".`
                 : 'No blacklisted customers for this store.'

@@ -33,6 +33,7 @@ export interface CustomerSummary {
   notes: string | null;
   blacklisted: boolean;
   whatsappReviewOptOut: boolean;
+  mobileNeedsReview?: boolean;
   hasActiveOrder?: boolean;
 }
 
@@ -72,12 +73,13 @@ export interface CustomerDetail {
   pawCard: CustomerPawCard;
 }
 
-export function useCustomers(storeId: string, query: string, blacklistedOnly = false) {
+export function useCustomers(storeId: string, query: string, blacklistedOnly = false, needsWhatsAppFixOnly = false) {
   const params = new URLSearchParams({ storeId });
   if (query) params.set('q', query);
   if (blacklistedOnly) params.set('blacklisted', 'true');
+  if (needsWhatsAppFixOnly) params.set('needsWhatsAppFix', 'true');
   return useQuery<CustomerSummary[]>({
-    queryKey: ['customers', storeId, query, blacklistedOnly],
+    queryKey: ['customers', storeId, query, blacklistedOnly, needsWhatsAppFixOnly],
     queryFn: () => api.get(`/customers?${params.toString()}`),
     enabled: !!storeId,
   });

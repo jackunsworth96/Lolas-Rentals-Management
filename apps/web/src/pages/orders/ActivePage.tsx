@@ -4,6 +4,7 @@ import { useUIStore } from '../../stores/ui-store.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 import { Table } from '../../components/common/Table.js';
 import { Badge } from '../../components/common/Badge.js';
+import { WhatsAppNumberText } from '../../components/common/WhatsAppNumberText.js';
 import { OrderDetailModal } from '../../components/orders/OrderDetailModal.js';
 import { InspectionModal } from '../../components/orders/InspectionModal.js';
 import { formatCurrency } from '../../utils/currency.js';
@@ -176,7 +177,9 @@ export default function ActivePage() {
       render: (r: EnrichedOrder) => (
         <div>
           <div className="font-medium text-gray-900">{r.customerName}</div>
-          {r.customerMobile && <div className="text-xs text-gray-500">{r.customerMobile}</div>}
+          {r.customerMobile && (
+            <div className="text-xs text-gray-500"><WhatsAppNumberText value={r.customerMobile} /></div>
+          )}
         </div>
       ),
     },
@@ -413,7 +416,7 @@ export default function ActivePage() {
                       <div>
                         <p className="text-sm font-medium text-gray-900">{r.customerName}</p>
                         {r.customerMobile && (
-                          <p className="text-xs text-gray-500">{r.customerMobile}</p>
+                          <p className="text-xs text-gray-500"><WhatsAppNumberText value={r.customerMobile} /></p>
                         )}
                         {r.partnerRef && (
                           <span

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { OptionalWhatsAppNumberSchema } from '@lolas/shared';
 import { authenticate } from '../middleware/authenticate.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
@@ -20,6 +21,7 @@ function toCustomerDto(row: Record<string, unknown>) {
     notes: row.notes ?? null,
     blacklisted: row.blacklisted ?? false,
     whatsappReviewOptOut: row.whatsapp_review_opt_out ?? false,
+    mobileNeedsReview: row.mobile_needs_review ?? false,
   };
 }
 
@@ -27,12 +29,13 @@ const ListQuerySchema = z.object({
   storeId: z.string().min(1),
   q: z.string().optional(),
   blacklisted: z.enum(['true', 'false']).optional(),
+  needsWhatsAppFix: z.enum(['true', 'false']).optional(),
 });
 
 const PatchBodySchema = z.object({
   name: z.string().min(1).optional(),
   email: z.string().email().nullable().optional(),
-  mobile: z.string().nullable().optional(),
+  mobile: OptionalWhatsAppNumberSchema,
   notes: z.string().nullable().optional(),
   blacklisted: z.boolean().optional(),
 });
@@ -44,9 +47,15 @@ const ReviewOptOutBodySchema = z.object({
 // GET /customers?storeId=&q=
 router.get('/', validateQuery(ListQuerySchema), async (req, res, next) => {
   try {
-    const { storeId, q = '', blacklisted } = req.query as { storeId: string; q?: string; blacklisted?: string };
+    const { storeId, q = '', blacklisted, needsWhatsAppFix } = req.query as {
+      storeId: string;
+      q?: string;
+      blacklisted?: string;
+      needsWhatsAppFix?: string;
+    };
     const customers = await req.app.locals.deps.customerRepo.search(storeId, q, {
       blacklistedOnly: blacklisted === 'true',
+      needsWhatsAppFixOnly: needsWhatsAppFix === 'true',
     });
 
     if (customers.length === 0) {
@@ -278,7 +287,7 @@ router.patch('/:id/review-message-opt-out', validateBody(ReviewOptOutBodySchema)
 const LookupOrCreateBodySchema = z.object({
   email: z.string().email(),
   name: z.string().min(1),
-  mobile: z.string().optional(),
+  mobile: OptionalWhatsAppNumberSchema,
   storeId: z.string().min(1),
 });
 
@@ -309,7 +318,7 @@ router.post('/lookup-or-create', validateBody(LookupOrCreateBodySchema), async (
         store_id: storeId,
         name: name.trim(),
         email: normalizedEmail,
-        mobile: mobile?.trim() ?? null,
+        mobile: mobile ?? null,
         total_spent: 0,
         blacklisted: false,
         whatsapp_review_opt_out: false,

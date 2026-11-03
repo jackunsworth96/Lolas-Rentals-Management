@@ -18,7 +18,7 @@
 import cron from 'node-cron';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { logger } from '../lib/logger.js';
-import { sendWhatsAppTemplate } from '../services/whatsapp-template.js';
+import { InvalidWhatsAppNumberError, sendWhatsAppTemplate } from '../services/whatsapp-template.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -38,19 +38,6 @@ const RETURN_REMINDER_TEMPLATE_BODY =
 const NINE_PM_RETURN_ADDON_ID = 9;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-/**
- * Normalises a Philippine mobile number to E.164 format (+639XXXXXXXXX).
- * Strips spaces, dashes, and parentheses, then applies country-code rules.
- */
-function sanitisePhone(raw: string): string {
-  const digits = raw.replace(/[\s\-().]/g, '');
-
-  if (digits.startsWith('+')) return digits;           // already E.164
-  if (digits.startsWith('0')) return `+63${digits.slice(1)}`; // 09XX → +639XX
-  if (digits.startsWith('63')) return `+${digits}`;   // 639XX → +639XX
-  return `+63${digits}`;                               // bare 9XX → +639XX
-}
 
 function formatReturnTime(isoString: string): string {
   return new Date(isoString).toLocaleString('en-PH', {
@@ -208,28 +195,23 @@ export async function runReturnReminderJob(): Promise<void> {
       continue;
     }
 
-    let phone: string;
-    try {
-      phone = sanitisePhone(candidate.customerMobile);
-    } catch (err) {
-      logger.warn(
-        { ref: candidate.bookingReference, mobile: candidate.customerMobile, err },
-        '[return-reminder] Could not sanitise phone — skipping',
-      );
-      continue;
-    }
-
     const returnTime = candidate.hasNinePmReturnAddon
       ? '9:00 PM'
       : formatReturnTime(candidate.dropoffDatetime);
     try {
       const result = await sendWhatsAppTemplate({
         operationKey: `return-reminder:${candidate.bookingReference}`,
-        phone,
+        phone: candidate.customerMobile,
         templateName: RETURN_REMINDER_TEMPLATE_NAME,
         languageCode: RETURN_REMINDER_TEMPLATE_LANGUAGE,
         bodyText: RETURN_REMINDER_TEMPLATE_BODY,
         parameters: [candidate.customerName, returnTime],
+        logContext: { ref: candidate.bookingReference },
+        failureContext: {
+          automation: 'return_reminder',
+          bookingReference: candidate.bookingReference,
+          customerName: candidate.customerName,
+        },
       });
 
       if (result.delivered) {
@@ -240,16 +222,16 @@ export async function runReturnReminderJob(): Promise<void> {
       }
 
       logger.info(
-        { ref: candidate.bookingReference, phone, delivered: result.delivered },
+        { ref: candidate.bookingReference, delivered: result.delivered },
         result.delivered
           ? '[return-reminder] Reminder sent'
           : '[return-reminder] Reminder simulated',
       );
     } catch (err) {
+      if (err instanceof InvalidWhatsAppNumberError) continue;
       logger.warn(
         {
           ref:   candidate.bookingReference,
-          phone,
           error: err instanceof Error ? err.message : String(err),
         },
         '[return-reminder] Failed to send reminder — continuing',

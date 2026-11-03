@@ -1,9 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ getSupabaseClient: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  getSupabaseClient: vi.fn(),
+  reportInvalidWhatsAppNumber: vi.fn(),
+}));
 vi.mock('../src/adapters/supabase/client.js', () => ({ getSupabaseClient: mocks.getSupabaseClient }));
+vi.mock('../src/services/whatsapp-number-alerts.js', () => ({
+  reportInvalidWhatsAppNumber: mocks.reportInvalidWhatsAppNumber,
+}));
 
-const { renderTemplate, retryLoloDeskReports, sendWhatsAppTemplate } = await import('../src/services/whatsapp-template.js');
+const { InvalidWhatsAppNumberError, renderTemplate, retryLoloDeskReports, sendWhatsAppTemplate } = await import('../src/services/whatsapp-template.js');
 const originalEnv = { ...process.env };
 
 afterEach(() => {
@@ -99,5 +105,38 @@ describe('direct WhatsApp templates', () => {
     })).rejects.toThrow('Invalid Meta WhatsApp Messaging account ID');
     expect(mocks.getSupabaseClient).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('recovers a German number missing its + instead of prefixing +63', async () => {
+    process.env.NODE_ENV = 'development';
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected network request'));
+
+    await expect(sendWhatsAppTemplate({
+      operationKey: 'recovery',
+      phone: '04915228502404',
+      templateName: 'test',
+      bodyText: 'Hi {{1}}',
+      parameters: ['Moritz'],
+    })).resolves.toEqual({ delivered: false });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mocks.reportInvalidWhatsAppNumber).not.toHaveBeenCalled();
+  });
+
+  it('does not send when the number cannot be resolved', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected network request'));
+
+    await expect(sendWhatsAppTemplate({
+      operationKey: 'invalid-phone',
+      phone: 'not-a-number',
+      templateName: 'test',
+      bodyText: 'Hi {{1}}',
+      parameters: ['Ada'],
+      failureContext: { automation: 'return_reminder', bookingReference: 'LR-1', customerName: 'Ada' },
+    })).rejects.toBeInstanceOf(InvalidWhatsAppNumberError);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mocks.reportInvalidWhatsAppNumber).toHaveBeenCalledWith(
+      'not-a-number',
+      { automation: 'return_reminder', bookingReference: 'LR-1', customerName: 'Ada' },
+    );
   });
 });

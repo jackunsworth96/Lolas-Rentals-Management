@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { Modal } from '../common/Modal.js';
 import { Badge } from '../common/Badge.js';
+import { WhatsAppNumberInput, whatsAppNumberError } from '../common/WhatsAppNumberInput.js';
 import { useFleet, availableVehiclesQuery } from '../../api/fleet.js';
 import { bookingDatetimeISO } from '../../utils/booking-datetime.js';
 import {
@@ -655,6 +656,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
 
   function goNext() {
     if (step === 'review' && !customer.name.trim()) return;
+    if (step === 'review' && whatsAppNumberError(customer.phone, false)) return;
     if (step === 'vehicles' && vehicles.every((v) => !v.vehicleId)) return;
     if (step === 'vehicles' && assignmentConflict) return;
 
@@ -963,12 +965,12 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
                   />
                 </label>
                 <label className="block">
-                  <span className="text-sm text-gray-600">Phone</span>
-                  <input
-                    type="tel"
+                  <span className="text-sm text-gray-600">WhatsApp number</span>
+                  <WhatsAppNumberInput
                     value={customer.phone}
-                    onChange={(e) => setCustomer((c) => ({ ...c, phone: e.target.value }))}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    onChange={(value) => setCustomer((c) => ({ ...c, phone: value }))}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    showPreview={false}
                   />
                 </label>
               </div>
@@ -2069,8 +2071,17 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
         ) : (
           <button
             onClick={goNext}
-            disabled={step === 'vehicles' && assignmentConflict}
-            title={step === 'vehicles' && assignmentConflict ? 'Choose an available vehicle for every rental' : undefined}
+            disabled={
+              (step === 'vehicles' && assignmentConflict)
+              || (step === 'review' && Boolean(whatsAppNumberError(customer.phone, false)))
+            }
+            title={
+              step === 'vehicles' && assignmentConflict
+                ? 'Choose an available vehicle for every rental'
+                : step === 'review' && whatsAppNumberError(customer.phone, false)
+                  ? 'Fix the WhatsApp number before continuing'
+                  : undefined
+            }
             className="rounded-lg bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
             Next

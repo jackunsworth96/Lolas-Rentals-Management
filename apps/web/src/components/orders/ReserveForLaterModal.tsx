@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
+import { isValidWhatsAppE164 } from '@lolas/shared';
 import { Modal } from '../common/Modal.js';
+import { WhatsAppNumberInput } from '../common/WhatsAppNumberInput.js';
 import { normalizeApiBase } from '../../api/normalize-api-base.js';
 import { useCreateWalkInReserved } from '../../api/orders-raw.js';
 import { useAvailableVehicles } from '../../api/fleet.js';
@@ -343,14 +345,12 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
             </div>
             <div>
               <label className={LABEL_CLS}>
-                Mobile <span className="text-red-500">*</span>
+                WhatsApp number <span className="text-red-500">*</span>
               </label>
-              <input
-                type="tel"
+              <WhatsAppNumberInput
                 className={INPUT_CLS}
-                placeholder="+63 9XX XXX XXXX"
                 value={customerMobile}
-                onChange={(e) => setCustomerMobile(e.target.value)}
+                onChange={(value) => setCustomerMobile(value)}
                 required
               />
             </div>
@@ -673,7 +673,7 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
           </button>
           <button
             type="submit"
-            disabled={isSubmitting || !customerName.trim() || !customerMobile.trim() || !selectedVehicleAvailable || !datesValid}
+            disabled={isSubmitting || !customerName.trim() || !isValidWhatsAppE164(customerMobile) || !selectedVehicleAvailable || !datesValid}
             className="rounded-lg bg-teal-600 px-5 py-2 font-lato text-sm font-semibold text-white transition-colors hover:bg-teal-700 disabled:opacity-50"
           >
             {isSubmitting ? 'Reserving…' : 'Reserve for Later'}

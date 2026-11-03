@@ -1,6 +1,8 @@
 import cron from 'node-cron';
+import { normalizeWhatsAppNumber } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { logger } from '../lib/logger.js';
+import { reportInvalidWhatsAppNumber, type InvalidWhatsAppNumberContext } from './whatsapp-number-alerts.js';
 
 export interface WhatsAppTemplateInput {
   operationKey: string;
@@ -10,6 +12,36 @@ export interface WhatsAppTemplateInput {
   bodyText: string;
   parameters: string[];
   logContext?: Record<string, unknown>;
+  failureContext?: InvalidWhatsAppNumberContext;
+}
+
+export class InvalidWhatsAppNumberError extends Error {
+  constructor(readonly rawPhone: string) {
+    super(`Invalid WhatsApp number: ${rawPhone}`);
+    this.name = 'InvalidWhatsAppNumberError';
+  }
+}
+
+/**
+ * Resolves a stored number to E.164 before it reaches Meta or Lolodesk.
+ * Invalid numbers are reported and rejected so no message is sent under a guessed prefix.
+ */
+export async function resolveWhatsAppRecipient(
+  raw: string,
+  failureContext?: InvalidWhatsAppNumberContext,
+): Promise<string> {
+  const result = normalizeWhatsAppNumber(raw, { allowRecovery: true });
+  if (result.ok) {
+    if (result.recovered) {
+      logger.info(
+        { rawPhone: raw, resolved: result.e164, ...failureContext },
+        '[whatsapp-template] Recovered malformed WhatsApp number',
+      );
+    }
+    return result.e164;
+  }
+  if (failureContext) await reportInvalidWhatsAppNumber(raw, failureContext);
+  throw new InvalidWhatsAppNumberError(raw);
 }
 
 interface SendRecord {
@@ -21,14 +53,6 @@ interface SendRecord {
   template_name: string;
   template_language: string;
   sent_at: string;
-}
-
-function normalisePhone(raw: string): string {
-  const phone = raw.replace(/[\s\-().]/g, '');
-  if (phone.startsWith('+')) return phone;
-  if (phone.startsWith('0')) return `+63${phone.slice(1)}`;
-  if (phone.startsWith('63')) return `+${phone}`;
-  return `+63${phone}`;
 }
 
 export function renderTemplate(body: string, parameters: string[]): string {
@@ -100,10 +124,9 @@ export function startLoloDeskReportJob(): void {
 }
 
 export async function sendWhatsAppTemplate({
-  operationKey, phone, templateName, languageCode = 'en', bodyText, parameters, logContext,
+  operationKey, phone, templateName, languageCode = 'en', bodyText, parameters, logContext, failureContext,
 }: WhatsAppTemplateInput): Promise<{ delivered: boolean }> {
-  const recipient = normalisePhone(phone);
-  if (!/^\+[1-9]\d{7,14}$/.test(recipient)) throw new Error('Invalid WhatsApp recipient');
+  const recipient = await resolveWhatsAppRecipient(phone, failureContext);
   const body = renderTemplate(bodyText, parameters);
   if (process.env.NODE_ENV === 'development') {
     logger.info({ recipient, templateName, body, ...logContext }, '[whatsapp-template] Simulated send');

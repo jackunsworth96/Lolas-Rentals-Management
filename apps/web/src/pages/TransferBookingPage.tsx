@@ -10,6 +10,7 @@ import { today } from '../utils/date.js';
 import { WHATSAPP_URL } from '../config/contact.js';
 import { phoneIcon } from '../components/public/customerContactIcons.js';
 import { api } from '../api/client.js';
+import { WhatsAppNumberInput, whatsAppNumberError } from '../components/common/WhatsAppNumberInput.js';
 
 /** Matches public standalone transfer booking (`public-transfers.ts`). */
 const TRANSFER_STORE_ID = 'store-lolas';
@@ -195,7 +196,8 @@ export default function TransferBookingPage() {
   function validateForm(): boolean {
     const errs: Record<string, string> = {};
     if (!customerName.trim()) errs.customerName = 'Full name is required';
-    if (!contactNumber.trim()) errs.contactNumber = 'WhatsApp number is required';
+    const contactError = whatsAppNumberError(contactNumber, true);
+    if (contactError) errs.contactNumber = contactError;
     if (!serviceDate) errs.serviceDate = 'Date is required';
     if (!flightTime) errs.flightTime = 'Time is required';
 
@@ -588,12 +590,12 @@ export default function TransferBookingPage() {
                 </Field>
 
                 <Field label="WhatsApp Number" required error={fieldErrors.contactNumber}>
-                  <input
-                    type="tel"
+                  <WhatsAppNumberInput
                     value={contactNumber}
-                    onChange={(e) => setContactNumber(e.target.value)}
-                    placeholder="+63 912 345 6789"
+                    onChange={(value) => setContactNumber(value)}
                     className={inputClass}
+                    required
+                    helperText="Your driver will contact you on WhatsApp."
                   />
                 </Field>
 

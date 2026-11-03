@@ -1,6 +1,8 @@
 import { usePartners } from '../../api/partners.js';
 import { useState, useEffect } from 'react';
+import { isValidWhatsAppE164, whatsAppLinkDigits } from '@lolas/shared';
 import { Modal } from '../common/Modal.js';
+import { WhatsAppNumberInput } from '../common/WhatsAppNumberInput.js';
 import { normalizeApiBase } from '../../api/normalize-api-base.js';
 import { useCreateWalkInDirect } from '../../api/orders-raw.js';
 import { useLocations, useAddons } from '../../api/config.js';
@@ -370,7 +372,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
   }
 
   const isValid =
-    customerName.trim() && customerMobile.trim() &&
+    customerName.trim() && isValidWhatsAppE164(customerMobile) &&
     storeId && vehicleModelId && availableVehicles.some((vehicle) => vehicle.id === selectedVehicleId) && !vehiclesLoading && !vehiclesError &&
     pickupDate && pickupTime &&
     dropoffDate && dropoffTime &&
@@ -389,9 +391,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
   const waText = encodeURIComponent(
     `Hi ${customerName}! Your booking at Lola's Rentals is confirmed. Reference: ${createdRef}. View details: ${confirmationLink}`,
   );
-  const rawMobile = customerMobile.replace(/\D/g, '');
-  const waMobile = rawMobile.startsWith('0') ? `63${rawMobile.slice(1)}` : rawMobile;
-  const waUrl = `https://wa.me/${waMobile}?text=${waText}`;
+  const waUrl = `https://wa.me/${whatsAppLinkDigits(customerMobile) ?? ''}?text=${waText}`;
 
   // ── Addon stepper ──
   function setAddonQty(addonId: number, qty: number) {
@@ -477,13 +477,11 @@ export function WalkInBookingModal({ open, onClose }: Props) {
                 />
               </label>
               <label className="block">
-                <span className={LABEL_CLS}>Mobile <span className="text-red-500">*</span></span>
-                <input
-                  type="tel"
+                <span className={LABEL_CLS}>WhatsApp number <span className="text-red-500">*</span></span>
+                <WhatsAppNumberInput
                   required
                   value={customerMobile}
-                  onChange={(e) => setCustomerMobile(e.target.value)}
-                  placeholder="e.g. 09171234567"
+                  onChange={(value) => setCustomerMobile(value)}
                   className={INPUT_CLS}
                 />
               </label>

@@ -21,7 +21,7 @@
 import cron from 'node-cron';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { logger } from '../lib/logger.js';
-import { sendWhatsAppTemplate } from '../services/whatsapp-template.js';
+import { InvalidWhatsAppNumberError, sendWhatsAppTemplate } from '../services/whatsapp-template.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -205,6 +205,11 @@ export async function runPostRentalReviewJob(): Promise<void> {
         bodyText: POST_RENTAL_REVIEW_TEMPLATE_BODY,
         parameters: [candidate.customerName],
         logContext: { ref: candidate.bookingReference },
+        failureContext: {
+          automation: 'post_rental_review',
+          bookingReference: candidate.bookingReference,
+          customerName: candidate.customerName,
+        },
       });
 
       if (result.delivered) {
@@ -221,6 +226,7 @@ export async function runPostRentalReviewJob(): Promise<void> {
           : '[post-rental-review] Review request simulated',
       );
     } catch (err) {
+      if (err instanceof InvalidWhatsAppNumberError) continue;
       logger.warn(
         {
           ref:   candidate.bookingReference,

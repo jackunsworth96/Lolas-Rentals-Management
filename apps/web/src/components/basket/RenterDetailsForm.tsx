@@ -1,6 +1,7 @@
 import { useRef } from 'react';
+import type { CountryCode } from '@lolas/shared';
 import type { RenterInfo } from './basket-types.js';
-import { inferNationalityFromPhone } from '../../utils/phone-nationality-infer.js';
+import { WhatsAppNumberInput, countryName } from '../common/WhatsAppNumberInput.js';
 
 const COUNTRIES = [
   'Afghanistan', 'Albania', 'Algeria', 'Andorra', 'Angola', 'Argentina', 'Armenia',
@@ -30,6 +31,25 @@ const COUNTRIES = [
   'Yemen', 'Zambia', 'Zimbabwe',
 ];
 
+/** Region names that differ between `Intl.DisplayNames` and `COUNTRIES`. */
+const NATIONALITY_ALIASES: Partial<Record<CountryCode, string>> = {
+  CZ: 'Czech Republic',
+  TR: 'Turkey',
+  MM: 'Myanmar',
+  PS: 'Palestine',
+  CG: 'Congo',
+  CD: 'Congo',
+  HK: 'China',
+  MO: 'China',
+  CV: 'Cape Verde',
+  SZ: 'Eswatini',
+};
+
+function nationalityForCountry(code: CountryCode): string | null {
+  const name = NATIONALITY_ALIASES[code] ?? countryName(code);
+  return COUNTRIES.includes(name) ? name : null;
+}
+
 interface Props {
   info: RenterInfo;
   onChange: (info: RenterInfo) => void;
@@ -48,8 +68,8 @@ export function RenterDetailsForm({ info, onChange, errors }: Props) {
     onChange({ ...info, [field]: value });
   }
 
-  function handlePhoneChange(value: string) {
-    const inferred = inferNationalityFromPhone(value);
+  function handlePhoneChange(value: string, valid: boolean, country: CountryCode) {
+    const inferred = valid ? nationalityForCountry(country) : null;
     if (inferred && !nationalityLockedRef.current) {
       onChange({ ...info, phone: value, nationality: inferred });
       return;
@@ -91,19 +111,16 @@ export function RenterDetailsForm({ info, onChange, errors }: Props) {
       </div>
 
       <div>
-        <label className={LABEL_CLS}>Phone Number</label>
-        <input
-          type="tel"
+        <label htmlFor="renter-whatsapp" className={LABEL_CLS}>WhatsApp Number</label>
+        <WhatsAppNumberInput
+          id="renter-whatsapp"
           value={info.phone}
-          onChange={(e) => handlePhoneChange(e.target.value)}
-          placeholder="+63 9XX XXX XXXX"
-          autoComplete="tel"
-          className={`${INPUT_CLS} ${errors.phone ? 'border-red-400 ring-1 ring-red-400' : ''}`}
+          onChange={(value, meta) => handlePhoneChange(value, meta.valid, meta.country)}
+          className={INPUT_CLS}
+          required
+          error={errors.phone}
+          helperText="Pick your country, then your number. Booking confirmations and return reminders are sent here."
         />
-        <p className="mt-1 text-[11px] leading-snug text-charcoal-brand/45">
-          Start with your country code (e.g. +63). We&apos;ll match nationality when we can — change it below anytime.
-        </p>
-        {errors.phone && <p className="mt-1 text-[11px] text-red-500">{errors.phone}</p>}
       </div>
 
       <div>

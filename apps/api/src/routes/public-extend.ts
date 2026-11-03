@@ -155,6 +155,11 @@ async function sendExtensionReceivedMessage({
       formatPhp(Math.max(0, outstandingBalance)),
     ],
     logContext: { ref: contact.bookingReference, newDropoffDatetime },
+    failureContext: {
+      automation: 'extension_confirmation',
+      bookingReference: contact.bookingReference,
+      customerName: contact.customerName,
+    },
   });
 
   if (result.delivered) {

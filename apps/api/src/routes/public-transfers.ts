@@ -3,7 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { validateBody } from '../middleware/validate.js';
 import { z } from 'zod';
 import type { Store, ConfigRepository } from '@lolas/domain';
-import { PublicTransferBookingSchema } from '@lolas/shared';
+import { PublicTransferBookingSchema, WhatsAppNumberSchema } from '@lolas/shared';
 import { sendEmail, transferBookingConfirmationHtml } from '../services/email.js';
 import { normaliseVanType } from '../transfers/pickup-time.js';
 
@@ -30,7 +30,7 @@ const router = Router();
 const PublicBookingSchema = z.object({
   serviceDate: z.string().min(1),
   customerName: z.string().min(1),
-  contactNumber: z.string().min(7),
+  contactNumber: WhatsAppNumberSchema,
   customerEmail: z.union([z.string().email(), z.literal(''), z.null()]).default(null).transform((v) => v || null),
   route: z.string().min(1),
   flightTime: z.string().nullable().default(null),

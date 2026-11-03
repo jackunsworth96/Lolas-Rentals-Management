@@ -492,6 +492,11 @@ export async function submitDirectBooking(
           waiverUrl,
         }),
         logContext: { orderReference, source: 'direct-booking-confirmation' },
+        failureContext: {
+          automation: 'booking_confirmation',
+          bookingReference: orderReference,
+          customerName: input.customerName,
+        },
       }).catch((err: unknown) => {
         logger.warn(
           {

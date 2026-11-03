@@ -1,9 +1,10 @@
 import { z } from 'zod';
+import { WhatsAppNumberSchema } from './whatsapp-schemas.js';
 
 export const CreateTransferRequestSchema = z.object({
   serviceDate: z.string(),
   customerName: z.string().min(1),
-  contactNumber: z.string().min(7),
+  contactNumber: WhatsAppNumberSchema,
   customerEmail: z.string().email().nullable().default(null),
   customerType: z.enum(['Walk-in', 'Online']).nullable().default(null),
   route: z.string().min(1),
@@ -89,7 +90,7 @@ export type TransferSummaryQuery = z.infer<typeof TransferSummaryQuerySchema>;
 
 export const PublicTransferBookingSchema = z.object({
   customerName:  z.string().min(1),
-  contactNumber: z.string().min(1),
+  contactNumber: WhatsAppNumberSchema,
   customerEmail: z.union([z.string().email(), z.literal(''), z.null()]).default(null).transform((v) => v || null),
   flightNumber:  z.string().nullable().default(null),
   serviceDate:   z.string().min(1),

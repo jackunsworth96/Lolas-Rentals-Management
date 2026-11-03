@@ -5,7 +5,13 @@ import { logger } from '../lib/logger.js';
 import { publicWebOriginFromEnv } from '../lib/public-web-url.js';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
-import { Permission, resolveStoreFromSource, resolveSourceFromStore } from '@lolas/shared';
+import {
+  NullableWhatsAppNumberSchema,
+  Permission,
+  WhatsAppNumberSchema,
+  resolveSourceFromStore,
+  resolveStoreFromSource,
+} from '@lolas/shared';
 import { supabase } from '../adapters/supabase/client.js';
 import { resolveCharityPayableAccount } from '../adapters/supabase/maintenance-expense-rpc.js';
 import { processRawOrder, type ProcessRawOrderDeps } from '../use-cases/orders/process-raw-order.js';
@@ -50,7 +56,7 @@ router.use(authenticate);
 const walkInBodySchema = z.object({
   partnerRef: z.string().max(80).optional(),
   customerName: z.string().min(1),
-  customerMobile: z.string().min(1),
+  customerMobile: WhatsAppNumberSchema,
   customerEmail: z.string().email().optional(),
   vehicleModelId: z.string().min(1),
   storeId: z.string().min(1),
@@ -126,7 +132,7 @@ router.post('/walk-in', requirePermission(Permission.EditOrders), async (req, re
 const walkInReservedBodySchema = z.object({
   partnerRef: z.string().max(80).optional(),
   customerName: z.string().min(1),
-  customerMobile: z.string().min(1),
+  customerMobile: WhatsAppNumberSchema,
   customerEmail: z.string().email().optional(),
   storeId: z.string().min(1),
   vehicleId: z.string().min(1),
@@ -298,7 +304,7 @@ router.post('/walk-in-reserved', requirePermission(Permission.EditOrders), async
 const walkInDirectSchema = z.object({
   partnerRef: z.string().max(80).optional(),
   customerName: z.string().min(1),
-  customerMobile: z.string().min(1),
+  customerMobile: WhatsAppNumberSchema,
   customerEmail: z.string().email().optional(),
   nationality: z.string().optional(),
   storeId: z.string().min(1),
@@ -849,7 +855,7 @@ const processBodySchema = z.object({
   customer: z.object({
     name: z.string().min(1),
     email: z.string().email().nullable(),
-    phone: z.string().nullable(),
+    phone: NullableWhatsAppNumberSchema,
   }),
   vehicleAssignments: z.array(vehicleAssignmentSchema).min(1),
   addons: z.array(addonSchema).default([]),

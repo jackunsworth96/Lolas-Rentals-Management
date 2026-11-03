@@ -223,6 +223,7 @@
     "submitError": "Impossible de soumettre la décharge.",
     "emailRequired": "Une adresse e-mail valide est requise",
     "signatureRequired": "Veuillez ajouter votre signature.",
+    "whatsappInvalid": "Vérifiez votre numéro WhatsApp : choisissez votre pays, puis saisissez votre numéro de mobile.",
     "uploadFailed": "Échec du téléchargement"
   },
   "waiverAgreement": {

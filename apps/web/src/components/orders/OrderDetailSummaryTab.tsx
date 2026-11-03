@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { calculateBalanceDue, SWAP_REASON_CATEGORIES, SWAP_REASON_CATEGORY_LABELS, type SwapReasonCategory } from '@lolas/shared';
-import { CheckCircle2, AlertTriangle, Phone, MessageCircle } from 'lucide-react';
+import { CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Badge } from '../common/Badge.js';
 import { Modal } from '../common/Modal.js';
 import { Button } from '../common/Button.js';
@@ -26,6 +26,7 @@ import { useCustomerPawCardSavings } from '../../api/paw-card.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 import type { EnrichedOrder } from '../../types/api.js';
 import type { HelmetSwap, OrderAddon, OrderDetail, OrderItem, OrderPayment } from './useOrderDetail.js';
+import { CustomerWhatsAppNumber } from './CustomerWhatsAppNumber.js';
 
 function waiverFetchApiBase(): string {
   const raw = (import.meta.env.VITE_API_URL as string | undefined)?.trim() || '/api';
@@ -797,23 +798,7 @@ export function OrderDetailSummaryTab({
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
                 <span className="text-sm font-semibold text-gray-900">{customerName}</span>
-                {customerMobile && (
-                  <>
-                    <a href={`tel:${customerMobile}`} className="flex items-center gap-1 text-xs text-charcoal-brand/60 hover:text-teal-brand">
-                      <Phone className="h-3 w-3 shrink-0" aria-hidden />
-                      {customerMobile}
-                    </a>
-                    <a
-                      href={`https://wa.me/${customerMobile.replace(/^\+/, '').replace(/[\s-]/g, '')}`}
-                      target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-xs text-green-700 hover:text-green-800"
-                      title="Open in WhatsApp"
-                    >
-                      <MessageCircle className="h-3 w-3 shrink-0" aria-hidden />
-                      WA
-                    </a>
-                  </>
-                )}
+                <CustomerWhatsAppNumber customerId={order.customerId ?? null} mobile={customerMobile} />
                 {customerEmailForPaw && <span className="text-xs text-charcoal-brand/60 break-all">{customerEmailForPaw}</span>}
               </div>
               {pawCardSavings?.hasPawCard && (
