@@ -3,6 +3,7 @@ import {
   type PaymentRepository,
   type JournalLeg,
   Money,
+  DomainError,
 } from '@lolas/domain';
 import { supabase } from '../../adapters/supabase/client.js';
 
@@ -110,7 +111,16 @@ export async function refundOrder(
     p_actual_return_datetime: input.actualReturnDatetime ?? null,
   });
 
-  if (rpcErr) throw new Error(`record_refund_atomic RPC failed: ${rpcErr.message}`);
+  if (rpcErr) {
+    // record_refund_atomic raises plain `RAISE EXCEPTION '...'` for business-rule
+    // violations (e.g. "Refund exceeds the remaining rental charge"). Postgres
+    // tags those with SQLSTATE P0001, and the message text is already written
+    // to be shown to staff — surface it as a DomainError (400, real message)
+    // instead of letting it fall through to the generic 500 handler, which
+    // replaces the message with "An unexpected error occurred" in production.
+    if (rpcErr.code === 'P0001') throw new DomainError(rpcErr.message);
+    throw new Error(`record_refund_atomic RPC failed: ${rpcErr.message}`);
+  }
 
   // Recompute balance_due from the full payments list using the same filtering
   // as collectPayment and settle-order so the stored value is always consistent:
