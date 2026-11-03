@@ -70,7 +70,11 @@ export async function adjustDates(
       for (const addon of addons) {
         if (addon.addonType === 'per_day') {
           const oldAddonTotal = addon.totalAmount;
-          const newAddonTotal = addon.addonPrice * addon.quantity * maxDays;
+          // Booking paths store quantity = rental days, so price × quantity × days
+          // double-counts. Derive the per-day charge from the current total instead
+          // (same approach as the extension flow).
+          const perDayCharge = oldMaxDays > 0 ? oldAddonTotal / oldMaxDays : addon.addonPrice;
+          const newAddonTotal = Math.round(perDayCharge * maxDays * 100) / 100;
           totalDelta += newAddonTotal - oldAddonTotal;
 
           const updatedAddon: OrderAddonRecord = {

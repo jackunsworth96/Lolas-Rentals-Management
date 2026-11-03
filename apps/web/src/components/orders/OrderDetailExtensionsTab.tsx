@@ -35,6 +35,16 @@ function parseDropoffs(settlementRef: string | null | undefined): { old: string 
 
 function formatTimestamp(iso: string): string {
   if (!iso) return '—';
+  // payments.transaction_date is a bare date; parsing it as a timestamp shows
+  // UTC midnight as a fake "08:00 AM" in Manila.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    return new Date(`${iso}T00:00:00+08:00`).toLocaleDateString('en-PH', {
+      timeZone: 'Asia/Manila',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  }
   return new Date(iso).toLocaleString('en-PH', {
     timeZone: 'Asia/Manila',
     month: 'short',

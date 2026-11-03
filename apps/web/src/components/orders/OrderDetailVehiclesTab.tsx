@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAdjustDates, useSwapHelmet } from '../../api/orders.js';
 import { formatCurrency } from '../../utils/currency.js';
-import { formatDate } from '../../utils/date.js';
+import { formatDate, isoToManilaDateTimeLocal, manilaLocalToISO } from '../../utils/date.js';
 import type { OrderItem, OrderSwap, HelmetSwap } from './useOrderDetail.js';
 
 interface OrderDetailVehiclesTabProps {
@@ -51,8 +51,8 @@ export function OrderDetailVehiclesTab({ orderId, items, swaps, helmetSwaps, can
                             type="button"
                             onClick={() => {
                               setEditingItemId(i.id);
-                              setEditPickup(i.pickupDatetime ? new Date(i.pickupDatetime).toISOString().slice(0, 16) : '');
-                              setEditDropoff(i.dropoffDatetime ? new Date(i.dropoffDatetime).toISOString().slice(0, 16) : '');
+                              setEditPickup(i.pickupDatetime ? isoToManilaDateTimeLocal(i.pickupDatetime) : '');
+                              setEditDropoff(i.dropoffDatetime ? isoToManilaDateTimeLocal(i.dropoffDatetime) : '');
                             }}
                             className="ml-auto text-xs font-medium text-teal-brand hover:text-teal-brand/80"
                           >
@@ -178,8 +178,8 @@ export function OrderDetailVehiclesTab({ orderId, items, swaps, helmetSwaps, can
                               {
                                 id: orderId,
                                 orderItemId: i.id,
-                                pickupDatetime: new Date(editPickup).toISOString(),
-                                dropoffDatetime: new Date(editDropoff).toISOString(),
+                                pickupDatetime: manilaLocalToISO(editPickup),
+                                dropoffDatetime: manilaLocalToISO(editDropoff),
                               },
                               { onSuccess: () => setEditingItemId(null) },
                             );
