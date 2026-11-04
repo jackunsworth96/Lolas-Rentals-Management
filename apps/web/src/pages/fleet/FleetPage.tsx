@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { useFleet, useFleetSync } from '../../api/fleet.js';
+import { useFleet, useFleetSync, useReleaseCapacityHold } from '../../api/fleet.js';
+import { useToast } from '../../hooks/useToast.js';
+import { ApiError } from '../../api/client.js';
 import { useStores, useVehicleModels } from '../../api/config.js';
 import { useUIStore } from '../../stores/ui-store.js';
 import { useAuthStore } from '../../stores/auth-store.js';
@@ -91,6 +93,10 @@ function fleetAlertTone(vehicle: VehicleSummary) {
   return null;
 }
 
+function formatReleaseTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' });
+}
+
 export default function FleetPage() {
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const defaultStoreId = useUIStore((s) => s.selectedStoreId) ?? '';
@@ -109,6 +115,24 @@ export default function FleetPage() {
   const { data: stores = [] } = useStores();
   const { data: models = [] } = useVehicleModels();
   const syncFleet = useFleetSync();
+  const releaseHold = useReleaseCapacityHold();
+  const { toasts, pushToast } = useToast();
+  const [releasingVehicleId, setReleasingVehicleId] = useState<string | null>(null);
+
+  const handleReleaseHold = async (vehicle: VehicleSummary) => {
+    if (!window.confirm(
+      `Release the post-return hold on ${vehicle.name} now?\n\nOnly do this if the bike has already been physically returned and inspected — this makes it immediately bookable again.`,
+    )) return;
+    setReleasingVehicleId(vehicle.id);
+    try {
+      await releaseHold.mutateAsync(vehicle.id);
+      pushToast(`${vehicle.name} is now bookable again`, 'success');
+    } catch (err) {
+      pushToast(err instanceof ApiError ? err.message : 'Failed to release hold', 'error');
+    } finally {
+      setReleasingVehicleId(null);
+    }
+  };
 
   useEffect(() => {
     syncFleet.mutate();
@@ -166,6 +190,21 @@ export default function FleetPage() {
           <div className="flex flex-col items-start gap-1">
             <Badge color={ownerUse?.active ? 'yellow' : statusColor(r.status)}>{ownerUse?.active ? 'Owner Use' : r.status}</Badge>
             {ownerUse && <span className="text-[10px] text-amber-700">{ownerUse.active ? '' : 'Scheduled · '}{ownerUseDates(ownerUse.period)}</span>}
+            {r.pendingReleaseAt && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-gray-500">Releases at {formatReleaseTime(r.pendingReleaseAt)}</span>
+                {hasPermission('can_edit_fleet') && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); void handleReleaseHold(r); }}
+                    disabled={releasingVehicleId === r.id}
+                    className="text-[10px] font-medium text-blue-600 hover:underline disabled:opacity-50"
+                  >
+                    {releasingVehicleId === r.id ? 'Releasing…' : 'Release now'}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         );
       },
@@ -421,6 +460,21 @@ export default function FleetPage() {
                       {ownerUseLabel(v)?.active ? '' : 'Owner Use scheduled · '}{ownerUseDates(ownerUseLabel(v)!.period)}
                     </span>
                   )}
+                  {v.pendingReleaseAt && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-gray-500">Releases at {formatReleaseTime(v.pendingReleaseAt)}</span>
+                      {hasPermission('can_edit_fleet') && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); void handleReleaseHold(v); }}
+                          disabled={releasingVehicleId === v.id}
+                          className="text-[10px] font-medium text-blue-600 hover:underline disabled:opacity-50"
+                        >
+                          {releasingVehicleId === v.id ? 'Releasing…' : 'Release now'}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
               <dl className="mt-2 grid grid-cols-2 gap-1 text-xs text-gray-600">
@@ -520,6 +574,19 @@ export default function FleetPage() {
           storeId={storeIdForApi}
         />
       )}
+
+      <div className="fixed bottom-8 right-8 z-[60] flex flex-col-reverse items-end gap-2">
+        {toasts.map((t) => (
+          <div
+            key={t.id}
+            className={`animate-toast-slide-up font-lato rounded-2xl px-5 py-3 text-sm font-bold shadow-lg ${
+              t.type === 'success' ? 'bg-teal-brand text-white' : 'bg-red-600 text-white'
+            }`}
+          >
+            {t.msg}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

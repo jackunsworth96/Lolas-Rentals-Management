@@ -49,6 +49,9 @@ export interface VehicleSummary {
     endsAt: string | null;
     note: string | null;
   }>;
+  /** Set when this vehicle's return was processed but its 30-min post-return
+   * capacity buffer hasn't elapsed yet (see release_capacity_hold_now). */
+  pendingReleaseAt?: string | null;
 }
 
 export interface EnrichedOrder {

@@ -162,6 +162,25 @@ router.get('/', requirePermission(Permission.ViewFleet), validateQuery(z.object(
         list.push(unavailabilityToDto(row));
         byVehicle.set(row.vehicle_id, list);
       }
+
+      // Post-return capacity holds (see release_capacity_hold_now): a vehicle whose
+      // return was already processed (actual_end set) but whose 30-minute handover
+      // buffer hasn't elapsed yet. Surfaced so back-office staff can see it and, if
+      // the bike's already been inspected, release it early instead of waiting.
+      const { data: pendingHolds, error: holdsError } = await getSupabaseClient()
+        .from('capacity_reservations')
+        .select('vehicle_id, released_at')
+        .in('vehicle_id', vehicleIds)
+        .not('vehicle_id', 'is', null)
+        .not('actual_end', 'is', null)
+        .gt('released_at', nowIso);
+      if (holdsError) throw new Error(`Fleet pending-hold query failed: ${holdsError.message}`);
+      const pendingReleaseByVehicle = new Map<string, string>();
+      for (const row of (pendingHolds ?? []) as Array<{ vehicle_id: string; released_at: string }>) {
+        const existing = pendingReleaseByVehicle.get(row.vehicle_id);
+        if (!existing || row.released_at < existing) pendingReleaseByVehicle.set(row.vehicle_id, row.released_at);
+      }
+
       for (const dto of dtos) {
         const ownerUsePeriods = byVehicle.get(dto.id) ?? [];
         const now = Date.now();
@@ -172,6 +191,7 @@ router.get('/', requirePermission(Permission.ViewFleet), validateQuery(z.object(
             const end = period.endsAt == null ? Number.POSITIVE_INFINITY : new Date(period.endsAt).getTime();
             return start <= now && end > now;
           }) ?? null,
+          pendingReleaseAt: pendingReleaseByVehicle.get(dto.id) ?? null,
         });
       }
     }
@@ -691,16 +711,72 @@ router.get(
       // pending web reservations/model-wide demand elsewhere in the window and arbitrary row order.
       // See docs/AVAILABILITY_INVENTORY_BUG_FIX.md (Bug #2) for the investigation.
       const bookableVehicles = ((fleetRows ?? []) as FleetRow[]).filter((v) => !blocked.has(v.id));
+
+      // A vehicle whose return was just processed (actual_end set) can pass the
+      // checks above — a completed order drops out of the active-booking
+      // conflict check entirely — while still sitting inside its 30-minute
+      // post-return capacity buffer (see release_capacity_hold_now). Surface
+      // that here so staff see the hold up front, before they hit
+      // ALLOCATION_CONFLICT at submit time.
+      const bookableIds = bookableVehicles.map((v) => v.id);
+      const pendingReleaseByVehicle = new Map<string, string>();
+      if (bookableIds.length > 0) {
+        const { data: pendingHolds, error: holdsError } = await sb
+          .from('capacity_reservations')
+          .select('vehicle_id, released_at')
+          .in('vehicle_id', bookableIds)
+          .not('actual_end', 'is', null)
+          .gt('released_at', new Date().toISOString());
+        if (holdsError) throw new Error(`Pending-hold query failed: ${holdsError.message}`);
+        for (const row of (pendingHolds ?? []) as Array<{ vehicle_id: string; released_at: string }>) {
+          const existing = pendingReleaseByVehicle.get(row.vehicle_id);
+          if (!existing || row.released_at < existing) pendingReleaseByVehicle.set(row.vehicle_id, row.released_at);
+        }
+      }
+
       res.json({
         success: true,
         data: bookableVehicles.map((v) => ({
           id: v.id, name: v.name, modelId: v.model_id, status: v.status,
           storeId: v.store_id, surfRack: v.surf_rack ?? false,
+          pendingReleaseAt: pendingReleaseByVehicle.get(v.id) ?? null,
         })),
       });
     } catch (err) { next(err); }
   },
 );
+
+router.post('/:id/release-hold', requirePermission(Permission.EditFleet), async (req, res, next) => {
+  try {
+    const vehicleId = req.params.id as string;
+    const vehicle = await req.app.locals.deps.fleetRepo.findById(vehicleId);
+    if (!vehicle) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Vehicle not found' } });
+      return;
+    }
+    assertStoreAccess(req, vehicle.storeId);
+    const sb = getSupabaseClient();
+    const { data, error } = await sb.rpc('release_capacity_hold_now', {
+      p_vehicle_id: vehicleId,
+      p_store_id: vehicle.storeId,
+      p_actor: req.user!.employeeId,
+    });
+    if (error) {
+      if (error.message.includes('NO_PENDING_HOLD')) {
+        res.status(409).json({
+          success: false,
+          error: {
+            code: 'NO_PENDING_HOLD',
+            message: 'This vehicle has no pending post-return hold to release.',
+          },
+        });
+        return;
+      }
+      throw new Error(`Release hold failed: ${error.message}`);
+    }
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
 
 router.get('/:id/mileage-events', requirePermission(Permission.ViewFleet), async (req, res, next) => {
   try {

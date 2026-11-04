@@ -4,11 +4,13 @@ import { isValidWhatsAppE164, whatsAppLinkDigits } from '@lolas/shared';
 import { Modal } from '../common/Modal.js';
 import { WhatsAppNumberInput } from '../common/WhatsAppNumberInput.js';
 import { normalizeApiBase } from '../../api/normalize-api-base.js';
-import { useCreateWalkInDirect } from '../../api/orders-raw.js';
+import { useCreateWalkInDirect, type WalkInDirectPayload } from '../../api/orders-raw.js';
 import { useLocations, useAddons } from '../../api/config.js';
-import { useAvailableVehicles } from '../../api/fleet.js';
+import { useAvailableVehicles, useReleaseCapacityHold } from '../../api/fleet.js';
 import { InactiveModelNotice } from '../fleet/InactiveModelNotice.js';
 import { useUIStore } from '../../stores/ui-store.js';
+import { useAuthStore } from '../../stores/auth-store.js';
+import { ApiError } from '../../api/client.js';
 import surfRackIcon from '../../assets/Home/Surf Rack Icon.svg';
 import { useSurfRackAvailability } from '../../api/surf-racks.js';
 import { isSurfRackAddon } from '../basket/AddOnsSection.js';
@@ -84,6 +86,10 @@ function formatCurrency(amount: number): string {
   return `₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
+function formatReleaseTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' });
+}
+
 const INPUT_CLS =
   'mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-lato focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500';
 const SELECT_CLS =
@@ -94,6 +100,9 @@ const LABEL_CLS = 'font-lato text-sm font-medium text-gray-700';
 
 export function WalkInBookingModal({ open, onClose }: Props) {
   const createWalkInDirect = useCreateWalkInDirect();
+  const releaseHold = useReleaseCapacityHold();
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const [releasingHold, setReleasingHold] = useState(false);
   const storeId = useUIStore((s) => s.selectedStoreId) ?? '';
 
   // ── Form state ──
@@ -329,46 +338,80 @@ export function WalkInBookingModal({ open, onClose }: Props) {
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Submit ──
+  function buildPayload(): WalkInDirectPayload | null {
+    const selectedVehicle = (availableVehicles ?? []).find((v) => v.id === selectedVehicleId);
+    if (!selectedVehicle || vehiclesLoading || vehiclesError) return null;
+    return {
+      partnerRef: partnerRef || undefined,
+      customerName: customerName.trim(),
+      customerMobile: customerMobile.trim(),
+      customerEmail: customerEmail.trim() || undefined,
+      nationality: nationality.trim() || undefined,
+      storeId,
+      vehicleId: selectedVehicleId,
+      vehicleModelId,
+      vehicleName: selectedVehicle?.name ?? vehicleModelId,
+      pickupDatetime,
+      dropoffDatetime,
+      pickupLocationId: pickupLocationId ? Number(pickupLocationId) : undefined,
+      dropoffLocationId: dropoffLocationId ? Number(dropoffLocationId) : undefined,
+      addonIds: Object.entries(selectedAddonIds)
+        .filter(([, qty]) => qty > 0)
+        .map(([id]) => Number(id)),
+      helmetNumbers: helmetNumbers.trim() || undefined,
+      staffNotes: staffNotes.trim() || undefined,
+      paymentMethod: paymentMethod as 'cash' | 'gcash' | 'card' | 'bank_transfer',
+      depositCollected: depositPaid,
+      depositAmount: depositPaid ? depositAmount : 0,
+      depositMethod: depositMethod as 'cash' | 'gcash' | 'card' | 'bank_transfer',
+      grandTotal: grandTotalLocal,
+      rentalDays: quote?.rentalDays ?? localRentalDays,
+      dailyRate: quote?.dailyRate ?? 0,
+      pickupFee: pickupFeeLocal,
+      dropoffFee: dropoffFeeLocal,
+    };
+  }
+
+  function submitBooking() {
+    const payload = buildPayload();
+    if (!payload) return;
+    createWalkInDirect.mutate(payload, {
+      onSuccess: (data) => {
+        setCreatedRef(data.orderReference ?? data.orderId);
+      },
+    });
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const selectedVehicle = (availableVehicles ?? []).find((v) => v.id === selectedVehicleId);
-    if (!selectedVehicle || vehiclesLoading || vehiclesError) return;
-    createWalkInDirect.mutate(
-      {
-        partnerRef: partnerRef || undefined,
-        customerName: customerName.trim(),
-        customerMobile: customerMobile.trim(),
-        customerEmail: customerEmail.trim() || undefined,
-        nationality: nationality.trim() || undefined,
-        storeId,
-        vehicleId: selectedVehicleId,
-        vehicleModelId,
-        vehicleName: selectedVehicle?.name ?? vehicleModelId,
-        pickupDatetime,
-        dropoffDatetime,
-        pickupLocationId: pickupLocationId ? Number(pickupLocationId) : undefined,
-        dropoffLocationId: dropoffLocationId ? Number(dropoffLocationId) : undefined,
-        addonIds: Object.entries(selectedAddonIds)
-          .filter(([, qty]) => qty > 0)
-          .map(([id]) => Number(id)),
-        helmetNumbers: helmetNumbers.trim() || undefined,
-        staffNotes: staffNotes.trim() || undefined,
-        paymentMethod: paymentMethod as 'cash' | 'gcash' | 'card' | 'bank_transfer',
-        depositCollected: depositPaid,
-        depositAmount: depositPaid ? depositAmount : 0,
-        depositMethod: depositMethod as 'cash' | 'gcash' | 'card' | 'bank_transfer',
-        grandTotal: grandTotalLocal,
-        rentalDays: quote?.rentalDays ?? localRentalDays,
-        dailyRate: quote?.dailyRate ?? 0,
-        pickupFee: pickupFeeLocal,
-        dropoffFee: dropoffFeeLocal,
-      },
-      {
-        onSuccess: (data) => {
-          setCreatedRef(data.orderReference ?? data.orderId);
-        },
-      },
-    );
+    submitBooking();
+  }
+
+  // Conflict error is for the vehicle the staff just tried to hand over, but it
+  // was returned (and completed) moments ago and is still inside its 30-minute
+  // post-return capacity buffer — see release_capacity_hold_now. Offer a
+  // one-click override for Manager/Admin instead of making them wait it out.
+  const conflictError = createWalkInDirect.error instanceof ApiError && createWalkInDirect.error.code === 'ALLOCATION_CONFLICT'
+    ? createWalkInDirect.error
+    : null;
+  const selectedVehicleForConflict = (availableVehicles ?? []).find((v) => v.id === selectedVehicleId);
+  const canReleaseHold = !!conflictError
+    && !!selectedVehicleForConflict?.pendingReleaseAt
+    && hasPermission('can_edit_fleet');
+
+  async function handleReleaseHoldAndRetry() {
+    if (!selectedVehicleId) return;
+    setReleasingHold(true);
+    try {
+      await releaseHold.mutateAsync(selectedVehicleId);
+    } catch {
+      // Most likely the buffer already cleared on its own between the failed
+      // submit and this click (NO_PENDING_HOLD) — retry anyway so the booking
+      // either succeeds now or surfaces whatever the current real blocker is.
+    } finally {
+      setReleasingHold(false);
+    }
+    submitBooking();
   }
 
   const isValid =
@@ -650,8 +693,15 @@ export function WalkInBookingModal({ open, onClose }: Props) {
                                 setQuote(null);
                               }}
                             />
-                            <span className={`flex-1 font-lato text-sm ${selectedVehicleId === v.id ? 'font-semibold text-teal-800' : 'text-gray-800'}`}>
-                              {v.name}
+                            <span className="min-w-0 flex-1">
+                              <span className={`block font-lato text-sm ${selectedVehicleId === v.id ? 'font-semibold text-teal-800' : 'text-gray-800'}`}>
+                                {v.name}
+                              </span>
+                              {v.pendingReleaseAt && (
+                                <span className="block font-lato text-[10px] text-amber-600">
+                                  Just returned — still in handover hold until {formatReleaseTime(v.pendingReleaseAt)}
+                                </span>
+                              )}
                             </span>
                             {v.surfRack && (
                               <img src={surfRackIcon} className="h-5 w-5 shrink-0" alt="Surf rack" title="Has surf rack" />
@@ -980,9 +1030,36 @@ export function WalkInBookingModal({ open, onClose }: Props) {
           </section>
 
           {createWalkInDirect.error && (
-            <p className="rounded-lg bg-red-50 px-3 py-2 font-lato text-sm text-red-600">
-              {(createWalkInDirect.error as Error).message}
-            </p>
+            <div className="space-y-2 rounded-lg bg-red-50 px-3 py-2">
+              <p className="font-lato text-sm text-red-600">
+                {(createWalkInDirect.error as Error).message}
+              </p>
+              {conflictError && selectedVehicleForConflict?.pendingReleaseAt && (
+                canReleaseHold ? (
+                  <div className="flex items-center justify-between gap-3 border-t border-red-200 pt-2">
+                    <p className="font-lato text-xs text-red-700">
+                      {selectedVehicleForConflict.name} was just returned and is in a 30-min handover hold
+                      until {formatReleaseTime(selectedVehicleForConflict.pendingReleaseAt)}. Only release it
+                      early if the bike has already been inspected.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleReleaseHoldAndRetry}
+                      disabled={releasingHold}
+                      className="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-1.5 font-lato text-xs font-semibold text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {releasingHold ? 'Releasing…' : 'Release hold & retry'}
+                    </button>
+                  </div>
+                ) : (
+                  <p className="border-t border-red-200 pt-2 font-lato text-xs text-red-700">
+                    {selectedVehicleForConflict.name} was just returned and is in a 30-min handover hold until{' '}
+                    {formatReleaseTime(selectedVehicleForConflict.pendingReleaseAt)}. Ask a Manager or Admin to
+                    release it early, or wait until then and try again.
+                  </p>
+                )
+              )}
+            </div>
           )}
 
           {/* ── Footer ── */}

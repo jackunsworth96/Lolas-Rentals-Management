@@ -67,6 +67,18 @@ export function useFleetSync() {
   });
 }
 
+export function useReleaseCapacityHold() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vehicleId: string) =>
+      api.post<{ vehicleId: string; previousReleasedAt: string; releasedAt: string }>(
+        `/fleet/${vehicleId}/release-hold`,
+        {},
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['fleet'] }),
+  });
+}
+
 export function useFleetUnavailability(storeId: string, vehicleId?: string) {
   const search = new URLSearchParams({ storeId });
   if (vehicleId) search.set('vehicleId', vehicleId);
@@ -228,6 +240,11 @@ export interface AvailableVehicle {
   storeId: string;
   status: string;
   surfRack: boolean;
+  /** Set when this vehicle's return was processed but its 30-min post-return
+   * capacity buffer hasn't elapsed yet (see release_capacity_hold_now). It will
+   * still pass this availability check but reject at booking submission with
+   * ALLOCATION_CONFLICT until the buffer clears or a manager releases it early. */
+  pendingReleaseAt?: string | null;
 }
 
 export function availableVehiclesQuery(
