@@ -137,6 +137,17 @@ export function useCreateWalkIn() {
   });
 }
 
+export function useUpdateRawOrderMobile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, customerMobile }: { id: string; customerMobile: string }) =>
+      api.patch<RawOrder>(`/orders-raw/${id}/mobile`, { customerMobile }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['orders-raw'] });
+    },
+  });
+}
+
 export interface CancelRawOrderPayload {
   id: string;
   reason?: string;

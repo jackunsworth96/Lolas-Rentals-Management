@@ -134,9 +134,22 @@ export interface SubmittedBooking {
   charityDonation: number;
 }
 
+export interface CheckAvailabilityOptions {
+  /** When true, include models that are active but hidden from the public
+   * customer-facing site (`vehicle_models.show_on_customer_website = false`).
+   * Site visibility only governs whether *new* bookings can be made for a
+   * model — it must never block availability checks for a booking that
+   * already exists on that model (e.g. extending an active rental), since
+   * the vehicle is already committed to that customer regardless of whether
+   * it's publicly listed. Staff-only and extension-flow callers should pass
+   * `true`; new-booking flows should omit this so hidden models stay out of
+   * public availability counts. */
+  includeHiddenFromWebsite?: boolean;
+}
+
 export interface BookingPort {
   findSubmittedBooking?(holdId: string, sessionToken: string): Promise<SubmittedBooking | null>;
-  checkAvailability(query: AvailabilityQuery): Promise<AvailableModel[]>;
+  checkAvailability(query: AvailabilityQuery, options?: CheckAvailabilityOptions): Promise<AvailableModel[]>;
   insertHold(input: InsertHoldInput): Promise<HoldRow>;
   deleteHold(holdId: string, sessionToken: string): Promise<boolean>;
   deleteHoldBySessionAndModel(sessionToken: string, vehicleModelId: string, holdId?: string): Promise<void>;

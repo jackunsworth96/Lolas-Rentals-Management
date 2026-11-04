@@ -1104,7 +1104,7 @@ describe('Respond.io availability alternatives', () => {
     expect(JSON.stringify(res.body).length).toBeLessThan(4000);
     expect(app.locals.deps.bookingPort.checkAvailability).toHaveBeenCalledWith(expect.objectContaining({
       requestedQuantity: 1,
-    }));
+    }), expect.anything());
   });
 });
 

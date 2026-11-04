@@ -5,6 +5,7 @@ import { logger } from '../lib/logger.js';
 import { publicWebOriginFromEnv } from '../lib/public-web-url.js';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
+import { validateBody } from '../middleware/validate.js';
 import {
   NullableWhatsAppNumberSchema,
   Permission,
@@ -1149,6 +1150,72 @@ router.post('/:id/collect-payment', requirePermission(Permission.EditOrders), as
     next(err);
   }
 });
+
+const updateMobileBodySchema = z.object({
+  customerMobile: WhatsAppNumberSchema,
+});
+
+router.patch(
+  '/:id/mobile',
+  requirePermission(Permission.EditOrders),
+  validateBody(updateMobileBodySchema),
+  async (req, res, next) => {
+    try {
+      const id = req.params.id as string;
+      const { customerMobile } = req.body as z.infer<typeof updateMobileBodySchema>;
+
+      const { data: existing, error: findErr } = await supabase
+        .from('orders_raw')
+        .select('id, status, store_id, order_reference, customer_mobile')
+        .eq('id', id)
+        .maybeSingle();
+      if (findErr) throw new Error(findErr.message);
+      if (!existing) {
+        res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Raw order not found' } });
+        return;
+      }
+      if (existing.store_id && !req.user!.storeIds.includes(existing.store_id as string)) {
+        res.status(403).json({ success: false, error: { message: 'Store access required' } });
+        return;
+      }
+      if (existing.status !== 'unprocessed') {
+        res.status(409).json({
+          success: false,
+          error: {
+            code: 'ALREADY_PROCESSED',
+            message: 'This booking has been processed — edit the number from the order or customer screen.',
+          },
+        });
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('orders_raw')
+        .update({ customer_mobile: customerMobile, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select(ORDERS_RAW_INBOX_COLUMNS)
+        .single();
+      if (error) throw new Error(error.message);
+
+      const oldMobile = existing.customer_mobile as string | null;
+      if (oldMobile && oldMobile !== customerMobile && existing.order_reference) {
+        const { error: resolveErr } = await supabase
+          .from('whatsapp_send_failures')
+          .update({ resolved_at: new Date().toISOString() })
+          .eq('booking_reference', existing.order_reference as string)
+          .eq('raw_phone', oldMobile)
+          .is('resolved_at', null);
+        if (resolveErr) {
+          logger.warn({ error: resolveErr.message, id }, '[orders-raw] Could not resolve WhatsApp send failures');
+        }
+      }
+
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 const cancelBodySchema = z.object({
   reason: z.string().trim().max(500).optional(),

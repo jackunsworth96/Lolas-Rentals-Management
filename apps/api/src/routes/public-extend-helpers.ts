@@ -144,7 +144,15 @@ export async function resolveExtensionForRaw(args: ExtensionInputs): Promise<Ext
 
   const avail = await checkAvailability(
     { bookingPort: deps.bookingPort as never },
-    { storeId: row.store_id as string, pickupDatetime: row.dropoff_datetime as string, dropoffDatetime: newDropoffDatetime },
+    {
+      storeId: row.store_id as string,
+      pickupDatetime: row.dropoff_datetime as string,
+      dropoffDatetime: newDropoffDatetime,
+      // Extending an existing booking must not be blocked by public site
+      // visibility — the vehicle is already committed to this customer
+      // regardless of whether its model is hidden from the website (e.g. Bogart).
+      includeHiddenFromWebsite: true,
+    },
   );
   const model = avail.find((m) => m.modelId === (row.vehicle_model_id as string));
   if (!model || model.availableCount === 0) {
@@ -338,6 +346,10 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
           pickupDatetime: item.dropoff_datetime as string,
           dropoffDatetime: newDropoffDatetime,
           excludeOrderItemId: item.id as string,
+          // Extending an existing booking must not be blocked by public site
+          // visibility — the vehicle is already committed to this customer
+          // regardless of whether its model is hidden from the website (e.g. Bogart).
+          includeHiddenFromWebsite: true,
         },
       );
       const m = avail.find((a) => a.modelId === modelId);

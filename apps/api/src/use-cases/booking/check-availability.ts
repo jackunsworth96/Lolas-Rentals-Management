@@ -10,6 +10,12 @@ export interface CheckAvailabilityInput {
   /** When set, active booking holds belonging to this session are excluded from the
    * count so the caller's own (soon to be released) hold doesn't block the new window. */
   excludeSessionToken?: string;
+  /** When true, include models that are active but hidden from the public customer
+   * site (`show_on_customer_website = false`). Extension flows for an existing
+   * booking must always pass this — the vehicle is already committed to that
+   * customer regardless of public site visibility — while new-booking flows should
+   * omit it so hidden models stay out of public availability counts. */
+  includeHiddenFromWebsite?: boolean;
 }
 
 export interface CheckAvailabilityDeps {
@@ -31,13 +37,16 @@ export async function checkAvailability(
     throw new Error('Dropoff datetime must be after pickup datetime');
   }
 
-  return deps.bookingPort.checkAvailability({
-    partnerRef: input.partnerRef,
-    storeId: input.storeId,
-    pickupDatetime: input.pickupDatetime,
-    dropoffDatetime: input.dropoffDatetime,
-    requestedQuantity: input.requestedQuantity,
-    excludeOrderItemId: input.excludeOrderItemId,
-    excludeSessionToken: input.excludeSessionToken,
-  });
+  return deps.bookingPort.checkAvailability(
+    {
+      partnerRef: input.partnerRef,
+      storeId: input.storeId,
+      pickupDatetime: input.pickupDatetime,
+      dropoffDatetime: input.dropoffDatetime,
+      requestedQuantity: input.requestedQuantity,
+      excludeOrderItemId: input.excludeOrderItemId,
+      excludeSessionToken: input.excludeSessionToken,
+    },
+    { includeHiddenFromWebsite: input.includeHiddenFromWebsite },
+  );
 }

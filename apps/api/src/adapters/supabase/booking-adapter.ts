@@ -2,6 +2,7 @@ import type {
   BookingPort,
   AvailabilityQuery,
   AvailableModel,
+  CheckAvailabilityOptions,
   InsertHoldInput,
   HoldRow,
   DirectBookingInsert,
@@ -556,9 +557,9 @@ export function createBookingAdapter(pendingRows?: Record<string, unknown>[]): B
       return data ? { id: data.id, orderReference: data.order_reference, cancellationToken: data.cancellation_token,
         serverQuote: data.web_quote_raw, charityDonation: data.charity_donation ?? 0 } : null;
     },
-    async checkAvailability(query: AvailabilityQuery): Promise<AvailableModel[]> {
+    async checkAvailability(query: AvailabilityQuery, options?: CheckAvailabilityOptions): Promise<AvailableModel[]> {
       const checkOnce = async (q: AvailabilityQuery): Promise<AvailableModel[]> => {
-        const physical = (await evaluateAvailability(q, sb)).models;
+        const physical = (await evaluateAvailability(q, sb, { includeHiddenFromWebsite: options?.includeHiddenFromWebsite })).models;
         const { data, error } = await sb.rpc('allocation_availability', {
           p_store: q.storeId, p_start: q.pickupDatetime, p_end: q.dropoffDatetime,
           p_ref: q.partnerRef ?? null, p_exclude_session: q.excludeSessionToken ?? null,

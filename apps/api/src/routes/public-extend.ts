@@ -512,6 +512,10 @@ router.get('/preview', extendLookupLimiter, async (req, res, next) => {
               pickupDatetime: item.dropoff_datetime as string,
               dropoffDatetime: newDropoffDatetime,
               excludeOrderItemId: item.id as string,
+              // Extending an existing booking must not be blocked by public site
+              // visibility — the vehicle is already committed to this customer
+              // regardless of whether its model is hidden from the website (e.g. Bogart).
+              includeHiddenFromWebsite: true,
             },
           );
           const m = avail.find((a) => a.modelId === modelId);

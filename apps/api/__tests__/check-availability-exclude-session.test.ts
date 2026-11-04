@@ -31,6 +31,7 @@ describe('checkAvailability use-case', () => {
 
     expect(bookingPort.checkAvailability).toHaveBeenCalledWith(
       expect.objectContaining({ excludeSessionToken: 'session-abc' }),
+      expect.anything(),
     );
   });
 
@@ -48,6 +49,7 @@ describe('checkAvailability use-case', () => {
 
     expect(bookingPort.checkAvailability).toHaveBeenCalledWith(
       expect.objectContaining({ excludeSessionToken: undefined }),
+      expect.anything(),
     );
   });
 });

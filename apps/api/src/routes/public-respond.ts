@@ -819,6 +819,10 @@ async function previewRespondExtension(
         pickupDatetime: target.currentDropoffDatetime,
         dropoffDatetime: newDropoffDatetime,
         excludeOrderItemId: target.orderItemId ?? undefined,
+        // Extending an existing booking must not be blocked by public site
+        // visibility — the vehicle is already committed to this customer
+        // regardless of whether its model is hidden from the website (e.g. Bogart).
+        includeHiddenFromWebsite: true,
       },
     );
     const modelAvailability = availability.find((entry) => entry.modelId === target.vehicleModelId);

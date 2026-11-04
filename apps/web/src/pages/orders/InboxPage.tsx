@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { useOrdersRaw, type RawOrder } from '../../api/orders-raw.js';
+import { AlertTriangle } from 'lucide-react';
+import { useOrdersRaw, useUpdateRawOrderMobile, type RawOrder } from '../../api/orders-raw.js';
 import { useStores } from '../../api/config.js';
 import { Table } from '../../components/common/Table.js';
 import { Badge } from '../../components/common/Badge.js';
@@ -10,9 +11,10 @@ import { ReserveForLaterModal } from '../../components/orders/ReserveForLaterMod
 import { formatDateTime, formatPickupDatetimeManila } from '../../utils/date.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { extractPickupDate } from '../../utils/raw-order-payload.js';
-import { resolveSourceFromStore } from '@lolas/shared';
+import { isValidWhatsAppE164, resolveSourceFromStore } from '@lolas/shared';
 import { useAuthStore } from '../../stores/auth-store.js';
 import { TransportBadge } from '../../components/orders/TransportBadge.js';
+import { WhatsAppNumberEditor } from '../../components/common/WhatsAppNumberEditor.js';
 
 type DateFilter = 'all' | 'today' | 'tomorrow';
 type PickupSort = 'none' | 'asc' | 'desc';
@@ -75,6 +77,11 @@ function isWalkIn(r: RawOrder): boolean {
   return r.booking_channel === 'walk_in';
 }
 
+/** Unprocessed bookings whose number the pickup reminder (and later automations) can't message. */
+function needsWhatsAppFix(r: RawOrder): boolean {
+  return (isDirect(r) || isWalkIn(r)) && r.status === 'unprocessed' && !isValidWhatsAppE164(r.customer_mobile);
+}
+
 export default function InboxPage() {
   const [storeFilter, setStoreFilter] = useState<string>('');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
@@ -111,6 +118,8 @@ export default function InboxPage() {
   }, [apiStore, searchQuery]);
 
   const [pickupSort, setPickupSort] = useState<PickupSort>('none');
+  const [needsFixOnly, setNeedsFixOnly] = useState(false);
+  const updateMobile = useUpdateRawOrderMobile();
   const [selectedOrder, setSelectedOrder] = useState<RawOrder | null>(null);
   const [cancelOrder, setCancelOrder] = useState<RawOrder | null>(null);
   const [walkInOpen, setWalkInOpen] = useState(false);
@@ -139,6 +148,8 @@ export default function InboxPage() {
       });
     }
 
+    if (needsFixOnly) list = list.filter(needsWhatsAppFix);
+
     if (pickupSort !== 'none') {
       list = [...list].sort((a, b) => {
         const getPickup = (o: RawOrder): string => {
@@ -155,12 +166,42 @@ export default function InboxPage() {
     }
 
     return list;
-  }, [allOrders, dateFilter, todayStr, tomorrowStr, pickupSort]);
+  }, [allOrders, dateFilter, todayStr, tomorrowStr, pickupSort, needsFixOnly]);
+
+  const needsFixCount = useMemo(() => allOrders.filter(needsWhatsAppFix).length, [allOrders]);
+
+  useEffect(() => {
+    if (needsFixOnly && needsFixCount === 0) setNeedsFixOnly(false);
+  }, [needsFixOnly, needsFixCount]);
 
   if (isLoading && allOrders.length === 0) return <div className="py-12 text-center text-gray-500">Loading orders...</div>;
   if (error) return <div className="py-12 text-center text-red-500">Failed to load orders</div>;
 
   const totalCount = response?.total ?? allOrders.length;
+
+  function renderWhatsApp(r: RawOrder) {
+    if (!isDirect(r) && !isWalkIn(r)) return null;
+    const editable = canEditOrders && r.status === 'unprocessed';
+    return (
+      // Rows open the booking modal on click; the number controls must not.
+      <span onClick={(e) => e.stopPropagation()} className="block">
+        <WhatsAppNumberEditor
+          value={r.customer_mobile}
+          flagMissing={r.status === 'unprocessed'}
+          compact
+          editorMode="modal"
+          editorTitle={`WhatsApp number — ${r.customer_name ?? r.order_reference ?? 'booking'}`}
+          helperText="Pickup and return reminders are sent to this number."
+          onSave={editable
+            ? async (next) => {
+                await updateMobile.mutateAsync({ id: r.id, customerMobile: next });
+                setAllOrders((prev) => prev.map((o) => (o.id === r.id ? { ...o, customer_mobile: next } : o)));
+              }
+            : undefined}
+        />
+      </span>
+    );
+  }
 
   const columns = [
     {
@@ -195,14 +236,18 @@ export default function InboxPage() {
     {
       key: 'customer',
       header: 'Customer',
+      cellClassName: 'whitespace-normal min-w-[15rem]',
       render: (r: RawOrder) => (
-        <div>
+        <div className="space-y-0.5">
           <div className="font-medium text-gray-900">
             {(isDirect(r) || isWalkIn(r)) ? (r.customer_name ?? '—') : extractCustomerName(r.payload ?? {})}
           </div>
-          <div className="text-sm text-gray-500">
-            {(isDirect(r) || isWalkIn(r)) ? (r.customer_email ?? r.customer_mobile ?? '—') : extractEmail(r.payload ?? {})}
-          </div>
+          {(isDirect(r) || isWalkIn(r)) ? (
+            r.customer_email && <div className="text-sm text-gray-500 break-all">{r.customer_email}</div>
+          ) : (
+            <div className="text-sm text-gray-500">{extractEmail(r.payload ?? {})}</div>
+          )}
+          {renderWhatsApp(r)}
         </div>
       ),
     },
@@ -315,6 +360,32 @@ export default function InboxPage() {
         </div>
       </div>
 
+      {needsFixCount > 0 && (
+        <div className="mb-4 flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+          <p className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            <span>
+              <span className="font-semibold">
+                {needsFixCount === 1 ? '1 booking has' : `${needsFixCount} bookings have`} a missing or invalid WhatsApp number.
+              </span>{' '}
+              Pickup and return reminders won&apos;t reach {needsFixCount === 1 ? 'this customer' : 'these customers'} until it&apos;s fixed.
+            </span>
+          </p>
+          <button
+            type="button"
+            aria-pressed={needsFixOnly}
+            onClick={() => setNeedsFixOnly((v) => !v)}
+            className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+              needsFixOnly
+                ? 'border-amber-400 bg-amber-200 text-amber-900'
+                : 'border-amber-300 bg-white text-amber-800 hover:bg-amber-100'
+            }`}
+          >
+            {needsFixOnly ? 'Show all bookings' : 'Show only these'}
+          </button>
+        </div>
+      )}
+
       {/* Search bar */}
       <div className="mb-3">
         <div className="relative w-full sm:max-w-sm">
@@ -396,7 +467,7 @@ export default function InboxPage() {
           </select>
         </div>
 
-        {dateFilter !== 'all' && filteredOrders.length !== totalCount && (
+        {(dateFilter !== 'all' || needsFixOnly) && filteredOrders.length !== totalCount && (
           <span className="text-sm text-gray-500">
             Showing {filteredOrders.length} of {totalCount}
           </span>
@@ -416,7 +487,7 @@ export default function InboxPage() {
             ? (r.customer_name ?? '—')
             : extractCustomerName(r.payload ?? {});
           const contactInfo = (isDirect(r) || isWalkIn(r))
-            ? (r.customer_email ?? r.customer_mobile ?? '—')
+            ? r.customer_email
             : extractEmail(r.payload ?? {});
           const pickup = (isDirect(r) || isWalkIn(r))
             ? (r.pickup_datetime ? formatPickupDatetimeManila(r.pickup_datetime) : '—')
@@ -463,7 +534,7 @@ export default function InboxPage() {
 
                 <div className="mb-2">
                   <p className="text-sm font-medium text-gray-900">{customerName}</p>
-                  <p className="text-xs text-gray-500">{contactInfo}</p>
+                  {contactInfo && <p className="text-xs text-gray-500 break-all">{contactInfo}</p>}
                 </div>
 
                 <div className="flex items-center justify-between text-xs text-gray-500">
@@ -481,6 +552,10 @@ export default function InboxPage() {
                   Received: {r.created_at ? formatDateTime(r.created_at) : '—'}
                 </div>
               </button>
+
+              {(isDirect(r) || isWalkIn(r)) && (
+                <div className="px-4 pb-3">{renderWhatsApp(r)}</div>
+              )}
 
               {/* Cancel action — only if permitted */}
               {canEditOrders && (
