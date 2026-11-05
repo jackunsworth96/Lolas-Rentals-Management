@@ -26,7 +26,7 @@ import InclusionMarquee from '../../components/home/InclusionMarquee.js';
 import { ReviewsSection } from '../../components/home/ReviewsSection.js';
 import { RentalIncludedIconsGrid } from '../../components/public/RentalIncludedIconsGrid.js';
 import { CloudinaryImage } from '../../components/ui/CloudinaryImage.js';
-import { resolvePublicId } from '../../utils/vehicle-images.js';
+import { useVehiclePublicId } from '../../utils/vehicle-images.js';
 import { formatPhpNumber } from '../../utils/currency.js';
 import { BrandCard } from '../../components/public/BrandCard.js';
 import { LocationFeeMenu } from '../../components/booking/LocationFeeMenu.js';
@@ -227,7 +227,7 @@ function ModelPreviewCard({
   onSelect: () => void;
 }) {
   const displayName = VEHICLE_NAME_MAP[model.name] ?? model.name;
-  const publicId = resolvePublicId(model.name);
+  const publicId = useVehiclePublicId(model.name);
 
   return (
     <BrandCard glowColor="36 96 67">
@@ -920,7 +920,7 @@ export default function BrowseBookPage() {
   const selectedDisplayName = selectedModel
     ? (VEHICLE_NAME_MAP[selectedModel.name] ?? selectedModel.name)
     : '';
-  const selectedPublicId = selectedModel ? resolvePublicId(selectedModel.name) : null;
+  const selectedPublicId = useVehiclePublicId(selectedModel?.name);
 
   const selectedAvailModel = selectedModelId
     ? (availableModels?.find((m) => m.modelId === selectedModelId) ?? null)

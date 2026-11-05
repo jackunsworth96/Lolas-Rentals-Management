@@ -17,6 +17,7 @@ import {
 } from '../../api/dashboard.js';
 import { useLostOpportunities, type LostOpportunityRow } from '../../api/lost-opportunity.js';
 import { useStores } from '../../api/config.js';
+import { usePartnerProtection } from '../../api/fleet.js';
 import { AvailabilityDetailModal } from '../../components/dashboard/AvailabilityDetailModal.js';
 import { CharityDonationsModal } from '../../components/dashboard/CharityDonationsModal.js';
 import { AccommodationAliasModal } from '../../components/dashboard/AccommodationAliasModal.js';
@@ -135,6 +136,15 @@ export default function DashboardPage() {
 
   const storeIdForApi = selectedStoreId && selectedStoreId !== 'all' ? selectedStoreId : undefined;
   const { data, isLoading, error } = useDashboardSummary(storeIdForApi);
+  const { data: protection = [] } = usePartnerProtection(storeIdForApi ?? 'all', hasPermission('can_view_fleet'));
+  const protectedSummary = useMemo(() => {
+    const byPartner = new Map<string, number>();
+    for (const v of protection.flatMap((s) => s.protectedVehicles)) {
+      const name = v.partnerName ?? 'a partner';
+      byPartner.set(name, (byPartner.get(name) ?? 0) + 1);
+    }
+    return [...byPartner].map(([name, n]) => `${n} protected for ${name}`).join(' · ');
+  }, [protection]);
 
   const today = todayStr();
   const tomorrowManila = new Date();
@@ -308,7 +318,7 @@ export default function DashboardPage() {
                 <StatCard
                   label="Available Vehicles"
                   value={String(metrics.availableVehicles)}
-                  sub="tap to see details"
+                  sub={protectedSummary ? `incl. ${protectedSummary} · tap for details` : 'tap to see details'}
                 />
               </button>
               <button
@@ -322,7 +332,7 @@ export default function DashboardPage() {
                   sub="tap to see details"
                 />
               </button>
-              <StatCard label="Fleet Utilisation" value={`${metrics.fleetUtilisation}%`} />
+              <StatCard label="Fleet On Rent Now" value={`${metrics.fleetUtilisation}%`} />
               <DepositsWithheldCard
                 total={metrics.depositsWithheld}
                 cash={metrics.depositsWithheldByMethod?.cash ?? 0}

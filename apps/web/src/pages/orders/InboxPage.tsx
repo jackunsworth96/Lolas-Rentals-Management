@@ -13,6 +13,8 @@ import { formatCurrency } from '../../utils/currency.js';
 import { extractPickupDate } from '../../utils/raw-order-payload.js';
 import { isValidWhatsAppE164, resolveSourceFromStore } from '@lolas/shared';
 import { useAuthStore } from '../../stores/auth-store.js';
+import { useUIStore } from '../../stores/ui-store.js';
+import { AvailabilityFinderModal } from '../../components/fleet/AvailabilityFinderModal.js';
 import { TransportBadge } from '../../components/orders/TransportBadge.js';
 import { WhatsAppNumberEditor } from '../../components/common/WhatsAppNumberEditor.js';
 
@@ -126,6 +128,9 @@ export default function InboxPage() {
   const [reserveForLaterOpen, setReserveForLaterOpen] = useState(false);
 
   const canEditOrders = useAuthStore((s) => s.hasPermission('can_edit_orders'));
+  const canViewFleet = useAuthStore((s) => s.hasPermission('can_view_fleet'));
+  const selectedStoreId = useUIStore((s) => s.selectedStoreId) ?? '';
+  const [finderOpen, setFinderOpen] = useState(false);
 
   const todayStr = useMemo(() => toLocalDateStr(new Date()), []);
   const tomorrowStr = useMemo(() => {
@@ -338,6 +343,15 @@ export default function InboxPage() {
             <span className="inline-flex items-center rounded-full bg-yellow-100 px-3 py-1 text-sm font-medium text-yellow-800">
               {totalCount} unprocessed
             </span>
+          )}
+          {canViewFleet && selectedStoreId && (
+            <button
+              type="button"
+              onClick={() => setFinderOpen(true)}
+              className="rounded-lg border border-blue-300 px-4 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-50 whitespace-nowrap"
+            >
+              Find availability
+            </button>
           )}
           {canEditOrders && (
             <>
@@ -624,6 +638,10 @@ export default function InboxPage() {
         open={reserveForLaterOpen}
         onClose={() => setReserveForLaterOpen(false)}
       />
+
+      {finderOpen && selectedStoreId && (
+        <AvailabilityFinderModal open onClose={() => setFinderOpen(false)} storeId={selectedStoreId} />
+      )}
     </div>
   );
 }

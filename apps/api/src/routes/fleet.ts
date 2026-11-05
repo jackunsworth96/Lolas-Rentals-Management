@@ -308,24 +308,71 @@ router.delete('/unavailability/:unavailabilityId', requirePermission(Permission.
   } catch (err) { next(err); }
 });
 
-router.get('/availability-explanation', requirePermission(Permission.ViewFleet), validateQuery(z.object({
+const finderQuery = z.object({
   storeId: z.string().min(1),
-  pickupDatetime: z.string().datetime({ offset: true }),
-  dropoffDatetime: z.string().datetime({ offset: true }),
-}).refine((value) => new Date(value.pickupDatetime) < new Date(value.dropoffDatetime), {
-  message: 'Dropoff must be after pickup', path: ['dropoffDatetime'],
+  product: z.string().min(1).optional(),
+  quantity: z.coerce.number().int().min(1).max(20).default(1),
+  days: z.coerce.number().int().min(1).max(60).default(1),
+  from: z.string().datetime({ offset: true }).optional(),
+  partnerId: z.string().uuid().optional(),
+});
+
+router.get('/availability-finder', requirePermission(Permission.ViewFleet), validateQuery(finderQuery), async (req, res, next) => {
+  try {
+    const q = finderQuery.parse(req.query);
+    assertStoreAccess(req, q.storeId);
+    const { findAvailability } = await import('../use-cases/fleet/find-availability.js');
+    const fromMs = q.from ? Math.max(Date.parse(q.from), Date.now()) : Date.now();
+    const result = await findAvailability(getSupabaseClient(), {
+      storeId: q.storeId, fromMs, days: q.days, quantity: q.quantity,
+      product: q.product ?? null, partnerId: q.partnerId ?? null, includeRacks: true,
+    });
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+router.get('/partner-protection', requirePermission(Permission.ViewFleet), validateQuery(z.object({
+  storeId: z.string().min(1),
 })), async (req, res, next) => {
   try {
-    const { storeId, pickupDatetime, dropoffDatetime } = req.query as {
-      storeId: string; pickupDatetime: string; dropoffDatetime: string;
+    const storeId = String(req.query.storeId);
+    const sb = getSupabaseClient();
+    let storeIds = [storeId];
+    if (storeId === 'all') {
+      storeIds = req.user!.storeIds.filter((s) => s !== 'company');
+      if (req.user!.storeIds.includes('company')) {
+        const { data, error } = await sb.from('stores').select('id');
+        if (error) throw new Error(`Stores query failed: ${error.message}`);
+        storeIds = ((data ?? []) as Array<{ id: string }>).map((s) => s.id);
+      }
+    } else {
+      assertStoreAccess(req, storeId);
+    }
+    const { currentPartnerProtection } = await import('../use-cases/fleet/find-availability.js');
+    const results = await Promise.all(storeIds.map((id) => currentPartnerProtection(sb, id)));
+    res.json({ success: true, data: results });
+  } catch (err) { next(err); }
+});
+
+router.post('/partner-protection/release', requirePermission(Permission.EditFleet), validateBody(z.object({
+  storeId: z.string().min(1),
+  partnerId: z.string().uuid(),
+  vehicleType: z.enum(['bike', 'tuktuk']),
+  startsAt: z.string().datetime({ offset: true }),
+  endsAt: z.string().datetime({ offset: true }),
+  reason: z.string().trim().min(3).max(500),
+}).refine((b) => Date.parse(b.endsAt) > Date.parse(b.startsAt), { message: 'End must follow start', path: ['endsAt'] })), async (req, res, next) => {
+  try {
+    const { storeId, partnerId, vehicleType, startsAt, endsAt, reason } = req.body as {
+      storeId: string; partnerId: string; vehicleType: 'bike' | 'tuktuk'; startsAt: string; endsAt: string; reason: string;
     };
     assertStoreAccess(req, storeId);
-    // Staff-facing diagnostic — show the full back-office picture, including models
-    // that are active but hidden from the customer website (e.g. Bogart).
-    const result = await evaluateAvailability(
-      { storeId, pickupDatetime, dropoffDatetime }, undefined, { includeHiddenFromWebsite: true },
-    );
-    res.json({ success: true, data: result.explanation });
+    const { releasePartnerProtection } = await import('../use-cases/fleet/release-partner-protection.js');
+    const result = await releasePartnerProtection(getSupabaseClient(), {
+      storeId, partnerId, vehicleType, startsMs: Date.parse(startsAt), endsMs: Date.parse(endsAt),
+      reason, actorUserId: req.user!.userId, actorName: req.user!.username,
+    });
+    res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });
 
@@ -351,8 +398,9 @@ router.get('/utilization', requirePermission(Permission.ViewFleet), validateQuer
       fromDate = today;
       toDate = addDaysToDateStr(today, 1);
     } else if (from && to) {
+      // The picked end date is inclusive; the use case takes an exclusive bound.
       fromDate = from;
-      toDate = to;
+      toDate = addDaysToDateStr(to, 1);
     } else if (period === '7d') {
       const d = new Date();
       d.setDate(d.getDate() - 7);
@@ -661,9 +709,8 @@ router.get(
   })),
   async (req, res, next) => {
     try {
-      // `partnerRef` is accepted for backwards compatibility with existing callers but is no
-      // longer used here — see the comment below on why the model-level allocation check was removed.
-      const { storeId, pickupDatetime, dropoffDatetime, excludeRawOrderId } = req.query as {
+      // `partnerRef` decides whether that partner's protected units count as free (see protectedFor).
+      const { storeId, pickupDatetime, dropoffDatetime, excludeRawOrderId, partnerRef } = req.query as {
         partnerRef?: string;
         excludeRawOrderId?: string;
         storeId: string;
@@ -734,12 +781,22 @@ router.get(
         }
       }
 
+      // Partner allocations reserve a count per vehicle type, which the exact
+      // per-vehicle check above can't see. Label the free vehicles this booking
+      // can't use so staff aren't surprised by ALLOCATION_CONFLICT at submit.
+      // A pending booking being processed already holds its place in the pool and keeps it.
+      const { labelProtectedForWindow } = await import('../use-cases/fleet/label-protected-vehicles.js');
+      const protectedFor = excludeRawOrderId
+        ? new Map()
+        : await labelProtectedForWindow(sb, storeId, bookableVehicles, pickupDatetime, dropoffDatetime, partnerRef);
+
       res.json({
         success: true,
         data: bookableVehicles.map((v) => ({
           id: v.id, name: v.name, modelId: v.model_id, status: v.status,
           storeId: v.store_id, surfRack: v.surf_rack ?? false,
           pendingReleaseAt: pendingReleaseByVehicle.get(v.id) ?? null,
+          protectedFor: protectedFor.get(v.id) ?? null,
         })),
       });
     } catch (err) { next(err); }

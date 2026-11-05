@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { useFleet, useFleetSync, useReleaseCapacityHold } from '../../api/fleet.js';
+import { useFleet, useFleetSync, usePartnerProtection, useReleaseCapacityHold } from '../../api/fleet.js';
 import { useToast } from '../../hooks/useToast.js';
 import { ApiError } from '../../api/client.js';
 import { useStores, useVehicleModels } from '../../api/config.js';
@@ -15,7 +15,7 @@ import { AssetManagementModal } from '../../components/fleet/AssetManagementModa
 import { ServiceHistoryModal } from '../../components/fleet/ServiceHistoryModal.js';
 import { FleetCalendar } from '../../components/fleet/FleetCalendar.js';
 import { OwnerUseModal } from '../../components/fleet/OwnerUseModal.js';
-import { AvailabilityExplanationModal } from '../../components/fleet/AvailabilityExplanationModal.js';
+import { AvailabilityFinderModal } from '../../components/fleet/AvailabilityFinderModal.js';
 import { SurfRackStockCard } from '../../components/fleet/SurfRackStockCard.js';
 import { formatDate } from '../../utils/date.js';
 import { formatCurrency } from '../../utils/currency.js';
@@ -93,6 +93,17 @@ function fleetAlertTone(vehicle: VehicleSummary) {
   return null;
 }
 
+function ProtectedBadge({ partnerName }: { partnerName: string | null }) {
+  return (
+    <span
+      className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900 ring-1 ring-amber-300"
+      title="Partner allocation: this bike must stay free for the partner's guests. Walk-ins can't take it unless a Manager or Admin releases it."
+    >
+      Protected for {partnerName ?? 'a partner'}
+    </span>
+  );
+}
+
 function formatReleaseTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' });
 }
@@ -108,10 +119,16 @@ export default function FleetPage() {
   const [assetVehicleId, setAssetVehicleId] = useState<string | null>(null);
   const [serviceHistoryVehicle, setServiceHistoryVehicle] = useState<{ id: string; name: string; storeId: string } | null>(null);
   const [ownerUseVehicle, setOwnerUseVehicle] = useState<{ id: string; name: string; storeId: string } | null>(null);
-  const [availabilityExplanationOpen, setAvailabilityExplanationOpen] = useState(false);
+  const [availabilityFinderOpen, setAvailabilityFinderOpen] = useState(false);
 
   const storeIdForApi = fleetStoreFilter === 'all' || !fleetStoreFilter ? 'all' : fleetStoreFilter;
   const { data: vehicles, isLoading } = useFleet(storeIdForApi);
+  const { data: protection = [] } = usePartnerProtection(storeIdForApi);
+  const protectedByVehicle = useMemo(
+    () => new Map(protection.flatMap((s) => s.protectedVehicles.map((v) => [v.vehicleId, v.partnerName] as const))),
+    [protection],
+  );
+  const allocationSummaries = protection.filter((s) => s.enabled && s.partners.length > 0);
   const { data: stores = [] } = useStores();
   const { data: models = [] } = useVehicleModels();
   const syncFleet = useFleetSync();
@@ -189,6 +206,7 @@ export default function FleetPage() {
         return (
           <div className="flex flex-col items-start gap-1">
             <Badge color={ownerUse?.active ? 'yellow' : statusColor(r.status)}>{ownerUse?.active ? 'Owner Use' : r.status}</Badge>
+            {protectedByVehicle.has(r.id) && <ProtectedBadge partnerName={protectedByVehicle.get(r.id) ?? null} />}
             {ownerUse && <span className="text-[10px] text-amber-700">{ownerUse.active ? '' : 'Scheduled · '}{ownerUseDates(ownerUse.period)}</span>}
             {r.pendingReleaseAt && (
               <div className="flex items-center gap-1.5">
@@ -368,10 +386,10 @@ export default function FleetPage() {
           {storeIdForApi !== 'all' && (
             <button
               type="button"
-              onClick={() => setAvailabilityExplanationOpen(true)}
+              onClick={() => setAvailabilityFinderOpen(true)}
               className="rounded-lg border border-blue-300 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
             >
-              Explain availability
+              Find availability
             </button>
           )}
           <button
@@ -411,6 +429,26 @@ export default function FleetPage() {
               {formatCurrency(fleetSummary.totalMonthlyDep)}
             </p>
           </div>
+        </div>
+      )}
+
+      {allocationSummaries.length > 0 && (
+        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <p className="font-semibold">Partner allocations</p>
+          {allocationSummaries.flatMap((s) => s.partners.map((p) => {
+            const labelled = s.protectedVehicles.filter((v) => v.partnerId === p.partnerId).map((v) => v.vehicleName);
+            return (
+              <p key={`${s.storeId}-${p.partnerId}-${p.vehicleType}`} className="mt-0.5">
+                {p.partnerName}: {p.allowance} {p.vehicleType}{p.allowance === 1 ? '' : 's'} protected, {p.inUse} in use by their guests
+                {labelled.length > 0
+                  ? ` · currently held back: ${labelled.join(', ')}`
+                  : p.unused > 0 ? ' · no free bike to hold back right now' : ''}
+              </p>
+            );
+          }))}
+          <p className="mt-1 text-xs text-amber-800">
+            Protected bikes can only go to that partner&apos;s guests. The label moves to another free bike when needed. Only a Manager or Admin can release one for a walk-in.
+          </p>
         </div>
       )}
 
@@ -455,6 +493,7 @@ export default function FleetPage() {
                   <Badge color={ownerUseLabel(v)?.active ? 'yellow' : statusColor(v.status)}>
                     {ownerUseLabel(v)?.active ? 'Owner Use' : v.status}
                   </Badge>
+                  {protectedByVehicle.has(v.id) && <ProtectedBadge partnerName={protectedByVehicle.get(v.id) ?? null} />}
                   {ownerUseLabel(v) && (
                     <span className="text-[10px] text-amber-700">
                       {ownerUseLabel(v)?.active ? '' : 'Owner Use scheduled · '}{ownerUseDates(ownerUseLabel(v)!.period)}
@@ -567,10 +606,10 @@ export default function FleetPage() {
           storeId={ownerUseVehicle.storeId}
         />
       )}
-      {availabilityExplanationOpen && storeIdForApi !== 'all' && (
-        <AvailabilityExplanationModal
+      {availabilityFinderOpen && storeIdForApi !== 'all' && (
+        <AvailabilityFinderModal
           open
-          onClose={() => setAvailabilityExplanationOpen(false)}
+          onClose={() => setAvailabilityFinderOpen(false)}
           storeId={storeIdForApi}
         />
       )}

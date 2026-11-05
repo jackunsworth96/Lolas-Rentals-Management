@@ -6,8 +6,9 @@ import { WhatsAppNumberInput } from '../common/WhatsAppNumberInput.js';
 import { normalizeApiBase } from '../../api/normalize-api-base.js';
 import { useCreateWalkInDirect, type WalkInDirectPayload } from '../../api/orders-raw.js';
 import { useLocations, useAddons } from '../../api/config.js';
-import { useAvailableVehicles, useReleaseCapacityHold } from '../../api/fleet.js';
+import { useAvailableVehicles, useReleaseCapacityHold, type AllocationConflictDetails } from '../../api/fleet.js';
 import { InactiveModelNotice } from '../fleet/InactiveModelNotice.js';
+import { PartnerReleasePanel } from '../fleet/PartnerReleasePanel.js';
 import { useUIStore } from '../../stores/ui-store.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 import { ApiError } from '../../api/client.js';
@@ -148,9 +149,13 @@ export function WalkInBookingModal({ open, onClose }: Props) {
   const { data: availableVehicles = [], isFetching: vehiclesLoading, isError: vehiclesError } =
     useAvailableVehicles(storeId, pickupDatetime, dropoffDatetime, partnerRef);
 
+  const protectedVehicles = availableVehicles.filter((v) => v.protectedFor);
+  const protectedPartners = [...new Map(protectedVehicles
+    .map((v) => [v.protectedFor!.partnerId ?? '', v.protectedFor!] as const)).values()];
+
   useEffect(() => {
     if (selectedVehicleId && !vehiclesLoading && !vehiclesError
-      && !availableVehicles.some((vehicle) => vehicle.id === selectedVehicleId)) {
+      && !availableVehicles.some((vehicle) => vehicle.id === selectedVehicleId && !vehicle.protectedFor)) {
       setSelectedVehicleId('');
       setVehicleModelId('');
     }
@@ -394,6 +399,10 @@ export function WalkInBookingModal({ open, onClose }: Props) {
   const conflictError = createWalkInDirect.error instanceof ApiError && createWalkInDirect.error.code === 'ALLOCATION_CONFLICT'
     ? createWalkInDirect.error
     : null;
+  const conflictDetails = conflictError?.details as AllocationConflictDetails | undefined;
+  const partnerConflict = conflictDetails?.reason === 'partner_protected' && conflictDetails.vehicleType
+    ? conflictDetails
+    : null;
   const selectedVehicleForConflict = (availableVehicles ?? []).find((v) => v.id === selectedVehicleId);
   const canReleaseHold = !!conflictError
     && !!selectedVehicleForConflict?.pendingReleaseAt
@@ -416,7 +425,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
 
   const isValid =
     customerName.trim() && isValidWhatsAppE164(customerMobile) &&
-    storeId && vehicleModelId && availableVehicles.some((vehicle) => vehicle.id === selectedVehicleId) && !vehiclesLoading && !vehiclesError &&
+    storeId && vehicleModelId && availableVehicles.some((vehicle) => vehicle.id === selectedVehicleId && !vehicle.protectedFor) && !vehiclesLoading && !vehiclesError &&
     pickupDate && pickupTime &&
     dropoffDate && dropoffTime &&
     pickupLocationId && dropoffLocationId &&
@@ -674,17 +683,18 @@ export function WalkInBookingModal({ open, onClose }: Props) {
                     <span className={LABEL_CLS}>Available vehicle <span className="text-red-500">*</span></span>
                     <div className="mt-1 max-h-44 overflow-y-auto rounded-lg border border-gray-300 divide-y divide-gray-100">
                       {[...availableVehicles]
-                        .sort((a, b) => a.name.localeCompare(b.name))
+                        .sort((a, b) => Number(!!a.protectedFor) - Number(!!b.protectedFor) || a.name.localeCompare(b.name))
                         .map((v) => (
                           <label
                             key={v.id}
-                            className={`flex cursor-pointer items-center gap-3 px-3 py-2 transition-colors hover:bg-gray-50 ${selectedVehicleId === v.id ? 'bg-teal-50' : ''}`}
+                            className={`flex items-center gap-3 px-3 py-2 transition-colors ${v.protectedFor ? 'cursor-not-allowed bg-amber-50/60 opacity-70' : 'cursor-pointer hover:bg-gray-50'} ${selectedVehicleId === v.id ? 'bg-teal-50' : ''}`}
                           >
                             <input
                               type="radio"
                               className="sr-only"
                               name="walk-in-vehicle"
                               value={v.id}
+                              disabled={!!v.protectedFor}
                               checked={selectedVehicleId === v.id}
                               onChange={() => {
                                 setSelectedVehicleId(v.id);
@@ -702,6 +712,11 @@ export function WalkInBookingModal({ open, onClose }: Props) {
                                   Just returned — still in handover hold until {formatReleaseTime(v.pendingReleaseAt)}
                                 </span>
                               )}
+                              {v.protectedFor && (
+                                <span className="block font-lato text-[10px] font-semibold text-amber-800">
+                                  Protected for {v.protectedFor.partnerName ?? 'a partner'} on these dates
+                                </span>
+                              )}
                             </span>
                             {v.surfRack && (
                               <img src={surfRackIcon} className="h-5 w-5 shrink-0" alt="Surf rack" title="Has surf rack" />
@@ -709,6 +724,17 @@ export function WalkInBookingModal({ open, onClose }: Props) {
                           </label>
                         ))}
                     </div>
+                    {protectedVehicles.length > 0 && (
+                      <div className="mt-2">
+                        <PartnerReleasePanel
+                          storeId={storeId}
+                          partners={protectedPartners}
+                          vehicleType={protectedVehicles[0].protectedFor!.vehicleType}
+                          startsAt={pickupDatetime}
+                          endsAt={dropoffDatetime}
+                        />
+                      </div>
+                    )}
                     <InactiveModelNotice storeId={storeId} />
                   </div>
                   <label className="mt-3 block">
@@ -1034,6 +1060,16 @@ export function WalkInBookingModal({ open, onClose }: Props) {
               <p className="font-lato text-sm text-red-600">
                 {(createWalkInDirect.error as Error).message}
               </p>
+              {partnerConflict && (
+                <PartnerReleasePanel
+                  storeId={partnerConflict.storeId ?? storeId}
+                  partners={partnerConflict.partners ?? []}
+                  vehicleType={partnerConflict.vehicleType!}
+                  startsAt={partnerConflict.startsAt ?? pickupDatetime}
+                  endsAt={partnerConflict.endsAt ?? dropoffDatetime}
+                  onReleased={submitBooking}
+                />
+              )}
               {conflictError && selectedVehicleForConflict?.pendingReleaseAt && (
                 canReleaseHold ? (
                   <div className="flex items-center justify-between gap-3 border-t border-red-200 pt-2">

@@ -4,7 +4,8 @@ import { Modal } from '../common/Modal.js';
 import { WhatsAppNumberInput } from '../common/WhatsAppNumberInput.js';
 import { normalizeApiBase } from '../../api/normalize-api-base.js';
 import { useCreateWalkInReserved } from '../../api/orders-raw.js';
-import { useAvailableVehicles } from '../../api/fleet.js';
+import { useAvailableVehicles, type AvailableVehicle } from '../../api/fleet.js';
+import { PartnerReleasePanel } from '../fleet/PartnerReleasePanel.js';
 import { useLocations } from '../../api/config.js';
 import { useUIStore } from '../../stores/ui-store.js';
 import surfRackIcon from '../../assets/Home/Surf Rack Icon.svg';
@@ -12,15 +13,6 @@ import surfRackIcon from '../../assets/Home/Surf Rack Icon.svg';
 interface Props {
   open: boolean;
   onClose: () => void;
-}
-
-interface AvailableVehicle {
-  id: string;
-  name: string;
-  modelId: string;
-  storeId: string;
-  status: string;
-  surfRack: boolean;
 }
 
 interface Location {
@@ -123,7 +115,10 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
   const { data: availableVehicles = [], isFetching: vehiclesLoading, isError: vehiclesError } =
     useAvailableVehicles(storeId, pickupDatetime, dropoffDatetime);
   const selectedVehicleAvailable = !vehiclesLoading && !vehiclesError
-    && availableVehicles.some((vehicle) => vehicle.id === selectedVehicleId);
+    && availableVehicles.some((vehicle) => vehicle.id === selectedVehicleId && !vehicle.protectedFor);
+  const protectedVehicles = availableVehicles.filter((v) => v.protectedFor);
+  const protectedPartners = [...new Map(protectedVehicles
+    .map((v) => [v.protectedFor!.partnerId ?? '', v.protectedFor!] as const)).values()];
 
   useEffect(() => {
     if (selectedVehicleId && !vehiclesLoading && !vehiclesError && !selectedVehicleAvailable) {
@@ -494,27 +489,46 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
             </p>
           ) : (
             <div className="mt-1 max-h-44 overflow-y-auto rounded-lg border border-gray-300 divide-y divide-gray-100">
-              {(availableVehicles as AvailableVehicle[]).map((v) => (
+              {[...(availableVehicles as AvailableVehicle[])]
+                .sort((a, b) => Number(!!a.protectedFor) - Number(!!b.protectedFor))
+                .map((v) => (
                 <label
                   key={v.id}
-                  className={`flex cursor-pointer items-center gap-3 px-3 py-2 transition-colors hover:bg-gray-50 ${selectedVehicleId === v.id ? 'bg-teal-50' : ''}`}
+                  className={`flex items-center gap-3 px-3 py-2 transition-colors ${v.protectedFor ? 'cursor-not-allowed bg-amber-50/60 opacity-70' : 'cursor-pointer hover:bg-gray-50'} ${selectedVehicleId === v.id ? 'bg-teal-50' : ''}`}
                 >
                   <input
                     type="radio"
                     className="sr-only"
                     name="reserve-later-vehicle"
                     value={v.id}
+                    disabled={!!v.protectedFor}
                     checked={selectedVehicleId === v.id}
                     onChange={() => handleVehicleChange(v.id)}
                   />
                   <span className={`flex-1 font-lato text-sm ${selectedVehicleId === v.id ? 'font-semibold text-teal-800' : 'text-gray-800'}`}>
                     {v.name}
+                    {v.protectedFor && (
+                      <span className="block text-[10px] font-semibold text-amber-800">
+                        Protected for {v.protectedFor.partnerName ?? 'a partner'} on these dates
+                      </span>
+                    )}
                   </span>
                   {v.surfRack && (
                     <img src={surfRackIcon} className="h-5 w-5 shrink-0" alt="Surf rack" title="Has surf rack" />
                   )}
                 </label>
               ))}
+            </div>
+          )}
+          {datesValid && !vehiclesLoading && protectedVehicles.length > 0 && (
+            <div className="mt-2">
+              <PartnerReleasePanel
+                storeId={storeId}
+                partners={protectedPartners}
+                vehicleType={protectedVehicles[0].protectedFor!.vehicleType}
+                startsAt={pickupDatetime}
+                endsAt={dropoffDatetime}
+              />
             </div>
           )}
         </div>

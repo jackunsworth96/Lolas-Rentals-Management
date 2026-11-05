@@ -21,6 +21,10 @@ const photoUpload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
 });
 
+const UpdateAccidentTimeSchema = z.object({
+  accidentAt: z.string().min(1),
+});
+
 const CreateAccidentSchema = z.object({
   storeId: z.string().min(1),
   orderId: z.string().min(1),
@@ -138,6 +142,77 @@ router.get('/:id', requirePermission(Permission.ViewFleet), async (req, res, nex
   } catch (err) { next(err); }
 });
 
+
+router.patch('/:id', requirePermission(Permission.EditFleet), async (req, res, next) => {
+  try {
+    const parsed = UpdateAccidentTimeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: parsed.error.issues[0]?.message ?? parsed.error.message } });
+      return;
+    }
+
+    const accidentAt = new Date(parsed.data.accidentAt);
+    if (Number.isNaN(accidentAt.getTime())) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Incident time is not a valid date.' } });
+      return;
+    }
+
+    const sb = getSupabaseClient();
+    const id = req.params.id as string;
+    const { data: existing, error: loadErr } = await sb
+      .from('accident_reports')
+      .select('id, order_id, vehicle_id, created_at')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (loadErr) throw loadErr;
+    if (!existing) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Accident report not found' } });
+      return;
+    }
+
+    const row = existing as { order_id: string; vehicle_id: string; created_at: string };
+    const accidentAtIso = accidentAt.toISOString();
+
+    const { data: vehicle } = await sb
+      .from('fleet')
+      .select('name, plate_number')
+      .eq('id', row.vehicle_id)
+      .maybeSingle();
+    const v = vehicle as { name?: string; plate_number?: string } | null;
+
+    const { data: order } = await sb
+      .from('orders')
+      .select('booking_token')
+      .eq('id', row.order_id)
+      .maybeSingle();
+    const orderReference = (order as { booking_token?: string } | null)?.booking_token ?? row.order_id;
+
+    const contentHash = buildAccidentHash({
+      id,
+      orderReference,
+      vehicleName: v?.name ?? row.vehicle_id,
+      plateNumber: v?.plate_number ?? 'Not recorded',
+      accidentAt: accidentAtIso,
+      createdAt: formatManilaDateTime(new Date(row.created_at)),
+    });
+
+    const { error: updateErr } = await sb
+      .from('accident_reports')
+      .update({ accident_at: accidentAtIso, tamper_hash: contentHash })
+      .eq('id', id);
+    if (updateErr) throw updateErr;
+
+    const { data: updated, error: readErr } = await sb
+      .from('accident_reports')
+      .select(ACCIDENT_SELECT)
+      .eq('id', id)
+      .single();
+    if (readErr || !updated) throw readErr ?? new Error('Accident report not found after update');
+
+    res.json({ success: true, data: toDto(updated as RawRow) });
+  } catch (err) { next(err); }
+});
 
 router.post('/', requirePermission(Permission.EditFleet), async (req, res, next) => {
   try {

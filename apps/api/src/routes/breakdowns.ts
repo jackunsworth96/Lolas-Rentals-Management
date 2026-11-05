@@ -42,6 +42,18 @@ const ResolveBreakdownSchema = z.object({
   resolvedAt: z.string().nullable().optional(), // defaults to now() if omitted
 });
 
+const UpdateBreakdownTimesSchema = z.object({
+  breakdownAt: z.string().min(1).optional(),
+  resolvedAt: z.string().min(1).optional(),
+}).refine((value) => value.breakdownAt != null || value.resolvedAt != null, {
+  message: 'Provide a breakdown time or a resolved time',
+});
+
+function parseInstant(value: string): Date | null {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 const BREAKDOWN_SELECT = `
   id, store_id, order_id, vehicle_id, customer_id,
   breakdown_at, location, issue_type, issue_detail, description,
@@ -257,6 +269,80 @@ router.post('/', requirePermission(Permission.EditFleet), async (req, res, next)
     })();
 
     res.status(201).json({ success: true, data: toDto(r) });
+  } catch (err) { next(err); }
+});
+
+router.patch('/:id', requirePermission(Permission.EditFleet), async (req, res, next) => {
+  try {
+    const parsed = UpdateBreakdownTimesSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: parsed.error.issues[0]?.message ?? parsed.error.message } });
+      return;
+    }
+    const body = parsed.data;
+    const sb = getSupabaseClient();
+    const id = req.params.id as string;
+
+    const { data: existing, error: loadErr } = await sb
+      .from('breakdown_reports')
+      .select('id, status, breakdown_at, resolved_at')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (loadErr) throw loadErr;
+    if (!existing) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Breakdown report not found' } });
+      return;
+    }
+
+    const row = existing as { status: string; breakdown_at: string; resolved_at: string | null };
+    if (row.status !== 'resolved' && body.resolvedAt) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'This breakdown is still open. Resolve it before setting a resolved time.' },
+      });
+      return;
+    }
+
+    const nextBreakdown = body.breakdownAt ? parseInstant(body.breakdownAt) : parseInstant(row.breakdown_at);
+    if (!nextBreakdown) {
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Breakdown time is not a valid date.' } });
+      return;
+    }
+
+    let nextResolved: Date | null = null;
+    if (row.status === 'resolved') {
+      nextResolved = body.resolvedAt
+        ? parseInstant(body.resolvedAt)
+        : (row.resolved_at ? parseInstant(row.resolved_at) : null);
+      if (!nextResolved) {
+        res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Resolved time is not a valid date.' } });
+        return;
+      }
+      if (nextResolved.getTime() < nextBreakdown.getTime()) {
+        res.status(400).json({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'Resolved time cannot be earlier than the breakdown.' },
+        });
+        return;
+      }
+    }
+
+    const update: Record<string, string> = {};
+    if (body.breakdownAt) update.breakdown_at = nextBreakdown.toISOString();
+    if (body.resolvedAt && nextResolved) update.resolved_at = nextResolved.toISOString();
+
+    const { error: updateErr } = await sb.from('breakdown_reports').update(update).eq('id', id);
+    if (updateErr) throw updateErr;
+
+    const { data: updated, error: readErr } = await sb
+      .from('breakdown_reports')
+      .select(BREAKDOWN_SELECT)
+      .eq('id', id)
+      .single();
+    if (readErr || !updated) throw readErr ?? new Error('Breakdown report not found after update');
+
+    res.json({ success: true, data: toDto(updated as RawRow) });
   } catch (err) { next(err); }
 });
 

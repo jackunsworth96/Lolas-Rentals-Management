@@ -16,6 +16,7 @@ import {
 } from '@lolas/shared';
 import { Employee as EmployeeEntity } from '@lolas/domain';
 import { supabase } from '../adapters/supabase/client.js';
+import { syncUserLoginAccess } from '../auth/staff-login-access.js';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 
@@ -257,6 +258,10 @@ router.put('/employees/:id', requirePermission(Permission.ManageEmployees), vali
       if (insErr) throw new Error(`employee_stores re-insert failed: ${insErr.message}`);
     }
 
+    if (existing.status !== updated.status) {
+      await syncUserLoginAccess(existing.id, updated.status);
+    }
+
     res.json({ success: true, data: updated });
   } catch (err) { next(err); }
 });
@@ -312,6 +317,7 @@ router.delete('/employees/:id', requirePermission(Permission.ManageEmployees), a
     });
 
     await req.app.locals.deps.employeeRepo.save(deactivated);
+    await syncUserLoginAccess(existing.id, 'Inactive');
     res.json({ success: true, data: { id: existing.id, status: 'Inactive' } });
   } catch (err) { next(err); }
 });

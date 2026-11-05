@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { usePawCardEstablishments, useSaveEstablishment, useDeleteEstablishment } from '../../../api/config.js';
+import { usePawCardEstablishments, useSaveEstablishment, useDeleteEstablishment, uploadSiteImage } from '../../../api/config.js';
 import { Modal } from '../../common/Modal.js';
+import { ImageDropzone } from '../../common/ImageDropzone.js';
+import { CloudinaryImage } from '../../ui/CloudinaryImage.js';
 
 const CATEGORIES = ['Food & Drink', 'Activities', 'Services', 'Shopping'] as const;
 const TIME_OF_DAY = [
@@ -108,6 +110,7 @@ export function PawCardTab() {
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm());
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
   const wasSavingRef = useRef(false);
 
   const isOpen = editing !== null || creating;
@@ -415,19 +418,40 @@ export function PawCardTab() {
                     placeholder="https://instagram.com/..."
                   />
                 </label>
-                <label className="col-span-3 block">
-                  <FieldLabel>Cloudinary public ID (logo)</FieldLabel>
-                  <input
-                    type="text"
-                    value={form.cloudinaryPublicId}
-                    onChange={(e) => set('cloudinaryPublicId', e.target.value)}
-                    className={inputCls}
-                    placeholder="e.g. paw_card/cocopelli_logo"
-                  />
-                  <p className="mt-1 text-xs text-gray-400">
-                    Upload the logo to Cloudinary first, then paste the public ID here.
-                  </p>
-                </label>
+                <div className="col-span-3">
+                  <FieldLabel>Logo</FieldLabel>
+                  <div className="flex items-start gap-3">
+                    {form.cloudinaryPublicId && (
+                      <CloudinaryImage
+                        publicId={form.cloudinaryPublicId}
+                        plugins={[]}
+                        alt="Logo preview"
+                        className="h-24 w-24 shrink-0 rounded-lg border border-gray-200 bg-white object-contain"
+                      />
+                    )}
+                    <div className="flex-1">
+                      <ImageDropzone
+                        busy={logoUploading}
+                        label="Drag the logo here, or click to choose"
+                        onFiles={async ([file]) => {
+                          setLogoUploading(true);
+                          try { set('cloudinaryPublicId', await uploadSiteImage(file, 'paw-card')); }
+                          finally { setLogoUploading(false); }
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <label className="mt-2 block">
+                    <span className="text-xs text-gray-500">Or paste a Cloudinary public ID or image URL</span>
+                    <input
+                      type="text"
+                      value={form.cloudinaryPublicId}
+                      onChange={(e) => set('cloudinaryPublicId', e.target.value)}
+                      className={inputCls}
+                      placeholder="e.g. paw_card/cocopelli_logo"
+                    />
+                  </label>
+                </div>
               </div>
             </div>
 

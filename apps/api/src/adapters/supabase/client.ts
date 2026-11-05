@@ -2,6 +2,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from 'dotenv';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { actorFetch } from './request-actor.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const apiDir = resolve(__dirname, '../../..');   // apps/api
@@ -18,7 +19,7 @@ export function getSupabaseClient(): SupabaseClient {
     if (!url || !key) {
       throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set');
     }
-    client = createClient(url, key);
+    client = createClient(url, key, { global: { fetch: actorFetch } });
   }
   return client;
 }

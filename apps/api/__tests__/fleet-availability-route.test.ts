@@ -18,7 +18,38 @@ const { fleetRoutes } = await import('../src/routes/fleet.js');
 const { errorHandler } = await import('../src/middleware/error-handler.js');
 
 const dates = { storeId: 'test', pickupDatetime: '2026-11-01T09:00:00+08:00', dropoffDatetime: '2026-11-03T09:00:00+08:00' };
-const fleet = ['busy', 'free', 'retired'].map((id) => ({ id, name: id, model_id: 'beat', store_id: 'test', status: 'Available' }));
+const fleet = ['busy', 'free', 'retired'].map((id) => ({
+  id, name: id, model_id: 'beat', store_id: 'test', status: 'Available', vehicle_models: { type: 'scooter', is_active: true },
+}));
+
+/** Chainable PostgREST stand-in: every filter returns the same query; awaiting it yields `tables[table]`. */
+function mockTables(tables: Record<string, unknown>, fallback: unknown) {
+  mocks.from.mockImplementation((table: string) => {
+    const result = { data: table in tables ? tables[table] : fallback, error: null };
+    const query: Record<string, unknown> = {
+      maybeSingle: async () => result,
+      then: (resolve: (value: unknown) => unknown) => Promise.resolve(result).then(resolve),
+    };
+    for (const method of ['select', 'eq', 'in', 'not', 'is', 'gt', 'gte', 'lt', 'lte', 'or']) query[method] = () => query;
+    return query;
+  });
+}
+
+const sharedSegment = {
+  starts_at: '2026-10-31T00:00:00Z', ends_at: '2026-11-05T00:00:00Z', pool: 'shared',
+  capacity_reservations: { partner_id: null, vehicle_type: 'bike', released_at: null, expires_at: null },
+};
+const bravoAllocation = {
+  partner_allocation_settings: { enabled: true },
+  partner_allocation_type_map: [{ model_type: 'scooter', vehicle_type: 'bike' }],
+  partner_allocations: [{ partner_id: 'bravo', vehicle_type: 'bike', effective_month: '2026-11-01', scheduled_qty: 1 }],
+  partner_allocation_overrides: [],
+  fleet_unavailability: [],
+  accommodation_partners: [{ id: 'bravo', name: 'Bravo Beach Resort', slug: 'bravo', portal_subdomain: null }],
+  order_items: [],
+  orders_raw: [],
+  capacity_reservations: [],
+};
 
 function app() {
   const app = express();
@@ -39,14 +70,23 @@ describe('staff vehicle availability', () => {
       },
     });
     mocks.checkAvailability.mockResolvedValue([{ modelId: 'beat', availableCount: 1 }]);
-    mocks.from.mockImplementation((table: string) => {
-      const result = { data: table === 'fleet' ? fleet : { id: 'own', store_id: 'test' }, error: null };
-      const query = {
-        select: () => query, eq: () => query, maybeSingle: async () => result,
-        then: (resolve: (value: unknown) => unknown) => Promise.resolve(result).then(resolve),
-      };
-      return query;
-    });
+    mocks.from.mockReset();
+    mockTables({ fleet, capacity_reservations: [], partner_allocation_type_map: [], partner_allocation_settings: null }, { id: 'own', store_id: 'test' });
+  });
+
+  it('labels the only free bike as protected when walk-ins would eat into a partner allocation', async () => {
+    mockTables({ ...bravoAllocation, fleet, capacity_reservation_segments: [sharedSegment, sharedSegment] }, null);
+    const response = await request(app()).get('/fleet/available').query(dates);
+    expect(response.status).toBe(200);
+    expect(response.body.data).toEqual([
+      expect.objectContaining({ id: 'free', protectedFor: { partnerId: 'bravo', partnerName: 'Bravo Beach Resort', vehicleType: 'bike' } }),
+    ]);
+  });
+
+  it('lets the partner\'s own booking use its protected bike', async () => {
+    mockTables({ ...bravoAllocation, fleet, capacity_reservation_segments: [sharedSegment, sharedSegment] }, null);
+    const response = await request(app()).get('/fleet/available').query({ ...dates, partnerRef: 'bravo' });
+    expect(response.body.data).toEqual([expect.objectContaining({ id: 'free', protectedFor: null })]);
   });
 
   it('uses shared exact conflicts for a new walk-in, without re-clamping by pooled model capacity', async () => {
@@ -91,14 +131,10 @@ describe('staff vehicle availability', () => {
   });
 
   it('accepts legacy WooCommerce reservations that identify the store by source', async () => {
-    mocks.from.mockImplementation((table: string) => {
-      const result = { data: table === 'fleet' ? fleet : { id: 'own', store_id: null, source: 'lolas' }, error: null };
-      const query = {
-        select: () => query, eq: () => query, maybeSingle: async () => result,
-        then: (resolve: (value: unknown) => unknown) => Promise.resolve(result).then(resolve),
-      };
-      return query;
-    });
+    mockTables(
+      { fleet, capacity_reservations: [], partner_allocation_type_map: [], partner_allocation_settings: null },
+      { id: 'own', store_id: null, source: 'lolas' },
+    );
     const response = await request(app()).get('/fleet/available').query({ ...dates, storeId: 'store-lolas', excludeRawOrderId: 'own' });
     expect(response.status).toBe(200);
   });
@@ -106,6 +142,16 @@ describe('staff vehicle availability', () => {
   it('requires offset-aware pickup and return times', async () => {
     const response = await request(app()).get('/fleet/available').query({ ...dates, pickupDatetime: '2026-11-01T09:00' });
     expect(response.status).toBe(400);
+  });
+
+  it('explains an allocation conflict in plain words, naming the partner', async () => {
+    mockTables({ ...bravoAllocation, fleet, capacity_reservation_segments: [sharedSegment, sharedSegment] }, null);
+    mocks.evaluateAvailability.mockRejectedValue(new Error('ALLOCATION_CONFLICT: bike at 2026-11-01 01:00:00+00, booking raw:abc'));
+    const response = await request(app()).get('/fleet/available').query(dates);
+    expect(response.status).toBe(409);
+    expect(response.body.error.code).toBe('ALLOCATION_CONFLICT');
+    expect(response.body.error.message).toContain('protected for Bravo Beach Resort');
+    expect(response.body.error.details).toMatchObject({ reason: 'partner_protected', vehicleType: 'bike', partners: [{ partnerId: 'bravo' }] });
   });
 
   it('reports a database assignment conflict as a conflict response', async () => {

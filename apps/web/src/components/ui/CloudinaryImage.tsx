@@ -4,11 +4,12 @@ import { format, quality } from '@cloudinary/url-gen/actions/delivery';
 import { scale } from '@cloudinary/url-gen/actions/resize';
 import { auto as autoFormat } from '@cloudinary/url-gen/qualifiers/format';
 import { auto as autoQuality } from '@cloudinary/url-gen/qualifiers/quality';
-import { buildCloudinaryImageUrl, cld } from '../../lib/cloudinary.js';
+import { buildCloudinaryImageUrl, cld, isImageUrl } from '../../lib/cloudinary.js';
 
 const DEFAULT_PLUGINS = [lazyload(), responsive(), placeholder({ mode: 'blur' })];
 
 type Props = Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> & {
+  /** A Cloudinary public ID, or a full image URL (e.g. an image uploaded from Settings). */
   publicId: string;
   /** Appended as query `cb=` so updated assets at the same public ID are not stuck behind browser cache. */
   cacheBust?: string;
@@ -39,7 +40,7 @@ export function CloudinaryImage({
     return chain;
   }, [publicId, width, height]);
 
-  if (cacheBust) {
+  if (cacheBust || isImageUrl(publicId)) {
     return (
       <img
         src={buildCloudinaryImageUrl(publicId, cacheBust)}

@@ -1,37 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { evaluateAvailability } from '../../adapters/supabase/booking-adapter.js';
+import { peakRackUsage, type RackUsageInterval } from '../../lib/rack-usage.js';
 
-export interface RackUsageInterval {
-  startMs: number;
-  endMs: number;
-  quantity: number;
-}
-
-/**
- * Highest number of racks out at the same moment inside [rangeStartMs, rangeEndMs).
- * Intervals that only touch end-to-start do not overlap, so one rack can serve both.
- */
-export function peakRackUsage(
-  intervals: RackUsageInterval[],
-  rangeStartMs: number,
-  rangeEndMs: number,
-): number {
-  const events: Array<{ t: number; delta: number }> = [];
-  for (const iv of intervals) {
-    const start = Math.max(iv.startMs, rangeStartMs);
-    const end = Math.min(iv.endMs, rangeEndMs);
-    if (!(end > start) || iv.quantity <= 0) continue;
-    events.push({ t: start, delta: iv.quantity }, { t: end, delta: -iv.quantity });
-  }
-  events.sort((a, b) => a.t - b.t || a.delta - b.delta);
-  let current = 0;
-  let peak = 0;
-  for (const e of events) {
-    current += e.delta;
-    if (current > peak) peak = current;
-  }
-  return peak;
-}
+export { peakRackUsage, type RackUsageInterval };
 
 export interface SurfRackAvailability {
   /** False when the store has no rack stock configured; callers fall back to "subject to availability". */
@@ -126,6 +97,62 @@ async function countFreeCompatibleVehicles(
   }
 }
 
+/** Racks out or promised in [startIso, endIso): allocated orders plus pending bookings that asked for one. */
+export async function loadRackUsageIntervals(
+  sb: SupabaseClient,
+  storeId: string,
+  startIso: string,
+  endIso: string,
+  rackAddonIds: number[],
+  exclude: { excludeOrderId?: string | null; excludeRawOrderId?: string | null } = {},
+): Promise<RackUsageInterval[]> {
+  let allocQuery = sb
+    .from('surf_rack_allocations')
+    .select('order_id, quantity, starts_at, ends_at, released_at')
+    .eq('store_id', storeId)
+    .lt('starts_at', endIso)
+    .gt('ends_at', startIso)
+    .or(`released_at.is.null,released_at.gt.${startIso}`);
+  if (exclude.excludeOrderId) allocQuery = allocQuery.neq('order_id', exclude.excludeOrderId);
+
+  const rawQuery = rackAddonIds.length > 0
+    ? (() => {
+        let rq = sb
+          .from('orders_raw')
+          .select('id, addon_ids, pickup_datetime, dropoff_datetime')
+          .eq('store_id', storeId)
+          .eq('status', 'unprocessed')
+          .is('cancelled_at', null)
+          .lt('pickup_datetime', endIso)
+          .gt('dropoff_datetime', startIso)
+          .overlaps('addon_ids', rackAddonIds);
+        if (exclude.excludeRawOrderId) rq = rq.neq('id', exclude.excludeRawOrderId);
+        return rq;
+      })()
+    : null;
+
+  const [allocRes, rawRes] = await Promise.all([
+    allocQuery,
+    rawQuery ?? Promise.resolve({ data: [], error: null }),
+  ]);
+  if (allocRes.error) throw new Error(`Failed to load rack allocations: ${allocRes.error.message}`);
+  if (rawRes.error) throw new Error(`Failed to load pending rack bookings: ${rawRes.error.message}`);
+
+  const intervals: RackUsageInterval[] = [];
+  for (const a of (allocRes.data ?? []) as Array<{ quantity: number; starts_at: string; ends_at: string; released_at: string | null }>) {
+    const end = new Date(a.ends_at).getTime();
+    const released = a.released_at ? new Date(a.released_at).getTime() : Infinity;
+    intervals.push({ startMs: new Date(a.starts_at).getTime(), endMs: Math.min(end, released), quantity: Number(a.quantity) || 1 });
+  }
+  for (const r of (rawRes.data ?? []) as Array<{ addon_ids: number[] | null; pickup_datetime: string; dropoff_datetime: string }>) {
+    const qty = countRackAddons(r.addon_ids, rackAddonIds);
+    if (qty > 0) {
+      intervals.push({ startMs: new Date(r.pickup_datetime).getTime(), endMs: new Date(r.dropoff_datetime).getTime(), quantity: qty });
+    }
+  }
+  return intervals;
+}
+
 export async function getSurfRackAvailability(
   sb: SupabaseClient,
   q: SurfRackAvailabilityQuery,
@@ -152,51 +179,12 @@ export async function getSurfRackAvailability(
     };
   }
 
-  let allocQuery = sb
-    .from('surf_rack_allocations')
-    .select('order_id, quantity, starts_at, ends_at, released_at')
-    .eq('store_id', q.storeId)
-    .lt('starts_at', endIso)
-    .gt('ends_at', startIso)
-    .or(`released_at.is.null,released_at.gt.${startIso}`);
-  if (q.excludeOrderId) allocQuery = allocQuery.neq('order_id', q.excludeOrderId);
-
-  const rawQuery = rackAddonIds.length > 0
-    ? (() => {
-        let rq = sb
-          .from('orders_raw')
-          .select('id, addon_ids, pickup_datetime, dropoff_datetime')
-          .eq('store_id', q.storeId)
-          .eq('status', 'unprocessed')
-          .is('cancelled_at', null)
-          .lt('pickup_datetime', endIso)
-          .gt('dropoff_datetime', startIso)
-          .overlaps('addon_ids', rackAddonIds);
-        if (q.excludeRawOrderId) rq = rq.neq('id', q.excludeRawOrderId);
-        return rq;
-      })()
-    : null;
-
-  const [allocRes, rawRes, compatibleVehiclesFree] = await Promise.all([
-    allocQuery,
-    rawQuery ?? Promise.resolve({ data: [], error: null }),
+  const [intervals, compatibleVehiclesFree] = await Promise.all([
+    loadRackUsageIntervals(sb, q.storeId, startIso, endIso, rackAddonIds, {
+      excludeOrderId: q.excludeOrderId, excludeRawOrderId: q.excludeRawOrderId,
+    }),
     countFreeCompatibleVehicles(sb, q),
   ]);
-  if (allocRes.error) throw new Error(`Failed to load rack allocations: ${allocRes.error.message}`);
-  if (rawRes.error) throw new Error(`Failed to load pending rack bookings: ${rawRes.error.message}`);
-
-  const intervals: RackUsageInterval[] = [];
-  for (const a of (allocRes.data ?? []) as Array<{ quantity: number; starts_at: string; ends_at: string; released_at: string | null }>) {
-    const end = new Date(a.ends_at).getTime();
-    const released = a.released_at ? new Date(a.released_at).getTime() : Infinity;
-    intervals.push({ startMs: new Date(a.starts_at).getTime(), endMs: Math.min(end, released), quantity: Number(a.quantity) || 1 });
-  }
-  for (const r of (rawRes.data ?? []) as Array<{ addon_ids: number[] | null; pickup_datetime: string; dropoff_datetime: string }>) {
-    const qty = countRackAddons(r.addon_ids, rackAddonIds);
-    if (qty > 0) {
-      intervals.push({ startMs: new Date(r.pickup_datetime).getTime(), endMs: new Date(r.dropoff_datetime).getTime(), quantity: qty });
-    }
-  }
 
   const peakInUse = peakRackUsage(intervals, startMs, endMs);
   const stockFree = Math.max(0, total - peakInUse);

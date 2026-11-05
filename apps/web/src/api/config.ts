@@ -60,6 +60,57 @@ export function useVehicleModels() {
 export function useAllVehicleModels() {
   return useQuery({ queryKey: ['config', 'vehicle-models', 'all'], queryFn: () => api.get('/config/vehicle-models?includeInactive=true') });
 }
+export interface VehicleModelImage {
+  id: string;
+  modelId: string;
+  url: string;
+  sortOrder: number;
+}
+export function useVehicleModelImages(modelId: string | null) {
+  return useQuery<VehicleModelImage[]>({
+    queryKey: ['config', 'vehicle-model-images', modelId],
+    queryFn: () => api.get(`/config/vehicle-models/${encodeURIComponent(modelId!)}/images`),
+    enabled: !!modelId,
+  });
+}
+function useVehicleImagesInvalidation(modelId: string) {
+  const qc = useQueryClient();
+  return () => {
+    qc.invalidateQueries({ queryKey: ['config', 'vehicle-model-images', modelId] });
+    qc.invalidateQueries({ queryKey: ['public-vehicle-images'] });
+  };
+}
+export function useUploadVehicleModelImage(modelId: string) {
+  const invalidate = useVehicleImagesInvalidation(modelId);
+  return useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData();
+      form.append('file', file);
+      return api.upload<VehicleModelImage>(`/config/vehicle-models/${encodeURIComponent(modelId)}/images`, form);
+    },
+    onSuccess: invalidate,
+  });
+}
+export function useReorderVehicleModelImages(modelId: string) {
+  const invalidate = useVehicleImagesInvalidation(modelId);
+  return useMutation({
+    mutationFn: (ids: string[]) => api.put(`/config/vehicle-models/${encodeURIComponent(modelId)}/images/order`, { ids }),
+    onSuccess: invalidate,
+  });
+}
+export function useDeleteVehicleModelImage(modelId: string) {
+  const invalidate = useVehicleImagesInvalidation(modelId);
+  return useMutation({
+    mutationFn: (imageId: string) => api.delete(`/config/vehicle-model-images/${imageId}`),
+    onSuccess: invalidate,
+  });
+}
+export async function uploadSiteImage(file: File, folder: 'paw-card'): Promise<string> {
+  const form = new FormData();
+  form.append('file', file);
+  const result = await api.upload<{ url: string }>(`/config/images/upload?folder=${folder}`, form);
+  return result.url;
+}
 export function useModelPricing(modelId: string, storeId: string) {
   return useQuery({ queryKey: ['config', 'model-pricing', modelId, storeId], queryFn: () => api.get(`/config/model-pricing?modelId=${modelId}&storeId=${storeId}`), enabled: !!modelId && !!storeId });
 }

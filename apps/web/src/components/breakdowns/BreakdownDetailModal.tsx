@@ -4,11 +4,13 @@ import { Badge } from '../common/Badge.js';
 import {
   useBreakdown,
   useResolveBreakdown,
+  useUpdateBreakdownTimes,
   ISSUE_TYPE_LABELS,
   RESOLUTION_TYPE_LABELS,
 } from '../../api/breakdowns.js';
 import type { BreakdownReport, BreakdownResolutionType } from '../../api/breakdowns.js';
-import { manilaNowDateTimeLocal, manilaLocalToISO } from '../../utils/date.js';
+import { manilaNowDateTimeLocal, manilaLocalToISO, isoToManilaDateAndTime } from '../../utils/date.js';
+import { hasPermission } from '../../utils/permissions.js';
 
 interface BreakdownDetailModalProps {
   open: boolean;
@@ -55,9 +57,13 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+const inputClass = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400';
+
 export function BreakdownDetailModal({ open, onClose, reportId }: BreakdownDetailModalProps) {
   const { data: report, isLoading } = useBreakdown(reportId);
   const resolveBreakdown = useResolveBreakdown();
+  const updateTimes = useUpdateBreakdownTimes();
+  const canEdit = hasPermission('can_edit_fleet');
   const r = report as BreakdownReport | undefined;
 
   const [resolving, setResolving] = useState(false);
@@ -66,6 +72,13 @@ export function BreakdownDetailModal({ open, onClose, reportId }: BreakdownDetai
   const [resolvedAt, setResolvedAt] = useState(() => manilaNowDateTimeLocal());
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [editingTimes, setEditingTimes] = useState(false);
+  const [breakdownDate, setBreakdownDate] = useState('');
+  const [breakdownTime, setBreakdownTime] = useState('');
+  const [resolvedDate, setResolvedDate] = useState('');
+  const [resolvedTime, setResolvedTime] = useState('');
+  const [timeError, setTimeError] = useState<string | null>(null);
+  const [savingTimes, setSavingTimes] = useState(false);
 
   if (!open) return null;
 
@@ -75,6 +88,62 @@ export function BreakdownDetailModal({ open, onClose, reportId }: BreakdownDetai
         <div className="py-8 text-center text-gray-500">Loading...</div>
       </Modal>
     );
+  }
+
+  function startEditingTimes() {
+    const breakdown = isoToManilaDateAndTime(r!.breakdownAt);
+    setBreakdownDate(breakdown.date);
+    setBreakdownTime(breakdown.time);
+    if (r!.resolvedAt) {
+      const resolved = isoToManilaDateAndTime(r!.resolvedAt);
+      setResolvedDate(resolved.date);
+      setResolvedTime(resolved.time);
+    } else {
+      setResolvedDate('');
+      setResolvedTime('');
+    }
+    setTimeError(null);
+    setEditingTimes(true);
+  }
+
+  async function handleSaveTimes() {
+    if (!breakdownDate || !breakdownTime) {
+      setTimeError('Enter the date and time of the breakdown.');
+      return;
+    }
+    const breakdownAt = manilaLocalToISO(`${breakdownDate}T${breakdownTime}`);
+    const body: { breakdownAt: string; resolvedAt?: string } = { breakdownAt };
+    if (r!.status === 'resolved') {
+      if (!resolvedDate || !resolvedTime) {
+        setTimeError('Enter when it was resolved.');
+        return;
+      }
+      const nextResolved = manilaLocalToISO(`${resolvedDate}T${resolvedTime}`);
+      if (new Date(nextResolved).getTime() < new Date(breakdownAt).getTime()) {
+        setTimeError('Resolved time cannot be earlier than the breakdown.');
+        return;
+      }
+      body.resolvedAt = nextResolved;
+    }
+    setTimeError(null);
+    setSavingTimes(true);
+    try {
+      await updateTimes.mutateAsync({ id: r!.id, body });
+      setEditingTimes(false);
+    } catch (err) {
+      setTimeError((err as Error).message ?? 'Failed to update the times.');
+    } finally {
+      setSavingTimes(false);
+    }
+  }
+
+  let correctedMinutes: number | null = null;
+  if (editingTimes && r.status === 'resolved' && breakdownDate && breakdownTime && resolvedDate && resolvedTime) {
+    const start = new Date(manilaLocalToISO(`${breakdownDate}T${breakdownTime}`)).getTime();
+    const end = new Date(manilaLocalToISO(`${resolvedDate}T${resolvedTime}`)).getTime();
+    if (!Number.isNaN(start) && !Number.isNaN(end) && end >= start) {
+      correctedMinutes = Math.round((end - start) / 60000);
+    }
   }
 
   async function handleResolve() {
@@ -117,6 +186,72 @@ export function BreakdownDetailModal({ open, onClose, reportId }: BreakdownDetai
       </div>
 
       <div className="max-h-[65vh] space-y-3 overflow-y-auto">
+        {canEdit && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+            {!editingTimes ? (
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm text-amber-950">
+                  Time to fix is the gap between when it broke down and when it was resolved. Change either time if the day was entered wrong.
+                </p>
+                <button
+                  type="button"
+                  onClick={startEditingTimes}
+                  className="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-100"
+                >
+                  Correct times
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-amber-950">Correct times</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Date of breakdown</label>
+                    <input type="date" value={breakdownDate} onChange={(e) => setBreakdownDate(e.target.value)} className={inputClass} />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Time</label>
+                    <input type="time" step="60" value={breakdownTime} onChange={(e) => setBreakdownTime(e.target.value)} className={inputClass} />
+                  </div>
+                </div>
+                {r.status === 'resolved' && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">Resolved date</label>
+                      <input type="date" value={resolvedDate} onChange={(e) => setResolvedDate(e.target.value)} className={inputClass} />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">Resolved time</label>
+                      <input type="time" step="60" value={resolvedTime} onChange={(e) => setResolvedTime(e.target.value)} className={inputClass} />
+                    </div>
+                  </div>
+                )}
+                {correctedMinutes != null && (
+                  <p className="text-sm text-amber-950">Time to fix will be {formatMinutes(correctedMinutes)}.</p>
+                )}
+                {timeError && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{timeError}</div>}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setEditingTimes(false); setTimeError(null); }}
+                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveTimes}
+                    disabled={savingTimes}
+                    className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-60"
+                  >
+                    {savingTimes ? 'Saving...' : 'Save times'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <Section title="Report Details">
           <Field label="Report ID" value={<span className="font-mono text-xs">{r.id}</span>} />
           <Field label="Order Reference" value={<span className="font-mono text-xs">{r.orderReference ?? '—'}</span>} />

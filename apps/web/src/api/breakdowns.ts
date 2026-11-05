@@ -137,6 +137,22 @@ export function useResolveBreakdown() {
   });
 }
 
+export interface UpdateBreakdownTimesBody {
+  breakdownAt?: string;
+  resolvedAt?: string;
+}
+
+export function useUpdateBreakdownTimes() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateBreakdownTimesBody }) =>
+      api.patch<BreakdownReport>(`/breakdowns/${id}`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['breakdowns'] });
+    },
+  });
+}
+
 export async function uploadBreakdownPhoto(file: File): Promise<string> {
   const form = new FormData();
   form.append('file', file);

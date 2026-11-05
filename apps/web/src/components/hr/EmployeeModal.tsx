@@ -937,8 +937,9 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
                 Deactivate Employee?
               </h3>
               <p className="mb-4 text-sm text-gray-600">
-                This will set {employee?.fullName} to Inactive. They will no longer appear in
-                active employee lists. This does not delete any records.
+                This will set {employee?.fullName} to Inactive. They will no longer be able to
+                sign in, and they will no longer appear in active employee lists. This does not
+                delete any records.
               </p>
               <div className="flex gap-3">
                 <Button
