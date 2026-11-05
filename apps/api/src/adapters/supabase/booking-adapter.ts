@@ -567,10 +567,17 @@ export function createBookingAdapter(pendingRows?: Record<string, unknown>[]): B
         });
         if (error) throw new Error(`Allocation availability failed: ${error.message}`);
         if (data === null) return physical;
-        return (data as AvailableModel[]).map((model) => {
-          const existing = physical.find((m) => m.modelId === model.modelId);
-          return { ...existing, ...model, availableCount: Math.min(model.availableCount, existing?.availableCount ?? 0) };
-        });
+        // `allocation_availability` (SQL) only gates on `is_active` — it doesn't know about
+        // `show_on_customer_website`, so a model hidden from the customer site/partner portal
+        // but still active (e.g. TukTuk TVS, kept bookable for back-office only) would otherwise
+        // leak back into the result here even though `physical` correctly excluded it. Drop any
+        // RPC row that isn't also present in `physical` so hidden models stay hidden.
+        return (data as AvailableModel[])
+          .filter((model) => physical.some((m) => m.modelId === model.modelId))
+          .map((model) => {
+            const existing = physical.find((m) => m.modelId === model.modelId)!;
+            return { ...existing, ...model, availableCount: Math.min(model.availableCount, existing.availableCount) };
+          });
       };
       return verifyNextAvailableSuggestions(query, await checkOnce(query), checkOnce);
     },
