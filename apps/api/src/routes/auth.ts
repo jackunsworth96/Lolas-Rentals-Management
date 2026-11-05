@@ -3,6 +3,7 @@ import { validateBody } from '../middleware/validate.js';
 import { LoginRequestSchema } from '@lolas/shared';
 import { verifyPin } from '../adapters/auth/password.js';
 import { generateToken, type TokenPayload } from '../adapters/auth/jwt.js';
+import { isInactiveEmployeeStatus } from '../auth/staff-login-access.js';
 import { supabase } from '../adapters/supabase/client.js';
 import { logSupabaseError } from '../lib/supabase-log.js';
 
@@ -44,6 +45,22 @@ router.post('/login', validateBody(LoginRequestSchema), async (req, res, next) =
       return;
     }
 
+    const { data: employee, error: empErr } = await supabase
+      .from('employees')
+      .select('store_id, status, employee_stores(store_id)')
+      .eq('id', user.employee_id)
+      .maybeSingle();
+    if (empErr) {
+      logSupabaseError('auth/login employee lookup', empErr);
+      res.status(503).json({ success: false, error: { code: 'UNAVAILABLE', message: 'Unable to verify account status' } });
+      return;
+    }
+
+    if (isInactiveEmployeeStatus(employee?.status)) {
+      res.status(403).json({ success: false, error: { code: 'ACCOUNT_DISABLED', message: 'Account is disabled' } });
+      return;
+    }
+
     if (user.pin_hash == null || user.pin_hash === '') {
       console.error('[auth/login] User has empty pin_hash — cannot verify PIN', { userId: user.id });
       res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Invalid credentials' } });
@@ -65,14 +82,6 @@ router.post('/login', validateBody(LoginRequestSchema), async (req, res, next) =
       logSupabaseError('auth/login role_permissions', permErr);
     }
 
-    const { data: employee, error: empErr } = await supabase
-      .from('employees')
-      .select('store_id, employee_stores(store_id)')
-      .eq('id', user.employee_id)
-      .maybeSingle();
-    if (empErr) {
-      logSupabaseError('auth/login employee_stores lookup', empErr);
-    }
     const assignedStoreIds = (employee?.employee_stores ?? []).map(
       (r: { store_id: string }) => r.store_id,
     );

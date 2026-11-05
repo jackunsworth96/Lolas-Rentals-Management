@@ -128,6 +128,28 @@ router.get('/models', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Pictures uploaded from Settings, in display order. Models without uploads fall
+// back to the built-in Cloudinary images on the client.
+router.get('/vehicle-images', async (_req, res, next) => {
+  try {
+    const { getSupabaseClient } = await import('../adapters/supabase/client.js');
+    const { data, error } = await getSupabaseClient()
+      .from('vehicle_model_images')
+      .select('model_id, url, sort_order, vehicle_models(name)')
+      .order('sort_order');
+    if (error) throw new Error(error.message);
+    const byModel = new Map<string, { modelId: string; modelName: string; urls: string[] }>();
+    for (const row of (data ?? []) as Array<{ model_id: string; url: string; vehicle_models: { name: string } | Array<{ name: string }> | null }>) {
+      const model = Array.isArray(row.vehicle_models) ? row.vehicle_models[0] : row.vehicle_models;
+      const entry = byModel.get(row.model_id) ?? { modelId: row.model_id, modelName: model?.name ?? '', urls: [] };
+      entry.urls.push(row.url);
+      byModel.set(row.model_id, entry);
+    }
+    res.set('Cache-Control', 'public, max-age=300');
+    res.json({ success: true, data: [...byModel.values()] });
+  } catch (err) { next(err); }
+});
+
 router.get('/availability', validateQuery(AvailabilityQuerySchema), async (req, res, next) => {
   try {
     const { storeId, pickupDatetime, dropoffDatetime, excludeSessionToken, logDemand } = req.query as {

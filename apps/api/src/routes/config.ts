@@ -1,5 +1,6 @@
-import { Router, type Request } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { randomBytes } from 'node:crypto';
+import multer from 'multer';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
@@ -43,6 +44,50 @@ function mapAccommodationDirectoryRow(row: Record<string, unknown>) {
     isActive: Boolean(row.is_active),
   };
 }
+const SITE_IMAGES_BUCKET = 'site-images';
+const SITE_IMAGE_EXT: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+};
+
+const siteImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (SITE_IMAGE_EXT[file.mimetype]) cb(null, true);
+    else cb(new Error(`Invalid file type: ${file.mimetype}. Allowed: JPEG, PNG, WebP, GIF`));
+  },
+});
+
+/** Reads a single `file` field; sends a 400 and resolves null when it is missing or invalid. */
+function receiveSiteImage(req: Request, res: Response): Promise<Express.Multer.File | null> {
+  return new Promise((resolve) => {
+    siteImageUpload.single('file')(req, res, (err: unknown) => {
+      if (err || !req.file) {
+        const message = err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE'
+          ? 'File too large. Maximum size is 5 MB.'
+          : (err as Error | undefined)?.message || 'No file provided';
+        res.status(400).json({ success: false, error: { code: 'UPLOAD_ERROR', message } });
+        resolve(null);
+        return;
+      }
+      resolve(req.file);
+    });
+  });
+}
+
+async function uploadSiteImage(file: Express.Multer.File, folder: string): Promise<{ path: string; url: string }> {
+  const sb = getSupabaseClient();
+  const path = `${folder}/${Date.now()}-${randomBytes(6).toString('hex')}.${SITE_IMAGE_EXT[file.mimetype]}`;
+  const { error } = await sb.storage
+    .from(SITE_IMAGES_BUCKET)
+    .upload(path, file.buffer, { contentType: file.mimetype, upsert: false, cacheControl: '31536000' });
+  if (error) throw new Error(`Storage upload failed: ${error.message}`);
+  return { path, url: sb.storage.from(SITE_IMAGES_BUCKET).getPublicUrl(path).data.publicUrl };
+}
+
 router.use(authenticate);
 
 const edit = requirePermission(Permission.EditSettings);
@@ -252,6 +297,110 @@ router.put('/vehicle-models/:id', edit, validateBody(z.object({
 });
 router.delete('/vehicle-models/:id', edit, async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.deleteVehicleModel(req.params.id); res.json({ success: true }); } catch (e) { next(e); }
+});
+
+// ── Vehicle model pictures ──
+function mapVehicleModelImage(row: Record<string, unknown>) {
+  return {
+    id: row.id as string,
+    modelId: row.model_id as string,
+    url: row.url as string,
+    sortOrder: Number(row.sort_order ?? 0),
+  };
+}
+
+router.get('/vehicle-models/:id/images', async (req, res, next) => {
+  try {
+    const { data, error } = await getSupabaseClient()
+      .from('vehicle_model_images')
+      .select('id, model_id, url, sort_order')
+      .eq('model_id', req.params.id)
+      .order('sort_order');
+    if (error) throw new Error(error.message);
+    res.json({ success: true, data: (data ?? []).map(mapVehicleModelImage) });
+  } catch (e) { next(e); }
+});
+
+router.post('/vehicle-models/:id/images', edit, async (req, res, next) => {
+  const file = await receiveSiteImage(req, res);
+  if (!file) return;
+  try {
+    const sb = getSupabaseClient();
+    const { data: last } = await sb
+      .from('vehicle_model_images')
+      .select('sort_order')
+      .eq('model_id', req.params.id)
+      .order('sort_order', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const stored = await uploadSiteImage(file, `vehicles/${req.params.id}`);
+    const { data, error } = await sb
+      .from('vehicle_model_images')
+      .insert({
+        model_id: req.params.id,
+        url: stored.url,
+        storage_path: stored.path,
+        sort_order: Number(last?.sort_order ?? -1) + 1,
+        created_by: req.user?.employeeId ?? null,
+      })
+      .select('id, model_id, url, sort_order')
+      .single();
+    if (error) {
+      await sb.storage.from(SITE_IMAGES_BUCKET).remove([stored.path]);
+      throw new Error(error.message);
+    }
+    res.status(201).json({ success: true, data: mapVehicleModelImage(data) });
+  } catch (e) { next(e); }
+});
+
+router.put('/vehicle-models/:id/images/order', edit, validateBody(z.object({
+  ids: z.array(z.string().uuid()).min(1),
+})), async (req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+    const ids = req.body.ids as string[];
+    for (const [index, id] of ids.entries()) {
+      const { error } = await sb
+        .from('vehicle_model_images')
+        .update({ sort_order: index })
+        .eq('id', id)
+        .eq('model_id', req.params.id);
+      if (error) throw new Error(error.message);
+    }
+    res.json({ success: true });
+  } catch (e) { next(e); }
+});
+
+router.delete('/vehicle-model-images/:imageId', edit, async (req, res, next) => {
+  try {
+    const sb = getSupabaseClient();
+    const { data, error } = await sb
+      .from('vehicle_model_images')
+      .delete()
+      .eq('id', req.params.imageId)
+      .select('storage_path')
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (data?.storage_path) await sb.storage.from(SITE_IMAGES_BUCKET).remove([data.storage_path as string]);
+    res.json({ success: true });
+  } catch (e) { next(e); }
+});
+
+// ── General image upload (e.g. paw card partner logos) ──
+const IMAGE_UPLOAD_FOLDERS = new Set(['paw-card']);
+
+router.post('/images/upload', edit, async (req, res, next) => {
+  const folder = String(req.query.folder ?? '');
+  if (!IMAGE_UPLOAD_FOLDERS.has(folder)) {
+    res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Unknown upload folder' } });
+    return;
+  }
+  const file = await receiveSiteImage(req, res);
+  if (!file) return;
+  try {
+    const stored = await uploadSiteImage(file, folder);
+    res.json({ success: true, data: { url: stored.url } });
+  } catch (e) { next(e); }
 });
 
 // ── Model Pricing ──

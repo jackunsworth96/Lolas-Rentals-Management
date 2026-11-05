@@ -17,25 +17,99 @@ export interface FleetUnavailability {
   updatedAt: string;
 }
 
-export interface AvailabilityExplanation {
-  models: Array<{
-    modelId: string;
-    modelName: string;
-    totalEligible: number;
-    availableCount: number;
-    exactVehicleExclusions: Array<{
-      vehicleId: string;
-      vehicleName: string;
-      reasons: Array<'order' | 'walk_in' | 'owner_use'>;
-    }>;
-    capacityDeductions: { directReservations: number; holds: number };
-  }>;
-  configurationExclusions: Array<{
-    vehicleId: string;
-    vehicleName: string;
-    reason: 'missing_model' | 'non_rentable_status' | 'inactive_model';
-    detail?: string;
-  }>;
+export const SURF_RACK_PRODUCT = 'surf-rack';
+
+export type FinderVehicleState = 'free' | 'on_rent' | 'overdue' | 'awaiting_pickup' | 'walk_in' | 'owner_use';
+
+export interface ProtectedFor {
+  partnerId: string | null;
+  partnerName: string | null;
+}
+
+export interface FinderVehicleRow {
+  vehicleId: string;
+  vehicleName: string;
+  surfRack: boolean;
+  state: FinderVehicleState;
+  reference: string | null;
+  customerName: string | null;
+  orderId: string | null;
+  rawOrderId: string | null;
+  returnAt: string | null;
+  nextFreeAt: string | null;
+  freeUntil: string | null;
+  heldForBooking: boolean;
+  protectedFor: ProtectedFor | null;
+}
+
+export interface FinderProduct {
+  modelId: string;
+  modelName: string;
+  vehicleType: string | null;
+  hiddenFromWebsite: boolean;
+  totalUnits: number;
+  freeNow: number;
+  protectedNow: number;
+  heldNow: number;
+  backToday: number;
+  vehicles: FinderVehicleRow[];
+  unassignedBookings: Array<{ reference: string | null; customerName: string | null; rawOrderId: string | null; pickupAt: string; dropoffAt: string }>;
+  basketHolds: number;
+}
+
+export interface PartnerAllowanceSummary {
+  partnerId: string;
+  partnerName: string;
+  vehicleType: string;
+  allowance: number;
+  inUse: number;
+  unused: number;
+}
+
+export interface AvailabilityFinderResult {
+  from: string;
+  days: number;
+  horizonEnd: string;
+  allocationsEnabled: boolean;
+  partners: PartnerAllowanceSummary[];
+  products: FinderProduct[];
+  notRentable: Array<{ vehicleId: string; vehicleName: string; reason: string; detail: string | null }>;
+  search: null | {
+    product: string;
+    productName: string;
+    quantity: number;
+    days: number;
+    partnerId: string | null;
+    answers: Array<{ unit: number; startsAt: string; readyNow: boolean; vehicleId: string | null; vehicleName: string | null; freeUntil: string | null }>;
+    allTogetherAt: string | null;
+    protectedBy: Array<{ partnerId: string; partnerName: string }>;
+  };
+  surfRacks: null | {
+    tracked: boolean;
+    total: number;
+    inUseNow: number;
+    freeNow: number;
+    rackBikesFreeNow: number;
+    nextFreeAt: string | null;
+  };
+}
+
+export interface StorePartnerProtection {
+  storeId: string;
+  enabled: boolean;
+  partners: PartnerAllowanceSummary[];
+  protectedVehicles: Array<{ vehicleId: string; vehicleName: string; modelName: string; partnerId: string | null; partnerName: string | null }>;
+}
+
+/** Details the API attaches to an ALLOCATION_CONFLICT error. */
+export interface AllocationConflictDetails {
+  reason: 'partner_protected' | 'fully_committed' | 'model_full' | 'vehicle_unavailable' | 'other';
+  storeId?: string;
+  vehicleType?: 'bike' | 'tuktuk';
+  at?: string;
+  startsAt?: string;
+  endsAt?: string;
+  partners?: Array<{ partnerId: string; partnerName: string }>;
 }
 
 export function useFleet(storeId: string) {
@@ -125,18 +199,40 @@ export function useCancelFleetUnavailability() {
   });
 }
 
-export function useAvailabilityExplanation(params: {
-  storeId: string; pickupDatetime: string; dropoffDatetime: string; enabled?: boolean;
+export function useAvailabilityFinder(params: {
+  storeId: string; product?: string; quantity: number; days: number; from?: string; partnerId?: string; enabled?: boolean;
 }) {
-  const search = new URLSearchParams({
-    storeId: params.storeId,
-    pickupDatetime: params.pickupDatetime,
-    dropoffDatetime: params.dropoffDatetime,
+  const search = new URLSearchParams({ storeId: params.storeId, quantity: String(params.quantity), days: String(params.days) });
+  if (params.product) search.set('product', params.product);
+  if (params.from) search.set('from', params.from);
+  if (params.partnerId) search.set('partnerId', params.partnerId);
+  return useQuery<AvailabilityFinderResult>({
+    queryKey: ['fleet', 'availability-finder', params.storeId, params.product, params.quantity, params.days, params.from, params.partnerId],
+    queryFn: () => api.get(`/fleet/availability-finder?${search.toString()}`),
+    enabled: (params.enabled ?? true) && Boolean(params.storeId),
+    placeholderData: (previous) => previous,
+    refetchInterval: 60_000,
   });
-  return useQuery<AvailabilityExplanation>({
-    queryKey: ['availability-explanation', params.storeId, params.pickupDatetime, params.dropoffDatetime],
-    queryFn: () => api.get(`/fleet/availability-explanation?${search.toString()}`),
-    enabled: (params.enabled ?? true) && Boolean(params.storeId && params.pickupDatetime && params.dropoffDatetime),
+}
+
+export function usePartnerProtection(storeId: string, enabled = true) {
+  return useQuery<StorePartnerProtection[]>({
+    queryKey: ['fleet', 'partner-protection', storeId],
+    queryFn: () => api.get(`/fleet/partner-protection?storeId=${encodeURIComponent(storeId || 'all')}`),
+    enabled,
+    staleTime: 60_000,
+  });
+}
+
+export function useReleasePartnerProtection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      storeId: string; partnerId: string; vehicleType: 'bike' | 'tuktuk'; startsAt: string; endsAt: string; reason: string;
+    }) => api.post<{ partnerName: string; startsOn: string; endsBefore: string; previousQty: number; qty: number }>(
+      '/fleet/partner-protection/release', body,
+    ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['fleet'] }),
   });
 }
 
@@ -245,6 +341,8 @@ export interface AvailableVehicle {
    * still pass this availability check but reject at booking submission with
    * ALLOCATION_CONFLICT until the buffer clears or a manager releases it early. */
   pendingReleaseAt?: string | null;
+  /** Free, but kept back by a partner allocation for these dates. Booking it needs a Manager/Admin release. */
+  protectedFor?: (ProtectedFor & { vehicleType: 'bike' | 'tuktuk' }) | null;
 }
 
 export function availableVehiclesQuery(

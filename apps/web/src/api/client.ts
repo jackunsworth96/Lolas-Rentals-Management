@@ -7,11 +7,13 @@ const BASE_URL = normalizeApiBase(import.meta.env.VITE_API_URL as string | undef
 /** Thrown when the API returns `success: false` or a non-OK status with a JSON body. */
 export class ApiError extends Error {
   readonly code?: string;
+  readonly details?: unknown;
 
-  constructor(message: string, code?: string) {
+  constructor(message: string, code?: string, details?: unknown) {
     super(message);
     this.name = 'ApiError';
     this.code = code;
+    this.details = details;
     Object.setPrototypeOf(this, new.target.prototype);
   }
 }
@@ -72,7 +74,7 @@ async function request<T>(
   }
 
   if (!response.ok || !json.success) {
-    throw new ApiError(json.error?.message ?? 'Request failed', json.error?.code);
+    throw new ApiError(json.error?.message ?? 'Request failed', json.error?.code, json.error?.details);
   }
 
   return json.data as T;

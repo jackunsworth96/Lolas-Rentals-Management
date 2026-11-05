@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
-import { resolvePublicId } from '../../utils/vehicle-images.js';
+import { useVehiclePublicId } from '../../utils/vehicle-images.js';
 import { CloudinaryImage } from '../ui/CloudinaryImage.js';
 import { formatPhpNumber } from '../../utils/currency.js';
 import { bookingLeadTimeMessage, hasBookingLeadTime } from '@lolas/shared';
@@ -128,7 +128,7 @@ export function VehicleCard({
   const cartItems = basket.filter((b) => b.vehicleModelId === modelId);
   const count = cartItems.length;
   const displayName = VEHICLE_NAME_MAP[modelName] ?? modelName;
-  const publicId = resolvePublicId(modelName);
+  const publicId = useVehiclePublicId(modelName);
 
   const maxQty = Math.max(1, availableCount - count);
   const clampedQty = Math.min(qty, maxQty);

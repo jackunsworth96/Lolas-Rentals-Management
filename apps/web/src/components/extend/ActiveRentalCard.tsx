@@ -1,5 +1,5 @@
 import { locationIcon } from '../public/customerContactIcons.js';
-import { resolvePublicId } from '../../utils/vehicle-images.js';
+import { useVehiclePublicId } from '../../utils/vehicle-images.js';
 import { CloudinaryImage } from '../ui/CloudinaryImage.js';
 
 function formatDateTime(iso: string): string {
@@ -16,7 +16,7 @@ interface Props {
 }
 
 export function ActiveRentalCard({ vehicleModelName, returnLocationName, currentDropoffDatetime }: Props) {
-  const publicId = resolvePublicId(vehicleModelName);
+  const publicId = useVehiclePublicId(vehicleModelName);
 
   return (
     <section className="animate-card-enter overflow-hidden rounded-4xl border-4 border-gold-brand/20 bg-cream-brand shadow-[0_10px_30px_-5px_rgba(26,122,110,0.1)]">

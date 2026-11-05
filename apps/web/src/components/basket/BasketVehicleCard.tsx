@@ -3,7 +3,7 @@ import { CalendarDays } from 'lucide-react';
 import { api } from '../../api/client.js';
 import { useBookingStore, type BasketItem } from '../../stores/bookingStore.js';
 import { HoldCountdown } from '../booking/HoldCountdown.js';
-import { resolvePublicId } from '../../utils/vehicle-images.js';
+import { useVehiclePublicId } from '../../utils/vehicle-images.js';
 import { CloudinaryImage } from '../ui/CloudinaryImage.js';
 import { formatCurrency } from '../../utils/currency.js';
 
@@ -20,7 +20,7 @@ export function BasketVehicleCard({ item, rentalDays, pickupLabel, dropoffLabel,
   const sessionToken = useBookingStore((s) => s.sessionToken);
   const removeFromBasket = useBookingStore((s) => s.removeFromBasket);
 
-  const publicId = resolvePublicId(item.modelName);
+  const publicId = useVehiclePublicId(item.modelName);
   const subtotal = item.dailyRate * rentalDays;
 
   async function handleRemove() {

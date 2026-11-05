@@ -24,6 +24,7 @@ function mockFleet(orderCount: number, failBatch = -1) {
         return query;
       },
       not: () => query,
+      is: () => query,
       then: (resolve: (value: unknown) => unknown) => {
         if (table === 'orders') {
           batches.push(batch);
@@ -77,6 +78,7 @@ function mockTables(options: {
   orderItems?: Array<Record<string, unknown>>;
   orders?: Array<{ id: string; status: string }>;
   maintenance?: Array<Record<string, unknown>>;
+  unavailability?: Array<Record<string, unknown>>;
   orderAddons?: Array<Record<string, unknown>>;
 }) {
   const fleet = options.fleet ?? [{ id: 'vehicle', name: 'Vehicle', store_id: 'store', status: 'Available', rentable_start_date: null, date_sold: null }];
@@ -93,8 +95,10 @@ function mockTables(options: {
       order: () => query,
       in: () => query,
       not: () => query,
+      is: () => query,
       then: (resolve: (value: unknown) => unknown) => {
         if (table === 'fleet') return Promise.resolve(resolve({ data: fleet, error: null }));
+        if (table === 'fleet_unavailability') return Promise.resolve(resolve({ data: options.unavailability ?? [], error: null }));
         if (table === 'order_items') return Promise.resolve(resolve({ data: orderItems, error: null }));
         if (table === 'orders') return Promise.resolve(resolve({ data: orders, error: null }));
         if (table === 'maintenance') return Promise.resolve(resolve({ data: maintenance, error: null }));
@@ -311,4 +315,51 @@ it('counts ongoing maintenance (no downtime_end yet) through the end of the peri
   // Downtime from Oct 5 through period end Oct 11 = 6 days.
   expect(result.vehicles[0].downtimeDays).toBe(6);
   expect(result.fleetKpis.totalDowntimeDays).toBe(6);
+});
+
+it('ignores maintenance records that never recorded downtime', async () => {
+  mockTables({
+    maintenance: [
+      { asset_id: 'vehicle', status: 'Completed', downtime_start: null, downtime_end: null, total_downtime_days: null },
+      { asset_id: 'vehicle', status: 'Reported', downtime_start: null, downtime_end: null, total_downtime_days: null },
+    ],
+  });
+  const result = await getFleetUtilization('2026-10-01', '2026-10-11', undefined, false);
+  expect(result.vehicles[0].downtimeDays).toBe(0);
+  expect(result.vehicles[0].availableDays).toBe(10);
+});
+
+it('uses total_downtime_days for completed jobs with no end date', async () => {
+  mockTables({
+    maintenance: [{ asset_id: 'vehicle', status: 'Completed', downtime_start: '2026-10-03', downtime_end: null, total_downtime_days: 2 }],
+  });
+  const result = await getFleetUtilization('2026-10-01', '2026-10-11', undefined, false);
+  expect(result.vehicles[0].downtimeDays).toBe(2);
+});
+
+it('measures utilisation against available days, counting overlapping maintenance and owner use once', async () => {
+  mockTables({
+    maintenance: [{ asset_id: 'vehicle', status: 'Completed', downtime_start: '2026-10-03', downtime_end: null, total_downtime_days: 2 }],
+    unavailability: [{ vehicle_id: 'vehicle', starts_at: '2026-10-04T00:00:00+08:00', ends_at: '2026-10-06T00:00:00+08:00' }],
+    orderItems: [{
+      order_id: 'o1', vehicle_id: 'vehicle', rental_days_count: 5, rental_rate: 0, pickup_fee: 0, dropoff_fee: 0, discount: 0,
+      pickup_datetime: '2026-10-06T00:00:00+08:00', dropoff_datetime: '2026-10-11T00:00:00+08:00',
+    }],
+    orders: [{ id: 'o1', status: 'completed' }],
+  });
+  const result = await getFleetUtilization('2026-10-01', '2026-10-11', undefined, false);
+  const v = result.vehicles[0];
+  expect(v.activeDays).toBe(10);
+  expect(v.ownerUseDays).toBe(2);
+  // Blocked Oct 3 -> Oct 6 = 3 days, leaving 7 available; 5 rented.
+  expect(v.availableDays).toBe(7);
+  expect(v.utilisationRate).toBeCloseTo(71.4, 1);
+  expect(result.fleetKpis.utilisationPercent).toBeCloseTo(71.4, 1);
+});
+
+it('compares against a previous period of the same length that ends where this one starts', async () => {
+  mockTables({});
+  const result = await getFleetUtilization('2026-10-11', '2026-10-21', undefined, true);
+  expect(result.previousPeriod?.from).toBe('2026-10-01');
+  expect(result.previousPeriod?.to).toBe('2026-10-11');
 });

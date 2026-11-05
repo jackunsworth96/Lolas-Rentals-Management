@@ -15,7 +15,13 @@ export const cld = new Cloudinary({
  */
 export const PARTNER_LOGO_CACHE_BUST = '3';
 
+/** True for a full image URL rather than a Cloudinary public ID. */
+export function isImageUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value);
+}
+
 export function buildCloudinaryImageUrl(publicId: string, cacheBust?: string): string {
+  if (isImageUrl(publicId)) return publicId;
   const base = cld
     .image(publicId)
     .delivery(format(autoFormat()))

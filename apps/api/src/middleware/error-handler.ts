@@ -18,7 +18,7 @@ const domainStatusMap = new Map<Function, number>([
 
 export function errorHandler(
   err: Error,
-  _req: Request,
+  req: Request,
   res: Response,
   _next: NextFunction,
 ): void {
@@ -28,7 +28,15 @@ export function errorHandler(
   }
   if (err.message.includes('ALLOCATION_CONFLICT')) {
     console.warn('[allocation-conflict]', err.message);
-    res.status(409).json({ success: false, error: { code: 'ALLOCATION_CONFLICT', message: err.message } });
+    void import('../lib/allocation-conflict-message.js')
+      .then(({ explainAllocationConflict }) => explainAllocationConflict(err.message, req))
+      .then(({ message, details }) => {
+        res.status(409).json({ success: false, error: { code: 'ALLOCATION_CONFLICT', message, details } });
+      })
+      .catch((explainErr) => {
+        console.error('[allocation-conflict] could not explain:', explainErr);
+        if (!res.headersSent) res.status(409).json({ success: false, error: { code: 'ALLOCATION_CONFLICT', message: err.message } });
+      });
     return;
   }
   if (err.message.includes('STORE_ARCHIVED')) {

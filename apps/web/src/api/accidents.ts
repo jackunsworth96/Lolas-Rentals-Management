@@ -105,6 +105,17 @@ export function useCreateAccident() {
   });
 }
 
+export function useUpdateAccidentTime() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, accidentAt }: { id: string; accidentAt: string }) =>
+      api.patch<AccidentReport>(`/accidents/${id}`, { accidentAt }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['accidents'] });
+    },
+  });
+}
+
 
 export async function uploadAccidentPhoto(file: File): Promise<string> {
   const form = new FormData();

@@ -3,7 +3,7 @@ import { CalendarDays } from 'lucide-react';
 import { api } from '../../api/client.js';
 import { useBookingStore, type BasketItem } from '../../stores/bookingStore.js';
 import { HoldCountdown } from '../booking/HoldCountdown.js';
-import { resolvePublicId } from '../../utils/vehicle-images.js';
+import { useVehiclePublicId } from '../../utils/vehicle-images.js';
 import { CloudinaryImage } from '../ui/CloudinaryImage.js';
 import { formatCurrency } from '../../utils/currency.js';
 
@@ -22,7 +22,7 @@ export function BasketVehicleGroupCard({ items, rentalDays, pickupLabel, dropoff
 
   const first = items[0];
   const count = items.length;
-  const publicId = resolvePublicId(first.modelName);
+  const publicId = useVehiclePublicId(first.modelName);
   const ratePerUnit = first.dailyRate;
   const groupSubtotal = ratePerUnit * rentalDays * count;
 

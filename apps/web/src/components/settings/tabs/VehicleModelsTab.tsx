@@ -1,8 +1,12 @@
 import { useState } from 'react';
-import { useAllVehicleModels, useSaveVehicleModel, useDeleteVehicleModel, useModelPricing, useSaveModelPricing, useDeleteModelPricing, useStores } from '../../../api/config.js';
+import {
+  useAllVehicleModels, useSaveVehicleModel, useDeleteVehicleModel, useModelPricing, useSaveModelPricing, useDeleteModelPricing, useStores,
+  useVehicleModelImages, useUploadVehicleModelImage, useReorderVehicleModelImages, useDeleteVehicleModelImage,
+} from '../../../api/config.js';
 import { useUIStore } from '../../../stores/ui-store.js';
 import { ConfigSection, type FieldDef } from '../ConfigSection.js';
 import { Modal } from '../../common/Modal.js';
+import { ImageDropzone } from '../../common/ImageDropzone.js';
 
 const modelColumns = [
   { key: 'id', header: 'ID' },
@@ -24,6 +28,7 @@ export function VehicleModelsTab() {
   const saveModel = useSaveVehicleModel();
   const delModel = useDeleteVehicleModel();
   const [pricingModelId, setPricingModelId] = useState<string | null>(null);
+  const [picturesModel, setPicturesModel] = useState<{ id: string; name: string } | null>(null);
 
   const extendedColumns = [
     ...modelColumns,
@@ -32,6 +37,13 @@ export function VehicleModelsTab() {
       header: 'Pricing',
       render: (r: Record<string, unknown>) => (
         <button type="button" onClick={(e) => { e.stopPropagation(); setPricingModelId(r.id as string); }} className="text-blue-600 hover:underline text-sm">Day rates</button>
+      ),
+    },
+    {
+      key: '_pictures',
+      header: 'Pictures',
+      render: (r: Record<string, unknown>) => (
+        <button type="button" onClick={(e) => { e.stopPropagation(); setPicturesModel({ id: r.id as string, name: r.name as string }); }} className="text-blue-600 hover:underline text-sm">Pictures</button>
       ),
     },
   ];
@@ -54,7 +66,73 @@ export function VehicleModelsTab() {
       {pricingModelId && (
         <PricingSubPanel modelId={pricingModelId} storeId={storeId} onClose={() => setPricingModelId(null)} />
       )}
+      {picturesModel && (
+        <PicturesPanel modelId={picturesModel.id} modelName={picturesModel.name} onClose={() => setPicturesModel(null)} />
+      )}
     </div>
+  );
+}
+
+function PicturesPanel({ modelId, modelName, onClose }: { modelId: string; modelName: string; onClose: () => void }) {
+  const { data: images = [], isLoading } = useVehicleModelImages(modelId);
+  const upload = useUploadVehicleModelImage(modelId);
+  const reorder = useReorderVehicleModelImages(modelId);
+  const remove = useDeleteVehicleModelImage(modelId);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  async function uploadAll(files: File[]) {
+    for (const file of files) await upload.mutateAsync(file);
+  }
+
+  function move(index: number, delta: number) {
+    const ids = images.map((img) => img.id);
+    const target = index + delta;
+    if (target < 0 || target >= ids.length) return;
+    [ids[index], ids[target]] = [ids[target], ids[index]];
+    reorder.mutate(ids);
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`Pictures — ${modelName}`} size="lg">
+      <p className="mb-4 text-sm text-gray-500">
+        The first picture is shown on the booking website. With no pictures here, the website keeps using its built-in image.
+      </p>
+      <ImageDropzone multiple busy={upload.isPending} onFiles={uploadAll} label="Drag pictures here, or click to choose" />
+      {(upload.error || reorder.error || remove.error) && (
+        <p className="mt-2 text-sm text-red-600">{((upload.error ?? reorder.error ?? remove.error) as Error).message}</p>
+      )}
+      {isLoading ? (
+        <p className="mt-4 text-sm text-gray-500">Loading pictures…</p>
+      ) : (
+        <ul className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {images.map((img, index) => (
+            <li key={img.id} className="overflow-hidden rounded-lg border border-gray-200">
+              <div className="relative aspect-[4/3] bg-gray-50">
+                <img src={img.url} alt={`${modelName} ${index + 1}`} className="h-full w-full object-contain" loading="lazy" />
+                {index === 0 && (
+                  <span className="absolute left-2 top-2 rounded bg-teal-600 px-2 py-0.5 text-xs font-medium text-white">Main</span>
+                )}
+              </div>
+              <div className="flex items-center justify-between gap-1 px-2 py-1.5 text-xs">
+                <div className="flex gap-1">
+                  <button type="button" disabled={index === 0 || reorder.isPending} onClick={() => move(index, -1)} className="rounded px-2 py-1 text-gray-600 hover:bg-gray-100 disabled:opacity-40" aria-label="Move earlier">←</button>
+                  <button type="button" disabled={index === images.length - 1 || reorder.isPending} onClick={() => move(index, 1)} className="rounded px-2 py-1 text-gray-600 hover:bg-gray-100 disabled:opacity-40" aria-label="Move later">→</button>
+                </div>
+                {confirmDeleteId === img.id ? (
+                  <span className="flex gap-1">
+                    <button type="button" onClick={() => { remove.mutate(img.id); setConfirmDeleteId(null); }} className="rounded px-2 py-1 font-medium text-red-600 hover:bg-red-50">Delete</button>
+                    <button type="button" onClick={() => setConfirmDeleteId(null)} className="rounded px-2 py-1 text-gray-600 hover:bg-gray-100">Keep</button>
+                  </span>
+                ) : (
+                  <button type="button" onClick={() => setConfirmDeleteId(img.id)} className="rounded px-2 py-1 text-red-600 hover:bg-red-50">Remove</button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {!isLoading && images.length === 0 && <p className="mt-4 text-sm text-gray-400">No pictures uploaded yet.</p>}
+    </Modal>
   );
 }
 

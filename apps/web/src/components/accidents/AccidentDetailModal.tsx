@@ -1,7 +1,10 @@
+import { useState } from 'react';
 import { Modal } from '../common/Modal.js';
 import { Badge } from '../common/Badge.js';
-import { useAccident } from '../../api/accidents.js';
+import { useAccident, useUpdateAccidentTime } from '../../api/accidents.js';
 import type { AccidentReport } from '../../api/accidents.js';
+import { isoToManilaDateAndTime, manilaLocalToISO } from '../../utils/date.js';
+import { hasPermission } from '../../utils/permissions.js';
 
 interface AccidentDetailModalProps {
   open: boolean;
@@ -43,9 +46,18 @@ function YesNo({ val, yesColor = 'red' }: { val: boolean; yesColor?: 'red' | 'am
   return <span className="text-gray-400 text-sm">No</span>;
 }
 
+const inputClass = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-red-400 focus:outline-none focus:ring-1 focus:ring-red-400';
+
 export function AccidentDetailModal({ open, onClose, reportId }: AccidentDetailModalProps) {
   const { data: report, isLoading } = useAccident(reportId);
+  const updateTime = useUpdateAccidentTime();
+  const canEdit = hasPermission('can_edit_fleet');
   const r = report as AccidentReport | undefined;
+  const [editingTime, setEditingTime] = useState(false);
+  const [accidentDate, setAccidentDate] = useState('');
+  const [accidentTime, setAccidentTime] = useState('');
+  const [timeError, setTimeError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   if (!open) return null;
 
@@ -57,6 +69,34 @@ export function AccidentDetailModal({ open, onClose, reportId }: AccidentDetailM
     );
   }
 
+  function startEditingTime() {
+    const when = isoToManilaDateAndTime(r!.accidentAt);
+    setAccidentDate(when.date);
+    setAccidentTime(when.time);
+    setTimeError(null);
+    setEditingTime(true);
+  }
+
+  async function handleSaveTime() {
+    if (!accidentDate || !accidentTime) {
+      setTimeError('Enter the date and time of the incident.');
+      return;
+    }
+    setTimeError(null);
+    setSaving(true);
+    try {
+      await updateTime.mutateAsync({
+        id: r!.id,
+        accidentAt: manilaLocalToISO(`${accidentDate}T${accidentTime}`),
+      });
+      setEditingTime(false);
+    } catch (err) {
+      setTimeError((err as Error).message ?? 'Failed to update the incident time.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <Modal open onClose={onClose} title="Accident Report" size="xl">
       {/* Header */}
@@ -66,6 +106,60 @@ export function AccidentDetailModal({ open, onClose, reportId }: AccidentDetailM
       </div>
 
       <div className="max-h-[65vh] space-y-3 overflow-y-auto">
+        {canEdit && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+            {!editingTime ? (
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm text-red-950">
+                  Change the date and time if this incident was saved with the wrong clock time.
+                </p>
+                <button
+                  type="button"
+                  onClick={startEditingTime}
+                  className="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-800 hover:bg-red-100"
+                >
+                  Correct time
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-red-950">Correct incident time</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Date</label>
+                    <input type="date" value={accidentDate} onChange={(e) => setAccidentDate(e.target.value)} className={inputClass} />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Time</label>
+                    <input type="time" step="60" value={accidentTime} onChange={(e) => setAccidentTime(e.target.value)} className={inputClass} />
+                  </div>
+                </div>
+                <p className="text-xs text-red-900">
+                  Saving updates the verification hash so it matches the corrected time. The email sent when this was filed still shows the original time.
+                </p>
+                {timeError && <div className="rounded-lg bg-white px-3 py-2 text-sm text-red-700">{timeError}</div>}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setEditingTime(false); setTimeError(null); }}
+                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveTime}
+                    disabled={saving}
+                    className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
+                  >
+                    {saving ? 'Saving...' : 'Save time'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <Section title="Report Details">
           <Field label="Report ID" value={<span className="font-mono text-xs">{r.id}</span>} />
           <Field label="Order Reference" value={<span className="font-mono text-xs">{r.orderReference ?? '—'}</span>} />

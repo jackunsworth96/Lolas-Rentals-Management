@@ -57,8 +57,10 @@ export default function UtilizationDashboard() {
       rentalDays: number;
       revenue: number;
       downtimeDays: number;
+      ownerUseDays: number;
       utilisationRate: number;
       activeDays: number;
+      availableDays: number;
     }>;
     previousPeriod?: { fleetKpis: typeof result.fleetKpis };
     deltas?: {
@@ -150,7 +152,10 @@ export default function UtilizationDashboard() {
         <p className="text-sm text-gray-500">
           {result.lifetime
             ? `Lifetime: each vehicle from its rentable start through today${scope === 'archive' ? ', or through its sale date' : ''}.`
-            : `Period: ${result.from} to ${result.to}`}
+            : `Period: ${result.from} to ${lastDayOf(result.to)}`}
+        </p>
+        <p className="text-xs text-gray-400">
+          Utilization = rental days ÷ available days. Available days are the days a vehicle was in the fleet, minus maintenance downtime and owner use.
         </p>
         {scope === 'archive' && (
           <p className="text-sm text-amber-800">Sold and retired vehicles only. These figures are not part of the current fleet.</p>
@@ -206,6 +211,8 @@ export default function UtilizationDashboard() {
               <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Active days</th>
               <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Revenue</th>
               <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Downtime (days)</th>
+              <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Owner use (days)</th>
+              <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Available days</th>
               <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Utilization %</th>
             </tr>
           </thead>
@@ -219,6 +226,8 @@ export default function UtilizationDashboard() {
                 <td className="whitespace-nowrap px-4 py-3 text-sm text-right text-gray-500" title="Days this vehicle was actually in the rentable fleet during this period">{v.activeDays}</td>
                 <td className="whitespace-nowrap px-4 py-3 text-sm text-right text-gray-900">{formatCurrency(v.revenue)}</td>
                 <td className="whitespace-nowrap px-4 py-3 text-sm text-right text-gray-900">{v.downtimeDays}</td>
+                <td className="whitespace-nowrap px-4 py-3 text-sm text-right text-gray-900">{v.ownerUseDays}</td>
+                <td className="whitespace-nowrap px-4 py-3 text-sm text-right text-gray-500" title="Active days minus maintenance downtime and owner use">{v.availableDays}</td>
                 <td className="whitespace-nowrap px-4 py-3 text-sm text-right text-gray-900">{v.utilisationRate}%</td>
               </tr>
             ))}
@@ -234,6 +243,12 @@ export default function UtilizationDashboard() {
       )}
     </div>
   );
+}
+
+/** The API returns an exclusive end date; show the last day actually counted. */
+function lastDayOf(exclusiveTo: string): string {
+  const [y, m, d] = exclusiveTo.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
 }
 
 /** Small per-model breakdown shown under a KPI headline, so one vehicle type
