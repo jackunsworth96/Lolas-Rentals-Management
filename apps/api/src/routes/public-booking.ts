@@ -76,6 +76,9 @@ const AvailabilityQuerySchema = z.object({
   /** Set only by the booking page's date search, so the homepage preview (which
    * uses placeholder dates) isn't recorded as demand. */
   logDemand: z.literal('1').optional(),
+  /** Random ID the browser keeps in localStorage, so repeat searches by one person
+   * de-duplicate in demand tracking. */
+  visitorId: z.string().regex(/^[A-Za-z0-9-]{8,64}$/).optional(),
 });
 
 router.get('/model-pricing', async (req, res, next) => {
@@ -152,12 +155,13 @@ router.get('/vehicle-images', async (_req, res, next) => {
 
 router.get('/availability', validateQuery(AvailabilityQuerySchema), async (req, res, next) => {
   try {
-    const { storeId, pickupDatetime, dropoffDatetime, excludeSessionToken, logDemand } = req.query as {
+    const { storeId, pickupDatetime, dropoffDatetime, excludeSessionToken, logDemand, visitorId } = req.query as {
       storeId: string;
       pickupDatetime: string;
       dropoffDatetime: string;
       excludeSessionToken?: string;
       logDemand?: '1';
+      visitorId?: string;
     };
 
     assertBookingLeadTime(pickupDatetime);
@@ -181,7 +185,7 @@ router.get('/availability', validateQuery(AvailabilityQuerySchema), async (req, 
         pickupDatetime,
         dropoffDatetime,
         models: data,
-        visitorKey: visitorKeyFor(req),
+        visitorKey: visitorKeyFor(req, visitorId),
         partnerRef: partner?.storeId === storeId ? partner.slug : null,
       });
     }

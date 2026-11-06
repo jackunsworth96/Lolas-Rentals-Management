@@ -137,7 +137,9 @@ router.get('/', async (req, res, next) => {
       original_dropoff_datetime: string | null; order_id: string;
     };
     type OrderRow = { id: string; status: string; customer_id: string | null };
-    type BookingRow = { id: string; status: string; pickup_datetime: string | null; created_at: string };
+    type BookingRow = {
+      id: string; status: string; pickup_datetime: string | null; dropoff_datetime: string | null; created_at: string;
+    };
     type RentalBookingRow = {
       id: string; pickup_datetime: string; dropoff_datetime: string;
       vehicle_model_id: string | null; partner_ref: string | null;
@@ -148,6 +150,7 @@ router.get('/', async (req, res, next) => {
     type DemandMissRow = {
       vehicle_model_id: string; source: 'website' | 'partner_portal' | 'walk_in';
       pickup_datetime: string | null; dropoff_datetime: string | null;
+      visitor_key: string | null; created_at: string;
     };
 
     const [
@@ -173,7 +176,7 @@ router.get('/', async (req, res, next) => {
       // Every booking request placed in the window, cancelled ones included —
       // cancellations only ever live on orders_raw, never on orders.
       fetchAll<BookingRow>(() => inScope(
-        sb.from('orders_raw').select('id, status, pickup_datetime, created_at').gte('created_at', from).lte('created_at', to),
+        sb.from('orders_raw').select('id, status, pickup_datetime, dropoff_datetime, created_at').gte('created_at', from).lte('created_at', to),
         scope,
       ).order('id')),
       fetchAll<RentalBookingRow>(() => inScope(
@@ -198,7 +201,7 @@ router.get('/', async (req, res, next) => {
       ).order('id')),
       fetchAll<DemandMissRow>(() => inScope(
         sb.from('demand_misses')
-          .select('vehicle_model_id, source, pickup_datetime, dropoff_datetime')
+          .select('vehicle_model_id, source, pickup_datetime, dropoff_datetime, visitor_key, created_at')
           .gte('created_at', from)
           .lte('created_at', to),
         scope,
@@ -381,8 +384,39 @@ router.get('/', async (req, res, next) => {
       .sort((a, b) => b.bookings - a.bookings);
 
     // ── Demand we couldn't serve ─────────────────────────────────────────────
-    const missesByModel = new Map<string, { website: number; partnerPortal: number; walkIn: number; requestedDays: number }>();
+    // A search logs one row per sold-out model, so the headline counts distinct
+    // searches (visitor + dates) instead. Searches followed by a booking for the
+    // exact same dates soon after were served by another model and are dropped —
+    // a date-only match, since searches and bookings share no visitor link.
+    const BOOKED_ANYWAY_WINDOW_MS = 6 * 60 * 60 * 1000;
+    const bookingTimesByDates = new Map<string, number[]>();
+    for (const b of bookingsPlaced) {
+      if (b.status === 'cancelled' || !b.pickup_datetime || !b.dropoff_datetime) continue;
+      const key = `${new Date(b.pickup_datetime).getTime()}|${new Date(b.dropoff_datetime).getTime()}`;
+      const list = bookingTimesByDates.get(key) ?? [];
+      list.push(new Date(b.created_at).getTime());
+      bookingTimesByDates.set(key, list);
+    }
+    const bookedAnyway = (m: DemandMissRow) => {
+      if (m.source === 'walk_in' || !m.pickup_datetime || !m.dropoff_datetime) return false;
+      const searchedMs = new Date(m.created_at).getTime();
+      const times = bookingTimesByDates.get(`${new Date(m.pickup_datetime).getTime()}|${new Date(m.dropoff_datetime).getTime()}`);
+      return Boolean(times?.some((t) => t >= searchedMs && t - searchedMs <= BOOKED_ANYWAY_WINDOW_MS));
+    };
+    const searchKey = (m: DemandMissRow) => `${m.source}|${m.visitor_key}|${m.pickup_datetime}|${m.dropoff_datetime}`;
+
+    const servedSearches = new Set<string>();
+    const unservedMisses: DemandMissRow[] = [];
     for (const m of demandMisses) {
+      if (bookedAnyway(m)) servedSearches.add(searchKey(m));
+      else unservedMisses.push(m);
+    }
+    const distinctSearches = (source: DemandMissRow['source']) =>
+      new Set(unservedMisses.filter((m) => m.source === source).map(searchKey)).size;
+    const walkInMisses = unservedMisses.filter((m) => m.source === 'walk_in').length;
+
+    const missesByModel = new Map<string, { website: number; partnerPortal: number; walkIn: number; requestedDays: number }>();
+    for (const m of unservedMisses) {
       const row = missesByModel.get(m.vehicle_model_id) ?? { website: 0, partnerPortal: 0, walkIn: 0, requestedDays: 0 };
       if (m.source === 'website') row.website++;
       else if (m.source === 'partner_portal') row.partnerPortal++;
@@ -437,10 +471,11 @@ router.get('/', async (req, res, next) => {
         },
         unmetDemand: {
           trackingSince: firstMissAt,
-          total: demandMisses.length,
-          website: demandMisses.filter((m) => m.source === 'website').length,
-          partnerPortal: demandMisses.filter((m) => m.source === 'partner_portal').length,
-          walkIn: demandMisses.filter((m) => m.source === 'walk_in').length,
+          total: distinctSearches('website') + distinctSearches('partner_portal') + walkInMisses,
+          website: distinctSearches('website'),
+          partnerPortal: distinctSearches('partner_portal'),
+          walkIn: walkInMisses,
+          bookedAnyway: servedSearches.size,
           byModel: demandByModel,
         },
       },

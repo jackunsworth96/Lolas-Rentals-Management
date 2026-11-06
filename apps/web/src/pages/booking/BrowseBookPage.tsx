@@ -121,6 +121,21 @@ interface LocationRow {
   locationType: string | null;
 }
 
+const VISITOR_ID_KEY = 'lolas_visitor_id';
+
+/** Long-lived anonymous ID so the same person's repeat searches count once in demand tracking. */
+function getVisitorId(): string {
+  try {
+    const stored = localStorage.getItem(VISITOR_ID_KEY);
+    if (stored) return stored;
+    const id = crypto.randomUUID();
+    localStorage.setItem(VISITOR_ID_KEY, id);
+    return id;
+  } catch {
+    return '';
+  }
+}
+
 function isStoreLocation(loc: LocationRow): boolean {
   if (loc.locationType === 'store') return true;
   return loc.deliveryCost === 0 && loc.collectionCost === 0;
@@ -746,10 +761,12 @@ export default function BrowseBookPage() {
     refetch: refetchAvailability,
   } = useQuery<AvailableModel[]>({
     queryKey: ['availability', searchParams, partnerRef],
-    queryFn: () =>
-      api.get(
-        `/public/booking/availability?storeId=${searchParams!.storeId}&pickupDatetime=${encodeURIComponent(searchParams!.pickup)}&dropoffDatetime=${encodeURIComponent(searchParams!.dropoff)}&partnerRef=${encodeURIComponent(partnerRef ?? '')}&logDemand=1`,
-      ),
+    queryFn: () => {
+      const visitorId = getVisitorId();
+      return api.get(
+        `/public/booking/availability?storeId=${searchParams!.storeId}&pickupDatetime=${encodeURIComponent(searchParams!.pickup)}&dropoffDatetime=${encodeURIComponent(searchParams!.dropoff)}&partnerRef=${encodeURIComponent(partnerRef ?? '')}&logDemand=1${visitorId ? `&visitorId=${visitorId}` : ''}`,
+      );
+    },
     enabled: !!searchParams,
   });
 

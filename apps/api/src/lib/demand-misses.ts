@@ -5,8 +5,13 @@ import { logger } from './logger.js';
 
 export type DemandMissSource = 'website' | 'partner_portal' | 'walk_in';
 
-/** Stable, non-reversible key for "the same person searching again". */
-export function visitorKeyFor(req: Request): string {
+/**
+ * Stable, non-reversible key for "the same person searching again". Prefers the
+ * browser's own visitor ID: the website reaches the API through a Vercel rewrite,
+ * so `req.ip` is a rotating Vercel edge address rather than the customer's.
+ */
+export function visitorKeyFor(req: Request, visitorId?: string): string {
+  if (visitorId) return createHash('sha256').update(`visitor|${visitorId}`).digest('hex').slice(0, 32);
   const ip = req.ip ?? req.socket.remoteAddress ?? '';
   const ua = req.get('user-agent') ?? '';
   return createHash('sha256').update(`${ip}|${ua}`).digest('hex').slice(0, 32);

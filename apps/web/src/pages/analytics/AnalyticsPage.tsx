@@ -444,12 +444,12 @@ export default function AnalyticsPage() {
                 value={unmetDemand!.total}
                 sub="sold-out searches + walk-ins"
               />
-              <StatTile label="Website searches" value={unmetDemand!.website} sub="dates searched, model sold out" />
+              <StatTile label="Website searches" value={unmetDemand!.website} sub="searches with a model sold out" />
               <StatTile label="Walk-ins" value={unmetDemand!.walkIn} sub="logged by staff from Fleet Availability" />
               <StatTile
                 label="Most wanted"
                 value={unmetDemand!.byModel[0]?.modelName ?? '—'}
-                sub={unmetDemand!.byModel[0] ? `${unmetDemand!.byModel[0].total} turned away` : 'nothing turned away'}
+                sub={unmetDemand!.byModel[0] ? `sold out in ${unmetDemand!.byModel[0].total} searches` : 'nothing turned away'}
               />
             </div>
 
@@ -482,7 +482,10 @@ export default function AnalyticsPage() {
               {unmetDemand!.trackingSince
                 ? `Recorded automatically since ${new Date(unmetDemand!.trackingSince).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}. `
                 : 'Tracking started 30 Oct 2026 — numbers will appear as customers search. '}
-              A website search counts once per visitor per date range. Staff log walk-ins with the
+              A website search counts once per visitor per date range, even if several models were sold out.
+              {unmetDemand!.bookedAnyway > 0 &&
+                ` ${unmetDemand!.bookedAnyway} sold-out search${unmetDemand!.bookedAnyway !== 1 ? 'es were' : ' was'} left out because a booking for the same dates followed within 6 hours.`}
+              {' '}Staff log walk-ins with the
               &ldquo;Customer turned away&rdquo; button in Dashboard → Fleet Availability.
             </p>
           </section>

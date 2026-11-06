@@ -81,10 +81,14 @@ export interface UnmetDemandModel {
 export interface UnmetDemand {
   /** Timestamp of the first ever recorded miss — null until tracking produces data. */
   trackingSince: string | null;
+  /** Distinct sold-out searches plus walk-ins. */
   total: number;
+  /** Distinct searches (visitor + dates), not one per sold-out model. */
   website: number;
   partnerPortal: number;
   walkIn: number;
+  /** Sold-out searches left out because a booking for the same dates followed. */
+  bookedAnyway: number;
   byModel: UnmetDemandModel[];
 }
 
