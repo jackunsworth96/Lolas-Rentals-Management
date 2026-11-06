@@ -27,6 +27,7 @@ function toRow(r: CashReconciliation) {
     deposit_variance: r.depositVariance,
     closing_balance: r.closingBalance,
     deposits_closing_balance: r.depositsClosingBalance,
+    variance_note: r.varianceNote,
   };
 }
 
@@ -56,6 +57,7 @@ function toDomain(row: Record<string, unknown>): CashReconciliation {
     depositVariance: row.deposit_variance != null ? Number(row.deposit_variance) : null,
     closingBalance: row.closing_balance != null ? Number(row.closing_balance) : null,
     depositsClosingBalance: row.deposits_closing_balance != null ? Number(row.deposits_closing_balance) : null,
+    varianceNote: (row.variance_note as string) ?? null,
   };
 }
 
@@ -110,23 +112,23 @@ export function createCashReconciliationRepo(): CashReconciliationRepository {
       if (error) throw new Error(`Failed to unlock reconciliation: ${error.message}`);
     },
 
-    async override(id, actualCounted, overriddenBy, reason) {
+    async reopen(id, reopenedBy, reason) {
       const { error } = await sb
         .from('cash_reconciliation')
         .update({
-          actual_counted: actualCounted,
-          overridden_by: overriddenBy,
+          is_locked: false,
+          overridden_by: reopenedBy,
           overridden_at: new Date().toISOString(),
           override_reason: reason,
         })
         .eq('id', id);
-      if (error) throw new Error(`Failed to override reconciliation: ${error.message}`);
+      if (error) throw new Error(`Failed to reopen reconciliation: ${error.message}`);
     },
 
     async reconcileAtomic(reconciliation) {
       const row = toRow(reconciliation);
 
-      const { error } = await sb.rpc('reconcile_cash_atomic', {
+      const params: Record<string, unknown> = {
         p_id:                row.id,
         p_store_id:          row.store_id,
         p_date:              row.date,
@@ -151,7 +153,17 @@ export function createCashReconciliationRepo(): CashReconciliationRepository {
         p_deposit_variance:           row.deposit_variance,
         p_closing_balance:            row.closing_balance,
         p_deposits_closing_balance:   row.deposits_closing_balance,
-      });
+        p_variance_note:              row.variance_note ?? null,
+      };
+
+      let { error } = await sb.rpc('reconcile_cash_atomic', params);
+
+      // Databases without the variance_note migration reject the extra
+      // parameter; lock the day without the note rather than failing cash-up.
+      if (error && error.message.includes('p_variance_note')) {
+        const { p_variance_note: _note, ...legacy } = params;
+        ({ error } = await sb.rpc('reconcile_cash_atomic', legacy));
+      }
 
       if (error) throw new Error(`reconcile_cash_atomic RPC failed: ${error.message}`);
     },

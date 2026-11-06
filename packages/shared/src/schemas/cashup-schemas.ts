@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+/** Till or envelope variance (either direction, in pesos) above which staff must explain it. */
+export const CASHUP_VARIANCE_NOTE_THRESHOLD = 100;
+
 export const CashupQuerySchema = z.object({
   storeId: z.string(),
   date: z.string(),
@@ -7,29 +10,43 @@ export const CashupQuerySchema = z.object({
 
 export type CashupQuery = z.infer<typeof CashupQuerySchema>;
 
+const DenomsSchema = z.record(z.number().int().min(0));
+
+/**
+ * Staff submit only what they counted. Expected figures, variances and
+ * closing balances are worked out on the server from the same summary the
+ * page displays.
+ */
 export const ReconcileCashRequestSchema = z.object({
   storeId: z.string(),
   date: z.string(),
-  openingBalance: z.number(),
-  expectedCash: z.number(),
-  actualCounted: z.number(),
-  tillCounted: z.number().nullable().default(null),
-  depositsCounted: z.number().nullable().default(null),
-  tillDenoms: z.record(z.number()).nullable().default(null),
-  depositDenoms: z.record(z.number()).nullable().default(null),
-  tillExpected: z.number().nullable().default(null),
-  depositsExpected: z.number().nullable().default(null),
-  closingBalance: z.number(),
-  depositsClosingBalance: z.number().nullable().default(null),
+  tillDenoms: DenomsSchema,
+  depositDenoms: DenomsSchema,
+  varianceNote: z.string().max(1000).nullable().optional(),
+  /** Cash taken out of the counted till to the bank or safe at close. */
+  cashDrop: z
+    .object({
+      amount: z.number().positive(),
+      cashAccountId: z.string().min(1),
+      bankAccountId: z.string().min(1),
+    })
+    .nullable()
+    .optional(),
 });
 
 export type ReconcileCashRequest = z.infer<typeof ReconcileCashRequestSchema>;
 
-export const OverrideReconciliationRequestSchema = z.object({
+export const ReopenReconciliationRequestSchema = z.object({
   storeId: z.string(),
   date: z.string(),
-  actualCounted: z.number(),
-  reason: z.string().min(1),
+  reason: z.string().trim().min(1),
+});
+
+export type ReopenReconciliationRequest = z.infer<typeof ReopenReconciliationRequestSchema>;
+
+/** @deprecated Override now reopens the day for a recount; counts are ignored. */
+export const OverrideReconciliationRequestSchema = ReopenReconciliationRequestSchema.extend({
+  actualCounted: z.number().optional(),
 });
 
 export type OverrideReconciliationRequest = z.infer<typeof OverrideReconciliationRequestSchema>;

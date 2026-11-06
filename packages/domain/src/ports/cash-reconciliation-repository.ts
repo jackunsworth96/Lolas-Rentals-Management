@@ -23,6 +23,7 @@ export interface CashReconciliation {
   depositVariance: number | null;
   closingBalance: number | null;
   depositsClosingBalance: number | null;
+  varianceNote: string | null;
 }
 
 export interface CashReconciliationRepository {
@@ -31,11 +32,7 @@ export interface CashReconciliationRepository {
   save(reconciliation: CashReconciliation): Promise<void>;
   lock(id: string): Promise<void>;
   unlock(id: string): Promise<void>;
-  override(
-    id: string,
-    actualCounted: number,
-    overriddenBy: string,
-    reason: string,
-  ): Promise<void>;
+  /** Unlocks a locked day for a recount, recording who reopened it and why. Counts are untouched. */
+  reopen(id: string, reopenedBy: string, reason: string): Promise<void>;
   reconcileAtomic(reconciliation: CashReconciliation): Promise<void>;
 }

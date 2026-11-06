@@ -29,7 +29,7 @@ export interface DiscountRow {
   customerName: string | null;
 }
 
-export interface RefundRow {
+export interface TransactionRow {
   id: string;
   paymentType: string;
   amount: number;
@@ -38,16 +38,25 @@ export interface RefundRow {
   settlementStatus: string | null;
   customerName: string | null;
   wooOrderId: string | null;
+  bookingToken: string | null;
   orderId: string | null;
   createdAt: string;
 }
+
+export type RefundRow = TransactionRow;
+
+export type MethodCategory = 'cash' | 'card' | 'gcash' | 'bank';
 
 export interface DepositReturnRow {
   id: string;
   amount: number;
   description: string | null;
-  accountId: string | null;
+  methodId: string;
+  methodCategory: MethodCategory;
+  affectsEnvelope: boolean;
+  collectedMethodId: string | null;
   referenceId: string | null;
+  orderId: string | null;
   bookingToken: string | null;
   customerName: string | null;
   createdAt: string;
@@ -57,19 +66,135 @@ export interface DepositAppliedRow {
   id: string;
   amount: number;
   description: string | null;
-  accountId: string | null;
   referenceId: string | null;
   bookingToken: string | null;
   customerName: string | null;
   createdAt: string;
 }
 
+export interface DepositsHeldGroup {
+  label: string;
+  rows: TransactionRow[];
+  total: number;
+}
+
+export interface ExpenseRow {
+  id: string;
+  category: string;
+  description: string;
+  amount: number;
+  paidFrom: string | null;
+  paidFromName: string | null;
+  employeeId: string | null;
+  isCash: boolean;
+  createdAt: string;
+}
+
+export interface DepositRow {
+  id: string;
+  amount: number;
+  description: string | null;
+  accountName: string | null;
+  referenceId: string | null;
+  createdAt: string;
+}
+
+export interface TransferRow {
+  id: string;
+  description: string | null;
+  amount: number;
+  referenceId: string | null;
+  createdAt: string;
+}
+
+export type CashPot = 'till' | 'envelope';
+
+export interface CashLedgerItem {
+  id: string;
+  kind: string;
+  pot: CashPot;
+  amount: number;
+  label: string;
+  bookingToken: string | null;
+  customerName: string | null;
+  date: string | null;
+  createdAt: string | null;
+}
+
+export interface ExpectedLine {
+  key: string;
+  label: string;
+  amount: number;
+  count?: number;
+  note?: string;
+}
+
+export interface ExpectedBreakdown {
+  opening: number;
+  lines: ExpectedLine[];
+  total: number;
+}
+
+export interface CarryGroup {
+  label: string;
+  fromDate: string;
+  toDate: string;
+  tillNet: number;
+  envelopeNet: number;
+  items: CashLedgerItem[];
+}
+
+export interface StoreInfo {
+  id: string;
+  name: string;
+  defaultFloatAmount: number;
+}
+
+export interface ReconciliationRecord {
+  id: string;
+  isLocked: boolean;
+  openingBalance: number;
+  actualCounted: number;
+  variance: number;
+  varianceType: string | null;
+  varianceNote: string | null;
+  submittedBy: string | null;
+  submittedByName: string | null;
+  submittedAt: string | null;
+  overriddenBy: string | null;
+  overriddenByName: string | null;
+  overriddenAt: string | null;
+  overrideReason: string | null;
+  tillCounted: number | null;
+  depositsCounted: number | null;
+  tillExpected: number | null;
+  depositsExpected: number | null;
+  tillVariance: number | null;
+  depositVariance: number | null;
+  tillDenoms: Record<string, number> | null;
+  depositDenoms: Record<string, number> | null;
+  closingBalance: number | null;
+  depositsClosingBalance: number | null;
+}
+
 export interface CashupSummary {
+  date: string;
+  today: string;
+  isFuture: boolean;
   openingFloat: {
     amount: number;
     source: 'previous_day' | 'override' | 'none';
     previousDate: string | null;
   };
+  openingEnvelopeBalance: number;
+  missingDays: string[];
+  gapTooLong: boolean;
+  carry: CarryGroup[];
+  expected: { till: ExpectedBreakdown; envelope: ExpectedBreakdown };
+  expectedCash: number;
+  postedAfterLock: CarryGroup | null;
+  laterLockedDate: string | null;
+  cashLedger: CashLedgerItem[];
   transactions: {
     cashSales: TransactionRow[];
     cardSales: TransactionRow[];
@@ -96,7 +221,6 @@ export interface CashupSummary {
   totals: {
     cashSalesTotal: number;
     cashDepositsHeldTotal: number;
-    totalCashIn: number;
     cardSalesTotal: number;
     gcashSalesTotal: number;
     bankTransferTotal: number;
@@ -120,113 +244,115 @@ export interface CashupSummary {
     bankRefundTotal: number;
     refundTotal: number;
     depositReturnTotal: number;
+    cashDepositReturnTotal: number;
+    nonCashDepositReturnTotal: number;
     depositAppliedTotal: number;
     carryDepositsCashTotal: number;
   };
-  expectedCash: number;
-  openingEnvelopeBalance: number;
   stores: StoreInfo[];
   otherStores: StoreInfo[];
   reconciliation: ReconciliationRecord | null;
   isLocked: boolean;
 }
 
-export interface StoreInfo {
-  id: string;
-  name: string;
-  defaultFloatAmount: number;
-}
-
-export interface TransactionRow {
-  id: string;
-  paymentType: string;
-  amount: number;
-  methodId: string;
-  settlementRef: string | null;
-  settlementStatus: string | null;
-  customerName: string | null;
-  wooOrderId: string | null;
-  orderId: string | null;
-  createdAt: string;
-}
-
-export interface DepositsHeldGroup {
-  label: string;
-  rows: TransactionRow[];
-  total: number;
-}
-
-export interface ExpenseRow {
-  id: string;
-  category: string;
-  description: string;
-  amount: number;
-  paidFrom: string | null;
-  paidFromName: string | null;
-  employeeId: string | null;
-  createdAt: string;
-}
-
-export interface DepositRow {
-  id: string;
-  amount: number;
-  description: string | null;
-  accountName: string | null;
-  referenceId: string | null;
-  createdAt: string;
-}
-
-export interface TransferRow {
-  id: string;
-  description: string | null;
-  amount: number;
-  referenceId: string | null;
-  createdAt: string;
-}
-
-export interface ReconciliationRecord {
-  id: string;
-  isLocked: boolean;
-  actualCounted: number;
-  variance: number;
-  varianceType: string | null;
+export interface CashupHistoryDay {
+  date: string;
+  status: 'locked' | 'open' | 'missing';
+  tillVariance: number | null;
+  depositVariance: number | null;
+  varianceNote: string | null;
   submittedBy: string | null;
-  submittedAt: string | null;
-  overriddenBy: string | null;
-  overriddenAt: string | null;
+  submittedByName: string | null;
+  reopened: boolean;
   overrideReason: string | null;
-  tillCounted: number | null;
-  depositsCounted: number | null;
-  tillDenoms: Record<string, number> | null;
-  depositDenoms: Record<string, number> | null;
-  closingBalance: number | null;
 }
+
+export interface DepositRegisterEntry {
+  paymentId: string;
+  orderId: string;
+  bookingToken: string | null;
+  customerName: string | null;
+  amount: number;
+  collectedOn: string | null;
+  returnDue: string | null;
+}
+
+export interface OrderLookupResult {
+  orderId: string;
+  bookingToken: string | null;
+  customerName: string | null;
+  status: string;
+  orderDate: string | null;
+  settledAt: string | null;
+  entries: Array<{
+    orderId: string;
+    kind: string;
+    method: string;
+    amount: number;
+    date: string | null;
+    createdAt: string | null;
+    cashupStatus: 'locked' | 'open' | 'not cashed up';
+    postedAfterLock: boolean;
+  }>;
+}
+
+export interface ReconcileCashBody {
+  storeId: string;
+  date: string;
+  tillDenoms: Record<string, number>;
+  depositDenoms: Record<string, number>;
+  varianceNote?: string | null;
+  cashDrop?: { amount: number; cashAccountId: string; bankAccountId: string } | null;
+}
+
+const enc = encodeURIComponent;
 
 export function useCashupSummary(storeId: string, date: string) {
   return useQuery<CashupSummary>({
     queryKey: ['cashup', 'summary', storeId, date],
-    queryFn: () =>
-      api.get<CashupSummary>(
-        `/cashup/summary?storeId=${encodeURIComponent(storeId)}&date=${encodeURIComponent(date)}`,
-      ),
+    queryFn: () => api.get<CashupSummary>(`/cashup/summary?storeId=${enc(storeId)}&date=${enc(date)}`),
     enabled: !!storeId && !!date,
+  });
+}
+
+export function useCashupHistory(storeId: string, days = 14) {
+  return useQuery<CashupHistoryDay[]>({
+    queryKey: ['cashup', 'history', storeId, days],
+    queryFn: () => api.get<CashupHistoryDay[]>(`/cashup/history?storeId=${enc(storeId)}&days=${days}`),
+    enabled: !!storeId,
+  });
+}
+
+export function useDepositRegister(storeId: string, enabled = true) {
+  return useQuery<{ entries: DepositRegisterEntry[]; total: number }>({
+    queryKey: ['cashup', 'deposit-register', storeId],
+    queryFn: () => api.get(`/cashup/deposit-register?storeId=${enc(storeId)}`),
+    enabled: !!storeId && enabled,
+  });
+}
+
+export function useOrderLookup(storeId: string, q: string) {
+  const term = q.trim();
+  return useQuery<OrderLookupResult[]>({
+    queryKey: ['cashup', 'order-lookup', storeId, term],
+    queryFn: () => api.get(`/cashup/order-lookup?storeId=${enc(storeId)}&q=${enc(term)}`),
+    enabled: !!storeId && term.length >= 3,
+    staleTime: 30_000,
   });
 }
 
 export function useReconcileCash() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: Record<string, unknown>) =>
-      api.post('/cashup/reconcile', body),
+    mutationFn: (body: ReconcileCashBody) => api.post('/cashup/reconcile', body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['cashup'] }),
   });
 }
 
-export function useOverrideCashup() {
+export function useReopenCashup() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: Record<string, unknown>) =>
-      api.post('/cashup/override', body),
+    mutationFn: (body: { storeId: string; date: string; reason: string }) => api.post('/cashup/reopen', body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['cashup'] }),
   });
 }
@@ -262,10 +388,7 @@ export interface LateReturnAssignment {
 export function useLateReturnsCheck(storeId: string, date: string) {
   return useQuery<LateReturnsCheck>({
     queryKey: ['cashup', 'late-returns-check', storeId, date],
-    queryFn: () =>
-      api.get(
-        `/cashup/late-returns-check?storeId=${encodeURIComponent(storeId)}&date=${encodeURIComponent(date)}`,
-      ),
+    queryFn: () => api.get(`/cashup/late-returns-check?storeId=${enc(storeId)}&date=${enc(date)}`),
     enabled: !!storeId && !!date,
   });
 }
@@ -273,10 +396,7 @@ export function useLateReturnsCheck(storeId: string, date: string) {
 export function useLateReturnAssignment(storeId: string, date: string) {
   return useQuery<LateReturnAssignment | null>({
     queryKey: ['cashup', 'late-return-assignment', storeId, date],
-    queryFn: () =>
-      api.get(
-        `/cashup/late-return-assignment?storeId=${encodeURIComponent(storeId)}&date=${encodeURIComponent(date)}`,
-      ),
+    queryFn: () => api.get(`/cashup/late-return-assignment?storeId=${enc(storeId)}&date=${enc(date)}`),
     enabled: !!storeId && !!date,
   });
 }

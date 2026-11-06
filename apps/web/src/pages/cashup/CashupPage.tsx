@@ -1,71 +1,104 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useAuthStore } from '../../stores/auth-store.js';
 import { useStores, useChartOfAccounts } from '../../api/config.js';
 import { usePaymentRouting } from '../../hooks/use-payment-routing.js';
 import {
   useCashupSummary,
-  useReconcileCash,
-  useOverrideCashup,
+  useReopenCashup,
   useDepositFunds,
   useInterStoreTransfer,
-  type TransactionRow,
+  type CashLedgerItem,
+  type CashupSummary,
   type MiscSaleRow,
-  type ExpenseRow,
-  type DepositRow,
-  type DepositsHeldGroup,
-  type TransferRow,
-  type CharityDonationRow,
-  type DiscountRow,
-  type RefundRow,
-  type DepositReturnRow,
-  type DepositAppliedRow,
+  type TransactionRow,
 } from '../../api/cashup.js';
 import { BeforeCloseModal } from '../../components/cashup/BeforeCloseModal.js';
-import { DenominationCounter } from '../../components/cashup/DenominationCounter.js';
+import { CloseDayWizard } from '../../components/cashup/CloseDayWizard.js';
+import { CashupHistoryStrip } from '../../components/cashup/CashupHistoryStrip.js';
+import { OrderLookupPanel } from '../../components/cashup/OrderLookup.js';
+import { InterStoreTransferModal } from '../../components/cashup/TransferReconciliation.js';
 import {
-  ReconcileModal,
-  InterStoreTransferModal,
-} from '../../components/cashup/TransferReconciliation.js';
+  Banner,
+  ExpectedBreakdownCard,
+  RowsSection,
+  methodCategory,
+  shortDate,
+  type ListRow,
+} from '../../components/cashup/CashupParts.js';
+import { denomSum, denomsFromRecord, formatVariance, varianceColor } from '../../components/cashup/DenominationCounter.js';
+import { useCashupDraft } from '../../components/cashup/use-cashup-draft.js';
 import { formatCurrency } from '../../utils/currency.js';
-import { formatTime } from '../../utils/date.js';
+import { formatDateTime, formatTime, manilaToday } from '../../utils/date.js';
 import { Button } from '../../components/common/Button.js';
 
-const DENOMINATIONS = [1000, 500, 200, 100, 50, 20, 10, 5, 1] as const;
 const LOLAS_PRIORITY = /lola/i;
 
-function today(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
 function shiftDate(dateStr: string, days: number): string {
-  const d = new Date(dateStr + 'T12:00:00');
-  d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 
 function formatDateLabel(dateStr: string): string {
-  const d = new Date(dateStr + 'T12:00:00');
-  return d.toLocaleDateString('en-PH', {
+  return new Date(`${dateStr}T12:00:00+08:00`).toLocaleDateString('en-PH', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
+    timeZone: 'Asia/Manila',
   });
 }
 
-function freshDenoms(): Record<number, number> {
-  return Object.fromEntries(DENOMINATIONS.map((d) => [d, 0]));
+function ledgerRows(items: CashLedgerItem[], kinds: string[]): ListRow[] {
+  return items
+    .filter((i) => kinds.includes(i.kind))
+    .map((i) => ({
+      id: i.id,
+      ref: i.bookingToken,
+      title: i.customerName ? `${i.customerName} · ${i.label}` : i.label,
+      subtitle: i.createdAt ? formatTime(i.createdAt) : null,
+      amount: i.amount,
+      sign: i.amount < 0 ? ('-' as const) : ('+' as const),
+    }));
 }
 
-function denomSum(denoms: Record<number, number>): number {
-  return DENOMINATIONS.reduce((sum, d) => sum + d * (denoms[d] || 0), 0);
+function sumRows(rows: ListRow[]): number {
+  return Math.round(rows.reduce((s, r) => s + Math.abs(r.amount), 0) * 100) / 100;
 }
 
-function varianceColor(v: number): string {
-  if (v === 0) return 'text-green-600';
-  if (Math.abs(v) <= 100) return 'text-amber-600';
-  return 'text-red-600';
+function txRows(rows: TransactionRow[]): ListRow[] {
+  return rows.map((r) => ({
+    id: r.id,
+    ref: r.bookingToken ?? r.wooOrderId,
+    title: r.customerName ?? r.paymentType,
+    subtitle: [r.paymentType.replace(/_/g, ' '), r.methodId, r.settlementRef, formatTime(r.createdAt)]
+      .filter(Boolean)
+      .join(' · '),
+    amount: r.amount,
+  }));
+}
+
+function miscRows(rows: MiscSaleRow[]): ListRow[] {
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.description ?? r.category ?? 'Misc sale',
+    subtitle: [r.category, r.accountName, formatTime(r.createdAt)].filter(Boolean).join(' · '),
+    amount: r.amount,
+  }));
+}
+
+function matchesQuery(row: ListRow, q: string): boolean {
+  if (!q) return true;
+  return [row.ref, row.title, row.subtitle, row.badge].some((v) => v?.toLowerCase().includes(q));
+}
+
+function ModalOverlay({ children, onClose }: { children: ReactNode; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-md">{children}</div>
+    </div>
+  );
 }
 
 export default function CashupPage() {
@@ -85,101 +118,35 @@ export default function CashupPage() {
       | undefined;
   };
 
-  // Lola's first, then everything else
-  const sortedStores = useMemo(() => {
-    return [...stores].sort((a, b) => {
-      const aLola = LOLAS_PRIORITY.test(a.name) ? 0 : 1;
-      const bLola = LOLAS_PRIORITY.test(b.name) ? 0 : 1;
-      return aLola - bLola;
-    });
-  }, [stores]);
+  const sortedStores = useMemo(
+    () =>
+      [...stores].sort((a, b) => (LOLAS_PRIORITY.test(a.name) ? 0 : 1) - (LOLAS_PRIORITY.test(b.name) ? 0 : 1)),
+    [stores],
+  );
 
   const [storeId, setStoreId] = useState('');
-  const [date, setDate] = useState(today());
+  const [date, setDate] = useState(manilaToday());
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
-    if (!storeId && sortedStores.length > 0) {
-      setStoreId(sortedStores[0].id);
-    }
+    if (!storeId && sortedStores.length > 0) setStoreId(sortedStores[0].id);
   }, [sortedStores, storeId]);
 
-  const { data: summary, isLoading } = useCashupSummary(storeId, date);
+  const { data: summary, isLoading, refetch } = useCashupSummary(storeId, date);
+  const refreshSummary = useCallback(() => {
+    void refetch();
+  }, [refetch]);
 
-  const reconcileMut = useReconcileCash();
-  const overrideMut = useOverrideCashup();
-  const depositMut = useDepositFunds();
-  const transferMut = useInterStoreTransfer();
+  const { draft, update, setTillDenom, setEnvelopeDenom, clear } = useCashupDraft(storeId, date);
 
   const hasPermission = useAuthStore((s) => s.hasPermission);
-  const canOverride = hasPermission('can_override_cashup');
+  const canManage = hasPermission('can_override_cashup');
 
-  const currentStoreName =
-    sortedStores.find((s) => s.id === storeId)?.name ?? storeId;
+  const currentStoreName = sortedStores.find((s) => s.id === storeId)?.name ?? storeId;
   const isLolasStore = LOLAS_PRIORITY.test(currentStoreName);
-
-  // Denomination state: till + deposit envelope
-  const [tillDenoms, setTillDenoms] = useState<Record<number, number>>(freshDenoms);
-  const [depEnvDenoms, setDepEnvDenoms] = useState<Record<number, number>>(freshDenoms);
-
-  const setTillDenom = useCallback((denom: number, count: number) => {
-    setTillDenoms((prev) => ({ ...prev, [denom]: Math.max(0, count) }));
-  }, []);
-  const setDepEnvDenom = useCallback((denom: number, count: number) => {
-    setDepEnvDenoms((prev) => ({ ...prev, [denom]: Math.max(0, count) }));
-  }, []);
-
-  const tillTotal = useMemo(() => denomSum(tillDenoms), [tillDenoms]);
-  const depEnvTotal = useMemo(() => denomSum(depEnvDenoms), [depEnvDenoms]);
-
-  // Expected figures split (includes cash misc sales in till calculation).
-  // Cash refunds (manual Issue Refund payments) represent cash leaving the main
-  // till and must reduce the expected count there. Deposit returns, however,
-  // come from the deposit envelope (not the main till), so they reduce the
-  // expected deposit envelope balance, not the main till.
-  const expectedCashSales = summary
-    ? summary.openingFloat.amount +
-      summary.totals.cashSalesTotal +
-      (summary.totals.miscCashTotal ?? 0) +
-      summary.totals.interStoreIn -
-      (summary.totals.cashExpenseTotal ?? summary.totals.expenseTotal) -
-      summary.totals.depositTotal -
-      summary.totals.interStoreOut -
-      (summary.totals.cashRefundTotal ?? 0)
-    : 0;
-  // Envelope expected starts from the previous day's envelope closing balance
-  // (openingEnvelopeBalance), adds today's new cash deposits, then subtracts
-  // any deposits returned to customers today AND any prior-day cash deposits
-  // that were applied to a rental balance at settlement (carryDepositsCashTotal).
-  // Applied deposits physically leave the envelope and move into the main till
-  // as income, so they must reduce the envelope expected.
-  const expectedDepositsHeld = summary
-    ? (summary.openingEnvelopeBalance ?? 0) +
-      summary.totals.cashDepositsHeldTotal -
-      (summary.totals.depositReturnTotal ?? 0) -
-      (summary.totals.carryDepositsCashTotal ?? 0)
-    : 0;
-  const tillVariance = tillTotal - expectedCashSales;
-  const depVariance = depEnvTotal - expectedDepositsHeld;
-
-  // Before-close gate
-  const [showBeforeCloseModal, setShowBeforeCloseModal] = useState(false);
-
-  // Modals
-  const [showReconcileModal, setShowReconcileModal] = useState(false);
-  const [showOverrideModal, setShowOverrideModal] = useState(false);
-  const [overrideReason, setOverrideReason] = useState('');
-  const [showDepositModal, setShowDepositModal] = useState(false);
-  const [depositAmount, setDepositAmount] = useState('');
-  const [depositNotes, setDepositNotes] = useState('');
-  const [depositCashAcct, setDepositCashAcct] = useState('');
-  const [depositBankAcct, setDepositBankAcct] = useState('');
-
-  // Inter-store transfer modal
-  const [showTransferModal, setShowTransferModal] = useState(false);
-  const [transferAmount, setTransferAmount] = useState('');
-  const [transferNotes, setTransferNotes] = useState('');
-  const [transferFromAcct, setTransferFromAcct] = useState('');
-  const [transferToAcct, setTransferToAcct] = useState('');
+  const todayStr = summary?.today ?? manilaToday();
+  const isLocked = summary?.isLocked ?? false;
+  const isFuture = summary?.isFuture ?? date > todayStr;
 
   const storeAccounts = useMemo(
     () =>
@@ -190,18 +157,10 @@ export default function CashupPage() {
     [allAccounts, storeId],
   );
   const assetAccounts = useMemo(
-    () =>
-      storeAccounts.filter(
-        (a) => (a.accountType ?? a.account_type) === 'Asset',
-      ),
+    () => storeAccounts.filter((a) => (a.accountType ?? a.account_type) === 'Asset'),
     [storeAccounts],
   );
-
-  // Other store accounts for inter-store transfers
-  const otherStoreIds = useMemo(
-    () => (summary?.otherStores ?? []).map((s) => s.id),
-    [summary],
-  );
+  const otherStoreIds = useMemo(() => (summary?.otherStores ?? []).map((s) => s.id), [summary]);
   const otherStoreAccounts = useMemo(
     () =>
       allAccounts.filter((a) => {
@@ -217,6 +176,50 @@ export default function CashupPage() {
   const routedCardSettlement = routing.getCardSettlement(storeId);
   const otherStoreId = summary?.otherStores?.[0]?.id ?? '';
   const routedOtherCashAcct = routing.getCashAccount(otherStoreId);
+  const otherStoreName = summary?.otherStores?.[0]?.name ?? 'Other Store';
+
+  // ── Close-of-day flow ──
+  const [showBeforeClose, setShowBeforeClose] = useState(false);
+  const [showWizard, setShowWizard] = useState(false);
+
+  function startClose() {
+    const rec = summary?.reconciliation;
+    const draftEmpty = denomSum(draft.tillDenoms) === 0 && denomSum(draft.envelopeDenoms) === 0;
+    if (draftEmpty && rec && (rec.tillDenoms || rec.depositDenoms)) {
+      update({
+        tillDenoms: denomsFromRecord(rec.tillDenoms),
+        envelopeDenoms: denomsFromRecord(rec.depositDenoms),
+        varianceNote: draft.varianceNote || rec.varianceNote || '',
+      });
+    }
+    setShowBeforeClose(true);
+  }
+
+  // ── Reopen ──
+  const reopenMut = useReopenCashup();
+  const [showReopen, setShowReopen] = useState(false);
+  const [reopenReason, setReopenReason] = useState('');
+
+  function handleReopen() {
+    if (!reopenReason.trim()) return;
+    reopenMut.mutate(
+      { storeId, date, reason: reopenReason.trim() },
+      {
+        onSuccess: () => {
+          setShowReopen(false);
+          setReopenReason('');
+        },
+      },
+    );
+  }
+
+  // ── Mid-day cash to bank ──
+  const depositMut = useDepositFunds();
+  const [showDepositModal, setShowDepositModal] = useState(false);
+  const [depositAmount, setDepositAmount] = useState('');
+  const [depositNotes, setDepositNotes] = useState('');
+  const [depositCashAcct, setDepositCashAcct] = useState('');
+  const [depositBankAcct, setDepositBankAcct] = useState('');
 
   useEffect(() => {
     if (routedCashAcct && !depositCashAcct) setDepositCashAcct(routedCashAcct);
@@ -224,90 +227,12 @@ export default function CashupPage() {
   useEffect(() => {
     if (routedCardSettlement && !depositBankAcct) setDepositBankAcct(routedCardSettlement);
   }, [routedCardSettlement, depositBankAcct]);
-  useEffect(() => {
-    if (routedCashAcct && !transferFromAcct) setTransferFromAcct(routedCashAcct);
-  }, [routedCashAcct, transferFromAcct]);
-  useEffect(() => {
-    if (routedOtherCashAcct && !transferToAcct) setTransferToAcct(routedOtherCashAcct);
-  }, [routedOtherCashAcct, transferToAcct]);
-
-  const isLocked = summary?.isLocked ?? false;
-
-  // Restore denominations from a previous reconciliation
-  const reconTillDenoms = summary?.reconciliation?.tillDenoms;
-  const reconDepDenoms = summary?.reconciliation?.depositDenoms;
-  const hasSavedDenoms = useMemo(
-    () =>
-      (reconTillDenoms && Object.values(reconTillDenoms).some((v) => v > 0)) ||
-      (reconDepDenoms && Object.values(reconDepDenoms).some((v) => v > 0)),
-    [reconTillDenoms, reconDepDenoms],
-  );
-
-  function loadSavedDenoms() {
-    if (reconTillDenoms) {
-      const loaded: Record<number, number> = {};
-      for (const d of DENOMINATIONS) loaded[d] = reconTillDenoms[String(d)] ?? 0;
-      setTillDenoms(loaded);
-    }
-    if (reconDepDenoms) {
-      const loaded: Record<number, number> = {};
-      for (const d of DENOMINATIONS) loaded[d] = reconDepDenoms[String(d)] ?? 0;
-      setDepEnvDenoms(loaded);
-    }
-  }
-
-  function handleReconcile() {
-    if (!summary) return;
-    reconcileMut.mutate(
-      {
-        storeId,
-        date,
-        openingBalance: summary.openingFloat.amount,
-        expectedCash: summary.expectedCash,
-        actualCounted: tillTotal + depEnvTotal,
-        tillCounted: tillTotal,
-        depositsCounted: depEnvTotal,
-        tillDenoms,
-        depositDenoms: depEnvDenoms,
-        tillExpected: expectedCashSales,
-        depositsExpected: expectedDepositsHeld,
-        closingBalance: tillTotal,
-        depositsClosingBalance: depEnvTotal,
-      },
-      { onSuccess: () => setShowReconcileModal(false) },
-    );
-  }
-
-  function handleOverride() {
-    if (!overrideReason.trim()) return;
-    overrideMut.mutate(
-      {
-        storeId,
-        date,
-        actualCounted: tillTotal + depEnvTotal,
-        reason: overrideReason,
-      },
-      {
-        onSuccess: () => {
-          setShowOverrideModal(false);
-          setOverrideReason('');
-        },
-      },
-    );
-  }
 
   function handleDeposit() {
     const amt = parseFloat(depositAmount);
     if (!amt || amt <= 0 || !depositCashAcct || !depositBankAcct) return;
     depositMut.mutate(
-      {
-        storeId,
-        date,
-        amount: amt,
-        cashAccountId: depositCashAcct,
-        bankAccountId: depositBankAcct,
-        notes: depositNotes || undefined,
-      },
+      { storeId, date, amount: amt, cashAccountId: depositCashAcct, bankAccountId: depositBankAcct, notes: depositNotes || undefined },
       {
         onSuccess: () => {
           setShowDepositModal(false);
@@ -318,10 +243,24 @@ export default function CashupPage() {
     );
   }
 
+  // ── Inter-store transfer ──
+  const transferMut = useInterStoreTransfer();
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferAmount, setTransferAmount] = useState('');
+  const [transferNotes, setTransferNotes] = useState('');
+  const [transferFromAcct, setTransferFromAcct] = useState('');
+  const [transferToAcct, setTransferToAcct] = useState('');
+
+  useEffect(() => {
+    if (routedCashAcct && !transferFromAcct) setTransferFromAcct(routedCashAcct);
+  }, [routedCashAcct, transferFromAcct]);
+  useEffect(() => {
+    if (routedOtherCashAcct && !transferToAcct) setTransferToAcct(routedOtherCashAcct);
+  }, [routedOtherCashAcct, transferToAcct]);
+
   function openTransferModal() {
     const otherStore = summary?.otherStores?.[0];
-    const defaultFloat = otherStore?.defaultFloatAmount ?? 3000;
-    setTransferAmount(isLolasStore ? String(defaultFloat) : '');
+    setTransferAmount(isLolasStore ? String(otherStore?.defaultFloatAmount ?? 3000) : '');
     setTransferNotes('');
     setTransferFromAcct('');
     setTransferToAcct('');
@@ -330,92 +269,70 @@ export default function CashupPage() {
 
   function handleTransfer() {
     const amt = parseFloat(transferAmount);
-    if (!amt || amt <= 0 || !transferFromAcct || !transferToAcct) return;
     const otherStore = summary?.otherStores?.[0];
-    if (!otherStore) return;
-
-    const payload = isLolasStore
-      ? {
-          fromStoreId: storeId,
-          toStoreId: otherStore.id,
-          amount: amt,
-          fromCashAccountId: transferFromAcct,
-          toCashAccountId: transferToAcct,
-          transferType: 'float' as const,
-          date,
-          notes: transferNotes || undefined,
-        }
-      : {
-          fromStoreId: storeId,
-          toStoreId: otherStore.id,
-          amount: amt,
-          fromCashAccountId: transferFromAcct,
-          toCashAccountId: transferToAcct,
-          transferType: 'consolidation' as const,
-          date,
-          notes: transferNotes || undefined,
-        };
-
-    transferMut.mutate(payload, {
-      onSuccess: () => {
-        setShowTransferModal(false);
-        setTransferAmount('');
-        setTransferNotes('');
+    if (!amt || amt <= 0 || !transferFromAcct || !transferToAcct || !otherStore) return;
+    transferMut.mutate(
+      {
+        fromStoreId: storeId,
+        toStoreId: otherStore.id,
+        amount: amt,
+        fromCashAccountId: transferFromAcct,
+        toCashAccountId: transferToAcct,
+        transferType: isLolasStore ? 'float' : 'consolidation',
+        date,
+        notes: transferNotes || undefined,
       },
-    });
+      {
+        onSuccess: () => {
+          setShowTransferModal(false);
+          setTransferAmount('');
+          setTransferNotes('');
+        },
+      },
+    );
   }
 
-  const otherStoreName =
-    summary?.otherStores?.[0]?.name ?? 'Other Store';
+  const draftTill = denomSum(draft.tillDenoms);
+  const draftEnvelope = denomSum(draft.envelopeDenoms);
+  const canAct = !isLocked && !isFuture;
 
   return (
     <div className="mx-auto max-w-7xl">
       {/* Header */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-gray-900">Cash Up</h1>
-        <div className="flex items-center gap-2">
-          {!isLocked && summary?.otherStores && summary.otherStores.length > 0 && (
-            <Button size="sm" variant="secondary" className="!py-2" onClick={openTransferModal}>
-              {isLolasStore
-                ? `Issue Float to ${otherStoreName}`
-                : `Send Cash to ${otherStoreName}`}
+        {canAct && (
+          <div className="flex flex-wrap items-center gap-2">
+            {summary?.otherStores && summary.otherStores.length > 0 && (
+              <Button size="sm" variant="secondary" className="!py-2" onClick={openTransferModal}>
+                {isLolasStore ? `Issue float to ${otherStoreName}` : `Send cash to ${otherStoreName}`}
+              </Button>
+            )}
+            <Button size="sm" variant="secondary" className="!py-2" onClick={() => setShowDepositModal(true)}>
+              Cash taken to bank
             </Button>
-          )}
-          {!isLocked && (
-            <Button
-              size="sm"
-              variant="secondary"
-              className="!py-2"
-              onClick={() => setShowDepositModal(true)}
-            >
-              Cash Deposited
-            </Button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
-      {/* Store tabs — Lola's first */}
-      <div className="mb-4 border-l-2 border-teal-500 pl-3">
-        <p className="mb-1.5 text-xs text-gray-400">Viewing:</p>
-        <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
-          {sortedStores.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => setStoreId(s.id)}
-              className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-                storeId === s.id
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              {s.name}
-            </button>
-          ))}
-        </div>
+      {/* Store tabs */}
+      <div className="mb-4 flex gap-1 rounded-lg bg-gray-100 p-1">
+        {sortedStores.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => setStoreId(s.id)}
+            className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+              storeId === s.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            {s.name}
+          </button>
+        ))}
       </div>
 
       {/* Date navigation */}
-      <div className="mb-6 flex items-center gap-3">
+      <div className="mb-4 flex items-center gap-2">
         <button
           type="button"
           onClick={() => setDate(shiftDate(date, -1))}
@@ -427,17 +344,20 @@ export default function CashupPage() {
           </svg>
         </button>
         <div className="flex-1 text-center">
-          <p className="text-lg font-semibold text-gray-900">
-            {formatDateLabel(date)}
-          </p>
-          {date === today() && (
+          <p className="text-lg font-semibold text-gray-900">{formatDateLabel(date)}</p>
+          {date === todayStr ? (
             <span className="text-xs font-medium text-blue-600">Today</span>
+          ) : (
+            <button type="button" onClick={() => setDate(todayStr)} className="text-xs font-medium text-blue-600 hover:underline">
+              Back to today
+            </button>
           )}
         </div>
         <button
           type="button"
           onClick={() => setDate(shiftDate(date, 1))}
-          className="rounded-lg border border-gray-300 p-2 hover:bg-gray-50"
+          disabled={date >= todayStr}
+          className="rounded-lg border border-gray-300 p-2 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <span className="sr-only">Next day</span>
           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -447,9 +367,32 @@ export default function CashupPage() {
         <input
           type="date"
           value={date}
-          onChange={(e) => setDate(e.target.value)}
+          max={todayStr}
+          onChange={(e) => e.target.value && setDate(e.target.value > todayStr ? todayStr : e.target.value)}
           className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
         />
+      </div>
+
+      {storeId && (
+        <div className="mb-4">
+          <CashupHistoryStrip storeId={storeId} selectedDate={date} onSelectDate={setDate} showStaffSummary={canManage} />
+        </div>
+      )}
+
+      {/* Search */}
+      <div className="mb-6">
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Find an order on this page or any day — booking ref, order number or customer name"
+          className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm"
+        />
+        {search.trim().length >= 3 && (
+          <div className="mt-2">
+            <OrderLookupPanel storeId={storeId} query={search} onSelectDate={setDate} />
+          </div>
+        )}
       </div>
 
       {isLoading ? (
@@ -457,451 +400,116 @@ export default function CashupPage() {
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
         </div>
       ) : summary ? (
-        <div className="space-y-6">
-          {/* Lock banner */}
-          {isLocked && (
-            <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-4 py-3">
-              <div className="flex items-center gap-2">
-                <svg className="h-5 w-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
-                <span className="text-sm font-medium text-green-800">
-                  Reconciliation locked
-                  {summary.reconciliation?.submittedAt &&
-                    ` — submitted ${new Date(summary.reconciliation.submittedAt).toLocaleString('en-PH')}`}
-                </span>
-              </div>
-              {canOverride && (
-                <Button size="sm" variant="ghost" className="!py-2" onClick={() => setShowOverrideModal(true)}>
-                  Override
-                </Button>
-              )}
-            </div>
-          )}
-
-          {summary.reconciliation?.overrideReason && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              <span className="font-medium">Overridden:</span>{' '}
-              {summary.reconciliation.overrideReason}
-            </div>
-          )}
-
-          {/* Summary: auto-fit grid avoids empty "holes" in the last row; Expected spans full width */}
-          <div className="space-y-5">
-            <div>
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-                Opening &amp; sales
-              </p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(min(100%,11.5rem),1fr))]">
-                <SummaryCard
-                  label="Opening Float"
-                  value={summary.openingFloat.amount}
-                  badge={
-                    summary.openingFloat.source === 'none'
-                      ? 'No prior'
-                      : summary.openingFloat.source === 'override'
-                        ? 'Override'
-                        : 'Prev. close'
-                  }
-                  badgeColor={summary.openingFloat.source === 'override' ? 'amber' : 'gray'}
-                />
-                <SummaryCard label="Cash Sales" value={summary.totals.cashSalesTotal} color="green" subtitle="Income" />
-                {(summary.totals.miscSalesTotal ?? 0) > 0 && (
-                  <SummaryCard
-                    label="Misc Sales"
-                    value={summary.totals.miscSalesTotal}
-                    color="emerald"
-                    subtitle={`Cash ${formatCurrency(summary.totals.miscCashTotal ?? 0)}`}
-                  />
-                )}
-                <SummaryCard label="GCash Sales" value={summary.totals.gcashSalesTotal} color="teal" subtitle="Income" />
-              </div>
-            </div>
-
-            <div>
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-                Deposits, bank &amp; day costs
-              </p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(min(100%,11.5rem),1fr))]">
-                <SummaryCard
-                  label="Deposits Held"
-                  value={summary.totals.depositsHeldTotal}
-                  color="cyan"
-                  subtitle="Liability — all methods"
-                />
-                <SummaryCard label="Cash Deposited" value={summary.totals.depositTotal} color="blue" subtitle="To bank" />
-                {(summary.totals.interStoreIn > 0 || summary.totals.interStoreOut > 0) && (
-                  <SummaryCard
-                    label="Transfers"
-                    value={summary.totals.interStoreIn - summary.totals.interStoreOut}
-                    color="violet"
-                    subtitle={`In ${formatCurrency(summary.totals.interStoreIn)} / Out ${formatCurrency(summary.totals.interStoreOut)}`}
-                  />
-                )}
-                <SummaryCard label="Expenses" value={summary.totals.expenseTotal} color="red" subtitle="All methods" />
-              </div>
-            </div>
-
-            {((summary.totals.refundTotal ?? 0) > 0 ||
-              (summary.totals.depositReturnTotal ?? 0) > 0 ||
-              (summary.totals.depositAppliedTotal ?? 0) > 0 ||
-              (summary.totals.discountsTotal ?? 0) > 0) && (
-              <div>
-                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Outflows &amp; notes</p>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(min(100%,11.5rem),1fr))]">
-                  {(summary.totals.refundTotal ?? 0) > 0 && (
-                    <SummaryCard
-                      label="Refunds Out"
-                      value={summary.totals.refundTotal}
-                      color="red"
-                      subtitle={
-                        (summary.totals.cashRefundTotal ?? 0) < (summary.totals.refundTotal ?? 0)
-                          ? `Cash ${formatCurrency(summary.totals.cashRefundTotal ?? 0)}`
-                          : 'Manual refund payments'
-                      }
-                    />
-                  )}
-                  {(summary.totals.depositReturnTotal ?? 0) > 0 && (
-                    <SummaryCard
-                      label="Deposit Returns"
-                      value={summary.totals.depositReturnTotal}
-                      color="orange"
-                      subtitle="Refunded from deposit envelope"
-                    />
-                  )}
-                  {(summary.totals.depositAppliedTotal ?? 0) > 0 && (
-                    <SummaryCard
-                      label="Deposit to Rental"
-                      value={summary.totals.depositAppliedTotal}
-                      color="orange"
-                      subtitle="Counted in Cash / GCash Sales above"
-                      badge="Applied"
-                      badgeColor="green"
-                    />
-                  )}
-                  {(summary.totals.discountsTotal ?? 0) > 0 && (
-                    <SummaryCard
-                      label="Discounts Given"
-                      value={summary.totals.discountsTotal}
-                      color="orange"
-                      subtitle="Info only"
-                    />
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div className="border-t border-gray-200 pt-1">
-              <SummaryCard
-                label="Expected Cash"
-                value={expectedCashSales}
-                color="indigo"
-                subtitle="Target for the main till (excludes the deposit envelope)"
-                className="border-indigo-200 ring-1 ring-indigo-100"
-              />
-            </div>
-          </div>
-
-          {/* Transaction sections */}
-          <div className="grid gap-6 lg:grid-cols-2">
-            <TransactionSection
-              title="Cash Sales"
-              subtitle="Income"
-              icon="💵"
-              rows={summary.transactions.cashSales}
-              total={summary.totals.cashSalesTotal}
-              color="green"
-              affectsTill
-            />
-            {(summary.transactions.miscSales?.cash?.length ?? 0) > 0 && (
-              <MiscSalesSection
-                title="Misc Sales (Cash)"
-                icon="🪙"
-                rows={summary.transactions.miscSales.cash}
-                total={summary.totals.miscCashTotal ?? 0}
-                color="emerald"
-                affectsTill
-              />
-            )}
-            <DepositsHeldSection
-              groups={summary.transactions.depositsHeld}
-              total={summary.totals.depositsHeldTotal}
-            />
-            <BankDepositSection
-              deposits={summary.transactions.bankDeposits}
-              total={summary.totals.depositTotal}
-            />
-            {(summary.transactions.transfersIn.length > 0 ||
-              summary.transactions.transfersOut.length > 0) && (
-              <TransferSection
-                transfersIn={summary.transactions.transfersIn}
-                transfersOut={summary.transactions.transfersOut}
-                totalIn={summary.totals.interStoreIn}
-                totalOut={summary.totals.interStoreOut}
-              />
-            )}
-            <TransactionSection
-              title="Card Sales"
-              subtitle="Income"
-              icon="💳"
-              rows={summary.transactions.cardSales}
-              total={summary.totals.cardSalesTotal}
-              color="purple"
-            />
-            {(summary.transactions.miscSales?.card?.length ?? 0) > 0 && (
-              <MiscSalesSection
-                title="Misc Sales (Card)"
-                icon="💳"
-                rows={summary.transactions.miscSales.card}
-                total={summary.totals.miscCardTotal ?? 0}
-                color="purple"
-              />
-            )}
-            <TransactionSection
-              title="GCash Sales"
-              subtitle="Income"
-              icon="📱"
-              rows={summary.transactions.gcashSales}
-              total={summary.totals.gcashSalesTotal}
-              color="teal"
-            />
-            {(summary.transactions.miscSales?.gcash?.length ?? 0) > 0 && (
-              <MiscSalesSection
-                title="Misc Sales (GCash)"
-                icon="📱"
-                rows={summary.transactions.miscSales.gcash}
-                total={summary.totals.miscGcashTotal ?? 0}
-                color="teal"
-              />
-            )}
-            {(summary.transactions.pendingExtensions?.length ?? 0) > 0 && (
-              <PendingExtensionsSection
-                rows={summary.transactions.pendingExtensions}
-                total={summary.totals.pendingExtensionsTotal ?? 0}
-              />
-            )}
-            <TransactionSection
-              title="Bank Transfers"
-              icon="🏛️"
-              rows={summary.transactions.bankTransfer}
-              total={summary.totals.bankTransferTotal}
-              color="gray"
-            />
-            {(summary.transactions.miscSales?.bank?.length ?? 0) > 0 && (
-              <MiscSalesSection
-                title="Misc Sales (Bank Transfer)"
-                icon="🏛️"
-                rows={summary.transactions.miscSales.bank}
-                total={summary.totals.miscBankTotal ?? 0}
-                color="gray"
-              />
-            )}
-            <ExpenseSection
-              expenses={summary.transactions.expenses}
-              total={summary.totals.expenseTotal}
-            />
-            {(summary.totals.refundTotal ?? 0) > 0 && (
-              <RefundsSection
-                refunds={(summary.transactions.refunds ?? []) as RefundRow[]}
-                total={summary.totals.refundTotal ?? 0}
-              />
-            )}
-            {(summary.totals.depositReturnTotal ?? 0) > 0 && (
-              <DepositReturnsSection
-                returns={(summary.transactions.depositReturns ?? []) as DepositReturnRow[]}
-                total={summary.totals.depositReturnTotal ?? 0}
-              />
-            )}
-            {(summary.totals.depositAppliedTotal ?? 0) > 0 && (
-              <DepositAppliedSection
-                rows={(summary.transactions.depositApplied ?? []) as DepositAppliedRow[]}
-                total={summary.totals.depositAppliedTotal ?? 0}
-              />
-            )}
-            {(summary.totals.charityDonationsTotal ?? 0) > 0 && (
-              <CharityDonationsSection
-                donations={summary.charityDonations ?? []}
-                total={summary.totals.charityDonationsTotal}
-              />
-            )}
-            {(summary.totals.discountsTotal ?? 0) > 0 && (
-              <DiscountsSection
-                discounts={summary.transactions.discounts ?? []}
-                total={summary.totals.discountsTotal ?? 0}
-              />
-            )}
-          </div>
-
-          <DenominationCounter
-            tillDenoms={tillDenoms}
-            depEnvDenoms={depEnvDenoms}
-            onTillDenomChange={setTillDenom}
-            onDepEnvDenomChange={setDepEnvDenom}
-            tillTotal={tillTotal}
-            depEnvTotal={depEnvTotal}
-            expectedCashSales={expectedCashSales}
-            expectedDepositsHeld={expectedDepositsHeld}
-            tillVariance={tillVariance}
-            depVariance={depVariance}
-            isLocked={isLocked}
-            hasSavedDenoms={!!hasSavedDenoms}
-            onLoadSavedDenoms={loadSavedDenoms}
-          />
-
-          {/* Action buttons */}
-          {!isLocked && (
-            <div className="flex gap-3">
-              <Button
-                className="flex-1"
-                onClick={() => setShowBeforeCloseModal(true)}
-                disabled={tillTotal === 0}
-              >
-                Reconcile Day
-              </Button>
-            </div>
-          )}
-
-          {/* Reconciliation info if locked */}
-          {isLocked && summary.reconciliation && (
-            <div className="rounded-lg border border-gray-200 bg-white p-4">
-              <h4 className="mb-2 text-sm font-semibold text-gray-900">
-                Reconciliation Record
-              </h4>
-              <dl className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm lg:grid-cols-4">
-                <div className="flex justify-between">
-                  <dt className="text-gray-500">Till Counted</dt>
-                  <dd className="font-medium">
-                    {formatCurrency(summary.reconciliation.tillCounted ?? summary.reconciliation.actualCounted)}
-                  </dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-gray-500">Deposits Counted</dt>
-                  <dd className="font-medium">
-                    {formatCurrency(summary.reconciliation.depositsCounted ?? 0)}
-                  </dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-gray-500">Variance</dt>
-                  <dd className={`font-medium ${varianceColor(summary.reconciliation.variance)}`}>
-                    {summary.reconciliation.variance > 0 ? '+' : ''}
-                    {formatCurrency(summary.reconciliation.variance)}
-                  </dd>
-                </div>
-                {summary.reconciliation.closingBalance != null && (
-                  <div className="flex justify-between">
-                    <dt className="text-gray-500">Closing Balance</dt>
-                    <dd className="font-medium">
-                      {formatCurrency(summary.reconciliation.closingBalance)}
-                    </dd>
-                  </div>
-                )}
-              </dl>
-            </div>
-          )}
-        </div>
+        <CashupDay
+          summary={summary}
+          date={date}
+          query={search.trim().toLowerCase()}
+          canManage={canManage}
+          canAct={canAct}
+          draftTill={draftTill}
+          draftEnvelope={draftEnvelope}
+          onStartClose={startClose}
+          onReopen={() => setShowReopen(true)}
+          onSelectDate={setDate}
+        />
       ) : (
         <div className="rounded-lg bg-white p-12 text-center shadow-sm">
           <p className="text-gray-500">Select a store to view Cash Up</p>
         </div>
       )}
 
-      {/* ── Before-close gate ── */}
-      {showBeforeCloseModal && (
+      {showBeforeClose && (
         <BeforeCloseModal
           storeId={storeId}
           date={date}
           onProceed={() => {
-            setShowBeforeCloseModal(false);
-            setShowReconcileModal(true);
+            setShowBeforeClose(false);
+            setShowWizard(true);
           }}
-          onCancel={() => setShowBeforeCloseModal(false)}
+          onCancel={() => setShowBeforeClose(false)}
         />
       )}
 
-      {/* ── Reconcile Confirmation Modal ── */}
-      {showReconcileModal && summary && (
-        <ReconcileModal
+      {showWizard && summary && (
+        <CloseDayWizard
           summary={summary}
+          storeId={storeId}
+          storeName={currentStoreName}
+          date={date}
           dateLabel={formatDateLabel(date)}
-          tillTotal={tillTotal}
-          depEnvTotal={depEnvTotal}
-          tillVariance={tillVariance}
-          depVariance={depVariance}
-          expectedCashSales={expectedCashSales}
-          expectedDepositsHeld={expectedDepositsHeld}
-          isPending={reconcileMut.isPending}
-          onConfirm={handleReconcile}
-          onCancel={() => setShowReconcileModal(false)}
+          draft={draft}
+          onDraftChange={update}
+          onTillDenom={setTillDenom}
+          onEnvelopeDenom={setEnvelopeDenom}
+          assetAccounts={assetAccounts}
+          routedCashAcct={routedCashAcct}
+          defaultDropAcct={routedCardSettlement}
+          onRefresh={refreshSummary}
+          onClose={() => setShowWizard(false)}
+          onLocked={() => {
+            setShowWizard(false);
+            clear();
+          }}
         />
       )}
 
-      {/* ── Override Modal ── */}
-      {showOverrideModal && (
-        <ModalOverlay onClose={() => setShowOverrideModal(false)}>
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-            <h2 className="mb-4 text-lg font-bold text-gray-900">
-              Override Reconciliation
-            </h2>
+      {showReopen && summary && (
+        <ModalOverlay onClose={() => setShowReopen(false)}>
+          <div className="rounded-xl bg-white p-6 shadow-xl">
+            <h2 className="mb-2 text-lg font-bold text-gray-900">Reopen {shortDate(date)}</h2>
             <p className="mb-4 text-sm text-gray-600">
-              This will unlock the record and update the actual counted amount.
-              A reason is required.
+              This unlocks the day so it can be recounted. The original count stays on record until the day is locked again.
             </p>
-            <div className="mb-4 grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-xs text-gray-500">Till Count</p>
-                <p className="text-lg font-bold text-gray-900">{formatCurrency(tillTotal)}</p>
+            {summary.laterLockedDate && (
+              <div className="mb-4">
+                <Banner tone="amber" title={`${shortDate(summary.laterLockedDate)} is already locked`}>
+                  Its opening float came from this day&apos;s close. After you re-lock this day, reopen and recount{' '}
+                  {shortDate(summary.laterLockedDate)} as well.
+                </Banner>
               </div>
-              <div>
-                <p className="text-xs text-gray-500">Deposit Envelope</p>
-                <p className="text-lg font-bold text-gray-900">{formatCurrency(depEnvTotal)}</p>
-              </div>
-            </div>
-            <div className="mb-4">
-              <label className="mb-1 block text-sm font-medium text-gray-700">
-                Reason for Override *
-              </label>
-              <textarea
-                value={overrideReason}
-                onChange={(e) => setOverrideReason(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                rows={3}
-                placeholder="Explain why this override is necessary..."
-              />
-            </div>
+            )}
+            <label className="mb-1 block text-sm font-medium text-gray-700">Reason *</label>
+            <textarea
+              value={reopenReason}
+              onChange={(e) => setReopenReason(e.target.value)}
+              className="mb-4 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              rows={3}
+              placeholder="e.g. ₱1,000 found in the safe that belonged to the till"
+            />
+            {reopenMut.isError && (
+              <p className="mb-3 text-sm text-red-700">{(reopenMut.error as Error).message}</p>
+            )}
             <div className="flex gap-3">
-              <Button
-                variant="secondary"
-                className="flex-1"
-                onClick={() => { setShowOverrideModal(false); setOverrideReason(''); }}
-              >
+              <Button variant="secondary" className="flex-1" onClick={() => setShowReopen(false)}>
                 Cancel
               </Button>
               <Button
                 variant="danger"
                 className="flex-1"
-                onClick={handleOverride}
-                loading={overrideMut.isPending}
-                disabled={!overrideReason.trim()}
+                onClick={handleReopen}
+                loading={reopenMut.isPending}
+                disabled={!reopenReason.trim()}
               >
-                Override
+                Reopen day
               </Button>
             </div>
           </div>
         </ModalOverlay>
       )}
 
-      {/* ── Cash Deposited Modal ── */}
       {showDepositModal && (
         <ModalOverlay onClose={() => setShowDepositModal(false)}>
-          <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl">
-            <h2 className="mb-4 text-lg font-bold text-gray-900">
-              Record Cash Deposit
-            </h2>
+          <div className="rounded-xl bg-white p-6 shadow-xl">
+            <h2 className="mb-1 text-lg font-bold text-gray-900">Cash taken to bank</h2>
+            <p className="mb-4 text-xs text-gray-500">
+              For cash removed from the till during the day. At close, use the last step of the close-day flow instead.
+            </p>
             <div className="space-y-4">
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">Amount *</label>
                 <input
                   type="number"
+                  inputMode="decimal"
                   min={0}
                   step={0.01}
                   value={depositAmount}
@@ -911,29 +519,28 @@ export default function CashupPage() {
                 />
               </div>
               {!routedCashAcct && (
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Cash Account (from) *</label>
-                <select
-                  value={depositCashAcct}
-                  onChange={(e) => setDepositCashAcct(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                >
-                  <option value="">Select cash account...</option>
-                  {assetAccounts.map((a) => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
-                  ))}
-                </select>
-                <p className="mt-1 text-xs text-amber-600">No routing rule configured — select manually</p>
-              </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Cash account (from) *</label>
+                  <select
+                    value={depositCashAcct}
+                    onChange={(e) => setDepositCashAcct(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    <option value="">Select cash account…</option>
+                    {assetAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                  </select>
+                </div>
               )}
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Destination Account (to) *</label>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Destination account (to) *</label>
                 <select
                   value={depositBankAcct}
                   onChange={(e) => setDepositBankAcct(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 >
-                  <option value="">Select destination account...</option>
+                  <option value="">Select destination account…</option>
                   {assetAccounts.map((a) => (
                     <option key={a.id} value={a.id}>{a.name}</option>
                   ))}
@@ -946,9 +553,10 @@ export default function CashupPage() {
                   value={depositNotes}
                   onChange={(e) => setDepositNotes(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  placeholder="Optional description"
+                  placeholder="Optional"
                 />
               </div>
+              {depositMut.isError && <p className="text-sm text-red-700">{(depositMut.error as Error).message}</p>}
             </div>
             <div className="mt-6 flex gap-3">
               <Button variant="secondary" className="flex-1" onClick={() => setShowDepositModal(false)}>
@@ -960,14 +568,13 @@ export default function CashupPage() {
                 loading={depositMut.isPending}
                 disabled={!depositAmount || parseFloat(depositAmount) <= 0 || !depositCashAcct || !depositBankAcct}
               >
-                Record Deposit
+                Record
               </Button>
             </div>
           </div>
         </ModalOverlay>
       )}
 
-      {/* ── Inter-store Transfer Modal ── */}
       {showTransferModal && (
         <InterStoreTransferModal
           isLolasStore={isLolasStore}
@@ -994,707 +601,347 @@ export default function CashupPage() {
   );
 }
 
-/* ── Sub-components ── */
-
-function SummaryCard({
-  label,
-  value,
-  color,
-  badge,
-  badgeColor,
-  subtitle,
-  className,
+function CashupDay({
+  summary,
+  date,
+  query,
+  canManage,
+  canAct,
+  draftTill,
+  draftEnvelope,
+  onStartClose,
+  onReopen,
+  onSelectDate,
 }: {
-  label: string;
-  value: number;
-  color?: string;
-  badge?: string;
-  badgeColor?: string;
-  subtitle?: string;
-  className?: string;
+  summary: CashupSummary;
+  date: string;
+  query: string;
+  canManage: boolean;
+  canAct: boolean;
+  draftTill: number;
+  draftEnvelope: number;
+  onStartClose: () => void;
+  onReopen: () => void;
+  onSelectDate: (d: string) => void;
 }) {
-  const colorMap: Record<string, string> = {
-    green: 'text-green-700',
-    emerald: 'text-emerald-700',
-    red: 'text-red-700',
-    blue: 'text-blue-700',
-    indigo: 'text-indigo-700',
-    cyan: 'text-cyan-700',
-    teal: 'text-teal-700',
-    violet: 'text-violet-700',
-    orange: 'text-orange-700',
-  };
-  const badgeMap: Record<string, string> = {
-    amber: 'bg-amber-100 text-amber-700',
-    gray: 'bg-gray-100 text-gray-600',
-  };
-  return (
-    <div
-      className={['rounded-lg border border-gray-200 bg-white p-4', className].filter(Boolean).join(' ')}
-    >
-      <div className="flex items-center gap-2">
-        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
-        {badge && (
-          <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${badgeMap[badgeColor ?? 'gray'] ?? badgeMap.gray}`}>
-            {badge}
-          </span>
-        )}
-      </div>
-      <p className={`mt-1 text-xl font-bold ${color ? colorMap[color] ?? 'text-gray-900' : 'text-gray-900'}`}>
-        {formatCurrency(value)}
-      </p>
-      {subtitle && <p className="mt-0.5 text-[10px] text-gray-400">{subtitle}</p>}
-    </div>
-  );
-}
+  const [showNonCash, setShowNonCash] = useState(false);
+  const rec = summary.reconciliation;
+  const isLocked = summary.isLocked;
+  const tx = summary.transactions;
+  const ledger = summary.cashLedger;
+  const filter = (rows: ListRow[]) => (query ? rows.filter((r) => matchesQuery(r, query)) : rows);
+  const searching = query.length > 0;
 
-function PendingExtensionsSection({ rows, total }: { rows: TransactionRow[]; total: number }) {
-  if (rows.length === 0) return null;
+  const till = {
+    sales: ledgerRows(ledger, ['cash_sale', 'misc_cash']),
+    refunds: ledgerRows(ledger, ['cash_refund']),
+    expenses: ledgerRows(ledger, ['cash_expense']),
+    banked: ledgerRows(ledger, ['bank_deposit']),
+    interStore: ledgerRows(ledger, ['inter_store_in', 'inter_store_out']),
+  };
+  const envelope = {
+    taken: ledgerRows(ledger, ['deposit_in']),
+    returned: ledgerRows(ledger, ['deposit_return']),
+    applied: ledgerRows(ledger, ['deposit_applied']),
+  };
+  const nonCashReturns: ListRow[] = tx.depositReturns
+    .filter((r) => !r.affectsEnvelope)
+    .map((r) => ({
+      id: r.id,
+      ref: r.bookingToken,
+      title: r.customerName ?? r.description ?? 'Deposit return',
+      subtitle: [r.methodId, formatTime(r.createdAt)].filter(Boolean).join(' · '),
+      amount: r.amount,
+      sign: '-' as const,
+      badge: 'Not from envelope',
+    }));
+  const mismatchIds = new Set(
+    tx.depositReturns
+      .filter((r) => r.collectedMethodId && methodCategory(r.collectedMethodId) !== r.methodCategory)
+      .map((r) => r.id),
+  );
+  envelope.returned = envelope.returned.map((r) =>
+    mismatchIds.has(r.id) ? { ...r, tone: 'warning' as const, badge: 'Taken by a different method' } : r,
+  );
+
+  const nonCashDeposits: ListRow[] = tx.depositsHeld
+    .filter((g) => g.label !== 'Cash')
+    .flatMap((g) => txRows(g.rows).map((r) => ({ ...r, badge: g.label })));
+  const nonCashRefunds = txRows(tx.refunds.filter((r) => methodCategory(r.methodId) !== 'cash'));
+  const nonCashExpenses: ListRow[] = tx.expenses
+    .filter((e) => !e.isCash)
+    .map((e) => ({
+      id: e.id,
+      title: e.description || e.category,
+      subtitle: [e.category, e.paidFromName, formatTime(e.createdAt)].filter(Boolean).join(' · '),
+      amount: e.amount,
+    }));
+  const nonCash = {
+    card: filter([...txRows(tx.cardSales), ...miscRows(summary.transactions.miscSales.card)]),
+    gcash: filter([...txRows(tx.gcashSales), ...miscRows(summary.transactions.miscSales.gcash)]),
+    bank: filter([...txRows(tx.bankTransfer), ...miscRows(summary.transactions.miscSales.bank)]),
+    deposits: filter(nonCashDeposits),
+    refunds: filter(nonCashRefunds),
+    expenses: filter(nonCashExpenses),
+    pending: filter(txRows(tx.pendingExtensions)),
+    discounts: filter(
+      tx.discounts.map((d) => ({
+        id: d.id,
+        ref: d.orderRef,
+        title: d.customerName ?? 'Discount',
+        subtitle: d.vehicleName,
+        amount: d.amount,
+      })),
+    ),
+    charity: filter(
+      summary.charityDonations.map((c) => ({
+        id: c.id,
+        title: c.description ?? 'Charity donation',
+        subtitle: formatTime(c.createdAt),
+        amount: c.amount,
+      })),
+    ),
+  };
+  const nonCashCount = Object.values(nonCash).reduce((s, rows) => s + rows.length, 0);
+  const nonCashOpen = showNonCash || (searching && nonCashCount > 0);
+
+  const openingLabel = summary.openingFloat.previousDate
+    ? `Opening float (${shortDate(summary.openingFloat.previousDate)} close)`
+    : 'Opening float (no earlier cash-up)';
+
   return (
-    <div className="rounded-lg border border-amber-200 border-l-4 border-l-amber-400 bg-amber-50">
-      <div className="flex items-center justify-between border-b border-amber-100 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span>⏳</span>
-          <div>
-            <h3 className="text-sm font-semibold text-amber-900">Pending Extensions</h3>
-            <p className="text-[10px] text-amber-700">Not yet collected — remind customers to pay</p>
-          </div>
-          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">
-            Info only
-          </span>
-        </div>
-        <span className="text-sm font-bold text-amber-900">{formatCurrency(total)}</span>
-      </div>
-      <div className="max-h-60 overflow-y-auto">
-        {rows.map((tx) => (
-          <div key={tx.id} className="flex items-center justify-between border-b border-amber-50 px-4 py-2 last:border-b-0">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-amber-900">
-                {tx.customerName ?? 'Customer'}
-              </p>
-              <p className="text-xs text-amber-700">
-                Extension{tx.settlementRef ? ` · ${tx.settlementRef}` : ''}
-                {tx.createdAt && ` · ${formatTime(tx.createdAt)}`}
-              </p>
-            </div>
-            <span className="ml-3 whitespace-nowrap text-sm font-medium text-amber-900">
-              {formatCurrency(tx.amount)}
-            </span>
-          </div>
+    <div className="space-y-6">
+      {/* Banners */}
+      <div className="space-y-2">
+        {summary.isFuture && <Banner tone="red" title="This date is in the future — nothing can be recorded or closed yet." />}
+
+        {summary.gapTooLong ? (
+          <Banner tone="red" title="No locked cash-up in the last month">
+            The opening float can&apos;t be trusted. A manager should check the last locked day before this one is closed.
+          </Banner>
+        ) : summary.missingDays.length > 0 ? (
+          <Banner
+            tone="amber"
+            title={`${summary.missingDays.length} earlier day(s) were never cashed up`}
+            action={
+              <Button size="sm" variant="secondary" onClick={() => onSelectDate(summary.missingDays[0])}>
+                Go to {shortDate(summary.missingDays[0])}
+              </Button>
+            }
+          >
+            {summary.missingDays.map(shortDate).join(', ')}. Their cash movements are carried into today&apos;s expected
+            figures. Closing those days first gives a cleaner count.
+          </Banner>
+        ) : null}
+
+        {summary.openingFloat.source === 'none' && !summary.gapTooLong && (
+          <Banner tone="blue" title="No earlier locked cash-up — opening float starts at ₱0" />
+        )}
+
+        {summary.carry.map((g) => (
+          <Banner key={g.label} tone="amber" title={`Carried in: ${g.label}`}>
+            {g.items.length} entr{g.items.length === 1 ? 'y' : 'ies'} — till {formatVariance(g.tillNet)}, envelope{' '}
+            {formatVariance(g.envelopeNet)}. These are included in today&apos;s expected figures.
+          </Banner>
         ))}
-      </div>
-    </div>
-  );
-}
 
-function TransactionSection({
-  title,
-  subtitle,
-  icon,
-  rows,
-  total,
-  color,
-  affectsTill,
-}: {
-  title: string;
-  subtitle?: string;
-  icon: string;
-  rows?: TransactionRow[];
-  total: number;
-  color: string;
-  affectsTill?: boolean;
-}) {
-  const borderColor: Record<string, string> = {
-    green: 'border-l-green-500',
-    blue: 'border-l-blue-500',
-    purple: 'border-l-purple-500',
-    teal: 'border-l-teal-500',
-    cyan: 'border-l-cyan-500',
-    gray: 'border-l-gray-400',
-  };
+        {isLocked && rec && (
+          <Banner
+            tone="green"
+            title={`Locked${rec.submittedByName ? ` by ${rec.submittedByName}` : ''}${rec.submittedAt ? ` · ${formatDateTime(rec.submittedAt)}` : ''}`}
+            action={
+              canManage ? (
+                <Button size="sm" variant="secondary" onClick={onReopen}>
+                  Reopen day
+                </Button>
+              ) : undefined
+            }
+          />
+        )}
 
-  const items = rows ?? [];
+        {summary.postedAfterLock && summary.postedAfterLock.items.length > 0 && (
+          <Banner tone="amber" title={`${summary.postedAfterLock.items.length} entr${summary.postedAfterLock.items.length === 1 ? 'y was' : 'ies were'} posted after this day was locked`}>
+            They stay on this date for the books, and are carried into the next cash-up as &quot;After last cash-up&quot;: till{' '}
+            {formatVariance(summary.postedAfterLock.tillNet)}, envelope {formatVariance(summary.postedAfterLock.envelopeNet)}.
+            <ul className="mt-1 list-disc pl-5">
+              {summary.postedAfterLock.items.map((i) => (
+                <li key={i.id}>
+                  {i.bookingToken && <strong>{i.bookingToken} </strong>}
+                  {i.label} {i.amount < 0 ? '−' : '+'}
+                  {formatCurrency(Math.abs(i.amount))}
+                  {i.createdAt ? ` at ${formatDateTime(i.createdAt)}` : ''}
+                </li>
+              ))}
+            </ul>
+          </Banner>
+        )}
 
-  return (
-    <div className={`rounded-lg border border-gray-200 border-l-4 bg-white ${borderColor[color] ?? 'border-l-gray-400'}`}>
-      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span>{icon}</span>
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
-            {subtitle && <p className="text-[10px] text-gray-400">{subtitle}</p>}
-          </div>
-          {!affectsTill && (
-            <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">
-              Info only
-            </span>
-          )}
-        </div>
-        <span className="text-sm font-bold text-gray-900">{formatCurrency(total)}</span>
-      </div>
-      <div className="max-h-60 overflow-y-auto">
-        {items.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-gray-400">No transactions</p>
-        ) : (
-          items.map((tx) => (
-            <div key={tx.id} className="flex items-center justify-between border-b border-gray-50 px-4 py-2 last:border-b-0">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-gray-800">
-                  {tx.customerName ?? 'Unknown'}
-                  {tx.wooOrderId && <span className="ml-1 text-xs text-gray-400">#{tx.wooOrderId}</span>}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {tx.paymentType}
-                  {tx.settlementRef && ` · ${tx.settlementRef}`}
-                  {tx.createdAt && ` · ${formatTime(tx.createdAt)}`}
-                </p>
-              </div>
-              <span className="ml-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                {formatCurrency(tx.amount)}
-              </span>
-            </div>
-          ))
+        {!isLocked && rec?.overrideReason && (
+          <Banner tone="amber" title={`Reopened${rec.overriddenByName ? ` by ${rec.overriddenByName}` : ''}`}>
+            {rec.overrideReason}
+          </Banner>
         )}
       </div>
-    </div>
-  );
-}
 
-function BankDepositSection({
-  deposits,
-  total,
-}: {
-  deposits: DepositRow[];
-  total: number;
-}) {
-  return (
-    <div className="rounded-lg border border-gray-200 border-l-4 border-l-blue-500 bg-white">
-      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span>🏦</span>
+      {/* Close-day call to action */}
+      {canAct && (
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-blue-200 bg-blue-50 p-5">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">Cash Deposited</h3>
-            <p className="text-[10px] text-gray-400">Transferred from till</p>
-          </div>
-        </div>
-        <span className="text-sm font-bold text-blue-700">{formatCurrency(total)}</span>
-      </div>
-      <div className="max-h-60 overflow-y-auto">
-        {deposits.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-gray-400">No deposits</p>
-        ) : (
-          deposits.map((d) => (
-            <div key={d.id} className="flex items-center justify-between border-b border-gray-50 px-4 py-2 last:border-b-0">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-gray-800">
-                  {d.description ?? 'Cash deposit'}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {d.accountName && <span className="font-medium text-blue-600">{d.accountName}</span>}
-                  {d.accountName && d.createdAt && ' · '}
-                  {d.createdAt && formatTime(d.createdAt)}
-                </p>
-              </div>
-              <span className="ml-3 whitespace-nowrap text-sm font-medium text-blue-700">
-                {formatCurrency(d.amount)}
-              </span>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-function TransferSection({
-  transfersIn,
-  transfersOut,
-  totalIn,
-  totalOut,
-}: {
-  transfersIn: TransferRow[];
-  transfersOut: TransferRow[];
-  totalIn: number;
-  totalOut: number;
-}) {
-  const net = totalIn - totalOut;
-  return (
-    <div className="rounded-lg border border-gray-200 border-l-4 border-l-violet-500 bg-white">
-      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span>🔄</span>
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900">Inter-store Transfers</h3>
-            <p className="text-[10px] text-gray-400">
-              In {formatCurrency(totalIn)} / Out {formatCurrency(totalOut)}
+            <h2 className="text-base font-semibold text-gray-900">Close {shortDate(date)}</h2>
+            <p className="text-sm text-gray-600">
+              {draftTill > 0 || draftEnvelope > 0
+                ? `Count in progress on this device — till ${formatCurrency(draftTill)}, envelope ${formatCurrency(draftEnvelope)}.`
+                : 'Count the till and the deposit envelope, explain any difference, then lock the day.'}
             </p>
           </div>
+          <Button onClick={onStartClose}>{draftTill > 0 || draftEnvelope > 0 ? 'Continue count' : 'Start cash-up'}</Button>
         </div>
-        <span className={`text-sm font-bold ${net >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-          {net >= 0 ? '+' : ''}{formatCurrency(net)}
-        </span>
+      )}
+
+      {/* Locked record */}
+      {isLocked && rec && <ReconciliationRecordCard rec={rec} />}
+
+      {/* Expected breakdowns */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ExpectedBreakdownCard
+          title="Main till"
+          subtitle={isLocked ? 'Live figures — includes anything posted after lock' : undefined}
+          openingLabel={openingLabel}
+          breakdown={summary.expected.till}
+        />
+        <ExpectedBreakdownCard
+          title="Deposit envelope"
+          subtitle={isLocked ? 'Live figures — includes anything posted after lock' : undefined}
+          openingLabel="Envelope at last close"
+          breakdown={summary.expected.envelope}
+        />
       </div>
-      <div className="max-h-60 overflow-y-auto">
-        {transfersIn.map((t) => (
-          <div key={t.id} className="flex items-center justify-between border-b border-gray-50 px-4 py-2 last:border-b-0">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-gray-800">{t.description ?? 'Transfer in'}</p>
-              <p className="text-xs text-gray-500">{t.createdAt && formatTime(t.createdAt)}</p>
-            </div>
-            <span className="ml-3 whitespace-nowrap text-sm font-medium text-green-700">
-              +{formatCurrency(t.amount)}
+
+      {/* Till movements */}
+      <section className="space-y-3">
+        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Main till — cash</h2>
+        <div className="grid gap-3 lg:grid-cols-2">
+          <RowsSection title="Cash taken" accent="green" rows={filter(till.sales)} total={sumRows(till.sales)} totalSign="+" forceExpanded={searching} />
+          <RowsSection title="Cash expenses" accent="red" rows={filter(till.expenses)} total={sumRows(till.expenses)} totalSign="-" forceExpanded={searching} />
+          <RowsSection title="Cash refunds" accent="orange" rows={filter(till.refunds)} total={sumRows(till.refunds)} totalSign="-" hideWhenEmpty forceExpanded={searching} />
+          <RowsSection title="Cash taken to bank" accent="blue" rows={filter(till.banked)} total={sumRows(till.banked)} totalSign="-" hideWhenEmpty forceExpanded={searching} />
+          <RowsSection title="Between stores" accent="violet" rows={filter(till.interStore)} total={Math.abs(till.interStore.reduce((s, r) => s + r.amount, 0))} hideWhenEmpty forceExpanded={searching} />
+        </div>
+      </section>
+
+      {/* Envelope movements */}
+      <section className="space-y-3">
+        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Deposit envelope — cash</h2>
+        <div className="grid gap-3 lg:grid-cols-2">
+          <RowsSection title="Deposits taken" accent="cyan" rows={filter(envelope.taken)} total={sumRows(envelope.taken)} totalSign="+" forceExpanded={searching} />
+          <RowsSection
+            title="Deposit returns"
+            subtitle="Listed on the day the order was settled"
+            accent="amber"
+            rows={filter([...envelope.returned, ...nonCashReturns])}
+            total={sumRows(envelope.returned)}
+            totalSign="-"
+            forceExpanded={searching}
+          />
+          <RowsSection
+            title="Deposits applied to rentals"
+            subtitle="Moved from the envelope into the till"
+            accent="teal"
+            rows={filter(envelope.applied)}
+            total={sumRows(envelope.applied)}
+            totalSign="-"
+            hideWhenEmpty
+            forceExpanded={searching}
+          />
+        </div>
+      </section>
+
+      {/* Non-cash, information only */}
+      <section className="rounded-xl border border-gray-200 bg-gray-50">
+        <button
+          type="button"
+          onClick={() => setShowNonCash((v) => !v)}
+          className="flex w-full items-center justify-between px-4 py-3 text-left"
+        >
+          <span>
+            <span className="text-sm font-semibold text-gray-900">Card, GCash &amp; bank — not in the till</span>
+            <span className="ml-2 text-xs text-gray-500">
+              Card {formatCurrency(summary.totals.cardSalesTotal + summary.totals.miscCardTotal)} · GCash{' '}
+              {formatCurrency(summary.totals.gcashSalesTotal + summary.totals.miscGcashTotal)} · Bank{' '}
+              {formatCurrency(summary.totals.bankTransferTotal + summary.totals.miscBankTotal)}
             </span>
-          </div>
-        ))}
-        {transfersOut.map((t) => (
-          <div key={t.id} className="flex items-center justify-between border-b border-gray-50 px-4 py-2 last:border-b-0">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-gray-800">{t.description ?? 'Transfer out'}</p>
-              <p className="text-xs text-gray-500">{t.createdAt && formatTime(t.createdAt)}</p>
-            </div>
-            <span className="ml-3 whitespace-nowrap text-sm font-medium text-red-700">
-              -{formatCurrency(t.amount)}
-            </span>
-          </div>
-        ))}
-        {transfersIn.length === 0 && transfersOut.length === 0 && (
-          <p className="px-4 py-3 text-sm text-gray-400">No transfers</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function DepositsHeldSection({
-  groups,
-  total,
-}: {
-  groups: DepositsHeldGroup[];
-  total: number;
-}) {
-  const isEmpty = groups.length === 0 || groups.every((g) => g.rows.length === 0);
-  return (
-    <div className="rounded-lg border border-gray-200 border-l-4 border-l-cyan-500 bg-white">
-      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span>🔒</span>
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900">Security Deposits Held</h3>
-            <p className="text-[10px] text-gray-400">Liability — held on behalf of customer</p>
-          </div>
-        </div>
-        <span className="text-sm font-bold text-cyan-700">{formatCurrency(total)}</span>
-      </div>
-      <div className="max-h-72 overflow-y-auto">
-        {isEmpty ? (
-          <p className="px-4 py-3 text-sm text-gray-400">No deposits collected</p>
-        ) : (
-          groups.map((group) => (
-            <div key={group.label}>
-              <div className="flex items-center justify-between bg-gray-50 px-4 py-1.5">
-                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">{group.label}</span>
-                <span className="text-xs font-semibold text-gray-600">{formatCurrency(group.total)}</span>
-              </div>
-              {(group.rows as TransactionRow[]).map((tx) => (
-                <div key={tx.id} className="flex items-center justify-between border-b border-gray-50 px-4 py-2 last:border-b-0">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-gray-800">
-                      {tx.customerName ?? 'Unknown'}
-                      {tx.wooOrderId && <span className="ml-1 text-xs text-gray-400">#{tx.wooOrderId}</span>}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {tx.paymentType}
-                      {tx.createdAt && ` · ${formatTime(tx.createdAt)}`}
-                    </p>
-                  </div>
-                  <span className="ml-3 whitespace-nowrap text-sm font-medium text-cyan-700">
-                    {formatCurrency(tx.amount)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ExpenseSection({
-  expenses,
-  total,
-}: {
-  expenses: ExpenseRow[];
-  total: number;
-}) {
-  return (
-    <div className="rounded-lg border border-gray-200 border-l-4 border-l-red-500 bg-white">
-      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span>🧾</span>
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900">Expenses</h3>
-            <p className="text-[10px] text-gray-400">All payment methods</p>
-          </div>
-        </div>
-        <span className="text-sm font-bold text-red-700">{formatCurrency(total)}</span>
-      </div>
-      <div className="max-h-60 overflow-y-auto">
-        {expenses.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-gray-400">No expenses</p>
-        ) : (
-          expenses.map((e) => (
-            <div key={e.id} className="flex items-center justify-between border-b border-gray-50 px-4 py-2 last:border-b-0">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-gray-800">
-                  {e.category}
-                  {e.paidFromName && (
-                    <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">
-                      {e.paidFromName}
-                    </span>
-                  )}
-                </p>
-                <p className="truncate text-xs text-gray-500">
-                  {e.description}
-                  {e.createdAt && ` · ${formatTime(e.createdAt)}`}
-                </p>
-              </div>
-              <span className="ml-3 whitespace-nowrap text-sm font-medium text-red-700">
-                -{formatCurrency(e.amount)}
-              </span>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-function MiscSalesSection({
-  title,
-  icon,
-  rows,
-  total,
-  color,
-  affectsTill,
-}: {
-  title: string;
-  icon: string;
-  rows: MiscSaleRow[];
-  total: number;
-  color: string;
-  affectsTill?: boolean;
-}) {
-  const borderColor: Record<string, string> = {
-    green: 'border-l-green-500',
-    emerald: 'border-l-emerald-500',
-    purple: 'border-l-purple-500',
-    teal: 'border-l-teal-500',
-    gray: 'border-l-gray-400',
-  };
-  const amountColor: Record<string, string> = {
-    green: 'text-green-700',
-    emerald: 'text-emerald-700',
-    purple: 'text-purple-700',
-    teal: 'text-teal-700',
-    gray: 'text-gray-700',
-  };
-
-  return (
-    <div className={`rounded-lg border border-gray-200 border-l-4 bg-white ${borderColor[color] ?? 'border-l-gray-400'}`}>
-      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span>{icon}</span>
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
-            <p className="text-[10px] text-gray-400">Misc income</p>
-          </div>
-          {!affectsTill && (
-            <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">
-              Info only
-            </span>
-          )}
-        </div>
-        <span className={`text-sm font-bold ${amountColor[color] ?? 'text-gray-900'}`}>
-          {formatCurrency(total)}
-        </span>
-      </div>
-      <div className="max-h-60 overflow-y-auto">
-        {rows.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-gray-400">No misc sales</p>
-        ) : (
-          rows.map((ms) => (
-            <div key={ms.id} className="flex items-center justify-between border-b border-gray-50 px-4 py-2 last:border-b-0">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-gray-800">
-                  {ms.description ?? 'Misc sale'}
-                  {ms.category && (
-                    <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">
-                      {ms.category}
-                    </span>
-                  )}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {ms.accountName && <span className="font-medium">{ms.accountName}</span>}
-                  {ms.accountName && ms.createdAt && ' · '}
-                  {ms.createdAt && formatTime(ms.createdAt)}
-                </p>
-              </div>
-              <span className={`ml-3 whitespace-nowrap text-sm font-medium ${amountColor[color] ?? 'text-gray-900'}`}>
-                {formatCurrency(ms.amount)}
-              </span>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-function CharityDonationsSection({
-  donations,
-  total,
-}: {
-  donations: CharityDonationRow[];
-  total: number;
-}) {
-  return (
-    <div className="rounded-lg border border-gray-200 border-l-4 border-l-teal-500 bg-white">
-      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span>🐾</span>
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900">Charity Donations</h3>
-            <p className="text-[10px] text-gray-400">Payable to local NGOs</p>
-          </div>
-          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">
-            Info only
           </span>
-        </div>
-        <span className="text-sm font-bold text-teal-700">{formatCurrency(total)}</span>
-      </div>
-      <div className="max-h-60 overflow-y-auto">
-        {donations.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-gray-400">No donations today</p>
-        ) : (
-          donations.map((d) => (
-            <div key={d.id} className="flex items-center justify-between border-b border-gray-50 px-4 py-2 last:border-b-0">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-gray-800">
-                  {d.description ?? 'Charity donation'}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {d.createdAt && formatTime(d.createdAt)}
-                </p>
-              </div>
-              <span className="ml-3 whitespace-nowrap text-sm font-medium text-teal-700">
-                {formatCurrency(d.amount)}
-              </span>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-function DiscountsSection({
-  discounts,
-  total,
-}: {
-  discounts: DiscountRow[];
-  total: number;
-}) {
-  return (
-    <div className="rounded-lg border border-orange-200 border-l-4 border-l-orange-500 bg-white">
-      <div className="flex items-center justify-between border-b border-orange-100 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span>🏷️</span>
-          <div>
-            <h3 className="text-sm font-semibold text-orange-900">Discounts Given</h3>
-            <p className="text-[10px] text-orange-700">Reduces revenue — already reflected in payment amounts</p>
+          <span className="text-sm text-blue-700">{nonCashOpen ? 'Hide' : 'Show'}</span>
+        </button>
+        {nonCashOpen && (
+          <div className="grid gap-3 border-t border-gray-200 p-4 lg:grid-cols-2">
+            <RowsSection title="Card" accent="purple" rows={nonCash.card} total={sumRows(nonCash.card)} hideWhenEmpty forceExpanded={searching} />
+            <RowsSection title="GCash" accent="teal" rows={nonCash.gcash} total={sumRows(nonCash.gcash)} hideWhenEmpty forceExpanded={searching} />
+            <RowsSection title="Bank transfer" accent="blue" rows={nonCash.bank} total={sumRows(nonCash.bank)} hideWhenEmpty forceExpanded={searching} />
+            <RowsSection title="Deposits held (non-cash)" accent="cyan" rows={nonCash.deposits} total={sumRows(nonCash.deposits)} hideWhenEmpty forceExpanded={searching} />
+            <RowsSection title="Refunds (non-cash)" accent="orange" rows={nonCash.refunds} total={sumRows(nonCash.refunds)} totalSign="-" hideWhenEmpty forceExpanded={searching} />
+            <RowsSection title="Expenses (non-cash)" accent="red" rows={nonCash.expenses} total={sumRows(nonCash.expenses)} totalSign="-" hideWhenEmpty forceExpanded={searching} />
+            <RowsSection title="Unpaid extensions" accent="amber" rows={nonCash.pending} total={sumRows(nonCash.pending)} hideWhenEmpty forceExpanded={searching} />
+            <RowsSection title="Discounts given" accent="gray" rows={nonCash.discounts} total={sumRows(nonCash.discounts)} hideWhenEmpty forceExpanded={searching} />
+            <RowsSection title="Charity donations" accent="green" rows={nonCash.charity} total={sumRows(nonCash.charity)} hideWhenEmpty forceExpanded={searching} />
+            {nonCashCount === 0 && <p className="text-sm text-gray-500">Nothing recorded.</p>}
           </div>
-          <span className="rounded bg-orange-100 px-1.5 py-0.5 text-[10px] text-orange-700">
-            Info only
-          </span>
-        </div>
-        <span className="text-sm font-bold text-orange-700">-{formatCurrency(total)}</span>
-      </div>
-      <div className="max-h-60 overflow-y-auto">
-        {discounts.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-gray-400">No discounts</p>
-        ) : (
-          discounts.map((d) => (
-            <div key={d.id} className="flex items-center justify-between border-b border-orange-50 px-4 py-2 last:border-b-0">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-gray-800">
-                  {d.customerName ?? 'Customer'}
-                  {d.orderRef && <span className="ml-1 text-xs text-gray-400">#{d.orderRef}</span>}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {d.vehicleName ?? 'Vehicle'}
-                </p>
-              </div>
-              <span className="ml-3 whitespace-nowrap text-sm font-medium text-orange-700">
-                -{formatCurrency(d.amount)}
-              </span>
-            </div>
-          ))
         )}
-      </div>
+      </section>
     </div>
   );
 }
 
-function RefundsSection({
-  refunds,
-  total,
-}: {
-  refunds: RefundRow[];
-  total: number;
-}) {
+function ReconciliationRecordCard({ rec }: { rec: NonNullable<CashupSummary['reconciliation']> }) {
+  const rows = [
+    { label: 'Main till', expected: rec.tillExpected, counted: rec.tillCounted, variance: rec.tillVariance },
+    { label: 'Deposit envelope', expected: rec.depositsExpected, counted: rec.depositsCounted, variance: rec.depositVariance },
+  ];
   return (
-    <div className="rounded-lg border border-red-200 border-l-4 border-l-red-500 bg-white">
-      <div className="flex items-center justify-between border-b border-red-100 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span>↩️</span>
-          <div>
-            <h3 className="text-sm font-semibold text-red-900">Refunds Issued</h3>
-            <p className="text-[10px] text-red-700">Cash paid back to customers — reduces till</p>
-          </div>
+    <div className="rounded-xl border border-gray-200 bg-white p-5">
+      <h3 className="mb-3 text-base font-semibold text-gray-900">Cash-up record</h3>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-xs text-gray-500">
+            <th className="pb-2 font-medium" />
+            <th className="pb-2 text-right font-medium">Expected</th>
+            <th className="pb-2 text-right font-medium">Counted</th>
+            <th className="pb-2 text-right font-medium">Variance</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.label} className="border-t border-gray-100">
+              <td className="py-2 font-medium text-gray-800">{r.label}</td>
+              <td className="py-2 text-right tabular-nums">{r.expected != null ? formatCurrency(r.expected) : '—'}</td>
+              <td className="py-2 text-right tabular-nums">{r.counted != null ? formatCurrency(r.counted) : '—'}</td>
+              <td className={`py-2 text-right font-semibold tabular-nums ${varianceColor(r.variance ?? 0)}`}>
+                {r.variance != null ? formatVariance(r.variance) : '—'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <dl className="mt-3 grid gap-2 border-t border-gray-100 pt-3 text-sm sm:grid-cols-2">
+        <div className="flex justify-between gap-2">
+          <dt className="text-gray-500">Float left for next day</dt>
+          <dd className="font-medium tabular-nums">{formatCurrency(rec.closingBalance ?? rec.tillCounted ?? 0)}</dd>
         </div>
-        <span className="text-sm font-bold text-red-700">-{formatCurrency(total)}</span>
-      </div>
-      <div className="max-h-60 overflow-y-auto">
-        {refunds.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-gray-400">No refunds today</p>
-        ) : (
-          refunds.map((r) => (
-            <div key={r.id} className="flex items-center justify-between border-b border-red-50 px-4 py-2 last:border-b-0">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-gray-800">
-                  {r.customerName ?? 'Customer'}
-                </p>
-                <p className="text-xs text-gray-500 capitalize">
-                  {r.paymentType} · {r.methodId}
-                  {r.createdAt && ` · ${formatTime(r.createdAt)}`}
-                </p>
-              </div>
-              <span className="ml-3 whitespace-nowrap text-sm font-medium text-red-700">
-                -{formatCurrency(r.amount)}
-              </span>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-function DepositReturnsSection({
-  returns: depositReturns,
-  total,
-}: {
-  returns: DepositReturnRow[];
-  total: number;
-}) {
-  return (
-    <div className="rounded-lg border border-amber-200 border-l-4 border-l-amber-500 bg-white">
-      <div className="flex items-center justify-between border-b border-amber-100 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span>🔓</span>
-          <div>
-            <h3 className="text-sm font-semibold text-amber-900">Deposit Returns</h3>
-            <p className="text-[10px] text-amber-700">Deposits refunded at order settlement — reduces deposit envelope</p>
-          </div>
+        <div className="flex justify-between gap-2">
+          <dt className="text-gray-500">Envelope carried forward</dt>
+          <dd className="font-medium tabular-nums">{formatCurrency(rec.depositsClosingBalance ?? rec.depositsCounted ?? 0)}</dd>
         </div>
-        <span className="text-sm font-bold text-amber-700">-{formatCurrency(total)}</span>
-      </div>
-      <div className="max-h-60 overflow-y-auto">
-        {depositReturns.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-gray-400">No deposit returns today</p>
-        ) : (
-          depositReturns.map((r) => (
-            <div key={r.id} className="flex items-center justify-between border-b border-amber-50 px-4 py-2 last:border-b-0">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-gray-800">
-                  {r.bookingToken ?? r.referenceId ?? 'Deposit return'}
-                  {r.customerName && <span className="ml-1 font-normal text-gray-600">— {r.customerName}</span>}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {r.createdAt && formatTime(r.createdAt)}
-                </p>
-              </div>
-              <span className="ml-3 whitespace-nowrap text-sm font-medium text-amber-700">
-                -{formatCurrency(r.amount)}
-              </span>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-function DepositAppliedSection({
-  rows,
-  total,
-}: {
-  rows: DepositAppliedRow[];
-  total: number;
-}) {
-  return (
-    <div className="rounded-lg border border-amber-100 border-l-4 border-l-amber-400 bg-white">
-      <div className="flex items-center justify-between border-b border-amber-50 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span>🧾</span>
-          <div>
-            <h3 className="text-sm font-semibold text-amber-900">Deposit Applied to Rental</h3>
-            <p className="text-[10px] text-amber-700">Deposit covered the rental balance — no new cash received</p>
-          </div>
-          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">
-            Info only
-          </span>
-        </div>
-        <span className="text-sm font-bold text-amber-700">{formatCurrency(total)}</span>
-      </div>
-      <div className="max-h-60 overflow-y-auto">
-        {rows.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-gray-400">No deposit applications today</p>
-        ) : (
-          rows.map((r) => (
-            <div key={r.id} className="flex items-center justify-between border-b border-amber-50 px-4 py-2 last:border-b-0">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-gray-800">
-                  {r.bookingToken ?? r.referenceId ?? 'Deposit applied'}
-                  {r.customerName && <span className="ml-1 font-normal text-gray-600">— {r.customerName}</span>}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {r.createdAt && formatTime(r.createdAt)}
-                </p>
-              </div>
-              <span className="ml-3 whitespace-nowrap text-sm font-medium text-amber-700">
-                {formatCurrency(r.amount)}
-              </span>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ModalOverlay({
-  children,
-  onClose,
-}: {
-  children: React.ReactNode;
-  onClose: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative z-10">{children}</div>
+      </dl>
+      {rec.varianceNote && (
+        <p className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700">
+          <span className="font-medium">Explanation:</span> {rec.varianceNote}
+        </p>
+      )}
+      {rec.overrideReason && (
+        <p className="mt-2 text-xs text-gray-500">
+          Previously reopened{rec.overriddenByName ? ` by ${rec.overriddenByName}` : ''}: {rec.overrideReason}
+        </p>
+      )}
     </div>
   );
 }

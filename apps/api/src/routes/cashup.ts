@@ -6,20 +6,58 @@ import { validateBody, validateQuery } from '../middleware/validate.js';
 import {
   Permission,
   ReconcileCashRequestSchema,
+  ReopenReconciliationRequestSchema,
   OverrideReconciliationRequestSchema,
   CashupQuerySchema,
 } from '@lolas/shared';
+import type { AccountingPort } from '@lolas/domain';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
+import { buildCashupSummary } from '../use-cases/cashup/build-cashup-summary.js';
+import { addDaysToDateStr, formatManilaDate } from '../utils/manila-date.js';
 
 const router = Router();
 router.use(authenticate);
 
-function customerNameFromJoin(
-  c: { name: string } | { name: string }[] | null | undefined,
-): string | null {
-  if (c == null) return null;
-  if (Array.isArray(c)) return c[0]?.name ?? null;
-  return c.name ?? null;
+function lockedResponse(message: string) {
+  return { success: false, error: { code: 'LOCKED', message } };
+}
+
+function futureResponse(date: string) {
+  return { success: false, error: { code: 'FUTURE_DATE', message: `${date} is in the future.` } };
+}
+
+async function recordCashDeposit(
+  accountingPort: AccountingPort,
+  input: { storeId: string; date: string; amount: number; cashAccountId: string; bankAccountId: string; notes?: string },
+): Promise<string> {
+  const { Money } = await import('@lolas/domain');
+  const depositId = crypto.randomUUID();
+  const description = input.notes ? `Bank deposit: ${input.notes}` : 'Bank deposit from cash drawer';
+  await accountingPort.createTransaction(
+    [
+      {
+        entryId: crypto.randomUUID(),
+        accountId: input.bankAccountId,
+        debit: Money.php(input.amount),
+        credit: Money.zero(),
+        description,
+        referenceType: 'cash_deposit',
+        referenceId: depositId,
+      },
+      {
+        entryId: crypto.randomUUID(),
+        accountId: input.cashAccountId,
+        debit: Money.zero(),
+        credit: Money.php(input.amount),
+        description,
+        referenceType: 'cash_deposit',
+        referenceId: depositId,
+      },
+    ],
+    input.storeId,
+    input.date,
+  );
+  return depositId;
 }
 
 // ── GET /summary — single aggregation endpoint for the Cash Up page ──
@@ -30,908 +68,8 @@ router.get(
   async (req, res, next) => {
     try {
       const { storeId, date } = req.query as { storeId: string; date: string };
-      const sb = getSupabaseClient();
-
-      const [paymentsRes, expensesRes, depositsRes, transfersRes, miscSalesRes, reconRes, prevReconRes, storesRes, charityRes, completedOrdersRes, discountItemsRes, refundJournalRes, transferIncomeRes, depositAppliedRes] =
-        await Promise.all([
-          sb
-            .from('payments')
-            .select(
-              'id, payment_type, amount, payment_method_id, transaction_date, settlement_ref, settlement_status, customer_id, order_id, created_at, customers!customer_id(name), orders!order_id(woo_order_id)',
-            )
-            .eq('store_id', storeId)
-            .eq('transaction_date', date)
-            .order('created_at', { ascending: true }),
-
-          sb
-            .from('expenses')
-            .select(
-              'id, category, description, amount, paid_from, employee_id, account_id, created_at, chart_of_accounts!paid_from(name)',
-            )
-            .eq('store_id', storeId)
-            .eq('date', date)
-            .eq('status', 'paid')
-            .order('created_at', { ascending: true }),
-
-          sb
-            .from('journal_entries')
-            .select('id, description, debit, credit, date, created_at, reference_id, account_id, chart_of_accounts!account_id(name)')
-            .eq('store_id', storeId)
-            .eq('date', date)
-            .eq('reference_type', 'cash_deposit')
-            .order('created_at', { ascending: true }),
-
-          sb
-            .from('journal_entries')
-            .select('id, description, debit, credit, date, created_at, reference_id')
-            .eq('store_id', storeId)
-            .eq('date', date)
-            .eq('reference_type', 'inter_store_transfer')
-            .order('created_at', { ascending: true }),
-
-          sb
-            .from('misc_sales')
-            .select(
-              'id, description, category, amount, received_into, employee_id, created_at, chart_of_accounts!received_into(id, name)',
-            )
-            .eq('store_id', storeId)
-            .eq('date', date)
-            .order('created_at', { ascending: true }),
-
-          sb
-            .from('cash_reconciliation')
-            .select('*')
-            .eq('store_id', storeId)
-            .eq('date', date)
-            .maybeSingle(),
-
-          sb
-            .from('cash_reconciliation')
-            .select('closing_balance, deposits_closing_balance, actual_counted, date, overridden_by')
-            .eq('store_id', storeId)
-            .lt('date', date)
-            .order('date', { ascending: false })
-            .limit(1)
-            .maybeSingle(),
-
-          sb.from('stores')
-            .select('id, name, default_float_amount')
-            .eq('is_active', true)
-            .neq('id', 'company'),
-
-          sb
-            .from('journal_entries')
-            .select('id, description, credit, date, created_at, reference_id')
-            .eq('store_id', storeId)
-            .eq('date', date)
-            .eq('reference_type', 'order_charity')
-            .gt('credit', 0)
-            .order('created_at', { ascending: true }),
-
-          // Only exclude deposits for orders settled BEFORE the queried date.
-          // Same-day settle: the deposit was received today so it must remain
-          // visible in cashDepositsHeldTotal. null settled_at on a completed
-          // order is treated as a legacy/historical row — exclude those too.
-          sb
-            .from('orders')
-            .select('id')
-            .eq('store_id', storeId)
-            .eq('status', 'completed')
-            .or(`settled_at.lt.${date}T00:00:00+08:00,settled_at.is.null`),
-
-          sb
-            .from('orders')
-            .select('id, woo_order_id, customers!customer_id(name), order_items!order_id(id, vehicle_name, discount)')
-            .eq('store_id', storeId)
-            .eq('order_date', date),
-
-          // Deposit returns written by settle_order_atomic (journal only, no payments row).
-          // Credit legs only — these represent cash leaving the till back to the customer.
-          // We filter out any whose reference_id matches a manual-refund payment ID after
-          // the payments loop runs, to prevent double-counting with payment_type='refund' rows.
-          sb
-            .from('journal_entries')
-            .select('id, description, credit, date, created_at, reference_id, account_id')
-            .eq('store_id', storeId)
-            .eq('date', date)
-            .eq('reference_type', 'refund')
-            .gt('credit', 0)
-            .order('created_at', { ascending: true }),
-
-          // Debit legs from transfer booking payments (cash/GCash collected from customers)
-          sb
-            .from('journal_entries')
-            .select('id, description, debit, date, created_at, reference_id, account_id, chart_of_accounts!account_id(name)')
-            .eq('store_id', storeId)
-            .eq('date', date)
-            .eq('reference_type', 'transfer')
-            .gt('debit', 0)
-            .order('created_at', { ascending: true }),
-
-          // Deposit-applied legs written by settle_order_atomic.
-          // Credit legs only — these represent the deposit portion that cleared the
-          // rental balance (receivable account). No cash changes hands on settlement
-          // day for this leg; it is fetched purely for display so staff can see which
-          // portion of the deposit funded the rental rather than being returned.
-          sb
-            .from('journal_entries')
-            .select('id, description, credit, date, created_at, reference_id, account_id')
-            .eq('store_id', storeId)
-            .eq('date', date)
-            .eq('reference_type', 'deposit')
-            .gt('credit', 0)
-            .order('created_at', { ascending: true }),
-        ]);
-
-      if (paymentsRes.error)
-        throw new Error(`Payments query failed: ${paymentsRes.error.message}`);
-      if (expensesRes.error)
-        throw new Error(`Expenses query failed: ${expensesRes.error.message}`);
-      if (depositsRes.error)
-        throw new Error(`Deposits query failed: ${depositsRes.error.message}`);
-      if (transfersRes.error)
-        throw new Error(`Transfers query failed: ${transfersRes.error.message}`);
-      if (miscSalesRes.error)
-        throw new Error(`Misc sales query failed: ${miscSalesRes.error.message}`);
-      if (reconRes.error)
-        throw new Error(`Reconciliation query failed: ${reconRes.error.message}`);
-      if (prevReconRes.error)
-        throw new Error(`Previous recon query failed: ${prevReconRes.error.message}`);
-      if (charityRes.error)
-        throw new Error(`Charity donations query failed: ${charityRes.error.message}`);
-      if (completedOrdersRes.error)
-        throw new Error(`Completed orders query failed: ${completedOrdersRes.error.message}`);
-      if (discountItemsRes.error)
-        throw new Error(`Today orders (discount) query failed: ${discountItemsRes.error.message}`);
-      if (refundJournalRes.error)
-        throw new Error(`Refund journal entries query failed: ${refundJournalRes.error.message}`);
-      if (transferIncomeRes.error)
-        throw new Error(`Transfer income query failed: ${transferIncomeRes.error.message}`);
-      if (depositAppliedRes.error)
-        throw new Error(`Deposit-applied journal query failed: ${depositAppliedRes.error.message}`);
-
-      const payments = (paymentsRes.data ?? []) as Record<string, unknown>[];
-      const expenses = (expensesRes.data ?? []) as Record<string, unknown>[];
-      const depositEntries = (depositsRes.data ?? []) as Record<string, unknown>[];
-      const transferEntries = (transfersRes.data ?? []) as Record<string, unknown>[];
-      const miscSales = (miscSalesRes.data ?? []) as Record<string, unknown>[];
-      const charityEntries = (charityRes.data ?? []) as Record<string, unknown>[];
-
-      // Enrich charity descriptions: replace UUID order ids with customer names
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      const charityOrderIds = charityEntries
-        .map((c) => c.reference_id as string | null)
-        .filter((id): id is string => !!id && uuidRegex.test(id));
-      if (charityOrderIds.length > 0) {
-        const { data: rawRows } = await sb
-          .from('orders_raw')
-          .select('id, customer_name')
-          .in('id', charityOrderIds);
-        const customerByOrderId = new Map(
-          ((rawRows ?? []) as { id: string; customer_name?: string | null }[])
-            .filter((r) => r.customer_name)
-            .map((r) => [r.id, r.customer_name as string]),
-        );
-        for (const entry of charityEntries) {
-          const refId = entry.reference_id as string | null;
-          if (refId && customerByOrderId.has(refId)) {
-            const customerName = customerByOrderId.get(refId)!;
-            if (typeof entry.description === 'string') {
-              entry.description = entry.description.replace(`Order ${refId}`, customerName);
-            }
-          }
-        }
-      }
-      const allStores = ((storesRes.data ?? []) as { id: string; name: string; default_float_amount: number }[]);
-      const currentStore = allStores.find((s) => s.id === storeId);
-      const otherStores = allStores.filter((s) => s.id !== storeId);
-
-      const completedOrders = (completedOrdersRes.data ?? []) as { id: string }[];
-      const completedOrderIds = new Set(completedOrders.map((o) => o.id));
-      const refundJournalEntries = (refundJournalRes.data ?? []) as Record<string, unknown>[];
-      const transferIncomeEntries = (transferIncomeRes.data ?? []) as Record<string, unknown>[];
-      const depositAppliedEntries = (depositAppliedRes.data ?? []) as Record<string, unknown>[];
-
-      const GCASH_IDS = new Set(['gcash', 'paymaya']);
-      const DEPOSIT_TYPES = new Set(['deposit', 'security_deposit']);
-
-      // Income buckets (by method)
-      const cashSalesTx: unknown[] = [];
-      const cardSalesTx: unknown[] = [];
-      const gcashSalesTx: unknown[] = [];
-      const bankTransferTx: unknown[] = [];
-      const pendingExtensionsTx: unknown[] = [];
-      let cashSalesTotal = 0;
-      let cardSalesTotal = 0;
-      let gcashSalesTotal = 0;
-      let bankTransferTotal = 0;
-      let pendingExtensionsTotal = 0;
-
-      // Refund outflow buckets (manual refunds via Issue Refund — payments rows)
-      const refundTx: unknown[] = [];
-      let cashRefundTotal = 0;
-      let cardRefundTotal = 0;
-      let gcashRefundTotal = 0;
-      let bankRefundTotal = 0;
-      // Track payment IDs so we can exclude their journal entries from deposit-return totals
-      const refundPaymentIds = new Set<string>();
-
-      // Deposit refunds recorded via payments row (settle flow with depositRefundMethodId set)
-      const depositRefundPaymentRows: {
-        id: unknown; amount: number; orderId: unknown; methodId: string; createdAt: unknown;
-      }[] = [];
-
-      // Deposits held buckets (by method, but shown together)
-      const depositsHeldByMethod: Record<string, { label: string; rows: unknown[]; total: number }> = {};
-      let depositsHeldTotal = 0;
-
-      function resolveMethodLabel(key: string, raw: string): string {
-        if (key === 'cash') return 'Cash';
-        if (key === 'card' || key === 'creditcard' || key === 'debitcard') return 'Card';
-        if (GCASH_IDS.has(key)) return 'GCash';
-        return raw || 'Other';
-      }
-
-      function resolveMethodCategory(key: string): 'cash' | 'card' | 'gcash' | 'bank' {
-        if (key === 'cash') return 'cash';
-        if (key === 'card' || key === 'creditcard' || key === 'debitcard') return 'card';
-        if (GCASH_IDS.has(key)) return 'gcash';
-        return 'bank';
-      }
-
-      for (const p of payments) {
-        const rawMethodId = (p.payment_method_id as string) ?? '';
-        const methodKey = rawMethodId.toLowerCase().replace(/[\s_-]/g, '');
-        const paymentType = ((p.payment_type as string) ?? '').toLowerCase();
-        const amount = Number(p.amount ?? 0);
-        const customer = p.customers as { name: string } | null;
-        const order = p.orders as { woo_order_id: string | null } | null;
-
-        const row = {
-          id: p.id,
-          paymentType: p.payment_type,
-          amount,
-          methodId: rawMethodId,
-          settlementRef: p.settlement_ref ?? null,
-          settlementStatus: p.settlement_status ?? null,
-          customerName: customer?.name ?? null,
-          wooOrderId: order?.woo_order_id ?? null,
-          orderId: p.order_id ?? null,
-          createdAt: p.created_at,
-        };
-
-        const isDeposit = DEPOSIT_TYPES.has(paymentType);
-        const isRefund = paymentType === 'refund';
-
-        // Manual refunds — cash paid OUT to the customer. Track as outflow, not income.
-        if (isRefund) {
-          refundPaymentIds.add(String(p.id));
-          refundTx.push(row);
-          const cat = resolveMethodCategory(methodKey);
-          if (cat === 'cash') cashRefundTotal += amount;
-          else if (cat === 'card') cardRefundTotal += amount;
-          else if (cat === 'gcash') gcashRefundTotal += amount;
-          else bankRefundTotal += amount;
-          continue;
-        }
-
-        // Deposit refunds with an explicit payment row (settle flow where the
-        // operator chose a different method to return the deposit — e.g. deposit
-        // collected in cash, refunded via GCash). We add the payment ID to
-        // refundPaymentIds so the corresponding journal entry is suppressed in
-        // filteredRefundJournalEntries and we avoid double-counting.
-        if (paymentType === 'deposit_refund') {
-          refundPaymentIds.add(String(p.id));
-          depositRefundPaymentRows.push({
-            id: p.id,
-            amount,
-            orderId: p.order_id ?? null,
-            methodId: rawMethodId,
-            createdAt: p.created_at,
-          });
-          continue;
-        }
-
-        // Unpaid extension IOUs — customer hasn't paid yet, no cash received.
-        // Keep them separate so cashup isn't inflated; staff can see what to collect.
-        const isUnpaidExtension = paymentType === 'extension' && p.settlement_status === 'pending';
-        if (isUnpaidExtension) {
-          pendingExtensionsTx.push(row);
-          pendingExtensionsTotal += amount;
-          continue;
-        }
-        // Absorbed extensions — IOUs that were rolled into a final settlement
-        // payment. The cash is captured by the settlement payment row, not here,
-        // so skip to avoid double-counting.
-        const isAbsorbedExtension = paymentType === 'extension' && p.settlement_status === 'absorbed';
-        if (isAbsorbedExtension) {
-          continue;
-        }
-
-        // Pending addon IOUs — add-ons added to an order before the customer has
-        // paid (e.g. a "9pm return" fee added at booking time). No cash received
-        // yet; mirroring the same guard used in collect-payment, settle-order,
-        // and the orders route to avoid counting them as income or Bank Transfers.
-        const isUnpaidAddon = paymentType === 'addon' && rawMethodId === 'pending' && p.settlement_status === 'pending';
-        if (isUnpaidAddon) {
-          continue;
-        }
-
-        if (isDeposit) {
-          // Skip deposits for completed orders — deposit has been refunded or applied on settlement
-          if (p.order_id && completedOrderIds.has(p.order_id as string)) {
-            continue;
-          }
-          const label = resolveMethodLabel(methodKey, rawMethodId);
-          if (!depositsHeldByMethod[label]) {
-            depositsHeldByMethod[label] = { label, rows: [], total: 0 };
-          }
-          depositsHeldByMethod[label].rows.push(row);
-          depositsHeldByMethod[label].total += amount;
-          depositsHeldTotal += amount;
-        } else {
-          const cat = resolveMethodCategory(methodKey);
-          if (cat === 'cash') {
-            cashSalesTx.push(row);
-            cashSalesTotal += amount;
-          } else if (cat === 'card') {
-            cardSalesTx.push(row);
-            cardSalesTotal += amount;
-          } else if (cat === 'gcash') {
-            gcashSalesTx.push(row);
-            gcashSalesTotal += amount;
-          } else {
-            bankTransferTx.push(row);
-            bankTransferTotal += amount;
-          }
-        }
-      }
-
-      // ── Misc sales bucketed by payment method (derived from account name) ──
-      function accountMethodCategory(accountName: string): 'cash' | 'card' | 'gcash' | 'bank' {
-        const lower = accountName.toLowerCase();
-        if (lower.includes('cash')) return 'cash';
-        if (lower.includes('card') || lower.includes('credit') || lower.includes('debit')) return 'card';
-        if (lower.includes('gcash') || lower.includes('paymaya')) return 'gcash';
-        return 'bank';
-      }
-
-      const miscCashTx: unknown[] = [];
-      const miscCardTx: unknown[] = [];
-      const miscGcashTx: unknown[] = [];
-      const miscBankTx: unknown[] = [];
-      let miscCashTotal = 0;
-      let miscCardTotal = 0;
-      let miscGcashTotal = 0;
-      let miscBankTotal = 0;
-
-      for (const ms of miscSales) {
-        const acct = ms.chart_of_accounts as { id: string; name: string } | null;
-        const amount = Number(ms.amount ?? 0);
-        const row = {
-          id: ms.id,
-          description: ms.description,
-          category: ms.category,
-          amount,
-          receivedInto: ms.received_into,
-          accountName: acct?.name ?? null,
-          employeeId: ms.employee_id,
-          createdAt: ms.created_at,
-        };
-
-        const cat = accountMethodCategory(acct?.name ?? '');
-        if (cat === 'cash') {
-          miscCashTx.push(row);
-          miscCashTotal += amount;
-        } else if (cat === 'card') {
-          miscCardTx.push(row);
-          miscCardTotal += amount;
-        } else if (cat === 'gcash') {
-          miscGcashTx.push(row);
-          miscGcashTotal += amount;
-        } else {
-          miscBankTx.push(row);
-          miscBankTotal += amount;
-        }
-      }
-
-      // Deposit returns written by settle_order_atomic (journal-only, no payments row).
-      // Exclude entries whose reference_id matches a manual-refund payment ID to prevent
-      // double-counting with the payment_type='refund' rows handled above.
-      const filteredRefundJournalEntries = refundJournalEntries
-        .filter((j) => !refundPaymentIds.has(String(j.reference_id)));
-
-      // Enrich with booking_token + customer name for display on the cash-up page.
-      const depositRefundOrderIds = [...new Set(
-        filteredRefundJournalEntries.map((j) => String(j.reference_id)).filter(Boolean),
-      )];
-      const depositRefundOrderMap = new Map<string, { bookingToken: string | null; customerName: string | null }>();
-      if (depositRefundOrderIds.length > 0) {
-        const { data: depositRefundOrders } = await sb
-          .from('orders')
-          .select('id, booking_token, customers!customer_id(name)')
-          .in('id', depositRefundOrderIds);
-        const rows = (depositRefundOrders ?? []) as unknown as Array<{
-          id: string;
-          booking_token: string | null;
-          customers: { name: string } | { name: string }[] | null;
-        }>;
-        for (const o of rows) {
-          depositRefundOrderMap.set(o.id, {
-            bookingToken: o.booking_token ?? null,
-            customerName: customerNameFromJoin(o.customers),
-          });
-        }
-      }
-
-      const depositReturnRows = filteredRefundJournalEntries
-        .map((j) => {
-          const orderId = String(j.reference_id ?? '');
-          const orderInfo = depositRefundOrderMap.get(orderId);
-          return {
-            id: j.id,
-            amount: Number(j.credit ?? 0),
-            description: j.description,
-            accountId: j.account_id,
-            referenceId: j.reference_id,
-            bookingToken: orderInfo?.bookingToken ?? null,
-            customerName: orderInfo?.customerName ?? null,
-            createdAt: j.created_at,
-          };
-        });
-
-      // Append payment-row-based deposit refunds (method-mismatch settle flow).
-      // These were already excluded from filteredRefundJournalEntries via refundPaymentIds.
-      const depositRefundOrderIdSet = [...new Set(
-        depositRefundPaymentRows.map((r) => String(r.orderId ?? '')).filter(Boolean),
-      )];
-      const depositRefundPmtOrderMap = new Map<string, { bookingToken: string | null; customerName: string | null }>();
-      if (depositRefundOrderIdSet.length > 0) {
-        const { data: drOrders } = await sb
-          .from('orders')
-          .select('id, booking_token, customers!customer_id(name)')
-          .in('id', depositRefundOrderIdSet);
-        const drRows = (drOrders ?? []) as unknown as Array<{
-          id: string;
-          booking_token: string | null;
-          customers: { name: string } | { name: string }[] | null;
-        }>;
-        for (const o of drRows) {
-          depositRefundPmtOrderMap.set(o.id, {
-            bookingToken: o.booking_token ?? null,
-            customerName: customerNameFromJoin(o.customers),
-          });
-        }
-      }
-      for (const r of depositRefundPaymentRows) {
-        const orderInfo = depositRefundPmtOrderMap.get(String(r.orderId ?? ''));
-        depositReturnRows.push({
-          id: r.id,
-          amount: r.amount,
-          description: `Deposit refund via ${r.methodId}`,
-          accountId: null,
-          referenceId: r.orderId,
-          bookingToken: orderInfo?.bookingToken ?? null,
-          customerName: orderInfo?.customerName ?? null,
-          createdAt: r.createdAt,
-        });
-      }
-
-      const depositReturnTotal = depositReturnRows.reduce((s, r) => s + r.amount, 0);
-
-      // Enrich deposit-applied entries with booking token + customer name.
-      const depositAppliedOrderIds = [...new Set(
-        depositAppliedEntries.map((j) => String(j.reference_id)).filter(Boolean),
-      )];
-      const depositAppliedOrderMap = new Map<string, { bookingToken: string | null; customerName: string | null }>();
-      if (depositAppliedOrderIds.length > 0) {
-        const { data: depositAppliedOrders } = await sb
-          .from('orders')
-          .select('id, booking_token, customers!customer_id(name)')
-          .in('id', depositAppliedOrderIds);
-        const appliedRows = (depositAppliedOrders ?? []) as unknown as Array<{
-          id: string;
-          booking_token: string | null;
-          customers: { name: string } | { name: string }[] | null;
-        }>;
-        for (const o of appliedRows) {
-          depositAppliedOrderMap.set(o.id, {
-            bookingToken: o.booking_token ?? null,
-            customerName: customerNameFromJoin(o.customers),
-          });
-        }
-      }
-
-      const depositAppliedRows = depositAppliedEntries.map((j) => {
-        const orderId = String(j.reference_id ?? '');
-        const orderInfo = depositAppliedOrderMap.get(orderId);
-        return {
-          id: j.id,
-          amount: Number(j.credit ?? 0),
-          description: j.description,
-          accountId: j.account_id,
-          referenceId: j.reference_id,
-          bookingToken: orderInfo?.bookingToken ?? null,
-          customerName: orderInfo?.customerName ?? null,
-          createdAt: j.created_at,
-        };
-      });
-      const depositAppliedTotal = depositAppliedRows.reduce((s, r) => s + r.amount, 0);
-
-      // ── Reclassify prior-day carry deposits as income on settlement day ────────
-      // When a deposit collected on a PREVIOUS day is applied to the rental balance
-      // today during settlement, it stops being a held liability and becomes rental
-      // income.  We add the original payment amount into the matching sales bucket
-      // (cash → cashSalesTotal, gcash → gcashSalesTotal, etc.).
-      // Cash deposits are held in the separate deposit envelope, NOT the physical
-      // till, so the prior closing_balance does NOT include them. We must NOT
-      // subtract carryDepositsCashTotal from openingAmount — the cash physically
-      // moves from the envelope into income today, so cashSalesTotal capturing it
-      // is the only adjustment needed.
-      let carryDepositsCashTotal = 0;
-      if (depositAppliedOrderIds.length > 0) {
-        const { data: carryDepPayments, error: carryDepError } = await sb
-          .from('payments')
-          .select(
-            'id, payment_method_id, amount, order_id, created_at, customers!customer_id(name), orders!order_id(woo_order_id)',
-          )
-          .in('order_id', depositAppliedOrderIds)
-          .in('payment_type', ['deposit', 'security_deposit'])
-          .lt('transaction_date', date);
-        if (carryDepError)
-          throw new Error(`Carry-deposit reclassification query failed: ${carryDepError.message}`);
-
-        // Cap reclassification per order to the amount actually applied today.
-        // This handles partial-apply scenarios where only part of the deposit was
-        // applied to the balance and the remainder was returned to the customer.
-        const appliedByOrder = new Map<string, number>();
-        for (const e of depositAppliedEntries) {
-          const oid = String(e.reference_id ?? '');
-          appliedByOrder.set(oid, (appliedByOrder.get(oid) ?? 0) + Number(e.credit ?? 0));
-        }
-
-        const reclassifiedByOrder = new Map<string, number>();
-        for (const dep of (carryDepPayments ?? []) as Record<string, unknown>[]) {
-          const orderId = String(dep.order_id ?? '');
-          const rawMethodId = (dep.payment_method_id as string) ?? '';
-          const methodKey = rawMethodId.toLowerCase().replace(/[\s_-]/g, '');
-          const depAmount = Number(dep.amount ?? 0);
-
-          const appliedCap = appliedByOrder.get(orderId) ?? 0;
-          const alreadyReclassified = reclassifiedByOrder.get(orderId) ?? 0;
-          const toReclassify = Math.min(depAmount, appliedCap - alreadyReclassified);
-          if (toReclassify <= 0) continue;
-
-          reclassifiedByOrder.set(orderId, alreadyReclassified + toReclassify);
-
-          const cat = resolveMethodCategory(methodKey);
-          const customer = dep.customers as { name: string } | null;
-          const order = dep.orders as { woo_order_id: string | null } | null;
-          const row = {
-            id: dep.id,
-            paymentType: 'deposit_applied',
-            amount: toReclassify,
-            methodId: rawMethodId,
-            settlementRef: null,
-            settlementStatus: null,
-            customerName: customer?.name ?? null,
-            wooOrderId: order?.woo_order_id ?? null,
-            orderId: dep.order_id ?? null,
-            createdAt: dep.created_at ?? null,
-          };
-
-          if (cat === 'cash') {
-            cashSalesTx.push(row);
-            cashSalesTotal += toReclassify;
-            carryDepositsCashTotal += toReclassify;
-          } else if (cat === 'gcash') {
-            gcashSalesTx.push(row);
-            gcashSalesTotal += toReclassify;
-          } else if (cat === 'card') {
-            cardSalesTx.push(row);
-            cardSalesTotal += toReclassify;
-          } else {
-            bankTransferTx.push(row);
-            bankTransferTotal += toReclassify;
-          }
-        }
-      }
-
-      // Only cash deposits affect the physical till
-      const cashDepositsHeldTotal = depositsHeldByMethod['Cash']?.total ?? 0;
-
-      // Expenses — all payment methods, with method label for non-cash
-      const expenseRows = expenses.map((e) => {
-        const paidFromAcct = e.chart_of_accounts as { name: string } | null;
-        return {
-          id: e.id,
-          category: e.category,
-          description: e.description,
-          amount: Number(e.amount ?? 0),
-          paidFrom: e.paid_from,
-          paidFromName: paidFromAcct?.name ?? null,
-          employeeId: e.employee_id,
-          createdAt: e.created_at,
-        };
-      });
-      const expenseTotal = expenseRows.reduce((s, e) => s + e.amount, 0);
-      const cashExpenseTotal = expenseRows.reduce((s, e) => {
-        const name = (e.paidFromName ?? '').toLowerCase();
-        const isCash = name.includes('cash') &&
-          !name.includes('gcash') &&
-          !name.includes('paymaya');
-        return isCash ? s + e.amount : s;
-      }, 0);
-
-      // Cash deposited — pair credit leg (cash leaving) with debit leg (destination)
-      const debitByRef = new Map<string, { name: string | null }>();
-      for (const d of depositEntries) {
-        if (Number(d.debit ?? 0) > 0) {
-          const acct = d.chart_of_accounts as { name: string } | null;
-          debitByRef.set(String(d.reference_id), { name: acct?.name ?? null });
-        }
-      }
-      const depositRows = depositEntries
-        .filter((d) => Number(d.credit ?? 0) > 0)
-        .map((d) => {
-          const dest = debitByRef.get(String(d.reference_id));
-          return {
-            id: d.id,
-            amount: Number(d.credit ?? 0),
-            description: d.description,
-            accountName: dest?.name ?? null,
-            referenceId: d.reference_id,
-            createdAt: d.created_at,
-          };
-        });
-      const depositTotal = depositRows.reduce((s, d) => s + d.amount, 0);
-
-      // Inter-store transfers
-      let interStoreIn = 0;
-      let interStoreOut = 0;
-      const transferInRows: unknown[] = [];
-      const transferOutRows: unknown[] = [];
-      for (const t of transferEntries) {
-        const debit = Number(t.debit ?? 0);
-        const credit = Number(t.credit ?? 0);
-        const row = {
-          id: t.id,
-          description: t.description,
-          amount: debit > 0 ? debit : credit,
-          referenceId: t.reference_id,
-          createdAt: t.created_at,
-        };
-        if (debit > 0) {
-          transferInRows.push(row);
-          interStoreIn += debit;
-        } else if (credit > 0) {
-          transferOutRows.push(row);
-          interStoreOut += credit;
-        }
-      }
-
-      // Transfer booking income — cash/GCash collected from transfer customers.
-      // These are journal debit legs (no payments row), so we process them separately
-      // and merge into the same cash/gcash/card/bank sales buckets so they appear on
-      // the cashup page and contribute to expectedCash.
-      if (transferIncomeEntries.length > 0) {
-        const transferRefIds = [...new Set(
-          transferIncomeEntries.map((e) => String(e.reference_id)).filter(Boolean),
-        )];
-        const transferCustomerMap = new Map<string, string>();
-        const { data: transferRows } = await sb
-          .from('transfers')
-          .select('id, customer_name')
-          .in('id', transferRefIds);
-        for (const t of (transferRows ?? []) as { id: string; customer_name: string }[]) {
-          transferCustomerMap.set(t.id, t.customer_name ?? '');
-        }
-
-        for (const e of transferIncomeEntries) {
-          const acct = e.chart_of_accounts as { name: string } | null;
-          const amount = Number(e.debit ?? 0);
-          const refId = String(e.reference_id ?? '');
-          const row = {
-            id: e.id,
-            paymentType: 'transfer',
-            amount,
-            methodId: acct?.name ?? '',
-            settlementRef: null,
-            settlementStatus: null,
-            customerName: transferCustomerMap.get(refId) ?? null,
-            wooOrderId: null,
-            orderId: null,
-            createdAt: e.created_at,
-          };
-          const cat = accountMethodCategory(acct?.name ?? '');
-          if (cat === 'cash') {
-            cashSalesTx.push(row);
-            cashSalesTotal += amount;
-          } else if (cat === 'gcash') {
-            gcashSalesTx.push(row);
-            gcashSalesTotal += amount;
-          } else if (cat === 'card') {
-            cardSalesTx.push(row);
-            cardSalesTotal += amount;
-          } else {
-            bankTransferTx.push(row);
-            bankTransferTotal += amount;
-          }
-        }
-      }
-
-      // Opening float: previous day's closing balance, or 0 if none
-      const prev = prevReconRes.data;
-      let openingAmount = 0;
-      let openingSource: 'previous_day' | 'override' | 'none' = 'none';
-      // Opening envelope balance: previous day's deposits_closing_balance.
-      // When null (no prior reconciliation, or pre-migration records), fall
-      // back to 0 so the envelope expected is still sensible.
-      let openingEnvelopeBalance = 0;
-      if (prev) {
-        openingAmount = Number(prev.closing_balance ?? prev.actual_counted ?? 0);
-        openingSource = prev.overridden_by ? 'override' : 'previous_day';
-        openingEnvelopeBalance = prev.deposits_closing_balance != null
-          ? Number(prev.deposits_closing_balance)
-          : 0;
-      }
-
-      // carryDepositsCashTotal is already captured in cashSalesTotal above.
-      // Do NOT subtract it from openingAmount — the prior closing_balance never
-      // included it (cash deposits go to the envelope, not the till), so there
-      // is no double-count risk. The ₱ physically moves from the deposit envelope
-      // to the main till on settlement day, so expectedCashSales must reflect it.
-
-      // Only cash-method payments affect the physical till.
-      // Subtract cash refunds (manual Issue Refund) and deposit returns (settle flow).
-      const totalCashIn = cashSalesTotal + cashDepositsHeldTotal + miscCashTotal;
-      const expectedCash =
-        openingAmount + totalCashIn + interStoreIn - cashExpenseTotal - depositTotal - interStoreOut - cashRefundTotal - depositReturnTotal;
-
-      const charityDonationRows = charityEntries.map((c) => ({
-        id: c.id,
-        description: c.description,
-        amount: Number(c.credit ?? 0),
-        orderId: c.reference_id,
-        createdAt: c.created_at,
-      }));
-      const charityDonationsTotal = charityDonationRows.reduce((s, r) => s + r.amount, 0);
-
-      // Discounts given today — flatten order_items with discount > 0 from today's orders
-      type TodayOrder = {
-        id: string;
-        woo_order_id: string | null;
-        customers: { name: string } | null;
-        order_items: Array<{ id: string; vehicle_name: string | null; discount: number | null }> | null;
-      };
-      const todayOrders = (discountItemsRes.data ?? []) as unknown as TodayOrder[];
-      const discountRows: Array<{
-        id: string;
-        vehicleName: string | null;
-        amount: number;
-        orderId: string;
-        orderRef: string | null;
-        customerName: string | null;
-      }> = [];
-      for (const order of todayOrders) {
-        for (const item of (order.order_items ?? [])) {
-          const amount = Number(item.discount ?? 0);
-          if (amount <= 0) continue;
-          discountRows.push({
-            id: item.id,
-            vehicleName: item.vehicle_name,
-            amount,
-            orderId: order.id,
-            orderRef: order.woo_order_id,
-            customerName: order.customers?.name ?? null,
-          });
-        }
-      }
-      const discountsTotal = discountRows.reduce((s, r) => s + r.amount, 0);
-
-      const recon = reconRes.data;
-
-      res.json({
-        success: true,
-        data: {
-          openingFloat: {
-            amount: openingAmount,
-            source: openingSource,
-            previousDate: prev?.date ?? null,
-          },
-          openingEnvelopeBalance,
-          transactions: {
-            cashSales: cashSalesTx,
-            cardSales: cardSalesTx,
-            gcashSales: gcashSalesTx,
-            bankTransfer: bankTransferTx,
-            pendingExtensions: pendingExtensionsTx,
-            depositsHeld: Object.values(depositsHeldByMethod),
-            miscSales: {
-              cash: miscCashTx,
-              card: miscCardTx,
-              gcash: miscGcashTx,
-              bank: miscBankTx,
-            },
-            expenses: expenseRows,
-            bankDeposits: depositRows,
-            transfersIn: transferInRows,
-            transfersOut: transferOutRows,
-            discounts: discountRows,
-            refunds: refundTx,
-            depositReturns: depositReturnRows,
-            depositApplied: depositAppliedRows,
-          },
-          totals: {
-            cashSalesTotal,
-            cashDepositsHeldTotal,
-            totalCashIn,
-            cardSalesTotal,
-            gcashSalesTotal,
-            bankTransferTotal,
-            pendingExtensionsTotal,
-            depositsHeldTotal,
-            miscCashTotal,
-            miscCardTotal,
-            miscGcashTotal,
-            miscBankTotal,
-            miscSalesTotal: miscCashTotal + miscCardTotal + miscGcashTotal + miscBankTotal,
-            expenseTotal,
-            cashExpenseTotal,
-            depositTotal,
-            interStoreIn,
-            interStoreOut,
-            charityDonationsTotal,
-            discountsTotal,
-            cashRefundTotal,
-            cardRefundTotal,
-            gcashRefundTotal,
-            bankRefundTotal,
-            refundTotal: cashRefundTotal + cardRefundTotal + gcashRefundTotal + bankRefundTotal,
-            depositReturnTotal,
-            depositAppliedTotal,
-            carryDepositsCashTotal,
-          },
-          charityDonations: charityDonationRows,
-          expectedCash,
-          stores: allStores.map((s) => ({
-            id: s.id,
-            name: s.name,
-            defaultFloatAmount: Number(s.default_float_amount ?? 3000),
-          })),
-          otherStores: otherStores.map((s) => ({
-            id: s.id,
-            name: s.name,
-            defaultFloatAmount: Number(s.default_float_amount ?? 3000),
-          })),
-          reconciliation: recon
-            ? {
-                id: recon.id,
-                isLocked: recon.is_locked,
-                actualCounted: Number(recon.actual_counted ?? 0),
-                variance: Number(recon.variance ?? 0),
-                varianceType: recon.variance_type,
-                submittedBy: recon.submitted_by,
-                submittedAt: recon.submitted_at,
-                overriddenBy: recon.overridden_by,
-                overriddenAt: recon.overridden_at,
-                overrideReason: recon.override_reason,
-                tillCounted: recon.till_counted != null ? Number(recon.till_counted) : null,
-                depositsCounted:
-                  recon.deposits_counted != null
-                    ? Number(recon.deposits_counted)
-                    : null,
-                tillDenoms: recon.till_denoms,
-                depositDenoms: recon.deposit_denoms,
-                closingBalance:
-                  recon.closing_balance != null
-                    ? Number(recon.closing_balance)
-                    : null,
-              }
-            : null,
-          isLocked: recon?.is_locked ?? false,
-        },
-      });
+      const data = await buildCashupSummary(getSupabaseClient(), storeId, date);
+      res.json({ success: true, data });
     } catch (err) {
       next(err);
     }
@@ -947,11 +85,266 @@ router.get(
     try {
       const { storeId, date } = req.query as { storeId: string; date: string };
       const reconciliation =
-        await req.app.locals.deps.cashReconciliationRepo.findByDate(
-          storeId,
-          date,
-        );
+        await req.app.locals.deps.cashReconciliationRepo.findByDate(storeId, date);
       res.json({ success: true, data: reconciliation });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ── GET /history — recent cash-ups with variances, for the history strip ──
+router.get(
+  '/history',
+  requirePermission(Permission.ViewCashup),
+  validateQuery(z.object({ storeId: z.string(), days: z.coerce.number().int().min(1).max(90).default(14) })),
+  async (req, res, next) => {
+    try {
+      const { storeId, days } = req.query as unknown as { storeId: string; days: number };
+      const sb = getSupabaseClient();
+      const today = formatManilaDate();
+      const from = addDaysToDateStr(today, -(days - 1));
+      const { data, error } = await sb
+        .from('cash_reconciliation')
+        .select('*')
+        .eq('store_id', storeId)
+        .gte('date', from)
+        .lte('date', today)
+        .order('date', { ascending: true });
+      if (error) throw new Error(`Cash-up history query failed: ${error.message}`);
+      const rows = (data ?? []) as Record<string, unknown>[];
+
+      const employeeIds = [...new Set(rows.map((r) => r.submitted_by).filter((v): v is string => !!v))];
+      const names = new Map<string, string>();
+      if (employeeIds.length > 0) {
+        const { data: emps } = await sb.from('employees').select('id, full_name').in('id', employeeIds);
+        for (const e of (emps ?? []) as { id: string; full_name: string | null }[]) names.set(e.id, e.full_name ?? '');
+      }
+
+      const byDate = new Map(rows.map((r) => [String(r.date), r]));
+      const out: Array<Record<string, unknown>> = [];
+      for (let d = from; d <= today; d = addDaysToDateStr(d, 1)) {
+        const r = byDate.get(d);
+        const n = (v: unknown) => (v != null ? Number(v) : null);
+        out.push({
+          date: d,
+          status: !r ? 'missing' : r.is_locked ? 'locked' : 'open',
+          tillVariance: r ? n(r.till_variance) : null,
+          depositVariance: r ? n(r.deposit_variance) : null,
+          varianceNote: r ? ((r.variance_note as string | null) ?? null) : null,
+          submittedBy: r ? ((r.submitted_by as string | null) ?? null) : null,
+          submittedByName: r?.submitted_by ? names.get(String(r.submitted_by)) ?? null : null,
+          reopened: !!r?.overridden_by,
+          overrideReason: r ? ((r.override_reason as string | null) ?? null) : null,
+        });
+      }
+      res.json({ success: true, data: out });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ── GET /deposit-register — cash deposits currently held for open orders ──
+router.get(
+  '/deposit-register',
+  requirePermission(Permission.ViewCashup),
+  validateQuery(z.object({ storeId: z.string() })),
+  async (req, res, next) => {
+    try {
+      const { storeId } = req.query as { storeId: string };
+      const sb = getSupabaseClient();
+      const { data, error } = await sb
+        .from('payments')
+        .select(
+          'id, amount, payment_method_id, transaction_date, order_id, orders!order_id!inner(id, status, booking_token, customers!customer_id(name))',
+        )
+        .eq('store_id', storeId)
+        .in('payment_type', ['deposit', 'security_deposit'])
+        .not('orders.status', 'in', '(completed,cancelled)')
+        .order('transaction_date', { ascending: true });
+      if (error) throw new Error(`Deposit register query failed: ${error.message}`);
+
+      type Row = {
+        id: string;
+        amount: number;
+        payment_method_id: string | null;
+        transaction_date: string | null;
+        order_id: string;
+        orders: {
+          id: string;
+          status: string;
+          booking_token: string | null;
+          customers: { name: string } | { name: string }[] | null;
+        } | null;
+      };
+      const rows = ((data ?? []) as unknown as Row[]).filter(
+        (r) => (r.payment_method_id ?? '').toLowerCase() === 'cash',
+      );
+
+      const orderIds = [...new Set(rows.map((r) => r.order_id))];
+      const dueByOrder = new Map<string, string>();
+      if (orderIds.length > 0) {
+        const { data: items } = await sb
+          .from('order_items')
+          .select('order_id, dropoff_datetime')
+          .in('order_id', orderIds);
+        for (const i of (items ?? []) as { order_id: string; dropoff_datetime: string | null }[]) {
+          if (!i.dropoff_datetime) continue;
+          const prev = dueByOrder.get(i.order_id);
+          if (!prev || i.dropoff_datetime > prev) dueByOrder.set(i.order_id, i.dropoff_datetime);
+        }
+      }
+
+      const entries = rows.map((r) => {
+        const c = r.orders?.customers;
+        const customerName = Array.isArray(c) ? c[0]?.name ?? null : c?.name ?? null;
+        return {
+          paymentId: r.id,
+          orderId: r.order_id,
+          bookingToken: r.orders?.booking_token ?? null,
+          customerName,
+          amount: Number(r.amount ?? 0),
+          collectedOn: r.transaction_date,
+          returnDue: dueByOrder.get(r.order_id) ?? null,
+        };
+      });
+      const total = entries.reduce((s, e) => s + e.amount, 0);
+      res.json({ success: true, data: { entries, total } });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ── GET /order-lookup — where did an order's money land, and on which day ──
+router.get(
+  '/order-lookup',
+  requirePermission(Permission.ViewCashup),
+  validateQuery(z.object({ storeId: z.string(), q: z.string().trim().min(3) })),
+  async (req, res, next) => {
+    try {
+      const { storeId, q } = req.query as { storeId: string; q: string };
+      const sb = getSupabaseClient();
+      const term = q.replace(/[%,()]/g, '');
+
+      const { data: customers } = await sb.from('customers').select('id').ilike('name', `%${term}%`).limit(20);
+      const customerIds = ((customers ?? []) as { id: string }[]).map((c) => c.id);
+
+      let ordersQ = sb
+        .from('orders')
+        .select('id, booking_token, woo_order_id, status, order_date, settled_at, customers!customer_id(name)')
+        .eq('store_id', storeId)
+        .order('order_date', { ascending: false })
+        .limit(8);
+      ordersQ = customerIds.length > 0
+        ? ordersQ.or(`booking_token.ilike.%${term}%,woo_order_id.ilike.%${term}%,customer_id.in.(${customerIds.join(',')})`)
+        : ordersQ.or(`booking_token.ilike.%${term}%,woo_order_id.ilike.%${term}%`);
+      const { data: orders, error } = await ordersQ;
+      if (error) throw new Error(`Order lookup failed: ${error.message}`);
+
+      type OrderRow = {
+        id: string;
+        booking_token: string | null;
+        woo_order_id: string | null;
+        status: string;
+        order_date: string | null;
+        settled_at: string | null;
+        customers: { name: string } | { name: string }[] | null;
+      };
+      const orderRows = (orders ?? []) as unknown as OrderRow[];
+      const ids = orderRows.map((o) => o.id);
+      if (ids.length === 0) {
+        res.json({ success: true, data: [] });
+        return;
+      }
+
+      const [paymentsRes, journalRes] = await Promise.all([
+        sb
+          .from('payments')
+          .select('id, order_id, payment_type, payment_method_id, amount, transaction_date, settlement_status, created_at')
+          .in('order_id', ids)
+          .order('created_at', { ascending: true }),
+        sb
+          .from('journal_entries')
+          .select('id, reference_id, reference_type, credit, date, created_at, chart_of_accounts!account_id(name)')
+          .in('reference_id', ids)
+          .in('reference_type', ['refund', 'deposit'])
+          .gt('credit', 0),
+      ]);
+      if (paymentsRes.error) throw new Error(`Order lookup payments failed: ${paymentsRes.error.message}`);
+
+      type Entry = {
+        orderId: string;
+        kind: string;
+        method: string;
+        amount: number;
+        date: string | null;
+        createdAt: string | null;
+      };
+      const entries: Entry[] = [];
+      for (const p of (paymentsRes.data ?? []) as Record<string, unknown>[]) {
+        const pending = p.settlement_status === 'pending' && ['extension', 'addon'].includes(String(p.payment_type));
+        if (p.settlement_status === 'absorbed') continue;
+        entries.push({
+          orderId: String(p.order_id),
+          kind: pending ? `${p.payment_type} (unpaid)` : String(p.payment_type),
+          method: String(p.payment_method_id ?? ''),
+          amount: Number(p.amount ?? 0),
+          date: (p.transaction_date as string | null) ?? null,
+          createdAt: (p.created_at as string | null) ?? null,
+        });
+      }
+      for (const j of (journalRes.data ?? []) as Record<string, unknown>[]) {
+        const acct = j.chart_of_accounts as { name: string } | { name: string }[] | null;
+        const acctName = Array.isArray(acct) ? acct[0]?.name : acct?.name;
+        entries.push({
+          orderId: String(j.reference_id),
+          kind: j.reference_type === 'deposit' ? 'deposit applied to rental' : 'deposit return',
+          method: acctName ?? '',
+          amount: Number(j.credit ?? 0),
+          date: (j.date as string | null) ?? null,
+          createdAt: (j.created_at as string | null) ?? null,
+        });
+      }
+
+      const dates = [...new Set(entries.map((e) => e.date).filter((d): d is string => !!d))];
+      const lockByDate = new Map<string, { isLocked: boolean; submittedAt: string | null }>();
+      if (dates.length > 0) {
+        const { data: recons } = await sb
+          .from('cash_reconciliation')
+          .select('date, is_locked, submitted_at')
+          .eq('store_id', storeId)
+          .in('date', dates);
+        for (const r of (recons ?? []) as { date: string; is_locked: boolean; submitted_at: string | null }[]) {
+          lockByDate.set(r.date, { isLocked: r.is_locked, submittedAt: r.submitted_at });
+        }
+      }
+
+      const result = orderRows.map((o) => {
+        const c = o.customers;
+        return {
+          orderId: o.id,
+          bookingToken: o.booking_token ?? o.woo_order_id,
+          customerName: Array.isArray(c) ? c[0]?.name ?? null : c?.name ?? null,
+          status: o.status,
+          orderDate: o.order_date,
+          settledAt: o.settled_at,
+          entries: entries
+            .filter((e) => e.orderId === o.id)
+            .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))
+            .map((e) => {
+              const lock = e.date ? lockByDate.get(e.date) : undefined;
+              return {
+                ...e,
+                cashupStatus: !lock ? 'not cashed up' : lock.isLocked ? 'locked' : 'open',
+                postedAfterLock:
+                  !!lock?.isLocked && !!lock.submittedAt && !!e.createdAt && e.createdAt > lock.submittedAt,
+              };
+            }),
+        };
+      });
+      res.json({ success: true, data: result });
     } catch (err) {
       next(err);
     }
@@ -976,37 +369,20 @@ router.post(
     try {
       const { storeId, date, amount, cashAccountId, bankAccountId, notes } =
         req.body as z.infer<typeof DepositFundsSchema>;
-      const { Money } = await import('@lolas/domain');
-      const accountingPort = req.app.locals.deps.accountingPort;
 
-      const depositId = crypto.randomUUID();
-      const description = notes
-        ? `Bank deposit: ${notes}`
-        : 'Bank deposit from cash drawer';
+      if (date > formatManilaDate()) {
+        res.status(400).json(futureResponse(date));
+        return;
+      }
+      const recon = await req.app.locals.deps.cashReconciliationRepo.findByDate(storeId, date);
+      if (recon?.isLocked) {
+        res.status(400).json(lockedResponse(`Cash-up for ${date} is locked. Reopen it first.`));
+        return;
+      }
 
-      const legs = [
-        {
-          entryId: crypto.randomUUID(),
-          accountId: bankAccountId,
-          debit: Money.php(amount),
-          credit: Money.zero(),
-          description,
-          referenceType: 'cash_deposit',
-          referenceId: depositId,
-        },
-        {
-          entryId: crypto.randomUUID(),
-          accountId: cashAccountId,
-          debit: Money.zero(),
-          credit: Money.php(amount),
-          description,
-          referenceType: 'cash_deposit',
-          referenceId: depositId,
-        },
-      ];
-
-      await accountingPort.createTransaction(legs, storeId);
-
+      const depositId = await recordCashDeposit(req.app.locals.deps.accountingPort, {
+        storeId, date, amount, cashAccountId, bankAccountId, notes,
+      });
       res.json({ success: true, data: { depositId, amount } });
     } catch (err) {
       next(err);
@@ -1043,39 +419,33 @@ router.post(
         notes,
       } = req.body as z.infer<typeof InterStoreTransferSchema>;
 
+      if (date > formatManilaDate()) {
+        res.status(400).json(futureResponse(date));
+        return;
+      }
+
       const sb = getSupabaseClient();
       const reconRepo = req.app.locals.deps.cashReconciliationRepo;
 
-      // Block if either store's day is locked
       const [fromRecon, toRecon] = await Promise.all([
         reconRepo.findByDate(fromStoreId, date),
         reconRepo.findByDate(toStoreId, date),
       ]);
       if (fromRecon?.isLocked) {
-        res.status(400).json({
-          success: false,
-          error: { code: 'LOCKED', message: `Reconciliation for sending store is locked for ${date}. Unlock it first.` },
-        });
+        res.status(400).json(lockedResponse(`Cash-up for the sending store is locked for ${date}. Reopen it first.`));
         return;
       }
       if (toRecon?.isLocked) {
-        res.status(400).json({
-          success: false,
-          error: { code: 'LOCKED', message: `Reconciliation for receiving store is locked for ${date}. Unlock it first.` },
-        });
+        res.status(400).json(lockedResponse(`Cash-up for the receiving store is locked for ${date}. Reopen it first.`));
         return;
       }
 
-      // Look up store names for descriptions
       const { data: stores } = await sb
         .from('stores')
         .select('id, name')
         .in('id', [fromStoreId, toStoreId]);
       const storeMap = new Map(
-        ((stores ?? []) as { id: string; name: string }[]).map((s) => [
-          s.id,
-          s.name,
-        ]),
+        ((stores ?? []) as { id: string; name: string }[]).map((s) => [s.id, s.name]),
       );
       const fromName = storeMap.get(fromStoreId) ?? fromStoreId;
       const toName = storeMap.get(toStoreId) ?? toStoreId;
@@ -1084,14 +454,9 @@ router.post(
       const txId = crypto.randomUUID();
       const period = date.slice(0, 7);
 
-      const typeLabel =
-        transferType === 'float' ? 'Float issued' : 'Cash transferred';
-      const fromDesc = notes
-        ? `${typeLabel} to ${toName}: ${notes}`
-        : `${typeLabel} to ${toName}`;
-      const toDesc = notes
-        ? `${typeLabel} from ${fromName}: ${notes}`
-        : `${typeLabel} from ${fromName}`;
+      const typeLabel = transferType === 'float' ? 'Float issued' : 'Cash transferred';
+      const fromDesc = notes ? `${typeLabel} to ${toName}: ${notes}` : `${typeLabel} to ${toName}`;
+      const toDesc = notes ? `${typeLabel} from ${fromName}: ${notes}` : `${typeLabel} from ${fromName}`;
 
       const rows = [
         {
@@ -1125,8 +490,7 @@ router.post(
       ];
 
       const { error } = await sb.from('journal_entries').insert(rows);
-      if (error)
-        throw new Error(`Failed to create inter-store transfer: ${error.message}`);
+      if (error) throw new Error(`Failed to create inter-store transfer: ${error.message}`);
 
       res.json({
         success: true,
@@ -1138,27 +502,52 @@ router.post(
   },
 );
 
-// ── POST /reconcile — submit denomination count and lock the day ──
+// ── POST /reconcile — submit denomination counts and lock the day ──
 router.post(
   '/reconcile',
   requirePermission(Permission.ViewCashup),
   validateBody(ReconcileCashRequestSchema),
   async (req, res, next) => {
     try {
-      const { reconcileCash } = await import(
-        '../use-cases/cashup/reconcile-cash.js'
-      );
+      const { reconcileCash } = await import('../use-cases/cashup/reconcile-cash.js');
+      const sb = getSupabaseClient();
+      const accountingPort = req.app.locals.deps.accountingPort as AccountingPort;
+      const body = req.body as z.infer<typeof ReconcileCashRequestSchema>;
+
       const result = await reconcileCash(
-        { ...req.body, submittedBy: req.user!.employeeId },
+        {
+          storeId: body.storeId,
+          date: body.date,
+          tillDenoms: body.tillDenoms,
+          depositDenoms: body.depositDenoms,
+          varianceNote: body.varianceNote ?? null,
+          cashDrop: body.cashDrop ?? null,
+          submittedBy: req.user!.employeeId,
+        },
         {
           cashReconciliation: req.app.locals.deps.cashReconciliationRepo,
+          today: formatManilaDate(),
+          loadExpected: async (storeId, date) => {
+            const s = await buildCashupSummary(sb, storeId, date);
+            return {
+              openingTill: s.openingFloat.amount,
+              tillExpected: s.expected.till.total,
+              envelopeExpected: s.expected.envelope.total,
+            };
+          },
+          recordCashDrop: async (drop) => {
+            await recordCashDeposit(accountingPort, { ...drop, notes: 'Close-of-day drop' });
+          },
         },
       );
       res.json({ success: true, data: result });
 
+      void import('../jobs/cashup-telegram.js')
+        .then(({ sendCashupLockedTelegram }) => sendCashupLockedTelegram(result.reconciliation))
+        .catch((err) => console.error('[cashup] Telegram cash-up message failed:', err));
+
       // Evening Telegram is tied to the active Lola's operation.
-      // separate automation that is not yet configured.
-      if (req.body.storeId === 'store-lolas') {
+      if (body.storeId === 'store-lolas') {
         const { triggerEveningNotifications } = await import('../jobs/evening-trigger.js');
         void triggerEveningNotifications('cashup');
       }
@@ -1168,28 +557,41 @@ router.post(
   },
 );
 
-// ── POST /override — admin override of a locked reconciliation ──
+// ── POST /reopen — unlock a locked day for a recount (manager) ──
+async function handleReopen(
+  req: import('express').Request,
+  res: import('express').Response,
+  next: import('express').NextFunction,
+) {
+  try {
+    const { reopenReconciliation } = await import('../use-cases/cashup/reopen-reconciliation.js');
+    const { storeId, date, reason } = req.body as { storeId: string; date: string; reason: string };
+    const result = await reopenReconciliation(
+      { storeId, date, reason, reopenedBy: req.user!.employeeId },
+      { cashReconciliation: req.app.locals.deps.cashReconciliationRepo },
+    );
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+router.post(
+  '/reopen',
+  requirePermission(Permission.OverrideCashup),
+  validateBody(ReopenReconciliationRequestSchema),
+  handleReopen,
+);
+
+// Older clients call /override; it now reopens the day for a recount.
 router.post(
   '/override',
   requirePermission(Permission.OverrideCashup),
   validateBody(OverrideReconciliationRequestSchema),
-  async (req, res, next) => {
-    try {
-      const { overrideReconciliation } = await import(
-        '../use-cases/cashup/override-reconciliation.js'
-      );
-      const result = await overrideReconciliation(
-        { ...req.body, overriddenBy: req.user!.employeeId },
-        { cashReconciliation: req.app.locals.deps.cashReconciliationRepo },
-      );
-      res.json({ success: true, data: result });
-    } catch (err) {
-      next(err);
-    }
-  },
+  handleReopen,
 );
 
-// ── GET /late-returns-check ── checks if any active orders drop off >= 20:00 on a given date
+// ── GET /late-returns-check ── active orders due back at or after 20:00 Manila on a given date
 router.get(
   '/late-returns-check',
   requirePermission(Permission.ViewCashup),
@@ -1198,16 +600,35 @@ router.get(
     try {
       const { storeId, date } = req.query as { storeId: string; date: string };
       const sb = getSupabaseClient();
-      // Join order_items → orders to filter by store and date
       const { data, error } = await sb
         .from('order_items')
-        .select('id, dropoff_datetime, orders!inner(store_id, status)')
+        .select('id, order_id, dropoff_datetime, orders!inner(store_id, status)')
         .eq('orders.store_id', storeId)
-        .neq('orders.status', 'cancelled')
-        .gte('dropoff_datetime', `${date}T20:00:00`)
-        .lt('dropoff_datetime', `${date}T23:59:59`);
+        .eq('orders.status', 'active')
+        .gte('dropoff_datetime', `${date}T00:00:00+08:00`)
+        .lt('dropoff_datetime', `${addDaysToDateStr(date, 1)}T00:00:00+08:00`);
       if (error) throw new Error(`late-returns-check failed: ${error.message}`);
-      const count = (data ?? []).length;
+      const rows = (data ?? []) as { order_id: string; dropoff_datetime: string }[];
+
+      // A "9pm return" add-on makes a return late even when dropoff_datetime
+      // still holds the original earlier time.
+      const ninePmOrderIds = new Set<string>();
+      const dayOrderIds = [...new Set(rows.map((r) => r.order_id))];
+      if (dayOrderIds.length > 0) {
+        const { data: addons } = await sb
+          .from('order_addons')
+          .select('order_id')
+          .in('order_id', dayOrderIds)
+          .ilike('addon_name', '%9pm%');
+        for (const a of (addons ?? []) as { order_id: string }[]) ninePmOrderIds.add(a.order_id);
+      }
+      const lateFrom = Date.parse(`${date}T20:00:00+08:00`);
+      const lateOrderIds = new Set(
+        rows
+          .filter((r) => ninePmOrderIds.has(r.order_id) || Date.parse(r.dropoff_datetime) >= lateFrom)
+          .map((r) => r.order_id),
+      );
+      const count = lateOrderIds.size;
       res.json({ success: true, data: { hasLateReturns: count > 0, count } });
     } catch (err) {
       next(err);

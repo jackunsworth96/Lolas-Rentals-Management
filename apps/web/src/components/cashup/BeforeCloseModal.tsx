@@ -140,7 +140,6 @@ export function BeforeCloseModal({ storeId, date, onProceed, onCancel }: Props) 
       allTasks.filter(
         (t) =>
           t.dueDate === date &&
-          t.status !== 'completed' &&
           t.status !== 'Pending Verification' &&
           t.status !== 'Closed',
       ),
