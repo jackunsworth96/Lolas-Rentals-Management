@@ -9,8 +9,8 @@
  *   1. orders_raw  — web / direct / walk-in bookings
  *   2. orders + order_items + customers — staff-created bookings
  *
- * Deduplication: return_reminder_log prevents double-sending if
- * the job is restarted or runs more than once on the same day.
+ * Deduplication: return_reminder_log tracks each booking and return date,
+ * allowing a new reminder after an extension while skipping repeated runs.
  *
  * Required env vars outside NODE_ENV=development are listed in .env.example.
  */
@@ -176,10 +176,12 @@ export async function runReturnReminderJob(): Promise<void> {
   const { data: sentRows, error: logErr } = await sb
     .from('return_reminder_log')
     .select('booking_reference')
-    .in('booking_reference', allRefs);
+    .in('booking_reference', allRefs)
+    .eq('return_date', tomorrowPHT);
 
   if (logErr) {
     logger.warn({ error: logErr.message }, '[return-reminder] dedup log query failed');
+    return;
   }
 
   const alreadySent = new Set((sentRows ?? []).map((r) => r.booking_reference as string));
@@ -189,7 +191,7 @@ export async function runReturnReminderJob(): Promise<void> {
   for (const candidate of candidates) {
     if (alreadySent.has(candidate.bookingReference)) {
       logger.info(
-        { ref: candidate.bookingReference },
+        { ref: candidate.bookingReference, returnDate: tomorrowPHT },
         '[return-reminder] Already sent — skipping',
       );
       continue;
@@ -200,7 +202,7 @@ export async function runReturnReminderJob(): Promise<void> {
       : formatReturnTime(candidate.dropoffDatetime);
     try {
       const result = await sendWhatsAppTemplate({
-        operationKey: `return-reminder:${candidate.bookingReference}`,
+        operationKey: `return-reminder:${candidate.bookingReference}:${tomorrowPHT}`,
         phone: candidate.customerMobile,
         templateName: RETURN_REMINDER_TEMPLATE_NAME,
         languageCode: RETURN_REMINDER_TEMPLATE_LANGUAGE,
@@ -215,8 +217,10 @@ export async function runReturnReminderJob(): Promise<void> {
       });
 
       if (result.delivered) {
+        alreadySent.add(candidate.bookingReference);
         await sb.from('return_reminder_log').insert({
           booking_reference: candidate.bookingReference,
+          return_date:       tomorrowPHT,
           sent_at:           new Date().toISOString(),
         });
       }

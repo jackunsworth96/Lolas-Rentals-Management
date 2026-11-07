@@ -151,10 +151,12 @@ export async function runReturnReminderTodayJob(): Promise<void> {
   const { data: sentRows, error: logErr } = await sb
     .from('return_reminder_today_log')
     .select('booking_reference')
-    .in('booking_reference', allRefs);
+    .in('booking_reference', allRefs)
+    .eq('return_date', todayPHT);
 
   if (logErr) {
     logger.warn({ error: logErr.message }, '[return-reminder-today] dedup log query failed');
+    return;
   }
 
   const alreadySent = new Set((sentRows ?? []).map((r) => r.booking_reference as string));
@@ -169,7 +171,7 @@ export async function runReturnReminderTodayJob(): Promise<void> {
     }
 
     if (alreadySent.has(candidate.bookingReference)) {
-      logger.info({ ref: candidate.bookingReference }, '[return-reminder-today] Already sent - skipping');
+      logger.info({ ref: candidate.bookingReference, returnDate: todayPHT }, '[return-reminder-today] Already sent - skipping');
       continue;
     }
 
@@ -177,7 +179,7 @@ export async function runReturnReminderTodayJob(): Promise<void> {
 
     try {
       const result = await sendWhatsAppTemplate({
-        operationKey: `return-reminder-today:${candidate.bookingReference}`,
+        operationKey: `return-reminder-today:${candidate.bookingReference}:${todayPHT}`,
         phone: candidate.customerMobile,
         templateName: RETURN_REMINDER_TODAY_TEMPLATE_NAME,
         languageCode: RETURN_REMINDER_TODAY_TEMPLATE_LANGUAGE,
@@ -192,8 +194,10 @@ export async function runReturnReminderTodayJob(): Promise<void> {
       });
 
       if (result.delivered) {
+        alreadySent.add(candidate.bookingReference);
         await sb.from('return_reminder_today_log').insert({
           booking_reference: candidate.bookingReference,
+          return_date: todayPHT,
           sent_at: new Date().toISOString(),
         });
       }

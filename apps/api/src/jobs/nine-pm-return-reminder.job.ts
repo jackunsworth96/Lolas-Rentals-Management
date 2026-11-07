@@ -17,8 +17,8 @@
  *      Processed/active orders are covered by source 2 with accurate status.
  *   2. orders + order_items + order_addons + customers — staff-created
  *
- * Deduplication: nine_pm_reminder_log prevents double-sending if
- * the job is restarted or runs more than once on the same day.
+ * Deduplication: nine_pm_reminder_log tracks each booking and return date,
+ * allowing a new reminder after an extension while skipping repeated runs.
  *
  * Required env vars:
  *   RESPOND_IO_API_URL         e.g. https://app.respond.io
@@ -82,7 +82,7 @@ function buildMessage(customerName: string): string {
 
 // ── Main job ──────────────────────────────────────────────────────────────────
 
-async function runNinePmReturnReminderJob(): Promise<void> {
+export async function runNinePmReturnReminderJob(): Promise<void> {
   logger.info('[9pm-reminder] Running...');
 
   const sb = getSupabaseClient();
@@ -214,10 +214,12 @@ async function runNinePmReturnReminderJob(): Promise<void> {
   const { data: sentRows, error: logErr } = await sb
     .from('nine_pm_reminder_log')
     .select('booking_reference')
-    .in('booking_reference', allRefs);
+    .in('booking_reference', allRefs)
+    .eq('return_date', todayPHT);
 
   if (logErr) {
     logger.warn({ error: logErr.message }, '[9pm-reminder] dedup log query failed');
+    return;
   }
 
   const alreadySent = new Set((sentRows ?? []).map((r) => r.booking_reference as string));
@@ -227,7 +229,7 @@ async function runNinePmReturnReminderJob(): Promise<void> {
   for (const candidate of uniqueCandidates) {
     if (alreadySent.has(candidate.bookingReference)) {
       logger.info(
-        { ref: candidate.bookingReference },
+        { ref: candidate.bookingReference, returnDate: todayPHT },
         '[9pm-reminder] Already sent — skipping',
       );
       continue;
@@ -242,8 +244,10 @@ async function runNinePmReturnReminderJob(): Promise<void> {
         customerName: candidate.customerName,
       });
       await sendRespondIoMessage(phone, message);
+      alreadySent.add(candidate.bookingReference);
       await sb.from('nine_pm_reminder_log').insert({
         booking_reference: candidate.bookingReference,
+        return_date: todayPHT,
         sent_at: new Date().toISOString(),
       });
       logger.info({ ref: candidate.bookingReference }, '[9pm-reminder] Reminder sent');
