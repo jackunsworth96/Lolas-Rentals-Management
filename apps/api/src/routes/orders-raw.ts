@@ -17,6 +17,7 @@ import { supabase } from '../adapters/supabase/client.js';
 import { resolveCharityPayableAccount } from '../adapters/supabase/maintenance-expense-rpc.js';
 import { processRawOrder, type ProcessRawOrderDeps } from '../use-cases/orders/process-raw-order.js';
 import { sendEmail, bookingConfirmationHtml, bookingCancellationHtml, walkInStaffAlertHtml, walkInReservationConfirmationHtml, escapeHtml, NOTIFICATION_EMAIL, INTERNAL_FROM_EMAIL } from '../services/email.js';
+import { sendBookingConfirmationWhatsApp } from '../services/booking-confirmation-whatsapp.js';
 import { formatManilaDate, formatManilaDateTime } from '../utils/manila-date.js';
 import { sendTelegramAlert, sendTelegramAlertPaidOrdersStaggered, getTelegramChatId } from '../lib/telegram.js';
 import { deriveTransportService } from '../lib/transport-service.js';
@@ -134,7 +135,7 @@ const walkInReservedBodySchema = z.object({
   partnerRef: z.string().max(80).optional(),
   customerName: z.string().min(1),
   customerMobile: WhatsAppNumberSchema,
-  customerEmail: z.string().email().optional(),
+  customerEmail: z.string().trim().email(),
   storeId: z.string().min(1),
   vehicleId: z.string().min(1),
   vehicleModelId: z.string().min(1),
@@ -259,7 +260,7 @@ router.post('/walk-in-reserved', requirePermission(Permission.EditOrders), async
     }
 
     // ── Fire-and-forget customer confirmation email ───────────────
-    if (body.customerEmail) {
+    {
       const whatsappNumber = process.env.WHATSAPP_NUMBER ?? '639694443413';
       const rentalSubtotal =
         body.rentalDays != null && body.dailyRate != null
@@ -290,6 +291,19 @@ router.post('/walk-in-reserved', requirePermission(Permission.EditOrders), async
       });
     }
 
+    sendBookingConfirmationWhatsApp({
+      customerName: body.customerName,
+      customerMobile: body.customerMobile,
+      orderReference,
+      vehicleName: body.vehicleName ?? body.vehicleModelId,
+      pickupDatetime: formatManilaDateTime(body.pickupDatetime),
+      dropoffDatetime: formatManilaDateTime(body.dropoffDatetime),
+      pickupLocation,
+      dropoffLocation,
+      waiverUrl: `${publicWebOriginFromEnv(process.env.WEB_URL)}/waiver/${orderReference}`,
+      source: 'walk-in-reserved-confirmation',
+    });
+
     res.status(201).json({ success: true, data, orderReference });
   } catch (err) {
     next(err);
@@ -306,7 +320,7 @@ const walkInDirectSchema = z.object({
   partnerRef: z.string().max(80).optional(),
   customerName: z.string().min(1),
   customerMobile: WhatsAppNumberSchema,
-  customerEmail: z.string().email().optional(),
+  customerEmail: z.string().trim().email(),
   nationality: z.string().optional(),
   storeId: z.string().min(1),
   vehicleId: z.string().min(1),
@@ -677,31 +691,42 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
         const waiverUrl = `${publicWebOriginFromEnv(process.env.WEB_URL)}/waiver/${orderReference}`;
         const whatsappNumber = process.env.WHATSAPP_NUMBER ?? '639XXXXXXXXX';
 
+        sendBookingConfirmationWhatsApp({
+          customerName: body.customerName,
+          customerMobile: body.customerMobile,
+          orderReference,
+          vehicleName: body.vehicleName,
+          pickupDatetime: formatManila(body.pickupDatetime),
+          dropoffDatetime: formatManila(body.dropoffDatetime),
+          pickupLocation,
+          dropoffLocation,
+          waiverUrl,
+          source: 'walk-in-direct-confirmation',
+        });
+
         // Customer confirmation
-        if (body.customerEmail) {
-          void sendEmail({
-            to: body.customerEmail,
-            subject: `Booking Confirmed — ${orderReference} | Lola's Rentals`,
-            html: bookingConfirmationHtml({
-              customerName: body.customerName,
-              orderReference,
-              vehicleName: body.vehicleName,
-              vehicleCount: 1,
-              pickupDatetime: formatManila(body.pickupDatetime),
-              dropoffDatetime: formatManila(body.dropoffDatetime),
-              pickupLocation,
-              dropoffLocation,
-              totalAmount: body.grandTotal,
-              paymentMethod: body.paymentMethod,
-              addons: [],
-              charityDonation: body.charityDonation ?? 0,
-              hasTransfer: false,
-              transferAmount: 0,
-              waiverUrl,
-              whatsappNumber,
-            }),
-          });
-        }
+        void sendEmail({
+          to: body.customerEmail,
+          subject: `Booking Confirmed — ${orderReference} | Lola's Rentals`,
+          html: bookingConfirmationHtml({
+            customerName: body.customerName,
+            orderReference,
+            vehicleName: body.vehicleName,
+            vehicleCount: 1,
+            pickupDatetime: formatManila(body.pickupDatetime),
+            dropoffDatetime: formatManila(body.dropoffDatetime),
+            pickupLocation,
+            dropoffLocation,
+            totalAmount: body.grandTotal,
+            paymentMethod: body.paymentMethod,
+            addons: [],
+            charityDonation: body.charityDonation ?? 0,
+            hasTransfer: false,
+            transferAmount: 0,
+            waiverUrl,
+            whatsappNumber,
+          }),
+        });
 
         // Staff alert
         void sendEmail({

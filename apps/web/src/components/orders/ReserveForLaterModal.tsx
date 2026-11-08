@@ -218,7 +218,7 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
       {
         customerName: customerName.trim(),
         customerMobile: customerMobile.trim(),
-        customerEmail: customerEmail.trim() || undefined,
+        customerEmail: customerEmail.trim(),
         storeId,
         vehicleId: selectedVehicleId,
         vehicleModelId,
@@ -350,13 +350,16 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
               />
             </div>
             <div>
-              <label className={LABEL_CLS}>Email (optional)</label>
+              <label className={LABEL_CLS}>
+                Email <span className="text-red-500">*</span>
+              </label>
               <input
                 type="email"
                 className={INPUT_CLS}
                 placeholder="customer@email.com"
                 value={customerEmail}
                 onChange={(e) => setCustomerEmail(e.target.value)}
+                required
               />
             </div>
           </div>
@@ -687,7 +690,7 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
           </button>
           <button
             type="submit"
-            disabled={isSubmitting || !customerName.trim() || !isValidWhatsAppE164(customerMobile) || !selectedVehicleAvailable || !datesValid}
+            disabled={isSubmitting || !customerName.trim() || !isValidWhatsAppE164(customerMobile) || !customerEmail.trim() || !selectedVehicleAvailable || !datesValid}
             className="rounded-lg bg-teal-600 px-5 py-2 font-lato text-sm font-semibold text-white transition-colors hover:bg-teal-700 disabled:opacity-50"
           >
             {isSubmitting ? 'Reserving…' : 'Reserve for Later'}

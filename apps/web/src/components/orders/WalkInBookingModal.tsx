@@ -350,7 +350,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
       partnerRef: partnerRef || undefined,
       customerName: customerName.trim(),
       customerMobile: customerMobile.trim(),
-      customerEmail: customerEmail.trim() || undefined,
+      customerEmail: customerEmail.trim(),
       nationality: nationality.trim() || undefined,
       storeId,
       vehicleId: selectedVehicleId,
@@ -424,7 +424,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
   }
 
   const isValid =
-    customerName.trim() && isValidWhatsAppE164(customerMobile) &&
+    customerName.trim() && isValidWhatsAppE164(customerMobile) && customerEmail.trim() &&
     storeId && vehicleModelId && availableVehicles.some((vehicle) => vehicle.id === selectedVehicleId && !vehicle.protectedFor) && !vehiclesLoading && !vehiclesError &&
     pickupDate && pickupTime &&
     dropoffDate && dropoffTime &&
@@ -538,8 +538,9 @@ export function WalkInBookingModal({ open, onClose }: Props) {
                 />
               </label>
               <label className="block">
-                <span className={LABEL_CLS}>Email <span className="font-lato text-xs text-gray-400">(optional)</span></span>
+                <span className={LABEL_CLS}>Email <span className="text-red-500">*</span></span>
                 <input
+                  required
                   type="email"
                   value={customerEmail}
                   onChange={(e) => setCustomerEmail(e.target.value)}
