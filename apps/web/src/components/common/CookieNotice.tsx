@@ -27,7 +27,7 @@ export function CookieNotice() {
     <div
       role="region"
       aria-label="Cookie notice"
-      className="fixed bottom-0 left-0 right-0 z-[200] flex items-center gap-3 bg-[#363737] px-4 py-3 text-white/90 md:px-6"
+      className="fixed bottom-0 left-0 right-0 z-[200] flex items-center gap-3 bg-[#363737] py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-4 pr-[84px] text-white/90 md:pl-6 md:pr-[100px]"
     >
       <p className="flex-1 text-xs leading-relaxed text-white/80">
         We use Google Analytics to understand how visitors use our site. By continuing to browse

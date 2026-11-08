@@ -1,4 +1,4 @@
-import { AllocationAvailability, type AllocationSummary } from '../../components/booking/AllocationAvailability.js';
+import type { AllocationSummary } from '../../components/booking/AllocationAvailability.js';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { hasBookingLeadTime } from '@lolas/shared';
 import { useTranslation } from 'react-i18next';
@@ -1343,7 +1343,6 @@ export default function BrowseBookPage() {
                   <div>
                     {selectedAvailModel != null ? (
                       <>
-                      <AllocationAvailability allocation={selectedAvailModel?.allocation} />
                       <VehicleCard
                         modelId={selectedModelId!}
                         modelName={selectedModel!.name}

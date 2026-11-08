@@ -204,6 +204,11 @@ body {
   z-index: 100000 !important;
 }
 
+/* The Lolo Desk launcher sits at max z-index and would cover the review sheet's Confirm button. */
+body.order-review-open #lolodesk-web-chat {
+  display: none !important;
+}
+
 /* =============================================================================
    HERO SECTION — fully responsive
    ============================================================================= */
