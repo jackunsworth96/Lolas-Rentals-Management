@@ -576,39 +576,38 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
 
     // 12. Payment ids & transaction date for the atomic RPC
     const rentalPaymentId = crypto.randomUUID();
-    const depositPaymentId =
-      body.depositCollected && body.depositAmount > 0 ? crypto.randomUUID() : null;
+    // A waived deposit means nothing is held and nothing is ever refunded.
+    const depositHeld = body.depositCollected ? body.depositAmount : 0;
+    const depositPaymentId = depositHeld > 0 ? crypto.randomUUID() : null;
     const transactionDate = formatManilaDate();
 
-    // Money taken at the counter (the order is marked paid when the deposit is
-    // collected). Card stays off the ledger until the card batch is settled.
-    if (body.depositCollected) {
-      const routing = await resolveRoutedAccounts(body.storeId);
-      const rentalAccountId = body.paymentMethod === 'card'
-        ? null
-        : body.paymentAccountId ?? routing.accountFor(body.paymentMethod);
-      const moneyLeg = (accountId: string, debit: number, credit: number, description: string, referenceId: string) => ({
-        id: crypto.randomUUID(), account_id: accountId, debit, credit, description, reference_type: 'payment', reference_id: referenceId,
-      });
-      if (rentalAccountId && receivableAccountId && body.grandTotal > 0) {
-        journalLegs.push(
-          moneyLeg(rentalAccountId, body.grandTotal, 0, `${body.customerName} walk-in rental payment received`, rentalPaymentId),
-          moneyLeg(receivableAccountId, 0, body.grandTotal, `${body.customerName} walk-in receivable reduced`, rentalPaymentId),
-        );
-      }
-      const depositLiabilityId = body.depositLiabilityAccountId
-        ?? accounts.find((a) => a.account_type === 'Liability' && a.name.toLowerCase().includes('deposit'))?.id
-        ?? null;
-      const depositReceivedInto = body.depositMethod === 'card' ? null : routing.accountFor(body.depositMethod);
-      if (depositPaymentId && depositLiabilityId && depositReceivedInto) {
-        const depositAccountId = depositHoldingAccount(depositReceivedInto, body.depositMethod, routing);
-        journalLegs.push(
-          moneyLeg(depositAccountId, body.depositAmount, 0, `${body.customerName} walk-in deposit received`, depositPaymentId),
-          moneyLeg(depositLiabilityId, 0, body.depositAmount, `${body.customerName} walk-in deposit liability`, depositPaymentId),
-        );
-      }
-      if (journalLegs.length > 0 && !journalTransactionId) journalTransactionId = crypto.randomUUID();
+    // The rental is always paid at the counter; the deposit only when collected.
+    // Card stays off the ledger until the card batch is settled.
+    const routing = await resolveRoutedAccounts(body.storeId);
+    const rentalAccountId = body.paymentMethod === 'card'
+      ? null
+      : body.paymentAccountId ?? routing.accountFor(body.paymentMethod);
+    const moneyLeg = (accountId: string, debit: number, credit: number, description: string, referenceId: string) => ({
+      id: crypto.randomUUID(), account_id: accountId, debit, credit, description, reference_type: 'payment', reference_id: referenceId,
+    });
+    if (rentalAccountId && receivableAccountId && body.grandTotal > 0) {
+      journalLegs.push(
+        moneyLeg(rentalAccountId, body.grandTotal, 0, `${body.customerName} walk-in rental payment received`, rentalPaymentId),
+        moneyLeg(receivableAccountId, 0, body.grandTotal, `${body.customerName} walk-in receivable reduced`, rentalPaymentId),
+      );
     }
+    const depositLiabilityId = body.depositLiabilityAccountId
+      ?? accounts.find((a) => a.account_type === 'Liability' && a.name.toLowerCase().includes('deposit'))?.id
+      ?? null;
+    const depositReceivedInto = body.depositMethod === 'card' ? null : routing.accountFor(body.depositMethod);
+    if (depositPaymentId && depositLiabilityId && depositReceivedInto) {
+      const depositAccountId = depositHoldingAccount(depositReceivedInto, body.depositMethod, routing);
+      journalLegs.push(
+        moneyLeg(depositAccountId, depositHeld, 0, `${body.customerName} walk-in deposit received`, depositPaymentId),
+        moneyLeg(depositLiabilityId, 0, depositHeld, `${body.customerName} walk-in deposit liability`, depositPaymentId),
+      );
+    }
+    if (journalLegs.length > 0 && !journalTransactionId) journalTransactionId = crypto.randomUUID();
 
     // 13. Call activate_order_atomic RPC (order + journal + payments in one tx)
     const { error: rpcErr } = await supabase.rpc('allocation_activate_order', {
@@ -624,12 +623,12 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       p_web_notes: body.staffNotes ?? null,
       p_quantity: 1,
       p_web_quote_raw: body.grandTotal,
-      p_security_deposit: body.depositAmount,
-      p_deposit_status: body.depositCollected ? 'paid' : 'pending',
+      p_security_deposit: depositHeld,
+      p_deposit_status: depositHeld > 0 ? 'paid' : null,
       p_card_fee_surcharge: 0,
       p_return_charges: 0,
       p_final_total: body.grandTotal,
-      p_balance_due: body.depositCollected ? 0 : body.grandTotal,
+      p_balance_due: 0,
       p_payment_method_id: body.paymentMethod,
       p_deposit_method_id: body.depositMethod,
       p_booking_token: orderReference,
@@ -648,8 +647,8 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       p_rental_amount: body.grandTotal,
       p_transaction_date: transactionDate,
       p_deposit_payment_id: depositPaymentId,
-      p_deposit_amount: body.depositCollected ? body.depositAmount : 0,
-      p_deposit_collected: body.depositCollected,
+      p_deposit_amount: depositHeld,
+      p_deposit_collected: depositHeld > 0,
       },
     });
     if (rpcErr) {

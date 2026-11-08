@@ -221,17 +221,24 @@ export async function processRawOrder(
     input.partialPaymentAmount !== undefined && input.partialPaymentAmount < finalTotal
       ? input.partialPaymentAmount
       : finalTotal;
+  // The deposit can be tendered differently from the rental (e.g. rental by
+  // card, deposit in cash), so it is routed by its own method.
+  const rentalAccountFallback = input.isCardPayment ? null : (input.paymentAccountId ?? null);
+  const depositReceivedInto = input.cashAccounts?.accountFor(input.depositMethodId) ?? rentalAccountFallback;
+  const depositAccountId = depositReceivedInto && input.cashAccounts
+    ? depositHoldingAccount(depositReceivedInto, input.depositMethodId, input.cashAccounts)
+    : depositReceivedInto;
   const willCreateDepositPayment =
     input.securityDeposit > 0 &&
     !!input.depositMethodId &&
-    !!input.paymentAccountId &&
+    !!depositAccountId &&
     !!input.depositLiabilityAccountId;
   const depositAmount = input.securityDeposit;
 
+  // The security deposit is held for refund, not paid toward the rental.
   const totalPaid =
     preActivationPaid +
-    (willCreateRentalPayment ? rentalAmount : 0) +
-    (willCreateDepositPayment ? depositAmount : 0);
+    (willCreateRentalPayment ? rentalAmount : 0);
   const balanceDue = Math.max(0, finalTotal - totalPaid);
 
   const orderEntity = OrderEntity.create({
@@ -395,15 +402,6 @@ export async function processRawOrder(
   }
 
   const depositPaymentId = willCreateDepositPayment ? crypto.randomUUID() : null;
-  // The deposit can be tendered differently from the rental (e.g. rental by
-  // GCash, deposit in cash), so it is routed by its own method.
-  const depositAccountId = input.paymentAccountId && input.cashAccounts
-    ? depositHoldingAccount(
-        input.cashAccounts.accountFor(input.depositMethodId) ?? input.paymentAccountId,
-        input.depositMethodId,
-        input.cashAccounts,
-      )
-    : input.paymentAccountId ?? null;
   let depositPayment: Record<string, unknown> | null = null;
   if (willCreateDepositPayment && depositPaymentId) {
     depositPayment = {
