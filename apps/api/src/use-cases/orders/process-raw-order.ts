@@ -23,6 +23,7 @@ import { resolveCharityPayableAccount } from '../../adapters/supabase/maintenanc
 import { type VehicleAssignment } from './activate-order.js';
 import { formatManilaDate } from '../../utils/manila-date.js';
 import { assertAssignmentsAvailable } from '../../lib/assert-vehicle-assignment.js';
+import { depositHoldingAccount, type RoutedAccounts } from '../../lib/deposit-envelope.js';
 
 // Deterministic namespace for order ids derived from raw order ids.
 // Generated once and frozen — changing this value would break
@@ -87,6 +88,8 @@ export interface ProcessRawOrderInput {
    * balance_due so staff can collect the remainder later.
    */
   partialPaymentAmount?: number;
+  /** Store routing; cash deposits are booked to the deposit envelope instead of the till. */
+  cashAccounts?: RoutedAccounts;
 }
 
 export async function processRawOrder(
@@ -392,6 +395,15 @@ export async function processRawOrder(
   }
 
   const depositPaymentId = willCreateDepositPayment ? crypto.randomUUID() : null;
+  // The deposit can be tendered differently from the rental (e.g. rental by
+  // GCash, deposit in cash), so it is routed by its own method.
+  const depositAccountId = input.paymentAccountId && input.cashAccounts
+    ? depositHoldingAccount(
+        input.cashAccounts.accountFor(input.depositMethodId) ?? input.paymentAccountId,
+        input.depositMethodId,
+        input.cashAccounts,
+      )
+    : input.paymentAccountId ?? null;
   let depositPayment: Record<string, unknown> | null = null;
   if (willCreateDepositPayment && depositPaymentId) {
     depositPayment = {
@@ -408,7 +420,7 @@ export async function processRawOrder(
       settlement_status: null,
       settlement_ref: null,
       customer_id: customer.id,
-      account_id: input.paymentAccountId ?? null,
+      account_id: depositAccountId,
     };
   }
 
@@ -485,13 +497,13 @@ export async function processRawOrder(
   if (
     willCreateDepositPayment &&
     depositPaymentId &&
-    input.paymentAccountId &&
+    depositAccountId &&
     input.depositLiabilityAccountId
   ) {
     const depositLegs: JournalLeg[] = [
       {
         entryId: crypto.randomUUID(),
-        accountId: input.paymentAccountId,
+        accountId: depositAccountId,
         debit: Money.php(depositAmount),
         credit: Money.zero(),
         description: `Order ${orderId} deposit received`,

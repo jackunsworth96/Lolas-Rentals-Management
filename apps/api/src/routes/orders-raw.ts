@@ -14,7 +14,8 @@ import {
   resolveStoreFromSource,
 } from '@lolas/shared';
 import { supabase } from '../adapters/supabase/client.js';
-import { resolveCharityPayableAccount } from '../adapters/supabase/maintenance-expense-rpc.js';
+import { resolveCharityPayableAccount, resolveStoreAccounts } from '../adapters/supabase/maintenance-expense-rpc.js';
+import { Money } from '@lolas/domain';
 import { processRawOrder, type ProcessRawOrderDeps } from '../use-cases/orders/process-raw-order.js';
 import { sendEmail, bookingConfirmationHtml, bookingCancellationHtml, walkInStaffAlertHtml, walkInReservationConfirmationHtml, escapeHtml, NOTIFICATION_EMAIL, INTERNAL_FROM_EMAIL } from '../services/email.js';
 import { sendBookingConfirmationWhatsApp } from '../services/booking-confirmation-whatsapp.js';
@@ -22,6 +23,7 @@ import { formatManilaDate, formatManilaDateTime } from '../utils/manila-date.js'
 import { sendTelegramAlert, sendTelegramAlertPaidOrdersStaggered, getTelegramChatId } from '../lib/telegram.js';
 import { deriveTransportService } from '../lib/transport-service.js';
 import { assertAssignmentsAvailable } from '../lib/assert-vehicle-assignment.js';
+import { depositHoldingAccount, resolveRoutedAccounts } from '../lib/deposit-envelope.js';
 import {
   assertSurfRacksAvailable,
   countRackAddonLines,
@@ -578,6 +580,36 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       body.depositCollected && body.depositAmount > 0 ? crypto.randomUUID() : null;
     const transactionDate = formatManilaDate();
 
+    // Money taken at the counter (the order is marked paid when the deposit is
+    // collected). Card stays off the ledger until the card batch is settled.
+    if (body.depositCollected) {
+      const routing = await resolveRoutedAccounts(body.storeId);
+      const rentalAccountId = body.paymentMethod === 'card'
+        ? null
+        : body.paymentAccountId ?? routing.accountFor(body.paymentMethod);
+      const moneyLeg = (accountId: string, debit: number, credit: number, description: string, referenceId: string) => ({
+        id: crypto.randomUUID(), account_id: accountId, debit, credit, description, reference_type: 'payment', reference_id: referenceId,
+      });
+      if (rentalAccountId && receivableAccountId && body.grandTotal > 0) {
+        journalLegs.push(
+          moneyLeg(rentalAccountId, body.grandTotal, 0, `${body.customerName} walk-in rental payment received`, rentalPaymentId),
+          moneyLeg(receivableAccountId, 0, body.grandTotal, `${body.customerName} walk-in receivable reduced`, rentalPaymentId),
+        );
+      }
+      const depositLiabilityId = body.depositLiabilityAccountId
+        ?? accounts.find((a) => a.account_type === 'Liability' && a.name.toLowerCase().includes('deposit'))?.id
+        ?? null;
+      const depositReceivedInto = body.depositMethod === 'card' ? null : routing.accountFor(body.depositMethod);
+      if (depositPaymentId && depositLiabilityId && depositReceivedInto) {
+        const depositAccountId = depositHoldingAccount(depositReceivedInto, body.depositMethod, routing);
+        journalLegs.push(
+          moneyLeg(depositAccountId, body.depositAmount, 0, `${body.customerName} walk-in deposit received`, depositPaymentId),
+          moneyLeg(depositLiabilityId, 0, body.depositAmount, `${body.customerName} walk-in deposit liability`, depositPaymentId),
+        );
+      }
+      if (journalLegs.length > 0 && !journalTransactionId) journalTransactionId = crypto.randomUUID();
+    }
+
     // 13. Call activate_order_atomic RPC (order + journal + payments in one tx)
     const { error: rpcErr } = await supabase.rpc('allocation_activate_order', {
       p_partner_ref: bookingPartner?.slug ?? null,
@@ -1016,6 +1048,7 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
       excludeTransferFromBalance: body.excludeTransferFromBalance ?? false,
       transferAccommodation: body.transferAccommodation ?? null,
       partialPaymentAmount: body.partialPaymentAmount,
+      cashAccounts: await resolveRoutedAccounts(body.storeId),
     });
 
     // Persist the optional dropoff meeting-point note on the created order.
@@ -1123,9 +1156,13 @@ router.post('/:id/collect-payment', requirePermission(Permission.EditOrders), as
     }
 
     const storeId = resolveStoreFromSource(rawOrder.source);
-    const { paymentRepo, cardSettlementRepo } = req.app.locals.deps;
+    const { paymentRepo, cardSettlementRepo, accountingPort } = req.app.locals.deps;
     const txDate = formatManilaDate();
     const paymentId = crypto.randomUUID();
+    const [routing, storeAccounts] = parsed.data.isCardPayment
+      ? [null, null]
+      : await Promise.all([resolveRoutedAccounts(storeId), resolveStoreAccounts(storeId)]);
+    const receivedIntoId = routing?.accountFor(parsed.data.paymentMethodId) ?? null;
 
     const payment = {
       id: paymentId,
@@ -1141,10 +1178,26 @@ router.post('/:id/collect-payment', requirePermission(Permission.EditOrders), as
       settlementStatus: parsed.data.isCardPayment ? 'pending' : null,
       settlementRef: parsed.data.settlementRef ?? null,
       customerId: null,
-      accountId: null,
+      accountId: receivedIntoId,
     };
 
     await paymentRepo.save(payment);
+
+    // Activation charges the full total to the receivable, so money taken
+    // beforehand is booked against it now.
+    if (receivedIntoId && storeAccounts?.receivableAccountId) {
+      const amount = Money.php(parsed.data.amount);
+      const description = `Pre-activation payment for booking ${req.params.id as string}`;
+      await accountingPort.createTransaction(
+        [
+          { entryId: crypto.randomUUID(), accountId: receivedIntoId, debit: amount, credit: Money.zero(), description, referenceType: 'payment', referenceId: paymentId },
+          { entryId: crypto.randomUUID(), accountId: storeAccounts.receivableAccountId, debit: Money.zero(), credit: amount, description, referenceType: 'payment', referenceId: paymentId },
+        ],
+        storeId,
+        txDate,
+        req.user?.employeeId ?? null,
+      );
+    }
 
     if (parsed.data.isCardPayment) {
       const settlement = {

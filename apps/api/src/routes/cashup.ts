@@ -14,6 +14,7 @@ import type { AccountingPort } from '@lolas/domain';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { buildCashupSummary } from '../use-cases/cashup/build-cashup-summary.js';
 import { addDaysToDateStr, formatManilaDate } from '../utils/manila-date.js';
+import { DEPOSIT_ENVELOPE_ACCOUNT_ID } from '../lib/deposit-envelope.js';
 
 const router = Router();
 router.use(authenticate);
@@ -59,8 +60,6 @@ async function recordCashDeposit(
   );
   return depositId;
 }
-
-const DEPOSIT_ENVELOPE_ACCOUNT_ID = 'CASH-DEPOSIT-ENVELOPE';
 
 /**
  * Customer deposit cash sits in the till but is counted separately at cash-up.

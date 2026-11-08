@@ -13,6 +13,12 @@ import {
 } from '@lolas/domain';
 import { supabase } from '../../adapters/supabase/client.js';
 import { formatManilaDate } from '../../utils/manila-date.js';
+import {
+  DEPOSIT_ENVELOPE_TRANSFER_REF,
+  depositHoldingAccount,
+  isCashMethod,
+  type StoreCashAccounts,
+} from '../../lib/deposit-envelope.js';
 
 export interface SettleOrderDeps {
   orderRepo: OrderRepository;
@@ -74,6 +80,10 @@ export interface SettleOrderInput {
    * (backward-compatible behaviour).
    */
   depositRefundMethodId?: string | null;
+  /** Income account credited for return charges (fuel, damage). Falls back to the receivable. */
+  returnChargesIncomeAccountId?: string | null;
+  /** The store's till and deposit envelope accounts; held deposit cash moves between them. */
+  cashAccounts?: StoreCashAccounts;
 }
 
 function serialiseLeg(leg: JournalLeg): Record<string, unknown> {
@@ -200,11 +210,13 @@ export async function settleOrder(
         referenceId: returnChargePayment.id,
       },
       {
+        // The charge is raised and paid at the counter in one step, so it is
+        // income now rather than a reduction of an amount already receivable.
         entryId: crypto.randomUUID(),
-        accountId: input.receivableAccountId,
+        accountId: input.returnChargesIncomeAccountId ?? input.receivableAccountId,
         debit: Money.zero(),
         credit: returnChargesDelta,
-        description: `Order ${order.id} return charge receivable reduced`,
+        description: `Order ${order.id} return charge income${input.returnChargesNote ? ` (${input.returnChargesNote})` : ''}`,
         referenceType: 'payment',
         referenceId: returnChargePayment.id,
       },
@@ -305,6 +317,35 @@ export async function settleOrder(
         referenceId: order.id,
       },
     );
+
+    // Cash deposits sit in the envelope; the applied part becomes takings in the till.
+    const cash = input.cashAccounts;
+    const cashDepositHeld = payments
+      .filter((p) => (p.paymentType === 'deposit' || p.paymentType === 'security_deposit') && isCashMethod(p.paymentMethodId))
+      .reduce((sum, p) => sum.add(Money.php(p.amount)), Money.zero());
+    const cashApplied = Money.php(Math.min(cashDepositHeld.toNumber(), amountApplied.toNumber()));
+    if (cash?.envelopeAccountId && cash.tillAccountId && cashApplied.isPositive()) {
+      legs.push(
+        {
+          entryId: crypto.randomUUID(),
+          accountId: cash.tillAccountId,
+          debit: cashApplied,
+          credit: Money.zero(),
+          description: `Order ${order.id} applied deposit cash moved from envelope to till`,
+          referenceType: DEPOSIT_ENVELOPE_TRANSFER_REF,
+          referenceId: order.id,
+        },
+        {
+          entryId: crypto.randomUUID(),
+          accountId: cash.envelopeAccountId,
+          debit: Money.zero(),
+          credit: cashApplied,
+          description: `Order ${order.id} applied deposit cash moved from envelope to till`,
+          referenceType: DEPOSIT_ENVELOPE_TRANSFER_REF,
+          referenceId: order.id,
+        },
+      );
+    }
   }
 
   // ── Deposit-refund legs ──────────────────────────────────
@@ -313,6 +354,9 @@ export async function settleOrder(
     // method is stored and auditable (e.g. deposit collected in cash but
     // returned via GCash). The journal legs reference the payment ID so that
     // the cashup deduplication logic suppresses the journal-only path.
+    const refundFromAccountId = input.cashAccounts
+      ? depositHoldingAccount(input.refundAccountId, input.depositRefundMethodId, input.cashAccounts)
+      : input.refundAccountId;
     if (input.depositRefundMethodId) {
       depositRefundPayment = {
         id: crypto.randomUUID(),
@@ -328,7 +372,7 @@ export async function settleOrder(
         settlementStatus: null,
         settlementRef: null,
         customerId: order.customerId,
-        accountId: input.refundAccountId,
+        accountId: refundFromAccountId,
       };
     }
 
@@ -345,7 +389,7 @@ export async function settleOrder(
       },
       {
         entryId: crypto.randomUUID(),
-        accountId: input.refundAccountId,
+        accountId: refundFromAccountId,
         debit: Money.zero(),
         credit: refund,
         description: `Order ${order.id} deposit refund to customer`,

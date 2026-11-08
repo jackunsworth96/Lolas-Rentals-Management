@@ -2,6 +2,7 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { computeQuote } from '../use-cases/booking/compute-quote.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
 import { resolveStoreAccounts } from '../adapters/supabase/maintenance-expense-rpc.js';
+import { resolveRoutedAccounts } from '../lib/deposit-envelope.js';
 import { sendEmail, extendConfirmationHtml, escapeHtml } from '../services/email.js';
 import { formatManilaDate, formatManilaDateTime } from '../utils/manila-date.js';
 import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
@@ -48,6 +49,8 @@ export type ExtensionInputs = {
   newPerDayAddonIds?: number[];
   newDropoffLocationId?: number;
   newDropoffLocationAddress?: string;
+  /** Account a paid extension was received into; defaults to the store's routing for the method. */
+  paymentAccountId?: string | null;
   deps: {
     bookingPort: unknown;
     configRepo: {
@@ -514,6 +517,10 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
     const journalDate = formatManilaDate(now);
     const journalPeriod = journalDate.slice(0, 7);
     const accounts = await resolveStoreAccounts(storeId);
+    // Card money stays off the ledger until the card batch is settled.
+    const paymentAccountId = isPaid && !/card/i.test(paymentMethodId)
+      ? args.paymentAccountId ?? (await resolveRoutedAccounts(storeId)).accountFor(paymentMethodId)
+      : null;
 
     const { data: rpcResult, error: rpcErr } = await sb
       .rpc('confirm_extend_order_atomic', {
@@ -542,6 +549,7 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
         p_journal_date:      journalDate,
         p_journal_period:    journalPeriod,
         p_ext_description:   `Extension: order ${ord.id} (${oldDays}→${newDays} days)${discountAmount > 0 ? `; discount ₱${discountAmount}` : ''}`,
+        p_payment_account:   paymentAccountId,
       });
 
     if (rpcErr) {

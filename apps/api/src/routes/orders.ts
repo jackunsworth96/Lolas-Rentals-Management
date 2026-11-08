@@ -9,6 +9,8 @@ import { sendTelegramAlert, sendTelegramAlertPaidOrdersStaggered, getTelegramCha
 import { escapeHtml } from '../services/email.js';
 import { deriveTransportService } from '../lib/transport-service.js';
 import { loadEnrichedOrdersFallback } from '../lib/enriched-orders-fallback.js';
+import { depositHoldingAccount, resolveRoutedAccounts } from '../lib/deposit-envelope.js';
+import { resolveStoreAccounts } from '../adapters/supabase/maintenance-expense-rpc.js';
 import {
   assertSurfRacksAvailable,
   countRackAddonLines,
@@ -258,10 +260,15 @@ router.patch('/:id/deposit-method', requirePermission(Permission.EditOrders), va
       throw Object.assign(new Error(`Select a ${selectedGcash ? 'GCash' : 'cash'} account for this deposit`), { statusCode: 400 });
     }
 
+    const holdingAccountId = depositHoldingAccount(
+      accountId,
+      selectedGcash ? 'gcash' : 'cash',
+      await resolveRoutedAccounts(String(order.store_id)),
+    );
     const { data, error } = await supabase.rpc('correct_order_deposit_method', {
       p_order_id: req.params.id,
       p_payment_method_id: paymentMethodId,
-      p_account_id: accountId,
+      p_account_id: holdingAccountId,
     });
     if (error) throw new Error(`Failed to update deposit method: ${error.message}`);
     res.json({ success: true, data: { paymentMethodId, updatedPayments: Number(data ?? 0) } });
@@ -557,7 +564,19 @@ router.post('/:id/settle', requirePermission(Permission.EditOrders), validateBod
 })), async (req, res, next) => {
   try {
     const { settleOrder } = await import('../use-cases/orders/settle-order.js');
-    const result = await settleOrder(req.app.locals.deps, { orderId: req.params.id, ...req.body });
+    const { data: orderRow, error: orderErr } = await supabase
+      .from('orders').select('store_id').eq('id', req.params.id).maybeSingle();
+    if (orderErr) throw new Error(orderErr.message);
+    const storeId = (orderRow as { store_id?: string } | null)?.store_id;
+    const [cashAccounts, storeAccounts] = storeId
+      ? await Promise.all([resolveRoutedAccounts(storeId), resolveStoreAccounts(storeId)])
+      : [undefined, null];
+    const result = await settleOrder(req.app.locals.deps, {
+      orderId: req.params.id,
+      ...req.body,
+      cashAccounts,
+      returnChargesIncomeAccountId: storeAccounts?.incomeAccountId ?? null,
+    });
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });
