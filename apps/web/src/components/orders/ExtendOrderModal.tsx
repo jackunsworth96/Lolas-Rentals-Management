@@ -8,6 +8,7 @@ import { useOrderSurfRackAllocations, useSurfRackAvailability } from '../../api/
 import { surfRackShortfall } from './SurfRackAvailabilityNote.js';
 import type { EnrichedOrder } from '../../types/api.js';
 import { formatCurrency } from '../../utils/currency.js';
+import { usePaymentRouting } from '../../hooks/use-payment-routing.js';
 
 interface Props {
   open: boolean;
@@ -138,13 +139,12 @@ const PAYMENT_METHODS = [
   { id: 'bank_transfer', label: 'Bank Transfer' },
 ];
 
-function getAccountId(method: string, storeId: string): string {
-  const isBass = storeId === 'store-bass';
+function fallbackAccountId(method: string): string {
   switch (method) {
-    case 'cash': return isBass ? 'CASH-BASS' : 'CASH-LOLA';
+    case 'cash': return 'CASH-LOLA';
     case 'gcash': return 'GCASH-store-lolas';
-    case 'card': return 'CARD-TERMINAL-store-lolas';
-    case 'bank_transfer': return 'BANK-UNION-BANK-store-lolas';
+    case 'card': return 'CARD-PENDING';
+    case 'bank_transfer': return 'Wise';
     default: return '';
   }
 }
@@ -158,6 +158,7 @@ function isStoreLocation(loc: ConfigLocation): boolean {
 
 export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
   const qc = useQueryClient();
+  const routing = usePaymentRouting();
   const storeId = enrichedData.storeId;
   const orderId = enrichedData.id;
 
@@ -359,7 +360,7 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
     const discountNum = parseFloat(discountValue);
     const hasDiscount = !isNaN(discountNum) && discountNum > 0;
     const accountId = paymentStatus === 'paid' && paymentMethod
-      ? getAccountId(paymentMethod, storeId)
+      ? routing.resolveReceivedIntoForStore(storeId, paymentMethod) ?? fallbackAccountId(paymentMethod)
       : undefined;
 
     setLoading(true);

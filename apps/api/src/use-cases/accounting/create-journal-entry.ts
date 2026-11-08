@@ -44,5 +44,10 @@ export async function createJournalEntry(
     createdBy: input.createdBy,
   });
 
-  return deps.accounting.createTransaction(transaction.legs as JournalLeg[], input.storeId);
+  return deps.accounting.createTransaction(
+    transaction.legs as JournalLeg[],
+    input.storeId,
+    input.date,
+    input.createdBy,
+  );
 }

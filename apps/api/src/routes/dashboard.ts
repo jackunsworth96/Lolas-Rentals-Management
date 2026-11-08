@@ -283,10 +283,29 @@ router.get('/summary', authenticate, async (req, res, next) => {
         .eq('status', 'In Progress')
         .then((r) => ({ key: 'maintenanceRecords' as const, ...r })),
 
-      sb
-        .from('journal_entries')
-        .select('account_id, store_id, debit, credit, chart_of_accounts!account_id(name, account_type, store_id)')
-        .then((r) => ({ key: 'cashBalances' as const, ...r })),
+      Promise.all([
+        sb.rpc('account_balances', { p_from: manilaDate, p_to: manilaDate }),
+        sb.from('chart_of_accounts').select('id, name, account_type, store_id').eq('is_active', true),
+      ]).then(([balRes, coaRes]) => {
+        const coa = new Map(
+          ((coaRes.data ?? []) as Array<{ id: string; name: string; account_type: string; store_id: string | null }>)
+            .map((a) => [a.id, a]),
+        );
+        const rows = ((balRes.data ?? []) as Array<{
+          account_id: string; opening_debit: number; opening_credit: number; period_debit: number; period_credit: number;
+        }>).flatMap((b) => {
+          const acct = coa.get(b.account_id);
+          if (!acct) return [];
+          return [{
+            account_id: b.account_id,
+            store_id: acct.store_id,
+            debit: Number(b.opening_debit) + Number(b.period_debit),
+            credit: Number(b.opening_credit) + Number(b.period_credit),
+            chart_of_accounts: { name: acct.name, account_type: acct.account_type, store_id: acct.store_id },
+          }];
+        });
+        return { key: 'cashBalances' as const, data: rows, error: balRes.error ?? coaRes.error };
+      }),
 
       sb
         .from('order_items')
@@ -977,16 +996,19 @@ router.get('/summary', authenticate, async (req, res, next) => {
 // ── Charity impact — shared query helper ──────────────────────────────────────
 const CHARITY_OPENING_BALANCE = 307995;
 const CHARITY_PENDING_LEGACY = 2933;
+const CHARITY_PAYABLE_ACCOUNT_ID = 'CHARITY-PAYABLE';
 
 async function queryCharityImpact(sb: ReturnType<typeof getSupabaseClient>) {
-  const yearStart = `${new Date().getFullYear()}-01-01`;
+  const today = formatManilaDate();
+  const yearStart = `${today.slice(0, 4)}-01-01`;
 
-  const [bookingRes, annualRes] = await Promise.all([
+  const [payableRes, payoutRes, annualExpenseRes] = await Promise.all([
+    sb.rpc('account_balances', { p_from: today, p_to: today }).eq('account_id', CHARITY_PAYABLE_ACCOUNT_ID),
     sb
-      .from('orders_raw')
-      .select('charity_donation')
-      .not('charity_donation', 'is', null)
-      .gt('charity_donation', 0),
+      .from('journal_entries')
+      .select('debit, date')
+      .eq('account_id', CHARITY_PAYABLE_ACCOUNT_ID)
+      .eq('reference_type', 'charity_payout'),
     sb
       .from('journal_entries')
       .select('debit')
@@ -994,20 +1016,29 @@ async function queryCharityImpact(sb: ReturnType<typeof getSupabaseClient>) {
       .neq('reference_type', 'opening_balance')
       .gte('date', yearStart),
   ]);
+  if (payableRes.error) throw new Error(`Charity payable balance failed: ${payableRes.error.message}`);
 
-  const ordersCharitySum = (bookingRes.data ?? []).reduce(
-    (sum, r) => sum + Number((r as { charity_donation?: number | null }).charity_donation ?? 0),
-    0,
-  );
-  const bookingContributions = CHARITY_PENDING_LEGACY + ordersCharitySum;
-  const totalRaised = CHARITY_OPENING_BALANCE + bookingContributions;
-  const totalDonated = CHARITY_OPENING_BALANCE;
-  const pendingPayout = totalRaised - totalDonated;
+  // Owed to NGOs = credit balance of the charity payable account in the ledger.
+  const payableRow = (payableRes.data ?? [])[0] as
+    | { opening_debit: number; opening_credit: number; period_debit: number; period_credit: number }
+    | undefined;
+  const pendingPayout = payableRow
+    ? Number(payableRow.opening_credit) + Number(payableRow.period_credit)
+      - Number(payableRow.opening_debit) - Number(payableRow.period_debit)
+    : 0;
 
-  const annualDonated = (annualRes.data ?? []).reduce(
-    (sum, r) => sum + Number((r as { debit?: number | null }).debit ?? 0),
-    0,
-  );
+  const payouts = (payoutRes.data ?? []) as Array<{ debit: number | null; date: string }>;
+  const paidOutTotal = payouts.reduce((sum, r) => sum + Number(r.debit ?? 0), 0);
+  const totalDonated = CHARITY_OPENING_BALANCE + paidOutTotal;
+  const totalRaised = totalDonated + pendingPayout;
+  const bookingContributions = totalRaised - CHARITY_OPENING_BALANCE;
+
+  const annualDonated =
+    payouts.filter((r) => r.date >= yearStart).reduce((sum, r) => sum + Number(r.debit ?? 0), 0)
+    + (annualExpenseRes.data ?? []).reduce(
+      (sum, r) => sum + Number((r as { debit?: number | null }).debit ?? 0),
+      0,
+    );
 
   return {
     openingBalance: CHARITY_OPENING_BALANCE,

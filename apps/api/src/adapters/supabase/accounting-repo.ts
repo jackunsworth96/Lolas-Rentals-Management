@@ -70,7 +70,12 @@ function legToRow(
 }
 
 export class SupabaseAccountingRepository implements AccountingPort {
-  async createTransaction(legs: JournalLeg[], storeId: string, date?: string): Promise<JournalTransaction> {
+  async createTransaction(
+    legs: JournalLeg[],
+    storeId: string,
+    date?: string,
+    createdBy: string | null = null,
+  ): Promise<JournalTransaction> {
     const sb = getSupabaseClient();
 
     const txId = crypto.randomUUID();
@@ -86,11 +91,11 @@ export class SupabaseAccountingRepository implements AccountingPort {
       date: resolvedDate,
       storeId,
       legs,
-      createdBy: null,
+      createdBy,
     });
 
     const rows = legs.map((leg) =>
-      legToRow(leg, txId, period, resolvedDate, storeId, null),
+      legToRow(leg, txId, period, resolvedDate, storeId, createdBy),
     );
 
     const { error } = await sb.from('journal_entries').insert(rows);
@@ -125,15 +130,25 @@ export class SupabaseAccountingRepository implements AccountingPort {
     to: string,
   ): Promise<JournalEntry[]> {
     const sb = getSupabaseClient();
-    const { data, error } = await sb
-      .from('journal_entries')
-      .select('*')
-      .eq('account_id', accountId)
-      .gte('date', from)
-      .lte('date', to)
-      .order('date', { ascending: true });
-    if (error) throw new Error(`findByAccountDateRange failed: ${error.message}`);
-    return (data as JournalEntryRow[]).map(rowToEntry);
+    const pageSize = 1000;
+    const rows: JournalEntryRow[] = [];
+    for (let offset = 0; ; offset += pageSize) {
+      const { data, error } = await sb
+        .from('journal_entries')
+        .select('*')
+        .eq('account_id', accountId)
+        .gte('date', from)
+        .lte('date', to)
+        .order('date', { ascending: true })
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
+        .range(offset, offset + pageSize - 1);
+      if (error) throw new Error(`findByAccountDateRange failed: ${error.message}`);
+      const page = (data ?? []) as JournalEntryRow[];
+      rows.push(...page);
+      if (page.length < pageSize) break;
+    }
+    return rows.map(rowToEntry);
   }
 
   async findByReference(
@@ -299,6 +314,12 @@ export class SupabaseAccountingRepository implements AccountingPort {
     });
   }
 
+  /**
+   * Per-account report for a period: opening balance, period debits/credits and
+   * closing balance. An account's balance includes every journal line posted to
+   * it whatever the line's store_id (company-level postings such as owner
+   * drawings hit store accounts too). Accounts with no store are company-wide.
+   */
   async calculateBalancesByDateRange(
     storeIds: string[],
     from: string,
@@ -307,54 +328,70 @@ export class SupabaseAccountingRepository implements AccountingPort {
     const sb = getSupabaseClient();
 
     const acctStoreIds = [...new Set([...storeIds, 'company'])];
-    let acctQuery = sb
-      .from('chart_of_accounts')
-      .select('id, name, account_type, store_id')
-      .eq('is_active', true);
-    if (acctStoreIds.length === 1) {
-      acctQuery = acctQuery.eq('store_id', acctStoreIds[0]);
-    } else {
-      acctQuery = acctQuery.in('store_id', acctStoreIds);
-    }
-    const { data: allAccounts, error: acctErr } = await acctQuery;
-    if (acctErr) throw new Error(`calculateBalancesByDateRange accounts: ${acctErr.message}`);
+    const [acctRes, balRes, reconRes] = await Promise.all([
+      sb
+        .from('chart_of_accounts')
+        .select('id, name, account_type, store_id')
+        .eq('is_active', true)
+        .or(`store_id.is.null,store_id.in.(${acctStoreIds.map((id) => `"${id}"`).join(',')})`),
+      sb.rpc('account_balances', { p_from: from, p_to: to }),
+      sb
+        .from('account_reconciliations')
+        .select('account_id, as_of_date, ledger_balance, counted_balance, variance, notes, created_at')
+        .lte('as_of_date', to)
+        .order('as_of_date', { ascending: false })
+        .order('created_at', { ascending: false }),
+    ]);
+    if (acctRes.error) throw new Error(`calculateBalancesByDateRange accounts: ${acctRes.error.message}`);
+    if (balRes.error) throw new Error(`calculateBalancesByDateRange balances: ${balRes.error.message}`);
+    if (reconRes.error) throw new Error(`calculateBalancesByDateRange reconciliations: ${reconRes.error.message}`);
 
-    let jeQuery = sb
-      .from('journal_entries')
-      .select('account_id, debit, credit')
-      .gte('date', from)
-      .lte('date', to);
-    if (storeIds.length === 1) {
-      jeQuery = jeQuery.eq('store_id', storeIds[0]);
-    } else if (storeIds.length > 1) {
-      jeQuery = jeQuery.in('store_id', storeIds);
+    const totalsMap = new Map<string, { opening: number; debit: number; credit: number }>();
+    for (const row of (balRes.data ?? []) as Array<{
+      account_id: string; opening_debit: number; opening_credit: number; period_debit: number; period_credit: number;
+    }>) {
+      totalsMap.set(row.account_id, {
+        opening: Number(row.opening_debit) - Number(row.opening_credit),
+        debit: Number(row.period_debit),
+        credit: Number(row.period_credit),
+      });
     }
-    const { data: entries, error: jeErr } = await jeQuery;
-    if (jeErr) throw new Error(`calculateBalancesByDateRange entries: ${jeErr.message}`);
 
-    const totalsMap = new Map<string, { debit: number; credit: number }>();
-    for (const row of (entries ?? []) as { account_id: string; debit: number; credit: number }[]) {
-      const existing = totalsMap.get(row.account_id) ?? { debit: 0, credit: 0 };
-      existing.debit += row.debit ?? 0;
-      existing.credit += row.credit ?? 0;
-      totalsMap.set(row.account_id, existing);
+    const lastRecon = new Map<string, NonNullable<AccountBalance['lastReconciliation']>>();
+    for (const r of (reconRes.data ?? []) as Array<{
+      account_id: string; as_of_date: string; ledger_balance: number; counted_balance: number;
+      variance: number; notes: string; created_at: string;
+    }>) {
+      if (lastRecon.has(r.account_id)) continue;
+      lastRecon.set(r.account_id, {
+        asOfDate: r.as_of_date,
+        ledgerBalance: Number(r.ledger_balance),
+        countedBalance: Number(r.counted_balance),
+        variance: Number(r.variance),
+        notes: r.notes,
+        createdAt: r.created_at,
+      });
     }
 
     const typeOrder = ['Asset', 'Liability', 'Income', 'Expense', 'Equity'];
     const byType = new Map<string, AccountBalance[]>();
     for (const t of typeOrder) byType.set(t, []);
 
-    for (const acct of (allAccounts ?? []) as { id: string; name: string; account_type: string; store_id: string | null }[]) {
-      const totals = totalsMap.get(acct.id) ?? { debit: 0, credit: 0 };
+    for (const acct of (acctRes.data ?? []) as { id: string; name: string; account_type: string; store_id: string | null }[]) {
+      const totals = totalsMap.get(acct.id) ?? { opening: 0, debit: 0, credit: 0 };
+      const closing = round2(totals.opening + totals.debit - totals.credit);
       const list = byType.get(acct.account_type) ?? [];
       list.push({
         accountId: acct.id,
         accountName: acct.name,
         accountType: acct.account_type,
-        storeId: acct.store_id,
-        debitTotal: totals.debit,
-        creditTotal: totals.credit,
-        balance: totals.debit - totals.credit,
+        storeId: acct.store_id ?? 'company',
+        debitTotal: round2(totals.debit),
+        creditTotal: round2(totals.credit),
+        balance: closing,
+        openingBalance: round2(totals.opening),
+        closingBalance: closing,
+        lastReconciliation: lastRecon.get(acct.id) ?? null,
       });
       byType.set(acct.account_type, list);
     }
@@ -362,9 +399,14 @@ export class SupabaseAccountingRepository implements AccountingPort {
     return [...byType.entries()]
       .filter(([, accounts]) => accounts.length > 0)
       .map(([type, accounts]) => {
-        const totalDebit = accounts.reduce((s, a) => s + a.debitTotal, 0);
-        const totalCredit = accounts.reduce((s, a) => s + a.creditTotal, 0);
-        return { type, totalDebit, totalCredit, netBalance: totalDebit - totalCredit, accounts };
+        const totalDebit = round2(accounts.reduce((s, a) => s + a.debitTotal, 0));
+        const totalCredit = round2(accounts.reduce((s, a) => s + a.creditTotal, 0));
+        const netBalance = round2(accounts.reduce((s, a) => s + a.balance, 0));
+        return { type, totalDebit, totalCredit, netBalance, accounts };
       });
   }
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
 }

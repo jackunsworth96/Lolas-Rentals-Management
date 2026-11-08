@@ -24,6 +24,20 @@ export interface AccountBalance {
   debitTotal: number;
   creditTotal: number;
   balance: number;
+  /** Running balance (debit − credit) before the period starts. */
+  openingBalance?: number;
+  /** Running balance (debit − credit) at the end of the period. */
+  closingBalance?: number;
+  lastReconciliation?: AccountReconciliationSummary | null;
+}
+
+export interface AccountReconciliationSummary {
+  asOfDate: string;
+  ledgerBalance: number;
+  countedBalance: number;
+  variance: number;
+  notes: string;
+  createdAt: string;
 }
 
 export interface BalanceSummary {
@@ -35,7 +49,12 @@ export interface BalanceSummary {
 }
 
 export interface AccountingPort {
-  createTransaction(legs: JournalLeg[], storeId: string, date?: string): Promise<JournalTransaction>;
+  createTransaction(
+    legs: JournalLeg[],
+    storeId: string,
+    date?: string,
+    createdBy?: string | null,
+  ): Promise<JournalTransaction>;
   findByAccount(accountId: string, period?: string): Promise<JournalEntry[]>;
   findByAccountDateRange(accountId: string, from: string, to: string): Promise<JournalEntry[]>;
   findByReference(referenceType: string, referenceId: string): Promise<JournalEntry[]>;

@@ -339,16 +339,16 @@ export default function ManualJournalPage() {
 
         {/* Help box */}
         <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">
-          <p className="font-semibold">Opening balance example (Customer Deposits)</p>
+          <p className="font-semibold">Opening balance example (prior-system prepayments)</p>
           <div className="mt-2 space-y-0.5 font-mono text-xs text-blue-700">
             <p>Dr &nbsp;UnionBank (Asset) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;85,000</p>
-            <p>Cr &nbsp;Customer Deposits Received (Liability) &nbsp;15,000</p>
+            <p>Cr &nbsp;Prepaid Orders (Prior System) (Liability) &nbsp;15,000</p>
             <p>Cr &nbsp;Capital / Owner's Equity (Equity) &nbsp;&nbsp;&nbsp;&nbsp;70,000</p>
           </div>
           <p className="mt-2 text-blue-700">
             The pre-paid 15k clears when those orders activate using the{' '}
-            <strong>Pre-paid (Prior System)</strong> payment method, which routes to the Customer
-            Deposits Received account via Settings → Payment Routing.
+            <strong>Pre-paid (Prior System)</strong> payment method, which routes to the Prepaid
+            Orders (Prior System) account via Settings → Payment Routing.
           </p>
         </div>
 

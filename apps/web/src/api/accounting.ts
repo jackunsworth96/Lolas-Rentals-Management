@@ -14,9 +14,24 @@ export interface AccountBalanceItem {
   accountName: string;
   accountType: string;
   storeId?: string | null;
+  /** Debits posted inside the period. */
   debitTotal: number;
+  /** Credits posted inside the period. */
   creditTotal: number;
+  /** Closing balance (debit − credit) at the end of the period. */
   balance: number;
+  openingBalance?: number;
+  closingBalance?: number;
+  lastReconciliation?: ReconciliationSummary | null;
+}
+
+export interface ReconciliationSummary {
+  asOfDate: string;
+  ledgerBalance: number;
+  countedBalance: number;
+  variance: number;
+  notes: string;
+  createdAt: string;
 }
 
 export interface BalanceSummaryGroup {
@@ -34,14 +49,97 @@ export interface BalancesV2Response {
   from: string;
   to: string;
   summary: BalanceSummaryGroup[];
+  /** Totals across the whole ledger through `to`; equal when the books balance. */
+  ledgerCheck?: { debits: number; credits: number };
 }
 
-export function useBalancesV2(storeId: string, month: string, half: '1' | '2' | 'full') {
-  const params = new URLSearchParams({ storeId, month, half });
+export function useBalancesV2(storeId: string, month: string, half: '1' | '2' | 'full', asOf?: string) {
+  const params = new URLSearchParams({ storeId, month, half, ...(asOf ? { asOf } : {}) });
   return useQuery<BalancesV2Response>({
-    queryKey: ['balances-v2', storeId, month, half],
+    queryKey: ['balances-v2', storeId, month, half, asOf ?? null],
     queryFn: () => api.get(`/accounting/balances-v2?${params}`),
     enabled: !!storeId && !!month,
+  });
+}
+
+export interface AccountReconciliationRecord {
+  id: string;
+  asOfDate: string;
+  ledgerBalance: number;
+  countedBalance: number;
+  variance: number;
+  adjustmentTxId: string | null;
+  notes: string;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+export interface AccountSummary {
+  accountId: string;
+  accountName: string;
+  accountType: string;
+  storeId: string;
+  from: string;
+  to: string;
+  openingBalance: number;
+  periodDebit: number;
+  periodCredit: number;
+  closingBalance: number;
+  reconciliations: AccountReconciliationRecord[];
+}
+
+export function useAccountSummary(accountId: string, from: string, to: string) {
+  const params = new URLSearchParams({ accountId, from, to });
+  return useQuery<AccountSummary>({
+    queryKey: ['account-summary', accountId, from, to],
+    queryFn: () => api.get(`/accounting/account-summary?${params}`),
+    enabled: !!accountId && !!from && !!to,
+  });
+}
+
+function invalidateAccounting(qc: ReturnType<typeof useQueryClient>) {
+  for (const key of ['balances', 'balances-v2', 'account-summary', 'account-ledger', 'journal-entries', 'dashboard', 'charity-impact']) {
+    qc.invalidateQueries({ queryKey: [key] });
+  }
+}
+
+export interface ReconcileAccountPayload {
+  accountId: string;
+  asOfDate: string;
+  /** As staff read it: a positive amount owed for liabilities. */
+  countedBalance: number;
+  notes: string;
+  offsetAccountId?: string;
+}
+
+export interface ReconcileAccountResult {
+  id: string;
+  ledgerBalance: number;
+  countedBalance: number;
+  variance: number;
+  adjustmentTxId: string | null;
+}
+
+export function useReconcileAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ReconcileAccountPayload) => api.post<ReconcileAccountResult>('/accounting/reconcile', body),
+    onSuccess: () => invalidateAccounting(qc),
+  });
+}
+
+export interface CharityPayoutPayload {
+  amount: number;
+  fromAccountId: string;
+  date: string;
+  note: string;
+}
+
+export function useCharityPayout() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CharityPayoutPayload) => api.post('/accounting/charity-payout', body),
+    onSuccess: () => invalidateAccounting(qc),
   });
 }
 
@@ -81,11 +179,7 @@ export function useCreateJournalEntry() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: Record<string, unknown>) => api.post('/accounting/journal', body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['journal-entries'] });
-      qc.invalidateQueries({ queryKey: ['balances'] });
-      qc.invalidateQueries({ queryKey: ['balances-v2'] });
-    },
+    onSuccess: () => invalidateAccounting(qc),
   });
 }
 
@@ -93,10 +187,7 @@ export function useTransferFunds() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: Record<string, unknown>) => api.post('/accounting/transfer', body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['balances'] });
-      qc.invalidateQueries({ queryKey: ['balances-v2'] });
-    },
+    onSuccess: () => invalidateAccounting(qc),
   });
 }
 
@@ -105,17 +196,14 @@ export interface OwnerDrawingsPayload {
   paymentMethod: 'cash' | 'gcash' | 'bank_transfer';
   date: string;
   note?: string;
+  fromAccountId?: string;
 }
 
 export function usePostOwnerDrawings() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: OwnerDrawingsPayload) => api.post('/accounting/drawings', body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['balances'] });
-      qc.invalidateQueries({ queryKey: ['balances-v2'] });
-      qc.invalidateQueries({ queryKey: ['journal-entries'] });
-    },
+    onSuccess: () => invalidateAccounting(qc),
   });
 }
 

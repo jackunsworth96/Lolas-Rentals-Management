@@ -102,7 +102,8 @@ export async function runPayroll(
   const totalNetPay = payslips.reduce((sum, p) => sum + p.netPay, 0);
   const totalGrossPay = payslips.reduce((sum, p) => sum + p.grossPay, 0);
 
-  const { cashAccountId, safeAccountId, wagesAccountId } = await resolvePayrollAccounts(input.storeId);
+  const { cashAccountId, safeAccountId, wagesAccountId, advanceAccountId } =
+    await resolvePayrollAccounts(input.storeId);
 
   const desc = `Payroll ${input.periodStart} to ${input.periodEnd}`;
   const txDate = formatManilaDate();
@@ -127,6 +128,38 @@ export async function runPayroll(
   }> = [];
 
   for (const payslip of payslips) {
+    // The advance was paid out as cash when granted (DR Cash Advance asset), so
+    // recovering it through payroll is wages expense settled against that asset.
+    const advanceRecovered = advanceAccountId ? payslip.cashAdvanceDeduction : 0;
+    if (advanceRecovered > 0) {
+      payrollTransactions.push({
+        transactionId: randomUUID(),
+        period: txPeriod,
+        date: txDate,
+        storeId: PAYROLL_JOURNAL_STORE,
+        legs: [
+          {
+            id: randomUUID(),
+            account_id: wagesAccountId,
+            debit: advanceRecovered,
+            credit: 0,
+            description: `${desc} — ${payslip.employeeName} (cash advance recovered)`,
+            reference_type: 'payroll',
+            reference_id: payslip.employeeId,
+          },
+          {
+            id: randomUUID(),
+            account_id: advanceAccountId!,
+            debit: 0,
+            credit: advanceRecovered,
+            description: `${desc} — ${payslip.employeeName} (cash advance recovered)`,
+            reference_type: 'payroll',
+            reference_id: payslip.employeeId,
+          },
+        ],
+      });
+    }
+
     // Net pay can be 0 (fully absorbed by a cash advance) but never negative
     // — calculatePayroll caps the advance deduction so it can't exceed net
     // pay. A $0 payslip still gets persisted below; there is just no cash

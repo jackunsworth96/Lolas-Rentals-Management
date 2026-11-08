@@ -406,24 +406,40 @@ export async function resolvePayrollAccounts(storeId: string): Promise<{
   cashAccountId: string;
   safeAccountId: string;
   wagesAccountId: string;
+  advanceAccountId: string | null;
 }> {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('chart_of_accounts')
-    .select('id, name, account_type')
-    .in('store_id', [storeId, 'company'])
-    .eq('is_active', true);
+  const [{ data, error }, { data: cashRule }] = await Promise.all([
+    supabase
+      .from('chart_of_accounts')
+      .select('id, name, account_type')
+      .in('store_id', [storeId, 'company'])
+      .eq('is_active', true)
+      .order('id'),
+    supabase
+      .from('payment_routing_rules')
+      .select('received_into_account_id')
+      .eq('store_id', storeId)
+      .ilike('payment_method_id', 'cash')
+      .maybeSingle(),
+  ]);
   if (error) throw new Error(`Failed to look up payroll accounts: ${error.message}`);
 
   const accounts = (data ?? []) as Array<{ id: string; name: string; account_type: string }>;
+  const routedCashId = (cashRule as { received_into_account_id?: string | null } | null)?.received_into_account_id ?? null;
 
-  const cash = accounts.find(
-    (a) => a.account_type === 'Asset' && a.name.toLowerCase().includes('cash'),
-  );
-  const safe = accounts.find(
-    (a) =>
-      a.account_type === 'Asset' &&
-      (a.name.toLowerCase().includes('safe') || a.name.toLowerCase().includes('bank')),
+  // "Cash Advance", the deposit envelope and the charity wallet also contain "cash"
+  // but are never the till that pays wages.
+  const isTillLike = (name: string) => {
+    const n = name.toLowerCase();
+    return n.includes('cash') && !n.includes('advance') && !n.includes('envelope') && !n.includes('charity');
+  };
+  const cash = accounts.find((a) => a.id === routedCashId && a.account_type === 'Asset')
+    ?? accounts.find((a) => a.account_type === 'Asset' && isTillLike(a.name));
+  const safe = accounts.find((a) => a.account_type === 'Asset' && a.name.toLowerCase().includes('safe'))
+    ?? accounts.find((a) => a.account_type === 'Asset' && a.name.toLowerCase().includes('bank'));
+  const advance = accounts.find(
+    (a) => a.account_type === 'Asset' && a.name.toLowerCase().includes('advance'),
   );
   const wages = accounts.find(
     (a) =>
@@ -450,5 +466,6 @@ export async function resolvePayrollAccounts(storeId: string): Promise<{
     cashAccountId: cash!.id,
     safeAccountId: safe!.id,
     wagesAccountId: wages!.id,
+    advanceAccountId: advance?.id ?? null,
   };
 }
