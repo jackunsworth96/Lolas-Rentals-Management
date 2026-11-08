@@ -68,6 +68,12 @@ export function OrderReviewSheet({
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose, submitting]);
 
+  useEffect(() => {
+    if (!open) return;
+    document.body.classList.add('order-review-open');
+    return () => document.body.classList.remove('order-review-open');
+  }, [open]);
+
   return (
     <AnimatePresence>
       {open && (
@@ -76,7 +82,7 @@ export function OrderReviewSheet({
             key="order-review-backdrop"
             type="button"
             aria-label="Close review"
-            className="pointer-events-auto fixed inset-0 z-[100] bg-black/40 md:hidden"
+            className="pointer-events-auto fixed inset-0 z-[210] bg-black/40 md:hidden"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -89,7 +95,7 @@ export function OrderReviewSheet({
             role="dialog"
             aria-modal="true"
             aria-labelledby="order-review-title"
-            className="pointer-events-auto fixed bottom-0 left-0 right-0 z-[101] max-h-[85vh] w-full overflow-y-auto rounded-t-2xl bg-cream-brand p-6 shadow-[0_-8px_32px_rgba(54,55,55,0.12)] md:hidden"
+            className="pointer-events-auto fixed bottom-0 left-0 right-0 z-[211] max-h-[85vh] w-full overflow-y-auto rounded-t-2xl bg-cream-brand p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-[0_-8px_32px_rgba(54,55,55,0.12)] md:hidden"
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}

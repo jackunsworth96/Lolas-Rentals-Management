@@ -58,12 +58,12 @@ function isCanvasBlank(canvas: HTMLCanvasElement): boolean {
   return true;
 }
 
-function setupCanvasSize(canvas: HTMLCanvasElement) {
+function setupCanvasSize(canvas: HTMLCanvasElement, force = false) {
   const dpr = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
   const w = Math.max(1, Math.floor(rect.width * dpr));
   const h = Math.max(1, Math.floor(rect.height * dpr));
-  if (canvas.width !== w || canvas.height !== h) {
+  if (force || canvas.width !== w || canvas.height !== h) {
     canvas.width = w;
     canvas.height = h;
     const ctx = canvas.getContext('2d');
@@ -146,7 +146,9 @@ function SignaturePad({ canvasRef, onDrawingChange }: SignaturePadProps) {
   const clear = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    setupCanvasSize(canvas);
+    drawing.current = false;
+    last.current = null;
+    setupCanvasSize(canvas, true);
     onDrawingChange?.(false);
   };
 
