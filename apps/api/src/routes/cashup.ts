@@ -14,7 +14,7 @@ import type { AccountingPort } from '@lolas/domain';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { buildCashupSummary } from '../use-cases/cashup/build-cashup-summary.js';
 import { addDaysToDateStr, formatManilaDate } from '../utils/manila-date.js';
-import { DEPOSIT_ENVELOPE_ACCOUNT_ID } from '../lib/deposit-envelope.js';
+import { DEPOSIT_ENVELOPE_ACCOUNT_ID, depositLocation, resolveRoutedAccounts } from '../lib/deposit-envelope.js';
 
 const router = Router();
 router.use(authenticate);
@@ -203,21 +203,25 @@ router.get(
     try {
       const { storeId } = req.query as { storeId: string };
       const sb = getSupabaseClient();
-      const { data, error } = await sb
-        .from('payments')
-        .select(
-          'id, amount, payment_method_id, transaction_date, order_id, orders!order_id!inner(id, status, booking_token, customers!customer_id(name))',
-        )
-        .eq('store_id', storeId)
-        .in('payment_type', ['deposit', 'security_deposit'])
-        .not('orders.status', 'in', '(completed,cancelled)')
-        .order('transaction_date', { ascending: true });
+      const [{ data, error }, routed] = await Promise.all([
+        sb
+          .from('payments')
+          .select(
+            'id, amount, payment_method_id, account_id, transaction_date, order_id, orders!order_id!inner(id, status, booking_token, customers!customer_id(name))',
+          )
+          .eq('store_id', storeId)
+          .in('payment_type', ['deposit', 'security_deposit'])
+          .not('orders.status', 'in', '(completed,cancelled)')
+          .order('transaction_date', { ascending: true }),
+        resolveRoutedAccounts(storeId),
+      ]);
       if (error) throw new Error(`Deposit register query failed: ${error.message}`);
 
       type Row = {
         id: string;
         amount: number;
         payment_method_id: string | null;
+        account_id: string | null;
         transaction_date: string | null;
         order_id: string;
         orders: {
@@ -227,9 +231,14 @@ router.get(
           customers: { name: string } | { name: string }[] | null;
         } | null;
       };
-      const rows = ((data ?? []) as unknown as Row[]).filter(
-        (r) => (r.payment_method_id ?? '').toLowerCase() === 'cash',
-      );
+      const all = (data ?? []) as unknown as Row[];
+      const held = { cash: 0, gcash: 0, bank: 0 };
+      const rows: Row[] = [];
+      for (const r of all) {
+        const location = depositLocation(r.payment_method_id, r.account_id, routed);
+        held[location] += Number(r.amount ?? 0);
+        if (location === 'cash') rows.push(r);
+      }
 
       const orderIds = [...new Set(rows.map((r) => r.order_id))];
       const dueByOrder = new Map<string, string>();
@@ -259,7 +268,7 @@ router.get(
         };
       });
       const total = entries.reduce((s, e) => s + e.amount, 0);
-      res.json({ success: true, data: { entries, total } });
+      res.json({ success: true, data: { entries, total, held } });
     } catch (err) {
       next(err);
     }

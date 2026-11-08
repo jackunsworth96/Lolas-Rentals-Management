@@ -49,6 +49,7 @@ export interface StoreMetrics {
   depositsWithheldByMethod: {
     cash: number;
     gcash: number;
+    bank?: number;
   };
   fleetUtilisation: number;
   maintenanceVehicles: MaintenanceVehicle[];

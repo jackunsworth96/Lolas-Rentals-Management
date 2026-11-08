@@ -4,6 +4,7 @@ import { useStores, useChartOfAccounts } from '../../api/config.js';
 import { usePaymentRouting } from '../../hooks/use-payment-routing.js';
 import {
   useCashupSummary,
+  useDepositRegister,
   useReopenCashup,
   useDepositFunds,
   useInterStoreTransfer,
@@ -402,6 +403,7 @@ export default function CashupPage() {
       ) : summary ? (
         <CashupDay
           summary={summary}
+          storeId={storeId}
           date={date}
           query={search.trim().toLowerCase()}
           canManage={canManage}
@@ -603,6 +605,7 @@ export default function CashupPage() {
 
 function CashupDay({
   summary,
+  storeId,
   date,
   query,
   canManage,
@@ -614,6 +617,7 @@ function CashupDay({
   onSelectDate,
 }: {
   summary: CashupSummary;
+  storeId: string;
   date: string;
   query: string;
   canManage: boolean;
@@ -625,6 +629,7 @@ function CashupDay({
   onSelectDate: (d: string) => void;
 }) {
   const [showNonCash, setShowNonCash] = useState(false);
+  const { data: register } = useDepositRegister(storeId);
   const rec = summary.reconciliation;
   const isLocked = summary.isLocked;
   const tx = summary.transactions;
@@ -814,6 +819,14 @@ function CashupDay({
           subtitle={isLocked ? 'Live figures — includes anything posted after lock' : undefined}
           openingLabel="Envelope at last close"
           breakdown={summary.expected.envelope}
+          footer={
+            register?.held && (
+              <DepositsHeldSplit
+                held={register.held}
+                envelopeExpected={date === manilaToday() ? summary.expected.envelope.total : null}
+              />
+            )
+          }
         />
       </div>
 
@@ -888,6 +901,49 @@ function CashupDay({
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+/**
+ * Every deposit open orders hold right now, by where the money sits. Only the
+ * cash is in the envelope. The register is live, so the comparison is today-only.
+ */
+function DepositsHeldSplit({
+  held,
+  envelopeExpected,
+}: {
+  held: { cash: number; gcash: number; bank: number };
+  envelopeExpected: number | null;
+}) {
+  const total = held.cash + held.gcash + held.bank;
+  const gap = envelopeExpected == null ? 0 : Math.round((envelopeExpected - held.cash) * 100) / 100;
+  const rows = [
+    { label: 'Cash — in the envelope', amount: held.cash },
+    { label: 'GCash', amount: held.gcash },
+    ...(held.bank > 0 ? [{ label: 'Bank', amount: held.bank }] : []),
+  ];
+  return (
+    <div className="mt-4 border-t border-gray-200 pt-3">
+      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">Deposits held for open orders</p>
+      <dl className="space-y-1 text-sm">
+        {rows.map((r) => (
+          <div key={r.label} className="flex justify-between gap-3">
+            <dt className="text-gray-600">{r.label}</dt>
+            <dd className="tabular-nums font-medium">{formatCurrency(r.amount)}</dd>
+          </div>
+        ))}
+        <div className="flex justify-between gap-3 border-t border-gray-100 pt-1">
+          <dt className="font-semibold text-gray-900">Total held</dt>
+          <dd className="tabular-nums font-semibold">{formatCurrency(total)}</dd>
+        </div>
+      </dl>
+      {gap !== 0 && (
+        <p className="mt-2 rounded bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+          The envelope should hold {formatCurrency(Math.abs(gap))} {gap > 0 ? 'more' : 'less'} than the cash deposits on open
+          orders. Check the deposit register when counting.
+        </p>
+      )}
     </div>
   );
 }

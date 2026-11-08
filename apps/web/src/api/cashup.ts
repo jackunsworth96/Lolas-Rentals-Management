@@ -324,7 +324,11 @@ export function useCashupHistory(storeId: string, days = 14) {
 }
 
 export function useDepositRegister(storeId: string, enabled = true) {
-  return useQuery<{ entries: DepositRegisterEntry[]; total: number }>({
+  return useQuery<{
+    entries: DepositRegisterEntry[];
+    total: number;
+    held: { cash: number; gcash: number; bank: number };
+  }>({
     queryKey: ['cashup', 'deposit-register', storeId],
     queryFn: () => api.get(`/cashup/deposit-register?storeId=${enc(storeId)}`),
     enabled: !!storeId && enabled,

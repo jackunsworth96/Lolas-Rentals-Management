@@ -32,6 +32,23 @@ export interface RoutedAccounts extends StoreCashAccounts {
   accountFor(methodId: string | null | undefined): string | null;
 }
 
+export interface RoutingRuleRow {
+  payment_method_id: string;
+  received_into_account_id: string | null;
+}
+
+export function buildRoutedAccounts(rules: RoutingRuleRow[], envelopeAccountId: string | null): RoutedAccounts {
+  const byMethod = new Map<string, string>();
+  for (const r of rules) {
+    if (r.received_into_account_id) byMethod.set(methodKey(r.payment_method_id), r.received_into_account_id);
+  }
+  return {
+    tillAccountId: byMethod.get('cash') ?? null,
+    envelopeAccountId,
+    accountFor: (methodId) => byMethod.get(methodKey(methodId)) ?? null,
+  };
+}
+
 export async function resolveRoutedAccounts(storeId: string): Promise<RoutedAccounts> {
   const sb = getSupabaseClient();
   const [rulesRes, envelopeRes] = await Promise.all([
@@ -46,16 +63,32 @@ export async function resolveRoutedAccounts(storeId: string): Promise<RoutedAcco
       .maybeSingle(),
   ]);
   if (rulesRes.error) throw new Error(`Payment routing lookup failed: ${rulesRes.error.message}`);
+  return buildRoutedAccounts(
+    (rulesRes.data ?? []) as RoutingRuleRow[],
+    envelopeRes.data ? DEPOSIT_ENVELOPE_ACCOUNT_ID : null,
+  );
+}
 
-  const byMethod = new Map<string, string>();
-  for (const r of (rulesRes.data ?? []) as Array<{ payment_method_id: string; received_into_account_id: string | null }>) {
-    if (r.received_into_account_id) byMethod.set(methodKey(r.payment_method_id), r.received_into_account_id);
+export type DepositLocation = 'cash' | 'gcash' | 'bank';
+
+/**
+ * Where a held deposit physically sits. The account it was received into wins
+ * over the method label, which staff sometimes pick wrongly.
+ */
+export function depositLocation(
+  methodId: string | null | undefined,
+  accountId: string | null | undefined,
+  routed: RoutedAccounts,
+): DepositLocation {
+  if (accountId) {
+    if (accountId === routed.tillAccountId || accountId === routed.envelopeAccountId) return 'cash';
+    if (accountId === routed.accountFor('gcash')) return 'gcash';
+    return 'bank';
   }
-  return {
-    tillAccountId: byMethod.get('cash') ?? null,
-    envelopeAccountId: envelopeRes.data ? DEPOSIT_ENVELOPE_ACCOUNT_ID : null,
-    accountFor: (methodId) => byMethod.get(methodKey(methodId)) ?? null,
-  };
+  const key = methodKey(methodId);
+  if (key === 'cash') return 'cash';
+  if (key === 'gcash' || key === 'paymaya') return 'gcash';
+  return 'bank';
 }
 
 /**

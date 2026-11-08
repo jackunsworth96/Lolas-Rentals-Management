@@ -9,6 +9,12 @@ import { getPartnerCommissionStats } from '../lib/partner-commission.js';
 import { getDashboardAvailabilityModel, type DashboardAvailabilityModel } from '../lib/dashboard-availability-model.js';
 import { availableAfterUnassignedHolds, unprocessedBookingHolds } from '../lib/dashboard-unprocessed-bookings.js';
 import { ownerUseNotEndedBy, ownerUseVehicleIdsOverlapping } from '../lib/owner-use-window.js';
+import {
+  DEPOSIT_ENVELOPE_ACCOUNT_ID,
+  buildRoutedAccounts,
+  depositLocation,
+  type RoutingRuleRow,
+} from '../lib/deposit-envelope.js';
 
 const router = Router();
 router.use(authenticate);
@@ -136,6 +142,7 @@ interface StoreMetrics {
   depositsWithheldByMethod: {
     cash: number;
     gcash: number;
+    bank: number;
   };
   fleetUtilisation: number;
   maintenanceVehicles: MaintenanceVehicle[];
@@ -173,7 +180,7 @@ function emptyMetrics(financial: boolean): StoreMetrics {
     availableVehicles: 0,
     ninepmReturns: { count: 0, vehicles: [] },
     depositsWithheld: 0,
-    depositsWithheldByMethod: { cash: 0, gcash: 0 },
+    depositsWithheldByMethod: { cash: 0, gcash: 0, bank: 0 },
     fleetUtilisation: 0,
     maintenanceVehicles: [],
     maintenancePartsCost: financial ? 0 : null,
@@ -220,9 +227,14 @@ router.get('/summary', authenticate, async (req, res, next) => {
     const operationalQueries = [
       sb
         .from('orders')
-        .select('id, store_id, security_deposit, deposit_method_id, status')
+        .select('id, store_id, security_deposit, deposit_method_id, status, payments!order_id(payment_type, payment_method_id, account_id, amount)')
         .eq('status', 'active')
         .then((r) => ({ key: 'activeOrders' as const, ...r })),
+
+      sb
+        .from('payment_routing_rules')
+        .select('store_id, payment_method_id, received_into_account_id')
+        .then((r) => ({ key: 'routingRules' as const, ...r })),
 
       sb
         .from('order_items')
@@ -491,6 +503,9 @@ router.get('/summary', authenticate, async (req, res, next) => {
     }
 
     const activeOrders = dataMap.get('activeOrders') ?? [];
+    const routingRules = (dataMap.get('routingRules') ?? []) as unknown as Array<RoutingRuleRow & { store_id: string }>;
+    const routedFor = (storeId: string) =>
+      buildRoutedAccounts(routingRules.filter((r) => r.store_id === storeId), DEPOSIT_ENVELOPE_ACCOUNT_ID);
     const upcomingBookings = dataMap.get('upcomingBookings') ?? [];
     const fleet = dataMap.get('fleet') ?? [];
     const fleetStatuses = dataMap.get('fleetStatuses') ?? [];
@@ -711,23 +726,25 @@ router.get('/summary', authenticate, async (req, res, next) => {
         ? Math.round((storeActiveVehicleIds.size / totalRentable) * 100)
         : 0;
 
-      const depositsWithheld = storeActiveOrders.reduce(
-        (sum, o) => sum + Number(o.security_deposit ?? 0), 0,
-      );
-      const depositsWithheldByMethod = storeActiveOrders.reduce<{ cash: number; gcash: number }>(
-        (totals, order) => {
-          const method = String(order.deposit_method_id ?? '')
-            .toLowerCase()
-            .replace(/[\s_-]/g, '');
+      const depositsWithheldByMethod = { cash: 0, gcash: 0, bank: 0 };
+      for (const order of storeActiveOrders) {
+        const routed = routedFor(String(order.store_id));
+        const deposits = ((order.payments ?? []) as Array<Record<string, unknown>>)
+          .filter((p) => p.payment_type === 'deposit' || p.payment_type === 'security_deposit');
+        if (deposits.length === 0) {
           const amount = Number(order.security_deposit ?? 0);
-
-          if (method === 'cash') totals.cash += amount;
-          if (method === 'gcash' || method === 'paymaya') totals.gcash += amount;
-
-          return totals;
-        },
-        { cash: 0, gcash: 0 },
-      );
+          if (amount > 0) {
+            depositsWithheldByMethod[depositLocation(order.deposit_method_id as string | null, null, routed)] += amount;
+          }
+          continue;
+        }
+        for (const p of deposits) {
+          depositsWithheldByMethod[depositLocation(p.payment_method_id as string | null, p.account_id as string | null, routed)] +=
+            Number(p.amount ?? 0);
+        }
+      }
+      const depositsWithheld =
+        depositsWithheldByMethod.cash + depositsWithheldByMethod.gcash + depositsWithheldByMethod.bank;
 
       const ninepmVehicles = buildNinepmVehicles(ninepmCandidates, ninePmAddonOrderIds, sid);
       /** Only vehicles with an open maintenance record (In Progress), not fleet status heuristics (e.g. Service Vehicle). */
