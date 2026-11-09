@@ -19,6 +19,7 @@ import {
   isCashMethod,
   type StoreCashAccounts,
 } from '../../lib/deposit-envelope.js';
+import { isDepositPayment } from '@lolas/shared';
 
 export interface SettleOrderDeps {
   orderRepo: OrderRepository;
@@ -123,7 +124,7 @@ export async function settleOrder(
     (p) => p.paymentType === 'extension' && p.settlementStatus === 'pending',
   );
   const paidNonDepositPayments = payments.filter((p) => {
-    if (p.paymentType === 'deposit') return false;
+    if (isDepositPayment(p.paymentType)) return false;
     if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return false;
     if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return false;
     return true;
@@ -321,7 +322,7 @@ export async function settleOrder(
     // Cash deposits sit in the envelope; the applied part becomes takings in the till.
     const cash = input.cashAccounts;
     const cashDepositHeld = payments
-      .filter((p) => (p.paymentType === 'deposit' || p.paymentType === 'security_deposit') && isCashMethod(p.paymentMethodId))
+      .filter((p) => isDepositPayment(p.paymentType) && isCashMethod(p.paymentMethodId))
       .reduce((sum, p) => sum.add(Money.php(p.amount)), Money.zero());
     const cashApplied = Money.php(Math.min(cashDepositHeld.toNumber(), amountApplied.toNumber()));
     if (cash?.envelopeAccountId && cash.tillAccountId && cashApplied.isPositive()) {

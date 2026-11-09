@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { isDepositPayment } from '@lolas/shared';
 
 // The live API may deploy before its get_enriched_orders database migration.
 // Batch IDs so this fallback does not reproduce the old oversized request URL.
@@ -87,7 +88,7 @@ export async function loadEnrichedOrdersFallback(sb: SupabaseClient, storeId: st
       items: (itemsByOrder.get(orderId) ?? []).sort((a, b) =>
         String(a.created_at).localeCompare(String(b.created_at)) || String(a.id).localeCompare(String(b.id))),
       total_paid: orderPayments.reduce((sum, p) => {
-        if (p.payment_type === 'deposit' ||
+        if (isDepositPayment(p.payment_type) ||
             (p.payment_type === 'extension' && ['pending', 'absorbed'].includes(p.settlement_status)) ||
             (p.payment_type === 'addon' && p.payment_method_id === 'pending' && p.settlement_status === 'pending')) return sum;
         return sum + (p.payment_type === 'refund' ? -1 : 1) * Number(p.amount ?? 0);

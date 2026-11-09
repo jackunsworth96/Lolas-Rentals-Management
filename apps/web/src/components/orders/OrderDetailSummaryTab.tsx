@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { calculateBalanceDue, SWAP_REASON_CATEGORIES, SWAP_REASON_CATEGORY_LABELS, type SwapReasonCategory } from '@lolas/shared';
+import { calculateBalanceDue, isDepositPayment, SWAP_REASON_CATEGORIES, SWAP_REASON_CATEGORY_LABELS, type SwapReasonCategory } from '@lolas/shared';
 import { CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Badge } from '../common/Badge.js';
 import { Modal } from '../common/Modal.js';
@@ -505,7 +505,7 @@ export function OrderDetailSummaryTab({
   //    balance must not add them a second time.
   const total = enrichedData?.finalTotal ?? moneyAmount(order.finalTotal);
   const totalPaid = payments.reduce((s, p) => {
-    if (p.paymentType === 'deposit') return s;
+    if (isDepositPayment(p.paymentType)) return s;
     // 'pending' → IOU not yet collected. 'absorbed' → rolled into the
     // settlement payment row (captured there, not here). Either way skip.
     if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return s;
@@ -641,7 +641,7 @@ export function OrderDetailSummaryTab({
     // amounts in rentalPaid, which can push balance negative (fully overpaid after
     // refund), resulting in the full deposit being returned to the customer.
     const settleRentalPaidH = payments.reduce((s, p) => {
-      if (p.paymentType === 'deposit') return s;
+      if (isDepositPayment(p.paymentType)) return s;
       if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return s;
       if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return s;
       return s + (p.amount ?? 0);
@@ -1615,7 +1615,7 @@ export function OrderDetailSummaryTab({
                 // as positive received payments, which reduces effective balance.
                 // Return charges are paid separately by their selected tender.
                 const settleRentalPaid = payments.reduce((s, p) => {
-                  if (p.paymentType === 'deposit') return s;
+                  if (isDepositPayment(p.paymentType)) return s;
                   if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return s;
                   if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return s;
                   return s + (p.amount ?? 0);

@@ -6,6 +6,7 @@ import {
   DomainError,
 } from '@lolas/domain';
 import { supabase } from '../../adapters/supabase/client.js';
+import { isDepositPayment } from '@lolas/shared';
 
 export interface RefundOrderDeps {
   orderRepo: OrderRepository;
@@ -129,7 +130,7 @@ export async function refundOrder(
   //   • refunds subtracted (reduce net cash collected)
   const allPayments = await paymentRepo.findByOrderId(order.id);
   const totalPaid = allPayments.reduce((sum, p) => {
-    if (p.paymentType === 'deposit') return sum;
+    if (isDepositPayment(p.paymentType)) return sum;
     if (p.paymentType === 'extension' &&
         (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return sum;
     if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return sum;

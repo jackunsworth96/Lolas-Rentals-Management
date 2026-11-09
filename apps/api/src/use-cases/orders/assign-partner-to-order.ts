@@ -1,6 +1,6 @@
 import { getSupabaseClient } from '../../adapters/supabase/client.js';
 import { lookupActivePartnerBySlug, applyPartnerBenefit, type PartnerBenefitRow } from '../../lib/partner-benefit.js';
-import { calculateBalanceDue } from '@lolas/shared';
+import { calculateBalanceDue, isDepositPayment } from '@lolas/shared';
 import { refundOrder, type RefundOrderDeps } from './refund-order.js';
 
 interface OrderRow {
@@ -227,7 +227,7 @@ async function totalPaidForOrder(orderId: string): Promise<number> {
   return (payments ?? []).reduce((sum, p) => {
     const row = p as { amount: number | string | null; payment_type: string; settlement_status: string | null; payment_method_id: string | null };
     const amt = Number(row.amount ?? 0);
-    if (row.payment_type === 'deposit') return sum;
+    if (isDepositPayment(row.payment_type)) return sum;
     if (row.payment_type === 'extension' && (row.settlement_status === 'pending' || row.settlement_status === 'absorbed')) return sum;
     if (row.payment_type === 'addon' && row.payment_method_id === 'pending' && row.settlement_status === 'pending') return sum;
     if (row.payment_type === 'refund') return sum - amt;

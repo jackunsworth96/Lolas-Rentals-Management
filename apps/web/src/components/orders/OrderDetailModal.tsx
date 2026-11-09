@@ -17,6 +17,7 @@ import { BreakdownReportModal } from '../breakdowns/BreakdownReportModal.js';
 import { CancelActivatedOrderModal } from './CancelActivatedOrderModal.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 import { OrderInvoicesBar } from '../invoices/OrderInvoicesBar.js';
+import { isDepositPayment } from '@lolas/shared';
 
 function moneyAmount(val: unknown): number {
   if (val == null) return 0;
@@ -63,7 +64,7 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
 
   const total = enrichedData?.finalTotal ?? moneyAmount(order.finalTotal);
   const totalPaid = enrichedData?.totalPaid ?? payments.reduce((s, p) => {
-    if (p.paymentType === 'deposit') return s;
+    if (isDepositPayment(p.paymentType)) return s;
     if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return s;
     if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return s;
     if (p.paymentType === 'refund') return s - (p.amount ?? 0);

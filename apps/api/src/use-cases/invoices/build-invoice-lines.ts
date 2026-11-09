@@ -7,6 +7,7 @@ import type {
   InvoiceOrderSummary,
   InvoicePreview,
 } from '@lolas/shared';
+import { isDepositPayment } from '@lolas/shared';
 import { computeQuote } from '../booking/compute-quote.js';
 
 export interface BuildInvoiceLinesDeps {
@@ -166,7 +167,7 @@ function addPayments(list: LineList, payments: PaymentRow[], methodNames: Map<st
     const amount = num(p.amount);
     if (amount === 0) continue;
     const type = p.payment_type;
-    if (type === 'deposit' || type === 'deposit_refund' || type === 'deposit_applied') continue;
+    if (isDepositPayment(type) || type === 'deposit_refund' || type === 'deposit_applied') continue;
     if (type === 'extension' && (p.settlement_status === 'pending' || p.settlement_status === 'absorbed')) continue;
     if (type === 'addon' && p.payment_method_id === 'pending' && p.settlement_status === 'pending') continue;
     const method = p.payment_method_id ? methodNames.get(p.payment_method_id) ?? p.payment_method_id : null;
@@ -181,7 +182,7 @@ function addPayments(list: LineList, payments: PaymentRow[], methodNames: Map<st
 }
 
 function depositHeld(payments: PaymentRow[]): number {
-  const paid = payments.filter((p) => p.payment_type === 'deposit').reduce((s, p) => s + num(p.amount), 0);
+  const paid = payments.filter((p) => isDepositPayment(p.payment_type)).reduce((s, p) => s + num(p.amount), 0);
   const refunded = payments.filter((p) => p.payment_type === 'deposit_refund').reduce((s, p) => s + Math.abs(num(p.amount)), 0);
   return Math.max(0, round(paid - refunded));
 }

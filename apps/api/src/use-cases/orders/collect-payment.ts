@@ -10,6 +10,7 @@ import {
 } from '@lolas/domain';
 import { supabase } from '../../adapters/supabase/client.js';
 import { formatManilaDate } from '../../utils/manila-date.js';
+import { isDepositPayment } from '@lolas/shared';
 
 function serialiseLeg(leg: JournalLeg): Record<string, unknown> {
   return {
@@ -58,7 +59,7 @@ export async function collectPayment(
   // Compute the net rental-cash already received (mirrors the display formula:
   // exclude deposits, exclude pending/absorbed extension IOUs, subtract refunds).
   const paidBefore = existingPayments.reduce((sum, p) => {
-    if (p.paymentType === 'deposit') return sum;
+    if (isDepositPayment(p.paymentType)) return sum;
     if (p.paymentType === 'extension' &&
         (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return sum;
     if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return sum;
@@ -180,7 +181,7 @@ export async function collectPayment(
   // extension IOUs represent amounts owed (not cash received), and refunds reduce
   // the net amount collected.
   const totalPaid = allPayments.reduce((sum, p) => {
-    if (p.paymentType === 'deposit') return sum;
+    if (isDepositPayment(p.paymentType)) return sum;
     if (p.paymentType === 'extension' &&
         (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return sum;
     if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return sum;
