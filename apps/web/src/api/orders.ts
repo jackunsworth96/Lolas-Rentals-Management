@@ -266,6 +266,53 @@ export function useUpdateDropoffNote() {
   });
 }
 
+export interface ChangeReturnTimeResult {
+  oldDropoffDatetime: string;
+  newDropoffDatetime: string;
+}
+
+export function useChangeReturnTime() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, newDropoffDatetime, reason }: { id: string; newDropoffDatetime: string; reason?: string | null }) =>
+      api.post<ChangeReturnTimeResult>(`/orders/${id}/return-time`, { newDropoffDatetime, reason }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['fleet'] });
+    },
+  });
+}
+
+export interface OrderNote {
+  id: string;
+  kind: 'note' | 'return_change';
+  body: string;
+  meta: Record<string, unknown> | null;
+  employeeId: string | null;
+  employeeName: string | null;
+  createdAt: string;
+}
+
+export function useOrderNotes(orderId: string) {
+  return useQuery({
+    queryKey: ['orders', orderId, 'notes'],
+    queryFn: () => api.get<OrderNote[]>(`/orders/${orderId}/notes`),
+    enabled: !!orderId,
+    refetchInterval: DETAIL_POLL_MS,
+  });
+}
+
+export function useAddOrderNote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: string }) => api.post(`/orders/${id}/notes`, { body }),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: ['orders', id, 'notes'] });
+      qc.invalidateQueries({ queryKey: ['orders', id, 'history'] });
+    },
+  });
+}
+
 export function useCreateMayaCheckout() {
   return useMutation({
     mutationFn: (params: { orderId: string; amountPHP: number; description?: string }) =>

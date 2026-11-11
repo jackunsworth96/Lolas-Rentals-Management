@@ -130,6 +130,21 @@ describe.each(jobs)('$name return reminder', (job) => {
     }
   });
 
+  it.skipIf(job.ninePm)('uses the changed return time on the order item', async () => {
+    vi.setSystemTime(new Date('2026-11-06T23:30:00Z'));
+    const db = reminderDatabase('staff', job.ninePm);
+    // Booked for 12:15 PM, moved earlier to 10:30 AM Manila via "Change return time".
+    db.booking.dropoff_datetime = `2026-11-0${7 + job.dayOffset}T02:30:00Z`;
+    db.booking.original_dropoff_datetime = `2026-11-0${7 + job.dayOffset}T04:15:00Z`;
+    mocks.getSupabaseClient.mockReturnValue(db);
+
+    await job.run();
+
+    expect(mocks.sendWhatsAppTemplate).toHaveBeenCalledTimes(1);
+    const [returnTime] = mocks.sendWhatsAppTemplate.mock.calls[0][0].parameters.slice(-1);
+    expect(returnTime).toMatch(/^10:30\s?(AM|am)$/);
+  });
+
   it('does not send when the deduplication query fails', async () => {
     vi.setSystemTime(new Date('2026-11-07T01:00:00Z'));
     const db = reminderDatabase('staff', job.ninePm);

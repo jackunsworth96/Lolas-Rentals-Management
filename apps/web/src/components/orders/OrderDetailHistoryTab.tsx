@@ -28,6 +28,8 @@ export function OrderDetailHistoryTab({ history }: OrderDetailHistoryTabProps) {
             evt.type === 'activated' ? 'bg-blue-500' :
             evt.type === 'accident' ? 'bg-red-600' :
             evt.type === 'cancelled' ? 'bg-red-600' :
+            evt.type === 'return_change' ? 'bg-cyan-600' :
+            evt.type === 'note' ? 'bg-yellow-500' :
             'bg-gray-400';
 
           return (
@@ -36,7 +38,7 @@ export function OrderDetailHistoryTab({ history }: OrderDetailHistoryTabProps) {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <div className="text-sm font-medium text-gray-900">{evt.description}</div>
-                  {evt.detail && <div className="text-xs text-charcoal-brand/60">{evt.detail}</div>}
+                  {evt.detail && <div className="whitespace-pre-wrap text-xs text-charcoal-brand/60">{evt.detail}</div>}
                 </div>
                 <div className="shrink-0 text-right">
                   {evt.amount != null && evt.amount > 0 && (

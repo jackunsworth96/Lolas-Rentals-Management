@@ -286,6 +286,115 @@ router.patch('/:id/dropoff-note', requirePermission(Permission.EditOrders), vali
   } catch (err) { next(err); }
 });
 
+// Price-neutral reschedule of the return: earlier at any time after pickup, or
+// later within the days already paid. Past the paid days staff must Extend.
+router.post('/:id/return-time', requirePermission(Permission.EditOrders), validateBody(z.object({
+  newDropoffDatetime: z.string().min(1),
+  reason: z.string().max(500).nullable().optional(),
+})), async (req, res, next) => {
+  try {
+    const { changeReturnTime } = await import('../use-cases/orders/change-return-time.js');
+    const { newDropoffDatetime, reason } = req.body as { newDropoffDatetime: string; reason?: string | null };
+    const result = await changeReturnTime(
+      {
+        bookingPort: req.app.locals.deps.bookingPort,
+        port: {
+          async loadOrder(orderId) {
+            const [{ data: order, error: orderErr }, { data: items, error: itemsErr }] = await Promise.all([
+              supabase.from('orders').select('id, status').eq('id', orderId).maybeSingle(),
+              supabase.from('order_items')
+                .select('id, store_id, vehicle_id, pickup_datetime, dropoff_datetime, rental_days_count')
+                .eq('order_id', orderId)
+                .not('pickup_datetime', 'is', null),
+            ]);
+            if (orderErr) throw new Error(orderErr.message);
+            if (itemsErr) throw new Error(itemsErr.message);
+            if (!order) return null;
+            return {
+              id: String(order.id),
+              status: String(order.status),
+              items: (items ?? []).map((i: Record<string, unknown>) => ({
+                id: String(i.id),
+                storeId: String(i.store_id),
+                vehicleId: (i.vehicle_id as string | null) ?? null,
+                pickupDatetime: String(i.pickup_datetime),
+                dropoffDatetime: String(i.dropoff_datetime),
+                rentalDaysCount: Number(i.rental_days_count ?? 1),
+              })),
+            };
+          },
+          async findVehicleModelId(vehicleId) {
+            const { data } = await supabase.from('fleet').select('model_id').eq('id', vehicleId).maybeSingle();
+            return (data as { model_id?: string | null } | null)?.model_id ?? null;
+          },
+          async apply(input) {
+            const { data, error } = await supabase.rpc('change_return_time_atomic', {
+              p_order_id: input.orderId,
+              p_new_dropoff: input.newDropoffDatetime,
+              p_note_id: input.noteId,
+              p_body: input.body,
+              p_meta: input.meta,
+              p_employee_id: input.employeeId,
+            });
+            if (error) throw new Error(`Failed to change return time: ${error.message}`);
+            const outcome = data as { success?: boolean; error?: string } | null;
+            if (!outcome?.success) {
+              throw Object.assign(new Error(outcome?.error ?? 'Failed to change return time'), { statusCode: 409 });
+            }
+          },
+        },
+      },
+      { orderId: String(req.params.id), newDropoffDatetime, reason, employeeId: req.user!.employeeId ?? null },
+    );
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+router.get('/:id/notes', requirePermission(Permission.ViewInbox), async (req, res, next) => {
+  try {
+    const { data, error } = await supabase
+      .from('order_notes')
+      .select('id, kind, body, meta, employee_id, created_at, employees(full_name)')
+      .eq('order_id', req.params.id)
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(`Failed to fetch order notes: ${error.message}`);
+    const notes = (data ?? []).map((r: Record<string, unknown>) => {
+      const emp = (Array.isArray(r.employees) ? r.employees[0] : r.employees) as { full_name?: string | null } | null;
+      return {
+        id: r.id,
+        kind: r.kind,
+        body: r.body,
+        meta: r.meta ?? null,
+        employeeId: r.employee_id ?? null,
+        employeeName: emp?.full_name ?? null,
+        createdAt: r.created_at,
+      };
+    });
+    res.json({ success: true, data: notes });
+  } catch (err) { next(err); }
+});
+
+router.post('/:id/notes', requirePermission(Permission.EditOrders), validateBody(z.object({
+  body: z.string().trim().min(1).max(2000),
+})), async (req, res, next) => {
+  try {
+    const { data: order, error: orderErr } = await supabase
+      .from('orders').select('store_id').eq('id', req.params.id).maybeSingle();
+    if (orderErr) throw new Error(orderErr.message);
+    if (!order) throw Object.assign(new Error('Order not found'), { statusCode: 404 });
+    const { error } = await supabase.from('order_notes').insert({
+      id: crypto.randomUUID(),
+      order_id: req.params.id,
+      store_id: (order as { store_id: string }).store_id,
+      kind: 'note',
+      body: (req.body as { body: string }).body,
+      employee_id: req.user!.employeeId ?? null,
+    });
+    if (error) throw new Error(`Failed to add note: ${error.message}`);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 router.get('/:id/items', requirePermission(Permission.ViewInbox), async (req, res, next) => {
   try {
     const items = await req.app.locals.deps.orderItemRepo.findByOrderId(req.params.id);
@@ -305,12 +414,13 @@ router.get('/:id/history', requirePermission(Permission.ViewInbox), async (req, 
     const orderId = req.params.id;
     const sb = supabase;
 
-    const [orderRes, paymentsRes, swapsRes, addonsRes, accidentsRes] = await Promise.all([
+    const [orderRes, paymentsRes, swapsRes, addonsRes, accidentsRes, notesRes] = await Promise.all([
       sb.from('orders').select('id, status, order_date, created_at, employee_id, cancelled_at, cancelled_reason').eq('id', orderId).maybeSingle(),
       sb.from('payments').select('id, payment_type, amount, payment_method_id, transaction_date, settlement_status, settlement_ref, created_at').eq('order_id', orderId).order('created_at', { ascending: true }),
       sb.from('vehicle_swaps').select('id, old_vehicle_name, new_vehicle_name, reason, swap_date, swap_time, employee_id, created_at').eq('order_id', orderId).order('created_at', { ascending: true }),
       sb.from('order_addons').select('id, addon_name, addon_price, addon_type, total_amount, added_at').eq('order_id', orderId).order('added_at', { ascending: true }),
       sb.from('accident_reports').select('id, accident_at, description, customer_injured, police_report_filed, created_at').eq('order_id', orderId).order('accident_at', { ascending: true }),
+      sb.from('order_notes').select('id, kind, body, created_at, employees(full_name)').eq('order_id', orderId).order('created_at', { ascending: true }),
     ]);
 
     interface TimelineEvent { timestamp: string; type: string; description: string; detail?: string; amount?: number }
@@ -391,6 +501,17 @@ router.get('/:id/history', requirePermission(Permission.ViewInbox), async (req, 
         type: 'accident',
         description: '🚨 Accident reported',
         detail: flags || (acc.description as string | undefined),
+      });
+    }
+
+    for (const n of (notesRes.data ?? []) as Array<Record<string, unknown>>) {
+      const emp = (Array.isArray(n.employees) ? n.employees[0] : n.employees) as { full_name?: string | null } | null;
+      const isReturnChange = n.kind === 'return_change';
+      events.push({
+        timestamp: n.created_at as string,
+        type: isReturnChange ? 'return_change' : 'note',
+        description: isReturnChange ? 'Return time changed' : 'Note added',
+        detail: [n.body as string, emp?.full_name ? `by ${emp.full_name}` : null].filter(Boolean).join(' — '),
       });
     }
 

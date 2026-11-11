@@ -15,13 +15,13 @@ import { AssignPartnerModal } from './AssignPartnerModal.js';
 import { isSurfRackAddon } from '../basket/AddOnsSection.js';
 import { useSignedWaiverDetails, useResendWaiverConfirmation } from '../../api/waivers.js';
 import { useInspectionByOrder } from '../../api/inspections.js';
-import { useCollectPayment, useRefundOrder, useSettleOrder, useSwapHelmet, useSwapVehicle, useUpdateDepositMethod, useUpdateDropoffNote } from '../../api/orders.js';
+import { useAddOrderNote, useChangeReturnTime, useCollectPayment, useOrderNotes, useRefundOrder, useSettleOrder, useSwapHelmet, useSwapVehicle, useUpdateDepositMethod, useUpdateDropoffNote } from '../../api/orders.js';
 import { useFleet } from '../../api/fleet.js';
 import { usePaymentMethods, useChartOfAccounts, useFleetStatuses, useStorePricing, useVehicleModels } from '../../api/config.js';
 import { findRate } from './BookingModal.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { usePaymentRouting } from '../../hooks/use-payment-routing.js';
-import { formatDate, formatDateTime } from '../../utils/date.js';
+import { formatDate, formatDateTime, isoToManilaDateTimeLocal, manilaLocalToISO } from '../../utils/date.js';
 import { useCustomerPawCardSavings } from '../../api/paw-card.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 import type { EnrichedOrder } from '../../types/api.js';
@@ -117,6 +117,12 @@ export function OrderDetailSummaryTab({
   const [helmetSwapReason, setHelmetSwapReason] = useState('');
   const [showHelmetHistory, setShowHelmetHistory] = useState(false);
 
+  // ── Return time / notes state ──
+  const [editingReturnTime, setEditingReturnTime] = useState(false);
+  const [newReturnLocal, setNewReturnLocal] = useState('');
+  const [returnTimeReason, setReturnTimeReason] = useState('');
+  const [newNoteBody, setNewNoteBody] = useState('');
+
   // ── Modal open/close ──
   const [extendOpen, setExtendOpen] = useState(false);
   const [addCollectionOpen, setAddCollectionOpen] = useState(false);
@@ -136,6 +142,9 @@ export function OrderDetailSummaryTab({
   const { data: storePricing = [] } = useStorePricing(storeId) as { data: Array<{ modelId: string; minDays: number; maxDays: number; dailyRate: number }> | undefined };
   const { data: vehicleModels = [] } = useVehicleModels() as { data: Array<{ id: string; name: string }> | undefined };
 
+  const { data: orderNotes = [] } = useOrderNotes(orderId);
+  const changeReturnTimeMut = useChangeReturnTime();
+  const addOrderNoteMut = useAddOrderNote();
   const collectPaymentMut = useCollectPayment();
   const refundOrderMut = useRefundOrder();
   const updateDepositMethod = useUpdateDepositMethod();
@@ -618,6 +627,22 @@ export function OrderDetailSummaryTab({
     totalRentalDays > 0 &&
     daysElapsed > 0;
 
+  // ── Return time change ──
+  const canChangeReturnTime = canAct && (statusVal === 'active' || statusVal === 'confirmed');
+  const firstReturnChange = [...orderNotes].reverse().find((n) => n.kind === 'return_change');
+  const originalReturnDatetime = (firstReturnChange?.meta?.oldDropoffDatetime as string | undefined) ?? null;
+  const returnPaidUntilMs = pickupMs !== null && totalRentalDays ? pickupMs + totalRentalDays * 86_400_000 : null;
+  const newReturnMs = newReturnLocal ? new Date(manilaLocalToISO(newReturnLocal)).getTime() : null;
+  const returnTimeError = (() => {
+    if (newReturnMs === null || !Number.isFinite(newReturnMs)) return null;
+    if (pickupMs !== null && newReturnMs <= pickupMs) return 'Return must be after pickup.';
+    if (returnPaidUntilMs !== null && newReturnMs > returnPaidUntilMs)
+      return `That is past the ${totalRentalDays} paid days (latest ${formatDateTime(new Date(returnPaidUntilMs))}). Use Extend instead.`;
+    return null;
+  })();
+  const formatManilaShort = (iso: string) =>
+    new Date(iso).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
   // ── Jump-to-Settle visibility ──
   // Show only when rental balance is fully paid and there is a deposit to return.
   const showJumpToSettle = canAct && balance === 0 && securityDeposit > 0;
@@ -884,9 +909,23 @@ export function OrderDetailSummaryTab({
               {returnDatetime && (
                 <div>
                   <div className="text-[10px] font-medium uppercase tracking-wide text-charcoal-brand/50">Return</div>
-                  <div className={`text-sm font-semibold ${isOverdue ? 'text-red-700' : 'text-gray-900'}`}>
-                    {new Date(returnDatetime).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  <div className="flex flex-wrap items-center gap-x-1.5">
+                    <span className={`text-sm font-semibold ${isOverdue ? 'text-red-700' : 'text-gray-900'}`}>
+                      {formatManilaShort(returnDatetime)}
+                    </span>
+                    {canChangeReturnTime && !editingReturnTime && (
+                      <button
+                        type="button"
+                        onClick={() => { setEditingReturnTime(true); setNewReturnLocal(isoToManilaDateTimeLocal(returnDatetime)); setReturnTimeReason(''); changeReturnTimeMut.reset(); }}
+                        className="text-xs font-medium text-teal-brand hover:text-teal-brand/80"
+                      >
+                        Edit
+                      </button>
+                    )}
                   </div>
+                  {originalReturnDatetime && new Date(originalReturnDatetime).getTime() !== new Date(returnDatetime).getTime() && (
+                    <div className="text-xs text-charcoal-brand/50">(was {formatManilaShort(originalReturnDatetime)})</div>
+                  )}
                   {showDuration && (
                     <div className={`text-xs font-medium ${isOverdue ? 'text-red-600' : 'text-charcoal-brand/60'}`}>
                       Day {Math.min(daysElapsed!, totalRentalDays!)} of {totalRentalDays}{isOverdue ? ' (overdue)' : ''}
@@ -993,6 +1032,69 @@ export function OrderDetailSummaryTab({
             )}
           </div>
         </div>
+
+        {/* ── Inline return time form ── */}
+        {editingReturnTime && returnDatetime && (
+          <div className="rounded-lg border border-teal-200 bg-teal-50 p-4 space-y-3">
+            <p className="text-sm font-medium text-teal-900">Change return time</p>
+            <p className="text-xs text-teal-700">
+              Current: <span className="font-medium">{formatManilaShort(returnDatetime)}</span>. No price change. Need more days? Use Extend.
+            </p>
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="block">
+                <span className="text-xs font-medium text-teal-800">New return (Manila time)</span>
+                <input
+                  type="datetime-local"
+                  value={newReturnLocal}
+                  onChange={(e) => setNewReturnLocal(e.target.value)}
+                  className="mt-1 block rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand"
+                />
+              </label>
+              <label className="block flex-1 min-w-[160px]">
+                <span className="text-xs font-medium text-teal-800">Reason (optional)</span>
+                <input
+                  type="text"
+                  value={returnTimeReason}
+                  onChange={(e) => setReturnTimeReason(e.target.value)}
+                  placeholder="e.g. Customer asked via WhatsApp, airport pickup 10:30"
+                  maxLength={500}
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand"
+                />
+              </label>
+            </div>
+            {returnTimeError && <p className="text-sm text-amber-700">{returnTimeError}</p>}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={changeReturnTimeMut.isPending || !newReturnLocal || !!returnTimeError || newReturnMs === new Date(returnDatetime).getTime()}
+                onClick={() => {
+                  changeReturnTimeMut.mutate(
+                    { id: orderId, newDropoffDatetime: manilaLocalToISO(newReturnLocal), reason: returnTimeReason.trim() || null },
+                    {
+                      onSuccess: (data) => {
+                        setEditingReturnTime(false);
+                        pushToast(`Return time changed to ${formatManilaShort(data.newDropoffDatetime)}`, 'success');
+                      },
+                    },
+                  );
+                }}
+                className="rounded-lg bg-teal-brand px-4 py-1.5 text-sm font-medium text-white hover:bg-teal-brand/90 disabled:opacity-50"
+              >
+                {changeReturnTimeMut.isPending ? 'Saving…' : 'Save'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingReturnTime(false)}
+                className="rounded-lg border border-gray-300 px-4 py-1.5 text-sm text-gray-600 hover:bg-sand-brand"
+              >
+                Cancel
+              </button>
+            </div>
+            {changeReturnTimeMut.error && (
+              <p className="text-sm text-red-600">{(changeReturnTimeMut.error as Error).message}</p>
+            )}
+          </div>
+        )}
 
         {/* ── Inline helmet swap form ── */}
         {swappingHelmetItemId && (() => {
@@ -1238,6 +1340,57 @@ export function OrderDetailSummaryTab({
           )}
           {updateDropoffNote.error && (
             <p className="mt-1 text-xs text-red-600">{(updateDropoffNote.error as Error).message}</p>
+          )}
+        </div>
+
+        {/* ── Staff notes ── */}
+        <div>
+          <span className="text-sm text-charcoal-brand/60">Staff notes</span>
+          {canEditOrders && (
+            <div className="mt-1 flex gap-2">
+              <textarea
+                value={newNoteBody}
+                onChange={(e) => setNewNoteBody(e.target.value)}
+                placeholder="e.g. Customer asked on WhatsApp for collection at 10:30 across from Higala Hotel"
+                maxLength={2000}
+                rows={2}
+                className="flex-1 rounded border border-gray-300 px-2 py-1 text-sm focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand"
+              />
+              <button
+                type="button"
+                disabled={addOrderNoteMut.isPending || !newNoteBody.trim()}
+                onClick={() => {
+                  addOrderNoteMut.mutate(
+                    { id: orderId, body: newNoteBody.trim() },
+                    { onSuccess: () => setNewNoteBody('') },
+                  );
+                }}
+                className="self-start rounded bg-teal-brand px-3 py-1 text-sm text-white hover:bg-teal-brand/90 disabled:opacity-50"
+              >
+                {addOrderNoteMut.isPending ? 'Saving…' : 'Add note'}
+              </button>
+            </div>
+          )}
+          {addOrderNoteMut.error && (
+            <p className="mt-1 text-xs text-red-600">{(addOrderNoteMut.error as Error).message}</p>
+          )}
+          {orderNotes.length > 0 ? (
+            <ul className="mt-2 space-y-1.5">
+              {orderNotes.map((n) => (
+                <li
+                  key={n.id}
+                  className={`rounded p-2 text-sm ${n.kind === 'return_change' ? 'border border-teal-200 bg-teal-50' : 'bg-sand-brand'}`}
+                >
+                  <p className="whitespace-pre-wrap">{n.body}</p>
+                  <p className="mt-0.5 text-xs text-charcoal-brand/50">
+                    {n.kind === 'return_change' ? 'Return time change · ' : ''}
+                    {n.employeeName ?? 'Staff'} · {formatDateTime(n.createdAt)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-0.5 text-sm italic text-charcoal-brand/40">No notes yet</p>
           )}
         </div>
 
