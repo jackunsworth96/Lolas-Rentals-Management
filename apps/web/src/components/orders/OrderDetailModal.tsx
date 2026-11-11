@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { formatDate } from '../../utils/date.js';
 import { Modal } from '../common/Modal.js';
 import type { EnrichedOrder } from '../../types/api.js';
 import { useToast } from '../../hooks/useToast.js';
@@ -35,7 +36,69 @@ interface OrderDetailModalProps {
   onCancelled?: () => void;
 }
 
-type TabKey = 'summary' | 'payments' | 'vehicles' | 'addons' | 'extensions' | 'transfer' | 'history';
+type TabKey = 'summary' | 'payments' | 'vehicles' | 'addons' | 'transfer' | 'history';
+
+/** Order reference shown as a distinct chip next to the customer name; click to copy. */
+function OrderRefChip({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      title="Click to copy order reference"
+      onClick={() => {
+        void navigator.clipboard?.writeText(value).then(() => {
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1500);
+        });
+      }}
+      className="ml-3 inline-flex items-center rounded-md border border-teal-brand/30 bg-teal-50 px-2 py-0.5 align-middle font-mono text-sm font-semibold tracking-wide text-teal-brand hover:bg-teal-100"
+    >
+      {copied ? 'Copied ✓' : value}
+    </button>
+  );
+}
+
+interface HeaderButtonsProps {
+  canAct: boolean;
+  canCancel: boolean;
+  onBreakdown: () => void;
+  onAccident: () => void;
+  onCancel: () => void;
+}
+
+function HeaderButtons({ canAct, canCancel, onBreakdown, onAccident, onCancel }: HeaderButtonsProps) {
+  return (
+    <>
+      {canCancel && (
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:border-red-400 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300"
+        >
+          Cancel booking
+        </button>
+      )}
+      {canAct && (
+        <button
+          type="button"
+          onClick={onBreakdown}
+          className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-300"
+        >
+          Report Breakdown
+        </button>
+      )}
+      {canAct && (
+        <button
+          type="button"
+          onClick={onAccident}
+          className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-300"
+        >
+          Report Accident
+        </button>
+      )}
+    </>
+  );
+}
 
 export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = false, enrichedData, onCancelled }: OrderDetailModalProps) {
   const [tab, setTab] = useState<TabKey>('summary');
@@ -72,13 +135,16 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
   }, 0);
 
   const extensionCount = payments.filter((p) => p.paymentType === 'extension').length;
+  const orderRef = (order.bookingToken ?? order.booking_token ?? null) as string | null;
+  const paymentMethodName = order.paymentMethodId
+    ? paymentMethods.find((m) => m.id === order.paymentMethodId)?.name ?? String(order.paymentMethodId)
+    : null;
 
   const tabs: { key: TabKey; label: string }[] = [
     { key: 'summary', label: 'Summary' },
     { key: 'payments', label: `Payments (${payments.length})` },
     { key: 'vehicles', label: `Vehicles (${items.length})` },
     { key: 'addons', label: `Add-ons (${orderAddons.length})` },
-    { key: 'extensions', label: `Extensions (${extensionCount})` },
     { key: 'transfer', label: 'Transfer' },
     { key: 'history', label: 'History' },
   ];
@@ -88,43 +154,30 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
       <Modal
         open
         onClose={onClose}
-        title={`Order — ${customerName}`}
-        size="xl"
+        title={
+          <>
+            {customerName}
+            {orderRef && <OrderRefChip value={orderRef} />}
+          </>
+        }
+        size="2xl"
         headerActions={
           (canAct || canCancel) ? (
-            <>
-              {canCancel && (
-                <button
-                  type="button"
-                  onClick={() => setCancelBookingOpen(true)}
-                  className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:border-red-400 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300"
-                >
-                  Cancel booking
-                </button>
-              )}
-              {canAct && (
-                <button
-                  type="button"
-                  onClick={() => setBreakdownReportOpen(true)}
-                  className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                >
-                  Report Breakdown
-                </button>
-              )}
-              {canAct && (
-                <button
-                  type="button"
-                  onClick={() => setAccidentReportOpen(true)}
-                  className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-300"
-                >
-                  Report Accident
-                </button>
-              )}
-            </>
+            <HeaderButtons
+              canAct={canAct}
+              canCancel={canCancel}
+              onBreakdown={() => setBreakdownReportOpen(true)}
+              onAccident={() => setAccidentReportOpen(true)}
+              onCancel={() => setCancelBookingOpen(true)}
+            />
           ) : undefined
         }
       >
-        <OrderInvoicesBar orderReference={(order.bookingToken ?? order.booking_token ?? orderId) as string} />
+        <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-charcoal-brand/60">
+          {order.orderDate && <span>Ordered {formatDate(order.orderDate)}</span>}
+          {paymentMethodName && <span>Paid by {paymentMethodName}</span>}
+          <OrderInvoicesBar orderReference={orderRef ?? orderId} variant="inline" />
+        </div>
 
         <div className="mb-4 flex items-center gap-2 border-b border-gray-200">
           <div className="flex flex-1 gap-2 overflow-x-auto">
@@ -158,7 +211,15 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
         )}
 
         {tab === 'payments' && (
-          <OrderDetailPaymentsTab payments={payments} totalPaid={totalPaid} />
+          <div className="space-y-6">
+            <OrderDetailPaymentsTab payments={payments} totalPaid={totalPaid} />
+            {extensionCount > 0 && (
+              <section>
+                <h3 className="mb-2 text-sm font-medium text-charcoal-brand">Extensions ({extensionCount})</h3>
+                <OrderDetailExtensionsTab history={history} payments={payments} paymentMethods={paymentMethods} />
+              </section>
+            )}
+          </div>
         )}
 
         {tab === 'vehicles' && (
@@ -179,10 +240,6 @@ export function OrderDetailModal({ open, onClose, orderId, storeId, readOnly = f
             items={items}
             canAct={canAct}
           />
-        )}
-
-        {tab === 'extensions' && (
-          <OrderDetailExtensionsTab history={history} payments={payments} paymentMethods={paymentMethods} />
         )}
 
         {tab === 'transfer' && (

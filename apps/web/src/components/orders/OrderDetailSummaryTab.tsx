@@ -15,7 +15,11 @@ import { AssignPartnerModal } from './AssignPartnerModal.js';
 import { isSurfRackAddon } from '../basket/AddOnsSection.js';
 import { useSignedWaiverDetails, useResendWaiverConfirmation } from '../../api/waivers.js';
 import { useInspectionByOrder } from '../../api/inspections.js';
-import { useAddOrderNote, useChangeReturnTime, useCollectPayment, useOrderNotes, useRefundOrder, useSettleOrder, useSwapHelmet, useSwapVehicle, useUpdateDepositMethod, useUpdateDropoffNote } from '../../api/orders.js';
+import { useChangeReturnTime, useCollectPayment, useOrderNotes, useRefundOrder, useSettleOrder, useSwapHelmet, useSwapVehicle, useUpdateDepositMethod } from '../../api/orders.js';
+import { StaffNotes } from './summary/StaffNotes.js';
+import { LogisticsCard } from './summary/LogisticsCard.js';
+import { MoneySummary } from './summary/MoneySummary.js';
+import { ActionGroups, type ActionGroup } from './summary/ActionGroups.js';
 import { useFleet } from '../../api/fleet.js';
 import { usePaymentMethods, useChartOfAccounts, useFleetStatuses, useStorePricing, useVehicleModels } from '../../api/config.js';
 import { findRate } from './BookingModal.js';
@@ -117,11 +121,17 @@ export function OrderDetailSummaryTab({
   const [helmetSwapReason, setHelmetSwapReason] = useState('');
   const [showHelmetHistory, setShowHelmetHistory] = useState(false);
 
-  // ── Return time / notes state ──
-  const [editingReturnTime, setEditingReturnTime] = useState(false);
+  // ── Inline action panel: at most one form open at a time ──
+  const [activeAction, setActiveAction] = useState<'collect' | 'refund' | 'returnTime' | 'swap' | 'settle' | null>(null);
+  const [depositEditorOpen, setDepositEditorOpen] = useState(false);
+  const toggleAction = (action: NonNullable<typeof activeAction>) =>
+    setActiveAction((current) => (current === action ? null : action));
+
+  // ── Return time state ──
+  const editingReturnTime = activeAction === 'returnTime';
+  const setEditingReturnTime = (open: boolean) => setActiveAction(open ? 'returnTime' : null);
   const [newReturnLocal, setNewReturnLocal] = useState('');
   const [returnTimeReason, setReturnTimeReason] = useState('');
-  const [newNoteBody, setNewNoteBody] = useState('');
 
   // ── Modal open/close ──
   const [extendOpen, setExtendOpen] = useState(false);
@@ -131,8 +141,6 @@ export function OrderDetailSummaryTab({
   const [showMayaModal, setShowMayaModal] = useState(false);
   const [showRefundConfirm, setShowRefundConfirm] = useState(false);
   const [waiverViewOpen, setWaiverViewOpen] = useState(false);
-  // ── Refs ──
-  const settleRef = useRef<HTMLElement>(null);
   // ── Data / config queries ──
   const { data: vehicles = [] } = useFleet(storeId);
   const { data: paymentMethods = [] } = usePaymentMethods() as { data: Array<{ id: string; name: string; surchargePercent?: number; surcharge_percent?: number; isActive?: boolean; is_active?: boolean }> | undefined };
@@ -144,23 +152,14 @@ export function OrderDetailSummaryTab({
 
   const { data: orderNotes = [] } = useOrderNotes(orderId);
   const changeReturnTimeMut = useChangeReturnTime();
-  const addOrderNoteMut = useAddOrderNote();
   const collectPaymentMut = useCollectPayment();
   const refundOrderMut = useRefundOrder();
   const updateDepositMethod = useUpdateDepositMethod();
   const settleOrder = useSettleOrder();
   const swapVehicle = useSwapVehicle();
   const swapHelmetMut = useSwapHelmet();
-  const updateDropoffNote = useUpdateDropoffNote();
   const routing = usePaymentRouting();
   const resendWaiverMut = useResendWaiverConfirmation();
-
-  const [dropoffNote, setDropoffNote] = useState(order.dropoffLocationNote ?? '');
-  const [dropoffNoteEditing, setDropoffNoteEditing] = useState(false);
-
-  useEffect(() => {
-    setDropoffNote(order.dropoffLocationNote ?? '');
-  }, [order.dropoffLocationNote]);
 
   const customerEmailForPaw = useMemo(
     () =>
@@ -543,15 +542,12 @@ export function OrderDetailSummaryTab({
   const hasExtension =
     enrichedData?.hasExtension ?? payments.some((p) => p.paymentType === 'extension');
 
-  const wooOrderId = enrichedData?.wooOrderId ?? null;
   const customerName = enrichedData?.customerName ?? order.customerId ?? '—';
   const customerMobile = enrichedData?.customerMobile ?? null;
   const vehicleNames = enrichedData?.vehicleNames ?? null;
   const returnDatetime = enrichedData?.returnDatetime ?? null;
   const securityDeposit = enrichedData?.securityDeposit ?? moneyAmount(order.securityDeposit);
   const surcharge = enrichedData?.cardFeeSurcharge ?? moneyAmount(order.cardFeeSurcharge);
-  const paymentMethodName = order.paymentMethodId ? pmLookup.get(order.paymentMethodId)?.name ?? order.paymentMethodId : null;
-
   const waiverStatus = enrichedData?.waiverStatus ?? 'pending';
   const waiverSignedAt = enrichedData?.waiverSignedAt ?? null;
   const orderRefForWaiver = enrichedData?.bookingToken ?? null;
@@ -643,13 +639,59 @@ export function OrderDetailSummaryTab({
   const formatManilaShort = (iso: string) =>
     new Date(iso).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-  // ── Jump-to-Settle visibility ──
-  // Show only when rental balance is fully paid and there is a deposit to return.
-  const showJumpToSettle = canAct && balance === 0 && securityDeposit > 0;
+  // Close out is the suggested next step once the rental balance is clear.
+  const closeOutIsNext = canAct && balance <= 0;
 
-  const handleJumpToSettle = () => {
-    settleRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const openReturnTimeEditor = () => {
+    if (!returnDatetime) return;
+    setEditingReturnTime(true);
+    setNewReturnLocal(isoToManilaDateTimeLocal(returnDatetime));
+    setReturnTimeReason('');
+    changeReturnTimeMut.reset();
   };
+
+  const actionGroups: ActionGroup[] = [
+    {
+      id: 'payment',
+      label: 'Payment',
+      highlight: canAct && balance > 0,
+      items: [
+        { id: 'collect', label: 'Collect payment', active: activeAction === 'collect', onSelect: () => toggleAction('collect') },
+        { id: 'maya', label: 'Maya card link', onSelect: () => { setActiveAction(null); setShowMayaModal(true); } },
+        { id: 'refund', label: 'Refund…', tone: 'danger', active: activeAction === 'refund', onSelect: () => toggleAction('refund') },
+      ],
+    },
+    {
+      id: 'booking',
+      label: 'Change booking',
+      items: [
+        { id: 'extend', label: 'Extend', hidden: !enrichedData, onSelect: () => { setActiveAction(null); setExtendOpen(true); } },
+        {
+          id: 'returnTime',
+          label: 'Change return time',
+          hidden: !canChangeReturnTime || !returnDatetime,
+          active: editingReturnTime,
+          onSelect: () => (editingReturnTime ? setEditingReturnTime(false) : openReturnTimeEditor()),
+        },
+        { id: 'delivery', label: 'Add delivery', hidden: !enrichedData, onSelect: () => { setActiveAction(null); setAddDeliveryOpen(true); } },
+        { id: 'collection', label: 'Add collection', hidden: !enrichedData, onSelect: () => { setActiveAction(null); setAddCollectionOpen(true); } },
+        { id: 'swap', label: 'Swap vehicle', active: activeAction === 'swap', onSelect: () => toggleAction('swap') },
+      ],
+    },
+    {
+      id: 'closeout',
+      label: 'Close out',
+      highlight: closeOutIsNext,
+      items: [
+        {
+          id: 'settle',
+          label: securityDeposit > 0 ? 'Settle & return deposit' : 'Settle order',
+          active: activeAction === 'settle',
+          onSelect: () => toggleAction('settle'),
+        },
+      ],
+    },
+  ];
 
   // ── Over-payment guard ──
   // Only block when balance > 0; allow recording when balance is already 0
@@ -799,23 +841,9 @@ export function OrderDetailSummaryTab({
 
   return (
     <>
-      <div className="space-y-5">
-        {/* Jump-to-Settle shortcut — shown when balance is clear and deposit awaits return */}
-        {showJumpToSettle && (
-          <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-4 py-2.5">
-            <p className="text-sm font-medium text-green-800">
-              Balance settled — deposit of {formatCurrency(securityDeposit)} ready to return.
-            </p>
-            <button
-              type="button"
-              onClick={handleJumpToSettle}
-              className="ml-4 shrink-0 rounded-lg border border-green-300 bg-white px-3 py-1.5 text-xs font-medium text-green-800 hover:bg-green-100"
-            >
-              Jump to Settle ↓
-            </button>
-          </div>
-        )}
-
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      {/* ── Left column: the booking ── */}
+      <div className="order-2 min-w-0 space-y-4 lg:order-1">
         {/* Compact summary header */}
         <div className="rounded-lg bg-sand-brand px-4 py-3">
           {/* Row 1 — customer name + contact + badges on the right */}
@@ -916,7 +944,7 @@ export function OrderDetailSummaryTab({
                     {canChangeReturnTime && !editingReturnTime && (
                       <button
                         type="button"
-                        onClick={() => { setEditingReturnTime(true); setNewReturnLocal(isoToManilaDateTimeLocal(returnDatetime)); setReturnTimeReason(''); changeReturnTimeMut.reset(); }}
+                        onClick={openReturnTimeEditor}
                         className="text-xs font-medium text-teal-brand hover:text-teal-brand/80"
                       >
                         Edit
@@ -936,11 +964,11 @@ export function OrderDetailSummaryTab({
               )}
             </div>
 
-            {/* Right cluster: waiver + inspection as compact inline rows */}
+            {/* Waiver + inspection: one slim status row under the trip details */}
             {enrichedData && (
-              <div className="ml-auto flex shrink-0 flex-col gap-2">
+              <div className="flex w-full flex-wrap items-center gap-x-6 gap-y-1.5 border-t border-charcoal-brand/10 pt-2.5">
                 {/* Waiver row */}
-                <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
+                <div className="flex items-center gap-2">
                   {waiverStatus === 'signed' ? (
                     <>
                       <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" aria-hidden />
@@ -984,7 +1012,7 @@ export function OrderDetailSummaryTab({
                 </div>
 
                 {/* Inspection row */}
-                <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
+                <div className="flex items-center gap-2">
                   {inspectionOrderLoading ? (
                     <span className="text-xs text-charcoal-brand/60">Loading…</span>
                   ) : inspectionOrderPayload?.exists && inspectionOrderPayload.inspection?.status === 'completed' ? (
@@ -1196,228 +1224,104 @@ export function OrderDetailSummaryTab({
           </div>
         )}
 
-        {/* Pricing breakdown */}
-        <div>
-          <h3 className="mb-2 text-sm font-medium text-charcoal-brand">Pricing Breakdown</h3>
-          <div className="rounded-lg border border-gray-200 divide-y divide-sand-brand text-sm">
-            <div className="flex justify-between px-4 py-2">
-              <span className="text-gray-600">Rental subtotal</span>
-              <span>{formatCurrency(rentalSubtotal)}</span>
-            </div>
-            {extensionCharges > 0 && (
-              <div className="flex justify-between px-4 py-2">
-                <span className="text-gray-600">Extensions (rental)</span>
-                <span>{formatCurrency(extensionCharges)}</span>
-              </div>
-            )}
-            {addonTotal > 0 && (
-              <div className="flex justify-between px-4 py-2">
-                <span className="text-gray-600">Add-ons</span>
-                <span>{formatCurrency(addonTotal)}</span>
-              </div>
-            )}
-            {extensionCharges > 0 && addonExtensionAdjustment > 0.005 && (
-              <div className="flex justify-between px-4 py-2">
-                <span className="text-gray-600" title="Per-day add-ons adjusted for extended rental days (e.g. Peace of Mind)">
-                  Add-on adjustments (ext.)
-                </span>
-                <span>{formatCurrency(addonExtensionAdjustment)}</span>
-              </div>
-            )}
-            {securityDeposit > 0 && (
-              <div className="flex justify-between px-4 py-2">
-                <span className="text-gray-600">Security deposit</span>
-                <span>{formatCurrency(securityDeposit)}</span>
-              </div>
-            )}
-            {surcharge > 0 && (
-              <div className="flex justify-between px-4 py-2">
-                <span className="text-gray-600">Card surcharge</span>
-                <span>{formatCurrency(surcharge)}</span>
-              </div>
-            )}
-            <div className="flex justify-between px-4 py-2 font-semibold">
-              <span>Total</span>
-              <span>{formatCurrency(total)}</span>
-            </div>
-            <div className="flex justify-between px-4 py-2">
-              <span className="text-gray-600">Payments received (rental)</span>
-              <span className="text-green-600">−{formatCurrency(totalPaid)}</span>
-            </div>
-            {pendingExtensionsTotal > 0 && (
-              <div className="flex justify-between px-4 py-2 bg-amber-50">
-                <span className="font-medium text-amber-800">Unpaid extensions (IOU)</span>
-                <span className="font-bold text-amber-800">{formatCurrency(pendingExtensionsTotal)}</span>
-              </div>
-            )}
-            <div className="flex justify-between px-4 py-2 font-semibold">
-              <span>Balance due</span>
-              <span className={displayBalance > 0 ? 'text-red-600' : 'text-green-600'}>{formatCurrency(displayBalance)}</span>
-            </div>
-          </div>
-        </div>
+        <LogisticsCard
+          orderId={orderId}
+          pickupLocation={itemsList[0]?.pickupLocation ?? null}
+          pickupAddress={order.pickupLocationAddress ?? null}
+          dropoffLocation={itemsList[0]?.dropoffLocation ?? null}
+          dropoffAddress={order.dropoffLocationAddress ?? null}
+          meetingPoint={order.dropoffLocationNote ?? null}
+          canEdit={canEditOrders && !readOnly}
+        />
 
-        {/* Details grid */}
-        <dl className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-          {wooOrderId && (
-            <div>
-              <dt className="text-charcoal-brand/60">Order Ref</dt>
-              <dd className="font-medium">{wooOrderId}</dd>
-            </div>
-          )}
-          <div>
-            <dt className="text-charcoal-brand/60">Order ID</dt>
-            <dd className="font-medium">{order.bookingToken ?? order.booking_token ?? order.id}</dd>
-          </div>
-          <div>
-            <dt className="text-charcoal-brand/60">Order date</dt>
-            <dd>{order.orderDate ? formatDate(order.orderDate) : '—'}</dd>
-          </div>
-          {paymentMethodName && (
-            <div>
-              <dt className="text-charcoal-brand/60">Payment method</dt>
-              <dd>{paymentMethodName}</dd>
-            </div>
-          )}
-        </dl>
+        <StaffNotes
+          orderId={orderId}
+          notes={orderNotes}
+          bookingNote={order.webNotes ?? null}
+          canEdit={canEditOrders && !readOnly}
+        />
+      </div>
 
-        {order.webNotes && (
-          <div>
-            <dt className="text-sm text-charcoal-brand/60">Notes</dt>
-            <dd className="mt-1 rounded bg-sand-brand p-2 text-sm">{order.webNotes}</dd>
-          </div>
-        )}
+      {/* ── Right column: the money ── */}
+      <aside className="order-1 min-w-0 space-y-3 lg:sticky lg:top-0 lg:order-2 lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto">
+        <MoneySummary
+          rentalSubtotal={rentalSubtotal}
+          extensionCharges={extensionCharges}
+          addonTotal={addonTotal}
+          addonExtensionAdjustment={addonExtensionAdjustment}
+          securityDeposit={securityDeposit}
+          surcharge={surcharge}
+          total={total}
+          totalPaid={totalPaid}
+          pendingExtensionsTotal={pendingExtensionsTotal}
+          balance={displayBalance}
+          depositMethodLabel={depositMethodLabel}
+          onChangeDepositMethod={canAct && securityDeposit > 0 ? () => setDepositEditorOpen((v) => !v) : undefined}
+        />
 
-        {/* ── Dropoff meeting point ── */}
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-charcoal-brand/60">Dropoff meeting point</span>
-            {!dropoffNoteEditing && canEditOrders && (
-              <button
-                type="button"
-                onClick={() => setDropoffNoteEditing(true)}
-                className="text-xs text-teal-brand hover:underline"
-              >
-                {dropoffNote ? 'Edit' : 'Add'}
-              </button>
-            )}
-          </div>
-          {dropoffNoteEditing ? (
-            <div className="mt-1 flex gap-2">
-              <input
-                type="text"
-                value={dropoffNote}
-                onChange={(e) => setDropoffNote(e.target.value)}
-                placeholder="e.g. Bravo Resort, General Luna"
-                maxLength={500}
-                className="flex-1 rounded border border-gray-300 px-2 py-1 text-sm focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand"
-              />
-              <button
-                type="button"
-                disabled={updateDropoffNote.isPending}
-                onClick={() => {
-                  updateDropoffNote.mutate(
-                    { id: orderId, note: dropoffNote.trim() || null },
-                    { onSuccess: () => setDropoffNoteEditing(false) },
-                  );
-                }}
-                className="rounded bg-teal-brand px-3 py-1 text-sm text-white hover:bg-teal-brand/90 disabled:opacity-50"
-              >
-                {updateDropoffNote.isPending ? 'Saving…' : 'Save'}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setDropoffNote(order.dropoffLocationNote ?? ''); setDropoffNoteEditing(false); }}
-                className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <p className="mt-0.5 text-sm">
-              {dropoffNote || <span className="italic text-charcoal-brand/40">Not set</span>}
-            </p>
-          )}
-          {updateDropoffNote.error && (
-            <p className="mt-1 text-xs text-red-600">{(updateDropoffNote.error as Error).message}</p>
-          )}
-        </div>
-
-        {/* ── Staff notes ── */}
-        <div>
-          <span className="text-sm text-charcoal-brand/60">Staff notes</span>
-          {canEditOrders && (
-            <div className="mt-1 flex gap-2">
-              <textarea
-                value={newNoteBody}
-                onChange={(e) => setNewNoteBody(e.target.value)}
-                placeholder="e.g. Customer asked on WhatsApp for collection at 10:30 across from Higala Hotel"
-                maxLength={2000}
-                rows={2}
-                className="flex-1 rounded border border-gray-300 px-2 py-1 text-sm focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand"
-              />
-              <button
-                type="button"
-                disabled={addOrderNoteMut.isPending || !newNoteBody.trim()}
-                onClick={() => {
-                  addOrderNoteMut.mutate(
-                    { id: orderId, body: newNoteBody.trim() },
-                    { onSuccess: () => setNewNoteBody('') },
-                  );
-                }}
-                className="self-start rounded bg-teal-brand px-3 py-1 text-sm text-white hover:bg-teal-brand/90 disabled:opacity-50"
-              >
-                {addOrderNoteMut.isPending ? 'Saving…' : 'Add note'}
-              </button>
-            </div>
-          )}
-          {addOrderNoteMut.error && (
-            <p className="mt-1 text-xs text-red-600">{(addOrderNoteMut.error as Error).message}</p>
-          )}
-          {orderNotes.length > 0 ? (
-            <ul className="mt-2 space-y-1.5">
-              {orderNotes.map((n) => (
-                <li
-                  key={n.id}
-                  className={`rounded p-2 text-sm ${n.kind === 'return_change' ? 'border border-teal-200 bg-teal-50' : 'bg-sand-brand'}`}
+        {/* ── Deposit payment method correction ── */}
+        {canAct && depositEditorOpen && securityDeposit > 0 && (
+          <div className="rounded-lg border border-gray-200 bg-white p-3">
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="block">
+                <span className="text-xs font-medium text-gray-700">Deposit paid by</span>
+                <select
+                  value={depositMethodDraftId}
+                  onChange={(e) => {
+                    setDepositMethodDraftId(e.target.value);
+                    setDepositMethodAccountId('');
+                  }}
+                  className="mt-1 block w-40 rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand"
                 >
-                  <p className="whitespace-pre-wrap">{n.body}</p>
-                  <p className="mt-0.5 text-xs text-charcoal-brand/50">
-                    {n.kind === 'return_change' ? 'Return time change · ' : ''}
-                    {n.employeeName ?? 'Staff'} · {formatDateTime(n.createdAt)}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-0.5 text-sm italic text-charcoal-brand/40">No notes yet</p>
-          )}
-        </div>
-
-        {/* ── Pickup / return addresses (set when non-store location chosen at booking) ── */}
-        {(order.pickupLocationAddress || order.dropoffLocationAddress) && (
-          <div className="space-y-2 rounded-lg border border-gray-200 p-4 text-sm">
-            <h4 className="text-xs font-medium uppercase tracking-wide text-charcoal-brand/60">Delivery / Collection Addresses</h4>
-            {order.pickupLocationAddress && (
-              <div>
-                <span className="text-charcoal-brand/60">Pickup address: </span>
-                <span className="font-medium">{order.pickupLocationAddress}</span>
-              </div>
-            )}
-            {order.dropoffLocationAddress && (
-              <div>
-                <span className="text-charcoal-brand/60">Return address: </span>
-                <span className="font-medium">{order.dropoffLocationAddress}</span>
-              </div>
+                  <option value="">Select method</option>
+                  {editableDepositMethods.map((method) => (
+                    <option key={method.id} value={method.id}>{method.name}</option>
+                  ))}
+                </select>
+              </label>
+              {depositMethodDraftId && !routedDepositMethodAccountId && (
+                <label className="block">
+                  <span className="text-xs font-medium text-gray-600">Deposit account</span>
+                  <select
+                    value={depositMethodAccountId}
+                    onChange={(e) => setDepositMethodAccountId(e.target.value)}
+                    className="mt-1 block w-44 rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                  >
+                    <option value="">Select account</option>
+                    {depositMethodAccountOptions.map((account) => (
+                      <option key={String(account.id)} value={String(account.id)}>{String(account.name)}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <button
+                type="button"
+                onClick={handleUpdateDepositMethod}
+                disabled={
+                  updateDepositMethod.isPending ||
+                  !depositMethodDraftId ||
+                  !effectiveDepositMethodAccountId ||
+                  depositMethodDraftId === depositMethodId
+                }
+                className="rounded-lg border border-teal-brand px-3 py-1.5 text-sm font-medium text-teal-brand hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {updateDepositMethod.isPending ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+            {updateDepositMethod.error && (
+              <p className="mt-2 text-sm text-red-600">{(updateDepositMethod.error as Error).message}</p>
             )}
           </div>
         )}
 
-        {/* ── Action sections (only for active orders) ── */}
-        {canAct && (
-          <div className="mt-6 space-y-6 border-t border-gray-200 pt-6">
+        {canAct && <ActionGroups groups={actionGroups} />}
+
+        {/* ── Active action form (only for active orders) ── */}
+        {canAct && activeAction && activeAction !== 'returnTime' && (
+          <div className="rounded-lg border border-gray-200 p-3">
 
             {/* ─── COLLECT PAYMENT ─── */}
+            {activeAction === 'collect' && (
             <section>
               <h3 className="mb-3 font-medium text-gray-900">Collect Payment</h3>
               <form onSubmit={handleCollectPayment} className="space-y-3">
@@ -1468,63 +1372,10 @@ export function OrderDetailSummaryTab({
                 {collectPaymentMut.error && <p className="text-sm text-red-600">{(collectPaymentMut.error as Error).message}</p>}
               </form>
             </section>
-
-            {/* ─── REQUEST PAYMENT VIA MAYA ─── */}
-            <section>
-              <h3 className="mb-3 font-medium text-gray-900">Request Payment via Maya</h3>
-              <p className="mb-3 text-sm text-charcoal-brand/60">
-                Generate a hosted Maya checkout link to send to the customer for online card payment.
-              </p>
-              <button
-                type="button"
-                onClick={() => setShowMayaModal(true)}
-                className="flex w-full sm:w-auto items-center gap-2 rounded-lg border border-green-600 px-5 py-2 text-sm font-medium text-green-700 transition-colors hover:bg-green-50"
-              >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-                Request Payment via Maya…
-              </button>
-            </section>
-
-            {/* ─── EXTEND BOOKING ─── */}
-            <section>
-              <h3 className="mb-3 font-medium text-gray-900">Extend Booking</h3>
-              <p className="mb-3 text-sm text-charcoal-brand/60">
-                Push the return date forward for this customer without them needing to use the website.
-              </p>
-              <button
-                type="button"
-                onClick={() => setExtendOpen(true)}
-                className="w-full sm:w-auto rounded-lg bg-teal-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700"
-              >
-                Extend Return Date…
-              </button>
-            </section>
-
-            {/* ─── ADD DELIVERY / COLLECTION ─── */}
-            <section>
-              <h3 className="mb-3 font-medium text-gray-900">Add Delivery or Collection</h3>
-              <p className="mb-3 text-sm text-charcoal-brand/60">
-                Use these when we delivered or collected the vehicle but the booking was activated as store pickup / store return. The rental dates don’t change.
-              </p>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <button
-                  type="button"
-                  onClick={() => setAddDeliveryOpen(true)}
-                  className="w-full sm:w-auto rounded-lg bg-sky-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700"
-                >
-                  Add Delivery…
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAddCollectionOpen(true)}
-                  className="w-full sm:w-auto rounded-lg bg-sky-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700"
-                >
-                  Add Collection…
-                </button>
-              </div>
-            </section>
+            )}
 
             {/* ─── SWAP VEHICLE ─── */}
+            {activeAction === 'swap' && (
             <section>
               <h3 className="mb-3 font-medium text-gray-900">Swap Vehicle</h3>
               <form onSubmit={handleSwapVehicle} className="flex flex-col sm:flex-row sm:flex-wrap items-end gap-4">
@@ -1601,9 +1452,11 @@ export function OrderDetailSummaryTab({
               )}
               {swapVehicle.error && <p className="mt-2 text-sm text-red-600">{(swapVehicle.error as Error).message}</p>}
             </section>
+            )}
 
             {/* ─── ISSUE REFUND ─── */}
-            <section className="rounded-lg border border-red-200 bg-red-50 p-4">
+            {activeAction === 'refund' && (
+            <section className="-m-3 rounded-lg border border-red-200 bg-red-50 p-3">
               <div className="mb-3 flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0 text-red-600" aria-hidden />
                 <h3 className="font-medium text-red-900">Issue Refund</h3>
@@ -1747,9 +1600,11 @@ export function OrderDetailSummaryTab({
                 )}
               </form>
             </section>
+            )}
 
             {/* ─── SETTLE ORDER ─── */}
-            <section ref={settleRef as React.RefObject<HTMLElement>}>
+            {activeAction === 'settle' && (
+            <section>
               <h3 className="mb-3 font-medium text-gray-900">Settle Order</h3>
 
               {(() => {
@@ -1892,10 +1747,6 @@ export function OrderDetailSummaryTab({
 
                     {/* Settlement summary */}
                     <div className="rounded-lg border border-gray-200 divide-y divide-sand-brand text-sm">
-                      <div className="flex justify-between px-4 py-2.5">
-                        <span className="text-gray-600">Order Total</span>
-                        <span className="font-medium">{formatCurrency(total)}</span>
-                      </div>
                       {returnChargesAmount > 0 && (
                         <div className="flex justify-between px-4 py-2.5 bg-red-50">
                           <span className="font-medium text-red-800">
@@ -1907,10 +1758,6 @@ export function OrderDetailSummaryTab({
                           <span className="font-bold text-red-800">+{formatCurrency(returnChargesAmount)}</span>
                         </div>
                       )}
-                      <div className="flex justify-between px-4 py-2.5">
-                        <span className="text-gray-600">Total Paid (rental)</span>
-                        <span className="font-medium text-green-600">{formatCurrency(totalPaid)}</span>
-                      </div>
                       {refundsTotal > 0 && (
                         <div className="flex justify-between px-4 py-2.5 bg-orange-50">
                           <span
@@ -1929,7 +1776,7 @@ export function OrderDetailSummaryTab({
                         </div>
                       )}
                       <div className="flex justify-between px-4 py-2.5">
-                        <span className="font-medium text-gray-900">Balance Due</span>
+                        <span className="font-medium text-gray-900">Balance at settlement</span>
                         <span className={`font-bold ${settleBalance > 0 ? 'text-red-600' : 'text-green-600'}`}>{formatCurrency(settleBalance)}</span>
                       </div>
                       {securityDeposit > 0 && (
@@ -2053,64 +1900,6 @@ export function OrderDetailSummaryTab({
                       </div>
                     )}
 
-                    {/* Deposit payment method correction */}
-                    {depositRefund > 0 && (
-                      <div className="rounded-lg border border-gray-200 bg-white p-4">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                          <label className="block">
-                            <span className="text-sm font-medium text-gray-700">Deposit payment method</span>
-                            <p className="mt-0.5 text-xs text-gray-500">
-                              Update this if the customer changed how they paid the deposit.
-                            </p>
-                            <select
-                              value={depositMethodDraftId}
-                              onChange={(e) => {
-                                setDepositMethodDraftId(e.target.value);
-                                setDepositMethodAccountId('');
-                              }}
-                              className="mt-2 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm sm:w-48 focus:border-teal-brand focus:outline-none focus:ring-1 focus:ring-teal-brand"
-                            >
-                              <option value="">Select method</option>
-                              {editableDepositMethods.map((method) => (
-                                <option key={method.id} value={method.id}>{method.name}</option>
-                              ))}
-                            </select>
-                          </label>
-                          {depositMethodDraftId && !routedDepositMethodAccountId && (
-                            <label className="block sm:flex-1">
-                              <span className="text-xs font-medium text-gray-600">Deposit account</span>
-                              <select
-                                value={depositMethodAccountId}
-                                onChange={(e) => setDepositMethodAccountId(e.target.value)}
-                                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm sm:max-w-56"
-                              >
-                                <option value="">Select account</option>
-                                {depositMethodAccountOptions.map((account) => (
-                                  <option key={String(account.id)} value={String(account.id)}>{String(account.name)}</option>
-                                ))}
-                              </select>
-                            </label>
-                          )}
-                          <button
-                            type="button"
-                            onClick={handleUpdateDepositMethod}
-                            disabled={
-                              updateDepositMethod.isPending ||
-                              !depositMethodDraftId ||
-                              !effectiveDepositMethodAccountId ||
-                              depositMethodDraftId === depositMethodId
-                            }
-                            className="rounded-lg border border-teal-brand px-4 py-2 text-sm font-medium text-teal-brand hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {updateDepositMethod.isPending ? 'Saving...' : 'Save method'}
-                          </button>
-                        </div>
-                        {updateDepositMethod.error && (
-                          <p className="mt-2 text-sm text-red-600">{(updateDepositMethod.error as Error).message}</p>
-                        )}
-                      </div>
-                    )}
-
                     {/* Deposit refund section */}
                     {depositRefund > 0 && (
                       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
@@ -2195,8 +1984,10 @@ export function OrderDetailSummaryTab({
                 );
               })()}
             </section>
+            )}
           </div>
         )}
+      </aside>
       </div>
 
       {/* ─── Refund confirmation dialog ─── */}

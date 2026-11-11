@@ -7,15 +7,50 @@ import { InvoiceBuilderModal } from './InvoiceBuilderModal.js';
 interface OrderInvoicesBarProps {
   /** Booking reference (`orders_raw.order_reference` / `orders.booking_token`), or the record id when there is none. */
   orderReference: string | null | undefined;
+  /** `inline` renders a compact one-line strip without the boxed background. */
+  variant?: 'bar' | 'inline';
 }
 
 /** Invoice shortcuts for an order modal: existing invoices for the booking plus "Create invoice". */
-export function OrderInvoicesBar({ orderReference }: OrderInvoicesBarProps) {
+export function OrderInvoicesBar({ orderReference, variant = 'bar' }: OrderInvoicesBarProps) {
   const canManage = useAuthStore((s) => s.hasPermission('can_manage_invoices'));
   const { data: invoices = [] } = useOrderInvoices(orderReference, canManage);
   const [builder, setBuilder] = useState<{ invoiceId: string | null } | null>(null);
 
   if (!canManage || !orderReference) return null;
+
+  if (variant === 'inline') {
+    return (
+      <>
+        <span className="inline-flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-gray-500">Invoices:</span>
+          {invoices.length === 0 && <span className="text-gray-400">none</span>}
+          {invoices.map((inv) => (
+            <button
+              key={inv.id}
+              type="button"
+              onClick={() => setBuilder({ invoiceId: inv.id })}
+              className={`rounded-full border px-2 py-0 font-medium hover:bg-gray-50 ${inv.status === 'void' ? 'border-gray-300 text-gray-400 line-through' : 'border-teal-300 text-teal-700'}`}
+              title={`${inv.billToCompany ?? inv.billToName} · balance ${formatCurrency(inv.balanceDue)}`}
+            >
+              {inv.invoiceNumber}
+            </button>
+          ))}
+          <button type="button" onClick={() => setBuilder({ invoiceId: null })} className="font-medium text-teal-brand hover:underline">
+            Create
+          </button>
+        </span>
+        {builder && (
+          <InvoiceBuilderModal
+            open
+            onClose={() => setBuilder(null)}
+            invoiceId={builder.invoiceId}
+            initialOrderReferences={[orderReference]}
+          />
+        )}
+      </>
+    );
+  }
 
   return (
     <>

@@ -3,14 +3,14 @@ import { useEffect, useRef } from 'react';
 interface ModalProps {
   open: boolean;
   onClose: () => void;
-  title: string;
+  title: React.ReactNode;
   children: React.ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
   /** Optional actions rendered on the title row, left of the close button. */
   headerActions?: React.ReactNode;
 }
 
-const SIZE_CLASSES = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' };
+const SIZE_CLASSES = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl', '2xl': 'max-w-6xl' };
 
 export function Modal({ open, onClose, title, children, size = 'md', headerActions }: ModalProps) {
   const ref = useRef<HTMLDialogElement>(null);
