@@ -1,3 +1,4 @@
+import { firstName } from '../../lib/first-name.js';
 import { escapeHtml } from '../email.js';
 
 function layout(body: string): string {
@@ -35,7 +36,7 @@ export function contractSigningRequestHtml({
   expiresAt: string;
 }): string {
   return layout(`
-    <h2 style="margin: 0 0 8px;">Hi ${escapeHtml(recipientName)},</h2>
+    <h2 style="margin: 0 0 8px;">Hi ${escapeHtml(firstName(recipientName))},</h2>
     <p style="margin: 0 0 24px;">
       ${escapeHtml(lolaSignerName)} from Lola's Rentals has sent you <strong>${escapeHtml(title)}</strong> to review and sign.
     </p>
@@ -63,7 +64,7 @@ export function contractCompletedHtml({
   message?: string | null;
 }): string {
   return layout(`
-    <h2 style="margin: 0 0 8px;">Hi ${escapeHtml(recipientName)},</h2>
+    <h2 style="margin: 0 0 8px;">Hi ${escapeHtml(firstName(recipientName))},</h2>
     ${messageBlock(message)}
     <p style="margin: 0 0 24px;">
       Attached is the signed copy of <strong>${escapeHtml(title)}</strong>${signedAt ? `, signed on ${escapeHtml(signedAt)}` : ''}.

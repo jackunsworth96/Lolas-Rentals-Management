@@ -1,3 +1,4 @@
+import { firstName } from '../lib/first-name.js';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { ExtendLookupRequestSchema, PublicExtendConfirmSchema, StaffExtendConfirmSchema, Permission } from '@lolas/shared';
@@ -150,7 +151,7 @@ async function sendExtensionReceivedMessage({
     languageCode: EXTENSION_TEMPLATE_LANGUAGE,
     bodyText: EXTENSION_TEMPLATE_BODY,
     parameters: [
-      contact.customerName,
+      firstName(contact.customerName),
       formatManilaDateTime(newDropoffDatetime),
       formatPhp(Math.max(0, outstandingBalance)),
     ],

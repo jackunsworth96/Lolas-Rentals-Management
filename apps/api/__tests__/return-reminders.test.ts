@@ -29,12 +29,12 @@ function reminderDatabase(source: 'raw' | 'staff', ninePm: boolean) {
   };
   const booking: Row = source === 'raw'
     ? {
-      order_reference: reference, customer_name: 'Ada', customer_mobile: '+639171234567',
+      order_reference: reference, customer_name: 'Ada Lovelace', customer_mobile: '+639171234567',
       status: ninePm ? 'unprocessed' : 'confirmed', addon_ids: ninePm ? [9] : [],
     }
     : {
       order_id: 'order-1',
-      orders: { booking_token: reference, status: 'active', customers: { name: 'Ada', mobile: '+639171234567' } },
+      orders: { booking_token: reference, status: 'active', customers: { name: 'Ada Lovelace', mobile: '+639171234567' } },
     };
   tables[source === 'raw' ? 'orders_raw' : 'order_items'].push(booking);
   if (ninePm && source === 'staff') tables.order_addons.push({ order_id: 'order-1' });
@@ -121,8 +121,17 @@ describe.each(jobs)('$name return reminder', (job) => {
 
     if (job.ninePm) {
       expect(fetch).toHaveBeenCalledTimes(3);
+      for (const [, options] of vi.mocked(fetch).mock.calls) {
+        const body = String(options?.body);
+        expect(body).toContain('Hi Ada 👋');
+        expect(body).not.toContain('Ada Lovelace');
+      }
     } else {
       expect(mocks.sendWhatsAppTemplate).toHaveBeenCalledTimes(3);
+      for (const [input] of mocks.sendWhatsAppTemplate.mock.calls) {
+        expect(input.parameters[0]).toBe('Ada');
+        expect(input.failureContext.customerName).toBe('Ada Lovelace');
+      }
       const keys = mocks.sendWhatsAppTemplate.mock.calls.map(([input]) => input.operationKey);
       expect(new Set(keys).size).toBe(3);
       expect(keys[0]).toBe(`${job.prefix}:${reference}:2026-11-0${7 + job.dayOffset}`);

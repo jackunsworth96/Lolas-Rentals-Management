@@ -6,6 +6,7 @@
  * (Asia/Manila date boundaries) and sends a WhatsApp template through Meta.
  */
 
+import { firstName } from '../lib/first-name.js';
 import cron from 'node-cron';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { logger } from '../lib/logger.js';
@@ -150,7 +151,7 @@ export async function runPickupReminderJob(): Promise<void> {
         templateName: PICKUP_REMINDER_TEMPLATE_NAME,
         languageCode: PICKUP_REMINDER_TEMPLATE_LANGUAGE,
         bodyText: PICKUP_REMINDER_TEMPLATE_BODY,
-        parameters: [candidate.customerName, pickupTime],
+        parameters: [firstName(candidate.customerName), pickupTime],
         logContext: { ref: candidate.bookingReference },
         failureContext: {
           automation: 'pickup_reminder',

@@ -1,3 +1,4 @@
+import { firstName } from '../lib/first-name.js';
 import { logger } from '../lib/logger.js';
 import { sendWhatsAppTemplate } from './whatsapp-template.js';
 
@@ -31,9 +32,8 @@ export interface BookingConfirmationWhatsAppInput {
 }
 
 export function buildBookingTemplateParameters(input: BookingConfirmationWhatsAppInput): string[] {
-  const firstName = input.customerName.trim().split(/\s+/)[0] || input.customerName;
   return [
-    firstName,
+    firstName(input.customerName),
     input.orderReference,
     input.vehicleName,
     input.pickupDatetime,

@@ -25,6 +25,7 @@
  *   RESPOND_IO_OUTBOUND_TOKEN  Bearer token for outbound messages
  */
 
+import { firstName } from '../lib/first-name.js';
 import cron from 'node-cron';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { logger } from '../lib/logger.js';
@@ -69,7 +70,7 @@ async function sendRespondIoMessage(phone: string, text: string): Promise<void> 
 
 function buildMessage(customerName: string): string {
   return (
-    `Hi ${customerName} 👋 Just a reminder that your vehicle is due back at 9PM tonight. ` +
+    `Hi ${firstName(customerName)} 👋 Just a reminder that your vehicle is due back at 9PM tonight. ` +
     `A team member will arrive at 8:15pm so you're welcome to arrive anytime from then.\n\n` +
     `A few things to keep in mind:\n\n` +
     `🛵 Please return with a full tank of fuel\n` +

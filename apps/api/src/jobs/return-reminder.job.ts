@@ -15,6 +15,7 @@
  * Required env vars outside NODE_ENV=development are listed in .env.example.
  */
 
+import { firstName } from '../lib/first-name.js';
 import cron from 'node-cron';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { logger } from '../lib/logger.js';
@@ -207,7 +208,7 @@ export async function runReturnReminderJob(): Promise<void> {
         templateName: RETURN_REMINDER_TEMPLATE_NAME,
         languageCode: RETURN_REMINDER_TEMPLATE_LANGUAGE,
         bodyText: RETURN_REMINDER_TEMPLATE_BODY,
-        parameters: [candidate.customerName, returnTime],
+        parameters: [firstName(candidate.customerName), returnTime],
         logContext: { ref: candidate.bookingReference },
         failureContext: {
           automation: 'return_reminder',

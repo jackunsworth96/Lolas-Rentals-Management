@@ -1,5 +1,6 @@
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
+import { firstName } from '../src/lib/first-name.js';
 
 export async function sendTestWhatsApp(args: string[]): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -22,7 +23,7 @@ export async function sendTestWhatsApp(args: string[]): Promise<void> {
     templateName: PICKUP_REMINDER_TEMPLATE_NAME,
     languageCode: PICKUP_REMINDER_TEMPLATE_LANGUAGE,
     bodyText: PICKUP_REMINDER_TEMPLATE_BODY,
-    parameters: [name.trim(), pickupTime.trim()],
+    parameters: [firstName(name), pickupTime.trim()],
   };
   console.log(`Recipient: ${phone}\nTemplate: ${input.templateName} (${input.languageCode})\nTest key: ${input.operationKey}`);
   console.log(renderTemplate(input.bodyText, input.parameters));

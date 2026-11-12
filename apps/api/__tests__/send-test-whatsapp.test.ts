@@ -12,7 +12,7 @@ afterEach(() => { vi.restoreAllMocks(); process.env = { ...originalEnv }; });
 
 it('previews by default and requires an explicit send flag', async () => {
   process.env.NODE_ENV = 'development';
-  await sendTestWhatsApp(['+639171234567', 'Ada', '9:00 AM']);
+  await sendTestWhatsApp(['+639171234567', 'Ada Lovelace', '9:00 AM']);
   expect(mocks.send).not.toHaveBeenCalled();
   expect(mocks.getSupabaseClient).not.toHaveBeenCalled();
   expect(process.env.NODE_ENV).toBe('development');
@@ -29,7 +29,7 @@ it.each([
   const single = vi.fn().mockResolvedValue({ data: { external_message_id: 'wamid.test', reported_at: reportedAt }, error: null });
   const eq = vi.fn(() => ({ single }));
   mocks.getSupabaseClient.mockReturnValue({ from: () => ({ select: () => ({ eq }) }) });
-  await sendTestWhatsApp(['+639171234567', 'Ada', '9:00 AM', '--send', ...args]);
+  await sendTestWhatsApp(['+639171234567', 'Ada Lovelace', '9:00 AM', '--send', ...args]);
   expect(mocks.send).toHaveBeenCalledOnce();
   expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
     operationKey, phone: '+639171234567',

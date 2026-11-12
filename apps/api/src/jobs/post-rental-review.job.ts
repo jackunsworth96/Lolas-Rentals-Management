@@ -18,6 +18,7 @@
  * Required env vars are listed in .env.example.
  */
 
+import { firstName } from '../lib/first-name.js';
 import cron from 'node-cron';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { logger } from '../lib/logger.js';
@@ -203,7 +204,7 @@ export async function runPostRentalReviewJob(): Promise<void> {
         templateName: POST_RENTAL_REVIEW_TEMPLATE_NAME,
         languageCode: POST_RENTAL_REVIEW_TEMPLATE_LANGUAGE,
         bodyText: POST_RENTAL_REVIEW_TEMPLATE_BODY,
-        parameters: [candidate.customerName],
+        parameters: [firstName(candidate.customerName)],
         logContext: { ref: candidate.bookingReference },
         failureContext: {
           automation: 'post_rental_review',

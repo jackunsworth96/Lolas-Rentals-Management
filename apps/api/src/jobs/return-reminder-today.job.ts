@@ -6,6 +6,7 @@
  * (Asia/Manila date boundaries) and sends a WhatsApp template through Meta.
  */
 
+import { firstName } from '../lib/first-name.js';
 import cron from 'node-cron';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { logger } from '../lib/logger.js';
@@ -184,7 +185,7 @@ export async function runReturnReminderTodayJob(): Promise<void> {
         templateName: RETURN_REMINDER_TODAY_TEMPLATE_NAME,
         languageCode: RETURN_REMINDER_TODAY_TEMPLATE_LANGUAGE,
         bodyText: RETURN_REMINDER_TODAY_TEMPLATE_BODY,
-        parameters: [candidate.customerName, returnTime],
+        parameters: [firstName(candidate.customerName), returnTime],
         logContext: { ref: candidate.bookingReference },
         failureContext: {
           automation: 'return_reminder_today',

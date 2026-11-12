@@ -1,3 +1,4 @@
+import { firstName } from '../../lib/first-name.js';
 import { escapeHtml } from '../email.js';
 
 export function bookingConfirmationHtml({
@@ -129,7 +130,7 @@ export function bookingConfirmationHtml({
 
         <!-- Greeting -->
         <h2 style="color: #363737; margin: 0 0 8px; font-size: 22px;">
-          Hi ${escapeHtml(customerName)}! 🐾
+          Hi ${escapeHtml(firstName(customerName))}! 🐾
         </h2>
         <p style="color: #363737; line-height: 1.6; margin: 0 0 24px; font-size: 15px;">
           Your booking is confirmed — we can't wait to see you on the island!
@@ -296,7 +297,7 @@ export function waiverConfirmationHtml({
       <div style="padding: 32px; background: #FAF6F0;">
 
         <h2 style="color: #363737; margin: 0 0 8px;">
-          ✅ Waiver Signed, ${escapeHtml(driverName)}!
+          ✅ Waiver Signed, ${escapeHtml(firstName(driverName))}!
         </h2>
         <p style="color: #363737; line-height: 1.6; margin: 0 0 24px;">
           Your vehicle inspection waiver has been successfully signed. Here's a summary for your records.
@@ -399,7 +400,7 @@ export function waiverReminderHtml({
       <div style="padding: 32px; background: #FAF6F0;">
 
         <h2 style="color: #363737; margin: 0 0 8px;">
-          ⚡ Action Required, ${escapeHtml(customerName)}!
+          ⚡ Action Required, ${escapeHtml(firstName(customerName))}!
         </h2>
         <p style="color: #363737; line-height: 1.6; margin: 0 0 24px;">
           Your rental starts tomorrow and we noticed you haven't signed your waiver yet.
@@ -537,7 +538,7 @@ export function postRentalThankYouHtml({
       <div style="padding: 32px; background: #FAF6F0;">
 
         <h2 style="color: #363737; margin: 0 0 8px;">
-          Thank you, ${escapeHtml(customerName)}! 🐾
+          Thank you, ${escapeHtml(firstName(customerName))}! 🐾
         </h2>
         <p style="color: #363737; line-height: 1.6; margin: 0 0 24px;">
           Your rental has come to an end — we hope Siargao treated you well and that you made fond
@@ -868,7 +869,7 @@ export function walkInReservationConfirmationHtml({
       <div style="padding: 32px;">
 
         <h2 style="color: #363737; margin: 0 0 8px; font-size: 22px;">
-          Hi ${escapeHtml(customerName)}! 🐾
+          Hi ${escapeHtml(firstName(customerName))}! 🐾
         </h2>
         <p style="color: #363737; line-height: 1.6; margin: 0 0 24px; font-size: 15px;">
           Your reservation is confirmed! We've held your vehicle for the dates below.
@@ -1176,7 +1177,7 @@ export function transferBookingConfirmationHtml({
           <h1 style="font-family: 'Alegreya Sans', Arial, sans-serif; color: #00577C; font-size: 28px; margin: 0;">
             Transfer Booking Confirmed
           </h1>
-          <p style="color: #363737; margin-top: 8px;">Thank you, ${escapeHtml(customerName)}!</p>
+          <p style="color: #363737; margin-top: 8px;">Thank you, ${escapeHtml(firstName(customerName))}!</p>
         </div>
         ${pickupSection}
         <div style="background: #f1e6d6; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
@@ -1318,7 +1319,7 @@ export function transferPickupConfirmationHtml({
           <h1 style="font-family: 'Alegreya Sans', Arial, sans-serif; color: #00577C; font-size: 28px; margin: 0;">
             Your Pickup Time
           </h1>
-          <p style="color: #363737; margin-top: 8px;">Hi ${escapeHtml(customerName)}, here are your pickup details.</p>
+          <p style="color: #363737; margin-top: 8px;">Hi ${escapeHtml(firstName(customerName))}, here are your pickup details.</p>
         </div>
 
         <div style="background: #00577C; border-radius: 12px; padding: 24px; margin-bottom: 24px; text-align: center;">
