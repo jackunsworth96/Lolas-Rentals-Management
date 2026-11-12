@@ -58,10 +58,12 @@ export interface SettleOrderInput {
    * Peso amount of fuel, condition, or other return-time charges assessed
    * at the point of settlement. Bumped onto `orders.final_total` and
    * `orders.return_charges` atomically in the RPC. It is paired with a
-   * separately tendered return-charge payment, so it does not consume the
-   * security deposit.
+   * separately tendered return-charge payment unless `returnChargesFromDeposit`
+   * is set, in which case it is added to the balance the deposit covers.
    */
   returnChargesDelta?: number;
+  /** Deduct the return charge from the security deposit instead of collecting it separately. */
+  returnChargesFromDeposit?: boolean;
   /**
    * Free-text label describing what the return charge is for,
    * e.g. "Fuel shortage", "Damage". Stored in orders.return_charges_note.
@@ -145,8 +147,11 @@ export async function settleOrder(
       ? Money.php(input.returnChargesDelta)
       : Money.zero();
 
+  const returnChargesFromDeposit = !!input.returnChargesFromDeposit && returnChargesDelta.isPositive();
+
   if (
     returnChargesDelta.isPositive() &&
+    !returnChargesFromDeposit &&
     (!input.returnChargesPaymentMethodId || !input.returnChargesAccountId)
   ) {
     throw new Error('Return-charge payment method and account are required');
@@ -156,14 +161,17 @@ export async function settleOrder(
   //   (a) final_total − rentalPaid         — works when migration 091 has bumped final_total
   //   (b) pendingExtensionsTotal           — fallback if final_total is stale
   // Use the greater so the calc is resilient either way.
-  // Return charges are collected as a separate payment at settlement and do not
-  // consume the deposit. The order total and received payment are both bumped
-  // below, keeping the final balance unchanged by an already-paid charge.
+  // A separately paid return charge bumps both the order total and the received
+  // payments, leaving the balance unchanged. One taken from the deposit is added
+  // to the balance so the deposit covers it.
   const balanceFromFinalTotal = order.calculateBalanceDue(rentalPaid);
-  const balanceBeforeDeposit =
+  const rentalBalance =
     balanceFromFinalTotal.toNumber() >= pendingExtensionsTotal.toNumber()
       ? balanceFromFinalTotal
       : pendingExtensionsTotal;
+  const balanceBeforeDeposit = returnChargesFromDeposit
+    ? rentalBalance.add(returnChargesDelta)
+    : rentalBalance;
 
   const { amountApplied, refund } = calculateRefundableDeposit(
     order.securityDeposit,
@@ -183,7 +191,29 @@ export async function settleOrder(
   // Return charges are collected separately from the rental balance so an
   // already-paid fuel/damage charge does not reduce the security-deposit refund.
   // Persisting a payment row also puts the receipt in Cash-Up under its tender.
-  if (returnChargesDelta.isPositive()) {
+  if (returnChargesFromDeposit) {
+    const description = `Order ${order.id} return charge income${input.returnChargesNote ? ` (${input.returnChargesNote})` : ''}`;
+    legs.push(
+      {
+        entryId: crypto.randomUUID(),
+        accountId: input.receivableAccountId,
+        debit: returnChargesDelta,
+        credit: Money.zero(),
+        description: `Order ${order.id} return charge raised, taken from deposit`,
+        referenceType: 'adjustment',
+        referenceId: order.id,
+      },
+      {
+        entryId: crypto.randomUUID(),
+        accountId: input.returnChargesIncomeAccountId ?? input.receivableAccountId,
+        debit: Money.zero(),
+        credit: returnChargesDelta,
+        description,
+        referenceType: 'adjustment',
+        referenceId: order.id,
+      },
+    );
+  } else if (returnChargesDelta.isPositive()) {
     returnChargePayment = {
       id: crypto.randomUUID(),
       storeId: order.storeId,

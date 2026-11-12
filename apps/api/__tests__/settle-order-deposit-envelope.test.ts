@@ -137,4 +137,27 @@ describe('settleOrder deposit envelope postings', () => {
     const net = legs.reduce((s, l) => s + l.debit - l.credit, 0);
     expect(net).toBe(0);
   });
+
+  it('takes a return charge from the deposit when asked', async () => {
+    const result = await settleOrder(setup({ balanceDue: 635, depositMethod: 'Cash' }) as never, {
+      ...baseInput,
+      depositRefundMethodId: 'Cash',
+      returnChargesDelta: 150,
+      returnChargesNote: 'Fuel',
+      returnChargesFromDeposit: true,
+      returnChargesIncomeAccountId: 'INCOME',
+    });
+    expect(result).toMatchObject({ depositApplied: 785, depositRefund: 215 });
+    const payload = mocks.rpc.mock.calls[0][1];
+    expect(payload.p_return_charge_payment).toBeNull();
+    expect(payload.p_return_charges_delta).toBe(150);
+    const legs = postedLegs();
+    expect(legs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ account_id: 'AR', debit: 150 }),
+      expect.objectContaining({ account_id: 'INCOME', credit: 150 }),
+      expect.objectContaining({ account_id: 'ENVELOPE', credit: 785, reference_type: 'deposit_envelope_transfer' }),
+    ]));
+    expect(legs.find((l) => l.reference_type === 'refund' && l.credit > 0)).toMatchObject({ account_id: 'ENVELOPE', credit: 215 });
+    expect(legs.reduce((s, l) => s + l.debit - l.credit, 0)).toBe(0);
+  });
 });

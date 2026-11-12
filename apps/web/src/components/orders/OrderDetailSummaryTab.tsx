@@ -39,6 +39,8 @@ function waiverFetchApiBase(): string {
   return base || '/api';
 }
 
+const RETURN_CHARGE_FROM_DEPOSIT = '__deposit__';
+
 function moneyAmount(val: unknown): number {
   if (val == null) return 0;
   if (typeof val === 'object' && 'amount' in val && typeof (val as { amount: number }).amount === 'number') return (val as { amount: number }).amount;
@@ -113,6 +115,7 @@ export function OrderDetailSummaryTab({
   const [returnCharges, setReturnCharges] = useState('');
   const [returnChargesNote, setReturnChargesNote] = useState('');
   const [returnChargesMethodId, setReturnChargesMethodId] = useState('');
+  const [returnChargesFromDepositChoice, setReturnChargesFromDepositChoice] = useState(true);
   const [returnChargesAccountId, setReturnChargesAccountId] = useState('');
 
   // ── Helmet swap state ──
@@ -547,6 +550,7 @@ export function OrderDetailSummaryTab({
   const vehicleNames = enrichedData?.vehicleNames ?? null;
   const returnDatetime = enrichedData?.returnDatetime ?? null;
   const securityDeposit = enrichedData?.securityDeposit ?? moneyAmount(order.securityDeposit);
+  const returnChargesFromDeposit = returnChargesFromDepositChoice && securityDeposit > 0;
   const surcharge = enrichedData?.cardFeeSurcharge ?? moneyAmount(order.cardFeeSurcharge);
   const waiverStatus = enrichedData?.waiverStatus ?? 'pending';
   const waiverSignedAt = enrichedData?.waiverSignedAt ?? null;
@@ -713,9 +717,11 @@ export function OrderDetailSummaryTab({
       if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return s;
       return s + (p.amount ?? 0);
     }, 0);
-    // Return charges are collected separately using their selected tender, so
-    // they do not consume the security deposit or alter the rental balance.
-    const settleBalanceH = calculateBalanceDue(total, settleRentalPaidH);
+    // Return charges paid by their own tender leave the rental balance alone;
+    // ones taken from the deposit are added to the balance the deposit covers.
+    const settleBalanceH = calculateBalanceDue(total, settleRentalPaidH)
+      + (returnChargesFromDeposit ? returnChargesAmount : 0);
+    const chargeTendered = returnChargesAmount > 0 && !returnChargesFromDeposit;
 
     const depositApplied = Math.min(securityDeposit, settleBalanceH);
     const depositRefund = Math.max(0, securityDeposit - settleBalanceH);
@@ -734,7 +740,7 @@ export function OrderDetailSummaryTab({
 
     if (depositRefund > 0 && !effectiveRefundAccountId.trim()) return;
 
-    if (returnChargesAmount > 0 && (!returnChargesMethodId || !effectiveReturnChargeAccountId)) return;
+    if (chargeTendered && (!returnChargesMethodId || !effectiveReturnChargeAccountId)) return;
 
     if (needsFinalPayment && !settleFinalMethodId) return;
     if (needsFinalPayment && !isSettleFinalCard && !settleFinalAccountId) return;
@@ -747,8 +753,10 @@ export function OrderDetailSummaryTab({
       const parts: string[] = [];
       if (returnChargesAmount > 0) {
         const noteLabel = returnChargesNote.trim() ? ` (${returnChargesNote.trim()})` : '';
-        const methodLabel = pmLookup.get(returnChargesMethodId)?.name ?? returnChargesMethodId;
-        parts.push(`Return Charges${noteLabel}: ${formatCurrency(returnChargesAmount)} via ${methodLabel}`);
+        const methodLabel = returnChargesFromDeposit
+          ? 'deposit'
+          : pmLookup.get(returnChargesMethodId)?.name ?? returnChargesMethodId;
+        parts.push(`Return Charges${noteLabel}: ${formatCurrency(returnChargesAmount)} ${returnChargesFromDeposit ? 'from' : 'via'} ${methodLabel}`);
       }
       if (settleBalanceH > 0) parts.push(`Rental Balance Due: ${formatCurrency(settleBalanceH)}`);
       if (pendingExtensionsTotal > 0) parts.push(`Unpaid Extensions: ${formatCurrency(pendingExtensionsTotal)}`);
@@ -784,8 +792,9 @@ export function OrderDetailSummaryTab({
         cardFeeSurchargeDelta: cardFeeSurchargeDelta > 0 ? cardFeeSurchargeDelta : undefined,
         returnChargesDelta: returnChargesAmount > 0 ? returnChargesAmount : undefined,
         returnChargesNote: returnChargesAmount > 0 && returnChargesNote.trim() ? returnChargesNote.trim() : undefined,
-        returnChargesPaymentMethodId: returnChargesAmount > 0 ? returnChargesMethodId : undefined,
-        returnChargesAccountId: returnChargesAmount > 0 ? effectiveReturnChargeAccountId : undefined,
+        returnChargesFromDeposit: returnChargesAmount > 0 && returnChargesFromDeposit ? true : undefined,
+        returnChargesPaymentMethodId: chargeTendered ? returnChargesMethodId : undefined,
+        returnChargesAccountId: chargeTendered ? effectiveReturnChargeAccountId : undefined,
         settlementRef: needsFinalPayment && isSettleFinalCard ? (settleFinalRef || null) : null,
       },
       { onSuccess: () => onClose() },
@@ -1621,14 +1630,16 @@ export function OrderDetailSummaryTab({
                 );
                 // settleBalance uses the same formula as the backend: add refunds
                 // as positive received payments, which reduces effective balance.
-                // Return charges are paid separately by their selected tender.
+                // Return charges taken from the deposit join the balance it covers.
                 const settleRentalPaid = payments.reduce((s, p) => {
                   if (isDepositPayment(p.paymentType)) return s;
                   if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return s;
                   if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return s;
                   return s + (p.amount ?? 0);
                 }, 0);
-                const settleBalance = calculateBalanceDue(total, settleRentalPaid);
+                const settleBalance = calculateBalanceDue(total, settleRentalPaid)
+                  + (returnChargesFromDeposit ? returnChargesAmount : 0);
+                const chargeTendered = returnChargesAmount > 0 && !returnChargesFromDeposit;
 
                 const depositApplied = Math.min(securityDeposit, settleBalance);
                 const depositRefund = Math.max(0, securityDeposit - settleBalance);
@@ -1659,7 +1670,7 @@ export function OrderDetailSummaryTab({
 
                 const refundReady = depositRefund <= 0 || (!!settleRefundMethodId && !!effectiveRefundAccountId.trim());
                 const finalPayReady = remainingAfterDeposit <= 0 || (!!settleFinalMethodId && (isSettleFinalCard || !!settleFinalAccountId));
-                const returnChargeReady = returnChargesAmount <= 0 || (!!returnChargesMethodId && !!effectiveReturnChargeAccountId);
+                const returnChargeReady = !chargeTendered || (!!returnChargesMethodId && !!effectiveReturnChargeAccountId);
                 const settleReady = !!settleDepositAccountId && !!settleReceivableAccountId && refundReady && finalPayReady && returnChargeReady;
 
                 return (
@@ -1669,7 +1680,7 @@ export function OrderDetailSummaryTab({
                       <div>
                         <span className="text-sm font-medium text-gray-700">Return Charges (optional)</span>
                         <p className="mt-0.5 text-xs text-gray-500">
-                          Fuel shortage, damage, or other charges assessed at return — added to the balance before deposit is applied
+                          Fuel shortage, damage, or other charges assessed at return — take it from the deposit or collect it separately
                         </p>
                       </div>
                       <div className="flex flex-wrap items-end gap-3">
@@ -1702,9 +1713,11 @@ export function OrderDetailSummaryTab({
                         <label className="block min-w-[160px]">
                           <span className="text-xs text-gray-500">Payment Method</span>
                           <select
-                            value={returnChargesMethodId}
+                            value={returnChargesFromDeposit ? RETURN_CHARGE_FROM_DEPOSIT : returnChargesMethodId}
                             onChange={(e) => {
-                              setReturnChargesMethodId(e.target.value);
+                              const fromDeposit = e.target.value === RETURN_CHARGE_FROM_DEPOSIT;
+                              setReturnChargesFromDepositChoice(fromDeposit);
+                              setReturnChargesMethodId(fromDeposit ? '' : e.target.value);
                               setReturnChargesAccountId('');
                             }}
                             disabled={returnChargesAmount <= 0}
@@ -1712,12 +1725,15 @@ export function OrderDetailSummaryTab({
                             className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-400"
                           >
                             <option value="">Select method</option>
+                            {securityDeposit > 0 && (
+                              <option value={RETURN_CHARGE_FROM_DEPOSIT}>Take from deposit</option>
+                            )}
                             {returnChargePaymentMethods.map((pm) => (
                               <option key={pm.id} value={pm.id}>{pm.name}</option>
                             ))}
                           </select>
                         </label>
-                        {returnChargesAmount > 0 && returnChargesMethodId && !routedReturnChargeAcct && (
+                        {chargeTendered && returnChargesMethodId && !routedReturnChargeAcct && (
                           <label className="block min-w-[180px]">
                             <span className="text-xs text-gray-500">Receiving Account</span>
                             <select
@@ -1740,6 +1756,7 @@ export function OrderDetailSummaryTab({
                               setReturnCharges('');
                               setReturnChargesNote('');
                               setReturnChargesMethodId('');
+                              setReturnChargesFromDepositChoice(true);
                               setReturnChargesAccountId('');
                             }}
                             className="text-xs text-gray-400 hover:text-gray-600 pb-2"
@@ -1748,7 +1765,13 @@ export function OrderDetailSummaryTab({
                           </button>
                         )}
                       </div>
-                      {returnChargesAmount > 0 && (
+                      {returnChargesAmount > 0 && returnChargesFromDeposit && (
+                        <p className="text-sm font-medium text-red-700">
+                          {formatCurrency(returnChargesAmount)} taken from the security deposit
+                          {returnChargesNote.trim() && <span className="font-normal text-red-600"> — {returnChargesNote.trim()}</span>}
+                        </p>
+                      )}
+                      {chargeTendered && (
                         <p className="text-sm font-medium text-red-700">
                           {formatCurrency(returnChargesAmount)} recorded as a separate payment
                           {returnChargesNote.trim() && <span className="font-normal text-red-600"> — {returnChargesNote.trim()}</span>}

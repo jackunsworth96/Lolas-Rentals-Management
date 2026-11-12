@@ -678,6 +678,7 @@ router.post('/:id/settle', requirePermission(Permission.EditOrders), validateBod
   cardFeeSurchargeDelta: z.number().nonnegative().optional(),
   returnChargesDelta: z.number().nonnegative().optional(),
   returnChargesNote: z.string().max(200).nullable().optional(),
+  returnChargesFromDeposit: z.boolean().optional(),
   returnChargesPaymentMethodId: z.string().min(1).nullable().optional(),
   returnChargesAccountId: z.string().min(1).nullable().optional(),
   settlementRef: z.string().nullable().optional(),
