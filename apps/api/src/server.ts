@@ -119,6 +119,9 @@ app.use('/api/payments/maya/webhook', express.raw({ type: '*/*' }));
 // Waiver sign payloads include base64 signature data URLs (must run before global json limit).
 app.use('/api/public/waiver', express.json({ limit: '5mb' }));
 app.use('/api/waiver', express.json({ limit: '5mb' }));
+// Contract bodies and signature data URLs.
+app.use('/api/public/contracts', express.json({ limit: '5mb' }));
+app.use('/api/contracts', express.json({ limit: '5mb' }));
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 

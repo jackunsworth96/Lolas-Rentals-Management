@@ -39,6 +39,7 @@ import {
 import { useUIStore } from '../../stores/ui-store.js';
 import { Badge } from '../../components/common/Badge.js';
 import { Modal } from '../../components/common/Modal.js';
+import { LinkedContracts } from '../../components/contracts/LinkedContracts.js';
 import { useToast } from '../../hooks/useToast.js';
 import { generatePartnerReportPdf } from '../../utils/partnerReportPdf.js';
 
@@ -1205,6 +1206,10 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
           onDraftTermsChange={setDraftOverrides}
           pushToast={pushToast}
         />
+
+        {isEdit && editing && (
+          <LinkedContracts category="accommodation_partner" counterpartyType="accommodation_partner" counterpartyId={editing.id} />
+        )}
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">

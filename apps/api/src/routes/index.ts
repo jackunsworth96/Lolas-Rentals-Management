@@ -45,6 +45,8 @@ import { accidentRoutes } from './accidents.js';
 import { breakdownRoutes } from './breakdowns.js';
 import { surfRackRoutes } from './surf-racks.js';
 import { invoiceRoutes } from './invoices.js';
+import { contractRoutes } from './contracts.js';
+import { publicContractRoutes } from './public-contracts.js';
 import { loginLimiter, publicLimiter, apiLimiter } from '../middleware/rate-limit.js';
 import { telegramWebhookRouter } from '../telegram/telegram.webhook.js';
 import { requireOperationalStore } from '../middleware/operational-store.js';
@@ -104,5 +106,7 @@ routes.use('/accidents', accidentRoutes);
 routes.use('/breakdowns', breakdownRoutes);
 routes.use('/surf-racks', surfRackRoutes);
 routes.use('/invoices', invoiceRoutes);
+routes.use('/contracts', contractRoutes);
+routes.use('/public/contracts', publicContractRoutes);
 
 export { routes };

@@ -55,12 +55,14 @@ export async function sendEmail({
   subject,
   html,
   text,
+  attachments,
 }: {
   to: string | string[];
   from?: string;
   subject: string;
   html: string;
   text?: string;
+  attachments?: { filename: string; content: Buffer }[];
 }): Promise<void> {
   if (!process.env.RESEND_API_KEY) {
     console.warn('RESEND_API_KEY not set — skipping email:', subject);
@@ -73,6 +75,7 @@ export async function sendEmail({
       subject,
       html,
       text: text ?? html.replace(/<[^>]+>/g, ''),
+      ...(attachments?.length ? { attachments } : {}),
     });
   } catch (err) {
     console.error('Email send failed:', err);

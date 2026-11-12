@@ -31,6 +31,7 @@ import {
   Siren,
   BatteryWarning,
   FileText,
+  FileSignature,
   type LucideIcon,
 } from 'lucide-react';
 import { useUIStore } from '../../stores/ui-store.js';
@@ -42,8 +43,14 @@ import { isArchivePath } from '../../utils/archive-mode.js';
 interface NavItem {
   label: string;
   path: string;
-  perm: string | null;
+  /** Shown when the user has this permission, or any of them for a list. */
+  perm: string | string[] | null;
   icon: LucideIcon;
+}
+
+function hasNavPermission(perm: NavItem['perm'], perms: string[]): boolean {
+  if (!perm) return true;
+  return Array.isArray(perm) ? perm.some((p) => perms.includes(p)) : perms.includes(perm);
 }
 
 interface NavGroup {
@@ -100,6 +107,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Customers', path: '/customers', perm: null, icon: UserSearch },
       { label: 'Partners', path: '/partners', perm: 'can_edit_settings', icon: Hotel },
+      { label: 'Contracts', path: '/contracts', perm: ['can_manage_contracts', 'can_manage_staff_contracts'], icon: FileSignature },
       { label: 'Partner Utilization', path: '/partners/utilization', perm: 'can_edit_settings', icon: BarChart2 },
       { label: 'Analytics', path: '/analytics', perm: 'can_view_dashboard', icon: LineChart },
       { label: 'Impact Articles', path: '/impact', perm: 'can_edit_settings', icon: Heart },
@@ -144,7 +152,7 @@ export function Sidebar() {
       <nav className="flex-1 overflow-y-auto px-2 py-3">
         {NAV_GROUPS.map((group, groupIdx) => {
           const visibleItems = group.items.filter(
-            (item) => (!item.perm || perms.includes(item.perm)) && (!archiveMode || isArchivePath(item.path)),
+            (item) => hasNavPermission(item.perm, perms) && (!archiveMode || isArchivePath(item.path)),
           );
           if (visibleItems.length === 0) return null;
 

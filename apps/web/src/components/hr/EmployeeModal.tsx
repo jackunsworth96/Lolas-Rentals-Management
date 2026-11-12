@@ -10,6 +10,7 @@ import {
 } from '../../api/hr.js';
 import { useLeaveConfig } from '../../api/config.js';
 import { GrantCashAdvanceModal } from './GrantCashAdvanceModal.js';
+import { LinkedContracts } from '../contracts/LinkedContracts.js';
 
 function nextResetLabel(resetMonth: number, resetDay: number): string {
   const monthName = new Date(2000, Math.max(0, resetMonth - 1), 1).toLocaleString('en', { month: 'long' });
@@ -556,6 +557,7 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
                     className={inputCls}
                   />
                 </div>
+                {employee && <LinkedContracts category="staff" counterpartyType="employee" counterpartyId={employee.id} />}
               </div>
             )}
 

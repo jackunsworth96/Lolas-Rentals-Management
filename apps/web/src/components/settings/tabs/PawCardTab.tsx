@@ -3,6 +3,7 @@ import { usePawCardEstablishments, useSaveEstablishment, useDeleteEstablishment,
 import { Modal } from '../../common/Modal.js';
 import { ImageDropzone } from '../../common/ImageDropzone.js';
 import { CloudinaryImage } from '../../ui/CloudinaryImage.js';
+import { LinkedContracts } from '../../contracts/LinkedContracts.js';
 
 const CATEGORIES = ['Food & Drink', 'Activities', 'Services', 'Shopping'] as const;
 const TIME_OF_DAY = [
@@ -477,6 +478,10 @@ export function PawCardTab() {
                 <span className="text-sm text-gray-700">🐷 Saves ₱100+ per person (high value)</span>
               </label>
             </div>
+
+            {editing?.id != null && (
+              <LinkedContracts category="paw_card_partner" counterpartyType="paw_card_establishment" counterpartyId={String(editing.id)} />
+            )}
 
             {save.error && (
               <p className="text-sm text-red-600">{(save.error as Error).message}</p>

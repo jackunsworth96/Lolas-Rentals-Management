@@ -73,6 +73,8 @@ const PartnerBookPage = lazy(() => import('./pages/partner/PartnerBookPage.js'))
 const PartnerReportsPage = lazy(() => import('./pages/partner/PartnerReportsPage.js'));
 const PartnerPricesPage = lazy(() => import('./pages/partner/PartnerPricesPage.js'));
 const InvoicesPage = lazy(() => import('./pages/invoices/InvoicesPage.js'));
+const ContractsPage = lazy(() => import('./pages/contracts/ContractsPage.js'));
+const PublicContractPage = lazy(() => import('./pages/contract/PublicContractPage.js'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
@@ -101,6 +103,12 @@ function RequireAccounts({ children }: { children: React.ReactNode }) {
 function RequireInvoices({ children }: { children: React.ReactNode }) {
   const hasPermission = useAuthStore((s) => s.hasPermission);
   if (!hasPermission('can_manage_invoices')) return <Navigate to="/orders/inbox" replace />;
+  return <>{children}</>;
+}
+
+function RequireContracts({ children }: { children: React.ReactNode }) {
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  if (!hasPermission('can_manage_contracts') && !hasPermission('can_manage_staff_contracts')) return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
 }
 
@@ -143,6 +151,7 @@ export function AppRouter() {
           <Route path="/book/waiver-agreement" element={<WaiverAgreementPage />} />
           <Route path="/book/transfer/:token" element={<PublicBookingPage />} />
           <Route path="/waiver/:orderReference" element={<WaiverPage />} />
+          <Route path="/contract/:token" element={<PublicContractPage />} />
           <Route path="/refund-policy" element={<RefundPolicyPage />} />
           <Route path="/peace-of-mind" element={<PeaceOfMindPage />} />
           <Route path="/book/bepawsitive" element={<BePawsitivePage />} />
@@ -211,6 +220,7 @@ export function AppRouter() {
             <Route path="customers" element={<CustomersPage />} />
             <Route path="partners" element={<PartnersPage />} />
             <Route path="partners/utilization" element={<PartnerUtilizationPage />} />
+            <Route path="contracts" element={<RequireContracts><ContractsPage /></RequireContracts>} />
             <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="impact" element={<ImpactAdminPage />} />
           </Route>
