@@ -61,45 +61,8 @@ export async function recordTransferPayment(
   await deps.accounting.createTransaction(legs, transfer.storeId, input.date);
 
   const paymentStatus = transfer.derivePaymentStatus(amount);
-
-  const updated = Transfer.create({
-    ...transferToProps(transfer),
-    paymentMethod: input.paymentMethod,
-    paymentStatus,
-    updatedAt: new Date(),
-  });
+  const updated = transfer.withPaymentRecorded(input.paymentMethod, paymentStatus);
 
   await deps.transfers.save(updated);
   return { transfer: updated, paymentStatus };
-}
-
-function transferToProps(t: Transfer) {
-  return {
-    id: t.id,
-    orderId: t.orderId,
-    serviceDate: t.serviceDate,
-    customerName: t.customerName,
-    contactNumber: t.contactNumber,
-    customerEmail: t.customerEmail,
-    customerType: t.customerType,
-    route: t.route,
-    flightTime: t.flightTime,
-    flightNumber: t.flightNumber,
-    paxCount: t.paxCount,
-    vanType: t.vanType,
-    accommodation: t.accommodation,
-    status: t.status,
-    opsNotes: t.opsNotes,
-    totalPrice: t.totalPrice,
-    paymentMethod: t.paymentMethod,
-    paymentStatus: t.paymentStatus,
-    driverFee: t.driverFee,
-    netProfit: t.netProfit,
-    driverPaidStatus: t.driverPaidStatus,
-    bookingSource: t.bookingSource,
-    bookingToken: t.bookingToken,
-    storeId: t.storeId,
-    createdAt: t.createdAt,
-    updatedAt: t.updatedAt,
-  };
 }

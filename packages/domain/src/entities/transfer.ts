@@ -142,6 +142,25 @@ export class Transfer {
     return this.totalPrice.subtract(fee);
   }
 
+  withPaymentRecorded(paymentMethod: string, paymentStatus: TransferPaymentStatus): Transfer {
+    return Transfer.create({
+      ...(this as unknown as TransferProps),
+      paymentMethod,
+      paymentStatus,
+      updatedAt: new Date(),
+    });
+  }
+
+  withDriverPaid(driverFee: Money): Transfer {
+    return Transfer.create({
+      ...(this as unknown as TransferProps),
+      driverFee,
+      netProfit: this.totalPrice.subtract(driverFee),
+      driverPaidStatus: 'Paid',
+      updatedAt: new Date(),
+    });
+  }
+
   withCollected(collectedAt: Date, collectedAmount: number): Transfer {
     return Transfer.create({
       ...(this as unknown as TransferProps),

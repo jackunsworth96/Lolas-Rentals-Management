@@ -241,6 +241,13 @@ export async function processRawOrder(
     (willCreateRentalPayment ? rentalAmount : 0);
   const balanceDue = Math.max(0, finalTotal - totalPaid);
 
+  // The activation payment already includes the transfer fee, so the transfer
+  // must be marked settled or the Transfers page will offer to collect it again.
+  const transferPaidAtActivation =
+    transferBillable > 0 && willCreateRentalPayment && balanceDue === 0;
+  const transferSettledAtActivation =
+    input.excludeTransferFromBalance === true || transferPaidAtActivation;
+
   const orderEntity = OrderEntity.create({
     id: orderId,
     storeId: input.storeId,
@@ -659,10 +666,7 @@ export async function processRawOrder(
             ? rawPayload.accommodation_name.trim()
             : null;
 
-      // When the customer pays the driver directly the transfer is already
-      // financially settled — mark it collected so staff don't chase it.
-      const driverDirectPayment = input.excludeTransferFromBalance === true;
-      const transferPaymentStatus = driverDirectPayment ? 'Paid' : 'Pending';
+      const transferPaymentStatus = transferSettledAtActivation ? 'Paid' : 'Pending';
 
       const fresh = Transfer.create({
         id: crypto.randomUUID(),
@@ -711,9 +715,6 @@ export async function processRawOrder(
         total_price: fresh.totalPrice.toNumber(),
         payment_method: fresh.paymentMethod,
         payment_status: fresh.paymentStatus,
-        // When the driver collected the payment, stamp collected_at now so the
-        // Transfers page immediately shows the row as settled.
-        collected_at: driverDirectPayment ? nowIso : null,
         driver_fee: fresh.driverFee?.toNumber() ?? null,
         net_profit: fresh.netProfit?.toNumber() ?? null,
         driver_paid_status: fresh.driverPaidStatus,
@@ -804,6 +805,26 @@ export async function processRawOrder(
       .is('partner_ref', null);
     if (partnerRefErr) {
       throw new Error(`Failed to preserve partner_ref on activated order ${orderId}: ${partnerRefErr.message}`);
+    }
+  }
+
+  // process_raw_order_atomic neither writes collected_at nor refreshes
+  // payment_status when relinking a pre-created online-booking transfer.
+  if (transferRow && transferSettledAtActivation) {
+    const { error: transferSettleErr } = await supabase
+      .from('transfers')
+      .update({
+        payment_status: 'Paid',
+        ...(transferPaidAtActivation
+          ? { payment_method: input.paymentMethodId, collected_amount: transferBillable }
+          : {}),
+        collected_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', transferRow.id as string)
+      .is('collected_at', null);
+    if (transferSettleErr) {
+      throw new Error(`Failed to mark transfer ${String(transferRow.id)} as paid for order ${orderId}: ${transferSettleErr.message}`);
     }
   }
 

@@ -59,34 +59,7 @@ export async function recordDriverPayment(
 
   await deps.accounting.createTransaction(legs, transfer.storeId);
 
-  const updated = Transfer.create({
-    id: transfer.id,
-    orderId: transfer.orderId,
-    serviceDate: transfer.serviceDate,
-    customerName: transfer.customerName,
-    contactNumber: transfer.contactNumber,
-    customerEmail: transfer.customerEmail,
-    customerType: transfer.customerType,
-    route: transfer.route,
-    flightTime: transfer.flightTime,
-    flightNumber: transfer.flightNumber,
-    paxCount: transfer.paxCount,
-    vanType: transfer.vanType,
-    accommodation: transfer.accommodation,
-    status: transfer.status,
-    opsNotes: transfer.opsNotes,
-    totalPrice: transfer.totalPrice,
-    paymentMethod: transfer.paymentMethod,
-    paymentStatus: transfer.paymentStatus,
-    driverFee: feeAmount,
-    netProfit: transfer.totalPrice.subtract(feeAmount),
-    driverPaidStatus: 'Paid',
-    bookingSource: transfer.bookingSource,
-    bookingToken: transfer.bookingToken,
-    storeId: transfer.storeId,
-    createdAt: transfer.createdAt,
-    updatedAt: new Date(),
-  });
+  const updated = transfer.withDriverPaid(feeAmount);
 
   await deps.transfers.save(updated);
 

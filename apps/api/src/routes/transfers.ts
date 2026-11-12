@@ -250,7 +250,7 @@ router.patch('/:id/collect', requirePermission(Permission.EditTransfers), valida
     }
 
     const { recordTransferPayment } = await import('../use-cases/transfers/record-payment.js');
-    await recordTransferPayment(
+    const { transfer: paid } = await recordTransferPayment(
       {
         transferId: id,
         amount: body.collectedAmount,
@@ -262,7 +262,7 @@ router.patch('/:id/collect', requirePermission(Permission.EditTransfers), valida
       { transfers: transferRepo, accounting: accountingPort },
     );
 
-    await transferRepo.save(existing.withCollected(new Date(), body.collectedAmount));
+    await transferRepo.save(paid.withCollected(new Date(), body.collectedAmount));
     const refreshed = await transferRepo.findById(id);
     res.json({ success: true, data: refreshed });
   } catch (err) { next(err); }

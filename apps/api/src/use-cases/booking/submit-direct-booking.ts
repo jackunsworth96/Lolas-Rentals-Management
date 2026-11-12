@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { BookingPort, ConfigRepository, TransferRepository, AccountingPort } from '@lolas/domain';
+import type { BookingPort, ConfigRepository, TransferRepository, AccountingPort, Transfer } from '@lolas/domain';
 import { Money } from '@lolas/domain';
 import type { SubmitDirectBookingInput } from '@lolas/shared';
 import { resolveSourceFromStore } from '@lolas/shared';
@@ -33,6 +33,46 @@ function formatManilaDateTime(iso: string): string {
     dateStyle: 'medium',
     timeStyle: 'short',
   });
+}
+
+async function notifyDriversOfTransfer(transfer: Transfer, transferRepo: TransferRepository): Promise<void> {
+  try {
+    if (!transfer.flightTime) return;
+    const { calculatePickupTime, inferDirection } = await import('../../transfers/pickup-time.js');
+    const { loadPickupRules } = await import('../../transfers/pickup-rules-loader.js');
+    const { notifyNewTransfer } = await import('../../telegram/telegram.service.js');
+
+    const rules = await loadPickupRules();
+    const pickup = calculatePickupTime(
+      inferDirection(transfer.route),
+      transfer.vanType,
+      transfer.flightTime,
+      transfer.serviceDate,
+      rules,
+    );
+
+    const messageId = await notifyNewTransfer({
+      id: transfer.id,
+      customerName: transfer.customerName,
+      contactNumber: transfer.contactNumber,
+      route: transfer.route,
+      serviceDate: transfer.serviceDate,
+      flightTime: transfer.flightTime,
+      flightNumber: transfer.flightNumber,
+      vanType: transfer.vanType,
+      paxCount: transfer.paxCount,
+      accommodation: transfer.accommodation,
+      pickupTime: pickup.from,
+      pickupTimeEnd: pickup.to,
+    });
+
+    if (messageId) {
+      const refreshed = await transferRepo.findById(transfer.id);
+      if (refreshed) await transferRepo.save(refreshed.withTelegramSent(messageId, pickup.from, pickup.to));
+    }
+  } catch (err) {
+    console.error('[submit-direct-booking] Transfer Telegram notification failed:', err);
+  }
 }
 
 export interface SubmitDirectBookingDeps {
@@ -321,7 +361,7 @@ export async function submitDirectBooking(
       const serviceDate = input.pickupDatetime
         ? new Date(input.pickupDatetime).toISOString().split('T')[0]
         : formatManilaDate();
-      await createTransfer(
+      const transfer = await createTransfer(
         {
           serviceDate,
           customerName: input.customerName,
@@ -344,6 +384,7 @@ export async function submitDirectBooking(
         },
         { transfers: deps.transferRepo },
       );
+      void notifyDriversOfTransfer(transfer, deps.transferRepo);
     } catch (transferErr) {
       // Non-fatal — log but don't block booking response
       console.error('[submit-direct-booking] Failed to create transfer record:', transferErr);
@@ -497,6 +538,13 @@ export async function submitDirectBooking(
       addons.length > 0
         ? `\nAdd-ons: ${addons.map((a) => `${escapeHtml(a.name)} (₱${a.price.toLocaleString('en-PH')})`).join(', ')}`
         : '';
+    const transferTelegramLine = hasTransfer
+      ? `\nTransfer: ${
+          input.transferType === 'tuktuk' ? 'Private TukTuk' : input.transferType === 'private' ? 'Private Van' : 'Shared Van'
+        }${transferRoute ? ` — ${escapeHtml(transferRoute)}` : ''}` +
+        `${input.flightNumber ? ` (${escapeHtml(input.flightNumber)})` : ''}` +
+        `${input.transferAmount ? ` ₱${input.transferAmount.toLocaleString('en-PH')}` : ''}`
+      : '';
     void sendTelegramAlert(
       `🛵 <b>New Booking!</b>\n` +
         `Reference: ${escapeHtml(orderReference)}\n` +
@@ -505,7 +553,8 @@ export async function submitDirectBooking(
         `Dates: ${escapeHtml(pickupFmt)} → ${escapeHtml(dropoffFmt)}\n` +
         `${pickupLocationLine}\n` +
         `${dropoffLocationLine}` +
-        `${addonsTelegramLine}\n` +
+        `${addonsTelegramLine}` +
+        `${transferTelegramLine}\n` +
         `Total: ₱${grandTotal.toLocaleString('en-PH')}`,
       getTelegramChatId('ops'),
     );
