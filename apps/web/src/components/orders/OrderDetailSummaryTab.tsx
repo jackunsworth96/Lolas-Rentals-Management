@@ -1635,6 +1635,20 @@ export function OrderDetailSummaryTab({
                 const remainingAfterDeposit = Math.max(0, settleBalance - depositApplied);
                 const isFullyPaid = remainingAfterDeposit <= 0 && depositRefund <= 0;
 
+                // Mirrors settle-order: the envelope only holds deposits collected in cash.
+                const isCashKey = (v: string | null | undefined) => String(v ?? '').toLowerCase().replace(/[\s_-]/g, '') === 'cash';
+                const cashDepositHeld = payments.reduce(
+                  (s, p) => (isDepositPayment(p.paymentType) && isCashKey(p.paymentMethodId) ? s + (p.amount ?? 0) : s),
+                  0,
+                );
+                const cashDepositLeft = Math.max(0, cashDepositHeld - Math.min(cashDepositHeld, depositApplied));
+                const refundIsCash = !!settleRefundMethodId
+                  && (isCashKey(settleRefundMethodId) || isCashKey(settleRefundPM?.name));
+                const refundFromTill = depositRefund > 0 && refundIsCash
+                  ? Math.max(0, depositRefund - cashDepositLeft)
+                  : 0;
+                const envelopeToTill = depositRefund > 0 && settleRefundMethodId && !refundIsCash ? cashDepositLeft : 0;
+
                 // Surcharge preview — only shown once a card method is selected.
                 const cardSurchargePreview = remainingAfterDeposit > 0 && isSettleFinalCard
                   ? Math.round(remainingAfterDeposit * (settleFinalSurcharge / 100) * 100) / 100
@@ -1933,6 +1947,18 @@ export function OrderDetailSummaryTab({
                             </select>
                             <p className="mt-1 text-xs text-amber-600">No routing rule — select manually</p>
                           </label>
+                        )}
+                        {refundFromTill > 0 && (
+                          <p className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                            {refundFromTill >= depositRefund
+                              ? <>Deposit was collected via {depositMethodLabel ?? 'a non-cash method'}. Pay the {formatCurrency(refundFromTill)} cash from the <span className="font-semibold">till</span>, not the deposit envelope.</>
+                              : <>Pay {formatCurrency(depositRefund - refundFromTill)} from the deposit envelope and {formatCurrency(refundFromTill)} from the <span className="font-semibold">till</span> (that part of the deposit was not collected in cash).</>}
+                          </p>
+                        )}
+                        {envelopeToTill > 0 && (
+                          <p className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                            Deposit cash stays behind: move <span className="font-semibold">{formatCurrency(envelopeToTill)}</span> from the deposit envelope into the till.
+                          </p>
                         )}
                       </div>
                     )}

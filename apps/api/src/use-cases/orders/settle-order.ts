@@ -15,6 +15,7 @@ import { supabase } from '../../adapters/supabase/client.js';
 import { formatManilaDate } from '../../utils/manila-date.js';
 import {
   DEPOSIT_ENVELOPE_TRANSFER_REF,
+  DEPOSIT_REFUND_SWAP_REF,
   depositHoldingAccount,
   isCashMethod,
   type StoreCashAccounts,
@@ -296,6 +297,16 @@ export async function settleOrder(
     }
   }
 
+  // Cash deposits sit in the envelope; other tenders stay on their own account.
+  const cash = input.cashAccounts;
+  const envelopeReady = !!(cash?.envelopeAccountId && cash.tillAccountId);
+  const depositPayments = payments.filter((p) => isDepositPayment(p.paymentType));
+  const cashDepositHeld = depositPayments
+    .filter((p) => isCashMethod(p.paymentMethodId))
+    .reduce((sum, p) => sum.add(Money.php(p.amount)), Money.zero());
+  const cashApplied = Money.php(Math.min(cashDepositHeld.toNumber(), amountApplied.toNumber()));
+  const cashHeldRemaining = cashDepositHeld.subtract(cashApplied);
+
   // ── Deposit-applied legs ─────────────────────────────────
   if (amountApplied.isPositive()) {
     legs.push(
@@ -319,12 +330,7 @@ export async function settleOrder(
       },
     );
 
-    // Cash deposits sit in the envelope; the applied part becomes takings in the till.
-    const cash = input.cashAccounts;
-    const cashDepositHeld = payments
-      .filter((p) => isDepositPayment(p.paymentType) && isCashMethod(p.paymentMethodId))
-      .reduce((sum, p) => sum.add(Money.php(p.amount)), Money.zero());
-    const cashApplied = Money.php(Math.min(cashDepositHeld.toNumber(), amountApplied.toNumber()));
+    // The applied part of a cash deposit becomes takings in the till.
     if (cash?.envelopeAccountId && cash.tillAccountId && cashApplied.isPositive()) {
       legs.push(
         {
@@ -355,9 +361,30 @@ export async function settleOrder(
     // method is stored and auditable (e.g. deposit collected in cash but
     // returned via GCash). The journal legs reference the payment ID so that
     // the cashup deduplication logic suppresses the journal-only path.
-    const refundFromAccountId = input.cashAccounts
+    //
+    // The envelope only holds deposits collected in cash, so a cash refund is
+    // paid from the envelope up to this order's cash deposit and from the till
+    // beyond that. A GCash/bank refund of a cash deposit leaves the envelope
+    // cash unclaimed; it is released to the till.
+    const refundIsCash = input.depositRefundMethodId
+      ? isCashMethod(input.depositRefundMethodId)
+      : !!cash && input.refundAccountId === cash.tillAccountId;
+    let envelopePart = Money.zero();
+    let tillPart = Money.zero();
+    let releasedToTill = Money.zero();
+    if (envelopeReady && refundIsCash) {
+      envelopePart = Money.php(Math.min(refund.toNumber(), cashHeldRemaining.toNumber()));
+      tillPart = refund.subtract(envelopePart);
+    } else if (envelopeReady) {
+      releasedToTill = cashHeldRemaining;
+    }
+
+    let refundFromAccountId = input.cashAccounts
       ? depositHoldingAccount(input.refundAccountId, input.depositRefundMethodId, input.cashAccounts)
       : input.refundAccountId;
+    if (envelopeReady && refundIsCash) {
+      refundFromAccountId = envelopePart.isPositive() ? cash!.envelopeAccountId! : cash!.tillAccountId!;
+    }
     if (input.depositRefundMethodId) {
       depositRefundPayment = {
         id: crypto.randomUUID(),
@@ -388,16 +415,58 @@ export async function settleOrder(
         referenceType: 'refund',
         referenceId: refundReferenceId,
       },
-      {
+    );
+
+    const collectedVia = [...new Set(
+      depositPayments.filter((p) => !isCashMethod(p.paymentMethodId)).map((p) => p.paymentMethodId),
+    )].join('/') || 'non-cash';
+    const refundVia = input.depositRefundMethodId ?? 'non-cash';
+    const fromRefundAccount = refund.subtract(tillPart);
+    if (fromRefundAccount.isPositive()) {
+      legs.push({
         entryId: crypto.randomUUID(),
-        accountId: refundFromAccountId,
+        accountId: envelopeReady && refundIsCash ? cash!.envelopeAccountId! : refundFromAccountId,
         debit: Money.zero(),
-        credit: refund,
+        credit: fromRefundAccount,
         description: `Order ${order.id} deposit refund to customer`,
         referenceType: 'refund',
         referenceId: refundReferenceId,
-      },
-    );
+      });
+    }
+    if (tillPart.isPositive()) {
+      legs.push({
+        entryId: crypto.randomUUID(),
+        accountId: cash!.tillAccountId!,
+        debit: Money.zero(),
+        credit: tillPart,
+        description: `Order ${order.id} deposit collected via ${collectedVia} returned in cash from till`,
+        referenceType: DEPOSIT_REFUND_SWAP_REF,
+        referenceId: order.id,
+      });
+    }
+    if (releasedToTill.isPositive()) {
+      const description = `Order ${order.id} cash deposit refunded via ${refundVia}, cash moved from envelope to till`;
+      legs.push(
+        {
+          entryId: crypto.randomUUID(),
+          accountId: cash!.tillAccountId!,
+          debit: releasedToTill,
+          credit: Money.zero(),
+          description,
+          referenceType: DEPOSIT_REFUND_SWAP_REF,
+          referenceId: order.id,
+        },
+        {
+          entryId: crypto.randomUUID(),
+          accountId: cash!.envelopeAccountId!,
+          debit: Money.zero(),
+          credit: releasedToTill,
+          description,
+          referenceType: DEPOSIT_REFUND_SWAP_REF,
+          referenceId: order.id,
+        },
+      );
+    }
   }
 
   // Compute the post-settlement balance locally so we can

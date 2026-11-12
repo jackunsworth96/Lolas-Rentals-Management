@@ -13,6 +13,16 @@ export const DEPOSIT_ENVELOPE_ACCOUNT_ID = 'CASH-DEPOSIT-ENVELOPE';
  */
 export const DEPOSIT_ENVELOPE_TRANSFER_REF = 'deposit_envelope_transfer';
 
+/**
+ * Reference type for cash movements caused by refunding a deposit through a
+ * different tender than it was collected in: cash paid out of the till for a
+ * GCash/bank deposit, or envelope cash released to the till when a cash
+ * deposit is refunded by GCash/bank. Reference id is the order id. Cash-up
+ * reads these legs to move the right pot, so keep them distinct from
+ * `refund` and `deposit_envelope_transfer`.
+ */
+export const DEPOSIT_REFUND_SWAP_REF = 'deposit_refund_swap';
+
 const methodKey = (v: string | null | undefined) => String(v ?? '').toLowerCase().replace(/[\s_-]/g, '');
 
 /** Physical cash tender. GCash and other wallets are not cash for the envelope. */

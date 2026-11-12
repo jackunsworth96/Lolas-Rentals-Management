@@ -113,8 +113,30 @@ export function CloseDayWizard({
           .join(' · '),
       });
     }
+    const cross = summary.transactions.crossMethodDepositReturns ?? [];
+    const payouts = cross.filter((r) => r.action === 'till_payout');
+    const releases = cross.filter((r) => r.action === 'envelope_to_till');
+    if (payouts.length > 0) {
+      list.push({
+        tone: 'amber',
+        title: `${formatCurrency(summary.totals.crossMethodTillPayoutTotal)} of deposits taken by GCash/bank were returned in cash from the till`,
+        detail: `Expected till already includes this. Make sure the cash came out of the till, not the deposit envelope. ${payouts
+          .map((r) => `${r.bookingToken ?? r.customerName ?? 'Order'} ${formatCurrency(r.amount)}`)
+          .join(' · ')}`,
+      });
+    }
+    if (releases.length > 0) {
+      list.push({
+        tone: 'amber',
+        title: `Move ${formatCurrency(summary.totals.crossMethodEnvelopeToTillTotal)} from the deposit envelope into the till`,
+        detail: `These cash deposits were refunded by GCash/bank, so their cash is no longer a deposit. ${releases
+          .map((r) => `${r.bookingToken ?? r.customerName ?? 'Order'} ${formatCurrency(r.amount)}`)
+          .join(' · ')}`,
+      });
+    }
+    const crossOrders = new Set(cross.map((r) => r.orderId));
     const mismatched = summary.transactions.depositReturns.filter(
-      (r) => r.collectedMethodId && methodCategory(r.collectedMethodId) !== r.methodCategory,
+      (r) => r.collectedMethodId && methodCategory(r.collectedMethodId) !== r.methodCategory && !crossOrders.has(r.orderId),
     );
     if (mismatched.length > 0) {
       list.push({

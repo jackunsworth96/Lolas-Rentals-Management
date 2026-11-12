@@ -13,6 +13,7 @@ import {
   type RawJournal,
   type RawPayment,
 } from './cashup-calc.js';
+import { DEPOSIT_ENVELOPE_ACCOUNT_ID, DEPOSIT_REFUND_SWAP_REF } from '../../lib/deposit-envelope.js';
 
 /** Gaps longer than this are flagged but not summed (too much to carry blindly). */
 const MAX_GAP_DAYS = 31;
@@ -109,7 +110,7 @@ export async function fetchCashupRaw(sb: SupabaseClient, range: FetchRange): Pro
 
   const [
     paymentsRes, expensesRes, bankDepRes, interStoreRes, miscRes, charityRes,
-    completedRes, discountRes, refundJRes, transferIncRes, appliedRes,
+    completedRes, discountRes, refundJRes, transferIncRes, appliedRes, swapRes,
   ] = await Promise.all([
     inRange(sb.from('payments').select(PAYMENT_SELECT), 'transaction_date').order('created_at', { ascending: true }),
     expensesQ.order('created_at', { ascending: true }),
@@ -139,13 +140,14 @@ export async function fetchCashupRaw(sb: SupabaseClient, range: FetchRange): Pro
     journal('refund').gt('credit', 0).order('created_at', { ascending: true }),
     journal('transfer').gt('debit', 0).order('created_at', { ascending: true }),
     journal('deposit').gt('credit', 0).order('created_at', { ascending: true }),
+    journal(DEPOSIT_REFUND_SWAP_REF).order('created_at', { ascending: true }),
   ]);
 
   const checks: Array<[string, { error: { message: string } | null }]> = [
     ['Payments', paymentsRes], ['Expenses', expensesRes], ['Cash deposits', bankDepRes],
     ['Inter-store transfers', interStoreRes], ['Misc sales', miscRes], ['Charity', charityRes],
     ['Completed orders', completedRes], ['Discounts', discountRes], ['Refund journal', refundJRes],
-    ['Transfer income', transferIncRes], ['Deposit applied', appliedRes],
+    ['Transfer income', transferIncRes], ['Deposit applied', appliedRes], ['Deposit refund swaps', swapRes],
   ];
   for (const [name, res] of checks) {
     if (res.error) throw new Error(`${name} query failed: ${res.error.message}`);
@@ -156,6 +158,7 @@ export async function fetchCashupRaw(sb: SupabaseClient, range: FetchRange): Pro
   const depositAppliedEntries = ((appliedRes.data ?? []) as Row[]).map(toJournal);
   const transferIncomeEntries = ((transferIncRes.data ?? []) as Row[]).map(toJournal);
   const charityEntries = ((charityRes.data ?? []) as Row[]).map(toJournal);
+  const depositSwapEntries = ((swapRes.data ?? []) as Row[]).map(toJournal);
 
   // Deposits for orders whose deposit was applied in range — needed to know
   // how much of the applied amount was cash (moves envelope → till).
@@ -178,6 +181,7 @@ export async function fetchCashupRaw(sb: SupabaseClient, range: FetchRange): Pro
   for (const p of payments) if (p.orderId) orderIds.add(p.orderId);
   for (const j of refundJournalEntries) if (j.referenceId) orderIds.add(j.referenceId);
   for (const id of appliedOrderIds) orderIds.add(id);
+  for (const j of depositSwapEntries) if (j.referenceId) orderIds.add(j.referenceId);
   const orderInfo = new Map<string, OrderInfo>();
   if (orderIds.size > 0) {
     const { data } = await sb
@@ -252,6 +256,8 @@ export async function fetchCashupRaw(sb: SupabaseClient, range: FetchRange): Pro
     transferIncomeEntries,
     depositAppliedEntries,
     appliedOrderDepositPayments,
+    depositSwapEntries,
+    envelopeAccountId: DEPOSIT_ENVELOPE_ACCOUNT_ID,
     completedOrderIds: new Set(((completedRes.data ?? []) as Row[]).map((o) => String(o.id))),
     orderInfo,
     transferCustomerNames,

@@ -643,12 +643,15 @@ function CashupDay({
     expenses: ledgerRows(ledger, ['cash_expense']),
     banked: ledgerRows(ledger, ['bank_deposit']),
     interStore: ledgerRows(ledger, ['inter_store_in', 'inter_store_out']),
+    crossMethod: ledgerRows(ledger, ['deposit_return_till', 'deposit_release_in']),
   };
   const envelope = {
     taken: ledgerRows(ledger, ['deposit_in']),
     returned: ledgerRows(ledger, ['deposit_return']),
     applied: ledgerRows(ledger, ['deposit_applied']),
+    released: ledgerRows(ledger, ['deposit_release_out']),
   };
+  const crossOrderIds = new Set((tx.crossMethodDepositReturns ?? []).map((r) => r.orderId));
   const nonCashReturns: ListRow[] = tx.depositReturns
     .filter((r) => !r.affectsEnvelope)
     .map((r) => ({
@@ -662,7 +665,7 @@ function CashupDay({
     }));
   const mismatchIds = new Set(
     tx.depositReturns
-      .filter((r) => r.collectedMethodId && methodCategory(r.collectedMethodId) !== r.methodCategory)
+      .filter((r) => r.collectedMethodId && methodCategory(r.collectedMethodId) !== r.methodCategory && !crossOrderIds.has(r.orderId))
       .map((r) => r.id),
   );
   envelope.returned = envelope.returned.map((r) =>
@@ -839,6 +842,15 @@ function CashupDay({
           <RowsSection title="Cash refunds" accent="orange" rows={filter(till.refunds)} total={sumRows(till.refunds)} totalSign="-" hideWhenEmpty forceExpanded={searching} />
           <RowsSection title="Cash taken to bank" accent="blue" rows={filter(till.banked)} total={sumRows(till.banked)} totalSign="-" hideWhenEmpty forceExpanded={searching} />
           <RowsSection title="Between stores" accent="violet" rows={filter(till.interStore)} total={Math.abs(till.interStore.reduce((s, r) => s + r.amount, 0))} hideWhenEmpty forceExpanded={searching} />
+          <RowsSection
+            title="Deposits refunded by a different method"
+            subtitle="Cash paid out for GCash/bank deposits, or envelope cash moved into the till"
+            accent="amber"
+            rows={filter(till.crossMethod)}
+            total={Math.abs(till.crossMethod.reduce((s, r) => s + r.amount, 0))}
+            hideWhenEmpty
+            forceExpanded={searching}
+          />
         </div>
       </section>
 
@@ -862,6 +874,16 @@ function CashupDay({
             accent="teal"
             rows={filter(envelope.applied)}
             total={sumRows(envelope.applied)}
+            totalSign="-"
+            hideWhenEmpty
+            forceExpanded={searching}
+          />
+          <RowsSection
+            title="Cash deposits refunded by GCash/bank"
+            subtitle="Move this cash from the envelope into the till"
+            accent="amber"
+            rows={filter(envelope.released)}
+            total={sumRows(envelope.released)}
             totalSign="-"
             hideWhenEmpty
             forceExpanded={searching}

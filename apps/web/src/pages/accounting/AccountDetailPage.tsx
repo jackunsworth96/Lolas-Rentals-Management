@@ -34,6 +34,8 @@ const REFERENCE_LABELS: Record<string, string> = {
   reconciliation_adjustment: 'Reconciliation',
   charity_payout: 'Charity payout',
   deposit_envelope_sync: 'Deposit envelope count',
+  deposit_envelope_transfer: 'Deposit envelope transfer',
+  deposit_refund_swap: 'Deposit refund (different tender)',
   misc_sale: 'Misc sale',
   vehicle: 'Vehicle',
   depreciation: 'Depreciation',

@@ -14,7 +14,12 @@ import type { AccountingPort } from '@lolas/domain';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { buildCashupSummary } from '../use-cases/cashup/build-cashup-summary.js';
 import { addDaysToDateStr, formatManilaDate } from '../utils/manila-date.js';
-import { DEPOSIT_ENVELOPE_ACCOUNT_ID, depositLocation, resolveRoutedAccounts } from '../lib/deposit-envelope.js';
+import {
+  DEPOSIT_ENVELOPE_ACCOUNT_ID,
+  DEPOSIT_REFUND_SWAP_REF,
+  depositLocation,
+  resolveRoutedAccounts,
+} from '../lib/deposit-envelope.js';
 
 const router = Router();
 router.use(authenticate);
@@ -327,7 +332,7 @@ router.get(
           .from('journal_entries')
           .select('id, reference_id, reference_type, credit, date, created_at, chart_of_accounts!account_id(name)')
           .in('reference_id', ids)
-          .in('reference_type', ['refund', 'deposit'])
+          .in('reference_type', ['refund', 'deposit', DEPOSIT_REFUND_SWAP_REF])
           .gt('credit', 0),
       ]);
       if (paymentsRes.error) throw new Error(`Order lookup payments failed: ${paymentsRes.error.message}`);
@@ -358,7 +363,11 @@ router.get(
         const acctName = Array.isArray(acct) ? acct[0]?.name : acct?.name;
         entries.push({
           orderId: String(j.reference_id),
-          kind: j.reference_type === 'deposit' ? 'deposit applied to rental' : 'deposit return',
+          kind: j.reference_type === 'deposit'
+            ? 'deposit applied to rental'
+            : j.reference_type === DEPOSIT_REFUND_SWAP_REF
+              ? 'deposit refund (different tender)'
+              : 'deposit return',
           method: acctName ?? '',
           amount: Number(j.credit ?? 0),
           date: (j.date as string | null) ?? null,

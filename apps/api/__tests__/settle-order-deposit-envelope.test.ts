@@ -12,7 +12,8 @@ type Leg = { account_id: string; debit: number; credit: number; reference_type: 
 
 const cashAccounts = { tillAccountId: 'TILL', envelopeAccountId: 'ENVELOPE' };
 
-function setup(opts: { balanceDue: number; depositMethod: string }) {
+function setup(opts: { balanceDue: number; depositMethod?: string; deposits?: Array<{ method: string; amount: number }> }) {
+  const deposits = opts.deposits ?? [{ method: opts.depositMethod ?? 'Cash', amount: 1000 }];
   mocks.from.mockReturnValue({
     select: () => ({ in: async (_col: string, ids: string[]) => ({ data: ids.map((id) => ({ id })), error: null }) }),
   });
@@ -26,9 +27,9 @@ function setup(opts: { balanceDue: number; depositMethod: string }) {
     orderRepo: { findById: vi.fn().mockResolvedValue(order) },
     orderItemRepo: { findByOrderId: vi.fn().mockResolvedValue([]) },
     paymentRepo: {
-      findByOrderId: vi.fn().mockResolvedValue([
-        { paymentType: 'deposit', paymentMethodId: opts.depositMethod, amount: 1000 },
-      ]),
+      findByOrderId: vi.fn().mockResolvedValue(
+        deposits.map((d) => ({ paymentType: 'deposit', paymentMethodId: d.method, amount: d.amount })),
+      ),
     },
   };
 }
@@ -68,6 +69,53 @@ describe('settleOrder deposit envelope postings', () => {
       expect.objectContaining({ account_id: 'ENVELOPE', credit: 400 }),
     ]));
     expect(postedLegs().find((l) => l.reference_type === 'refund' && l.credit > 0)).toMatchObject({ account_id: 'ENVELOPE', credit: 600 });
+  });
+
+  it('pays a cash refund of a GCash deposit from the till, not the envelope', async () => {
+    await settleOrder(setup({ balanceDue: 0, depositMethod: 'Gcash' }) as never, { ...baseInput, depositRefundMethodId: 'Cash' });
+    const legs = postedLegs();
+    expect(legs.some((l) => l.account_id === 'ENVELOPE')).toBe(false);
+    expect(legs.find((l) => l.reference_type === 'deposit_refund_swap')).toMatchObject({ account_id: 'TILL', credit: 1000 });
+    expect(legs.reduce((s, l) => s + l.debit - l.credit, 0)).toBe(0);
+    expect(mocks.rpc.mock.calls[0][1].p_deposit_refund_payment).toMatchObject({ account_id: 'TILL', amount: 1000 });
+  });
+
+  it('releases envelope cash to the till when a cash deposit is refunded by GCash', async () => {
+    await settleOrder(setup({ balanceDue: 0, depositMethod: 'Cash' }) as never, {
+      ...baseInput, refundAccountId: 'GCASH', depositRefundMethodId: 'Gcash',
+    });
+    const legs = postedLegs();
+    expect(legs.find((l) => l.reference_type === 'refund' && l.credit > 0)).toMatchObject({ account_id: 'GCASH', credit: 1000 });
+    expect(legs.filter((l) => l.reference_type === 'deposit_refund_swap')).toEqual([
+      expect.objectContaining({ account_id: 'TILL', debit: 1000 }),
+      expect.objectContaining({ account_id: 'ENVELOPE', credit: 1000 }),
+    ]);
+  });
+
+  it('releases only the unapplied cash when a partly applied cash deposit is refunded by GCash', async () => {
+    await settleOrder(setup({ balanceDue: 400, depositMethod: 'Cash' }) as never, {
+      ...baseInput, refundAccountId: 'GCASH', depositRefundMethodId: 'Gcash',
+    });
+    const legs = postedLegs();
+    expect(legs.filter((l) => l.reference_type === 'deposit_envelope_transfer')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ account_id: 'ENVELOPE', credit: 400 }),
+    ]));
+    expect(legs.filter((l) => l.reference_type === 'deposit_refund_swap')).toEqual([
+      expect.objectContaining({ account_id: 'TILL', debit: 600 }),
+      expect.objectContaining({ account_id: 'ENVELOPE', credit: 600 }),
+    ]);
+    expect(legs.find((l) => l.reference_type === 'refund' && l.credit > 0)).toMatchObject({ account_id: 'GCASH', credit: 600 });
+  });
+
+  it('splits a cash refund of a mixed deposit between the envelope and the till', async () => {
+    await settleOrder(setup({
+      balanceDue: 0,
+      deposits: [{ method: 'Cash', amount: 500 }, { method: 'Gcash', amount: 500 }],
+    }) as never, { ...baseInput, depositRefundMethodId: 'Cash' });
+    const legs = postedLegs();
+    expect(legs.find((l) => l.reference_type === 'refund' && l.credit > 0)).toMatchObject({ account_id: 'ENVELOPE', credit: 500 });
+    expect(legs.find((l) => l.reference_type === 'deposit_refund_swap')).toMatchObject({ account_id: 'TILL', credit: 500 });
+    expect(legs.reduce((s, l) => s + l.debit - l.credit, 0)).toBe(0);
   });
 
   it('books a return charge as income', async () => {

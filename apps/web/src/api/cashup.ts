@@ -54,12 +54,27 @@ export interface DepositReturnRow {
   methodId: string;
   methodCategory: MethodCategory;
   affectsEnvelope: boolean;
+  /** Part of a cash return paid from the till because the deposit was not collected in cash. */
+  tillAmount: number;
   collectedMethodId: string | null;
   referenceId: string | null;
   orderId: string | null;
   bookingToken: string | null;
   customerName: string | null;
   createdAt: string;
+}
+
+export interface CrossMethodDepositRow {
+  id: string;
+  /** `till_payout`: cash came from the till. `envelope_to_till`: move envelope cash into the till. */
+  action: 'till_payout' | 'envelope_to_till';
+  amount: number;
+  description: string | null;
+  collectedMethodId: string | null;
+  orderId: string | null;
+  bookingToken: string | null;
+  customerName: string | null;
+  createdAt: string | null;
 }
 
 export interface DepositAppliedRow {
@@ -216,6 +231,7 @@ export interface CashupSummary {
     refunds: RefundRow[];
     depositReturns: DepositReturnRow[];
     depositApplied: DepositAppliedRow[];
+    crossMethodDepositReturns: CrossMethodDepositRow[];
   };
   charityDonations: CharityDonationRow[];
   totals: {
@@ -248,6 +264,8 @@ export interface CashupSummary {
     nonCashDepositReturnTotal: number;
     depositAppliedTotal: number;
     carryDepositsCashTotal: number;
+    crossMethodTillPayoutTotal: number;
+    crossMethodEnvelopeToTillTotal: number;
   };
   stores: StoreInfo[];
   otherStores: StoreInfo[];

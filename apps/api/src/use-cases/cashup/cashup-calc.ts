@@ -22,7 +22,13 @@ export type CashLedgerKind =
   | 'cash_refund'
   | 'deposit_in'
   | 'deposit_return'
-  | 'deposit_applied';
+  | 'deposit_applied'
+  /** Cash handed back from the till for a deposit collected by GCash/bank. */
+  | 'deposit_return_till'
+  /** Envelope cash of a deposit refunded by GCash/bank, leaving the envelope. */
+  | 'deposit_release_out'
+  /** The same cash arriving in the till. */
+  | 'deposit_release_in';
 
 export interface CashLedgerItem {
   id: string;
@@ -124,6 +130,10 @@ export interface CashupRawData {
   depositAppliedEntries: RawJournal[];
   /** Deposit payments for orders in depositAppliedEntries, collected on or before the range end. */
   appliedOrderDepositPayments: RawPayment[];
+  /** reference_type='deposit_refund_swap' legs (both sides); reference id is the order id. */
+  depositSwapEntries: RawJournal[];
+  /** The deposit envelope ledger account; swap legs on any other account move the till. */
+  envelopeAccountId: string;
   /** Orders whose deposits were settled before the range start (deposit no longer held). */
   completedOrderIds: Set<string>;
   orderInfo: Map<string, OrderInfo>;
@@ -189,6 +199,8 @@ export interface DepositReturnRow {
   methodId: string;
   methodCategory: MethodCategory;
   affectsEnvelope: boolean;
+  /** Part of a cash return paid from the till because the deposit was not collected in cash. */
+  tillAmount: number;
   collectedMethodId: string | null;
   referenceId: string | null;
   orderId: string | null;
@@ -202,6 +214,23 @@ export interface DepositAppliedRow {
   amount: number;
   description: string | null;
   referenceId: string | null;
+  bookingToken: string | null;
+  customerName: string | null;
+  createdAt: string | null;
+}
+
+/**
+ * A deposit refunded through a different tender than it was collected in,
+ * with the physical cash move staff must make for the counts to match.
+ */
+export interface CrossMethodDepositRow {
+  id: string;
+  /** `till_payout`: cash came from the till. `envelope_to_till`: move envelope cash into the till. */
+  action: 'till_payout' | 'envelope_to_till';
+  amount: number;
+  description: string | null;
+  collectedMethodId: string | null;
+  orderId: string | null;
   bookingToken: string | null;
   customerName: string | null;
   createdAt: string | null;
@@ -224,6 +253,7 @@ export interface CashupDayResult {
     refunds: TransactionRow[];
     depositReturns: DepositReturnRow[];
     depositApplied: DepositAppliedRow[];
+    crossMethodDepositReturns: CrossMethodDepositRow[];
   };
   charityDonations: Array<{ id: string; description: string | null; amount: number; orderId: string | null; createdAt: string | null }>;
   totals: {
@@ -256,6 +286,8 @@ export interface CashupDayResult {
     nonCashDepositReturnTotal: number;
     depositAppliedTotal: number;
     carryDepositsCashTotal: number;
+    crossMethodTillPayoutTotal: number;
+    crossMethodEnvelopeToTillTotal: number;
   };
   cashLedger: CashLedgerItem[];
 }
@@ -291,6 +323,13 @@ export function computeCashupDay(raw: CashupRawData): CashupDayResult {
   const depositReturns: DepositReturnRow[] = [];
   const depositsHeldByMethod: Record<string, { label: string; rows: TransactionRow[]; total: number }> = {};
   let depositsHeldTotal = 0;
+
+  const tillPayoutByOrder = new Map<string, number>();
+  for (const j of raw.depositSwapEntries) {
+    if (j.credit <= 0 || j.accountId === raw.envelopeAccountId) continue;
+    const oid = j.referenceId ?? '';
+    tillPayoutByOrder.set(oid, (tillPayoutByOrder.get(oid) ?? 0) + j.credit);
+  }
 
   const addSale = (cat: MethodCategory, row: TransactionRow) => {
     if (cat === 'cash') {
@@ -350,6 +389,7 @@ export function computeCashupDay(raw: CashupRawData): CashupDayResult {
         methodId: p.paymentMethodId,
         methodCategory: cat,
         affectsEnvelope: cat === 'cash',
+        tillAmount: cat === 'cash' ? Math.min(p.amount, tillPayoutByOrder.get(p.orderId ?? '') ?? 0) : 0,
         collectedMethodId: p.orderId ? raw.orderInfo.get(p.orderId)?.depositMethodId ?? null : null,
         referenceId: p.orderId,
         orderId: p.orderId,
@@ -432,6 +472,7 @@ export function computeCashupDay(raw: CashupRawData): CashupDayResult {
       methodId: j.accountName ?? j.accountId ?? '',
       methodCategory: cat,
       affectsEnvelope: cat === 'cash',
+      tillAmount: 0,
       collectedMethodId: orderId ? raw.orderInfo.get(orderId)?.depositMethodId ?? null : null,
       referenceId: j.referenceId,
       orderId,
@@ -448,7 +489,7 @@ export function computeCashupDay(raw: CashupRawData): CashupDayResult {
     if (r.affectsEnvelope) {
       cashDepositReturnTotal += r.amount;
       pushLedger({
-        id: r.id, kind: 'deposit_return', pot: 'envelope', amount: -r.amount,
+        id: r.id, kind: 'deposit_return', pot: 'envelope', amount: -(r.amount - r.tillAmount),
         label: 'Deposit returned in cash', bookingToken: r.bookingToken, customerName: r.customerName,
         date: null, createdAt: r.createdAt,
       });
@@ -457,6 +498,53 @@ export function computeCashupDay(raw: CashupRawData): CashupDayResult {
     }
   }
   const depositReturnTotal = cashDepositReturnTotal + nonCashDepositReturnTotal;
+
+  // ── Deposits refunded through a different tender than collected ──
+  // Till-side swap legs: a credit is cash paid out of the till for a non-cash
+  // deposit; a debit is envelope cash released into the till.
+  const crossMethodDepositReturns: CrossMethodDepositRow[] = [];
+  let crossMethodTillPayoutTotal = 0;
+  let crossMethodEnvelopeToTillTotal = 0;
+  for (const j of raw.depositSwapEntries) {
+    const orderId = j.referenceId;
+    const bookingToken = orderToken(orderId);
+    const customerName = orderCustomer(orderId);
+    const onEnvelope = j.accountId === raw.envelopeAccountId;
+    const signed = j.debit - j.credit;
+    if (onEnvelope) {
+      pushLedger({
+        id: j.id, kind: 'deposit_release_out', pot: 'envelope', amount: signed,
+        label: 'Cash deposit refunded by GCash/bank (moved to till)', bookingToken, customerName,
+        date: j.date, createdAt: j.createdAt,
+      });
+      continue;
+    }
+    const isPayout = signed < 0;
+    pushLedger({
+      id: j.id,
+      kind: isPayout ? 'deposit_return_till' : 'deposit_release_in',
+      pot: 'till',
+      amount: signed,
+      label: isPayout
+        ? 'Deposit collected by GCash/bank returned in cash'
+        : 'Cash deposit refunded by GCash/bank (moved from envelope)',
+      bookingToken, customerName, date: j.date, createdAt: j.createdAt,
+    });
+    const amount = Math.abs(signed);
+    if (isPayout) crossMethodTillPayoutTotal += amount;
+    else crossMethodEnvelopeToTillTotal += amount;
+    crossMethodDepositReturns.push({
+      id: j.id,
+      action: isPayout ? 'till_payout' : 'envelope_to_till',
+      amount,
+      description: j.description,
+      collectedMethodId: orderId ? raw.orderInfo.get(orderId)?.depositMethodId ?? null : null,
+      orderId,
+      bookingToken,
+      customerName,
+      createdAt: j.createdAt,
+    });
+  }
 
   // ── Deposit applied to rental ──
   const depositApplied: DepositAppliedRow[] = raw.depositAppliedEntries.map((j) => ({
@@ -656,6 +744,7 @@ export function computeCashupDay(raw: CashupRawData): CashupDayResult {
       refunds,
       depositReturns,
       depositApplied,
+      crossMethodDepositReturns,
     },
     charityDonations,
     totals: {
@@ -688,6 +777,8 @@ export function computeCashupDay(raw: CashupRawData): CashupDayResult {
       nonCashDepositReturnTotal,
       depositAppliedTotal,
       carryDepositsCashTotal,
+      crossMethodTillPayoutTotal,
+      crossMethodEnvelopeToTillTotal,
     },
     cashLedger: ledger,
   };
@@ -705,12 +796,15 @@ const TILL_LINE_ORDER: Array<[CashLedgerKind, string]> = [
   ['bank_deposit', 'Cash deposited to bank'],
   ['inter_store_out', 'Cash transferred out'],
   ['cash_refund', 'Cash refunds'],
+  ['deposit_release_in', 'Cash deposits refunded by GCash/bank (moved from envelope)'],
+  ['deposit_return_till', 'GCash/bank deposits returned in cash'],
 ];
 
 const ENVELOPE_LINE_ORDER: Array<[CashLedgerKind, string]> = [
   ['deposit_in', 'Cash deposits taken'],
   ['deposit_return', 'Cash deposits returned'],
   ['deposit_applied', 'Deposits applied to rentals (moved to till)'],
+  ['deposit_release_out', 'Cash deposits refunded by GCash/bank (moved to till)'],
 ];
 
 /** Groups a ledger into ordered expected-cash lines for one pot. */

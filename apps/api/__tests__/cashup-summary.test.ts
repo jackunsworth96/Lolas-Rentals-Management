@@ -27,6 +27,8 @@ function raw(overrides: Partial<CashupRawData> = {}): CashupRawData {
     transferIncomeEntries: [],
     depositAppliedEntries: [],
     appliedOrderDepositPayments: [],
+    depositSwapEntries: [],
+    envelopeAccountId: 'ENVELOPE',
     completedOrderIds: new Set(),
     orderInfo: new Map(),
     transferCustomerNames: new Map(),
@@ -138,6 +140,51 @@ describe('computeCashupDay', () => {
       ['deposit_return', -2200],
       ['deposit_applied', -800],
     ]);
+  });
+
+  it('pays a cash return of a GCash deposit from the till, leaving the envelope alone', () => {
+    const day = computeCashupDay(
+      raw({
+        payments: [payment({ id: 'r1', paymentType: 'deposit_refund', amount: 1000, paymentMethodId: 'cash', orderId: 'o1' })],
+        refundJournalEntries: [],
+        depositSwapEntries: [journal({ id: 's1', credit: 1000, accountId: 'TILL', accountName: 'Cash on Hand', referenceId: 'o1' })],
+        orderInfo: new Map([['o1', { bookingToken: 'LR-1', customerName: 'Ana', depositMethodId: 'gcash' }]]),
+      }),
+    );
+    expect(ledgerNet(day.cashLedger, 'envelope')).toBe(0);
+    expect(ledgerNet(day.cashLedger, 'till')).toBe(-1000);
+    expect(day.transactions.crossMethodDepositReturns).toEqual([
+      expect.objectContaining({ action: 'till_payout', amount: 1000, bookingToken: 'LR-1', collectedMethodId: 'gcash' }),
+    ]);
+    expect(day.totals.crossMethodTillPayoutTotal).toBe(1000);
+  });
+
+  it('moves envelope cash to the till when a cash deposit is refunded by GCash', () => {
+    const day = computeCashupDay(
+      raw({
+        payments: [payment({ id: 'r1', paymentType: 'deposit_refund', amount: 1000, paymentMethodId: 'gcash', orderId: 'o1' })],
+        depositSwapEntries: [
+          journal({ id: 's1', debit: 1000, accountId: 'TILL', accountName: 'Cash on Hand', referenceId: 'o1' }),
+          journal({ id: 's2', credit: 1000, accountId: 'ENVELOPE', accountName: 'Cash — Customer Deposit Envelope', referenceId: 'o1' }),
+        ],
+      }),
+    );
+    expect(ledgerNet(day.cashLedger, 'envelope')).toBe(-1000);
+    expect(ledgerNet(day.cashLedger, 'till')).toBe(1000);
+    expect(day.totals.nonCashDepositReturnTotal).toBe(1000);
+    expect(day.totals.crossMethodEnvelopeToTillTotal).toBe(1000);
+    expect(ledgerLines(day.cashLedger, 'envelope').map((l) => l.key)).toEqual(['deposit_release_out']);
+  });
+
+  it('splits a cash return of a mixed deposit between the envelope and the till', () => {
+    const day = computeCashupDay(
+      raw({
+        payments: [payment({ id: 'r1', paymentType: 'deposit_refund', amount: 1000, paymentMethodId: 'cash', orderId: 'o1' })],
+        depositSwapEntries: [journal({ id: 's1', credit: 400, accountId: 'TILL', accountName: 'Cash on Hand', referenceId: 'o1' })],
+      }),
+    );
+    expect(ledgerNet(day.cashLedger, 'envelope')).toBe(-600);
+    expect(ledgerNet(day.cashLedger, 'till')).toBe(-400);
   });
 
   it('does not count deposits of orders already settled as held', () => {
