@@ -6,12 +6,13 @@ import { Table } from '../../components/common/Table.js';
 import { Badge } from '../../components/common/Badge.js';
 import { BookingModal } from '../../components/orders/BookingModal.js';
 import { CancelOrderModal } from '../../components/orders/CancelOrderModal.js';
+import { AssignPartnerToRawOrderModal } from '../../components/orders/AssignPartnerToRawOrderModal.js';
 import { WalkInBookingModal } from '../../components/orders/WalkInBookingModal.js';
 import { ReserveForLaterModal } from '../../components/orders/ReserveForLaterModal.js';
 import { formatDateTime, formatPickupDatetimeManila } from '../../utils/date.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { extractPickupDate } from '../../utils/raw-order-payload.js';
-import { isValidWhatsAppE164, resolveSourceFromStore } from '@lolas/shared';
+import { isValidWhatsAppE164, resolveSourceFromStore, resolveStoreFromSource } from '@lolas/shared';
 import { useAuthStore } from '../../stores/auth-store.js';
 import { useUIStore } from '../../stores/ui-store.js';
 import { AvailabilityFinderModal } from '../../components/fleet/AvailabilityFinderModal.js';
@@ -124,11 +125,14 @@ export default function InboxPage() {
   const updateMobile = useUpdateRawOrderMobile();
   const [selectedOrder, setSelectedOrder] = useState<RawOrder | null>(null);
   const [cancelOrder, setCancelOrder] = useState<RawOrder | null>(null);
+  const [assignPartnerOrder, setAssignPartnerOrder] = useState<RawOrder | null>(null);
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [reserveForLaterOpen, setReserveForLaterOpen] = useState(false);
 
   const canEditOrders = useAuthStore((s) => s.hasPermission('can_edit_orders'));
   const canViewFleet = useAuthStore((s) => s.hasPermission('can_view_fleet'));
+  const canAssignPartner = useAuthStore((s) => s.hasPermission('can_edit_settings'));
+  const canAssignPartnerTo = (r: RawOrder) => canAssignPartner && !r.partner_ref && r.status === 'unprocessed';
   const selectedStoreId = useUIStore((s) => s.selectedStoreId) ?? '';
   const [finderOpen, setFinderOpen] = useState(false);
 
@@ -306,22 +310,39 @@ export default function InboxPage() {
         </Badge>
       ),
     },
-    ...(canEditOrders
+    ...(canEditOrders || canAssignPartner
       ? [
           {
             key: 'actions',
             header: '',
             render: (r: RawOrder) => (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setCancelOrder(r);
-                }}
-                className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 hover:border-red-400"
-              >
-                Cancel
-              </button>
+              <div className="flex items-center justify-end gap-2">
+                {canAssignPartnerTo(r) && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAssignPartnerOrder(r);
+                    }}
+                    title="Attribute this booking to a partner/affiliate — applies their discount and commission"
+                    className="whitespace-nowrap rounded-lg border border-orange-300 px-2.5 py-1 text-xs font-medium text-orange-700 transition-colors hover:bg-orange-50 hover:border-orange-400"
+                  >
+                    + Assign partner
+                  </button>
+                )}
+                {canEditOrders && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCancelOrder(r);
+                    }}
+                    className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 hover:border-red-400"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
             ),
           },
         ]
@@ -571,6 +592,18 @@ export default function InboxPage() {
                 <div className="px-4 pb-3">{renderWhatsApp(r)}</div>
               )}
 
+              {canAssignPartnerTo(r) && (
+                <div className="border-t border-gray-100 px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => setAssignPartnerOrder(r)}
+                    className="w-full py-2.5 rounded-lg border border-orange-300 text-orange-700 font-medium text-sm transition-colors hover:bg-orange-50 active:bg-orange-100"
+                  >
+                    + Assign Partner
+                  </button>
+                </div>
+              )}
+
               {/* Cancel action — only if permitted */}
               {canEditOrders && (
                 <div className="border-t border-gray-100 px-4 py-3">
@@ -614,6 +647,19 @@ export default function InboxPage() {
           onClose={() => setCancelOrder(null)}
           rawOrder={cancelOrder}
           onCancelled={() => setCancelOrder(null)}
+        />
+      )}
+
+      {assignPartnerOrder && (
+        <AssignPartnerToRawOrderModal
+          open={!!assignPartnerOrder}
+          onClose={() => setAssignPartnerOrder(null)}
+          rawOrderId={assignPartnerOrder.id}
+          storeId={assignPartnerOrder.store_id ?? resolveStoreFromSource(assignPartnerOrder.source)}
+          onAssigned={({ row }) =>
+            setAllOrders((prev) => prev.map((o) => (o.id === row.id
+              ? { ...o, partner_ref: row.partner_ref, web_quote_raw: row.web_quote_raw, rental_value_raw: row.rental_value_raw }
+              : o)))}
         />
       )}
 

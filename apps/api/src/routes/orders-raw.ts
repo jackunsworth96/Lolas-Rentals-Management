@@ -1,11 +1,11 @@
 import { lookupActivePartnerBySlug } from '../lib/partner-benefit.js';
-import { Router } from 'express';
+import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { logger } from '../lib/logger.js';
 import { publicWebOriginFromEnv } from '../lib/public-web-url.js';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
-import { validateBody } from '../middleware/validate.js';
+import { validateBody, validateQuery } from '../middleware/validate.js';
 import {
   NullableWhatsAppNumberSchema,
   Permission,
@@ -1287,6 +1287,71 @@ router.patch(
         }
       }
 
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ── Partner/affiliate assignment for inbox bookings ─────────────────────────
+// Inbox counterpart of POST /orders/:id/assign-partner for guests who came via
+// a partner but booked without the ?ref= link. Only fillable while the booking
+// is unprocessed and has no partner yet.
+
+const assignPartnerSchema = z.object({ partnerSlug: z.string().min(1).max(80) });
+
+async function assertRawOrderStoreAccess(id: string, storeIds: string[]): Promise<'ok' | 'not_found' | 'forbidden'> {
+  const { data, error } = await supabase.from('orders_raw').select('store_id').eq('id', id).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return 'not_found';
+  if (data.store_id && !storeIds.includes(data.store_id as string)) return 'forbidden';
+  return 'ok';
+}
+
+function sendAccessError(res: Response, access: 'not_found' | 'forbidden') {
+  if (access === 'not_found') {
+    res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Raw order not found' } });
+  } else {
+    res.status(403).json({ success: false, error: { message: 'Store access required' } });
+  }
+}
+
+router.get(
+  '/:id/assign-partner/preview',
+  requirePermission(Permission.EditSettings),
+  validateQuery(assignPartnerSchema),
+  async (req, res, next) => {
+    try {
+      const id = req.params.id as string;
+      const access = await assertRawOrderStoreAccess(id, req.user!.storeIds);
+      if (access !== 'ok') { sendAccessError(res, access); return; }
+      const { previewAssignPartnerToRawOrder } = await import('../use-cases/orders/assign-partner-to-raw-order.js');
+      const data = await previewAssignPartnerToRawOrder(req.app.locals.deps, {
+        rawOrderId: id,
+        partnerSlug: (req.query as { partnerSlug: string }).partnerSlug,
+      });
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+router.post(
+  '/:id/assign-partner',
+  requirePermission(Permission.EditSettings),
+  validateBody(assignPartnerSchema),
+  async (req, res, next) => {
+    try {
+      const id = req.params.id as string;
+      const access = await assertRawOrderStoreAccess(id, req.user!.storeIds);
+      if (access !== 'ok') { sendAccessError(res, access); return; }
+      const { assignPartnerToRawOrder } = await import('../use-cases/orders/assign-partner-to-raw-order.js');
+      const data = await assignPartnerToRawOrder(req.app.locals.deps, {
+        rawOrderId: id,
+        partnerSlug: (req.body as z.infer<typeof assignPartnerSchema>).partnerSlug,
+      });
       res.json({ success: true, data });
     } catch (err) {
       next(err);

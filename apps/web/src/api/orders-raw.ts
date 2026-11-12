@@ -148,6 +148,41 @@ export function useUpdateRawOrderMobile() {
   });
 }
 
+export interface AssignPartnerToRawOrderPreview {
+  partnerName: string;
+  partnerSlug: string;
+  rentalDiscount: number;
+  deliveryDiscount: number;
+  totalDiscount: number;
+  currentQuote: number | null;
+  newQuote: number | null;
+  discountCalculated: boolean;
+}
+
+export interface AssignPartnerToRawOrderResult {
+  row: { id: string; partner_ref: string; web_quote_raw: number | null; rental_value_raw: number | null };
+  preview: AssignPartnerToRawOrderPreview;
+}
+
+export function usePreviewAssignPartnerToRawOrder() {
+  return useMutation({
+    mutationFn: ({ id, partnerSlug }: { id: string; partnerSlug: string }) =>
+      api.get<AssignPartnerToRawOrderPreview>(`/orders-raw/${id}/assign-partner/preview?partnerSlug=${encodeURIComponent(partnerSlug)}`),
+  });
+}
+
+export function useAssignPartnerToRawOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, partnerSlug }: { id: string; partnerSlug: string }) =>
+      api.post<AssignPartnerToRawOrderResult>(`/orders-raw/${id}/assign-partner`, { partnerSlug }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['orders-raw'] });
+      qc.invalidateQueries({ queryKey: ['partners'] });
+    },
+  });
+}
+
 export interface CancelRawOrderPayload {
   id: string;
   reason?: string;
