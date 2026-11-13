@@ -129,6 +129,12 @@ export function EditTimesheetModal({ open, onClose, timesheet, stores, dayTypes 
           <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{errorMsg}</div>
         )}
 
+        {timesheet.payrollStatus === 'Approved' && (
+          <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            This day is already approved for payroll. Saving keeps it approved and updates what payroll will pay.
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-4">
           {/* Day Type */}
           <div>

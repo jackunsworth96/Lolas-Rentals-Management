@@ -24,9 +24,10 @@ export async function editTimesheet(
     throw err;
   }
 
-  if (existing.payroll_status !== 'Pending') {
+  // Pending or Approved can still be corrected; once Paid, payroll has already run on it.
+  if (existing.payroll_status === 'Paid') {
     const err = Object.assign(
-      new Error(`Cannot edit a timesheet with status "${existing.payroll_status}"`),
+      new Error('Cannot edit a timesheet that has already been paid through payroll'),
       { statusCode: 409, code: 'NOT_EDITABLE' },
     );
     throw err;
@@ -48,7 +49,7 @@ export async function editTimesheet(
     .from('timesheets')
     .update(updates)
     .eq('id', id)
-    .eq('payroll_status', 'Pending');
+    .eq('payroll_status', existing.payroll_status);
 
   if (updateErr) throw new Error(`Failed to update timesheet: ${updateErr.message}`);
 

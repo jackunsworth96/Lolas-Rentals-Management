@@ -100,7 +100,8 @@ router.post('/timesheets', requirePermission(Permission.SubmitTimesheets), valid
     const { submitTimesheet } = await import('../use-cases/hr/submit-timesheet.js');
     const result = await submitTimesheet(req.body, { timesheets: req.app.locals.deps.timesheetRepo });
     const { syncNinePmPayouts } = await import('../use-cases/payroll/nine-pm-payout.js');
-    const ninePm = await syncNinePmPayouts(result.timesheetIds, req.user!.userId);
+    // The payout's journal entry is attributed to the employee who recorded it, not their login account.
+    const ninePm = await syncNinePmPayouts(result.timesheetIds, req.user!.employeeId);
     const { recalculateLeaveUsed } = await import('../use-cases/hr/leave-usage.js');
     await recalculateLeaveUsed((req.body.entries as Array<{ employeeId: string }>).map((e) => e.employeeId));
     res.status(201).json({ success: true, data: { ...result, ninePmPayouts: ninePm } });
@@ -118,10 +119,10 @@ router.post('/timesheets/approve', requirePermission(Permission.ApproveTimesheet
 router.patch('/timesheets/:id', requirePermission(Permission.EditTimesheets), validateBody(EditTimesheetRequestSchema), async (req, res, next) => {
   try {
     const { editTimesheet } = await import('../use-cases/hr/edit-timesheet.js');
-    const amendedBy = req.user!.userId;
-    const result = await editTimesheet(String(req.params.id), req.body, amendedBy);
+    const result = await editTimesheet(String(req.params.id), req.body, req.user!.userId);
     const { syncNinePmPayouts } = await import('../use-cases/payroll/nine-pm-payout.js');
-    const ninePm = await syncNinePmPayouts([result.id], amendedBy);
+    // The payout's journal entry is attributed to the employee who recorded it, not their login account.
+    const ninePm = await syncNinePmPayouts([result.id], req.user!.employeeId);
     const { recalculateLeaveUsed } = await import('../use-cases/hr/leave-usage.js');
     await recalculateLeaveUsed([result.employeeId]);
     res.json({ success: true, data: { ...result, ninePmPayouts: ninePm } });
