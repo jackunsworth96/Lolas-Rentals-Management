@@ -36,7 +36,9 @@ vi.mock('../src/hooks/use-payment-routing.js', () => ({
 vi.mock('../src/stores/auth-store.js', () => ({
   useAuthStore: (selector: (state: unknown) => unknown) => selector({ user: { username: 'Staff' }, hasPermission: () => true }),
 }));
-vi.mock('../src/components/common/Modal.js', () => ({ Modal: ({ children }: { children: React.ReactNode }) => children }));
+vi.mock('../src/components/common/Modal.js', () => ({
+  Modal: ({ children, footer }: { children: React.ReactNode; footer?: React.ReactNode }) => <>{children}{footer}</>,
+}));
 vi.mock('../src/components/orders/InspectionModal.js', () => ({ InspectionModal: () => null }));
 const { BookingModal } = await import('../src/components/orders/BookingModal.js');
 const rawOrder = {

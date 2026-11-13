@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { Modal } from '../common/Modal.js';
 import { Badge } from '../common/Badge.js';
-import { WhatsAppNumberInput, whatsAppNumberError } from '../common/WhatsAppNumberInput.js';
+import { whatsAppNumberError } from '../common/WhatsAppNumberInput.js';
 import { useFleet, availableVehiclesQuery } from '../../api/fleet.js';
 import { bookingDatetimeISO } from '../../utils/booking-datetime.js';
 import {
@@ -16,46 +16,25 @@ import {
 import { useAddons, useLocations, useChartOfAccounts, useStorePricing, usePaymentMethods, useVehicleModels } from '../../api/config.js';
 import { useProcessRawOrder, useCollectPayment, type RawOrder, type ProcessRawOrderPayload } from '../../api/orders-raw.js';
 import { formatCurrency } from '../../utils/currency.js';
-import { formatPickupDatetimeManila } from '../../utils/date.js';
 import { usePaymentRouting } from '../../hooks/use-payment-routing.js';
 import { resolveStoreFromSource } from '@lolas/shared';
 import { InspectionModal } from './InspectionModal.js';
-import { InactiveModelNotice } from '../fleet/InactiveModelNotice.js';
 import { useSurfRackAvailability } from '../../api/surf-racks.js';
 import { isSurfRackAddon } from '../basket/AddOnsSection.js';
-import { SurfRackAvailabilityNote, surfRackShortfall } from './SurfRackAvailabilityNote.js';
+import { surfRackShortfall } from './SurfRackAvailabilityNote.js';
 import { useAuthStore } from '../../stores/auth-store.js';
-import { OrderInvoicesBar } from '../invoices/OrderInvoicesBar.js';
 import { fetchPublicPartnerBenefit } from '../../api/partners.js';
 import {
   partnerAllowsFreeDeliveryLocation,
   partnerEstablishmentLocation,
 } from '../../utils/partnerDeliveryLocation.js';
-
-// ── AM/PM datetime helpers ──
-
-interface TimeParts { date: string; hours12: number; minutes: number; ampm: 'AM' | 'PM' }
-
-function splitDatetime(dt: string): TimeParts {
-  if (!dt) return { date: '', hours12: 12, minutes: 0, ampm: 'AM' };
-  const [datePart, timePart] = dt.split('T');
-  if (!timePart) return { date: datePart || '', hours12: 12, minutes: 0, ampm: 'AM' };
-  const [hStr, mStr] = timePart.split(':');
-  let h = parseInt(hStr, 10) || 0;
-  const m = parseInt(mStr, 10) || 0;
-  const ampm: 'AM' | 'PM' = h >= 12 ? 'PM' : 'AM';
-  if (h === 0) h = 12;
-  else if (h > 12) h -= 12;
-  return { date: datePart, hours12: h, minutes: m, ampm };
-}
-
-function combineFromParts(p: TimeParts): string {
-  if (!p.date) return '';
-  let h24 = p.hours12;
-  if (p.ampm === 'AM' && h24 === 12) h24 = 0;
-  else if (p.ampm === 'PM' && h24 < 12) h24 += 12;
-  return `${p.date}T${String(h24).padStart(2, '0')}:${String(p.minutes).padStart(2, '0')}:00+08:00`;
-}
+import { OrderRefChip } from './OrderRefChip.js';
+import { BookingStepper } from './booking/BookingStepper.js';
+import { BookingSidePanel } from './booking/BookingSidePanel.js';
+import { CustomerStep } from './booking/CustomerStep.js';
+import { VehicleStep } from './booking/VehicleStep.js';
+import { PaymentStep } from './booking/PaymentStep.js';
+import type { AddonRow, CustomerData, VehicleRow } from './booking/types.js';
 
 interface BookingModalProps {
   open: boolean;
@@ -65,45 +44,18 @@ interface BookingModalProps {
   onWalkInBooking?: () => void;
 }
 
-type Step = 'review' | 'vehicles' | 'addons' | 'summary';
+type Step = 'review' | 'vehicles' | 'summary';
 const STEPS: { key: Step; label: string }[] = [
-  { key: 'review', label: 'Review' },
-  { key: 'vehicles', label: 'Vehicles' },
-  { key: 'addons', label: 'Add-ons' },
-  { key: 'summary', label: 'Summary' },
+  { key: 'review', label: 'Customer' },
+  { key: 'vehicles', label: 'Vehicle & add-ons' },
+  { key: 'summary', label: 'Payment & activate' },
 ];
 
-interface CustomerData {
-  name: string;
-  email: string;
-  phone: string;
-}
-
-interface VehicleRow {
-  vehicleId: string;
-  vehicleName: string;
-  pickupDatetime: string;
-  dropoffDatetime: string;
-  rentalDaysCount: number;
-  pickupLocation: string;
-  dropoffLocation: string;
-  pickupFee: number;
-  dropoffFee: number;
-  rentalRate: number;
-  helmetNumbers: string;
-  discount: number;
-  opsNotes: string;
-  isExtension: boolean;
-}
-
-interface AddonRow {
-  addonName: string;
-  addonPrice: number;
-  addonType: 'per_day' | 'one_time';
-  quantity: number;
-  totalAmount: number;
-  mutualExclusivityGroup: string | null;
-  enabled: boolean;
+function isStoreLocation(loc: Record<string, unknown>): boolean {
+  const collection = Number(loc.collectionCost ?? loc.collection_cost ?? 0);
+  const delivery = Number(loc.deliveryCost ?? loc.delivery_cost ?? 0);
+  const type = loc.locationType ?? loc.location_type ?? null;
+  return collection === 0 && delivery === 0 && (type === 'store' || type === null);
 }
 
 function extractBilling(payload: Record<string, unknown>) {
@@ -240,7 +192,6 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const [step, setStep] = useState<Step>('review');
   const [inspectionOpen, setInspectionOpen] = useState(false);
   const [customer, setCustomer] = useState<CustomerData>(billing);
-  const [waiverCopied, setWaiverCopied] = useState(false);
   const [vehicles, setVehicles] = useState<VehicleRow[]>([emptyVehicleRow()]);
   const [selectedAddons, setSelectedAddons] = useState<AddonRow[]>([]);
   const [securityDeposit, setSecurityDeposit] = useState<number | ''>('');
@@ -264,6 +215,8 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const [preActivationAmount, setPreActivationAmount] = useState<number | ''>('');
   const [collectNowAmount, setCollectNowAmount] = useState<number | ''>('');
   const [dropoffLocationNote, setDropoffLocationNote] = useState('');
+  const [tipAmount, setTipAmount] = useState<number | ''>('');
+  const [tipAccountId, setTipAccountId] = useState('');
 
   const { data: vehicleModels } = useVehicleModels() as { data: Array<{ id: string; name: string }> | undefined };
   const { data: fleet } = useFleet(storeId) as { data: Array<Record<string, unknown>> | undefined };
@@ -654,16 +607,21 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     return assigned.some((c) => c.surfRack);
   })();
 
-  function goNext() {
-    if (step === 'review' && !customer.name.trim()) return;
-    if (step === 'review' && whatsAppNumberError(customer.phone, false)) return;
-    if (step === 'vehicles' && vehicles.every((v) => !v.vehicleId)) return;
-    if (step === 'vehicles' && assignmentConflict) return;
-
-    if (step === 'vehicles') {
-      initAddons();
+  const nextBlocker = (() => {
+    if (step === 'review') {
+      if (!customer.name.trim()) return 'Enter the customer name to continue.';
+      if (whatsAppNumberError(customer.phone, false)) return 'Fix the WhatsApp number before continuing.';
     }
+    if (step === 'vehicles') {
+      if (vehicles.every((v) => !v.vehicleId)) return 'Choose a vehicle to continue.';
+      if (vehicleAvailability.some((r) => r?.isFetching)) return 'Checking vehicle availability...';
+      if (assignmentConflict) return 'Choose an available vehicle for every rental.';
+    }
+    return null;
+  })();
 
+  function goNext() {
+    if (nextBlocker) return;
     if (canGoNext) setStep(STEPS[stepIndex + 1].key);
   }
   function goBack() {
@@ -695,6 +653,21 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
       }),
     );
   }
+
+  useEffect(() => {
+    if (step === 'vehicles' && storeAddons) initAddons();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, storeAddons]);
+
+  const addonDays = vehicles.reduce((max, v) => Math.max(max, v.rentalDaysCount || 1), 1);
+  useEffect(() => {
+    setSelectedAddons((prev) => {
+      if (!prev.some((a) => a.addonType === 'per_day' && a.quantity !== addonDays)) return prev;
+      return prev.map((a) => (a.addonType === 'per_day'
+        ? { ...a, quantity: addonDays, totalAmount: a.addonPrice * addonDays }
+        : a));
+    });
+  }, [addonDays]);
 
   function toggleAddon(index: number) {
     setSelectedAddons((prev) => {
@@ -823,6 +796,8 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
       transferAccommodation: transferAccommodation.trim() || null,
       dropoffLocationNote: dropoffLocationNote.trim() || null,
       partialPaymentAmount: (paymentMethodId && effectiveCollectNow < finalTotal) ? effectiveCollectNow : undefined,
+      tipAmount: Number(tipAmount) > 0 ? Number(tipAmount) : undefined,
+      tipAccountId: Number(tipAmount) > 0 && tipAccountId ? tipAccountId : null,
     };
   }
 
@@ -901,1192 +876,225 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     );
   }
 
-  const stepTitle = `Process Order — ${STEPS[stepIndex].label} (${stepIndex + 1}/${STEPS.length})`;
+  const partnerName = partnerBenefit?.name?.trim() || null;
+  const transferAmount = isDirect
+    ? Number(rawOrder.transfer_amount ?? (rawOrder.payload as Record<string, unknown> | null)?.transfer_amount ?? 0)
+    : 0;
+  const customerNotes = isDirect
+    ? (rawOrder.customer_extra_comments?.trim() || null)
+    : (payload.customer_note ? String(payload.customer_note) : null);
+  const needsMeetingPoint = vehicles.some((v) => {
+    if (!v.dropoffLocation) return false;
+    const loc = locations?.find((l) => String(l.name) === v.dropoffLocation);
+    return loc ? !isStoreLocation(loc) : true;
+  });
+  const paymentOrDeposit = Boolean(paymentMethodId) || Number(securityDeposit) > 0;
 
-  return (
-    <>
-    <Modal open={open} onClose={onClose} title={stepTitle} size="xl">
-      <div className="min-h-[400px]">
-        {/* Step indicator */}
-        <div className="mb-6 flex gap-2">
-          {STEPS.map((s, i) => (
-            <div key={s.key} className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  if (i < stepIndex) setStep(s.key);
-                }}
-                className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium ${
-                  i === stepIndex
-                    ? 'bg-blue-600 text-white'
-                    : i < stepIndex
-                      ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                      : 'bg-gray-100 text-gray-400'
-                }`}
-              >
-                {i < stepIndex ? '✓' : i + 1}
-              </button>
-              <span className={`text-sm ${i === stepIndex ? 'font-medium text-gray-900' : 'text-gray-500'}`}>
-                {s.label}
-              </span>
-              {i < STEPS.length - 1 && <div className="mx-2 h-px w-8 bg-gray-200" />}
-            </div>
-          ))}
-        </div>
+  const activationBlocker = !canEditOrders
+    ? 'You can review this order, but activating or collecting payment requires order edit permission.'
+    : assignmentConflict
+      ? 'Choose an available vehicle for every rental.'
+      : rackShort
+        ? 'Not enough surf racks free for these dates — untick the surf rack add-on.'
+        : transferAmountMissing
+          ? 'Transfer amount is missing — set it before activating.'
+          : !depositValid
+            ? 'Enter a security deposit or tick Waive deposit.'
+            : null;
+  const footerNotice = step === 'summary' ? activationBlocker : nextBlocker;
 
-        {successMessage && (
-          <div className="mb-4 rounded-lg bg-green-50 p-4 text-center text-green-700 font-medium">
-            {successMessage}
-          </div>
-        )}
+  const channelLabel = !isDirect ? 'WooCommerce' : rawOrder.booking_channel === 'walk_in' ? 'Walk-in' : 'Direct';
+  const title = (
+    <span className="inline-flex max-w-full items-center">
+      <span className="min-w-0 truncate">{customer.name.trim() || 'Process order'}</span>
+      {waiverRef && <OrderRefChip value={waiverRef} />}
+      <span className="ml-2 hidden items-center gap-1 sm:inline-flex">
+        <Badge color={rawOrder.source === 'lolas' ? 'blue' : 'purple'}>
+          {rawOrder.source === 'lolas' ? "Lola's Rentals" : 'Bass Bikes'}
+        </Badge>
+        <Badge color={isDirect ? 'green' : 'gray'}>{channelLabel}</Badge>
+      </span>
+    </span>
+  );
 
-        {/* Step 1: Review */}
-        {step === 'review' && (
-          <div className="space-y-6">
-            <OrderInvoicesBar orderReference={rawOrder.order_reference ?? rawOrder.id} />
-            <div className="rounded-lg border border-gray-200 p-4">
-              <h3 className="mb-3 font-medium text-gray-900">Customer Details</h3>
-              <div className="grid grid-cols-3 gap-4">
-                <label className="block">
-                  <span className="text-sm text-gray-600">Name</span>
-                  <input
-                    type="text"
-                    value={customer.name}
-                    onChange={(e) => setCustomer((c) => ({ ...c, name: e.target.value }))}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-sm text-gray-600">Email</span>
-                  <input
-                    type="email"
-                    value={customer.email}
-                    onChange={(e) => setCustomer((c) => ({ ...c, email: e.target.value }))}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-sm text-gray-600">WhatsApp number</span>
-                  <WhatsAppNumberInput
-                    value={customer.phone}
-                    onChange={(value) => setCustomer((c) => ({ ...c, phone: value }))}
-                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                    showPreview={false}
-                  />
-                </label>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="rounded-lg border border-gray-200 p-4">
-                <h3 className="mb-3 font-medium text-gray-900">Booking Info</h3>
-                <dl className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <dt className="text-gray-500">Store</dt>
-                    <dd>
-                      <Badge color={rawOrder.source === 'lolas' ? 'blue' : 'purple'}>
-                        {rawOrder.source === 'lolas' ? "Lola's Rentals" : 'Bass Bikes'}
-                      </Badge>
-                    </dd>
-                  </div>
-                  {isDirect ? (
-                    <>
-                      <div className="flex justify-between">
-                        <dt className="text-gray-500">Order Ref</dt>
-                        <dd className="font-medium">{rawOrder.order_reference ?? '—'}</dd>
-                      </div>
-                      <div className="flex justify-between">
-                        <dt className="text-gray-500">Channel</dt>
-                        <dd><Badge color="green">Direct</Badge></dd>
-                      </div>
-                      {rawOrder.vehicle_model_id && (
-                        <div className="flex justify-between">
-                          <dt className="text-gray-500">Vehicle Model</dt>
-                          <dd className="font-medium">{directModelName ?? rawOrder.vehicle_model_id}</dd>
-                        </div>
-                      )}
-                      {webQuote > 0 && (
-                        <div className="flex justify-between">
-                          <dt className="text-gray-500">Web Quote</dt>
-                          <dd className="font-medium">{formatCurrency(webQuote)}</dd>
-                        </div>
-                      )}
-                      {Number(rawOrder.charity_donation ?? 0) > 0 && (
-                        <div className="flex justify-between">
-                          <dt className="text-gray-500">Charity Donation</dt>
-                          <dd className="font-medium text-teal-700">{formatCurrency(Number(rawOrder.charity_donation))}</dd>
-                        </div>
-                      )}
-                      <div className="flex justify-between">
-                        <dt className="text-gray-500">Payment Method</dt>
-                        <dd className="font-medium">{rawOrder.web_payment_method ?? 'Not specified'}</dd>
-                      </div>
-                      {rawOrder.transfer_type && (
-                        <>
-                          <div className="flex justify-between">
-                            <dt className="text-gray-500">Transfer</dt>
-                            <dd className="font-medium capitalize">{rawOrder.transfer_type}{rawOrder.transfer_route ? ` — ${rawOrder.transfer_route}` : ''}</dd>
-                          </div>
-                          <div className="flex items-center justify-between gap-2">
-                            <label htmlFor="transfer-accommodation" className="shrink-0 text-sm text-gray-500">
-                              Accommodation
-                            </label>
-                            <input
-                              id="transfer-accommodation"
-                              type="text"
-                              placeholder="Hotel / villa name…"
-                              value={transferAccommodation}
-                              onChange={(e) => setTransferAccommodation(e.target.value)}
-                              className="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-right text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            />
-                          </div>
-                          <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                            <input
-                              id="transfer-paid-by-customer"
-                              type="checkbox"
-                              className="mt-0.5 h-4 w-4 shrink-0 accent-amber-600"
-                              checked={transferPaidByCustomer}
-                              onChange={(e) => setTransferPaidByCustomer(e.target.checked)}
-                            />
-                            <label htmlFor="transfer-paid-by-customer" className="cursor-pointer leading-snug">
-                              <span className="font-semibold">Customer pays driver directly</span>
-                              <span className="block text-amber-700">
-                                Tick this if the transfer fee is settled between the customer and the driver — it will be excluded from the balance due.
-                              </span>
-                            </label>
-                          </div>
-                        </>
-                      )}
-                      {rawOrder.flight_number && (
-                        <div className="flex justify-between">
-                          <dt className="text-gray-500">Flight</dt>
-                          <dd className="font-medium">{rawOrder.flight_number}</dd>
-                        </div>
-                      )}
-                      {rawOrder.flight_arrival_time && (
-                        <div className="flex justify-between">
-                          <dt className="text-gray-500">Arrival Time</dt>
-                          <dd className="font-medium">
-                            {new Date(rawOrder.flight_arrival_time as string).toLocaleString('en-PH', {
-                              timeZone: 'Asia/Manila',
-                              dateStyle: 'medium',
-                              timeStyle: 'short',
-                            })}
-                          </dd>
-                        </div>
-                      )}
-                      {isDirect && Number((rawOrder.payload as Record<string, unknown> | null)?.helmet_count ?? 0) > 0 && (
-                        <div className="flex justify-between">
-                          <dt className="text-gray-500">Extra Helmets</dt>
-                          <dd className="font-medium">
-                            {Number((rawOrder.payload as Record<string, unknown> | null)?.helmet_count)}
-                          </dd>
-                        </div>
-                      )}
-                      {isDirect &&
-                        String(
-                          (rawOrder.payload as Record<string, unknown> | null)?.accommodation_name ?? '',
-                        ).trim() !== '' && (
-                        <div className="flex justify-between gap-2">
-                          <dt className="shrink-0 text-gray-500">Staying at</dt>
-                          <dd className="font-medium text-right">
-                            {String((rawOrder.payload as Record<string, unknown> | null)?.accommodation_name)}
-                          </dd>
-                        </div>
-                      )}
-                      {rawOrder.partner_ref && partnerBenefit && (
-                        <div className="flex justify-between gap-2">
-                          <dt className="shrink-0 text-gray-500">Referred by</dt>
-                          <dd className="font-medium text-right text-orange-700">{partnerBenefit.name}</dd>
-                        </div>
-                      )}
-                      {isDirect && rawOrder.customer_company && (
-                        <div className="flex justify-between gap-2">
-                          <dt className="shrink-0 text-gray-500">Company</dt>
-                          <dd className="font-medium text-right">{rawOrder.customer_company}</dd>
-                        </div>
-                      )}
-                      {isDirect && rawOrder.customer_extra_comments && (
-                        <div>
-                          <dt className="text-gray-500">Extra Comments</dt>
-                          <dd className="mt-1 rounded bg-yellow-50 p-2 text-gray-700 whitespace-pre-wrap">{rawOrder.customer_extra_comments}</dd>
-                        </div>
-                      )}
-                      {isDirect && rawOrder.pickup_location_address && (
-                        <div className="flex justify-between gap-2">
-                          <dt className="shrink-0 text-gray-500">Pickup address</dt>
-                          <dd className="font-medium text-right">{rawOrder.pickup_location_address}</dd>
-                        </div>
-                      )}
-                      {isDirect && rawOrder.dropoff_location_address && (
-                        <div className="flex justify-between gap-2">
-                          <dt className="shrink-0 text-gray-500">Return address</dt>
-                          <dd className="font-medium text-right">{rawOrder.dropoff_location_address}</dd>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <div className="flex justify-between">
-                        <dt className="text-gray-500">WC Order #</dt>
-                        <dd className="font-medium">{String(payload.number ?? payload.id ?? '—')}</dd>
-                      </div>
-                      <div className="flex justify-between">
-                        <dt className="text-gray-500">Web Quote</dt>
-                        <dd className="font-medium">{webQuote > 0 ? formatCurrency(webQuote) : '—'}</dd>
-                      </div>
-                      {payload.customer_note && (
-                        <div>
-                          <dt className="text-gray-500">Customer Notes</dt>
-                          <dd className="mt-1 rounded bg-yellow-50 p-2 text-gray-700">{String(payload.customer_note)}</dd>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </dl>
-              </div>
-
-              <div className="rounded-lg border border-gray-200 p-4">
-                {isDirect ? (
-                  <>
-                    <h3 className="mb-3 font-medium text-gray-900">Direct Booking Summary</h3>
-                    <dl className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <dt className="text-gray-500">Pickup</dt>
-                        <dd className="font-medium">{rawOrder.pickup_datetime ? formatPickupDatetimeManila(rawOrder.pickup_datetime) : '—'}</dd>
-                      </div>
-                      <div className="flex justify-between">
-                        <dt className="text-gray-500">Dropoff</dt>
-                        <dd className="font-medium">{rawOrder.dropoff_datetime ? formatPickupDatetimeManila(rawOrder.dropoff_datetime) : '—'}</dd>
-                      </div>
-                      {rawOrder.addon_ids && rawOrder.addon_ids.length > 0 && (
-                        <div className="flex items-start justify-between gap-3">
-                          <dt className="shrink-0 text-gray-500">Add-ons selected</dt>
-                          <dd className="min-w-0 text-right font-medium">
-                            {requestedAddonNames ? (
-                              <ul className="space-y-1">
-                                {requestedAddonNames.map((addon) => (
-                                  <li key={addon.id}>{addon.name}</li>
-                                ))}
-                              </ul>
-                            ) : (
-                              rawOrder.addon_ids.length
-                            )}
-                          </dd>
-                        </div>
-                      )}
-                    </dl>
-                  </>
-                ) : (
-                  <>
-                    <h3 className="mb-3 font-medium text-gray-900">WooCommerce Line Items</h3>
-                    {lineItems.length === 0 ? (
-                      <p className="text-sm text-gray-500">No line items</p>
-                    ) : (
-                      <ul className="space-y-2 text-sm">
-                        {lineItems.map((item, i) => (
-                          <li key={i} className="flex justify-between rounded bg-gray-50 px-3 py-2">
-                            <span>{String(item.name ?? 'Item')} x{String(item.quantity ?? 1)}</span>
-                            <span className="font-medium">{formatCurrency(Number(item.total ?? 0))}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Waiver link */}
-            {waiverUrl && (
-              <div className="rounded-lg border border-teal-200 bg-teal-50 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h3 className="font-medium text-teal-900">Customer Waiver</h3>
-                    <p className="mt-0.5 text-xs text-teal-700">
-                      Send this link to the customer or open it on their device to complete the waiver.
-                    </p>
-                    <p className="mt-1 truncate text-xs font-mono text-teal-800 opacity-70">{waiverUrl}</p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void navigator.clipboard.writeText(waiverUrl).then(() => {
-                          setWaiverCopied(true);
-                          setTimeout(() => setWaiverCopied(false), 2000);
-                        });
-                      }}
-                      className="rounded-lg border border-teal-400 bg-white px-3 py-1.5 text-xs font-medium text-teal-700 transition-colors hover:bg-teal-50"
-                    >
-                      {waiverCopied ? 'Copied!' : 'Copy Link'}
-                    </button>
-                    <a
-                      href={waiverUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-teal-700"
-                    >
-                      Open Waiver ↗
-                    </a>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Pre-activation card payment */}
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <h3 className="font-medium text-gray-900">Record Pre-activation Payment</h3>
-                <Badge color="blue">Before vehicle assignment</Badge>
-              </div>
-              <p className="mb-3 text-xs text-gray-600">
-                Record a card payment now if the customer is paying before vehicle collection. The order still needs to be processed through the remaining steps.
-              </p>
-              <div className="grid grid-cols-3 gap-3">
-                <label className="block">
-                  <span className="text-sm text-gray-600">Payment Method</span>
-                  <select
-                    value={preActivationMethodId}
-                    onChange={(e) => setPreActivationMethodId(e.target.value)}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  >
-                    <option value="">Select...</option>
-                    {activePaymentMethods.map((m) => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block">
-                  <span className="text-sm text-gray-600">Amount</span>
-                  <input
-                    type="number"
-                    value={preActivationAmount}
-                    onChange={(e) => setPreActivationAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="0.00"
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                </label>
-                {preActivationIsCard && (
-                  <label className="block">
-                    <span className="text-sm text-gray-600">Card Reference #</span>
-                    <input
-                      type="text"
-                      value={preActivationRef}
-                      onChange={(e) => setPreActivationRef(e.target.value)}
-                      placeholder="Terminal receipt #"
-                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </label>
-                )}
-              </div>
-              {preActivationIsCard && (
-                <p className="mt-2 text-xs text-amber-700">
-                  Card payment — a pending settlement will be created for reconciliation.
-                </p>
-              )}
-              <div className="mt-3 flex items-center gap-3">
-                <button
-                  onClick={handlePreActivationPayment}
-                  disabled={collectMutation.isPending || !preActivationMethodId || !preActivationAmount}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {collectMutation.isPending ? 'Recording...' : 'Record Pre-activation Payment'}
-                </button>
-              </div>
-              {collectMutation.error && step === 'review' && (
-                <div className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
-                  {(collectMutation.error as Error).message}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Step 2: Vehicles */}
-        {step === 'vehicles' && (
-          <div className="space-y-4">
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setInspectionOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-teal-600 px-3 py-1.5 text-sm font-medium text-teal-700 transition-colors hover:bg-teal-50"
-              >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                </svg>
-                Open Inspection
-              </button>
-            </div>
-
-            {vehicles.map((v, i) => {
-              const pickupParts = splitDatetime(v.pickupDatetime);
-              const dropoffParts = splitDatetime(v.dropoffDatetime);
-
-              const updatePickupPart = (patch: Partial<TimeParts>) => {
-                const merged = { ...pickupParts, ...patch };
-                updateVehicle(i, { pickupDatetime: combineFromParts(merged) });
-              };
-              const updateDropoffPart = (patch: Partial<TimeParts>) => {
-                const merged = { ...dropoffParts, ...patch };
-                updateVehicle(i, { dropoffDatetime: combineFromParts(merged) });
-              };
-              const availability = vehicleAvailability[i];
-              const selectableVehicles = (availability?.data ?? []).filter((candidate) =>
-                !vehicles.some((other, index) => index !== i && other.vehicleId === candidate.id),
-              );
-              const bookedModelVehicles = bookedModelId
-                ? selectableVehicles.filter((fv) => fv.modelId === bookedModelId)
-                : selectableVehicles;
-              const otherModelVehicles = bookedModelId
-                ? selectableVehicles.filter((fv) => fv.modelId !== bookedModelId)
-                : [];
-              const selectedModelId = v.vehicleId
-                ? (selectableVehicles.find((fv) => fv.id === v.vehicleId)?.modelId
-                  ?? (fleet?.find((fv) => fv.id === v.vehicleId)?.modelId as string | undefined))
-                : undefined;
-              const modelMismatch = Boolean(bookedModelId && v.vehicleId && selectedModelId !== bookedModelId);
-
-              return (
-              <div key={i} className="rounded-lg border border-gray-200 p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <h3 className="font-medium text-gray-900">Vehicle {i + 1}</h3>
-                  {vehicles.length > 1 && (
-                    <button onClick={() => removeVehicleRow(i)} className="text-sm text-red-500 hover:text-red-700">
-                      Remove
-                    </button>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="block">
-                    <span className="text-sm text-gray-600">Vehicle</span>
-                    <select
-                      aria-label={`Vehicle ${i + 1}`}
-                      value={v.vehicleId}
-                      disabled={availability?.isFetching || !availability?.isSuccess}
-                      onChange={(e) => updateVehicle(i, { vehicleId: e.target.value })}
-                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-                      <option value="">Select vehicle...</option>
-                      {otherModelVehicles.length === 0 ? (
-                        bookedModelVehicles.map((fv) => (
-                          <option key={String(fv.id)} value={String(fv.id)}>
-                            {String(fv.name ?? fv.id)}
-                          </option>
-                        ))
-                      ) : (
-                        <>
-                          <optgroup label={`Booked model: ${modelNameFor(bookedModelId)}`}>
-                            {bookedModelVehicles.map((fv) => (
-                              <option key={String(fv.id)} value={String(fv.id)}>
-                                {String(fv.name ?? fv.id)}
-                              </option>
-                            ))}
-                          </optgroup>
-                          <optgroup label="Other models (not what the customer booked)">
-                            {otherModelVehicles.map((fv) => (
-                              <option key={String(fv.id)} value={String(fv.id)}>
-                                {`${String(fv.name ?? fv.id)} (${modelNameFor(fv.modelId)})`}
-                              </option>
-                            ))}
-                          </optgroup>
-                        </>
-                      )}
-                    </select>
-                    {modelMismatch && (
-                      <p className="mt-1 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900" role="alert">
-                        The customer booked a {modelNameFor(bookedModelId)}, but this is a {modelNameFor(selectedModelId)}.
-                        The rate stays at the booked {modelNameFor(bookedModelId)} price. Only continue if the customer
-                        is really being given this vehicle.
-                      </p>
-                    )}
-                    {bookedModelId && availability?.isSuccess && !availability.isFetching
-                      && bookedModelVehicles.length === 0 && otherModelVehicles.length > 0 && (
-                      <p className="mt-1 text-xs text-amber-700">
-                        No {modelNameFor(bookedModelId)} is free for these dates. If the customer has a vehicle that isn&apos;t
-                        in the fleet yet (e.g. a sub-leased one), add it in Fleet first instead of using another model.
-                      </p>
-                    )}
-                    {availability?.isFetching && <p className="mt-1 text-xs text-gray-500" role="status">Checking available motorcycles...</p>}
-                    {availability?.isError && <p className="mt-1 text-xs text-red-600" role="alert">Could not check availability. <button type="button" onClick={() => void availability.refetch()} className="underline">Retry</button></p>}
-                    {availability?.isSuccess && !availability.isFetching && selectableVehicles.length === 0 && (
-                      <p className="mt-1 text-xs text-amber-700">No motorcycles are available for these dates.</p>
-                    )}
-                    {i === 0 && <InactiveModelNotice storeId={storeId} />}
-                    {v.vehicleId && !fleet?.find((fv) => fv.id === v.vehicleId)?.modelId && (
-                      <p className="mt-1 text-xs text-amber-600">No model linked — set vehicle model in fleet settings to auto-fill rate.</p>
-                    )}
-                  </div>
-
-                  <label className="block">
-                    <span className="text-sm text-gray-600">Rental Rate (per day)</span>
-                    <input
-                      type="number"
-                      value={v.rentalRate}
-                      onChange={(e) => updateVehicle(i, { rentalRate: Number(e.target.value) })}
-                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </label>
-
-                  {/* Pickup Date/Time — AM/PM */}
-                  <div className="block">
-                    <span className="text-sm text-gray-600">Pickup Date/Time</span>
-                    <div className="mt-1 flex items-center gap-1.5">
-                      <input
-                        type="date"
-                        aria-label={`Vehicle ${i + 1} pickup date`}
-                        value={pickupParts.date}
-                        onChange={(e) => updatePickupPart({ date: e.target.value })}
-                        className="block w-[130px] rounded-lg border border-gray-300 px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                      <input
-                        type="number"
-                        min={1} max={12}
-                        value={pickupParts.hours12}
-                        onChange={(e) => updatePickupPart({ hours12: Math.max(1, Math.min(12, Number(e.target.value) || 1)) })}
-                        className="block w-[52px] rounded-lg border border-gray-300 px-2 py-2 text-sm text-center focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                      <span className="text-gray-400 font-medium">:</span>
-                      <input
-                        type="number"
-                        min={0} max={59}
-                        value={String(pickupParts.minutes).padStart(2, '0')}
-                        onChange={(e) => updatePickupPart({ minutes: Math.max(0, Math.min(59, Number(e.target.value) || 0)) })}
-                        className="block w-[52px] rounded-lg border border-gray-300 px-2 py-2 text-sm text-center focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => updatePickupPart({ ampm: pickupParts.ampm === 'AM' ? 'PM' : 'AM' })}
-                        className="rounded-lg border border-gray-300 px-2.5 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      >
-                        {pickupParts.ampm}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Dropoff Date/Time — AM/PM */}
-                  <div className="block">
-                    <span className="text-sm text-gray-600">Dropoff Date/Time</span>
-                    <div className="mt-1 flex items-center gap-1.5">
-                      <input
-                        type="date"
-                        aria-label={`Vehicle ${i + 1} return date`}
-                        value={dropoffParts.date}
-                        onChange={(e) => updateDropoffPart({ date: e.target.value })}
-                        className="block w-[130px] rounded-lg border border-gray-300 px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                      <input
-                        type="number"
-                        min={1} max={12}
-                        value={dropoffParts.hours12}
-                        onChange={(e) => updateDropoffPart({ hours12: Math.max(1, Math.min(12, Number(e.target.value) || 1)) })}
-                        className="block w-[52px] rounded-lg border border-gray-300 px-2 py-2 text-sm text-center focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                      <span className="text-gray-400 font-medium">:</span>
-                      <input
-                        type="number"
-                        min={0} max={59}
-                        value={String(dropoffParts.minutes).padStart(2, '0')}
-                        onChange={(e) => updateDropoffPart({ minutes: Math.max(0, Math.min(59, Number(e.target.value) || 0)) })}
-                        className="block w-[52px] rounded-lg border border-gray-300 px-2 py-2 text-sm text-center focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => updateDropoffPart({ ampm: dropoffParts.ampm === 'AM' ? 'PM' : 'AM' })}
-                        className="rounded-lg border border-gray-300 px-2.5 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      >
-                        {dropoffParts.ampm}
-                      </button>
-                    </div>
-                    {(() => {
-                      let h24 = dropoffParts.hours12;
-                      if (dropoffParts.ampm === 'AM' && h24 === 12) h24 = 0;
-                      else if (dropoffParts.ampm === 'PM' && h24 < 12) h24 += 12;
-                      const totalMins = h24 * 60 + dropoffParts.minutes;
-                      const openMins = 9 * 60 + 15;
-                      const closeMins = 16 * 60 + 45;
-                      const ninePmMins = 21 * 60;
-                      const outsideHours = totalMins < openMins || (totalMins > closeMins && totalMins !== ninePmMins);
-                      return outsideHours ? (
-                        <p className="mt-1 text-xs font-semibold text-amber-600">
-                          Outside business hours (9:15 AM – 4:45 PM). Confirm this is intentional.
-                        </p>
-                      ) : null;
-                    })()}
-                  </div>
-
-                  {/* Pickup Location */}
-                  <div className="block">
-                    <span className="text-sm text-gray-600">Pickup Location</span>
-                    <select
-                      value={v.pickupLocation}
-                      onChange={(e) => updateVehicle(i, { pickupLocation: e.target.value })}
-                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-                      <option value="">Select...</option>
-                      {(partnerPickupLocationOption || v.pickupLocation === partnerBenefit?.name?.trim()) &&
-                        partnerBenefit?.name?.trim() &&
-                        !locations?.some((l) => String(l.name) === partnerBenefit.name.trim()) && (
-                        <option value={partnerBenefit.name.trim()}>
-                          {partnerBenefit.name.trim()} (Partner establishment - Free)
-                        </option>
-                      )}
-                      {(locations ?? []).map((l) => (
-                        <option key={String(l.id)} value={String(l.name)}>
-                          {locationOptionLabel(l, 'pickup')}
-                        </option>
-                      ))}
-                    </select>
-                    {!v.pickupLocation && payloadPickupLoc && (
-                      <p className="mt-1 text-xs text-amber-600">Website order: {payloadPickupLoc}</p>
-                    )}
-                  </div>
-
-                  {/* Dropoff Location */}
-                  <div className="block">
-                    <span className="text-sm text-gray-600">Dropoff Location</span>
-                    <select
-                      value={v.dropoffLocation}
-                      onChange={(e) => updateVehicle(i, { dropoffLocation: e.target.value })}
-                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-                      <option value="">Select...</option>
-                      {(partnerDropoffLocationOption || v.dropoffLocation === partnerBenefit?.name?.trim()) &&
-                        partnerBenefit?.name?.trim() &&
-                        !locations?.some((l) => String(l.name) === partnerBenefit.name.trim()) && (
-                        <option value={partnerBenefit.name.trim()}>
-                          {partnerBenefit.name.trim()} (Partner establishment - Free)
-                        </option>
-                      )}
-                      {(locations ?? []).map((l) => (
-                        <option key={String(l.id)} value={String(l.name)}>
-                          {locationOptionLabel(l, 'dropoff')}
-                        </option>
-                      ))}
-                    </select>
-                    {!v.dropoffLocation && payloadDropoffLoc && (
-                      <p className="mt-1 text-xs text-amber-600">Website order: {payloadDropoffLoc}</p>
-                    )}
-                  </div>
-
-                  <label className="block">
-                    <span className="text-sm text-gray-600">Helmet Numbers</span>
-                    <input
-                      type="text"
-                      value={v.helmetNumbers}
-                      onChange={(e) => updateVehicle(i, { helmetNumbers: e.target.value })}
-                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      placeholder="e.g. H12, H13"
-                    />
-                  </label>
-
-                  <label className="block">
-                    <span className="text-sm text-gray-600">Discount</span>
-                    <input
-                      type="number"
-                      value={v.discount}
-                      onChange={(e) => updateVehicle(i, { discount: Number(e.target.value) })}
-                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </label>
-                </div>
-
-                <div className="mt-3 flex items-center gap-4 text-sm text-gray-600">
-                  <span>Days: <strong>{v.rentalDaysCount}</strong></span>
-                  <span>Subtotal: <strong>{formatCurrency(v.rentalRate * v.rentalDaysCount + v.pickupFee + v.dropoffFee - v.discount)}</strong></span>
-                </div>
-              </div>
-              );
-            })}
-
-            <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-500">
-              Need to add another vehicle? Create a separate{' '}
-              {onWalkInBooking ? (
-                <button
-                  type="button"
-                  className="text-teal-700 underline"
-                  onClick={() => {
-                    onClose();
-                    onWalkInBooking();
-                  }}
-                >
-                  Walk-in booking
-                </button>
-              ) : (
-                'Walk-in booking'
-              )}{' '}
-              instead.
-            </div>
-          </div>
-        )}
-
-        {/* Step 3: Add-ons */}
-        {step === 'addons' && (
-          <div className="space-y-3">
-            {selectedAddons.length === 0 ? (
-              <p className="py-8 text-center text-gray-500">No add-ons configured for this store.</p>
-            ) : (
-              selectedAddons.map((addon, i) => (
-                <label
-                  key={i}
-                  className={`flex cursor-pointer items-center justify-between rounded-lg border p-4 transition ${
-                    addon.enabled ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="checkbox"
-                      checked={addon.enabled}
-                      onChange={() => toggleAddon(i)}
-                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <div>
-                      <div className="font-medium text-gray-900">{addon.addonName}</div>
-                      <div className="text-sm text-gray-500">
-                        {formatCurrency(addon.addonPrice)} {addon.addonType === 'per_day' ? '/ day' : '(one-time)'}
-                        {addon.mutualExclusivityGroup && (
-                          <Badge color="gray" className="ml-2">{addon.mutualExclusivityGroup}</Badge>
-                        )}
-                      </div>
-                      {isSurfRackAddon({ name: addon.addonName }) && (
-                        <SurfRackAvailabilityNote
-                          availability={rackAvailability}
-                          loading={rackLoading && !rackAvailability}
-                          requested={addon.enabled ? rackRequested : 0}
-                          vehicleHasMount={assignedVehicleHasMount}
-                        />
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    {addon.addonType === 'per_day' && (
-                      <div className="text-xs text-gray-500">{addon.quantity} days</div>
-                    )}
-                    <div className="font-medium">{formatCurrency(addon.totalAmount)}</div>
-                  </div>
-                </label>
-              ))
-            )}
-          </div>
-        )}
-
-        {/* Step 4: Summary */}
-        {step === 'summary' && (
-          <div className="space-y-6">
-            {/* Order overview — customer + collection/delivery details */}
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 sm:p-5">
-              <h3 className="mb-3 font-medium text-gray-900">Order Overview</h3>
-              <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 sm:gap-x-6 sm:gap-y-3">
-                <div className="min-w-0">
-                  <span className="text-gray-500">Customer</span>
-                  <div className="font-medium break-words text-gray-900">{customer.name || '—'}</div>
-                  {customer.phone && <div className="text-xs text-gray-600 break-all">{customer.phone}</div>}
-                  {customer.email && <div className="text-xs text-gray-600 break-all">{customer.email}</div>}
-                </div>
-                <div className="min-w-0">
-                  <span className="text-gray-500">Vehicles</span>
-                  <div className="font-medium break-words text-gray-900">
-                    {vehicles.filter((v) => v.vehicleId).map((v) => v.vehicleName || 'Unnamed').join(', ') || '—'}
-                  </div>
-                </div>
-                {vehicles.filter((v) => v.vehicleId).map((v, i) => (
-                  <div key={i} className="col-span-full grid grid-cols-1 gap-2 border-t border-blue-200 pt-3 sm:grid-cols-2 sm:gap-x-6">
-                    <div className="min-w-0">
-                      <span className="text-gray-500">Collection</span>
-                      <div className="font-medium break-words text-gray-900">{v.pickupLocation || '— store pickup'}</div>
-                      {v.pickupDatetime && (
-                        <div className="text-xs text-gray-600">
-                          {formatPickupDatetimeManila(v.pickupDatetime.includes('+') || v.pickupDatetime.endsWith('Z') ? v.pickupDatetime : `${v.pickupDatetime}:00+08:00`)}
-                        </div>
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <span className="text-gray-500">Delivery / Return</span>
-                      <div className="font-medium break-words text-gray-900">{v.dropoffLocation || '— store return'}</div>
-                      {v.dropoffDatetime && (
-                        <div className="text-xs text-gray-600">
-                          {formatPickupDatetimeManila(v.dropoffDatetime.includes('+') || v.dropoffDatetime.endsWith('Z') ? v.dropoffDatetime : `${v.dropoffDatetime}:00+08:00`)}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-gray-200 p-4">
-              <h3 className="mb-3 font-medium text-gray-900">Pricing Breakdown</h3>
-              <dl className="space-y-2 text-sm">
-                {vehicles.filter((v) => v.vehicleId).map((v, i) => (
-                  <div key={i} className="flex justify-between">
-                    <dt className="text-gray-600">
-                      {v.vehicleName || 'Vehicle'} ({v.rentalDaysCount}d x {formatCurrency(v.rentalRate)})
-                    </dt>
-                    <dd className="font-medium">
-                      {formatCurrency(v.rentalRate * v.rentalDaysCount + v.pickupFee + v.dropoffFee - v.discount)}
-                    </dd>
-                  </div>
-                ))}
-                <div className="flex justify-between border-t pt-2">
-                  <dt className="font-medium text-gray-700">Rental Subtotal</dt>
-                  <dd className="font-medium">{formatCurrency(rentalSubtotal)}</dd>
-                </div>
-
-                {selectedAddons.filter((a) => a.enabled).map((a, i) => (
-                  <div key={i} className="flex justify-between">
-                    <dt className="text-gray-600">{a.addonName}</dt>
-                    <dd>{formatCurrency(a.totalAmount)}</dd>
-                  </div>
-                ))}
-
-                {addonSubtotal > 0 && (
-                  <div className="flex justify-between border-t pt-2">
-                    <dt className="font-medium text-gray-700">Add-on Subtotal</dt>
-                    <dd className="font-medium">{formatCurrency(addonSubtotal)}</dd>
-                  </div>
-                )}
-
-                {isDirect &&
- Number(
-                    rawOrder.transfer_amount ??
-                      (rawOrder.payload as Record<string, unknown> | null)?.transfer_amount ??
-                      0,
-                  ) > 0 && (
-                  <div className="flex justify-between text-charcoal-brand">
-                    <dt className="text-gray-600">Airport Transfer</dt>
-                    <dd className="font-medium">
-                      {formatCurrency(
-                        Number(
-                          rawOrder.transfer_amount ??
-                            (rawOrder.payload as Record<string, unknown> | null)?.transfer_amount,
-                        ),
-                      )}
-                    </dd>
-                  </div>
-                )}
-
-                {cardSurchargeAmount > 0 && (
-                  <div className="flex justify-between text-amber-700">
-                    <dt>Card surcharge ({surchargePercent}%)</dt>
-                    <dd className="font-medium">{formatCurrency(cardSurchargeAmount)}</dd>
-                  </div>
-                )}
-
-                {Number(rawOrder.charity_donation ?? 0) > 0 && (
-                  <div className="flex justify-between text-teal-700">
-                    <dt>Charity Donation</dt>
-                    <dd className="font-medium">{formatCurrency(Number(rawOrder.charity_donation))}</dd>
-                  </div>
-                )}
-
-                <div className="flex justify-between border-t border-gray-900 pt-3 text-base">
-                  <dt className="font-bold text-gray-900">Final Total</dt>
-                  <dd className="font-bold text-gray-900">{formatCurrency(finalTotal)}</dd>
-                </div>
-              </dl>
-            </div>
-
-            {/* Payment Methods */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="rounded-lg border border-gray-200 p-4">
-                {rawOrder.web_payment_method && (
-                  <p className="mb-2 text-xs text-gray-500">
-                    Customer selected:{' '}
-                    <span className="font-medium text-gray-700">
-                      {rawOrder.web_payment_method}
-                    </span>
-                  </p>
-                )}
-                <label className="block">
-                  <span className="text-sm font-medium text-gray-700">Rental Payment Method</span>
-                  <select
-                    value={paymentMethodId}
-                    onChange={(e) => { setPaymentMethodId(e.target.value); setWaiveCardFee(false); }}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  >
-                    <option value="">Select payment method...</option>
-                    {activePaymentMethods.map((m) => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
-                </label>
-                {surchargePercent > 0 && !waiveCardFee && (
-                  <p className="mt-2 text-xs text-amber-600">
-                    {surchargePercent}% surcharge applies ({formatCurrency(cardSurchargeAmount)})
-                  </p>
-                )}
-                {surchargePercent > 0 && (
-                  <label className="mt-2 flex items-center gap-2 text-sm text-gray-600">
-                    <input
-                      type="checkbox"
-                      checked={waiveCardFee}
-                      onChange={(e) => setWaiveCardFee(e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    Waive card fee
-                  </label>
-                )}
-              </div>
-
-              <div className="rounded-lg border border-gray-200 p-4">
-                <label className="block">
-                  <span className="text-sm font-medium text-gray-700">Deposit Payment Method</span>
-                  <select
-                    value={depositMethodId}
-                    onChange={(e) => setDepositMethodId(e.target.value)}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  >
-                    <option value="">Select deposit method...</option>
-                    {depositEligibleMethods.map((m) => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            </div>
-
-            {paymentMethodId && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                <label className="block">
-                  <span className="text-sm font-medium text-gray-700">Amount to collect now</span>
-                  <p className="text-xs text-gray-500 mb-1">
-                    Leave blank to collect the full total. Reduce if the customer is paying part now and will settle the rest later.
-                  </p>
-                  <input
-                    type="number"
-                    min={0}
-                    max={finalTotal}
-                    step={1}
-                    value={collectNowAmount}
-                    onChange={(e) => setCollectNowAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder={String(finalTotal)}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  />
-                </label>
-                {previewBalanceDue > 0 && (
-                  <p className="mt-2 text-sm font-medium text-amber-700">
-                    Balance due after activation: {formatCurrency(previewBalanceDue)}
-                  </p>
-                )}
-                {previewBalanceDue === 0 && collectNowAmount !== '' && (
-                  <p className="mt-2 text-xs text-green-700">Full amount collected — no balance due.</p>
-                )}
-              </div>
-            )}
-
-            {(paymentMethodId || Number(securityDeposit) > 0) && (
-              <div className="grid grid-cols-2 gap-4">
-                {surchargePercent > 0 ? (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                    <label className="block">
-                      <span className="text-sm font-medium text-gray-700">Card Reference Number</span>
-                      <input
-                        type="text"
-                        value={settlementRef}
-                        onChange={(e) => setSettlementRef(e.target.value)}
-                        placeholder="e.g. terminal receipt #"
-                        className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                      <p className="mt-1 text-xs text-gray-500">Payment routes to Card Settlements for reconciliation</p>
-                    </label>
-                  </div>
-                ) : routedPaymentAcct ? null : (
-                  <div className="rounded-lg border border-gray-200 p-4">
-                    <label className="block">
-                      <span className="text-sm font-medium text-gray-700">Payment Account (Cash/Bank)</span>
-                      <select
-                        value={paymentAccountId}
-                        onChange={(e) => setPaymentAccountId(e.target.value)}
-                        className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      >
-                        <option value="">Select account...</option>
-                        {paymentAccountOptions.map((a) => (
-                          <option key={a.id} value={a.id}>{(a as { name?: string }).name}</option>
-                        ))}
-                      </select>
-                      {paymentMethodId && <p className="mt-1 text-xs text-amber-600">No routing rule configured — select manually</p>}
-                    </label>
-                  </div>
-                )}
-                {!routedDepositLiability && (
-                <div className="rounded-lg border border-gray-200 p-4">
-                  <label className="block">
-                    <span className="text-sm font-medium text-gray-700">Deposit Liability Account</span>
-                    <select
-                      value={depositLiabilityAccountId}
-                      onChange={(e) => setDepositLiabilityAccountId(e.target.value)}
-                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-                      <option value="">Select account...</option>
-                      {depositLiabilityAccountOptions.map((a) => (
-                        <option key={a.id} value={a.id}>{(a as { name?: string }).name}</option>
-                      ))}
-                    </select>
-                    <p className="mt-1 text-xs text-gray-500">Required when security deposit &gt; 0</p>
-                  </label>
-                </div>
-                )}
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="rounded-lg border border-gray-200 p-4">
-                <label className="block">
-                  <span className="text-sm font-medium text-gray-700">
-                    Security Deposit {!waiveDeposit && <span className="text-red-500">*</span>}
-                  </span>
-                  <input
-                    type="number"
-                    value={waiveDeposit ? '' : securityDeposit}
-                    onChange={(e) => setSecurityDeposit(e.target.value === '' ? '' : Number(e.target.value))}
-                    onWheel={(e) => e.currentTarget.blur()}
-                    placeholder="0"
-                    disabled={waiveDeposit}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  />
-                </label>
-                <label className="mt-2 flex items-center gap-2 text-sm text-gray-600">
-                  <input
-                    type="checkbox"
-                    checked={waiveDeposit}
-                    onChange={(e) => {
-                      setWaiveDeposit(e.target.checked);
-                      if (e.target.checked) setSecurityDeposit(0);
-                    }}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  Waive deposit
-                </label>
-              </div>
-
-              {webQuote > 0 && (
-                <div className="rounded-lg border border-gray-200 p-4">
-                  <h3 className="text-sm font-medium text-gray-700">Web Quote Comparison</h3>
-                  <div className="mt-2 flex items-center gap-4 text-sm">
-                    <div>
-                      <span className="text-gray-500">Website:</span>{' '}
-                      <span className="font-medium">{formatCurrency(webQuote)}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Actual:</span>{' '}
-                      <span className="font-bold">{formatCurrency(finalTotal)}</span>
-                    </div>
-                    <Badge color={finalTotal > webQuote ? 'red' : finalTotal < webQuote ? 'green' : 'gray'}>
-                      {finalTotal > webQuote
-                        ? `+${formatCurrency(finalTotal - webQuote)}`
-                        : finalTotal < webQuote
-                          ? `-${formatCurrency(webQuote - finalTotal)}`
-                          : 'Match'}
-                    </Badge>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Dropoff meeting point */}
-            <div className="rounded-lg border border-gray-200 p-4">
-              <label className="block">
-                <span className="text-sm font-medium text-gray-700">Dropoff meeting point</span>
-                <p className="text-xs text-gray-500 mb-1">
-                  Only needed when the dropoff is not the store — e.g. "Bravo Resort" for a General Luna return.
-                </p>
-                <input
-                  type="text"
-                  value={dropoffLocationNote}
-                  onChange={(e) => setDropoffLocationNote(e.target.value)}
-                  placeholder="e.g. Bravo Resort"
-                  maxLength={500}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-              </label>
-            </div>
-
-            {!receivableAccount && !incomeAccount && (
-              <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
-                No chart of accounts configured. Set up a Receivable account (Asset) and Rental Income account in Settings &gt; Chart of Accounts to enable full accounting integration. You can still activate orders without them.
-              </div>
-            )}
-
-            {(processMutation.error || collectMutation.error) && (
-              <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
-                {((processMutation.error ?? collectMutation.error) as Error).message}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Footer navigation */}
-      <div className="mt-6 flex items-center justify-between border-t border-gray-200 pt-4">
-        <button
-          onClick={canGoBack ? goBack : onClose}
-          className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-        >
+  const secondaryButton = 'rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 sm:py-2';
+  const footer = (
+    <div>
+      {footerNotice && <p className="mb-2 text-sm font-medium text-amber-700" role="status">{footerNotice}</p>}
+      <div className="grid grid-cols-[auto_1fr] gap-2 sm:flex sm:items-center sm:justify-end sm:gap-3">
+        <button type="button" onClick={canGoBack ? goBack : onClose} className={`${secondaryButton} sm:mr-auto`}>
           {canGoBack ? 'Back' : 'Cancel'}
         </button>
 
         {step === 'summary' ? (
-          <div className="flex flex-col items-end gap-2">
-            {!canEditOrders && (
-              <p className="text-sm text-amber-700 font-medium">
-                You can review this order, but activating or collecting payment requires order edit permission.
-              </p>
-            )}
-            {transferAmountMissing && (
-              <p className="text-sm text-amber-700 font-medium">
-                Transfer amount is missing — please set it before activating.
-              </p>
-            )}
-            {canEditOrders && (
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={handleCollectPayment}
-                  disabled={collectMutation.isPending || !paymentMethodId}
-                  className="rounded-lg border border-blue-600 px-5 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50"
-                  title="Record payment without activating the order"
-                >
-                  {collectMutation.isPending ? 'Collecting...' : 'Collect Payment'}
-                </button>
-                <button
-                  onClick={handleActivate}
-                  disabled={processMutation.isPending || !depositValid || transferAmountMissing || assignmentConflict || rackShort}
-                  className="rounded-lg bg-green-600 px-6 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                  title={
-                    assignmentConflict
-                      ? 'Choose an available vehicle for every rental'
-                      : rackShort
-                      ? 'Not enough surf racks free for these dates — untick the surf rack add-on'
-                      : transferAmountMissing
-                      ? 'Set the transfer amount before activating'
-                      : !depositValid
-                        ? 'Security deposit is required (or waive it)'
-                        : undefined
-                  }
-                >
-                  {processMutation.isPending ? 'Activating...' : 'Activate Order'}
-                </button>
-              </div>
-            )}
-          </div>
+          canEditOrders && (
+            <>
+              <button
+                type="button"
+                onClick={handleCollectPayment}
+                disabled={collectMutation.isPending || !paymentMethodId}
+                className="order-first col-span-2 rounded-lg border border-blue-600 px-5 py-2.5 text-sm font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50 sm:order-none sm:col-span-1 sm:py-2"
+                title={paymentMethodId ? 'Record payment without activating the order' : 'Choose a payment method first'}
+              >
+                {collectMutation.isPending ? 'Collecting...' : 'Collect payment only'}
+              </button>
+              <button
+                type="button"
+                onClick={handleActivate}
+                disabled={processMutation.isPending || Boolean(activationBlocker)}
+                className="rounded-lg bg-green-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50 sm:py-2"
+              >
+                {processMutation.isPending ? 'Activating...' : 'Activate order'}
+              </button>
+            </>
+          )
         ) : (
           <button
+            type="button"
             onClick={goNext}
-            disabled={
-              (step === 'vehicles' && assignmentConflict)
-              || (step === 'review' && Boolean(whatsAppNumberError(customer.phone, false)))
-            }
-            title={
-              step === 'vehicles' && assignmentConflict
-                ? 'Choose an available vehicle for every rental'
-                : step === 'review' && whatsAppNumberError(customer.phone, false)
-                  ? 'Fix the WhatsApp number before continuing'
-                  : undefined
-            }
-            className="rounded-lg bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            disabled={Boolean(nextBlocker)}
+            className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 sm:py-2"
           >
             Next
           </button>
         )}
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+    <Modal open={open} onClose={onClose} title={title} size="2xl" footer={footer} fullScreenOnMobile>
+      <BookingStepper steps={STEPS} currentIndex={stepIndex} onSelect={(i) => setStep(STEPS[i].key)} />
+
+      {successMessage && (
+        <div className="mb-4 rounded-lg bg-green-50 p-3 text-center font-medium text-green-700">
+          {successMessage}
+        </div>
+      )}
+
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:gap-5">
+        <aside className="min-w-0 lg:sticky lg:top-0 lg:order-2">
+          <BookingSidePanel
+            rawOrder={rawOrder}
+            isDirect={isDirect}
+            bookedModelName={directModelName ?? (rawOrder.vehicle_model_id && isDirect ? rawOrder.vehicle_model_id : null)}
+            requestedAddonNames={requestedAddonNames}
+            lineItems={lineItems}
+            wcOrderNumber={isDirect ? null : String(payload.number ?? payload.id ?? '—')}
+            customerNotes={customerNotes}
+            partnerName={partnerName}
+            vehicles={vehicles}
+            enabledAddons={selectedAddons.filter((a) => a.enabled)}
+            transferAmount={transferAmount}
+            transferPaidByCustomer={transferPaidByCustomer}
+            cardSurchargeAmount={cardSurchargeAmount}
+            surchargePercent={surchargePercent}
+            charityAmount={charityAmount}
+            finalTotal={finalTotal}
+            webQuote={webQuote}
+            waiverUrl={waiverUrl}
+            invoiceReference={rawOrder.order_reference ?? rawOrder.id}
+          />
+        </aside>
+
+        <div className="min-w-0 lg:order-1">
+          {step === 'review' && (
+            <CustomerStep
+              customer={customer}
+              onCustomerChange={(patch) => setCustomer((c) => ({ ...c, ...patch }))}
+              hasTransfer={isDirect && Boolean(rawOrder.transfer_type)}
+              transferAccommodation={transferAccommodation}
+              onTransferAccommodationChange={setTransferAccommodation}
+              transferPaidByCustomer={transferPaidByCustomer}
+              onTransferPaidByCustomerChange={setTransferPaidByCustomer}
+              paymentMethods={activePaymentMethods}
+              preActivationMethodId={preActivationMethodId}
+              onPreActivationMethodChange={setPreActivationMethodId}
+              preActivationAmount={preActivationAmount}
+              onPreActivationAmountChange={setPreActivationAmount}
+              preActivationRef={preActivationRef}
+              onPreActivationRefChange={setPreActivationRef}
+              preActivationIsCard={preActivationIsCard}
+              onRecordPreActivation={handlePreActivationPayment}
+              recording={collectMutation.isPending}
+              error={collectMutation.error ? (collectMutation.error as Error).message : null}
+            />
+          )}
+
+          {step === 'vehicles' && (
+            <VehicleStep
+              storeId={storeId}
+              vehicles={vehicles}
+              availability={vehicleAvailability}
+              fleet={fleet}
+              bookedModelId={bookedModelId}
+              modelNameFor={modelNameFor}
+              onUpdateVehicle={updateVehicle}
+              onRemoveVehicle={removeVehicleRow}
+              onOpenInspection={() => setInspectionOpen(true)}
+              locations={locations}
+              locationOptionLabel={locationOptionLabel}
+              partnerName={partnerName}
+              partnerLocationOption={{ pickup: partnerPickupLocationOption, dropoff: partnerDropoffLocationOption }}
+              websiteLocation={{ pickup: payloadPickupLoc, dropoff: payloadDropoffLoc }}
+              addons={selectedAddons}
+              addonsLoaded={storeAddons !== undefined}
+              onToggleAddon={toggleAddon}
+              rackAvailability={rackAvailability}
+              rackLoading={rackLoading}
+              rackRequested={rackRequested}
+              assignedVehicleHasMount={assignedVehicleHasMount}
+              onWalkInBooking={onWalkInBooking ? () => { onClose(); onWalkInBooking(); } : undefined}
+            />
+          )}
+
+          {step === 'summary' && (
+            <PaymentStep
+              customerChoseMethod={rawOrder.web_payment_method ?? null}
+              paymentMethods={activePaymentMethods}
+              depositMethods={depositEligibleMethods}
+              paymentMethodId={paymentMethodId}
+              onPaymentMethodChange={(value) => { setPaymentMethodId(value); setWaiveCardFee(false); }}
+              surchargePercent={surchargePercent}
+              cardSurchargeAmount={cardSurchargeAmount}
+              waiveCardFee={waiveCardFee}
+              onWaiveCardFeeChange={setWaiveCardFee}
+              finalTotal={finalTotal}
+              collectNowAmount={collectNowAmount}
+              onCollectNowAmountChange={setCollectNowAmount}
+              previewBalanceDue={previewBalanceDue}
+              settlementRef={settlementRef}
+              onSettlementRefChange={setSettlementRef}
+              showPaymentAccount={paymentOrDeposit && !(surchargePercent > 0) && !routedPaymentAcct}
+              paymentAccountId={paymentAccountId}
+              onPaymentAccountChange={setPaymentAccountId}
+              paymentAccountOptions={paymentAccountOptions}
+              securityDeposit={securityDeposit}
+              onSecurityDepositChange={setSecurityDeposit}
+              waiveDeposit={waiveDeposit}
+              onWaiveDepositChange={(checked) => {
+                setWaiveDeposit(checked);
+                if (checked) setSecurityDeposit(0);
+              }}
+              depositMethodId={depositMethodId}
+              onDepositMethodChange={setDepositMethodId}
+              showDepositLiability={paymentOrDeposit && !routedDepositLiability}
+              depositLiabilityAccountId={depositLiabilityAccountId}
+              onDepositLiabilityAccountChange={setDepositLiabilityAccountId}
+              depositLiabilityAccountOptions={depositLiabilityAccountOptions}
+              needsMeetingPoint={needsMeetingPoint}
+              dropoffLocationNote={dropoffLocationNote}
+              onDropoffLocationNoteChange={setDropoffLocationNote}
+              tipAmount={tipAmount}
+              onTipAmountChange={setTipAmount}
+              tipAccountId={tipAccountId}
+              onTipAccountChange={setTipAccountId}
+              missingChartOfAccounts={!receivableAccount && !incomeAccount}
+              error={(processMutation.error ?? collectMutation.error) ? ((processMutation.error ?? collectMutation.error) as Error).message : null}
+            />
+          )}
+        </div>
       </div>
     </Modal>
 
