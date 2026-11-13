@@ -24,6 +24,7 @@ import { type VehicleAssignment } from './activate-order.js';
 import { formatManilaDate } from '../../utils/manila-date.js';
 import { assertAssignmentsAvailable } from '../../lib/assert-vehicle-assignment.js';
 import { depositHoldingAccount, type RoutedAccounts } from '../../lib/deposit-envelope.js';
+import { buildTipLegs, type TipInput } from '../../lib/tips.js';
 
 // Deterministic namespace for order ids derived from raw order ids.
 // Generated once and frozen — changing this value would break
@@ -90,6 +91,8 @@ export interface ProcessRawOrderInput {
   partialPaymentAmount?: number;
   /** Store routing; cash deposits are booked to the deposit envelope instead of the till. */
   cashAccounts?: RoutedAccounts;
+  /** Tip or spare change the customer left at activation; goes to the staff tips pool. */
+  tip?: TipInput | null;
 }
 
 export async function processRawOrder(
@@ -268,7 +271,7 @@ export async function processRawOrder(
     paymentMethodId: input.paymentMethodId,
     depositMethodId: input.depositMethodId,
     bookingToken: (rawOrder.order_reference as string | null) ?? null,
-    tips: Money.zero(),
+    tips: Money.php(Math.max(0, Number(input.tip?.amount ?? 0))),
     charityDonation: Money.php(charityAmount),
     addons: input.addons.map((a) => ({
       addonName: a.addonName,
@@ -602,6 +605,9 @@ export async function processRawOrder(
     ];
     for (const leg of transferLegs) journalLegs.push(serialiseLeg(leg));
   }
+
+  // (f) Tips / spare change → staff tips pool.
+  journalLegs.push(...(await buildTipLegs(input.tip, input.storeId, orderId, input.customer.name)));
 
   // ── 9. Build transfer payload (link-existing or create-new). ─
   let transferRow: Record<string, unknown> | null = null;

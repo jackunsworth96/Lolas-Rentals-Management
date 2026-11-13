@@ -469,3 +469,65 @@ export async function resolvePayrollAccounts(storeId: string): Promise<{
     advanceAccountId: advance?.id ?? null,
   };
 }
+
+export interface PayrollLedger {
+  cashAccountId: string;
+  safeAccountId: string;
+  wagesAccountId: string;
+  advanceAccountId: string | null;
+  commissionExpenseId: string;
+  tipsPayableId: string;
+  sssPayableId: string;
+  philhealthPayableId: string;
+  pagibigPayableId: string;
+  employerContribExpenseId: string;
+  thirteenthMonthExpenseId: string;
+  thirteenthMonthPayableId: string;
+  vehicleAllowanceExpenseId: string;
+  vehicleAllowancePayableId: string;
+  transferFeeExpenseId: string;
+}
+
+/**
+ * Every account a payroll run, allowance withdrawal or contribution
+ * remittance can post to. Store-specific accounts fall back to Lola's.
+ */
+export async function resolvePayrollLedger(storeId: string): Promise<PayrollLedger> {
+  const base = await resolvePayrollAccounts(storeId);
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('chart_of_accounts')
+    .select('id')
+    .eq('is_active', true)
+    .or('id.like.EXP-%,id.like.%PAYABLE%');
+  if (error) throw new Error(`Failed to look up payroll ledger accounts: ${error.message}`);
+  const ids = new Set(((data ?? []) as Array<{ id: string }>).map((r) => r.id));
+
+  const missing: string[] = [];
+  const pick = (...candidates: string[]): string => {
+    const hit = candidates.find((c) => ids.has(c));
+    if (!hit) missing.push(candidates[0]);
+    return hit ?? candidates[0];
+  };
+  const perStore = (prefix: string) => pick(`${prefix}-${storeId}`, `${prefix}-store-lolas`);
+
+  const ledger: PayrollLedger = {
+    ...base,
+    wagesAccountId: ids.has(`EXP-PAYROLL-${storeId}`) ? `EXP-PAYROLL-${storeId}` : base.wagesAccountId,
+    commissionExpenseId: pick('EXP-STAFF-COMMISSION'),
+    tipsPayableId: perStore('TIPS-PAYABLE'),
+    sssPayableId: pick('SSS-PAYABLE'),
+    philhealthPayableId: pick('PHILHEALTH-PAYABLE'),
+    pagibigPayableId: pick('PAGIBIG-PAYABLE'),
+    employerContribExpenseId: pick('EXP-EMPLOYER-CONTRIB'),
+    thirteenthMonthExpenseId: pick('EXP-THIRTEENTH-MONTH'),
+    thirteenthMonthPayableId: pick('THIRTEENTH-MONTH-PAYABLE'),
+    vehicleAllowanceExpenseId: perStore('EXP-VEH-ALLOWANCE'),
+    vehicleAllowancePayableId: pick('VEHICLE-ALLOWANCE-PAYABLE'),
+    transferFeeExpenseId: perStore('EXP-TRANSFER-FEE'),
+  };
+  if (missing.length > 0) {
+    throw new Error(`Payroll ledger accounts missing or inactive: ${missing.join(', ')}`);
+  }
+  return ledger;
+}

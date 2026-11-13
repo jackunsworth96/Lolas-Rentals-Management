@@ -87,7 +87,13 @@ export const CreateEmployeeRequestSchema = z.object({
   sssDeductionAmt: z.number().nonnegative().default(0),
   philhealthDeductionAmt: z.number().nonnegative().default(0),
   pagibigDeductionAmt: z.number().nonnegative().default(0),
+  employerSssAmt: z.number().nonnegative().default(0),
+  employerPhilhealthAmt: z.number().nonnegative().default(0),
+  employerPagibigAmt: z.number().nonnegative().default(0),
   telegramUserId: z.string().nullable().optional(),
+  /** Date a pay-rate change applies from. Required when any rate changes. */
+  rateEffectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  rateChangeNote: z.string().max(200).optional(),
 });
 
 export type CreateEmployeeRequest = z.infer<typeof CreateEmployeeRequestSchema>;

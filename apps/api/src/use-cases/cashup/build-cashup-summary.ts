@@ -111,6 +111,7 @@ export async function fetchCashupRaw(sb: SupabaseClient, range: FetchRange): Pro
   const [
     paymentsRes, expensesRes, bankDepRes, interStoreRes, miscRes, charityRes,
     completedRes, discountRes, refundJRes, transferIncRes, appliedRes, swapRes,
+    payrollRes, tipsRes,
   ] = await Promise.all([
     inRange(sb.from('payments').select(PAYMENT_SELECT), 'transaction_date').order('created_at', { ascending: true }),
     expensesQ.order('created_at', { ascending: true }),
@@ -141,9 +142,14 @@ export async function fetchCashupRaw(sb: SupabaseClient, range: FetchRange): Pro
     journal('transfer').gt('debit', 0).order('created_at', { ascending: true }),
     journal('deposit').gt('credit', 0).order('created_at', { ascending: true }),
     journal(DEPOSIT_REFUND_SWAP_REF).order('created_at', { ascending: true }),
+    inRange(sb.from('journal_entries').select(JOURNAL_SELECT), 'date')
+      .in('reference_type', ['payroll', 'contribution_remittance'])
+      .order('created_at', { ascending: true }),
+    journal('order_tips').order('created_at', { ascending: true }),
   ]);
 
   const checks: Array<[string, { error: { message: string } | null }]> = [
+    ['Payroll journal', payrollRes], ['Tips journal', tipsRes],
     ['Payments', paymentsRes], ['Expenses', expensesRes], ['Cash deposits', bankDepRes],
     ['Inter-store transfers', interStoreRes], ['Misc sales', miscRes], ['Charity', charityRes],
     ['Completed orders', completedRes], ['Discounts', discountRes], ['Refund journal', refundJRes],
@@ -257,6 +263,8 @@ export async function fetchCashupRaw(sb: SupabaseClient, range: FetchRange): Pro
     depositAppliedEntries,
     appliedOrderDepositPayments,
     depositSwapEntries,
+    payrollEntries: ((payrollRes.data ?? []) as Row[]).map(toJournal),
+    tipEntries: ((tipsRes.data ?? []) as Row[]).map(toJournal),
     envelopeAccountId: DEPOSIT_ENVELOPE_ACCOUNT_ID,
     completedOrderIds: new Set(((completedRes.data ?? []) as Row[]).map((o) => String(o.id))),
     orderInfo,

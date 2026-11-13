@@ -20,6 +20,7 @@ function toRow(t: Timesheet) {
     sil_inflation: t.silInflation,
     store_id: t.storeId,
     created_at: t.createdAt.toISOString(),
+    day_fraction: t.dayFraction,
   };
 }
 
@@ -40,6 +41,7 @@ function toDomain(row: Record<string, unknown>): Timesheet {
     silInflation: row.sil_inflation as number,
     storeId: row.store_id as string,
     createdAt: new Date(row.created_at as string),
+    dayFraction: row.day_fraction == null ? 1 : Number(row.day_fraction),
   });
 }
 
@@ -94,42 +96,6 @@ export function createTimesheetRepo(): TimesheetRepository {
         .update({ payroll_status: status })
         .in('id', ids);
       if (error) throw new Error(`Failed to bulk update timesheet status: ${error.message}`);
-    },
-
-    async runPayrollAtomic(
-      transactions,
-      timesheetIds,
-      status,
-      storeId,
-      periodStart,
-      periodEnd,
-      runBy,
-      runId,
-      payslips,
-    ) {
-      const { error } = await sb.rpc('run_payroll_atomic', {
-        p_transactions:  transactions,
-        p_timesheet_ids: timesheetIds,
-        p_status:        status,
-        p_store_id:      storeId,
-        p_period_start:  periodStart,
-        p_period_end:    periodEnd,
-        p_notes:         runBy,
-        p_run_id:        runId,
-        p_payslips:      payslips,
-      });
-
-      if (error) {
-        // Preserve the SQLSTATE (e.g. '23505' for the payroll idempotency
-        // unique_violation) so the route layer can map it to HTTP 409.
-        const wrapped = new Error(
-          `run_payroll_atomic RPC failed: ${error.message}`,
-        ) as Error & { code?: string; details?: string; hint?: string };
-        wrapped.code = error.code;
-        wrapped.details = error.details;
-        wrapped.hint = error.hint;
-        throw wrapped;
-      }
     },
   };
 }

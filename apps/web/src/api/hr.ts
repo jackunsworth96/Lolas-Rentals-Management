@@ -16,6 +16,7 @@ export interface TimesheetRow {
   payrollStatus: 'Pending' | 'Approved' | 'Paid';
   silInflation: number;
   storeId: string;
+  dayFraction: number;
 }
 
 export interface EmployeeRow {
@@ -54,6 +55,9 @@ export interface EmployeeRow {
   sssDeductionAmt: number;
   philhealthDeductionAmt: number;
   pagibigDeductionAmt: number;
+  employerSssAmt: number;
+  employerPhilhealthAmt: number;
+  employerPagibigAmt: number;
   telegramUserId: string | null;
 }
 
@@ -78,11 +82,22 @@ export function useCheckDuplicates(storeId: string, date: string, employeeIds: s
   });
 }
 
+/** 9pm returns paid out of the till when a timesheet is saved. */
+export interface NinePmPayoutSummary {
+  paid: Array<{ timesheetId: string; amount: number }>;
+  failed: Array<{ timesheetId: string; error: string }>;
+}
+
 export function useSubmitTimesheet() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: Record<string, unknown>) => api.post('/hr/timesheets', body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['timesheets'] }),
+    mutationFn: (body: Record<string, unknown>) =>
+      api.post<{ created: number; timesheetIds: string[]; ninePmPayouts: NinePmPayoutSummary }>('/hr/timesheets', body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['timesheets'] });
+      qc.invalidateQueries({ queryKey: ['expenses'] });
+      qc.invalidateQueries({ queryKey: ['cashup'] });
+    },
   });
 }
 
@@ -104,14 +119,19 @@ export interface EditTimesheetPayload {
   ninePmReturnsCount: number;
   dailyNotes: string | null;
   storeId: string;
+  dayFraction: number;
 }
 
 export function useEditTimesheet() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...body }: EditTimesheetPayload) =>
-      api.patch<{ id: string }>(`/hr/timesheets/${id}`, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['timesheets'] }),
+      api.patch<{ id: string; ninePmPayouts: NinePmPayoutSummary }>(`/hr/timesheets/${id}`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['timesheets'] });
+      qc.invalidateQueries({ queryKey: ['expenses'] });
+      qc.invalidateQueries({ queryKey: ['cashup'] });
+    },
   });
 }
 
@@ -176,86 +196,6 @@ export function useDeactivateEmployee() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['config', 'employees'] });
-    },
-  });
-}
-
-export interface EmployeePaymentDetail {
-  employeeId: string;
-  paymentMethod: 'cash' | 'gcash' | 'bank_transfer';
-  fromTill?: number;
-  fromSafe?: number;
-  bonuses?: number;
-}
-
-export interface PayslipPreview {
-  employeeId: string;
-  employeeName: string;
-  basicPay: number;
-  overtimePay: number;
-  ninePmBonus: number;
-  tips: number;
-  commission: number;
-  bikeAllowance: number;
-  silInflation: number;
-  bonuses: number;
-  holidayAdjustment: number;
-  grossPay: number;
-  cashAdvanceDeduction: number;
-  sssDeduction: number;
-  philhealthDeduction: number;
-  pagibigDeduction: number;
-  totalDeductions: number;
-  netPay: number;
-  paidAs: string | null;
-  daysWorked: number;
-}
-
-export interface RunPayrollPayload {
-  storeId: string;
-  periodStart: string;
-  periodEnd: string;
-  isEndOfMonth: boolean;
-  workingDaysInMonth: number;
-  employeePayments: EmployeePaymentDetail[];
-}
-
-export interface RunPayrollPreviewPayload {
-  storeId: string;
-  periodStart: string;
-  periodEnd: string;
-  isEndOfMonth: boolean;
-  workingDaysInMonth: number;
-}
-
-export interface RunPayrollResult {
-  payslips: Array<{
-    employeeId: string;
-    employeeName: string;
-    grossPay: number;
-    netPay: number;
-  }>;
-  totalNetPay: number;
-  totalGrossPay: number;
-  employeeCount: number;
-}
-
-export function usePreviewPayroll() {
-  return useMutation({
-    mutationFn: (body: RunPayrollPreviewPayload) =>
-      api.post<PayslipPreview[]>('/payroll/preview', body),
-  });
-}
-
-export function useRunPayroll() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: RunPayrollPayload) =>
-      api.post<RunPayrollResult>('/payroll/run', body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['timesheets'] });
-      qc.invalidateQueries({ queryKey: ['payroll'] });
-      qc.invalidateQueries({ queryKey: ['employees'] });
     },
   });
 }

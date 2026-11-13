@@ -76,6 +76,9 @@ export interface ProcessRawOrderPayload {
   /** When set, only this amount is recorded as the rental payment at activation.
    * The difference between finalTotal and this amount becomes balance_due. */
   partialPaymentAmount?: number;
+  /** Tip / spare change for the staff tips pool, received into the till unless tipAccountId is set. */
+  tipAmount?: number;
+  tipAccountId?: string | null;
 }
 
 export function useProcessRawOrder() {
@@ -225,6 +228,8 @@ export interface WalkInDirectPayload {
   dailyRate: number;
   pickupFee: number;
   dropoffFee: number;
+  tipAmount?: number;
+  tipAccountId?: string;
 }
 
 export interface WalkInDirectResult {

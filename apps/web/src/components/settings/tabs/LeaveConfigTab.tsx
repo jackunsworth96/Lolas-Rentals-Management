@@ -16,6 +16,8 @@ export function LeaveConfigTab() {
   const [resetDay, setResetDay] = useState(DEFAULT_RESET_DAY);
   const [holidayAllowance, setHolidayAllowance] = useState(DEFAULT_HOLIDAY);
   const [sickAllowance, setSickAllowance] = useState(DEFAULT_SICK);
+  const [accrualHoliday, setAccrualHoliday] = useState(0);
+  const [accrualSick, setAccrualSick] = useState(0);
 
   useEffect(() => {
     if (!storeId || !isFetched) return;
@@ -24,6 +26,8 @@ export function LeaveConfigTab() {
       setResetDay(DEFAULT_RESET_DAY);
       setHolidayAllowance(DEFAULT_HOLIDAY);
       setSickAllowance(DEFAULT_SICK);
+      setAccrualHoliday(0);
+      setAccrualSick(0);
       return;
     }
     const c = config as Record<string, unknown>;
@@ -31,6 +35,8 @@ export function LeaveConfigTab() {
     setResetDay(Number(c.resetDay ?? DEFAULT_RESET_DAY));
     setHolidayAllowance(Number(c.defaultHolidayAllowance ?? DEFAULT_HOLIDAY));
     setSickAllowance(Number(c.defaultSickAllowance ?? DEFAULT_SICK));
+    setAccrualHoliday(Number(c.probationAccrualHoliday ?? 0));
+    setAccrualSick(Number(c.probationAccrualSick ?? 0));
   }, [storeId, config, isFetched]);
 
   const storeOpts = ((stores ?? []) as Array<{ id: string; name: string }>);
@@ -44,6 +50,8 @@ export function LeaveConfigTab() {
       resetDay,
       defaultHolidayAllowance: holidayAllowance,
       defaultSickAllowance: sickAllowance,
+      probationAccrualHoliday: accrualHoliday,
+      probationAccrualSick: accrualSick,
     });
   }
 
@@ -132,6 +140,37 @@ export function LeaveConfigTab() {
                   className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 />
               </label>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-700">Leave earned per month on probation</p>
+              <p className="mb-2 text-xs text-gray-500">
+                Staff build up leave during their 6-month probation and get the full allowance once it ends.
+                Leave at 0 to spread the allowance evenly over the probation period.
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <label className="block">
+                  <span className="text-sm text-gray-600">Holiday days / month</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    value={accrualHoliday}
+                    onChange={(e) => setAccrualHoliday(Math.max(0, Number(e.target.value) || 0))}
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm text-gray-600">Sick days / month</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    value={accrualSick}
+                    onChange={(e) => setAccrualSick(Math.max(0, Number(e.target.value) || 0))}
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </label>
+              </div>
             </div>
             {save.error && <p className="text-sm text-red-600">{(save.error as Error).message}</p>}
             <button

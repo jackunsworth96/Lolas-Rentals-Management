@@ -28,7 +28,11 @@ export type CashLedgerKind =
   /** Envelope cash of a deposit refunded by GCash/bank, leaving the envelope. */
   | 'deposit_release_out'
   /** The same cash arriving in the till. */
-  | 'deposit_release_in';
+  | 'deposit_release_in'
+  /** Customer tips / spare change kept in the till for the staff tips pool. */
+  | 'tips_in'
+  /** Wages and statutory remittances paid out of the till. */
+  | 'payroll_cash';
 
 export interface CashLedgerItem {
   id: string;
@@ -132,6 +136,10 @@ export interface CashupRawData {
   appliedOrderDepositPayments: RawPayment[];
   /** reference_type='deposit_refund_swap' legs (both sides); reference id is the order id. */
   depositSwapEntries: RawJournal[];
+  /** Payroll and contribution remittance legs (all accounts); only till legs count. */
+  payrollEntries?: RawJournal[];
+  /** reference_type='order_tips' legs (all accounts); only till legs count. */
+  tipEntries?: RawJournal[];
   /** The deposit envelope ledger account; swap legs on any other account move the till. */
   envelopeAccountId: string;
   /** Orders whose deposits were settled before the range start (deposit no longer held). */
@@ -168,6 +176,13 @@ export function accountMethodCategory(accountName: string | null | undefined): M
   if (lower.includes('cash')) return 'cash';
   if (lower.includes('card') || lower.includes('credit') || lower.includes('debit')) return 'card';
   return 'bank';
+}
+
+/** A physical till account: "Cash Advance", the deposit envelope and the charity wallet are not. */
+export function isTillAccountName(accountName: string | null | undefined): boolean {
+  const lower = (accountName ?? '').toLowerCase();
+  return accountMethodCategory(accountName) === 'cash'
+    && !lower.includes('advance') && !lower.includes('envelope') && !lower.includes('charity');
 }
 
 function methodLabel(rawMethodId: string): string {
@@ -254,6 +269,9 @@ export interface CashupDayResult {
     depositReturns: DepositReturnRow[];
     depositApplied: DepositAppliedRow[];
     crossMethodDepositReturns: CrossMethodDepositRow[];
+    /** Positive = cash paid out of the till. */
+    payrollCash: Array<{ id: string; description: string | null; amount: number; referenceId: string | null; createdAt: string | null }>;
+    tipsCash: Array<{ id: string; description: string | null; amount: number; referenceId: string | null; createdAt: string | null }>;
   };
   charityDonations: Array<{ id: string; description: string | null; amount: number; orderId: string | null; createdAt: string | null }>;
   totals: {
@@ -288,6 +306,8 @@ export interface CashupDayResult {
     carryDepositsCashTotal: number;
     crossMethodTillPayoutTotal: number;
     crossMethodEnvelopeToTillTotal: number;
+    payrollCashTotal: number;
+    tipsCashTotal: number;
   };
   cashLedger: CashLedgerItem[];
 }
@@ -698,6 +718,36 @@ export function computeCashupDay(raw: CashupRawData): CashupDayResult {
     }
   }
 
+  // ── Payroll paid from the till, cash tips kept in the till ──
+  const payrollCash: CashupDayResult['transactions']['payrollCash'] = [];
+  let payrollCashTotal = 0;
+  for (const j of raw.payrollEntries ?? []) {
+    if (!isTillAccountName(j.accountName)) continue;
+    const amount = round2(j.debit - j.credit);
+    if (amount === 0) continue;
+    payrollCash.push({ id: j.id, description: j.description, amount: -amount, referenceId: j.referenceId, createdAt: j.createdAt });
+    payrollCashTotal += -amount;
+    pushLedger({
+      id: j.id, kind: 'payroll_cash', pot: 'till', amount,
+      label: j.description ?? 'Payroll', bookingToken: null, customerName: null,
+      date: j.date, createdAt: j.createdAt,
+    });
+  }
+  const tipsCash: CashupDayResult['transactions']['tipsCash'] = [];
+  let tipsCashTotal = 0;
+  for (const j of raw.tipEntries ?? []) {
+    if (!isTillAccountName(j.accountName)) continue;
+    const amount = round2(j.debit - j.credit);
+    if (amount === 0) continue;
+    tipsCash.push({ id: j.id, description: j.description, amount, referenceId: j.referenceId, createdAt: j.createdAt });
+    tipsCashTotal += amount;
+    pushLedger({
+      id: j.id, kind: 'tips_in', pot: 'till', amount,
+      label: j.description ?? 'Tip', bookingToken: null, customerName: null,
+      date: j.date, createdAt: j.createdAt,
+    });
+  }
+
   // ── Info-only sections ──
   const charityDonations = raw.charityEntries.map((c) => ({
     id: c.id,
@@ -745,6 +795,8 @@ export function computeCashupDay(raw: CashupRawData): CashupDayResult {
       depositReturns,
       depositApplied,
       crossMethodDepositReturns,
+      payrollCash,
+      tipsCash,
     },
     charityDonations,
     totals: {
@@ -779,6 +831,8 @@ export function computeCashupDay(raw: CashupRawData): CashupDayResult {
       carryDepositsCashTotal,
       crossMethodTillPayoutTotal,
       crossMethodEnvelopeToTillTotal,
+      payrollCashTotal: round2(payrollCashTotal),
+      tipsCashTotal: round2(tipsCashTotal),
     },
     cashLedger: ledger,
   };
@@ -791,8 +845,10 @@ export function ledgerNet(ledger: CashLedgerItem[], pot: CashPot): number {
 const TILL_LINE_ORDER: Array<[CashLedgerKind, string]> = [
   ['cash_sale', 'Cash sales'],
   ['misc_cash', 'Misc cash sales'],
+  ['tips_in', 'Cash tips received'],
   ['inter_store_in', 'Cash transferred in'],
   ['cash_expense', 'Cash expenses'],
+  ['payroll_cash', 'Payroll paid in cash'],
   ['bank_deposit', 'Cash deposited to bank'],
   ['inter_store_out', 'Cash transferred out'],
   ['cash_refund', 'Cash refunds'],

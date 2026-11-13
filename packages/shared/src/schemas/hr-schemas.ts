@@ -77,6 +77,60 @@ export const EditTimesheetRequestSchema = z.object({
   ninePmReturnsCount: z.number().int().nonnegative(),
   dailyNotes: z.string().nullable(),
   storeId: z.string().min(1),
+  /** Share of a full day's pay (0.5 = half day). */
+  dayFraction: z.number().gt(0).max(1).optional(),
 });
 
 export type EditTimesheetRequest = z.infer<typeof EditTimesheetRequestSchema>;
+
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
+
+export const CreateLeaveRequestSchema = z.object({
+  leaveType: z.enum(['holiday', 'sick', 'unpaid']),
+  startDate: isoDate,
+  endDate: isoDate,
+  reason: z.string().max(500).optional(),
+}).refine((v) => v.endDate >= v.startDate, { message: 'End date must be on or after the start date', path: ['endDate'] });
+
+export type CreateLeaveRequest = z.infer<typeof CreateLeaveRequestSchema>;
+
+export const CreateAdvanceRequestSchema = z.object({
+  amount: z.number().positive().max(100000),
+  reason: z.string().max(500).optional(),
+  paydayType: z.enum(['mid_month', 'end_of_month']),
+});
+
+export type CreateAdvanceRequest = z.infer<typeof CreateAdvanceRequestSchema>;
+
+export const ReviewRequestSchema = z.object({
+  note: z.string().max(500).optional(),
+});
+
+export const ApproveAdvanceRequestSchema = z.object({
+  note: z.string().max(500).optional(),
+  cashAccountId: z.string().min(1),
+  /** Defaults to the request's payday when omitted. */
+  deductOn: z.enum(['mid_month', 'end_of_month']).optional(),
+});
+
+export type ApproveAdvanceRequest = z.infer<typeof ApproveAdvanceRequestSchema>;
+
+export const AcknowledgePayslipSchema = z.object({
+  status: z.enum(['confirmed', 'disputed']),
+  signedName: z.string().trim().min(2).max(120),
+  /** PNG data URL of the drawn signature. */
+  signaturePng: z.string().startsWith('data:image/png;base64,').max(300_000).optional(),
+  comment: z.string().max(1000).optional(),
+}).refine((v) => v.status === 'confirmed' || (v.comment ?? '').trim().length > 0, {
+  message: 'Tell us what looks wrong on the payslip',
+  path: ['comment'],
+}).refine((v) => v.status === 'disputed' || !!v.signaturePng, {
+  message: 'Sign in the box to confirm',
+  path: ['signaturePng'],
+});
+
+export type AcknowledgePayslipRequest = z.infer<typeof AcknowledgePayslipSchema>;
+
+export const ResolvePayslipDisputeSchema = z.object({
+  note: z.string().trim().min(1).max(1000),
+});

@@ -21,6 +21,7 @@ import {
   type StoreCashAccounts,
 } from '../../lib/deposit-envelope.js';
 import { isDepositPayment } from '@lolas/shared';
+import { buildTipLegs, type TipInput } from '../../lib/tips.js';
 
 export interface SettleOrderDeps {
   orderRepo: OrderRepository;
@@ -88,6 +89,9 @@ export interface SettleOrderInput {
   returnChargesIncomeAccountId?: string | null;
   /** The store's till and deposit envelope accounts; held deposit cash moves between them. */
   cashAccounts?: StoreCashAccounts;
+  /** Tip or spare change left at return; goes to the staff tips pool. */
+  tip?: TipInput | null;
+  customerName?: string;
 }
 
 function serialiseLeg(leg: JournalLeg): Record<string, unknown> {
@@ -527,6 +531,19 @@ export async function settleOrder(
     vehicle_id: item.vehicleId,
   }));
 
+  const tipLegs = await buildTipLegs(input.tip, order.storeId, order.id, input.customerName ?? '');
+  for (const t of tipLegs) {
+    legs.push({
+      entryId: t.id,
+      accountId: t.account_id,
+      debit: Money.php(t.debit),
+      credit: Money.php(t.credit),
+      description: t.description,
+      referenceType: t.reference_type,
+      referenceId: t.reference_id,
+    });
+  }
+
   const journalTransactionId =
     legs.length > 0 ? crypto.randomUUID() : '';
   const journalDate = formatManilaDate();
@@ -630,6 +647,15 @@ export async function settleOrder(
 
   if (rpcErr) {
     throw new Error(`settle_order_atomic RPC failed: ${rpcErr.message}${rpcErr.details ? ` (${rpcErr.details})` : ''}`);
+  }
+
+  if (tipLegs.length > 0) {
+    const tipAmount = tipLegs[0].debit;
+    const { error: tipErr } = await supabase
+      .from('orders')
+      .update({ tips: Math.round((order.tips.toNumber() + tipAmount) * 100) / 100 })
+      .eq('id', order.id);
+    if (tipErr) console.error(`[settle-order] tip recorded in the ledger but orders.tips not updated for ${order.id}:`, tipErr.message);
   }
 
   // Reload the order so we return a fresh domain object that

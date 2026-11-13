@@ -1,138 +1,223 @@
 import { InvalidAmountError } from '../errors/domain-error.js';
 
-export interface PayrollInput {
-  rateType: 'daily' | 'monthly';
-  basicRate: number;
-  overtimeRate: number;
-  ninePmBonusRate: number;
-  commissionRate: number;
-  daysWorked: number;
+/**
+ * One approved timesheet day, already priced at the rate in force on that
+ * date. Monthly-rate employees arrive here with a daily-equivalent rate.
+ */
+export interface PayrollDay {
+  date: string;
+  dayType: string;
+  /** Paid holiday or sick leave: paid at the daily rate, no premiums. */
+  isLeave: boolean;
+  /** Approved unpaid leave: on the record, earns nothing. */
+  isUnpaid?: boolean;
+  dailyRate: number;
   overtimeHours: number;
+  overtimeHourlyRate: number;
   ninePmCount: number;
-  workingDaysInMonth: number;
-  pomRevenueShare: number;
-  totalTips: number;
-  bikeAllowance: number;
-  bonuses: number;
-  cashAdvanceDeduction: number;
-  sssDeduction: number;
-  philhealthDeduction: number;
-  pagibigDeduction: number;
+  ninePmRate: number;
+  /** Holiday / rest-day premium on top of the day's pay, in percent (30 = +30%). */
+  premiumPct: number;
+}
+
+export interface StatutoryAmounts {
+  sss: number;
+  philhealth: number;
+  pagibig: number;
+}
+
+export interface PayrollInput {
   isEndOfMonth: boolean;
-  holidayAdjustment: number;
+  days: PayrollDay[];
+  /** Whole percent (5 = 5%). */
+  commissionRate: number;
+  /** Peace of Mind revenue for the month. Only paid on the end-of-month run. */
+  pomRevenue: number;
+  /** This employee's share of the tips pool. */
+  tipsShare: number;
+  bonuses: number;
+  /** 9pm return pay already handed over in cash from the till. */
+  ninePmPrepaid: number;
+  /** Cash advance instalments due this payday, before capping. */
+  cashAdvanceDue: number;
+  employeeContributions: StatutoryAmounts;
+  employerContributions: StatutoryAmounts;
+  /** Monthly vehicle allowance added to the employee's balance on the end-of-month run. */
+  monthlyVehicleAllowance: number;
 }
 
 export interface PayrollResult {
+  daysWorked: number;
+  leaveDays: number;
+  unpaidLeaveDays: number;
+  holidayDays: number;
+  overtimeHours: number;
+  ninePmCount: number;
   basicPay: number;
+  leavePay: number;
   overtimePay: number;
-  ninePmBonus: number;
+  holidayPremium: number;
+  ninePmEarnings: number;
   commission: number;
   tips: number;
-  bikeAllowance: number;
   bonuses: number;
   grossPay: number;
+  employeeContributions: StatutoryAmounts;
+  employerContributions: StatutoryAmounts;
+  ninePmPrepaid: number;
   cashAdvanceDeduction: number;
-  sssDeduction: number;
-  philhealthDeduction: number;
-  pagibigDeduction: number;
   totalDeductions: number;
   netPay: number;
+  /** 1/12 of basic pay earned (worked days + paid leave), per PD 851. */
   thirteenthMonthAccrual: number;
-  holidayAdjustment: number;
+  vehicleAllowanceAccrual: number;
+  warnings: string[];
 }
 
+const ZERO: StatutoryAmounts = { sss: 0, philhealth: 0, pagibig: 0 };
+
 export function calculatePayroll(input: PayrollInput): PayrollResult {
-  if (input.basicRate < 0 || input.daysWorked < 0) {
-    throw new InvalidAmountError('Rates and days must be non-negative');
+  for (const d of input.days) {
+    if (d.dailyRate < 0 || d.overtimeHours < 0 || d.ninePmCount < 0) {
+      throw new InvalidAmountError('Rates and days must be non-negative');
+    }
+  }
+  const warnings: string[] = [];
+
+  let basicPay = 0;
+  let leavePay = 0;
+  let overtimePay = 0;
+  let holidayPremium = 0;
+  let ninePmEarnings = 0;
+  let daysWorked = 0;
+  let leaveDays = 0;
+  let unpaidLeaveDays = 0;
+  let holidayDays = 0;
+  let overtimeHours = 0;
+  let ninePmCount = 0;
+
+  for (const d of input.days) {
+    if (d.isUnpaid) {
+      unpaidLeaveDays += 1;
+      continue;
+    }
+    if (d.isLeave) {
+      leaveDays += 1;
+      leavePay += d.dailyRate;
+      continue;
+    }
+    daysWorked += 1;
+    basicPay += d.dailyRate;
+    overtimeHours += d.overtimeHours;
+    overtimePay += d.overtimeHours * d.overtimeHourlyRate;
+    ninePmCount += d.ninePmCount;
+    ninePmEarnings += d.ninePmCount * d.ninePmRate;
+    if (d.premiumPct > 0) {
+      holidayDays += 1;
+      holidayPremium += d.dailyRate * (d.premiumPct / 100);
+    }
   }
 
-  const basicPay =
-    input.rateType === 'daily'
-      ? input.basicRate * input.daysWorked
-      : input.workingDaysInMonth > 0
-        ? (input.basicRate / input.workingDaysInMonth) * input.daysWorked
-        : 0;
+  const commission = input.isEndOfMonth ? input.pomRevenue * (input.commissionRate / 100) : 0;
+  const tips = Math.max(0, input.tipsShare);
+  const bonuses = Math.max(0, input.bonuses);
 
-  const overtimePay = computeOvertimePay(input);
-  const ninePmBonus = input.ninePmBonusRate * input.ninePmCount;
-  // commissionRate is stored as a whole percentage (e.g. 5 means 5%), not a
-  // decimal fraction — divide by 100 before applying it to revenue.
-  const commission = input.pomRevenueShare * (input.commissionRate / 100);
-  const tips = input.totalTips;
-  const bikeAllowance = input.bikeAllowance;
-  const bonuses = input.bonuses;
-
-  const grossPay =
-    basicPay +
-    overtimePay +
-    ninePmBonus +
-    commission +
-    tips +
-    bikeAllowance +
-    bonuses +
-    input.holidayAdjustment;
-
-  const sssDeduction = input.isEndOfMonth ? input.sssDeduction : 0;
-  const philhealthDeduction = input.isEndOfMonth
-    ? input.philhealthDeduction
-    : 0;
-  const pagibigDeduction = input.isEndOfMonth ? input.pagibigDeduction : 0;
-  const otherStatutoryDeductions =
-    sssDeduction + philhealthDeduction + pagibigDeduction;
-
-  // Cap the cash-advance deduction so it can never push net pay below zero.
-  // Any amount that doesn't fit this period stays on the schedule's
-  // remaining_balance for the next run instead of creating a negative payslip.
-  const maxCashAdvance = Math.max(0, grossPay - otherStatutoryDeductions);
-  const cashAdvanceDeduction = Math.min(
-    Math.max(0, input.cashAdvanceDeduction),
-    maxCashAdvance,
+  const grossPay = round2(
+    round2(basicPay) + round2(leavePay) + round2(overtimePay) + round2(holidayPremium) +
+    round2(ninePmEarnings) + round2(commission) + round2(tips) + round2(bonuses),
   );
 
-  const totalDeductions = cashAdvanceDeduction + otherStatutoryDeductions;
+  const employeeContributions = input.isEndOfMonth ? roundAmounts(input.employeeContributions) : ZERO;
+  const employerContributions = input.isEndOfMonth ? roundAmounts(input.employerContributions) : ZERO;
+  const contributionTotal = employeeContributions.sss + employeeContributions.philhealth + employeeContributions.pagibig;
+  const ninePmPrepaid = round2(Math.max(0, input.ninePmPrepaid));
 
-  const netPay = grossPay - totalDeductions;
-  // 13th month pay accrues at 1/12 of basic pay earned this period, not
-  // 1/12 of (basic pay × days worked) — days worked is already priced into
-  // basicPay, so multiplying by it again inflated the accrual.
-  const thirteenthMonthAccrual = basicPay / 12;
+  // An advance that doesn't fit this payday stays on its schedule for the next one.
+  const roomForAdvance = Math.max(0, grossPay - contributionTotal - ninePmPrepaid);
+  const cashAdvanceDue = round2(Math.max(0, input.cashAdvanceDue));
+  const cashAdvanceDeduction = round2(Math.min(cashAdvanceDue, roomForAdvance));
+  if (cashAdvanceDeduction < cashAdvanceDue) {
+    warnings.push(
+      `Only ${cashAdvanceDeduction.toFixed(2)} of the ${cashAdvanceDue.toFixed(2)} cash advance instalment fits this payslip; the rest carries over.`,
+    );
+  }
+
+  const totalDeductions = round2(contributionTotal + ninePmPrepaid + cashAdvanceDeduction);
+  const netPay = round2(grossPay - totalDeductions);
+  if (netPay < 0) {
+    warnings.push('Deductions exceed gross pay. Check the contributions and 9pm cash already paid before running payroll.');
+  }
+  if (input.days.length === 0 && grossPay > 0) {
+    warnings.push('No approved timesheets this period; pay comes from tips, commission or bonuses only.');
+  }
+  if (ninePmPrepaid > round2(ninePmEarnings) + 0.005) {
+    warnings.push('More 9pm cash was paid from the till than the timesheets account for.');
+  }
 
   return {
+    daysWorked,
+    leaveDays,
+    unpaidLeaveDays,
+    holidayDays,
+    overtimeHours: round2(overtimeHours),
+    ninePmCount,
     basicPay: round2(basicPay),
+    leavePay: round2(leavePay),
     overtimePay: round2(overtimePay),
-    ninePmBonus: round2(ninePmBonus),
+    holidayPremium: round2(holidayPremium),
+    ninePmEarnings: round2(ninePmEarnings),
     commission: round2(commission),
     tips: round2(tips),
-    bikeAllowance: round2(bikeAllowance),
     bonuses: round2(bonuses),
-    grossPay: round2(grossPay),
-    cashAdvanceDeduction: round2(cashAdvanceDeduction),
-    sssDeduction: round2(sssDeduction),
-    philhealthDeduction: round2(philhealthDeduction),
-    pagibigDeduction: round2(pagibigDeduction),
-    totalDeductions: round2(totalDeductions),
-    netPay: round2(netPay),
-    thirteenthMonthAccrual: round2(thirteenthMonthAccrual),
-    holidayAdjustment: round2(input.holidayAdjustment),
+    grossPay,
+    employeeContributions,
+    employerContributions,
+    ninePmPrepaid,
+    cashAdvanceDeduction,
+    totalDeductions,
+    netPay,
+    thirteenthMonthAccrual: round2((basicPay + leavePay) / 12),
+    vehicleAllowanceAccrual: input.isEndOfMonth ? round2(Math.max(0, input.monthlyVehicleAllowance)) : 0,
+    warnings,
   };
 }
 
 /**
- * Monthly employees: no overtime pay.
- * Daily employees: use explicit overtime rate when positive; otherwise hourly fallback (basic_rate / 8) × overtime_hours.
+ * Splits a tips pool equally. The remainder after rounding down to the
+ * centavo stays in the pool for the next payout rather than being lost.
  */
-function computeOvertimePay(input: PayrollInput): number {
-  if (input.rateType === 'monthly') {
-    return 0;
-  }
-  const hours = input.overtimeHours;
-  const explicitRate = input.overtimeRate ?? 0;
-  if (explicitRate > 0) {
-    return explicitRate * hours;
-  }
-  return (input.basicRate / 8) * hours;
+export function splitTipsPool(pool: number, headcount: number): { share: number; remainder: number } {
+  if (pool <= 0 || headcount <= 0) return { share: 0, remainder: round2(Math.max(0, pool)) };
+  const share = Math.floor((pool / headcount) * 100) / 100;
+  return { share, remainder: round2(pool - share * headcount) };
 }
 
-function round2(n: number): number {
+/** Allocates an amount across cash advance schedules oldest first. */
+export function allocateAdvanceDeduction(
+  amount: number,
+  schedules: Array<{ id: string; dueThisPeriod: number }>,
+): Array<{ scheduleId: string; amount: number }> {
+  let left = round2(amount);
+  const out: Array<{ scheduleId: string; amount: number }> = [];
+  for (const s of schedules) {
+    if (left <= 0) break;
+    const take = round2(Math.min(left, s.dueThisPeriod));
+    if (take > 0) {
+      out.push({ scheduleId: s.id, amount: take });
+      left = round2(left - take);
+    }
+  }
+  return out;
+}
+
+function roundAmounts(a: StatutoryAmounts): StatutoryAmounts {
+  return {
+    sss: round2(Math.max(0, a.sss)),
+    philhealth: round2(Math.max(0, a.philhealth)),
+    pagibig: round2(Math.max(0, a.pagibig)),
+  };
+}
+
+export function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }

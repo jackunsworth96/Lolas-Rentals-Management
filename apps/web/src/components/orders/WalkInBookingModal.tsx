@@ -5,6 +5,7 @@ import { Modal } from '../common/Modal.js';
 import { WhatsAppNumberInput } from '../common/WhatsAppNumberInput.js';
 import { normalizeApiBase } from '../../api/normalize-api-base.js';
 import { useCreateWalkInDirect, type WalkInDirectPayload } from '../../api/orders-raw.js';
+import { TipField } from './TipField.js';
 import { useLocations, useAddons } from '../../api/config.js';
 import { useAvailableVehicles, useReleaseCapacityHold, type AllocationConflictDetails } from '../../api/fleet.js';
 import { InactiveModelNotice } from '../fleet/InactiveModelNotice.js';
@@ -128,6 +129,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
   const [nationality, setNationality] = useState('');
   const [helmetNumbers, setHelmetNumbers] = useState('');
   const [depositAmount, setDepositAmount] = useState(0);
+  const [tipAmount, setTipAmount] = useState<number | ''>('');
 
   // ── Success state ──
   const [createdRef, setCreatedRef] = useState<string | null>(null);
@@ -336,6 +338,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
       setNationality('');
       setHelmetNumbers('');
       setDepositAmount(0);
+      setTipAmount('');
       setCreatedRef(null); setCopiedLink(false);
       setQuote(null); setQuoteLoading(false);
       createWalkInDirect.reset();
@@ -374,6 +377,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
       dailyRate: quote?.dailyRate ?? 0,
       pickupFee: pickupFeeLocal,
       dropoffFee: dropoffFeeLocal,
+      tipAmount: Number(tipAmount) > 0 ? Number(tipAmount) : undefined,
     };
   }
 
@@ -1054,6 +1058,9 @@ export function WalkInBookingModal({ open, onClose }: Props) {
                 className={INPUT_CLS}
               />
             </label>
+            <div className="mt-3">
+              <TipField amount={tipAmount} onAmountChange={setTipAmount} />
+            </div>
           </section>
 
           {createWalkInDirect.error && (

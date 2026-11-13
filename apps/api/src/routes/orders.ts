@@ -11,6 +11,7 @@ import { deriveTransportService } from '../lib/transport-service.js';
 import { loadEnrichedOrdersFallback } from '../lib/enriched-orders-fallback.js';
 import { depositHoldingAccount, resolveRoutedAccounts } from '../lib/deposit-envelope.js';
 import { resolveStoreAccounts } from '../adapters/supabase/maintenance-expense-rpc.js';
+import type { SettleOrderInput } from '../use-cases/orders/settle-order.js';
 import {
   assertSurfRacksAvailable,
   countRackAddonLines,
@@ -683,21 +684,33 @@ router.post('/:id/settle', requirePermission(Permission.EditOrders), validateBod
   returnChargesAccountId: z.string().min(1).nullable().optional(),
   settlementRef: z.string().nullable().optional(),
   depositRefundMethodId: z.string().nullable().optional(),
+  tipAmount: z.number().nonnegative().optional(),
+  tipAccountId: z.string().min(1).nullable().optional(),
 })), async (req, res, next) => {
   try {
     const { settleOrder } = await import('../use-cases/orders/settle-order.js');
     const { data: orderRow, error: orderErr } = await supabase
-      .from('orders').select('store_id').eq('id', req.params.id).maybeSingle();
+      .from('orders').select('store_id, booking_customer_name, customers!customer_id(name)').eq('id', req.params.id).maybeSingle();
     if (orderErr) throw new Error(orderErr.message);
-    const storeId = (orderRow as { store_id?: string } | null)?.store_id;
+    const row = orderRow as { store_id?: string; booking_customer_name?: string | null; customers?: { name?: string } | null } | null;
+    const storeId = row?.store_id;
     const [cashAccounts, storeAccounts] = storeId
       ? await Promise.all([resolveRoutedAccounts(storeId), resolveStoreAccounts(storeId)])
       : [undefined, null];
+    const { tipAmount, tipAccountId, ...settleBody } = req.body as { tipAmount?: number; tipAccountId?: string | null } & Record<string, unknown>;
+    let tip: { amount: number; accountId: string } | null = null;
+    if (tipAmount && tipAmount > 0) {
+      const accountId = tipAccountId ?? cashAccounts?.tillAccountId ?? null;
+      if (!accountId) throw new Error('No till account found to record the tip into');
+      tip = { amount: tipAmount, accountId };
+    }
     const result = await settleOrder(req.app.locals.deps, {
-      orderId: req.params.id,
-      ...req.body,
+      orderId: String(req.params.id),
+      ...(settleBody as unknown as Omit<SettleOrderInput, 'orderId'>),
       cashAccounts,
       returnChargesIncomeAccountId: storeAccounts?.incomeAccountId ?? null,
+      tip,
+      customerName: row?.booking_customer_name ?? row?.customers?.name ?? '',
     });
     res.json({ success: true, data: result });
   } catch (err) { next(err); }

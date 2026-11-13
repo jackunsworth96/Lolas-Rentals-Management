@@ -32,11 +32,13 @@ import {
   BatteryWarning,
   FileText,
   FileSignature,
+  UserCircle,
   type LucideIcon,
 } from 'lucide-react';
 import { useUIStore } from '../../stores/ui-store.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 import { useUnseenTaskCount } from '../../api/todo.js';
+import { usePortalSummary } from '../../api/me.js';
 import lolasLogo from '../../assets/Lolas Original Logo.svg';
 import { isArchivePath } from '../../utils/archive-mode.js';
 
@@ -63,6 +65,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Operations',
     items: [
       { label: 'Dashboard', path: '/dashboard', perm: null, icon: LayoutDashboard },
+      { label: 'My Portal', path: '/me', perm: null, icon: UserCircle },
       { label: 'To Do', path: '/todo', perm: 'can_view_todo', icon: ListTodo },
       { label: 'Inbox', path: '/orders/inbox', perm: 'can_view_inbox', icon: Inbox },
       { label: 'Active', path: '/orders/active', perm: 'can_view_active', icon: Car },
@@ -132,6 +135,8 @@ export function Sidebar() {
   const employeeId = useAuthStore((s) => s.user?.employeeId) ?? '';
   const { data: unseenData } = useUnseenTaskCount(employeeId);
   const todoCount = (unseenData as { count?: number } | undefined)?.count ?? 0;
+  const { data: portal } = usePortalSummary(!!employeeId && !archiveMode);
+  const toSign = portal?.payslipsToSign ?? 0;
 
   return (
     <aside
@@ -184,6 +189,11 @@ export function Sidebar() {
                   {open && item.label === 'To Do' && todoCount > 0 && (
                     <span className="ml-auto rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
                       {todoCount > 99 ? '99+' : todoCount}
+                    </span>
+                  )}
+                  {open && item.path === '/me' && toSign > 0 && (
+                    <span className="ml-auto rounded-full bg-teal-600 px-1.5 py-0.5 text-[10px] font-bold text-white" title="Payslips to sign">
+                      {toSign}
                     </span>
                   )}
                 </NavLink>

@@ -20,6 +20,9 @@ export const ReferenceType = {
   CharityPayout: 'charity_payout',
   PawCardCharity: 'paw_card_charity',
   FloatSplit: 'float-split',
+  NinePmPayout: 'nine_pm_payout',
+  AllowanceAdjustment: 'allowance_adjustment',
+  ContributionRemittance: 'contribution_remittance',
 } as const;
 
 export type ReferenceTypeValue =

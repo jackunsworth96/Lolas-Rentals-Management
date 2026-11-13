@@ -13,15 +13,42 @@ import {
   GrantCashAdvanceRequestSchema,
   CashAdvanceQuerySchema,
   EditTimesheetRequestSchema,
+  ReviewRequestSchema,
+  ApproveAdvanceRequestSchema,
+  ResolvePayslipDisputeSchema,
 } from '@lolas/shared';
 import { Employee as EmployeeEntity } from '@lolas/domain';
 import { supabase } from '../adapters/supabase/client.js';
 import { syncUserLoginAccess } from '../auth/staff-login-access.js';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
+import { formatManilaDate } from '../utils/manila-date.js';
 
 const router = Router();
 router.use(authenticate);
+
+async function recordRateChange(
+  employee: EmployeeEntity,
+  effectiveFrom: string,
+  note: string,
+  createdBy: string | null,
+): Promise<void> {
+  const { error } = await supabase.from('employee_rate_history').upsert(
+    {
+      employee_id: employee.id,
+      effective_from: effectiveFrom,
+      rate_type: employee.rateType,
+      basic_rate: employee.basicRate,
+      overtime_rate: employee.overtimeRate,
+      nine_pm_bonus_rate: employee.ninePmBonusRate,
+      commission_rate: employee.commissionRate,
+      note,
+      created_by: createdBy,
+    },
+    { onConflict: 'employee_id,effective_from' },
+  );
+  if (error) throw new Error(`Failed to record rate change: ${error.message}`);
+}
 
 router.get('/timesheets', requirePermission(Permission.ViewTimesheets), validateQuery(TimesheetQuerySchema), async (req, res, next) => {
   try {
@@ -43,6 +70,7 @@ router.get('/timesheets', requirePermission(Permission.ViewTimesheets), validate
       payrollStatus: t.payrollStatus,
       silInflation: t.silInflation,
       storeId: t.storeId,
+      dayFraction: t.dayFraction,
     }));
     res.json({ success: true, data });
   } catch (err) { next(err); }
@@ -70,7 +98,11 @@ router.post('/timesheets', requirePermission(Permission.SubmitTimesheets), valid
   try {
     const { submitTimesheet } = await import('../use-cases/hr/submit-timesheet.js');
     const result = await submitTimesheet(req.body, { timesheets: req.app.locals.deps.timesheetRepo });
-    res.status(201).json({ success: true, data: result });
+    const { syncNinePmPayouts } = await import('../use-cases/payroll/nine-pm-payout.js');
+    const ninePm = await syncNinePmPayouts(result.timesheetIds, req.user!.userId);
+    const { recalculateLeaveUsed } = await import('../use-cases/hr/leave-usage.js');
+    await recalculateLeaveUsed((req.body.entries as Array<{ employeeId: string }>).map((e) => e.employeeId));
+    res.status(201).json({ success: true, data: { ...result, ninePmPayouts: ninePm } });
   } catch (err) { next(err); }
 });
 
@@ -87,7 +119,11 @@ router.patch('/timesheets/:id', requirePermission(Permission.EditTimesheets), va
     const { editTimesheet } = await import('../use-cases/hr/edit-timesheet.js');
     const amendedBy = req.user!.userId;
     const result = await editTimesheet(String(req.params.id), req.body, amendedBy);
-    res.json({ success: true, data: result });
+    const { syncNinePmPayouts } = await import('../use-cases/payroll/nine-pm-payout.js');
+    const ninePm = await syncNinePmPayouts([result.id], amendedBy);
+    const { recalculateLeaveUsed } = await import('../use-cases/hr/leave-usage.js');
+    await recalculateLeaveUsed([result.employeeId]);
+    res.json({ success: true, data: { ...result, ninePmPayouts: ninePm } });
   } catch (err: unknown) {
     const e = err as { statusCode?: number; code?: string; message?: string };
     if (e.statusCode === 404) {
@@ -177,6 +213,9 @@ router.post('/employees', requirePermission(Permission.ManageEmployees), validat
       sssDeductionAmt: body.sssDeductionAmt ?? 0,
       philhealthDeductionAmt: body.philhealthDeductionAmt ?? 0,
       pagibigDeductionAmt: body.pagibigDeductionAmt ?? 0,
+      employerSssAmt: body.employerSssAmt ?? 0,
+      employerPhilhealthAmt: body.employerPhilhealthAmt ?? 0,
+      employerPagibigAmt: body.employerPagibigAmt ?? 0,
       telegramUserId: body.telegramUserId ?? null,
       createdAt: now,
       updatedAt: now,
@@ -187,6 +226,8 @@ router.post('/employees', requirePermission(Permission.ManageEmployees), validat
     const rows = storeIds.map((sid) => ({ employee_id: employee.id, store_id: sid }));
     const { error: esErr } = await supabase.from('employee_stores').insert(rows);
     if (esErr) throw new Error(`employee_stores insert failed: ${esErr.message}`);
+
+    await recordRateChange(employee, body.rateEffectiveFrom ?? employee.startDate ?? formatManilaDate(), 'Starting rate', req.user!.employeeId);
 
     res.status(201).json({ success: true, data: employee });
   } catch (err) { next(err); }
@@ -239,23 +280,59 @@ router.put('/employees/:id', requirePermission(Permission.ManageEmployees), vali
       sssDeductionAmt: body.sssDeductionAmt ?? existing.sssDeductionAmt,
       philhealthDeductionAmt: body.philhealthDeductionAmt ?? existing.philhealthDeductionAmt,
       pagibigDeductionAmt: body.pagibigDeductionAmt ?? existing.pagibigDeductionAmt,
+      employerSssAmt: body.employerSssAmt ?? existing.employerSssAmt,
+      employerPhilhealthAmt: body.employerPhilhealthAmt ?? existing.employerPhilhealthAmt,
+      employerPagibigAmt: body.employerPagibigAmt ?? existing.employerPagibigAmt,
       telegramUserId: body.telegramUserId !== undefined ? body.telegramUserId : existing.telegramUserId,
       createdAt: existing.createdAt,
       updatedAt: new Date(),
     });
 
+    const rateChanged =
+      updated.basicRate !== existing.basicRate ||
+      updated.overtimeRate !== existing.overtimeRate ||
+      updated.ninePmBonusRate !== existing.ninePmBonusRate ||
+      updated.commissionRate !== existing.commissionRate ||
+      (updated.rateType ?? null) !== (existing.rateType ?? null);
+    if (rateChanged && !body.rateEffectiveFrom) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'RATE_EFFECTIVE_DATE_REQUIRED', message: 'Choose the date the new pay rate applies from.' },
+      });
+      return;
+    }
+
     await req.app.locals.deps.employeeRepo.save(updated);
 
-    const { error: delErr } = await supabase
-      .from('employee_stores')
-      .delete()
-      .eq('employee_id', existing.id);
-    if (delErr) throw new Error(`employee_stores delete failed: ${delErr.message}`);
+    if (rateChanged) {
+      await recordRateChange(updated, body.rateEffectiveFrom, body.rateChangeNote ?? 'Rate change', req.user!.employeeId);
+    }
 
-    if (storeIds.length > 0) {
-      const rows = storeIds.map((sid) => ({ employee_id: existing.id, store_id: sid }));
+    // Links to archived stores are read-only and the form never lists them, so only touch what changed.
+    const [{ data: linkRows, error: linkErr }, { data: archivedRows, error: archErr }] = await Promise.all([
+      supabase.from('employee_stores').select('store_id').eq('employee_id', existing.id),
+      supabase.from('stores').select('id').eq('is_active', false),
+    ]);
+    if (linkErr) throw new Error(`employee_stores lookup failed: ${linkErr.message}`);
+    if (archErr) throw new Error(`stores lookup failed: ${archErr.message}`);
+    const archived = new Set((archivedRows ?? []).map((s) => String(s.id)));
+    const current = new Set((linkRows ?? []).map((l) => String(l.store_id)));
+    const wanted = new Set(storeIds);
+    const toRemove = [...current].filter((sid) => !wanted.has(sid) && !archived.has(sid));
+    const toAdd = [...wanted].filter((sid) => !current.has(sid) && !archived.has(sid));
+
+    if (toRemove.length > 0) {
+      const { error: delErr } = await supabase
+        .from('employee_stores')
+        .delete()
+        .eq('employee_id', existing.id)
+        .in('store_id', toRemove);
+      if (delErr) throw new Error(`employee_stores delete failed: ${delErr.message}`);
+    }
+    if (toAdd.length > 0) {
+      const rows = toAdd.map((sid) => ({ employee_id: existing.id, store_id: sid }));
       const { error: insErr } = await supabase.from('employee_stores').insert(rows);
-      if (insErr) throw new Error(`employee_stores re-insert failed: ${insErr.message}`);
+      if (insErr) throw new Error(`employee_stores insert failed: ${insErr.message}`);
     }
 
     if (existing.status !== updated.status) {
@@ -310,6 +387,9 @@ router.delete('/employees/:id', requirePermission(Permission.ManageEmployees), a
         sssDeductionAmt: existing.sssDeductionAmt,
         philhealthDeductionAmt: existing.philhealthDeductionAmt,
         pagibigDeductionAmt: existing.pagibigDeductionAmt,
+        employerSssAmt: existing.employerSssAmt,
+        employerPhilhealthAmt: existing.employerPhilhealthAmt,
+        employerPagibigAmt: existing.employerPagibigAmt,
         telegramUserId: existing.telegramUserId,
         createdAt: existing.createdAt,
         updatedAt: new Date(),
@@ -375,5 +455,77 @@ router.get(
     }
   },
 );
+
+// ── Staff requests (leave, advances) and payslip sign-off review ──
+
+const requestStatus = (v: unknown) =>
+  (['pending', 'approved', 'rejected', 'cancelled'] as const).find((x) => x === v);
+
+router.get('/requests', requirePermission(Permission.ApproveStaffRequests), async (req, res, next) => {
+  try {
+    const { listLeaveRequests, listAdvanceRequests, listAcknowledgements } = await import('../use-cases/hr/staff-requests.js');
+    const status = requestStatus(req.query.status);
+    const storeId = typeof req.query.storeId === 'string' && req.query.storeId !== 'all' ? req.query.storeId : undefined;
+    const [leave, advances, disputes] = await Promise.all([
+      listLeaveRequests({ status, storeId }),
+      listAdvanceRequests({ status, storeId }),
+      listAcknowledgements({ status: 'disputed', unresolved: status === 'pending' }),
+    ]);
+    res.json({ success: true, data: { leave, advances, disputes } });
+  } catch (err) { next(err); }
+});
+
+router.post('/leave-requests/:id/approve', requirePermission(Permission.ApproveStaffRequests), validateBody(ReviewRequestSchema), async (req, res, next) => {
+  try {
+    const { approveLeaveRequest } = await import('../use-cases/hr/staff-requests.js');
+    const data = await approveLeaveRequest(String(req.params.id), req.user!.employeeId, req.body.note, {
+      timesheets: req.app.locals.deps.timesheetRepo,
+      employees: req.app.locals.deps.employeeRepo,
+    });
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+router.post('/leave-requests/:id/reject', requirePermission(Permission.ApproveStaffRequests), validateBody(ReviewRequestSchema), async (req, res, next) => {
+  try {
+    const { rejectRequest } = await import('../use-cases/hr/staff-requests.js');
+    await rejectRequest('leave_requests', String(req.params.id), req.user!.employeeId, req.body.note);
+    res.json({ success: true, data: { id: req.params.id } });
+  } catch (err) { next(err); }
+});
+
+router.post('/advance-requests/:id/approve', requirePermission(Permission.ApproveStaffRequests), validateBody(ApproveAdvanceRequestSchema), async (req, res, next) => {
+  try {
+    const { approveAdvanceRequest } = await import('../use-cases/hr/staff-requests.js');
+    const data = await approveAdvanceRequest(String(req.params.id), req.user!.employeeId, req.body, {
+      expenses: req.app.locals.deps.expenseRepo,
+    });
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+router.post('/advance-requests/:id/reject', requirePermission(Permission.ApproveStaffRequests), validateBody(ReviewRequestSchema), async (req, res, next) => {
+  try {
+    const { rejectRequest } = await import('../use-cases/hr/staff-requests.js');
+    await rejectRequest('advance_requests', String(req.params.id), req.user!.employeeId, req.body.note);
+    res.json({ success: true, data: { id: req.params.id } });
+  } catch (err) { next(err); }
+});
+
+router.get('/payslip-acknowledgements', requirePermission(Permission.ViewPayroll), async (req, res, next) => {
+  try {
+    const ids = String(req.query.payslipIds ?? '').split(',').filter(Boolean);
+    const { listAcknowledgements } = await import('../use-cases/hr/staff-requests.js');
+    res.json({ success: true, data: await listAcknowledgements({ payslipIds: ids }) });
+  } catch (err) { next(err); }
+});
+
+router.post('/payslip-acknowledgements/:id/resolve', requirePermission(Permission.ApproveStaffRequests), validateBody(ResolvePayslipDisputeSchema), async (req, res, next) => {
+  try {
+    const { resolveDispute } = await import('../use-cases/hr/staff-requests.js');
+    await resolveDispute(String(req.params.id), req.user!.employeeId, req.body.note);
+    res.json({ success: true, data: { id: req.params.id } });
+  } catch (err) { next(err); }
+});
 
 export { router as hrRoutes };

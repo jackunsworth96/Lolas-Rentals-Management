@@ -7,6 +7,7 @@ import {
   type EmployeeRepository,
 } from '@lolas/domain';
 import { randomUUID } from 'node:crypto';
+import { recalculateLeaveUsed, leaveRemaining } from './leave-usage.js';
 
 export interface SubmitLeaveInput {
   employeeId: string;
@@ -33,16 +34,12 @@ export async function submitLeave(
     throw new DomainError(`Employee ${input.employeeId} not found`);
   }
 
-  const balance = await deps.leaveBalance.getBalance(input.employeeId);
-
-  const remaining =
-    input.leaveType === 'holiday'
-      ? balance.holidayAllowance - balance.holidayUsed
-      : balance.sickAllowance - balance.sickUsed;
+  await recalculateLeaveUsed([input.employeeId]);
+  const remaining = await leaveRemaining(input.employeeId, input.leaveType, input.date);
 
   if (remaining < 1) {
     throw new DomainError(
-      `Insufficient ${input.leaveType} leave: ${remaining} days remaining`,
+      `Insufficient ${input.leaveType} leave: ${remaining} days available${employee.probationEndDate && input.date < employee.probationEndDate ? ' (still on probation, leave builds up monthly)' : ''}`,
     );
   }
 
@@ -68,8 +65,8 @@ export async function submitLeave(
 
   const timesheet = Timesheet.create(props);
 
-  await deps.leaveBalance.deductLeave(input.employeeId, input.leaveType, 1);
   await deps.timesheets.save(timesheet);
+  await recalculateLeaveUsed([input.employeeId]);
 
   return {
     timesheetId: timesheet.id,

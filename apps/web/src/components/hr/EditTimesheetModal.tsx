@@ -40,6 +40,7 @@ export function EditTimesheetModal({ open, onClose, timesheet, stores, dayTypes 
   const [ninePmReturns, setNinePmReturns] = useState('');
   const [notes, setNotes] = useState('');
   const [storeId, setStoreId] = useState('');
+  const [dayFraction, setDayFraction] = useState('1');
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
@@ -52,6 +53,7 @@ export function EditTimesheetModal({ open, onClose, timesheet, stores, dayTypes 
       setNinePmReturns(String(timesheet.ninePmReturnsCount));
       setNotes(timesheet.dailyNotes ?? '');
       setStoreId(timesheet.storeId);
+      setDayFraction(String(timesheet.dayFraction ?? 1));
       setErrorMsg('');
     }
   }, [open, timesheet]);
@@ -102,6 +104,7 @@ export function EditTimesheetModal({ open, onClose, timesheet, stores, dayTypes 
         ninePmReturnsCount: Number(ninePmReturns) || 0,
         dailyNotes: notes || null,
         storeId,
+        dayFraction: isLeave ? 1 : Number(dayFraction) || 1,
       },
       {
         onSuccess: () => handleClose(),
@@ -217,6 +220,24 @@ export function EditTimesheetModal({ open, onClose, timesheet, stores, dayTypes 
           </div>
         )}
 
+        {!isLeave && (
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className={labelCls}>Day paid</label>
+              <select value={dayFraction} onChange={(e) => setDayFraction(e.target.value)} className={inputCls}>
+                <option value="1">Full day</option>
+                <option value="0.75">¾ day</option>
+                <option value="0.625">5 hours (⅝ day)</option>
+                <option value="0.5">Half day</option>
+                <option value="0.25">¼ day</option>
+                {!['1', '0.75', '0.625', '0.5', '0.25'].includes(dayFraction) && (
+                  <option value={dayFraction}>{dayFraction} day</option>
+                )}
+              </select>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className={labelCls}>9PM Returns</label>
@@ -227,6 +248,11 @@ export function EditTimesheetModal({ open, onClose, timesheet, stores, dayTypes 
               onChange={(e) => setNinePmReturns(e.target.value)}
               className={inputCls}
             />
+            {Number(ninePmReturns) !== timesheet.ninePmReturnsCount && (
+              <p className="mt-1 text-xs text-amber-700">
+                The 9pm till payout for this day is re-recorded to match. Hand over or take back the difference in cash.
+              </p>
+            )}
           </div>
           <div>
             <label className={labelCls}>Notes</label>

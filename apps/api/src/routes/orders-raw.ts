@@ -24,6 +24,7 @@ import { sendTelegramAlert, sendTelegramAlertPaidOrdersStaggered, getTelegramCha
 import { deriveTransportService } from '../lib/transport-service.js';
 import { assertAssignmentsAvailable } from '../lib/assert-vehicle-assignment.js';
 import { depositHoldingAccount, resolveRoutedAccounts } from '../lib/deposit-envelope.js';
+import { buildTipLegs } from '../lib/tips.js';
 import {
   assertSurfRacksAvailable,
   countRackAddonLines,
@@ -347,6 +348,8 @@ const walkInDirectSchema = z.object({
   charityDonation: z.number().min(0).optional(),
   paymentAccountId: z.string().min(1).optional().nullable(),
   depositLiabilityAccountId: z.string().min(1).optional().nullable(),
+  tipAmount: z.number().min(0).optional(),
+  tipAccountId: z.string().min(1).optional().nullable(),
 });
 
 router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (req, res, next) => {
@@ -607,6 +610,12 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
         moneyLeg(depositLiabilityId, 0, depositHeld, `${body.customerName} walk-in deposit liability`, depositPaymentId),
       );
     }
+    const tipAmount = body.tipAmount ?? 0;
+    if (tipAmount > 0) {
+      const tipAccountId = body.tipAccountId ?? routing.accountFor('cash');
+      if (!tipAccountId) throw new Error('No till account found to record the tip into');
+      journalLegs.push(...(await buildTipLegs({ amount: tipAmount, accountId: tipAccountId }, body.storeId, orderId, body.customerName)));
+    }
     if (journalLegs.length > 0 && !journalTransactionId) journalTransactionId = crypto.randomUUID();
 
     // 13. Call activate_order_atomic RPC (order + journal + payments in one tx)
@@ -632,7 +641,7 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       p_payment_method_id: body.paymentMethod,
       p_deposit_method_id: body.depositMethod,
       p_booking_token: orderReference,
-      p_tips: 0,
+      p_tips: tipAmount,
       p_charity_donation: charityAmount,
       p_updated_at: now.toISOString(),
       p_order_items: orderItems,
@@ -933,6 +942,8 @@ const processBodySchema = z.object({
   transferAccommodation: z.string().max(500).nullable().optional(),
   dropoffLocationNote: z.string().max(500).nullable().optional(),
   partialPaymentAmount: z.number().min(0).optional(),
+  tipAmount: z.number().min(0).optional(),
+  tipAccountId: z.string().min(1).nullable().optional(),
 });
 
 router.post('/:id/process', requirePermission(Permission.EditOrders), async (req, res, next) => {
@@ -1048,6 +1059,12 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
       transferAccommodation: body.transferAccommodation ?? null,
       partialPaymentAmount: body.partialPaymentAmount,
       cashAccounts: await resolveRoutedAccounts(body.storeId),
+      tip: await (async () => {
+        if (!body.tipAmount || body.tipAmount <= 0) return null;
+        const accountId = body.tipAccountId ?? (await resolveRoutedAccounts(body.storeId)).accountFor('cash');
+        if (!accountId) throw new Error('No till account found to record the tip into');
+        return { amount: body.tipAmount, accountId };
+      })(),
     });
 
     // Persist the optional dropoff meeting-point note on the created order.

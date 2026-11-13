@@ -143,7 +143,8 @@ export class SupabasePayrollAdapter implements PayrollPort {
       period: `${start}_${end}`,
       totalOrderValue,
       commissionRate,
-      commissionAmount: Math.round(totalOrderValue * commissionRate * 100) / 100,
+      // commission_rate is a whole percent (5 = 5%).
+      commissionAmount: Math.round(totalOrderValue * commissionRate) / 100,
     };
   }
 

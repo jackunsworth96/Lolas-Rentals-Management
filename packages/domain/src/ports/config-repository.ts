@@ -131,6 +131,9 @@ export interface LeaveConfig {
   resetDay: number;
   defaultHolidayAllowance: number;
   defaultSickAllowance: number;
+  /** Days earned per month while on probation; 0 = the allowance pro rata over the probation period. */
+  probationAccrualHoliday?: number;
+  probationAccrualSick?: number;
 }
 
 export interface Role {

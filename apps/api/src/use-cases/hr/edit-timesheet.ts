@@ -3,6 +3,7 @@ import type { EditTimesheetRequest } from '@lolas/shared';
 
 export interface EditTimesheetResult {
   id: string;
+  employeeId: string;
 }
 
 export async function editTimesheet(
@@ -40,6 +41,7 @@ export async function editTimesheet(
     nine_pm_returns_count: body.ninePmReturnsCount,
     daily_notes: body.dailyNotes,
     store_id: body.storeId,
+    ...(body.dayFraction !== undefined ? { day_fraction: body.dayFraction } : {}),
   };
 
   const { error: updateErr } = await sb
@@ -61,5 +63,5 @@ export async function editTimesheet(
 
   if (logErr) throw new Error(`Failed to write amendment log: ${logErr.message}`);
 
-  return { id };
+  return { id, employeeId: String(existing.employee_id) };
 }

@@ -26,6 +26,10 @@ export const Permission = {
   EditTimesheets: 'can_edit_timesheets',
   EditAccounts: 'can_edit_accounts',
   ViewPayroll: 'can_view_payroll',
+  /** Post and void payroll runs, record remittances, adjust allowance balances. */
+  RunPayroll: 'can_run_payroll',
+  /** Approve staff leave and cash advance requests, and resolve disputed payslips. */
+  ApproveStaffRequests: 'can_approve_staff_requests',
   ViewAccounts: 'can_view_accounts',
   ViewDirectory: 'can_view_directory',
   ViewDashboard: 'can_view_dashboard',

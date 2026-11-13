@@ -26,6 +26,8 @@ export interface TimesheetProps {
   silInflation: number;
   storeId: string;
   createdAt: Date;
+  /** Share of a full day's pay earned (0.5 = half day). Defaults to 1. */
+  dayFraction?: number;
 }
 
 export class Timesheet {
@@ -39,6 +41,7 @@ export class Timesheet {
   readonly silInflation: number;
   readonly storeId: string;
   readonly createdAt: Date;
+  readonly dayFraction: number;
 
   private _timeIn: string | null;
   private _timeOut: string | null;
@@ -57,6 +60,7 @@ export class Timesheet {
     this.silInflation = props.silInflation;
     this.storeId = props.storeId;
     this.createdAt = props.createdAt;
+    this.dayFraction = props.dayFraction ?? 1;
 
     this._timeIn = props.timeIn;
     this._timeOut = props.timeOut;

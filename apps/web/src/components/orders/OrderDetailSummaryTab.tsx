@@ -31,6 +31,7 @@ import { useAuthStore } from '../../stores/auth-store.js';
 import type { EnrichedOrder } from '../../types/api.js';
 import type { HelmetSwap, OrderAddon, OrderDetail, OrderItem, OrderPayment } from './useOrderDetail.js';
 import { CustomerWhatsAppNumber } from './CustomerWhatsAppNumber.js';
+import { TipField } from './TipField.js';
 
 function waiverFetchApiBase(): string {
   const raw = (import.meta.env.VITE_API_URL as string | undefined)?.trim() || '/api';
@@ -112,6 +113,8 @@ export function OrderDetailSummaryTab({
   const [settleFinalMethodId, setSettleFinalMethodId] = useState('');
   const [settleFinalAccountId, setSettleFinalAccountId] = useState('');
   const [settleFinalRef, setSettleFinalRef] = useState('');
+  const [settleTipAmount, setSettleTipAmount] = useState<number | ''>('');
+  const [settleTipAccountId, setSettleTipAccountId] = useState('');
   const [returnCharges, setReturnCharges] = useState('');
   const [returnChargesNote, setReturnChargesNote] = useState('');
   const [returnChargesMethodId, setReturnChargesMethodId] = useState('');
@@ -796,6 +799,8 @@ export function OrderDetailSummaryTab({
         returnChargesPaymentMethodId: chargeTendered ? returnChargesMethodId : undefined,
         returnChargesAccountId: chargeTendered ? effectiveReturnChargeAccountId : undefined,
         settlementRef: needsFinalPayment && isSettleFinalCard ? (settleFinalRef || null) : null,
+        tipAmount: Number(settleTipAmount) > 0 ? Number(settleTipAmount) : undefined,
+        tipAccountId: Number(settleTipAmount) > 0 && settleTipAccountId ? settleTipAccountId : undefined,
       },
       { onSuccess: () => onClose() },
     );
@@ -1985,6 +1990,14 @@ export function OrderDetailSummaryTab({
                         )}
                       </div>
                     )}
+
+                    <TipField
+                      amount={settleTipAmount}
+                      onAmountChange={setSettleTipAmount}
+                      accountId={settleTipAccountId}
+                      onAccountChange={setSettleTipAccountId}
+                      accountOptions={refundAccountOptions.map((a) => ({ id: String(a.id), name: String(a.name ?? '') }))}
+                    />
 
                     {/* Settle button */}
                     <form onSubmit={handleSettle}>

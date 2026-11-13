@@ -688,6 +688,8 @@ router.get('/leave-config', validateQuery(z.object({ storeId: z.string().min(1) 
 router.put('/leave-config', edit, validateBody(z.object({
   storeId: z.string(), resetMonth: z.number().int().min(1).max(12), resetDay: z.number().int().min(1).max(31),
   defaultHolidayAllowance: z.number().int().nonnegative(), defaultSickAllowance: z.number().int().nonnegative(),
+  probationAccrualHoliday: z.number().nonnegative().max(31).optional(),
+  probationAccrualSick: z.number().nonnegative().max(31).optional(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveLeaveConfig(req.body); res.json({ success: true }); } catch (e) { next(e); }
 });

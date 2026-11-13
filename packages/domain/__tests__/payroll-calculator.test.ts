@@ -1,142 +1,237 @@
 import { describe, it, expect } from 'vitest';
-import { calculatePayroll } from '../src/services/payroll-calculator.js';
+import {
+  calculatePayroll,
+  splitTipsPool,
+  allocateAdvanceDeduction,
+  type PayrollDay,
+  type PayrollInput,
+} from '../src/services/payroll-calculator.js';
+import {
+  buildPayslipJournal,
+  buildThirteenthMonthPayoutJournal,
+  type PayrollJournalAccounts,
+} from '../src/services/payroll-journal.js';
 
-const baseInput = {
-  rateType: 'daily' as const,
-  basicRate: 500,
-  overtimeRate: 100,
-  ninePmBonusRate: 50,
-  // Whole percentage points, matching production data (e.g. 5 = 5%), not a
-  // decimal fraction.
-  commissionRate: 10,
-  daysWorked: 15,
-  overtimeHours: 10,
-  ninePmCount: 3,
-  workingDaysInMonth: 22,
-  pomRevenueShare: 5000,
-  totalTips: 1200,
-  bikeAllowance: 500,
-  bonuses: 0,
-  cashAdvanceDeduction: 500,
-  sssDeduction: 400,
-  philhealthDeduction: 200,
-  pagibigDeduction: 100,
-  isEndOfMonth: true,
-  // Was missing from this fixture entirely, which silently made grossPay
-  // (and everything derived from it) NaN in any test that didn't override
-  // it — see payroll audit finding P-23.
-  holidayAdjustment: 0,
+function day(overrides: Partial<PayrollDay> = {}): PayrollDay {
+  return {
+    date: '2026-11-03',
+    dayType: 'Regular',
+    isLeave: false,
+    dailyRate: 500,
+    overtimeHours: 0,
+    overtimeHourlyRate: 80,
+    ninePmCount: 0,
+    ninePmRate: 100,
+    premiumPct: 0,
+    ...overrides,
+  };
+}
+
+function input(overrides: Partial<PayrollInput> = {}): PayrollInput {
+  return {
+    isEndOfMonth: true,
+    days: [day(), day({ date: '2026-11-04' })],
+    commissionRate: 5,
+    pomRevenue: 10000,
+    tipsShare: 300,
+    bonuses: 0,
+    ninePmPrepaid: 0,
+    cashAdvanceDue: 0,
+    employeeContributions: { sss: 400, philhealth: 200, pagibig: 100 },
+    employerContributions: { sss: 800, philhealth: 200, pagibig: 100 },
+    monthlyVehicleAllowance: 500,
+    ...overrides,
+  };
+}
+
+const accounts: PayrollJournalAccounts = {
+  wagesAccountId: 'WAGES',
+  commissionExpenseId: 'COMM',
+  tipsPayableId: 'TIPS',
+  sssPayableId: 'SSS',
+  philhealthPayableId: 'PH',
+  pagibigPayableId: 'PI',
+  employerContribExpenseId: 'ER',
+  thirteenthMonthExpenseId: '13E',
+  thirteenthMonthPayableId: '13P',
+  vehicleAllowanceExpenseId: 'VAE',
+  vehicleAllowancePayableId: 'VAP',
+  transferFeeExpenseId: 'FEE',
+  advanceAccountId: 'ADV',
 };
 
+function net(legs: Array<{ accountId: string; debit: number; credit: number }>, id: string) {
+  return legs.filter((l) => l.accountId === id).reduce((s, l) => s + l.debit - l.credit, 0);
+}
+
 describe('calculatePayroll', () => {
-  it('calculates basic pay for daily rate', () => {
-    const result = calculatePayroll(baseInput);
-    expect(result.basicPay).toBe(7500);
+  it('prices each day at its own rate', () => {
+    const r = calculatePayroll(input({
+      days: [day({ dailyRate: 500 }), day({ dailyRate: 550, date: '2026-11-20' })],
+    }));
+    expect(r.basicPay).toBe(1050);
+    expect(r.daysWorked).toBe(2);
   });
 
-  it('calculates basic pay for monthly rate', () => {
-    const result = calculatePayroll({
-      ...baseInput,
-      rateType: 'monthly',
-      basicRate: 15000,
-    });
-    expect(result.basicPay).toBeCloseTo(10227.27, 2);
+  it('records unpaid leave days without paying them or counting them as worked', () => {
+    const r = calculatePayroll(input({
+      days: [day(), day({ date: '2026-11-04', dayType: 'Unpaid Leave', isUnpaid: true, ninePmCount: 1, premiumPct: 30 })],
+      commissionRate: 0,
+      tipsShare: 0,
+    }));
+    expect(r.unpaidLeaveDays).toBe(1);
+    expect(r.daysWorked).toBe(1);
+    expect(r.basicPay).toBe(500);
+    expect(r.ninePmEarnings).toBe(0);
+    expect(r.holidayPremium).toBe(0);
+    expect(r.thirteenthMonthAccrual).toBe(41.67);
   });
 
-  it('calculates overtime pay', () => {
-    const result = calculatePayroll(baseInput);
-    expect(result.overtimePay).toBe(1000);
+  it('pays POM commission as a whole percent, only at end of month', () => {
+    expect(calculatePayroll(input()).commission).toBe(500);
+    expect(calculatePayroll(input({ isEndOfMonth: false })).commission).toBe(0);
   });
 
-  it('falls back to basic_rate/8 per hour when overtime rate is zero (daily)', () => {
-    const result = calculatePayroll({
-      ...baseInput,
-      overtimeRate: 0,
-      basicRate: 800,
-      overtimeHours: 4,
-    });
-    expect(result.overtimePay).toBe((800 / 8) * 4);
+  it('applies +30% and +100% holiday premiums to worked days', () => {
+    const r = calculatePayroll(input({
+      days: [day({ premiumPct: 30 }), day({ premiumPct: 100, date: '2026-11-30' })],
+    }));
+    expect(r.holidayPremium).toBe(650);
+    expect(r.holidayDays).toBe(2);
   });
 
-  it('has zero overtime pay for monthly rate employees regardless of hours', () => {
-    const result = calculatePayroll({
-      ...baseInput,
-      rateType: 'monthly',
-      basicRate: 15000,
-      overtimeRate: 100,
-      overtimeHours: 10,
-    });
-    expect(result.overtimePay).toBe(0);
+  it('pays leave days at the daily rate without premiums or overtime', () => {
+    const r = calculatePayroll(input({
+      days: [day(), day({ isLeave: true, premiumPct: 100, overtimeHours: 3 })],
+    }));
+    expect(r.leaveDays).toBe(1);
+    expect(r.leavePay).toBe(500);
+    expect(r.holidayPremium).toBe(0);
+    expect(r.overtimePay).toBe(0);
   });
 
-  it('calculates 9PM bonus', () => {
-    const result = calculatePayroll(baseInput);
-    expect(result.ninePmBonus).toBe(150);
+  it('computes gross, deductions and net', () => {
+    const r = calculatePayroll(input({
+      days: [day({ overtimeHours: 2, ninePmCount: 1 }), day()],
+      ninePmPrepaid: 100,
+      cashAdvanceDue: 200,
+    }));
+    // 1000 basic + 160 OT + 100 9pm + 500 commission + 300 tips
+    expect(r.grossPay).toBe(2060);
+    expect(r.totalDeductions).toBe(700 + 100 + 200);
+    expect(r.netPay).toBe(1060);
   });
 
-  it('calculates POM commission from employee rate (percent, not decimal)', () => {
-    const result = calculatePayroll(baseInput);
-    // 5000 revenue share * 10% = 500, not 5000 * 10 = 50000.
-    expect(result.commission).toBe(500);
+  it('only deducts contributions and accrues the vehicle allowance at end of month', () => {
+    const r = calculatePayroll(input({ isEndOfMonth: false }));
+    expect(r.employeeContributions).toEqual({ sss: 0, philhealth: 0, pagibig: 0 });
+    expect(r.employerContributions).toEqual({ sss: 0, philhealth: 0, pagibig: 0 });
+    expect(r.vehicleAllowanceAccrual).toBe(0);
+    expect(calculatePayroll(input()).vehicleAllowanceAccrual).toBe(500);
   });
 
-  it('treats a commissionRate of 100 as 100%, not 10000%', () => {
-    const result = calculatePayroll({ ...baseInput, commissionRate: 100 });
-    expect(result.commission).toBe(5000);
+  it('caps the advance at what is left and warns', () => {
+    const r = calculatePayroll(input({
+      days: [day(), day(), day()], pomRevenue: 0, tipsShare: 0, cashAdvanceDue: 5000,
+    }));
+    // 1500 gross - 700 contributions leaves 800 for the advance
+    expect(r.cashAdvanceDeduction).toBe(800);
+    expect(r.netPay).toBe(0);
+    expect(r.warnings.some((w) => w.includes('cash advance'))).toBe(true);
   });
 
-  it('auto-includes tips', () => {
-    const result = calculatePayroll(baseInput);
-    expect(result.tips).toBe(1200);
+  it('flags negative net pay', () => {
+    const r = calculatePayroll(input({ days: [], pomRevenue: 0, tipsShare: 0 }));
+    expect(r.netPay).toBe(-700);
+    expect(r.warnings.some((w) => w.includes('exceed'))).toBe(true);
   });
 
-  it('applies government deductions only on EOM', () => {
-    const result = calculatePayroll(baseInput);
-    expect(result.sssDeduction).toBe(400);
-    expect(result.philhealthDeduction).toBe(200);
-    expect(result.pagibigDeduction).toBe(100);
+  it('accrues 1/12 of basic and leave pay for the 13th month', () => {
+    const r = calculatePayroll(input({ days: [day(), day({ isLeave: true })] }));
+    expect(r.thirteenthMonthAccrual).toBe(83.33);
+  });
+});
+
+describe('splitTipsPool', () => {
+  it('splits equally and keeps the rounding remainder', () => {
+    expect(splitTipsPool(1000, 3)).toEqual({ share: 333.33, remainder: 0.01 });
+    expect(splitTipsPool(0, 3)).toEqual({ share: 0, remainder: 0 });
+    expect(splitTipsPool(500, 0)).toEqual({ share: 0, remainder: 500 });
+  });
+});
+
+describe('allocateAdvanceDeduction', () => {
+  it('allocates oldest first and stops when the amount runs out', () => {
+    expect(allocateAdvanceDeduction(300, [
+      { id: 'a', dueThisPeriod: 200 },
+      { id: 'b', dueThisPeriod: 200 },
+    ])).toEqual([{ scheduleId: 'a', amount: 200 }, { scheduleId: 'b', amount: 100 }]);
+  });
+});
+
+describe('buildPayslipJournal', () => {
+  it('produces a balanced gross-to-net entry with liabilities', () => {
+    const r = calculatePayroll(input({ ninePmPrepaid: 0, cashAdvanceDue: 100 }));
+    const legs = buildPayslipJournal(
+      r,
+      [
+        { accountId: 'TILL', amount: 1000, fee: 0, label: 'cash' },
+        { accountId: 'GCASH', amount: r.netPay - 1000, fee: 15, label: 'GCash' },
+      ],
+      accounts,
+      'Payroll',
+    );
+    const dr = legs.reduce((s, l) => s + l.debit, 0);
+    const cr = legs.reduce((s, l) => s + l.credit, 0);
+    expect(Math.abs(dr - cr)).toBeLessThan(0.005);
+    expect(net(legs, 'SSS')).toBe(-1200);
+    expect(net(legs, 'PH')).toBe(-400);
+    expect(net(legs, 'PI')).toBe(-200);
+    expect(net(legs, 'ER')).toBe(1100);
+    expect(net(legs, 'TIPS')).toBe(300);
+    expect(net(legs, 'COMM')).toBe(500);
+    expect(net(legs, 'ADV')).toBe(-100);
+    expect(net(legs, 'FEE')).toBe(15);
+    expect(net(legs, 'GCASH')).toBeCloseTo(-(r.netPay - 1000 + 15), 2);
+    expect(net(legs, '13P')).toBe(-83.33);
+    expect(net(legs, 'VAP')).toBe(-500);
   });
 
-  it('skips government deductions on mid-month', () => {
-    const result = calculatePayroll({ ...baseInput, isEndOfMonth: false });
-    expect(result.sssDeduction).toBe(0);
-    expect(result.philhealthDeduction).toBe(0);
-    expect(result.pagibigDeduction).toBe(0);
+  it('nets 9pm cash already paid out of the wages debit', () => {
+    const r = calculatePayroll(input({ days: [day({ ninePmCount: 2 })], ninePmPrepaid: 200 }));
+    const legs = buildPayslipJournal(r, [{ accountId: 'TILL', amount: r.netPay, fee: 0, label: 'cash' }], accounts, 'P');
+    expect(net(legs, 'WAGES')).toBe(500);
   });
 
-  it('calculates net pay correctly', () => {
-    const result = calculatePayroll(baseInput);
-    const expectedGross = 7500 + 1000 + 150 + 500 + 1200 + 500 + 0;
-    const expectedDeductions = 500 + 400 + 200 + 100;
-    expect(result.grossPay).toBe(expectedGross);
-    expect(result.totalDeductions).toBe(expectedDeductions);
-    expect(result.netPay).toBe(expectedGross - expectedDeductions);
+  it('rejects payment lines that do not add up to net pay', () => {
+    const r = calculatePayroll(input());
+    expect(() => buildPayslipJournal(r, [{ accountId: 'TILL', amount: 1, fee: 0, label: 'cash' }], accounts, 'P'))
+      .toThrow(/net pay/);
   });
 
-  it('calculates 13th month accrual as basic pay / 12, not (basic pay * days) / 12', () => {
-    const result = calculatePayroll(baseInput);
-    expect(result.thirteenthMonthAccrual).toBeCloseTo(7500 / 12, 2);
+  it('requires an advance account when an advance is deducted', () => {
+    const r = calculatePayroll(input({ cashAdvanceDue: 100 }));
+    expect(() => buildPayslipJournal(
+      r,
+      [{ accountId: 'TILL', amount: r.netPay, fee: 0, label: 'cash' }],
+      { ...accounts, advanceAccountId: null },
+      'P',
+    )).toThrow(/Cash Advance/);
   });
+});
 
-  it('throws on negative basic rate', () => {
-    expect(() =>
-      calculatePayroll({ ...baseInput, basicRate: -100 }),
-    ).toThrow('non-negative');
-  });
-
-  it('caps the cash advance deduction so net pay never goes negative', () => {
-    const result = calculatePayroll({
-      ...baseInput,
-      cashAdvanceDeduction: 50000,
-    });
-    // Gross 10850 - other statutory deductions 700 = 10150 max advance.
-    expect(result.cashAdvanceDeduction).toBe(10150);
-    expect(result.netPay).toBe(0);
-  });
-
-  it('leaves the cash advance deduction unchanged when it fits within net pay', () => {
-    const result = calculatePayroll(baseInput);
-    expect(result.cashAdvanceDeduction).toBe(500);
-    expect(result.netPay).toBeGreaterThan(0);
+describe('buildThirteenthMonthPayoutJournal', () => {
+  it('clears the payable and expenses any top-up', () => {
+    const legs = buildThirteenthMonthPayoutJournal(
+      1200,
+      [{ accountId: 'BANK', amount: 1200, fee: 25, label: 'bank' }],
+      accounts,
+      1000,
+      '13th month',
+    );
+    expect(net(legs, '13P')).toBe(1000);
+    expect(net(legs, '13E')).toBe(200);
+    expect(net(legs, 'BANK')).toBe(-1225);
+    expect(net(legs, 'FEE')).toBe(25);
   });
 });

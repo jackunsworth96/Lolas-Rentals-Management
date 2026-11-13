@@ -11,6 +11,12 @@ import {
 import { useLeaveConfig } from '../../api/config.js';
 import { GrantCashAdvanceModal } from './GrantCashAdvanceModal.js';
 import { LinkedContracts } from '../contracts/LinkedContracts.js';
+import { RateHistory } from './RateHistory.js';
+import { AllowanceLedger } from './payroll/AllowanceTab.js';
+import { PayslipTable } from './payroll/RunsTab.js';
+import { useEmployeePayslips } from '../../api/payroll.js';
+import { downloadPayslipsPdf } from '../../utils/payslipPdf.js';
+import { useAuthStore } from '../../stores/auth-store.js';
 
 function nextResetLabel(resetMonth: number, resetDay: number): string {
   const monthName = new Date(2000, Math.max(0, resetMonth - 1), 1).toLocaleString('en', { month: 'long' });
@@ -72,7 +78,7 @@ const PAID_AS_TO_PAYMENT_METHOD: Record<string, string> = {
   'Bank Transfer': 'bank_transfer',
 };
 
-type Tab = 'personal' | 'role' | 'government' | 'leave' | 'financial';
+type Tab = 'personal' | 'role' | 'government' | 'leave' | 'financial' | 'payslips';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'personal', label: 'Personal' },
@@ -80,7 +86,28 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'government', label: 'Government' },
   { key: 'leave', label: 'Leave' },
   { key: 'financial', label: 'Financial' },
+  { key: 'payslips', label: 'Payslips' },
 ];
+
+function EmployeePayslips({ employeeId }: { employeeId: string }) {
+  const { data: payslips = [], isLoading } = useEmployeePayslips(employeeId);
+  if (isLoading) return <p className="py-6 text-center text-sm text-gray-500">Loading...</p>;
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <button
+          type="button"
+          disabled={payslips.length === 0}
+          onClick={() => downloadPayslipsPdf(payslips.filter((p) => p.runStatus !== 'voided'), `${payslips[0]?.employeeName ?? 'employee'}-all`)}
+          className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        >
+          Download all (PDF)
+        </button>
+      </div>
+      <PayslipTable payslips={payslips} showPeriod />
+    </div>
+  );
+}
 
 function blankForm(): Record<string, unknown> {
   return {
@@ -110,6 +137,9 @@ function blankForm(): Record<string, unknown> {
     sssDeductionAmt: 0,
     philhealthDeductionAmt: 0,
     pagibigDeductionAmt: 0,
+    employerSssAmt: 0,
+    employerPhilhealthAmt: 0,
+    employerPagibigAmt: 0,
     telegramUserId: '',
   };
 }
@@ -146,6 +176,9 @@ function employeeToForm(e: EmployeeRow, visibleStoreIds?: Set<string>): Record<s
     sssDeductionAmt: e.sssDeductionAmt ?? 0,
     philhealthDeductionAmt: e.philhealthDeductionAmt ?? 0,
     pagibigDeductionAmt: e.pagibigDeductionAmt ?? 0,
+    employerSssAmt: e.employerSssAmt ?? 0,
+    employerPhilhealthAmt: e.employerPhilhealthAmt ?? 0,
+    employerPagibigAmt: e.employerPagibigAmt ?? 0,
     telegramUserId: e.telegramUserId ?? '',
   };
 }
@@ -154,6 +187,7 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
   const isNew = !employee;
   const [tab, setTab] = useState<Tab>('personal');
   const [editing, setEditing] = useState(isNew);
+  const canViewPayroll = useAuthStore((s) => s.hasPermission('can_view_payroll'));
   const visibleStoreIds = useMemo(() => new Set(stores.map((s) => s.id)), [stores]);
   const [form, setForm] = useState<Record<string, unknown>>(
     employee ? employeeToForm(employee, visibleStoreIds) : blankForm(),
@@ -222,6 +256,8 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
     // Ensure required fields stay as strings
     if (!payload.fullName) return;
     if (!(payload.storeIds as string[])?.length) return;
+    if (isNew || !rateChanged) delete payload.rateEffectiveFrom;
+    if (isNew && payload.startDate) payload.rateEffectiveFrom = payload.startDate;
 
     if (isNew) {
       createMut.mutate(payload, { onSuccess: () => onClose() });
@@ -236,6 +272,14 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
   }
 
   const isPending = createMut.isPending || saveMut.isPending;
+
+  const rateChanged = !!employee && (
+    Number(form.basicRate ?? 0) !== Number(employee.basicRate ?? 0) ||
+    Number(form.overtimeRate ?? 0) !== Number(employee.overtimeRate ?? 0) ||
+    Number(form.ninePmBonusRate ?? 0) !== Number(employee.ninePmBonusRate ?? 0) ||
+    Number(form.commissionRate ?? 0) !== Number(employee.commissionRate ?? 0) ||
+    String(form.rateType ?? '') !== String(employee.rateType ?? '')
+  );
 
   const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-500';
   const labelCls = 'mb-1 block text-sm font-medium text-gray-700';
@@ -259,7 +303,7 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
 
           {/* Tabs */}
           <div className="mt-3 flex gap-1 overflow-x-auto">
-            {TABS.map((t) => (
+            {TABS.filter((t) => t.key !== 'payslips' || (!isNew && canViewPayroll)).map((t) => (
               <button
                 key={t.key}
                 onClick={() => setTab(t.key)}
@@ -545,8 +589,25 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
                     </p>
                   </div>
                 </div>
+                {!isNew && editing && rateChanged && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <label className={labelCls}>New rate applies from *</label>
+                    <input
+                      type="date"
+                      required
+                      value={String(form.rateEffectiveFrom ?? '')}
+                      onChange={(e) => set('rateEffectiveFrom', e.target.value)}
+                      className={`${inputCls} max-w-[12rem]`}
+                    />
+                    <p className="mt-1 text-xs text-amber-800">
+                      Days worked before this date keep the old rate, even if they haven&apos;t been paid yet.
+                      The change is kept in the rate history below.
+                    </p>
+                  </div>
+                )}
+                {employee && <RateHistory employeeId={employee.id} />}
                 <div>
-                  <label className={labelCls}>Monthly Bike Allowance</label>
+                  <label className={labelCls}>Monthly Vehicle Allowance</label>
                   <input
                     type="number"
                     min={0}
@@ -563,77 +624,77 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
 
             {tab === 'government' && (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className={labelCls}>SSS Number</label>
-                    <input
-                      type="text"
-                      value={String(form.sssNo ?? '')}
-                      onChange={(e) => set('sssNo', e.target.value)}
-                      disabled={!editing}
-                      className={inputCls}
-                    />
-                  </div>
-                  <div>
-                    <label className={labelCls}>SSS Deduction</label>
-                    <input
-                      type="number"
-                      min={0}
-                      step={0.01}
-                      value={Number(form.sssDeductionAmt ?? 0)}
-                      onChange={(e) => set('sssDeductionAmt', parseFloat(e.target.value) || 0)}
-                      disabled={!editing}
-                      className={inputCls}
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className={labelCls}>PhilHealth Number</label>
-                    <input
-                      type="text"
-                      value={String(form.philhealthNo ?? '')}
-                      onChange={(e) => set('philhealthNo', e.target.value)}
-                      disabled={!editing}
-                      className={inputCls}
-                    />
-                  </div>
-                  <div>
-                    <label className={labelCls}>PhilHealth Deduction</label>
-                    <input
-                      type="number"
-                      min={0}
-                      step={0.01}
-                      value={Number(form.philhealthDeductionAmt ?? 0)}
-                      onChange={(e) => set('philhealthDeductionAmt', parseFloat(e.target.value) || 0)}
-                      disabled={!editing}
-                      className={inputCls}
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className={labelCls}>PagIBIG Number</label>
-                    <input
-                      type="text"
-                      value={String(form.pagibigNo ?? '')}
-                      onChange={(e) => set('pagibigNo', e.target.value)}
-                      disabled={!editing}
-                      className={inputCls}
-                    />
-                  </div>
-                  <div>
-                    <label className={labelCls}>PagIBIG Deduction</label>
-                    <input
-                      type="number"
-                      min={0}
-                      step={0.01}
-                      value={Number(form.pagibigDeductionAmt ?? 0)}
-                      onChange={(e) => set('pagibigDeductionAmt', parseFloat(e.target.value) || 0)}
-                      disabled={!editing}
-                      className={inputCls}
-                    />
-                  </div>
+                <p className="text-xs text-gray-500">
+                  Monthly amounts. The employee share is deducted on the end-of-month payslip; the employer
+                  share is a company expense. Both are held as payables until you record the remittance on
+                  the Payroll page.
+                </p>
+                <div className="overflow-hidden rounded-lg border border-gray-200">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200 bg-gray-50 text-left">
+                        <th className="px-3 py-2 font-medium text-gray-700">Agency</th>
+                        <th className="px-3 py-2 font-medium text-gray-700">Member number</th>
+                        <th className="px-3 py-2 font-medium text-gray-700">Employee share</th>
+                        <th className="px-3 py-2 font-medium text-gray-700">Employer share</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {([
+                        { label: 'SSS', no: 'sssNo', ee: 'sssDeductionAmt', er: 'employerSssAmt' },
+                        { label: 'PhilHealth', no: 'philhealthNo', ee: 'philhealthDeductionAmt', er: 'employerPhilhealthAmt' },
+                        { label: 'Pag-IBIG', no: 'pagibigNo', ee: 'pagibigDeductionAmt', er: 'employerPagibigAmt' },
+                      ] as const).map((row) => (
+                        <tr key={row.label} className="border-b border-gray-100 last:border-0">
+                          <td className="px-3 py-2 font-medium text-gray-800">{row.label}</td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="text"
+                              value={String(form[row.no] ?? '')}
+                              onChange={(e) => set(row.no, e.target.value)}
+                              disabled={!editing}
+                              className={inputCls}
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              min={0}
+                              step={0.01}
+                              value={Number(form[row.ee] ?? 0)}
+                              onChange={(e) => set(row.ee, parseFloat(e.target.value) || 0)}
+                              disabled={!editing}
+                              className={inputCls}
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              min={0}
+                              step={0.01}
+                              value={Number(form[row.er] ?? 0)}
+                              onChange={(e) => set(row.er, parseFloat(e.target.value) || 0)}
+                              disabled={!editing}
+                              className={inputCls}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                      <tr className="bg-gray-50 text-gray-700">
+                        <td className="px-3 py-2 font-medium" colSpan={2}>Monthly total</td>
+                        <td className="px-3 py-2 font-medium">
+                          {formatCurrency(
+                            Number(form.sssDeductionAmt ?? 0) + Number(form.philhealthDeductionAmt ?? 0) + Number(form.pagibigDeductionAmt ?? 0),
+                          )}
+                        </td>
+                        <td className="px-3 py-2 font-medium">
+                          {formatCurrency(
+                            Number(form.employerSssAmt ?? 0) + Number(form.employerPhilhealthAmt ?? 0) + Number(form.employerPagibigAmt ?? 0),
+                          )}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
                 <div>
                   <label className={labelCls}>TIN</label>
@@ -671,8 +732,15 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
                 <div className="space-y-4">
                   <p className="text-xs text-gray-500">
                     Allowances are pre-filled from Leave Configuration for the selected store when adding
-                    someone new (you can change them here). Used days are updated from timesheets.
+                    someone new (you can change them here). Used days are counted from Holiday and Sick
+                    timesheets in the current leave year.
                   </p>
+                  {!isNew && employee?.probationEndDate && employee.probationEndDate > new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }) && (
+                    <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      On probation until {employee.probationEndDate}. Leave builds up month by month until then
+                      (see Settings → Leave Configuration); the full allowance applies afterwards.
+                    </p>
+                  )}
 
                   <div className="overflow-hidden rounded-lg border border-gray-200">
                     <table className="w-full text-sm">
@@ -853,22 +921,19 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
                     </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className={labelCls}>Bike Allowance Used</label>
-                    <div className={readOnlyCls}>
-                      {formatCurrency(employee?.bikeAllowanceUsed ?? 0)}
-                    </div>
+                {employee && canViewPayroll && (
+                  <div className="rounded-lg border border-gray-200 p-4">
+                    <h3 className="mb-2 text-sm font-semibold text-gray-800">Vehicle allowance</h3>
+                    <p className="mb-2 text-xs text-gray-500">
+                      Added on each end-of-month payroll and paid out from Payroll → Vehicle allowance.
+                    </p>
+                    <AllowanceLedger employeeId={employee.id} />
                   </div>
-                  <div>
-                    <label className={labelCls}>Bike Allowance Accrued</label>
-                    <div className={readOnlyCls}>
-                      {formatCurrency(employee?.bikeAllowanceAccrued ?? 0)}
-                    </div>
-                  </div>
-                </div>
+                )}
               </div>
             )}
+
+            {tab === 'payslips' && employee && <EmployeePayslips employeeId={employee.id} />}
           </div>
 
           {/* Footer */}

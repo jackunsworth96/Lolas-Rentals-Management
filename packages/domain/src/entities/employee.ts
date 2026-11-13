@@ -37,6 +37,9 @@ export interface EmployeeProps {
   sssDeductionAmt: number;
   philhealthDeductionAmt: number;
   pagibigDeductionAmt: number;
+  employerSssAmt?: number;
+  employerPhilhealthAmt?: number;
+  employerPagibigAmt?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -71,6 +74,9 @@ export class Employee {
   readonly sssDeductionAmt: number;
   readonly philhealthDeductionAmt: number;
   readonly pagibigDeductionAmt: number;
+  readonly employerSssAmt: number;
+  readonly employerPhilhealthAmt: number;
+  readonly employerPagibigAmt: number;
   readonly createdAt: Date;
 
   private _bikeAllowanceUsed: number;
@@ -112,6 +118,9 @@ export class Employee {
     this.sssDeductionAmt = props.sssDeductionAmt;
     this.philhealthDeductionAmt = props.philhealthDeductionAmt;
     this.pagibigDeductionAmt = props.pagibigDeductionAmt;
+    this.employerSssAmt = props.employerSssAmt ?? 0;
+    this.employerPhilhealthAmt = props.employerPhilhealthAmt ?? 0;
+    this.employerPagibigAmt = props.employerPagibigAmt ?? 0;
     this.createdAt = props.createdAt;
 
     this._bikeAllowanceUsed = props.bikeAllowanceUsed;
@@ -135,6 +144,52 @@ export class Employee {
 
   static create(props: EmployeeProps): Employee {
     return new Employee(props);
+  }
+
+  toJSON(): EmployeeProps {
+    return {
+      id: this.id,
+      storeId: this.storeId,
+      storeIds: this.storeIds,
+      fullName: this.fullName,
+      role: this.role,
+      status: this.status,
+      birthday: this.birthday,
+      emergencyContactName: this.emergencyContactName,
+      emergencyContactNumber: this.emergencyContactNumber,
+      startDate: this.startDate,
+      probationEndDate: this.probationEndDate,
+      rateType: this.rateType,
+      telegramUserId: this.telegramUserId,
+      basicRate: this.basicRate,
+      overtimeRate: this.overtimeRate,
+      ninePmBonusRate: this.ninePmBonusRate,
+      commissionRate: this.commissionRate,
+      paidAs: this.paidAs,
+      defaultPaymentMethod: this.defaultPaymentMethod,
+      monthlyBikeAllowance: this.monthlyBikeAllowance,
+      bikeAllowanceUsed: this.bikeAllowanceUsed,
+      bikeAllowanceAccrued: this.bikeAllowanceAccrued,
+      availableBalance: this.availableBalance,
+      thirteenthMonthAccrued: this.thirteenthMonthAccrued,
+      currentCashAdvance: this.currentCashAdvance,
+      holidayAllowance: this.holidayAllowance,
+      holidayUsed: this.holidayUsed,
+      sickAllowance: this.sickAllowance,
+      sickUsed: this.sickUsed,
+      sssNo: this.sssNo,
+      philhealthNo: this.philhealthNo,
+      pagibigNo: this.pagibigNo,
+      tin: this.tin,
+      sssDeductionAmt: this.sssDeductionAmt,
+      philhealthDeductionAmt: this.philhealthDeductionAmt,
+      pagibigDeductionAmt: this.pagibigDeductionAmt,
+      employerSssAmt: this.employerSssAmt,
+      employerPhilhealthAmt: this.employerPhilhealthAmt,
+      employerPagibigAmt: this.employerPagibigAmt,
+      createdAt: this.createdAt,
+      updatedAt: this.updatedAt,
+    };
   }
 
   canTakeLeave(type: 'holiday' | 'sick'): boolean {

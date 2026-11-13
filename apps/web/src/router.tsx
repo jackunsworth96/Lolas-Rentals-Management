@@ -26,6 +26,7 @@ const CashupPage = lazy(() => import('./pages/cashup/CashupPage.js'));
 const EmployeesPage = lazy(() => import('./pages/hr/EmployeesPage.js'));
 const TimesheetsPage = lazy(() => import('./pages/hr/TimesheetsPage.js'));
 const PayrollPage = lazy(() => import('./pages/hr/PayrollPage.js'));
+const MyPortalPage = lazy(() => import('./pages/me/MyPortalPage.js'));
 const ExpensesPage = lazy(() => import('./pages/expenses/ExpensesPage.js'));
 const TodoPage = lazy(() => import('./pages/todo/TodoPage.js'));
 const MiscSalesPage = lazy(() => import('./pages/misc-sales/MiscSalesPage.js'));
@@ -208,6 +209,7 @@ export function AppRouter() {
             <Route path="hr/employees" element={<EmployeesPage />} />
             <Route path="hr/timesheets" element={<TimesheetsPage />} />
             <Route path="hr/payroll" element={<PayrollPage />} />
+            <Route path="me" element={<MyPortalPage />} />
             <Route path="expenses" element={<ExpensesPage />} />
             <Route path="todo" element={<TodoPage />} />
             <Route path="misc-sales" element={<MiscSalesPage />} />

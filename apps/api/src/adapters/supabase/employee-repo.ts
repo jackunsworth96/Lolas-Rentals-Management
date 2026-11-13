@@ -40,6 +40,9 @@ interface EmployeeRow {
   sss_deduction_amt: number;
   philhealth_deduction_amt: number;
   pagibig_deduction_amt: number;
+  employer_sss_amt: number | null;
+  employer_philhealth_amt: number | null;
+  employer_pagibig_amt: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -83,6 +86,9 @@ function rowToEmployee(row: EmployeeRow): Employee {
     sssDeductionAmt: row.sss_deduction_amt ?? 0,
     philhealthDeductionAmt: row.philhealth_deduction_amt ?? 0,
     pagibigDeductionAmt: row.pagibig_deduction_amt ?? 0,
+    employerSssAmt: Number(row.employer_sss_amt ?? 0),
+    employerPhilhealthAmt: Number(row.employer_philhealth_amt ?? 0),
+    employerPagibigAmt: Number(row.employer_pagibig_amt ?? 0),
     createdAt: parseDate(row.created_at),
     updatedAt: parseDate(row.updated_at),
   });
@@ -125,6 +131,9 @@ function employeeToRow(employee: Employee): Record<string, unknown> {
     sss_deduction_amt: employee.sssDeductionAmt,
     philhealth_deduction_amt: employee.philhealthDeductionAmt,
     pagibig_deduction_amt: employee.pagibigDeductionAmt,
+    employer_sss_amt: employee.employerSssAmt,
+    employer_philhealth_amt: employee.employerPhilhealthAmt,
+    employer_pagibig_amt: employee.employerPagibigAmt,
     updated_at: employee.updatedAt.toISOString(),
   };
 }

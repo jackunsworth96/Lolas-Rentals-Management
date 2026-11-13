@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { useUIStore } from '../../stores/ui-store.js';
 import {
   useExpenses,
@@ -23,6 +24,21 @@ import { usePaymentRouting } from '../../hooks/use-payment-routing.js';
 function todayStr(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Categories now posted by payroll; entering them here as well would double-count. */
+function payrollManagedCategory(name: string): string | null {
+  const n = name.toLowerCase();
+  if (n.includes('vehicle allowance') || n.includes('maintenance allowance')) {
+    return 'Vehicle allowance is paid out from Payroll → Vehicle allowance, which reduces the employee\'s balance and shows on their payslip.';
+  }
+  if (n.includes('9 pm') || n.includes('9pm')) {
+    return '9pm returns are paid from the till automatically when the timesheet is submitted, and shown on the payslip.';
+  }
+  if (/\b(sss|philhealth|pag-?ibig)\b/.test(n)) {
+    return 'SSS, PhilHealth and Pag-IBIG payments are recorded from Payroll → Remittances so they clear what payroll withheld.';
+  }
+  return null;
 }
 
 function shiftDate(dateStr: string, days: number): string {
@@ -217,9 +233,11 @@ export default function ExpensesPage() {
 
   const isCashAdvance =
     form.category.toLowerCase() === 'cash advance';
+  const payrollManaged = editingId ? null : payrollManagedCategory(form.category);
 
   function handleSave() {
     const amount = parseFloat(form.amount);
+    if (payrollManaged) return;
     if (
       !form.category ||
       !form.description ||
@@ -613,6 +631,12 @@ export default function ExpensesPage() {
                     </option>
                   ))}
                 </select>
+                {payrollManaged && (
+                  <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    {payrollManaged}{' '}
+                    <Link to="/hr/payroll" className="font-medium underline">Open Payroll</Link>
+                  </div>
+                )}
               </div>
 
               {/* Amount */}
@@ -796,6 +820,7 @@ export default function ExpensesPage() {
                 onClick={handleSave}
                 loading={createMut.isPending || updateMut.isPending}
                 disabled={
+                  !!payrollManaged ||
                   !form.category ||
                   !form.description ||
                   !form.amount ||

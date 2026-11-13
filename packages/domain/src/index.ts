@@ -19,6 +19,8 @@ export * from './value-objects/order-status.js';
 export * from './services/deposit-calculator.js';
 export * from './services/depreciation-service.js';
 export * from './services/payroll-calculator.js';
+export * from './services/payroll-journal.js';
+export * from './services/leave-entitlement.js';
 
 // Errors
 export * from './errors/domain-error.js';
