@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import { formatCurrency } from '../../../utils/currency.js';
 import { inputClass, type PaymentMethodOption } from './types.js';
-import { TipField } from '../TipField.js';
-
 type AccountOption = Record<string, unknown>;
 
 interface PaymentStepProps {
@@ -38,10 +36,6 @@ interface PaymentStepProps {
   needsMeetingPoint: boolean;
   dropoffLocationNote: string;
   onDropoffLocationNoteChange: (value: string) => void;
-  tipAmount: number | '';
-  onTipAmountChange: (value: number | '') => void;
-  tipAccountId: string;
-  onTipAccountChange: (value: string) => void;
   missingChartOfAccounts: boolean;
   error: string | null;
 }
@@ -65,7 +59,6 @@ export function PaymentStep(props: PaymentStepProps) {
     depositMethodId, onDepositMethodChange, showDepositLiability, depositLiabilityAccountId,
     onDepositLiabilityAccountChange, depositLiabilityAccountOptions, needsMeetingPoint,
     dropoffLocationNote, onDropoffLocationNoteChange, missingChartOfAccounts, error,
-    tipAmount, onTipAmountChange, tipAccountId, onTipAccountChange,
   } = props;
   const [meetingPointOpen, setMeetingPointOpen] = useState(false);
   const collectNow = collectNowAmount === '' ? finalTotal : Number(collectNowAmount);
@@ -257,14 +250,6 @@ export function PaymentStep(props: PaymentStepProps) {
           + Add a dropoff meeting point
         </button>
       )}
-
-      <TipField
-        amount={tipAmount}
-        onAmountChange={onTipAmountChange}
-        accountId={tipAccountId}
-        onAccountChange={onTipAccountChange}
-        accountOptions={paymentAccountOptions.map((a) => ({ id: String(a.id), name: String(a.name ?? '') }))}
-      />
 
       {missingChartOfAccounts && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">

@@ -215,9 +215,6 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   const [preActivationAmount, setPreActivationAmount] = useState<number | ''>('');
   const [collectNowAmount, setCollectNowAmount] = useState<number | ''>('');
   const [dropoffLocationNote, setDropoffLocationNote] = useState('');
-  const [tipAmount, setTipAmount] = useState<number | ''>('');
-  const [tipAccountId, setTipAccountId] = useState('');
-
   const { data: vehicleModels } = useVehicleModels() as { data: Array<{ id: string; name: string }> | undefined };
   const { data: fleet } = useFleet(storeId) as { data: Array<Record<string, unknown>> | undefined };
   const { data: storeAddons } = useAddons(storeId) as { data: Array<Record<string, unknown>> | undefined };
@@ -796,8 +793,6 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
       transferAccommodation: transferAccommodation.trim() || null,
       dropoffLocationNote: dropoffLocationNote.trim() || null,
       partialPaymentAmount: (paymentMethodId && effectiveCollectNow < finalTotal) ? effectiveCollectNow : undefined,
-      tipAmount: Number(tipAmount) > 0 ? Number(tipAmount) : undefined,
-      tipAccountId: Number(tipAmount) > 0 && tipAccountId ? tipAccountId : null,
     };
   }
 
@@ -1086,10 +1081,6 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
               needsMeetingPoint={needsMeetingPoint}
               dropoffLocationNote={dropoffLocationNote}
               onDropoffLocationNoteChange={setDropoffLocationNote}
-              tipAmount={tipAmount}
-              onTipAmountChange={setTipAmount}
-              tipAccountId={tipAccountId}
-              onTipAccountChange={setTipAccountId}
               missingChartOfAccounts={!receivableAccount && !incomeAccount}
               error={(processMutation.error ?? collectMutation.error) ? ((processMutation.error ?? collectMutation.error) as Error).message : null}
             />
