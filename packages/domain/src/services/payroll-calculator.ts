@@ -44,6 +44,11 @@ export interface PayrollInput {
   employerContributions: StatutoryAmounts;
   /** Monthly vehicle allowance added to the employee's balance on the end-of-month run. */
   monthlyVehicleAllowance: number;
+  /**
+   * Fixed-salary staff: the salary for this payday, already pro-rated and net of
+   * unpaid leave. Added to basic pay; their days should arrive with a zero rate.
+   */
+  fixedBasicPay?: number;
 }
 
 export interface PayrollResult {
@@ -118,6 +123,9 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
     }
   }
 
+  const isFixed = input.fixedBasicPay !== undefined;
+  if (isFixed) basicPay += Math.max(0, input.fixedBasicPay ?? 0);
+
   const commission = input.isEndOfMonth ? input.pomRevenue * (input.commissionRate / 100) : 0;
   const tips = Math.max(0, input.tipsShare);
   const bonuses = Math.max(0, input.bonuses);
@@ -147,7 +155,7 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
   if (netPay < 0) {
     warnings.push('Deductions exceed gross pay. Check the contributions and 9pm cash already paid before running payroll.');
   }
-  if (input.days.length === 0 && grossPay > 0) {
+  if (!isFixed && input.days.length === 0 && grossPay > 0) {
     warnings.push('No approved timesheets this period; pay comes from tips, commission or bonuses only.');
   }
   if (ninePmPrepaid > round2(ninePmEarnings) + 0.005) {
@@ -180,6 +188,65 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
     vehicleAllowanceAccrual: input.isEndOfMonth ? round2(Math.max(0, input.monthlyVehicleAllowance)) : 0,
     warnings,
   };
+}
+
+export interface FixedSalaryInput {
+  periodStart: string;
+  periodEnd: string;
+  /** Monthly salary in force on a date. */
+  monthlyOn: (date: string) => number;
+  /** First day employed; days before it in the period aren't paid. */
+  employedFrom: string | null;
+  /** Approved unpaid leave days in the period. */
+  unpaidDates: string[];
+  /** Divisor for one unpaid day (monthly ÷ this). */
+  workingDaysInMonth: number;
+}
+
+export interface FixedSalaryResult {
+  periodDays: number;
+  daysEmployed: number;
+  salary: number;
+  unpaidDays: number;
+  unpaidDeduction: number;
+  basicPay: number;
+}
+
+/**
+ * Half the monthly salary per payday, pro-rated by calendar days employed in
+ * the period, less monthly ÷ working days for each approved unpaid day.
+ */
+export function fixedSalaryForPeriod(input: FixedSalaryInput): FixedSalaryResult {
+  const dates: string[] = [];
+  for (let d = input.periodStart; d <= input.periodEnd; d = nextDay(d)) dates.push(d);
+  const periodDays = dates.length;
+  const employed = (d: string) => !input.employedFrom || d >= input.employedFrom;
+
+  let salary = 0;
+  let daysEmployed = 0;
+  for (const d of dates) {
+    if (!employed(d)) continue;
+    daysEmployed += 1;
+    salary += input.monthlyOn(d) / 2 / periodDays;
+  }
+
+  const unpaid = [...new Set(input.unpaidDates)].filter((d) => d >= input.periodStart && d <= input.periodEnd && employed(d));
+  const divisor = input.workingDaysInMonth > 0 ? input.workingDaysInMonth : 26;
+  const unpaidDeduction = unpaid.reduce((s, d) => s + input.monthlyOn(d) / divisor, 0);
+
+  return {
+    periodDays,
+    daysEmployed,
+    salary: round2(salary),
+    unpaidDays: unpaid.length,
+    unpaidDeduction: round2(unpaidDeduction),
+    basicPay: round2(Math.max(0, salary - unpaidDeduction)),
+  };
+}
+
+function nextDay(d: string): string {
+  const [y, m, dd] = d.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, dd + 1)).toISOString().slice(0, 10);
 }
 
 /**

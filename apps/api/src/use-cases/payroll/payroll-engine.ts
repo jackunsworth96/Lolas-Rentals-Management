@@ -4,6 +4,7 @@ import {
   buildPayslipJournal,
   splitTipsPool,
   allocateAdvanceDeduction,
+  fixedSalaryForPeriod,
   leaveEntitlement,
   round2,
   DomainError,
@@ -12,10 +13,12 @@ import {
   type PayrollDay,
   type PayrollResult,
   type PayoutLine,
+  type FixedSalaryResult,
 } from '@lolas/domain';
 import type { RunPayrollRequest, PayrollPaymentLine, PayrollPaymentMethod } from '@lolas/shared';
 import { getSupabaseClient } from '../../adapters/supabase/client.js';
 import { resolvePayrollLedger, type PayrollLedger } from '../../adapters/supabase/config-repo.js';
+import { probationRule } from '../hr/leave-usage.js';
 
 const LEAVE_DAY_TYPES = new Set(['Holiday', 'Sick']);
 export const UNPAID_LEAVE_DAY_TYPE = 'Unpaid Leave';
@@ -43,9 +46,11 @@ export interface DayLine {
   pay: number;
 }
 
+export type RateType = 'daily' | 'monthly' | 'fixed';
+
 export interface RateSnapshot {
   effectiveFrom: string;
-  rateType: 'daily' | 'monthly';
+  rateType: RateType;
   basicRate: number;
   overtimeRate: number;
   ninePmBonusRate: number;
@@ -55,10 +60,12 @@ export interface RateSnapshot {
 export interface PayslipDraft {
   employeeId: string;
   employeeName: string;
-  rateType: 'daily' | 'monthly';
+  rateType: RateType;
   paidAs: string | null;
   defaultPaymentMethod: string;
   result: PayrollResult;
+  /** Set for fixed-salary staff: how this payday's salary was worked out. */
+  fixedSalary: FixedSalaryResult | null;
   dayLines: DayLine[];
   rates: RateSnapshot[];
   timesheetIds: string[];
@@ -106,8 +113,9 @@ function addDays(d: string, n: number): string {
   return new Date(Date.UTC(y, m - 1, dd + n)).toISOString().slice(0, 10);
 }
 
-function normaliseRateType(v: string | null | undefined, paidAs: string | null): 'daily' | 'monthly' {
+function normaliseRateType(v: string | null | undefined, paidAs: string | null): RateType {
   const t = (v ?? '').toLowerCase();
+  if (t === 'fixed') return 'fixed';
   if (t === 'monthly') return 'monthly';
   if (t === 'daily') return 'daily';
   return (paidAs ?? '').toLowerCase() === 'monthly' ? 'monthly' : 'daily';
@@ -186,7 +194,7 @@ export async function buildPayrollPreview(
       .gte('holiday_date', periodStart)
       .lte('holiday_date', periodEnd),
     sb.from('leave_config')
-      .select('probation_accrual_holiday, probation_accrual_sick')
+      .select('probation_accrual_holiday, probation_accrual_sick, probation_rule_holiday, probation_rule_sick')
       .eq('store_id', storeId)
       .maybeSingle(),
   ]);
@@ -211,7 +219,12 @@ export async function buildPayrollPreview(
     if (!prev || h.store_id) holidayByDate.set(h.holiday_date, { name: h.name, pct: Number(h.premium_pct) });
   }
 
-  const leaveCfg = (leaveCfgRes.data ?? null) as { probation_accrual_holiday: number | null; probation_accrual_sick: number | null } | null;
+  const leaveCfg = (leaveCfgRes.data ?? null) as {
+    probation_accrual_holiday: number | null;
+    probation_accrual_sick: number | null;
+    probation_rule_holiday: string | null;
+    probation_rule_sick: string | null;
+  } | null;
 
   // Active staff plus anyone (e.g. since deactivated) with approved days still to be paid.
   const active = await deps.employees.findActive(storeId);
@@ -316,7 +329,10 @@ export async function buildPayrollPreview(
       .filter((t) => !LEAVE_DAY_TYPES.has(t.day_type) && t.day_type !== UNPAID_LEAVE_DAY_TYPE)
       .map((t) => t.employee_id),
   );
-  const tipRecipients = employees.filter((e) => workedThisMonth.has(e.id)).map((e) => e.id);
+  // Fixed-salary staff don't work shop shifts, so they're outside the tips pool.
+  const tipRecipients = employees
+    .filter((e) => workedThisMonth.has(e.id) && normaliseRateType(e.rateType, e.paidAs) !== 'fixed')
+    .map((e) => e.id);
   const tipSplit = isEndOfMonth ? splitTipsPool(Math.max(0, tipsPool), tipRecipients.length) : { share: 0, remainder: 0 };
   const tipRecipientSet = new Set(tipRecipients);
 
@@ -352,21 +368,23 @@ export async function buildPayrollPreview(
       const rate = rateOn(t.date);
       usedRates.set(rate.effective_from, rate);
       const rateType = normaliseRateType(rate.rate_type, emp.paidAs);
+      // Fixed salary covers every day; the days are kept only as a record.
+      const isFixedDay = rateType === 'fixed';
       const fullDayRate = rateType === 'monthly'
         ? Number(rate.basic_rate) / workingDaysInMonth
         : Number(rate.basic_rate);
       const isUnpaid = t.day_type === UNPAID_LEAVE_DAY_TYPE;
       const isLeave = isUnpaid || LEAVE_DAY_TYPES.has(t.day_type);
-      const dailyRate = isLeave ? fullDayRate : fullDayRate * Number(t.day_fraction ?? 1);
+      const dailyRate = isFixedDay ? 0 : isLeave ? fullDayRate : fullDayRate * Number(t.day_fraction ?? 1);
       const holiday = holidayByDate.get(t.date);
-      const premiumPct = isLeave ? 0 : Math.max(DAY_TYPE_PREMIUM[t.day_type] ?? 0, holiday?.pct ?? 0);
+      const premiumPct = isLeave || isFixedDay ? 0 : Math.max(DAY_TYPE_PREMIUM[t.day_type] ?? 0, holiday?.pct ?? 0);
       const day: PayrollDay = {
         date: t.date,
         dayType: t.day_type,
         isLeave,
         isUnpaid,
         dailyRate: isUnpaid ? 0 : dailyRate,
-        overtimeHours: isLeave ? 0 : Number(t.overtime_hours ?? 0),
+        overtimeHours: isLeave || isFixedDay ? 0 : Number(t.overtime_hours ?? 0),
         overtimeHourlyRate: Number(rate.overtime_rate ?? 0),
         ninePmCount: isLeave ? 0 : Number(t.nine_pm_returns_count ?? 0),
         ninePmRate: Number(rate.nine_pm_bonus_rate ?? 0),
@@ -395,6 +413,22 @@ export async function buildPayrollPreview(
     const rateType = normaliseRateType(currentRate.rate_type, emp.paidAs);
     const commissionRate = Number(currentRate.commission_rate ?? 0);
 
+    const fixedSalary = rateType === 'fixed'
+      ? fixedSalaryForPeriod({
+          periodStart,
+          periodEnd,
+          monthlyOn: (d) => {
+            const r = rateOn(d);
+            if (normaliseRateType(r.rate_type, emp.paidAs) !== 'fixed') return 0;
+            usedRates.set(r.effective_from, r);
+            return Number(r.basic_rate);
+          },
+          employedFrom: emp.startDate,
+          unpaidDates: rows.filter((t) => t.day_type === UNPAID_LEAVE_DAY_TYPE).map((t) => t.date),
+          workingDaysInMonth,
+        })
+      : null;
+
     const schedules = advancesByEmployee.get(emp.id) ?? [];
     const scheduleDue = schedules.map((s) => ({
       id: s.id,
@@ -418,10 +452,15 @@ export async function buildPayrollPreview(
       employeeContributions: { sss: emp.sssDeductionAmt, philhealth: emp.philhealthDeductionAmt, pagibig: emp.pagibigDeductionAmt },
       employerContributions: { sss: emp.employerSssAmt, philhealth: emp.employerPhilhealthAmt, pagibig: emp.employerPagibigAmt },
       monthlyVehicleAllowance: emp.monthlyBikeAllowance,
+      ...(fixedSalary ? { fixedBasicPay: fixedSalary.basicPay } : {}),
     });
 
     if (rows.length === 0 && result.grossPay <= 0) {
-      skipped.push({ employeeId: emp.id, employeeName: emp.fullName, reason: 'No approved timesheets in this period' });
+      skipped.push({
+        employeeId: emp.id,
+        employeeName: emp.fullName,
+        reason: fixedSalary ? 'Not employed during this period' : 'No approved timesheets in this period',
+      });
       continue;
     }
 
@@ -445,6 +484,7 @@ export async function buildPayrollPreview(
       probationEndDate: emp.probationEndDate,
       asOf: periodEnd,
       probationAccrualPerMonth: Number(leaveCfg?.probation_accrual_holiday ?? 0),
+      probationRule: probationRule(leaveCfg?.probation_rule_holiday),
     });
     const sick = leaveEntitlement({
       allowance: emp.sickAllowance,
@@ -452,6 +492,7 @@ export async function buildPayrollPreview(
       probationEndDate: emp.probationEndDate,
       asOf: periodEnd,
       probationAccrualPerMonth: Number(leaveCfg?.probation_accrual_sick ?? 0),
+      probationRule: probationRule(leaveCfg?.probation_rule_sick),
     });
 
     const payments = resolvePayments(emp, result.netPay, empInput?.payments, ledger, paymentAccounts);
@@ -469,6 +510,7 @@ export async function buildPayrollPreview(
       paidAs: emp.paidAs,
       defaultPaymentMethod: emp.defaultPaymentMethod,
       result,
+      fixedSalary,
       dayLines,
       rates: [...usedRates.values()].map((r) => ({
         effectiveFrom: r.effective_from,

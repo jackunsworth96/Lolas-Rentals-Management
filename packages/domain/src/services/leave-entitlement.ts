@@ -7,7 +7,14 @@ export interface LeaveEntitlementInput {
   asOf: string;
   /** Days earned per completed month on probation. 0 = pro rata over the probation length. */
   probationAccrualPerMonth: number;
+  /**
+   * What is available during probation: 'accrue' builds up monthly (default),
+   * 'none' is nothing until probation ends, 'full' is the whole allowance from day one.
+   */
+  probationRule?: ProbationLeaveRule;
 }
+
+export type ProbationLeaveRule = 'accrue' | 'none' | 'full';
 
 export interface LeaveEntitlement {
   entitlement: number;
@@ -24,6 +31,8 @@ export function leaveEntitlement(input: LeaveEntitlementInput): LeaveEntitlement
   if (!probationEndDate || asOf >= probationEndDate) {
     return { entitlement: allowance, onProbation: false };
   }
+  if (input.probationRule === 'none') return { entitlement: 0, onProbation: true };
+  if (input.probationRule === 'full') return { entitlement: allowance, onProbation: true };
   const start = startDate ?? asOf;
   const probationMonths = Math.max(1, monthsBetween(start, probationEndDate));
   const perMonth = input.probationAccrualPerMonth > 0

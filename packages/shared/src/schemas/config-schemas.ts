@@ -70,7 +70,7 @@ export const CreateEmployeeRequestSchema = z.object({
   emergencyContactNumber: z.string().nullable().optional(),
   startDate: z.string().nullable().optional(),
   probationEndDate: z.string().nullable().optional(),
-  rateType: z.enum(['daily', 'monthly']).nullable().optional(),
+  rateType: z.enum(['daily', 'monthly', 'fixed']).nullable().optional(),
   basicRate: z.number().nonnegative().default(0),
   overtimeRate: z.number().nonnegative().default(0),
   ninePmBonusRate: z.number().nonnegative().default(0),

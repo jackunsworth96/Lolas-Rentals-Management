@@ -370,7 +370,14 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun
                         </td>
                         <td className="px-3 py-2 align-top">
                           <div className="font-medium text-gray-900">{p.employeeName}</div>
-                          <div className="text-xs text-gray-500">{p.rateType === 'monthly' ? 'Monthly rate' : 'Daily rate'}</div>
+                          <div className="text-xs text-gray-500">{p.rateType === 'fixed' ? 'Fixed salary' : p.rateType === 'monthly' ? 'Monthly rate' : 'Daily rate'}</div>
+                          {p.fixedSalary && (
+                            <div className="text-xs text-gray-500">
+                              {formatCurrency(p.fixedSalary.salary)}
+                              {p.fixedSalary.daysEmployed < p.fixedSalary.periodDays && ` (${p.fixedSalary.daysEmployed} of ${p.fixedSalary.periodDays} days employed)`}
+                              {p.fixedSalary.unpaidDays > 0 && ` less ${p.fixedSalary.unpaidDays} unpaid day${p.fixedSalary.unpaidDays === 1 ? '' : 's'} (${formatCurrency(p.fixedSalary.unpaidDeduction)})`}
+                            </div>
+                          )}
                           {r.warnings.map((w) => <div key={w} className="mt-0.5 text-xs text-amber-700">⚠ {w}</div>)}
                           <button type="button" onClick={() => toggleExclude(p.employeeId)} className="mt-1 text-xs text-gray-500 hover:text-red-600 hover:underline">
                             Leave out of this run

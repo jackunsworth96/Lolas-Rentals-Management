@@ -5,6 +5,7 @@ import {
   CreateLeaveRequestSchema,
   CreateAdvanceRequestSchema,
   AcknowledgePayslipSchema,
+  SaveWorkUpdateSchema,
 } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { formatManilaDate } from '../utils/manila-date.js';
@@ -139,6 +140,22 @@ router.post('/advance-requests/:id/cancel', async (req, res, next) => {
     const { cancelOwnRequest } = await import('../use-cases/hr/staff-requests.js');
     await cancelOwnRequest('advance_requests', String(req.params.id), me(req));
     res.json({ success: true, data: { id: req.params.id } });
+  } catch (err) { next(err); }
+});
+
+// ── Weekly work updates ─────────────────────────────────────────────────────
+
+router.get('/work-updates', async (req, res, next) => {
+  try {
+    const { listWorkUpdates } = await import('../use-cases/hr/work-updates.js');
+    res.json({ success: true, data: await listWorkUpdates({ employeeId: me(req), limit: 60 }) });
+  } catch (err) { next(err); }
+});
+
+router.put('/work-updates', validateBody(SaveWorkUpdateSchema), async (req, res, next) => {
+  try {
+    const { saveMyWorkUpdate } = await import('../use-cases/hr/work-updates.js');
+    res.json({ success: true, data: await saveMyWorkUpdate(me(req), req.body) });
   } catch (err) { next(err); }
 });
 

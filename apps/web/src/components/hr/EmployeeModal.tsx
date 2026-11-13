@@ -488,7 +488,8 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
                     >
                       <option value="">Not set</option>
                       <option value="daily">Daily</option>
-                      <option value="monthly">Monthly</option>
+                      <option value="monthly">Monthly (per day worked)</option>
+                      <option value="fixed">Fixed salary (not tied to timesheets)</option>
                     </select>
                   </div>
                   <div>

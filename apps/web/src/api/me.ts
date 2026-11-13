@@ -26,7 +26,8 @@ export interface LeaveBalance {
 }
 
 export interface PortalSummary {
-  employee: { id: string; fullName: string; role: string | null; startDate: string | null; probationEndDate: string | null };
+  employee: { id: string; fullName: string; role: string | null; startDate: string | null; probationEndDate: string | null; rateType: string | null };
+  workUpdates: { expected: boolean; thisWeekStart: string; thisWeekSent: boolean };
   leave: { onProbation: boolean; holiday: LeaveBalance; sick: LeaveBalance; unpaidTakenThisYear: number };
   advances: {
     outstanding: number;
@@ -102,6 +103,31 @@ export interface MyTimesheet {
   ninePmReturnsCount: number;
   notes: string | null;
   payrollStatus: string;
+}
+
+export interface WorkUpdate {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  storeId: string;
+  weekStart: string;
+  workedOn: string;
+  results: string | null;
+  nextWeek: string | null;
+  blockers: string | null;
+  submittedAt: string;
+  updatedAt: string;
+  managerComment: string | null;
+  reviewedByName: string | null;
+  reviewedAt: string | null;
+}
+
+export interface SaveWorkUpdate {
+  weekStart: string;
+  workedOn: string;
+  results?: string;
+  nextWeek?: string;
+  blockers?: string;
 }
 
 export interface StaffRequests {
@@ -244,6 +270,40 @@ export function useResolveDispute() {
   return useMutation({
     mutationFn: ({ id, note }: { id: string; note: string }) => api.post(`/hr/payslip-acknowledgements/${id}/resolve`, { note }),
     onSuccess: invalidate,
+  });
+}
+
+export function useMyWorkUpdates(enabled = true) {
+  return useQuery({ queryKey: ['me', 'work-updates'], queryFn: () => api.get<WorkUpdate[]>('/me/work-updates'), enabled });
+}
+
+export function useSaveWorkUpdate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SaveWorkUpdate) => api.put<WorkUpdate>('/me/work-updates', body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['me'] });
+      qc.invalidateQueries({ queryKey: ['work-updates'] });
+    },
+  });
+}
+
+export function useWorkUpdates(storeId: string, employeeId?: string, enabled = true) {
+  return useQuery({
+    queryKey: ['work-updates', storeId, employeeId ?? ''],
+    queryFn: () => api.get<WorkUpdate[]>(`/hr/work-updates?storeId=${encodeURIComponent(storeId || 'all')}${employeeId ? `&employeeId=${encodeURIComponent(employeeId)}` : ''}`),
+    enabled,
+  });
+}
+
+export function useCommentWorkUpdate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, comment }: { id: string; comment: string }) => api.post(`/hr/work-updates/${id}/comment`, { comment }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['work-updates'] });
+      qc.invalidateQueries({ queryKey: ['me'] });
+    },
   });
 }
 

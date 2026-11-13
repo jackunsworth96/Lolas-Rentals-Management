@@ -71,7 +71,7 @@ export async function grantCashAdvance(
   };
 
   const money = Money.php(input.amount);
-  const txDate = formatManilaDate();
+  const txDate = input.date || formatManilaDate();
   const period = txDate.slice(0, 7);
 
   const legs: JournalLeg[] = [

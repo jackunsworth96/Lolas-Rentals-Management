@@ -16,6 +16,7 @@ import {
   ReviewRequestSchema,
   ApproveAdvanceRequestSchema,
   ResolvePayslipDisputeSchema,
+  CommentWorkUpdateSchema,
 } from '@lolas/shared';
 import { Employee as EmployeeEntity } from '@lolas/domain';
 import { supabase } from '../adapters/supabase/client.js';
@@ -524,6 +525,25 @@ router.post('/payslip-acknowledgements/:id/resolve', requirePermission(Permissio
   try {
     const { resolveDispute } = await import('../use-cases/hr/staff-requests.js');
     await resolveDispute(String(req.params.id), req.user!.employeeId, req.body.note);
+    res.json({ success: true, data: { id: req.params.id } });
+  } catch (err) { next(err); }
+});
+
+// ── Weekly work updates (fixed-salary staff) ──
+
+router.get('/work-updates', requirePermission(Permission.ApproveStaffRequests), async (req, res, next) => {
+  try {
+    const { listWorkUpdates } = await import('../use-cases/hr/work-updates.js');
+    const storeId = typeof req.query.storeId === 'string' && req.query.storeId !== 'all' ? req.query.storeId : undefined;
+    const employeeId = typeof req.query.employeeId === 'string' && req.query.employeeId ? req.query.employeeId : undefined;
+    res.json({ success: true, data: await listWorkUpdates({ storeId, employeeId }) });
+  } catch (err) { next(err); }
+});
+
+router.post('/work-updates/:id/comment', requirePermission(Permission.ApproveStaffRequests), validateBody(CommentWorkUpdateSchema), async (req, res, next) => {
+  try {
+    const { commentOnWorkUpdate } = await import('../use-cases/hr/work-updates.js');
+    await commentOnWorkUpdate(String(req.params.id), req.user!.employeeId, req.body.comment);
     res.json({ success: true, data: { id: req.params.id } });
   } catch (err) { next(err); }
 });

@@ -134,6 +134,9 @@ export interface LeaveConfig {
   /** Days earned per month while on probation; 0 = the allowance pro rata over the probation period. */
   probationAccrualHoliday?: number;
   probationAccrualSick?: number;
+  /** 'accrue' | 'none' | 'full' — what can be taken during probation. */
+  probationRuleHoliday?: string;
+  probationRuleSick?: string;
 }
 
 export interface Role {

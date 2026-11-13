@@ -6,6 +6,18 @@ const DEFAULT_RESET_DAY = 1;
 const DEFAULT_HOLIDAY = 5;
 const DEFAULT_SICK = 5;
 
+type ProbationRule = 'accrue' | 'none' | 'full';
+
+const RULE_LABEL: Record<ProbationRule, string> = {
+  accrue: 'Builds up monthly',
+  none: 'None until probation ends',
+  full: 'Full allowance from day one',
+};
+
+function toRule(v: unknown): ProbationRule {
+  return v === 'none' || v === 'full' ? v : 'accrue';
+}
+
 export function LeaveConfigTab() {
   const { data: stores } = useStores();
   const [storeId, setStoreId] = useState('');
@@ -18,6 +30,8 @@ export function LeaveConfigTab() {
   const [sickAllowance, setSickAllowance] = useState(DEFAULT_SICK);
   const [accrualHoliday, setAccrualHoliday] = useState(0);
   const [accrualSick, setAccrualSick] = useState(0);
+  const [ruleHoliday, setRuleHoliday] = useState<ProbationRule>('accrue');
+  const [ruleSick, setRuleSick] = useState<ProbationRule>('accrue');
 
   useEffect(() => {
     if (!storeId || !isFetched) return;
@@ -28,6 +42,8 @@ export function LeaveConfigTab() {
       setSickAllowance(DEFAULT_SICK);
       setAccrualHoliday(0);
       setAccrualSick(0);
+      setRuleHoliday('accrue');
+      setRuleSick('accrue');
       return;
     }
     const c = config as Record<string, unknown>;
@@ -37,6 +53,8 @@ export function LeaveConfigTab() {
     setSickAllowance(Number(c.defaultSickAllowance ?? DEFAULT_SICK));
     setAccrualHoliday(Number(c.probationAccrualHoliday ?? 0));
     setAccrualSick(Number(c.probationAccrualSick ?? 0));
+    setRuleHoliday(toRule(c.probationRuleHoliday));
+    setRuleSick(toRule(c.probationRuleSick));
   }, [storeId, config, isFetched]);
 
   const storeOpts = ((stores ?? []) as Array<{ id: string; name: string }>);
@@ -52,6 +70,8 @@ export function LeaveConfigTab() {
       defaultSickAllowance: sickAllowance,
       probationAccrualHoliday: accrualHoliday,
       probationAccrualSick: accrualSick,
+      probationRuleHoliday: ruleHoliday,
+      probationRuleSick: ruleSick,
     });
   }
 
@@ -142,10 +162,27 @@ export function LeaveConfigTab() {
               </label>
             </div>
             <div>
+              <p className="text-sm font-medium text-gray-700">Leave during probation</p>
+              <p className="mb-2 text-xs text-gray-500">Everyone gets the full allowance once probation ends.</p>
+              <div className="grid grid-cols-2 gap-4">
+                <label className="block">
+                  <span className="text-sm text-gray-600">Holiday leave</span>
+                  <select value={ruleHoliday} onChange={(e) => setRuleHoliday(e.target.value as ProbationRule)} className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    {(Object.keys(RULE_LABEL) as ProbationRule[]).map((r) => <option key={r} value={r}>{RULE_LABEL[r]}</option>)}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-sm text-gray-600">Sick leave</span>
+                  <select value={ruleSick} onChange={(e) => setRuleSick(e.target.value as ProbationRule)} className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    {(Object.keys(RULE_LABEL) as ProbationRule[]).map((r) => <option key={r} value={r}>{RULE_LABEL[r]}</option>)}
+                  </select>
+                </label>
+              </div>
+            </div>
+            <div>
               <p className="text-sm font-medium text-gray-700">Leave earned per month on probation</p>
               <p className="mb-2 text-xs text-gray-500">
-                Staff build up leave during their 6-month probation and get the full allowance once it ends.
-                Leave at 0 to spread the allowance evenly over the probation period.
+                Only used where leave builds up monthly. Leave at 0 to spread the allowance evenly over the probation period.
               </p>
               <div className="grid grid-cols-2 gap-4">
                 <label className="block">

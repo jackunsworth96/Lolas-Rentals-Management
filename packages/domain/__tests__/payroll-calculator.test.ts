@@ -3,6 +3,7 @@ import {
   calculatePayroll,
   splitTipsPool,
   allocateAdvanceDeduction,
+  fixedSalaryForPeriod,
   type PayrollDay,
   type PayrollInput,
 } from '../src/services/payroll-calculator.js';
@@ -217,6 +218,42 @@ describe('buildPayslipJournal', () => {
       { ...accounts, advanceAccountId: null },
       'P',
     )).toThrow(/Cash Advance/);
+  });
+});
+
+describe('fixedSalaryForPeriod', () => {
+  const base = {
+    periodStart: '2026-11-01',
+    periodEnd: '2026-11-15',
+    monthlyOn: () => 26000,
+    employedFrom: '2026-10-05',
+    unpaidDates: [] as string[],
+    workingDaysInMonth: 26,
+  };
+
+  it('pays half the monthly salary for a full period', () => {
+    expect(fixedSalaryForPeriod(base).basicPay).toBe(13000);
+  });
+
+  it('pro-rates a first period by calendar days employed', () => {
+    const r = fixedSalaryForPeriod({ ...base, periodStart: '2026-10-01', employedFrom: '2026-10-05', periodEnd: '2026-10-15' });
+    expect(r.daysEmployed).toBe(11);
+    expect(r.basicPay).toBe(9533.33);
+  });
+
+  it('deducts monthly / working days for each unpaid day', () => {
+    const r = fixedSalaryForPeriod({ ...base, unpaidDates: ['2026-11-10', '2026-11-11', '2026-11-20'] });
+    expect(r.unpaidDays).toBe(2);
+    expect(r.unpaidDeduction).toBe(2000);
+    expect(r.basicPay).toBe(11000);
+  });
+
+  it('feeds the 13th month accrual and skips the no-timesheet warning', () => {
+    const r = calculatePayroll(input({ days: [day({ dailyRate: 0 })], fixedBasicPay: 13000, tipsShare: 0, pomRevenue: 0 }));
+    expect(r.basicPay).toBe(13000);
+    expect(r.thirteenthMonthAccrual).toBe(1083.33);
+    const none = calculatePayroll(input({ days: [], fixedBasicPay: 13000 }));
+    expect(none.warnings.some((w) => /No approved timesheets/.test(w))).toBe(false);
   });
 });
 

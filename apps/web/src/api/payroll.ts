@@ -70,9 +70,20 @@ export interface DayLine {
   pay: number;
 }
 
+export type RateType = 'daily' | 'monthly' | 'fixed';
+
+export interface FixedSalaryBreakdown {
+  periodDays: number;
+  daysEmployed: number;
+  salary: number;
+  unpaidDays: number;
+  unpaidDeduction: number;
+  basicPay: number;
+}
+
 export interface RateSnapshot {
   effectiveFrom: string;
-  rateType: 'daily' | 'monthly';
+  rateType: RateType;
   basicRate: number;
   overtimeRate: number;
   ninePmBonusRate: number;
@@ -89,10 +100,11 @@ export interface VehicleAllowanceMovement {
 export interface PayslipDraft {
   employeeId: string;
   employeeName: string;
-  rateType: 'daily' | 'monthly';
+  rateType: RateType;
   paidAs: string | null;
   defaultPaymentMethod: string;
   result: PayrollResult;
+  fixedSalary: FixedSalaryBreakdown | null;
   dayLines: DayLine[];
   rates: RateSnapshot[];
   timesheetIds: string[];

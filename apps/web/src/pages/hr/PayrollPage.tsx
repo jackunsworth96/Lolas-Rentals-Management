@@ -11,13 +11,15 @@ import { HolidaysTab } from '../../components/hr/payroll/HolidaysTab.js';
 import { RemittancesTab } from '../../components/hr/payroll/RemittancesTab.js';
 import { AllowanceTab } from '../../components/hr/payroll/AllowanceTab.js';
 import { RequestsTab } from '../../components/hr/payroll/RequestsTab.js';
+import { WorkUpdatesReviewTab } from '../../components/hr/payroll/WorkUpdatesReviewTab.js';
 import { useStaffRequests } from '../../api/me.js';
 
-type Tab = 'overview' | 'requests' | 'runs' | 'thirteenth' | 'allowance' | 'remittances' | 'holidays';
+type Tab = 'overview' | 'requests' | 'updates' | 'runs' | 'thirteenth' | 'allowance' | 'remittances' | 'holidays';
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'overview', label: 'Overview' },
   { id: 'requests', label: 'Staff requests' },
+  { id: 'updates', label: 'Weekly updates' },
   { id: 'runs', label: 'Runs & payslips' },
   { id: 'thirteenth', label: '13th month' },
   { id: 'allowance', label: 'Vehicle allowance' },
@@ -86,7 +88,7 @@ export default function PayrollPage() {
       </div>
 
       <div className="mb-5 flex gap-1 overflow-x-auto border-b border-gray-200">
-        {TABS.filter((t) => t.id !== 'requests' || canApprove).map((t) => (
+        {TABS.filter((t) => !['requests', 'updates'].includes(t.id) || canApprove).map((t) => (
           <button
             key={t.id}
             type="button"
@@ -154,7 +156,7 @@ export default function PayrollPage() {
                     <tr><td colSpan={9} className="px-3 py-6 text-center text-gray-500">No active employees</td></tr>
                   )}
                   {activeEmployees.map((e) => {
-                    const monthly = (e.rateType ?? '').toLowerCase() === 'monthly';
+                    const monthly = ['monthly', 'fixed'].includes((e.rateType ?? '').toLowerCase());
                     const contrib = e.sssDeductionAmt + e.philhealthDeductionAmt + e.pagibigDeductionAmt;
                     return (
                       <tr key={e.id}>
@@ -182,6 +184,12 @@ export default function PayrollPage() {
       )}
 
       {tab === 'requests' && canApprove && <RequestsTab storeId={storeId} />}
+      {tab === 'updates' && canApprove && (
+        <WorkUpdatesReviewTab
+          storeId={storeId}
+          fixedStaff={activeEmployees.filter((e) => (e.rateType ?? '').toLowerCase() === 'fixed')}
+        />
+      )}
       {tab === 'runs' && <RunsTab storeId={storeId} onOpenRun={setOpenRunId} />}
       {tab === 'thirteenth' && <ThirteenthMonthTab storeId={storeId} canRun={canRun} />}
       {tab === 'allowance' && <AllowanceTab storeId={storeId} canPayOut={canPayAllowance} canAdjust={canRun} />}

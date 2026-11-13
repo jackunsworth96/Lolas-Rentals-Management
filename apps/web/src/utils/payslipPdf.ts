@@ -62,8 +62,14 @@ function drawPayslip(doc: jsPDF, p: PayslipRecord, ack?: PayslipAcknowledgement 
   if (isThirteenth) {
     earnings.push(['13th month pay', fmt(p.grossPay)]);
   } else {
-    const isMonthly = (p.rateType ?? '').toLowerCase() === 'monthly';
-    earnings.push([`Basic pay (${p.daysWorked} day${p.daysWorked === 1 ? '' : 's'}${isMonthly ? ', monthly rate' : ''})`, fmt(p.basicPay)]);
+    const rateType = (p.rateType ?? '').toLowerCase();
+    const isFixed = rateType === 'fixed';
+    const unpaid = unpaidLeaveDays(p);
+    if (isFixed) {
+      earnings.push([`Salary (half of monthly${unpaid > 0 ? `, less ${unpaid} unpaid day${unpaid === 1 ? '' : 's'}` : ''})`, fmt(p.basicPay)]);
+    } else {
+      earnings.push([`Basic pay (${p.daysWorked} day${p.daysWorked === 1 ? '' : 's'}${rateType === 'monthly' ? ', monthly rate' : ''})`, fmt(p.basicPay)]);
+    }
     if (p.leavePay > 0) earnings.push([`Paid leave (${p.leaveDays} day${p.leaveDays === 1 ? '' : 's'})`, fmt(p.leavePay)]);
     if (p.overtimePay > 0) earnings.push([`Overtime (${p.overtimeHours} h)`, fmt(p.overtimePay)]);
     if (p.holidayPremium > 0) earnings.push([`Holiday premium (${p.holidayDays} day${p.holidayDays === 1 ? '' : 's'})`, fmt(p.holidayPremium)]);
@@ -71,8 +77,7 @@ function drawPayslip(doc: jsPDF, p: PayslipRecord, ack?: PayslipAcknowledgement 
     if (p.commission > 0) earnings.push([`Commission (${p.commissionRate}% of ${fmt(p.pomRevenue)} Peace of Mind sales)`, fmt(p.commission)]);
     if (p.tips > 0) earnings.push([`Tips (${fmt(p.tipsPool)} pool shared by ${p.tipsHeadcount})`, fmt(p.tips)]);
     if (p.bonuses > 0) earnings.push(['Bonus', fmt(p.bonuses)]);
-    const unpaid = unpaidLeaveDays(p);
-    if (unpaid > 0) earnings.push([`Unpaid leave (${unpaid} day${unpaid === 1 ? '' : 's'})`, fmt(0)]);
+    if (!isFixed && unpaid > 0) earnings.push([`Unpaid leave (${unpaid} day${unpaid === 1 ? '' : 's'})`, fmt(0)]);
   }
 
   const deductions: Array<[string, string]> = [];

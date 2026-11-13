@@ -690,6 +690,8 @@ router.put('/leave-config', edit, validateBody(z.object({
   defaultHolidayAllowance: z.number().int().nonnegative(), defaultSickAllowance: z.number().int().nonnegative(),
   probationAccrualHoliday: z.number().nonnegative().max(31).optional(),
   probationAccrualSick: z.number().nonnegative().max(31).optional(),
+  probationRuleHoliday: z.enum(['accrue', 'none', 'full']).optional(),
+  probationRuleSick: z.enum(['accrue', 'none', 'full']).optional(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveLeaveConfig(req.body); res.json({ success: true }); } catch (e) { next(e); }
 });

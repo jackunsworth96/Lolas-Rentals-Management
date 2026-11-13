@@ -18,8 +18,9 @@ import {
 } from '../../api/me.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { PayslipSignOffModal } from '../../components/me/PayslipSignOffModal.js';
+import { WorkUpdatesTab } from '../../components/me/WorkUpdatesTab.js';
 
-type Tab = 'overview' | 'leave' | 'payslips' | 'timesheets' | 'advances';
+type Tab = 'overview' | 'updates' | 'leave' | 'payslips' | 'timesheets' | 'advances';
 
 function manilaToday(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
@@ -388,11 +389,15 @@ export default function MyPortalPage() {
     return <div className="py-12 text-center text-gray-500">Your login isn&apos;t linked to an employee profile.</div>;
   }
 
+  const updatesExpected = !!summary?.workUpdates.expected;
+  const updateDue = updatesExpected && !summary?.workUpdates.thisWeekSent;
   const tabs: Array<{ id: Tab; label: string; badge?: number }> = [
     { id: 'overview', label: 'Overview' },
+    ...(updatesExpected ? [{ id: 'updates' as Tab, label: 'Weekly updates', badge: updateDue ? 1 : 0 }] : []),
     { id: 'leave', label: 'Leave' },
     { id: 'payslips', label: 'Payslips', badge: summary?.payslipsToSign },
-    { id: 'timesheets', label: 'Timesheets' },
+    // Fixed-salary staff don't keep shop timesheets.
+    ...(updatesExpected ? [] : [{ id: 'timesheets' as Tab, label: 'Timesheets' }]),
     { id: 'advances', label: 'Cash advances' },
   ];
 
@@ -440,6 +445,16 @@ export default function MyPortalPage() {
                 <span className="text-sm font-semibold text-teal-700">Review and sign</span>
               </button>
             )}
+            {updateDue && (
+              <button
+                type="button"
+                onClick={() => setTab('updates')}
+                className="flex w-full items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left"
+              >
+                <span className="text-sm font-medium text-amber-900">This week&apos;s update hasn&apos;t been sent yet</span>
+                <span className="text-sm font-semibold text-amber-700">Write update</span>
+              </button>
+            )}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Card
                 label="Holiday leave left"
@@ -477,6 +492,7 @@ export default function MyPortalPage() {
           </div>
         )
       )}
+      {tab === 'updates' && summary && <WorkUpdatesTab thisWeekStart={summary.workUpdates.thisWeekStart} />}
       {tab === 'leave' && <LeaveTab />}
       {tab === 'payslips' && <PayslipsTab fullName={fullName} />}
       {tab === 'timesheets' && <TimesheetsTab />}

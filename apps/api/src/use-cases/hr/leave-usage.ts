@@ -1,8 +1,12 @@
-import { leaveEntitlement } from '@lolas/domain';
+import { leaveEntitlement, type ProbationLeaveRule } from '@lolas/domain';
 import { getSupabaseClient } from '../../adapters/supabase/client.js';
 import { formatManilaDate } from '../../utils/manila-date.js';
 
 type Row = Record<string, unknown>;
+
+export function probationRule(v: unknown): ProbationLeaveRule {
+  return v === 'none' || v === 'full' ? v : 'accrue';
+}
 
 const LEAVE_DAY_TYPES = { holiday: 'Holiday', sick: 'Sick' } as const;
 
@@ -86,6 +90,7 @@ export async function leaveBalances(employeeId: string, asOf = formatManilaDate(
       probationEndDate: (e.probation_end_date as string | null) ?? null,
       asOf,
       probationAccrualPerMonth: Number(holiday ? cfg?.probation_accrual_holiday : cfg?.probation_accrual_sick) || 0,
+      probationRule: probationRule(holiday ? cfg?.probation_rule_holiday : cfg?.probation_rule_sick),
     });
     onProbation = result.onProbation;
     const used = Number(holiday ? e.holiday_used : e.sick_used) || 0;

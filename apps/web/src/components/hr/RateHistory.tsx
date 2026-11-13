@@ -43,7 +43,7 @@ export function RateHistory({ employeeId }: { employeeId: string }) {
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">
                     {formatCurrency(r.basicRate)}
-                    <span className="text-xs text-gray-400">/{(r.rateType ?? 'daily').toLowerCase() === 'monthly' ? 'mo' : 'day'}</span>
+                    <span className="text-xs text-gray-400">/{['monthly', 'fixed'].includes((r.rateType ?? 'daily').toLowerCase()) ? 'mo' : 'day'}</span>
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(r.overtimeRate)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(r.ninePmBonusRate)}</td>

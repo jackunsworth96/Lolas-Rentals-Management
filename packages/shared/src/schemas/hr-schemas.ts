@@ -134,3 +134,18 @@ export type AcknowledgePayslipRequest = z.infer<typeof AcknowledgePayslipSchema>
 export const ResolvePayslipDisputeSchema = z.object({
   note: z.string().trim().min(1).max(1000),
 });
+
+export const SaveWorkUpdateSchema = z.object({
+  /** Monday of the week the update covers. */
+  weekStart: isoDate,
+  workedOn: z.string().trim().min(3).max(4000),
+  results: z.string().max(4000).optional(),
+  nextWeek: z.string().max(4000).optional(),
+  blockers: z.string().max(2000).optional(),
+});
+
+export type SaveWorkUpdateRequest = z.infer<typeof SaveWorkUpdateSchema>;
+
+export const CommentWorkUpdateSchema = z.object({
+  comment: z.string().trim().min(1).max(2000),
+});

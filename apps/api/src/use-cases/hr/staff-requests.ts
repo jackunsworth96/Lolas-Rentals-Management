@@ -499,8 +499,10 @@ export async function resolveDispute(ackId: string, resolverId: string, note: st
 export async function portalSummary(employeeId: string) {
   await recalculateLeaveUsed([employeeId]);
   const today = formatManilaDate();
-  const [emp, balances, advRes, ledgerRes, leave, advances, slipsRes, acks] = await Promise.all([
-    sb().from('employees').select('full_name, role, start_date, probation_end_date, monthly_bike_allowance, store_id').eq('id', employeeId).maybeSingle(),
+  const { weekStartOf } = await import('./work-updates.js');
+  const thisWeek = weekStartOf(today);
+  const [emp, balances, advRes, ledgerRes, leave, advances, slipsRes, acks, updateRes] = await Promise.all([
+    sb().from('employees').select('full_name, role, start_date, probation_end_date, monthly_bike_allowance, store_id, rate_type').eq('id', employeeId).maybeSingle(),
     leaveBalances(employeeId, today),
     sb().from('cash_advance_schedules').select('id, granted_date, payday_type, remaining_balance, total_amount')
       .eq('employee_id', employeeId).gt('remaining_balance', 0).order('granted_date'),
@@ -509,10 +511,11 @@ export async function portalSummary(employeeId: string) {
     listAdvanceRequests({ employeeId }),
     sb().from('payslips').select('id, payroll_runs!payroll_run_id(status)').eq('employee_id', employeeId).gte('period_end', SIGN_OFF_FROM),
     listAcknowledgements({ employeeId }),
+    sb().from('work_updates').select('id').eq('employee_id', employeeId).eq('week_start', thisWeek).maybeSingle(),
   ]);
   if (emp.error) throw new Error(emp.error.message);
   if (!emp.data) throw new DomainError('Your login is not linked to an employee profile');
-  for (const r of [advRes, ledgerRes, slipsRes]) if (r.error) throw new Error(r.error.message);
+  for (const r of [advRes, ledgerRes, slipsRes, updateRes]) if (r.error) throw new Error(r.error.message);
 
   const pendingDaysOf = (t: LeaveType) => leave.filter((l) => l.status === 'pending' && l.leaveType === t).reduce((a, l) => a + l.days, 0);
   const signed = new Set(acks.filter((a) => a.status === 'confirmed').map((a) => a.payslipId));
@@ -528,6 +531,12 @@ export async function portalSummary(employeeId: string) {
       role: s(emp.data.role),
       startDate: s(emp.data.start_date),
       probationEndDate: s(emp.data.probation_end_date),
+      rateType: s(emp.data.rate_type),
+    },
+    workUpdates: {
+      expected: emp.data.rate_type === 'fixed',
+      thisWeekStart: thisWeek,
+      thisWeekSent: !!updateRes.data,
     },
     leave: {
       onProbation: balances.onProbation,
