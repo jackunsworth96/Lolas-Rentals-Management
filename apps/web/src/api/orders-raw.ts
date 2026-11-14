@@ -219,10 +219,10 @@ export interface WalkInDirectPayload {
   addonIds?: number[];
   helmetNumbers?: string;
   staffNotes?: string;
-  paymentMethod: 'cash' | 'gcash' | 'card' | 'bank_transfer';
+  paymentMethod: 'cash' | 'gcash' | 'card' | 'wise';
   depositCollected: boolean;
   depositAmount: number;
-  depositMethod: 'cash' | 'gcash' | 'card' | 'bank_transfer';
+  depositMethod: 'cash' | 'gcash' | 'card' | 'wise';
   grandTotal: number;
   rentalDays: number;
   dailyRate: number;
@@ -263,7 +263,7 @@ export interface WalkInReservedPayload {
   pickupLocationId?: number;
   dropoffLocationId?: number;
   depositAmount: number;
-  depositMethod?: 'cash' | 'gcash' | 'card' | 'bank_transfer';
+  depositMethod?: 'cash' | 'gcash' | 'card' | 'wise';
   grandTotal?: number;
   rentalDays?: number;
   dailyRate?: number;

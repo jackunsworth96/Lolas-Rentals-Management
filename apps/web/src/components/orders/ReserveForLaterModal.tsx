@@ -229,7 +229,7 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
         dropoffLocationId: dropoffLocationId ? Number(dropoffLocationId) : undefined,
         depositAmount,
         depositMethod: depositAmount > 0
-          ? (depositMethod as 'cash' | 'gcash' | 'card' | 'bank_transfer')
+          ? (depositMethod as 'cash' | 'gcash' | 'card' | 'wise')
           : undefined,
         grandTotal: discountedTotal,
         rentalDays: quote?.rentalDays ?? undefined,
@@ -296,7 +296,7 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
                 <p className="font-lato text-sm text-amber-800">
                   <span className="font-semibold">Deposit collected:</span>{' '}
                   {formatCurrency(depositAmount)} via{' '}
-                  {depositMethod === 'bank_transfer' ? 'Bank Transfer' : depositMethod.charAt(0).toUpperCase() + depositMethod.slice(1)}
+                  {depositMethod.charAt(0).toUpperCase() + depositMethod.slice(1)}
                 </p>
               )}
             </div>
@@ -641,7 +641,7 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
                 <option value="cash">Cash</option>
                 <option value="gcash">GCash</option>
                 <option value="card">Card</option>
-                <option value="bank_transfer">Bank Transfer</option>
+                <option value="wise">Wise</option>
               </select>
             </div>
           </div>

@@ -136,7 +136,7 @@ const PAYMENT_METHODS = [
   { id: 'cash', label: 'Cash' },
   { id: 'gcash', label: 'GCash' },
   { id: 'card', label: 'Card' },
-  { id: 'bank_transfer', label: 'Bank Transfer' },
+  { id: 'Wise', label: 'Wise' },
 ];
 
 function fallbackAccountId(method: string): string {
@@ -144,7 +144,7 @@ function fallbackAccountId(method: string): string {
     case 'cash': return 'CASH-LOLA';
     case 'gcash': return 'GCASH-store-lolas';
     case 'card': return 'CARD-PENDING';
-    case 'bank_transfer': return 'Wise';
+    case 'Wise': return 'Wise';
     default: return '';
   }
 }

@@ -368,10 +368,10 @@ export function WalkInBookingModal({ open, onClose }: Props) {
         .map(([id]) => Number(id)),
       helmetNumbers: helmetNumbers.trim() || undefined,
       staffNotes: staffNotes.trim() || undefined,
-      paymentMethod: paymentMethod as 'cash' | 'gcash' | 'card' | 'bank_transfer',
+      paymentMethod: paymentMethod as 'cash' | 'gcash' | 'card' | 'wise',
       depositCollected: depositPaid,
       depositAmount: depositPaid ? depositAmount : 0,
-      depositMethod: depositMethod as 'cash' | 'gcash' | 'card' | 'bank_transfer',
+      depositMethod: depositMethod as 'cash' | 'gcash' | 'card' | 'wise',
       grandTotal: grandTotalLocal,
       rentalDays: quote?.rentalDays ?? localRentalDays,
       dailyRate: quote?.dailyRate ?? 0,
@@ -965,7 +965,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
                     <option value="cash">Cash</option>
                     <option value="gcash">GCash</option>
                     <option value="card">Card</option>
-                    <option value="bank_transfer">Bank Transfer</option>
+                    <option value="wise">Wise</option>
                   </select>
                 </div>
 
@@ -996,7 +996,7 @@ export function WalkInBookingModal({ open, onClose }: Props) {
                       <option value="cash">Cash</option>
                       <option value="gcash">GCash</option>
                       <option value="card">Card</option>
-                      <option value="bank_transfer">Bank Transfer</option>
+                      <option value="wise">Wise</option>
                     </select>
                   </label>
                 </div>

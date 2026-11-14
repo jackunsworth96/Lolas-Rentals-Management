@@ -389,9 +389,6 @@ export function PaymentRoutingTab() {
         <p className="mt-2 text-blue-600">
           Income accounts are resolved by context: rental income for orders, category-mapped income for misc sales, route income for transfers.
         </p>
-        <p className="mt-2 text-blue-600">
-          <strong>Pre-paid orders:</strong> Set the <em>Pre-paid (Prior System)</em> payment method to route into <em>Prepaid Orders (Prior System)</em> (Liability). When a pre-paid order activates, this clears the liability instead of crediting the bank a second time.
-        </p>
       </div>
     </div>
   );
