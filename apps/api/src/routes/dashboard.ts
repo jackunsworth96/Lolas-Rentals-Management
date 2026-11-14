@@ -300,6 +300,15 @@ router.get('/summary', authenticate, async (req, res, next) => {
         .lte('dropoff_datetime', `${manilaDate}T23:59:59+08:00`)
         .then((r) => ({ key: 'ninepmCandidates' as const, ...r })),
 
+      // Every vehicle on an active order right now, regardless of drop-off date.
+      // Drives "Fleet on rent" (ninepmCandidates only covers today's returns).
+      sb
+        .from('order_items')
+        .select('vehicle_id, orders!inner(store_id, status)')
+        .eq('orders.status', 'active')
+        .not('vehicle_id', 'is', null)
+        .then((r) => ({ key: 'onRentItems' as const, ...r })),
+
       sb
         .from('order_addons')
         .select('order_id, addon_name')
@@ -688,6 +697,16 @@ router.get('/summary', authenticate, async (req, res, next) => {
         if (vid) storeActiveVehicleIds.add(vid);
       }
 
+      // Vehicles currently out on any active order (any drop-off date), for utilisation.
+      const storeOnRentVehicleIds = new Set<string>();
+      for (const item of (dataMap.get('onRentItems') ?? [])) {
+        const orderData = item.orders as unknown as { store_id: string; status: string } | null;
+        if (!orderData || orderData.status !== 'active') continue;
+        if (sid && orderData.store_id !== sid) continue;
+        const vid = item.vehicle_id as string | undefined;
+        if (vid) storeOnRentVehicleIds.add(vid);
+      }
+
       const storeUpcomingVehicleIds = new Set<string>();
       for (const item of upcomingBookings) {
         const orderData = item.orders as { store_id: string } | null;
@@ -745,7 +764,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
 
       const activeCount = storeActiveOrders.length;
       const fleetUtilisation = totalRentable > 0
-        ? Math.round((storeActiveVehicleIds.size / totalRentable) * 100)
+        ? Math.min(100, Math.round((storeOnRentVehicleIds.size / totalRentable) * 100))
         : 0;
 
       const depositsWithheldByMethod = { cash: 0, gcash: 0, bank: 0 };
