@@ -2,10 +2,18 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { validateBody } from '../middleware/validate.js';
-import { Permission } from '@lolas/shared';
+import { Permission, resolveStoreFromSource } from '@lolas/shared';
 import { z } from 'zod';
 import { supabase } from '../adapters/supabase/client.js';
 import { buildLocationIndex, isLegOffsite } from '../lib/transport-service.js';
+import { ORDERS_RAW_INBOX_COLUMNS } from '../lib/orders-raw-columns.js';
+import {
+  ACTIVATION_LEAD_MS,
+  NEW_ORDER_LOOKBACK_MS,
+  buildInboxAlerts,
+  type InboxAlertRow,
+} from '../lib/inbox-alerts.js';
+import { logger } from '../lib/logger.js';
 
 const router = Router();
 router.use(authenticate);
@@ -15,10 +23,12 @@ export type ReminderCategory =
   | 'offsite_collection'
   | 'instore_pickup'
   | 'instore_return'
-  | 'airport_transfer';
+  | 'airport_transfer'
+  | 'new_order'
+  | 'activation_due';
 
 export interface ReminderEvent {
-  source: 'order' | 'transfer';
+  source: 'order' | 'transfer' | 'inbox';
   category: ReminderCategory;
   // Order-sourced events are keyed by (orderItemId, eventType); transfer
   // events are keyed by transferId. Both are always present on an event so
@@ -26,6 +36,8 @@ export interface ReminderEvent {
   orderItemId: string | null;
   eventType: 'pickup' | 'dropoff' | null;
   transferId: string | null;
+  /** orders_raw id, for Inbox events (new order / activation due). */
+  orderRawId: string | null;
   orderId: string | null;
   bookingToken: string | null;
   eventDatetime: string;
@@ -34,15 +46,17 @@ export interface ReminderEvent {
   customerName: string | null;
   customerMobile: string | null;
   notes: string | null;
+  /** Pickup time for new-order alerts, whose eventDatetime is when the order arrived. */
+  pickupDatetime?: string | null;
 }
 
 // How far ahead each category starts surfacing in the modal:
-//   - Off-site delivery/collection: 35 min out (the Telegram job escalates at ~20 min).
-//   - In-store pickup/return: 30 min out — "half an hour's notice" is the ask.
+//   - Order pickups/returns (off-site or in-store): 1h out, so the vehicle can
+//     be prepared in time (the Telegram job still escalates at ~20 min).
 //   - Airport transfer: 2.5h out — transfers need much more lead time than a
 //     same-building handover (traffic, van dispatch, etc).
-const OFFSITE_FUTURE_MS = 35 * 60 * 1000;
-const INSTORE_FUTURE_MS = 30 * 60 * 1000;
+const OFFSITE_FUTURE_MS = 60 * 60 * 1000;
+const INSTORE_FUTURE_MS = 60 * 60 * 1000;
 const TRANSFER_FUTURE_MS = 150 * 60 * 1000;
 
 // There is deliberately NO "look-back" cutoff tied to how long ago the event
@@ -54,6 +68,70 @@ const TRANSFER_FUTURE_MS = 150 * 60 * 1000;
 function startOfTodayManilaIso(now: Date): string {
   const todayPHT = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(now);
   return new Date(`${todayPHT}T00:00:00+08:00`).toISOString();
+}
+
+/**
+ * Inbox events: new web orders, and unactivated orders whose pickup is under
+ * an hour away. Returns nothing (rather than undismissable alerts) if the
+ * inbox_alert_log migration hasn't been applied yet.
+ */
+async function loadInboxEvents(
+  storeIds: string[],
+  now: Date,
+  dayStart: string,
+  locationIndex: ReturnType<typeof buildLocationIndex>,
+): Promise<ReminderEvent[]> {
+  const newSince = new Date(now.getTime() - NEW_ORDER_LOOKBACK_MS).toISOString();
+  const pickupBy = new Date(now.getTime() + ACTIVATION_LEAD_MS).toISOString();
+  const { data: rows, error } = await supabase
+    .from('orders_raw')
+    .select(ORDERS_RAW_INBOX_COLUMNS)
+    .eq('status', 'unprocessed')
+    .or(`created_at.gte.${newSince},and(pickup_datetime.gte.${dayStart},pickup_datetime.lte.${pickupBy})`);
+  if (error) throw new Error(`inbox query failed: ${error.message}`);
+
+  const allowed = new Set(storeIds);
+  const scoped = ((rows ?? []) as unknown as Array<InboxAlertRow & { store_id: string | null; source: string }>).filter((r) =>
+    allowed.has(r.store_id ?? resolveStoreFromSource(r.source)),
+  );
+  if (scoped.length === 0) return [];
+
+  const [logResult, modelsResult] = await Promise.all([
+    supabase.from('inbox_alert_log').select('order_raw_id, event_type, acknowledged_at').in('order_raw_id', scoped.map((r) => r.id)),
+    supabase.from('vehicle_models').select('id, name'),
+  ]);
+  if (logResult.error) {
+    logger.warn({ err: logResult.error.message }, 'inbox_alert_log unavailable; skipping inbox alerts');
+    return [];
+  }
+  const acknowledged = new Set(
+    (logResult.data ?? [])
+      .filter((l) => l.acknowledged_at != null)
+      .map((l) => `${l.order_raw_id as string}:${l.event_type as string}`),
+  );
+  const modelNames = new Map(((modelsResult.data ?? []) as Array<{ id: string; name: string }>).map((m) => [m.id, m.name]));
+
+  return buildInboxAlerts({ rows: scoped, acknowledged, nowMs: now.getTime(), dayStartMs: Date.parse(dayStart) }).map(
+    ({ type, row, eventDatetime }) => ({
+      source: 'inbox',
+      category: type,
+      orderItemId: null,
+      eventType: null,
+      transferId: null,
+      orderRawId: row.id,
+      orderId: null,
+      bookingToken: row.order_reference,
+      eventDatetime,
+      vehicleName: row.vehicle_model_id ? modelNames.get(row.vehicle_model_id) ?? null : null,
+      locationName:
+        row.pickup_location_address ??
+        (row.pickup_location_id != null ? locationIndex.byId.get(String(row.pickup_location_id))?.name ?? null : null),
+      customerName: row.customer_name,
+      customerMobile: row.customer_mobile,
+      notes: row.customer_extra_comments,
+      pickupDatetime: row.pickup_datetime,
+    }),
+  );
 }
 
 /**
@@ -187,9 +265,10 @@ router.get(
               source: 'order',
               category,
               orderItemId: item.id as string,
-              eventType: 'pickup',
-              transferId: null,
-              orderId: item.order_id as string,
+            eventType: 'pickup',
+            transferId: null,
+            orderRawId: null,
+            orderId: item.order_id as string,
               bookingToken: order.booking_token as string | null,
               eventDatetime: item.pickup_datetime as string,
               vehicleName: item.vehicle_name as string | null,
@@ -224,6 +303,7 @@ router.get(
               orderItemId: item.id as string,
               eventType: 'dropoff',
               transferId: null,
+              orderRawId: null,
               orderId: item.order_id as string,
               bookingToken: order.booking_token as string | null,
               eventDatetime: item.dropoff_datetime as string,
@@ -285,6 +365,7 @@ router.get(
             orderItemId: null,
             eventType: null,
             transferId: t.id as string,
+            orderRawId: null,
             orderId: null,
             bookingToken: null,
             eventDatetime: eventDate.toISOString(),
@@ -296,6 +377,8 @@ router.get(
           });
         }
       }
+
+      events.push(...(await loadInboxEvents(storeIds, now, dayStart, locationIndex)));
 
       events.sort((a, b) => new Date(a.eventDatetime).getTime() - new Date(b.eventDatetime).getTime());
 
@@ -316,6 +399,7 @@ router.get(
 const AcknowledgeSchema = z.union([
   z.object({ orderItemId: z.string(), eventType: z.enum(['pickup', 'dropoff']) }),
   z.object({ transferId: z.string() }),
+  z.object({ orderRawId: z.string().uuid(), eventType: z.enum(['new_order', 'activation_due']) }),
 ]);
 
 router.post(
@@ -335,6 +419,23 @@ router.post(
             acknowledged_by: username,
           },
           { onConflict: 'transfer_id' },
+        );
+        if (error) throw new Error(`acknowledge failed: ${error.message}`);
+        return res.json({ success: true });
+      }
+
+      if ('orderRawId' in body) {
+        const acknowledgedAt = new Date().toISOString();
+        // Preparing for pickup implies the order has been seen, so it shouldn't re-alert as new.
+        const types = body.eventType === 'activation_due' ? ['activation_due', 'new_order'] : ['new_order'];
+        const { error } = await supabase.from('inbox_alert_log').upsert(
+          types.map((event_type) => ({
+            order_raw_id: body.orderRawId,
+            event_type,
+            acknowledged_at: acknowledgedAt,
+            acknowledged_by: username,
+          })),
+          { onConflict: 'order_raw_id,event_type' },
         );
         if (error) throw new Error(`acknowledge failed: ${error.message}`);
         return res.json({ success: true });

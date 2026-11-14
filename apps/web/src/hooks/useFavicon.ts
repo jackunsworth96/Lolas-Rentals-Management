@@ -18,7 +18,8 @@ const CUSTOMER_PATH_PREFIXES = [
   '/affiliates',
 ];
 
-function isBackOfficePath(pathname: string): boolean {
+/** Back office and partner portal pages; everything else is the customer-facing site. */
+export function isBackOfficePath(pathname: string): boolean {
   if (pathname === '/') return false;
   return !CUSTOMER_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }

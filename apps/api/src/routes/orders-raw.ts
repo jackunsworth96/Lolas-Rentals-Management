@@ -22,6 +22,7 @@ import { sendBookingConfirmationWhatsApp } from '../services/booking-confirmatio
 import { formatManilaDate, formatManilaDateTime } from '../utils/manila-date.js';
 import { sendTelegramAlert, sendTelegramAlertPaidOrdersStaggered, getTelegramChatId } from '../lib/telegram.js';
 import { deriveTransportService } from '../lib/transport-service.js';
+import { ORDERS_RAW_INBOX_COLUMNS } from '../lib/orders-raw-columns.js';
 import { assertAssignmentsAvailable } from '../lib/assert-vehicle-assignment.js';
 import { depositHoldingAccount, resolveRoutedAccounts } from '../lib/deposit-envelope.js';
 import { buildTipLegs } from '../lib/tips.js';
@@ -32,10 +33,6 @@ import {
   getSurfRackAddonIds,
   loadSurfRackAddons,
 } from '../use-cases/surf-racks/get-surf-rack-availability.js';
-
-/** GET list / GET :id — explicit columns; excludes payload (V10-11). */
-const ORDERS_RAW_INBOX_COLUMNS =
-  'id, order_reference, status, customer_name, customer_email, customer_mobile, pickup_datetime, dropoff_datetime, store_id, vehicle_model_id, vehicle_id, charity_donation, transfer_type, transfer_route, flight_arrival_time, transfer_pax_count, transfer_amount, cancellation_token_used, created_at, updated_at, source, booking_channel, pickup_location_id, dropoff_location_id, addon_ids, web_payment_method, flight_number, web_quote_raw, customer_company, customer_extra_comments, pickup_location_address, dropoff_location_address, partner_ref';
 
 function generateWalkInReference(source: string): string {
   const prefix = source === 'bass' ? 'BB' : 'LR';

@@ -18,6 +18,8 @@ export interface AvailabilityModelRow {
   awaitingAssignment: number;
   isScooter: boolean;
   returningToday: ReturningTodayEntry[];
+  /** Every unit not booked; when awaitingAssignment > 0, that many of these are held for unassigned bookings. */
+  freeVehicles: Array<{ id: string; name: string; surfRack: boolean }>;
 }
 
 export interface AvailabilityDetail {

@@ -2,6 +2,7 @@ import { Router, type Request } from 'express';
 import { authenticate } from '../middleware/authenticate.js';
 import { Permission } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
+import { fetchAll } from '../lib/fetch-all.js';
 
 const router = Router();
 router.use(authenticate);
@@ -83,23 +84,6 @@ async function resolveStoreScope(req: Request): Promise<StoreScope> {
 
 function inScope<Q>(query: Q, scope: StoreScope): Q {
   return (query as unknown as { in: (column: string, values: string[]) => Q }).in('store_id', scope.storeIds);
-}
-
-type PageQuery = {
-  range: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>;
-};
-
-// PostgREST caps a single response at 1,000 rows, so any query that can grow past
-// that (all-time order history in particular) must be paged or it silently truncates.
-async function fetchAll<T>(makeQuery: () => PageQuery): Promise<T[]> {
-  const PAGE = 1000;
-  const rows: T[] = [];
-  for (let offset = 0; ; offset += PAGE) {
-    const { data, error } = await makeQuery().range(offset, offset + PAGE - 1);
-    if (error) throw new Error(error.message);
-    rows.push(...((data ?? []) as T[]));
-    if (!data || data.length < PAGE) return rows;
-  }
 }
 
 function requireDashboard(req: Request): boolean {

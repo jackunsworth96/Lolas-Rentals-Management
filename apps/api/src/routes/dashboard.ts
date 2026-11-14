@@ -2,13 +2,28 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate } from '../middleware/authenticate.js';
 import { validateBody } from '../middleware/validate.js';
-import { Permission } from '@lolas/shared';
+import { Permission, resolveStoreFromSource } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { formatManilaDate } from '../utils/manila-date.js';
 import { getPartnerCommissionStats } from '../lib/partner-commission.js';
 import { getDashboardAvailabilityModel, type DashboardAvailabilityModel } from '../lib/dashboard-availability-model.js';
 import { availableAfterUnassignedHolds, unprocessedBookingHolds } from '../lib/dashboard-unprocessed-bookings.js';
 import { ownerUseNotEndedBy, ownerUseVehicleIdsOverlapping } from '../lib/owner-use-window.js';
+import { fetchAll, type PageQuery } from '../lib/fetch-all.js';
+import { loadEnrichedOrdersFallback } from '../lib/enriched-orders-fallback.js';
+import { ORDERS_RAW_INBOX_COLUMNS } from '../lib/orders-raw-columns.js';
+import {
+  buildTodayMovements,
+  type EnrichedOrderRow,
+  type RawPickupRow,
+} from '../lib/dashboard-today-movements.js';
+import {
+  WEEKDAY_LOOKBACK_DAYS,
+  addDays,
+  addMonths,
+  buildDashboardInsights,
+  insightsWindowStart,
+} from '../lib/dashboard-insights.js';
 import {
   DEPOSIT_ENVELOPE_ACCOUNT_ID,
   buildRoutedAccounts,
@@ -18,6 +33,13 @@ import {
 
 const router = Router();
 router.use(authenticate);
+
+function pagedQuery<K extends string>(key: K, makeQuery: () => PageQuery) {
+  return fetchAll<Record<string, unknown>>(makeQuery).then(
+    (data) => ({ key, data, error: null }),
+    (err: Error) => ({ key, data: null, error: { message: err.message } }),
+  );
+}
 
 function parseCountryFromMobile(mobile: string | null): { country: string; continent: string } {
   if (!mobile) return { country: 'Unknown', continent: 'Unknown' };
@@ -382,19 +404,19 @@ router.get('/summary', authenticate, async (req, res, next) => {
             .lt('added_at', `${manilaDate}T23:59:59.999+08:00`)
             .then((r) => ({ key: 'addonRevenue' as const, ...r })),
 
-          sb
+          pagedQuery('revenueTrend', () => sb
             .from('payments')
             .select('amount, store_id, payment_type, created_at')
             .gte('created_at', `${thirtyDaysAgo}T00:00:00+08:00`)
             .not('payment_type', 'in', '("deposit","refund")')
-            .then((r) => ({ key: 'revenueTrend' as const, ...r })),
+            .order('id')),
 
-          sb
+          pagedQuery('revenueThisMonth', () => sb
             .from('payments')
             .select('amount, store_id, payment_type, created_at')
             .gte('created_at', `${firstDayOfMonth}T00:00:00+08:00`)
             .not('payment_type', 'in', '("deposit","refund")')
-            .then((r) => ({ key: 'revenueThisMonth' as const, ...r })),
+            .order('id')),
 
           sb
             .from('journal_entries')
@@ -426,10 +448,10 @@ router.get('/summary', authenticate, async (req, res, next) => {
             .lte('date', lastDayLastMonth)
             .then((r) => ({ key: 'expensesLastMonth' as const, ...r })),
 
-          sb
+          pagedQuery('customers', () => sb
             .from('customers')
             .select('mobile, store_id')
-            .then((r) => ({ key: 'customers' as const, ...r })),
+            .order('id')),
         ]
       : [];
 
@@ -1010,6 +1032,241 @@ router.get('/summary', authenticate, async (req, res, next) => {
   }
 });
 
+// ── GET /insights — month-to-date P&L, 12-month trend, next 7 days, weekday demand ──
+// Booking outlook is operational and shown to all staff; money figures need ViewDashboard.
+router.get('/insights', async (req, res, next) => {
+  try {
+    const canViewFinancial = Boolean(req.user?.permissions?.includes(Permission.ViewDashboard));
+    const sb = getSupabaseClient();
+    const storeIdParam = req.query.storeId as string | undefined;
+    const storeFilter = storeIdParam && storeIdParam !== 'all' ? storeIdParam : undefined;
+    const activeStoreIds = (await req.app.locals.deps.configRepo.getStores('active'))
+      .filter((store: { id: string }) => store.id !== 'company')
+      .map((store: { id: string }) => store.id);
+    const storeIds: string[] = storeFilter ? [storeFilter] : activeStoreIds;
+    // Shared company costs (rent, payroll, software) belong in the combined P&L only.
+    const expenseStoreIds: string[] = storeFilter ? [storeFilter] : [...activeStoreIds, 'company'];
+
+    const today = formatManilaDate();
+    const windowStart = insightsWindowStart(today);
+    const lastMonthStart = `${addMonths(today.slice(0, 7), -1)}-01`;
+    const pickupWindowStart = addDays(today, -WEEKDAY_LOOKBACK_DAYS);
+    const horizonEnd = addDays(today, 7);
+
+    const financial = <T>(load: () => Promise<T[]>): Promise<T[]> =>
+      canViewFinancial ? load() : Promise.resolve([]);
+
+    const [payments, miscSales, expenses, upcomingItems, recentPickups, orders, fleet, fleetStatuses] = await Promise.all([
+      financial(() => fetchAll<{ amount: number; created_at: string }>(() => sb
+        .from('payments')
+        .select('amount, created_at')
+        .in('store_id', storeIds)
+        .gte('created_at', `${windowStart}T00:00:00+08:00`)
+        .not('payment_type', 'in', '("deposit","refund")')
+        .order('id'))),
+      financial(() => fetchAll<{ amount: number; created_at: string }>(() => sb
+        .from('misc_sales')
+        .select('amount, created_at')
+        .in('store_id', storeIds)
+        .gte('created_at', `${windowStart}T00:00:00+08:00`)
+        .order('id'))),
+      financial(() => fetchAll<{ amount: number; date: string }>(() => sb
+        .from('expenses')
+        .select('amount, date')
+        .in('store_id', expenseStoreIds)
+        .gte('date', windowStart)
+        .lte('date', today)
+        .order('id'))),
+      fetchAll<{ id: string; pickup_datetime: string | null; dropoff_datetime: string | null }>(() => sb
+        .from('order_items')
+        .select('id, pickup_datetime, dropoff_datetime, orders!inner(status)')
+        .in('store_id', storeIds)
+        .in('orders.status', ['active', 'confirmed'])
+        .gt('dropoff_datetime', `${today}T00:00:00+08:00`)
+        .lt('pickup_datetime', `${horizonEnd}T00:00:00+08:00`)
+        .order('id')),
+      fetchAll<{ pickup_datetime: string | null }>(() => sb
+        .from('order_items')
+        .select('pickup_datetime, orders!inner(status)')
+        .in('store_id', storeIds)
+        .in('orders.status', ['active', 'confirmed', 'completed'])
+        .gte('pickup_datetime', `${pickupWindowStart}T00:00:00+08:00`)
+        .lt('pickup_datetime', `${addDays(today, 1)}T00:00:00+08:00`)
+        .order('id')),
+      financial(() => fetchAll<{ final_total: number; order_date: string }>(() => sb
+        .from('orders')
+        .select('final_total, order_date')
+        .in('store_id', storeIds)
+        .in('status', ['active', 'confirmed', 'completed'])
+        .gte('order_date', lastMonthStart)
+        .lte('order_date', today)
+        .order('id'))),
+      fetchAll<{ id: string; status: string }>(() => sb
+        .from('fleet')
+        .select('id, status')
+        .in('store_id', storeIds)
+        .order('id')),
+      sb.from('fleet_statuses').select('id, name, is_rentable'),
+    ]);
+    if (fleetStatuses.error) throw new Error(fleetStatuses.error.message);
+
+    // "Active" means out on rent right now. It isn't is_rentable (it can't be handed
+    // to a new customer), but it is part of the working fleet the booked % is measured against.
+    const rentable = new Set<string>(['active', 'Active']);
+    for (const s of (fleetStatuses.data ?? []) as Array<{ id: string; name: string; is_rentable: boolean }>) {
+      if (s.is_rentable) {
+        rentable.add(s.id);
+        rentable.add(s.name);
+      }
+    }
+    const rentableFleetSize = fleet.filter((v) => rentable.has(v.status)).length;
+
+    const insights = buildDashboardInsights({
+      today,
+      nowMs: Date.now(),
+      payments,
+      miscSales,
+      expenses,
+      upcomingItems,
+      recentPickups,
+      orders,
+      rentableFleetSize,
+    });
+
+    res.json({
+      success: true,
+      data: canViewFinancial
+        ? insights
+        : { ...insights, mtd: null, monthly: null, dailyRevenue: null },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── GET /today-movements?day=today|tomorrow — pickups and returns with the vitals staff need ──
+router.get('/today-movements', async (req, res, next) => {
+  try {
+    const perms = req.user?.permissions ?? [];
+    if (!perms.includes(Permission.ViewInbox) && !perms.includes(Permission.ViewActive)) {
+      res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Requires inbox or active orders access' } });
+      return;
+    }
+    const sb = getSupabaseClient();
+    const storeIdParam = req.query.storeId as string | undefined;
+    const storeFilter = storeIdParam && storeIdParam !== 'all' ? storeIdParam : undefined;
+    const activeStoreIds = (await req.app.locals.deps.configRepo.getStores('active'))
+      .filter((store: { id: string }) => store.id !== 'company')
+      .map((store: { id: string }) => store.id);
+    const storeIds: string[] = storeFilter ? [storeFilter] : activeStoreIds;
+
+    const today = formatManilaDate();
+    const day = req.query.day === 'tomorrow' ? addDays(today, 1) : today;
+    const dayStart = `${day}T00:00:00+08:00`;
+    const dayEnd = `${addDays(day, 1)}T00:00:00+08:00`;
+
+    const loadEnriched = async (storeId: string) => {
+      const statuses = ['active', 'confirmed'];
+      const { data, error } = await sb.rpc('get_enriched_orders', { p_store_id: storeId, p_statuses: statuses });
+      const missingRpc = error && (error.code === 'PGRST202' || error.message.includes('Could not find the function public.get_enriched_orders'));
+      if (error && !missingRpc) throw new Error(`enriched orders query failed: ${error.message}`);
+      return (missingRpc ? await loadEnrichedOrdersFallback(sb, storeId, statuses) : data ?? []) as EnrichedOrderRow[];
+    };
+
+    const [rawRes, enrichedByStore, completedRes, locationsRes, addonsRes, modelsRes] = await Promise.all([
+      sb.from('orders_raw')
+        .select(ORDERS_RAW_INBOX_COLUMNS)
+        .eq('status', 'unprocessed')
+        .gte('pickup_datetime', dayStart)
+        .lt('pickup_datetime', dayEnd),
+      Promise.all(storeIds.map(loadEnriched)),
+      sb.from('order_items')
+        .select('order_id, vehicle_name, dropoff_datetime, orders!inner(store_id, status, booking_token, woo_order_id, booking_customer_name, customers!customer_id(name))')
+        .eq('orders.status', 'completed')
+        .in('orders.store_id', storeIds)
+        .gte('dropoff_datetime', dayStart)
+        .lt('dropoff_datetime', dayEnd),
+      sb.from('locations').select('id, name, location_type, delivery_cost, collection_cost'),
+      sb.from('addons').select('id, name'),
+      sb.from('vehicle_models').select('id, name'),
+    ]);
+    for (const r of [rawRes, completedRes, locationsRes, addonsRes, modelsRes]) {
+      if (r.error) throw new Error(`today movements query failed: ${r.error.message}`);
+    }
+
+    const storeSet = new Set(storeIds);
+    const rawPickups = ((rawRes.data ?? []) as unknown as RawPickupRow[])
+      .map((r) => ({ ...r, storeId: (r.store_id as string | null) ?? resolveStoreFromSource(String(r.source ?? '')) }))
+      .filter((r) => storeSet.has(r.storeId));
+
+    const todayStartMs = Date.parse(dayStart);
+    const todayEndMs = Date.parse(dayEnd);
+    const orders = enrichedByStore.flat().filter((o) =>
+      (o.items ?? []).some((i) => {
+        const p = i.pickup_datetime ? Date.parse(i.pickup_datetime) : NaN;
+        const d = i.dropoff_datetime ? Date.parse(i.dropoff_datetime) : NaN;
+        return (p >= todayStartMs && p < todayEndMs) || (d >= todayStartMs && d < todayEndMs);
+      }));
+    const orderIds = orders.map((o) => o.id);
+    const itemIds = orders.flatMap((o) => (o.items ?? []).map((i) => i.id));
+
+    const [addonLinesRes, helmetRes] = orderIds.length > 0
+      ? await Promise.all([
+          sb.from('order_addons').select('order_id, addon_name, quantity').in('order_id', orderIds),
+          sb.from('order_items').select('id, helmet_numbers').in('id', itemIds),
+        ])
+      : [{ data: [], error: null }, { data: [], error: null }];
+    if (addonLinesRes.error) throw new Error(addonLinesRes.error.message);
+    if (helmetRes.error) throw new Error(helmetRes.error.message);
+
+    const orderAddons = new Map<string, Array<{ name: string; quantity: number }>>();
+    for (const a of (addonLinesRes.data ?? []) as Array<{ order_id: string; addon_name: string; quantity: number | null }>) {
+      orderAddons.set(a.order_id, [...(orderAddons.get(a.order_id) ?? []), { name: a.addon_name, quantity: Number(a.quantity ?? 1) }]);
+    }
+
+    type CompletedJoin = {
+      order_id: string;
+      vehicle_name: string | null;
+      dropoff_datetime: string;
+      orders: {
+        store_id: string;
+        booking_token: string | null;
+        woo_order_id: string | null;
+        booking_customer_name: string | null;
+        customers: { name: string | null } | null;
+      };
+    };
+
+    res.json({
+      success: true,
+      data: buildTodayMovements({
+        todayStartMs,
+        todayEndMs,
+        nowMs: Date.now(),
+        rawPickups,
+        orders,
+        completedReturns: ((completedRes.data ?? []) as unknown as CompletedJoin[]).map((r) => ({
+          order_id: r.order_id,
+          store_id: r.orders.store_id,
+          vehicle_name: r.vehicle_name,
+          dropoff_datetime: r.dropoff_datetime,
+          reference: r.orders.booking_token ?? r.orders.woo_order_id,
+          customer_name: r.orders.booking_customer_name ?? r.orders.customers?.name ?? null,
+        })),
+        orderAddons,
+        helmetNumbers: new Map(
+          ((helmetRes.data ?? []) as Array<{ id: string; helmet_numbers: string | null }>).map((h) => [h.id, h.helmet_numbers]),
+        ),
+        locations: locationsRes.data ?? [],
+        addonNames: new Map(((addonsRes.data ?? []) as Array<{ id: number; name: string }>).map((a) => [a.id, a.name])),
+        modelNames: new Map(((modelsRes.data ?? []) as Array<{ id: string; name: string }>).map((m) => [m.id, m.name])),
+      }),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── Charity impact — shared query helper ──────────────────────────────────────
 const CHARITY_OPENING_BALANCE = 307995;
 const CHARITY_PENDING_LEGACY = 2933;
@@ -1292,6 +1549,9 @@ router.get('/availability-detail', async (req, res, next) => {
         awaitingAssignment,
         isScooter,
         returningToday,
+        freeVehicles: availableUnits
+          .map((u) => ({ id: u.id, name: u.name, surfRack: u.surfRack }))
+          .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })),
       };
     });
 

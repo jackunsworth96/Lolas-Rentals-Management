@@ -1,5 +1,5 @@
 import { usePartners } from '../../api/partners.js';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { isValidWhatsAppE164, whatsAppLinkDigits } from '@lolas/shared';
 import { Modal } from '../common/Modal.js';
 import { WhatsAppNumberInput } from '../common/WhatsAppNumberInput.js';
@@ -21,6 +21,8 @@ import { SurfRackAvailabilityNote, surfRackShortfall } from './SurfRackAvailabil
 interface Props {
   open: boolean;
   onClose: () => void;
+  /** Pre-selects this vehicle for a pickup now, e.g. when booked from the dashboard's availability list. */
+  initialVehicleId?: string;
 }
 
 interface Location {
@@ -70,6 +72,12 @@ function todayDate(): string {
   return `${y}-${m}-${dy}`;
 }
 
+function addDaysToDate(date: string, days: number): string {
+  const d = new Date(`${date}T12:00:00`);
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 /** Snaps current wall-clock time to the nearest TIME_SLOT (min absolute diff). */
 function nearestTimeSlot(): string {
   const now = new Date();
@@ -100,7 +108,7 @@ const SECTION_HDR_CLS =
   'mb-3 font-lato text-xs font-semibold uppercase tracking-widest text-gray-400';
 const LABEL_CLS = 'font-lato text-sm font-medium text-gray-700';
 
-export function WalkInBookingModal({ open, onClose }: Props) {
+export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
   const createWalkInDirect = useCreateWalkInDirect();
   const releaseHold = useReleaseCapacityHold();
   const hasPermission = useAuthStore((s) => s.hasPermission);
@@ -162,6 +170,27 @@ export function WalkInBookingModal({ open, onClose }: Props) {
       setVehicleModelId('');
     }
   }, [availableVehicles, selectedVehicleId, vehiclesLoading, vehiclesError]);
+
+  // ── Pre-selected vehicle: pickup now for one day, then pick that unit once the list loads ──
+  const initialVehicleAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      initialVehicleAppliedRef.current = false;
+      return;
+    }
+    if (!initialVehicleId) return;
+    setPickupTime(nearestTimeSlot());
+    setDropoffDate(addDaysToDate(todayDate(), 1));
+    setDropoffTime(nearestTimeSlot());
+  }, [open, initialVehicleId]);
+  useEffect(() => {
+    if (!open || !initialVehicleId || initialVehicleAppliedRef.current || vehiclesLoading) return;
+    const vehicle = availableVehicles.find((v) => v.id === initialVehicleId && !v.protectedFor);
+    if (!vehicle) return;
+    initialVehicleAppliedRef.current = true;
+    setSelectedVehicleId(vehicle.id);
+    setVehicleModelId(vehicle.modelId ?? '');
+  }, [open, initialVehicleId, availableVehicles, vehiclesLoading]);
 
   // ── Auto-set pickup/dropoff to the store's own location (zero-fee) ──
   // Runs only when the modal opens (or storeId changes) AND both location IDs

@@ -6,17 +6,22 @@ export type ReminderCategory =
   | 'offsite_collection'
   | 'instore_pickup'
   | 'instore_return'
-  | 'airport_transfer';
+  | 'airport_transfer'
+  | 'new_order'
+  | 'activation_due';
 
 export interface DeliveryReminderEvent {
-  source: 'order' | 'transfer';
+  source: 'order' | 'transfer' | 'inbox';
   category: ReminderCategory;
   orderItemId: string | null;
   orderId: string | null;
   bookingToken: string | null;
   eventType: 'pickup' | 'dropoff' | null;
   transferId: string | null;
+  orderRawId: string | null;
+  /** For new orders this is when the order arrived; see pickupDatetime for the pickup. */
   eventDatetime: string;
+  pickupDatetime?: string | null;
   vehicleName: string | null;
   locationName: string | null;
   customerName: string | null;
@@ -26,13 +31,28 @@ export interface DeliveryReminderEvent {
 
 export type AcknowledgePayload =
   | { orderItemId: string; eventType: 'pickup' | 'dropoff' }
-  | { transferId: string };
+  | { transferId: string }
+  | { orderRawId: string; eventType: 'new_order' | 'activation_due' };
 
 /** Stable per-event key, used for React list keys and "seen before" tracking. */
 export function reminderEventKey(event: DeliveryReminderEvent): string {
-  return event.source === 'transfer'
-    ? `transfer:${event.transferId}`
-    : `order:${event.orderItemId}:${event.eventType}`;
+  if (event.source === 'transfer') return `transfer:${event.transferId}`;
+  if (event.source === 'inbox') return `inbox:${event.orderRawId}:${event.category}`;
+  return `order:${event.orderItemId}:${event.eventType}`;
+}
+
+export function acknowledgePayloadFor(event: DeliveryReminderEvent): AcknowledgePayload {
+  if (event.source === 'transfer') return { transferId: event.transferId! };
+  if (event.source === 'inbox') {
+    return { orderRawId: event.orderRawId!, eventType: event.category as 'new_order' | 'activation_due' };
+  }
+  return { orderItemId: event.orderItemId!, eventType: event.eventType! };
+}
+
+function matchesPayload(event: DeliveryReminderEvent, payload: AcknowledgePayload): boolean {
+  if ('transferId' in payload) return event.transferId === payload.transferId;
+  if ('orderRawId' in payload) return event.orderRawId === payload.orderRawId;
+  return event.orderItemId === payload.orderItemId && event.eventType === payload.eventType;
 }
 
 export const DELIVERY_REMINDERS_KEY = ['delivery-reminders'] as const;
@@ -63,10 +83,7 @@ export function useAcknowledgeDeliveryReminder() {
       await qc.cancelQueries({ queryKey: DELIVERY_REMINDERS_KEY });
       const previous = qc.getQueryData<DeliveryReminderEvent[]>(DELIVERY_REMINDERS_KEY);
       qc.setQueryData<DeliveryReminderEvent[]>(DELIVERY_REMINDERS_KEY, (old) =>
-        (old ?? []).filter((e) => {
-          if ('transferId' in payload) return e.transferId !== payload.transferId;
-          return !(e.orderItemId === payload.orderItemId && e.eventType === payload.eventType);
-        }),
+        (old ?? []).filter((e) => !matchesPayload(e, payload)),
       );
       return { previous };
     },

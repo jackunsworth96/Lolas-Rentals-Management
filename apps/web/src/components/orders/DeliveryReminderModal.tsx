@@ -3,6 +3,7 @@ import {
   useDeliveryReminders,
   useAcknowledgeDeliveryReminder,
   reminderEventKey,
+  acknowledgePayloadFor,
   type DeliveryReminderEvent,
   type ReminderCategory,
 } from '../../api/delivery-reminders.js';
@@ -92,13 +93,31 @@ function formatTime(datetime: string): string {
   });
 }
 
-const CATEGORY_META: Record<ReminderCategory, { label: string; badgeClass: string; icon: string }> = {
-  offsite_delivery: { label: 'DELIVERY OUT', badgeClass: 'bg-blue-100 text-blue-800', icon: '🚗' },
-  offsite_collection: { label: 'COLLECTION', badgeClass: 'bg-purple-100 text-purple-800', icon: '🔁' },
-  instore_pickup: { label: 'CUSTOMER ARRIVING — PICKUP', badgeClass: 'bg-green-100 text-green-800', icon: '🏬' },
-  instore_return: { label: 'CUSTOMER ARRIVING — RETURN', badgeClass: 'bg-amber-100 text-amber-800', icon: '🏬' },
-  airport_transfer: { label: 'AIRPORT TRANSFER', badgeClass: 'bg-sky-100 text-sky-800', icon: '✈️' },
+const CATEGORY_META: Record<ReminderCategory, { label: string; badgeClass: string; icon: string; ackLabel: string }> = {
+  offsite_delivery: { label: 'DELIVERY OUT', badgeClass: 'bg-blue-100 text-blue-800', icon: '🚗', ackLabel: 'Prepared' },
+  offsite_collection: { label: 'COLLECTION', badgeClass: 'bg-purple-100 text-purple-800', icon: '🔁', ackLabel: 'Prepared' },
+  instore_pickup: { label: 'CUSTOMER ARRIVING — PICKUP', badgeClass: 'bg-green-100 text-green-800', icon: '🏬', ackLabel: 'Prepared' },
+  instore_return: { label: 'CUSTOMER ARRIVING — RETURN', badgeClass: 'bg-amber-100 text-amber-800', icon: '🏬', ackLabel: 'Prepared' },
+  airport_transfer: { label: 'AIRPORT TRANSFER', badgeClass: 'bg-sky-100 text-sky-800', icon: '✈️', ackLabel: 'Acknowledge' },
+  new_order: { label: 'NEW ORDER', badgeClass: 'bg-teal-100 text-teal-800', icon: '🆕', ackLabel: 'Seen' },
+  activation_due: { label: 'NOT ACTIVATED — PICKUP SOON', badgeClass: 'bg-orange-100 text-orange-800', icon: '⏰', ackLabel: 'Prepared' },
 };
+
+function formatDayTime(datetime: string): string {
+  return new Date(datetime).toLocaleString('en-PH', {
+    timeZone: 'Asia/Manila',
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+/** New orders are about when they arrived, so they are never "overdue". */
+function isOverdueEvent(event: DeliveryReminderEvent): boolean {
+  return event.category !== 'new_order' && minutesUntil(event.eventDatetime) < 0;
+}
 
 function EventRow({
   event,
@@ -110,19 +129,22 @@ function EventRow({
   isPending: boolean;
 }) {
   const mins = minutesUntil(event.eventDatetime);
-  const isOverdue = mins < 0;
+  const isNewOrder = event.category === 'new_order';
+  const isOverdue = isOverdueEvent(event);
 
-  const { label: badgeLabel, badgeClass } = CATEGORY_META[event.category];
+  const { label: badgeLabel, badgeClass, ackLabel } = CATEGORY_META[event.category];
 
-  const timeLabel = isOverdue
-    ? `${Math.abs(mins)} min overdue`
-    : mins === 0
-      ? 'NOW'
-      : `in ${mins} min`;
+  const timeLabel = isNewOrder
+    ? `received ${Math.abs(mins)} min ago`
+    : isOverdue
+      ? `${Math.abs(mins)} min overdue`
+      : mins === 0
+        ? 'NOW'
+        : `in ${mins} min`;
 
   const timeLabelClass = isOverdue
     ? 'text-red-600 font-bold'
-    : mins <= 10
+    : !isNewOrder && mins <= 10
       ? 'text-orange-600 font-semibold'
       : 'text-gray-700';
 
@@ -139,6 +161,10 @@ function EventRow({
               {formatTime(event.eventDatetime)} — {timeLabel}
             </span>
           </div>
+
+          {isNewOrder && event.pickupDatetime && (
+            <p className="text-sm font-medium text-gray-900">📅 Pickup {formatDayTime(event.pickupDatetime)}</p>
+          )}
 
           {/* Vehicle */}
           {event.vehicleName && (
@@ -191,14 +217,23 @@ function EventRow({
           )}
         </div>
 
-        {/* Acknowledge button */}
-        <button
-          onClick={onAcknowledge}
-          disabled={isPending}
-          className="shrink-0 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700 active:bg-green-800 disabled:opacity-50"
-        >
-          {isPending ? 'Saving…' : '✓ Acknowledge'}
-        </button>
+        <div className="flex shrink-0 flex-col items-stretch gap-2">
+          <button
+            onClick={onAcknowledge}
+            disabled={isPending}
+            className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700 active:bg-green-800 disabled:opacity-50"
+          >
+            {isPending ? 'Saving…' : `✓ ${ackLabel}`}
+          </button>
+          {event.source === 'inbox' && (
+            <a
+              href="/orders/inbox"
+              className="rounded-lg border border-gray-300 px-4 py-1.5 text-center text-xs font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Open Inbox
+            </a>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -213,7 +248,7 @@ export function DeliveryReminderModal() {
   const baseTitleRef = useRef<string>(typeof document !== 'undefined' ? document.title : '');
 
   const isOpen = isLoggedIn && events.length > 0;
-  const anyOverdue = events.some((e) => minutesUntil(e.eventDatetime) < 0);
+  const anyOverdue = events.some(isOverdueEvent);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -290,7 +325,7 @@ export function DeliveryReminderModal() {
         <span className="animate-pulse text-2xl">⚠️</span>
         <div>
           <h2 className="text-lg font-bold text-white">
-            Action Required — {events.length} Event{events.length > 1 ? 's' : ''} Today
+            Action Required — {events.length} Item{events.length > 1 ? 's' : ''}
           </h2>
           <p className="text-sm text-red-100">
             {anyOverdue
@@ -306,13 +341,7 @@ export function DeliveryReminderModal() {
           <EventRow
             key={reminderEventKey(event)}
             event={event}
-            onAcknowledge={() =>
-              acknowledge.mutate(
-                event.source === 'transfer'
-                  ? { transferId: event.transferId! }
-                  : { orderItemId: event.orderItemId!, eventType: event.eventType! },
-              )
-            }
+            onAcknowledge={() => acknowledge.mutate(acknowledgePayloadFor(event))}
             isPending={acknowledge.isPending}
           />
         ))}

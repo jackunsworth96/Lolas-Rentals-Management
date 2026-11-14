@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './client.js';
+import type { RawOrder } from './orders-raw.js';
 
 export interface NinePmVehicle {
   orderId: string;
@@ -103,6 +104,99 @@ export function useDashboardSummary(storeId?: string) {
 }
 
 export { useCharityImpact, type CharityImpact } from './impact.js';
+
+export interface PeriodTotals {
+  revenue: number;
+  expenses: number;
+  profit: number;
+  bookings: number;
+  avgBookingValue: number;
+}
+
+export interface DashboardInsights {
+  today: string;
+  rentableFleetSize: number;
+  /** Money figures are null for users without can_view_dashboard. */
+  mtd: (PeriodTotals & { dayOfMonth: number; lastMonth: PeriodTotals }) | null;
+  monthly: Array<{ month: string; label: string; revenue: number; expenses: number; profit: number }> | null;
+  dailyRevenue: Array<{ day: number; thisMonth: number | null; lastMonth: number | null }> | null;
+  next7Days: Array<{ date: string; pickups: number; returns: number; onRent: number; bookedPct: number }>;
+  weekdayDemand: Array<{ day: string; pickups: number; avgPerWeek: number }>;
+}
+
+export function useDashboardInsights(storeId?: string, enabled = true) {
+  const params = storeId && storeId !== 'all' ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  return useQuery<DashboardInsights>({
+    queryKey: ['dashboard', 'insights', storeId],
+    queryFn: () => api.get<DashboardInsights>(`/dashboard/insights${params}`),
+    staleTime: 5 * 60_000,
+    enabled,
+  });
+}
+
+export interface TransportLeg {
+  place: string | null;
+}
+
+export interface PickupMovement {
+  key: string;
+  /** 'raw' = still in the Inbox waiting to be activated; 'order' = already activated. */
+  kind: 'raw' | 'order';
+  id: string;
+  storeId: string;
+  reference: string | null;
+  customerName: string;
+  mobile: string | null;
+  time: string;
+  until: string | null;
+  vehicles: string[];
+  addons: string[];
+  delivery: TransportLeg | null;
+  collection: TransportLeg | null;
+  transfer: string | null;
+  notes: string | null;
+  balanceDue: number | null;
+  quote: number | null;
+  waiverSigned: boolean | null;
+  partnerRef: string | null;
+  status: 'to_activate' | 'ready' | 'out';
+  raw?: RawOrder;
+}
+
+export interface ReturnMovement {
+  key: string;
+  orderId: string;
+  storeId: string;
+  reference: string | null;
+  customerName: string;
+  mobile: string | null;
+  time: string;
+  vehicles: string[];
+  helmetNumbers: string | null;
+  collection: TransportLeg | null;
+  ninePm: boolean;
+  balanceDue: number;
+  deposit: number;
+  status: 'due' | 'overdue' | 'returned';
+}
+
+export interface TodayMovements {
+  pickups: PickupMovement[];
+  returns: ReturnMovement[];
+}
+
+export type MovementDay = 'today' | 'tomorrow';
+
+export function useTodayMovements(storeId?: string, day: MovementDay = 'today', enabled = true) {
+  const params = new URLSearchParams({ day });
+  if (storeId && storeId !== 'all') params.set('storeId', storeId);
+  return useQuery<TodayMovements>({
+    queryKey: ['dashboard', 'today-movements', storeId, day],
+    queryFn: () => api.get<TodayMovements>(`/dashboard/today-movements?${params}`),
+    refetchInterval: 60_000,
+    enabled,
+  });
+}
 
 export interface CharityDonationRow {
   id: string;

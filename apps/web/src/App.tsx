@@ -6,12 +6,18 @@ import { ErrorBoundary } from './components/common/ErrorBoundary.js';
 import { BetaErrorBanner } from './components/common/BetaErrorBanner.js';
 import { ScrollToTop } from './components/ui/ScrollToTop.js';
 import { useFavicon } from './hooks/useFavicon.js';
+import { useLoloChatWidget } from './hooks/useLoloChatWidget.js';
 import { DeliveryReminderModal } from './components/orders/DeliveryReminderModal.js';
 import { ChatLauncherTooltip } from './components/chat/ChatLauncherTooltip.js';
 
 function FaviconSwitcher() {
   useFavicon();
   return null;
+}
+
+function LoloChat() {
+  const showChat = useLoloChatWidget();
+  return showChat ? <ChatLauncherTooltip /> : null;
 }
 
 /** Set VITE_BETA_ERROR_NOTICE=true to show the WhatsApp error banner on all errors.
@@ -56,7 +62,7 @@ export function App() {
         <ErrorBoundary onError={triggerBetaError} fallback={null}>
           <DeliveryReminderModal />
         </ErrorBoundary>
-        <ChatLauncherTooltip />
+        <LoloChat />
         {BETA_ERROR_NOTICE && showBetaError && (
           <BetaErrorBanner onClose={() => setShowBetaError(false)} />
         )}

@@ -13,6 +13,8 @@ interface Props {
   onClose: () => void;
   storeId: string;
   date?: string;
+  /** When set (today only), free vehicles become buttons that start a walk-in booking. */
+  onBookVehicle?: (vehicleId: string) => void;
 }
 
 function todayLabel(): string {
@@ -77,7 +79,49 @@ function SurfRackStockBanner({ storeId, date }: { storeId: string; date?: string
   );
 }
 
-function ModelCard({ model, turnedAwayStoreId }: { model: AvailabilityModelRow; turnedAwayStoreId: string | null }) {
+function FreeVehicles({ model, onBook }: { model: AvailabilityModelRow; onBook?: (vehicleId: string) => void }) {
+  if (model.freeVehicles.length === 0) return null;
+  return (
+    <div className="mb-2">
+      <div className="flex flex-wrap gap-1.5">
+        {model.freeVehicles.map((v) => {
+          const label = (
+            <>
+              {v.surfRack && <span aria-label="rack mount">🏄</span>}
+              {v.name}
+            </>
+          );
+          return onBook ? (
+            <button
+              key={v.id}
+              type="button"
+              onClick={() => onBook(v.id)}
+              title={`Book ${v.name} for a walk-in customer`}
+              className="inline-flex items-center gap-1 rounded-lg border border-teal-brand/30 bg-white px-2.5 py-1 text-sm font-medium text-teal-brand shadow-sm transition hover:border-teal-brand hover:bg-teal-brand hover:text-white"
+            >
+              {label}
+            </button>
+          ) : (
+            <span key={v.id} className="inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1 text-sm text-gray-700 ring-1 ring-gray-200">
+              {label}
+            </span>
+          );
+        })}
+      </div>
+      {onBook && <p className="mt-1.5 text-xs text-gray-400">Tap a vehicle to book it for a walk-in customer</p>}
+    </div>
+  );
+}
+
+function ModelCard({
+  model,
+  turnedAwayStoreId,
+  onBook,
+}: {
+  model: AvailabilityModelRow;
+  turnedAwayStoreId: string | null;
+  onBook?: (vehicleId: string) => void;
+}) {
   const hasReturns = model.returningToday.length > 0;
   const fullyUnavailable = model.availableNow === 0 && !hasReturns;
 
@@ -109,10 +153,12 @@ function ModelCard({ model, turnedAwayStoreId }: { model: AvailabilityModelRow; 
         </div>
       )}
 
+      <FreeVehicles model={model} onBook={model.availableNow > 0 ? onBook : undefined} />
+
       {model.awaitingAssignment > 0 && (
         <p className="mb-2 text-xs text-amber-700">
-          {model.awaitingAssignment} held for {model.awaitingAssignment === 1 ? 'a booking' : 'bookings'} awaiting
-          collection (no vehicle assigned yet)
+          {model.awaitingAssignment} of these {model.awaitingAssignment === 1 ? 'is' : 'are'} held for{' '}
+          {model.awaitingAssignment === 1 ? 'a booking' : 'bookings'} awaiting collection (no vehicle assigned yet)
         </p>
       )}
 
@@ -144,7 +190,7 @@ function ModelCard({ model, turnedAwayStoreId }: { model: AvailabilityModelRow; 
   );
 }
 
-export function AvailabilityDetailModal({ open, onClose, storeId, date }: Props) {
+export function AvailabilityDetailModal({ open, onClose, storeId, date, onBookVehicle }: Props) {
   const { data, isLoading } = useAvailabilityDetail(storeId, open, date);
   // Turn-aways are only meaningful for a walk-in standing at the counter today,
   // and need a concrete store to attribute them to.
@@ -167,7 +213,7 @@ export function AvailabilityDetailModal({ open, onClose, storeId, date }: Props)
       {!isLoading && data && data.models.length > 0 && (
         <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
           {data.models.map((model) => (
-            <ModelCard key={model.modelId} model={model} turnedAwayStoreId={turnedAwayStoreId} />
+            <ModelCard key={model.modelId} model={model} turnedAwayStoreId={turnedAwayStoreId} onBook={date ? undefined : onBookVehicle} />
           ))}
         </div>
       )}
