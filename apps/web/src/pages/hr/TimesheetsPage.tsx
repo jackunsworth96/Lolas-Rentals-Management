@@ -195,14 +195,10 @@ export default function TimesheetsPage() {
       { entries },
       {
         onSuccess: (data) => {
-          const ninePmTotal = (data.ninePmPayouts?.paid ?? []).reduce((s, p) => s + p.amount, 0);
-          const failed = data.ninePmPayouts?.failed?.length ?? 0;
-          let msg = `${data.created ?? entryRows.length} timesheet(s) submitted.`;
-          if (ninePmTotal > 0) msg += ` Pay ₱${ninePmTotal.toLocaleString()} in 9pm returns from the till now.`;
-          if (failed > 0) msg += ` ${failed} 9pm payout(s) could not be recorded and will be paid through payroll instead.`;
-          setSuccessMsg(msg);
+          // 9pm returns are paid through payroll, not from the till.
+          setSuccessMsg(`${data.created ?? entryRows.length} timesheet(s) submitted.`);
           setEntryRows([]);
-          setTimeout(() => setSuccessMsg(''), ninePmTotal > 0 || failed > 0 ? 10000 : 3000);
+          setTimeout(() => setSuccessMsg(''), 3000);
         },
         onError: (err: Error) => setErrorMsg(err.message),
       },

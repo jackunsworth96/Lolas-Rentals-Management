@@ -24,7 +24,7 @@ import { sendTelegramAlert, sendTelegramAlertPaidOrdersStaggered, getTelegramCha
 import { deriveTransportService } from '../lib/transport-service.js';
 import { ORDERS_RAW_INBOX_COLUMNS } from '../lib/orders-raw-columns.js';
 import { assertAssignmentsAvailable } from '../lib/assert-vehicle-assignment.js';
-import { depositHoldingAccount, resolveRoutedAccounts } from '../lib/deposit-envelope.js';
+import { depositHoldingAccount, resolvePaymentAccount, resolveRoutedAccounts } from '../lib/deposit-envelope.js';
 import { buildTipLegs } from '../lib/tips.js';
 import {
   assertSurfRacksAvailable,
@@ -586,7 +586,7 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
     const routing = await resolveRoutedAccounts(body.storeId);
     const rentalAccountId = body.paymentMethod === 'card'
       ? null
-      : body.paymentAccountId ?? routing.accountFor(body.paymentMethod);
+      : resolvePaymentAccount(routing, body.paymentMethod, body.paymentAccountId);
     const moneyLeg = (accountId: string, debit: number, credit: number, description: string, referenceId: string) => ({
       id: crypto.randomUUID(), account_id: accountId, debit, credit, description, reference_type: 'payment', reference_id: referenceId,
     });
@@ -1009,6 +1009,9 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
       });
     }
 
+    // Route by payment method; the account the client sent is only a fallback.
+    const activationRouting = await resolveRoutedAccounts(body.storeId);
+
     const result = await processRawOrder(deps, {
       rawOrderId: req.params.id as string,
       storeId: body.storeId,
@@ -1048,17 +1051,17 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
       paymentMethodId: body.paymentMethodId,
       depositMethodId: body.depositMethodId,
       cardFeeSurcharge: body.cardFeeSurcharge,
-      paymentAccountId: body.paymentAccountId ?? null,
+      paymentAccountId: resolvePaymentAccount(activationRouting, body.paymentMethodId, body.paymentAccountId),
       depositLiabilityAccountId: body.depositLiabilityAccountId ?? null,
       isCardPayment: body.isCardPayment ?? false,
       settlementRef: body.settlementRef ?? null,
       excludeTransferFromBalance: body.excludeTransferFromBalance ?? false,
       transferAccommodation: body.transferAccommodation ?? null,
       partialPaymentAmount: body.partialPaymentAmount,
-      cashAccounts: await resolveRoutedAccounts(body.storeId),
+      cashAccounts: activationRouting,
       tip: await (async () => {
         if (!body.tipAmount || body.tipAmount <= 0) return null;
-        const accountId = body.tipAccountId ?? (await resolveRoutedAccounts(body.storeId)).accountFor('cash');
+        const accountId = body.tipAccountId ?? activationRouting.accountFor('cash');
         if (!accountId) throw new Error('No till account found to record the tip into');
         return { amount: body.tipAmount, accountId };
       })(),

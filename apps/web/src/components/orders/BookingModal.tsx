@@ -505,9 +505,12 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     storeId,
   );
 
+  // The payment account follows the payment method. It used to be filled only
+  // when empty, so a leftover selection (e.g. GCash) stayed in place after the
+  // method changed to Cash and the payment was booked to the wrong account.
   useEffect(() => {
-    if (routedPaymentAcct && !paymentAccountId) setPaymentAccountId(routedPaymentAcct);
-  }, [routedPaymentAcct, paymentAccountId]);
+    setPaymentAccountId(routedPaymentAcct ?? '');
+  }, [paymentMethodId, routedPaymentAcct]);
 
   useEffect(() => {
     if (routedDepositLiability && !depositLiabilityAccountId) setDepositLiabilityAccountId(routedDepositLiability);

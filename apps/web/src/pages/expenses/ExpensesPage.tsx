@@ -33,7 +33,7 @@ function payrollManagedCategory(name: string): string | null {
     return 'Vehicle allowance is paid out from Payroll → Vehicle allowance, which reduces the employee\'s balance and shows on their payslip.';
   }
   if (n.includes('9 pm') || n.includes('9pm')) {
-    return '9pm returns are paid from the till automatically when the timesheet is submitted, and shown on the payslip.';
+    return '9pm returns are paid through payroll from the timesheet count, so they are not entered as expenses.';
   }
   if (/\b(sss|philhealth|pag-?ibig)\b/.test(n)) {
     return 'SSS, PhilHealth and Pag-IBIG payments are recorded from Payroll → Remittances so they clear what payroll withheld.';

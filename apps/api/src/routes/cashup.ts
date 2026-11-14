@@ -21,6 +21,9 @@ import {
   resolveRoutedAccounts,
 } from '../lib/deposit-envelope.js';
 
+/** Unexplained count differences are booked here so they stay visible on the Accounts page. */
+const RECON_ADJ_ACCOUNT_ID = 'RECON-ADJ-EQUITY';
+
 const router = Router();
 router.use(authenticate);
 
@@ -68,24 +71,31 @@ async function recordCashDeposit(
 
 /**
  * Customer deposit cash sits in the till but is counted separately at cash-up.
- * After each locked count, move the difference between the counted envelope and
- * the envelope ledger account between it and the till account, so the ledger
- * mirrors the physical split. Re-running for the same day posts nothing new.
+ * After each locked count, post the difference between the counted envelope and
+ * the envelope ledger account against Reconciliation Adjustments, so the
+ * envelope ledger mirrors the physical count. Re-running for the same day posts
+ * nothing new.
+ *
+ * The difference is deliberately NOT booked to the till account. The cash-up
+ * derives expected till cash from its own movements and the till count is
+ * locked independently, so a till-side leg here has no matching cash movement
+ * and makes the till ledger drift from the cash-up permanently (a 1,000.00
+ * drift on 8 Nov 2026). A genuine envelope-to-till move is journaled when it
+ * happens (deposit applied / refund swap).
  */
 async function syncDepositEnvelope(
   accountingPort: AccountingPort,
   input: { storeId: string; date: string; envelopeCounted: number },
 ): Promise<void> {
   const sb = getSupabaseClient();
-  const [{ data: envelope }, { data: cashRule }, { data: balances, error: balErr }] = await Promise.all([
+  const [{ data: envelope }, { data: adjustment }, { data: balances, error: balErr }] = await Promise.all([
     sb.from('chart_of_accounts').select('id')
       .eq('id', DEPOSIT_ENVELOPE_ACCOUNT_ID).eq('store_id', input.storeId).eq('is_active', true).maybeSingle(),
-    sb.from('payment_routing_rules').select('received_into_account_id')
-      .eq('store_id', input.storeId).ilike('payment_method_id', 'cash').maybeSingle(),
+    sb.from('chart_of_accounts').select('id')
+      .eq('id', RECON_ADJ_ACCOUNT_ID).eq('is_active', true).maybeSingle(),
     sb.rpc('account_balances', { p_from: input.date, p_to: input.date }).eq('account_id', DEPOSIT_ENVELOPE_ACCOUNT_ID),
   ]);
-  const tillAccountId = (cashRule as { received_into_account_id?: string | null } | null)?.received_into_account_id;
-  if (!envelope || !tillAccountId) return;
+  if (!envelope || !adjustment) return;
   if (balErr) throw new Error(`Envelope balance lookup failed: ${balErr.message}`);
 
   const row = (balances ?? [])[0] as
@@ -102,8 +112,8 @@ async function syncDepositEnvelope(
   const description = `Deposit envelope counted at cash-up (${input.envelopeCounted.toFixed(2)})`;
   const referenceId = `${input.storeId}:${input.date}`;
   const [debitAccount, creditAccount] = delta > 0
-    ? [DEPOSIT_ENVELOPE_ACCOUNT_ID, tillAccountId]
-    : [tillAccountId, DEPOSIT_ENVELOPE_ACCOUNT_ID];
+    ? [DEPOSIT_ENVELOPE_ACCOUNT_ID, RECON_ADJ_ACCOUNT_ID]
+    : [RECON_ADJ_ACCOUNT_ID, DEPOSIT_ENVELOPE_ACCOUNT_ID];
   await accountingPort.createTransaction(
     [
       { entryId: crypto.randomUUID(), accountId: debitAccount, debit: amount, credit: Money.zero(), description, referenceType: 'deposit_envelope_sync', referenceId },

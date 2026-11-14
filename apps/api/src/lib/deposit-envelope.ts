@@ -59,6 +59,21 @@ export function buildRoutedAccounts(rules: RoutingRuleRow[], envelopeAccountId: 
   };
 }
 
+/**
+ * The account a payment is booked into. The store's routing rule for the
+ * payment method always wins; the account the client sent is only a fallback
+ * for methods with no rule. Trusting the client first let a stale "payment
+ * account" selection book a Cash payment to GCash (LR-1112-B40B, 12 Nov 2026),
+ * which left the cash drawer short and GCash overstated in the ledger.
+ */
+export function resolvePaymentAccount(
+  routed: Pick<RoutedAccounts, 'accountFor'>,
+  methodId: string | null | undefined,
+  requestedAccountId: string | null | undefined,
+): string | null {
+  return routed.accountFor(methodId) ?? requestedAccountId ?? null;
+}
+
 export async function resolveRoutedAccounts(storeId: string): Promise<RoutedAccounts> {
   const sb = getSupabaseClient();
   const [rulesRes, envelopeRes] = await Promise.all([

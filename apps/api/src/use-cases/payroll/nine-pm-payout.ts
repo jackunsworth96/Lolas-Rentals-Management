@@ -9,10 +9,12 @@ export interface NinePmPayoutResult {
 }
 
 /**
- * Pays a timesheet's 9pm returns from the till on the day: a paid expense
- * (DR wages / CR till) linked to the timesheet. Payroll later shows the
- * earnings on the payslip and nets this prepaid amount off the wages.
- * Re-running replaces the previous payout, so edits stay in sync.
+ * 9pm returns are now paid through payroll, so this NEVER creates a till
+ * payout. It only keeps a payout that already exists (a paid expense,
+ * DR wages / CR till, linked to the timesheet, from before the switch) in step
+ * with edits: the amount is replaced, or the expense removed when the count
+ * drops to zero. Payroll nets such a payout off the wages as already paid; a
+ * timesheet with no payout is paid its 9pm earnings in full by payroll.
  */
 export async function syncNinePmPayout(timesheetId: string, createdBy: string): Promise<NinePmPayoutResult> {
   const sb = getSupabaseClient();
@@ -27,7 +29,8 @@ export async function syncNinePmPayout(timesheetId: string, createdBy: string): 
   const count = Number(ts.nine_pm_returns_count ?? 0);
 
   const { data: existing } = await sb.from('expenses').select('id').eq('timesheet_id', timesheetId).maybeSingle();
-  if (count <= 0 && !existing) return { timesheetId, amount: 0 };
+  // No payout from the till yet: leave it to payroll. Never create one here.
+  if (!existing) return { timesheetId, amount: 0 };
 
   const [empRes, rateRes] = await Promise.all([
     sb.from('employees').select('full_name, nine_pm_bonus_rate').eq('id', ts.employee_id).single(),

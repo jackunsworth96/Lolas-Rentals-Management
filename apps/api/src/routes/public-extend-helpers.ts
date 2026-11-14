@@ -2,7 +2,7 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { computeQuote } from '../use-cases/booking/compute-quote.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
 import { resolveStoreAccounts } from '../adapters/supabase/maintenance-expense-rpc.js';
-import { resolveRoutedAccounts } from '../lib/deposit-envelope.js';
+import { resolvePaymentAccount, resolveRoutedAccounts } from '../lib/deposit-envelope.js';
 import { sendEmail, extendConfirmationHtml, escapeHtml } from '../services/email.js';
 import { formatManilaDate, formatManilaDateTime } from '../utils/manila-date.js';
 import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
@@ -519,7 +519,7 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
     const accounts = await resolveStoreAccounts(storeId);
     // Card money stays off the ledger until the card batch is settled.
     const paymentAccountId = isPaid && !/card/i.test(paymentMethodId)
-      ? args.paymentAccountId ?? (await resolveRoutedAccounts(storeId)).accountFor(paymentMethodId)
+      ? resolvePaymentAccount(await resolveRoutedAccounts(storeId), paymentMethodId, args.paymentAccountId)
       : null;
 
     const { data: rpcResult, error: rpcErr } = await sb

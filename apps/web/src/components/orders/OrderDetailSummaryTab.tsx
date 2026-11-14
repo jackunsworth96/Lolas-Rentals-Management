@@ -340,9 +340,11 @@ export function OrderDetailSummaryTab({
     setSettleRefundMethodId(depositMethodId);
   }, [depositMethodId, refundPaymentMethods]);
 
+  // The collect account follows the payment method (not just "when empty"), so a
+  // previously chosen account can't stay selected after the method changes.
   useEffect(() => {
-    if (routedCollectAcct && !paymentAccountId) setPaymentAccountId(routedCollectAcct);
-  }, [routedCollectAcct, paymentAccountId]);
+    setPaymentAccountId(routedCollectAcct ?? '');
+  }, [paymentMethodId, routedCollectAcct]);
   useEffect(() => {
     if (routedSettleFinalAcct && !settleFinalAccountId) setSettleFinalAccountId(routedSettleFinalAcct);
   }, [routedSettleFinalAcct, settleFinalAccountId]);
