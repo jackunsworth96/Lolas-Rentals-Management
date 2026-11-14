@@ -93,11 +93,11 @@ function addDays(d: string, n: number): string {
   return new Date(Date.UTC(y, m - 1, dd + n)).toISOString().slice(0, 10);
 }
 
-/** Mon–Sat dates in the range; Sunday is the shop's rest day and never costs leave. */
+/** Every calendar date in the range. The shop is open 7 days a week, so Sunday counts like any other day. */
 export function leaveDates(startDate: string, endDate: string): string[] {
   const out: string[] = [];
   for (let d = startDate; d <= endDate; d = addDays(d, 1)) {
-    if (new Date(`${d}T00:00:00Z`).getUTCDay() !== 0) out.push(d);
+    out.push(d);
     if (out.length > 62) throw new DomainError('Leave requests are limited to two months at a time');
   }
   return out;
@@ -205,7 +205,7 @@ async function assertBalance(employeeId: string, leaveType: LeaveType, days: num
 export async function createLeaveRequest(employeeId: string, input: CreateLeaveRequest): Promise<LeaveRequestRecord> {
   const { storeId } = await employeeStore(employeeId);
   const dates = leaveDates(input.startDate, input.endDate);
-  if (dates.length === 0) throw new DomainError('Pick at least one day other than Sunday');
+  if (dates.length === 0) throw new DomainError('Pick at least one day');
   await assertNoClash(employeeId, dates);
   await assertBalance(employeeId, input.leaveType, dates.length, input.startDate);
 

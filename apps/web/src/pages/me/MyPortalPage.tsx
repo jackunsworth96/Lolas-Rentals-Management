@@ -31,12 +31,12 @@ function addDays(d: string, n: number): string {
   return new Date(Date.UTC(y, m - 1, dd + n)).toISOString().slice(0, 10);
 }
 
-/** Mirrors the server: Sundays never count as leave days. */
+/** Mirrors the server: every calendar day in the range counts (the shop is open 7 days a week). */
 function countLeaveDays(start: string, end: string): number {
   if (!start || !end || end < start) return 0;
   let n = 0;
   for (let d = start; d <= end && n < 100; d = addDays(d, 1)) {
-    if (new Date(`${d}T00:00:00Z`).getUTCDay() !== 0) n += 1;
+    n += 1;
   }
   return n;
 }
@@ -124,7 +124,7 @@ function LeaveTab() {
           </div>
         </div>
         <div className={`rounded-lg px-3 py-2 text-sm ${short ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-700'}`}>
-          {days} day{days === 1 ? '' : 's'} (Sundays aren&apos;t counted)
+          {days} day{days === 1 ? '' : 's'}
           {available != null && <> · {Math.max(0, available)} available</>}
           {leaveType === 'unpaid' && <> · not paid</>}
           {short && <div className="mt-1 text-xs">Not enough balance. You can apply for unpaid leave instead.</div>}
