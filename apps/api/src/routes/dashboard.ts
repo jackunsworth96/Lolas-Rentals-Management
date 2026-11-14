@@ -10,6 +10,7 @@ import { getDashboardAvailabilityModel, type DashboardAvailabilityModel } from '
 import { availableAfterUnassignedHolds, unprocessedBookingHolds } from '../lib/dashboard-unprocessed-bookings.js';
 import { ownerUseNotEndedBy, ownerUseVehicleIdsOverlapping } from '../lib/owner-use-window.js';
 import { fetchAll, type PageQuery } from '../lib/fetch-all.js';
+import { fleetOnRentPercent } from '../lib/fleet-on-rent.js';
 import { loadEnrichedOrdersFallback } from '../lib/enriched-orders-fallback.js';
 import { ORDERS_RAW_INBOX_COLUMNS } from '../lib/orders-raw-columns.js';
 import {
@@ -686,8 +687,6 @@ router.get('/summary', authenticate, async (req, res, next) => {
       const rentableFleet = storeFleet.filter(
         (v) => rentableStatusIds.has(v.status as string) || rentableStatusNames.has(v.status as string),
       );
-      const totalRentable = rentableFleet.length;
-
       const storeActiveVehicleIds = new Set<string>();
       for (const item of ninepmCandidates) {
         const orderData = item.orders as unknown as { store_id: string; status: string } | null;
@@ -763,9 +762,13 @@ router.get('/summary', authenticate, async (req, res, next) => {
       );
 
       const activeCount = storeActiveOrders.length;
-      const fleetUtilisation = totalRentable > 0
-        ? Math.min(100, Math.round((storeOnRentVehicleIds.size / totalRentable) * 100))
-        : 0;
+      const fleetUtilisation = fleetOnRentPercent(
+        storeFleet.map((v) => ({
+          id: v.id as string,
+          isRentable: rentableStatusIds.has(v.status as string) || rentableStatusNames.has(v.status as string),
+        })),
+        storeOnRentVehicleIds,
+      );
 
       const depositsWithheldByMethod = { cash: 0, gcash: 0, bank: 0 };
       for (const order of storeActiveOrders) {
