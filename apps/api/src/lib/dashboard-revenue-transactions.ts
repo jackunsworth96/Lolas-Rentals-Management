@@ -1,3 +1,5 @@
+import { revenueAmount } from './revenue-payments.js';
+
 export interface PaymentRow {
   id: string;
   amount: number | string | null;
@@ -47,6 +49,16 @@ function humanise(paymentType: string | null): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+/**
+ * Payment methods are saved as "cash" in some places and "Cash" in others, so match
+ * without regard to case, and fall back to the saved text rather than showing nothing.
+ */
+function methodLabel(methodId: string | null, methodNames: Map<string, string>): string | null {
+  if (!methodId) return null;
+  const byLowercase = new Map([...methodNames].map(([id, name]) => [id.toLowerCase(), name]));
+  return byLowercase.get(methodId.toLowerCase()) ?? humanise(methodId);
+}
+
 /** Today's income lines, newest first. The total is the same sum the dashboard card shows. */
 export function buildRevenueTransactions(input: {
   payments: PaymentRow[];
@@ -58,10 +70,10 @@ export function buildRevenueTransactions(input: {
       key: `payment-${p.id}`,
       kind: 'payment',
       time: p.created_at,
-      amount: Number(p.amount ?? 0),
+      amount: revenueAmount(p),
       storeId: p.store_id,
-      label: humanise(p.payment_type),
-      method: p.payment_method_id ? input.methodNames.get(p.payment_method_id) ?? null : null,
+      label: p.payment_type === 'refund' ? 'Refund (money back to customer)' : humanise(p.payment_type),
+      method: methodLabel(p.payment_method_id, input.methodNames),
       customerName: p.orders?.booking_customer_name?.trim() || p.orders?.customers?.name?.trim() || null,
       reference: p.orders?.booking_token ?? p.orders?.woo_order_id ?? null,
       orderId: p.order_id,

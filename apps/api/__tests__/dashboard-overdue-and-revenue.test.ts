@@ -66,4 +66,19 @@ describe('buildRevenueTransactions', () => {
     expect(transactions[0]).toMatchObject({ kind: 'misc_sale', label: 'Surf wax' });
     expect(transactions[1]).toMatchObject({ label: 'Rental payment', method: 'GCash', customerName: 'Ben', reference: 'LR-9', orderId: 'o1' });
   });
+
+  it('matches payment methods whatever the capital letters, and takes refunds off the total', () => {
+    const payment = (id: string, type: string, method: string, amount: number) => ({
+      id, amount, store_id: 'store-lolas', payment_type: type, payment_method_id: method, order_id: null,
+      created_at: '2026-11-14T09:00:00+08:00',
+    });
+    const { transactions, total } = buildRevenueTransactions({
+      payments: [payment('a', 'rental', 'cash', 4650), payment('b', 'refund', 'Cash', 4650), payment('c', 'rental', 'Wise', 1000)],
+      miscSales: [],
+      methodNames: new Map([['Cash', 'Cash'], ['Wise', 'Wise']]),
+    });
+    expect(transactions.find((t) => t.key === 'payment-a')?.method).toBe('Cash');
+    expect(transactions.find((t) => t.key === 'payment-b')).toMatchObject({ amount: -4650, label: 'Refund (money back to customer)' });
+    expect(total).toBe(1000);
+  });
 });

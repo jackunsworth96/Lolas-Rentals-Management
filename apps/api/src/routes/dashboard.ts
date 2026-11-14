@@ -11,6 +11,7 @@ import { availableAfterUnassignedHolds, unprocessedBookingHolds } from '../lib/d
 import { ownerUseNotEndedBy, ownerUseVehicleIdsOverlapping } from '../lib/owner-use-window.js';
 import { fetchAll, type PageQuery } from '../lib/fetch-all.js';
 import { fleetOnRentPercent } from '../lib/fleet-on-rent.js';
+import { revenueAmount, revenuePaymentsOnly } from '../lib/revenue-payments.js';
 import { buildOverdueReturns } from '../lib/dashboard-overdue.js';
 import {
   buildRevenueTransactions,
@@ -398,12 +399,11 @@ router.get('/summary', authenticate, async (req, res, next) => {
 
     const financialQueries = canViewFinancial
       ? [
-          sb
+          revenuePaymentsOnly(sb
             .from('payments')
             .select('id, amount, store_id, payment_type, created_at')
             .gte('created_at', `${manilaDate}T00:00:00+08:00`)
-            .lt('created_at', `${manilaDate}T23:59:59.999+08:00`)
-            .not('payment_type', 'in', '("deposit","refund")')
+            .lt('created_at', `${manilaDate}T23:59:59.999+08:00`))
             .then((r) => ({ key: 'todayPayments' as const, ...r })),
 
           sb
@@ -420,18 +420,16 @@ router.get('/summary', authenticate, async (req, res, next) => {
             .lt('added_at', `${manilaDate}T23:59:59.999+08:00`)
             .then((r) => ({ key: 'addonRevenue' as const, ...r })),
 
-          pagedQuery('revenueTrend', () => sb
+          pagedQuery('revenueTrend', () => revenuePaymentsOnly(sb
             .from('payments')
             .select('amount, store_id, payment_type, created_at')
-            .gte('created_at', `${thirtyDaysAgo}T00:00:00+08:00`)
-            .not('payment_type', 'in', '("deposit","refund")')
+            .gte('created_at', `${thirtyDaysAgo}T00:00:00+08:00`))
             .order('id')),
 
-          pagedQuery('revenueThisMonth', () => sb
+          pagedQuery('revenueThisMonth', () => revenuePaymentsOnly(sb
             .from('payments')
             .select('amount, store_id, payment_type, created_at')
-            .gte('created_at', `${firstDayOfMonth}T00:00:00+08:00`)
-            .not('payment_type', 'in', '("deposit","refund")')
+            .gte('created_at', `${firstDayOfMonth}T00:00:00+08:00`))
             .order('id')),
 
           sb
@@ -876,7 +874,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
         const storePayments = sid
           ? todayPayments.filter((p) => p.store_id === sid)
           : todayPayments;
-        todayRevenue = storePayments.reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
+        todayRevenue = storePayments.reduce((sum, p) => sum + revenueAmount(p as { amount: number; payment_type: string }), 0);
 
         const miscSalesData = dataMap.get('miscSales') ?? [];
         const storeMisc = sid
@@ -905,7 +903,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
         for (const p of storeTrend) {
           const createdAt = p.created_at as string;
           const payDate = new Date(createdAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
-          trendMap.set(payDate, (trendMap.get(payDate) ?? 0) + Number(p.amount ?? 0));
+          trendMap.set(payDate, (trendMap.get(payDate) ?? 0) + revenueAmount(p as { amount: number; payment_type: string }));
         }
         revenueTrend = [...trendMap.entries()]
           .map(([date, revenue]) => ({ date, revenue }))
@@ -919,7 +917,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
         for (const p of storeThisMonth) {
           const createdAt = p.created_at as string;
           const payDate = new Date(createdAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
-          thisMonthMap.set(payDate, (thisMonthMap.get(payDate) ?? 0) + Number(p.amount ?? 0));
+          thisMonthMap.set(payDate, (thisMonthMap.get(payDate) ?? 0) + revenueAmount(p as { amount: number; payment_type: string }));
         }
         revenueThisMonth = [...thisMonthMap.entries()]
           .map(([date, revenue]) => ({ date, revenue }))
@@ -1085,13 +1083,12 @@ router.get('/insights', async (req, res, next) => {
       canViewFinancial ? load() : Promise.resolve([]);
 
     const [payments, miscSales, expenses, upcomingItems, recentPickups, orders, fleet, fleetStatuses] = await Promise.all([
-      financial(() => fetchAll<{ amount: number; created_at: string }>(() => sb
+      financial(async () => (await fetchAll<{ amount: number; payment_type: string; created_at: string }>(() => revenuePaymentsOnly(sb
         .from('payments')
-        .select('amount, created_at')
+        .select('amount, payment_type, created_at')
         .in('store_id', storeIds)
-        .gte('created_at', `${windowStart}T00:00:00+08:00`)
-        .not('payment_type', 'in', '("deposit","refund")')
-        .order('id'))),
+        .gte('created_at', `${windowStart}T00:00:00+08:00`))
+        .order('id'))).map((p) => ({ amount: revenueAmount(p), created_at: p.created_at }))),
       financial(() => fetchAll<{ amount: number; created_at: string }>(() => sb
         .from('misc_sales')
         .select('amount, created_at')
@@ -1223,13 +1220,12 @@ router.get('/revenue-transactions', async (req, res, next) => {
     const from = `${manilaDate}T00:00:00+08:00`;
     const to = `${manilaDate}T23:59:59.999+08:00`;
 
-    // Same filters as the "Revenue today" card on /summary, so the list adds up to the card.
-    const paymentsQuery = sb
+    // Same rule as the "Revenue today" card on /summary, so the list adds up to the card.
+    const paymentsQuery = revenuePaymentsOnly(sb
       .from('payments')
       .select('id, amount, store_id, payment_type, payment_method_id, order_id, created_at, orders!order_id(booking_token, woo_order_id, booking_customer_name, customers!customer_id(name))')
       .gte('created_at', from)
-      .lt('created_at', to)
-      .not('payment_type', 'in', '("deposit","refund")');
+      .lt('created_at', to));
     const miscQuery = sb
       .from('misc_sales')
       .select('id, amount, store_id, created_at, description, category')

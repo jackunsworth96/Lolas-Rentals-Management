@@ -13,7 +13,7 @@ export function RevenueTransactionsModal({ open, onClose, storeId }: { open: boo
   return (
     <Modal open={open} onClose={onClose} title="Revenue today" size="lg">
       <p className="-mt-1 mb-4 text-sm text-gray-500">
-        Every payment and misc sale counted in today&apos;s revenue. Security deposits and refunds are not included.
+        Money earned today: rentals, extensions, add-ons and misc sales. Security deposits and their refunds are not revenue, and unpaid balances only count once they are paid. Refunds of rental money are taken off.
       </p>
       {isLoading && <div className="h-24 animate-pulse rounded-lg bg-gray-100" />}
       {error && <p className="text-sm text-red-600">Couldn&apos;t load transactions: {(error as Error).message}</p>}
