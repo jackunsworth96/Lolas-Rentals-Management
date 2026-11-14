@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { authenticate } from '../middleware/authenticate.js';
 import { validateBody } from '../middleware/validate.js';
@@ -11,6 +11,12 @@ import { availableAfterUnassignedHolds, unprocessedBookingHolds } from '../lib/d
 import { ownerUseNotEndedBy, ownerUseVehicleIdsOverlapping } from '../lib/owner-use-window.js';
 import { fetchAll, type PageQuery } from '../lib/fetch-all.js';
 import { fleetOnRentPercent } from '../lib/fleet-on-rent.js';
+import { buildOverdueReturns } from '../lib/dashboard-overdue.js';
+import {
+  buildRevenueTransactions,
+  type MiscSaleRow,
+  type PaymentRow,
+} from '../lib/dashboard-revenue-transactions.js';
 import { loadEnrichedOrdersFallback } from '../lib/enriched-orders-fallback.js';
 import { ORDERS_RAW_INBOX_COLUMNS } from '../lib/orders-raw-columns.js';
 import {
@@ -1166,6 +1172,92 @@ router.get('/insights', async (req, res, next) => {
   }
 });
 
+/** Enriched orders for one store, via the RPC with the same fallback the Orders page uses. */
+async function loadEnrichedOrders(
+  sb: ReturnType<typeof getSupabaseClient>,
+  storeId: string,
+  statuses: string[],
+): Promise<EnrichedOrderRow[]> {
+  const { data, error } = await sb.rpc('get_enriched_orders', { p_store_id: storeId, p_statuses: statuses });
+  const missingRpc = error && (error.code === 'PGRST202' || error.message.includes('Could not find the function public.get_enriched_orders'));
+  if (error && !missingRpc) throw new Error(`enriched orders query failed: ${error.message}`);
+  return (missingRpc ? await loadEnrichedOrdersFallback(sb, storeId, statuses) : data ?? []) as EnrichedOrderRow[];
+}
+
+/** Active, non-company stores to report on: the one picked in the header, or all of them. */
+async function storeScope(req: Request): Promise<string[]> {
+  const storeIdParam = req.query.storeId as string | undefined;
+  if (storeIdParam && storeIdParam !== 'all') return [storeIdParam];
+  return (await req.app.locals.deps.configRepo.getStores('active'))
+    .filter((store: { id: string }) => store.id !== 'company')
+    .map((store: { id: string }) => store.id);
+}
+
+// ── GET /overdue-returns — active orders past their drop-off time, so staff can settle them ──
+router.get('/overdue-returns', async (req, res, next) => {
+  try {
+    if (!(req.user?.permissions ?? []).includes(Permission.ViewActive)) {
+      res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Requires active orders access' } });
+      return;
+    }
+    const sb = getSupabaseClient();
+    const storeIds = await storeScope(req);
+    const orders = (await Promise.all(storeIds.map((id) => loadEnrichedOrders(sb, id, ['active'])))).flat();
+    res.json({ success: true, data: buildOverdueReturns(orders, Date.now()) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── GET /revenue-transactions — the payments and misc sales behind "Revenue today" ──
+router.get('/revenue-transactions', async (req, res, next) => {
+  try {
+    if (!(req.user?.permissions ?? []).includes(Permission.ViewDashboard)) {
+      res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Requires dashboard access' } });
+      return;
+    }
+    const sb = getSupabaseClient();
+    const storeIdParam = req.query.storeId as string | undefined;
+    const storeFilter = storeIdParam && storeIdParam !== 'all' ? storeIdParam : undefined;
+    const manilaDate = formatManilaDate();
+    const from = `${manilaDate}T00:00:00+08:00`;
+    const to = `${manilaDate}T23:59:59.999+08:00`;
+
+    // Same filters as the "Revenue today" card on /summary, so the list adds up to the card.
+    const paymentsQuery = sb
+      .from('payments')
+      .select('id, amount, store_id, payment_type, payment_method_id, order_id, created_at, orders!order_id(booking_token, woo_order_id, booking_customer_name, customers!customer_id(name))')
+      .gte('created_at', from)
+      .lt('created_at', to)
+      .not('payment_type', 'in', '("deposit","refund")');
+    const miscQuery = sb
+      .from('misc_sales')
+      .select('id, amount, store_id, created_at, description, category')
+      .gte('created_at', from)
+      .lt('created_at', to);
+
+    const [paymentsRes, miscRes, methodsRes] = await Promise.all([
+      storeFilter ? paymentsQuery.eq('store_id', storeFilter) : paymentsQuery,
+      storeFilter ? miscQuery.eq('store_id', storeFilter) : miscQuery,
+      sb.from('payment_methods').select('id, name'),
+    ]);
+    for (const r of [paymentsRes, miscRes, methodsRes]) {
+      if (r.error) throw new Error(`revenue transactions query failed: ${r.error.message}`);
+    }
+
+    res.json({
+      success: true,
+      data: buildRevenueTransactions({
+        payments: (paymentsRes.data ?? []) as unknown as PaymentRow[],
+        miscSales: (miscRes.data ?? []) as unknown as MiscSaleRow[],
+        methodNames: new Map(((methodsRes.data ?? []) as Array<{ id: string; name: string }>).map((m) => [m.id, m.name])),
+      }),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── GET /today-movements?day=today|tomorrow — pickups and returns with the vitals staff need ──
 router.get('/today-movements', async (req, res, next) => {
   try {
@@ -1187,13 +1279,7 @@ router.get('/today-movements', async (req, res, next) => {
     const dayStart = `${day}T00:00:00+08:00`;
     const dayEnd = `${addDays(day, 1)}T00:00:00+08:00`;
 
-    const loadEnriched = async (storeId: string) => {
-      const statuses = ['active', 'confirmed'];
-      const { data, error } = await sb.rpc('get_enriched_orders', { p_store_id: storeId, p_statuses: statuses });
-      const missingRpc = error && (error.code === 'PGRST202' || error.message.includes('Could not find the function public.get_enriched_orders'));
-      if (error && !missingRpc) throw new Error(`enriched orders query failed: ${error.message}`);
-      return (missingRpc ? await loadEnrichedOrdersFallback(sb, storeId, statuses) : data ?? []) as EnrichedOrderRow[];
-    };
+    const loadEnriched = (storeId: string) => loadEnrichedOrders(sb, storeId, ['active', 'confirmed']);
 
     const [rawRes, enrichedByStore, completedRes, locationsRes, addonsRes, modelsRes] = await Promise.all([
       sb.from('orders_raw')

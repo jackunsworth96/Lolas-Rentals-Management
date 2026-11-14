@@ -30,11 +30,12 @@ import { useAuthStore } from '../../../stores/auth-store.js';
 import {
   useDashboardSummary,
   useDashboardInsights,
-  useCharityImpact,
   useReferralStats,
   type StoreMetrics,
 } from '../../../api/dashboard.js';
 import { TodayMovements } from '../../../components/dashboard/TodayMovements.js';
+import { OverdueReturnsModal } from '../../../components/dashboard/OverdueReturnsModal.js';
+import { RevenueTransactionsModal } from '../../../components/dashboard/RevenueTransactionsModal.js';
 import { useLostOpportunities, type LostOpportunityRow } from '../../../api/lost-opportunity.js';
 import { useStores } from '../../../api/config.js';
 import { usePartnerProtection } from '../../../api/fleet.js';
@@ -71,13 +72,13 @@ const LONG_REPAIR_DAYS = 7;
 export default function TodayTab({ storeId, selectedStoreId }: DashboardTabProps) {
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const canViewFinancial = hasPermission('can_view_dashboard');
+  const canViewActive = hasPermission('can_view_active');
   const canViewLostOpp = hasPermission('can_view_lostopportunity');
 
   const { data, isLoading, error } = useDashboardSummary(storeId);
   const { data: insights, isLoading: insightsLoading } = useDashboardInsights(storeId);
   const { data: stores = [] } = useStores();
   const { data: protection = [] } = usePartnerProtection(storeId ?? 'all', hasPermission('can_view_fleet'));
-  const { data: charityImpact } = useCharityImpact();
   const { data: referralStats } = useReferralStats(selectedStoreId || undefined);
 
   const today = manilaToday();
@@ -89,6 +90,8 @@ export default function TodayTab({ storeId, selectedStoreId }: DashboardTabProps
   const lostOpps = lostOppsData ?? [];
 
   const [showAvailability, setShowAvailability] = useState(false);
+  const [showRevenue, setShowRevenue] = useState(false);
+  const [showOverdue, setShowOverdue] = useState(false);
   const [walkInVehicleId, setWalkInVehicleId] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const canBookWalkIn = hasPermission('can_edit_orders') && !!storeId;
@@ -116,7 +119,7 @@ export default function TodayTab({ storeId, selectedStoreId }: DashboardTabProps
         id: 'overdue',
         tone: 'danger',
         label: `${data.overdueOrdersCount} overdue ${data.overdueOrdersCount === 1 ? 'return' : 'returns'}`,
-        to: '/orders/active',
+        ...(canViewActive ? { onClick: () => setShowOverdue(true) } : { to: '/orders/active' }),
       });
     }
     if (metrics.availableVehicles === 0) {
@@ -155,14 +158,6 @@ export default function TodayTab({ storeId, selectedStoreId }: DashboardTabProps
         to: '/lost-opportunity',
       });
     }
-    if (canViewFinancial && charityImpact && charityImpact.pendingPayout > 0) {
-      items.push({
-        id: 'ngo',
-        tone: 'warning',
-        label: `NGO payout pending ${formatPeso(charityImpact.pendingPayout)}`,
-        to: '/dashboard?tab=marketing',
-      });
-    }
     if (canViewFinancial && referralStats && referralStats.unmatchedRawNames.length > 0) {
       items.push({
         id: 'aliases',
@@ -172,7 +167,7 @@ export default function TodayTab({ storeId, selectedStoreId }: DashboardTabProps
       });
     }
     return items;
-  }, [data, metrics, lostOpps, canViewLostOpp, canViewFinancial, charityImpact, referralStats]);
+  }, [data, metrics, lostOpps, canViewLostOpp, canViewFinancial, canViewActive, referralStats]);
 
   if (error) {
     return (
@@ -237,7 +232,8 @@ export default function TodayTab({ storeId, selectedStoreId }: DashboardTabProps
             label="Revenue today"
             value={formatPeso(revenueToday)}
             icon={Banknote}
-            sub={metrics?.miscSalesRevenue ? `incl. ${formatPeso(metrics.miscSalesRevenue)} misc sales` : 'rentals and add-ons'}
+            sub={metrics?.miscSalesRevenue ? `incl. ${formatPeso(metrics.miscSalesRevenue)} misc sales · tap for details` : 'tap to see transactions'}
+            onClick={() => setShowRevenue(true)}
           />
         )}
         <KpiCard
@@ -246,7 +242,8 @@ export default function TodayTab({ storeId, selectedStoreId }: DashboardTabProps
           value={String(data?.overdueOrdersCount ?? 0)}
           icon={AlertOctagon}
           tone={(data?.overdueOrdersCount ?? 0) > 0 ? 'danger' : 'good'}
-          sub={(data?.overdueOrdersCount ?? 0) > 0 ? 'past drop-off time' : 'all on time'}
+          sub={(data?.overdueOrdersCount ?? 0) > 0 ? (canViewActive ? 'tap to settle' : 'past drop-off time') : 'all on time'}
+          onClick={canViewActive && (data?.overdueOrdersCount ?? 0) > 0 ? () => setShowOverdue(true) : undefined}
         />
       </div>
 
@@ -433,6 +430,11 @@ export default function TodayTab({ storeId, selectedStoreId }: DashboardTabProps
             : undefined
         }
       />
+      {canViewFinancial && showRevenue && (
+        <RevenueTransactionsModal open onClose={() => setShowRevenue(false)} storeId={storeId} />
+      )}
+      {canViewActive && showOverdue && <OverdueReturnsModal open onClose={() => setShowOverdue(false)} storeId={storeId} />}
+
       {walkInVehicleId && (
         <WalkInBookingModal
           open

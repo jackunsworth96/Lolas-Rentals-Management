@@ -198,6 +198,55 @@ export function useTodayMovements(storeId?: string, day: MovementDay = 'today', 
   });
 }
 
+export interface OverdueReturn {
+  orderId: string;
+  storeId: string;
+  reference: string | null;
+  customerName: string;
+  mobile: string | null;
+  dueAt: string;
+  vehicles: string[];
+  balanceDue: number;
+  deposit: number;
+}
+
+export function useOverdueReturns(storeId?: string, enabled = true) {
+  const params = storeId && storeId !== 'all' ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  return useQuery<OverdueReturn[]>({
+    queryKey: ['dashboard', 'overdue-returns', storeId],
+    queryFn: () => api.get<OverdueReturn[]>(`/dashboard/overdue-returns${params}`),
+    refetchInterval: 60_000,
+    enabled,
+  });
+}
+
+export interface RevenueTransaction {
+  key: string;
+  kind: 'payment' | 'misc_sale';
+  time: string;
+  amount: number;
+  storeId: string;
+  label: string;
+  method: string | null;
+  customerName: string | null;
+  reference: string | null;
+  orderId: string | null;
+}
+
+export interface RevenueTransactions {
+  transactions: RevenueTransaction[];
+  total: number;
+}
+
+export function useRevenueTransactions(storeId?: string, enabled = true) {
+  const params = storeId && storeId !== 'all' ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  return useQuery<RevenueTransactions>({
+    queryKey: ['dashboard', 'revenue-transactions', storeId],
+    queryFn: () => api.get<RevenueTransactions>(`/dashboard/revenue-transactions${params}`),
+    enabled,
+  });
+}
+
 export interface CharityDonationRow {
   id: string;
   customerName: string | null;

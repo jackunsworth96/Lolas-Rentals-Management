@@ -237,7 +237,7 @@ function ReturnCard({ r, onOpen }: { r: ReturnMovement; onOpen?: () => void }) {
 }
 
 /** Finds the enriched order the Active page would pass, so the modal opens with the same detail. */
-function DashboardOrderModal({ orderId, storeId, readOnly, onClose }: { orderId: string; storeId: string; readOnly: boolean; onClose: () => void }) {
+export function DashboardOrderModal({ orderId, storeId, readOnly, onClose }: { orderId: string; storeId: string; readOnly: boolean; onClose: () => void }) {
   const { data } = useEnrichedOrders(readOnly ? '' : storeId, 'active,confirmed') as { data: EnrichedOrder[] | undefined };
   const enriched = data?.find((o) => o.id === orderId);
   return (

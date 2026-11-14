@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -94,6 +94,17 @@ vi.mock('../src/api/dashboard.js', () => ({
     byPartner: [{ partnerId: 'p', partnerName: 'Surf Inn', slug: 'surf-inn', totalBookings: 3, commissionableBookings: 3, commissionDue: 450 }],
   }),
   useTodayMovements: (_storeId: string, day: string) => result(day === 'tomorrow' ? tomorrowMovements : movements),
+  useOverdueReturns: () => result([{
+    orderId: 'late1', storeId: 'store-lolas', reference: 'LR-3', customerName: 'Late Larry', mobile: '+63918',
+    dueAt: '2026-11-13T09:00:00+08:00', vehicles: ['Click 02'], balanceDue: 500, deposit: 1000,
+  }]),
+  useRevenueTransactions: () => result({
+    total: 2800,
+    transactions: [
+      { key: 'p1', kind: 'payment', time: '2026-11-14T09:00:00+08:00', amount: 2500, storeId: 'store-lolas', label: 'Rental payment', method: 'GCash', customerName: 'Ben', reference: 'LR-9', orderId: 'o1' },
+      { key: 'm1', kind: 'misc_sale', time: '2026-11-14T10:00:00+08:00', amount: 300, storeId: 'store-lolas', label: 'Surf wax', method: null, customerName: null, reference: null, orderId: null },
+    ],
+  }),
   useChatSummary: () => result({
     total: 40, handoffs: 12, handoffRate: 30, avgMessages: 4,
     sessionsByDay: [{ date: '2026-11-13', sessions: 4 }], byPageOrigin: [{ page: 'home', count: 30 }],
@@ -165,6 +176,8 @@ beforeAll(() => {
     unobserve() {}
     disconnect() {}
   } as unknown as typeof ResizeObserver;
+  HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) { this.open = true; };
+  HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) { this.open = false; };
 });
 
 afterEach(() => {
@@ -187,7 +200,35 @@ describe('dashboard tabs', () => {
     renderAt('/dashboard');
     expect(screen.getByText('No vehicles available right now')).toBeTruthy();
     expect(screen.getByText('1 vehicle in maintenance over 7 days')).toBeTruthy();
-    expect(screen.getByText('NGO payout pending ₱2,000')).toBeTruthy();
+    // The NGO payout is paid when the owner sees fit, so it is not an "attention" item.
+    expect(screen.queryByText(/NGO payout pending/)).toBeNull();
+  });
+
+  it('opens the day\'s transactions from the Revenue today card', () => {
+    mocks.permissions = OWNER;
+    renderAt('/dashboard');
+    fireEvent.click(screen.getByText('Revenue today'));
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.getByText('Rental payment')).toBeTruthy();
+    expect(dialog.getByText('GCash')).toBeTruthy();
+    expect(dialog.getByText('Total (2 transactions)')).toBeTruthy();
+  });
+
+  it('opens overdue orders from the Overdue returns card and lets staff settle one', () => {
+    mocks.permissions = [...OWNER, 'can_view_active'];
+    renderAt('/dashboard');
+    fireEvent.click(screen.getByText('Overdue returns'));
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.getByText('Late Larry')).toBeTruthy();
+    expect(dialog.getByText('₱500 to collect')).toBeTruthy();
+    fireEvent.click(dialog.getByText('Late Larry'));
+    expect(screen.getByText('Order late1')).toBeTruthy();
+  });
+
+  it('does not make the Overdue returns card clickable without Active orders access', () => {
+    mocks.permissions = OWNER;
+    renderAt('/dashboard');
+    expect(screen.getByText('Overdue returns').closest('button')).toBeNull();
   });
 
   it("shows today's pickups and returns with their vitals, and opens the right modal", () => {
