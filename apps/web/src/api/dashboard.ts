@@ -19,6 +19,7 @@ export interface MaintenanceVehicle {
   name: string;
   status: string;
   daysDown: number;
+  issue: string | null;
 }
 
 export interface AddonRevenueRow {

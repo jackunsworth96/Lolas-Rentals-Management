@@ -141,6 +141,7 @@ interface MaintenanceVehicle {
   name: string;
   status: string;
   daysDown: number;
+  issue: string | null;
 }
 
 interface AddonRevenueRow {
@@ -330,7 +331,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
 
       sb
         .from('maintenance')
-        .select('id, asset_id, status, created_at, fleet!asset_id(name, store_id)')
+        .select('id, asset_id, status, created_at, issue_description, fleet!asset_id(name, store_id)')
         .eq('status', 'In Progress')
         .then((r) => ({ key: 'maintenanceRecords' as const, ...r })),
 
@@ -659,6 +660,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
           name: fleetData.name,
           status: r.status as string,
           daysDown,
+          issue: (r.issue_description as string | null)?.trim() || null,
         });
       }
       return result;

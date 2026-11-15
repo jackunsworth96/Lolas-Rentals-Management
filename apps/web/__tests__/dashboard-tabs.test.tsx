@@ -18,7 +18,10 @@ const metrics = {
   depositsWithheld: 3000,
   depositsWithheldByMethod: { cash: 2000, gcash: 1000, bank: 0 },
   fleetUtilisation: 80,
-  maintenanceVehicles: [{ id: 'v1', name: 'Click 02', status: 'In Progress', daysDown: 9 }],
+  maintenanceVehicles: [
+    { id: 'v1', name: 'Click 02', status: 'In Progress', daysDown: 9, issue: 'Gearbox rebuild' },
+    { id: 'v2', name: 'Lima', status: 'In Progress', daysDown: 0, issue: 'Battery flat every morning - needs replacing soon please' },
+  ],
   maintenancePartsCost: 1500,
   maintenanceLabourCost: 500,
   customerBreakdown: {
@@ -199,7 +202,9 @@ describe('dashboard tabs', () => {
     mocks.permissions = OWNER;
     renderAt('/dashboard');
     expect(screen.getByText('No vehicles available right now')).toBeTruthy();
-    expect(screen.getByText('1 vehicle in maintenance over 7 days')).toBeTruthy();
+    // A repair logged today shows straight away, not only once it's been down a week.
+    expect(screen.getByText('Lima in repair: Battery flat every morning - needs repla…')).toBeTruthy();
+    expect(screen.getByText('Click 02 in repair: Gearbox rebuild (9 days)')).toBeTruthy();
     // The NGO payout is paid when the owner sees fit, so it is not an "attention" item.
     expect(screen.queryByText(/NGO payout pending/)).toBeNull();
   });

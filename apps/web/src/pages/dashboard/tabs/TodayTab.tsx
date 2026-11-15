@@ -68,6 +68,7 @@ function manilaHour(): number {
 }
 
 const LONG_REPAIR_DAYS = 7;
+const MAX_NAMED_REPAIRS = 3;
 
 export default function TodayTab({ storeId, selectedStoreId }: DashboardTabProps) {
   const hasPermission = useAuthStore((s) => s.hasPermission);
@@ -133,14 +134,26 @@ export default function TodayTab({ storeId, selectedStoreId }: DashboardTabProps
         to: '/cashup',
       });
     }
-    const longRepairs = metrics.maintenanceVehicles.filter((v) => v.daysDown > LONG_REPAIR_DAYS);
-    if (longRepairs.length > 0) {
+    const repairs = metrics.maintenanceVehicles;
+    if (repairs.length > MAX_NAMED_REPAIRS) {
+      const longCount = repairs.filter((v) => v.daysDown > LONG_REPAIR_DAYS).length;
       items.push({
         id: 'repairs',
-        tone: 'warning',
-        label: `${longRepairs.length} ${longRepairs.length === 1 ? 'vehicle' : 'vehicles'} in maintenance over ${LONG_REPAIR_DAYS} days`,
+        tone: longCount > 0 ? 'danger' : 'warning',
+        label: `${repairs.length} vehicles in repair${longCount > 0 ? ` (${longCount} over ${LONG_REPAIR_DAYS} days)` : ''}`,
         to: '/maintenance',
       });
+    } else {
+      for (const v of repairs) {
+        const issue = v.issue ? `: ${v.issue.length > 40 ? `${v.issue.slice(0, 40).trimEnd()}…` : v.issue}` : '';
+        const age = v.daysDown > LONG_REPAIR_DAYS ? ` (${v.daysDown} days)` : '';
+        items.push({
+          id: `repair-${v.id}`,
+          tone: v.daysDown > LONG_REPAIR_DAYS ? 'danger' : 'warning',
+          label: `${v.name} in repair${issue}${age}`,
+          to: '/maintenance',
+        });
+      }
     }
     const owing = metrics.ninepmReturns.vehicles.filter((v) => v.balanceDue > 0);
     if (owing.length > 0) {
