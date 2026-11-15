@@ -12,9 +12,10 @@ import {
   type PaymentAccountOption,
   type PostedPayrollRun,
   type PayrollPeriodRequest,
+  type PayslipRecord,
 } from '../../api/payroll.js';
 import { formatCurrency } from '../../utils/currency.js';
-import { downloadPayslipsPdf } from '../../utils/payslipPdf.js';
+import { DRAFT_STATUS, downloadPayslipsPdf, viewPayslipsPdf } from '../../utils/payslipPdf.js';
 import { duePeriod, payDateFor, periodFor, type PayHalf } from '../../utils/payrollSchedule.js';
 
 interface Props {
@@ -47,7 +48,69 @@ const sumLines = (lines: PaymentLine[]) => r2(lines.reduce((s, l) => s + (Number
 interface EmpState {
   bonus: number;
   bonusNote: string;
+  roundUp: boolean;
   payments: PaymentLine[];
+}
+
+/** Shapes an unposted draft like a stored payslip so it prints with the same layout. */
+function draftToPayslip(p: PayslipDraft, preview: PayrollPreview, lines: PaymentLine[]): PayslipRecord {
+  const r = p.result;
+  const accountName = new Map(preview.paymentAccounts.map((a) => [a.id, a.name]));
+  return {
+    id: `draft-${p.employeeId}`,
+    payrollRunId: '',
+    storeId: preview.storeId,
+    employeeId: p.employeeId,
+    employeeName: p.employeeName,
+    runType: 'regular',
+    runStatus: DRAFT_STATUS,
+    periodStart: preview.periodStart,
+    periodEnd: preview.periodEnd,
+    payDate: preview.payDate,
+    isEndOfMonth: preview.isEndOfMonth,
+    rateType: p.rateType,
+    daysWorked: r.daysWorked,
+    leaveDays: r.leaveDays,
+    holidayDays: r.holidayDays,
+    overtimeHours: r.overtimeHours,
+    basicPay: r.basicPay,
+    leavePay: r.leavePay,
+    overtimePay: r.overtimePay,
+    holidayPremium: r.holidayPremium,
+    ninePmCount: r.ninePmCount,
+    ninePmEarnings: r.ninePmEarnings,
+    ninePmPrepaid: r.ninePmPrepaid,
+    tips: r.tips,
+    tipsPool: p.tipsPool,
+    tipsHeadcount: p.tipsHeadcount,
+    commission: r.commission,
+    pomRevenue: p.pomRevenue,
+    commissionRate: p.commissionRate,
+    bonuses: r.bonuses,
+    rounding: r.rounding,
+    grossPay: r.grossPay,
+    sss: r.employeeContributions.sss,
+    philhealth: r.employeeContributions.philhealth,
+    pagibig: r.employeeContributions.pagibig,
+    employerSss: r.employerContributions.sss,
+    employerPhilhealth: r.employerContributions.philhealth,
+    employerPagibig: r.employerContributions.pagibig,
+    cashAdvanceDeduction: r.cashAdvanceDeduction,
+    totalDeductions: r.totalDeductions,
+    netPay: r.netPay,
+    thirteenthMonthAccrual: r.thirteenthMonthAccrual,
+    thirteenthMonthPay: 0,
+    vehicleAllowance: p.vehicleAllowance,
+    holidayLeaveBalance: p.leave.holidayBalance,
+    sickLeaveBalance: p.leave.sickBalance,
+    transferFees: r2(lines.reduce((s, l) => s + (Number(l.fee) || 0), 0)),
+    dayLines: p.dayLines,
+    rateSnapshot: p.rates,
+    warnings: r.warnings,
+    payments: lines
+      .filter((l) => l.amount > 0)
+      .map((l) => ({ accountId: l.accountId, accountName: accountName.get(l.accountId) ?? null, method: l.method, amount: l.amount, fee: l.fee || 0, reference: l.reference ?? null })),
+  };
 }
 
 export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun }: Props) {
@@ -93,7 +156,7 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun
     setPayDate(payDateFor(ym, h));
   }
 
-  function buildRequest(withPayments: boolean, excl = excluded): PayrollPeriodRequest {
+  function buildRequest(withPayments: boolean, excl = excluded, inp = inputs): PayrollPeriodRequest {
     return {
       storeId,
       periodStart,
@@ -102,12 +165,13 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun
       isEndOfMonth,
       workingDaysInMonth: WORKING_DAYS_PER_MONTH,
       excludeEmployeeIds: [...excl],
-      employees: Object.entries(inputs)
+      employees: Object.entries(inp)
         .filter(([id]) => !excl.has(id))
         .map(([employeeId, s]) => ({
           employeeId,
           bonuses: s.bonus || 0,
           bonusNote: s.bonusNote || undefined,
+          roundUp: s.roundUp || undefined,
           payments: withPayments && s.payments.length > 0 ? s.payments : undefined,
         })),
     };
@@ -123,6 +187,7 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun
         next[p.employeeId] = {
           bonus: old?.bonus ?? 0,
           bonusNote: old?.bonusNote ?? '',
+          roundUp: old?.roundUp ?? false,
           payments: keep ? old.payments : p.payments.map((x) => ({ ...x, fee: x.fee ?? 0 })),
         };
       }
@@ -140,8 +205,22 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun
     });
   }
 
-  function recalculate(excl = excluded) {
-    previewMut.mutate(buildRequest(true, excl), { onSuccess: (data) => applyPreview(data, true) });
+  function recalculate(excl = excluded, inp = inputs) {
+    previewMut.mutate(buildRequest(true, excl, inp), { onSuccess: (data) => applyPreview(data, true) });
+  }
+
+  /** Toggle rounding net pay up to the next whole peso; the first payment line takes the difference. */
+  function toggleRoundUp(p: PayslipDraft) {
+    const st = inputs[p.employeeId];
+    if (!st) return;
+    const roundUp = !st.roundUp;
+    const cents = Math.round((p.result.netPay - p.result.rounding) * 100);
+    const newNet = roundUp && cents > 0 ? Math.ceil(cents / 100) : cents / 100;
+    const lines = [...st.payments];
+    if (lines.length > 0) lines[0] = { ...lines[0], amount: r2(Math.max(0, newNet - sumLines(lines.slice(1)))) };
+    const next = { ...inputs, [p.employeeId]: { ...st, roundUp, payments: lines } };
+    setInputs(next);
+    recalculate(excluded, next);
   }
 
   function toggleExclude(id: string) {
@@ -210,6 +289,12 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun
   const blocking = preview?.blockingErrors ?? [];
   const canConfirm = !!preview && payslips.length > 0 && !dirty && lineErrors === 0 && blocking.length === 0 && !previewMut.isPending;
   const feesTotal = payslips.reduce((s, p) => s + (inputs[p.employeeId]?.payments ?? []).reduce((a, l) => a + (Number(l.fee) || 0), 0), 0);
+  const canView = !dirty && !previewMut.isPending;
+
+  function viewDrafts(drafts: PayslipDraft[]) {
+    if (!preview) return;
+    void viewPayslipsPdf(drafts.map((p) => draftToPayslip(p, preview, inputs[p.employeeId]?.payments ?? p.payments)));
+  }
 
   return (
     <Modal open={isOpen} onClose={onClose} title="Run Payroll" size="2xl">
@@ -329,7 +414,7 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun
               <tbody className="divide-y divide-gray-100">
                 {payslips.map((p) => {
                   const r = p.result;
-                  const st = inputs[p.employeeId] ?? { bonus: 0, bonusNote: '', payments: [] };
+                  const st = inputs[p.employeeId] ?? { bonus: 0, bonusNote: '', roundUp: false, payments: [] };
                   const err = lineError(p);
                   const isOpen = expanded.has(p.employeeId);
                   return (
@@ -360,9 +445,20 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun
                             </div>
                           )}
                           {r.warnings.map((w) => <div key={w} className="mt-0.5 text-xs text-amber-700">⚠ {w}</div>)}
-                          <button type="button" onClick={() => toggleExclude(p.employeeId)} className="mt-1 text-xs text-gray-500 hover:text-red-600 hover:underline">
-                            Leave out of this run
-                          </button>
+                          <div className="mt-1 flex flex-wrap gap-x-3 text-xs">
+                            <button
+                              type="button"
+                              onClick={() => viewDrafts([p])}
+                              disabled={!canView}
+                              title={canView ? 'Open this payslip as a PDF' : 'Recalculate first'}
+                              className="font-medium text-teal-700 hover:underline disabled:opacity-50"
+                            >
+                              View payslip
+                            </button>
+                            <button type="button" onClick={() => toggleExclude(p.employeeId)} className="text-gray-500 hover:text-red-600 hover:underline">
+                              Leave out of this run
+                            </button>
+                          </div>
                         </td>
                         <td className="px-3 py-2 text-right align-top tabular-nums text-gray-700">
                           {r.daysWorked}{r.leaveDays > 0 && <span className="text-xs text-gray-400"> +{r.leaveDays} leave</span>}
@@ -380,7 +476,10 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun
                           />
                         </td>
                         <td className="px-3 py-2 text-right align-top tabular-nums text-gray-700">{formatCurrency(r.totalDeductions)}</td>
-                        <td className="px-3 py-2 text-right align-top font-semibold tabular-nums text-gray-900">{formatCurrency(r.netPay)}</td>
+                        <td className="px-3 py-2 text-right align-top tabular-nums">
+                          <div className="font-semibold text-gray-900">{formatCurrency(r.netPay)}</div>
+                          {r.rounding > 0 && <div className="text-xs text-gray-500">incl. {formatCurrency(r.rounding)} rounding</div>}
+                        </td>
                         <td className="px-3 py-2 align-top">
                           <div className="space-y-1">
                             {st.payments.map((l, idx) => (
@@ -404,6 +503,19 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun
                                   className={`${inputCls} w-24 text-right`}
                                   aria-label="Amount"
                                 />
+                                {idx === 0 && (st.roundUp || Math.round(r.netPay * 100) % 100 !== 0) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleRoundUp(p)}
+                                    disabled={previewMut.isPending}
+                                    className={`rounded border px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
+                                      st.roundUp ? 'border-teal-600 bg-teal-50 text-teal-700' : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                                    }`}
+                                    title={st.roundUp ? 'Undo rounding' : 'Round net pay up to the next whole peso'}
+                                  >
+                                    {st.roundUp ? 'Rounded ↺' : 'Round up'}
+                                  </button>
+                                )}
                                 {l.method !== 'cash' && (
                                   <input
                                     type="number"
@@ -474,14 +586,24 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun
             <button type="button" onClick={() => setStep('config')} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
               Back
             </button>
-            <button
-              type="button"
-              onClick={handleRun}
-              disabled={!canConfirm || runMut.isPending}
-              className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
-            >
-              {runMut.isPending ? 'Posting...' : `Post payroll · ${formatCurrency(preview.totals.net)}`}
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => viewDrafts(payslips)}
+                disabled={!canView || payslips.length === 0}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                View all payslips
+              </button>
+              <button
+                type="button"
+                onClick={handleRun}
+                disabled={!canConfirm || runMut.isPending}
+                className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
+              >
+                {runMut.isPending ? 'Posting...' : `Post payroll · ${formatCurrency(preview.totals.net)}`}
+              </button>
+            </div>
           </div>
         </div>
       ) : (
@@ -567,6 +689,7 @@ function DraftBreakdown({ p }: { p: PayslipDraft }) {
         <Row label={`Commission (${p.commissionRate}% of ${formatCurrency(p.pomRevenue)})`} value={r.commission} />
         <Row label="Tips share" value={r.tips} />
         <Row label="Bonus" value={r.bonuses} />
+        <Row label="Rounded up to the next peso" value={r.rounding} />
         <div className="flex justify-between gap-2 border-t border-gray-200 pt-1 font-medium">
           <span>Gross</span><span className="tabular-nums">{formatCurrency(r.grossPay)}</span>
         </div>

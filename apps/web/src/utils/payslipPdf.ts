@@ -2,6 +2,16 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { PayslipRecord } from '../api/payroll.js';
 import type { PayslipAcknowledgement } from '../api/me.js';
+import { LOGO_HEIGHT_MM, LOGO_WIDTH_MM, loadCompanyLogoPng } from './pdfShared.js';
+
+const EMPLOYER = {
+  name: "Lola's Rentals and Tours Inc.",
+  registration: 'Company Reg. No. 202.3010082080-0',
+  address: 'Tourism Rd, Catangnan, General Luna, 8419 Surigao del Norte',
+};
+
+/** Unposted payslips from the Run Payroll preview carry this status and print a DRAFT stamp. */
+export const DRAFT_STATUS = 'draft';
 
 export function unpaidLeaveDays(p: Pick<PayslipRecord, 'dayLines'>): number {
   return (p.dayLines ?? []).filter((d) => d.dayType === 'Unpaid Leave').length;
@@ -23,36 +33,45 @@ const METHOD: Record<string, string> = { cash: 'Cash', gcash: 'GCash', bank_tran
 
 type LastTable = { lastAutoTable?: { finalY: number } };
 
-function drawPayslip(doc: jsPDF, p: PayslipRecord, ack?: PayslipAcknowledgement | null): void {
+function drawPayslip(doc: jsPDF, p: PayslipRecord, logo: string | null, ack?: PayslipAcknowledgement | null): void {
   const pageW = doc.internal.pageSize.getWidth();
   const margin = 14;
   const isThirteenth = p.runType === 'thirteenth_month';
 
+  const logoH = 12;
+  const logoW = logoH * (LOGO_WIDTH_MM / LOGO_HEIGHT_MM);
+  if (logo) doc.addImage(logo, 'PNG', margin, 10, logoW, logoH);
+  const textX = logo ? margin + logoW + 4 : margin;
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.setTextColor(17, 24, 39);
-  doc.text("Lola's Rentals", margin, 18);
-  doc.setFont('helvetica', 'normal');
   doc.setFontSize(11);
-  doc.setTextColor(75, 85, 99);
-  doc.text(isThirteenth ? '13th Month Payslip' : 'Payslip', margin, 25);
+  doc.setTextColor(17, 24, 39);
+  doc.text(EMPLOYER.name, textX, 14);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(107, 114, 128);
+  doc.text(EMPLOYER.registration, textX, 18.5);
+  doc.text(doc.splitTextToSize(EMPLOYER.address, 80) as string[], textX, 22.5);
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
+  doc.setFontSize(11);
+  doc.setTextColor(17, 94, 89);
+  doc.text(isThirteenth ? '13th Month Payslip' : 'Payslip', pageW - margin, 14, { align: 'right' });
+  doc.setFontSize(10);
   doc.setTextColor(17, 24, 39);
-  doc.text(p.employeeName, pageW - margin, 18, { align: 'right' });
+  doc.text(p.employeeName, pageW - margin, 19.5, { align: 'right' });
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setTextColor(107, 114, 128);
   const periodLabel = isThirteenth
     ? `Year ${p.periodEnd.slice(0, 4)}`
     : `Period ${fmtDate(p.periodStart)} – ${fmtDate(p.periodEnd)}`;
   doc.text(periodLabel, pageW - margin, 24, { align: 'right' });
-  doc.text(`Pay date ${fmtDate(p.payDate ?? p.periodEnd)}`, pageW - margin, 29, { align: 'right' });
-  if (p.runStatus === 'voided') {
-    doc.setTextColor(220, 38, 38);
+  doc.text(`Pay date ${fmtDate(p.payDate ?? p.periodEnd)}`, pageW - margin, 28, { align: 'right' });
+  if (p.runStatus === 'voided' || p.runStatus === DRAFT_STATUS) {
     doc.setFont('helvetica', 'bold');
-    doc.text('VOIDED', pageW - margin, 34, { align: 'right' });
+    if (p.runStatus === 'voided') doc.setTextColor(220, 38, 38);
+    else doc.setTextColor(217, 119, 6);
+    doc.text(p.runStatus === 'voided' ? 'VOIDED' : 'DRAFT - not yet paid', pageW - margin, 33, { align: 'right' });
   }
 
   doc.setDrawColor(229, 231, 235);
@@ -77,6 +96,7 @@ function drawPayslip(doc: jsPDF, p: PayslipRecord, ack?: PayslipAcknowledgement 
     if (p.commission > 0) earnings.push([`Commission (${p.commissionRate}% of ${fmt(p.pomRevenue)} Peace of Mind sales)`, fmt(p.commission)]);
     if (p.tips > 0) earnings.push([`Tips (${fmt(p.tipsPool)} pool shared by ${p.tipsHeadcount})`, fmt(p.tips)]);
     if (p.bonuses > 0) earnings.push(['Bonus', fmt(p.bonuses)]);
+    if (p.rounding > 0) earnings.push(['Rounded up to the next peso', fmt(p.rounding)]);
     if (!isFixed && unpaid > 0) earnings.push([`Unpaid leave (${unpaid} day${unpaid === 1 ? '' : 's'})`, fmt(0)]);
   }
 
@@ -212,22 +232,38 @@ function slug(s: string): string {
   return s.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
 }
 
-export function downloadPayslipPdf(slip: PayslipRecord, ack?: PayslipAcknowledgement | null): void {
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  drawPayslip(doc, slip, ack);
-  doc.save(`payslip-${slug(slip.employeeName)}-${slip.periodEnd}.pdf`);
-}
-
-export function downloadPayslipsPdf(
-  slips: PayslipRecord[],
-  fileLabel: string,
-  acks?: Map<string, PayslipAcknowledgement>,
-): void {
-  if (slips.length === 0) return;
+async function buildPdf(slips: PayslipRecord[], acks?: Map<string, PayslipAcknowledgement | null | undefined>): Promise<jsPDF> {
+  const logo = await loadCompanyLogoPng();
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   slips.forEach((slip, i) => {
     if (i > 0) doc.addPage();
-    drawPayslip(doc, slip, acks?.get(slip.id));
+    drawPayslip(doc, slip, logo, acks?.get(slip.id));
   });
+  return doc;
+}
+
+export async function downloadPayslipPdf(slip: PayslipRecord, ack?: PayslipAcknowledgement | null): Promise<void> {
+  const doc = await buildPdf([slip], new Map([[slip.id, ack]]));
+  doc.save(`payslip-${slug(slip.employeeName)}-${slip.periodEnd}.pdf`);
+}
+
+export async function downloadPayslipsPdf(
+  slips: PayslipRecord[],
+  fileLabel: string,
+  acks?: Map<string, PayslipAcknowledgement>,
+): Promise<void> {
+  if (slips.length === 0) return;
+  const doc = await buildPdf(slips, acks);
   doc.save(`payslips-${slug(fileLabel)}.pdf`);
+}
+
+/** Opens the payslips in a new browser tab to read before posting or downloading. */
+export async function viewPayslipsPdf(slips: PayslipRecord[]): Promise<void> {
+  if (slips.length === 0) return;
+  // Open the tab inside the click so popup blockers allow it, then fill it once the PDF is built.
+  const tab = window.open('', '_blank');
+  const doc = await buildPdf(slips);
+  const url = doc.output('bloburl') as unknown as string;
+  if (tab) tab.location.href = url;
+  else doc.save(`payslips-preview.pdf`);
 }

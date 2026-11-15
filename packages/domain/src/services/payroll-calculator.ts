@@ -49,6 +49,8 @@ export interface PayrollInput {
    * unpaid leave. Added to basic pay; their days should arrive with a zero rate.
    */
   fixedBasicPay?: number;
+  /** Round net pay up to the next whole peso; the difference is paid as extra earnings. */
+  roundUpNet?: boolean;
 }
 
 export interface PayrollResult {
@@ -66,6 +68,8 @@ export interface PayrollResult {
   commission: number;
   tips: number;
   bonuses: number;
+  /** Added to round net pay up to a whole peso; included in gross. */
+  rounding: number;
   grossPay: number;
   employeeContributions: StatutoryAmounts;
   employerContributions: StatutoryAmounts;
@@ -130,7 +134,7 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
   const tips = Math.max(0, input.tipsShare);
   const bonuses = Math.max(0, input.bonuses);
 
-  const grossPay = round2(
+  const earnings = round2(
     round2(basicPay) + round2(leavePay) + round2(overtimePay) + round2(holidayPremium) +
     round2(ninePmEarnings) + round2(commission) + round2(tips) + round2(bonuses),
   );
@@ -141,7 +145,7 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
   const ninePmPrepaid = round2(Math.max(0, input.ninePmPrepaid));
 
   // An advance that doesn't fit this payday stays on its schedule for the next one.
-  const roomForAdvance = Math.max(0, grossPay - contributionTotal - ninePmPrepaid);
+  const roomForAdvance = Math.max(0, earnings - contributionTotal - ninePmPrepaid);
   const cashAdvanceDue = round2(Math.max(0, input.cashAdvanceDue));
   const cashAdvanceDeduction = round2(Math.min(cashAdvanceDue, roomForAdvance));
   if (cashAdvanceDeduction < cashAdvanceDue) {
@@ -151,7 +155,12 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
   }
 
   const totalDeductions = round2(contributionTotal + ninePmPrepaid + cashAdvanceDeduction);
-  const netPay = round2(grossPay - totalDeductions);
+  const unrounded = round2(earnings - totalDeductions);
+  // Always up, never down: 9.33 and 9.88 both become 10. Work in whole cents to dodge float noise.
+  const cents = Math.round(unrounded * 100);
+  const rounding = input.roundUpNet && cents > 0 ? (Math.ceil(cents / 100) * 100 - cents) / 100 : 0;
+  const grossPay = round2(earnings + rounding);
+  const netPay = round2(unrounded + rounding);
   if (netPay < 0) {
     warnings.push('Deductions exceed gross pay. Check the contributions and 9pm cash already paid before running payroll.');
   }
@@ -177,6 +186,7 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
     commission: round2(commission),
     tips: round2(tips),
     bonuses: round2(bonuses),
+    rounding,
     grossPay,
     employeeContributions,
     employerContributions,

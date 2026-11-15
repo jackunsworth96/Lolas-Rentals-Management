@@ -59,6 +59,7 @@ export interface PayslipRecord {
   pomRevenue: number;
   commissionRate: number;
   bonuses: number;
+  rounding: number;
   grossPay: number;
   sss: number;
   philhealth: number;
@@ -156,6 +157,7 @@ function toPayslip(r: Row, runStatus: string, payments: PayslipRecord['payments'
     pomRevenue: n(r.pom_revenue),
     commissionRate: n(r.commission_rate),
     bonuses: n(r.bonuses),
+    rounding: n(r.rounding),
     grossPay: n(r.gross_pay),
     sss: n(r.sss_deduction),
     philhealth: n(r.philhealth_deduction),

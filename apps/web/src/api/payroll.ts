@@ -46,6 +46,7 @@ export interface PayrollResult {
   commission: number;
   tips: number;
   bonuses: number;
+  rounding: number;
   grossPay: number;
   employeeContributions: Contributions;
   employerContributions: Contributions;
@@ -140,6 +141,7 @@ export interface PayrollEmployeeInput {
   employeeId: string;
   bonuses: number;
   bonusNote?: string;
+  roundUp?: boolean;
   payments?: PaymentLine[];
 }
 
@@ -214,6 +216,7 @@ export interface PayslipRecord {
   pomRevenue: number;
   commissionRate: number;
   bonuses: number;
+  rounding: number;
   grossPay: number;
   sss: number;
   philhealth: number;

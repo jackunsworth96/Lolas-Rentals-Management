@@ -19,6 +19,8 @@ export const PayrollEmployeeInputSchema = z.object({
   employeeId: z.string(),
   bonuses: z.number().nonnegative().default(0),
   bonusNote: z.string().max(200).optional(),
+  /** Round net pay up to the next whole peso. */
+  roundUp: z.boolean().default(false),
   /** Omit to pay the full net via the employee's default method. */
   payments: z.array(PayrollPaymentLineSchema).optional(),
 });

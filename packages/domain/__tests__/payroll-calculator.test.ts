@@ -123,6 +123,21 @@ describe('calculatePayroll', () => {
     expect(r.netPay).toBe(1060);
   });
 
+  it('rounds net pay up to the next whole peso when asked, as extra earnings', () => {
+    const base = input({ isEndOfMonth: false, days: [day({ dailyRate: 792.31 })], tipsShare: 0 });
+    expect(calculatePayroll(base).netPay).toBe(792.31);
+    const r = calculatePayroll({ ...base, roundUpNet: true });
+    expect(r.rounding).toBe(0.69);
+    expect(r.grossPay).toBe(793);
+    expect(r.netPay).toBe(793);
+    expect(r.thirteenthMonthAccrual).toBe(calculatePayroll(base).thirteenthMonthAccrual);
+    expect(calculatePayroll({ ...base, days: [day({ dailyRate: 792.88 })], roundUpNet: true }).netPay).toBe(793);
+    expect(calculatePayroll({ ...base, days: [day({ dailyRate: 500 })], roundUpNet: true }).rounding).toBe(0);
+
+    const legs = buildPayslipJournal(r, [{ accountId: 'CASH', amount: 793, fee: 0, label: 'Cash' }], accounts, 'Payroll');
+    expect(net(legs, 'WAGES')).toBeCloseTo(793, 2);
+  });
+
   it('only deducts contributions and accrues the vehicle allowance at end of month', () => {
     const r = calculatePayroll(input({ isEndOfMonth: false }));
     expect(r.employeeContributions).toEqual({ sss: 0, philhealth: 0, pagibig: 0 });

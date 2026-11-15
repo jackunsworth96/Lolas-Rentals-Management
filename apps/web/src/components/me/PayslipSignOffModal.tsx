@@ -34,6 +34,7 @@ export function PayslipBreakdown({ p }: { p: MyPayslip }) {
             {p.commission > 0 && <Row label={`Commission (${p.commissionRate}% of Peace of Mind sales)`} value={p.commission} />}
             {p.tips > 0 && <Row label={`Tips (pool shared by ${p.tipsHeadcount})`} value={p.tips} />}
             {p.bonuses > 0 && <Row label="Bonus" value={p.bonuses} />}
+            {p.rounding > 0 && <Row label="Rounded up to the next peso" value={p.rounding} />}
           </>
         )}
         <div className="mt-1 flex justify-between border-t border-gray-100 pt-1 text-sm font-semibold text-gray-900">

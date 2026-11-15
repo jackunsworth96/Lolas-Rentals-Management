@@ -455,6 +455,7 @@ export async function buildPayrollPreview(
       employerContributions: { sss: emp.employerSssAmt, philhealth: emp.employerPhilhealthAmt, pagibig: emp.employerPagibigAmt },
       monthlyVehicleAllowance: emp.monthlyBikeAllowance,
       ...(fixedSalary ? { fixedBasicPay: fixedSalary.basicPay } : {}),
+      roundUpNet: empInput?.roundUp ?? false,
     });
 
     if (rows.length === 0 && result.grossPay <= 0) {
@@ -669,6 +670,7 @@ export async function postPayrollRun(
       pomRevenue: p.pomRevenue,
       commissionRate: p.commissionRate,
       bonuses: r.bonuses,
+      rounding: r.rounding,
       holidayAdjustment: r.holidayPremium,
       grossPay: r.grossPay,
       sssDeduction: r.employeeContributions.sss,

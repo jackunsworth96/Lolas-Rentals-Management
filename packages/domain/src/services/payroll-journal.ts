@@ -83,7 +83,7 @@ export function buildPayslipJournal(
 
   const wages =
     result.basicPay + result.leavePay + result.overtimePay + result.holidayPremium +
-    result.ninePmEarnings + result.bonuses - result.ninePmPrepaid;
+    result.ninePmEarnings + result.bonuses + result.rounding - result.ninePmPrepaid;
   push(accounts.wagesAccountId, wages, result.ninePmPrepaid > 0 ? 'net of 9pm cash paid on the day' : '');
   push(accounts.commissionExpenseId, result.commission, 'POM commission');
   push(accounts.tipsPayableId, result.tips, 'tips share');
