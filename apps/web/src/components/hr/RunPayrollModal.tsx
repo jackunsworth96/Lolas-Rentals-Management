@@ -15,7 +15,7 @@ import {
 } from '../../api/payroll.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { downloadPayslipsPdf } from '../../utils/payslipPdf.js';
-import { duePeriod, lastDayOfMonth, payDateFor, periodFor, type PayHalf } from '../../utils/payrollSchedule.js';
+import { duePeriod, payDateFor, periodFor, type PayHalf } from '../../utils/payrollSchedule.js';
 
 interface Props {
   isOpen: boolean;
@@ -31,19 +31,12 @@ function manilaToday(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 }
 
-/** Mon–Sat days in the month: the divisor for monthly-rate staff. */
-function defaultWorkingDays(yearMonth: string): number {
-  const [year, month] = yearMonth.split('-').map(Number);
-  let n = 0;
-  for (let d = 1; d <= lastDayOfMonth(yearMonth); d++) {
-    if (new Date(year, month - 1, d).getDay() !== 0) n++;
-  }
-  return n;
-}
+/** Monthly salary ÷ 26 is one day's pay (₱26,000 → ₱1,000 per unpaid day for fixed-salary staff). */
+const WORKING_DAYS_PER_MONTH = 26;
 
 const derivePeriod = periodFor;
 
-/** Paid on the 16th (1st–15th) or the 1st (16th–end), so the period to run is the one that just closed. */
+/** The period whose payday is today or next: the 16th (1st–15th) or the 1st (16th–end). */
 function defaultHalf(): { yearMonth: string; half: PayHalf } {
   return duePeriod(manilaToday());
 }
@@ -65,7 +58,6 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun
   const init = defaultHalf();
   const [yearMonth, setYearMonth] = useState(init.yearMonth);
   const [half, setHalf] = useState<'first' | 'second'>(init.half);
-  const [workingDays, setWorkingDays] = useState(defaultWorkingDays(init.yearMonth));
   const { periodStart, periodEnd } = derivePeriod(yearMonth, half);
   const [payDate, setPayDate] = useState(payDateFor(init.yearMonth, init.half));
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
@@ -85,7 +77,6 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun
     setStep('config');
     setYearMonth(d.yearMonth);
     setHalf(d.half);
-    setWorkingDays(defaultWorkingDays(d.yearMonth));
     setPayDate(payDateFor(d.yearMonth, d.half));
     setExcluded(new Set());
     setPreview(null);
@@ -99,7 +90,6 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun
   function choosePeriod(ym: string, h: 'first' | 'second') {
     setYearMonth(ym);
     setHalf(h);
-    setWorkingDays(defaultWorkingDays(ym));
     setPayDate(payDateFor(ym, h));
   }
 
@@ -110,7 +100,7 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun
       periodEnd,
       payDate,
       isEndOfMonth,
-      workingDaysInMonth: workingDays,
+      workingDaysInMonth: WORKING_DAYS_PER_MONTH,
       excludeEmployeeIds: [...excl],
       employees: Object.entries(inputs)
         .filter(([id]) => !excl.has(id))
@@ -522,18 +512,6 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun
               <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
               <span className="mt-1 block text-xs text-gray-500">The journal is dated on this day.</span>
             </label>
-            <label className="block">
-              <span className="text-sm font-medium text-gray-700">Working days in month</span>
-              <input
-                type="number"
-                min={1}
-                max={31}
-                value={workingDays}
-                onChange={(e) => setWorkingDays(Number(e.target.value))}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-              <span className="mt-1 block text-xs text-gray-500">Monthly-rate staff earn their monthly rate ÷ this per day worked.</span>
-            </label>
           </div>
 
           {isEndOfMonth && (
@@ -552,7 +530,7 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun
             <button
               type="button"
               onClick={handlePreview}
-              disabled={previewMut.isPending || !storeId || storeId === 'all' || workingDays < 1}
+              disabled={previewMut.isPending || !storeId || storeId === 'all'}
               className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
             >
               {previewMut.isPending ? 'Calculating...' : 'Preview payslips →'}

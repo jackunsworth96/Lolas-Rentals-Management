@@ -26,9 +26,10 @@ export function payDateFor(yearMonth: string, half: PayHalf): string {
   return half === 'first' ? `${yearMonth}-16` : `${shiftMonth(yearMonth, 1)}-01`;
 }
 
-/** The pay period whose payday is today or most recently passed (the one to run next). */
+/** The pay period whose payday is today or next: the 16th covers 1st–15th, the 1st covers last month's 16th–end. */
 export function duePeriod(today: string): { yearMonth: string; half: PayHalf } {
   const day = Number(today.slice(8, 10));
   const yearMonth = today.slice(0, 7);
-  return day >= 16 ? { yearMonth, half: 'first' } : { yearMonth: shiftMonth(yearMonth, -1), half: 'second' };
+  if (day === 1) return { yearMonth: shiftMonth(yearMonth, -1), half: 'second' };
+  return day <= 16 ? { yearMonth, half: 'first' } : { yearMonth, half: 'second' };
 }
