@@ -1,152 +1,213 @@
-import React, { useState, useMemo } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
 import { useUIStore } from '../../stores/ui-store.js';
-import {
-  useTransfers,
-  useTransferSummary,
-  notifyDriver,
-  updatePickupTime,
-  updateAccommodation,
-  cancelTransfer,
-  moneyAmount,
-  formatVanType,
-  type TransferRow,
-} from '../../api/transfers.js';
+import { useTransfers, notifyDriver, formatVanType, type TransferCollector, type TransferRow } from '../../api/transfers.js';
+import { useStores } from '../../api/config.js';
 import { useToast } from '../../hooks/useToast.js';
 import { useIsMobile } from '../../hooks/useIsMobile.js';
 import { Badge } from '../../components/common/Badge.js';
-import { formatDate } from '../../utils/date.js';
 import { formatCurrency } from '../../utils/currency.js';
+import { manilaToday } from '../../utils/date.js';
 import { AddTransferModal } from '../../components/transfers/AddTransferModal.js';
-import { TransferPaymentModal } from '../../components/transfers/TransferPaymentModal.js';
-import { DriverPaymentModal } from '../../components/transfers/DriverPaymentModal.js';
-import { CollectTransferModal } from '../../components/transfers/CollectTransferModal.js';
-import { BulkDriverPaymentModal } from '../../components/transfers/BulkDriverPaymentModal.js';
+import { ReceivePaymentModal } from '../../components/transfers/ReceivePaymentModal.js';
+import { DriverSettlementModal } from '../../components/transfers/DriverSettlementModal.js';
+import { TransferDetailsModal } from '../../components/transfers/TransferDetailsModal.js';
+import {
+  customerTypeLabel,
+  flightTimeLabel,
+  isFromAccommodation,
+  isReadyToSettle,
+  moneyState,
+  MONEY_TONE_CLASSES,
+  needsCollection,
+  pickupWindow,
+  primaryAction,
+  serviceDateLabel,
+  settlementNet,
+  shortRoute,
+  transferCut,
+  transferDue,
+  transferTotal,
+  type PrimaryAction,
+} from '../../components/transfers/transfer-state.js';
 
-/** Returns true when the route originates from General Luna (GL→IAO direction).
- *  The driver needs to collect the customer from their accommodation, so the
- *  pickup/accommodation field is operationally meaningful for these rows. */
-function isGlToIao(route: string): boolean {
-  const first = route.split(/→|->/).map((s) => s.trim().toLowerCase())[0] ?? '';
-  return first.includes('luna') || first.includes('general');
-}
+type TransferTab = 'upcoming' | 'collect' | 'settle' | 'completed';
 
-function canCancelTransfer(t: TransferRow): boolean {
-  return !t.collectedAt && t.status !== 'cancelled';
-}
+const TABS: Array<{ key: TransferTab; label: string }> = [
+  { key: 'upcoming', label: 'Upcoming' },
+  { key: 'collect', label: 'To collect' },
+  { key: 'settle', label: 'Driver settlement' },
+  { key: 'completed', label: 'Completed' },
+];
 
-const PAYMENT_STATUS_COLORS: Record<string, 'green' | 'yellow' | 'red'> = {
-  Paid: 'green',
-  'Partially Paid': 'yellow',
-  Pending: 'red',
+const ACTION_LABELS: Record<Exclude<PrimaryAction, null>, string> = {
+  receive: 'Receive payment',
+  'driver-collected': 'Driver collected',
+  settle: 'Settle',
+  notify: 'Email driver',
 };
 
-const CUSTOMER_TYPE_COLORS: Record<string, 'blue' | 'purple'> = {
-  'Walk-in': 'blue',
-  Online: 'purple',
-};
+function addDays(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
 
-type TransferTab = 'upcoming' | 'unpaid' | 'completed';
+function matchesSearch(t: TransferRow, q: string): boolean {
+  return (
+    t.customerName.toLowerCase().includes(q)
+    || t.id.toLowerCase().includes(q)
+    || (t.contactNumber ?? '').toLowerCase().includes(q)
+    || t.route.toLowerCase().includes(q)
+    || (t.accommodation ?? '').toLowerCase().includes(q)
+    || (t.orderId ?? '').toLowerCase().includes(q)
+  );
+}
 
+function MoneyPill({ t }: { t: TransferRow }) {
+  const s = moneyState(t);
+  return (
+    <span
+      title={s.hint}
+      className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium tabular-nums ring-1 ring-inset ${MONEY_TONE_CLASSES[s.tone]}`}
+    >
+      {s.label}
+    </span>
+  );
+}
+
+function DriverStatus({ t }: { t: TransferRow }) {
+  if (t.driverSettledAt) return <span className="text-xs text-gray-500">Settled {t.driverSettledAt.slice(5, 10)}</span>;
+  if (t.driverConfirmed) return <Badge color="green">Confirmed</Badge>;
+  return <span className="text-xs text-gray-400">Not confirmed</span>;
+}
+
+function WhenCell({ t, today }: { t: TransferRow; today: string }) {
+  const pickup = pickupWindow(t);
+  const flight = flightTimeLabel(t.flightTime);
+  return (
+    <div className="tabular-nums">
+      <p className="whitespace-nowrap text-sm font-medium text-gray-900">{serviceDateLabel(t.serviceDate, today)}</p>
+      <p className="whitespace-nowrap text-xs text-gray-500">
+        {pickup ? `Pickup ${pickup}` : flight ? `Flight ${flight}` : 'No time set'}
+      </p>
+    </div>
+  );
+}
+
+function SkeletonRows({ cols }: { cols: number }) {
+  return (
+    <>
+      {Array.from({ length: 5 }, (_, i) => (
+        <tr key={i} className="animate-pulse">
+          {Array.from({ length: cols }, (_, j) => (
+            <td key={j} className="px-3 py-4">
+              <div className="h-3 w-full max-w-[8rem] rounded bg-gray-200" />
+            </td>
+          ))}
+        </tr>
+      ))}
+    </>
+  );
+}
+
+interface SummaryCardProps {
+  label: string;
+  value: string;
+  sub: string;
+  emphasis?: boolean;
+  onClick?: () => void;
+}
+
+function SummaryCard({ label, value, sub, emphasis, onClick }: SummaryCardProps) {
+  const base = emphasis
+    ? 'border-teal-brand/30 bg-teal-brand text-white'
+    : 'border-charcoal-brand/10 bg-sand-brand text-charcoal-brand';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-xl border px-4 py-3 text-left tabular-nums ${base} ${onClick ? 'hover:opacity-90' : 'cursor-default'}`}
+    >
+      <p className={`text-xs font-medium uppercase tracking-wider ${emphasis ? 'text-white/70' : 'text-charcoal-brand/50'}`}>{label}</p>
+      <p className="mt-1 text-lg font-bold">{value}</p>
+      <p className={`text-xs ${emphasis ? 'text-white/70' : 'text-charcoal-brand/60'}`}>{sub}</p>
+    </button>
+  );
+}
 
 export default function TransfersPage() {
   const storeId = useUIStore((s) => s.selectedStoreId) ?? '';
   const archiveMode = useUIStore((s) => s.archiveMode);
   const isMobile = useIsMobile();
-  const queryClient = useQueryClient();
+  const { data: stores } = useStores();
+  const storeName = (stores as Array<{ id: string; name: string }> | undefined)?.find((s) => s.id === storeId)?.name ?? "Lola's";
+  const today = manilaToday();
 
   const [activeTab, setActiveTab] = useState<TransferTab>(archiveMode ? 'completed' : 'upcoming');
-  const [completedDateFrom, setCompletedDateFrom] = useState('');
-  const [completedDateTo, setCompletedDateTo] = useState('');
+  const [completedFrom, setCompletedFrom] = useState(() => addDays(manilaToday(), -30));
+  const [completedTo, setCompletedTo] = useState(() => manilaToday());
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [paymentTarget, setPaymentTarget] = useState<TransferRow | null>(null);
-  const [driverTarget, setDriverTarget] = useState<TransferRow | null>(null);
-  const [collectTarget, setCollectTarget] = useState<TransferRow | null>(null);
-  const [expandedRow, setExpandedRow] = useState<string | null>(null);
-  const [showBulkDriverPayment, setShowBulkDriverPayment] = useState(false);
-  const [bulkPayError, setBulkPayError] = useState('');
-
-  const todayStr = new Date().toISOString().slice(0, 10);
-
-  const transferFilters = useMemo(() => {
-    if (activeTab === 'upcoming') {
-      return { dateFrom: todayStr };
-    }
-    if (activeTab === 'unpaid') {
-      return { driverPaidStatus: 'unpaid' };
-    }
-    return {
-      dateTo: completedDateTo || todayStr,
-      ...(completedDateFrom ? { dateFrom: completedDateFrom } : {}),
-    };
-  }, [activeTab, completedDateFrom, completedDateTo, todayStr]);
-
-  const { data: transfers, isLoading } = useTransfers(storeId, transferFilters);
-
-  const summaryFilters = useMemo(() => {
-    if (activeTab === 'upcoming') return { dateFrom: todayStr };
-    if (activeTab === 'completed') return {
-      ...(completedDateFrom ? { dateFrom: completedDateFrom } : {}),
-      dateTo: completedDateTo || todayStr,
-    };
-    return {};
-  }, [activeTab, todayStr, completedDateFrom, completedDateTo]);
-
-  const { data: summary, isLoading: summaryLoading, isError: summaryError } = useTransferSummary(storeId, summaryFilters);
+  const [showAdd, setShowAdd] = useState(false);
+  const [receiveTarget, setReceiveTarget] = useState<{ transfer: TransferRow; collector: TransferCollector } | null>(null);
+  const [settleRows, setSettleRows] = useState<TransferRow[] | null>(null);
+  const [detailsId, setDetailsId] = useState<string | null>(null);
+  const [notifyingId, setNotifyingId] = useState<string | null>(null);
 
   const { toasts, pushToast } = useToast();
-  const [notifyingId, setNotifyingId] = useState<string | null>(null);
-  const [cancellingId, setCancellingId] = useState<string | null>(null);
-  const [savingPickupTimeId, setSavingPickupTimeId] = useState<string | null>(null);
-  const [savedPickupTimeId, setSavedPickupTimeId] = useState<string | null>(null);
-  const [savingAccommodationId, setSavingAccommodationId] = useState<string | null>(null);
-  const [savedAccommodationId, setSavedAccommodationId] = useState<string | null>(null);
 
-  async function handlePickupTimeChange(t: TransferRow, value: string) {
-    setSavingPickupTimeId(t.id);
-    setSavedPickupTimeId(null);
-    try {
-      await updatePickupTime(t.id, value || null);
-      await queryClient.invalidateQueries({ queryKey: ['transfers'] });
-      setSavedPickupTimeId(t.id);
-      setTimeout(() => setSavedPickupTimeId((prev) => (prev === t.id ? null : prev)), 2000);
-    } catch {
-      pushToast('Failed to save pickup time', 'error');
-    } finally {
-      setSavingPickupTimeId(null);
-    }
+  const openQuery = useTransfers(storeId, { scope: 'open' }, !archiveMode);
+  const closedQuery = useTransfers(
+    storeId,
+    { scope: 'closed', dateFrom: completedFrom || undefined, dateTo: completedTo || undefined },
+    activeTab === 'completed',
+  );
+
+  const buckets = useMemo(() => {
+    const open = (openQuery.data ?? []).filter((t) => t.status !== 'cancelled');
+    return {
+      upcoming: open.filter((t) => t.serviceDate >= today).sort((a, b) => a.serviceDate.localeCompare(b.serviceDate) || (a.pickupTime ?? '').localeCompare(b.pickupTime ?? '')),
+      collect: open.filter((t) => needsCollection(t, today)).sort((a, b) => a.serviceDate.localeCompare(b.serviceDate)),
+      settle: open.filter((t) => isReadyToSettle(t, today)).sort((a, b) => a.serviceDate.localeCompare(b.serviceDate)),
+      completed: [...(closedQuery.data ?? [])].sort((a, b) => b.serviceDate.localeCompare(a.serviceDate)),
+      open,
+    };
+  }, [openQuery.data, closedQuery.data, today]);
+
+  const tabRows = buckets[activeTab];
+  const rows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q ? tabRows.filter((t) => matchesSearch(t, q)) : tabRows;
+  }, [tabRows, search]);
+
+  const isLoading = activeTab === 'completed' ? closedQuery.isLoading : openQuery.isLoading;
+  const loadError = activeTab === 'completed' ? closedQuery.error : openQuery.error;
+  const detailsRow = detailsId ? [...buckets.open, ...buckets.completed].find((t) => t.id === detailsId) ?? null : null;
+
+  const summary = useMemo(() => {
+    const todayRows = buckets.open.filter((t) => t.serviceDate === today);
+    const unpaid = buckets.open.filter((t) => transferDue(t) > 0);
+    const settleNet = buckets.settle.reduce((s, t) => s + settlementNet(t), 0);
+    return {
+      todayCount: todayRows.length,
+      todayUnconfirmed: todayRows.filter((t) => !t.driverConfirmed).length,
+      overdueTotal: buckets.collect.reduce((s, t) => s + transferDue(t), 0),
+      overdueCount: buckets.collect.length,
+      unpaidUpcoming: unpaid.filter((t) => t.serviceDate > today).reduce((s, t) => s + transferDue(t), 0),
+      settleCount: buckets.settle.length,
+      settleNet: Math.round(settleNet * 100) / 100,
+    };
+  }, [buckets, today]);
+
+  const selectedRows = rows.filter((t) => selectedIds.has(t.id));
+  const selectionNet = selectedRows.reduce((s, t) => s + settlementNet(t), 0);
+
+  function switchTab(tab: TransferTab) {
+    setActiveTab(tab);
+    setSearch('');
+    setSelectedIds(new Set());
   }
-
-  async function handleAccommodationChange(t: TransferRow, value: string) {
-    setSavingAccommodationId(t.id);
-    setSavedAccommodationId(null);
-    try {
-      await updateAccommodation(t.id, value.trim() || null);
-      await queryClient.invalidateQueries({ queryKey: ['transfers'] });
-      setSavedAccommodationId(t.id);
-      setTimeout(() => setSavedAccommodationId((prev) => (prev === t.id ? null : prev)), 2000);
-    } catch {
-      pushToast('Failed to save accommodation', 'error');
-    } finally {
-      setSavingAccommodationId(null);
-    }
-  }
-
-  const filtered = useMemo(() => {
-    if (!transfers) return [];
-    if (!search.trim()) return transfers;
-    const q = search.toLowerCase();
-    return transfers.filter(
-      (t) =>
-        t.customerName.toLowerCase().includes(q) ||
-        t.id.toLowerCase().includes(q) ||
-        (t.contactNumber && t.contactNumber.toLowerCase().includes(q)) ||
-        t.route.toLowerCase().includes(q),
-    );
-  }, [transfers, search]);
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -158,654 +219,406 @@ export default function TransfersPage() {
   }
 
   function toggleSelectAll() {
-    if (selectedIds.size === filtered.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(filtered.map((t) => t.id)));
-    }
+    setSelectedIds(selectedIds.size === rows.length ? new Set() : new Set(rows.map((t) => t.id)));
   }
 
-  function switchTab(tab: TransferTab) {
-    setActiveTab(tab);
-    setSearch('');
-    setSelectedIds(new Set());
-  }
-
-  async function handleNotifyDriver(t: TransferRow) {
+  async function handleNotify(t: TransferRow) {
     setNotifyingId(t.id);
     try {
       await notifyDriver(t.id);
-      pushToast('Driver notified', 'success');
-    } catch {
-      pushToast('Failed to notify driver', 'error');
+      pushToast(`Driver emailed about ${t.customerName}`, 'success');
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : 'Failed to email driver', 'error');
     } finally {
       setNotifyingId(null);
     }
   }
 
-  async function handleCancelTransfer(t: TransferRow) {
-    if (!window.confirm('Cancel this transfer? This cannot be undone.')) return;
-    setCancellingId(t.id);
-    try {
-      await cancelTransfer(t.id);
-      pushToast('Transfer cancelled', 'success');
-      await queryClient.invalidateQueries({ queryKey: ['transfers'] });
-      await queryClient.invalidateQueries({ queryKey: ['transfers-summary'] });
-    } catch {
-      pushToast('Failed to cancel transfer', 'error');
-    } finally {
-      setCancellingId(null);
-    }
+  function runAction(t: TransferRow, action: PrimaryAction) {
+    if (action === 'receive') setReceiveTarget({ transfer: t, collector: 'lolas' });
+    else if (action === 'driver-collected') setReceiveTarget({ transfer: t, collector: 'driver' });
+    else if (action === 'settle') setSettleRows([t]);
+    else if (action === 'notify') void handleNotify(t);
   }
 
-  if (!storeId) {
+  function renderActions(t: TransferRow) {
+    const action = archiveMode ? null : primaryAction(t, today);
     return (
-      <div className="py-12 text-center text-gray-500">
-        Select a store to view transfers.
+      <div className="flex items-center justify-end gap-1.5">
+        {action && (
+          <button
+            type="button"
+            disabled={action === 'notify' && notifyingId === t.id}
+            onClick={() => runAction(t, action)}
+            className={`whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-medium disabled:opacity-50 ${
+              action === 'notify'
+                ? 'border border-teal-brand text-teal-brand hover:bg-teal-brand/10'
+                : 'bg-teal-brand text-white hover:bg-teal-brand/90'
+            }`}
+          >
+            {action === 'notify' && notifyingId === t.id ? 'Sending…' : ACTION_LABELS[action]}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => setDetailsId(t.id)}
+          className="whitespace-nowrap rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Details
+        </button>
       </div>
     );
   }
 
+  function renderEmpty() {
+    if (search.trim()) {
+      return (
+        <EmptyBox message="No transfers match your search." actionLabel="Clear search" onAction={() => setSearch('')} />
+      );
+    }
+    switch (activeTab) {
+      case 'upcoming':
+        return archiveMode
+          ? <EmptyBox message="No upcoming transfers." />
+          : <EmptyBox message="No upcoming transfers." actionLabel="Add transfer" onAction={() => setShowAdd(true)} />;
+      case 'collect':
+        return <EmptyBox message="Nothing left to collect — every past transfer is paid." actionLabel="View upcoming" onAction={() => switchTab('upcoming')} />;
+      case 'settle':
+        return <EmptyBox message="The driver is fully settled." actionLabel="View completed" onAction={() => switchTab('completed')} />;
+      case 'completed':
+        return (
+          <EmptyBox
+            message="No completed transfers in this date range."
+            actionLabel="Show the last 90 days"
+            onAction={() => { setCompletedFrom(addDays(today, -90)); setCompletedTo(today); }}
+          />
+        );
+    }
+  }
+
+  if (!storeId) {
+    return <div className="py-12 text-center text-gray-500">Select a store to view transfers.</div>;
+  }
+
+  const showSelection = activeTab === 'settle' && !archiveMode;
+  const colCount = showSelection ? 9 : 8;
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-gray-900">Transfers</h1>
         {!archiveMode && (
           <button
-            onClick={() => setShowAddModal(true)}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            type="button"
+            onClick={() => setShowAdd(true)}
+            className="rounded-lg bg-teal-brand px-4 py-2 text-sm font-medium text-white hover:bg-teal-brand/90"
           >
-            + Add Transfer
+            + Add transfer
           </button>
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex flex-wrap items-center gap-2">
-        {([
-          { key: 'upcoming', label: 'Upcoming' },
-          { key: 'unpaid', label: 'Unpaid to Driver' },
-          { key: 'completed', label: 'Completed' },
-        ] as const).filter((tab) => !archiveMode || tab.key === 'completed').map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => switchTab(tab.key)}
-            className={`font-lato text-sm font-medium rounded-full px-4 py-2 transition-colors ${
-              activeTab === tab.key
-                ? 'bg-teal-brand text-white'
-                : 'bg-sand-brand text-charcoal-brand hover:bg-teal-brand/10'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Completed date range */}
-      {activeTab === 'completed' && (
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="block">
-            <span className="font-lato text-xs text-charcoal-brand/60">From</span>
-            <input
-              type="date"
-              value={completedDateFrom}
-              onChange={(e) => setCompletedDateFrom(e.target.value)}
-              className="mt-1 block w-40 font-lato text-sm border border-charcoal-brand/20 rounded-lg px-3 py-2"
-            />
-          </label>
-          <label className="block">
-            <span className="font-lato text-xs text-charcoal-brand/60">To</span>
-            <input
-              type="date"
-              value={completedDateTo}
-              onChange={(e) => setCompletedDateTo(e.target.value)}
-              className="mt-1 block w-40 font-lato text-sm border border-charcoal-brand/20 rounded-lg px-3 py-2"
-            />
-          </label>
-        </div>
-      )}
-
-      {/* Search */}
-      <div className="flex items-center gap-2">
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Customer name, contact, route, or ID..."
-          className="block w-full max-w-sm rounded-lg border border-gray-300 px-3 py-2 text-sm"
-        />
-        {search && (
-          <button
-            onClick={() => setSearch('')}
-            className="text-sm text-gray-500 hover:text-gray-700"
-          >
-            Clear
-          </button>
-        )}
-      </div>
-
-      {/* Batch actions bar */}
-      {selectedIds.size > 0 && (
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-3 rounded-lg bg-blue-50 px-4 py-2 text-sm text-blue-700">
-            <span className="font-medium">{selectedIds.size} selected</span>
-            <button
-              onClick={() => { setSelectedIds(new Set()); setBulkPayError(''); }}
-              className="rounded border border-blue-300 px-2 py-1 text-xs hover:bg-blue-100"
-            >
-              Clear selection
-            </button>
-            {activeTab === 'unpaid' && (
-              <button
-                onClick={() => {
-                  setBulkPayError('');
-                  const selected = filtered.filter((t) => selectedIds.has(t.id));
-                  const uncollected = selected.filter((t) => !t.collectedAt);
-                  if (uncollected.length > 0) {
-                    setBulkPayError(
-                      `${uncollected.length} selected transfer${uncollected.length !== 1 ? 's have' : ' has'} not been collected yet. Collect payment from the customer first.`,
-                    );
-                    return;
-                  }
-                  setShowBulkDriverPayment(true);
-                }}
-                className="ml-auto rounded-lg bg-orange-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-orange-700"
-              >
-                Pay Driver ({selectedIds.size})
-              </button>
-            )}
-          </div>
-          {bulkPayError && (
-            <p className="rounded-lg bg-red-50 px-4 py-2 text-xs text-red-700">{bulkPayError}</p>
+      {!archiveMode && (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {openQuery.isLoading ? (
+            Array.from({ length: 4 }, (_, i) => (
+              <div key={i} className="animate-pulse rounded-xl border border-charcoal-brand/10 bg-sand-brand px-4 py-3">
+                <div className="h-3 w-20 rounded bg-charcoal-brand/10" />
+                <div className="mt-2 h-6 w-16 rounded bg-charcoal-brand/15" />
+                <div className="mt-1 h-3 w-24 rounded bg-charcoal-brand/10" />
+              </div>
+            ))
+          ) : (
+            <>
+              <SummaryCard
+                label="Today"
+                value={`${summary.todayCount} transfer${summary.todayCount !== 1 ? 's' : ''}`}
+                sub={summary.todayUnconfirmed > 0 ? `${summary.todayUnconfirmed} not confirmed by driver` : 'All confirmed'}
+                onClick={() => switchTab('upcoming')}
+              />
+              <SummaryCard
+                label="To collect"
+                value={formatCurrency(summary.overdueTotal)}
+                sub={`${summary.overdueCount} past or today, unpaid`}
+                onClick={() => switchTab('collect')}
+              />
+              <SummaryCard
+                label="Unpaid upcoming"
+                value={formatCurrency(summary.unpaidUpcoming)}
+                sub="due on future transfers"
+                onClick={() => switchTab('upcoming')}
+              />
+              <SummaryCard
+                emphasis
+                label="Driver settlement"
+                value={formatCurrency(Math.abs(summary.settleNet))}
+                sub={
+                  summary.settleCount === 0
+                    ? 'Nothing to settle'
+                    : summary.settleNet >= 0
+                      ? `Driver owes Lola's · ${summary.settleCount} trips`
+                      : `Lola's owes driver · ${summary.settleCount} trips`
+                }
+                onClick={() => switchTab('settle')}
+              />
+            </>
           )}
         </div>
       )}
 
-      {/* Settlement summary panel */}
-      {(summaryLoading || summaryError || (summary && (summary.outstanding.count > 0 || summary.collected.count > 0))) && (
-        <div className="flex flex-col gap-3 md:grid md:grid-cols-4">
-          {summaryLoading ? (
+      <div className="flex flex-wrap items-center gap-2" role="tablist">
+        {TABS.filter((tab) => !archiveMode || tab.key === 'completed').map((tab) => {
+          const count = tab.key === 'completed' ? null : buckets[tab.key].length;
+          const active = activeTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => switchTab(tab.key)}
+              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium ${
+                active ? 'bg-teal-brand text-white' : 'bg-sand-brand text-charcoal-brand hover:bg-teal-brand/10'
+              }`}
+            >
+              {tab.label}
+              {count != null && count > 0 && (
+                <span className={`rounded-full px-1.5 text-xs tabular-nums ${active ? 'bg-white/20' : 'bg-charcoal-brand/10'}`}>{count}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3">
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search name, contact, route, hotel, order…"
+          aria-label="Search transfers"
+          className="block w-full max-w-sm rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        />
+        {activeTab === 'completed' && (
+          <>
+            <label className="block">
+              <span className="text-xs text-gray-500">From</span>
+              <input type="date" value={completedFrom} onChange={(e) => setCompletedFrom(e.target.value)} className="mt-1 block w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            </label>
+            <label className="block">
+              <span className="text-xs text-gray-500">To</span>
+              <input type="date" value={completedTo} onChange={(e) => setCompletedTo(e.target.value)} className="mt-1 block w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            </label>
+          </>
+        )}
+      </div>
+
+      {showSelection && rows.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg bg-teal-50 px-4 py-2.5 text-sm text-teal-900 tabular-nums">
+          {selectedRows.length > 0 ? (
             <>
-              <div className="animate-pulse rounded-xl border border-charcoal-brand/10 bg-sand-brand px-4 py-3">
-                <div className="h-3 w-24 rounded bg-charcoal-brand/10" />
-                <div className="mt-2 h-6 w-20 rounded bg-charcoal-brand/15" />
-                <div className="mt-1 h-3 w-16 rounded bg-charcoal-brand/10" />
-              </div>
-              <div className="animate-pulse rounded-xl border border-teal-brand/20 bg-teal-brand/5 px-4 py-3">
-                <div className="h-3 w-20 rounded bg-teal-brand/10" />
-                <div className="mt-2 h-6 w-20 rounded bg-teal-brand/15" />
-                <div className="mt-1 h-3 w-16 rounded bg-teal-brand/10" />
-              </div>
-              <div className="animate-pulse rounded-xl border border-charcoal-brand/10 bg-sand-brand px-4 py-3">
-                <div className="h-3 w-20 rounded bg-charcoal-brand/10" />
-                <div className="mt-2 h-6 w-20 rounded bg-charcoal-brand/15" />
-                <div className="mt-1 h-3 w-24 rounded bg-charcoal-brand/10" />
-              </div>
-              <div className="animate-pulse rounded-xl border border-teal-brand/30 bg-teal-brand px-4 py-3">
-                <div className="h-3 w-28 rounded bg-white/20" />
-                <div className="mt-2 h-6 w-20 rounded bg-white/25" />
-                <div className="mt-1 h-3 w-24 rounded bg-white/20" />
-              </div>
+              <span className="font-medium">{selectedRows.length} selected</span>
+              <span>
+                {selectionNet >= 0
+                  ? `Driver hands over ${formatCurrency(selectionNet)}`
+                  : `Lola's pays driver ${formatCurrency(-selectionNet)}`}
+              </span>
+              <button type="button" onClick={() => setSelectedIds(new Set())} className="text-xs underline">
+                Clear
+              </button>
             </>
-          ) : summaryError ? (
-            <>
-              <div className="rounded-xl border border-charcoal-brand/10 bg-sand-brand px-4 py-3">
-                <p className="font-lato text-xs font-medium uppercase tracking-wider text-charcoal-brand/50">Outstanding</p>
-                <p className="mt-1 font-lato text-lg font-bold text-charcoal-brand/30">—</p>
-                <p className="font-lato text-xs text-charcoal-brand/40">Could not load summary</p>
-              </div>
-              <div className="rounded-xl border border-teal-brand/20 bg-teal-brand/5 px-4 py-3">
-                <p className="font-lato text-xs font-medium uppercase tracking-wider text-teal-brand/70">Collected</p>
-                <p className="mt-1 font-lato text-lg font-bold text-teal-brand/30">—</p>
-                <p className="font-lato text-xs text-teal-brand/40">Could not load summary</p>
-              </div>
-              <div className="rounded-xl border border-charcoal-brand/10 bg-sand-brand px-4 py-3">
-                <p className="font-lato text-xs font-medium uppercase tracking-wider text-charcoal-brand/50">Driver Cut</p>
-                <p className="mt-1 font-lato text-lg font-bold text-charcoal-brand/30">—</p>
-                <p className="font-lato text-xs text-charcoal-brand/40">from collected transfers</p>
-              </div>
-              <div className="rounded-xl border border-teal-brand/30 bg-teal-brand px-4 py-3">
-                <p className="font-lato text-xs font-medium uppercase tracking-wider text-white/70">Net Lola's Keeps</p>
-                <p className="mt-1 font-lato text-lg font-bold text-white/40">—</p>
-                <p className="font-lato text-xs text-white/50">Could not load summary</p>
-              </div>
-            </>
-          ) : summary ? (
-            <>
-              <div className="rounded-xl border border-charcoal-brand/10 bg-sand-brand px-4 py-3">
-                <p className="font-lato text-xs font-medium uppercase tracking-wider text-charcoal-brand/50">Outstanding</p>
-                <p className="mt-1 font-lato text-lg font-bold text-charcoal-brand">
-                  {formatCurrency(summary.outstanding.total)}
-                </p>
-                <p className="font-lato text-xs text-charcoal-brand/60">{summary.outstanding.count} transfer{summary.outstanding.count !== 1 ? 's' : ''}</p>
-              </div>
-              <div className="rounded-xl border border-teal-brand/20 bg-teal-brand/5 px-4 py-3">
-                <p className="font-lato text-xs font-medium uppercase tracking-wider text-teal-brand/70">Collected</p>
-                <p className="mt-1 font-lato text-lg font-bold text-teal-brand">
-                  {formatCurrency(summary.collected.total)}
-                </p>
-                <p className="font-lato text-xs text-teal-brand/60">{summary.collected.count} transfer{summary.collected.count !== 1 ? 's' : ''}</p>
-              </div>
-              <div className="rounded-xl border border-charcoal-brand/10 bg-sand-brand px-4 py-3">
-                <p className="font-lato text-xs font-medium uppercase tracking-wider text-charcoal-brand/50">Driver Cut</p>
-                <p className="mt-1 font-lato text-lg font-bold text-charcoal-brand">
-                  {formatCurrency(summary.collected.driverCut)}
-                </p>
-                <p className="font-lato text-xs text-charcoal-brand/60">from collected transfers</p>
-              </div>
-              <div className="rounded-xl border border-teal-brand/30 bg-teal-brand px-4 py-3">
-                <p className="font-lato text-xs font-medium uppercase tracking-wider text-white/70">Net Lola's Keeps</p>
-                <p className="mt-1 font-lato text-lg font-bold text-white">
-                  {formatCurrency(summary.collected.netLolas)}
-                </p>
-                <p className="font-lato text-xs text-white/60">collected − driver cut</p>
-              </div>
-            </>
-          ) : null}
+          ) : (
+            <span className="text-pretty">Tick the trips you are settling now, or settle everything below.</span>
+          )}
+          <button
+            type="button"
+            onClick={() => setSettleRows(selectedRows.length > 0 ? selectedRows : rows)}
+            className="ml-auto rounded-lg bg-teal-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-brand/90"
+          >
+            {selectedRows.length > 0 ? `Settle ${selectedRows.length} selected` : `Settle all ${rows.length}`}
+          </button>
         </div>
       )}
 
-      {/* Table / Card list */}
-      {isLoading ? (
-        <div className="py-12 text-center text-sm text-gray-500">Loading transfers...</div>
-      ) : filtered.length === 0 ? (
-        <div className="py-12 text-center text-sm text-gray-500">
-          {search.trim()
-            ? 'No transfers match your search.'
-            : activeTab === 'upcoming'
-            ? 'No upcoming transfers.'
-            : activeTab === 'unpaid'
-            ? 'All driver payments are up to date.'
-            : 'No completed transfers in this date range.'}
+      {loadError ? (
+        <div role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+          Could not load transfers: {loadError instanceof Error ? loadError.message : 'unknown error'}
         </div>
       ) : isMobile ? (
-        /* ── Mobile card list ── */
         <div className="flex flex-col gap-3">
-          {filtered.map((t) => {
-            const total = moneyAmount(t.totalPrice);
-            const isUpcoming = t.serviceDate >= todayStr;
-            return (
-              <div
-                key={t.id}
-                className="rounded-lg border border-sand-brand bg-white p-4 shadow-sm"
-              >
-                {/* Customer name + collected badge */}
+          {isLoading ? (
+            Array.from({ length: 4 }, (_, i) => <div key={i} className="h-32 animate-pulse rounded-lg bg-gray-100" />)
+          ) : rows.length === 0 ? (
+            renderEmpty()
+          ) : (
+            rows.map((t) => (
+              <div key={t.id} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-2">
-                  <p className="font-lato text-base font-bold text-charcoal-brand leading-tight">
-                    {t.customerName}
-                  </p>
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    {t.collectedAt ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
-                        ✓ Collected
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-                        Pending
-                      </span>
+                  <div className="flex min-w-0 items-start gap-2">
+                    {showSelection && (
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${t.customerName}`}
+                        checked={selectedIds.has(t.id)}
+                        onChange={() => toggleSelect(t.id)}
+                        className="mt-1 h-4 w-4 rounded border-gray-300"
+                      />
                     )}
-                    {t.driverConfirmed && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-800">
-                        ✓ Driver Confirmed
-                      </span>
-                    )}
+                    <div className="min-w-0">
+                      <p className="truncate text-base font-semibold text-gray-900">{t.customerName}</p>
+                      <p className="text-sm text-teal-brand">{shortRoute(t.route)} · {t.paxCount} pax · {formatVanType(t.vanType)}</p>
+                    </div>
                   </div>
+                  <p className="shrink-0 text-sm font-semibold text-gray-900 tabular-nums">{formatCurrency(transferTotal(t))}</p>
                 </div>
-
-                {/* Route */}
-                <p className="mt-1 font-lato text-sm font-medium text-teal-brand">{t.route}</p>
-
-                {/* Date / time */}
-                <p className="mt-2 font-lato text-xs text-charcoal-brand/70">
-                  {formatDate(t.serviceDate)}
-                  {t.flightTime && (
-                    <span className="ml-1 text-charcoal-brand/50">✈ Flight: {t.flightTime}</span>
-                  )}
-                </p>
-                {t.pickupTime && (
-                  <p className="mt-0.5 font-lato text-xs font-medium text-teal-brand">
-                    ⏰ Pickup: {t.pickupTime}{t.pickupTimeEnd ? `–${t.pickupTimeEnd}` : ''}
-                  </p>
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                  <WhenCell t={t} today={today} />
+                  <MoneyPill t={t} />
+                </div>
+                {isFromAccommodation(t.route) && t.accommodation && (
+                  <p className="mt-1 truncate text-xs text-gray-600">From {t.accommodation}</p>
                 )}
-
-                {/* Pax + total */}
-                <div className="mt-2 flex items-center gap-4">
-                  <span className="font-lato text-xs text-charcoal-brand/60">
-                    {t.paxCount} pax
-                  </span>
-                  <span className="font-lato text-sm font-bold text-charcoal-brand">
-                    {formatCurrency(total)}
-                  </span>
-                </div>
-
-                {/* Action buttons */}
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {t.paymentStatus !== 'Paid' && !archiveMode && (
-                    <button
-                      onClick={() => setPaymentTarget(t)}
-                      className="rounded-lg bg-green-600 px-3 py-1.5 font-lato text-xs font-medium text-white hover:bg-green-700"
-                    >
-                      Record Payment
-                    </button>
-                  )}
-                  {!t.collectedAt && (
-                    <button
-                      onClick={() => setCollectTarget(t)}
-                      className="rounded-lg bg-teal-brand px-3 py-1.5 font-lato text-xs font-medium text-white hover:bg-teal-brand/80"
-                    >
-                      Collect
-                    </button>
-                  )}
-                  {isUpcoming && (
-                    <button
-                      disabled={notifyingId === t.id}
-                      onClick={() => handleNotifyDriver(t)}
-                      className="rounded-lg border border-teal-brand px-3 py-1.5 font-lato text-xs font-medium text-teal-brand hover:bg-teal-brand/10 disabled:opacity-50"
-                    >
-                      {notifyingId === t.id ? 'Sending…' : 'Notify Driver 🔔'}
-                    </button>
-                  )}
-                  {canCancelTransfer(t) && (
-                    <button
-                      type="button"
-                      disabled={cancellingId === t.id}
-                      onClick={() => void handleCancelTransfer(t)}
-                      className="rounded-lg px-3 py-1.5 font-lato text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-                    >
-                      {cancellingId === t.id ? 'Cancelling…' : 'Cancel'}
-                    </button>
-                  )}
+                <div className="mt-3 flex items-center justify-between gap-2">
+                  <DriverStatus t={t} />
+                  {renderActions(t)}
                 </div>
               </div>
-            );
-          })}
+            ))
+          )}
         </div>
       ) : (
-        /* ── Desktop table ── */
-        <div className="w-full overflow-x-auto rounded-lg border border-gray-200">
+        <div className="max-h-[70dvh] overflow-auto rounded-lg border border-gray-200">
           <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-3 py-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.size === filtered.length && filtered.length > 0}
-                    onChange={toggleSelectAll}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-600"
-                  />
-                </th>
-                <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Date</th>
-                <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Pickup Time</th>
-                <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Customer</th>
-                <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Contact</th>
-                <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Type</th>
-                <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Route</th>
-                <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Pickup / Accommodation</th>
-                <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Pax</th>
-                <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Van</th>
-                <th className="px-3 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Total</th>
-                <th className="px-3 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Driver Fee</th>
-                <th className="px-3 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Net Profit</th>
-                <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Payment</th>
-                <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Driver Paid</th>
-                <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Confirmed</th>
-                <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Collected</th>
-                <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Source</th>
-                <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"> </th>
+            <thead className="sticky top-0 z-10 bg-gray-50">
+              <tr className="text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                {showSelection && (
+                  <th className="w-10 px-3 py-3">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all"
+                      checked={rows.length > 0 && selectedIds.size === rows.length}
+                      onChange={toggleSelectAll}
+                      className="h-4 w-4 rounded border-gray-300"
+                    />
+                  </th>
+                )}
+                <th className="px-3 py-3 font-medium">When</th>
+                <th className="px-3 py-3 font-medium">Customer</th>
+                <th className="px-3 py-3 font-medium">Trip</th>
+                <th className="px-3 py-3 font-medium">Pickup from</th>
+                <th className="px-3 py-3 text-right font-medium">Amount</th>
+                <th className="px-3 py-3 font-medium">Money</th>
+                <th className="px-3 py-3 font-medium">Driver</th>
+                <th className="px-3 py-3 text-right font-medium"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
-              {filtered.map((t) => {
-                const total = moneyAmount(t.totalPrice);
-                const driverFee = moneyAmount(t.driverFee);
-                const netProfit = moneyAmount(t.netProfit) || (total - driverFee);
-                const isExpanded = expandedRow === t.id;
-                return (
-                  <React.Fragment key={t.id}>
-                    <tr
-                      onClick={() => setExpandedRow(isExpanded ? null : t.id)}
-                      className="cursor-pointer hover:bg-gray-50"
-                    >
-                      <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(t.id)}
-                          onChange={() => toggleSelect(t.id)}
-                          className="h-4 w-4 rounded border-gray-300 text-blue-600"
-                        />
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3 text-sm text-gray-900">
-                        {formatDate(t.serviceDate)}
-                        {t.flightTime && (
-                          <span className="ml-1 text-xs text-gray-500">{t.flightTime}</span>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3 text-sm text-gray-900">
-                        {t.pickupTime
-                        ? `${t.pickupTime}${t.pickupTimeEnd ? `–${t.pickupTimeEnd}` : ''}`
-                        : <span className="text-gray-400">—</span>
-                      }
-                      </td>
-                      <td className="px-3 py-3 text-sm font-medium text-gray-900">{t.customerName}</td>
-                      <td className="px-3 py-3 text-sm text-gray-600">{t.contactNumber ?? '—'}</td>
-                      <td className="px-3 py-3 text-sm">
-                        {t.customerType ? (
-                          <Badge color={CUSTOMER_TYPE_COLORS[t.customerType] ?? 'gray'}>{t.customerType}</Badge>
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-3 text-sm text-gray-900">{t.route}</td>
-                      <td className="px-3 py-3 text-sm text-gray-600">
-                        {isGlToIao(t.route) ? (t.accommodation ?? '—') : <span className="text-gray-300">—</span>}
-                      </td>
-                      <td className="px-3 py-3 text-center text-sm text-gray-900">{t.paxCount}</td>
-                      <td className="px-3 py-3 text-sm text-gray-600">{formatVanType(t.vanType)}</td>
-                      <td className="whitespace-nowrap px-3 py-3 text-right text-sm font-medium text-gray-900">
-                        {formatCurrency(total)}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3 text-right text-sm text-gray-600">
-                        {driverFee > 0 ? formatCurrency(driverFee) : '—'}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3 text-right text-sm font-medium text-gray-900">
-                        {total > 0 ? formatCurrency(netProfit) : '—'}
-                      </td>
-                      <td className="px-3 py-3 text-sm" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex min-w-max flex-col items-start gap-1.5">
-                          <Badge color={PAYMENT_STATUS_COLORS[t.paymentStatus] ?? 'gray'}>
-                            {t.paymentStatus}
-                          </Badge>
-                          {t.paymentStatus !== 'Paid' && !archiveMode && (
-                            <button
-                              type="button"
-                              onClick={() => setPaymentTarget(t)}
-                              className="rounded-md bg-green-600 px-2 py-1 text-xs font-medium text-white hover:bg-green-700"
-                            >
-                              Record Payment
-                            </button>
-                          )}
+            <tbody className="divide-y divide-gray-100 bg-white">
+              {isLoading ? (
+                <SkeletonRows cols={colCount} />
+              ) : rows.length === 0 ? (
+                <tr>
+                  <td colSpan={colCount}>{renderEmpty()}</td>
+                </tr>
+              ) : (
+                rows.map((t) => {
+                  const type = customerTypeLabel(t);
+                  const fromHotel = isFromAccommodation(t.route);
+                  return (
+                    <tr key={t.id} className="align-top hover:bg-gray-50">
+                      {showSelection && (
+                        <td className="px-3 py-3">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${t.customerName}`}
+                            checked={selectedIds.has(t.id)}
+                            onChange={() => toggleSelect(t.id)}
+                            className="h-4 w-4 rounded border-gray-300"
+                          />
+                        </td>
+                      )}
+                      <td className="px-3 py-3"><WhenCell t={t} today={today} /></td>
+                      <td className="max-w-[14rem] px-3 py-3">
+                        <p className="truncate text-sm font-medium text-gray-900">{t.customerName}</p>
+                        <div className="mt-0.5 flex items-center gap-1.5">
+                          <Badge color={type.tone}>{type.label}</Badge>
+                          {t.contactNumber && <span className="truncate text-xs text-gray-500 tabular-nums">{t.contactNumber}</span>}
                         </div>
                       </td>
-                      <td className="px-3 py-3 text-sm">
-                        {t.driverPaidStatus === 'Paid' ? (
-                          <Badge color="green">Paid</Badge>
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
+                      <td className="whitespace-nowrap px-3 py-3 text-sm">
+                        <p className="font-medium text-gray-900" title={t.route}>{shortRoute(t.route)}</p>
+                        <p className="text-xs text-gray-500 tabular-nums">{t.paxCount} pax · {formatVanType(t.vanType)}</p>
                       </td>
-                      <td className="px-3 py-3 text-sm">
-                        {t.driverConfirmed ? (
-                          <Badge color="green">Confirmed</Badge>
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
+                      <td className="max-w-[12rem] px-3 py-3 text-sm text-gray-600">
+                        {fromHotel
+                          ? <span className="block truncate" title={t.accommodation ?? undefined}>{t.accommodation ?? <span className="text-amber-700">Add hotel</span>}</span>
+                          : <span className="text-gray-400">Airport</span>}
                       </td>
-                      <td className="px-3 py-3 text-sm" onClick={(e) => e.stopPropagation()}>
-                        {t.collectedAt ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
-                            ✓ {formatDate(t.collectedAt.slice(0, 10))}
-                          </span>
-                        ) : !archiveMode ? (
-                          <button
-                            onClick={() => setCollectTarget(t)}
-                            className="rounded-md bg-teal-brand px-2 py-1 text-xs font-medium text-white hover:bg-teal-brand/80"
-                          >
-                            Collect
-                          </button>
-                        ) : (
-                          <span className="text-gray-300">—</span>
-                        )}
+                      <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums">
+                        <p className="text-sm font-medium text-gray-900">{formatCurrency(transferTotal(t))}</p>
+                        <p className="text-xs text-gray-500">cut {formatCurrency(transferCut(t))}</p>
                       </td>
-                      <td className="px-3 py-3 text-sm text-gray-600">{t.bookingSource ?? '—'}</td>
-                      <td className="px-3 py-3 text-sm" onClick={(e) => e.stopPropagation()}>
-                        {!archiveMode && canCancelTransfer(t) ? (
-                          <button
-                            type="button"
-                            disabled={cancellingId === t.id}
-                            onClick={() => void handleCancelTransfer(t)}
-                            className="whitespace-nowrap text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
-                          >
-                            {cancellingId === t.id ? 'Cancelling…' : 'Cancel'}
-                          </button>
-                        ) : (
-                          <span className="text-gray-300">—</span>
-                        )}
-                      </td>
+                      <td className="px-3 py-3"><MoneyPill t={t} /></td>
+                      <td className="px-3 py-3"><DriverStatus t={t} /></td>
+                      <td className="px-3 py-3">{renderActions(t)}</td>
                     </tr>
-                    {isExpanded && !archiveMode && (
-                      <tr key={`${t.id}-actions`}>
-                        <td colSpan={19} className="bg-gray-50 px-6 py-3">
-                          <div className="flex flex-wrap items-center gap-3">
-                            {t.driverPaidStatus !== 'Paid' && (
-                              <button
-                                onClick={() => { setDriverTarget(t); setExpandedRow(null); }}
-                                className="rounded-lg bg-orange-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-orange-700"
-                              >
-                                Record Driver Payment
-                              </button>
-                            )}
-                            {t.serviceDate >= todayStr && (
-                              <button
-                                disabled={notifyingId === t.id}
-                                onClick={() => handleNotifyDriver(t)}
-                                className="rounded-lg bg-teal-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-brand/80 disabled:opacity-50"
-                              >
-                                {notifyingId === t.id ? 'Sending…' : 'Notify Driver 🔔'}
-                              </button>
-                            )}
-                            <label className="flex items-center gap-2 text-xs text-gray-600">
-                              <span className="font-medium whitespace-nowrap">Pickup Time</span>
-                              <input
-                                type="time"
-                                defaultValue={t.pickupTime ?? ''}
-                                disabled={savingPickupTimeId === t.id}
-                                onBlur={(e) => handlePickupTimeChange(t, e.target.value)}
-                                className="rounded border border-gray-300 px-2 py-1 text-sm disabled:opacity-50"
-                              />
-                              {savedPickupTimeId === t.id && (
-                                <span className="text-green-600 font-medium">Saved</span>
-                              )}
-                            </label>
-                            <label className="flex items-center gap-2 text-xs text-gray-600">
-                              <span className="font-medium whitespace-nowrap">Accommodation</span>
-                              <input
-                                type="text"
-                                key={t.id}
-                                defaultValue={t.accommodation ?? ''}
-                                placeholder="Hotel / villa…"
-                                disabled={savingAccommodationId === t.id}
-                                onBlur={(e) => handleAccommodationChange(t, e.target.value)}
-                                className="w-44 rounded border border-gray-300 px-2 py-1 text-sm disabled:opacity-50"
-                              />
-                              {savedAccommodationId === t.id && (
-                                <span className="text-green-600 font-medium">Saved</span>
-                              )}
-                            </label>
-                            <div className="ml-auto space-y-0.5 text-right text-xs text-gray-500">
-                              {t.accommodation && <p>Hotel: {t.accommodation}</p>}
-                              {t.opsNotes && <p>Notes: {t.opsNotes}</p>}
-                              {t.customerEmail && <p>Email: {t.customerEmail}</p>}
-                              <p className="font-mono text-gray-400">{t.id}</p>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })}
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
       )}
 
-      {/* Summary */}
-      {filtered.length > 0 && (
-        <div className="flex flex-wrap gap-4 text-sm text-gray-600">
-          <span>{filtered.length} transfer{filtered.length !== 1 ? 's' : ''}</span>
-          <span>
-            Total: <span className="font-medium text-gray-900">{formatCurrency(filtered.reduce((s, t) => s + moneyAmount(t.totalPrice), 0))}</span>
-          </span>
-          <span>
-            Driver Fees: <span className="font-medium text-gray-900">{formatCurrency(filtered.reduce((s, t) => s + moneyAmount(t.driverFee), 0))}</span>
-          </span>
-          <span>
-            Net Profit: <span className="font-medium text-gray-900">
-              {formatCurrency(
-                filtered.reduce((s, t) => {
-                  const tot = moneyAmount(t.totalPrice);
-                  const fee = moneyAmount(t.driverFee);
-                  return s + (moneyAmount(t.netProfit) || (tot - fee));
-                }, 0),
-              )}
-            </span>
-          </span>
+      {!isLoading && rows.length > 0 && (
+        <div className="flex flex-wrap gap-4 text-sm text-gray-600 tabular-nums">
+          <span>{rows.length} transfer{rows.length !== 1 ? 's' : ''}</span>
+          <span>Fares <span className="font-medium text-gray-900">{formatCurrency(rows.reduce((s, t) => s + transferTotal(t), 0))}</span></span>
+          <span>Driver cuts <span className="font-medium text-gray-900">{formatCurrency(rows.reduce((s, t) => s + transferCut(t), 0))}</span></span>
+          <span>Still due <span className="font-medium text-gray-900">{formatCurrency(rows.reduce((s, t) => s + transferDue(t), 0))}</span></span>
         </div>
       )}
 
-      {/* Modals */}
-      {!archiveMode && <AddTransferModal open={showAddModal} onClose={() => setShowAddModal(false)} storeId={storeId} />}
-      {paymentTarget && (
-        <TransferPaymentModal
-          open={!!paymentTarget}
-          onClose={() => setPaymentTarget(null)}
-          transfer={paymentTarget}
+      {!archiveMode && (
+        <AddTransferModal
+          open={showAdd}
+          onClose={() => setShowAdd(false)}
           storeId={storeId}
-        />
-      )}
-      {driverTarget && (
-        <DriverPaymentModal
-          open={!!driverTarget}
-          onClose={() => setDriverTarget(null)}
-          transfer={driverTarget}
-          storeId={storeId}
-        />
-      )}
-      {collectTarget && (
-        <CollectTransferModal
-          transfer={collectTarget}
-          onClose={() => setCollectTarget(null)}
           onSuccess={(msg) => pushToast(msg, 'success')}
         />
       )}
-      <BulkDriverPaymentModal
-        open={showBulkDriverPayment}
-        onClose={() => {
-          setShowBulkDriverPayment(false);
-          setSelectedIds(new Set());
-          setBulkPayError('');
-        }}
-        transfers={filtered.filter((t) => selectedIds.has(t.id))}
-        storeId={storeId}
-      />
+      {receiveTarget && (
+        <ReceivePaymentModal
+          transfer={receiveTarget.transfer}
+          initialCollector={receiveTarget.collector}
+          onClose={() => setReceiveTarget(null)}
+          onSuccess={(msg) => pushToast(msg, 'success')}
+        />
+      )}
+      {settleRows && (
+        <DriverSettlementModal
+          transfers={settleRows}
+          storeId={storeId}
+          storeName={storeName}
+          onClose={() => setSettleRows(null)}
+          onSuccess={(msg) => { pushToast(msg, 'success'); setSelectedIds(new Set()); }}
+        />
+      )}
+      {detailsRow && (
+        <TransferDetailsModal
+          key={detailsRow.id}
+          transfer={detailsRow}
+          readOnly={archiveMode}
+          today={today}
+          onClose={() => setDetailsId(null)}
+          onToast={pushToast}
+        />
+      )}
 
-      {/* Toast container */}
-      <div className="fixed bottom-8 right-8 z-[60] flex flex-col-reverse items-end gap-2">
+      <div className="fixed bottom-8 right-8 z-[60] flex flex-col-reverse items-end gap-2" aria-live="polite">
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`animate-toast-slide-up font-lato rounded-2xl px-5 py-3 text-sm font-bold shadow-lg ${
+            className={`animate-toast-slide-up rounded-2xl px-5 py-3 text-sm font-bold shadow-lg ${
               t.type === 'success' ? 'bg-teal-brand text-white' : 'bg-red-600 text-white'
             }`}
           >
@@ -813,6 +626,23 @@ export default function TransfersPage() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function EmptyBox({ message, actionLabel, onAction }: { message: string; actionLabel?: string; onAction?: () => void }) {
+  return (
+    <div className="flex flex-col items-center gap-3 py-12 text-center">
+      <p className="text-pretty text-sm text-gray-500">{message}</p>
+      {actionLabel && onAction && (
+        <button
+          type="button"
+          onClick={onAction}
+          className="rounded-lg border border-teal-brand px-3 py-1.5 text-sm font-medium text-teal-brand hover:bg-teal-brand/10"
+        >
+          {actionLabel}
+        </button>
+      )}
     </div>
   );
 }

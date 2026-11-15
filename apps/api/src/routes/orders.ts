@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
@@ -20,6 +20,16 @@ import {
 
 const router = Router();
 router.use(authenticate);
+
+/** Never fails the order payment: the transfer can still be marked paid from the Transfers page. */
+async function syncTransferAfterOrderPayment(req: Request, orderId: string): Promise<void> {
+  try {
+    const { syncOrderTransferPayment } = await import('../use-cases/transfers/sync-order-transfer.js');
+    await syncOrderTransferPayment(orderId, req.app.locals.deps);
+  } catch (err) {
+    console.error(`[orders] Transfer sync after payment on ${orderId} failed:`, err);
+  }
+}
 
 const StoreQuerySchema = z.object({
   storeId: z.string(),
@@ -712,6 +722,7 @@ router.post('/:id/settle', requirePermission(Permission.EditOrders), validateBod
       tip,
       customerName: row?.booking_customer_name ?? row?.customers?.name ?? '',
     });
+    await syncTransferAfterOrderPayment(req, String(req.params.id));
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });
@@ -724,6 +735,7 @@ router.post('/:id/payment', requirePermission(Permission.EditOrders), validateBo
   try {
     const { collectPayment } = await import('../use-cases/orders/collect-payment.js');
     const result = await collectPayment(req.app.locals.deps, { orderId: req.params.id, ...req.body });
+    await syncTransferAfterOrderPayment(req, String(req.params.id));
     res.json({ success: true, data: result });
 
     void (async () => {

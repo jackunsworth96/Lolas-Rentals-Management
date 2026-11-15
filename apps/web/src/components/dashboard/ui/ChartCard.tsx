@@ -13,12 +13,12 @@ export function ChartCard({
 }) {
   return (
     <section className={`flex flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-sm ${className}`}>
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
           <h3 className="text-base font-semibold text-gray-900">{title}</h3>
           {subtitle && <p className="mt-0.5 text-xs text-gray-400">{subtitle}</p>}
         </div>
-        {action && <div className="shrink-0">{action}</div>}
+        {action && <div className="max-w-full">{action}</div>}
       </div>
       <div className="min-h-0 flex-1">{children}</div>
     </section>

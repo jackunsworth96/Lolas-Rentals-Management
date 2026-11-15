@@ -1,6 +1,13 @@
 import { Money } from '../value-objects/money.js';
 
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
 export type TransferPaymentStatus = 'Pending' | 'Partially Paid' | 'Paid';
+
+/** Who takes the customer's money: Lola's staff, or the driver directly. */
+export type TransferCollector = 'lolas' | 'driver';
 
 export interface TransferProps {
   id: string;
@@ -47,6 +54,20 @@ export interface TransferProps {
   driverConfirmed?: boolean;
   /** Timestamp when the driver tapped Confirm. */
   driverConfirmedAt?: Date | null;
+  /** Expected collector, chosen at booking. */
+  collectVia?: TransferCollector;
+  /** Who took the most recent payment; null until anything is paid. */
+  collectedBy?: TransferCollector | null;
+  /** Running total paid by the customer, whoever took it. */
+  amountPaid?: number;
+  /** Portion of amountPaid the driver is holding until settlement. */
+  driverCollectedAmount?: number;
+  /** Driver cut snapshotted at creation (per-head cut x pax for shared vans). */
+  driverCut?: number | null;
+  /** Fare is part of the linked order's balance, so payments go through the order. */
+  billedToOrder?: boolean;
+  driverSettledAt?: Date | null;
+  driverSettlementId?: string | null;
 }
 
 export class Transfer {
@@ -85,6 +106,14 @@ export class Transfer {
   readonly telegramMessageId: string | null;
   readonly driverConfirmed: boolean;
   readonly driverConfirmedAt: Date | null;
+  readonly collectVia: TransferCollector;
+  readonly collectedBy: TransferCollector | null;
+  readonly amountPaid: number;
+  readonly driverCollectedAmount: number;
+  readonly driverCut: number | null;
+  readonly billedToOrder: boolean;
+  readonly driverSettledAt: Date | null;
+  readonly driverSettlementId: string | null;
 
   private constructor(props: TransferProps) {
     this.id = props.id;
@@ -122,6 +151,69 @@ export class Transfer {
     this.telegramMessageId = props.telegramMessageId ?? null;
     this.driverConfirmed = props.driverConfirmed ?? false;
     this.driverConfirmedAt = props.driverConfirmedAt ?? null;
+    this.collectVia = props.collectVia ?? 'lolas';
+    this.collectedBy = props.collectedBy ?? null;
+    this.amountPaid = props.amountPaid ?? 0;
+    this.driverCollectedAmount = props.driverCollectedAmount ?? 0;
+    this.driverCut = props.driverCut ?? null;
+    this.billedToOrder = props.billedToOrder ?? false;
+    this.driverSettledAt = props.driverSettledAt ?? null;
+    this.driverSettlementId = props.driverSettlementId ?? null;
+  }
+
+  /** Amount the customer still owes. */
+  balanceDue(): number {
+    return Math.max(0, round2(this.totalPrice.toNumber() - this.amountPaid));
+  }
+
+  /** Saved driver cut, falling back to the current route config for legacy rows. */
+  effectiveDriverCut(): number {
+    if (this.driverCut != null) return this.driverCut;
+    if (this.routeDriverCut == null) return 0;
+    return this.routePricingType === 'per_head'
+      ? this.routeDriverCut * Math.max(this.paxCount, 1)
+      : this.routeDriverCut;
+  }
+
+  /** Records a customer payment taken by Lola's or by the driver; amounts accumulate. */
+  withPaymentReceived(amount: number, collector: TransferCollector, paymentMethod: string | null): Transfer {
+    const amountPaid = round2(this.amountPaid + amount);
+    const driverCollectedAmount = collector === 'driver'
+      ? round2(this.driverCollectedAmount + amount)
+      : this.driverCollectedAmount;
+    return Transfer.create({
+      ...(this as unknown as TransferProps),
+      amountPaid,
+      driverCollectedAmount,
+      collectedBy: collector,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
+      paymentStatus: this.derivePaymentStatus(Money.php(amountPaid)),
+      collectedAt: this.collectedAt ?? new Date(),
+      collectedAmount: amountPaid,
+      updatedAt: new Date(),
+    });
+  }
+
+  withCollectVia(collectVia: TransferCollector): Transfer {
+    return Transfer.create({
+      ...(this as unknown as TransferProps),
+      collectVia,
+      updatedAt: new Date(),
+    });
+  }
+
+  withDriverSettled(settlementId: string, settledAt: Date): Transfer {
+    const cut = Money.php(this.effectiveDriverCut());
+    return Transfer.create({
+      ...(this as unknown as TransferProps),
+      driverCut: cut.toNumber(),
+      driverFee: cut,
+      netProfit: this.totalPrice.subtract(cut),
+      driverPaidStatus: 'Paid',
+      driverSettledAt: settledAt,
+      driverSettlementId: settlementId,
+      updatedAt: new Date(),
+    });
   }
 
   static create(props: TransferProps): Transfer {
@@ -174,6 +266,15 @@ export class Transfer {
       ...(this as unknown as TransferProps),
       pickupTime: time,
       pickupTimeEnd: null,
+      updatedAt: new Date(),
+    });
+  }
+
+  withPickupWindow(pickupTime: string, pickupTimeEnd: string | null): Transfer {
+    return Transfer.create({
+      ...(this as unknown as TransferProps),
+      pickupTime,
+      pickupTimeEnd,
       updatedAt: new Date(),
     });
   }

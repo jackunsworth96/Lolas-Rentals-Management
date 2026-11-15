@@ -38,6 +38,14 @@ const TransferRowSchema = z.object({
   telegram_message_id: z.string().nullable(),
   driver_confirmed: z.boolean().nullable(),
   driver_confirmed_at: z.string().nullable(),
+  collect_via: z.enum(['lolas', 'driver']).nullable().optional(),
+  collected_by: z.enum(['lolas', 'driver']).nullable().optional(),
+  amount_paid: z.number().nullable().optional(),
+  driver_collected_amount: z.number().nullable().optional(),
+  driver_cut: z.number().nullable().optional(),
+  billed_to_order: z.boolean().nullable().optional(),
+  driver_settled_at: z.string().nullable().optional(),
+  driver_settlement_id: z.string().nullable().optional(),
 });
 
 type RouteInfo = { driverCut: number | null; pricingType: 'fixed' | 'per_head' | null };
@@ -77,6 +85,14 @@ function toRow(t: Transfer) {
     telegram_message_id: t.telegramMessageId,
     driver_confirmed: t.driverConfirmed,
     driver_confirmed_at: t.driverConfirmedAt?.toISOString() ?? null,
+    collect_via: t.collectVia,
+    collected_by: t.collectedBy,
+    amount_paid: t.amountPaid,
+    driver_collected_amount: t.driverCollectedAmount,
+    driver_cut: t.driverCut,
+    billed_to_order: t.billedToOrder,
+    driver_settled_at: t.driverSettledAt?.toISOString() ?? null,
+    driver_settlement_id: t.driverSettlementId,
   };
 }
 
@@ -122,6 +138,14 @@ function toDomain(raw: unknown, routeInfo?: RouteInfo): Transfer {
     telegramMessageId: row.telegram_message_id,
     driverConfirmed: row.driver_confirmed ?? false,
     driverConfirmedAt: row.driver_confirmed_at ? new Date(row.driver_confirmed_at) : null,
+    collectVia: row.collect_via ?? 'lolas',
+    collectedBy: row.collected_by ?? null,
+    amountPaid: row.amount_paid ?? 0,
+    driverCollectedAmount: row.driver_collected_amount ?? 0,
+    driverCut: row.driver_cut ?? null,
+    billedToOrder: row.billed_to_order ?? false,
+    driverSettledAt: row.driver_settled_at ? new Date(row.driver_settled_at) : null,
+    driverSettlementId: row.driver_settlement_id ?? null,
   });
 }
 
@@ -200,6 +224,11 @@ export function createTransferRepo(): TransferRepository {
       if (filters?.driverPaidStatus === 'unpaid') {
         query = query.or('driver_paid_status.is.null,driver_paid_status.neq.Paid');
       }
+      if (filters?.scope === 'open') {
+        query = query.is('driver_settled_at', null).neq('status', 'cancelled');
+      } else if (filters?.scope === 'closed') {
+        query = query.or('driver_settled_at.not.is.null,status.eq.cancelled');
+      }
       query = query.order('service_date', { ascending: true });
       const { data, error } = await query;
       if (error) throw new Error(`Failed to fetch transfers: ${error.message}`);
@@ -230,6 +259,12 @@ export function createTransferRepo(): TransferRepository {
           total: data.collected.total,
           driverCut: data.collected.driverCut,
           netLolas: data.collected.netLolas,
+        },
+        settlement: {
+          count: data.settlement?.count ?? 0,
+          lolasOwesDriver: data.settlement?.lolasOwesDriver ?? 0,
+          driverOwesLolas: data.settlement?.driverOwesLolas ?? 0,
+          net: data.settlement?.net ?? 0,
         },
       };
     },

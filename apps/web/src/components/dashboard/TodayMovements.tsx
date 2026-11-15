@@ -21,6 +21,7 @@ import type { EnrichedOrder } from '../../types/api.js';
 import { BookingModal } from '../orders/BookingModal.js';
 import { OrderDetailModal } from '../orders/OrderDetailModal.js';
 import { ChartCard, ChartSkeleton, EmptyState, formatPeso } from './ui/index.js';
+import { AirportTransfersCard } from './AirportTransfersCard.js';
 
 type View = 'upcoming' | 'done';
 
@@ -269,6 +270,7 @@ export function TodayMovements({ storeId }: { storeId: string | undefined }) {
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const canInbox = hasPermission('can_view_inbox');
   const canActive = hasPermission('can_view_active');
+  const canTransfers = hasPermission('can_view_transfers');
   const queryClient = useQueryClient();
   const [pickupDay, setPickupDay] = useState<MovementDay>('today');
   const [returnDay, setReturnDay] = useState<MovementDay>('today');
@@ -280,7 +282,9 @@ export function TodayMovements({ storeId }: { storeId: string | undefined }) {
   const [rawOrder, setRawOrder] = useState<PickupMovement['raw'] | null>(null);
   const [order, setOrder] = useState<{ id: string; storeId: string; readOnly: boolean } | null>(null);
 
-  if (!canInbox && !canActive) return null;
+  if (!canInbox && !canActive) {
+    return canTransfers ? <AirportTransfersCard storeId={storeId} /> : null;
+  }
 
   const closeAndRefresh = (close: () => void) => () => {
     close();
@@ -320,7 +324,11 @@ export function TodayMovements({ storeId }: { storeId: string | undefined }) {
 
   return (
     <>
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+      <div
+        className={`grid grid-cols-1 gap-6 md:grid-cols-2 ${
+          canTransfers ? 'xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.8fr)]' : ''
+        }`}
+      >
         <ChartCard
           title={title(<ArrowUpFromLine className="h-4 w-4 text-teal-brand" />, `Pickups ${pickupDay}`, pickups.length)}
           subtitle={toActivate > 0 ? `${toActivate} still to activate from the Inbox` : `Who is collecting a vehicle ${pickupDay}`}
@@ -360,6 +368,8 @@ export function TodayMovements({ storeId }: { storeId: string | undefined }) {
             />,
           )}
         </ChartCard>
+
+        {canTransfers && <AirportTransfersCard storeId={storeId} className="md:col-span-2 xl:col-span-1" />}
       </div>
 
       {rawOrder && <BookingModal open onClose={closeAndRefresh(() => setRawOrder(null))} rawOrder={rawOrder} />}

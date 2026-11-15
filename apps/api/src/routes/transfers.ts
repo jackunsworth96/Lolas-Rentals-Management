@@ -6,12 +6,11 @@ import { validateBody, validateQuery } from '../middleware/validate.js';
 import {
   Permission,
   CreateTransferRequestSchema,
-  RecordTransferPaymentRequestSchema,
-  RecordDriverPaymentRequestSchema,
-  RecordBulkDriverPaymentRequestSchema,
+  ReceiveTransferPaymentRequestSchema,
+  SettleDriverRequestSchema,
+  SetCollectViaRequestSchema,
   TransferQuerySchema,
   TransferSummaryQuerySchema,
-  CollectTransferBodySchema,
 } from '@lolas/shared';
 
 const PickupTimeBodySchema = z.object({
@@ -61,21 +60,18 @@ router.get('/:id', requirePermission(Permission.ViewTransfers), async (req: Requ
 router.post('/', requirePermission(Permission.EditTransfers), validateBody(CreateTransferRequestSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { createTransfer } = await import('../use-cases/transfers/create-transfer.js');
-    const result = await createTransfer(req.body, { transfers: req.app.locals.deps.transferRepo });
+    const { applyPickupTime } = await import('../transfers/apply-pickup-time.js');
+    const transferRepo = req.app.locals.deps.transferRepo;
+    const created = await createTransfer(req.body, { transfers: transferRepo });
+    const { transfer: result, pickup, direction } = await applyPickupTime(created, transferRepo);
     res.status(201).json({ success: true, data: result });
 
-    // Fire-and-forget: calculate pickup time, notify driver channel, email customer.
+    // Fire-and-forget: notify driver channel, email customer.
     void (async () => {
       try {
-        const { calculatePickupTime, inferDirection } = await import('../transfers/pickup-time.js');
-        const { loadPickupRules } = await import('../transfers/pickup-rules-loader.js');
         const { notifyNewTransfer } = await import('../telegram/telegram.service.js');
 
-        if (!result.flightTime) return;
-
-        const rules = await loadPickupRules();
-        const direction = inferDirection(result.route);
-        const pickup = calculatePickupTime(direction, result.vanType, result.flightTime, result.serviceDate, rules);
+        if (!result.flightTime || !pickup) return;
 
         const messageId = await notifyNewTransfer({
           id: result.id,
@@ -93,9 +89,9 @@ router.post('/', requirePermission(Permission.EditTransfers), validateBody(Creat
         });
 
         if (messageId) {
-          const refreshed = await req.app.locals.deps.transferRepo.findById(result.id);
+          const refreshed = await transferRepo.findById(result.id);
           if (refreshed) {
-            await req.app.locals.deps.transferRepo.save(
+            await transferRepo.save(
               refreshed.withTelegramSent(messageId, pickup.from, pickup.to),
             );
           }
@@ -135,10 +131,18 @@ router.post('/', requirePermission(Permission.EditTransfers), validateBody(Creat
   } catch (err) { next(err); }
 });
 
-router.post('/payment', requirePermission(Permission.EditTransfers), validateBody(RecordTransferPaymentRequestSchema), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/payment', requirePermission(Permission.EditTransfers), validateBody(ReceiveTransferPaymentRequestSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { recordTransferPayment } = await import('../use-cases/transfers/record-payment.js');
-    const result = await recordTransferPayment(req.body, {
+    const { receiveCustomerPayment } = await import('../use-cases/transfers/receive-customer-payment.js');
+    const result = await receiveCustomerPayment(req.body, req.app.locals.deps);
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+router.post('/settle', requirePermission(Permission.EditTransfers), validateBody(SettleDriverRequestSchema), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { settleDriver } = await import('../use-cases/transfers/settle-driver.js');
+    const result = await settleDriver(req.body, {
       transfers: req.app.locals.deps.transferRepo,
       accounting: req.app.locals.deps.accountingPort,
     });
@@ -146,25 +150,18 @@ router.post('/payment', requirePermission(Permission.EditTransfers), validateBod
   } catch (err) { next(err); }
 });
 
-router.post('/driver-payment', requirePermission(Permission.EditTransfers), validateBody(RecordDriverPaymentRequestSchema), async (req: Request, res: Response, next: NextFunction) => {
+router.patch('/:id/collect-via', requirePermission(Permission.EditTransfers), validateBody(SetCollectViaRequestSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { recordDriverPayment } = await import('../use-cases/transfers/record-driver-payment.js');
-    const result = await recordDriverPayment(req.body, {
-      transfers: req.app.locals.deps.transferRepo,
-      accounting: req.app.locals.deps.accountingPort,
-    });
-    res.json({ success: true, data: result });
-  } catch (err) { next(err); }
-});
-
-router.post('/bulk-driver-payment', requirePermission(Permission.EditTransfers), validateBody(RecordBulkDriverPaymentRequestSchema), async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { recordBulkDriverPayment } = await import('../use-cases/transfers/record-bulk-driver-payment.js');
-    const result = await recordBulkDriverPayment(req.body, {
-      transfers: req.app.locals.deps.transferRepo,
-      accounting: req.app.locals.deps.accountingPort,
-    });
-    res.json({ success: true, data: result });
+    const transferRepo = req.app.locals.deps.transferRepo;
+    const existing = await transferRepo.findById(String(req.params.id));
+    if (!existing) {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Transfer not found' } });
+      return;
+    }
+    const { collectVia } = req.body as { collectVia: 'lolas' | 'driver' };
+    await transferRepo.save(existing.withCollectVia(collectVia));
+    const refreshed = await transferRepo.findById(existing.id);
+    res.json({ success: true, data: refreshed });
   } catch (err) { next(err); }
 });
 
@@ -185,10 +182,7 @@ router.post('/:id/notify-driver', requirePermission(Permission.EditTransfers), a
 
     const { sendEmail, driverNotificationHtml, INTERNAL_FROM_EMAIL } = await import('../services/email.js');
 
-    const cut = transfer.routeDriverCut ?? 0;
-    const driverCut = transfer.routePricingType === 'per_head'
-      ? cut * transfer.paxCount
-      : cut;
+    const driverCut = transfer.effectiveDriverCut();
 
     // Derive direction from the route string.
     // If the first segment contains 'iao' or 'airport' the journey originates at the
@@ -220,51 +214,6 @@ router.post('/:id/notify-driver', requirePermission(Permission.EditTransfers), a
     });
 
     res.json({ success: true });
-  } catch (err) { next(err); }
-});
-
-router.patch('/:id/collect', requirePermission(Permission.EditTransfers), validateBody(CollectTransferBodySchema), async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const id = String(req.params.id);
-    const body = req.body as {
-      collectedAmount: number;
-      paymentMethod: string;
-      cashAccountId: string;
-      transferIncomeAccountId: string;
-      date: string;
-    };
-    const transferRepo = req.app.locals.deps.transferRepo;
-    const accountingPort = req.app.locals.deps.accountingPort;
-
-    const existing = await transferRepo.findById(id);
-    if (!existing) {
-      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Transfer not found' } });
-      return;
-    }
-    if (existing.collectedAt) {
-      res.status(409).json({
-        success: false,
-        error: { code: 'ALREADY_COLLECTED', message: 'Transfer payment has already been collected' },
-      });
-      return;
-    }
-
-    const { recordTransferPayment } = await import('../use-cases/transfers/record-payment.js');
-    const { transfer: paid } = await recordTransferPayment(
-      {
-        transferId: id,
-        amount: body.collectedAmount,
-        paymentMethod: body.paymentMethod,
-        date: body.date,
-        cashAccountId: body.cashAccountId,
-        transferIncomeAccountId: body.transferIncomeAccountId,
-      },
-      { transfers: transferRepo, accounting: accountingPort },
-    );
-
-    await transferRepo.save(paid.withCollected(new Date(), body.collectedAmount));
-    const refreshed = await transferRepo.findById(id);
-    res.json({ success: true, data: refreshed });
   } catch (err) { next(err); }
 });
 
@@ -381,10 +330,10 @@ router.delete('/:id', requirePermission(Permission.EditTransfers), async (req: R
       });
       return;
     }
-    if (existing.collectedAt) {
+    if (existing.amountPaid > 0) {
       res.status(409).json({
         success: false,
-        error: { code: 'COLLECTED', message: 'Cannot cancel a collected transfer' },
+        error: { code: 'COLLECTED', message: 'Cannot cancel a transfer that has been paid. Refund it first.' },
       });
       return;
     }

@@ -127,6 +127,45 @@ describe('Transfer', () => {
     });
   });
 
+  describe('withPaymentReceived', () => {
+    it('accumulates payments and marks paid when the fare is covered', () => {
+      const t = Transfer.create(makeTransferProps({ totalPrice: Money.php(450) }));
+      const partial = t.withPaymentReceived(300, 'lolas', 'Cash');
+      expect(partial.amountPaid).toBe(300);
+      expect(partial.paymentStatus).toBe('Partially Paid');
+      expect(partial.collectedBy).toBe('lolas');
+      const paid = partial.withPaymentReceived(150, 'lolas', 'Cash');
+      expect(paid.amountPaid).toBe(450);
+      expect(paid.paymentStatus).toBe('Paid');
+      expect(paid.balanceDue()).toBe(0);
+    });
+
+    it('records driver-held cash separately from shop collections', () => {
+      const t = Transfer.create(makeTransferProps({ totalPrice: Money.php(450) }));
+      const updated = t.withPaymentReceived(450, 'driver', null);
+      expect(updated.collectedBy).toBe('driver');
+      expect(updated.driverCollectedAmount).toBe(450);
+      expect(updated.paymentStatus).toBe('Paid');
+    });
+  });
+
+  describe('effectiveDriverCut', () => {
+    it('uses the snapshot when present', () => {
+      const t = Transfer.create(makeTransferProps({ driverCut: 700, routeDriverCut: 350, routePricingType: 'per_head' }));
+      expect(t.effectiveDriverCut()).toBe(700);
+    });
+
+    it('falls back to per-head route cut times pax', () => {
+      const t = Transfer.create(makeTransferProps({
+        driverCut: null,
+        paxCount: 2,
+        routeDriverCut: 350,
+        routePricingType: 'per_head',
+      }));
+      expect(t.effectiveDriverCut()).toBe(700);
+    });
+  });
+
   describe('withPickupTime', () => {
     it('stores the manually selected pickup time and clears an old calculated window', () => {
       const original = Transfer.create(makeTransferProps({

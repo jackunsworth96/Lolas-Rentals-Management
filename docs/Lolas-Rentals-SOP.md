@@ -563,26 +563,34 @@ Remember to update the vehicle's fleet status manually when returning it to serv
 
 ## 15. Transfers (Airport / Pickup Shuttles)
 
-Transfers are separate from vehicle rentals and have their own workflow.
+Transfers are a paid shuttle (airport pickup or drop-off). They can be added on the website with a rental, booked as a standalone transfer, or created by staff on **Operations → Transfers**. Requires `can_edit_transfers` to edit.
 
-### 15.1 What is a Transfer?
+Pricing comes from **Settings → Transfer Routes** (per person or fixed fare, plus the driver cut). The cut is saved on the transfer when it is created, so later price changes do not rewrite history.
 
-A transfer is a paid shuttle service (e.g. airport pickup or drop-off). Customers can add a transfer when booking on the website, or staff can create them manually.
+### 15.1 Who takes the customer's money?
 
-### 15.2 Managing Transfers
+Every transfer is one of two money paths. The page always shows the next action.
 
-Navigate to **Operations → Transfers**. Requires `can_edit_transfers` to edit.
+| Scenario | Who collects | What to press |
+|---|---|---|
+| Walk-in at reception | Lola's | **Receive payment → At shop** (or **Lola's — paying now** when adding the transfer) |
+| Renter — arrival | Lola's, at scooter/tuktuk delivery or when they pick up at the shop | On the order's Transfer tab, **Received at shop**. This also pays the transfer off the order balance. |
+| Renter — departure | Lola's, when they return the vehicle. If we forgot, the driver collects. | Same **Received at shop**, or **Driver collected** if the driver took the cash. |
+| Non-renter (arrival or departure) | Driver, from the customer | **Driver collected**. Our commission is deducted when the driver settles. |
 
-Each transfer record includes:
-- Customer and contact details
-- Route (from the configured transfer routes)
-- Date and time
-- Payment status and method
-- Driver assignment
+### 15.2 Daily workflow
 
-### 15.3 Transfer Pricing
+1. **Upcoming** — today's and future trips. Email the driver if they have not confirmed in Telegram. Pickup time and hotel can be edited from **Details**.
+2. **To collect** — past or today, still unpaid. Receive at the shop, or record that the driver collected.
+3. **Driver settlement** — paid trips that have not been settled with the driver yet.
+   - Lola's collected → Lola's owes the driver the cut.
+   - Driver collected → the driver owes Lola's the fare minus the cut.
+   - Tick the trips (or settle all) and press **Settle**. The screen shows the net: either the driver hands over cash, or Lola's pays the driver.
+4. **Completed** — settled trips. Filter by date.
 
-Transfer pricing is based on configured **Transfer Routes**. Routes and costs are set in **Settings**.
+### 15.3 Order-linked transfers
+
+When a renter books a transfer with the rental, the fare is part of the order balance unless staff tick "customer pays the driver". Collecting the transfer from the order tab pays the order; collecting it as "driver collected" records that the driver is holding the cash until settlement. Do not also press Receive payment on the Transfers page for the same money.
 
 ---
 

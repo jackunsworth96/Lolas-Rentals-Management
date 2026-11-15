@@ -1,33 +1,41 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Modal } from '../common/Modal.js';
-import { useCreateTransfer, useRecordTransferPayment } from '../../api/transfers.js';
-import { useTransferRoutes, usePaymentMethods, useChartOfAccounts } from '../../api/config.js';
+import { useCreateTransfer, type TransferCollector, type TransferRow } from '../../api/transfers.js';
+import { useTransferRoutes } from '../../api/config.js';
 import { formatCurrency } from '../../utils/currency.js';
-import { usePaymentRouting } from '../../hooks/use-payment-routing.js';
+import { manilaToday } from '../../utils/date.js';
+import { ReceivePaymentModal } from './ReceivePaymentModal.js';
 
 interface Props {
   open: boolean;
   onClose: () => void;
   storeId: string;
+  onSuccess?: (msg: string) => void;
 }
 
-export function AddTransferModal({ open, onClose, storeId }: Props) {
+interface RouteOption {
+  id: number;
+  route: string;
+  vanType: string | null;
+  price: number;
+  pricingType?: 'fixed' | 'per_head' | null;
+  driverCut?: number | null;
+}
+
+type Collection = 'now' | 'later' | 'driver';
+
+const COLLECTION_OPTIONS: Array<{ value: Collection; title: string; body: string }> = [
+  { value: 'now', title: "Lola's — paying now", body: 'Walk-in paying at reception.' },
+  { value: 'later', title: "Lola's — later", body: 'Collect at delivery, pickup or return.' },
+  { value: 'driver', title: 'Driver collects', body: 'Customer pays the driver; cut deducted at settlement.' },
+];
+
+const FIELD = 'mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm';
+
+export function AddTransferModal({ open, onClose, storeId, onSuccess }: Props) {
   const createMutation = useCreateTransfer();
-  const paymentMutation = useRecordTransferPayment();
   const { data: routes = [] } = useTransferRoutes(storeId);
-  const { data: paymentMethods = [] } = usePaymentMethods();
-  const { data: accounts = [] } = useChartOfAccounts();
-
-  const routeList = routes as Array<{ id: number; route: string; vanType: string | null; price: number }>;
-  const pmList = paymentMethods as Array<{ id: string; name: string }>;
-  const accList = accounts as Array<{ id: string; name: string; accountType?: string; storeId?: string | null }>;
-
-  const storeAccounts = useMemo(
-    () => accList.filter((a) => !a.storeId || a.storeId === storeId || a.storeId === 'company'),
-    [accList, storeId],
-  );
-  const assetAccounts = storeAccounts.filter((a) => (a.accountType ?? '').toLowerCase() === 'asset');
-  const incomeAccounts = storeAccounts.filter((a) => (a.accountType ?? '').toLowerCase() === 'income');
+  const routeList = routes as RouteOption[];
 
   const [serviceDate, setServiceDate] = useState('');
   const [flightTime, setFlightTime] = useState('');
@@ -38,21 +46,19 @@ export function AddTransferModal({ open, onClose, storeId }: Props) {
   const [customerType, setCustomerType] = useState<'Walk-in' | 'Online'>('Walk-in');
   const [selectedRouteId, setSelectedRouteId] = useState('');
   const [paxCount, setPaxCount] = useState(1);
-  const [vanType, setVanType] = useState('');
   const [accommodation, setAccommodation] = useState('');
   const [bookingSource, setBookingSource] = useState('');
   const [opsNotes, setOpsNotes] = useState('');
-  const [totalPrice, setTotalPrice] = useState<number | ''>('');
-  const [paymentMethodId, setPaymentMethodId] = useState('');
-  const [payNow, setPayNow] = useState(false);
-  const [payAmount, setPayAmount] = useState<number | ''>('');
-  const [cashAccountId, setCashAccountId] = useState('');
-  const [incomeAccountId, setIncomeAccountId] = useState('');
+  const [priceOverride, setPriceOverride] = useState<number | ''>('');
+  const [collection, setCollection] = useState<Collection>('now');
+  const [created, setCreated] = useState<TransferRow | null>(null);
   const [error, setError] = useState('');
+  const paidRef = useRef(false);
 
   useEffect(() => {
     if (open) {
-      setServiceDate(new Date().toISOString().slice(0, 10));
+      paidRef.current = false;
+      setServiceDate(manilaToday());
       setFlightTime('');
       setFlightNumber('');
       setCustomerName('');
@@ -61,87 +67,63 @@ export function AddTransferModal({ open, onClose, storeId }: Props) {
       setCustomerType('Walk-in');
       setSelectedRouteId('');
       setPaxCount(1);
-      setVanType('');
       setAccommodation('');
       setBookingSource('');
       setOpsNotes('');
-      setTotalPrice('');
-      setPaymentMethodId('');
-      setPayNow(false);
-      setPayAmount('');
-      setCashAccountId('');
-      setIncomeAccountId('');
+      setPriceOverride('');
+      setCollection('now');
+      setCreated(null);
       setError('');
     }
   }, [open]);
 
-  useEffect(() => {
-    if (selectedRouteId) {
-      const route = routeList.find((r) => String(r.id) === selectedRouteId);
-      if (route) {
-        setTotalPrice(route.price);
-        if (route.vanType) setVanType(route.vanType);
-      }
-    }
-  }, [selectedRouteId, routeList]);
-
-  const routing = usePaymentRouting();
-  const routedCashAcct = routing.getReceivedInto(storeId, paymentMethodId);
-
-  useEffect(() => {
-    if (routedCashAcct && !cashAccountId) setCashAccountId(routedCashAcct);
-  }, [routedCashAcct, cashAccountId]);
-
-  const isCard = useMemo(() => {
-    const pm = pmList.find((p) => p.id === paymentMethodId);
-    return pm ? pm.name.toLowerCase().includes('card') : false;
-  }, [paymentMethodId, pmList]);
+  const route = routeList.find((r) => String(r.id) === selectedRouteId);
+  const perHead = route?.pricingType === 'per_head';
+  const pax = Math.max(paxCount, 1);
+  const routeTotal = route ? (perHead ? route.price * pax : route.price) : 0;
+  const total = priceOverride === '' ? routeTotal : Number(priceOverride);
+  const cut = route?.driverCut != null ? (perHead ? route.driverCut * pax : route.driverCut) : 0;
+  const lolasShare = total - cut;
+  const pickupFromHotel = useMemo(() => {
+    const first = (route?.route ?? '').split(/\s*(?:→|->|\bto\b)\s*/i)[0]?.toLowerCase() ?? '';
+    return first.includes('luna') || first.includes('general');
+  }, [route]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    if (!customerName.trim()) { setError('Enter the customer name'); return; }
+    if (!route) { setError('Select a route'); return; }
+    if (!total || total <= 0) { setError('The fare must be more than ₱0'); return; }
 
-    if (!customerName.trim()) { setError('Customer name is required'); return; }
-    if (!selectedRouteId) { setError('Please select a route'); return; }
-    if (!totalPrice || totalPrice <= 0) { setError('Total price must be positive'); return; }
-
-    const selectedRoute = routeList.find((r) => String(r.id) === selectedRouteId);
-
+    const collectVia: TransferCollector = collection === 'driver' ? 'driver' : 'lolas';
     try {
-      const result = await createMutation.mutateAsync({
+      const transfer = await createMutation.mutateAsync({
         serviceDate,
         customerName: customerName.trim(),
         contactNumber: contactNumber.trim() || null,
         customerEmail: customerEmail.trim() || null,
         customerType,
-        route: selectedRoute?.route ?? '',
+        route: route.route,
         flightTime: flightTime.trim() || null,
         flightNumber: flightNumber.trim() || null,
-        paxCount,
-        vanType: vanType.trim() || null,
+        paxCount: pax,
+        vanType: route.vanType,
         accommodation: accommodation.trim() || null,
         opsNotes: opsNotes.trim() || null,
-        totalPrice: Number(totalPrice),
-        paymentMethod: paymentMethodId || null,
+        totalPrice: total,
+        paymentMethod: null,
         bookingSource: bookingSource.trim() || null,
         bookingToken: null,
         storeId,
         orderId: null,
+        collectVia,
       });
-
-      const transferId = (result as Record<string, unknown>)?.id as string | undefined;
-
-      if (payNow && !isCard && transferId && Number(payAmount) > 0 && cashAccountId && incomeAccountId) {
-        await paymentMutation.mutateAsync({
-          transferId,
-          amount: Number(payAmount),
-          paymentMethod: paymentMethodId,
-          date: serviceDate,
-          cashAccountId,
-          transferIncomeAccountId: incomeAccountId,
-        });
+      if (collection === 'now') {
+        setCreated(transfer);
+        return;
       }
-
+      onSuccess?.('Transfer added');
       onClose();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to create transfer');
@@ -150,269 +132,194 @@ export function AddTransferModal({ open, onClose, storeId }: Props) {
 
   if (!open) return null;
 
-  const isSaving = createMutation.isPending || paymentMutation.isPending;
+  if (created) {
+    return (
+      <ReceivePaymentModal
+        transfer={created}
+        initialCollector="lolas"
+        onClose={() => {
+          if (!paidRef.current) onSuccess?.('Transfer added — payment still to collect');
+          onClose();
+        }}
+        onSuccess={(msg) => {
+          paidRef.current = true;
+          onSuccess?.(`Transfer added · ${msg.toLowerCase()}`);
+        }}
+      />
+    );
+  }
 
   return (
-    <Modal open onClose={onClose} title="Add Transfer" size="xl">
-      <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Customer Info */}
-        <fieldset className="space-y-3">
-          <legend className="text-sm font-semibold text-gray-700">Customer</legend>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="text-xs font-medium text-gray-600">Name *</span>
-              <input
-                type="text"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                required
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-            </label>
-            <label className="block">
-              <span className="text-xs font-medium text-gray-600">Contact Number</span>
-              <input
-                type="text"
-                value={contactNumber}
-                onChange={(e) => setContactNumber(e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-            </label>
-            <label className="block">
-              <span className="text-xs font-medium text-gray-600">Email</span>
-              <input
-                type="email"
-                value={customerEmail}
-                onChange={(e) => setCustomerEmail(e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-            </label>
-            <label className="block">
-              <span className="text-xs font-medium text-gray-600">Customer Type</span>
-              <select
-                value={customerType}
-                onChange={(e) => setCustomerType(e.target.value as 'Walk-in' | 'Online')}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              >
-                <option value="Walk-in">Walk-in</option>
-                <option value="Online">Online</option>
-              </select>
-            </label>
+    <Modal
+      open
+      onClose={onClose}
+      title="Add transfer"
+      size="xl"
+      footer={
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-gray-600 tabular-nums">
+            {route ? (
+              <>
+                Fare <span className="font-semibold text-gray-900">{formatCurrency(total)}</span>
+                {' · '}driver cut {formatCurrency(cut)}
+                {' · '}Lola&apos;s keeps <span className="font-semibold text-gray-900">{formatCurrency(lolasShare)}</span>
+              </>
+            ) : 'Select a route to see the fare'}
+          </p>
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="add-transfer-form"
+              disabled={createMutation.isPending}
+              className="rounded-lg bg-teal-brand px-4 py-2 text-sm font-medium text-white hover:bg-teal-brand/90 disabled:opacity-50"
+            >
+              {createMutation.isPending ? 'Saving…' : collection === 'now' ? 'Create & take payment' : 'Create transfer'}
+            </button>
           </div>
-        </fieldset>
-
-        {/* Booking Details */}
+        </div>
+      }
+    >
+      <form id="add-transfer-form" onSubmit={handleSubmit} className="space-y-5">
         <fieldset className="space-y-3">
-          <legend className="text-sm font-semibold text-gray-700">Booking Details</legend>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
+          <legend className="text-sm font-semibold text-gray-700">Trip</legend>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="block sm:col-span-2">
               <span className="text-xs font-medium text-gray-600">Route *</span>
-              <select
-                value={selectedRouteId}
-                onChange={(e) => setSelectedRouteId(e.target.value)}
-                required
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              >
-                <option value="">Select route...</option>
+              <select value={selectedRouteId} onChange={(e) => setSelectedRouteId(e.target.value)} required className={FIELD}>
+                <option value="">Select route…</option>
                 {routeList.map((r) => (
                   <option key={r.id} value={String(r.id)}>
-                    {r.route}{r.vanType ? ` (${r.vanType})` : ''} — {formatCurrency(r.price)}
+                    {r.route}{r.vanType ? ` (${r.vanType})` : ''} — {formatCurrency(r.price)}{r.pricingType === 'per_head' ? ' per person' : ''}
                   </option>
                 ))}
               </select>
             </label>
             <label className="block">
-              <span className="text-xs font-medium text-gray-600">Service Date *</span>
-              <input
-                type="date"
-                value={serviceDate}
-                onChange={(e) => setServiceDate(e.target.value)}
-                required
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
+              <span className="text-xs font-medium text-gray-600">Date *</span>
+              <input type="date" value={serviceDate} onChange={(e) => setServiceDate(e.target.value)} required className={FIELD} />
             </label>
             <label className="block">
-              <span className="text-xs font-medium text-gray-600">Flight / Pickup Time</span>
-              <input
-                type="time"
-                value={flightTime}
-                onChange={(e) => setFlightTime(e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-            </label>
-            <label className="block">
-              <span className="text-xs font-medium text-gray-600">Flight Number</span>
-              <input
-                type="text"
-                value={flightNumber}
-                onChange={(e) => setFlightNumber(e.target.value)}
-                placeholder="e.g. PR123"
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-            </label>
-            <label className="block">
-              <span className="text-xs font-medium text-gray-600">Pax Count</span>
+              <span className="text-xs font-medium text-gray-600">Passengers</span>
               <input
                 type="number"
                 min={1}
                 value={paxCount}
                 onChange={(e) => setPaxCount(Number(e.target.value) || 1)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                className={`${FIELD} tabular-nums`}
               />
             </label>
             <label className="block">
-              <span className="text-xs font-medium text-gray-600">Van Type</span>
-              <input
-                type="text"
-                value={vanType}
-                onChange={(e) => setVanType(e.target.value)}
-                placeholder="Auto-filled from route"
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
+              <span className="text-xs font-medium text-gray-600">Flight time</span>
+              <input type="time" value={flightTime} onChange={(e) => setFlightTime(e.target.value)} className={FIELD} />
+              <span className="mt-1 block text-xs text-gray-500">Pickup time is worked out from this.</span>
             </label>
             <label className="block">
-              <span className="text-xs font-medium text-gray-600">Accommodation / Hotel</span>
+              <span className="text-xs font-medium text-gray-600">Flight number</span>
+              <input type="text" value={flightNumber} onChange={(e) => setFlightNumber(e.target.value)} placeholder="e.g. PR123" className={FIELD} />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-gray-600">
+                Accommodation{pickupFromHotel ? ' (pickup point) *' : ''}
+              </span>
               <input
                 type="text"
                 value={accommodation}
                 onChange={(e) => setAccommodation(e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                required={pickupFromHotel}
+                className={FIELD}
               />
             </label>
             <label className="block">
-              <span className="text-xs font-medium text-gray-600">Booking Source</span>
-              <input
-                type="text"
-                value={bookingSource}
-                onChange={(e) => setBookingSource(e.target.value)}
-                placeholder="e.g. Viator, Klook, Direct"
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-            </label>
-            <label className="block">
-              <span className="text-xs font-medium text-gray-600">Total Price *</span>
+              <span className="text-xs font-medium text-gray-600">Fare</span>
               <input
                 type="number"
                 min={0}
                 step="0.01"
-                value={totalPrice}
-                onChange={(e) => setTotalPrice(e.target.value ? Number(e.target.value) : '')}
-                required
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                value={priceOverride}
+                placeholder={route ? String(routeTotal) : ''}
+                onChange={(e) => setPriceOverride(e.target.value ? Number(e.target.value) : '')}
+                className={`${FIELD} tabular-nums`}
               />
+              <span className="mt-1 block text-xs text-gray-500 tabular-nums">
+                {route
+                  ? perHead
+                    ? `${formatCurrency(route.price)} × ${pax} pax = ${formatCurrency(routeTotal)}. Leave blank to use this.`
+                    : `Route price ${formatCurrency(routeTotal)}. Leave blank to use this.`
+                  : 'Filled from the route.'}
+              </span>
             </label>
           </div>
-          <label className="block">
-            <span className="text-xs font-medium text-gray-600">Ops Notes</span>
-            <textarea
-              value={opsNotes}
-              onChange={(e) => setOpsNotes(e.target.value)}
-              rows={2}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            />
-          </label>
         </fieldset>
 
-        {/* Payment */}
         <fieldset className="space-y-3">
-          <legend className="text-sm font-semibold text-gray-700">Payment</legend>
-          <div className="grid grid-cols-2 gap-3">
+          <legend className="text-sm font-semibold text-gray-700">Customer</legend>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="block">
-              <span className="text-xs font-medium text-gray-600">Payment Method</span>
-              <select
-                value={paymentMethodId}
-                onChange={(e) => setPaymentMethodId(e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              >
-                <option value="">None (unpaid)</option>
-                {pmList.map((pm) => (
-                  <option key={pm.id} value={pm.id}>{pm.name}</option>
-                ))}
+              <span className="text-xs font-medium text-gray-600">Name *</span>
+              <input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)} required className={FIELD} />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-gray-600">Contact number</span>
+              <input type="tel" value={contactNumber} onChange={(e) => setContactNumber(e.target.value)} className={FIELD} />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-gray-600">Email</span>
+              <input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} className={FIELD} />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-gray-600">Customer type</span>
+              <select value={customerType} onChange={(e) => setCustomerType(e.target.value as 'Walk-in' | 'Online')} className={FIELD}>
+                <option value="Walk-in">Walk-in</option>
+                <option value="Online">Online</option>
               </select>
             </label>
+            <label className="block">
+              <span className="text-xs font-medium text-gray-600">Booking source</span>
+              <input type="text" value={bookingSource} onChange={(e) => setBookingSource(e.target.value)} placeholder="e.g. Viator, Klook, Direct" className={FIELD} />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-gray-600">Ops notes</span>
+              <input type="text" value={opsNotes} onChange={(e) => setOpsNotes(e.target.value)} className={FIELD} />
+            </label>
           </div>
+        </fieldset>
 
-          {paymentMethodId && !isCard && (
-            <div className="rounded-lg border border-green-200 bg-green-50 p-3 space-y-3">
-              <label className="flex items-center gap-2">
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-semibold text-gray-700">Who collects payment?</legend>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {COLLECTION_OPTIONS.map((opt) => (
+              <label
+                key={opt.value}
+                className={`flex cursor-pointer gap-2 rounded-lg border p-3 ${
+                  collection === opt.value ? 'border-teal-brand bg-teal-brand/5' : 'border-gray-200 hover:bg-gray-50'
+                }`}
+              >
                 <input
-                  type="checkbox"
-                  checked={payNow}
-                  onChange={(e) => setPayNow(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                  type="radio"
+                  name="collection"
+                  value={opt.value}
+                  checked={collection === opt.value}
+                  onChange={() => setCollection(opt.value)}
+                  className="mt-0.5"
                 />
-                <span className="text-sm font-medium text-gray-700">Record payment now</span>
+                <span>
+                  <span className="block text-sm font-medium text-gray-900">{opt.title}</span>
+                  <span className="block text-pretty text-xs text-gray-500">{opt.body}</span>
+                </span>
               </label>
-              {payNow && (
-                <div className="grid grid-cols-3 gap-3">
-                  <label className="block">
-                    <span className="text-xs font-medium text-gray-600">Amount</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={payAmount}
-                      onChange={(e) => setPayAmount(e.target.value ? Number(e.target.value) : '')}
-                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                    />
-                  </label>
-                  {!routedCashAcct && (
-                  <label className="block">
-                    <span className="text-xs font-medium text-gray-600">Debit Account (Cash/GCash) *</span>
-                    <select
-                      value={cashAccountId}
-                      onChange={(e) => setCashAccountId(e.target.value)}
-                      required={payNow}
-                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                    >
-                      <option value="">Select...</option>
-                      {assetAccounts.map((a) => (
-                        <option key={a.id} value={a.id}>{a.name}</option>
-                      ))}
-                    </select>
-                    {paymentMethodId && <p className="mt-1 text-xs text-amber-600">No routing rule configured — select manually</p>}
-                  </label>
-                  )}
-                  <label className="block">
-                    <span className="text-xs font-medium text-gray-600">Credit Account (Income) *</span>
-                    <select
-                      value={incomeAccountId}
-                      onChange={(e) => setIncomeAccountId(e.target.value)}
-                      required={payNow}
-                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                    >
-                      <option value="">Select...</option>
-                      {incomeAccounts.map((a) => (
-                        <option key={a.id} value={a.id}>{a.name}</option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-              )}
-            </div>
-          )}
-
-          {paymentMethodId && isCard && (
-            <p className="rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm text-yellow-800">
-              Card payments are recorded via the Transfer Payment modal after creation.
+            ))}
+          </div>
+          {collection === 'driver' && route && (
+            <p className="text-pretty rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 tabular-nums">
+              The driver collects {formatCurrency(total)} and hands Lola&apos;s {formatCurrency(lolasShare)} at settlement.
             </p>
           )}
         </fieldset>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
-
-        <div className="flex justify-end gap-2 border-t pt-4">
-          <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm">
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {isSaving ? 'Saving...' : 'Create Transfer'}
-          </button>
-        </div>
+        {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
       </form>
     </Modal>
   );

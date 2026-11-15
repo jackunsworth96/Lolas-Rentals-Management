@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { WhatsAppNumberSchema } from './whatsapp-schemas.js';
 
+export const TransferCollectorSchema = z.enum(['lolas', 'driver']);
+
 export const CreateTransferRequestSchema = z.object({
   serviceDate: z.string(),
   customerName: z.string().min(1),
@@ -20,51 +22,47 @@ export const CreateTransferRequestSchema = z.object({
   bookingToken: z.string().nullable().default(null),
   storeId: z.string(),
   orderId: z.string().nullable().default(null),
+  collectVia: TransferCollectorSchema.default('lolas'),
 });
 
 export type CreateTransferRequest = z.infer<typeof CreateTransferRequestSchema>;
 
-export const RecordTransferPaymentRequestSchema = z.object({
-  transferId: z.string(),
+/**
+ * Customer payment on a transfer. `collector: 'lolas'` needs a payment method and
+ * the account the money went into; `collector: 'driver'` records that the driver
+ * took the cash and now owes Lola's until settlement.
+ */
+export const ReceiveTransferPaymentRequestSchema = z.object({
+  transferId: z.string().min(1),
   amount: z.number().positive(),
-  paymentMethod: z.string(),
-  date: z.string(),
-  cashAccountId: z.string(),
-  transferIncomeAccountId: z.string(),
-});
-
-export type RecordTransferPaymentRequest = z.infer<typeof RecordTransferPaymentRequestSchema>;
-
-export const RecordDriverPaymentRequestSchema = z.object({
-  transferId: z.string(),
-  driverFee: z.number().positive(),
-  date: z.string(),
-  driverExpenseAccountId: z.string(),
-  cashAccountId: z.string(),
-});
-
-export type RecordDriverPaymentRequest = z.infer<typeof RecordDriverPaymentRequestSchema>;
-
-export const RecordBulkDriverPaymentRequestSchema = z.object({
-  transferIds: z.array(z.string()).min(1),
-  driverFees: z.record(z.string(), z.number().positive()),
-  driverExpenseAccountId: z.string(),
-  cashAccountId: z.string(),
-  date: z.string(),
-  storeId: z.string(),
-});
-
-export type RecordBulkDriverPaymentRequest = z.infer<typeof RecordBulkDriverPaymentRequestSchema>;
-
-export const CollectTransferBodySchema = z.object({
-  collectedAmount: z.number().positive(),
-  paymentMethod: z.string().min(1),
-  cashAccountId: z.string().min(1),
-  transferIncomeAccountId: z.string().min(1),
+  collector: TransferCollectorSchema,
+  paymentMethod: z.string().min(1).nullable().default(null),
+  cashAccountId: z.string().min(1).nullable().default(null),
+  isCardPayment: z.boolean().default(false),
   date: z.string().min(1),
+}).refine((v) => v.collector === 'driver' || !!v.paymentMethod, {
+  message: 'Select a payment method',
+  path: ['paymentMethod'],
 });
 
-export type CollectTransferBody = z.infer<typeof CollectTransferBodySchema>;
+export type ReceiveTransferPaymentRequest = z.infer<typeof ReceiveTransferPaymentRequestSchema>;
+
+export const SettleDriverRequestSchema = z.object({
+  storeId: z.string().min(1),
+  transferIds: z.array(z.string()).min(1),
+  date: z.string().min(1),
+  /** Cash account the net settlement moves through; required when the net is non-zero and postJournal is true. */
+  cashAccountId: z.string().min(1).nullable().default(null),
+  driverExpenseAccountId: z.string().min(1).nullable().default(null),
+  /** false = mark settled without posting, for jobs already paid outside the system. */
+  postJournal: z.boolean().default(true),
+});
+
+export type SettleDriverRequest = z.infer<typeof SettleDriverRequestSchema>;
+
+export const SetCollectViaRequestSchema = z.object({
+  collectVia: TransferCollectorSchema,
+});
 
 export const TransferQuerySchema = z.object({
   storeId: z.string().optional(),
@@ -74,6 +72,7 @@ export const TransferQuerySchema = z.object({
   status: z.string().optional(),
   paymentStatus: z.string().optional(),
   driverPaidStatus: z.string().optional(),
+  scope: z.enum(['open', 'closed']).optional(),
 }).refine((v) => !!v.storeId || !!v.orderId, {
   message: 'Either storeId or orderId must be provided',
 });

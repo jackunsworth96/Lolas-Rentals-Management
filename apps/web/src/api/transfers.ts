@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './client.js';
 
+export type TransferCollector = 'lolas' | 'driver';
+
 export interface TransferRow {
   id: string;
   orderId: string | null;
@@ -11,6 +13,7 @@ export interface TransferRow {
   customerType: 'Walk-in' | 'Online' | null;
   route: string;
   flightTime: string | null;
+  flightNumber: string | null;
   paxCount: number;
   vanType: string | null;
   accommodation: string | null;
@@ -27,22 +30,29 @@ export interface TransferRow {
   storeId: string;
   createdAt: string;
   updatedAt: string;
-  /** ISO string when cash was physically collected; null if not yet collected. */
   collectedAt: string | null;
-  /** Amount collected from the driver / customer. */
   collectedAmount: number | null;
-  /** driver_cut from the matching transfer_routes row. */
+  /** driver_cut from the matching transfer_routes row (fallback for rows without a snapshot). */
   routeDriverCut: number | null;
-  /** pricing_type from the matching transfer_routes row. */
   routePricingType: 'fixed' | 'per_head' | null;
-  /** Scheduled pickup time in HH:MM format; null if not yet set. */
+  /** Scheduled pickup time; Postgres may return HH:MM:SS. */
   pickupTime: string | null;
-  /** End of pickup window for shared vans in HH:MM format; null for point-in-time transfers. */
   pickupTimeEnd: string | null;
-  /** Whether the driver has tapped the Confirm button in Telegram. */
   driverConfirmed: boolean;
-  /** ISO timestamp when the driver confirmed; null if not yet confirmed. */
   driverConfirmedAt: string | null;
+  /** Expected collector, chosen at booking. */
+  collectVia: TransferCollector;
+  /** Who took the most recent payment. */
+  collectedBy: TransferCollector | null;
+  amountPaid: number;
+  /** Portion of amountPaid the driver is holding until settlement. */
+  driverCollectedAmount: number;
+  /** Driver cut snapshotted when the transfer was created. */
+  driverCut: number | null;
+  /** Fare is part of the linked rental order's balance. */
+  billedToOrder: boolean;
+  driverSettledAt: string | null;
+  driverSettlementId: string | null;
 }
 
 export function moneyAmount(val: { amount: number } | number | null | undefined): number {
@@ -71,28 +81,18 @@ export function formatVanType(v: string | null | undefined): string {
 export interface TransferFilters {
   dateFrom?: string;
   dateTo?: string;
-  paymentStatus?: string;
-  driverPaidStatus?: string;
+  scope?: 'open' | 'closed';
 }
 
-export function useTransfers(storeId: string, filters: TransferFilters = {}) {
+export function useTransfers(storeId: string, filters: TransferFilters = {}, enabled = true) {
   const params = new URLSearchParams({ storeId });
   if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
   if (filters.dateTo) params.set('dateTo', filters.dateTo);
-  if (filters.paymentStatus) params.set('paymentStatus', filters.paymentStatus);
-  if (filters.driverPaidStatus) params.set('driverPaidStatus', filters.driverPaidStatus);
+  if (filters.scope) params.set('scope', filters.scope);
   return useQuery<TransferRow[]>({
     queryKey: ['transfers', storeId, filters],
     queryFn: () => api.get(`/transfers?${params}`),
-    enabled: !!storeId,
-  });
-}
-
-export function useTransfer(id: string) {
-  return useQuery<TransferRow>({
-    queryKey: ['transfers', id],
-    queryFn: () => api.get(`/transfers/${id}`),
-    enabled: !!id,
+    enabled: !!storeId && enabled,
   });
 }
 
@@ -111,96 +111,73 @@ export function useTransferByOrderId(orderId: string) {
   });
 }
 
-export interface TransferSummary {
-  outstanding: { count: number; total: number };
-  collected: { count: number; total: number; driverCut: number; netLolas: number };
-}
-
-export function useTransferSummary(
-  storeId: string,
-  filters: { dateFrom?: string; dateTo?: string } = {},
-) {
-  const params = new URLSearchParams({ storeId });
-  if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
-  if (filters.dateTo) params.set('dateTo', filters.dateTo);
-  return useQuery<TransferSummary>({
-    queryKey: ['transfers-summary', storeId, filters],
-    queryFn: () => api.get(`/transfers/summary?${params}`),
-    enabled: !!storeId,
-    throwOnError: false,
-  });
+function useInvalidateTransfers() {
+  const qc = useQueryClient();
+  return () => {
+    void qc.invalidateQueries({ queryKey: ['transfers'] });
+    void qc.invalidateQueries({ queryKey: ['transfers-summary'] });
+  };
 }
 
 export function useCreateTransfer() {
-  const qc = useQueryClient();
+  const invalidate = useInvalidateTransfers();
   return useMutation({
-    mutationFn: (body: Record<string, unknown>) =>
-      api.post('/transfers', body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['transfers'] });
-      qc.invalidateQueries({ queryKey: ['transfers-summary'] });
-    },
+    mutationFn: (body: Record<string, unknown>) => api.post<TransferRow>('/transfers', body),
+    onSuccess: invalidate,
   });
 }
 
-export function useRecordTransferPayment() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: Record<string, unknown>) =>
-      api.post('/transfers/payment', body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['transfers'] });
-      qc.invalidateQueries({ queryKey: ['card-settlements'] });
-    },
-  });
-}
-
-export function useRecordDriverPayment() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: Record<string, unknown>) =>
-      api.post('/transfers/driver-payment', body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['transfers'] }),
-  });
-}
-
-export interface BulkDriverPaymentVars {
-  transferIds: string[];
-  driverFees: Record<string, number>;
-  driverExpenseAccountId: string;
-  cashAccountId: string;
+export interface ReceiveTransferPaymentVars {
+  transferId: string;
+  amount: number;
+  collector: TransferCollector;
+  paymentMethod: string | null;
+  cashAccountId: string | null;
+  isCardPayment?: boolean;
   date: string;
-  storeId: string;
 }
 
-export function useBulkDriverPayment() {
+export function useReceiveTransferPayment() {
   const qc = useQueryClient();
+  const invalidate = useInvalidateTransfers();
   return useMutation({
-    mutationFn: (vars: BulkDriverPaymentVars) =>
-      api.post('/transfers/bulk-driver-payment', vars),
+    mutationFn: (vars: ReceiveTransferPaymentVars) => api.post<TransferRow>('/transfers/payment', vars),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['transfers'] });
-      qc.invalidateQueries({ queryKey: ['transfers-summary'] });
+      invalidate();
+      // Fares billed to a rental order are paid on the order.
+      void qc.invalidateQueries({ queryKey: ['orders'] });
+      void qc.invalidateQueries({ queryKey: ['card-settlements'] });
     },
+  });
+}
+
+export interface SettleDriverVars {
+  storeId: string;
+  transferIds: string[];
+  date: string;
+  cashAccountId: string | null;
+  driverExpenseAccountId: string | null;
+  postJournal: boolean;
+}
+
+export interface SettleDriverResult {
+  settlementId: string;
+  count: number;
+  lolasOwesDriver: number;
+  driverOwesLolas: number;
+  net: number;
+}
+
+export function useSettleDriver() {
+  const invalidate = useInvalidateTransfers();
+  return useMutation({
+    mutationFn: (vars: SettleDriverVars) => api.post<SettleDriverResult>('/transfers/settle', vars),
+    onSuccess: invalidate,
   });
 }
 
 export function notifyDriver(id: string): Promise<void> {
   return api.post(`/transfers/${id}/notify-driver`, {});
-}
-
-export interface MarkTransferCollectedVars {
-  id: string;
-  collectedAmount: number;
-  paymentMethod: string;
-  cashAccountId: string;
-  transferIncomeAccountId: string;
-  date: string;
-}
-
-export function markTransferCollected(vars: MarkTransferCollectedVars): Promise<TransferRow> {
-  const { id, ...body } = vars;
-  return api.patch(`/transfers/${id}/collect`, body);
 }
 
 export function updatePickupTime(id: string, pickupTime: string | null): Promise<TransferRow> {
@@ -211,18 +188,10 @@ export function updateAccommodation(id: string, accommodation: string | null): P
   return api.patch(`/transfers/${id}/accommodation`, { accommodation });
 }
 
-export async function cancelTransfer(id: string): Promise<void> {
-  await api.delete(`/transfers/${id}`);
+export function updateCollectVia(id: string, collectVia: TransferCollector): Promise<TransferRow> {
+  return api.patch(`/transfers/${id}/collect-via`, { collectVia });
 }
 
-export function useMarkTransferCollected() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (vars: MarkTransferCollectedVars) => markTransferCollected(vars),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['transfers'] });
-      qc.invalidateQueries({ queryKey: ['transfers-summary'] });
-      qc.invalidateQueries({ queryKey: ['card-settlements'] });
-    },
-  });
+export async function cancelTransfer(id: string): Promise<void> {
+  await api.delete(`/transfers/${id}`);
 }

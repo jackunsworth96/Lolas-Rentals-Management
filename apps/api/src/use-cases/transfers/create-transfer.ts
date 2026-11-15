@@ -1,4 +1,4 @@
-import { Transfer, Money, type TransferRepository } from '@lolas/domain';
+import { Transfer, Money, type TransferRepository, type TransferCollector } from '@lolas/domain';
 import { randomUUID } from 'node:crypto';
 import { normaliseVanType } from '../../transfers/pickup-time.js';
 
@@ -21,6 +21,7 @@ export interface CreateTransferInput {
   bookingToken: string | null;
   storeId: string;
   orderId: string | null;
+  collectVia?: TransferCollector;
 }
 
 export async function createTransfer(
@@ -54,8 +55,11 @@ export async function createTransfer(
     storeId: input.storeId,
     createdAt: new Date(),
     updatedAt: new Date(),
+    collectVia: input.collectVia ?? 'lolas',
   });
 
   await deps.transfers.save(transfer);
-  return transfer;
+  // Re-read so the driver_cut snapshot set by the insert trigger is on the entity;
+  // saving the in-memory copy later would otherwise null it out.
+  return (await deps.transfers.findById(transfer.id)) ?? transfer;
 }

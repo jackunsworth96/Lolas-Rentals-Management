@@ -248,11 +248,11 @@ export async function processRawOrder(
   const balanceDue = Math.max(0, finalTotal - totalPaid);
 
   // The activation payment already includes the transfer fee, so the transfer
-  // must be marked settled or the Transfers page will offer to collect it again.
+  // must be marked paid or the Transfers page will offer to collect it again.
+  // When the customer pays the driver directly the transfer stays unpaid until
+  // staff record that the driver collected it.
   const transferPaidAtActivation =
     transferBillable > 0 && (willCreateRentalPayment || preActivationPaid > 0) && balanceDue === 0;
-  const transferSettledAtActivation =
-    input.excludeTransferFromBalance === true || transferPaidAtActivation;
 
   const orderEntity = OrderEntity.create({
     id: orderId,
@@ -654,11 +654,14 @@ export async function processRawOrder(
         updated_at: nowIso,
       };
     } else {
-      const serviceDate = rawOrder.pickup_datetime
-        ? new Date(rawOrder.pickup_datetime as string)
-            .toISOString()
-            .split('T')[0]
-        : formatManilaDate();
+      const flightAt = rawOrder.flight_arrival_time
+        ? new Date(rawOrder.flight_arrival_time as string)
+        : null;
+      const serviceDate = flightAt && !Number.isNaN(flightAt.getTime())
+        ? formatManilaDate(flightAt)
+        : rawOrder.pickup_datetime
+          ? formatManilaDate(new Date(rawOrder.pickup_datetime as string))
+          : formatManilaDate();
       // rawPayload and transferAmount are already extracted at the top of step 5.
       const paxCount =
         'transfer_pax_count' in rawPayload
@@ -675,7 +678,7 @@ export async function processRawOrder(
             ? rawPayload.accommodation_name.trim()
             : null;
 
-      const transferPaymentStatus = transferSettledAtActivation ? 'Paid' : 'Pending';
+      const transferPaymentStatus = transferPaidAtActivation ? 'Paid' : 'Pending';
 
       const fresh = Transfer.create({
         id: crypto.randomUUID(),
@@ -817,23 +820,49 @@ export async function processRawOrder(
     }
   }
 
-  // process_raw_order_atomic neither writes collected_at nor refreshes
-  // payment_status when relinking a pre-created online-booking transfer.
-  if (transferRow && transferSettledAtActivation) {
-    const { error: transferSettleErr } = await supabase
+  // process_raw_order_atomic only writes a fixed column list and, when relinking
+  // a pre-created online-booking transfer, only refreshes order_id. Record how
+  // the fare is collected and whether it was paid with the activation payment.
+  if (transferRow) {
+    const transferId = transferRow.id as string;
+    const nowIso = new Date().toISOString();
+    const { error: transferLinkErr } = await supabase
       .from('transfers')
       .update({
-        payment_status: 'Paid',
-        ...(transferPaidAtActivation
-          ? { payment_method: input.paymentMethodId, collected_amount: transferBillable }
-          : {}),
-        collected_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        billed_to_order: transferBillable > 0,
+        collect_via: input.excludeTransferFromBalance ? 'driver' : 'lolas',
+        updated_at: nowIso,
       })
-      .eq('id', transferRow.id as string)
-      .is('collected_at', null);
-    if (transferSettleErr) {
-      throw new Error(`Failed to mark transfer ${String(transferRow.id)} as paid for order ${orderId}: ${transferSettleErr.message}`);
+      .eq('id', transferId);
+    if (transferLinkErr) {
+      throw new Error(`Failed to link transfer ${transferId} to order ${orderId}: ${transferLinkErr.message}`);
+    }
+
+    if (transferPaidAtActivation) {
+      const { error: transferPaidErr } = await supabase
+        .from('transfers')
+        .update({
+          payment_status: 'Paid',
+          payment_method: input.paymentMethodId,
+          amount_paid: transferBillable,
+          collected_by: 'lolas',
+          collected_amount: transferBillable,
+          collected_at: nowIso,
+          updated_at: nowIso,
+        })
+        .eq('id', transferId)
+        .eq('amount_paid', 0);
+      if (transferPaidErr) {
+        throw new Error(`Failed to mark transfer ${transferId} as paid for order ${orderId}: ${transferPaidErr.message}`);
+      }
+    }
+
+    try {
+      const { applyPickupTime } = await import('../../transfers/apply-pickup-time.js');
+      const linked = await deps.transferRepo.findById(transferId);
+      if (linked) await applyPickupTime(linked, deps.transferRepo);
+    } catch (pickupErr) {
+      console.error(`[process-raw-order] Pickup time for transfer ${transferId} failed:`, pickupErr);
     }
   }
 

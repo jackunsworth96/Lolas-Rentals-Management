@@ -124,24 +124,13 @@ router.post('/transfer-booking', bookingLimiter, validateBody(PublicBookingSchem
       { transfers: req.app.locals.deps.transferRepo },
     );
 
-    // Compute pickup time synchronously so it can be returned in the response
-    // and included in the confirmation email.
-    let pickupTime: string | null = null;
-    let pickupTimeEnd: string | null = null;
-    let direction: 'inbound' | 'outbound' = 'outbound';
-    if (result.flightTime) {
-      try {
-        const { calculatePickupTime, inferDirection } = await import('../transfers/pickup-time.js');
-        const { loadPickupRules } = await import('../transfers/pickup-rules-loader.js');
-        const rules = await loadPickupRules();
-        direction = inferDirection(result.route);
-        const pickup = calculatePickupTime(direction, normalisedVanType, result.flightTime, result.serviceDate, rules);
-        pickupTime = pickup.from;
-        pickupTimeEnd = pickup.to;
-      } catch (pickupErr) {
-        console.error('[transfer-pickup]', pickupErr);
-      }
-    }
+    // Compute and save the pickup time synchronously so it can be returned in the
+    // response and included in the confirmation email.
+    const { applyPickupTime } = await import('../transfers/apply-pickup-time.js');
+    const applied = await applyPickupTime(result, req.app.locals.deps.transferRepo);
+    const pickupTime: string | null = applied.pickup?.from ?? null;
+    const pickupTimeEnd: string | null = applied.pickup?.to ?? null;
+    const direction = applied.direction;
 
     res.status(201).json({ success: true, data: { id: result.id, pickupTime, pickupTimeEnd } });
 
@@ -269,24 +258,13 @@ router.post('/public-transfer-booking', bookingLimiter, validateBody(PublicTrans
       { transfers: req.app.locals.deps.transferRepo },
     );
 
-    // Compute pickup time synchronously so it can be returned in the response
-    // and included in the confirmation email.
-    let pickupTime: string | null = null;
-    let pickupTimeEnd: string | null = null;
-    let direction: 'inbound' | 'outbound' = 'outbound';
-    if (result.flightTime) {
-      try {
-        const { calculatePickupTime, inferDirection } = await import('../transfers/pickup-time.js');
-        const { loadPickupRules } = await import('../transfers/pickup-rules-loader.js');
-        const rules = await loadPickupRules();
-        direction = inferDirection(result.route);
-        const pickup = calculatePickupTime(direction, normalisedVanType, result.flightTime, result.serviceDate, rules);
-        pickupTime = pickup.from;
-        pickupTimeEnd = pickup.to;
-      } catch (pickupErr) {
-        console.error('[transfer-pickup]', pickupErr);
-      }
-    }
+    // Compute and save the pickup time synchronously so it can be returned in the
+    // response and included in the confirmation email.
+    const { applyPickupTime } = await import('../transfers/apply-pickup-time.js');
+    const applied = await applyPickupTime(result, req.app.locals.deps.transferRepo);
+    const pickupTime: string | null = applied.pickup?.from ?? null;
+    const pickupTimeEnd: string | null = applied.pickup?.to ?? null;
+    const direction = applied.direction;
 
     res.status(201).json({ success: true, data: { reference: result.id, pickupTime, pickupTimeEnd } });
 

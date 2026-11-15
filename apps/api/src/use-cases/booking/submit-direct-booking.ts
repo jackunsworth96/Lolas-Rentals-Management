@@ -38,18 +38,11 @@ function formatManilaDateTime(iso: string): string {
 async function notifyDriversOfTransfer(transfer: Transfer, transferRepo: TransferRepository): Promise<void> {
   try {
     if (!transfer.flightTime) return;
-    const { calculatePickupTime, inferDirection } = await import('../../transfers/pickup-time.js');
-    const { loadPickupRules } = await import('../../transfers/pickup-rules-loader.js');
+    const { applyPickupTime } = await import('../../transfers/apply-pickup-time.js');
     const { notifyNewTransfer } = await import('../../telegram/telegram.service.js');
 
-    const rules = await loadPickupRules();
-    const pickup = calculatePickupTime(
-      inferDirection(transfer.route),
-      transfer.vanType,
-      transfer.flightTime,
-      transfer.serviceDate,
-      rules,
-    );
+    const { pickup } = await applyPickupTime(transfer, transferRepo);
+    if (!pickup) return;
 
     const messageId = await notifyNewTransfer({
       id: transfer.id,
