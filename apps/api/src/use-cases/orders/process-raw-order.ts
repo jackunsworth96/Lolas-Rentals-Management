@@ -205,25 +205,28 @@ export async function processRawOrder(
     0,
   );
 
-  // Determine which fresh payments will be inserted by the RPC —
-  // we must include them in balance_due so the order lands in the
-  // correct state on first insert.
-  const willCreateRentalPayment =
-    !!input.paymentMethodId &&
-    !!input.receivableAccountId &&
-    (input.isCardPayment || !!input.paymentAccountId);
   // The rental payment row captures everything collected at activation. When
   // the full amount is paid (no partial specified), that includes rental,
   // addons, surcharge, charity, and any billable transfer — all of which are
   // part of finalTotal and therefore part of what the customer owes.
   // Using only rentalIncomeTotal here previously left charity/transfer amounts
   // permanently in balance_due even after full payment.
-  // When a partial payment is explicitly requested (< finalTotal), use that
-  // exact amount so balance_due reflects what genuinely remains outstanding.
+  // Money already taken before activation was booked against the receivable
+  // when it was collected, so "paid in full" here means only the remainder.
+  const owedAtActivation = Math.max(0, finalTotal - preActivationPaid);
   const rentalAmount =
-    input.partialPaymentAmount !== undefined && input.partialPaymentAmount < finalTotal
+    input.partialPaymentAmount !== undefined && input.partialPaymentAmount < owedAtActivation
       ? input.partialPaymentAmount
-      : finalTotal;
+      : owedAtActivation;
+
+  // Determine which fresh payments will be inserted by the RPC —
+  // we must include them in balance_due so the order lands in the
+  // correct state on first insert.
+  const willCreateRentalPayment =
+    rentalAmount > 0 &&
+    !!input.paymentMethodId &&
+    !!input.receivableAccountId &&
+    (input.isCardPayment || !!input.paymentAccountId);
   // The deposit can be tendered differently from the rental (e.g. rental by
   // card, deposit in cash), so it is routed by its own method.
   const rentalAccountFallback = input.isCardPayment ? null : (input.paymentAccountId ?? null);
@@ -247,7 +250,7 @@ export async function processRawOrder(
   // The activation payment already includes the transfer fee, so the transfer
   // must be marked settled or the Transfers page will offer to collect it again.
   const transferPaidAtActivation =
-    transferBillable > 0 && willCreateRentalPayment && balanceDue === 0;
+    transferBillable > 0 && (willCreateRentalPayment || preActivationPaid > 0) && balanceDue === 0;
   const transferSettledAtActivation =
     input.excludeTransferFromBalance === true || transferPaidAtActivation;
 

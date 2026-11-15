@@ -14,7 +14,7 @@ import {
   toDatetimeLocal,
 } from '../../utils/raw-order-payload.js';
 import { useAddons, useLocations, useChartOfAccounts, useStorePricing, usePaymentMethods, useVehicleModels } from '../../api/config.js';
-import { useProcessRawOrder, useCollectPayment, type RawOrder, type ProcessRawOrderPayload } from '../../api/orders-raw.js';
+import { useProcessRawOrder, useCollectPayment, useOrderRaw, type RawOrder, type ProcessRawOrderPayload } from '../../api/orders-raw.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { usePaymentRouting } from '../../hooks/use-payment-routing.js';
 import { resolveStoreFromSource } from '@lolas/shared';
@@ -295,6 +295,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
 
   const processMutation = useProcessRawOrder();
   const collectMutation = useCollectPayment();
+  const { data: freshRawOrder } = useOrderRaw(rawOrder.id);
   const routing = usePaymentRouting();
 
   useEffect(() => {
@@ -562,9 +563,11 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
   // Card surcharge applies to rental+addons only, not to transfer or charity.
   const finalTotal = subtotalBeforeSurcharge + cardSurchargeAmount + transferBillable + charityAmount;
 
-  // Partial-payment support: how much to collect at activation (defaults to full total).
-  const effectiveCollectNow = collectNowAmount === '' ? finalTotal : Number(collectNowAmount);
-  const previewBalanceDue = paymentMethodId ? Math.max(0, finalTotal - effectiveCollectNow) : finalTotal;
+  // Partial-payment support: how much to collect at activation (defaults to whatever is still owed).
+  const prepaidAmount = Number(freshRawOrder?.prepaid_amount ?? rawOrder.prepaid_amount ?? 0);
+  const owedAtActivation = Math.max(0, finalTotal - prepaidAmount);
+  const effectiveCollectNow = collectNowAmount === '' ? owedAtActivation : Math.min(owedAtActivation, Number(collectNowAmount));
+  const previewBalanceDue = paymentMethodId ? Math.max(0, owedAtActivation - effectiveCollectNow) : owedAtActivation;
 
   const stepIndex = STEPS.findIndex((s) => s.key === step);
   const canGoNext = stepIndex < STEPS.length - 1;
@@ -795,7 +798,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
       excludeTransferFromBalance: transferPaidByCustomer,
       transferAccommodation: transferAccommodation.trim() || null,
       dropoffLocationNote: dropoffLocationNote.trim() || null,
-      partialPaymentAmount: (paymentMethodId && effectiveCollectNow < finalTotal) ? effectiveCollectNow : undefined,
+      partialPaymentAmount: (paymentMethodId && effectiveCollectNow < owedAtActivation) ? effectiveCollectNow : undefined,
     };
   }
 
@@ -1059,6 +1062,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
               waiveCardFee={waiveCardFee}
               onWaiveCardFeeChange={setWaiveCardFee}
               finalTotal={finalTotal}
+              prepaidAmount={prepaidAmount}
               collectNowAmount={collectNowAmount}
               onCollectNowAmountChange={setCollectNowAmount}
               previewBalanceDue={previewBalanceDue}

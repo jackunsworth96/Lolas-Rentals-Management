@@ -100,6 +100,7 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
 
   // ── Success state ──
   const [createdRef, setCreatedRef] = useState<string | null>(null);
+  const [paymentRecorded, setPaymentRecorded] = useState(true);
 
   // ── Derived datetimes ──
   const pickupDatetime =
@@ -195,6 +196,7 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
     setStaffNotes('');
     setQuote(null);
     setCreatedRef(null);
+    setPaymentRecorded(true);
     createWalkInReserved.reset();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -240,7 +242,9 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
       {
         onSuccess: (data) => {
           setCreatedRef(data.order_reference ?? null);
-          setTimeout(() => onClose(), 2500);
+          const recorded = data.paymentRecorded !== false;
+          setPaymentRecorded(recorded);
+          if (recorded) setTimeout(() => onClose(), 2500);
         },
       },
     );
@@ -256,6 +260,11 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
   const dropoffLoc = locsExt.find((l) => String(l.id) === dropoffLocationId);
   const pickupFeeLocal = Number(pickupLoc?.deliveryCost ?? pickupLoc?.delivery_cost ?? 0);
   const dropoffFeeLocal = Number(dropoffLoc?.collectionCost ?? dropoffLoc?.collection_cost ?? 0);
+  const estimatedTotal = quote
+    ? Math.max(0, (quote.grandTotalWithFees ?? quote.grandTotal) - discount)
+    : null;
+  const balanceAfterPayment = estimatedTotal != null ? Math.max(0, estimatedTotal - depositAmount) : null;
+  const overpaid = estimatedTotal != null && depositAmount > estimatedTotal;
 
   // ── Success screen ──
   if (createdRef) {
@@ -294,11 +303,26 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
               )}
               {depositAmount > 0 && (
                 <p className="font-lato text-sm text-amber-800">
-                  <span className="font-semibold">Deposit collected:</span>{' '}
+                  <span className="font-semibold">Paid now:</span>{' '}
                   {formatCurrency(depositAmount)} via{' '}
                   {depositMethod.charAt(0).toUpperCase() + depositMethod.slice(1)}
                 </p>
               )}
+              {depositAmount > 0 && balanceAfterPayment != null && (
+                <p className="font-lato text-sm text-amber-800">
+                  <span className="font-semibold">Balance due at activation:</span>{' '}
+                  {formatCurrency(balanceAfterPayment)}
+                </p>
+              )}
+            </div>
+          )}
+
+          {!paymentRecorded && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+              <p className="font-lato text-sm text-red-700">
+                The reservation was saved, but the {formatCurrency(depositAmount)} payment could not be recorded.
+                Open the booking in the inbox and use <strong>Record payment</strong> to add it.
+              </p>
             </div>
           )}
 
@@ -614,16 +638,17 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
           </div>
         )}
 
-        {/* Deposit */}
+        {/* Payment collected now */}
         <div>
-          <p className={SECTION_HDR_CLS}>Deposit</p>
+          <p className={SECTION_HDR_CLS}>Payment collected now</p>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={LABEL_CLS}>Deposit amount (₱)</label>
+              <label className={LABEL_CLS}>Amount collected (₱)</label>
               <input
                 type="number"
                 className={INPUT_CLS}
                 min={0}
+                max={estimatedTotal ?? undefined}
                 step={1}
                 value={depositAmount === 0 ? '' : depositAmount}
                 placeholder="0"
@@ -631,7 +656,7 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
               />
             </div>
             <div>
-              <label className={LABEL_CLS}>Deposit method</label>
+              <label className={LABEL_CLS}>Payment method</label>
               <select
                 className={SELECT_CLS}
                 value={depositMethod}
@@ -645,11 +670,24 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
               </select>
             </div>
           </div>
-          {depositAmount === 0 && (
+          {depositAmount === 0 ? (
             <p className="mt-1 font-lato text-xs text-gray-400 italic">
-              No deposit — enter an amount above to record one.
+              Nothing collected yet. Enter a full or partial payment if the customer paid anything today.
+            </p>
+          ) : overpaid ? (
+            <p className="mt-1 font-lato text-xs text-red-600">
+              That is more than the estimated total of {formatCurrency(estimatedTotal ?? 0)}.
+            </p>
+          ) : balanceAfterPayment != null && (
+            <p className="mt-1 font-lato text-xs text-gray-600">
+              {balanceAfterPayment > 0
+                ? <>Counts toward the rental. <span className="font-semibold text-amber-700">{formatCurrency(balanceAfterPayment)}</span> left to collect at activation.</>
+                : <span className="text-green-700">Paid in full. Nothing left to collect at activation.</span>}
             </p>
           )}
+          <p className="mt-1 font-lato text-xs text-gray-400">
+            This is a payment toward the rental. The refundable security deposit is taken at activation.
+          </p>
         </div>
 
         {/* Notes */}
@@ -690,7 +728,7 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
           </button>
           <button
             type="submit"
-            disabled={isSubmitting || !customerName.trim() || !isValidWhatsAppE164(customerMobile) || !customerEmail.trim() || !selectedVehicleAvailable || !datesValid}
+            disabled={isSubmitting || overpaid || !customerName.trim() || !isValidWhatsAppE164(customerMobile) || !customerEmail.trim() || !selectedVehicleAvailable || !datesValid}
             className="rounded-lg bg-teal-600 px-5 py-2 font-lato text-sm font-semibold text-white transition-colors hover:bg-teal-700 disabled:opacity-50"
           >
             {isSubmitting ? 'Reserving…' : 'Reserve for Later'}

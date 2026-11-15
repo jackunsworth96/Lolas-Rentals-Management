@@ -15,7 +15,7 @@ import {
 } from '@lolas/shared';
 import { supabase } from '../adapters/supabase/client.js';
 import { resolveCharityPayableAccount, resolveStoreAccounts } from '../adapters/supabase/maintenance-expense-rpc.js';
-import { Money } from '@lolas/domain';
+import { Money, type AccountingPort, type CardSettlementRepository, type PaymentRepository } from '@lolas/domain';
 import { processRawOrder, type ProcessRawOrderDeps } from '../use-cases/orders/process-raw-order.js';
 import { sendEmail, bookingConfirmationHtml, bookingCancellationHtml, walkInStaffAlertHtml, walkInReservationConfirmationHtml, escapeHtml, NOTIFICATION_EMAIL, INTERNAL_FROM_EMAIL } from '../services/email.js';
 import { sendBookingConfirmationWhatsApp } from '../services/booking-confirmation-whatsapp.js';
@@ -50,6 +50,21 @@ async function uniqueWalkInReference(source: string): Promise<string> {
     if (!data) return ref;
   }
   return generateWalkInReference(source);
+}
+
+/** Money already taken against inbox bookings, keyed by orders_raw id. */
+async function prepaidAmountsByRawOrder(rawOrderIds: string[]): Promise<Map<string, number>> {
+  const totals = new Map<string, number>();
+  if (rawOrderIds.length === 0) return totals;
+  const { data, error } = await supabase
+    .from('payments')
+    .select('raw_order_id, amount')
+    .in('raw_order_id', rawOrderIds);
+  if (error) throw new Error(error.message);
+  for (const row of (data ?? []) as Array<{ raw_order_id: string; amount: number | string | null }>) {
+    totals.set(row.raw_order_id, (totals.get(row.raw_order_id) ?? 0) + Number(row.amount ?? 0));
+  }
+  return totals;
 }
 
 const router = Router();
@@ -215,6 +230,26 @@ router.post('/walk-in-reserved', requirePermission(Permission.EditOrders), async
 
     if (error) throw new Error(error.message);
 
+    // The booking already exists, so a failure here is reported rather than
+    // thrown: a retry would create a second reservation for the same customer.
+    let paymentRecorded = body.depositAmount <= 0;
+    if (body.depositAmount > 0) {
+      try {
+        await recordPreActivationPayment(req.app.locals.deps, {
+          rawOrderId: (data as { id: string }).id,
+          storeId: body.storeId,
+          amount: body.depositAmount,
+          paymentMethodId: body.depositMethod ?? 'cash',
+          isCardPayment: body.depositMethod === 'card',
+          customerName: body.customerName,
+          employeeId: req.user?.employeeId ?? null,
+        });
+        paymentRecorded = true;
+      } catch (err) {
+        logger.error({ err, orderReference }, 'walk-in-reserved: recording the advance payment failed');
+      }
+    }
+
     // ── Resolve location names for Telegram + email ──────────────
     let pickupLocation = 'Store';
     let dropoffLocation = 'Store';
@@ -234,8 +269,11 @@ router.post('/walk-in-reserved', requirePermission(Permission.EditOrders), async
     // ── Fire-and-forget Telegram alert to ops channel ─────────────
     {
       const depositLine = body.depositAmount > 0
-        ? `\n💵 <b>Deposit:</b> ₱${body.depositAmount.toLocaleString('en-PH')}` +
-          (body.depositMethod ? ` (${body.depositMethod})` : '')
+        ? `\n💵 <b>Paid now:</b> ₱${body.depositAmount.toLocaleString('en-PH')}` +
+          (body.depositMethod ? ` (${body.depositMethod})` : '') +
+          (body.grandTotal != null && body.grandTotal > body.depositAmount
+            ? ` · balance ₱${(body.grandTotal - body.depositAmount).toLocaleString('en-PH')}`
+            : '')
         : '';
       const totalLine = body.grandTotal != null
         ? `\n💰 <b>Est. Total:</b> ₱${body.grandTotal.toLocaleString('en-PH')}`
@@ -304,7 +342,7 @@ router.post('/walk-in-reserved', requirePermission(Permission.EditOrders), async
       source: 'walk-in-reserved-confirmation',
     });
 
-    res.status(201).json({ success: true, data, orderReference });
+    res.status(201).json({ success: true, data: { ...data, paymentRecorded }, orderReference });
   } catch (err) {
     next(err);
   }
@@ -334,6 +372,8 @@ const walkInDirectSchema = z.object({
   helmetNumbers: z.string().optional(),
   staffNotes: z.string().optional(),
   paymentMethod: z.enum(['cash', 'gcash', 'card', 'wise']),
+  /** Rental money taken at the counter; omitted means the full total. */
+  amountCollected: z.number().min(0).optional(),
   depositCollected: z.boolean(),
   depositAmount: z.number().min(0),
   depositMethod: z.enum(['cash', 'gcash', 'card', 'wise']),
@@ -581,8 +621,10 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
     const depositPaymentId = depositHeld > 0 ? crypto.randomUUID() : null;
     const transactionDate = formatManilaDate();
 
-    // The rental is always paid at the counter; the deposit only when collected.
+    // Whatever is not collected now stays on the receivable as balance due.
     // Card stays off the ledger until the card batch is settled.
+    const rentalCollected = Math.min(body.grandTotal, body.amountCollected ?? body.grandTotal);
+    const balanceDue = body.grandTotal - rentalCollected;
     const routing = await resolveRoutedAccounts(body.storeId);
     const rentalAccountId = body.paymentMethod === 'card'
       ? null
@@ -590,10 +632,10 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
     const moneyLeg = (accountId: string, debit: number, credit: number, description: string, referenceId: string) => ({
       id: crypto.randomUUID(), account_id: accountId, debit, credit, description, reference_type: 'payment', reference_id: referenceId,
     });
-    if (rentalAccountId && receivableAccountId && body.grandTotal > 0) {
+    if (rentalAccountId && receivableAccountId && rentalCollected > 0) {
       journalLegs.push(
-        moneyLeg(rentalAccountId, body.grandTotal, 0, `${body.customerName} walk-in rental payment received`, rentalPaymentId),
-        moneyLeg(receivableAccountId, 0, body.grandTotal, `${body.customerName} walk-in receivable reduced`, rentalPaymentId),
+        moneyLeg(rentalAccountId, rentalCollected, 0, `${body.customerName} walk-in rental payment received`, rentalPaymentId),
+        moneyLeg(receivableAccountId, 0, rentalCollected, `${body.customerName} walk-in receivable reduced`, rentalPaymentId),
       );
     }
     const depositLiabilityId = body.depositLiabilityAccountId
@@ -634,7 +676,7 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       p_card_fee_surcharge: 0,
       p_return_charges: 0,
       p_final_total: body.grandTotal,
-      p_balance_due: 0,
+      p_balance_due: balanceDue,
       p_payment_method_id: body.paymentMethod,
       p_deposit_method_id: body.depositMethod,
       p_booking_token: orderReference,
@@ -650,7 +692,7 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       p_journal_store_id: body.storeId,
       p_journal_legs: journalLegs,
       p_rental_payment_id: rentalPaymentId,
-      p_rental_amount: body.grandTotal,
+      p_rental_amount: rentalCollected,
       p_transaction_date: transactionDate,
       p_deposit_payment_id: depositPaymentId,
       p_deposit_amount: depositHeld,
@@ -694,6 +736,9 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       const charityLine = charityAmount > 0
         ? `\n🐾 <b>Charity:</b> ₱${charityAmount.toLocaleString('en-PH')}`
         : '';
+      const balanceLine = balanceDue > 0
+        ? `\n⚠️ <b>Paid now:</b> ₱${rentalCollected.toLocaleString('en-PH')} · <b>Balance due:</b> ₱${balanceDue.toLocaleString('en-PH')}`
+        : '';
       const walkinActivatedMsg =
         `✅ <b>Order Activated</b>\n` +
           `Reference: ${escapeHtml(orderReference)}\n` +
@@ -702,15 +747,17 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
           `Pickup: ${escapeHtml(formatManilaDateTime(body.pickupDatetime))} — ${escapeHtml(pickupLocation)}\n` +
           `Return: ${escapeHtml(formatManilaDateTime(body.dropoffDatetime))} — ${escapeHtml(dropoffLocation)}\n` +
           `💰 <b>Total: ₱${body.grandTotal.toLocaleString('en-PH')}</b>` +
+          balanceLine +
           addonLines +
           transferLines +
           charityLine +
           `\nStore: ${escapeHtml(body.storeId)}`;
       const walkinPaidOrdersMsg =
-        `💳 <b>Order Paid</b>\n` +
+        `💳 <b>${balanceDue > 0 ? 'Order Part-Paid' : 'Order Paid'}</b>\n` +
           `<b>${escapeHtml(body.customerName)}</b>\n` +
           `${escapeHtml(body.vehicleName)}\n` +
-          `💰 <b>Total: ₱${body.grandTotal.toLocaleString('en-PH')}</b>`;
+          `💰 <b>Total: ₱${body.grandTotal.toLocaleString('en-PH')}</b>` +
+          balanceLine;
       void sendTelegramAlert(walkinActivatedMsg, getTelegramChatId('ops'));
       sendTelegramAlertPaidOrdersStaggered(walkinPaidOrdersMsg, getTelegramChatId('paid_orders'));
     }
@@ -846,9 +893,11 @@ router.get('/', requirePermission(Permission.ViewInbox), async (req, res, next) 
       : { data: [], error: null };
     if (locationsError) throw new Error(locationsError.message);
 
+    const prepaid = await prepaidAmountsByRawOrder(rawOrders.map((order) => order.id as string));
     const inboxOrders = rawOrders.map((order) => ({
       ...order,
       transport_service: deriveTransportService([order], transportLocations ?? []),
+      prepaid_amount: prepaid.get(order.id as string) ?? 0,
     }));
 
     res.json({
@@ -879,7 +928,8 @@ router.get('/:id', requirePermission(Permission.ViewInbox), async (req, res, nex
       return;
     }
 
-    res.json({ success: true, data });
+    const prepaid = await prepaidAmountsByRawOrder([req.params.id as string]);
+    res.json({ success: true, data: { ...data, prepaid_amount: prepaid.get(req.params.id as string) ?? 0 } });
   } catch (err) {
     next(err);
   }
@@ -1149,6 +1199,99 @@ const collectPaymentSchema = z.object({
   customerName: z.string().nullable().optional(),
 });
 
+interface PreActivationPaymentDeps {
+  paymentRepo: PaymentRepository;
+  cardSettlementRepo: CardSettlementRepository;
+  accountingPort: AccountingPort;
+}
+
+/**
+ * Records money taken against a booking that is still in the inbox. Activation
+ * subtracts these payments from what it collects, so they are never counted twice.
+ */
+async function recordPreActivationPayment(
+  deps: PreActivationPaymentDeps,
+  input: {
+    rawOrderId: string;
+    storeId: string;
+    amount: number;
+    paymentMethodId: string;
+    isCardPayment: boolean;
+    settlementRef?: string | null;
+    customerName?: string | null;
+    employeeId: string | null;
+  },
+) {
+  const { paymentRepo, cardSettlementRepo, accountingPort } = deps;
+  const { storeId } = input;
+  const txDate = formatManilaDate();
+  const paymentId = crypto.randomUUID();
+  const [routing, storeAccounts] = input.isCardPayment
+    ? [null, null]
+    : await Promise.all([resolveRoutedAccounts(storeId), resolveStoreAccounts(storeId)]);
+  const receivedIntoId = routing?.accountFor(input.paymentMethodId) ?? null;
+
+  const payment = {
+    id: paymentId,
+    storeId,
+    orderId: null,
+    rawOrderId: input.rawOrderId,
+    orderItemId: null,
+    orderAddonId: null,
+    paymentType: 'pre-activation',
+    amount: input.amount,
+    paymentMethodId: input.paymentMethodId,
+    transactionDate: txDate,
+    settlementStatus: input.isCardPayment ? 'pending' : null,
+    settlementRef: input.settlementRef ?? null,
+    customerId: null,
+    accountId: receivedIntoId,
+  };
+
+  await paymentRepo.save(payment);
+
+  // Activation charges the full total to the receivable, so money taken
+  // beforehand is booked against it now.
+  if (receivedIntoId && storeAccounts?.receivableAccountId) {
+    const amount = Money.php(input.amount);
+    const description = `Pre-activation payment for booking ${input.rawOrderId}`;
+    await accountingPort.createTransaction(
+      [
+        { entryId: crypto.randomUUID(), accountId: receivedIntoId, debit: amount, credit: Money.zero(), description, referenceType: 'payment', referenceId: paymentId },
+        { entryId: crypto.randomUUID(), accountId: storeAccounts.receivableAccountId, debit: Money.zero(), credit: amount, description, referenceType: 'payment', referenceId: paymentId },
+      ],
+      storeId,
+      txDate,
+      input.employeeId,
+    );
+  }
+
+  if (input.isCardPayment) {
+    await cardSettlementRepo.save({
+      id: crypto.randomUUID(),
+      storeId,
+      orderId: null,
+      customerId: null,
+      paymentId,
+      name: input.customerName ?? null,
+      amount: input.amount,
+      refNumber: input.settlementRef ?? null,
+      transactionDate: txDate,
+      forecastedDate: null,
+      isPaid: false,
+      dateSettled: null,
+      settlementRef: null,
+      netAmount: null,
+      feeExpense: null,
+      accountId: null,
+      batchNo: null,
+      createdAt: new Date(),
+    });
+  }
+
+  return payment;
+}
+
 router.post('/:id/collect-payment', requirePermission(Permission.EditOrders), async (req, res, next) => {
   try {
     const parsed = collectPaymentSchema.safeParse(req.body);
@@ -1171,73 +1314,16 @@ router.post('/:id/collect-payment', requirePermission(Permission.EditOrders), as
       return;
     }
 
-    const storeId = resolveStoreFromSource(rawOrder.source);
-    const { paymentRepo, cardSettlementRepo, accountingPort } = req.app.locals.deps;
-    const txDate = formatManilaDate();
-    const paymentId = crypto.randomUUID();
-    const [routing, storeAccounts] = parsed.data.isCardPayment
-      ? [null, null]
-      : await Promise.all([resolveRoutedAccounts(storeId), resolveStoreAccounts(storeId)]);
-    const receivedIntoId = routing?.accountFor(parsed.data.paymentMethodId) ?? null;
-
-    const payment = {
-      id: paymentId,
-      storeId,
-      orderId: null,
+    const payment = await recordPreActivationPayment(req.app.locals.deps, {
       rawOrderId: req.params.id as string,
-      orderItemId: null,
-      orderAddonId: null,
-      paymentType: 'pre-activation',
+      storeId: resolveStoreFromSource(rawOrder.source),
       amount: parsed.data.amount,
       paymentMethodId: parsed.data.paymentMethodId,
-      transactionDate: txDate,
-      settlementStatus: parsed.data.isCardPayment ? 'pending' : null,
-      settlementRef: parsed.data.settlementRef ?? null,
-      customerId: null,
-      accountId: receivedIntoId,
-    };
-
-    await paymentRepo.save(payment);
-
-    // Activation charges the full total to the receivable, so money taken
-    // beforehand is booked against it now.
-    if (receivedIntoId && storeAccounts?.receivableAccountId) {
-      const amount = Money.php(parsed.data.amount);
-      const description = `Pre-activation payment for booking ${req.params.id as string}`;
-      await accountingPort.createTransaction(
-        [
-          { entryId: crypto.randomUUID(), accountId: receivedIntoId, debit: amount, credit: Money.zero(), description, referenceType: 'payment', referenceId: paymentId },
-          { entryId: crypto.randomUUID(), accountId: storeAccounts.receivableAccountId, debit: Money.zero(), credit: amount, description, referenceType: 'payment', referenceId: paymentId },
-        ],
-        storeId,
-        txDate,
-        req.user?.employeeId ?? null,
-      );
-    }
-
-    if (parsed.data.isCardPayment) {
-      const settlement = {
-        id: crypto.randomUUID(),
-        storeId,
-        orderId: null,
-        customerId: null,
-        paymentId,
-        name: parsed.data.customerName ?? null,
-        amount: parsed.data.amount,
-        refNumber: parsed.data.settlementRef ?? null,
-        transactionDate: txDate,
-        forecastedDate: null,
-        isPaid: false,
-        dateSettled: null,
-        settlementRef: null,
-        netAmount: null,
-        feeExpense: null,
-        accountId: null,
-        batchNo: null,
-        createdAt: new Date(),
-      };
-      await cardSettlementRepo.save(settlement);
-    }
+      isCardPayment: parsed.data.isCardPayment,
+      settlementRef: parsed.data.settlementRef,
+      customerName: parsed.data.customerName,
+      employeeId: req.user?.employeeId ?? null,
+    });
 
     res.json({ success: true, data: payment });
   } catch (err) {

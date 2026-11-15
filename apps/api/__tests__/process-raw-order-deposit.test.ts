@@ -87,4 +87,29 @@ describe('processRawOrder security deposit', () => {
     });
     expect(rpcArgs().p_order_row.balance_due).toBe(1500);
   });
+
+  it('collects only the remainder when part was paid before activation', async () => {
+    const d = deps();
+    d.paymentRepo.findByRawOrderId.mockResolvedValue([{ amount: 800 }]);
+    await processRawOrder(d as never, {
+      ...baseInput, paymentMethodId: 'Gcash', depositMethodId: 'Cash', paymentAccountId: 'GCASH',
+    });
+    const args = rpcArgs() as ReturnType<typeof rpcArgs> & { p_rental_payment: { amount: number } | null };
+    expect(args.p_rental_payment).toMatchObject({ amount: 1200 });
+    expect(args.p_order_row.balance_due).toBe(0);
+    expect(args.p_journal_legs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ account_id: 'GCASH', debit: 1200 }),
+    ]));
+  });
+
+  it('skips the rental payment when the booking was fully paid before activation', async () => {
+    const d = deps();
+    d.paymentRepo.findByRawOrderId.mockResolvedValue([{ amount: 2000 }]);
+    await processRawOrder(d as never, {
+      ...baseInput, paymentMethodId: 'Gcash', depositMethodId: 'Cash', paymentAccountId: 'GCASH',
+    });
+    const args = rpcArgs() as ReturnType<typeof rpcArgs> & { p_rental_payment: unknown };
+    expect(args.p_rental_payment).toBeNull();
+    expect(args.p_order_row.balance_due).toBe(0);
+  });
 });

@@ -14,6 +14,8 @@ interface PaymentStepProps {
   waiveCardFee: boolean;
   onWaiveCardFeeChange: (value: boolean) => void;
   finalTotal: number;
+  /** Already taken before activation; activation only collects the rest. */
+  prepaidAmount: number;
   collectNowAmount: number | '';
   onCollectNowAmountChange: (value: number | '') => void;
   previewBalanceDue: number;
@@ -52,7 +54,7 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
 export function PaymentStep(props: PaymentStepProps) {
   const {
     customerChoseMethod, paymentMethods, depositMethods, paymentMethodId, onPaymentMethodChange,
-    surchargePercent, cardSurchargeAmount, waiveCardFee, onWaiveCardFeeChange, finalTotal,
+    surchargePercent, cardSurchargeAmount, waiveCardFee, onWaiveCardFeeChange, finalTotal, prepaidAmount,
     collectNowAmount, onCollectNowAmountChange, previewBalanceDue, settlementRef, onSettlementRefChange,
     showPaymentAccount, paymentAccountId, onPaymentAccountChange, paymentAccountOptions,
     securityDeposit, onSecurityDepositChange, waiveDeposit, onWaiveDepositChange,
@@ -61,7 +63,8 @@ export function PaymentStep(props: PaymentStepProps) {
     dropoffLocationNote, onDropoffLocationNoteChange, missingChartOfAccounts, error,
   } = props;
   const [meetingPointOpen, setMeetingPointOpen] = useState(false);
-  const collectNow = collectNowAmount === '' ? finalTotal : Number(collectNowAmount);
+  const owed = Math.max(0, finalTotal - prepaidAmount);
+  const collectNow = collectNowAmount === '' ? owed : Math.min(owed, Number(collectNowAmount));
   const showMeetingPoint = needsMeetingPoint || meetingPointOpen || dropoffLocationNote.trim() !== '';
 
   return (
@@ -84,6 +87,13 @@ export function PaymentStep(props: PaymentStepProps) {
       </div>
 
       <Group title="Rental payment">
+        {prepaidAmount > 0 && (
+          <div className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-800">
+            Already paid before activation: <span className="font-semibold">{formatCurrency(prepaidAmount)}</span>
+            {' · '}
+            {owed > 0 ? <>still owed <span className="font-semibold">{formatCurrency(owed)}</span></> : 'nothing left to collect'}
+          </div>
+        )}
         <label className="block">
           <span className="text-sm text-gray-600">Payment method</span>
           {customerChoseMethod && (
@@ -123,15 +133,15 @@ export function PaymentStep(props: PaymentStepProps) {
               type="number"
               inputMode="decimal"
               min={0}
-              max={finalTotal}
+              max={owed}
               step={1}
               value={collectNowAmount}
               onChange={(e) => onCollectNowAmountChange(e.target.value === '' ? '' : Number(e.target.value))}
-              placeholder={String(finalTotal)}
+              placeholder={String(owed)}
               className={inputClass}
             />
             <span className="mt-1 block text-xs text-gray-500">
-              Leave blank to collect the full total. Reduce it if the customer settles the rest later.
+              Leave blank to collect {prepaidAmount > 0 ? 'everything still owed' : 'the full total'}. Reduce it if the customer settles the rest later.
             </span>
             {previewBalanceDue > 0 && (
               <span className="mt-1 block text-sm font-medium text-amber-700">

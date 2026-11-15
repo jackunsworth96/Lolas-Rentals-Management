@@ -220,6 +220,8 @@ export interface WalkInDirectPayload {
   helmetNumbers?: string;
   staffNotes?: string;
   paymentMethod: 'cash' | 'gcash' | 'card' | 'wise';
+  /** Omit when the full rental total was collected. */
+  amountCollected?: number;
   depositCollected: boolean;
   depositAmount: number;
   depositMethod: 'cash' | 'gcash' | 'card' | 'wise';
@@ -275,10 +277,11 @@ export function useCreateWalkInReserved() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: WalkInReservedPayload) =>
-      api.post<RawOrder>('/orders-raw/walk-in-reserved', body),
+      api.post<RawOrder & { paymentRecorded?: boolean }>('/orders-raw/walk-in-reserved', body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['orders-raw'] });
       qc.invalidateQueries({ queryKey: ['fleet'] });
+      qc.invalidateQueries({ queryKey: ['card-settlements'] });
     },
   });
 }

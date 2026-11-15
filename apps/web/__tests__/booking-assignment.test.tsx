@@ -29,6 +29,7 @@ vi.mock('../src/api/config.js', () => {
 vi.mock('../src/api/orders-raw.js', () => ({
   useProcessRawOrder: () => ({ mutate: vi.fn(), isPending: false }),
   useCollectPayment: () => ({ mutate: vi.fn(), isPending: false }),
+  useOrderRaw: () => ({ data: undefined }),
 }));
 vi.mock('../src/hooks/use-payment-routing.js', () => ({
   usePaymentRouting: () => ({ getReceivedInto: () => null, resolveDepositLiability: () => null }),

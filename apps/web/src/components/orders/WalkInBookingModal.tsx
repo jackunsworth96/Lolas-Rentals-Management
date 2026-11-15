@@ -132,6 +132,7 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
   const [selectedAddonIds, setSelectedAddonIds] = useState<Record<string, number>>({});
   const [staffNotes, setStaffNotes] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [amountCollected, setAmountCollected] = useState<number | ''>('');  // blank = paid in full
   const [depositPaid, setDepositPaid] = useState(true);  // mandatory by default; staff can waive
   const [depositMethod, setDepositMethod] = useState('cash');
   const [nationality, setNationality] = useState('');
@@ -285,6 +286,10 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
   // Grand total = server rental base + locally-computed fees (so fees appear immediately)
   const grandTotalLocal =
     (quote?.rentalSubtotal ?? 0) + pickupFeeLocal + dropoffFeeLocal + addonsTotalLocal;
+  const rentalCollectedNow = amountCollected === ''
+    ? grandTotalLocal
+    : Math.min(grandTotalLocal, Math.max(0, Number(amountCollected)));
+  const rentalBalanceDue = grandTotalLocal - rentalCollectedNow;
 
   // ── Quote fetch ──
   // Stable serialisation of selectedAddonIds so the effect only re-runs
@@ -362,6 +367,7 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
       setSelectedAddonIds({});
       setStaffNotes('');
       setPaymentMethod('cash');
+      setAmountCollected('');
       setDepositPaid(true);
       setDepositMethod('cash');
       setNationality('');
@@ -398,6 +404,7 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
       helmetNumbers: helmetNumbers.trim() || undefined,
       staffNotes: staffNotes.trim() || undefined,
       paymentMethod: paymentMethod as 'cash' | 'gcash' | 'card' | 'wise',
+      amountCollected: rentalBalanceDue > 0 ? rentalCollectedNow : undefined,
       depositCollected: depositPaid,
       depositAmount: depositPaid ? depositAmount : 0,
       depositMethod: depositMethod as 'cash' | 'gcash' | 'card' | 'wise',
@@ -502,6 +509,11 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
             <p className="mt-1 font-lato text-sm text-gray-500">
               Walk-in booking for <span className="font-medium text-gray-700">{customerName}</span> is now active.
             </p>
+            {rentalBalanceDue > 0 && (
+              <p className="mt-2 font-lato text-sm font-semibold text-amber-700">
+                Balance due: {formatCurrency(rentalBalanceDue)} — collect it from the order in Active.
+              </p>
+            )}
           </div>
 
           <div>
@@ -998,6 +1010,23 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
                   </select>
                 </div>
 
+                <div>
+                  <label className={LABEL_CLS}>Rental amount collected now (₱)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={grandTotalLocal}
+                    step={1}
+                    value={amountCollected}
+                    onChange={(e) => setAmountCollected(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder={String(grandTotalLocal)}
+                    className={INPUT_CLS}
+                  />
+                  <p className="mt-1 font-lato text-xs text-gray-500">
+                    Leave blank if the customer paid in full. Enter less for a partial payment; the rest stays on the booking as balance due.
+                  </p>
+                </div>
+
                 {/* Security deposit — mandatory by default; staff can waive */}
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block">
@@ -1063,12 +1092,24 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
                       <span className="font-lato text-sm text-gray-400">—</span>
                     </div>
                   )}
+                  {rentalBalanceDue > 0 && (
+                    <div className="flex justify-between">
+                      <span className="font-lato text-sm text-gray-600">Rental collected now</span>
+                      <span className="font-lato text-sm text-gray-800">{formatCurrency(rentalCollectedNow)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between border-t border-gray-200 pt-2">
                     <span className="font-lato text-sm font-bold text-gray-900">Total to collect now</span>
                     <span className="font-lato text-sm font-bold text-teal-700">
-                      {formatCurrency(grandTotalLocal + (depositPaid ? depositAmount : 0))}
+                      {formatCurrency(rentalCollectedNow + (depositPaid ? depositAmount : 0))}
                     </span>
                   </div>
+                  {rentalBalanceDue > 0 && (
+                    <div className="flex justify-between">
+                      <span className="font-lato text-sm font-semibold text-amber-700">Balance due later</span>
+                      <span className="font-lato text-sm font-semibold text-amber-700">{formatCurrency(rentalBalanceDue)}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </section>
