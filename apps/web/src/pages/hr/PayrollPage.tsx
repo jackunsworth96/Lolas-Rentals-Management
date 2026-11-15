@@ -13,6 +13,7 @@ import { AllowanceTab } from '../../components/hr/payroll/AllowanceTab.js';
 import { RequestsTab } from '../../components/hr/payroll/RequestsTab.js';
 import { WorkUpdatesReviewTab } from '../../components/hr/payroll/WorkUpdatesReviewTab.js';
 import { useStaffRequests } from '../../api/me.js';
+import { duePeriod, payDateFor, periodFor } from '../../utils/payrollSchedule.js';
 
 type Tab = 'overview' | 'requests' | 'updates' | 'runs' | 'thirteenth' | 'allowance' | 'remittances' | 'holidays';
 
@@ -31,13 +32,16 @@ function manilaToday(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 }
 
-/** The next payday on or after today: the 15th or the last day of the month. */
-function nextPayday(today: string): { date: string; label: string } {
-  const [y, m, d] = today.split('-').map(Number);
-  const last = new Date(y, m, 0).getDate();
-  const ym = today.slice(0, 7);
-  if (d <= 15) return { date: `${ym}-15`, label: `1st – 15th` };
-  return { date: `${ym}-${String(last).padStart(2, '0')}`, label: `16th – ${last}th` };
+/** The payday to run now: the 16th (covers 1st–15th) or the 1st (covers the 16th to month end). */
+function nextPayday(today: string): { date: string; periodEnd: string; label: string } {
+  const { yearMonth, half } = duePeriod(today);
+  const { periodStart, periodEnd } = periodFor(yearMonth, half);
+  const month = new Date(`${periodEnd}T00:00:00Z`).toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' });
+  return {
+    date: payDateFor(yearMonth, half),
+    periodEnd,
+    label: `${Number(periodStart.slice(8))}–${Number(periodEnd.slice(8))} ${month}`,
+  };
 }
 
 export default function PayrollPage() {
@@ -58,6 +62,9 @@ export default function PayrollPage() {
   const { data: employees, isLoading } = useEmployees(storeId);
   const year = Number(manilaToday().slice(0, 4));
   const { data: runs = [] } = usePayrollRuns(storeId, year);
+  // On 1 Jan the payday being run covers 16–31 Dec, which sits in last year's runs.
+  const dueYear = Number(duePeriod(manilaToday()).yearMonth.slice(0, 4));
+  const { data: dueRuns = [] } = usePayrollRuns(storeId, dueYear);
   const { data: allowances = [] } = useAllowanceBalances(canView ? storeId : '');
 
   const activeEmployees = useMemo(() => (employees ?? []).filter((e) => e.status === 'Active'), [employees]);
@@ -71,7 +78,7 @@ export default function PayrollPage() {
   const payday = nextPayday(today);
   const lastRun = runs.find((r) => r.status === 'posted' && r.runType === 'regular');
   const ytdNet = runs.filter((r) => r.status === 'posted').reduce((s, r) => s + r.totalNet, 0);
-  const paydayDone = runs.some((r) => r.status === 'posted' && r.runType === 'regular' && r.periodEnd === payday.date);
+  const paydayDone = dueRuns.some((r) => r.status === 'posted' && r.runType === 'regular' && r.periodEnd === payday.periodEnd);
 
   return (
     <div>

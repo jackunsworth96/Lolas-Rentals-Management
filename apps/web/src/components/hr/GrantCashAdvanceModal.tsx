@@ -28,8 +28,8 @@ const inputCls =
 const labelCls = 'mb-1 block text-sm font-medium text-gray-700';
 
 const PAYDAY_LABELS: Record<PaydayType, string> = {
-  mid_month: '15th (mid-month)',
-  end_of_month: 'Last day (end of month)',
+  mid_month: '16th payday (1st–15th pay)',
+  end_of_month: '1st payday (16th–end pay)',
 };
 
 function PaydayToggle({
@@ -48,10 +48,10 @@ function PaydayToggle({
   return (
     <div className="flex gap-2">
       <button type="button" className={btn('mid_month')} onClick={() => onChange('mid_month')}>
-        15th
+        16th
       </button>
       <button type="button" className={btn('end_of_month')} onClick={() => onChange('end_of_month')}>
-        Last day
+        1st
       </button>
     </div>
   );

@@ -13,8 +13,9 @@ export const LEAVE_TYPE_LABEL: Record<LeaveType, string> = {
 };
 
 export const PAYDAY_LABEL: Record<PaydayType, string> = {
-  mid_month: '15th',
-  end_of_month: 'End of month',
+  // Named by payday: 1st–15th work is paid on the 16th, 16th–end work on the 1st.
+  mid_month: '16th',
+  end_of_month: '1st',
 };
 
 export interface LeaveBalance {

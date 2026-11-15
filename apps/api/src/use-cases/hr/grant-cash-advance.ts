@@ -108,7 +108,7 @@ export async function grantCashAdvance(
 
   // --- Payroll deduction schedule ---
   // All advances are stored as schedule rows. Each row represents one
-  // scheduled deduction on a specific payday (mid_month = 15th, end_of_month = last day).
+  // scheduled deduction on a specific payday (mid_month = the 1st–15th payslip, paid on the 16th; end_of_month = the 16th–end payslip, paid on the 1st).
   const paydays: PaydayType[] = ['mid_month', 'end_of_month'];
   const scheduleRows: Array<Record<string, unknown>> = [];
 

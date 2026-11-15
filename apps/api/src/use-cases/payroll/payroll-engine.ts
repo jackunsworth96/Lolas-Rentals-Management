@@ -167,7 +167,8 @@ export async function buildPayrollPreview(
 ): Promise<{ preview: PayrollPreview; ledger: PayrollLedger }> {
   const sb = getSupabaseClient();
   const { storeId, periodStart, periodEnd, isEndOfMonth, workingDaysInMonth } = input;
-  const payDate = input.payDate ?? periodEnd;
+  // Staff are paid the day after the period closes (16th, or the 1st) to leave a day for processing.
+  const payDate = input.payDate ?? addDays(periodEnd, 1);
   if (periodEnd < periodStart) throw new DomainError('Period end is before period start');
   const monthStart = `${periodEnd.slice(0, 7)}-01`;
 
@@ -270,7 +271,8 @@ export async function buildPayrollPreview(
           .select('debit, credit')
           .eq('account_id', ledger.tipsPayableId)
           .eq('store_id', storeId)
-          .lte('date', payDate)
+          // Tips up to the period end; tips left on the pay date itself belong to the next pool.
+          .lte('date', periodEnd)
       : Promise.resolve({ data: [], error: null }),
     isEndOfMonth
       ? sb.from('order_addons')

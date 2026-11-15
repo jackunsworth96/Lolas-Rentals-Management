@@ -28,7 +28,7 @@ export const PayrollPeriodSchema = z.object({
   storeId: z.string().min(1),
   periodStart: isoDate,
   periodEnd: isoDate,
-  /** Date the journal is posted and staff are paid. Defaults to the period end. */
+  /** Date the journal is posted and staff are paid. Defaults to the day after the period end. */
   payDate: isoDate.optional(),
   isEndOfMonth: z.boolean(),
   workingDaysInMonth: z.number().int().positive(),

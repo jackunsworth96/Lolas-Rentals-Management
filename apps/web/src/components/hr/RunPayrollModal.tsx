@@ -15,6 +15,7 @@ import {
 } from '../../api/payroll.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { downloadPayslipsPdf } from '../../utils/payslipPdf.js';
+import { duePeriod, lastDayOfMonth, payDateFor, periodFor, type PayHalf } from '../../utils/payrollSchedule.js';
 
 interface Props {
   isOpen: boolean;
@@ -30,11 +31,6 @@ function manilaToday(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 }
 
-function lastDayOfMonth(yearMonth: string): number {
-  const [year, month] = yearMonth.split('-').map(Number);
-  return new Date(year, month, 0).getDate();
-}
-
 /** Mon–Sat days in the month: the divisor for monthly-rate staff. */
 function defaultWorkingDays(yearMonth: string): number {
   const [year, month] = yearMonth.split('-').map(Number);
@@ -45,16 +41,11 @@ function defaultWorkingDays(yearMonth: string): number {
   return n;
 }
 
-function derivePeriod(yearMonth: string, half: 'first' | 'second') {
-  if (half === 'first') return { periodStart: `${yearMonth}-01`, periodEnd: `${yearMonth}-15` };
-  const last = String(lastDayOfMonth(yearMonth)).padStart(2, '0');
-  return { periodStart: `${yearMonth}-16`, periodEnd: `${yearMonth}-${last}` };
-}
+const derivePeriod = periodFor;
 
-function defaultHalf(): { yearMonth: string; half: 'first' | 'second' } {
-  const today = manilaToday();
-  const day = Number(today.slice(8, 10));
-  return { yearMonth: today.slice(0, 7), half: day <= 20 ? 'first' : 'second' };
+/** Paid on the 16th (1st–15th) or the 1st (16th–end), so the period to run is the one that just closed. */
+function defaultHalf(): { yearMonth: string; half: PayHalf } {
+  return duePeriod(manilaToday());
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -76,7 +67,7 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun
   const [half, setHalf] = useState<'first' | 'second'>(init.half);
   const [workingDays, setWorkingDays] = useState(defaultWorkingDays(init.yearMonth));
   const { periodStart, periodEnd } = derivePeriod(yearMonth, half);
-  const [payDate, setPayDate] = useState(periodEnd);
+  const [payDate, setPayDate] = useState(payDateFor(init.yearMonth, init.half));
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
 
   const [preview, setPreview] = useState<PayrollPreview | null>(null);
@@ -95,7 +86,7 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun
     setYearMonth(d.yearMonth);
     setHalf(d.half);
     setWorkingDays(defaultWorkingDays(d.yearMonth));
-    setPayDate(derivePeriod(d.yearMonth, d.half).periodEnd);
+    setPayDate(payDateFor(d.yearMonth, d.half));
     setExcluded(new Set());
     setPreview(null);
     setInputs({});
@@ -109,7 +100,7 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun
     setYearMonth(ym);
     setHalf(h);
     setWorkingDays(defaultWorkingDays(ym));
-    setPayDate(derivePeriod(ym, h).periodEnd);
+    setPayDate(payDateFor(ym, h));
   }
 
   function buildRequest(withPayments: boolean, excl = excluded): PayrollPeriodRequest {
@@ -291,7 +282,7 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun
             <span>
               Period <span className="font-medium text-gray-900">{preview.periodStart} → {preview.periodEnd}</span>
               {' · '}Pay date <span className="font-medium text-gray-900">{preview.payDate}</span>
-              {' · '}{isEndOfMonth ? 'End of month (contributions, commission, tips, allowance)' : 'Mid-month'}
+              {' · '}{isEndOfMonth ? '16th–end run (contributions, commission, tips, allowance)' : '1st–15th run'}
             </span>
           </div>
 
@@ -518,7 +509,7 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun
                     half === h ? 'border-teal-600 bg-teal-600 text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
                   }`}
                 >
-                  {h === 'first' ? '1st – 15th (paid on the 15th)' : '16th – end (paid on the last day)'}
+                  {h === 'first' ? '1st – 15th (paid on the 16th)' : '16th – end (paid on the 1st)'}
                 </button>
               ))}
             </div>
