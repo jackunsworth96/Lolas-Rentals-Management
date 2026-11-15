@@ -6,6 +6,8 @@ import {
   InsufficientLeaveBalanceError,
   InvalidAmountError,
   NonRentableVehicleError,
+  EntryRejectedError,
+  ConfirmationRequiredError,
 } from '@lolas/domain';
 
 const domainStatusMap = new Map<Function, number>([
@@ -43,6 +45,21 @@ export function errorHandler(
     res.status(409).json({
       success: false,
       error: { code: 'STORE_ARCHIVED', message: 'Archived stores are read-only' },
+    });
+    return;
+  }
+
+  if (err instanceof EntryRejectedError) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'ENTRY_REJECTED', message: err.message, details: { reasons: err.reasons } },
+    });
+    return;
+  }
+  if (err instanceof ConfirmationRequiredError) {
+    res.status(409).json({
+      success: false,
+      error: { code: 'CONFIRMATION_REQUIRED', message: err.message, details: { confirmations: err.confirmations } },
     });
     return;
   }

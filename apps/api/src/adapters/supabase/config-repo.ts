@@ -186,33 +186,40 @@ export function createConfigRepo(): ConfigRepository {
 
     getFleetStatuses: () => selectAll<FleetStatus>('fleet_statuses'),
     async getExpenseCategories(storeId: string): Promise<ExpenseCategory[]> {
-      // Fetch valid active account IDs for this store explicitly rather than
-      // relying on PostgREST !inner join behaviour, which can silently fall back
-      // to a LEFT JOIN when the FK relationship isn't resolvable, allowing
-      // categories with orphaned/non-existent account IDs to leak through and
-      // later cause FK violations when posting journal entries.
       const { data: accountRows, error: acctError } = await sb()
         .from('chart_of_accounts')
-        .select('id')
-        .in('store_id', [storeId, 'company'])
-        .eq('is_active', true);
+        .select('id, name, store_id, is_active');
       if (acctError) throw new Error(`Failed to fetch accounts for expense categories: ${acctError.message}`);
-      const validAccountIds = new Set((accountRows ?? []).map((a: { id: string }) => a.id));
+      const accounts = (accountRows ?? []) as Array<{ id: string; name: string; store_id: string | null; is_active: boolean }>;
+      const byId = new Map(accounts.map((a) => [a.id, a]));
+      const usable = (a: { store_id: string | null; is_active: boolean }) =>
+        a.is_active && (a.store_id === storeId || a.store_id === 'company' || a.store_id == null);
 
       const { data, error } = await sb()
         .from('expense_categories')
         .select('*')
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true })
+        .order('name', { ascending: true });
       if (error) throw new Error(`Failed to fetch expense_categories: ${error.message}`);
 
-      return (data ?? [])
-        .filter((r: Record<string, unknown>) => {
-          const accountId = r.account_id as string | null | undefined;
-          // Include categories with no account (accountId is null/empty) OR
-          // categories whose account actually exists and is active for this store.
-          return !accountId || validAccountIds.has(accountId);
-        })
-        .map((r) => snakeToCamel(r) as unknown as ExpenseCategory);
+      const out: ExpenseCategory[] = [];
+      for (const r of data ?? []) {
+        const cat = snakeToCamel(r) as unknown as ExpenseCategory;
+        if (!cat.accountId) {
+          out.push(cat);
+          continue;
+        }
+        const acct = byId.get(cat.accountId);
+        if (acct && usable(acct)) {
+          out.push(cat);
+          continue;
+        }
+        // Catalog rows point at one store's account; other stores book to their own account of the same name.
+        const local = acct && accounts.find((a) => a.name === acct.name && a.store_id === storeId && a.is_active);
+        if (local) out.push({ ...cat, accountId: local.id });
+      }
+      return out;
     },
     getTaskCategories: () => selectAllActive<TaskCategory>('task_categories'),
     getTransferRoutes: (storeId) => selectWhereActive<TransferRoute>('transfer_routes', 'store_id', storeId),

@@ -30,6 +30,7 @@ export interface GrantCashAdvanceInput {
   /** COA account ID for the cash source (till or safe). */
   cashAccountId: string;
   description?: string;
+  createdBy?: string | null;
 }
 
 export interface GrantCashAdvanceResult {
@@ -101,10 +102,10 @@ export async function grantCashAdvance(
     date: txDate,
     storeId: input.storeId,
     legs,
-    createdBy: null,
+    createdBy: input.createdBy ?? null,
   });
 
-  await deps.expenses.createWithJournal(expense, transaction, null);
+  await deps.expenses.createWithJournal(expense, transaction, input.createdBy ?? null);
 
   // --- Payroll deduction schedule ---
   // All advances are stored as schedule rows. Each row represents one
@@ -137,17 +138,21 @@ export async function grantCashAdvance(
 
     for (let i = 0; i < periods; i++) {
       const paydayType = paydays[(startIdx + i) % 2];
+      const isLast = i === periods - 1;
+      const share = isLast
+        ? Math.round((input.amount - deductionPerPeriod * (periods - 1)) * 100) / 100
+        : deductionPerPeriod;
       scheduleRows.push({
         id: randomUUID(),
         employee_id: input.employeeId,
         expense_id: expenseId,
         total_amount: input.amount,
         granted_date: input.date,
-        installment_amount: deductionPerPeriod,
+        installment_amount: share,
         period_start: input.date,
         period_end: input.date,
-        deduction_per_period: deductionPerPeriod,
-        remaining_balance: deductionPerPeriod,
+        deduction_per_period: share,
+        remaining_balance: share,
         start_date: input.date,
         payday_type: paydayType,
       });
@@ -156,6 +161,7 @@ export async function grantCashAdvance(
 
   const { error } = await sb.from('cash_advance_schedules').insert(scheduleRows);
   if (error) {
+    await deps.expenses.deleteWithJournal(expenseId, 'expense', expenseId);
     throw new Error(`Failed to create cash advance schedule: ${error.message}`);
   }
 

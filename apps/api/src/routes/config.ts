@@ -4,7 +4,7 @@ import multer from 'multer';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
-import { Permission } from '@lolas/shared';
+import { Permission, SaveExpenseCategorySchema, type SaveExpenseCategoryRequest } from '@lolas/shared';
 import { z } from 'zod';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import {
@@ -473,15 +473,36 @@ router.get('/expense-categories', async (req, res, next) => {
     res.json({ success: true, data: await req.app.locals.deps.configRepo.getExpenseCategories(storeId) });
   } catch (e) { next(e); }
 });
-router.post('/expense-categories', edit, validateBody(z.object({
-  name: z.string().min(1), mainCategory: z.string().nullable().optional(), accountId: z.string().nullable().optional(), isActive: z.boolean().optional(),
-})), async (req, res, next) => {
-  try { await req.app.locals.deps.configRepo.saveExpenseCategory(req.body); res.json({ success: true }); } catch (e) { next(e); }
+async function assertCatalogAccount(body: SaveExpenseCategoryRequest): Promise<void> {
+  if (body.kind === 'system') throw httpError('System expense types are managed by the app', 400);
+  if (body.kind === 'handled_elsewhere') return;
+  if (!body.accountId) throw httpError('Choose the account this expense type books to', 400);
+  const { data, error } = await getSupabaseClient()
+    .from('chart_of_accounts')
+    .select('account_type, is_active')
+    .eq('id', body.accountId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data || !data.is_active) throw httpError('That account does not exist or is inactive', 400);
+  const allowed = body.kind === 'standard' ? ['Expense', 'Equity', 'Liability'] : ['Asset', 'Liability'];
+  if (!allowed.includes(data.account_type as string)) {
+    throw httpError(`This expense type can't book to a ${data.account_type} account`, 400);
+  }
+}
+
+router.post('/expense-categories', edit, validateBody(SaveExpenseCategorySchema), async (req, res, next) => {
+  try {
+    await assertCatalogAccount(req.body);
+    await req.app.locals.deps.configRepo.saveExpenseCategory(req.body);
+    res.json({ success: true });
+  } catch (e) { next(e); }
 });
-router.put('/expense-categories/:id', edit, validateBody(z.object({
-  name: z.string().min(1), mainCategory: z.string().nullable().optional(), accountId: z.string().nullable().optional(), isActive: z.boolean().optional(),
-})), async (req, res, next) => {
-  try { await req.app.locals.deps.configRepo.saveExpenseCategory({ id: Number(req.params.id), ...req.body }); res.json({ success: true }); } catch (e) { next(e); }
+router.put('/expense-categories/:id', edit, validateBody(SaveExpenseCategorySchema), async (req, res, next) => {
+  try {
+    await assertCatalogAccount(req.body);
+    await req.app.locals.deps.configRepo.saveExpenseCategory({ id: Number(req.params.id), ...req.body });
+    res.json({ success: true });
+  } catch (e) { next(e); }
 });
 router.delete('/expense-categories/:id', edit, async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.deleteExpenseCategory(Number(req.params.id)); res.json({ success: true }); } catch (e) { next(e); }

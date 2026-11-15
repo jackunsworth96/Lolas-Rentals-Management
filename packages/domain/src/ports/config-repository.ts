@@ -79,6 +79,16 @@ export interface ExpenseCategory {
   mainCategory: string | null;
   accountId: string | null;
   isActive: boolean;
+  kind?: 'standard' | 'bike_allowance' | 'cash_advance' | 'handled_elsewhere' | 'system';
+  groupName?: string | null;
+  sortOrder?: number;
+  requiresVehicle?: boolean;
+  requiresEmployee?: boolean;
+  requiresNote?: boolean;
+  softLimit?: number | null;
+  managersOnly?: boolean;
+  helpText?: string | null;
+  linkPath?: string | null;
 }
 
 export interface TaskCategory {

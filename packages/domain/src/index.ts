@@ -21,6 +21,7 @@ export * from './services/depreciation-service.js';
 export * from './services/payroll-calculator.js';
 export * from './services/payroll-journal.js';
 export * from './services/leave-entitlement.js';
+export * from './services/expense-guards.js';
 
 // Errors
 export * from './errors/domain-error.js';

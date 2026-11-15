@@ -40,6 +40,20 @@ export class NonRentableVehicleError extends DomainError {
   }
 }
 
+/** An entry broke one or more business rules; each reason is shown to the user. */
+export class EntryRejectedError extends DomainError {
+  constructor(public readonly reasons: string[]) {
+    super(reasons.join(' '));
+  }
+}
+
+/** An entry looks unusual; it is saved only after the user confirms each warning. */
+export class ConfirmationRequiredError extends DomainError {
+  constructor(public readonly confirmations: Array<{ code: string; message: string }>) {
+    super(confirmations.map((c) => c.message).join(' '));
+  }
+}
+
 export class InvalidAmountError extends DomainError {
   constructor(amount: unknown) {
     super(`Invalid monetary amount: ${String(amount)}`);

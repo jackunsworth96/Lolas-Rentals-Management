@@ -1,298 +1,135 @@
-import { useState, useMemo, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { useMemo, useState } from 'react';
 import { useUIStore } from '../../stores/ui-store.js';
+import { useAuthStore } from '../../stores/auth-store.js';
 import {
   useExpenses,
-  useCreateExpense,
-  useUpdateExpense,
   useDeleteExpense,
-  usePayExpenses,
   type EnrichedExpense,
+  type ExpenseCatalogItem,
 } from '../../api/expenses.js';
-import {
-  useExpenseCategories,
-  useChartOfAccounts,
-  usePaymentMethods,
-} from '../../api/config.js';
+import { useExpenseCategories, useChartOfAccounts, usePaymentMethods } from '../../api/config.js';
 import { useFleet } from '../../api/fleet.js';
-import { useEmployees } from '../../api/hr.js';
-import { formatCurrency } from '../../utils/currency.js';
-import { formatTime } from '../../utils/date.js';
+import { manilaToday } from '../../utils/date.js';
 import { Button } from '../../components/common/Button.js';
-import { usePaymentRouting } from '../../hooks/use-payment-routing.js';
+import { ConfirmDialog } from '../../components/common/ConfirmDialog.js';
+import { ExpenseFormModal, type AccountOption } from '../../components/expenses/ExpenseFormModal.js';
+import { ExpenseList } from '../../components/expenses/ExpenseList.js';
+import { DailySummary } from '../../components/expenses/DailySummary.js';
+import { PayUnpaidModal } from '../../components/expenses/PayUnpaidModal.js';
+import { errorReasons, formatDateLabel, formatShortDate, inputCls, shiftDate } from '../../components/expenses/expense-ui.js';
+import { formatCurrency } from '../../utils/currency.js';
 
-function todayStr(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+type View = 'day' | 'week' | 'month';
+type StatusTab = 'all' | 'paid' | 'unpaid';
+
+function rangeFor(view: View, date: string): { date: string } | { dateFrom: string; dateTo: string } {
+  if (view === 'day') return { date };
+  if (view === 'week') return { dateFrom: shiftDate(date, -6), dateTo: date };
+  const [y, m] = date.split('-').map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return { dateFrom: `${date.slice(0, 7)}-01`, dateTo: `${date.slice(0, 7)}-${String(last).padStart(2, '0')}` };
 }
 
-/** Categories now posted by payroll; entering them here as well would double-count. */
-function payrollManagedCategory(name: string): string | null {
-  const n = name.toLowerCase();
-  if (n.includes('vehicle allowance') || n.includes('maintenance allowance')) {
-    return 'Vehicle allowance is paid out from Payroll → Vehicle allowance, which reduces the employee\'s balance and shows on their payslip.';
-  }
-  if (n.includes('9 pm') || n.includes('9pm')) {
-    return '9pm returns are paid through payroll from the timesheet count, so they are not entered as expenses.';
-  }
-  if (/\b(sss|philhealth|pag-?ibig)\b/.test(n)) {
-    return 'SSS, PhilHealth and Pag-IBIG payments are recorded from Payroll → Remittances so they clear what payroll withheld.';
-  }
-  return null;
+function periodLabel(view: View, date: string): string {
+  if (view === 'day') return formatDateLabel(date);
+  if (view === 'week') return `${formatShortDate(shiftDate(date, -6))} – ${formatShortDate(date)}`;
+  return new Date(`${date}T12:00:00`).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' });
 }
 
-function shiftDate(dateStr: string, days: number): string {
-  const d = new Date(dateStr + 'T12:00:00');
-  d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
+function stepDate(view: View, date: string, dir: 1 | -1): string {
+  if (view === 'day') return shiftDate(date, dir);
+  if (view === 'week') return shiftDate(date, 7 * dir);
+  const d = new Date(`${date}T12:00:00Z`);
+  d.setUTCMonth(d.getUTCMonth() + dir, 1);
+  return d.toISOString().slice(0, 10);
 }
 
-function formatDateLabel(dateStr: string): string {
-  const d = new Date(dateStr + 'T12:00:00');
-  return d.toLocaleDateString('en-PH', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+function ChevronIcon({ dir }: { dir: 'left' | 'right' }) {
+  return (
+    <svg className="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={dir === 'left' ? 'M15 19l-7-7 7-7' : 'M9 5l7 7-7 7'} />
+    </svg>
+  );
 }
-
-interface CategoryConfig {
-  id: string | number;
-  name: string;
-  accountId: string | null;
-  account_id?: string | null;
-  mainCategory?: string | null;
-  main_category?: string | null;
-}
-
-interface AccountConfig {
-  id: string;
-  name: string;
-  accountType: string;
-  account_type?: string;
-  storeId?: string | null;
-  store_id?: string | null;
-}
-
-interface VehicleConfig {
-  id: string;
-  vehicleName?: string;
-  vehicle_name?: string;
-  plateNumber?: string;
-  plate_number?: string;
-}
-
-interface EmployeeConfig {
-  id: string;
-  firstName?: string;
-  first_name?: string;
-  lastName?: string;
-  last_name?: string;
-}
-
-const EMPTY_FORM = {
-  date: '',
-  category: '',
-  description: '',
-  amount: '',
-  paymentMethodId: '',
-  paidFrom: '',
-  vehicleId: '',
-  employeeId: '',
-  expenseAccountId: '',
-  cashAccountId: '',
-  isUnpaid: false,
-};
 
 export default function ExpensesPage() {
   const storeId = useUIStore((s) => s.selectedStoreId) ?? '';
-  const [date, setDate] = useState(todayStr());
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canEdit = hasPermission('can_edit_expenses');
+  const isManager = hasPermission('can_edit_accounts');
+  const canGrantAdvances = hasPermission('can_manage_employees');
+  const today = manilaToday();
 
-  const { data: expenses = [], isLoading } = useExpenses(storeId, date);
-  const { data: categories = [] } = useExpenseCategories(storeId || undefined) as {
-    data: CategoryConfig[] | undefined;
-  };
-  const { data: allAccounts = [] } = useChartOfAccounts() as {
-    data: AccountConfig[] | undefined;
-  };
-  const { data: vehicles = [] } = useFleet(storeId) as {
-    data: VehicleConfig[] | undefined;
-  };
-  const { data: employees = [] } = useEmployees(storeId) as {
-    data: EmployeeConfig[] | undefined;
-  };
-  const { data: paymentMethods = [] } = usePaymentMethods() as {
-    data: Array<{ id: string; name: string }> | undefined;
-  };
+  const [view, setView] = useState<View>('day');
+  const [date, setDate] = useState(today);
+  const [status, setStatus] = useState<StatusTab>('all');
+  const [typeFilter, setTypeFilter] = useState('');
+  const [staffFilter, setStaffFilter] = useState('');
+  const [vehicleFilter, setVehicleFilter] = useState('');
 
-  const routing = usePaymentRouting();
-
-  const createMut = useCreateExpense();
-  const updateMut = useUpdateExpense();
+  const range = rangeFor(view, date);
+  const { data: expenses = [], isLoading, isError, error } = useExpenses(storeId, range, {
+    categoryId: typeFilter ? Number(typeFilter) : undefined,
+    vehicleId: vehicleFilter || undefined,
+  });
+  const { data: rawCatalog = [] } = useExpenseCategories(storeId || undefined) as { data: ExpenseCatalogItem[] | undefined };
+  const { data: rawAccounts = [] } = useChartOfAccounts() as { data: Array<Record<string, unknown>> | undefined };
+  const { data: rawMethods = [] } = usePaymentMethods() as { data: Array<{ id: string; name: string; isActive?: boolean }> | undefined };
+  const { data: fleet = [] } = useFleet(storeId);
   const deleteMut = useDeleteExpense();
-  const payMut = usePayExpenses();
 
-  const [filterStatus, setFilterStatus] = useState<'all' | 'paid' | 'unpaid'>('all');
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [showPayModal, setShowPayModal] = useState(false);
-  const [payMethodId, setPayMethodId] = useState('');
-
-  const filteredExpenses = useMemo(() => {
-    if (filterStatus === 'all') return expenses;
-    return expenses.filter((e) => e.status === filterStatus);
-  }, [expenses, filterStatus]);
-
-  const storeAccounts = useMemo(
-    () =>
-      allAccounts.filter((a) => {
-        const sid = a.storeId ?? a.store_id ?? null;
-        return sid === storeId || sid === 'company';
-      }),
-    [allAccounts, storeId],
+  const catalog = useMemo(
+    () => [...rawCatalog].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name)),
+    [rawCatalog],
   );
-  const expenseAccounts = useMemo(
-    () =>
-      storeAccounts.filter(
-        (a) => (a.accountType ?? a.account_type) === 'Expense',
-      ),
-    [storeAccounts],
+  const accounts = useMemo<AccountOption[]>(
+    () => rawAccounts.map((a) => ({
+      id: String(a.id),
+      name: String(a.name),
+      accountType: String(a.accountType ?? a.account_type ?? ''),
+      storeId: (a.storeId ?? a.store_id ?? null) as string | null,
+    })),
+    [rawAccounts],
   );
-
-  // Active categories
-  const activeCategories = useMemo(
-    () => categories.filter((c: Record<string, unknown>) => c.isActive !== false && c.is_active !== false),
-    [categories],
+  const paymentMethods = useMemo(() => rawMethods.filter((m) => m.isActive !== false), [rawMethods]);
+  const vehicles = useMemo(
+    () => fleet
+      .filter((v) => v.storeId === storeId && v.status !== 'Sold')
+      .map((v) => ({ id: v.id, label: v.plateNumber ? `${v.name} (${v.plateNumber})` : v.name }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+    [fleet, storeId],
   );
+  const accountName = (id: string | null) => accounts.find((a) => a.id === id)?.name ?? id ?? '—';
 
-  // Daily summary by category
-  const categorySummary = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const e of expenses) {
-      map.set(e.category, (map.get(e.category) ?? 0) + e.amount);
-    }
-    return [...map.entries()].sort((a, b) => b[1] - a[1]);
+  const staffOptions = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const e of expenses) if (e.employeeId && e.employeeName) m.set(e.employeeId, e.employeeName);
+    return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]));
   }, [expenses]);
-  const dayTotal = useMemo(
-    () => expenses.reduce((s, e) => s + e.amount, 0),
-    [expenses],
+
+  const scoped = useMemo(
+    () => (staffFilter ? expenses.filter((e) => e.employeeId === staffFilter) : expenses),
+    [expenses, staffFilter],
   );
+  const shown = useMemo(() => (status === 'all' ? scoped : scoped.filter((e) => e.status === status)), [scoped, status]);
+  const counts = { all: scoped.length, paid: scoped.filter((e) => e.status === 'paid').length, unpaid: scoped.filter((e) => e.status === 'unpaid').length };
 
-  // Modal state
-  const [showModal, setShowModal] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState({ ...EMPTY_FORM, date });
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(
-    null,
-  );
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<EnrichedExpense | null>(null);
+  const [deleting, setDeleting] = useState<EnrichedExpense | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [payOpen, setPayOpen] = useState(false);
 
-  const setField = useCallback(
-    (key: string, value: string) =>
-      setForm((prev) => ({ ...prev, [key]: value })),
-    [],
-  );
+  const selectedRows = shown.filter((e) => selected.has(e.id));
+  const filtersActive = !!(typeFilter || staffFilter || vehicleFilter);
 
-  function openAdd() {
-    setEditingId(null);
-    setForm({ ...EMPTY_FORM, date });
-    setShowModal(true);
+  function openNew() {
+    setEditing(null);
+    setFormOpen(true);
   }
 
-  function openEdit(expense: EnrichedExpense) {
-    setEditingId(expense.id);
-    setForm({
-      date: expense.date,
-      category: expense.category,
-      description: expense.description,
-      amount: String(expense.amount),
-      paymentMethodId: '',
-      paidFrom: expense.paidFrom ?? '',
-      vehicleId: expense.vehicleId ?? '',
-      employeeId: expense.employeeId ?? '',
-      expenseAccountId: expense.accountId ?? '',
-      cashAccountId: expense.paidFrom ?? '',
-      isUnpaid: expense.status === 'unpaid',
-    });
-    setShowModal(true);
-  }
-
-  // Auto-fill expense account when category changes
-  function onCategoryChange(catName: string) {
-    setField('category', catName);
-    const cat = activeCategories.find((c) => c.name === catName);
-    const acctId = cat?.accountId ?? cat?.account_id ?? '';
-    // Only auto-fill if the account actually exists in the valid expense
-    // accounts list for this store — prevents submitting an orphaned account ID
-    // that would cause a journal_entries FK violation on the server.
-    if (acctId && expenseAccounts.some((a) => a.id === acctId)) {
-      setField('expenseAccountId', acctId);
-    } else {
-      setField('expenseAccountId', '');
-    }
-  }
-
-  const isCashAdvance =
-    form.category.toLowerCase() === 'cash advance';
-  const payrollManaged = editingId ? null : payrollManagedCategory(form.category);
-
-  function handleSave() {
-    const amount = parseFloat(form.amount);
-    if (payrollManaged) return;
-    if (
-      !form.category ||
-      !form.description ||
-      !amount ||
-      amount <= 0 ||
-      !form.expenseAccountId
-    )
-      return;
-    if (!form.isUnpaid && !form.paymentMethodId) return;
-    if (isCashAdvance && !form.employeeId) return;
-
-    if (editingId) {
-      updateMut.mutate(
-        {
-          id: editingId,
-          date: form.date,
-          category: form.category,
-          description: form.description,
-          amount,
-          paidFrom: form.cashAccountId || null,
-          vehicleId: form.vehicleId || null,
-          employeeId: form.employeeId || null,
-          expenseAccountId: form.expenseAccountId,
-          cashAccountId: form.cashAccountId,
-        },
-        { onSuccess: () => setShowModal(false) },
-      );
-    } else {
-      createMut.mutate(
-        {
-          storeId,
-          date: form.date,
-          category: form.category,
-          description: form.description,
-          amount,
-          paidFrom: form.isUnpaid ? null : (form.cashAccountId || null),
-          vehicleId: form.vehicleId || null,
-          employeeId: form.employeeId || null,
-          expenseAccountId: form.expenseAccountId,
-          cashAccountId: form.isUnpaid ? '' : form.cashAccountId,
-          status: form.isUnpaid ? 'unpaid' : 'paid',
-        },
-        { onSuccess: () => setShowModal(false) },
-      );
-    }
-  }
-
-  function handleDelete(id: string) {
-    deleteMut.mutate(id, {
-      onSuccess: () => setShowDeleteConfirm(null),
-    });
-  }
-
-  function toggleSelect(id: string) {
-    setSelectedIds((prev) => {
+  function toggle(id: string) {
+    setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -300,645 +137,206 @@ export default function ExpensesPage() {
     });
   }
 
-  function handlePaySelected() {
-    if (!payMethodId || selectedIds.size === 0) return;
-    payMut.mutate(
-      {
-        expenseIds: Array.from(selectedIds),
-        paymentMethodId: payMethodId,
-        storeId,
-      },
-      {
-        onSuccess: () => {
-          setSelectedIds(new Set());
-          setShowPayModal(false);
-          setPayMethodId('');
-        },
-      },
-    );
-  }
-
-  function vehicleLabel(v: VehicleConfig): string {
-    const name = v.vehicleName ?? v.vehicle_name ?? '';
-    const plate = v.plateNumber ?? v.plate_number ?? '';
-    return plate ? `${name} (${plate})` : name;
-  }
-
-  function employeeLabel(e: EmployeeConfig): string {
-    const first = e.firstName ?? e.first_name ?? '';
-    const last = e.lastName ?? e.last_name ?? '';
-    return `${first} ${last}`.trim();
-  }
+  const deleteMessage = deleting && (
+    <>
+      <p>
+        Delete <strong>{deleting.category}</strong> for <strong className="tabular-nums">{formatCurrency(deleting.amount)}</strong>?
+        Its accounting entries are removed too.
+      </p>
+      {deleting.kind === 'bike_allowance' && <p className="mt-2">The amount goes back on {deleting.employeeName ?? 'the staff member'}'s bike allowance balance.</p>}
+      {deleting.kind === 'cash_advance' && <p className="mt-2">The repayment schedule is cancelled, so nothing will be deducted from their pay.</p>}
+    </>
+  );
 
   return (
-    <div className="mx-auto max-w-7xl">
-      {/* Header */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold text-gray-900">Expenses</h1>
-        <Button onClick={openAdd}>Add Expense</Button>
+    <div className="mx-auto max-w-7xl space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-balance text-2xl font-bold text-gray-900">Expenses</h1>
+        {canEdit && <Button onClick={openNew}>Log expense</Button>}
       </div>
 
-      {/* Date navigation */}
-      <div className="mb-6 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => setDate(shiftDate(date, -1))}
-          className="rounded-lg border border-gray-300 p-2 hover:bg-gray-50"
-        >
-          <span className="sr-only">Previous day</span>
-          <svg
-            className="h-4 w-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            aria-hidden
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 19l-7-7 7-7"
-            />
-          </svg>
-        </button>
-        <div className="flex-1 text-center">
-          <p className="text-lg font-semibold text-gray-900">
-            {formatDateLabel(date)}
-          </p>
-          {date === todayStr() && (
-            <span className="text-xs font-medium text-blue-600">Today</span>
-          )}
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-white p-3">
+        <div role="tablist" aria-label="Period" className="flex rounded-lg border border-gray-200 p-0.5">
+          {(['day', 'week', 'month'] as const).map((v) => (
+            <button
+              key={v}
+              role="tab"
+              aria-selected={view === v}
+              onClick={() => {
+                setView(v);
+                setSelected(new Set());
+              }}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium ${view === v ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+            >
+              {v === 'day' ? 'Day' : v === 'week' ? 'Week' : 'Month'}
+            </button>
+          ))}
         </div>
-        <button
-          type="button"
-          onClick={() => setDate(shiftDate(date, 1))}
-          className="rounded-lg border border-gray-300 p-2 hover:bg-gray-50"
-        >
-          <span className="sr-only">Next day</span>
-          <svg
-            className="h-4 w-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            aria-hidden
+        <div className="flex flex-1 items-center gap-2">
+          <button type="button" aria-label="Previous" onClick={() => setDate(stepDate(view, date, -1))} className="rounded-lg border border-gray-300 p-2 hover:bg-gray-50">
+            <ChevronIcon dir="left" />
+          </button>
+          <p className="min-w-0 flex-1 text-center text-sm font-semibold text-gray-900 sm:text-base">
+            {periodLabel(view, date)}
+            {view === 'day' && date === today && <span className="ml-2 text-xs font-medium text-teal-700">Today</span>}
+          </p>
+          <button
+            type="button"
+            aria-label="Next"
+            disabled={date >= today}
+            onClick={() => {
+              const next = stepDate(view, date, 1);
+              setDate(next > today ? today : next);
+            }}
+            className="rounded-lg border border-gray-300 p-2 hover:bg-gray-50 disabled:opacity-40"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 5l7 7-7 7"
-            />
-          </svg>
-        </button>
+            <ChevronIcon dir="right" />
+          </button>
+        </div>
         <input
           type="date"
+          aria-label="Go to date"
+          max={today}
           value={date}
-          onChange={(e) => setDate(e.target.value)}
+          onChange={(e) => e.target.value && setDate(e.target.value)}
           className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
         />
+        {date !== today && (
+          <button type="button" onClick={() => setDate(today)} className="text-sm font-medium text-teal-700 hover:underline">
+            Today
+          </button>
+        )}
       </div>
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+      <div className="grid gap-2 sm:grid-cols-3">
+        <select aria-label="Filter by type" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className={inputCls}>
+          <option value="">All types</option>
+          {catalog.filter((c) => c.kind !== 'handled_elsewhere').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <select aria-label="Filter by staff member" value={staffFilter} onChange={(e) => setStaffFilter(e.target.value)} className={inputCls}>
+          <option value="">All staff</option>
+          {staffOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+        </select>
+        <select aria-label="Filter by vehicle" value={vehicleFilter} onChange={(e) => setVehicleFilter(e.target.value)} className={inputCls}>
+          <option value="">All vehicles</option>
+          {vehicles.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
+        </select>
+      </div>
+
+      {isError ? (
+        <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{errorReasons(error).join(' ')}</p>
+      ) : isLoading ? (
+        <div className="space-y-3" aria-busy>
+          <div className="h-28 animate-pulse rounded-lg bg-gray-100" />
+          <div className="h-64 animate-pulse rounded-lg bg-gray-100" />
         </div>
       ) : (
-        <div className="space-y-6">
-          {/* Daily summary */}
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-gray-900">
-                Daily Summary
-              </h2>
-              <span className="text-lg font-bold text-red-700">
-                {formatCurrency(dayTotal)}
-              </span>
+        <>
+          <DailySummary expenses={scoped} periodLabel={view === 'day' ? 'this day' : view === 'week' ? 'these 7 days' : 'this month'} />
+
+          <div className="flex flex-wrap items-center gap-3">
+            <div role="tablist" aria-label="Payment status" className="flex flex-1 rounded-lg border border-gray-200 bg-white p-1">
+              {(['all', 'paid', 'unpaid'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  role="tab"
+                  aria-selected={status === tab}
+                  onClick={() => {
+                    setStatus(tab);
+                    setSelected(new Set());
+                  }}
+                  className={`flex-1 rounded-md px-3 py-2 text-sm font-medium ${status === tab ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                >
+                  {tab === 'all' ? 'All' : tab === 'paid' ? 'Paid' : 'Unpaid'}
+                  <span className="ml-1.5 text-xs tabular-nums opacity-75">({counts[tab]})</span>
+                </button>
+              ))}
             </div>
-            {categorySummary.length === 0 ? (
-              <p className="text-sm text-gray-400">No expenses recorded</p>
-            ) : (
-              <div className="flex flex-wrap gap-3">
-                {categorySummary.map(([cat, total]) => (
-                  <div
-                    key={cat}
-                    className={`rounded-lg border px-3 py-2 text-sm ${
-                      cat.toLowerCase() === 'cash advance'
-                        ? 'border-amber-200 bg-amber-50'
-                        : 'border-gray-100 bg-gray-50'
-                    }`}
-                  >
-                    <span className="font-medium text-gray-700">{cat}</span>
-                    <span className="ml-2 font-semibold text-gray-900">
-                      {formatCurrency(total)}
-                    </span>
-                    {cat.toLowerCase() === 'cash advance' && (
-                      <span className="ml-1 text-[10px] font-medium text-amber-600">
-                        ADVANCE
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
+            {status === 'unpaid' && canEdit && selectedRows.length > 0 && (
+              <Button onClick={() => setPayOpen(true)}>
+                Pay selected ({selectedRows.length}) · {formatCurrency(selectedRows.reduce((s, e) => s + e.amount, 0))}
+              </Button>
             )}
           </div>
 
-          {/* Filter tabs */}
-          <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1">
-            {(['all', 'paid', 'unpaid'] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => { setFilterStatus(tab); setSelectedIds(new Set()); }}
-                className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                  filterStatus === tab
-                    ? 'bg-gray-900 text-white'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                {tab === 'all' ? 'All' : tab === 'paid' ? 'Paid' : 'Unpaid'}
-                {tab !== 'all' && (
-                  <span className="ml-1.5 text-xs opacity-75">
-                    ({expenses.filter((e) => e.status === tab).length})
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-
-          {/* Batch pay bar */}
-          {filterStatus === 'unpaid' && selectedIds.size > 0 && (
-            <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-2">
-              <span className="text-sm font-medium text-amber-800">
-                {selectedIds.size} expense{selectedIds.size > 1 ? 's' : ''} selected
-              </span>
-              <Button onClick={() => setShowPayModal(true)}>
-                Pay selected ({selectedIds.size})
-              </Button>
-            </div>
-          )}
-
-          {/* Expense list */}
-          <div className="rounded-lg border border-gray-200 bg-white">
-            <div className="border-b border-gray-100 px-4 py-3">
-              <h2 className="text-sm font-semibold text-gray-900">
-                Expenses ({filteredExpenses.length})
-              </h2>
-            </div>
-            {filteredExpenses.length === 0 ? (
-              <div className="px-4 py-12 text-center text-sm text-gray-400">
-                No expenses for this date. Click "Add Expense" to record one.
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-50">
-                {filteredExpenses.map((e) => (
-                  <div
-                    key={e.id}
-                    className="group flex items-center gap-4 px-4 py-3 hover:bg-gray-50"
-                  >
-                    {filterStatus === 'unpaid' && (
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(e.id)}
-                        onChange={() => toggleSelect(e.id)}
-                        className="h-4 w-4 rounded border-gray-300"
-                      />
-                    )}
-                    <div
-                      className="min-w-0 flex-1 cursor-pointer"
-                      onClick={() => openEdit(e)}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-gray-900">
-                          {e.category}
-                        </span>
-                        {e.status === 'unpaid' && (
-                          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
-                            UNPAID
-                          </span>
-                        )}
-                        {e.category.toLowerCase() === 'cash advance' && (
-                          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
-                            CASH ADVANCE
-                          </span>
-                        )}
-                        {e.vehicleName && (
-                          <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-600">
-                            {e.vehicleName}
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-0.5 truncate text-sm text-gray-600">
-                        {e.description}
-                      </p>
-                      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-400">
-                        {e.paidFromName && (
-                          <span>
-                            Paid from:{' '}
-                            <span className="font-medium text-gray-500">
-                              {e.paidFromName}
-                            </span>
-                          </span>
-                        )}
-                        {e.accountName && (
-                          <span>
-                            Account:{' '}
-                            <span className="font-medium text-gray-500">
-                              {e.accountName}
-                            </span>
-                          </span>
-                        )}
-                        {e.employeeName && (
-                          <span>
-                            Employee:{' '}
-                            <span className="font-medium text-gray-500">
-                              {e.employeeName}
-                            </span>
-                          </span>
-                        )}
-                        {e.createdAt && <span>{formatTime(e.createdAt)}</span>}
-                      </div>
-                    </div>
-                    <span className="whitespace-nowrap text-sm font-bold text-red-700">
-                      -{formatCurrency(e.amount)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowDeleteConfirm(e.id)}
-                      className="rounded p-2 text-gray-300 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-500 group-hover:opacity-100"
-                      title="Delete expense"
-                    >
-                      <span className="sr-only">Delete expense</span>
-                      <svg
-                        className="h-4 w-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        aria-hidden
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+          <ExpenseList
+            expenses={shown}
+            groupByDate={view !== 'day'}
+            selectable={status === 'unpaid' && canEdit}
+            selectedIds={selected}
+            onToggle={toggle}
+            onEdit={(e) => {
+              setEditing(e);
+              setFormOpen(true);
+            }}
+            onDelete={(e) => {
+              deleteMut.reset();
+              setDeleting(e);
+            }}
+            emptyAction={
+              filtersActive ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTypeFilter('');
+                    setStaffFilter('');
+                    setVehicleFilter('');
+                  }}
+                  className="text-sm font-medium text-teal-700 hover:underline"
+                >
+                  Clear filters
+                </button>
+              ) : canEdit ? (
+                <Button variant="secondary" onClick={openNew}>Log expense</Button>
+              ) : undefined
+            }
+          />
+        </>
       )}
 
-      {/* ── Add/Edit Expense Modal ── */}
-      {showModal && (
-        <ModalOverlay onClose={() => setShowModal(false)}>
-          <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl">
-            <h2 className="mb-4 text-lg font-bold text-gray-900">
-              {editingId ? 'Edit Expense' : 'Add Expense'}
-            </h2>
-            <div className="space-y-4">
-              {/* Date */}
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Date *
-                </label>
-                <input
-                  type="date"
-                  value={form.date}
-                  onChange={(e) => setField('date', e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                />
-              </div>
-
-              {/* Category */}
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Category *
-                </label>
-                <select
-                  value={form.category}
-                  onChange={(e) => onCategoryChange(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                >
-                  <option value="">Select category...</option>
-                  {activeCategories.map((c) => (
-                    <option key={c.id} value={c.name}>
-                      {c.name}
-                      {(c.mainCategory ?? c.main_category)
-                        ? ` (${c.mainCategory ?? c.main_category})`
-                        : ''}
-                    </option>
-                  ))}
-                </select>
-                {payrollManaged && (
-                  <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                    {payrollManaged}{' '}
-                    <Link to="/hr/payroll" className="font-medium underline">Open Payroll</Link>
-                  </div>
-                )}
-              </div>
-
-              {/* Amount */}
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Amount *
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  step={0.01}
-                  value={form.amount}
-                  onChange={(e) => setField('amount', e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  placeholder="0.00"
-                />
-              </div>
-
-              {/* Description */}
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Description *
-                </label>
-                <input
-                  type="text"
-                  value={form.description}
-                  onChange={(e) => setField('description', e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  placeholder="What was this expense for?"
-                />
-              </div>
-
-              {/* Log as unpaid toggle */}
-              {!editingId && (
-                <label className="flex items-center gap-2 text-sm text-gray-600">
-                  <input
-                    type="checkbox"
-                    checked={form.isUnpaid}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, isUnpaid: e.target.checked }))
-                    }
-                    className="h-4 w-4 rounded border-gray-300"
-                  />
-                  Log as unpaid (pay later)
-                </label>
-              )}
-
-              {/* Payment method (paid from) — hidden for unpaid */}
-              {!form.isUnpaid && (
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">
-                    Paid From *
-                  </label>
-                  <select
-                    value={form.paymentMethodId}
-                    onChange={(e) => {
-                      const methodId = e.target.value;
-                      const resolvedAccountId = routing.resolveReceivedIntoForStore(
-                        storeId,
-                        methodId,
-                      ) ?? '';
-                      setForm((f) => ({
-                        ...f,
-                        paymentMethodId: methodId,
-                        paidFrom: resolvedAccountId,
-                        cashAccountId: resolvedAccountId,
-                      }));
-                    }}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  >
-                    <option value="">Select payment method...</option>
-                    {paymentMethods.map((m) => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
-                  {form.paymentMethodId && !form.cashAccountId && (
-                    <p className="mt-1 text-xs text-red-600">
-                      No account is configured for this payment method. Ask an admin to set up payment routing in Settings.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* Expense Account (category mapping) */}
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Expense Account *
-                </label>
-                <select
-                  value={form.expenseAccountId}
-                  onChange={(e) => setField('expenseAccountId', e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                >
-                  <option value="">Select expense account...</option>
-                  {expenseAccounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-                {form.category && !form.expenseAccountId && (
-                  <p className="mt-1 text-xs text-amber-600">
-                    No account mapped to this category. Select one manually or
-                    update Settings &gt; Expense Categories.
-                  </p>
-                )}
-              </div>
-
-              {/* Vehicle linkage */}
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Vehicle (optional)
-                </label>
-                <select
-                  value={form.vehicleId}
-                  onChange={(e) => setField('vehicleId', e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                >
-                  <option value="">None</option>
-                  {(vehicles ?? []).map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {vehicleLabel(v)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Employee linkage */}
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Employee{isCashAdvance ? ' *' : ' (optional)'}
-                </label>
-                <select
-                  value={form.employeeId}
-                  onChange={(e) => setField('employeeId', e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                >
-                  <option value="">None</option>
-                  {(employees ?? []).map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {employeeLabel(e)}
-                    </option>
-                  ))}
-                </select>
-                {isCashAdvance && !form.employeeId && (
-                  <p className="mt-1 text-xs text-red-600">
-                    Cash advances must be linked to an employee for payroll
-                    deduction.
-                  </p>
-                )}
-              </div>
-
-              {/* Cash advance notice */}
-              {isCashAdvance && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 space-y-1">
-                  <p className="font-medium">Use the dedicated Cash Advance flow instead.</p>
-                  <p>
-                    Go to <strong>HR → Employees</strong>, find the staff member, open their
-                    profile and click <strong>Grant Advance</strong> — or use the{' '}
-                    <strong>Grant Cash Advance</strong> button at the top of the Employees page.
-                    This sets up the payroll deduction automatically.
-                  </p>
-                  <p>
-                    Recording a "Cash Advance" expense here will create the accounting entry
-                    but will <strong>not</strong> set up any payroll deduction.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="mt-6 flex gap-3">
-              <Button
-                variant="secondary"
-                className="flex-1"
-                onClick={() => setShowModal(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                className="flex-1"
-                onClick={handleSave}
-                loading={createMut.isPending || updateMut.isPending}
-                disabled={
-                  !!payrollManaged ||
-                  !form.category ||
-                  !form.description ||
-                  !form.amount ||
-                  parseFloat(form.amount) <= 0 ||
-                  !form.expenseAccountId ||
-                  (!form.isUnpaid && !form.paymentMethodId) ||
-                  (!form.isUnpaid && !!form.paymentMethodId && !form.cashAccountId) ||
-                  (isCashAdvance && !form.employeeId)
-                }
-              >
-                {editingId ? 'Update Expense' : 'Save Expense'}
-              </Button>
-            </div>
-          </div>
-        </ModalOverlay>
+      {canEdit && (
+        <ExpenseFormModal
+          open={formOpen}
+          onClose={() => {
+            setFormOpen(false);
+            setEditing(null);
+          }}
+          storeId={storeId}
+          catalog={catalog}
+          accounts={accounts}
+          paymentMethods={paymentMethods}
+          vehicles={vehicles}
+          isManager={isManager}
+          canGrantAdvances={canGrantAdvances}
+          defaultDate={view === 'day' ? date : today}
+          editing={editing}
+        />
       )}
 
-      {/* ── Delete Confirmation ── */}
-      {showDeleteConfirm && (
-        <ModalOverlay onClose={() => setShowDeleteConfirm(null)}>
-          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
-            <h2 className="mb-2 text-lg font-bold text-gray-900">
-              Delete Expense?
-            </h2>
-            <p className="mb-4 text-sm text-gray-600">
-              This will permanently remove the expense record and reverse the
-              associated journal entries. This action cannot be undone.
-            </p>
-            <div className="flex gap-3">
-              <Button
-                variant="secondary"
-                className="flex-1"
-                onClick={() => setShowDeleteConfirm(null)}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="danger"
-                className="flex-1"
-                onClick={() => handleDelete(showDeleteConfirm)}
-                loading={deleteMut.isPending}
-              >
-                Delete
-              </Button>
-            </div>
-          </div>
-        </ModalOverlay>
-      )}
+      <ConfirmDialog
+        open={!!deleting}
+        title="Delete expense?"
+        message={deleteMessage}
+        confirmLabel="Delete"
+        destructive
+        busy={deleteMut.isPending}
+        error={deleteMut.error ? errorReasons(deleteMut.error).join(' ') : null}
+        onConfirm={() => deleting && deleteMut.mutate(deleting.id, { onSuccess: () => setDeleting(null) })}
+        onClose={() => setDeleting(null)}
+      />
 
-      {/* ── Pay Selected Modal ── */}
-      {showPayModal && (
-        <ModalOverlay onClose={() => setShowPayModal(false)}>
-          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
-            <h2 className="mb-2 text-lg font-bold text-gray-900">
-              Pay {selectedIds.size} Expense{selectedIds.size > 1 ? 's' : ''}
-            </h2>
-            <p className="mb-4 text-sm text-gray-600">
-              Total:{' '}
-              <span className="font-semibold text-gray-900">
-                {formatCurrency(
-                  expenses
-                    .filter((e) => selectedIds.has(e.id))
-                    .reduce((s, e) => s + e.amount, 0),
-                )}
-              </span>
-            </p>
-            <div className="mb-4">
-              <label className="mb-1 block text-sm font-medium text-gray-700">
-                Payment Method *
-              </label>
-              <select
-                value={payMethodId}
-                onChange={(e) => setPayMethodId(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              >
-                <option value="">Select payment method...</option>
-                {paymentMethods.map((m) => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex gap-3">
-              <Button
-                variant="secondary"
-                className="flex-1"
-                onClick={() => setShowPayModal(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                className="flex-1"
-                onClick={handlePaySelected}
-                loading={payMut.isPending}
-                disabled={!payMethodId}
-              >
-                Confirm Payment
-              </Button>
-            </div>
-          </div>
-        </ModalOverlay>
-      )}
-    </div>
-  );
-}
-
-function ModalOverlay({
-  children,
-  onClose,
-}: {
-  children: React.ReactNode;
-  onClose: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative z-10 max-h-[90vh] overflow-y-auto">
-        {children}
-      </div>
+      <PayUnpaidModal
+        open={payOpen}
+        onClose={() => setPayOpen(false)}
+        onPaid={() => {
+          setPayOpen(false);
+          setSelected(new Set());
+        }}
+        storeId={storeId}
+        expenses={selectedRows}
+        paymentMethods={paymentMethods}
+        accountName={accountName}
+      />
     </div>
   );
 }

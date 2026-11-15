@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
@@ -7,14 +7,33 @@ import {
   CreateExpenseRequestSchema,
   UpdateExpenseRequestSchema,
   ExpenseQuerySchema,
+  ExpenseCheckQuerySchema,
   PayExpensesSchema,
+  type ExpenseQuery,
+  type ExpenseCheckQuery,
 } from '@lolas/shared';
+import { EntryRejectedError } from '@lolas/domain';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { randomUUID } from 'node:crypto';
 import { formatManilaDate } from '../utils/manila-date.js';
+import type { ExpenseActor } from '../use-cases/expenses/expense-context.js';
 
 const router = Router();
 router.use(authenticate);
+
+const actorOf = (req: Request): ExpenseActor => ({
+  employeeId: req.user?.employeeId ?? null,
+  permissions: req.user?.permissions ?? [],
+});
+
+function assertStoreAccess(req: Request, storeId: string): void {
+  const stores = req.user?.storeIds ?? [];
+  if (!stores.includes(storeId) && !stores.includes('company')) {
+    throw Object.assign(new Error('You do not have access to this store'), { statusCode: 403 });
+  }
+}
+
+type Row = Record<string, unknown>;
 
 // ── GET / — list expenses with enriched data ──
 router.get(
@@ -23,96 +42,78 @@ router.get(
   validateQuery(ExpenseQuerySchema),
   async (req, res, next) => {
     try {
-      const { storeId, date, dateFrom, dateTo } = req.query as {
-        storeId: string;
-        date?: string;
-        dateFrom?: string;
-        dateTo?: string;
-      };
-
+      const q = req.query as unknown as ExpenseQuery;
       const sb = getSupabaseClient();
 
       let expensesQuery = sb
         .from('expenses')
         .select('*')
-        .eq('store_id', storeId)
+        .eq('store_id', q.storeId)
+        .order('date', { ascending: true })
         .order('created_at', { ascending: true });
 
-      if (dateFrom && dateTo) {
-        expensesQuery = expensesQuery.gte('date', dateFrom).lte('date', dateTo);
+      if (q.dateFrom && q.dateTo) {
+        expensesQuery = expensesQuery.gte('date', q.dateFrom).lte('date', q.dateTo);
       } else {
-        const effectiveDate = date ?? formatManilaDate();
-        expensesQuery = expensesQuery.eq('date', effectiveDate);
+        expensesQuery = expensesQuery.eq('date', q.date ?? formatManilaDate());
       }
+      if (q.categoryId) expensesQuery = expensesQuery.eq('category_id', q.categoryId);
+      if (q.employeeId) expensesQuery = expensesQuery.eq('employee_id', q.employeeId);
+      if (q.vehicleId) expensesQuery = expensesQuery.eq('vehicle_id', q.vehicleId);
 
-      const [expensesRes, accountsRes, fleetRes, employeesRes] =
-        await Promise.all([
-          expensesQuery,
-          sb
-            .from('chart_of_accounts')
-            .select('id, name, account_type')
-            .in('store_id', [storeId, 'company']),
-          sb
-            .from('fleet')
-            .select('id, plate_number, vehicle_name')
-            .eq('store_id', storeId),
-          sb
-            .from('employees')
-            .select('id, first_name, last_name')
-            .eq('store_id', storeId),
-        ]);
+      const [expensesRes, accountsRes, fleetRes, employeesRes, categoriesRes] = await Promise.all([
+        expensesQuery,
+        sb.from('chart_of_accounts').select('id, name, account_type'),
+        sb.from('fleet').select('id, plate_number, vehicle_name').eq('store_id', q.storeId),
+        sb.from('employees').select('id, full_name'),
+        sb.from('expense_categories').select('id, kind, group_name'),
+      ]);
+      if (expensesRes.error) throw new Error(`Failed to fetch expenses: ${expensesRes.error.message}`);
 
-      if (expensesRes.error)
-        throw new Error(`Failed to fetch expenses: ${expensesRes.error.message}`);
+      const accountMap = new Map(((accountsRes.data ?? []) as Row[]).map((a) => [String(a.id), a]));
+      const fleetMap = new Map(((fleetRes.data ?? []) as Row[]).map((v) => [String(v.id), v]));
+      const empMap = new Map(((employeesRes.data ?? []) as Row[]).map((e) => [String(e.id), String(e.full_name ?? '')]));
+      const catMap = new Map(((categoriesRes.data ?? []) as Row[]).map((c) => [Number(c.id), c]));
 
-      const accountMap = new Map(
-        ((accountsRes.data ?? []) as { id: string; name: string; account_type: string }[]).map(
-          (a) => [a.id, a],
-        ),
-      );
-      const fleetMap = new Map(
-        ((fleetRes.data ?? []) as { id: string; plate_number: string; vehicle_name: string }[]).map(
-          (v) => [v.id, v],
-        ),
-      );
-      const empMap = new Map(
-        ((employeesRes.data ?? []) as { id: string; first_name: string; last_name: string }[]).map(
-          (e) => [e.id, e],
-        ),
-      );
+      const actor = actorOf(req);
+      const manager = actor.permissions.includes(Permission.EditAccounts);
+      const canEdit = actor.permissions.includes(Permission.EditExpenses);
+      const today = formatManilaDate();
 
-      const rows = ((expensesRes.data ?? []) as Record<string, unknown>[]).map(
-        (r) => {
-          const paidFromAcct = accountMap.get(r.paid_from as string);
-          const expenseAcct = accountMap.get(r.account_id as string);
-          const vehicle = fleetMap.get(r.vehicle_id as string);
-          const employee = empMap.get(r.employee_id as string);
-
-          return {
-            id: r.id,
-            storeId: r.store_id,
-            date: r.date,
-            category: r.category,
-            description: r.description,
-            amount: Number(r.amount ?? 0),
-            paidFrom: r.paid_from,
-            paidFromName: paidFromAcct?.name ?? null,
-            vehicleId: r.vehicle_id,
-            vehicleName: vehicle
-              ? `${vehicle.vehicle_name} (${vehicle.plate_number})`
-              : null,
-            employeeId: r.employee_id,
-            employeeName: employee
-              ? `${employee.first_name} ${employee.last_name}`
-              : null,
-            accountId: r.account_id,
-            accountName: expenseAcct?.name ?? null,
-            status: (r.status as string) ?? 'paid',
-            paidAt: (r.paid_at as string) ?? null,
-            createdAt: r.created_at,
-          };
-        },
-      );
+      const rows = ((expensesRes.data ?? []) as Row[]).map((r) => {
+        const vehicle = fleetMap.get(String(r.vehicle_id));
+        const cat = r.category_id == null ? undefined : catMap.get(Number(r.category_id));
+        const createdBy = (r.created_by as string | null) ?? null;
+        const ownToday = createdBy === actor.employeeId && formatManilaDate(new Date(String(r.created_at))) === today;
+        return {
+          id: r.id,
+          storeId: r.store_id,
+          date: r.date,
+          category: r.category,
+          categoryId: r.category_id ?? null,
+          kind: (cat?.kind as string | undefined) ?? 'standard',
+          groupName: (cat?.group_name as string | undefined) ?? null,
+          description: r.description,
+          amount: Number(r.amount ?? 0),
+          paidFrom: r.paid_from,
+          paidFromName: (accountMap.get(String(r.paid_from))?.name as string | undefined) ?? null,
+          vehicleId: r.vehicle_id,
+          vehicleName: vehicle ? `${String(vehicle.vehicle_name)} (${String(vehicle.plate_number)})` : null,
+          employeeId: r.employee_id,
+          employeeName: r.employee_id ? empMap.get(String(r.employee_id)) ?? null : null,
+          accountId: r.account_id,
+          accountName: (accountMap.get(String(r.account_id))?.name as string | undefined) ?? null,
+          status: (r.status as string) ?? 'paid',
+          paidAt: (r.paid_at as string) ?? null,
+          linkedTo: r.timesheet_id ? 'timesheet' : r.maintenance_id ? 'maintenance' : null,
+          createdAt: r.created_at,
+          createdBy,
+          createdByName: createdBy ? empMap.get(createdBy) ?? null : null,
+          updatedAt: r.updated_at ?? null,
+          updatedByName: r.updated_by ? empMap.get(String(r.updated_by)) ?? null : null,
+          canChange: canEdit && (manager || ownToday),
+        };
+      });
 
       res.json({ success: true, data: rows });
     } catch (err) {
@@ -121,6 +122,53 @@ router.get(
   },
 );
 
+// ── GET /check — warnings to show before saving (duplicate, over the usual amount) ──
+router.get(
+  '/check',
+  requirePermission(Permission.EditExpenses),
+  validateQuery(ExpenseCheckQuerySchema),
+  async (req, res, next) => {
+    try {
+      const q = req.query as unknown as ExpenseCheckQuery;
+      const { loadCategory, countDuplicates } = await import('../use-cases/expenses/expense-context.js');
+      const category = await loadCategory(req.app.locals.deps.configRepo, q.storeId, q.categoryId);
+      if (!category) throw new EntryRejectedError(['That expense type is no longer available.']);
+      const duplicates = await countDuplicates({
+        storeId: q.storeId,
+        categoryId: q.categoryId,
+        date: q.date,
+        amount: q.amount,
+        employeeId: q.employeeId,
+        vehicleId: q.vehicleId,
+        excludeId: q.excludeId,
+      });
+      res.json({
+        success: true,
+        data: {
+          duplicates,
+          overLimit: category.softLimit != null && q.amount > category.softLimit,
+          softLimit: category.softLimit,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ── GET /staff-payouts — staff list with allowance balance and advances owed ──
+router.get('/staff-payouts', requirePermission(Permission.EditExpenses), async (req, res, next) => {
+  try {
+    const storeId = String(req.query.storeId ?? '');
+    if (!storeId) throw new EntryRejectedError(['storeId is required']);
+    assertStoreAccess(req, storeId);
+    const { listStaffPayoutContext } = await import('../use-cases/expenses/expense-context.js');
+    res.json({ success: true, data: await listStaffPayoutContext(storeId) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── POST / — create expense ──
 router.post(
   '/',
@@ -128,11 +176,11 @@ router.post(
   validateBody(CreateExpenseRequestSchema),
   async (req, res, next) => {
     try {
-      const { createExpense } = await import(
-        '../use-cases/expenses/create-expense.js'
-      );
-      const result = await createExpense(req.body, {
+      assertStoreAccess(req, req.body.storeId);
+      const { createExpense } = await import('../use-cases/expenses/create-expense.js');
+      const result = await createExpense(req.body, actorOf(req), {
         expenses: req.app.locals.deps.expenseRepo,
+        config: req.app.locals.deps.configRepo,
       });
       res.status(201).json({ success: true, data: result });
     } catch (err) {
@@ -148,16 +196,10 @@ router.put(
   validateBody(UpdateExpenseRequestSchema),
   async (req, res, next) => {
     try {
-      const { updateExpense } = await import(
-        '../use-cases/expenses/update-expense.js'
-      );
-      const result = await updateExpense(
-        { expenseId: req.params.id as string, ...req.body },
-        {
-          expenses: req.app.locals.deps.expenseRepo,
-          accounting: req.app.locals.deps.accountingPort,
-        },
-      );
+      const { updateExpense } = await import('../use-cases/expenses/update-expense.js');
+      const result = await updateExpense(req.params.id as string, req.body, actorOf(req), {
+        config: req.app.locals.deps.configRepo,
+      });
       res.json({ success: true, data: result });
     } catch (err) {
       next(err);
@@ -165,27 +207,18 @@ router.put(
   },
 );
 
-// ── DELETE /:id — delete expense and reverse journal entries ──
-router.delete(
-  '/:id',
-  requirePermission(Permission.EditExpenses),
-  async (req, res, next) => {
-    try {
-      const { deleteExpense } = await import(
-        '../use-cases/expenses/delete-expense.js'
-      );
-      await deleteExpense(
-        { expenseId: req.params.id as string },
-        {
-          expenses: req.app.locals.deps.expenseRepo,
-        },
-      );
-      res.json({ success: true, data: { deleted: true } });
-    } catch (err) {
-      next(err);
-    }
-  },
-);
+// ── DELETE /:id — delete expense and its journal entries ──
+router.delete('/:id', requirePermission(Permission.EditExpenses), async (req, res, next) => {
+  try {
+    const { deleteExpense } = await import('../use-cases/expenses/delete-expense.js');
+    await deleteExpense(req.params.id as string, actorOf(req), {
+      expenses: req.app.locals.deps.expenseRepo,
+    });
+    res.json({ success: true, data: { deleted: true } });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // ── POST /pay — batch-pay unpaid expenses ──
 router.post(
@@ -199,63 +232,50 @@ router.post(
         paymentMethodId: string;
         storeId: string;
       };
+      assertStoreAccess(req, storeId);
 
       const sb = getSupabaseClient();
-
       const { data: expenseRows, error: expErr } = await sb
         .from('expenses')
-        .select('id, amount, account_id, category')
+        .select('id, amount, account_id, category, status, store_id')
         .in('id', expenseIds);
       if (expErr) throw new Error(`Failed to fetch expenses: ${expErr.message}`);
+      const rows = (expenseRows ?? []) as Row[];
+      if (rows.length !== new Set(expenseIds).size) {
+        throw new EntryRejectedError(['Some of the selected expenses no longer exist. Refresh and try again.']);
+      }
+      if (rows.some((r) => r.store_id !== storeId)) {
+        throw new EntryRejectedError(['All selected expenses must belong to this store.']);
+      }
+      if (rows.some((r) => r.status !== 'unpaid')) {
+        throw new EntryRejectedError(['Some of the selected expenses are already paid. Refresh and try again.']);
+      }
+      if (rows.some((r) => !r.account_id)) {
+        throw new EntryRejectedError(['An expense without an account can’t be paid. Edit it first.']);
+      }
 
-      const { data: routingRows, error: routeErr } = await sb
-        .from('payment_routing_rules')
-        .select('received_into_account_id')
-        .eq('store_id', storeId)
-        .eq('payment_method_id', paymentMethodId)
-        .limit(1);
-      if (routeErr)
-        throw new Error(`Failed to fetch routing rules: ${routeErr.message}`);
-
-      const resolvedAccountId = (routingRows?.[0] as Record<string, unknown> | undefined)
-        ?.received_into_account_id as string | undefined;
-      if (!resolvedAccountId)
-        throw new Error('No payment routing rule found for the selected method');
+      const { resolvePaidFrom } = await import('../use-cases/expenses/expense-context.js');
+      const resolvedAccountId = await resolvePaidFrom(storeId, paymentMethodId);
 
       const now = new Date();
       const todayDate = formatManilaDate(now);
       const period = todayDate.slice(0, 7);
       const txId = randomUUID();
 
-      const legs: Record<string, unknown>[] = [];
-      for (const row of (expenseRows ?? []) as Record<string, unknown>[]) {
+      const legs: Row[] = [];
+      for (const row of rows) {
         const amt = Number(row.amount ?? 0);
-        legs.push({
-          id: randomUUID(),
+        const base = {
           transaction_id: txId,
           period,
           date: todayDate,
           store_id: storeId,
-          account_id: row.account_id as string,
-          debit: amt,
-          credit: 0,
-          description: `Batch payment - ${row.category as string}`,
+          description: `Batch payment - ${String(row.category)}`,
           reference_type: 'expense',
           reference_id: row.id as string,
-        });
-        legs.push({
-          id: randomUUID(),
-          transaction_id: txId,
-          period,
-          date: todayDate,
-          store_id: storeId,
-          account_id: resolvedAccountId,
-          debit: 0,
-          credit: amt,
-          description: `Batch payment - ${row.category as string}`,
-          reference_type: 'expense',
-          reference_id: row.id as string,
-        });
+        };
+        legs.push({ ...base, id: randomUUID(), account_id: row.account_id as string, debit: amt, credit: 0 });
+        legs.push({ ...base, id: randomUUID(), account_id: resolvedAccountId, debit: 0, credit: amt });
       }
 
       const { error: payErr } = await sb.rpc('pay_expenses_atomic', {
@@ -264,8 +284,7 @@ router.post(
         p_paid_from: resolvedAccountId,
         p_legs: legs,
       });
-      if (payErr)
-        throw new Error(`pay_expenses_atomic failed: ${payErr.message}`);
+      if (payErr) throw new Error(`pay_expenses_atomic failed: ${payErr.message}`);
 
       res.json({ success: true });
     } catch (err) {
