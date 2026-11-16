@@ -105,15 +105,22 @@ export function SignaturePad({ onChange, height = 160 }: Props) {
   );
 }
 
-/** Downscale to keep the stored image small. */
+/** Must stay under the 300k-character cap in AcknowledgePayslipSchema. */
+const MAX_DATA_URL_LENGTH = 250_000;
+
+/** Downscale to keep the stored image small; busy signatures are shrunk further until they fit. */
 function exportPng(canvas: HTMLCanvasElement): string {
-  const maxW = 600;
-  const scale = Math.min(1, maxW / canvas.width);
-  const out = document.createElement('canvas');
-  out.width = Math.round(canvas.width * scale);
-  out.height = Math.round(canvas.height * scale);
-  const ctx = out.getContext('2d');
-  if (!ctx) return canvas.toDataURL('image/png');
-  ctx.drawImage(canvas, 0, 0, out.width, out.height);
-  return out.toDataURL('image/png');
+  let url = canvas.toDataURL('image/png');
+  for (const maxW of [600, 450, 320, 240]) {
+    const scale = Math.min(1, maxW / canvas.width);
+    const out = document.createElement('canvas');
+    out.width = Math.round(canvas.width * scale);
+    out.height = Math.round(canvas.height * scale);
+    const ctx = out.getContext('2d');
+    if (!ctx) return url;
+    ctx.drawImage(canvas, 0, 0, out.width, out.height);
+    url = out.toDataURL('image/png');
+    if (url.length <= MAX_DATA_URL_LENGTH) break;
+  }
+  return url;
 }

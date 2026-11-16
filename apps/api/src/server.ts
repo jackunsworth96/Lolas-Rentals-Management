@@ -122,6 +122,8 @@ app.use('/api/waiver', express.json({ limit: '5mb' }));
 // Contract bodies and signature data URLs.
 app.use('/api/public/contracts', express.json({ limit: '5mb' }));
 app.use('/api/contracts', express.json({ limit: '5mb' }));
+// Payslip sign-off carries a signature PNG (schema caps it at 300k chars).
+app.use('/api/me/payslips', express.json({ limit: '1mb' }));
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 
