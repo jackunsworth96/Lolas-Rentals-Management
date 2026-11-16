@@ -184,6 +184,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Keep brand colours as designed — opt out of browser-forced dark mode */
+:root {
+  color-scheme: only light;
+}
+
 html,
 body {
   overflow-x: clip; /* 'hidden' propagates to the viewport and clips position:fixed elements; 'clip' does not propagate */
