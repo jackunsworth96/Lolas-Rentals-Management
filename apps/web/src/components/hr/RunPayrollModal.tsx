@@ -206,7 +206,23 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun
   }
 
   function recalculate(excl = excluded, inp = inputs) {
-    previewMut.mutate(buildRequest(true, excl, inp), { onSuccess: (data) => applyPreview(data, true) });
+    previewMut.mutate(buildRequest(true, excl, inp), {
+      onSuccess: (data) => {
+        // A bonus change moves net pay; the first payment line takes the difference, then re-check.
+        let rebalanced: Record<string, EmpState> | null = null;
+        for (const p of data.payslips) {
+          const st = (rebalanced ?? inp)[p.employeeId];
+          if (!st || st.payments.length === 0 || Math.abs(sumLines(st.payments) - p.result.netPay) < 0.005) continue;
+          const lines = [...st.payments];
+          lines[0] = { ...lines[0], amount: r2(Math.max(0, p.result.netPay - sumLines(lines.slice(1)))) };
+          rebalanced = { ...(rebalanced ?? inp), [p.employeeId]: { ...st, payments: lines } };
+        }
+        if (!rebalanced) return applyPreview(data, true);
+        const next = rebalanced;
+        setInputs(next);
+        previewMut.mutate(buildRequest(true, excl, next), { onSuccess: (d) => applyPreview(d, true) });
+      },
+    });
   }
 
   /** Toggle rounding net pay up to the next whole peso; the first payment line takes the difference. */
@@ -261,7 +277,9 @@ export function RunPayrollModal({ isOpen, onClose, storeId, employees, onViewRun
     if (lines.length === 0) return;
     const others = sumLines(lines.slice(1));
     lines[0] = { ...lines[0], amount: r2(Math.max(0, net - others)) };
-    updateInput(id, { payments: lines });
+    const next = { ...inputs, [id]: { ...inputs[id], payments: lines } };
+    setInputs(next);
+    if (preview?.blockingErrors.length) recalculate(excluded, next);
   }
 
   function lineError(p: PayslipDraft): string | null {
