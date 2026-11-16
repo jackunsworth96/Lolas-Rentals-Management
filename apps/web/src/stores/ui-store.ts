@@ -26,6 +26,12 @@ function getStoredArchiveState(): { archiveMode: boolean; archivedStoreName: str
   }
 }
 
+/** Matches Tailwind's `md` breakpoint, where the sidebar stops being an overlay drawer. */
+export function isDesktop(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return true;
+  return window.matchMedia('(min-width: 768px)').matches;
+}
+
 const storedArchive = getStoredArchiveState();
 const initialStoreId = storedArchive.archiveMode
   ? (getStoredStoreId() ?? DEFAULT_STORE_ID)
@@ -36,11 +42,14 @@ interface UIState {
   archiveMode: boolean;
   archivedStoreName: string | null;
   sidebarOpen: boolean;
+  commandOpen: boolean;
   activeFilters: Record<string, string>;
   setSelectedStore: (storeId: string) => void;
   enterArchiveMode: (storeId: string, storeName: string) => void;
   exitArchiveMode: () => void;
   toggleSidebar: () => void;
+  closeSidebarOnMobile: () => void;
+  setCommandOpen: (open: boolean) => void;
   setFilter: (key: string, value: string) => void;
   clearFilters: () => void;
 }
@@ -49,7 +58,8 @@ export const useUIStore = create<UIState>((set) => ({
   selectedStoreId: initialStoreId,
   archiveMode: storedArchive.archiveMode,
   archivedStoreName: storedArchive.archivedStoreName,
-  sidebarOpen: true,
+  sidebarOpen: isDesktop(),
+  commandOpen: false,
   activeFilters: {},
   setSelectedStore: (storeId) => {
     try {
@@ -88,6 +98,10 @@ export const useUIStore = create<UIState>((set) => ({
     set({ selectedStoreId: DEFAULT_STORE_ID, archiveMode: false, archivedStoreName: null });
   },
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+  closeSidebarOnMobile: () => {
+    if (!isDesktop()) set({ sidebarOpen: false });
+  },
+  setCommandOpen: (open) => set({ commandOpen: open }),
   setFilter: (key, value) => set((s) => ({ activeFilters: { ...s.activeFilters, [key]: value } })),
   clearFilters: () => set({ activeFilters: {} }),
 }));

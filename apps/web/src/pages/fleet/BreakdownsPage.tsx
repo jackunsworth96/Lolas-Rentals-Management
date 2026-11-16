@@ -3,6 +3,7 @@ import { AlertCircle, Plus, ChevronRight } from 'lucide-react';
 import { useBreakdowns, ISSUE_TYPE_LABELS, RESOLUTION_TYPE_LABELS } from '../../api/breakdowns.js';
 import type { BreakdownReport } from '../../api/breakdowns.js';
 import { useUIStore } from '../../stores/ui-store.js';
+import { PageTabs, INCIDENT_TABS } from '../../components/layout/PageTabs.js';
 import { Badge } from '../../components/common/Badge.js';
 import { BreakdownReportModal } from '../../components/breakdowns/BreakdownReportModal.js';
 import { BreakdownDetailModal } from '../../components/breakdowns/BreakdownDetailModal.js';
@@ -49,6 +50,7 @@ export default function BreakdownsPage() {
 
   return (
     <div className="space-y-6 p-6">
+      <PageTabs tabs={INCIDENT_TABS} className="" />
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">

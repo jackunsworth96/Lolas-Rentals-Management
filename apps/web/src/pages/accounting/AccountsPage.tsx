@@ -7,6 +7,7 @@ import {
 } from '../../api/accounting.js';
 import { useFleetBookValueSummary } from '../../api/fleet.js';
 import { useStores } from '../../api/config.js';
+import { useAuthStore } from '../../stores/auth-store.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { manilaToday } from '../../utils/date.js';
 import { Badge } from '../../components/common/Badge.js';
@@ -173,6 +174,7 @@ function FleetBookValueCallout() {
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function AccountsPage() {
   const navigate = useNavigate();
+  const canEditAccounts = useAuthStore((s) => s.hasPermission('can_edit_accounts'));
   const today = manilaToday();
   const [storeId, setStoreId] = useState('all');
   const [month, setMonth] = useState(manilaMonth);
@@ -304,6 +306,14 @@ export default function AccountsPage() {
               { label: 'Vehicle owner statements', onClick: () => navigate('/accounts/vehicle-owners') },
             ]}
           />
+          {canEditAccounts && (
+            <Link
+              to="/journal"
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-charcoal-brand hover:bg-gray-50"
+            >
+              New journal entry
+            </Link>
+          )}
           <button
             onClick={() => setReconcileFor(null)}
             disabled={!data}

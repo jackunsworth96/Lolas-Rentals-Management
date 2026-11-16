@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { Sidebar } from './Sidebar.js';
 import { Header } from './Header.js';
 import { TaskBanners } from './TaskBanners.js';
-import { MidayLostOpportunityBanner } from './MidayLostOpportunityBanner.js';
+import { CommandPalette } from './CommandPalette.js';
 import { useUIStore } from '../../stores/ui-store.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 import { useTaskRealtime } from '../../hooks/useTaskRealtime.js';
@@ -11,7 +11,6 @@ import { isArchivePath } from '../../utils/archive-mode.js';
 
 export function AppLayout() {
   const sidebarOpen = useUIStore((s) => s.sidebarOpen);
-  const selectedStoreId = useUIStore((s) => s.selectedStoreId);
   const employeeId = useAuthStore((s) => s.user?.employeeId);
   const archiveMode = useUIStore((s) => s.archiveMode);
   const archivedStoreName = useUIStore((s) => s.archivedStoreName);
@@ -27,7 +26,6 @@ export function AppLayout() {
 
   return (
     <div className="flex h-screen w-full min-w-0 overflow-hidden bg-gray-50">
-      {!archiveMode && <MidayLostOpportunityBanner storeId={selectedStoreId ?? ''} />}
       <Sidebar />
       {/*
         min-w-0: flex item default is min-width:auto (content size) — without this,
@@ -36,7 +34,7 @@ export function AppLayout() {
       */}
       <div
         className={`flex min-w-0 flex-1 flex-col transition-all ${
-          sidebarOpen ? 'ml-52' : 'ml-0 md:ml-16'
+          sidebarOpen ? 'md:ml-52' : 'md:ml-16'
         }`}
       >
         <Header />
@@ -58,6 +56,7 @@ export function AppLayout() {
         </main>
       </div>
       <TaskBanners />
+      <CommandPalette />
     </div>
   );
 }

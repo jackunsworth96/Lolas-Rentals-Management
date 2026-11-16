@@ -5,6 +5,7 @@ import { formatCurrency } from '../../utils/currency.js';
 import { formatDate } from '../../utils/date.js';
 import { Badge } from '../../components/common/Badge.js';
 import type { VehicleSummary } from '../../types/api.js';
+import { PageTabs, FLEET_TABS } from '../../components/layout/PageTabs.js';
 
 const TODAY = new Date();
 const TODAY_LABEL = TODAY.toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -106,6 +107,7 @@ export default function AssetRegisterPage() {
 
   return (
     <div className="font-lato">
+      <PageTabs tabs={FLEET_TABS} />
       {/* ── Page header ─────────────────────────────────────────────────────── */}
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>

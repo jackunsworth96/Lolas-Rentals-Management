@@ -3,6 +3,7 @@ import { AlertTriangle, Plus, ChevronRight } from 'lucide-react';
 import { useAccidents } from '../../api/accidents.js';
 import type { AccidentReport } from '../../api/accidents.js';
 import { useUIStore } from '../../stores/ui-store.js';
+import { PageTabs, INCIDENT_TABS } from '../../components/layout/PageTabs.js';
 import { Badge } from '../../components/common/Badge.js';
 import { AccidentReportModal } from '../../components/accidents/AccidentReportModal.js';
 import { AccidentDetailModal } from '../../components/accidents/AccidentDetailModal.js';
@@ -37,6 +38,7 @@ export default function AccidentsPage() {
 
   return (
     <div className="space-y-6 p-6">
+      <PageTabs tabs={INCIDENT_TABS} className="" />
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">

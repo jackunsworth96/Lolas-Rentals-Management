@@ -6,6 +6,7 @@ import { ApiError } from '../../api/client.js';
 import { useStores, useVehicleModels } from '../../api/config.js';
 import { useUIStore } from '../../stores/ui-store.js';
 import { useAuthStore } from '../../stores/auth-store.js';
+import { PageTabs, FLEET_TABS } from '../../components/layout/PageTabs.js';
 import { Table } from '../../components/common/Table.js';
 import { Badge } from '../../components/common/Badge.js';
 import surfRackIcon from '../../assets/Home/Surf Rack Icon.svg';
@@ -329,6 +330,7 @@ export default function FleetPage() {
 
   return (
     <div className="w-full min-w-0">
+      <PageTabs tabs={FLEET_TABS} />
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <h1 className="text-2xl font-bold text-gray-900">Fleet</h1>

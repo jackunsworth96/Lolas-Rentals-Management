@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { useCreateJournalEntry } from '../../api/accounting.js';
 import { useChartOfAccounts, useStores } from '../../api/config.js';
 import { Button } from '../../components/common/Button.js';
@@ -135,6 +136,9 @@ export default function ManualJournalPage() {
   return (
     <div className="max-w-4xl">
       <div className="mb-6">
+        <Link to="/accounts" className="mb-2 inline-block text-sm text-gray-500 hover:text-gray-800">
+          ← Back to Accounts
+        </Link>
         <h1 className="text-2xl font-bold text-gray-900">Manual Journal Entry</h1>
         <p className="mt-1 text-sm text-gray-500">
           Post a manual double-entry journal — opening balances, adjustments, depreciation, or any

@@ -1,5 +1,5 @@
 const ARCHIVE_EXACT_PATHS = new Set([
-  '/orders/completed', '/fleet', '/fleet/asset-register', '/fleet/accidents',
+  '/orders/completed', '/fleet', '/fleet/asset-register', '/fleet/accidents', '/fleet/breakdowns',
   '/maintenance', '/transfers', '/accounts', '/budget', '/card-settlements',
   '/cashup', '/hr/employees', '/hr/timesheets', '/hr/payroll', '/expenses',
   '/misc-sales', '/customers', '/analytics',

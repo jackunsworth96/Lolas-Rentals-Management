@@ -134,9 +134,6 @@ vi.mock('../src/api/analytics.js', () => ({
 }));
 vi.mock('../src/api/config.js', () => ({ useStores: () => ({ data: [{ id: 'store-lolas', name: "Lola's" }] }) }));
 vi.mock('../src/api/fleet.js', () => ({ usePartnerProtection: () => ({ data: [] }) }));
-vi.mock('../src/api/lost-opportunity.js', () => ({
-  useLostOpportunities: () => ({ data: mocks.withData ? [{ id: 1, estValue: 1200 }] : undefined }),
-}));
 vi.mock('../src/stores/ui-store.js', () => ({
   useUIStore: (selector: (s: unknown) => unknown) => selector({ selectedStoreId: 'all' }),
 }));

@@ -1,207 +1,187 @@
-import { NavLink } from 'react-router-dom';
-import {
-  LayoutDashboard,
-  Inbox,
-  Car,
-  CheckSquare,
-  Plane,
-  AlertCircle,
-  Wrench,
-  ParkingSquare,
-  DollarSign,
-  BarChart2,
-  CreditCard,
-  Calculator,
-  Receipt,
-  ShoppingBag,
-  Users,
-  Clock,
-  Wallet,
-  ListTodo,
-  Package,
-  BookOpen,
-  AlertTriangle,
-  Settings,
-  UserSearch,
-  PenLine,
-  ClipboardList,
-  Hotel,
-  LineChart,
-  Heart,
-  Siren,
-  BatteryWarning,
-  FileText,
-  FileSignature,
-  UserCircle,
-  type LucideIcon,
-} from 'lucide-react';
+import { NavLink, useLocation } from 'react-router-dom';
+import { ChevronDown, Search, Star, X } from 'lucide-react';
 import { useUIStore } from '../../stores/ui-store.js';
 import { useAuthStore } from '../../stores/auth-store.js';
+import { useNavPrefsStore, usePins } from '../../stores/nav-prefs-store.js';
 import { useUnseenTaskCount } from '../../api/todo.js';
 import { usePortalSummary } from '../../api/me.js';
 import lolasLogo from '../../assets/Lolas Original Logo.svg';
 import { isArchivePath } from '../../utils/archive-mode.js';
-
-interface NavItem {
-  label: string;
-  path: string;
-  /** Shown when the user has this permission, or any of them for a list. */
-  perm: string | string[] | null;
-  icon: LucideIcon;
-}
-
-function hasNavPermission(perm: NavItem['perm'], perms: string[]): boolean {
-  if (!perm) return true;
-  return Array.isArray(perm) ? perm.some((p) => perms.includes(p)) : perms.includes(perm);
-}
-
-interface NavGroup {
-  label: string;
-  items: NavItem[];
-}
-
-const NAV_GROUPS: NavGroup[] = [
-  {
-    label: 'Operations',
-    items: [
-      { label: 'Dashboard', path: '/dashboard', perm: null, icon: LayoutDashboard },
-      { label: 'My Portal', path: '/me', perm: null, icon: UserCircle },
-      { label: 'To Do', path: '/todo', perm: 'can_view_todo', icon: ListTodo },
-      { label: 'Inbox', path: '/orders/inbox', perm: 'can_view_inbox', icon: Inbox },
-      { label: 'Active', path: '/orders/active', perm: 'can_view_active', icon: Car },
-      { label: 'Completed', path: '/orders/completed', perm: 'can_view_completed', icon: CheckSquare },
-      { label: 'Invoices', path: '/invoices', perm: 'can_manage_invoices', icon: FileText },
-      { label: 'Transfers', path: '/transfers', perm: 'can_view_transfers', icon: Plane },
-      { label: 'Lost Opportunity', path: '/lost-opportunity', perm: 'can_view_lostopportunity', icon: AlertCircle },
-    ],
-  },
-  {
-    label: 'Fleet',
-    items: [
-      { label: 'Fleet', path: '/fleet', perm: 'can_view_fleet', icon: ParkingSquare },
-      { label: 'Asset Register', path: '/fleet/asset-register', perm: 'can_view_accounts', icon: ClipboardList },
-      { label: 'Maintenance', path: '/maintenance', perm: 'can_view_maintenance', icon: Wrench },
-      { label: 'Accidents', path: '/fleet/accidents', perm: 'can_view_fleet', icon: Siren },
-      { label: 'Breakdowns', path: '/fleet/breakdowns', perm: 'can_view_fleet', icon: BatteryWarning },
-    ],
-  },
-  {
-    label: 'Finance',
-    items: [
-      { label: 'Accounts', path: '/accounts', perm: 'can_view_accounts', icon: DollarSign },
-      { label: 'Budget', path: '/budget', perm: 'can_view_accounts', icon: BarChart2 },
-      { label: 'Card Settlements', path: '/card-settlements', perm: 'can_view_cardsettlements', icon: CreditCard },
-      { label: 'Cash Up', path: '/cashup', perm: 'can_view_cashup', icon: Calculator },
-      { label: 'Journal Entry', path: '/journal', perm: 'can_edit_accounts', icon: PenLine },
-      { label: 'Expenses', path: '/expenses', perm: 'can_view_expenses', icon: Receipt },
-      { label: 'Misc Sales', path: '/misc-sales', perm: 'can_view_miscsales', icon: ShoppingBag },
-    ],
-  },
-  {
-    label: 'HR',
-    items: [
-      { label: 'Employees', path: '/hr/employees', perm: 'can_manage_employees', icon: Users },
-      { label: 'Timesheets', path: '/hr/timesheets', perm: 'can_view_timesheets', icon: Clock },
-      { label: 'Payroll', path: '/hr/payroll', perm: 'can_view_payroll', icon: Wallet },
-    ],
-  },
-  {
-    label: 'Business',
-    items: [
-      { label: 'Customers', path: '/customers', perm: null, icon: UserSearch },
-      { label: 'Partners', path: '/partners', perm: 'can_edit_settings', icon: Hotel },
-      { label: 'Contracts', path: '/contracts', perm: ['can_manage_contracts', 'can_manage_staff_contracts'], icon: FileSignature },
-      { label: 'Partner Utilization', path: '/partners/utilization', perm: 'can_edit_settings', icon: BarChart2 },
-      { label: 'Analytics', path: '/analytics', perm: 'can_view_dashboard', icon: LineChart },
-      { label: 'Impact Articles', path: '/impact', perm: 'can_edit_settings', icon: Heart },
-      { label: 'Merchandise', path: '/merchandise', perm: 'can_view_miscsales', icon: Package },
-      { label: 'Directory', path: '/directory', perm: 'can_view_directory', icon: BookOpen },
-    ],
-  },
-  {
-    label: 'Admin',
-    items: [
-      { label: 'UI Errors', path: '/ui-errors', perm: 'can_view_uierrors', icon: AlertTriangle },
-      { label: 'Settings', path: '/settings', perm: 'can_edit_settings', icon: Settings },
-      { label: 'Dev Tools', path: '/dev-tools', perm: 'can_edit_settings', icon: Wrench },
-    ],
-  },
-];
+import {
+  ALL_NAV_ITEMS,
+  MAX_PINS,
+  NAV_GROUPS,
+  SETTINGS_ITEM,
+  activeNavPath,
+  hasNavPermission,
+  type NavItem,
+} from './nav-config.js';
 
 export function Sidebar() {
   const open = useUIStore((s) => s.sidebarOpen);
   const archiveMode = useUIStore((s) => s.archiveMode);
+  const toggleSidebar = useUIStore((s) => s.toggleSidebar);
+  const closeSidebarOnMobile = useUIStore((s) => s.closeSidebarOnMobile);
+  const setCommandOpen = useUIStore((s) => s.setCommandOpen);
   const perms = useAuthStore((s) => s.user?.permissions ?? []);
   const employeeId = useAuthStore((s) => s.user?.employeeId) ?? '';
+  const collapsedGroups = useNavPrefsStore((s) => s.collapsedGroups);
+  const toggleGroup = useNavPrefsStore((s) => s.toggleGroup);
+  const { pins, togglePin } = usePins();
+  const { pathname } = useLocation();
+  const activePath = activeNavPath(pathname);
+
   const { data: unseenData } = useUnseenTaskCount(employeeId);
   const todoCount = (unseenData as { count?: number } | undefined)?.count ?? 0;
   const { data: portal } = usePortalSummary(!!employeeId && !archiveMode);
   const toSign = portal?.payslipsToSign ?? 0;
 
-  return (
-    <aside
-      className={`fixed inset-y-0 left-0 z-30 flex flex-col border-r border-gray-200 bg-white transition-all overflow-hidden ${
-        open ? 'w-52' : 'w-0 md:w-16'
-      }`}
-    >
-      {/* Logo */}
-      <div className="flex h-16 items-center justify-center border-b border-gray-100 px-4">
-        {open ? (
-          <img src={lolasLogo} alt="Lola's Rentals" className="h-10 w-auto object-contain" />
-        ) : (
-          <img src={lolasLogo} alt="Lola's Rentals" className="h-8 w-8 object-contain" />
+  const isVisible = (item: NavItem) =>
+    hasNavPermission(item.perm, perms) && (!archiveMode || isArchivePath(item.path));
+  const pinnedItems = archiveMode
+    ? []
+    : pins.map((p) => ALL_NAV_ITEMS.find((i) => i.path === p)!).filter(isVisible);
+  const pinsFull = pins.length >= MAX_PINS;
+
+  function badge(item: NavItem) {
+    if (!open) return null;
+    if (item.path === '/todo' && todoCount > 0) {
+      return (
+        <span className="ml-auto rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+          {todoCount > 99 ? '99+' : todoCount}
+        </span>
+      );
+    }
+    if (item.path === '/me' && toSign > 0) {
+      return (
+        <span className="ml-auto rounded-full bg-teal-600 px-1.5 py-0.5 text-[10px] font-bold text-white" title="Payslips to sign">
+          {toSign}
+        </span>
+      );
+    }
+    return null;
+  }
+
+  function renderItem(item: NavItem, keyPrefix = '') {
+    const isActive = activePath === item.path;
+    const pinned = pins.includes(item.path);
+    const canPin = open && !archiveMode && (pinned || !pinsFull);
+    return (
+      <div key={keyPrefix + item.path} className="group relative">
+        <NavLink
+          to={item.path}
+          title={!open ? item.label : undefined}
+          onClick={closeSidebarOnMobile}
+          className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+            isActive ? 'bg-teal-50 text-teal-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+          }`}
+        >
+          <item.icon className="h-4 w-4 shrink-0" />
+          {open && <span className="truncate">{item.label}</span>}
+          {badge(item)}
+        </NavLink>
+        {canPin && (
+          <button
+            type="button"
+            onClick={() => togglePin(item.path)}
+            className="absolute right-1.5 top-1/2 hidden -translate-y-1/2 rounded p-1 text-gray-400 hover:bg-white hover:text-amber-500 md:group-hover:block"
+            aria-label={pinned ? `Unpin ${item.label}` : `Pin ${item.label}`}
+            title={pinned ? 'Unpin' : 'Pin to top'}
+          >
+            <Star className={`h-3.5 w-3.5 ${pinned ? 'fill-amber-400 text-amber-500' : ''}`} />
+          </button>
         )}
       </div>
+    );
+  }
 
-      {/* Nav groups */}
-      <nav className="flex-1 overflow-y-auto px-2 py-3">
-        {NAV_GROUPS.map((group, groupIdx) => {
-          const visibleItems = group.items.filter(
-            (item) => hasNavPermission(item.perm, perms) && (!archiveMode || isArchivePath(item.path)),
-          );
-          if (visibleItems.length === 0) return null;
+  return (
+    <>
+      {open && (
+        <div className="fixed inset-0 z-[55] bg-black/30 md:hidden" onClick={toggleSidebar} aria-hidden="true" />
+      )}
+      <aside
+        className={`fixed inset-y-0 left-0 z-[60] flex flex-col overflow-hidden border-r border-gray-200 bg-white transition-all ${
+          open ? 'w-64 md:w-52' : 'w-0 md:w-16'
+        }`}
+      >
+        {/* Logo */}
+        <div className="relative flex h-16 shrink-0 items-center justify-center border-b border-gray-100 px-4">
+          <img
+            src={lolasLogo}
+            alt="Lola's Rentals"
+            className={open ? 'h-10 w-auto object-contain' : 'h-8 w-8 object-contain'}
+          />
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            className="absolute right-3 rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 md:hidden"
+            aria-label="Close menu"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
 
-          return (
-            <div key={group.label}>
-              {groupIdx > 0 && <div className="mx-3 my-1 h-px bg-gray-100" />}
+        {/* Quick search */}
+        <div className="shrink-0 px-2 pt-3">
+          <button
+            type="button"
+            onClick={() => {
+              closeSidebarOnMobile();
+              setCommandOpen(true);
+            }}
+            title={!open ? 'Search pages (Ctrl+K)' : undefined}
+            className="flex w-full items-center gap-3 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-400 hover:border-gray-300 hover:text-gray-600"
+          >
+            <Search className="h-4 w-4 shrink-0" />
+            {open && (
+              <>
+                <span>Search…</span>
+                <kbd className="ml-auto hidden rounded border border-gray-200 px-1 text-[10px] md:inline">Ctrl K</kbd>
+              </>
+            )}
+          </button>
+        </div>
 
-              {open && (
-                <p className="px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
-                  {group.label}
-                </p>
-              )}
-
-              {visibleItems.map((item) => (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  title={!open ? item.label : undefined}
-                  className={({ isActive }) =>
-                    `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                      isActive
-                        ? 'bg-teal-50 text-teal-700'
-                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                    }`
-                  }
-                >
-                  <item.icon className="h-4 w-4 shrink-0" />
-                  {open && <span>{item.label}</span>}
-                  {open && item.label === 'To Do' && todoCount > 0 && (
-                    <span className="ml-auto rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                      {todoCount > 99 ? '99+' : todoCount}
-                    </span>
-                  )}
-                  {open && item.path === '/me' && toSign > 0 && (
-                    <span className="ml-auto rounded-full bg-teal-600 px-1.5 py-0.5 text-[10px] font-bold text-white" title="Payslips to sign">
-                      {toSign}
-                    </span>
-                  )}
-                </NavLink>
-              ))}
+        <nav className="flex-1 overflow-y-auto px-2 py-2">
+          {open && pinnedItems.length > 0 && (
+            <div className="mb-1">
+              <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-widest text-gray-400">Pinned</p>
+              {pinnedItems.map((item) => renderItem(item, 'pin-'))}
             </div>
-          );
-        })}
-      </nav>
-    </aside>
+          )}
+
+          {NAV_GROUPS.map((group) => {
+            const items = group.items.filter(isVisible);
+            if (items.length === 0) return null;
+            const containsActive = items.some((i) => i.path === activePath);
+            const collapsed = open && !!collapsedGroups[group.label] && !containsActive;
+
+            return (
+              <div key={group.label}>
+                {open ? (
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.label)}
+                    aria-expanded={!collapsed}
+                    className="flex w-full items-center justify-between rounded px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-widest text-gray-400 hover:text-gray-600"
+                  >
+                    {group.label}
+                    <ChevronDown className={`h-3 w-3 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
+                  </button>
+                ) : (
+                  <div className="mx-3 my-1 h-px bg-gray-100" />
+                )}
+                {!collapsed && items.map((item) => renderItem(item))}
+              </div>
+            );
+          })}
+        </nav>
+
+        {isVisible(SETTINGS_ITEM) && (
+          <div className="shrink-0 border-t border-gray-100 px-2 py-2">{renderItem(SETTINGS_ITEM)}</div>
+        )}
+      </aside>
+    </>
   );
 }

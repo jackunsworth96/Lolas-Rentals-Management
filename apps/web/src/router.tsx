@@ -32,9 +32,7 @@ const ExpensesPage = lazy(() => import('./pages/expenses/ExpensesPage.js'));
 const TodoPage = lazy(() => import('./pages/todo/TodoPage.js'));
 const MiscSalesPage = lazy(() => import('./pages/misc-sales/MiscSalesPage.js'));
 const MerchandisePage = lazy(() => import('./pages/merchandise/MerchandisePage.js'));
-const LostOpportunityPage = lazy(() => import('./pages/lost-opportunity/LostOpportunityPage.js'));
 const SettingsPage = lazy(() => import('./pages/settings/SettingsPage.js'));
-const DevToolsPage = lazy(() => import('./pages/dev/DevToolsPage.js'));
 const PawCardPartnersPage = lazy(() => import('./pages/paw-card/PawCardPartnersPage.js'));
 const BrowseBookPage = lazy(() => import('./pages/booking/BrowseBookPage.js'));
 const BasketPage = lazy(() => import('./pages/basket/BasketPage.js'));
@@ -47,7 +45,6 @@ const RepairsPage = lazy(() => import('./pages/repairs/RepairsPage.js'));
 const AboutPage = lazy(() => import('./pages/about/AboutPage.js'));
 const PrivacyPage = lazy(() => import('./pages/privacy/PrivacyPage.js'));
 const TermsPage = lazy(() => import('./pages/terms/TermsPage.js'));
-const UIErrorsPage = lazy(() => import('./pages/ui-errors/UIErrorsPage.js'));
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage.js'));
 const DirectoryPage = lazy(() => import('./pages/directory/DirectoryPage.js'));
 const WaiverPage = lazy(() => import('./pages/waiver/WaiverPage.js'));
@@ -223,10 +220,7 @@ export function AppRouter() {
             <Route path="todo" element={<TodoPage />} />
             <Route path="misc-sales" element={<MiscSalesPage />} />
             <Route path="merchandise" element={<MerchandisePage />} />
-            <Route path="lost-opportunity" element={<LostOpportunityPage />} />
             <Route path="settings" element={<SettingsPage />} />
-            <Route path="ui-errors" element={<UIErrorsPage />} />
-            <Route path="dev-tools" element={<DevToolsPage />} />
             <Route path="directory" element={<RequireDirectory><DirectoryPage /></RequireDirectory>} />
             <Route path="customers" element={<CustomersPage />} />
             <Route path="partners" element={<PartnersPage />} />

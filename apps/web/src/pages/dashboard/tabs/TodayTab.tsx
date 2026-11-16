@@ -36,8 +36,6 @@ import {
 import { TodayMovements } from '../../../components/dashboard/TodayMovements.js';
 import { OverdueReturnsModal } from '../../../components/dashboard/OverdueReturnsModal.js';
 import { RevenueTransactionsModal } from '../../../components/dashboard/RevenueTransactionsModal.js';
-import { useLostOpportunities, type LostOpportunityRow } from '../../../api/lost-opportunity.js';
-import { useStores } from '../../../api/config.js';
 import { usePartnerProtection } from '../../../api/fleet.js';
 import { AvailabilityDetailModal } from '../../../components/dashboard/AvailabilityDetailModal.js';
 import { WalkInBookingModal } from '../../../components/orders/WalkInBookingModal.js';
@@ -74,22 +72,12 @@ export default function TodayTab({ storeId, selectedStoreId }: DashboardTabProps
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const canViewFinancial = hasPermission('can_view_dashboard');
   const canViewActive = hasPermission('can_view_active');
-  const canViewLostOpp = hasPermission('can_view_lostopportunity');
-
   const { data, isLoading, error } = useDashboardSummary(storeId);
   const { data: insights, isLoading: insightsLoading } = useDashboardInsights(storeId);
-  const { data: stores = [] } = useStores();
   const { data: protection = [] } = usePartnerProtection(storeId ?? 'all', hasPermission('can_view_fleet'));
   const { data: referralStats } = useReferralStats(selectedStoreId || undefined);
 
-  const today = manilaToday();
   const tomorrow = manilaToday(1);
-  const lostOppStoreId = selectedStoreId || (stores as Array<{ id: string }>)[0]?.id || '';
-  const { data: lostOppsData } = useLostOpportunities(lostOppStoreId, today) as {
-    data: LostOpportunityRow[] | undefined;
-  };
-  const lostOpps = lostOppsData ?? [];
-
   const [showAvailability, setShowAvailability] = useState(false);
   const [showRevenue, setShowRevenue] = useState(false);
   const [showOverdue, setShowOverdue] = useState(false);
@@ -163,14 +151,6 @@ export default function TodayTab({ storeId, selectedStoreId }: DashboardTabProps
         label: `${owing.length} 9PM ${owing.length === 1 ? 'return' : 'returns'} with balance owing`,
       });
     }
-    if (canViewLostOpp && lostOpps.length > 0) {
-      items.push({
-        id: 'lost-opps',
-        tone: 'warning',
-        label: `${lostOpps.length} missed ${lostOpps.length === 1 ? 'inquiry' : 'inquiries'} today`,
-        to: '/lost-opportunity',
-      });
-    }
     if (canViewFinancial && referralStats && referralStats.unmatchedRawNames.length > 0) {
       items.push({
         id: 'aliases',
@@ -180,7 +160,7 @@ export default function TodayTab({ storeId, selectedStoreId }: DashboardTabProps
       });
     }
     return items;
-  }, [data, metrics, lostOpps, canViewLostOpp, canViewFinancial, canViewActive, referralStats]);
+  }, [data, metrics, canViewFinancial, canViewActive, referralStats]);
 
   if (error) {
     return (
@@ -206,8 +186,6 @@ export default function TodayTab({ storeId, selectedStoreId }: DashboardTabProps
       ].filter((s) => s.value > 0)
     : [];
   const deposits = metrics?.depositsWithheldByMethod;
-  const lostValue = lostOpps.reduce((sum, o) => sum + (o.estValue ?? 0), 0);
-
   return (
     <div className="space-y-6">
       {!loading && <AttentionStrip items={attention} />}
@@ -383,7 +361,7 @@ export default function TodayTab({ storeId, selectedStoreId }: DashboardTabProps
       </div>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-12">
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm xl:col-span-6">
+        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm md:col-span-2 xl:col-span-12">
           <div className="flex items-start justify-between">
             <div>
               <h3 className="text-base font-semibold text-gray-900">Deposits held</h3>
@@ -405,29 +383,6 @@ export default function TodayTab({ storeId, selectedStoreId }: DashboardTabProps
           </div>
         </div>
 
-        {canViewLostOpp && (
-          <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm xl:col-span-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-base font-semibold text-gray-900">Lost opportunities today</h3>
-                <p className="mt-0.5 text-xs text-gray-400">Customers we couldn't serve, logged by staff</p>
-              </div>
-              <CardLink href="/lost-opportunity">View all →</CardLink>
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <div className="rounded-xl bg-gray-50 px-3 py-2">
-                <p className="text-xs text-gray-500">Missed inquiries</p>
-                <p className="text-lg font-semibold tabular-nums text-gray-900">{lostOpps.length}</p>
-              </div>
-              <div className="rounded-xl bg-gray-50 px-3 py-2">
-                <p className="text-xs text-gray-500">Estimated lost value</p>
-                <p className={`text-lg font-semibold tabular-nums ${lostValue > 0 ? 'text-red-600' : 'text-gray-900'}`}>
-                  {formatPeso(lostValue)}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       <AvailabilityDetailModal

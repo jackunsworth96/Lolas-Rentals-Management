@@ -1,3 +1,4 @@
+import { Search } from 'lucide-react';
 import { useAuthStore } from '../../stores/auth-store.js';
 import { useUIStore } from '../../stores/ui-store.js';
 
@@ -5,12 +6,22 @@ export function Header() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
+  const setCommandOpen = useUIStore((s) => s.setCommandOpen);
 
   return (
     <header className="relative z-50 flex h-16 min-w-0 items-center justify-between border-b border-gray-200 bg-white px-4 sm:px-6">
-      <div className="flex min-w-0 items-center">
+      <div className="flex min-w-0 items-center gap-1">
         <button onClick={toggleSidebar} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100" aria-label="Toggle sidebar">
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+        </button>
+        <button
+          onClick={() => setCommandOpen(true)}
+          className="flex items-center gap-2 rounded-lg p-2 text-gray-500 hover:bg-gray-100 sm:border sm:border-gray-200 sm:px-3 sm:py-1.5"
+          aria-label="Search pages"
+        >
+          <Search className="h-5 w-5 sm:h-4 sm:w-4" />
+          <span className="hidden text-sm text-gray-400 sm:inline">Search pages…</span>
+          <kbd className="hidden rounded border border-gray-200 px-1 text-[10px] text-gray-400 md:inline">Ctrl K</kbd>
         </button>
       </div>
       <div className="flex shrink-0 items-center gap-2 sm:gap-4">

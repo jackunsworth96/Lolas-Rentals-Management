@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useLateReturnsCheck, useUpsertLateReturnAssignment } from '../../api/cashup.js';
 import { useEmployees, type EmployeeRow } from '../../api/hr.js';
-import { useCreateLostOpportunity, type LostOpportunityRow } from '../../api/lost-opportunity.js';
 import { useTasks, useCloseTask, type TaskRow } from '../../api/todo.js';
 
 interface Props {
@@ -10,15 +9,6 @@ interface Props {
   onProceed: () => void;
   onCancel: () => void;
 }
-
-const LOST_OPP_REASONS = [
-  'No availability',
-  'Price too high',
-  'Competitor',
-  'Customer changed mind',
-  'Other',
-] as const;
-type LostOppReason = (typeof LOST_OPP_REASONS)[number];
 
 const PRIORITY_COLORS: Record<string, string> = {
   Urgent: 'bg-red-100 text-red-700',
@@ -88,51 +78,7 @@ export function BeforeCloseModal({ storeId, date, onProceed, onCancel }: Props) 
     );
   }
 
-  /* ─────────────────────────────── Section 2: Lost Opportunities ────────────────────────── */
-  const [lostOppState, setLostOppState] = useState<
-    'idle' | 'form' | 'none'
-  >('idle');
-  const [lostOppEntries, setLostOppEntries] = useState<LostOpportunityRow[]>([]);
-
-  const [loVehicle, setLoVehicle] = useState('');
-  const [loReason, setLoReason] = useState<LostOppReason>('No availability');
-  const [loDuration, setLoDuration] = useState('');
-  const [loNotes, setLoNotes] = useState('');
-  const [loSaving, setLoSaving] = useState(false);
-
-  const createLostOpp = useCreateLostOpportunity();
-
-  const lostOppAcked =
-    lostOppState === 'none' || lostOppEntries.length > 0;
-
-  function handleAddLostOpp() {
-    if (!loVehicle.trim()) return;
-    setLoSaving(true);
-    createLostOpp.mutate(
-      {
-        storeId,
-        date,
-        vehicleRequested: loVehicle.trim(),
-        reason: loReason,
-        quantity: 1,
-        durationDays: loDuration ? parseInt(loDuration) : null,
-        staffNotes: loNotes.trim() || null,
-      },
-      {
-        onSuccess: (saved) => {
-          setLostOppEntries((prev) => [...prev, saved]);
-          setLoVehicle('');
-          setLoDuration('');
-          setLoNotes('');
-          setLoSaving(false);
-          // Stay in form so staff can add another, but also mark as acked
-        },
-        onError: () => setLoSaving(false),
-      },
-    );
-  }
-
-  /* ─────────────────────────────── Section 3: Open Tasks ───────────────────────────────── */
+  /* ─────────────────────────────── Section 2: Open Tasks ───────────────────────────────── */
   const { data: allTasks = [] } = useTasks(storeId, {}) as { data: TaskRow[] | undefined };
 
   const openTodayTasks = useMemo(
@@ -163,7 +109,7 @@ export function BeforeCloseModal({ storeId, date, onProceed, onCancel }: Props) 
   }
 
   /* ─────────────────────────────── Overall gate ────────────────────────────────────────── */
-  const allAcked = lateAcked && lostOppAcked && allTasksDone;
+  const allAcked = lateAcked && allTasksDone;
 
   if (lateCheckLoading) {
     return (
@@ -182,7 +128,7 @@ export function BeforeCloseModal({ storeId, date, onProceed, onCancel }: Props) 
         <div className="border-b border-gray-200 px-6 py-4">
           <h2 className="text-lg font-bold text-gray-900">Before You Close</h2>
           <p className="mt-0.5 text-sm text-gray-500">
-            Complete all three sections before proceeding to cash up.
+            Complete both sections before proceeding to cash up.
           </p>
         </div>
 
@@ -245,127 +191,7 @@ export function BeforeCloseModal({ storeId, date, onProceed, onCancel }: Props) 
 
           {/* ─── Section 2 ─── */}
           <div className="py-5">
-            <SectionHeader step="2" title="Lost Bookings" done={lostOppAcked} />
-            {lostOppEntries.length > 0 && (
-              <ul className="mb-3 space-y-1">
-                {lostOppEntries.map((e, i) => (
-                  <li key={e.id ?? i} className="flex items-center gap-2 text-sm text-green-700">
-                    <span>✓</span>
-                    <span>
-                      {e.vehicleRequested} — {e.reason}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {lostOppState === 'idle' && (
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setLostOppState('form')}
-                  className="rounded-lg border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"
-                >
-                  + Log a lost booking
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setLostOppState('none')}
-                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                >
-                  None today
-                </button>
-              </div>
-            )}
-            {lostOppState === 'none' && lostOppEntries.length === 0 && (
-              <p className="text-sm text-gray-400">No lost bookings today ✓</p>
-            )}
-            {lostOppState === 'form' && (
-              <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">
-                    Vehicle requested *
-                  </label>
-                  <input
-                    type="text"
-                    value={loVehicle}
-                    onChange={(e) => setLoVehicle(e.target.value)}
-                    placeholder="e.g. Honda Beat, TukTuk"
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Reason *</label>
-                  <select
-                    value={loReason}
-                    onChange={(e) => setLoReason(e.target.value as LostOppReason)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                  >
-                    {LOST_OPP_REASONS.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-600">
-                      Duration (days)
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={loDuration}
-                      onChange={(e) => setLoDuration(e.target.value)}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                      placeholder="Optional"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-600">Staff notes</label>
-                    <input
-                      type="text"
-                      value={loNotes}
-                      onChange={(e) => setLoNotes(e.target.value)}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                      placeholder="Optional"
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleAddLostOpp}
-                    disabled={!loVehicle.trim() || loSaving}
-                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    {loSaving ? 'Adding…' : 'Add'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setLostOppState('none')}
-                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
-                  >
-                    Done
-                  </button>
-                </div>
-              </div>
-            )}
-            {/* After adding entries, show "add another / done" */}
-            {lostOppState === 'form' && lostOppEntries.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setLostOppState('none')}
-                className="mt-2 text-sm text-gray-500 underline"
-              >
-                Done adding
-              </button>
-            )}
-          </div>
-
-          {/* ─── Section 3 ─── */}
-          <div className="py-5">
-            <SectionHeader step="3" title="Open Tasks" done={allTasksDone} />
+            <SectionHeader step="2" title="Open Tasks" done={allTasksDone} />
             {openTodayTasks.length === 0 ? (
               <p className="text-sm text-gray-400">All tasks complete ✓</p>
             ) : (
