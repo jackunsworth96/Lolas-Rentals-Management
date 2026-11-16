@@ -24,6 +24,8 @@ export interface VehicleProps {
   orcrExpiryDate: string | null;
   surfRack: boolean;
   owner: string | null;
+  /** False for bikes rented out for an outside owner: never depreciated or on the asset register. */
+  isCompanyAsset?: boolean;
   rentableStartDate: string | null;
   registrationDate: string | null;
   purchasePrice: number | null;
@@ -54,6 +56,7 @@ export class Vehicle {
   readonly orcrExpiryDate: string | null;
   readonly surfRack: boolean;
   readonly owner: string | null;
+  readonly isCompanyAsset: boolean;
   readonly rentableStartDate: string | null;
   readonly registrationDate: string | null;
   readonly purchasePrice: number | null;
@@ -85,6 +88,7 @@ export class Vehicle {
     this.orcrExpiryDate = props.orcrExpiryDate;
     this.surfRack = props.surfRack;
     this.owner = props.owner;
+    this.isCompanyAsset = props.isCompanyAsset ?? true;
     this.rentableStartDate = props.rentableStartDate;
     this.registrationDate = props.registrationDate;
     this.purchasePrice = props.purchasePrice;

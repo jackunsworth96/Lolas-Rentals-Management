@@ -301,6 +301,7 @@ export default function AccountsPage() {
               { label: 'Transfer between accounts', onClick: () => setShowTransfer(true) },
               { label: 'Charity payout', onClick: () => setShowCharity(true) },
               { label: 'Owner drawings', onClick: () => setShowDrawings(true) },
+              { label: 'Vehicle owner statements', onClick: () => navigate('/accounts/vehicle-owners') },
             ]}
           />
           <button

@@ -88,6 +88,7 @@ export async function batchDepreciation(
 
   for (const vehicle of vehicles) {
     if (vehicle.isProtected()) continue;
+    if (!vehicle.isCompanyAsset) continue;
     if (!vehicle.usefulLifeMonths || vehicle.usefulLifeMonths <= 0) continue;
     if (vehicle.bookValue <= vehicle.salvageValue) continue;
 

@@ -73,7 +73,7 @@ export default function AssetRegisterPage() {
     storeList.find((s) => s.id === id)?.name ?? id;
 
   const filtered = useMemo(() => {
-    let list = allVehicles;
+    let list = allVehicles.filter((v) => v.isCompanyAsset !== false);
     if (storeFilter !== 'all') list = list.filter((v) => v.storeId === storeFilter);
     if (statusFilter !== 'All') list = list.filter((v) => assetStatus(v.status) === statusFilter);
     return list;

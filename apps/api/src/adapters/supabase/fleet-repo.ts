@@ -17,6 +17,7 @@ interface VehicleRow {
   orcr_expiry_date: string | null;
   surf_rack: boolean;
   owner: string | null;
+  is_company_asset: boolean | null;
   rentable_start_date: string | null;
   registration_date: string | null;
   purchase_price: number | null;
@@ -49,6 +50,7 @@ function rowToVehicle(row: VehicleRow): Vehicle {
     orcrExpiryDate: row.orcr_expiry_date,
     surfRack: row.surf_rack,
     owner: row.owner,
+    isCompanyAsset: row.is_company_asset ?? true,
     rentableStartDate: row.rentable_start_date,
     registrationDate: row.registration_date,
     purchasePrice: row.purchase_price,
@@ -82,6 +84,7 @@ function vehicleToRow(vehicle: Vehicle): Record<string, unknown> {
     orcr_expiry_date: vehicle.orcrExpiryDate,
     surf_rack: vehicle.surfRack,
     owner: vehicle.owner,
+    is_company_asset: vehicle.isCompanyAsset,
     rentable_start_date: vehicle.rentableStartDate,
     registration_date: vehicle.registrationDate,
     purchase_price: vehicle.purchasePrice,

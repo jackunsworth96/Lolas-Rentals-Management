@@ -125,7 +125,7 @@ export function useFleetBookValueSummary() {
     queryKey: ['fleet-book-value-summary'],
     queryFn: async () => {
       const vehicles = await api.get<VehicleSummary[]>('/fleet?storeId=all');
-      const active = vehicles.filter((v) => v.status !== 'Sold');
+      const active = vehicles.filter((v) => v.status !== 'Sold' && v.isCompanyAsset !== false);
       const totalBookValue = active.reduce((sum, v) => sum + (v.bookValue ?? 0), 0);
       return { totalBookValue, activeCount: active.length };
     },

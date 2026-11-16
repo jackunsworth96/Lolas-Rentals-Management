@@ -24,6 +24,8 @@ export interface VehicleSummary {
   gpsId?: string | null;
   surfRack?: boolean;
   owner?: string | null;
+  /** False for bikes rented out for an outside owner (e.g. Claire's). */
+  isCompanyAsset?: boolean;
   purchasePrice?: number | null;
   purchaseDate?: string | null;
   setUpCosts?: number;

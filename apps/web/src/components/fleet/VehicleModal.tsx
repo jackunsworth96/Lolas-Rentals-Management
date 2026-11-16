@@ -35,6 +35,7 @@ export function VehicleModal({ open, onClose, vehicleId }: VehicleModalProps) {
   const [orcrExpiryDate, setOrcrExpiryDate] = useState('');
   const [surfRack, setSurfRack] = useState(false);
   const [owner, setOwner] = useState('');
+  const [isCompanyAsset, setIsCompanyAsset] = useState(true);
 
   const storeList = stores as Array<{ id: string; name: string }>;
   const modelList = models as Array<{ id: string; name: string }>;
@@ -56,6 +57,7 @@ export function VehicleModal({ open, onClose, vehicleId }: VehicleModalProps) {
       setOrcrExpiryDate(vehicle.orcrExpiryDate ?? '');
       setSurfRack(vehicle.surfRack ?? false);
       setOwner(vehicle.owner ?? '');
+      setIsCompanyAsset(vehicle.isCompanyAsset ?? true);
     }
   }, [vehicle]);
 
@@ -86,6 +88,7 @@ export function VehicleModal({ open, onClose, vehicleId }: VehicleModalProps) {
         orcrExpiryDate: orcrExpiryDate.trim() || null,
         surfRack,
         owner: owner.trim() || null,
+        isCompanyAsset,
       },
       { onSuccess: () => onClose() },
     );
@@ -213,6 +216,14 @@ export function VehicleModal({ open, onClose, vehicleId }: VehicleModalProps) {
             <input type="checkbox" checked={surfRack} onChange={(e) => setSurfRack(e.target.checked)}
               className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
             <span className="text-sm font-medium text-gray-700">Surf rack mount (a rack can be fitted)</span>
+          </label>
+          <label className="col-span-2 flex items-start gap-2">
+            <input type="checkbox" checked={isCompanyAsset} onChange={(e) => setIsCompanyAsset(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+            <span className="text-sm text-gray-700">
+              <span className="font-medium">Owned by Lola&apos;s</span>
+              <span className="block text-xs text-gray-500">Untick for bikes we rent out for someone else. They are not depreciated or shown on the asset register.</span>
+            </span>
           </label>
         </div>
         {mileageEvents.length > 0 && (

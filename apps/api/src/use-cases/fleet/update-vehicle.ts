@@ -16,6 +16,7 @@ export interface UpdateVehicleInput {
   orcrExpiryDate?: string | null;
   surfRack?: boolean;
   owner?: string | null;
+  isCompanyAsset?: boolean;
   storeId?: string;
   modelId?: string | null;
 }
@@ -53,6 +54,7 @@ export async function updateVehicle(
         : vehicle.orcrExpiryDate,
     surfRack: input.surfRack ?? vehicle.surfRack,
     owner: input.owner !== undefined ? input.owner : vehicle.owner,
+    isCompanyAsset: input.isCompanyAsset ?? vehicle.isCompanyAsset,
     rentableStartDate: vehicle.rentableStartDate,
     registrationDate: vehicle.registrationDate,
     purchasePrice: vehicle.purchasePrice,

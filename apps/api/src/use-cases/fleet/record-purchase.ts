@@ -47,6 +47,7 @@ export async function recordPurchase(
     orcrExpiryDate: vehicle.orcrExpiryDate,
     surfRack: vehicle.surfRack,
     owner: vehicle.owner,
+    isCompanyAsset: vehicle.isCompanyAsset,
     rentableStartDate: vehicle.rentableStartDate,
     registrationDate: vehicle.registrationDate,
     purchasePrice: input.purchasePrice,

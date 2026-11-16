@@ -108,6 +108,8 @@ function vehicleToDto(v: any) {
     currentMileage: v.currentMileage,
     orcrExpiryDate: v.orcrExpiryDate,
     surfRack: v.surfRack,
+    owner: v.owner ?? null,
+    isCompanyAsset: v.isCompanyAsset ?? true,
     purchasePrice: v.purchasePrice ?? null,
     purchaseDate: v.purchaseDate ?? null,
     usefulLifeMonths: v.usefulLifeMonths ?? null,
@@ -922,6 +924,7 @@ router.put('/:id', requirePermission(Permission.EditFleet), validateBody(z.objec
   mileageChangeReason: z.string().trim().max(1000).optional(),
   orcrExpiryDate: z.string().nullable().optional(),
   surfRack: z.boolean().optional(), owner: z.string().nullable().optional(),
+  isCompanyAsset: z.boolean().optional(),
   storeId: z.string().optional(), modelId: z.string().nullable().optional(),
 })), async (req, res, next) => {
   try {
