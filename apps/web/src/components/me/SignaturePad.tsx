@@ -13,20 +13,35 @@ export function SignaturePad({ onChange, height = 160 }: Props) {
   const hasInk = useRef(false);
   const [empty, setEmpty] = useState(true);
 
+  // Size the bitmap whenever the box gets real dimensions: inside a <dialog> it is 0 wide until showModal() runs.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ratio = window.devicePixelRatio || 1;
-    const width = canvas.offsetWidth;
-    canvas.width = width * ratio;
-    canvas.height = height * ratio;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.scale(ratio, ratio);
-    ctx.lineWidth = 2.2;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = '#111827';
+    const fit = () => {
+      const ratio = window.devicePixelRatio || 1;
+      const width = Math.round(canvas.offsetWidth * ratio);
+      const h = Math.round(height * ratio);
+      if (width === 0 || (canvas.width === width && canvas.height === h)) return;
+      canvas.width = width;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.scale(ratio, ratio);
+      ctx.lineWidth = 2.2;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = '#111827';
+      if (hasInk.current) {
+        hasInk.current = false;
+        setEmpty(true);
+        onChange(null);
+      }
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(canvas);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [height]);
 
   function point(e: React.PointerEvent<HTMLCanvasElement>) {
@@ -109,7 +124,8 @@ export function SignaturePad({ onChange, height = 160 }: Props) {
 const MAX_DATA_URL_LENGTH = 250_000;
 
 /** Downscale to keep the stored image small; busy signatures are shrunk further until they fit. */
-function exportPng(canvas: HTMLCanvasElement): string {
+function exportPng(canvas: HTMLCanvasElement): string | null {
+  if (canvas.width === 0 || canvas.height === 0) return null;
   let url = canvas.toDataURL('image/png');
   for (const maxW of [600, 450, 320, 240]) {
     const scale = Math.min(1, maxW / canvas.width);

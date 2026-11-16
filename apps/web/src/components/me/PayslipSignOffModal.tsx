@@ -183,6 +183,11 @@ export function PayslipSignOffModal({ payslip, defaultName, onClose }: { payslip
               />
             </div>
 
+            {mode === 'confirm' && !canSubmit && (
+              <p className="text-xs text-gray-500">
+                To sign: {[!agreed && 'tick the confirm box', !signature && 'draw your signature', name.trim().length < 2 && 'enter your full name'].filter(Boolean).join(', ')}.
+              </p>
+            )}
             {ack.error && <p className="text-sm text-red-600">{(ack.error as Error).message}</p>}
           </div>
         )}
