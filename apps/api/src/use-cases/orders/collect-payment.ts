@@ -10,7 +10,7 @@ import {
 } from '@lolas/domain';
 import { supabase } from '../../adapters/supabase/client.js';
 import { formatManilaDate } from '../../utils/manila-date.js';
-import { isDepositPayment } from '@lolas/shared';
+import { isAddonIou, isDepositPayment } from '@lolas/shared';
 
 function serialiseLeg(leg: JournalLeg): Record<string, unknown> {
   return {
@@ -53,16 +53,16 @@ export async function collectPayment(
   if (!order) throw new Error(`Order ${input.orderId} not found`);
 
   // Fetch existing payments before inserting the new one so we can decide
-  // whether to absorb any pending extension IOUs in the same transaction.
+  // whether to absorb any pending extension/add-on IOUs in the same transaction.
   const existingPayments = await paymentRepo.findByOrderId(order.id);
 
   // Compute the net rental-cash already received (mirrors the display formula:
-  // exclude deposits, exclude pending/absorbed extension IOUs, subtract refunds).
+  // exclude deposits, exclude pending/absorbed IOUs, subtract refunds).
   const paidBefore = existingPayments.reduce((sum, p) => {
     if (isDepositPayment(p.paymentType)) return sum;
     if (p.paymentType === 'extension' &&
         (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return sum;
-    if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return sum;
+    if (isAddonIou(p)) return sum;
     if (p.paymentType === 'refund') return sum - p.amount;
     return sum + p.amount;
   }, 0);
@@ -71,12 +71,13 @@ export async function collectPayment(
   const finalTotalNum = order.finalTotal.toNumber();
   const newTotalPaid = paidBefore + input.amount;
 
-  // Collect IDs of pending extension IOUs to absorb — only when the payment
-  // clears the balance (newTotalPaid ≥ finalTotal). If the customer still owes
-  // money after this payment, leave the IOUs pending so staff are reminded.
+  // Collect IDs of pending IOUs to absorb — only when the payment clears the
+  // balance (newTotalPaid ≥ finalTotal). If the customer still owes money after
+  // this payment, leave the IOUs pending so staff are reminded.
   const iouIdsToAbsorb: string[] = newTotalPaid >= finalTotalNum
     ? existingPayments
-        .filter((p) => p.paymentType === 'extension' && p.settlementStatus === 'pending')
+        .filter((p) => p.settlementStatus === 'pending'
+          && (p.paymentType === 'extension' || (p.paymentType === 'addon' && p.paymentMethodId === 'pending')))
         .map((p) => p.id)
     : [];
 
@@ -184,7 +185,7 @@ export async function collectPayment(
     if (isDepositPayment(p.paymentType)) return sum;
     if (p.paymentType === 'extension' &&
         (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return sum;
-    if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return sum;
+    if (isAddonIou(p)) return sum;
     if (p.paymentType === 'refund') return sum.subtract(Money.php(p.amount));
     return sum.add(Money.php(p.amount));
   }, Money.zero());

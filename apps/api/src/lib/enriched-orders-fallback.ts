@@ -90,7 +90,7 @@ export async function loadEnrichedOrdersFallback(sb: SupabaseClient, storeId: st
       total_paid: orderPayments.reduce((sum, p) => {
         if (isDepositPayment(p.payment_type) ||
             (p.payment_type === 'extension' && ['pending', 'absorbed'].includes(p.settlement_status)) ||
-            (p.payment_type === 'addon' && p.payment_method_id === 'pending' && p.settlement_status === 'pending')) return sum;
+            (p.payment_type === 'addon' && p.payment_method_id === 'pending' && ['pending', 'absorbed'].includes(p.settlement_status))) return sum;
         return sum + (p.payment_type === 'refund' ? -1 : 1) * Number(p.amount ?? 0);
       }, 0),
       pending_extensions_total: orderPayments.reduce((sum, p) =>

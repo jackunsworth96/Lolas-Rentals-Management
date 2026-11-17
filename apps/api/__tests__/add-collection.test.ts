@@ -158,6 +158,10 @@ function buildDeps(opts: {
     orders_raw: null,
     accommodation_partners: opts.partnerRow ?? null,
     partner_vehicle_terms: [],
+    chart_of_accounts: [
+      { id: 'acct-receivable', name: 'Accounts Receivable', account_type: 'Asset' },
+      { id: 'acct-income', name: 'Rental Income', account_type: 'Income' },
+    ],
   }));
 
   return {
@@ -193,6 +197,21 @@ describe('addCollection', () => {
     expect(payment.paymentMethodId).toBe('pending');
     expect(payment.settlementStatus).toBe('pending');
     expect(payment.settlementRef).toContain('Bravo Beach Resort');
+  });
+
+  it('books an unpaid fee as receivable and income so a later payment clears it', async () => {
+    const order = buildOrder();
+    const { deps, accountingPort } = buildDeps({
+      order, item: baseItem, locations: [collectionLocation],
+    });
+
+    await addCollection(deps, { orderId: 'order-1', orderItemId: 'item-1', locationId: 5 });
+
+    const legs = accountingPort.createTransaction.mock.calls[0][0] as Array<{ accountId: string; debit: Money; credit: Money }>;
+    expect(legs.map((l) => [l.accountId, l.debit.toNumber(), l.credit.toNumber()])).toEqual([
+      ['acct-receivable', 300, 0],
+      ['acct-income', 0, 300],
+    ]);
   });
 
   it('waives the fee when the order\'s partner benefit grants free collection at that location', async () => {

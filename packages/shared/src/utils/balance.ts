@@ -17,3 +17,18 @@ export function calculateBalanceDue(finalTotal: number, totalPaid: number): numb
 export function isDepositPayment(paymentType: string | null | undefined): boolean {
   return paymentType === 'deposit' || paymentType === 'security_deposit';
 }
+
+/**
+ * An add-on or collection fee left to "collect later" (payment method
+ * 'pending'). While `pending` it is owed; once `absorbed`, a later payment has
+ * already collected it. Either way the row is not money received itself.
+ */
+export function isAddonIou(p: {
+  paymentType?: string | null;
+  paymentMethodId?: string | null;
+  settlementStatus?: string | null;
+}): boolean {
+  return p.paymentType === 'addon'
+    && p.paymentMethodId === 'pending'
+    && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed');
+}

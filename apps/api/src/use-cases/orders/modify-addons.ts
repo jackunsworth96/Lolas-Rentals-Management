@@ -11,6 +11,7 @@ import {
   Money,
 } from '@lolas/domain';
 import { formatManilaDate } from '../../utils/manila-date.js';
+import { orderChargeLegs, resolveOrderChargeAccounts } from '../../lib/order-charge-legs.js';
 
 export interface ModifyAddonsDeps {
   orderRepo: OrderRepository;
@@ -83,9 +84,16 @@ export async function modifyAddons(
     order.adjustTotal(Money.php(totalDelta));
   }
 
-  // Record payment for new add-ons (immediate or pending)
   const addedTotal = input.addons.reduce((s, a) => s + a.totalAmount, 0);
-  if (addedTotal > 0) {
+  const accounts = totalDelta !== 0 || addedTotal > 0
+    ? await resolveOrderChargeAccounts(order.storeId, input.receivableAccountId)
+    : null;
+  const legs: JournalLeg[] = accounts
+    ? orderChargeLegs(order.id, totalDelta, accounts, `Order ${order.id} add-ons ${totalDelta > 0 ? 'added' : 'removed'}`)
+    : [];
+
+  // Record payment for new add-ons (immediate or pending)
+  if (addedTotal > 0 && accounts) {
     const paymentAmount = Money.php(addedTotal);
     const isPending = !input.paymentMethodId || input.paymentMethodId === 'pending';
     const payment: Payment = {
@@ -107,7 +115,7 @@ export async function modifyAddons(
     await paymentRepo.save(payment);
 
     if (!isPending && !input.isCardPayment && input.accountId) {
-      const legs: JournalLeg[] = [
+      legs.push(
         {
           entryId: crypto.randomUUID(),
           accountId: input.accountId,
@@ -119,15 +127,14 @@ export async function modifyAddons(
         },
         {
           entryId: crypto.randomUUID(),
-          accountId: input.receivableAccountId!,
+          accountId: accounts.receivableAccountId,
           debit: Money.zero(),
           credit: paymentAmount,
           description: `Order ${order.id} addon receivable reduced`,
           referenceType: 'payment',
           referenceId: payment.id,
         },
-      ];
-      await accountingPort.createTransaction(legs, order.storeId);
+      );
     }
 
     if (!isPending && input.isCardPayment) {
@@ -167,6 +174,7 @@ export async function modifyAddons(
     // Do not call applyPayments — balance stays increased.
   }
 
+  if (legs.length > 0) await accountingPort.createTransaction(legs, order.storeId);
   await orderRepo.save(order);
 
   const updatedAddons = await orderAddonRepo.findByOrderId(order.id);

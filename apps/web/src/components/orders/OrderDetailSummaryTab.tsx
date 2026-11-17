@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { calculateBalanceDue, isDepositPayment, SWAP_REASON_CATEGORIES, SWAP_REASON_CATEGORY_LABELS, type SwapReasonCategory } from '@lolas/shared';
+import { calculateBalanceDue, isAddonIou, isDepositPayment, SWAP_REASON_CATEGORIES, SWAP_REASON_CATEGORY_LABELS, type SwapReasonCategory } from '@lolas/shared';
 import { CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Badge } from '../common/Badge.js';
 import { Modal } from '../common/Modal.js';
@@ -525,8 +525,8 @@ export function OrderDetailSummaryTab({
     // 'pending' → IOU not yet collected. 'absorbed' → rolled into the
     // settlement payment row (captured there, not here). Either way skip.
     if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return s;
-    // Addon with payment_method_id='pending' is an unpaid IOU (collect later) — no cash received yet.
-    if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return s;
+    // Addon IOU (collect later): not cash itself, whether still owed or absorbed by a later payment.
+    if (isAddonIou(p)) return s;
     // Refunds reduce the net amount received from the customer.
     if (p.paymentType === 'refund') return s - (p.amount ?? 0);
     return s + (p.amount ?? 0);
@@ -719,7 +719,7 @@ export function OrderDetailSummaryTab({
     const settleRentalPaidH = payments.reduce((s, p) => {
       if (isDepositPayment(p.paymentType)) return s;
       if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return s;
-      if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return s;
+      if (isAddonIou(p)) return s;
       return s + (p.amount ?? 0);
     }, 0);
     // Return charges paid by their own tender leave the rental balance alone;
@@ -1641,7 +1641,7 @@ export function OrderDetailSummaryTab({
                 const settleRentalPaid = payments.reduce((s, p) => {
                   if (isDepositPayment(p.paymentType)) return s;
                   if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return s;
-                  if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return s;
+                  if (isAddonIou(p)) return s;
                   return s + (p.amount ?? 0);
                 }, 0);
                 const settleBalance = calculateBalanceDue(total, settleRentalPaid)

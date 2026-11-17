@@ -426,7 +426,8 @@ export function computeCashupDay(raw: CashupRawData): CashupDayResult {
       continue;
     }
     if (paymentType === 'extension' && p.settlementStatus === 'absorbed') continue;
-    if (paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') continue;
+    if (paymentType === 'addon' && p.paymentMethodId === 'pending'
+      && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) continue;
 
     if (DEPOSIT_TYPES.has(paymentType)) {
       if (p.orderId && raw.completedOrderIds.has(p.orderId)) continue;

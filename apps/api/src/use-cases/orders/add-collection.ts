@@ -14,6 +14,7 @@ import {
 import { getSupabaseClient } from '../../adapters/supabase/client.js';
 import { formatManilaDate } from '../../utils/manila-date.js';
 import { lookupActivePartnerBySlug, applyPartnerBenefit } from '../../lib/partner-benefit.js';
+import { orderChargeLegs, resolveOrderChargeAccounts } from '../../lib/order-charge-legs.js';
 
 export interface AddCollectionDeps {
   orderRepo: OrderRepository;
@@ -156,9 +157,16 @@ export async function addCollection(
     order.adjustTotal(Money.php(delta));
   }
 
+  const accounts = delta !== 0
+    ? await resolveOrderChargeAccounts(order.storeId, input.receivableAccountId)
+    : null;
+  const legs: JournalLeg[] = accounts
+    ? orderChargeLegs(order.id, delta, accounts, `Order ${order.id} ${label.toLowerCase()} fee ${delta > 0 ? 'charged' : 'reduced'}`)
+    : [];
+
   // Record the charge, mirroring modify-addons.ts: either collected immediately
   // (payment method chosen) or left as a pending balance for later collection.
-  if (delta > 0) {
+  if (delta > 0 && accounts) {
     const paymentAmount = Money.php(delta);
     const isPending = !input.paymentMethodId || input.paymentMethodId === 'pending';
     const settlementRef = input.settlementRef ?? `${label} fee: ${location.name}`;
@@ -181,7 +189,7 @@ export async function addCollection(
     await paymentRepo.save(payment);
 
     if (!isPending && !input.isCardPayment && input.accountId) {
-      const legs: JournalLeg[] = [
+      legs.push(
         {
           entryId: crypto.randomUUID(),
           accountId: input.accountId,
@@ -193,15 +201,14 @@ export async function addCollection(
         },
         {
           entryId: crypto.randomUUID(),
-          accountId: input.receivableAccountId!,
+          accountId: accounts.receivableAccountId,
           debit: Money.zero(),
           credit: paymentAmount,
           description: `Order ${order.id} ${label.toLowerCase()} fee receivable reduced`,
           referenceType: 'payment',
           referenceId: payment.id,
         },
-      ];
-      await accountingPort.createTransaction(legs, order.storeId);
+      );
     }
 
     if (!isPending && input.isCardPayment) {
@@ -236,6 +243,7 @@ export async function addCollection(
     // When pending: adjustTotal already increased balanceDue correctly.
   }
 
+  if (legs.length > 0) await accountingPort.createTransaction(legs, order.storeId);
   await orderRepo.save(order);
 
   return {

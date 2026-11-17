@@ -229,7 +229,8 @@ async function totalPaidForOrder(orderId: string): Promise<number> {
     const amt = Number(row.amount ?? 0);
     if (isDepositPayment(row.payment_type)) return sum;
     if (row.payment_type === 'extension' && (row.settlement_status === 'pending' || row.settlement_status === 'absorbed')) return sum;
-    if (row.payment_type === 'addon' && row.payment_method_id === 'pending' && row.settlement_status === 'pending') return sum;
+    if (row.payment_type === 'addon' && row.payment_method_id === 'pending'
+      && (row.settlement_status === 'pending' || row.settlement_status === 'absorbed')) return sum;
     if (row.payment_type === 'refund') return sum - amt;
     return sum + amt;
   }, 0);

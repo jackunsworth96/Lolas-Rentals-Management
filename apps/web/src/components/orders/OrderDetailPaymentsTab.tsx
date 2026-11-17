@@ -39,7 +39,9 @@ export function OrderDetailPaymentsTab({ payments, totalPaid }: OrderDetailPayme
             const isExt = p.paymentType === 'extension';
             const isRefund = p.paymentType === 'refund';
             const isReturnCharge = p.paymentType === 'return_charge';
-            const isAddonIou = p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending';
+            const isAddonIou = p.paymentType === 'addon' && p.paymentMethodId === 'pending'
+              && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed');
+            const iouPaid = isAddonIou && p.settlementStatus === 'absorbed';
             return (
               <tr key={idx} className={`border-b hover:bg-sand-brand ${isExt ? 'bg-amber-50' : ''} ${isRefund ? 'bg-red-50' : ''}`}>
                 <td className="py-2 pr-4">{formatDate(p.transactionDate)}</td>
@@ -58,7 +60,12 @@ export function OrderDetailPaymentsTab({ payments, totalPaid }: OrderDetailPayme
                   ) : isAddonIou ? (
                     <span className="inline-flex items-center gap-1.5">
                       <span className="capitalize">{p.paymentType}</span>
-                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">Unpaid</span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${iouPaid ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}
+                        title={iouPaid ? 'Collected as part of a later payment' : undefined}
+                      >
+                        {iouPaid ? 'Paid' : 'Unpaid'}
+                      </span>
                     </span>
                   ) : (
                     <span className="capitalize">{p.paymentType ?? 'rental'}</span>

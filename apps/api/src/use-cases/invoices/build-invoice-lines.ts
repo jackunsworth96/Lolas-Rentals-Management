@@ -169,7 +169,8 @@ function addPayments(list: LineList, payments: PaymentRow[], methodNames: Map<st
     const type = p.payment_type;
     if (isDepositPayment(type) || type === 'deposit_refund' || type === 'deposit_applied') continue;
     if (type === 'extension' && (p.settlement_status === 'pending' || p.settlement_status === 'absorbed')) continue;
-    if (type === 'addon' && p.payment_method_id === 'pending' && p.settlement_status === 'pending') continue;
+    if (type === 'addon' && p.payment_method_id === 'pending'
+      && (p.settlement_status === 'pending' || p.settlement_status === 'absorbed')) continue;
     const method = p.payment_method_id ? methodNames.get(p.payment_method_id) ?? p.payment_method_id : null;
     const when = fmtDate(p.transaction_date);
     const detail = [method, when].filter(Boolean).join(', ');

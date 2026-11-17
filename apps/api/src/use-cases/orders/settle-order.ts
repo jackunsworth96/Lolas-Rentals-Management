@@ -20,7 +20,7 @@ import {
   isCashMethod,
   type StoreCashAccounts,
 } from '../../lib/deposit-envelope.js';
-import { isDepositPayment } from '@lolas/shared';
+import { isAddonIou, isDepositPayment } from '@lolas/shared';
 import { buildTipLegs, type TipInput } from '../../lib/tips.js';
 
 export interface SettleOrderDeps {
@@ -133,7 +133,7 @@ export async function settleOrder(
   const paidNonDepositPayments = payments.filter((p) => {
     if (isDepositPayment(p.paymentType)) return false;
     if (p.paymentType === 'extension' && (p.settlementStatus === 'pending' || p.settlementStatus === 'absorbed')) return false;
-    if (p.paymentType === 'addon' && p.paymentMethodId === 'pending' && p.settlementStatus === 'pending') return false;
+    if (isAddonIou(p)) return false;
     return true;
   });
 
@@ -656,6 +656,18 @@ export async function settleOrder(
       .update({ tips: Math.round((order.tips.toNumber() + tipAmount) * 100) / 100 })
       .eq('id', order.id);
     if (tipErr) console.error(`[settle-order] tip recorded in the ledger but orders.tips not updated for ${order.id}:`, tipErr.message);
+  }
+
+  const pendingAddonIouIds = payments
+    .filter((p) => p.settlementStatus === 'pending' && isAddonIou(p))
+    .map((p) => p.id);
+  if (pendingAddonIouIds.length > 0 && finalBalanceDue.toNumber() <= 0) {
+    const { error: iouErr } = await supabase
+      .from('payments')
+      .update({ settlement_status: 'absorbed' })
+      .in('id', pendingAddonIouIds)
+      .eq('settlement_status', 'pending');
+    if (iouErr) console.error(`[settle-order] add-on IOUs collected but not marked absorbed for ${order.id}:`, iouErr.message);
   }
 
   // Reload the order so we return a fresh domain object that
