@@ -6,6 +6,8 @@ import {
   CreateAdvanceRequestSchema,
   AcknowledgePayslipSchema,
   SaveWorkUpdateSchema,
+  SaveDayOffPicksSchema,
+  Permission,
 } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { formatManilaDate } from '../utils/manila-date.js';
@@ -140,6 +142,26 @@ router.post('/advance-requests/:id/cancel', async (req, res, next) => {
     const { cancelOwnRequest } = await import('../use-cases/hr/staff-requests.js');
     await cancelOwnRequest('advance_requests', String(req.params.id), me(req));
     res.json({ success: true, data: { id: req.params.id } });
+  } catch (err) { next(err); }
+});
+
+// ── Rota ────────────────────────────────────────────────────────────────────
+
+router.get('/rota', async (req, res, next) => {
+  try {
+    const { getRotaWeek, storeForEmployee } = await import('../use-cases/hr/rota.js');
+    const { rotaWeekStart } = await import('@lolas/domain');
+    const employeeId = me(req);
+    const weekStart = rotaWeekStart(isoDate(req.query.weekStart) ?? formatManilaDate());
+    const hasManagePermission = (req.user?.permissions ?? []).includes(Permission.ManageRota);
+    res.json({ success: true, data: await getRotaWeek(await storeForEmployee(employeeId), weekStart, { employeeId, hasManagePermission }, 'staff') });
+  } catch (err) { next(err); }
+});
+
+router.put('/rota/picks', validateBody(SaveDayOffPicksSchema), async (req, res, next) => {
+  try {
+    const { saveMyDayOffPicks } = await import('../use-cases/hr/rota.js');
+    res.json({ success: true, data: await saveMyDayOffPicks(me(req), req.body) });
   } catch (err) { next(err); }
 });
 

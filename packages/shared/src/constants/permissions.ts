@@ -30,6 +30,8 @@ export const Permission = {
   RunPayroll: 'can_run_payroll',
   /** Approve staff leave and cash advance requests, and resolve disputed payslips. */
   ApproveStaffRequests: 'can_approve_staff_requests',
+  /** Open the staff rota page. Editing also needs the employee to be a rota approver in rota_settings. */
+  ManageRota: 'can_manage_rota',
   ViewAccounts: 'can_view_accounts',
   ViewDirectory: 'can_view_directory',
   ViewDashboard: 'can_view_dashboard',

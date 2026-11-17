@@ -22,6 +22,7 @@ export * from './services/payroll-calculator.js';
 export * from './services/payroll-journal.js';
 export * from './services/leave-entitlement.js';
 export * from './services/expense-guards.js';
+export * from './services/rota-rules.js';
 
 // Errors
 export * from './errors/domain-error.js';

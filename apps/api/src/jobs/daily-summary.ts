@@ -218,6 +218,16 @@ export async function runMorningSummary(): Promise<void> {
       console.error('[daily-summary] returning-today query failed:', err);
     }
 
+    let ninePmDuty: string | null = null;
+    if (eveningCount > 0) {
+      try {
+        const { ninePmDutyFor } = await import('../use-cases/hr/rota.js');
+        ninePmDuty = await ninePmDutyFor('store-lolas', todayStr);
+      } catch (err) {
+        console.error('[daily-summary] 9pm duty lookup failed:', err);
+      }
+    }
+
     const divider = '━━━━━━━━━━━━━━━━━━━━━━━━━';
     const dayHeader = formatManilaDateTime(new Date()).split(',').slice(0, 2).join(',');
 
@@ -241,6 +251,7 @@ export async function runMorningSummary(): Promise<void> {
       `${returningSection}\n` +
       `${divider}\n` +
       `<b>9 PM returns tonight (${eveningCount}):</b>\n` +
+      (eveningCount > 0 ? `🌙 On duty: ${ninePmDuty ? escapeHtml(ninePmDuty) : '<b>nobody assigned on the rota</b>'}\n` : '') +
       `${eveningSection}\n` +
       `${divider}\n` +
       `${escapeHtml(timestamp)}`;

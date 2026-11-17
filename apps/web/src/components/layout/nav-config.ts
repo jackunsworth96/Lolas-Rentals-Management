@@ -27,6 +27,7 @@ import {
   FileText,
   FileSignature,
   UserCircle,
+  CalendarDays,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -109,6 +110,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'HR',
     items: [
       { label: 'Employees', path: '/hr/employees', perm: 'can_manage_employees', icon: Users, keywords: ['staff'] },
+      { label: 'Rota', path: '/hr/rota', perm: 'can_manage_rota', icon: CalendarDays, keywords: ['schedule', 'shifts', 'day off', 'roster'] },
       { label: 'Timesheets', path: '/hr/timesheets', perm: 'can_view_timesheets', icon: Clock },
       { label: 'Payroll', path: '/hr/payroll', perm: 'can_view_payroll', icon: Wallet, keywords: ['payslips', 'salary'] },
     ],

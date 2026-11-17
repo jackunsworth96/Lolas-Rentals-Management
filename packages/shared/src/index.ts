@@ -17,6 +17,7 @@ export * from './schemas/fleet-schemas.js';
 export * from './schemas/accounting-schemas.js';
 export * from './schemas/config-schemas.js';
 export * from './schemas/hr-schemas.js';
+export * from './schemas/rota-schemas.js';
 export * from './schemas/transfer-schemas.js';
 export * from './schemas/payroll-schemas.js';
 export * from './schemas/cashup-schemas.js';

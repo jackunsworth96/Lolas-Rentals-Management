@@ -19,6 +19,7 @@ import {
 import { formatCurrency } from '../../utils/currency.js';
 import { PayslipSignOffModal } from '../../components/me/PayslipSignOffModal.js';
 import { WorkUpdatesTab } from '../../components/me/WorkUpdatesTab.js';
+import { MyRotaCard } from '../../components/rota/MyRotaCard.js';
 
 type Tab = 'overview' | 'updates' | 'leave' | 'payslips' | 'timesheets' | 'advances';
 
@@ -489,6 +490,7 @@ export default function MyPortalPage() {
             {summary.leave.unpaidTakenThisYear > 0 && (
               <p className="text-sm text-gray-500">Unpaid leave taken this year: {summary.leave.unpaidTakenThisYear} day{summary.leave.unpaidTakenThisYear === 1 ? '' : 's'}.</p>
             )}
+            <MyRotaCard meId={user.employeeId} />
           </div>
         )
       )}
