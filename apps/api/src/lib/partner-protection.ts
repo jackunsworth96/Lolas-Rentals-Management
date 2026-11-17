@@ -103,6 +103,27 @@ export function partnerAllowances(d: ProtectionData, vehicleType: string, at: nu
   }).filter((a) => a.allowance > 0 || a.inUse > 0);
 }
 
+/** The most of the partner's own bookings sitting on their protected units at once during [start, end). */
+export function peakProtectedUse(d: ProtectionData, partnerId: string, vehicleType: string, start: number, end: number): number {
+  let peak = 0;
+  for (const at of boundaries(d, vehicleType, start, end)) {
+    const inUse = d.commitments.filter((c) => c.vehicleType === vehicleType && c.partnerId === partnerId
+      && c.pool === 'guaranteed' && covers(c, at)).length;
+    peak = Math.max(peak, inUse);
+  }
+  return peak;
+}
+
+/**
+ * True when, somewhere in [start, end), the shared pool is full while this
+ * partner still has a protected unit spare — the only moments a release helps.
+ */
+export function partnerHoldsBack(d: ProtectionData, vehicleType: string, partnerId: string, start: number, end: number): boolean {
+  if (start >= end) return false;
+  return boundaries(d, vehicleType, start, end).some((at) =>
+    poolCounts(d, vehicleType, null, at).sharedFree <= 0 && poolCounts(d, vehicleType, partnerId, at).protectedFree > 0);
+}
+
 /** The partners whose unused allowance blocks a non-partner booking at any point in [start, end). */
 export function blockingPartners(d: ProtectionData, vehicleType: string, exceptPartnerId: string | null, start: number, end: number): PartnerAllowance[] {
   const byId = new Map<string, PartnerAllowance>();

@@ -7,7 +7,7 @@ import { normalizeApiBase } from '../../api/normalize-api-base.js';
 import { useCreateWalkInDirect, type WalkInDirectPayload } from '../../api/orders-raw.js';
 import { TipField } from './TipField.js';
 import { useLocations, useAddons } from '../../api/config.js';
-import { useAvailableVehicles, useReleaseCapacityHold, type AllocationConflictDetails } from '../../api/fleet.js';
+import { canPickVehicle, useAvailableVehicles, useReleaseCapacityHold, type AllocationConflictDetails } from '../../api/fleet.js';
 import { InactiveModelNotice } from '../fleet/InactiveModelNotice.js';
 import { PartnerReleasePanel } from '../fleet/PartnerReleasePanel.js';
 import { useUIStore } from '../../stores/ui-store.js';
@@ -160,13 +160,14 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
   const { data: availableVehicles = [], isFetching: vehiclesLoading, isError: vehiclesError } =
     useAvailableVehicles(storeId, pickupDatetime, dropoffDatetime, partnerRef);
 
-  const protectedVehicles = availableVehicles.filter((v) => v.protectedFor);
+  const pickable = (v: (typeof availableVehicles)[number]) => canPickVehicle(v, availableVehicles);
+  const protectedVehicles = availableVehicles.filter((v) => v.protectedFor && !pickable(v));
   const protectedPartners = [...new Map(protectedVehicles
     .map((v) => [v.protectedFor!.partnerId ?? '', v.protectedFor!] as const)).values()];
 
   useEffect(() => {
     if (selectedVehicleId && !vehiclesLoading && !vehiclesError
-      && !availableVehicles.some((vehicle) => vehicle.id === selectedVehicleId && !vehicle.protectedFor)) {
+      && !availableVehicles.some((vehicle) => vehicle.id === selectedVehicleId && canPickVehicle(vehicle, availableVehicles))) {
       setSelectedVehicleId('');
       setVehicleModelId('');
     }
@@ -186,7 +187,7 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
   }, [open, initialVehicleId]);
   useEffect(() => {
     if (!open || !initialVehicleId || initialVehicleAppliedRef.current || vehiclesLoading) return;
-    const vehicle = availableVehicles.find((v) => v.id === initialVehicleId && !v.protectedFor);
+    const vehicle = availableVehicles.find((v) => v.id === initialVehicleId && canPickVehicle(v, availableVehicles));
     if (!vehicle) return;
     initialVehicleAppliedRef.current = true;
     setSelectedVehicleId(vehicle.id);
@@ -465,7 +466,7 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
 
   const isValid =
     customerName.trim() && isValidWhatsAppE164(customerMobile) && customerEmail.trim() &&
-    storeId && vehicleModelId && availableVehicles.some((vehicle) => vehicle.id === selectedVehicleId && !vehicle.protectedFor) && !vehiclesLoading && !vehiclesError &&
+    storeId && vehicleModelId && availableVehicles.some((vehicle) => vehicle.id === selectedVehicleId && pickable(vehicle)) && !vehiclesLoading && !vehiclesError &&
     pickupDate && pickupTime &&
     dropoffDate && dropoffTime &&
     pickupLocationId && dropoffLocationId &&
@@ -729,18 +730,18 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
                     <span className={LABEL_CLS}>Available vehicle <span className="text-red-500">*</span></span>
                     <div className="mt-1 max-h-44 overflow-y-auto rounded-lg border border-gray-300 divide-y divide-gray-100">
                       {[...availableVehicles]
-                        .sort((a, b) => Number(!!a.protectedFor) - Number(!!b.protectedFor) || a.name.localeCompare(b.name))
+                        .sort((a, b) => Number(!pickable(a)) - Number(!pickable(b)) || a.name.localeCompare(b.name))
                         .map((v) => (
                           <label
                             key={v.id}
-                            className={`flex items-center gap-3 px-3 py-2 transition-colors ${v.protectedFor ? 'cursor-not-allowed bg-amber-50/60 opacity-70' : 'cursor-pointer hover:bg-gray-50'} ${selectedVehicleId === v.id ? 'bg-teal-50' : ''}`}
+                            className={`flex items-center gap-3 px-3 py-2 transition-colors ${!pickable(v) ? 'cursor-not-allowed bg-amber-50/60 opacity-70' : 'cursor-pointer hover:bg-gray-50'} ${selectedVehicleId === v.id ? 'bg-teal-50' : ''}`}
                           >
                             <input
                               type="radio"
                               className="sr-only"
                               name="walk-in-vehicle"
                               value={v.id}
-                              disabled={!!v.protectedFor}
+                              disabled={!pickable(v)}
                               checked={selectedVehicleId === v.id}
                               onChange={() => {
                                 setSelectedVehicleId(v.id);
@@ -760,7 +761,9 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
                               )}
                               {v.protectedFor && (
                                 <span className="block font-lato text-[10px] font-semibold text-amber-800">
-                                  Protected for {v.protectedFor.partnerName ?? 'a partner'} on these dates
+                                  {pickable(v)
+                                    ? `Held for ${v.protectedFor.partnerName ?? 'a partner'} — picking it moves the hold to another free one`
+                                    : `Protected for ${v.protectedFor.partnerName ?? 'a partner'} on these dates`}
                                 </span>
                               )}
                             </span>

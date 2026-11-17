@@ -343,6 +343,20 @@ export interface AvailableVehicle {
   pendingReleaseAt?: string | null;
   /** Free, but kept back by a partner allocation for these dates. Booking it needs a Manager/Admin release. */
   protectedFor?: (ProtectedFor & { vehicleType: 'bike' | 'tuktuk' }) | null;
+  /** Allocation vehicle type; null when partner allocations are off. */
+  vehicleType?: 'bike' | 'tuktuk' | null;
+}
+
+/**
+ * Partner allocations hold back a count of vehicles per type, not particular
+ * ones, so a protected vehicle can still be picked while another free vehicle
+ * of the same type is unprotected — the protection moves to that one instead.
+ */
+export function canPickVehicle(vehicle: AvailableVehicle, available: AvailableVehicle[]): boolean {
+  if (!vehicle.protectedFor) return true;
+  const type = vehicle.protectedFor.vehicleType;
+  return available.some((other) => other.id !== vehicle.id && !other.protectedFor
+    && (other.vehicleType ? other.vehicleType === type : other.modelId === vehicle.modelId));
 }
 
 export function availableVehiclesQuery(

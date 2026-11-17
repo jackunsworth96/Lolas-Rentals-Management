@@ -9,6 +9,12 @@ export interface ProtectedLabel {
   vehicleType: string;
 }
 
+export interface ProtectionLabels {
+  labels: Map<string, ProtectedLabel>;
+  /** Allocation vehicle type ('bike' | 'tuktuk') of each vehicle, when allocations are on. */
+  vehicleTypes: Map<string, string>;
+}
+
 /**
  * Among vehicles that are physically free for [pickup, dropoff], the ones the
  * allocation rules keep back from this booking. Bikes with no upcoming
@@ -21,19 +27,21 @@ export async function labelProtectedForWindow(
   pickupDatetime: string,
   dropoffDatetime: string,
   partnerRef: string | null | undefined,
-): Promise<Map<string, ProtectedLabel>> {
+): Promise<ProtectionLabels> {
   const labels = new Map<string, ProtectedLabel>();
-  if (vehicles.length === 0) return labels;
+  const vehicleTypes = new Map<string, string>();
+  if (vehicles.length === 0) return { labels, vehicleTypes };
   const startMs = Date.parse(pickupDatetime);
   const endMs = Date.parse(dropoffDatetime) + HANDOVER_MS;
   const protection = await loadProtectionData(sb, storeId, startMs, endMs);
-  if (!protection.enabled) return labels;
+  if (!protection.enabled) return { labels, vehicleTypes };
   const partnerId = await resolvePartnerRef(sb, storeId, partnerRef);
 
   const byType = new Map<string, typeof vehicles>();
   for (const v of vehicles) {
     const vehicleType = v.model_id ? protection.typeOfModel.get(v.model_id) : undefined;
     if (!vehicleType) continue;
+    vehicleTypes.set(v.id, vehicleType);
     byType.set(vehicleType, [...(byType.get(vehicleType) ?? []), v]);
   }
 
@@ -53,7 +61,7 @@ export async function labelProtectedForWindow(
       });
     }
   }
-  return labels;
+  return { labels, vehicleTypes };
 }
 
 async function nextBookingByVehicle(sb: SupabaseClient, vehicleIds: string[], afterIso: string): Promise<Map<string, number>> {

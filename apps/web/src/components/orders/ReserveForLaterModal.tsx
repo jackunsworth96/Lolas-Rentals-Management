@@ -4,7 +4,7 @@ import { Modal } from '../common/Modal.js';
 import { WhatsAppNumberInput } from '../common/WhatsAppNumberInput.js';
 import { normalizeApiBase } from '../../api/normalize-api-base.js';
 import { useCreateWalkInReserved } from '../../api/orders-raw.js';
-import { useAvailableVehicles, type AvailableVehicle } from '../../api/fleet.js';
+import { canPickVehicle, useAvailableVehicles, type AvailableVehicle } from '../../api/fleet.js';
 import { PartnerReleasePanel } from '../fleet/PartnerReleasePanel.js';
 import { useLocations } from '../../api/config.js';
 import { useUIStore } from '../../stores/ui-store.js';
@@ -116,8 +116,9 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
   const { data: availableVehicles = [], isFetching: vehiclesLoading, isError: vehiclesError } =
     useAvailableVehicles(storeId, pickupDatetime, dropoffDatetime);
   const selectedVehicleAvailable = !vehiclesLoading && !vehiclesError
-    && availableVehicles.some((vehicle) => vehicle.id === selectedVehicleId && !vehicle.protectedFor);
-  const protectedVehicles = availableVehicles.filter((v) => v.protectedFor);
+    && availableVehicles.some((vehicle) => vehicle.id === selectedVehicleId && canPickVehicle(vehicle, availableVehicles));
+  const pickable = (v: AvailableVehicle) => canPickVehicle(v, availableVehicles);
+  const protectedVehicles = availableVehicles.filter((v) => v.protectedFor && !pickable(v));
   const protectedPartners = [...new Map(protectedVehicles
     .map((v) => [v.protectedFor!.partnerId ?? '', v.protectedFor!] as const)).values()];
 
@@ -517,18 +518,18 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
           ) : (
             <div className="mt-1 max-h-44 overflow-y-auto rounded-lg border border-gray-300 divide-y divide-gray-100">
               {[...(availableVehicles as AvailableVehicle[])]
-                .sort((a, b) => Number(!!a.protectedFor) - Number(!!b.protectedFor))
+                .sort((a, b) => Number(!pickable(a)) - Number(!pickable(b)))
                 .map((v) => (
                 <label
                   key={v.id}
-                  className={`flex items-center gap-3 px-3 py-2 transition-colors ${v.protectedFor ? 'cursor-not-allowed bg-amber-50/60 opacity-70' : 'cursor-pointer hover:bg-gray-50'} ${selectedVehicleId === v.id ? 'bg-teal-50' : ''}`}
+                  className={`flex items-center gap-3 px-3 py-2 transition-colors ${!pickable(v) ? 'cursor-not-allowed bg-amber-50/60 opacity-70' : 'cursor-pointer hover:bg-gray-50'} ${selectedVehicleId === v.id ? 'bg-teal-50' : ''}`}
                 >
                   <input
                     type="radio"
                     className="sr-only"
                     name="reserve-later-vehicle"
                     value={v.id}
-                    disabled={!!v.protectedFor}
+                    disabled={!pickable(v)}
                     checked={selectedVehicleId === v.id}
                     onChange={() => handleVehicleChange(v.id)}
                   />
@@ -536,7 +537,9 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
                     {v.name}
                     {v.protectedFor && (
                       <span className="block text-[10px] font-semibold text-amber-800">
-                        Protected for {v.protectedFor.partnerName ?? 'a partner'} on these dates
+                        {pickable(v)
+                          ? `Held for ${v.protectedFor.partnerName ?? 'a partner'} — picking it moves the hold to another free one`
+                          : `Protected for ${v.protectedFor.partnerName ?? 'a partner'} on these dates`}
                       </span>
                     )}
                   </span>

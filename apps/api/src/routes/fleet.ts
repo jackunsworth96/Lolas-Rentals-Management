@@ -788,8 +788,8 @@ router.get(
       // can't use so staff aren't surprised by ALLOCATION_CONFLICT at submit.
       // A pending booking being processed already holds its place in the pool and keeps it.
       const { labelProtectedForWindow } = await import('../use-cases/fleet/label-protected-vehicles.js');
-      const protectedFor = excludeRawOrderId
-        ? new Map()
+      const { labels: protectedFor, vehicleTypes } = excludeRawOrderId
+        ? { labels: new Map(), vehicleTypes: new Map<string, string>() }
         : await labelProtectedForWindow(sb, storeId, bookableVehicles, pickupDatetime, dropoffDatetime, partnerRef);
 
       res.json({
@@ -799,6 +799,7 @@ router.get(
           storeId: v.store_id, surfRack: v.surf_rack ?? false,
           pendingReleaseAt: pendingReleaseByVehicle.get(v.id) ?? null,
           protectedFor: protectedFor.get(v.id) ?? null,
+          vehicleType: vehicleTypes.get(v.id) ?? null,
         })),
       });
     } catch (err) { next(err); }
