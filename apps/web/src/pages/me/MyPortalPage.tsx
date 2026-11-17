@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { useAuthStore } from '../../stores/auth-store.js';
+import { Navigate } from 'react-router-dom';
+import { isStaffUser, useAuthStore } from '../../stores/auth-store.js';
 import {
   usePortalSummary,
   useMyPayslips,
@@ -383,8 +384,11 @@ function AdvancesTab() {
 
 export default function MyPortalPage() {
   const user = useAuthStore((s) => s.user);
-  const { data: summary, isLoading, error } = usePortalSummary();
+  const isStaff = isStaffUser(user);
+  const { data: summary, isLoading, error } = usePortalSummary(isStaff);
   const [tab, setTab] = useState<Tab>('overview');
+
+  if (!isStaff) return <Navigate to="/dashboard" replace />;
 
   if (!user?.employeeId) {
     return <div className="py-12 text-center text-gray-500">Your login isn&apos;t linked to an employee profile.</div>;

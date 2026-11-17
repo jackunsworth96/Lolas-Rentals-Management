@@ -1,4 +1,4 @@
-import type { Employee, EmployeeRepository } from '@lolas/domain';
+import type { Employee, EmployeeListOptions, EmployeeRepository, PersonType } from '@lolas/domain';
 import { Employee as EmployeeEntity } from '@lolas/domain';
 import { getSupabaseClient } from './client.js';
 import { parseDate } from './mappers.js';
@@ -10,6 +10,7 @@ interface EmployeeRow {
   full_name: string;
   role: string | null;
   status: string;
+  person_type?: PersonType | null;
   birthday: string | null;
   emergency_contact_name: string | null;
   emergency_contact_number: string | null;
@@ -56,6 +57,7 @@ function rowToEmployee(row: EmployeeRow): Employee {
     fullName: row.full_name,
     role: row.role,
     status: row.status,
+    personType: row.person_type ?? 'staff',
     birthday: row.birthday ?? null,
     emergencyContactName: row.emergency_contact_name ?? null,
     emergencyContactNumber: row.emergency_contact_number ?? null,
@@ -101,6 +103,7 @@ function employeeToRow(employee: Employee): Record<string, unknown> {
     full_name: employee.fullName,
     role: employee.role,
     status: employee.status,
+    person_type: employee.personType,
     birthday: employee.birthday,
     emergency_contact_name: employee.emergencyContactName,
     emergency_contact_number: employee.emergencyContactNumber,
@@ -139,12 +142,13 @@ function employeeToRow(employee: Employee): Record<string, unknown> {
 }
 
 export class SupabaseEmployeeRepository implements EmployeeRepository {
-  async findAll(): Promise<Employee[]> {
+  async findAll(options: EmployeeListOptions = {}): Promise<Employee[]> {
     const sb = getSupabaseClient();
-    const { data, error } = await sb
+    let query = sb
       .from('employees')
-      .select('*, employee_stores(store_id)')
-      .order('full_name');
+      .select('*, employee_stores(store_id)');
+    if (!options.includeNonStaff) query = query.eq('person_type', 'staff');
+    const { data, error } = await query.order('full_name');
 
     if (error) throw new Error(`findAll failed: ${error.message}`);
     return (data as EmployeeRow[]).map(rowToEmployee);
@@ -162,7 +166,7 @@ export class SupabaseEmployeeRepository implements EmployeeRepository {
     return data ? rowToEmployee(data as EmployeeRow) : null;
   }
 
-  async findByStore(storeId: string): Promise<Employee[]> {
+  async findByStore(storeId: string, options: EmployeeListOptions = {}): Promise<Employee[]> {
     const sb = getSupabaseClient();
     const { data: esData, error: esError } = await sb
       .from('employee_stores')
@@ -174,11 +178,12 @@ export class SupabaseEmployeeRepository implements EmployeeRepository {
     const employeeIds = (esData ?? []).map((r) => r.employee_id as string);
     if (employeeIds.length === 0) return [];
 
-    const { data, error } = await sb
+    let query = sb
       .from('employees')
       .select('*, employee_stores(store_id)')
-      .in('id', employeeIds)
-      .order('full_name');
+      .in('id', employeeIds);
+    if (!options.includeNonStaff) query = query.eq('person_type', 'staff');
+    const { data, error } = await query.order('full_name');
 
     if (error) throw new Error(`findByStore failed: ${error.message}`);
     return (data as EmployeeRow[]).map(rowToEmployee);
@@ -201,6 +206,7 @@ export class SupabaseEmployeeRepository implements EmployeeRepository {
       .select('*, employee_stores(store_id)')
       .in('id', employeeIds)
       .eq('status', 'Active')
+      .eq('person_type', 'staff')
       .order('full_name');
 
     if (error) throw new Error(`findActive failed: ${error.message}`);

@@ -32,7 +32,7 @@ export async function listAllowanceBalances(storeId: string): Promise<AllowanceB
   const ids = [...new Set(((links ?? []) as Row[]).map((l) => String(l.employee_id)))];
   if (ids.length === 0) return [];
   const [empRes, ledRes] = await Promise.all([
-    sb.from('employees').select('id, full_name, status, monthly_bike_allowance').in('id', ids),
+    sb.from('employees').select('id, full_name, status, monthly_bike_allowance').in('id', ids).eq('person_type', 'staff'),
     sb.from('employee_allowance_ledger').select('employee_id, entry_date, entry_type, amount').in('employee_id', ids),
   ]);
   if (empRes.error) throw new Error(`Failed to load employees: ${empRes.error.message}`);

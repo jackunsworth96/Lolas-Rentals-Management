@@ -220,10 +220,32 @@ export function useDeleteRepairCost() {
     },
   });
 }
+export type PersonType = 'staff' | 'owner' | 'developer';
+
 export function useConfigEmployees() {
-  return useQuery<Array<{ id: string; fullName: string; storeId: string | null }>>({
+  return useQuery<Array<{ id: string; fullName: string; storeId: string | null; personType?: PersonType }>>({
     queryKey: ['config', 'employees'],
     queryFn: () => api.get('/config/employees'),
+  });
+}
+
+export interface AccessAccountInput {
+  fullName: string;
+  personType: 'owner' | 'developer';
+  username: string;
+  pin: string;
+  roleId: string;
+}
+
+/** Login for an owner or developer: creates their (non-staff) person record and the user in one step. */
+export function useCreateAccessAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AccessAccountInput) => api.post('/config/users/access-account', body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['config', 'users'] });
+      qc.invalidateQueries({ queryKey: ['config', 'employees'] });
+    },
   });
 }
 

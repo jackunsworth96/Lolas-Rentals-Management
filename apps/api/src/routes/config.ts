@@ -743,7 +743,7 @@ router.get('/employees', async (req, res, next) => {
   try {
     const stores = await req.app.locals.deps.configRepo.getStores();
     const results = await Promise.all(
-      stores.map((s: { id: string }) => req.app.locals.deps.employeeRepo.findByStore(s.id)),
+      stores.map((s: { id: string }) => req.app.locals.deps.employeeRepo.findByStore(s.id, { includeNonStaff: true })),
     );
     const seen = new Set<string>();
     const employees = results.flat()
@@ -752,8 +752,8 @@ router.get('/employees', async (req, res, next) => {
         seen.add(e.id);
         return true;
       })
-      .map((e: { id: string; fullName: string; storeId: string | null }) => ({
-        id: e.id, fullName: e.fullName, storeId: e.storeId,
+      .map((e: { id: string; fullName: string; storeId: string | null; personType: string }) => ({
+        id: e.id, fullName: e.fullName, storeId: e.storeId, personType: e.personType,
       }));
     res.json({ success: true, data: employees });
   } catch (e) { next(e); }
@@ -771,6 +771,23 @@ router.post('/users', edit, validateBody(z.object({
     const result = await saveUser({ configRepo: req.app.locals.deps.configRepo }, { ...req.body, isActive: req.body.isActive ?? true });
     const { pinHash: _, ...safeUser } = result;
     res.json({ success: true, data: safeUser });
+  } catch (e) { next(e); }
+});
+router.post('/users/access-account', edit, validateBody(z.object({
+  fullName: z.string().trim().min(1),
+  personType: z.enum(['owner', 'developer']),
+  username: z.string().trim().min(1),
+  pin: z.string().min(4),
+  roleId: z.string().min(1),
+})), async (req, res, next) => {
+  try {
+    const { createAccessAccount } = await import('../use-cases/settings/create-access-account.js');
+    const { user } = await createAccessAccount(
+      { configRepo: req.app.locals.deps.configRepo, employeeRepo: req.app.locals.deps.employeeRepo },
+      req.body,
+    );
+    const { pinHash: _, ...safeUser } = user;
+    res.status(201).json({ success: true, data: safeUser });
   } catch (e) { next(e); }
 });
 router.put('/users/:id', edit, validateBody(z.object({

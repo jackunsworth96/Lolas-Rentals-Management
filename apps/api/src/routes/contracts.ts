@@ -165,7 +165,7 @@ async function listCounterparties(req: Request, type: ContractCounterpartyType, 
     let q = sb.from('employees')
       .select('id, full_name, role, status, start_date, probation_end_date, rate_type, basic_rate, stores(name)')
       .order('full_name');
-    if (id) q = q.eq('id', id);
+    q = id ? q.eq('id', id) : q.eq('person_type', 'staff');
     const { data, error } = await q;
     if (error) throw new Error(`Failed to load employees: ${error.message}`);
     return ((data ?? []) as unknown as EmployeeRow[]).map((e) => ({

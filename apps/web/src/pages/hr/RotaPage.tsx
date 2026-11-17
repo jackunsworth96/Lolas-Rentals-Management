@@ -242,7 +242,7 @@ function SettingsModal({ week, open, onClose }: { week: RotaWeek; open: boolean;
             <thead className="text-xs uppercase tracking-wide text-gray-500">
               <tr><th className="pb-1">Name</th><th className="pb-1">Schedule</th><th className="pb-1">Days/week</th><th className="pb-1 text-center">Counts to cover</th></tr>
             </thead>
-            <tbody>{people.map((p) => <PersonPatternRow key={p.employeeId} p={p} />)}</tbody>
+            <tbody>{people.filter((p) => p.isStaff !== false).map((p) => <PersonPatternRow key={p.employeeId} p={p} />)}</tbody>
           </table>
         </div>
       </div>

@@ -8,6 +8,12 @@ interface AuthUser {
   roleId: string;
   storeIds: string[];
   permissions: string[];
+  /** Owners and developers sign in but are not staff. Missing on sessions from before this existed. */
+  personType?: 'staff' | 'owner' | 'developer';
+}
+
+export function isStaffUser(user: Pick<AuthUser, 'personType'> | null | undefined): boolean {
+  return (user?.personType ?? 'staff') === 'staff';
 }
 
 interface AuthState {

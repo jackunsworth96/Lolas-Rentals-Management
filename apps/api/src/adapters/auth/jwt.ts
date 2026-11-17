@@ -7,6 +7,12 @@ export interface TokenPayload {
   roleId: string;
   storeIds: string[];
   permissions: string[];
+  /** Missing on tokens issued before person types existed; treat as 'staff'. */
+  personType?: 'staff' | 'owner' | 'developer';
+}
+
+export function isStaffToken(payload: Pick<TokenPayload, 'personType'> | undefined): boolean {
+  return (payload?.personType ?? 'staff') === 'staff';
 }
 
 function getJwtSecret(): string {

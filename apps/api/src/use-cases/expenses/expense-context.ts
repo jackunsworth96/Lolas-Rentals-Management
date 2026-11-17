@@ -155,7 +155,7 @@ export async function listStaffPayoutContext(storeId: string): Promise<StaffPayo
   const ids = [...new Set(((links ?? []) as Row[]).map((l) => String(l.employee_id)))];
   if (ids.length === 0) return [];
   const [emp, led, adv] = await Promise.all([
-    sb.from('employees').select('id, full_name, status, monthly_bike_allowance').in('id', ids),
+    sb.from('employees').select('id, full_name, status, monthly_bike_allowance').in('id', ids).eq('person_type', 'staff'),
     sb.from('employee_allowance_ledger').select('employee_id, amount').in('employee_id', ids),
     sb.from('cash_advance_schedules').select('employee_id, remaining_balance').in('employee_id', ids).gt('remaining_balance', 0),
   ]);

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useUIStore } from '../../stores/ui-store.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 import { useEmployees } from '../../api/hr.js';
@@ -12,7 +13,7 @@ import { RemittancesTab } from '../../components/hr/payroll/RemittancesTab.js';
 import { AllowanceTab } from '../../components/hr/payroll/AllowanceTab.js';
 import { RequestsTab } from '../../components/hr/payroll/RequestsTab.js';
 import { WorkUpdatesReviewTab } from '../../components/hr/payroll/WorkUpdatesReviewTab.js';
-import { useStaffRequests } from '../../api/me.js';
+import { usePendingStaffRequestCount } from '../../api/me.js';
 import { duePeriod, payDateFor, periodFor } from '../../utils/payrollSchedule.js';
 
 type Tab = 'overview' | 'requests' | 'updates' | 'runs' | 'thirteenth' | 'allowance' | 'remittances' | 'holidays';
@@ -51,11 +52,14 @@ export default function PayrollPage() {
   const canRun = hasPermission('can_run_payroll');
   const canPayAllowance = hasPermission('can_edit_expenses');
   const canApprove = hasPermission('can_approve_staff_requests');
-  const { data: pendingRequests } = useStaffRequests('pending', storeId, canView && canApprove);
-  const pendingCount = (pendingRequests?.leave.length ?? 0) + (pendingRequests?.advances.length ?? 0)
-    + (pendingRequests?.disputes.filter((d) => !d.resolvedAt).length ?? 0);
+  const pendingCount = usePendingStaffRequestCount(storeId, canView && canApprove);
 
-  const [tab, setTab] = useState<Tab>('overview');
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<Tab>(() => {
+    const requested = searchParams.get('tab');
+    const allowed = TABS.some((t) => t.id === requested) && (canApprove || !['requests', 'updates'].includes(requested!));
+    return allowed ? (requested as Tab) : 'overview';
+  });
   const [showRunPayroll, setShowRunPayroll] = useState(false);
   const [openRunId, setOpenRunId] = useState<string | null>(null);
 

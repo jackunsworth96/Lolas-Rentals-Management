@@ -1,5 +1,8 @@
 import { InsufficientLeaveBalanceError } from '../errors/domain-error.js';
 
+/** Owners and developers have a login and an identity but are not staff (no payroll, rota or leave). */
+export type PersonType = 'staff' | 'owner' | 'developer';
+
 export interface EmployeeProps {
   id: string;
   storeId: string | null;
@@ -7,6 +10,7 @@ export interface EmployeeProps {
   fullName: string;
   role: string | null;
   status: string;
+  personType?: PersonType;
   birthday: string | null;
   emergencyContactName: string | null;
   emergencyContactNumber: string | null;
@@ -51,6 +55,7 @@ export class Employee {
   readonly fullName: string;
   readonly role: string | null;
   readonly status: string;
+  readonly personType: PersonType;
   readonly birthday: string | null;
   readonly emergencyContactName: string | null;
   readonly emergencyContactNumber: string | null;
@@ -95,6 +100,7 @@ export class Employee {
     this.fullName = props.fullName;
     this.role = props.role;
     this.status = props.status;
+    this.personType = props.personType ?? 'staff';
     this.birthday = props.birthday;
     this.emergencyContactName = props.emergencyContactName;
     this.emergencyContactNumber = props.emergencyContactNumber;
@@ -154,6 +160,7 @@ export class Employee {
       fullName: this.fullName,
       role: this.role,
       status: this.status,
+      personType: this.personType,
       birthday: this.birthday,
       emergencyContactName: this.emergencyContactName,
       emergencyContactNumber: this.emergencyContactNumber,

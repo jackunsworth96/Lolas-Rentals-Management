@@ -53,12 +53,21 @@ export function hasNavPermission(perm: NavItem['perm'], perms: string[]): boolea
   return Array.isArray(perm) ? perm.some((p) => perms.includes(p)) : perms.includes(perm);
 }
 
+/** Nav-only flag (never stored in the database) for pages that exist only for staff, not owners or developers. */
+export const STAFF_ONLY = 'nav:staff_only';
+
+/** The permissions nav visibility checks against: the role's permissions plus STAFF_ONLY for staff. */
+export function navPermissions(user: { permissions?: string[]; personType?: string } | null | undefined): string[] {
+  const perms = user?.permissions ?? [];
+  return (user?.personType ?? 'staff') === 'staff' ? [...perms, STAFF_ONLY] : perms;
+}
+
 export const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Operations',
     items: [
       { label: 'Dashboard', path: '/dashboard', perm: null, icon: LayoutDashboard, keywords: ['home', 'today'] },
-      { label: 'My Portal', path: '/me', perm: null, icon: UserCircle, keywords: ['payslip', 'leave', 'me'] },
+      { label: 'My Portal', path: '/me', perm: STAFF_ONLY, icon: UserCircle, keywords: ['payslip', 'leave', 'me'] },
       { label: 'To Do', path: '/todo', perm: 'can_view_todo', icon: ListTodo, keywords: ['tasks'] },
       { label: 'Inbox', path: '/orders/inbox', perm: 'can_view_inbox', icon: Inbox, keywords: ['orders', 'bookings', 'new'] },
       { label: 'Active', path: '/orders/active', perm: 'can_view_active', icon: Car, keywords: ['orders', 'rentals', 'returns'] },

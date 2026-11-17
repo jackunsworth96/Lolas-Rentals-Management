@@ -47,7 +47,7 @@ router.post('/login', validateBody(LoginRequestSchema), async (req, res, next) =
 
     const { data: employee, error: empErr } = await supabase
       .from('employees')
-      .select('store_id, status, employee_stores(store_id)')
+      .select('store_id, status, person_type, employee_stores(store_id)')
       .eq('id', user.employee_id)
       .maybeSingle();
     if (empErr) {
@@ -106,6 +106,7 @@ router.post('/login', validateBody(LoginRequestSchema), async (req, res, next) =
       roleId: user.role_id,
       storeIds,
       permissions: (permissions ?? []).map((p) => p.permission),
+      personType: (employee?.person_type as TokenPayload['personType']) ?? 'staff',
     };
 
     const token = generateToken(payload);

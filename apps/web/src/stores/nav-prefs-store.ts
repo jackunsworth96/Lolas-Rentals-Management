@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { ALL_NAV_ITEMS, MAX_PINS, defaultPins, hasNavPermission } from '../components/layout/nav-config.js';
+import { ALL_NAV_ITEMS, MAX_PINS, defaultPins, hasNavPermission, navPermissions } from '../components/layout/nav-config.js';
 import { useAuthStore } from './auth-store.js';
 
 interface NavPrefsState {
@@ -34,7 +34,7 @@ export const useNavPrefsStore = create<NavPrefsState>()(
 /** Pinned nav paths for the signed-in user, limited to pages they can still see. */
 export function usePins(): { pins: string[]; togglePin: (path: string) => boolean } {
   const user = useAuthStore((s) => s.user);
-  const perms = user?.permissions ?? [];
+  const perms = navPermissions(user);
   const userKey = user?.employeeId || user?.userId || 'anon';
   const stored = useNavPrefsStore((s) => s.pinsByUser[userKey]);
   const toggle = useNavPrefsStore((s) => s.togglePin);

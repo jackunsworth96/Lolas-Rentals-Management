@@ -1,10 +1,11 @@
+import { useMemo } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { ChevronDown, Search, Star, X } from 'lucide-react';
 import { useUIStore } from '../../stores/ui-store.js';
-import { useAuthStore } from '../../stores/auth-store.js';
+import { isStaffUser, useAuthStore } from '../../stores/auth-store.js';
 import { useNavPrefsStore, usePins } from '../../stores/nav-prefs-store.js';
 import { useUnseenTaskCount } from '../../api/todo.js';
-import { usePortalSummary } from '../../api/me.js';
+import { usePendingStaffRequestCount, usePortalSummary } from '../../api/me.js';
 import lolasLogo from '../../assets/Lolas Original Logo.svg';
 import { isArchivePath } from '../../utils/archive-mode.js';
 import {
@@ -14,6 +15,7 @@ import {
   SETTINGS_ITEM,
   activeNavPath,
   hasNavPermission,
+  navPermissions,
   type NavItem,
 } from './nav-config.js';
 
@@ -23,8 +25,10 @@ export function Sidebar() {
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
   const closeSidebarOnMobile = useUIStore((s) => s.closeSidebarOnMobile);
   const setCommandOpen = useUIStore((s) => s.setCommandOpen);
-  const perms = useAuthStore((s) => s.user?.permissions ?? []);
-  const employeeId = useAuthStore((s) => s.user?.employeeId) ?? '';
+  const user = useAuthStore((s) => s.user);
+  const perms = useMemo(() => navPermissions(user), [user]);
+  const employeeId = user?.employeeId ?? '';
+  const isStaff = isStaffUser(user);
   const collapsedGroups = useNavPrefsStore((s) => s.collapsedGroups);
   const toggleGroup = useNavPrefsStore((s) => s.toggleGroup);
   const { pins, togglePin } = usePins();
@@ -33,8 +37,11 @@ export function Sidebar() {
 
   const { data: unseenData } = useUnseenTaskCount(employeeId);
   const todoCount = (unseenData as { count?: number } | undefined)?.count ?? 0;
-  const { data: portal } = usePortalSummary(!!employeeId && !archiveMode);
+  const { data: portal } = usePortalSummary(!!employeeId && isStaff && !archiveMode);
   const toSign = portal?.payslipsToSign ?? 0;
+  const storeId = useUIStore((s) => s.selectedStoreId) ?? '';
+  const canReviewRequests = perms.includes('can_view_payroll') && perms.includes('can_approve_staff_requests');
+  const pendingRequests = usePendingStaffRequestCount(storeId, canReviewRequests && !archiveMode);
 
   const isVisible = (item: NavItem) =>
     hasNavPermission(item.perm, perms) && (!archiveMode || isArchivePath(item.path));
@@ -56,6 +63,13 @@ export function Sidebar() {
       return (
         <span className="ml-auto rounded-full bg-teal-600 px-1.5 py-0.5 text-[10px] font-bold text-white" title="Payslips to sign">
           {toSign}
+        </span>
+      );
+    }
+    if (item.path === '/hr/payroll' && pendingRequests > 0) {
+      return (
+        <span className="ml-auto rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white" title="Pending staff requests">
+          {pendingRequests > 99 ? '99+' : pendingRequests}
         </span>
       );
     }

@@ -207,9 +207,11 @@ interface Person {
   countsTowardCover: boolean;
   targetDaysPerWeek: number;
   telegramId: string | null;
+  isStaff: boolean;
 }
 
-async function loadPeople(storeId: string): Promise<Person[]> {
+/** Owners and developers are left out unless asked for: they can approve the rota but are never on it. */
+async function loadPeople(storeId: string, { includeNonStaff = false } = {}): Promise<Person[]> {
   const [{ data: home, error: hErr }, { data: links, error: lErr }] = await Promise.all([
     sb().from('employees').select('id').eq('store_id', storeId).eq('status', 'Active'),
     sb().from('employee_stores').select('employee_id').eq('store_id', storeId),
@@ -219,8 +221,10 @@ async function loadPeople(storeId: string): Promise<Person[]> {
   const ids = [...new Set([...(home ?? []).map((r) => String(r.id)), ...(links ?? []).map((r) => String(r.employee_id))])];
   if (ids.length === 0) return [];
 
+  let empQuery = sb().from('employees').select('id, full_name, role, status, rate_type, telegram_user_id, person_type').in('id', ids).eq('status', 'Active');
+  if (!includeNonStaff) empQuery = empQuery.eq('person_type', 'staff');
   const [{ data: emps, error: eErr }, { data: patterns, error: pErr }] = await Promise.all([
-    sb().from('employees').select('id, full_name, role, status, rate_type, telegram_user_id').in('id', ids).eq('status', 'Active'),
+    empQuery,
     sb().from('employee_work_patterns').select('*').in('employee_id', ids),
   ]);
   if (eErr) throw new Error(`Failed to load employees: ${eErr.message}`);
@@ -240,6 +244,7 @@ async function loadPeople(storeId: string): Promise<Person[]> {
       countsTowardCover: p ? Boolean(p.counts_toward_cover) : mode === 'rostered',
       targetDaysPerWeek: Number(p?.target_days_per_week ?? 6),
       telegramId: s(e.telegram_user_id),
+      isStaff: (e.person_type ?? 'staff') === 'staff',
     };
   });
   const order: Record<RotaMode, number> = { rostered: 0, self_managed: 1, excluded: 2 };
@@ -958,9 +963,9 @@ export async function updateWorkPattern(storeId: string, viewer: RotaViewer, emp
   await audit(storeId, rotaWeekStart(formatManilaDate()), viewer.employeeId, 'pattern_changed', { employeeId, detail: { ...input } });
 }
 
-/** Everyone the approver can configure, including people who are off the rota. */
+/** Everyone the approver can configure, including people who are off the rota and owners who can only approve. */
 export async function listRotaPeople(storeId: string): Promise<Array<Omit<Person, 'telegramId'> & { hasTelegram: boolean }>> {
-  return (await loadPeople(storeId)).map(({ telegramId, ...p }) => ({ ...p, hasTelegram: !!telegramId }));
+  return (await loadPeople(storeId, { includeNonStaff: true })).map(({ telegramId, ...p }) => ({ ...p, hasTelegram: !!telegramId }));
 }
 
 // ── Reminders (used by the rota job) ────────────────────────────────────────

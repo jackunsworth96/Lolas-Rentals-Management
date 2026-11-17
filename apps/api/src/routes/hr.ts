@@ -155,9 +155,10 @@ router.post('/leave', requirePermission(Permission.SubmitTimesheets), validateBo
 router.get('/employees', requirePermission(Permission.ViewTimesheets), async (req, res, next) => {
   try {
     const storeId = req.query.storeId as string;
+    const options = { includeNonStaff: req.query.includeNonStaff === 'true' };
     const employees = storeId
-      ? await req.app.locals.deps.employeeRepo.findByStore(storeId)
-      : await req.app.locals.deps.employeeRepo.findAll();
+      ? await req.app.locals.deps.employeeRepo.findByStore(storeId, options)
+      : await req.app.locals.deps.employeeRepo.findAll(options);
     res.json({ success: true, data: employees });
   } catch (err) { next(err); }
 });
@@ -253,6 +254,7 @@ router.put('/employees/:id', requirePermission(Permission.ManageEmployees), vali
       fullName: body.fullName ?? existing.fullName,
       role: body.role !== undefined ? body.role : existing.role,
       status: body.status ?? existing.status,
+      personType: existing.personType,
       birthday: body.birthday !== undefined ? body.birthday : existing.birthday,
       emergencyContactName: body.emergencyContactName !== undefined ? body.emergencyContactName : existing.emergencyContactName,
       emergencyContactNumber: body.emergencyContactNumber !== undefined ? body.emergencyContactNumber : existing.emergencyContactNumber,
@@ -360,6 +362,7 @@ router.delete('/employees/:id', requirePermission(Permission.ManageEmployees), a
         fullName: existing.fullName,
         role: existing.role,
         status: 'Inactive',
+        personType: existing.personType,
         birthday: existing.birthday,
         emergencyContactName: existing.emergencyContactName,
         emergencyContactNumber: existing.emergencyContactNumber,

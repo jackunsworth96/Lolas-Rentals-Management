@@ -10,11 +10,23 @@ import {
   Permission,
 } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
+import { isStaffToken } from '../adapters/auth/jwt.js';
 import { formatManilaDate } from '../utils/manila-date.js';
 
 // Everything here is scoped to the logged-in employee; no permission beyond being signed in.
 const router = Router();
 router.use(authenticate);
+
+// Owners and developers have no payslips, leave or rota of their own: reads come back empty, writes are refused.
+const NON_STAFF_LISTS = new Set(['/payslips', '/timesheets', '/leave-requests', '/advance-requests', '/work-updates']);
+router.use((req, res, next) => {
+  if (isStaffToken(req.user)) { next(); return; }
+  if (req.method === 'GET') {
+    res.json({ success: true, data: NON_STAFF_LISTS.has(req.path) ? [] : null });
+    return;
+  }
+  res.status(403).json({ success: false, error: { code: 'NOT_STAFF', message: 'Owner and developer accounts do not have a staff portal' } });
+});
 
 function me(req: Request): string {
   const id = req.user?.employeeId;

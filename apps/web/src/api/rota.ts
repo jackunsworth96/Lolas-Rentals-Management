@@ -120,6 +120,8 @@ export interface RotaPersonConfig {
   countsTowardCover: boolean;
   targetDaysPerWeek: number;
   hasTelegram: boolean;
+  /** False for owners and developers: they can be approvers but are never scheduled. */
+  isStaff: boolean;
 }
 
 export interface RotaCellEdit {

@@ -6,7 +6,7 @@ import { useAuthStore } from '../../stores/auth-store.js';
 import { usePins } from '../../stores/nav-prefs-store.js';
 import { isArchivePath } from '../../utils/archive-mode.js';
 import { SETTINGS_SECTIONS } from '../../pages/settings/settings-tabs.js';
-import { MAX_PINS, NAV_GROUPS, SETTINGS_ITEM, hasNavPermission, type NavItem } from './nav-config.js';
+import { MAX_PINS, NAV_GROUPS, SETTINGS_ITEM, hasNavPermission, navPermissions, type NavItem } from './nav-config.js';
 
 interface Entry {
   key: string;
@@ -23,7 +23,8 @@ export function CommandPalette() {
   const open = useUIStore((s) => s.commandOpen);
   const setOpen = useUIStore((s) => s.setCommandOpen);
   const archiveMode = useUIStore((s) => s.archiveMode);
-  const perms = useAuthStore((s) => s.user?.permissions ?? []);
+  const user = useAuthStore((s) => s.user);
+  const perms = useMemo(() => navPermissions(user), [user]);
   const { pins, togglePin } = usePins();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');

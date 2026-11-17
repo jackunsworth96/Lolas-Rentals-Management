@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
-import { Activity, CalendarPlus, Megaphone, Plus, RefreshCw, Search, TrendingUp } from 'lucide-react';
+import { Activity, CalendarPlus, Inbox, Megaphone, Plus, RefreshCw, Search, TrendingUp } from 'lucide-react';
 import { AvailabilityFinderModal } from '../../components/fleet/AvailabilityFinderModal.js';
 import { WalkInBookingModal } from '../../components/orders/WalkInBookingModal.js';
 import { ReserveForLaterModal } from '../../components/orders/ReserveForLaterModal.js';
 import { useUIStore } from '../../stores/ui-store.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 import { useStores } from '../../api/config.js';
+import { usePendingStaffRequestCount } from '../../api/me.js';
 import { DashboardTabs, type DashboardTab } from '../../components/dashboard/ui/index.js';
 import TodayTab from './tabs/TodayTab.js';
 import BusinessTab from './tabs/BusinessTab.js';
@@ -81,6 +82,8 @@ export default function DashboardPage() {
   };
 
   const canFindAvailability = hasPermission('can_view_fleet') || hasPermission('can_view_inbox');
+  const canReviewRequests = hasPermission('can_view_payroll') && hasPermission('can_approve_staff_requests');
+  const pendingRequests = usePendingStaffRequestCount(selectedStoreId, canReviewRequests);
   const finderStores = storeId
     ? [{ id: storeId, name: storeName }]
     : (stores as Array<{ id: string; name: string }>).filter((s) => s.id !== 'company');
@@ -157,6 +160,19 @@ export default function DashboardPage() {
           </button>
         </div>
       </header>
+
+      {pendingRequests > 0 && (
+        <Link
+          to="/hr/payroll?tab=requests"
+          className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm shadow-sm hover:bg-amber-100"
+        >
+          <Inbox className="h-5 w-5 shrink-0 text-amber-600" />
+          <span className="font-semibold text-gray-900">Pending staff requests</span>
+          <span className="rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white">{pendingRequests}</span>
+          <span className="text-gray-600">Leave, cash advances or payslip disputes waiting for a decision.</span>
+          <span className="ml-auto font-medium text-teal-700">Review →</span>
+        </Link>
+      )}
 
       {tab === 'today' && <TodayTab {...tabProps} />}
       {tab === 'business' && <BusinessTab {...tabProps} />}

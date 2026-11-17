@@ -230,6 +230,13 @@ export function useStaffRequests(status: RequestStatus | 'all', storeId: string,
   });
 }
 
+/** Pending leave, advance requests and unresolved payslip disputes awaiting a manager. */
+export function usePendingStaffRequestCount(storeId: string, enabled = true): number {
+  const { data } = useStaffRequests('pending', storeId, enabled);
+  if (!enabled || !data) return 0;
+  return data.leave.length + data.advances.length + data.disputes.filter((d) => !d.resolvedAt).length;
+}
+
 function useInvalidateRequests() {
   const qc = useQueryClient();
   return () => {

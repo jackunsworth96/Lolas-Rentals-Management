@@ -83,7 +83,8 @@ export class SupabasePayrollAdapter implements PayrollPort {
       .from('employees')
       .select('id')
       .eq('store_id', storeId)
-      .eq('status', 'Active');
+      .eq('status', 'Active')
+      .eq('person_type', 'staff');
 
     if (empError) throw new Error(`aggregateTips employees: ${empError.message}`);
 
