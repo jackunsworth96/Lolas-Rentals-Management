@@ -94,6 +94,19 @@ export async function resolveRoutedAccounts(storeId: string): Promise<RoutedAcco
   );
 }
 
+/** The store's deposits-held liability account, or null unless exactly one matches. */
+export async function resolveDepositLiabilityAccount(storeId: string): Promise<string | null> {
+  const { data, error } = await getSupabaseClient()
+    .from('chart_of_accounts')
+    .select('id')
+    .in('store_id', [storeId, 'company'])
+    .eq('account_type', 'Liability')
+    .eq('is_active', true)
+    .ilike('name', '%deposit%');
+  if (error) throw new Error(`Deposit liability lookup failed: ${error.message}`);
+  return data?.length === 1 ? (data[0].id as string) : null;
+}
+
 export type DepositLocation = 'cash' | 'gcash' | 'bank';
 
 /**

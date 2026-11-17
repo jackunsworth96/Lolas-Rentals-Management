@@ -112,4 +112,19 @@ describe('processRawOrder security deposit', () => {
     expect(args.p_rental_payment).toBeNull();
     expect(args.p_order_row.balance_due).toBe(0);
   });
+
+  it('refuses to activate when the deposit liability account is missing', async () => {
+    await expect(processRawOrder(deps() as never, {
+      ...baseInput, paymentMethodId: 'Wise', depositMethodId: 'Cash', paymentAccountId: 'WISE',
+      depositLiabilityAccountId: null, partialPaymentAmount: 0,
+    })).rejects.toThrow(/deposit liability account/);
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+
+  it('refuses to activate when the deposit method has no routed account', async () => {
+    await expect(processRawOrder(deps() as never, {
+      ...baseInput, paymentMethodId: 'Card', depositMethodId: 'Paymaya', paymentAccountId: null, isCardPayment: true,
+    })).rejects.toThrow(/Paymaya/);
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
 });

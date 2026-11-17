@@ -24,7 +24,12 @@ import { sendTelegramAlert, sendTelegramAlertPaidOrdersStaggered, getTelegramCha
 import { deriveTransportService } from '../lib/transport-service.js';
 import { ORDERS_RAW_INBOX_COLUMNS } from '../lib/orders-raw-columns.js';
 import { assertAssignmentsAvailable } from '../lib/assert-vehicle-assignment.js';
-import { depositHoldingAccount, resolvePaymentAccount, resolveRoutedAccounts } from '../lib/deposit-envelope.js';
+import {
+  depositHoldingAccount,
+  resolveDepositLiabilityAccount,
+  resolvePaymentAccount,
+  resolveRoutedAccounts,
+} from '../lib/deposit-envelope.js';
 import { buildTipLegs } from '../lib/tips.js';
 import {
   assertSurfRacksAvailable,
@@ -1102,7 +1107,8 @@ router.post('/:id/process', requirePermission(Permission.EditOrders), async (req
       depositMethodId: body.depositMethodId,
       cardFeeSurcharge: body.cardFeeSurcharge,
       paymentAccountId: resolvePaymentAccount(activationRouting, body.paymentMethodId, body.paymentAccountId),
-      depositLiabilityAccountId: body.depositLiabilityAccountId ?? null,
+      depositLiabilityAccountId: body.depositLiabilityAccountId
+        ?? (body.securityDeposit > 0 ? await resolveDepositLiabilityAccount(body.storeId) : null),
       isCardPayment: body.isCardPayment ?? false,
       settlementRef: body.settlementRef ?? null,
       excludeTransferFromBalance: body.excludeTransferFromBalance ?? false,
