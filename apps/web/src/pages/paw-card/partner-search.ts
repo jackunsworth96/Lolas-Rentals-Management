@@ -1,7 +1,8 @@
 /**
  * Close-match search for Paw Card partners.
- * Exact text still ranks first. Nearby spellings, missing spaces, and
- * punctuation differences (Ver-de / verde, Lola's / lolas) also match.
+ * Exact text still ranks first. Nearby spellings, missing spaces,
+ * punctuation differences (Ver-de / verde, Lola's / lolas), another word
+ * order, and words split across the name and other labels also match.
  */
 
 const STOP_WORDS = new Set(['a', 'an', 'the', 'and', 'of', 'at', 'in', 'on', 'for', 'to']);
@@ -11,6 +12,8 @@ export interface PartnerSearchFields {
   description?: string | null;
   discount_headline?: string | null;
   category?: string | null;
+  /** Other short labels, such as a contact name or link slug. */
+  aliases?: Array<string | null | undefined>;
 }
 
 /** Higher is a closer match. 0 means the partner should be hidden. */
@@ -23,11 +26,24 @@ export function partnerSearchScore(query: string, partner: PartnerSearchFields):
   const headline = fieldQuality(queryNorm, queryCompact, partner.discount_headline, 'fuzzy');
   const category = fieldQuality(queryNorm, queryCompact, partner.category, 'fuzzy');
   const description = fieldQuality(queryNorm, queryCompact, partner.description, 'contains');
+  const aliases = partner.aliases ?? [];
+  let alias = 0;
+  for (const value of aliases) {
+    alias = Math.max(alias, fieldQuality(queryNorm, queryCompact, value, 'fuzzy'));
+  }
+
+  // Words may be split across the name, deal, and contact, or written in another order.
+  const combined = [partner.name, partner.discount_headline, partner.category, ...aliases, partner.description]
+    .filter((value): value is string => Boolean(value && value.trim()))
+    .join(' ');
+  const across = fieldQuality(queryNorm, queryCompact, combined, 'fuzzy');
 
   return Math.max(
     name > 0 ? 300 + name : 0,
+    alias > 0 ? 200 + alias : 0,
     headline > 0 ? 150 + headline : 0,
     category > 0 ? 80 + category : 0,
+    across > 0 ? 50 + across : 0,
     description > 0 ? 40 + description : 0,
   );
 }
@@ -145,16 +161,21 @@ function joinedQuality(queryCompact: string, tokens: string[]): number {
   const limit = editLimit(queryCompact.length);
   if (limit === 0 || tokens.length === 0) return 0;
 
+  const stripped = tokens.filter((token) => !STOP_WORDS.has(token));
+  const sequences = stripped.length === tokens.length ? [tokens] : [tokens, stripped];
+
   let best = limit + 1;
-  for (let start = 0; start < tokens.length; start++) {
-    let joined = '';
-    for (let end = start; end < tokens.length; end++) {
-      joined += tokens[end];
-      if (joined.length > queryCompact.length + limit) break;
-      if (Math.abs(joined.length - queryCompact.length) > limit) continue;
-      const distance = boundedEditDistance(queryCompact, joined, limit);
-      if (distance === 0 || isAllowedEdit(queryCompact, joined, distance)) {
-        if (distance < best) best = distance;
+  for (const sequence of sequences) {
+    for (let start = 0; start < sequence.length; start++) {
+      let joined = '';
+      for (let end = start; end < sequence.length; end++) {
+        joined += sequence[end];
+        if (joined.length > queryCompact.length + limit) break;
+        if (Math.abs(joined.length - queryCompact.length) > limit) continue;
+        const distance = boundedEditDistance(queryCompact, joined, limit);
+        if (distance === 0 || isAllowedEdit(queryCompact, joined, distance)) {
+          if (distance < best) best = distance;
+        }
       }
     }
   }

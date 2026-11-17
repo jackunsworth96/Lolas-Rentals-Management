@@ -102,4 +102,33 @@ describe('partnerSearchScore', () => {
     expect(names[0]).toBe('Big Mama Laundry Cafe');
     expect(names).not.toContain('Big Mama Laundry');
   });
+
+  it('matches another word order and a stop word sitting in the middle', () => {
+    expect(matchingNames('brew bed')).toEqual(['Siargao Bed & Brew']);
+    expect(partnerSearchScore('bedbrewery', { name: 'Bed & Brewery' })).toBeGreaterThan(0);
+    expect(partnerSearchScore('brewery bed', { name: 'Bed & Brewery' })).toBeGreaterThan(0);
+  });
+
+  it('matches a misspelt deal and words split across the name and contact', () => {
+    expect(partnerSearchScore('comission', { discount_headline: '5% commission' })).toBeGreaterThan(0);
+    expect(partnerSearchScore('guest discout', { discount_headline: '5% guest discount' })).toBeGreaterThan(0);
+    expect(partnerSearchScore('allan pizza', { name: 'Amias Pizza' })).toBe(0);
+    expect(partnerSearchScore('allan pizza', {
+      name: 'Amias Pizza',
+      aliases: ['Allan Arala', 'amias-pizza'],
+    })).toBeGreaterThan(0);
+    expect(partnerSearchScore('pizza allan', {
+      name: 'Amias Pizza',
+      aliases: ['Allan Arala'],
+    })).toBeGreaterThan(0);
+  });
+
+  it('ranks the property name above a contact or deal that only mentions it', () => {
+    const named = partnerSearchScore('amias', { name: 'Amias Pizza', aliases: ['Allan Arala'] });
+    const contact = partnerSearchScore('amias', {
+      name: 'Somewhere Else',
+      aliases: ['Amias from reception'],
+    });
+    expect(named).toBeGreaterThan(contact);
+  });
 });

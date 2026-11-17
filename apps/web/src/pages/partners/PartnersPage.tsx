@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import {
   Link2, Plus, Pencil, BarChart2, ToggleLeft, ToggleRight, Copy, CheckCheck,
   ExternalLink, Send, Check, X, Clock, ChevronDown, ChevronUp, Trash2,
-  UserPlus, KeyRound,
+  UserPlus, KeyRound, Search,
   WalletCards, ArrowRight, AlertCircle, Download, Loader2,
 } from 'lucide-react';
 import {
@@ -42,6 +42,7 @@ import { Modal } from '../../components/common/Modal.js';
 import { LinkedContracts } from '../../components/contracts/LinkedContracts.js';
 import { useToast } from '../../hooks/useToast.js';
 import { generatePartnerReportPdf } from '../../utils/partnerReportPdf.js';
+import { partnerSearchScore, type PartnerSearchFields } from '../paw-card/partner-search.js';
 
 const SITE_URL = (import.meta.env.VITE_SITE_URL as string | undefined) ?? window.location.origin;
 
@@ -275,6 +276,18 @@ function describeDeal(p: Pick<AccommodationPartner, 'deal_type' | 'commission_ty
     parts.push('Free delivery');
   }
   return parts.length > 0 ? parts.join(' · ') : '—';
+}
+
+function partnerSearchFields(p: AccommodationPartner): PartnerSearchFields {
+  const deal = describeDeal(p);
+  return {
+    name: p.name,
+    discount_headline: deal === '—' ? null : deal,
+    aliases: [p.contact_name, p.slug, p.portal_subdomain],
+    description: [p.contact_email, p.contact_whatsapp, p.notes, p.welcome_message]
+      .filter((value) => value && value.trim())
+      .join(' '),
+  };
 }
 
 // ── Vehicle overrides section ────────────────────────────────────────────────
@@ -2491,19 +2504,31 @@ export default function PartnersPage() {
   const [selectedPartner, setSelectedPartner] = useState<AccommodationPartner | null>(null);
   const [approvingPartner, setApprovingPartner] = useState<AccommodationPartner | null>(null);
   const [showCommissionsDue, setShowCommissionsDue] = useState(false);
+  const [search, setSearch] = useState('');
 
   const visiblePartners = partners.filter(
     (p) => !selectedStoreId || selectedStoreId === 'all' || p.store_id === selectedStoreId,
   );
+  const isSearching = search.trim().length > 0;
+
+  const matchedPartners = useMemo(() => {
+    if (!isSearching) return visiblePartners;
+    return visiblePartners
+      .map((partner) => ({ partner, score: partnerSearchScore(search, partnerSearchFields(partner)) }))
+      .filter((row) => row.score > 0)
+      .sort((a, b) => b.score - a.score || a.partner.name.localeCompare(b.partner.name, undefined, { sensitivity: 'base' }))
+      .map((row) => row.partner);
+  }, [visiblePartners, search, isSearching]);
 
   const pendingPartners = useMemo(
-    () => visiblePartners.filter((p) => p.status === 'pending'),
-    [visiblePartners],
+    () => matchedPartners.filter((p) => p.status === 'pending'),
+    [matchedPartners],
   );
   const activePartners = useMemo(
-    () => visiblePartners.filter((p) => p.status !== 'pending' && p.status !== 'rejected'),
-    [visiblePartners],
+    () => matchedPartners.filter((p) => p.status !== 'pending' && p.status !== 'rejected'),
+    [matchedPartners],
   );
+  const hasAnyPartners = visiblePartners.some((p) => p.status !== 'rejected');
 
   function openAdd() {
     setEditingPartner(null);
@@ -2564,7 +2589,44 @@ export default function PartnersPage() {
           </div>
         </div>
 
+        {hasAnyPartners && (
+          <div className="border-b border-gray-200 bg-white px-6 py-3">
+            <div className="relative max-w-md">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search name, contact, or deal"
+                aria-label="Search partners"
+                className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-8 text-sm placeholder:text-gray-400 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-400 hover:text-gray-600"
+                  aria-label="Clear search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            <p className="mt-1.5 text-xs text-gray-400">
+              Close spellings, missing spaces, and a different word order still match.
+            </p>
+          </div>
+        )}
+
         <div className="flex-1 overflow-auto p-6 space-y-6">
+          {isSearching && (
+            <p className="text-sm text-gray-500" aria-live="polite">
+              {pendingPartners.length + activePartners.length === 0
+                ? `No partners match "${search.trim()}".`
+                : `${pendingPartners.length + activePartners.length} partner${pendingPartners.length + activePartners.length === 1 ? '' : 's'}, closest matches first.`}
+            </p>
+          )}
+
           {/* Pending Approval queue */}
           {pendingPartners.length > 0 && (
             <section>
@@ -2590,7 +2652,7 @@ export default function PartnersPage() {
 
           {isLoading ? (
             <div className="flex items-center justify-center py-16 text-sm text-gray-400">Loading…</div>
-          ) : activePartners.length === 0 && pendingPartners.length === 0 ? (
+          ) : !hasAnyPartners ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <Link2 className="mb-3 h-10 w-10 text-gray-300" />
               <p className="text-base font-medium text-gray-500">No accommodation partners yet</p>
