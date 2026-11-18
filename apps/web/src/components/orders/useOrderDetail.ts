@@ -80,6 +80,8 @@ export type OrderDetail = {
   finalTotal?: unknown;
   securityDeposit?: unknown;
   cardFeeSurcharge?: unknown;
+  charityDonation?: unknown;
+  returnCharges?: unknown;
   paymentMethodId?: string;
   depositMethodId?: string | null;
   webNotes?: string;

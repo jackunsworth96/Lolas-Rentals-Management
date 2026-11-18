@@ -15,6 +15,8 @@ import { AssignPartnerModal } from './AssignPartnerModal.js';
 import { isSurfRackAddon } from '../basket/AddOnsSection.js';
 import { useSignedWaiverDetails, useResendWaiverConfirmation } from '../../api/waivers.js';
 import { useInspectionByOrder } from '../../api/inspections.js';
+import { useTransferByOrderId } from '../../api/transfers.js';
+import { isCancelled as isTransferCancelled, transferTotal } from '../transfers/transfer-state.js';
 import { useChangeReturnTime, useCollectPayment, useOrderNotes, useRefundOrder, useSettleOrder, useSwapHelmet, useSwapVehicle, useUpdateDepositMethod } from '../../api/orders.js';
 import { StaffNotes } from './summary/StaffNotes.js';
 import { LogisticsCard } from './summary/LogisticsCard.js';
@@ -150,6 +152,7 @@ export function OrderDetailSummaryTab({
   // ── Data / config queries ──
   const { data: vehicles = [] } = useFleet(storeId);
   const { data: paymentMethods = [] } = usePaymentMethods() as { data: Array<{ id: string; name: string; surchargePercent?: number; surcharge_percent?: number; isActive?: boolean; is_active?: boolean }> | undefined };
+  const { data: linkedTransfer } = useTransferByOrderId(orderId);
   const cardSurchargePercent = Number(paymentMethods.find((m) => m.id === 'Card')?.surcharge_percent ?? paymentMethods.find((m) => m.id === 'Card')?.surchargePercent ?? 0);
   const { data: accounts = [] } = useChartOfAccounts() as { data: Array<Record<string, unknown>> | undefined };
   const { data: fleetStatuses = [] } = useFleetStatuses() as { data: Array<{ id: string; name: string; isRentable?: boolean; is_rentable?: boolean }> | undefined };
@@ -603,12 +606,29 @@ export function OrderDetailSummaryTab({
   // subtract the extension charges to isolate the ORIGINAL rental subtotal.
   const rentalSubtotal = Math.max(0, rentalBaseSubtotal - extensionCharges);
   const addonTotal = orderAddons.reduce((sum, a) => sum + (a.totalAmount ?? 0), 0);
+  const deliveryFee = itemsList.reduce((sum, i) => sum + Number(i.pickupFee ?? 0), 0);
+  const collectionFee = itemsList.reduce((sum, i) => sum + Number(i.dropoffFee ?? 0), 0);
+  const singleLocation = (names: Array<string | null | undefined>) => {
+    const unique = [...new Set(names.map((n) => n?.trim()).filter(Boolean))];
+    return unique.length === 1 ? unique[0]! : null;
+  };
+  const deliveryLocation = singleLocation(itemsList.filter((i) => Number(i.pickupFee ?? 0) > 0).map((i) => i.pickupLocation));
+  const collectionLocation = singleLocation(itemsList.filter((i) => Number(i.dropoffFee ?? 0) > 0).map((i) => i.dropoffLocation));
+  const discountTotal = itemsList.reduce((sum, i) => sum + Number(i.discount ?? 0), 0);
+  const charityDonation = moneyAmount(order.charityDonation);
+  const returnChargesTotal = moneyAmount(order.returnCharges);
+  const transferBilled = linkedTransfer && linkedTransfer.billedToOrder && !isTransferCancelled(linkedTransfer)
+    ? transferTotal(linkedTransfer)
+    : 0;
 
   // Per-day addon adjustments for extended days (e.g. Peace of Mind × extra days).
   // These are included in final_total (via the extension totalDelta RPC param) but are
   // NOT recorded as extension payment rows — they adjust order_addons.total_amount instead.
-  // We surface them as the residual: total − rental − extensions − addons − deposit − surcharge.
-  const explicitTotal = rentalSubtotal + extensionCharges + addonTotal + securityDeposit + surcharge;
+  // We surface them as the residual of final_total over every itemised line.
+  // The security deposit is held separately and is not part of final_total.
+  const explicitTotal =
+    rentalSubtotal + extensionCharges + deliveryFee + collectionFee - discountTotal + addonTotal
+    + surcharge + transferBilled + charityDonation + returnChargesTotal;
   const addonExtensionAdjustment = Math.round((total - explicitTotal) * 100) / 100;
 
   // ── Late return & duration ──
@@ -1263,8 +1283,16 @@ export function OrderDetailSummaryTab({
         <MoneySummary
           rentalSubtotal={rentalSubtotal}
           extensionCharges={extensionCharges}
+          deliveryFee={deliveryFee}
+          deliveryLocation={deliveryLocation}
+          collectionFee={collectionFee}
+          collectionLocation={collectionLocation}
+          discount={discountTotal}
           addonTotal={addonTotal}
           addonExtensionAdjustment={addonExtensionAdjustment}
+          transferAmount={transferBilled}
+          charityDonation={charityDonation}
+          returnCharges={returnChargesTotal}
           securityDeposit={securityDeposit}
           surcharge={surcharge}
           total={total}
