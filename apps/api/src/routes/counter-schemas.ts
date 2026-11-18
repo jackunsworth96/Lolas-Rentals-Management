@@ -15,7 +15,7 @@ export const counterQuerySchema = z.object({
 export const CounterHoldSchema = z.object({
   modelId: z.string().min(1),
   days,
-  pickupDatetime: z.string().min(1).optional(),
+  pickupDatetime: z.string().min(1).nullable().optional(),
   sessionToken,
 });
 
@@ -24,7 +24,7 @@ export const CounterReleaseSchema = z.object({ sessionToken });
 export const CounterBookingSchema = z.object({
   vehicleModelId: z.string().min(1),
   days,
-  pickupDatetime: z.string().min(1).optional(),
+  pickupDatetime: z.string().min(1).nullable().optional(),
   customerName: z.string().trim().min(1).max(120),
   customerMobile: WhatsAppNumberSchema,
   customerEmail: z.string().trim().email(),

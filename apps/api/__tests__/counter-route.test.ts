@@ -167,7 +167,7 @@ describe('counter tablet', () => {
   });
 
   it('holds the chosen vehicle for the customer and releases it on request', async () => {
-    const held = await request(app()).post('/counter/holds').send({ modelId: 'beat', days: 2, sessionToken: SESSION });
+    const held = await request(app()).post('/counter/holds').send({ modelId: 'beat', days: 2, pickupDatetime: null, sessionToken: SESSION });
     expect(held.status).toBe(201);
     expect(held.body.data.holdId).toBe(HOLD_ID);
     expect(mocks.insertHold).toHaveBeenCalledWith(expect.objectContaining({ vehicleModelId: 'beat', storeId: 'store-lolas', sessionToken: SESSION }));
@@ -211,7 +211,9 @@ describe('counter tablet', () => {
     mocks.findActiveHoldsBySession.mockResolvedValue([{
       id: HOLD_ID, vehicleModelId: 'beat', storeId: 'store-lolas', ...window, sessionToken: SESSION, expiresAt: '', createdAt: '',
     }]);
-    const res = await request(app()).post('/counter/bookings').send({ ...booking, holdId: HOLD_ID, sessionToken: SESSION });
+    const res = await request(app()).post('/counter/bookings').send({
+      ...booking, pickupDatetime: null, stayingAt: null, collectionLocationId: null, addonIds: [], holdId: HOLD_ID, sessionToken: SESSION,
+    });
     expect(res.status).toBe(201);
     expect(mocks.checkAvailability).toHaveBeenCalledWith(expect.objectContaining({ excludeSessionToken: SESSION }), expect.anything());
     expect(mocks.insert).toHaveBeenCalledWith(expect.objectContaining({ booking_hold_id: HOLD_ID, booking_session_token: SESSION,

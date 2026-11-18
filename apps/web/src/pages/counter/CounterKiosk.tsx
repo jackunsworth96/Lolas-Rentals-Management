@@ -78,7 +78,7 @@ function VehicleCard({ model, days, onChoose, busy, delivery }: {
       }`}
     >
       <div className="relative h-44 w-full bg-white">
-        <div className={`h-full w-full ${fullyBooked ? 'opacity-40 grayscale' : ''}`}>
+        <div className={`flex h-full w-full items-center justify-center ${fullyBooked ? 'opacity-40 grayscale' : ''}`}>
           {publicId ? (
             <CloudinaryImage publicId={publicId} alt={model.modelName} plugins={[]} className="h-full w-full object-contain p-3" />
           ) : (
@@ -405,7 +405,7 @@ export function CounterKiosk({ counter, mode, brand, homePath, onLogoHold }: Cou
                 Sorry, nothing is free for {days} {days === 1 ? 'day' : 'days'}. Try fewer days, or ask our team.
               </p>
             ) : (
-              <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="mt-8 flex flex-wrap justify-center gap-5 [&>*]:w-full sm:[&>*]:w-[calc(50%-0.625rem)] lg:[&>*]:w-[calc((100%-2.5rem)/3)]">
                 {models.map((m) => (
                   <VehicleCard key={m.modelId} model={m} days={days} busy={holding} delivery={scheduled} onChoose={() => void chooseVehicle(m)} />
                 ))}
