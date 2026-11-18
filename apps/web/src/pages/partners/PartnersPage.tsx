@@ -965,19 +965,19 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
               </span>
             </label>
             <div className="mt-3">
-              <label className="block text-xs text-gray-500 mb-1">Front-desk tablet delivers to</label>
+              <label className="block text-xs text-gray-500 mb-1">Property area</label>
               <select
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                 value={form.kiosk_location_id ?? ''}
                 onChange={(e) => setField('kiosk_location_id', e.target.value ? Number(e.target.value) : null)}
               >
-                <option value="">Tablet off</option>
-                {nonStoreLocations.map((loc) => (
+                <option value="">Not set</option>
+                {nonStoreLocations.filter((loc) => !/airport/i.test(loc.name)).map((loc) => (
                   <option key={loc.id} value={loc.id}>{loc.name}</option>
                 ))}
               </select>
               <span className="block text-xs text-gray-400 mt-1">
-                The area this property is in. Guests booking on the partner&apos;s counter tablet get the vehicle delivered here.
+                Where this property is. Bookings on the partner&apos;s counter tablet are delivered here. If not set, guests choose their area on the tablet.
               </span>
             </div>
             <div className="mt-3">

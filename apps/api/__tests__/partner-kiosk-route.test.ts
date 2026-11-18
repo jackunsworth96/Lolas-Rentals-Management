@@ -109,15 +109,44 @@ describe('partner front-desk tablet', () => {
     mocks.insert.mockResolvedValue({ error: null });
   });
 
-  it('launches from a signed-in portal user once the delivery area is set', async () => {
+  it('launches from any signed-in portal user, with or without a property area', async () => {
     const res = await request(app()).post('/partner/kiosk/start').set('Authorization', portalToken());
     expect(res.status).toBe(200);
     expect(typeof res.body.data.token).toBe('string');
 
     mocks.partner = { ...mocks.partner, kiosk_location_id: null };
-    const notSetUp = await request(app()).post('/partner/kiosk/start').set('Authorization', portalToken());
-    expect(notSetUp.status).toBe(409);
-    expect(notSetUp.body.error.code).toBe('KIOSK_NOT_SET_UP');
+    expect((await request(app()).post('/partner/kiosk/start').set('Authorization', portalToken())).status).toBe(200);
+  });
+
+  it('asks the guest for their area when the property area is not set', async () => {
+    mocks.partner = { ...mocks.partner, kiosk_location_id: null };
+    const me = await request(app()).get('/partner/kiosk/me').set('Authorization', kioskToken());
+    expect(me.body.data.deliveryAreas).toEqual([{ id: 2, name: 'General Luna', fee: 100 }]);
+
+    const noArea = await request(app()).get('/partner/kiosk/options').set('Authorization', kioskToken()).query({ days: 2, pickupDatetime: pickup });
+    expect(noArea.status).toBe(422);
+    expect(noArea.body.error.code).toBe('AREA_REQUIRED');
+
+    const withArea = await request(app()).get('/partner/kiosk/options').set('Authorization', kioskToken())
+      .query({ days: 2, pickupDatetime: pickup, deliveryAreaId: 2 });
+    expect(withArea.body.data.models[0]).toEqual(expect.objectContaining({ deliveryFee: 200, total: 1100 }));
+
+    const store = await request(app()).get('/partner/kiosk/options').set('Authorization', kioskToken())
+      .query({ days: 2, pickupDatetime: pickup, deliveryAreaId: 10 });
+    expect(store.status).toBe(422);
+
+    const booked = await request(app()).post('/partner/kiosk/bookings').set('Authorization', kioskToken()).send({
+      vehicleModelId: 'beat', days: 2, pickupDatetime: pickup, deliveryAreaId: 2,
+      customerName: 'Robin', customerMobile: '+33626558584', customerEmail: 'robin@example.com',
+    });
+    expect(booked.status).toBe(201);
+    expect(mocks.insert).toHaveBeenCalledWith(expect.objectContaining({ pickup_location_id: 2, partner_ref: 'harana' }));
+  });
+
+  it('always delivers to the property area when it is set, whatever the guest sends', async () => {
+    const res = await request(app()).get('/partner/kiosk/options').set('Authorization', kioskToken())
+      .query({ days: 2, pickupDatetime: pickup, deliveryAreaId: 99 });
+    expect(res.status).toBe(200);
   });
 
   it('will not accept a portal token as a tablet token, or the reverse', async () => {
@@ -127,7 +156,7 @@ describe('partner front-desk tablet', () => {
 
   it('shows the partner branding on the tablet', async () => {
     const res = await request(app()).get('/partner/kiosk/me').set('Authorization', kioskToken());
-    expect(res.body.data).toEqual({ partnerName: 'Harana Surf Resort', logoUrl: 'https://cdn/harana.png', welcomeMessage: null, ready: true });
+    expect(res.body.data).toEqual({ partnerName: 'Harana Surf Resort', logoUrl: 'https://cdn/harana.png', welcomeMessage: null, deliveryAreas: null });
   });
 
   it('signs the tablet out as soon as the portal or the user is switched off', async () => {

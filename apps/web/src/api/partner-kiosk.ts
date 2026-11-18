@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { normalizeApiBase } from './normalize-api-base.js';
 import { ApiError } from './client.js';
 import { usePartnerAuthStore } from '../stores/partner-auth-store.js';
-import type { CounterApi } from './counter.js';
+import type { CollectionArea, CounterApi } from './counter.js';
 
 const BASE_URL = normalizeApiBase(import.meta.env.VITE_API_URL as string | undefined);
 
@@ -55,7 +55,8 @@ export interface PartnerKioskBrand {
   partnerName: string;
   logoUrl: string | null;
   welcomeMessage: string | null;
-  ready: boolean;
+  /** Null when the property area is set; otherwise the areas the guest chooses from. */
+  deliveryAreas: CollectionArea[] | null;
 }
 
 export function usePartnerKioskBrand(enabled: boolean) {

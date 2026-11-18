@@ -67,6 +67,8 @@ export interface CounterWindowQuery {
   /** Partner kiosks only: the chosen pickup slot. */
   pickupDatetime?: string | null;
   sessionToken?: string | null;
+  /** Partner kiosks without a property area: the area the guest chose. */
+  deliveryAreaId?: number | null;
 }
 
 export interface CounterBookingPayload {
@@ -81,6 +83,7 @@ export interface CounterBookingPayload {
   stayingAt?: string | null;
   holdId?: string | null;
   sessionToken?: string | null;
+  deliveryAreaId?: number | null;
 }
 
 function queryString(params: Record<string, string | number | null | undefined>): string {
@@ -91,7 +94,7 @@ function queryString(params: Record<string, string | number | null | undefined>)
 
 export function useCounterOptions(counter: CounterApi, query: CounterWindowQuery, enabled: boolean) {
   return useQuery({
-    queryKey: [counter.key, 'options', query.days, query.pickupDatetime ?? null, query.sessionToken ?? null],
+    queryKey: [counter.key, 'options', query.days, query.pickupDatetime ?? null, query.deliveryAreaId ?? null, query.sessionToken ?? null],
     queryFn: () => counter.get<CounterOptions>(`/options?${queryString({ ...query })}`),
     enabled,
     refetchInterval: 60_000,
@@ -100,7 +103,7 @@ export function useCounterOptions(counter: CounterApi, query: CounterWindowQuery
 
 export function useCounterExtras(counter: CounterApi, query: CounterWindowQuery & { modelId: string | null }, enabled: boolean) {
   return useQuery({
-    queryKey: [counter.key, 'extras', query.modelId, query.days, query.pickupDatetime ?? null],
+    queryKey: [counter.key, 'extras', query.modelId, query.days, query.pickupDatetime ?? null, query.deliveryAreaId ?? null],
     queryFn: () => counter.get<CounterExtras>(`/extras?${queryString({ ...query })}`),
     enabled: enabled && !!query.modelId,
   });

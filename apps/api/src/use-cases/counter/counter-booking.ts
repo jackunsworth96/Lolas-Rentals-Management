@@ -79,6 +79,20 @@ export async function staffCounterContext(configRepo: ConfigRepository, storeId:
   };
 }
 
+/** An area we deliver to and collect from (not a store, not the airport). */
+function isDeliveryArea(l: Location): boolean {
+  return l.isActive !== false && l.locationType !== 'store' && !/airport/i.test(l.name)
+    && (Number(l.deliveryCost) > 0 || Number(l.collectionCost) > 0);
+}
+
+export async function deliveryAreas(configRepo: ConfigRepository, storeId: string): Promise<CollectionArea[]> {
+  const locations = (await configRepo.getLocations(storeId)) as Location[];
+  return locations
+    .filter(isDeliveryArea)
+    .map((l) => ({ id: Number(l.id), name: l.name, fee: Number(l.deliveryCost) }))
+    .sort((a, b) => a.fee - b.fee || a.name.localeCompare(b.name));
+}
+
 /**
  * A partner's front-desk tablet: the guest picks a start slot, we deliver to and collect
  * from the hotel's area, and the partner's deal (discount, free delivery) applies.
@@ -86,21 +100,20 @@ export async function staffCounterContext(configRepo: ConfigRepository, storeId:
 export async function partnerKioskContext(
   configRepo: ConfigRepository,
   session: { storeId: string; partnerSlug: string; partnerName: string; kioskLocationId: number | null },
+  /** Used only when the partner has no property area set: the area the guest chose. */
+  guestAreaId?: number | null,
 ): Promise<CounterContext> {
   const [partner, locations] = await Promise.all([
     lookupActivePartnerBySlug(session.partnerSlug),
     configRepo.getLocations(session.storeId) as Promise<Location[]>,
   ]);
   if (!partner) throw new CounterError('This partner is no longer active.', 401, 'KIOSK_SIGNED_OUT');
-  const handoverLocation = session.kioskLocationId == null
+  const areaId = session.kioskLocationId ?? guestAreaId ?? null;
+  const handoverLocation = areaId == null
     ? null
-    : locations.find((l) => Number(l.id) === session.kioskLocationId && l.isActive !== false) ?? null;
+    : locations.find((l) => Number(l.id) === areaId && isDeliveryArea(l)) ?? null;
   if (!handoverLocation) {
-    throw new CounterError(
-      "This tablet isn't set up for delivery yet. Please ask Lola's Rentals to set your delivery area.",
-      409,
-      'KIOSK_NOT_SET_UP',
-    );
+    throw new CounterError('Please choose the area you are staying in.', 422, 'AREA_REQUIRED');
   }
   return {
     storeId: session.storeId,

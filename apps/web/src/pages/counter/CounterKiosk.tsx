@@ -10,6 +10,7 @@ import {
   useCounterExtras,
   useCounterOptions,
   useCreateCounterBooking,
+  type CollectionArea,
   type CounterApi,
   type CounterModel,
 } from '../../api/counter.js';
@@ -139,13 +140,16 @@ export interface CounterKioskProps {
   homePath: string;
   /** Holding the logo for 3 seconds: sign out (our counter) or exit kiosk mode (partners). */
   onLogoHold: () => void;
+  /** Partner kiosks without a property area: the guest picks one of these. */
+  deliveryAreas?: CollectionArea[] | null;
 }
 
-export function CounterKiosk({ counter, mode, brand, homePath, onLogoHold }: CounterKioskProps) {
+export function CounterKiosk({ counter, mode, brand, homePath, onLogoHold, deliveryAreas }: CounterKioskProps) {
   const navigate = useNavigate();
   const scheduled = mode === 'scheduled';
   const [step, setStep] = useState<Step>('welcome');
   const [pickupDatetime, setPickupDatetime] = useState<string | null>(null);
+  const [areaId, setAreaId] = useState<number | null>(null);
   const [days, setDays] = useState(1);
   const [model, setModel] = useState<CounterModel | null>(null);
   const [sessionToken, setSessionToken] = useState(newSessionToken);
@@ -160,8 +164,9 @@ export function CounterKiosk({ counter, mode, brand, homePath, onLogoHold }: Cou
   const [error, setError] = useState('');
   const holdTimer = useRef<number | null>(null);
 
-  const windowReady = !scheduled || pickupDatetime !== null;
-  const query = { days, pickupDatetime: scheduled ? pickupDatetime : null, sessionToken };
+  const askArea = scheduled && !!deliveryAreas && deliveryAreas.length > 0;
+  const windowReady = !scheduled || (pickupDatetime !== null && (!askArea || areaId !== null));
+  const query = { days, pickupDatetime: scheduled ? pickupDatetime : null, deliveryAreaId: askArea ? areaId : null, sessionToken };
   const options = useCounterOptions(counter, query, step !== 'welcome' && step !== 'when' && windowReady);
   const extras = useCounterExtras(counter, { ...query, modelId: model?.modelId ?? null }, step === 'extras' || step === 'details');
   const createBooking = useCreateCounterBooking(counter);
@@ -175,6 +180,7 @@ export function CounterKiosk({ counter, mode, brand, homePath, onLogoHold }: Cou
     releaseHold();
     setStep('welcome');
     setPickupDatetime(null);
+    setAreaId(null);
     setDays(1);
     setModel(null);
     setSessionToken(newSessionToken());
@@ -266,6 +272,7 @@ export function CounterKiosk({ counter, mode, brand, homePath, onLogoHold }: Cou
         vehicleModelId: model.modelId,
         days,
         pickupDatetime: scheduled ? pickupDatetime : null,
+        deliveryAreaId: query.deliveryAreaId,
         customerName: name.trim(),
         customerEmail: email.trim(),
         customerMobile: mobile,
@@ -326,6 +333,9 @@ export function CounterKiosk({ counter, mode, brand, homePath, onLogoHold }: Cou
             value={pickupDatetime}
             onChange={setPickupDatetime}
             deliverTo={brand?.partnerName ?? null}
+            areas={askArea ? deliveryAreas : null}
+            areaId={areaId}
+            onArea={setAreaId}
             onContinue={() => setStep('days')}
             buttonClass={goldButton}
           />

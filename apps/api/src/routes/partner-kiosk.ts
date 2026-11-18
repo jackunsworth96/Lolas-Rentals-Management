@@ -3,7 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { validateBody, validateQuery } from '../middleware/validate.js';
 import { authenticatePartner } from '../middleware/authenticate-partner.js';
-import { authenticatePartnerKiosk, type PartnerKioskSession } from '../middleware/authenticate-partner-kiosk.js';
+import { authenticatePartnerKiosk } from '../middleware/authenticate-partner-kiosk.js';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { verifyPin } from '../adapters/auth/password.js';
 import { generatePartnerKioskToken } from '../adapters/auth/partner-jwt.js';
@@ -11,6 +11,7 @@ import {
   counterExtras,
   createCounterBooking,
   createCounterHold,
+  deliveryAreas,
   listCounterOptions,
   partnerKioskContext,
   releaseCounterHold,
@@ -30,32 +31,10 @@ const exitLimiter = rateLimit({
 
 const deps = (req: Request) => ({ bookingPort: req.app.locals.deps.bookingPort, configRepo: req.app.locals.deps.configRepo });
 
-function brandOf(session: PartnerKioskSession) {
-  return {
-    partnerName: session.partnerName,
-    logoUrl: session.logoUrl,
-    welcomeMessage: session.welcomeMessage,
-    ready: session.kioskLocationId != null,
-  };
-}
-
 /** A signed-in portal user turns this device into the front-desk tablet. */
 router.post('/start', authenticatePartner, async (req, res, next) => {
   try {
     const user = req.partnerUser!;
-    const { data, error } = await getSupabaseClient()
-      .from('accommodation_partners')
-      .select('kiosk_location_id')
-      .eq('id', user.partnerId)
-      .maybeSingle();
-    if (error) throw new Error(`Failed to load partner: ${error.message}`);
-    if ((data as { kiosk_location_id: number | null } | null)?.kiosk_location_id == null) {
-      res.status(409).json({
-        success: false,
-        error: { code: 'KIOSK_NOT_SET_UP', message: "Your counter tablet isn't set up yet. Please ask Lola's Rentals to set your delivery area." },
-      });
-      return;
-    }
     const token = generatePartnerKioskToken({
       scope: 'partner_kiosk',
       partnerUserId: user.partnerUserId,
@@ -95,11 +74,30 @@ router.post('/exit', exitLimiter, authenticatePartnerKiosk, validateBody(ExitSch
 
 router.use(authenticatePartnerKiosk);
 
-router.get('/me', (req, res) => {
-  res.json({ success: true, data: brandOf(req.partnerKiosk!) });
+router.get('/me', async (req, res, next) => {
+  try {
+    const session = req.partnerKiosk!;
+    res.json({
+      success: true,
+      data: {
+        partnerName: session.partnerName,
+        logoUrl: session.logoUrl,
+        welcomeMessage: session.welcomeMessage,
+        deliveryAreas: session.kioskLocationId == null
+          ? await deliveryAreas(req.app.locals.deps.configRepo, session.storeId)
+          : null,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
-const context = (req: Request) => partnerKioskContext(req.app.locals.deps.configRepo, req.partnerKiosk!);
+const context = (req: Request) => {
+  const source = (req.method === 'GET' ? req.query : req.body) as { deliveryAreaId?: number | string | null };
+  const areaId = source.deliveryAreaId == null || source.deliveryAreaId === '' ? null : Number(source.deliveryAreaId);
+  return partnerKioskContext(req.app.locals.deps.configRepo, req.partnerKiosk!, areaId);
+};
 
 router.get('/options', validateQuery(counterQuerySchema), async (req, res, next) => {
   try {

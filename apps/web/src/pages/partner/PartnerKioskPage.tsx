@@ -73,13 +73,16 @@ export default function PartnerKioskPage() {
     <ExitPrompt onClose={() => setExiting(false)} onExited={() => navigate('/partner/dashboard', { replace: true })} />
   );
 
-  if (!brand.data?.ready) {
+  if (!brand.data) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-8 text-center" style={{ backgroundColor: '#f1e6d6' }}>
-        <h1 className="font-headline text-3xl font-bold text-teal-brand">This tablet isn&apos;t ready yet</h1>
+        <h1 className="font-headline text-3xl font-bold text-teal-brand">We couldn&apos;t load the booking screen</h1>
         <p className="max-w-md font-lato text-lg text-charcoal-brand/80">
-          {brand.error instanceof Error ? brand.error.message : "Please ask Lola's Rentals to set your delivery area."}
+          {brand.error instanceof Error ? brand.error.message : 'Please check the internet connection and try again.'}
         </p>
+        <button type="button" onClick={() => window.location.reload()} className="rounded-xl bg-teal-brand px-6 py-3 font-lato font-bold text-white">
+          Try again
+        </button>
         <button type="button" onClick={() => setExiting(true)} className="font-lato text-sm font-bold text-charcoal-brand/60 underline">
           Close tablet
         </button>
@@ -100,6 +103,7 @@ export default function PartnerKioskPage() {
         }}
         homePath="/partner/kiosk"
         onLogoHold={() => setExiting(true)}
+        deliveryAreas={brand.data.deliveryAreas}
       />
       {exitPrompt}
     </>

@@ -42,7 +42,7 @@ describe('partner counter tablet page', () => {
     vi.clearAllMocks();
     mocks.token = 'kiosk-token';
     mocks.brand = {
-      data: { partnerName: 'Harana Surf Resort', logoUrl: 'https://cdn/harana.png', welcomeMessage: null, ready: true },
+      data: { partnerName: 'Harana Surf Resort', logoUrl: 'https://cdn/harana.png', welcomeMessage: null, deliveryAreas: null },
       isLoading: false,
       error: null,
     };
@@ -80,9 +80,10 @@ describe('partner counter tablet page', () => {
     expect(mocks.exit).toHaveBeenLastCalledWith('2468');
   });
 
-  it('explains when the delivery area has not been set yet', () => {
-    mocks.brand = { data: { partnerName: 'Harana Surf Resort', logoUrl: null, welcomeMessage: null, ready: false }, isLoading: false, error: null };
+  it('lets guests choose their area when the property area is not set', () => {
+    const areas = [{ id: 2, name: 'General Luna', fee: 100 }];
+    mocks.brand = { data: { partnerName: 'Harana Surf Resort', logoUrl: null, welcomeMessage: null, deliveryAreas: areas }, isLoading: false, error: null };
     renderPage();
-    expect(screen.getByText("This tablet isn't ready yet")).toBeTruthy();
+    expect(mocks.kioskProps).toEqual(expect.objectContaining({ deliveryAreas: areas }));
   });
 });
