@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
 import peaceOfMindIcon from '../../assets/Basket/Peace of Mind.svg';
@@ -22,9 +23,11 @@ const NOT_COVERED_ITEMS = [
 export interface PeaceOfMindModalProps {
   open: boolean;
   onClose: () => void;
+  /** Kiosks hide this: it opens a new tab and would let guests leave the kiosk. */
+  showFullDetailsLink?: boolean;
 }
 
-export function PeaceOfMindModal({ open, onClose }: PeaceOfMindModalProps) {
+export function PeaceOfMindModal({ open, onClose, showFullDetailsLink = true }: PeaceOfMindModalProps) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -34,7 +37,7 @@ export function PeaceOfMindModal({ open, onClose }: PeaceOfMindModalProps) {
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
@@ -113,14 +116,16 @@ export function PeaceOfMindModal({ open, onClose }: PeaceOfMindModalProps) {
             </div>
 
             <div className="mt-6">
-              <a
-                href="/peace-of-mind"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-lato text-xs text-teal-brand underline"
-              >
-                View full details
-              </a>
+              {showFullDetailsLink && (
+                <a
+                  href="/peace-of-mind"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-lato text-xs text-teal-brand underline"
+                >
+                  View full details
+                </a>
+              )}
               <button
                 type="button"
                 onClick={onClose}
@@ -132,6 +137,7 @@ export function PeaceOfMindModal({ open, onClose }: PeaceOfMindModalProps) {
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }

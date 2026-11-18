@@ -1,16 +1,13 @@
+import { useState } from 'react';
 import { Check } from 'lucide-react';
 import peaceOfMindIcon from '../../assets/Basket/Peace of Mind.svg';
 import surfRackIcon from '../../assets/Basket/Surf Rack Icon.svg';
 import bungeeCordIcon from '../../assets/Basket/Bungee Cord Icon.svg';
+import deliveryCollectionIcon from '../../assets/Home/Delivery Collection Icon.svg';
 import type { CounterAddon, CounterExtras as Extras } from '../../api/counter.js';
 import { PesoSign } from '../../components/ui/PesoSign.js';
+import { PeaceOfMindModal } from '../../components/basket/PeaceOfMindModal.js';
 import { formatPhpNumber } from '../../utils/currency.js';
-
-const POM_BENEFITS = [
-  'Scratches, dents, broken mirrors and panels',
-  'Flat tyres and wheel damage',
-  'Theft protection',
-];
 
 const ICONS: Record<CounterAddon['kind'], string> = {
   peace_of_mind: peaceOfMindIcon,
@@ -41,12 +38,12 @@ function Toggle({ on }: { on: boolean }) {
 }
 
 function PeaceOfMindCard({ addon, days, selected, onToggle }: { addon: CounterAddon; days: number; selected: boolean; onToggle: () => void }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
   return (
-    <button
-      type="button"
+    <>
+    <div
       onClick={onToggle}
-      aria-pressed={selected}
-      className={`relative w-full overflow-hidden rounded-3xl border-[3px] bg-white p-6 text-left shadow-[5px_5px_0_#363737] transition active:translate-x-0.5 active:translate-y-0.5 ${
+      className={`relative w-full cursor-pointer overflow-hidden rounded-3xl border-[3px] bg-white p-6 text-left shadow-[5px_5px_0_#363737] transition active:translate-x-0.5 active:translate-y-0.5 ${
         selected ? 'border-teal-brand' : 'border-charcoal-brand'
       }`}
     >
@@ -58,13 +55,16 @@ function PeaceOfMindCard({ addon, days, selected, onToggle }: { addon: CounterAd
         <div className="min-w-0 flex-1">
           <h3 className="font-headline text-3xl font-bold text-teal-brand">{LABELS.peace_of_mind.title}</h3>
           <p className="mt-1 font-lato text-base text-charcoal-brand/70">{LABELS.peace_of_mind.blurb}</p>
-          <ul className="mt-3 space-y-1.5">
-            {POM_BENEFITS.map((b) => (
-              <li key={b} className="flex items-center gap-2 font-lato text-base text-charcoal-brand">
-                <Check className="h-5 w-5 shrink-0 text-teal-brand" strokeWidth={3} /> {b}
-              </li>
-            ))}
-          </ul>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setDetailsOpen(true);
+            }}
+            className="mt-2 font-lato text-base font-bold text-teal-brand underline underline-offset-4"
+          >
+            See what&apos;s covered
+          </button>
         </div>
       </div>
       <div className="mt-5 flex items-center justify-between gap-4 rounded-2xl bg-[#FAF6F0] px-5 py-4">
@@ -75,13 +75,23 @@ function PeaceOfMindCard({ addon, days, selected, onToggle }: { addon: CounterAd
             <span className="ml-2 text-sm text-charcoal-brand/60">(<Peso amount={addon.total} /> for {days} days)</span>
           )}
         </div>
-        <span className={`flex items-center gap-3 rounded-full px-5 py-2.5 font-lato text-base font-black uppercase ${
-          selected ? 'bg-teal-brand text-white' : 'bg-gold-brand text-charcoal-brand'
-        }`}>
+        <button
+          type="button"
+          aria-pressed={selected}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle();
+          }}
+          className={`flex items-center gap-3 rounded-full px-5 py-2.5 font-lato text-base font-black uppercase ${
+            selected ? 'bg-teal-brand text-white' : 'bg-gold-brand text-charcoal-brand'
+          }`}
+        >
           {selected ? <><Check className="h-5 w-5" strokeWidth={3} /> Added</> : 'Add Peace of Mind'}
-        </span>
+        </button>
       </div>
-    </button>
+    </div>
+    <PeaceOfMindModal open={detailsOpen} onClose={() => setDetailsOpen(false)} showFullDetailsLink={false} />
+    </>
   );
 }
 
@@ -159,7 +169,7 @@ export function CounterExtras(props: CounterExtrasProps) {
                 collecting ? 'border-teal-brand' : 'border-charcoal-brand/10'
               }`}
             >
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center text-3xl">🛵</span>
+              <img src={deliveryCollectionIcon} alt="" className="h-11 w-11 shrink-0 object-contain" />
               <div className="min-w-0 flex-1">
                 <div className="font-lato text-lg font-bold text-charcoal-brand">We&apos;ll collect it from you</div>
                 <div className="font-lato text-sm text-charcoal-brand/60">Skip the trip back: we pick the vehicle up where you&apos;re staying.</div>

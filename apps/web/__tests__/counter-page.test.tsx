@@ -78,6 +78,12 @@ describe('counter tablet page', () => {
     await waitFor(() => expect(screen.getByText('Customer favourite', { exact: false })).toBeTruthy());
     expect(mocks.hold).toHaveBeenCalledWith({ key: 'staff' }, expect.objectContaining({ modelId: 'beat', days: 2, sessionToken: expect.stringMatching(/^counter-/) }));
 
+    fireEvent.click(screen.getByText("See what's covered"));
+    expect(screen.getByText('✗ Not covered')).toBeTruthy();
+    expect(screen.queryByText('View full details')).toBeNull();
+    fireEvent.click(screen.getByText('Close'));
+    expect(screen.getByText('Add Peace of Mind')).toBeTruthy();
+
     fireEvent.click(screen.getByText('Add Peace of Mind'));
     fireEvent.click(screen.getByText("We'll collect it from you", { exact: false }));
     fireEvent.click(screen.getByText('Santa Fe', { exact: false }));
