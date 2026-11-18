@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
-import { Copy, Check } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Copy, Check, Tablet } from 'lucide-react';
 import { usePartnerAvailability, usePartnerMe, usePartnerReport } from '../../api/partner-portal.js';
+import { startPartnerKiosk } from '../../api/partner-kiosk.js';
 import { WHATSAPP_URL } from '../../config/contact.js';
 
 const SITE_URL = (import.meta.env.VITE_SITE_URL as string | undefined) ?? window.location.origin;
@@ -125,6 +127,48 @@ function partnerSubdomainBookingLink(subdomain: string) {
   return url.toString();
 }
 
+function LaunchCounterTablet() {
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function launch() {
+    if (!window.confirm('Turn this device into the guest counter tablet? Guests will only see the booking screen. A portal PIN closes it.')) return;
+    setBusy(true);
+    setError('');
+    try {
+      await startPartnerKiosk();
+      navigate('/partner/kiosk', { replace: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not start the counter tablet.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-white p-4 shadow-sm">
+      <div className="min-w-0">
+        <h2 className="flex items-center gap-2 text-base font-bold text-gray-900">
+          <Tablet className="h-5 w-5 text-teal-700" /> Counter tablet
+        </h2>
+        <p className="mt-0.5 text-sm text-gray-500">
+          Put a tablet on your front desk so guests can book a scooter delivered here, and sign their waiver, by themselves.
+        </p>
+        {error && <p className="mt-2 text-sm font-medium text-red-600">{error}</p>}
+      </div>
+      <button
+        type="button"
+        onClick={launch}
+        disabled={busy}
+        className="shrink-0 rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-50"
+      >
+        {busy ? 'Starting…' : 'Launch counter tablet'}
+      </button>
+    </section>
+  );
+}
+
 export default function PartnerDashboardPage() {
   const { data: me } = usePartnerMe();
   const [copied, setCopied] = useState<'booking' | 'ref' | 'link' | null>(null);
@@ -207,6 +251,8 @@ export default function PartnerDashboardPage() {
           </div>
         )}
       </section>
+
+      <LaunchCounterTablet />
 
       <section className="rounded-lg bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-end gap-3">

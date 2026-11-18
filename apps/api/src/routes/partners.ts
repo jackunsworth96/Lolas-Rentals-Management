@@ -393,6 +393,7 @@ const PartnerBodySchema = z.object({
   early_bird_days: z.number().int().min(1).max(365).nullable().optional(),
   early_bird_discount_value: z.number().min(0).nullable().optional(),
   free_delivery_location_ids: z.array(z.number().int().positive()).nullable().optional(),
+  kiosk_location_id: z.number().int().positive().nullable().optional(),
   portal_enabled: z.boolean().optional(),
   portal_subdomain: z.string().min(1).max(80).regex(/^[a-z0-9-]+$/).nullable().optional(),
   store_id: z.string().min(1),
@@ -554,6 +555,7 @@ router.post('/', edit, validateBody(PartnerBodySchema), async (req, res, next) =
         early_bird_days: body.early_bird_days ?? null,
         early_bird_discount_value: body.early_bird_discount_value ?? null,
         free_delivery_location_ids: body.free_delivery_location_ids ?? null,
+        ...(body.kiosk_location_id != null ? { kiosk_location_id: body.kiosk_location_id } : {}),
         portal_enabled: body.portal_enabled ?? false,
         portal_subdomain: body.portal_subdomain?.trim() || slug,
       })
@@ -597,6 +599,7 @@ router.put('/:id', edit, validateBody(PartnerBodySchema.partial().extend({ store
     if (body.early_bird_days !== undefined) updates.early_bird_days = body.early_bird_days ?? null;
     if (body.early_bird_discount_value !== undefined) updates.early_bird_discount_value = body.early_bird_discount_value ?? null;
     if (body.free_delivery_location_ids !== undefined) updates.free_delivery_location_ids = body.free_delivery_location_ids ?? null;
+    if (body.kiosk_location_id !== undefined) updates.kiosk_location_id = body.kiosk_location_id ?? null;
     if (body.portal_enabled !== undefined) updates.portal_enabled = body.portal_enabled;
     if (body.portal_subdomain !== undefined) updates.portal_subdomain = body.portal_subdomain?.trim() || null;
 
@@ -667,6 +670,7 @@ router.post('/:id/approve', edit, validateBody(ApproveBodySchema), async (req, r
     if (body.early_bird_days !== undefined) updates.early_bird_days = body.early_bird_days ?? null;
     if (body.early_bird_discount_value !== undefined) updates.early_bird_discount_value = body.early_bird_discount_value ?? null;
     if (body.free_delivery_location_ids !== undefined) updates.free_delivery_location_ids = body.free_delivery_location_ids ?? null;
+    if (body.kiosk_location_id !== undefined) updates.kiosk_location_id = body.kiosk_location_id ?? null;
     if (body.portal_enabled !== undefined) updates.portal_enabled = body.portal_enabled;
     if (body.portal_subdomain !== undefined) updates.portal_subdomain = body.portal_subdomain?.trim() || null;
 

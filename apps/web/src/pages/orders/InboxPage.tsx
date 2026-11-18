@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { useOrdersRaw, useUpdateRawOrderMobile, type RawOrder } from '../../api/orders-raw.js';
 import { useStores } from '../../api/config.js';
+import { usePartners } from '../../api/partners.js';
 import { Table } from '../../components/common/Table.js';
 import { Badge } from '../../components/common/Badge.js';
 import { BookingModal } from '../../components/orders/BookingModal.js';
@@ -134,6 +135,8 @@ export default function InboxPage() {
   const canAssignPartner = useAuthStore((s) => s.hasPermission('can_edit_settings'));
   const canAssignPartnerTo = (r: RawOrder) => canAssignPartner && !r.partner_ref && r.status === 'unprocessed';
   const selectedStoreId = useUIStore((s) => s.selectedStoreId) ?? '';
+  const { data: partners } = usePartners();
+  const partnerNames = useMemo(() => new Map((partners ?? []).map((p) => [p.slug, p.name])), [partners]);
   const [finderOpen, setFinderOpen] = useState(false);
 
   const todayStr = useMemo(() => toLocalDateStr(new Date()), []);
@@ -228,8 +231,9 @@ export default function InboxPage() {
         return (
           <div className="flex flex-wrap items-center gap-1.5">
             <Badge color={s.color}>{s.text}</Badge>
-            {isDirect(r) && !isWalkIn(r) && <Badge color="green">Direct</Badge>}
+            {isDirect(r) && !isWalkIn(r) && !r.via_counter && <Badge color="green">Direct</Badge>}
             {isWalkIn(r) && <Badge color="teal">{r.via_counter ? 'Walk-in · at counter' : 'Walk-in'}</Badge>}
+            {r.via_counter && r.partner_ref && <Badge color="teal">Partner tablet · {partnerNames.get(r.partner_ref) ?? r.partner_ref}</Badge>}
             {r.partner_ref && (
               <span
                 title={`Affiliate / partner booking (${r.partner_ref}) — handle with extra care`}
@@ -554,8 +558,9 @@ export default function InboxPage() {
 
                 <div className="flex flex-wrap items-center gap-1.5 mb-2">
                   <Badge color={s.color}>{s.text}</Badge>
-                  {isDirect(r) && !isWalkIn(r) && <Badge color="green">Direct</Badge>}
+                  {isDirect(r) && !isWalkIn(r) && !r.via_counter && <Badge color="green">Direct</Badge>}
                   {isWalkIn(r) && <Badge color="teal">{r.via_counter ? 'Walk-in · at counter' : 'Walk-in'}</Badge>}
+                  {r.via_counter && r.partner_ref && <Badge color="teal">Partner tablet · {partnerNames.get(r.partner_ref) ?? r.partner_ref}</Badge>}
                   {r.partner_ref && (
                     <span
                       title={`Affiliate / partner booking (${r.partner_ref}) — handle with extra care`}

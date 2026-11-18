@@ -23,8 +23,15 @@ function Star() {
   );
 }
 
+/** Partner kiosks show the hotel alongside Lola's. */
+export interface CounterBrand {
+  partnerName: string;
+  logoUrl?: string | null;
+  welcomeMessage?: string | null;
+}
+
 /** The tablet's attract screen, styled after the homepage hero. */
-export function CounterWelcome({ onStart }: { onStart: () => void }) {
+export function CounterWelcome({ onStart, brand }: { onStart: () => void; brand?: CounterBrand }) {
   const animate = !useReducedMotion();
   const explorers = Math.floor(useLiveCustomerCount() / 25) * 25;
 
@@ -53,6 +60,15 @@ export function CounterWelcome({ onStart }: { onStart: () => void }) {
       ))}
 
       <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-6 pb-48 text-center">
+        {brand && (
+          <motion.div className="mb-6 flex items-center gap-4 font-lato text-lg font-bold text-charcoal-brand" {...fadeUp(0)}>
+            <span>Lola&apos;s Rentals</span>
+            <span className="text-charcoal-brand/40">×</span>
+            {brand.logoUrl
+              ? <img src={brand.logoUrl} alt={brand.partnerName} className="h-14 w-auto max-w-[200px] object-contain" />
+              : <span>{brand.partnerName}</span>}
+          </motion.div>
+        )}
         <h1 className="font-headline font-extrabold" style={{ fontSize: 'clamp(2.5rem, 7vw, 4.25rem)', lineHeight: 1.12 }}>
           <motion.span className="block text-teal-brand" {...fadeUp(0.1)}>Ready to ride?</motion.span>
           <motion.span
@@ -65,7 +81,9 @@ export function CounterWelcome({ onStart }: { onStart: () => void }) {
         </h1>
 
         <motion.p className="mt-5 max-w-xl font-lato text-charcoal-brand" style={{ fontSize: 'clamp(17px, 2.4vw, 21px)', lineHeight: 1.6 }} {...fadeUp(0.45)}>
-          Choose your vehicle and sign your waiver right here. It takes about two minutes.
+          {brand
+            ? brand.welcomeMessage?.trim() || `Book a scooter delivered right here to ${brand.partnerName}. It takes about two minutes.`
+            : 'Choose your vehicle and sign your waiver right here. It takes about two minutes.'}
         </motion.p>
 
         <motion.div

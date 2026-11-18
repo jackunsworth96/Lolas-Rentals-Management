@@ -79,7 +79,9 @@ export default function WaiverPage() {
   const [alreadySignedOnLoad, setAlreadySignedOnLoad] = useState(false);
   const { t } = useTranslation();
 
-  const backToCounter = () => navigate('/counter', { replace: true });
+  const homeParam = searchParams.get('home');
+  const counterHome = homeParam === '/partner/kiosk' ? homeParam : '/counter';
+  const backToCounter = () => navigate(counterHome, { replace: true });
   useIdleReset(fromCounter && step !== 3, COUNTER_IDLE_MS, backToCounter);
   useIdleReset(fromCounter && step === 3, COUNTER_DONE_MS, backToCounter);
 

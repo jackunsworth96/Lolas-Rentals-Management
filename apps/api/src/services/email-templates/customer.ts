@@ -774,6 +774,7 @@ export function walkInReservationConfirmationHtml({
   depositAmount,
   depositMethod,
   whatsappNumber,
+  addons = [],
 }: {
   customerName: string;
   orderReference: string;
@@ -792,6 +793,7 @@ export function walkInReservationConfirmationHtml({
   depositAmount?: number;
   depositMethod?: string;
   whatsappNumber: string;
+  addons?: Array<{ name: string; price: number }>;
 }): string {
   const hasBreakdown = rentalDays != null && dailyRate != null;
 
@@ -820,6 +822,11 @@ export function walkInReservationConfirmationHtml({
       </tr>`
     : '';
 
+  const addonRows = addons.map((a) => `<tr>
+        <td style="padding: 8px 0; color: #888; font-size: 13px;">${escapeHtml(a.name)}</td>
+        <td style="padding: 8px 0; color: #363737; font-size: 13px;">₱${a.price.toLocaleString()}</td>
+      </tr>`).join('');
+
   const priceBreakdown = hasBreakdown ? `
     <div style="background: white; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
       <p style="margin: 0 0 12px; font-size: 13px; font-weight: 700; color: #363737; text-transform: uppercase; letter-spacing: 0.05em;">
@@ -830,6 +837,7 @@ export function walkInReservationConfirmationHtml({
           <td style="padding: 8px 0; color: #888; font-size: 13px;">${rentalDays} day${rentalDays !== 1 ? 's' : ''} × ₱${dailyRate!.toLocaleString()}/day</td>
           <td style="padding: 8px 0; color: #363737; font-size: 13px;">₱${(rentalSubtotal ?? rentalDays! * dailyRate!).toLocaleString()}</td>
         </tr>
+        ${addonRows}
         ${pickupFeeRow}
         ${dropoffFeeRow}
         ${discountRow}

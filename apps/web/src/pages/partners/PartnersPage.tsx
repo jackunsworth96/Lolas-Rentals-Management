@@ -693,6 +693,7 @@ const EMPTY_FORM = {
   early_bird_days: '' as string,
   early_bird_discount_value: '' as string,
   free_delivery_location_ids: null as number[] | null,
+  kiosk_location_id: null as number | null,
   portal_enabled: false,
   portal_subdomain: '',
   notes: '',
@@ -737,6 +738,7 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
         early_bird_days: editing.early_bird_days != null ? String(editing.early_bird_days) : '',
         early_bird_discount_value: editing.early_bird_discount_value != null ? String(editing.early_bird_discount_value) : '',
         free_delivery_location_ids: editing.free_delivery_location_ids ?? null,
+        kiosk_location_id: editing.kiosk_location_id ?? null,
         portal_enabled: editing.portal_enabled ?? false,
         portal_subdomain: editing.portal_subdomain ?? editing.slug,
         notes: editing.notes ?? '',
@@ -822,6 +824,7 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
       early_bird_days: form.early_bird_days.trim() === '' ? null : Math.max(1, Math.min(365, Number(form.early_bird_days))),
       early_bird_discount_value: form.early_bird_discount_value.trim() === '' ? null : Number(form.early_bird_discount_value),
       free_delivery_location_ids: form.free_delivery_location_ids,
+      ...(form.kiosk_location_id != null || editing?.kiosk_location_id != null ? { kiosk_location_id: form.kiosk_location_id } : {}),
       portal_enabled: form.portal_enabled,
       portal_subdomain: form.portal_subdomain.trim() || form.slug.trim(),
       notes: form.notes.trim() || null,
@@ -961,6 +964,22 @@ function PartnerFormModal({ open, onClose, editing, defaultStoreId, pushToast }:
                 <span className="block text-xs text-gray-400 mt-0.5">Lets this partner log in, check availability, book guests, and view reports.</span>
               </span>
             </label>
+            <div className="mt-3">
+              <label className="block text-xs text-gray-500 mb-1">Front-desk tablet delivers to</label>
+              <select
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                value={form.kiosk_location_id ?? ''}
+                onChange={(e) => setField('kiosk_location_id', e.target.value ? Number(e.target.value) : null)}
+              >
+                <option value="">Tablet off</option>
+                {nonStoreLocations.map((loc) => (
+                  <option key={loc.id} value={loc.id}>{loc.name}</option>
+                ))}
+              </select>
+              <span className="block text-xs text-gray-400 mt-1">
+                The area this property is in. Guests booking on the partner&apos;s counter tablet get the vehicle delivered here.
+              </span>
+            </div>
             <div className="mt-3">
               <label className="block text-xs text-gray-500 mb-1">Portal subdomain</label>
               <div className="flex items-center gap-2">
@@ -1379,6 +1398,7 @@ function ApprovalModal({ open, onClose, partner, pushToast }: ApprovalModalProps
       early_bird_days: partner.early_bird_days != null ? String(partner.early_bird_days) : '',
       early_bird_discount_value: partner.early_bird_discount_value != null ? String(partner.early_bird_discount_value) : '',
       free_delivery_location_ids: partner.free_delivery_location_ids ?? null,
+      kiosk_location_id: partner.kiosk_location_id ?? null,
       portal_enabled: partner.portal_enabled ?? false,
       portal_subdomain: partner.portal_subdomain ?? partner.slug,
       notes: partner.notes ?? '',

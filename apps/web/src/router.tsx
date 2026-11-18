@@ -4,6 +4,7 @@ import { ChunkErrorBoundary } from './components/ChunkErrorBoundary.js';
 import { AppLayout } from './components/layout/AppLayout.js';
 import { isCounterOnlyUser, useAuthStore } from './stores/auth-store.js';
 import { usePartnerAuthStore } from './stores/partner-auth-store.js';
+import { usePartnerKioskStore } from './api/partner-kiosk.js';
 
 const LoginPage = lazy(() => import('./pages/login/LoginPage.js'));
 const InboxPage = lazy(() => import('./pages/orders/InboxPage.js'));
@@ -76,6 +77,7 @@ const InvoicesPage = lazy(() => import('./pages/invoices/InvoicesPage.js'));
 const ContractsPage = lazy(() => import('./pages/contracts/ContractsPage.js'));
 const PublicContractPage = lazy(() => import('./pages/contract/PublicContractPage.js'));
 const CounterPage = lazy(() => import('./pages/counter/CounterPage.js'));
+const PartnerKioskPage = lazy(() => import('./pages/partner/PartnerKioskPage.js'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
@@ -95,6 +97,8 @@ function CounterRoute() {
 
 function ProtectedPartnerRoute({ children }: { children: React.ReactNode }) {
   const token = usePartnerAuthStore((s) => s.token);
+  const kioskToken = usePartnerKioskStore((s) => s.token);
+  if (kioskToken) return <Navigate to="/partner/kiosk" replace />;
   if (!token) return <Navigate to="/partner/login" replace />;
   return <>{children}</>;
 }
@@ -176,6 +180,7 @@ export function AppRouter() {
           <Route path="/affiliates/details/:partnerId" element={<AffiliatesDetailsPage />} />
           <Route path="/partner" element={<Navigate to="/partner/dashboard" replace />} />
           <Route path="/partner/login" element={<PartnerLoginPage />} />
+          <Route path="/partner/kiosk" element={<PartnerKioskPage />} />
           <Route element={<ProtectedPartnerRoute><PartnerShell /></ProtectedPartnerRoute>}>
             <Route path="/partner/dashboard" element={<PartnerDashboardPage />} />
             <Route path="/partner/book" element={<PartnerBookPage />} />

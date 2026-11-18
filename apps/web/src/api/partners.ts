@@ -35,6 +35,8 @@ export interface AccommodationPartner {
   telegram_chat_id: string | null;
   portal_enabled: boolean;
   portal_subdomain: string | null;
+  /** Where front-desk tablet bookings are handed over; the tablet is off until set. */
+  kiosk_location_id?: number | null;
   created_at: string;
   updated_at: string;
 }
