@@ -478,6 +478,10 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       dropoffDatetime: body.dropoffDatetime,
       pickupLocationId: body.pickupLocationId ? String(body.pickupLocationId) : null,
       dropoffLocationId: body.dropoffLocationId ? String(body.dropoffLocationId) : null,
+      pickupLocation: body.pickupLocationId ? pickupLocation : null,
+      dropoffLocation: body.dropoffLocationId ? dropoffLocation : null,
+      pickupFee: body.pickupFee,
+      dropoffFee: body.dropoffFee,
       orderReference: orderReference,
     }];
 

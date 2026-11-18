@@ -78,10 +78,10 @@ export function MoneySummary({
         <Line label="Rental" value={formatCurrency(rentalSubtotal)} />
         {extensionCharges > 0 && <Line label="Extensions" value={formatCurrency(extensionCharges)} />}
         {deliveryFee > 0 && (
-          <Line label={deliveryLocation ? `Delivery – ${deliveryLocation}` : 'Delivery'} value={formatCurrency(deliveryFee)} />
+          <Line label={deliveryLocation ? `${deliveryLocation} delivery` : 'Delivery'} value={formatCurrency(deliveryFee)} />
         )}
         {collectionFee > 0 && (
-          <Line label={collectionLocation ? `Collection – ${collectionLocation}` : 'Collection'} value={formatCurrency(collectionFee)} />
+          <Line label={collectionLocation ? `${collectionLocation} collection` : 'Collection'} value={formatCurrency(collectionFee)} />
         )}
         {discount > 0 && <Line label="Discount" value={`−${formatCurrency(discount)}`} className="[&>span:last-child]:text-green-600" />}
         {addonTotal > 0 && <Line label="Add-ons" value={formatCurrency(addonTotal)} />}
