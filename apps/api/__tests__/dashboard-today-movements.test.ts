@@ -86,7 +86,7 @@ describe("today's pickups", () => {
     expect(pickups[0].raw).toMatchObject({ id: 'r1', transport_service: 'delivery' });
   });
 
-  it('marks activated bookings as ready before pickup time and out after it', () => {
+  it('marks activated bookings as out even before their pickup time, and reserved ones as ready', () => {
     const { pickups } = buildTodayMovements({
       ...base,
       orders: [
@@ -96,7 +96,7 @@ describe("today's pickups", () => {
       ],
       orderAddons: new Map([['later', [{ name: 'Helmet', quantity: 2 }]]]),
     });
-    expect(pickups.map((p) => [p.id, p.status])).toEqual([['booked-ahead', 'ready'], ['earlier', 'out'], ['later', 'ready']]);
+    expect(pickups.map((p) => [p.id, p.status])).toEqual([['booked-ahead', 'ready'], ['earlier', 'out'], ['later', 'out']]);
     expect(pickups[2]).toMatchObject({ addons: ['Helmet ×2'], balanceDue: 500, waiverSigned: true });
   });
 });

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { CheckCircle2 } from 'lucide-react';
 import lolasLogo from '../../assets/Lolas Original Logo.svg';
 import { SEO } from '../../components/seo/SEO.js';
@@ -9,6 +9,12 @@ import { formatPickupDatetimeManila } from '../../utils/date.js';
 import { api } from '../../api/client.js';
 import { WhatsAppNumberInput, whatsAppNumberError } from '../../components/common/WhatsAppNumberInput.js';
 import { SignaturePad, isCanvasBlank } from '../../components/common/SignaturePad.js';
+import { useIdleReset } from '../../hooks/useIdleReset.js';
+
+/** Back to the counter's start screen if the customer walks away mid-waiver. */
+const COUNTER_IDLE_MS = 180_000;
+/** How long the "all done" screen stays up before the tablet resets. */
+const COUNTER_DONE_MS = 20_000;
 
 interface OrderWaiverPayload {
   orderReference: string;
@@ -42,13 +48,17 @@ const inputClass =
 export default function WaiverPage() {
   const { orderReference: orderReferenceParam } = useParams<{ orderReference: string }>();
   const orderReference = orderReferenceParam ?? '';
+  const [searchParams] = useSearchParams();
+  const fromCounter = searchParams.get('counter') === '1';
+  const counterMobile = (useLocation().state as { mobile?: string } | null)?.mobile ?? '';
+  const navigate = useNavigate();
 
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(true);
   const [orderData, setOrderData] = useState<OrderWaiverPayload | null>(null);
   const [driverName, setDriverName] = useState('');
   const [driverEmail, setDriverEmail] = useState('');
-  const [driverMobile, setDriverMobile] = useState('');
+  const [driverMobile, setDriverMobile] = useState(counterMobile);
   const [referralSource, setReferralSource] = useState('');
   const [referralDetail, setReferralDetail] = useState('');
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -68,6 +78,10 @@ export default function WaiverPage() {
 
   const [alreadySignedOnLoad, setAlreadySignedOnLoad] = useState(false);
   const { t } = useTranslation();
+
+  const backToCounter = () => navigate('/counter', { replace: true });
+  useIdleReset(fromCounter && step !== 3, COUNTER_IDLE_MS, backToCounter);
+  useIdleReset(fromCounter && step === 3, COUNTER_DONE_MS, backToCounter);
 
   const setPassengerInk = (index: number, has: boolean) => {
     setPassengerHasInk((prev) => {
@@ -490,15 +504,28 @@ export default function WaiverPage() {
                 </p>
               </>
             )}
-            <div className="w-full bg-sand-brand/50 rounded-lg p-4 text-left font-lato text-sm text-charcoal-brand">
-              {t('waiver.showScreen')} <span className="font-bold">{orderReference}</span>
-            </div>
-            <Link
-              to="/book"
-              className={`${goldCtaClass} mt-8 w-full max-w-xs no-underline`}
-            >
-              {t('waiver.returnHome')}
-            </Link>
+            {fromCounter ? (
+              <>
+                <div className="w-full bg-sand-brand/50 rounded-lg p-5 font-lato text-lg font-semibold text-charcoal-brand">
+                  {t('waiver.handTabletBack')}
+                </div>
+                <button type="button" onClick={backToCounter} className={`${goldCtaClass} mt-8 w-full max-w-xs`}>
+                  {t('waiver.done')}
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="w-full bg-sand-brand/50 rounded-lg p-4 text-left font-lato text-sm text-charcoal-brand">
+                  {t('waiver.showScreen')} <span className="font-bold">{orderReference}</span>
+                </div>
+                <Link
+                  to="/book"
+                  className={`${goldCtaClass} mt-8 w-full max-w-xs no-underline`}
+                >
+                  {t('waiver.returnHome')}
+                </Link>
+              </>
+            )}
           </div>
         )}
       </div>

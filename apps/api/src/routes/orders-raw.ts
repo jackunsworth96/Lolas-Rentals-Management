@@ -31,6 +31,7 @@ import {
   resolveRoutedAccounts,
 } from '../lib/deposit-envelope.js';
 import { buildTipLegs } from '../lib/tips.js';
+import { uniqueWalkInReference } from '../lib/walk-in-reference.js';
 import {
   assertSurfRacksAvailable,
   countRackAddonLines,
@@ -38,24 +39,6 @@ import {
   getSurfRackAddonIds,
   loadSurfRackAddons,
 } from '../use-cases/surf-racks/get-surf-rack-availability.js';
-
-function generateWalkInReference(source: string): string {
-  const prefix = source === 'bass' ? 'BB' : 'LR';
-  const now = new Date();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  const hex = Math.floor(Math.random() * 0xffff).toString(16).toUpperCase().padStart(4, '0');
-  return `${prefix}-${m}${d}-${hex}`;
-}
-
-async function uniqueWalkInReference(source: string): Promise<string> {
-  for (let i = 0; i < 5; i++) {
-    const ref = generateWalkInReference(source);
-    const { data } = await supabase.from('orders_raw').select('id').eq('order_reference', ref).maybeSingle();
-    if (!data) return ref;
-  }
-  return generateWalkInReference(source);
-}
 
 /** Money already taken against inbox bookings, keyed by orders_raw id. */
 async function prepaidAmountsByRawOrder(rawOrderIds: string[]): Promise<Map<string, number>> {

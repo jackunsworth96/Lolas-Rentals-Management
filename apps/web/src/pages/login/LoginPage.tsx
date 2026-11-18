@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '../../stores/auth-store.js';
+import { isCounterOnlyUser, useAuthStore, type AuthUser } from '../../stores/auth-store.js';
 import { useUIStore } from '../../stores/ui-store.js';
 import { api } from '../../api/client.js';
 import { Button } from '../../components/common/Button.js';
@@ -31,10 +31,10 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const result = await api.post<{ token: string; user: { storeIds?: string[] } }>('/auth/login', { username, pin });
+      const result = await api.post<{ token: string; user: AuthUser }>('/auth/login', { username, pin });
       setAuth(result.token, result.user);
       setSelectedStore(DEFAULT_STORE_ID);
-      navigate('/dashboard', { replace: true });
+      navigate(isCounterOnlyUser(result.user) ? '/counter' : '/dashboard', { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {

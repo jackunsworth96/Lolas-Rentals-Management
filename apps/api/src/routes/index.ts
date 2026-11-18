@@ -50,6 +50,7 @@ import { surfRackRoutes } from './surf-racks.js';
 import { invoiceRoutes } from './invoices.js';
 import { contractRoutes } from './contracts.js';
 import { publicContractRoutes } from './public-contracts.js';
+import { counterRoutes } from './counter.js';
 import { loginLimiter, publicLimiter, apiLimiter } from '../middleware/rate-limit.js';
 import { telegramWebhookRouter } from '../telegram/telegram.webhook.js';
 import { requireOperationalStore } from '../middleware/operational-store.js';
@@ -114,5 +115,6 @@ routes.use('/surf-racks', surfRackRoutes);
 routes.use('/invoices', invoiceRoutes);
 routes.use('/contracts', contractRoutes);
 routes.use('/public/contracts', publicContractRoutes);
+routes.use('/counter', counterRoutes);
 
 export { routes };

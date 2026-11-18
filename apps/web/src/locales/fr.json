@@ -218,6 +218,8 @@
     "waiverSigned": "Décharge signée !",
     "waiverSignedBody": "Merci {{name}}. Votre décharge a été soumise pour votre réservation",
     "showScreen": "Veuillez montrer cet écran à notre équipe à votre arrivée. Votre référence de réservation est :",
+    "handTabletBack": "C'est terminé ! Rendez la tablette à notre équipe et nous vous mettrons en route.",
+    "done": "Terminé",
     "returnHome": "Retourner à l'accueil",
     "loadingError": "Une erreur s'est produite lors du chargement de votre réservation. Veuillez réessayer.",
     "submitError": "Impossible de soumettre la décharge.",

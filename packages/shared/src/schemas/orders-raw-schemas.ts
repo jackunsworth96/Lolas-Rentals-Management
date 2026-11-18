@@ -69,6 +69,8 @@ export interface OrdersRawRow {
   device_type: 'mobile' | 'desktop' | null;
   /** Accommodation partner slug when the booking was made via a partner referral link (migration 129). */
   partner_ref: string | null;
+  /** The customer entered this walk-in themselves on the reception tablet. */
+  via_counter?: boolean;
   /** Operational transport required, derived from location IDs by the inbox API. */
   transport_service?: 'delivery' | 'collection' | 'both' | null;
   /** Money already taken against this booking before activation, summed by the inbox API. */

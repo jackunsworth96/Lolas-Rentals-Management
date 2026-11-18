@@ -225,7 +225,7 @@ export function buildTodayMovements(input: MovementsInput): TodayMovements {
         quote: null,
         waiverSigned: o.waiver_status === 'signed',
         partnerRef: o.partner_ref,
-        status: o.status === 'active' && ms(first.pickup_datetime) <= nowMs ? 'out' : 'ready',
+        status: o.status === 'active' ? 'out' : 'ready',
       });
     }
 

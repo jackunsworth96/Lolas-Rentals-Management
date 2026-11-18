@@ -229,7 +229,7 @@ export default function InboxPage() {
           <div className="flex flex-wrap items-center gap-1.5">
             <Badge color={s.color}>{s.text}</Badge>
             {isDirect(r) && !isWalkIn(r) && <Badge color="green">Direct</Badge>}
-            {isWalkIn(r) && <Badge color="teal">Walk-in</Badge>}
+            {isWalkIn(r) && <Badge color="teal">{r.via_counter ? 'Walk-in · at counter' : 'Walk-in'}</Badge>}
             {r.partner_ref && (
               <span
                 title={`Affiliate / partner booking (${r.partner_ref}) — handle with extra care`}
@@ -555,7 +555,7 @@ export default function InboxPage() {
                 <div className="flex flex-wrap items-center gap-1.5 mb-2">
                   <Badge color={s.color}>{s.text}</Badge>
                   {isDirect(r) && !isWalkIn(r) && <Badge color="green">Direct</Badge>}
-                  {isWalkIn(r) && <Badge color="teal">Walk-in</Badge>}
+                  {isWalkIn(r) && <Badge color="teal">{r.via_counter ? 'Walk-in · at counter' : 'Walk-in'}</Badge>}
                   {r.partner_ref && (
                     <span
                       title={`Affiliate / partner booking (${r.partner_ref}) — handle with extra care`}

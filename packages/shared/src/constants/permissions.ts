@@ -43,6 +43,8 @@ export const Permission = {
   ManageInvoices: 'can_manage_invoices',
   ManageContracts: 'can_manage_contracts',
   ManageStaffContracts: 'can_manage_staff_contracts',
+  /** The reception tablet: customers book a walk-in themselves and sign the waiver. */
+  UseCounter: 'can_use_counter',
 } as const;
 
 export type PermissionType = (typeof Permission)[keyof typeof Permission];

@@ -218,6 +218,8 @@
     "waiverSigned": "¡Exención firmada!",
     "waiverSignedBody": "Gracias {{name}}. Tu exención ha sido enviada para tu reserva",
     "showScreen": "Por favor, muestra esta pantalla a nuestro equipo cuando llegues. Tu referencia de reserva es:",
+    "handTabletBack": "¡Listo! Devuelve la tableta a nuestro equipo y te pondremos en marcha.",
+    "done": "Listo",
     "returnHome": "Volver al inicio",
     "loadingError": "Algo salió mal al cargar tu reserva. Por favor, inténtalo de nuevo.",
     "submitError": "No se pudo enviar la exención.",

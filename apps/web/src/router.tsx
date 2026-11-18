@@ -2,7 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { ChunkErrorBoundary } from './components/ChunkErrorBoundary.js';
 import { AppLayout } from './components/layout/AppLayout.js';
-import { useAuthStore } from './stores/auth-store.js';
+import { isCounterOnlyUser, useAuthStore } from './stores/auth-store.js';
 import { usePartnerAuthStore } from './stores/partner-auth-store.js';
 
 const LoginPage = lazy(() => import('./pages/login/LoginPage.js'));
@@ -75,11 +75,22 @@ const PartnerPricesPage = lazy(() => import('./pages/partner/PartnerPricesPage.j
 const InvoicesPage = lazy(() => import('./pages/invoices/InvoicesPage.js'));
 const ContractsPage = lazy(() => import('./pages/contracts/ContractsPage.js'));
 const PublicContractPage = lazy(() => import('./pages/contract/PublicContractPage.js'));
+const CounterPage = lazy(() => import('./pages/counter/CounterPage.js'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
+  const counterOnly = useAuthStore((s) => isCounterOnlyUser(s.user));
   if (!token) return <Navigate to="/login" replace />;
+  if (counterOnly) return <Navigate to="/counter" replace />;
   return <>{children}</>;
+}
+
+function CounterRoute() {
+  const token = useAuthStore((s) => s.token);
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  if (!token) return <Navigate to="/login" replace />;
+  if (!hasPermission('can_use_counter')) return <Navigate to="/dashboard" replace />;
+  return <CounterPage />;
 }
 
 function ProtectedPartnerRoute({ children }: { children: React.ReactNode }) {
@@ -132,6 +143,7 @@ export function AppRouter() {
           {/* Root redirects to customer homepage */}
           <Route path="/" element={<Navigate to="/book" replace />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/counter" element={<CounterRoute />} />
 
           {/* Customer-facing routes — all under /book */}
           <Route path="/book" element={<HomePage />} />

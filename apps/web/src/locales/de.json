@@ -218,6 +218,8 @@
     "waiverSigned": "Verzichtserklärung unterzeichnet!",
     "waiverSignedBody": "Vielen Dank, {{name}}. Ihre Verzichtserklärung wurde für Ihre Buchung eingereicht",
     "showScreen": "Zeigen Sie diesen Bildschirm bei Ihrer Ankunft unserem Team. Ihre Buchungsreferenz lautet:",
+    "handTabletBack": "Fertig! Bitte geben Sie das Tablet unserem Team zurück, dann kann es losgehen.",
+    "done": "Fertig",
     "returnHome": "Zur Startseite",
     "loadingError": "Beim Laden Ihrer Buchung ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut.",
     "submitError": "Verzichtserklärung konnte nicht eingereicht werden.",

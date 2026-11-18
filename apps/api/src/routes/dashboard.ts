@@ -850,7 +850,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
         const channel = row.booking_channel as string | null;
         if (channel === 'direct' || source === 'lolas-direct' || source === 'bass-direct') {
           bDirectWeb++;
-        } else if (source === 'lolas-walkin' || source === 'bass-walkin' || channel === 'walk-in') {
+        } else if (source === 'lolas-walkin' || source === 'bass-walkin' || channel === 'walk_in') {
           bWalkIn++;
         } else if ((source === 'lolas' || source === 'bass') && (channel === null || channel === 'woo')) {
           bWooCommerce++;

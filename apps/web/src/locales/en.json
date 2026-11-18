@@ -218,6 +218,8 @@
     "waiverSigned": "Waiver Signed!",
     "waiverSignedBody": "Thank you {{name}}. Your waiver has been submitted for your booking",
     "showScreen": "Please show this screen to our team when you arrive. Your booking reference is:",
+    "handTabletBack": "All done! Please hand the tablet back to our team and they will get you on the road.",
+    "done": "Done",
     "returnHome": "Return home",
     "emailRequired": "A valid email address is required",
     "signatureRequired": "Please add your signature.",

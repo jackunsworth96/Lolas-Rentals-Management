@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
-interface AuthUser {
+export interface AuthUser {
   userId: string;
   username: string;
   employeeId: string;
@@ -14,6 +14,12 @@ interface AuthUser {
 
 export function isStaffUser(user: Pick<AuthUser, 'personType'> | null | undefined): boolean {
   return (user?.personType ?? 'staff') === 'staff';
+}
+
+/** The reception tablet login: it can only run the counter page. */
+export function isCounterOnlyUser(user: Pick<AuthUser, 'permissions'> | null | undefined): boolean {
+  const permissions = user?.permissions ?? [];
+  return permissions.length > 0 && permissions.every((p) => p === 'can_use_counter');
 }
 
 interface AuthState {
