@@ -59,7 +59,7 @@ export function CounterWelcome({ onStart, brand }: { onStart: () => void; brand?
         />
       ))}
 
-      <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-6 pb-48 text-center">
+      <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-6 pb-36 pt-12 text-center sm:pt-20">
         <h1 className="font-headline font-extrabold" style={{ fontSize: 'clamp(2.5rem, 7vw, 4.25rem)', lineHeight: 1.12 }}>
           <motion.span className="block text-teal-brand" {...fadeUp(0.1)}>Ready to ride?</motion.span>
           <motion.span
