@@ -23,7 +23,7 @@ function Star() {
   );
 }
 
-/** Partner kiosks show the hotel alongside Lola's. */
+/** Partner kiosks show the hotel's logo beside ours in the header. */
 export interface CounterBrand {
   partnerName: string;
   logoUrl?: string | null;
@@ -60,15 +60,6 @@ export function CounterWelcome({ onStart, brand }: { onStart: () => void; brand?
       ))}
 
       <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-6 pb-48 text-center">
-        {brand && (
-          <motion.div className="mb-6 flex items-center gap-4 font-lato text-lg font-bold text-charcoal-brand" {...fadeUp(0)}>
-            <span>Lola&apos;s Rentals</span>
-            <span className="text-charcoal-brand/40">×</span>
-            {brand.logoUrl
-              ? <img src={brand.logoUrl} alt={brand.partnerName} className="h-14 w-auto max-w-[200px] object-contain" />
-              : <span>{brand.partnerName}</span>}
-          </motion.div>
-        )}
         <h1 className="font-headline font-extrabold" style={{ fontSize: 'clamp(2.5rem, 7vw, 4.25rem)', lineHeight: 1.12 }}>
           <motion.span className="block text-teal-brand" {...fadeUp(0.1)}>Ready to ride?</motion.span>
           <motion.span

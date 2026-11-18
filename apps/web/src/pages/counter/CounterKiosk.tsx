@@ -312,16 +312,26 @@ export function CounterKiosk({ counter, mode, brand, homePath, onLogoHold, deliv
             </button>
           )}
         </div>
-        <img
-          src={logo}
-          alt="Lola's Rentals"
-          className="h-14 w-auto select-none"
-          draggable={false}
-          onPointerDown={startLogoHold}
-          onPointerUp={cancelLogoHold}
-          onPointerLeave={cancelLogoHold}
-          onContextMenu={(e) => e.preventDefault()}
-        />
+        <div className="flex items-center gap-4">
+          <img
+            src={logo}
+            alt="Lola's Rentals"
+            className="h-14 w-auto select-none"
+            draggable={false}
+            onPointerDown={startLogoHold}
+            onPointerUp={cancelLogoHold}
+            onPointerLeave={cancelLogoHold}
+            onContextMenu={(e) => e.preventDefault()}
+          />
+          {brand && (
+            <>
+              <span className="font-lato text-xl text-charcoal-brand/40" aria-hidden>×</span>
+              {brand.logoUrl
+                ? <img src={brand.logoUrl} alt={brand.partnerName} className="h-14 w-auto max-w-[180px] select-none object-contain" draggable={false} />
+                : <span className="font-lato text-lg font-bold text-charcoal-brand">{brand.partnerName}</span>}
+            </>
+          )}
+        </div>
         <div className="w-28" />
       </header>
 
