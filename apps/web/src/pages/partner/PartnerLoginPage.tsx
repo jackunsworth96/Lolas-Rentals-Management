@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { usePartnerLogin } from '../../api/partner-portal.js';
 import { fetchPublicPartnerBenefit } from '../../api/partners.js';
 import { usePartnerAuthStore } from '../../stores/partner-auth-store.js';
+import { usePartnerKioskStore } from '../../api/partner-kiosk.js';
 import { partnerSlugFromUrl } from '../../utils/partnerHost.js';
 import lolaLogo from '../../assets/Lolas Original Logo.svg';
 
@@ -32,6 +33,8 @@ export default function PartnerLoginPage() {
     try {
       const result = await login.mutateAsync({ partnerSlug, username, pin });
       setPartnerAuth(result.token, result.user);
+      // Signing in with a PIN proves staff are at the device, so it ends counter tablet mode.
+      usePartnerKioskStore.getState().setToken(null);
       navigate('/partner/dashboard', { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
