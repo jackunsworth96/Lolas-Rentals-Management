@@ -5,6 +5,8 @@ export interface CounterModel {
   modelId: string;
   modelName: string;
   availableCount: number;
+  /** For a fully booked model: the first slot it is free for the whole requested length. */
+  nextFreePickup: string | null;
   dailyRate: number | null;
   total: number | null;
   securityDeposit: number | null;

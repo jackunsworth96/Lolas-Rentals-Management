@@ -775,10 +775,11 @@ router.post('/users', edit, validateBody(z.object({
 });
 router.post('/users/access-account', edit, validateBody(z.object({
   fullName: z.string().trim().min(1),
-  personType: z.enum(['owner', 'developer']),
+  personType: z.enum(['owner', 'developer', 'counter']),
   username: z.string().trim().min(1),
   pin: z.string().min(4),
   roleId: z.string().min(1),
+  storeId: z.string().min(1).optional(),
 })), async (req, res, next) => {
   try {
     const { createAccessAccount } = await import('../use-cases/settings/create-access-account.js');

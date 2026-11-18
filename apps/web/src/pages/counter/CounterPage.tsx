@@ -13,8 +13,9 @@ import { CloudinaryImage } from '../../components/ui/CloudinaryImage.js';
 import { PesoSign } from '../../components/ui/PesoSign.js';
 import { formatPhpNumber } from '../../utils/currency.js';
 import { WhatsAppNumberInput, whatsAppNumberError } from '../../components/common/WhatsAppNumberInput.js';
+import { CounterWelcome } from './CounterWelcome.js';
 
-type Step = 'welcome' | 'days' | 'bike' | 'details';
+type Step = 'welcome' | 'days' | 'vehicle' | 'details';
 
 const DAY_CHOICES = [1, 2, 3, 5, 7, 14];
 const MAX_DAYS = 30;
@@ -26,35 +27,61 @@ const goldButton =
 const inputClass =
   'w-full rounded-xl border-2 border-charcoal-brand/15 bg-white px-4 py-4 font-lato text-lg text-charcoal-brand focus:border-teal-brand focus:outline-none';
 
+function timeLabel(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' });
+}
+
 function returnLabel(iso: string): string {
-  const d = new Date(iso);
-  const day = d.toLocaleDateString('en-GB', { timeZone: 'Asia/Manila', weekday: 'long', day: 'numeric', month: 'long' });
-  const time = d.toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' });
-  return `${day} at ${time}`;
+  const day = new Date(iso).toLocaleDateString('en-GB', { timeZone: 'Asia/Manila', weekday: 'long', day: 'numeric', month: 'long' });
+  return `${day} at ${timeLabel(iso)}`;
+}
+
+function shortDateTime(iso: string): string {
+  const day = new Date(iso).toLocaleDateString('en-GB', { timeZone: 'Asia/Manila', weekday: 'short', day: 'numeric', month: 'short' });
+  return `${day}, ${timeLabel(iso)}`;
 }
 
 function Peso({ amount }: { amount: number }) {
   return <><PesoSign />{formatPhpNumber(amount)}</>;
 }
 
-function BikeCard({ model, days, onChoose }: { model: CounterModel; days: number; onChoose: () => void }) {
+function VehicleCard({ model, days, onChoose }: { model: CounterModel; days: number; onChoose: () => void }) {
   const publicId = useVehiclePublicId(model.modelName);
+  const fullyBooked = model.availableCount < 1;
   return (
     <button
       type="button"
       onClick={onChoose}
-      className="flex flex-col overflow-hidden rounded-3xl border-2 border-charcoal-brand/10 bg-[#FAF6F0] text-left shadow-sm transition active:scale-[0.98] hover:border-gold-brand"
+      disabled={fullyBooked}
+      className={`flex flex-col overflow-hidden rounded-3xl border-2 border-charcoal-brand/10 bg-[#FAF6F0] text-left shadow-sm transition ${
+        fullyBooked ? 'cursor-not-allowed' : 'active:scale-[0.98] hover:border-gold-brand'
+      }`}
     >
-      <div className="h-44 w-full bg-white">
-        {publicId ? (
-          <CloudinaryImage publicId={publicId} alt={model.modelName} plugins={[]} className="h-full w-full object-contain p-3" />
-        ) : (
-          <div className="flex h-full items-center justify-center text-5xl opacity-30">🛵</div>
+      <div className="relative h-44 w-full bg-white">
+        <div className={`h-full w-full ${fullyBooked ? 'opacity-40 grayscale' : ''}`}>
+          {publicId ? (
+            <CloudinaryImage publicId={publicId} alt={model.modelName} plugins={[]} className="h-full w-full object-contain p-3" />
+          ) : (
+            <div className="flex h-full items-center justify-center text-5xl opacity-30">🛵</div>
+          )}
+        </div>
+        {fullyBooked && (
+          <span className="absolute left-3 top-3 -rotate-3 rounded-md border-2 border-charcoal-brand bg-white px-3 py-1 font-lato text-sm font-black uppercase tracking-wide text-charcoal-brand shadow-[2px_2px_0_#363737]">
+            Fully booked
+          </span>
         )}
       </div>
       <div className="flex flex-1 flex-col gap-1 p-5">
-        <h3 className="font-headline text-2xl font-bold text-teal-brand">{model.modelName}</h3>
-        {model.total !== null && model.dailyRate !== null ? (
+        <h3 className={`font-headline text-2xl font-bold ${fullyBooked ? 'text-charcoal-brand/50' : 'text-teal-brand'}`}>{model.modelName}</h3>
+        {fullyBooked ? (
+          <p className="font-lato text-base text-charcoal-brand/80">
+            {model.nextFreePickup ? (
+              <>Free for {days} {days === 1 ? 'day' : 'days'} from <span className="font-bold">{shortDateTime(model.nextFreePickup)}</span>. Ask our team to reserve it.</>
+            ) : (
+              <>Not free for {days} {days === 1 ? 'day' : 'days'} soon. Try fewer days, or ask our team.</>
+            )}
+          </p>
+        ) : model.total !== null && model.dailyRate !== null ? (
           <>
             <p className="font-lato text-xl font-bold text-charcoal-brand">
               <Peso amount={model.total} />
@@ -116,7 +143,7 @@ export default function CounterPage() {
 
   const back = () => {
     setError('');
-    setStep(step === 'details' ? 'bike' : step === 'bike' ? 'days' : 'welcome');
+    setStep(step === 'details' ? 'vehicle' : step === 'vehicle' ? 'days' : 'welcome');
   };
 
   const submit = async () => {
@@ -138,7 +165,7 @@ export default function CounterPage() {
     } catch (err) {
       if (err instanceof ApiError && err.code === 'VEHICLE_UNAVAILABLE') {
         setModel(null);
-        setStep('bike');
+        setStep('vehicle');
         void options.refetch();
       }
       setError(err instanceof Error ? err.message : 'Something went wrong. Please ask our team for help.');
@@ -149,8 +176,12 @@ export default function CounterPage() {
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-hidden font-body" style={{ backgroundColor: '#f1e6d6' }}>
-      <img src={flowerLeft} alt="" className="pointer-events-none fixed left-0 top-0 w-40 opacity-60" />
-      <img src={flowerRight} alt="" className="pointer-events-none fixed bottom-0 right-0 w-40 opacity-60" />
+      {step !== 'welcome' && (
+        <>
+          <img src={flowerLeft} alt="" className="pointer-events-none fixed left-0 top-0 w-40 opacity-60" />
+          <img src={flowerRight} alt="" className="pointer-events-none fixed bottom-0 right-0 w-40 opacity-60" />
+        </>
+      )}
 
       <header className="relative z-10 flex items-center justify-between px-6 py-5">
         <div className="w-28">
@@ -173,23 +204,15 @@ export default function CounterPage() {
         <div className="w-28" />
       </header>
 
-      <main className="relative z-10 mx-auto flex w-full max-w-4xl flex-1 flex-col px-6 pb-10">
-        {step === 'welcome' && (
-          <div className="flex flex-1 flex-col items-center justify-center text-center">
-            <h1 className="font-headline text-5xl font-bold text-teal-brand">Ready to ride?</h1>
-            <p className="mt-4 max-w-xl font-lato text-xl text-charcoal-brand/80">
-              Choose your bike and sign your waiver here. It takes about two minutes, then we'll get you on the road.
-            </p>
-            <button type="button" className={`${goldButton} mt-10`} onClick={() => setStep('days')}>
-              Start booking
-            </button>
-          </div>
-        )}
+      {step === 'welcome' && <CounterWelcome onStart={() => setStep('days')} />}
 
+      <main className={`relative z-10 mx-auto w-full max-w-4xl flex-1 flex-col px-6 pb-10 ${step === 'welcome' ? 'hidden' : 'flex'}`}>
         {step === 'days' && (
           <div className="flex flex-1 flex-col items-center justify-center text-center">
             <h1 className="font-headline text-4xl font-bold text-teal-brand">How many days?</h1>
-            <p className="mt-2 font-lato text-lg text-charcoal-brand/70">Your rental starts now.</p>
+            <p className="mt-2 h-7 font-lato text-lg text-charcoal-brand/70">
+              {options.data && <>Pick up today at <span className="font-bold">{timeLabel(options.data.pickupDatetime)}</span></>}
+            </p>
             <div className="mt-8 flex items-center gap-8">
               <button
                 type="button"
@@ -231,17 +254,18 @@ export default function CounterPage() {
             <p className="mt-8 h-7 font-lato text-lg text-charcoal-brand/80">
               {options.data && <>Return by <span className="font-bold">{returnLabel(options.data.dropoffDatetime)}</span></>}
             </p>
-            <button type="button" className={`${goldButton} mt-6`} onClick={() => setStep('bike')}>
-              Choose your bike
+            <button type="button" className={`${goldButton} mt-6`} onClick={() => setStep('vehicle')}>
+              Choose your vehicle
             </button>
           </div>
         )}
 
-        {step === 'bike' && (
+        {step === 'vehicle' && (
           <div>
-            <h1 className="text-center font-headline text-4xl font-bold text-teal-brand">Choose your ride</h1>
+            <h1 className="text-center font-headline text-4xl font-bold text-teal-brand">Choose your vehicle</h1>
             <p className="mt-2 text-center font-lato text-lg text-charcoal-brand/70">
-              Available now for {days} {days === 1 ? 'day' : 'days'}
+              {days} {days === 1 ? 'day' : 'days'}
+              {options.data && <>, from today at {timeLabel(options.data.pickupDatetime)} to {returnLabel(options.data.dropoffDatetime)}</>}
             </p>
             {error && <p className="mt-4 text-center font-lato text-base font-semibold text-red-600">{error}</p>}
             {options.isLoading ? (
@@ -250,7 +274,7 @@ export default function CounterPage() {
               </div>
             ) : options.error ? (
               <p className="mt-12 text-center font-lato text-lg text-charcoal-brand/80">
-                We couldn't load the bikes just now. Please ask our team for help.
+                We couldn't load the vehicles just now. Please ask our team for help.
               </p>
             ) : models.length === 0 ? (
               <p className="mt-12 text-center font-lato text-lg text-charcoal-brand/80">
@@ -259,7 +283,7 @@ export default function CounterPage() {
             ) : (
               <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
                 {models.map((m) => (
-                  <BikeCard
+                  <VehicleCard
                     key={m.modelId}
                     model={m}
                     days={days}

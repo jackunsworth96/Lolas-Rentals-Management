@@ -9,13 +9,17 @@ vi.mock('../src/api/counter.js', () => ({
     data: {
       storeId: 'store-lolas', rentalDays: days,
       pickupDatetime: '2026-11-18T01:30:00.000Z', dropoffDatetime: '2026-11-20T01:30:00.000Z',
-      models: [{ modelId: 'beat', modelName: 'Honda Beat', availableCount: 2, dailyRate: 500, total: 500 * days, securityDeposit: 1000 }],
+      models: [
+        { modelId: 'beat', modelName: 'Honda Beat', availableCount: 2, nextFreePickup: null, dailyRate: 500, total: 500 * days, securityDeposit: 1000 },
+        { modelId: 'tuktuk', modelName: 'TukTuk', availableCount: 0, nextFreePickup: '2026-11-21T01:15:00.000Z', dailyRate: 1500, total: 1500 * days, securityDeposit: 3000 },
+      ],
     },
     isLoading: false, error: null, refetch: vi.fn(),
   }),
   useCreateCounterBooking: () => ({ mutateAsync: mocks.mutateAsync, isPending: false }),
 }));
 vi.mock('../src/utils/vehicle-images.js', () => ({ useVehiclePublicId: () => null }));
+vi.mock('../src/hooks/useLiveCustomerCount.js', () => ({ useLiveCustomerCount: () => 6300 }));
 vi.mock('../src/components/common/WhatsAppNumberInput.js', () => ({
   WhatsAppNumberInput: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
     <input aria-label="WhatsApp number" value={value} onChange={(e) => onChange(e.target.value)} />
@@ -47,7 +51,14 @@ describe('counter tablet page', () => {
 
     fireEvent.click(screen.getByText('Start booking'));
     fireEvent.click(screen.getByText('2 days'));
-    fireEvent.click(screen.getByText('Choose your bike'));
+    expect(screen.getByText('9:30 AM')).toBeTruthy();
+    fireEvent.click(screen.getByText('Choose your vehicle'));
+
+    const tuktuk = screen.getByText('TukTuk').closest('button')!;
+    expect(tuktuk.disabled).toBe(true);
+    expect(tuktuk.textContent).toContain('Fully booked');
+    expect(tuktuk.textContent).toContain('Sat 21 Nov, 9:15 AM');
+
     fireEvent.click(screen.getByText('Honda Beat'));
     fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Robin Lenoble' } });
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'robin@example.com' } });

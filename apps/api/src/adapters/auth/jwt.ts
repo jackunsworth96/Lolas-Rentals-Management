@@ -8,7 +8,7 @@ export interface TokenPayload {
   storeIds: string[];
   permissions: string[];
   /** Missing on tokens issued before person types existed; treat as 'staff'. */
-  personType?: 'staff' | 'owner' | 'developer';
+  personType?: 'staff' | 'owner' | 'developer' | 'counter';
 }
 
 export function isStaffToken(payload: Pick<TokenPayload, 'personType'> | undefined): boolean {

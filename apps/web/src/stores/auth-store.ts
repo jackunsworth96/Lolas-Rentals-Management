@@ -9,7 +9,7 @@ export interface AuthUser {
   storeIds: string[];
   permissions: string[];
   /** Owners and developers sign in but are not staff. Missing on sessions from before this existed. */
-  personType?: 'staff' | 'owner' | 'developer';
+  personType?: 'staff' | 'owner' | 'developer' | 'counter';
 }
 
 export function isStaffUser(user: Pick<AuthUser, 'personType'> | null | undefined): boolean {

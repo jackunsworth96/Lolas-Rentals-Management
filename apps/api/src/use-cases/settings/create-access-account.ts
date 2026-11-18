@@ -5,11 +5,15 @@ import { saveUser } from './save-user.js';
 
 export interface CreateAccessAccountInput {
   fullName: string;
-  personType: 'owner' | 'developer';
+  personType: 'owner' | 'developer' | 'counter';
   username: string;
   pin: string;
   roleId: string;
+  /** Counter tablets book for one store, so they are linked to that store only. */
+  storeId?: string;
 }
+
+const ROLE_LABEL = { owner: 'Owner', developer: 'Developer', counter: 'Counter tablet' } as const;
 
 export interface CreateAccessAccountDeps {
   configRepo: ConfigRepository;
@@ -17,8 +21,9 @@ export interface CreateAccessAccountDeps {
 }
 
 /**
- * A login for someone who is not staff (an owner or a developer). Every login needs an employee
- * row for attribution, so this creates one with no pay and links it to every active store.
+ * A login that is not staff (an owner, a developer, or the reception counter tablet). Every login
+ * needs an employee row for attribution, so this creates one with no pay. Owners and developers
+ * get every active store; a counter tablet gets only its own store.
  */
 export async function createAccessAccount(deps: CreateAccessAccountDeps, input: CreateAccessAccountInput) {
   const sb = getSupabaseClient();
@@ -31,8 +36,15 @@ export async function createAccessAccount(deps: CreateAccessAccountDeps, input: 
 
   const { data: stores, error: storeErr } = await sb.from('stores').select('id').eq('is_active', true).order('id');
   if (storeErr) throw new Error(`Failed to load stores: ${storeErr.message}`);
-  const storeIds = (stores ?? []).map((s) => String(s.id));
-  if (storeIds.length === 0) throw new DomainError('There are no active stores to give this account access to.');
+  const activeStoreIds = (stores ?? []).map((s) => String(s.id));
+  if (activeStoreIds.length === 0) throw new DomainError('There are no active stores to give this account access to.');
+  let storeIds = activeStoreIds;
+  if (input.personType === 'counter') {
+    if (!input.storeId || !activeStoreIds.includes(input.storeId)) {
+      throw new DomainError('Choose the store this tablet sits in.');
+    }
+    storeIds = [input.storeId];
+  }
   const homeStoreId = storeIds.find((id) => id !== 'company') ?? storeIds[0];
 
   const now = new Date();
@@ -41,7 +53,7 @@ export async function createAccessAccount(deps: CreateAccessAccountDeps, input: 
     storeId: homeStoreId,
     storeIds,
     fullName: input.fullName.trim(),
-    role: input.personType === 'owner' ? 'Owner' : 'Developer',
+    role: ROLE_LABEL[input.personType],
     status: 'Active',
     personType: input.personType,
     birthday: null,

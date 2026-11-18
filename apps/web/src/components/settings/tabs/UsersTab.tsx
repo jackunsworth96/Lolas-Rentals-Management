@@ -4,6 +4,7 @@ import {
   useSaveUser,
   useDeleteUser,
   useRoles,
+  useStores,
   useConfigEmployees,
   useCreateAccessAccount,
   type AccessAccountInput,
@@ -15,23 +16,33 @@ const TYPE_BADGE: Record<PersonType, { label: string; cls: string }> = {
   staff: { label: 'Staff', cls: 'bg-gray-100 text-gray-700' },
   owner: { label: 'Owner', cls: 'bg-teal-100 text-teal-800' },
   developer: { label: 'Developer', cls: 'bg-purple-100 text-purple-800' },
+  counter: { label: 'Reception tablet', cls: 'bg-amber-100 text-amber-800' },
+};
+
+const SUGGESTED_ROLE: Record<AccessAccountInput['personType'], string> = {
+  owner: 'role-admin',
+  developer: 'role-developer',
+  counter: 'role-counter',
 };
 
 const inputCls = 'mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm';
 
 function AccessAccountForm({ roleOpts, onDone }: { roleOpts: { value: string; label: string }[]; onDone: () => void }) {
   const create = useCreateAccessAccount();
+  const { data: stores } = useStores();
   const [form, setForm] = useState<AccessAccountInput>({ fullName: '', personType: 'developer', username: '', pin: '', roleId: '' });
   const set = <K extends keyof AccessAccountInput>(k: K, v: AccessAccountInput[K]) => setForm((f) => ({ ...f, [k]: v }));
+  const isCounter = form.personType === 'counter';
+  const storeOpts = ((stores ?? []) as Array<{ id: string; name: string }>).filter((s) => s.id !== 'company');
 
   function choosePersonType(personType: AccessAccountInput['personType']) {
-    const suggested = personType === 'owner' ? 'role-admin' : 'role-developer';
+    const suggested = SUGGESTED_ROLE[personType];
     setForm((f) => ({ ...f, personType, roleId: roleOpts.some((r) => r.value === suggested) ? suggested : f.roleId }));
   }
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    create.mutate(form, { onSuccess: onDone });
+    create.mutate(isCounter ? form : { ...form, storeId: undefined }, { onSuccess: onDone });
   }
 
   return (
@@ -39,13 +50,13 @@ function AccessAccountForm({ roleOpts, onDone }: { roleOpts: { value: string; la
       <div>
         <h4 className="text-sm font-semibold text-gray-900">New access account</h4>
         <p className="text-xs text-gray-500">
-          For owners and developers who need to sign in but are not staff. They won&apos;t appear in payroll, the rota,
-          timesheets or the employee list.
+          For owners, developers and the reception tablet: logins that are not staff. They won&apos;t appear in payroll,
+          the rota, timesheets or the employee list.
         </p>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="text-xs font-medium text-gray-600">
-          Full name
+          {isCounter ? 'Name (e.g. Reception tablet)' : 'Full name'}
           <input required value={form.fullName} onChange={(e) => set('fullName', e.target.value)} className={inputCls} />
         </label>
         <label className="text-xs font-medium text-gray-600">
@@ -53,8 +64,18 @@ function AccessAccountForm({ roleOpts, onDone }: { roleOpts: { value: string; la
           <select value={form.personType} onChange={(e) => choosePersonType(e.target.value as AccessAccountInput['personType'])} className={inputCls}>
             <option value="developer">Developer</option>
             <option value="owner">Owner</option>
+            <option value="counter">Reception tablet</option>
           </select>
         </label>
+        {isCounter && (
+          <label className="text-xs font-medium text-gray-600 sm:col-span-2">
+            Store the tablet sits in
+            <select required value={form.storeId ?? ''} onChange={(e) => set('storeId', e.target.value)} className={inputCls}>
+              <option value="">Choose a store</option>
+              {storeOpts.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </label>
+        )}
         <label className="text-xs font-medium text-gray-600">
           Username
           <input required autoComplete="off" value={form.username} onChange={(e) => set('username', e.target.value)} className={inputCls} />
@@ -104,7 +125,7 @@ export function UsersTab() {
       key: 'personType',
       header: 'Type',
       render: (r: Record<string, unknown>) => {
-        const badge = TYPE_BADGE[employeeLookup.get(r.employeeId as string)?.personType ?? 'staff'];
+        const badge = TYPE_BADGE[employeeLookup.get(r.employeeId as string)?.personType ?? 'staff'] ?? TYPE_BADGE.staff;
         return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge.cls}`}>{badge.label}</span>;
       },
     },
@@ -140,7 +161,7 @@ export function UsersTab() {
           onClick={() => setShowAccessForm(true)}
           className="mt-4 rounded-lg border border-blue-600 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50"
         >
-          New access account (owner or developer)
+          New access account (owner, developer or reception tablet)
         </button>
       )}
     </div>

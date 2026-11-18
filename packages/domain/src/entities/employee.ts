@@ -1,7 +1,7 @@
 import { InsufficientLeaveBalanceError } from '../errors/domain-error.js';
 
 /** Owners and developers have a login and an identity but are not staff (no payroll, rota or leave). */
-export type PersonType = 'staff' | 'owner' | 'developer';
+export type PersonType = 'staff' | 'owner' | 'developer' | 'counter';
 
 export interface EmployeeProps {
   id: string;

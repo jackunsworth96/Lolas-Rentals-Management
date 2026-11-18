@@ -220,7 +220,7 @@ export function useDeleteRepairCost() {
     },
   });
 }
-export type PersonType = 'staff' | 'owner' | 'developer';
+export type PersonType = 'staff' | 'owner' | 'developer' | 'counter';
 
 export function useConfigEmployees() {
   return useQuery<Array<{ id: string; fullName: string; storeId: string | null; personType?: PersonType }>>({
@@ -231,10 +231,12 @@ export function useConfigEmployees() {
 
 export interface AccessAccountInput {
   fullName: string;
-  personType: 'owner' | 'developer';
+  personType: 'owner' | 'developer' | 'counter';
   username: string;
   pin: string;
   roleId: string;
+  /** Counter tablets book for a single store. */
+  storeId?: string;
 }
 
 /** Login for an owner or developer: creates their (non-staff) person record and the user in one step. */
