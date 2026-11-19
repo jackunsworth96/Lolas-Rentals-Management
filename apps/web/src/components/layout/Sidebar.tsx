@@ -87,6 +87,8 @@ export function Sidebar() {
           title={!open ? item.label : undefined}
           onClick={closeSidebarOnMobile}
           className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+            canPin ? '[@media(hover:none)]:pr-9' : ''
+          } ${
             isActive ? 'bg-teal-50 text-teal-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
           }`}
         >
@@ -98,7 +100,7 @@ export function Sidebar() {
           <button
             type="button"
             onClick={() => togglePin(item.path)}
-            className="absolute right-1.5 top-1/2 hidden -translate-y-1/2 rounded p-1 text-gray-400 hover:bg-white hover:text-amber-500 md:group-hover:block"
+            className="absolute right-1.5 top-1/2 hidden -translate-y-1/2 rounded p-1 text-gray-400 hover:bg-white hover:text-amber-500 md:group-hover:block [@media(hover:none)]:block"
             aria-label={pinned ? `Unpin ${item.label}` : `Pin ${item.label}`}
             title={pinned ? 'Unpin' : 'Pin to top'}
           >
