@@ -32,6 +32,7 @@ import { PawCardLoginPanel, type PawCardAccess } from './PawCardLoginPanel.js';
 import { PawCardSavingsForm } from './PawCardSavingsForm.js';
 import { PawCardDashboard } from './PawCardDashboard.js';
 import { partnerSearchScore } from './partner-search.js';
+import { CATEGORY_MAP, FILTER_TABS, getInitials, type FilterTab } from './partner-display.js';
 import BorderGlow from '../../components/home/BorderGlow.js';
 import separatorSvg from '../../assets/Original Assests/separator.svg';
 import pawPrintAsset from '../../assets/Paw Print.svg';
@@ -118,32 +119,6 @@ function MarqueeRow({
       </div>
     </div>
   );
-}
-
-const CATEGORY_MAP: Record<string, string> = {
-  // slugs (legacy)
-  food: 'Food & Drink',
-  food_drink: 'Food & Drink',
-  cafe: 'Food & Drink',
-  activity: 'Activities',
-  activities: 'Activities',
-  service: 'Services',
-  services: 'Services',
-  shopping: 'Shopping',
-  // display labels as stored in DB
-  'Food & Drink': 'Food & Drink',
-  'Activities': 'Activities',
-  'Services': 'Services',
-  'Shopping': 'Shopping',
-};
-
-const FILTER_TABS = ['All', 'Food & Drink', 'Activities', 'Services', 'Shopping'] as const;
-type FilterTab = (typeof FILTER_TABS)[number];
-
-function getInitials(name: string | null | undefined): string {
-  const words = (name ?? '').trim().split(/\s+/);
-  if (words.length === 1) return (words[0]?.[0] ?? '?').toUpperCase();
-  return ((words[0]?.[0] ?? '') + (words[1]?.[0] ?? '')).toUpperCase();
 }
 
 const LETTER_NAV_ORDER = [

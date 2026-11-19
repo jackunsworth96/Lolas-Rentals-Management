@@ -202,6 +202,13 @@ export function InspectionModal({
     e.preventDefault();
     const canvas = signatureCanvasRef.current;
     if (!canvas) return;
+    // The open-time sizing can run before the dialog has laid out; re-measure on
+    // the first touch while the pad is still empty (resizing wipes the bitmap).
+    const rectWidth = Math.round(canvas.getBoundingClientRect().width);
+    if (!hasSignature && rectWidth > 0 && canvas.width !== rectWidth) {
+      canvas.width = rectWidth;
+      canvas.height = 180;
+    }
     const ctx = canvas.getContext('2d')!;
     const pos = getPointerPos(e);
     ctx.strokeStyle = '#363737';

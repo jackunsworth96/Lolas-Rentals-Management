@@ -1,4 +1,6 @@
-import { motion, useReducedMotion, type TargetAndTransition, type Transition } from 'framer-motion';
+import { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion, type TargetAndTransition, type Transition } from 'framer-motion';
+import { ChevronDown } from 'lucide-react';
 import flowerLeft from '../../assets/Hero/flower-left.svg';
 import flowerRight from '../../assets/Hero/flower-right.svg';
 import cloud1 from '../../assets/Hero/cloud-left-to-right-1.svg';
@@ -6,6 +8,10 @@ import cloud2 from '../../assets/Hero/cloud-left-to-right-2.svg';
 import cloud3 from '../../assets/Hero/cloud-left-to-right-3.svg';
 import road from '../../assets/Original Assests/road.svg';
 import { useLiveCustomerCount } from '../../hooks/useLiveCustomerCount.js';
+import { useIdleReset } from '../../hooks/useIdleReset.js';
+import { CounterPawCard } from './CounterPawCard.js';
+
+const SCROLL_BACK_IDLE_MS = 90_000;
 
 const CLOUDS: Array<{ src: string; width: number; style: React.CSSProperties; drift: number; duration: number }> = [
   { src: cloud1, width: 170, style: { top: '9%', left: '5%' }, drift: 18, duration: 14 },
@@ -34,6 +40,32 @@ export interface CounterBrand {
 export function CounterWelcome({ onStart, brand }: { onStart: () => void; brand?: CounterBrand }) {
   const animate = !useReducedMotion();
   const explorers = Math.floor(useLiveCustomerCount() / 25) * 25;
+  const showPawCard = !brand;
+  const pawCardRef = useRef<HTMLElement>(null);
+  const heroCtaRef = useRef<HTMLDivElement>(null);
+  const [heroCtaVisible, setHeroCtaVisible] = useState(true);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    if (!showPawCard) return;
+    const cta = heroCtaRef.current;
+    const observer = new IntersectionObserver(([entry]) => setHeroCtaVisible(!!entry?.isIntersecting));
+    if (cta) observer.observe(cta);
+    const onScroll = () => setScrolled(window.scrollY > 40);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('scroll', onScroll);
+    };
+  }, [showPawCard]);
+
+  useIdleReset(showPawCard && scrolled, SCROLL_BACK_IDLE_MS, () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+
+  const start = () => {
+    window.scrollTo({ top: 0 });
+    onStart();
+  };
 
   const float = (x: number, y: number, duration: number): { animate: TargetAndTransition; transition: Transition } => ({
     animate: animate ? { x: [0, x, 0], y: [0, y, 0] } : {},
@@ -45,8 +77,8 @@ export function CounterWelcome({ onStart, brand }: { onStart: () => void; brand?
     transition: { duration: 0.6, ease: 'easeOut' as const, delay },
   });
 
-  return (
-    <div className="flex flex-1 flex-col">
+  const hero = (
+    <div className={showPawCard ? 'relative flex min-h-[calc(100svh-6rem)] flex-col overflow-hidden' : 'flex flex-1 flex-col'}>
       {CLOUDS.map((c, i) => (
         <motion.img
           key={i}
@@ -93,6 +125,7 @@ export function CounterWelcome({ onStart, brand }: { onStart: () => void; brand?
         </motion.div>
 
         <motion.div
+          ref={heroCtaRef}
           className="mt-10"
           animate={animate ? { scale: [1, 1.03] } : {}}
           transition={{ delay: 1.2, duration: 2.4, repeat: Infinity, repeatType: 'mirror', ease: [0.45, 0, 0.55, 1] }}
@@ -100,7 +133,7 @@ export function CounterWelcome({ onStart, brand }: { onStart: () => void; brand?
           <motion.div {...fadeUp(0.7)}>
             <button
               type="button"
-              onClick={onStart}
+              onClick={start}
               style={{ transform: 'skewX(-4deg)' }}
               className="rounded-[8px] border-2 border-charcoal-brand bg-gold-brand px-16 py-5 font-lato text-xl font-extrabold uppercase tracking-[0.05em] text-charcoal-brand shadow-[5px_5px_0_#363737] transition-shadow active:shadow-[2px_2px_0_#363737]"
             >
@@ -127,6 +160,50 @@ export function CounterWelcome({ onStart, brand }: { onStart: () => void; brand?
         {...float(10, -5, 11)}
       />
       <img src={road} alt="" aria-hidden="true" className="pointer-events-none absolute bottom-0 left-0 z-[1] block w-full" />
+
+      {showPawCard && (
+        <motion.button
+          type="button"
+          onClick={() => pawCardRef.current?.scrollIntoView({ behavior: 'smooth' })}
+          style={{ x: '-50%' }}
+          className="absolute bottom-5 left-1/2 z-20 flex items-center gap-2 rounded-full border-2 border-charcoal-brand bg-white px-5 py-2.5 font-lato text-base font-bold text-teal-brand shadow-[3px_3px_0_#363737]"
+          animate={animate ? { y: [0, 6, 0] } : {}}
+          transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          See Paw Card partner discounts
+          <ChevronDown className="h-5 w-5" />
+        </motion.button>
+      )}
+    </div>
+  );
+
+  if (!showPawCard) return hero;
+
+  return (
+    <div className="flex flex-1 flex-col">
+      {hero}
+      <CounterPawCard ref={pawCardRef} />
+
+      <AnimatePresence>
+        {!heroCtaVisible && (
+          <motion.div
+            className="fixed inset-x-0 bottom-6 z-30 flex justify-center"
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 24 }}
+            transition={{ duration: 0.25 }}
+          >
+            <button
+              type="button"
+              onClick={start}
+              style={{ transform: 'skewX(-4deg)' }}
+              className="rounded-[8px] border-2 border-charcoal-brand bg-gold-brand px-14 py-4 font-lato text-xl font-extrabold uppercase tracking-[0.05em] text-charcoal-brand shadow-[5px_5px_0_#363737] active:shadow-[2px_2px_0_#363737]"
+            >
+              <span className="inline-block" style={{ transform: 'skewX(4deg)' }}>Start booking</span>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

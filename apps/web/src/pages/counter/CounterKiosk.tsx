@@ -296,7 +296,7 @@ export function CounterKiosk({ counter, mode, brand, homePath, onLogoHold, deliv
     : null;
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden font-body" style={{ backgroundColor: '#f1e6d6' }}>
+    <div className="relative flex min-h-screen flex-col overflow-x-hidden font-body" style={{ backgroundColor: '#f1e6d6' }}>
       {step !== 'welcome' && (
         <>
           <img src={flowerLeft} alt="" className="pointer-events-none fixed left-0 top-0 w-40 opacity-60" />

@@ -15,7 +15,7 @@ import {
 } from '@lolas/shared';
 import { supabase } from '../adapters/supabase/client.js';
 import { resolveCharityPayableAccount, resolveStoreAccounts } from '../adapters/supabase/maintenance-expense-rpc.js';
-import { Money, type AccountingPort, type CardSettlementRepository, type PaymentRepository } from '@lolas/domain';
+import { Money, type AccountingPort, type CardSettlementRepository, type ConfigRepository, type ModelPricing, type PaymentRepository } from '@lolas/domain';
 import { processRawOrder, type ProcessRawOrderDeps } from '../use-cases/orders/process-raw-order.js';
 import { sendEmail, bookingConfirmationHtml, bookingCancellationHtml, walkInStaffAlertHtml, walkInReservationConfirmationHtml, escapeHtml, NOTIFICATION_EMAIL, INTERNAL_FROM_EMAIL } from '../services/email.js';
 import { sendBookingConfirmationWhatsApp } from '../services/booking-confirmation-whatsapp.js';
@@ -448,6 +448,18 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
     const ms = new Date(body.dropoffDatetime).getTime() - new Date(body.pickupDatetime).getTime();
     const rentalDaysCount = Math.max(1, Math.ceil(ms / (1000 * 60 * 60 * 24)));
 
+    const configRepo = (req.app.locals.deps as { configRepo: ConfigRepository }).configRepo;
+    const pricingTiers = await configRepo.getModelPricing(body.vehicleModelId, body.storeId);
+    const tier = pricingTiers.find((t: ModelPricing) => t.minDays <= rentalDaysCount && t.maxDays >= rentalDaysCount);
+    const dailyRate = tier ? Number(tier.dailyRate) : body.dailyRate;
+    if (tier && Math.abs(dailyRate - body.dailyRate) > 0.01) {
+      res.status(400).json({
+        success: false,
+        error: { message: `The daily rate for ${rentalDaysCount} day(s) is ${dailyRate}. Refresh the price and try again.` },
+      });
+      return;
+    }
+
     // 5. Resolve location names + list delivery fees (needed to apply partner free-delivery)
     let pickupLocation = 'Store';
     let dropoffLocation = 'Store';
@@ -477,7 +489,7 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
     }
 
     const round2 = (n: number) => Math.round(n * 100) / 100;
-    const rentalSubtotal = round2(body.dailyRate * rentalDaysCount);
+    const rentalSubtotal = round2(dailyRate * rentalDaysCount);
     let effectivePickupFee = body.pickupFee;
     let effectiveDropoffFee = body.dropoffFee;
     let effectiveRentalSubtotal = rentalSubtotal;
@@ -521,7 +533,7 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       vehicleModelId: body.vehicleModelId,
       vehicleId: body.vehicleId,
       vehicleName: body.vehicleName,
-      dailyRate: body.dailyRate,
+      dailyRate,
       rentalDays: rentalDaysCount,
       subtotal: effectiveRentalSubtotal,
       pickupDatetime: body.pickupDatetime,
@@ -578,8 +590,16 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       });
       return;
     }
-    // When a partner is linked, charge the benefit-adjusted total. Otherwise trust the client total.
-    const chargedTotal = bookingPartner ? expectedGrandTotal : body.grandTotal;
+    if (!bookingPartner && Math.abs(body.grandTotal - expectedGrandTotal) > 1) {
+      res.status(400).json({
+        success: false,
+        error: {
+          message: `Price changed: ${rentalDaysCount} day(s) comes to ₱${expectedGrandTotal.toLocaleString('en-PH')}, not ₱${body.grandTotal.toLocaleString('en-PH')}. Refresh the price and try again.`,
+        },
+      });
+      return;
+    }
+    const chargedTotal = expectedGrandTotal;
 
     // 8. Fleet updates
     const fleetUpdates = [{

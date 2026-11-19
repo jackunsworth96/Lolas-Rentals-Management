@@ -157,6 +157,8 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
   // ── Quote state ──
   const [quote, setQuote] = useState<QuoteBreakdown | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteKey, setQuoteKey] = useState<string | null>(null);
+  const [quoteFailed, setQuoteFailed] = useState(false);
 
   // ── Derived datetimes ──
   const pickupDatetime =
@@ -344,6 +346,12 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
   // Stable serialisation of selectedAddonIds so the effect only re-runs
   // when the actual addon selection changes, not on every object reference.
   const addonIdsKey = JSON.stringify(selectedAddonIds);
+  const quoteRequestKey = [vehicleModelId, pickupDatetime, dropoffDatetime, storeId,
+    pickupLocationId, dropoffLocationId, addonIdsKey].join('|');
+  // The rental line comes from the quote while add-ons use localRentalDays, so a quote
+  // for older dates would mix two day counts into the total.
+  const quoteFresh = !!quote && !quoteLoading && quoteKey === quoteRequestKey
+    && quote.rentalDays === localRentalDays;
 
   useEffect(() => {
     // Guard: all required fields must be present, including location IDs
@@ -360,6 +368,7 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
     // quote and making fees/addon costs disappear.
     const controller = new AbortController();
     setQuoteLoading(true);
+    setQuoteFailed(false);
     const apiBase = normalizeApiBase(import.meta.env.VITE_API_URL as string | undefined);
     const parsed: Record<string, number> = JSON.parse(addonIdsKey) as Record<string, number>;
     const selectedAddonIdsList = Object.entries(parsed)
@@ -380,22 +389,27 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
     fetch(url, { signal: controller.signal })
       .then((r) => r.json())
       .then((d: { data?: QuoteBreakdown }) => {
-        // Only overwrite the quote when the server returned valid data.
-        // If the response is an error envelope (no data field), keep the
-        // existing quote visible so the UI doesn't blank out.
-        if (d.data) setQuote(d.data);
+        // On an error envelope the previous quote stays visible, but quoteKey no
+        // longer matches so it is flagged as out of date and can't be submitted.
+        if (d.data) {
+          setQuote(d.data);
+          setQuoteKey(quoteRequestKey);
+          setQuoteFailed(false);
+        } else {
+          setQuoteFailed(true);
+        }
       })
       .catch((err: unknown) => {
         // Ignore aborted fetches — a newer fetch is already running.
-        if ((err as Error).name !== 'AbortError') {
-          /* keep existing quote visible on other errors */
-        }
+        if ((err as Error).name !== 'AbortError') setQuoteFailed(true);
       })
-      .finally(() => setQuoteLoading(false));
+      .finally(() => {
+        if (!controller.signal.aborted) setQuoteLoading(false);
+      });
     // Cleanup: abort the in-flight fetch when deps change or component unmounts
     return () => controller.abort();
   }, [vehicleModelId, pickupDatetime, dropoffDatetime, storeId,
-    pickupLocationId, dropoffLocationId, addonIdsKey]);
+    pickupLocationId, dropoffLocationId, addonIdsKey, quoteRequestKey]);
 
   // ── Auto-set deposit amount from quote ──
   useEffect(() => {
@@ -424,7 +438,7 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
       setDepositAmount(0);
       setTipAmount('');
       setCreatedRef(null); setCopiedLink(false);
-      setQuote(null); setQuoteLoading(false);
+      setQuote(null); setQuoteLoading(false); setQuoteKey(null); setQuoteFailed(false);
       createWalkInDirect.reset();
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -467,6 +481,7 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
   }
 
   function submitBooking() {
+    if (!quoteFresh) return;
     const payload = buildPayload();
     if (!payload) return;
     createWalkInDirect.mutate(payload, {
@@ -518,7 +533,7 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
     pickupDate && pickupTime &&
     dropoffDate && dropoffTime &&
     pickupLocationId && dropoffLocationId &&
-    !rackShort;
+    !rackShort && quoteFresh;
 
   // ── Confirmation / share ──
   const confirmationLink = createdRef ? `${SITE_URL}/book/confirmation/${createdRef}` : '';
@@ -971,11 +986,18 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
                   ))}
                 </div>
               ) : quote ? (
-                <div className={`rounded-lg border border-gray-200 bg-gray-50 p-4${quoteLoading ? ' opacity-60' : ''}`}>
+                <div className={`rounded-lg border border-gray-200 bg-gray-50 p-4${quoteFresh ? '' : ' opacity-60'}`}>
+                  {!quoteFresh && !quoteLoading && (
+                    <p className="mb-2 rounded-md bg-amber-50 px-3 py-2 font-lato text-xs font-medium text-amber-800">
+                      {quoteFailed
+                        ? "Couldn't price these dates. Check the dates and times, then try again."
+                        : 'Price is out of date for the selected dates. Updating…'}
+                    </p>
+                  )}
                   <div className="space-y-1.5">
                     <div className="flex justify-between">
                       <span className="font-lato text-sm text-gray-600">
-                        Rental ({localRentalDays} {localRentalDays === 1 ? 'day' : 'days'} @ {formatCurrency(quote.dailyRate)}/day)
+                        Rental ({quote.rentalDays} {quote.rentalDays === 1 ? 'day' : 'days'} @ {formatCurrency(quote.dailyRate)}/day)
                       </span>
                       <span className="font-lato text-sm text-gray-800">{formatCurrency(quote.rentalSubtotal)}</span>
                     </div>
@@ -1008,7 +1030,7 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
                       if (!qty) return null;
                       const unitCost =
                         addon.addonType === 'per_day'
-                          ? addon.pricePerDay * (quote.rentalDays ?? localRentalDays)
+                          ? addon.pricePerDay * localRentalDays
                           : addon.priceOneTime;
                       return (
                         <div key={addon.id} className="flex justify-between">
