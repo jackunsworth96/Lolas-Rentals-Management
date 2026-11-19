@@ -81,7 +81,7 @@ vi.mock('../src/api/dashboard.js', () => ({
   useDashboardInsights: () => result(insights),
   useCharityImpact: () => result({
     openingBalance: 0, totalRaised: 400_000, totalDonated: 390_000, pendingPayout: 2000,
-    bookingContributions: 90_000, pawCardMatched: 0, annualCap: 100_000, annualDonated: 40_000,
+    bookingContributions: 90_000, pawCardMatched: 0, pawCardMatchedThisYear: 0, pawCardSavingsThisYear: 0, annualCap: 100_000, annualDonated: 40_000,
   }),
   useReferralStats: () => result({
     total: 10,

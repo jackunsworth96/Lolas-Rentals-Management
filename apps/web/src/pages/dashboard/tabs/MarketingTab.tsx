@@ -381,9 +381,11 @@ export default function MarketingTab({ storeId, selectedStoreId }: DashboardTabP
               <p className="mt-0.5 text-xs text-gray-400">Click to see donations</p>
             </button>
             <div className="rounded-xl bg-gray-50 p-4">
-              <p className="text-xs font-medium text-gray-500">Paw Card matches</p>
-              <p className="mt-1 text-2xl font-bold tabular-nums text-gray-900">{formatPeso(charity.pawCardMatched)}</p>
-              <p className="mt-0.5 text-xs text-gray-400">Customer savings matched peso for peso</p>
+              <p className="text-xs font-medium text-gray-500">Paw Card matches this year</p>
+              <p className="mt-1 text-2xl font-bold tabular-nums text-gray-900">{formatPeso(charity.pawCardSavingsThisYear)}</p>
+              <p className="mt-0.5 text-xs text-gray-400">
+                {formatPeso(charity.pawCardMatchedThisYear)} recorded as owed · {formatPeso(Math.max(0, charity.pawCardSavingsThisYear - charity.pawCardMatchedThisYear))} covered by direct donations or over cap
+              </p>
             </div>
             <div className={`rounded-xl p-4 ${charity.pendingPayout > 0 ? 'bg-amber-50' : 'bg-green-50'}`}>
               <p className={`text-xs font-medium ${charity.pendingPayout > 0 ? 'text-amber-700' : 'text-green-700'}`}>Pending payout</p>

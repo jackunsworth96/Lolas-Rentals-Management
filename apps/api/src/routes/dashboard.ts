@@ -1381,8 +1381,9 @@ const CHARITY_PAYABLE_ACCOUNT_ID = 'CHARITY-PAYABLE';
 
 async function queryCharityImpact(sb: ReturnType<typeof getSupabaseClient>) {
   const today = formatManilaDate();
+  const yearStart = `${today.slice(0, 4)}-01-01`;
 
-  const [payableRes, payoutRes, pawMatchRes, offLedgerRes, annualDonated] = await Promise.all([
+  const [payableRes, payoutRes, pawMatchRes, offLedgerRes, annualDonated, pawSavingsRes] = await Promise.all([
     sb.rpc('account_balances', { p_from: today, p_to: today }).eq('account_id', CHARITY_PAYABLE_ACCOUNT_ID),
     sb
       .from('journal_entries')
@@ -1391,14 +1392,16 @@ async function queryCharityImpact(sb: ReturnType<typeof getSupabaseClient>) {
       .eq('reference_type', 'charity_payout'),
     sb
       .from('journal_entries')
-      .select('debit, credit')
+      .select('debit, credit, date')
       .eq('account_id', CHARITY_EXPENSE_ACCOUNT_ID)
       .eq('reference_type', 'paw_card_charity'),
     sb.from('charity_offledger_donations').select('amount'),
     companyDonatedThisYear(sb),
+    sb.from('paw_card_entries').select('amount_saved').gte('created_at', `${yearStart}T00:00:00+08:00`),
   ]);
   if (payableRes.error) throw new Error(`Charity payable balance failed: ${payableRes.error.message}`);
   if (pawMatchRes.error) throw new Error(`Paw Card match lookup failed: ${pawMatchRes.error.message}`);
+  if (pawSavingsRes.error) throw new Error(`Paw Card savings lookup failed: ${pawSavingsRes.error.message}`);
   if (offLedgerRes.error) throw new Error(`Off-ledger charity donations failed: ${offLedgerRes.error.message}`);
 
   // Owed to NGOs = credit balance of the charity payable account in the ledger.
@@ -1413,8 +1416,12 @@ async function queryCharityImpact(sb: ReturnType<typeof getSupabaseClient>) {
   const payouts = (payoutRes.data ?? []) as Array<{ debit: number | null; date: string }>;
   const paidOutTotal = payouts.reduce((sum, r) => sum + Number(r.debit ?? 0), 0);
   const offLedgerTotal = (offLedgerRes.data ?? []).reduce((sum, r) => sum + Number((r as { amount: number }).amount), 0);
-  const pawCardMatched = ((pawMatchRes.data ?? []) as Array<{ debit: number | null; credit: number | null }>)
-    .reduce((sum, r) => sum + Number(r.debit ?? 0) - Number(r.credit ?? 0), 0);
+  const pawMatches = (pawMatchRes.data ?? []) as Array<{ debit: number | null; credit: number | null; date: string }>;
+  const pawMatchNet = (r: { debit: number | null; credit: number | null }) => Number(r.debit ?? 0) - Number(r.credit ?? 0);
+  const pawCardMatched = pawMatches.reduce((sum, r) => sum + pawMatchNet(r), 0);
+  const pawCardMatchedThisYear = pawMatches.filter((r) => r.date >= yearStart).reduce((sum, r) => sum + pawMatchNet(r), 0);
+  const pawCardSavingsThisYear = (pawSavingsRes.data ?? [])
+    .reduce((sum, r) => sum + Number((r as { amount_saved: number | null }).amount_saved ?? 0), 0);
   const totalDonated = CHARITY_OPENING_BALANCE + offLedgerTotal + paidOutTotal;
   const totalRaised = totalDonated + pendingPayout;
   // Everything paid in to the payable account came from bookings or Paw Card matches.
@@ -1427,6 +1434,8 @@ async function queryCharityImpact(sb: ReturnType<typeof getSupabaseClient>) {
     pendingPayout: Math.round(pendingPayout * 100) / 100,
     bookingContributions: Math.round(bookingContributions * 100) / 100,
     pawCardMatched: Math.round(pawCardMatched * 100) / 100,
+    pawCardMatchedThisYear: Math.round(pawCardMatchedThisYear * 100) / 100,
+    pawCardSavingsThisYear: Math.round(pawCardSavingsThisYear * 100) / 100,
     annualCap: CHARITY_ANNUAL_CAP,
     annualDonated,
   };

@@ -48,6 +48,8 @@ export interface CharityImpact {
   pendingPayout: number;
   bookingContributions: number;
   pawCardMatched: number;
+  pawCardMatchedThisYear: number;
+  pawCardSavingsThisYear: number;
   annualCap: number;
   annualDonated: number;
 }
