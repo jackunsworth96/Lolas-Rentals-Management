@@ -1374,7 +1374,7 @@ router.get('/today-movements', async (req, res, next) => {
 });
 
 // ── Charity impact — shared query helper ──────────────────────────────────────
-const CHARITY_OPENING_BALANCE = 307995;
+const CHARITY_OPENING_BALANCE = 282995;
 const CHARITY_PENDING_LEGACY = 2933;
 const CHARITY_PAYABLE_ACCOUNT_ID = 'CHARITY-PAYABLE';
 
@@ -1382,7 +1382,7 @@ async function queryCharityImpact(sb: ReturnType<typeof getSupabaseClient>) {
   const today = formatManilaDate();
   const yearStart = `${today.slice(0, 4)}-01-01`;
 
-  const [payableRes, payoutRes, annualExpenseRes] = await Promise.all([
+  const [payableRes, payoutRes, annualExpenseRes, offLedgerRes] = await Promise.all([
     sb.rpc('account_balances', { p_from: today, p_to: today }).eq('account_id', CHARITY_PAYABLE_ACCOUNT_ID),
     sb
       .from('journal_entries')
@@ -1395,8 +1395,10 @@ async function queryCharityImpact(sb: ReturnType<typeof getSupabaseClient>) {
       .eq('account_id', 'CHARITY-EXPENSE')
       .neq('reference_type', 'opening_balance')
       .gte('date', yearStart),
+    sb.from('charity_offledger_donations').select('amount, date'),
   ]);
   if (payableRes.error) throw new Error(`Charity payable balance failed: ${payableRes.error.message}`);
+  if (offLedgerRes.error) throw new Error(`Off-ledger charity donations failed: ${offLedgerRes.error.message}`);
 
   // Owed to NGOs = credit balance of the charity payable account in the ledger.
   const payableRow = (payableRes.data ?? [])[0] as
@@ -1409,12 +1411,15 @@ async function queryCharityImpact(sb: ReturnType<typeof getSupabaseClient>) {
 
   const payouts = (payoutRes.data ?? []) as Array<{ debit: number | null; date: string }>;
   const paidOutTotal = payouts.reduce((sum, r) => sum + Number(r.debit ?? 0), 0);
-  const totalDonated = CHARITY_OPENING_BALANCE + paidOutTotal;
+  const offLedger = (offLedgerRes.data ?? []) as Array<{ amount: number; date: string }>;
+  const offLedgerTotal = offLedger.reduce((sum, r) => sum + Number(r.amount), 0);
+  const totalDonated = CHARITY_OPENING_BALANCE + offLedgerTotal + paidOutTotal;
   const totalRaised = totalDonated + pendingPayout;
-  const bookingContributions = totalRaised - CHARITY_OPENING_BALANCE;
+  const bookingContributions = paidOutTotal + pendingPayout;
 
   const annualDonated =
     payouts.filter((r) => r.date >= yearStart).reduce((sum, r) => sum + Number(r.debit ?? 0), 0)
+    + offLedger.filter((r) => r.date >= yearStart).reduce((sum, r) => sum + Number(r.amount), 0)
     + (annualExpenseRes.data ?? []).reduce(
       (sum, r) => sum + Number((r as { debit?: number | null }).debit ?? 0),
       0,

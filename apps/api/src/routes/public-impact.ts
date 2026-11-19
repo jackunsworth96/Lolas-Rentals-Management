@@ -90,17 +90,19 @@ router.get('/ngo-totals', async (req, res, next) => {
   try {
     const sb = getSupabaseClient();
 
-    const [ngosRes, donationsRes] = await Promise.all([
+    const [ngosRes, donationsRes, offLedgerRes] = await Promise.all([
       sb.from('ngos').select('id, slug, name, logo_url, website_url').eq('is_active', true),
       sb
         .from('orders_raw')
         .select('ngo_id, charity_donation')
         .not('charity_donation', 'is', null)
         .gt('charity_donation', 0),
+      sb.from('charity_offledger_donations').select('ngo_id, amount').not('ngo_id', 'is', null),
     ]);
 
     if (ngosRes.error) throw ngosRes.error;
     if (donationsRes.error) throw donationsRes.error;
+    if (offLedgerRes.error) throw offLedgerRes.error;
 
     const ngos = ngosRes.data ?? [];
     const donations = donationsRes.data ?? [];
@@ -112,9 +114,14 @@ router.get('/ngo-totals', async (req, res, next) => {
       const amount = Number((row as { charity_donation?: number | null }).charity_donation ?? 0);
       totalsMap[key] = (totalsMap[key] ?? 0) + amount;
     }
+    for (const row of offLedgerRes.data ?? []) {
+      const { ngo_id, amount } = row as { ngo_id: string; amount: number };
+      totalsMap[ngo_id] = (totalsMap[ngo_id] ?? 0) + Number(amount);
+    }
 
     // Be Pawsitive carries the full historical opening balance (₱282,995 paid before
     // per-booking tracking existed) plus the legacy pending amount (₱2,933).
+    // Its 2026 fun run donation lives in charity_offledger_donations.
     // These match the constants in dashboard.ts / queryCharityImpact.
     const { CHARITY_OPENING_BALANCE, CHARITY_PENDING_LEGACY } = await import('./dashboard.js');
     const bePawsitiveSlug = 'be-pawsitive';
