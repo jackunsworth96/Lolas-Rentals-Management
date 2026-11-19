@@ -312,7 +312,6 @@ router.post('/book', validateBody(PartnerBookSchema), async (req, res, next) => 
           afterCommit,
           configRepo: req.app.locals.deps.configRepo,
           transferRepo: req.app.locals.deps.transferRepo,
-          accountingPort: req.app.locals.deps.accountingPort,
         },
         input,
         { deviceType: 'desktop', partnerBookingGroupRef: groupRef, driverName, bookingRequestKey, bookingRequestIndex: index },

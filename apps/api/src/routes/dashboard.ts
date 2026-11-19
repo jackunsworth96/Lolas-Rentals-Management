@@ -1440,22 +1440,33 @@ async function queryCharityImpact(sb: ReturnType<typeof getSupabaseClient>) {
 router.get('/charity-donations', async (req, res, next) => {
   try {
     const sb = getSupabaseClient();
+    // Only processed orders: a web booking's donation is not received until staff
+    // process it, and cancelled bookings never pay it.
     const { data, error } = await sb
-      .from('orders_raw')
-      .select('id, customer_name, order_reference, charity_donation, created_at')
-      .not('charity_donation', 'is', null)
+      .from('orders')
+      .select('id, booking_token, woo_order_id, booking_customer_name, charity_donation, order_date, customers!customer_id(name)')
       .gt('charity_donation', 0)
-      .order('created_at', { ascending: false })
+      .neq('status', 'cancelled')
+      .order('order_date', { ascending: false })
       .limit(200);
 
     if (error) throw error;
 
-    const rows = (data ?? []).map((r) => ({
-      id: (r as { id: string }).id,
-      customerName: (r as { customer_name?: string | null }).customer_name ?? null,
-      orderReference: (r as { order_reference?: string | null }).order_reference ?? null,
-      charityDonation: Number((r as { charity_donation: number }).charity_donation),
-      createdAt: (r as { created_at: string }).created_at,
+    type Row = {
+      id: string;
+      booking_token: string | null;
+      woo_order_id: string | null;
+      booking_customer_name: string | null;
+      charity_donation: number;
+      order_date: string;
+      customers: { name: string | null } | null;
+    };
+    const rows = ((data ?? []) as unknown as Row[]).map((r) => ({
+      id: r.id,
+      customerName: r.customers?.name ?? r.booking_customer_name ?? null,
+      orderReference: r.booking_token ?? r.woo_order_id ?? null,
+      charityDonation: Number(r.charity_donation),
+      createdAt: r.order_date,
     }));
 
     res.json({ success: true, data: rows });

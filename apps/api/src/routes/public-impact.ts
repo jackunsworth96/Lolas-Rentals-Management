@@ -95,8 +95,8 @@ router.get('/ngo-totals', async (req, res, next) => {
       sb
         .from('orders_raw')
         .select('ngo_id, charity_donation')
-        .not('charity_donation', 'is', null)
-        .gt('charity_donation', 0),
+        .gt('charity_donation', 0)
+        .eq('status', 'processed'),
       sb.from('charity_offledger_donations').select('ngo_id, amount').not('ngo_id', 'is', null),
     ]);
 
