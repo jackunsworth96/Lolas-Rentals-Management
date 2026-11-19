@@ -5,8 +5,8 @@
 --    submission postings made after the 8 Nov reconciliation baseline
 --    (earlier ones were overwritten by the baseline).
 -- 2. The baseline set CHARITY-PAYABLE to the dashboard figure of the day
---    (₱2,933 legacy + every orders_raw donation), which included ₱24,200 that
---    was never owed: cancelled bookings (₱6,600), one never-processed booking
+--    (₱2,933 legacy + every orders_raw donation), which included ₱24,100 that
+--    was never owed: cancelled bookings (₱6,500), one never-processed booking
 --    (₱100) and the ₱17,500 Eco Hub direct donation that had already been paid.
 -- 3. The Eco Hub ₱17,500 placeholder in orders_raw moves to
 --    charity_offledger_donations, replacing the ₱14,500 row that was the same gift.
