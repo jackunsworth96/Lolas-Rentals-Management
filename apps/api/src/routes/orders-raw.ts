@@ -1,4 +1,4 @@
-import { lookupActivePartnerBySlug } from '../lib/partner-benefit.js';
+import { applyPartnerBenefit, lookupActivePartnerBySlug } from '../lib/partner-benefit.js';
 import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { logger } from '../lib/logger.js';
@@ -448,20 +448,70 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
     const ms = new Date(body.dropoffDatetime).getTime() - new Date(body.pickupDatetime).getTime();
     const rentalDaysCount = Math.max(1, Math.ceil(ms / (1000 * 60 * 60 * 24)));
 
-    // 5. Resolve location names
+    // 5. Resolve location names + list delivery fees (needed to apply partner free-delivery)
     let pickupLocation = 'Store';
     let dropoffLocation = 'Store';
+    let listPickupFee = body.pickupFee;
+    let listDropoffFee = body.dropoffFee;
     if (body.pickupLocationId || body.dropoffLocationId) {
       const { data: locRows } = await supabase
         .from('locations')
-        .select('id, name')
+        .select('id, name, delivery_cost, collection_cost')
         .eq('is_active', true)
         .or(`store_id.eq.${body.storeId},store_id.is.null`);
       const locMap = new Map(
-        ((locRows ?? []) as Array<{ id: number; name: string }>).map((l) => [l.id, l.name]),
+        ((locRows ?? []) as Array<{
+          id: number; name: string; delivery_cost: number | null; collection_cost: number | null;
+        }>).map((l) => [l.id, l]),
       );
-      if (body.pickupLocationId) pickupLocation = locMap.get(body.pickupLocationId) ?? 'Store';
-      if (body.dropoffLocationId) dropoffLocation = locMap.get(body.dropoffLocationId) ?? 'Store';
+      if (body.pickupLocationId) {
+        const loc = locMap.get(body.pickupLocationId);
+        pickupLocation = loc?.name ?? 'Store';
+        if (loc) listPickupFee = Number(loc.delivery_cost ?? 0);
+      }
+      if (body.dropoffLocationId) {
+        const loc = locMap.get(body.dropoffLocationId);
+        dropoffLocation = loc?.name ?? 'Store';
+        if (loc) listDropoffFee = Number(loc.collection_cost ?? 0);
+      }
+    }
+
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const rentalSubtotal = round2(body.dailyRate * rentalDaysCount);
+    let effectivePickupFee = body.pickupFee;
+    let effectiveDropoffFee = body.dropoffFee;
+    let effectiveRentalSubtotal = rentalSubtotal;
+    let rentalDiscount = 0;
+    let deliveryDiscount = 0;
+
+    if (bookingPartner) {
+      const advanceDaysFromNow =
+        (new Date(body.pickupDatetime).getTime() - Date.now()) / 86_400_000;
+      const benefit = applyPartnerBenefit({
+        partner: bookingPartner,
+        rentalSubtotal,
+        pickupFee: listPickupFee,
+        dropoffFee: listDropoffFee,
+        advanceDaysFromNow,
+        vehicleModelId: body.vehicleModelId,
+        pickupLocationId: body.pickupLocationId ?? null,
+        dropoffLocationId: body.dropoffLocationId ?? null,
+      });
+      effectivePickupFee = benefit.pickupFee;
+      effectiveDropoffFee = benefit.dropoffFee;
+      effectiveRentalSubtotal = benefit.rentalSubtotal;
+      rentalDiscount = benefit.rentalDiscount;
+      deliveryDiscount = benefit.deliveryDiscount;
+
+      if (body.pickupFee > effectivePickupFee + 0.01 || body.dropoffFee > effectiveDropoffFee + 0.01) {
+        res.status(400).json({
+          success: false,
+          error: {
+            message: `${bookingPartner.name} includes free delivery to this location. Refresh the price and try again.`,
+          },
+        });
+        return;
+      }
     }
 
     // 6. Build order_items
@@ -473,15 +523,15 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       vehicleName: body.vehicleName,
       dailyRate: body.dailyRate,
       rentalDays: rentalDaysCount,
-      subtotal: body.dailyRate * rentalDaysCount,
+      subtotal: effectiveRentalSubtotal,
       pickupDatetime: body.pickupDatetime,
       dropoffDatetime: body.dropoffDatetime,
       pickupLocationId: body.pickupLocationId ? String(body.pickupLocationId) : null,
       dropoffLocationId: body.dropoffLocationId ? String(body.dropoffLocationId) : null,
       pickupLocation: body.pickupLocationId ? pickupLocation : null,
       dropoffLocation: body.dropoffLocationId ? dropoffLocation : null,
-      pickupFee: body.pickupFee,
-      dropoffFee: body.dropoffFee,
+      pickupFee: effectivePickupFee,
+      dropoffFee: effectiveDropoffFee,
       orderReference: orderReference,
     }];
 
@@ -514,6 +564,22 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
         };
       });
     }
+
+    const addonsTotal = round2(orderAddons.reduce((sum, a) => sum + Number(a.total_amount ?? 0), 0));
+    const expectedGrandTotal = round2(
+      effectiveRentalSubtotal + effectivePickupFee + effectiveDropoffFee + addonsTotal,
+    );
+    if (bookingPartner && body.grandTotal > expectedGrandTotal + 1) {
+      res.status(400).json({
+        success: false,
+        error: {
+          message: `${bookingPartner.name} pricing includes partner benefits. Refresh the price and try again.`,
+        },
+      });
+      return;
+    }
+    // When a partner is linked, charge the benefit-adjusted total. Otherwise trust the client total.
+    const chargedTotal = bookingPartner ? expectedGrandTotal : body.grandTotal;
 
     // 8. Fleet updates
     const fleetUpdates = [{
@@ -550,13 +616,13 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
     let journalTransactionId = '';
     let journalLegs: Array<Record<string, unknown>> = [];
 
-    if (body.grandTotal > 0 && receivableAccountId && incomeAccountId) {
+    if (chargedTotal > 0 && receivableAccountId && incomeAccountId) {
       journalTransactionId = crypto.randomUUID();
       journalLegs = [
         {
           id: crypto.randomUUID(),
           account_id: receivableAccountId,
-          debit: body.grandTotal,
+          debit: chargedTotal,
           credit: 0,
           description: 'Walk-in order activation',
           reference_type: 'order',
@@ -566,7 +632,7 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
           id: crypto.randomUUID(),
           account_id: incomeAccountId,
           debit: 0,
-          credit: body.grandTotal,
+          credit: chargedTotal,
           description: 'Walk-in rental income',
           reference_type: 'order',
           reference_id: orderId,
@@ -615,8 +681,8 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
 
     // Whatever is not collected now stays on the receivable as balance due.
     // Card stays off the ledger until the card batch is settled.
-    const rentalCollected = Math.min(body.grandTotal, body.amountCollected ?? body.grandTotal);
-    const balanceDue = body.grandTotal - rentalCollected;
+    const rentalCollected = Math.min(chargedTotal, body.amountCollected ?? chargedTotal);
+    const balanceDue = chargedTotal - rentalCollected;
     const routing = await resolveRoutedAccounts(body.storeId);
     const rentalAccountId = body.paymentMethod === 'card'
       ? null
@@ -662,12 +728,12 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       p_status: 'active',
       p_web_notes: body.staffNotes ?? null,
       p_quantity: 1,
-      p_web_quote_raw: body.grandTotal,
+      p_web_quote_raw: chargedTotal,
       p_security_deposit: depositHeld,
       p_deposit_status: depositHeld > 0 ? 'paid' : null,
       p_card_fee_surcharge: 0,
       p_return_charges: 0,
-      p_final_total: body.grandTotal,
+      p_final_total: chargedTotal,
       p_balance_due: balanceDue,
       p_payment_method_id: body.paymentMethod,
       p_deposit_method_id: body.depositMethod,
@@ -699,12 +765,77 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
     // A walk-in can reuse an existing customer profile while naming a
     // different renter for this booking. This path has no orders_raw row for
     // the snapshot trigger to read, so preserve the submitted name explicitly.
+    // Also record partner benefit amounts when a partner was linked.
+    const orderPatch: Record<string, unknown> = {
+      booking_customer_name: body.customerName.trim(),
+    };
+    if (bookingPartner) {
+      orderPatch.partner_benefit_rental_discount = rentalDiscount;
+      orderPatch.partner_benefit_delivery_discount = deliveryDiscount;
+    }
     const { error: bookingNameErr } = await supabase
       .from('orders')
-      .update({ booking_customer_name: body.customerName.trim() })
+      .update(orderPatch)
       .eq('id', orderId);
     if (bookingNameErr) {
       throw new Error(`Failed to preserve booking customer name: ${bookingNameErr.message}`);
+    }
+    if (rentalDiscount > 0) {
+      const { error: discountErr } = await supabase
+        .from('order_items')
+        .update({ discount: rentalDiscount })
+        .eq('id', orderItemId);
+      if (discountErr) {
+        logger.error({ discountErr, orderId }, 'walk-in-direct: failed to set rental discount on order item');
+      }
+    }
+
+    // Partner commission reports read from orders_raw. Create a processed
+    // attribution row so walk-in partner bookings appear there (they skip the inbox).
+    if (bookingPartner) {
+      try {
+        const { data: rawRow, error: rawErr } = await supabase
+          .from('orders_raw')
+          .insert({
+            source,
+            booking_channel: 'direct',
+            partner_ref: bookingPartner.slug,
+            status: 'processed',
+            customer_name: body.customerName,
+            customer_email: body.customerEmail?.toLowerCase() ?? null,
+            customer_mobile: body.customerMobile,
+            vehicle_model_id: body.vehicleModelId,
+            vehicle_id: body.vehicleId,
+            store_id: body.storeId,
+            pickup_datetime: body.pickupDatetime,
+            dropoff_datetime: body.dropoffDatetime,
+            pickup_location_id: body.pickupLocationId ?? null,
+            dropoff_location_id: body.dropoffLocationId ?? null,
+            order_reference: orderReference,
+            web_quote_raw: chargedTotal,
+            rental_value_raw: effectiveRentalSubtotal,
+          })
+          .select('id')
+          .single();
+        if (rawErr) throw new Error(rawErr.message);
+        const rawOrderId = (rawRow as { id: string } | null)?.id;
+        if (rawOrderId) {
+          const { error: linkErr } = await supabase
+            .from('orders')
+            .update({ raw_order_id: rawOrderId })
+            .eq('id', orderId);
+          if (linkErr) throw new Error(linkErr.message);
+        }
+      } catch (err) {
+        logger.error({ err, orderReference, partner: bookingPartner.slug }, 'walk-in-direct: partner commission record missing');
+        void sendTelegramAlert(
+          `⚠️ <b>Partner walk-in activated but commission record missing</b>\n` +
+            `Reference: ${escapeHtml(orderReference)}\n` +
+            `Partner: ${escapeHtml(bookingPartner.name)}\n` +
+            `Store: ${escapeHtml(body.storeId)}`,
+          getTelegramChatId('ops'),
+        );
+      }
     }
 
     // 16. Return result
@@ -720,10 +851,10 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
             `  • ${escapeHtml(String(a.addon_name))}: ₱${Number(a.total_amount).toLocaleString('en-PH')}`
           ).join('\n')
         : '';
-      const transferLines = (body.pickupFee > 0 || body.dropoffFee > 0)
+      const transferLines = (effectivePickupFee > 0 || effectiveDropoffFee > 0)
         ? '\n<b>Transfer:</b>' +
-          (body.pickupFee > 0 ? `\n  • Pickup: ₱${body.pickupFee.toLocaleString('en-PH')}` : '') +
-          (body.dropoffFee > 0 ? `\n  • Return: ₱${body.dropoffFee.toLocaleString('en-PH')}` : '')
+          (effectivePickupFee > 0 ? `\n  • Pickup: ₱${effectivePickupFee.toLocaleString('en-PH')}` : '') +
+          (effectiveDropoffFee > 0 ? `\n  • Return: ₱${effectiveDropoffFee.toLocaleString('en-PH')}` : '')
         : '';
       const charityLine = charityAmount > 0
         ? `\n🐾 <b>Charity:</b> ₱${charityAmount.toLocaleString('en-PH')}`
@@ -738,7 +869,7 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
           `Vehicle: ${escapeHtml(body.vehicleName)}\n` +
           `Pickup: ${escapeHtml(formatManilaDateTime(body.pickupDatetime))} — ${escapeHtml(pickupLocation)}\n` +
           `Return: ${escapeHtml(formatManilaDateTime(body.dropoffDatetime))} — ${escapeHtml(dropoffLocation)}\n` +
-          `💰 <b>Total: ₱${body.grandTotal.toLocaleString('en-PH')}</b>` +
+          `💰 <b>Total: ₱${chargedTotal.toLocaleString('en-PH')}</b>` +
           balanceLine +
           addonLines +
           transferLines +
@@ -748,7 +879,7 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
         `💳 <b>${balanceDue > 0 ? 'Order Part-Paid' : 'Order Paid'}</b>\n` +
           `<b>${escapeHtml(body.customerName)}</b>\n` +
           `${escapeHtml(body.vehicleName)}\n` +
-          `💰 <b>Total: ₱${body.grandTotal.toLocaleString('en-PH')}</b>` +
+          `💰 <b>Total: ₱${chargedTotal.toLocaleString('en-PH')}</b>` +
           balanceLine;
       void sendTelegramAlert(walkinActivatedMsg, getTelegramChatId('ops'));
       sendTelegramAlertPaidOrdersStaggered(walkinPaidOrdersMsg, getTelegramChatId('paid_orders'));
@@ -793,7 +924,7 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
             dropoffDatetime: formatManila(body.dropoffDatetime),
             pickupLocation,
             dropoffLocation,
-            totalAmount: body.grandTotal,
+            totalAmount: chargedTotal,
             paymentMethod: body.paymentMethod,
             addons: [],
             charityDonation: body.charityDonation ?? 0,
@@ -817,7 +948,7 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
             vehicleName: body.vehicleName,
             pickupDatetime: formatManila(body.pickupDatetime),
             dropoffDatetime: formatManila(body.dropoffDatetime),
-            grandTotal: body.grandTotal,
+            grandTotal: chargedTotal,
           }),
         });
       } catch (err) {

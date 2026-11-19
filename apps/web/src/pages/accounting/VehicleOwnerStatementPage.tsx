@@ -233,7 +233,7 @@ export default function VehicleOwnerStatementPage() {
           </section>
 
           <p className="mt-4 text-xs text-gray-500">
-            Revenue counts the part of each booking that falls inside the month, split by time (rental rate, delivery fees and add-ons, less discounts).
+            Revenue counts the part of each booking that falls inside the month, split by time (rental rate less discounts). Delivery fees, add-ons and affiliate commission are Lola&apos;s.
             Vehicle costs are expenses and maintenance logged against one of these vehicles, so tag the vehicle when logging them.
             Balance is a running total; a negative balance means {ownerName} owes Lola&apos;s.
           </p>

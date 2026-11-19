@@ -1,5 +1,6 @@
-import { usePartners } from '../../api/partners.js';
+import { fetchPublicPartnerBenefit, usePartners } from '../../api/partners.js';
 import { useState, useEffect, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { isValidWhatsAppE164, whatsAppLinkDigits } from '@lolas/shared';
 import { Modal } from '../common/Modal.js';
 import { WhatsAppNumberInput } from '../common/WhatsAppNumberInput.js';
@@ -17,6 +18,8 @@ import surfRackIcon from '../../assets/Home/Surf Rack Icon.svg';
 import { useSurfRackAvailability } from '../../api/surf-racks.js';
 import { isSurfRackAddon } from '../basket/AddOnsSection.js';
 import { SurfRackAvailabilityNote, surfRackShortfall } from './SurfRackAvailabilityNote.js';
+import { partnerAllowsFreeDeliveryLocation } from '../../utils/partnerDeliveryLocation.js';
+import { computePartnerBenefit } from '../../utils/partnerDiscount.js';
 
 interface Props {
   open: boolean;
@@ -118,6 +121,13 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
   // ── Form state ──
   const { data: partners = [] } = usePartners(storeId);
   const [partnerRef, setPartnerRef] = useState('');
+  const selectedPartner = partners.find((p) => p.slug === partnerRef) ?? null;
+  const { data: partnerBenefit } = useQuery({
+    queryKey: ['walk-in-partner-benefit', partnerRef],
+    queryFn: () => fetchPublicPartnerBenefit(partnerRef),
+    enabled: Boolean(partnerRef),
+    staleTime: 5 * 60_000,
+  });
   const [customerName, setCustomerName] = useState('');
   const [customerMobile, setCustomerMobile] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
@@ -233,8 +243,15 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
   const locsExtended = (locations ?? []) as LocExtended[];
   const pickupLoc = locsExtended.find((l) => String(l.id) === pickupLocationId);
   const dropoffLoc = locsExtended.find((l) => String(l.id) === dropoffLocationId);
-  const pickupFeeLocal = Number(pickupLoc?.deliveryCost ?? pickupLoc?.delivery_cost ?? 0);
-  const dropoffFeeLocal = Number(dropoffLoc?.collectionCost ?? dropoffLoc?.collection_cost ?? 0);
+  const pickupFeeList = Number(pickupLoc?.deliveryCost ?? pickupLoc?.delivery_cost ?? 0);
+  const dropoffFeeList = Number(dropoffLoc?.collectionCost ?? dropoffLoc?.collection_cost ?? 0);
+  const pickupLocationNum = pickupLocationId ? Number(pickupLocationId) : null;
+  const dropoffLocationNum = dropoffLocationId ? Number(dropoffLocationId) : null;
+  const freePickup = partnerAllowsFreeDeliveryLocation(partnerBenefit, pickupLocationNum, vehicleModelId || null);
+  const freeDropoff = partnerAllowsFreeDeliveryLocation(partnerBenefit, dropoffLocationNum, vehicleModelId || null);
+  const pickupFeeLocal = freePickup ? 0 : pickupFeeList;
+  const dropoffFeeLocal = freeDropoff ? 0 : dropoffFeeList;
+  const deliveryDiscountLocal = (freePickup ? pickupFeeList : 0) + (freeDropoff ? dropoffFeeList : 0);
   const localRentalDays =
     pickupDatetime && dropoffDatetime
       ? Math.max(
@@ -284,9 +301,40 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
     return sum + unitCost * qty;
   }, 0);
 
+  const rentalSubtotalLocal = quote?.rentalSubtotal ?? 0;
+  const partnerApplied = computePartnerBenefit(
+    partnerBenefit ?? null,
+    rentalSubtotalLocal,
+    pickupDatetime,
+    new Date(),
+    vehicleModelId || null,
+    pickupLocationNum,
+    dropoffLocationNum,
+  );
+  const rentalDiscountLocal = partnerApplied.applied ? partnerApplied.rentalDiscount : 0;
   // Grand total = server rental base + locally-computed fees (so fees appear immediately)
   const grandTotalLocal =
-    (quote?.rentalSubtotal ?? 0) + pickupFeeLocal + dropoffFeeLocal + addonsTotalLocal;
+    Math.max(0, rentalSubtotalLocal - rentalDiscountLocal) + pickupFeeLocal + dropoffFeeLocal + addonsTotalLocal;
+
+  const partnerBannerParts: string[] = [];
+  if (selectedPartner) {
+    if (deliveryDiscountLocal > 0) {
+      partnerBannerParts.push(`Free delivery (−${formatCurrency(deliveryDiscountLocal)})`);
+    } else if (partnerBenefit && (partnerBenefit.freeDelivery || partnerBenefit.dealType === 'commission_delivery' || partnerBenefit.dealType === 'discount_delivery' || partnerBenefit.dealType === 'free_delivery' || partnerBenefit.dealType === 'combined')) {
+      partnerBannerParts.push('Free delivery at eligible locations');
+    }
+    if (rentalDiscountLocal > 0) {
+      partnerBannerParts.push(`${formatCurrency(rentalDiscountLocal)} rental discount`);
+    }
+    if (selectedPartner.commission_type === 'percentage' && selectedPartner.commission_value > 0) {
+      partnerBannerParts.push(`${selectedPartner.commission_value}% commission to ${selectedPartner.name}`);
+    } else if (selectedPartner.commission_type === 'fixed' && selectedPartner.commission_value > 0) {
+      partnerBannerParts.push(`${formatCurrency(selectedPartner.commission_value)} commission to ${selectedPartner.name}`);
+    }
+  }
+  const modalTitle = selectedPartner
+    ? `Partner booking — ${selectedPartner.name}`
+    : 'Walk-in Booking';
   const rentalCollectedNow = amountCollected === ''
     ? grandTotalLocal
     : Math.min(grandTotalLocal, Math.max(0, Number(amountCollected)));
@@ -500,7 +548,7 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Walk-in Booking" size="lg">
+    <Modal open={open} onClose={onClose} title={modalTitle} size="lg">
       {createdRef ? (
         /* ── Success state (unchanged) ── */
         <div className="space-y-5">
@@ -508,7 +556,7 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
             <p className="font-lato text-sm font-semibold uppercase tracking-widest text-green-600">Booking Activated!</p>
             <p className="mt-2 font-lato text-3xl font-black tracking-wide text-gray-900">{createdRef}</p>
             <p className="mt-1 font-lato text-sm text-gray-500">
-              Walk-in booking for <span className="font-medium text-gray-700">{customerName}</span> is now active.
+              {selectedPartner ? 'Partner' : 'Walk-in'} booking for <span className="font-medium text-gray-700">{customerName}</span> is now active.
             </p>
             {rentalBalanceDue > 0 && (
               <p className="mt-2 font-lato text-sm font-semibold text-amber-700">
@@ -557,6 +605,13 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
       ) : (
         /* ── Form ── */
         <form onSubmit={handleSubmit} className="space-y-6">
+
+          {selectedPartner && partnerBannerParts.length > 0 && (
+            <div className="rounded-lg border border-teal-200 bg-teal-50 px-4 py-3">
+              <p className="font-lato text-sm font-semibold text-teal-900">{selectedPartner.name}</p>
+              <p className="mt-0.5 font-lato text-xs text-teal-800">{partnerBannerParts.join(' · ')}</p>
+            </div>
+          )}
 
           {/* ── Section 1: Customer ── */}
           <section>
@@ -819,9 +874,10 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
                   >
                     {locsExtended.map((l) => {
                       const fee = Number(l.deliveryCost ?? l.delivery_cost ?? 0);
+                      const free = partnerAllowsFreeDeliveryLocation(partnerBenefit, l.id, vehicleModelId || null);
                       return (
                         <option key={l.id} value={l.id}>
-                          {l.name}{fee > 0 ? ` — ${formatCurrency(fee)}` : ''}
+                          {l.name}{fee > 0 ? (free ? ` (Free — was ${formatCurrency(fee)})` : ` — ${formatCurrency(fee)}`) : ''}
                         </option>
                       );
                     })}
@@ -837,9 +893,10 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
                   >
                     {locsExtended.map((l) => {
                       const fee = Number(l.collectionCost ?? l.collection_cost ?? 0);
+                      const free = partnerAllowsFreeDeliveryLocation(partnerBenefit, l.id, vehicleModelId || null);
                       return (
                         <option key={l.id} value={l.id}>
-                          {l.name}{fee > 0 ? ` — ${formatCurrency(fee)}` : ''}
+                          {l.name}{fee > 0 ? (free ? ` (Free — was ${formatCurrency(fee)})` : ` — ${formatCurrency(fee)}`) : ''}
                         </option>
                       );
                     })}
@@ -922,16 +979,28 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
                       </span>
                       <span className="font-lato text-sm text-gray-800">{formatCurrency(quote.rentalSubtotal)}</span>
                     </div>
-                    {pickupFeeLocal > 0 && (
+                    {rentalDiscountLocal > 0 && (
                       <div className="flex justify-between">
-                        <span className="font-lato text-sm text-gray-600">Pickup fee</span>
-                        <span className="font-lato text-sm text-gray-800">{formatCurrency(pickupFeeLocal)}</span>
+                        <span className="font-lato text-sm text-teal-700">
+                          {selectedPartner?.name ?? 'Partner'} rental discount
+                        </span>
+                        <span className="font-lato text-sm text-teal-700">−{formatCurrency(rentalDiscountLocal)}</span>
                       </div>
                     )}
-                    {dropoffFeeLocal > 0 && (
+                    {pickupFeeList > 0 && (
+                      <div className="flex justify-between">
+                        <span className="font-lato text-sm text-gray-600">Pickup fee</span>
+                        <span className={`font-lato text-sm ${freePickup ? 'text-teal-700' : 'text-gray-800'}`}>
+                          {freePickup ? `Free — was ${formatCurrency(pickupFeeList)}` : formatCurrency(pickupFeeLocal)}
+                        </span>
+                      </div>
+                    )}
+                    {dropoffFeeList > 0 && (
                       <div className="flex justify-between">
                         <span className="font-lato text-sm text-gray-600">Return fee</span>
-                        <span className="font-lato text-sm text-gray-800">{formatCurrency(dropoffFeeLocal)}</span>
+                        <span className={`font-lato text-sm ${freeDropoff ? 'text-teal-700' : 'text-gray-800'}`}>
+                          {freeDropoff ? `Free — was ${formatCurrency(dropoffFeeList)}` : formatCurrency(dropoffFeeLocal)}
+                        </span>
                       </div>
                     )}
                     {filteredAddons.map((addon) => {

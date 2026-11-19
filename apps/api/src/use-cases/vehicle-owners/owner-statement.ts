@@ -1,7 +1,6 @@
 import type { AccountingPort } from '@lolas/domain';
 import { getSupabaseClient } from '../../adapters/supabase/client.js';
 import { formatManilaDate, formatManilaPeriod, manilaMidnightMs } from '../../utils/manila-date.js';
-import { attributeAddonRevenue, type AddonRow } from '../shared/rental-period-overlap.js';
 import { createJournalEntry } from '../accounting/create-journal-entry.js';
 
 interface AgreementRow {
@@ -31,8 +30,6 @@ interface OrderItemRow {
   order_id: string;
   rental_days_count: number | null;
   rental_rate: number | null;
-  pickup_fee: number | null;
-  dropoff_fee: number | null;
   discount: number | null;
   pickup_datetime: string | null;
   dropoff_datetime: string | null;
@@ -151,10 +148,8 @@ function prorateBooking(oi: OrderItemRow, startMs: number, endMs: number) {
   if (overlapMs <= 0) return null;
   const ratio = overlapMs / (dropoffMs - pickupMs);
   const totalBookingDays = Number(oi.rental_days_count ?? 0);
-  const inWindow = (ms: number) => ms >= startMs && ms < endMs;
+  // Owners earn on the rental only; delivery fees and add-ons belong to Lola's.
   const revenue = Number(oi.rental_rate ?? 0) * totalBookingDays * ratio
-    + (inWindow(pickupMs) ? Number(oi.pickup_fee ?? 0) : 0)
-    + (inWindow(dropoffMs) ? Number(oi.dropoff_fee ?? 0) : 0)
     - Number(oi.discount ?? 0) * ratio;
   return { overlapDays: totalBookingDays * ratio, totalBookingDays, revenue };
 }
@@ -212,7 +207,7 @@ async function computeMonth(vehicles: Array<{ id: string; name: string }>, perio
 
   const { data: items, error: itemsErr } = await sb
     .from('order_items')
-    .select('id, vehicle_id, order_id, rental_days_count, rental_rate, pickup_fee, dropoff_fee, discount, pickup_datetime, dropoff_datetime')
+    .select('id, vehicle_id, order_id, rental_days_count, rental_rate, discount, pickup_datetime, dropoff_datetime')
     .in('vehicle_id', ids)
     .lt('pickup_datetime', new Date(endMs).toISOString())
     .gt('dropoff_datetime', new Date(startMs).toISOString());
@@ -234,7 +229,6 @@ async function computeMonth(vehicles: Array<{ id: string; name: string }>, perio
   }
 
   const bookingByItem = new Map<string, BookingLine>();
-  const contributingByOrder: Record<string, Array<{ itemId: string; vehicleId: string; overlapDays: number; totalBookingDays: number }>> = {};
   for (const oi of itemRows) {
     const order = countedOrders.get(oi.order_id);
     if (!order) continue;
@@ -254,22 +248,6 @@ async function computeMonth(vehicles: Array<{ id: string; name: string }>, perio
       revenue: overlap.revenue,
       returnCharges: returnedInMonth ? order.returnCharges : 0,
       returnChargesNote: returnedInMonth ? order.returnChargesNote : null,
-    });
-    (contributingByOrder[oi.order_id] ??= []).push({
-      itemId: oi.id, vehicleId: oi.vehicle_id, overlapDays: overlap.overlapDays, totalBookingDays: overlap.totalBookingDays,
-    });
-  }
-
-  const orderIds = Object.keys(contributingByOrder);
-  if (orderIds.length > 0) {
-    const { data: addons, error: addonErr } = await sb
-      .from('order_addons')
-      .select('order_id, addon_type, total_amount, added_at')
-      .in('order_id', orderIds);
-    if (addonErr) throw new Error(`Add-ons query failed: ${addonErr.message}`);
-    attributeAddonRevenue((addons ?? []) as AddonRow[], contributingByOrder, startMs, endMs, (item, amount) => {
-      byVehicle.get(item.vehicleId)!.revenue += amount;
-      bookingByItem.get(item.itemId)!.revenue += amount;
     });
   }
 
