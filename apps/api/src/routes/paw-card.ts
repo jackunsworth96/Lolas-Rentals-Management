@@ -105,7 +105,7 @@ router.post('/submit', authenticate, validateBody(PawCardSubmitRequestSchema), a
     const storeId = bodyStoreId && bodyStoreId !== 'default' ? bodyStoreId : await resolvePrimaryStoreId();
     const result = await logSavings(
       { ...req.body, storeId, submittedBy: 'public' },
-      { pawCard: req.app.locals.deps.pawCardPort },
+      { pawCard: req.app.locals.deps.pawCardPort, accountingPort: req.app.locals.deps.accountingPort },
     );
     res.status(201).json({ success: true, data: result });
   } catch (err) { next(err); }

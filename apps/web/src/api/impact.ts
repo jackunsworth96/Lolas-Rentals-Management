@@ -47,6 +47,7 @@ export interface CharityImpact {
   totalDonated: number;
   pendingPayout: number;
   bookingContributions: number;
+  pawCardMatched: number;
   annualCap: number;
   annualDonated: number;
 }

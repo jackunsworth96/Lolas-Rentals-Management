@@ -6,6 +6,7 @@ import { Permission, resolveStoreFromSource } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { formatManilaDate } from '../utils/manila-date.js';
 import { getPartnerCommissionStats } from '../lib/partner-commission.js';
+import { CHARITY_ANNUAL_CAP, CHARITY_EXPENSE_ACCOUNT_ID, companyDonatedThisYear } from '../lib/charity-cap.js';
 import { getDashboardAvailabilityModel, type DashboardAvailabilityModel } from '../lib/dashboard-availability-model.js';
 import { availableAfterUnassignedHolds, unprocessedBookingHolds } from '../lib/dashboard-unprocessed-bookings.js';
 import { ownerUseNotEndedBy, ownerUseVehicleIdsOverlapping } from '../lib/owner-use-window.js';
@@ -1380,9 +1381,8 @@ const CHARITY_PAYABLE_ACCOUNT_ID = 'CHARITY-PAYABLE';
 
 async function queryCharityImpact(sb: ReturnType<typeof getSupabaseClient>) {
   const today = formatManilaDate();
-  const yearStart = `${today.slice(0, 4)}-01-01`;
 
-  const [payableRes, payoutRes, annualExpenseRes, offLedgerRes] = await Promise.all([
+  const [payableRes, payoutRes, pawMatchRes, offLedgerRes, annualDonated] = await Promise.all([
     sb.rpc('account_balances', { p_from: today, p_to: today }).eq('account_id', CHARITY_PAYABLE_ACCOUNT_ID),
     sb
       .from('journal_entries')
@@ -1391,13 +1391,14 @@ async function queryCharityImpact(sb: ReturnType<typeof getSupabaseClient>) {
       .eq('reference_type', 'charity_payout'),
     sb
       .from('journal_entries')
-      .select('debit')
-      .eq('account_id', 'CHARITY-EXPENSE')
-      .neq('reference_type', 'opening_balance')
-      .gte('date', yearStart),
-    sb.from('charity_offledger_donations').select('amount, date'),
+      .select('debit, credit')
+      .eq('account_id', CHARITY_EXPENSE_ACCOUNT_ID)
+      .eq('reference_type', 'paw_card_charity'),
+    sb.from('charity_offledger_donations').select('amount'),
+    companyDonatedThisYear(sb),
   ]);
   if (payableRes.error) throw new Error(`Charity payable balance failed: ${payableRes.error.message}`);
+  if (pawMatchRes.error) throw new Error(`Paw Card match lookup failed: ${pawMatchRes.error.message}`);
   if (offLedgerRes.error) throw new Error(`Off-ledger charity donations failed: ${offLedgerRes.error.message}`);
 
   // Owed to NGOs = credit balance of the charity payable account in the ledger.
@@ -1411,19 +1412,13 @@ async function queryCharityImpact(sb: ReturnType<typeof getSupabaseClient>) {
 
   const payouts = (payoutRes.data ?? []) as Array<{ debit: number | null; date: string }>;
   const paidOutTotal = payouts.reduce((sum, r) => sum + Number(r.debit ?? 0), 0);
-  const offLedger = (offLedgerRes.data ?? []) as Array<{ amount: number; date: string }>;
-  const offLedgerTotal = offLedger.reduce((sum, r) => sum + Number(r.amount), 0);
+  const offLedgerTotal = (offLedgerRes.data ?? []).reduce((sum, r) => sum + Number((r as { amount: number }).amount), 0);
+  const pawCardMatched = ((pawMatchRes.data ?? []) as Array<{ debit: number | null; credit: number | null }>)
+    .reduce((sum, r) => sum + Number(r.debit ?? 0) - Number(r.credit ?? 0), 0);
   const totalDonated = CHARITY_OPENING_BALANCE + offLedgerTotal + paidOutTotal;
   const totalRaised = totalDonated + pendingPayout;
-  const bookingContributions = paidOutTotal + pendingPayout;
-
-  const annualDonated =
-    payouts.filter((r) => r.date >= yearStart).reduce((sum, r) => sum + Number(r.debit ?? 0), 0)
-    + offLedger.filter((r) => r.date >= yearStart).reduce((sum, r) => sum + Number(r.amount), 0)
-    + (annualExpenseRes.data ?? []).reduce(
-      (sum, r) => sum + Number((r as { debit?: number | null }).debit ?? 0),
-      0,
-    );
+  // Everything paid in to the payable account came from bookings or Paw Card matches.
+  const bookingContributions = paidOutTotal + pendingPayout - pawCardMatched;
 
   return {
     openingBalance: CHARITY_OPENING_BALANCE,
@@ -1431,8 +1426,9 @@ async function queryCharityImpact(sb: ReturnType<typeof getSupabaseClient>) {
     totalDonated: Math.round(totalDonated * 100) / 100,
     pendingPayout: Math.round(pendingPayout * 100) / 100,
     bookingContributions: Math.round(bookingContributions * 100) / 100,
-    annualCap: 100000,
-    annualDonated: Math.round(annualDonated * 100) / 100,
+    pawCardMatched: Math.round(pawCardMatched * 100) / 100,
+    annualCap: CHARITY_ANNUAL_CAP,
+    annualDonated,
   };
 }
 

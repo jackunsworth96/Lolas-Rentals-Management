@@ -172,7 +172,7 @@ router.post(
           storeId: await resolvePrimaryStoreId(),
           submittedBy: 'public',
         },
-        { pawCard: req.app.locals.deps.pawCardPort },
+        { pawCard: req.app.locals.deps.pawCardPort, accountingPort: req.app.locals.deps.accountingPort },
       );
       res.status(201).json({ success: true, data: result });
     } catch (err) {

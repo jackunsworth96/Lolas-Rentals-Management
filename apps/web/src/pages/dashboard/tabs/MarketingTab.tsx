@@ -365,7 +365,7 @@ export default function MarketingTab({ storeId, selectedStoreId }: DashboardTabP
 
       {charity && (
         <ChartCard title="NGO impact" subtitle="Money raised for local animal welfare NGOs">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-xl bg-teal-brand/5 p-4">
               <p className="text-xs font-medium text-teal-brand">Total raised</p>
               <p className="mt-1 text-2xl font-bold tabular-nums text-teal-brand">{formatPeso(charity.totalRaised)}</p>
@@ -380,6 +380,11 @@ export default function MarketingTab({ storeId, selectedStoreId }: DashboardTabP
               <p className="mt-1 text-2xl font-bold tabular-nums text-gray-900">{formatPeso(charity.bookingContributions)}</p>
               <p className="mt-0.5 text-xs text-gray-400">Click to see donations</p>
             </button>
+            <div className="rounded-xl bg-gray-50 p-4">
+              <p className="text-xs font-medium text-gray-500">Paw Card matches</p>
+              <p className="mt-1 text-2xl font-bold tabular-nums text-gray-900">{formatPeso(charity.pawCardMatched)}</p>
+              <p className="mt-0.5 text-xs text-gray-400">Customer savings matched peso for peso</p>
+            </div>
             <div className={`rounded-xl p-4 ${charity.pendingPayout > 0 ? 'bg-amber-50' : 'bg-green-50'}`}>
               <p className={`text-xs font-medium ${charity.pendingPayout > 0 ? 'text-amber-700' : 'text-green-700'}`}>Pending payout</p>
               <p className={`mt-1 text-2xl font-bold tabular-nums ${charity.pendingPayout > 0 ? 'text-amber-700' : 'text-green-700'}`}>
@@ -392,7 +397,7 @@ export default function MarketingTab({ storeId, selectedStoreId }: DashboardTabP
           </div>
           <div className="mt-5">
             <div className="mb-1.5 flex justify-between text-xs text-gray-500">
-              <span className="font-medium">Donated this year</span>
+              <span className="font-medium">Lola&apos;s own donations this year</span>
               <span>
                 {formatPeso(Math.min(charity.annualDonated, charity.annualCap))} of {formatPeso(charity.annualCap)} annual cap ({annualPct.toFixed(1)}%)
               </span>
