@@ -174,6 +174,15 @@ router.get('/employees/:id', requirePermission(Permission.ViewTimesheets), async
   } catch (err) { next(err); }
 });
 
+router.get('/employees/:id/leave-balances', requirePermission(Permission.ViewTimesheets), async (req, res, next) => {
+  try {
+    const { leaveBalances } = await import('../use-cases/hr/leave-usage.js');
+    const current = await leaveBalances(String(req.params.id), formatManilaDate());
+    const upcoming = await leaveBalances(String(req.params.id), current.year.end);
+    res.json({ success: true, data: { current, next: upcoming } });
+  } catch (err) { next(err); }
+});
+
 router.post('/employees', requirePermission(Permission.ManageEmployees), validateBody(CreateEmployeeRequestSchema), async (req, res, next) => {
   try {
     const body = req.body;

@@ -166,6 +166,29 @@ export function useEmployee(id: string) {
   });
 }
 
+export interface EmployeeLeaveBalance {
+  allowance: number;
+  entitlement: number;
+  used: number;
+  remaining: number;
+  pending: number;
+}
+
+export interface EmployeeLeaveYear {
+  year: { start: string; end: string; label: string };
+  holiday: EmployeeLeaveBalance;
+  sick: EmployeeLeaveBalance;
+  onProbation: boolean;
+}
+
+export function useEmployeeLeaveBalances(id: string) {
+  return useQuery<{ current: EmployeeLeaveYear; next: EmployeeLeaveYear }>({
+    queryKey: ['employees', 'leave-balances', id],
+    queryFn: () => api.get(`/hr/employees/${id}/leave-balances`),
+    enabled: !!id,
+  });
+}
+
 export function useCreateEmployee() {
   const qc = useQueryClient();
   return useMutation({

@@ -6,6 +6,7 @@ import {
   useSaveEmployee,
   useDeactivateEmployee,
   useCashAdvances,
+  useEmployeeLeaveBalances,
   type EmployeeRow,
 } from '../../api/hr.js';
 import { useLeaveConfig } from '../../api/config.js';
@@ -203,6 +204,7 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
   const { data: leaveConfig, isFetched: leaveCfgFetched } = useLeaveConfig(
     leaveStoreId || undefined,
   );
+  const { data: leaveBalances } = useEmployeeLeaveBalances(isNew ? '' : employee?.id ?? '');
 
   // Cash advance schedules (installment-type) for this employee
   const advanceStoreId = employee?.storeId ?? leaveStoreId ?? '';
@@ -713,8 +715,10 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
             {tab === 'leave' && (() => {
               const holAllow = Number(form.holidayAllowance ?? 0);
               const sickAllow = Number(form.sickAllowance ?? 0);
-              const holUsed = isNew ? 0 : Number(employee?.holidayUsed ?? 0);
-              const sickUsed = isNew ? 0 : Number(employee?.sickUsed ?? 0);
+              const holUsed = isNew ? 0 : Number(leaveBalances?.current.holiday.used ?? employee?.holidayUsed ?? 0);
+              const sickUsed = isNew ? 0 : Number(leaveBalances?.current.sick.used ?? employee?.sickUsed ?? 0);
+              const nextYear = leaveBalances?.next;
+              const nextHasBookings = !!nextYear && [nextYear.holiday, nextYear.sick].some((b) => b.used > 0 || b.pending > 0);
               const holRem = Math.max(0, holAllow - holUsed);
               const sickRem = Math.max(0, sickAllow - sickUsed);
               const cfg = leaveConfig as Record<string, unknown> | null | undefined;
@@ -793,6 +797,21 @@ export function EmployeeModal({ employee, stores, onClose }: Props) {
                       </tbody>
                     </table>
                   </div>
+
+                  {nextYear && nextHasBookings && (
+                    <div className="rounded-lg border border-gray-200 px-4 py-3 text-sm">
+                      <h4 className="mb-1 font-semibold text-gray-800">Next leave year ({nextYear.year.label})</h4>
+                      {(['holiday', 'sick'] as const).map((t) => {
+                        const b = nextYear[t];
+                        return (
+                          <p key={t} className="text-gray-700">
+                            {t === 'holiday' ? 'Holiday' : 'Sick'}: {b.used} booked
+                            {b.pending ? `, ${b.pending} pending` : ''} · {Math.max(0, b.remaining - b.pending)} of {b.entitlement} left
+                          </p>
+                        );
+                      })}
+                    </div>
+                  )}
 
                   <div className="rounded-lg border border-blue-100 bg-blue-50/80 px-4 py-3 text-sm">
                     <h4 className="mb-1 font-semibold text-gray-800">Next reset date</h4>

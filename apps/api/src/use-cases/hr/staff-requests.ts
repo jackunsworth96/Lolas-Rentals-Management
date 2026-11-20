@@ -15,7 +15,7 @@ import type {
 import { getSupabaseClient } from '../../adapters/supabase/client.js';
 import { resolvePayrollLedger } from '../../adapters/supabase/config-repo.js';
 import { formatManilaDate } from '../../utils/manila-date.js';
-import { recalculateLeaveUsed, leaveBalances } from './leave-usage.js';
+import { recalculateLeaveUsed, leaveBalances, leaveResetFor, leaveYearRange } from './leave-usage.js';
 
 type Row = Record<string, unknown>;
 type RequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
@@ -182,23 +182,33 @@ async function assertNoClash(employeeId: string, dates: string[], ignoreRequestI
   }
 }
 
-async function pendingDays(employeeId: string, leaveType: LeaveType, ignoreRequestId?: string): Promise<number> {
-  const { data, error } = await sb().from('leave_requests').select('id, days')
-    .eq('employee_id', employeeId).eq('leave_type', leaveType).eq('status', 'pending');
-  if (error) throw new Error(`Failed to load pending leave: ${error.message}`);
-  return ((data ?? []) as Row[]).filter((r) => String(r.id) !== ignoreRequestId).reduce((t, r) => t + Number(r.days), 0);
+/** Each leave year's share of the dates is checked against that year's own balance. */
+async function assertBalance(employeeId: string, leaveType: LeaveType, dates: string[], ignoreRequestId?: string): Promise<void> {
+  if (leaveType === 'unpaid') return;
+  let rest = [...dates].sort();
+  while (rest.length > 0) {
+    const balances = await leaveBalances(employeeId, rest[0], { ignoreRequestId });
+    const inYear = rest.filter((d) => d < balances.year.end);
+    rest = rest.filter((d) => d >= balances.year.end);
+    const b = balances[leaveType];
+    const available = b.remaining - b.pending;
+    const days = inYear.length;
+    if (days > available) {
+      const probation = balances.onProbation ? ' You are still on probation, so leave builds up monthly.' : '';
+      throw new DomainError(
+        `Not enough ${leaveType} leave for ${balances.year.label}: ${days} day${days === 1 ? '' : 's'} requested, ${Math.max(0, available)} available.${probation} You can apply for unpaid leave instead.`,
+      );
+    }
+  }
 }
 
-async function assertBalance(employeeId: string, leaveType: LeaveType, days: number, asOf: string, ignoreRequestId?: string): Promise<void> {
-  if (leaveType === 'unpaid') return;
-  await recalculateLeaveUsed([employeeId]);
-  const balances = await leaveBalances(employeeId, asOf);
-  const available = balances[leaveType].remaining - await pendingDays(employeeId, leaveType, ignoreRequestId);
-  if (days > available) {
-    const probation = balances.onProbation ? ' You are still on probation, so leave builds up monthly.' : '';
-    throw new DomainError(
-      `Not enough ${leaveType} leave: ${days} day${days === 1 ? '' : 's'} requested, ${Math.max(0, available)} available.${probation} You can apply for unpaid leave instead.`,
-    );
+/** Staff can book up to the end of next leave year. */
+async function assertBookingWindow(storeId: string, endDate: string): Promise<void> {
+  const { resetMonth, resetDay } = await leaveResetFor(storeId);
+  const current = leaveYearRange(formatManilaDate(), resetMonth, resetDay);
+  const next = leaveYearRange(current.end, resetMonth, resetDay);
+  if (endDate >= next.end) {
+    throw new DomainError(`Leave can only be booked up to ${addDays(next.end, -1)} (the end of the ${next.label} leave year)`);
   }
 }
 
@@ -206,8 +216,9 @@ export async function createLeaveRequest(employeeId: string, input: CreateLeaveR
   const { storeId } = await employeeStore(employeeId);
   const dates = leaveDates(input.startDate, input.endDate);
   if (dates.length === 0) throw new DomainError('Pick at least one day');
+  await assertBookingWindow(storeId, input.endDate);
   await assertNoClash(employeeId, dates);
-  await assertBalance(employeeId, input.leaveType, dates.length, input.startDate);
+  await assertBalance(employeeId, input.leaveType, dates);
 
   const { data, error } = await sb().from('leave_requests').insert({
     employee_id: employeeId,
@@ -280,7 +291,7 @@ export async function approveLeaveRequest(
   const leaveType = row.leave_type as LeaveType;
   const dates = leaveDates(String(row.start_date), String(row.end_date));
   await assertNoClash(employeeId, dates, id);
-  await assertBalance(employeeId, leaveType, dates.length, String(row.start_date), id);
+  await assertBalance(employeeId, leaveType, dates, id);
 
   const employee = await deps.employees.findById(employeeId);
   if (!employee) throw new DomainError('Employee not found');
@@ -517,7 +528,8 @@ export async function portalSummary(employeeId: string) {
   if (!emp.data) throw new DomainError('Your login is not linked to an employee profile');
   for (const r of [advRes, ledgerRes, slipsRes, updateRes]) if (r.error) throw new Error(r.error.message);
 
-  const pendingDaysOf = (t: LeaveType) => leave.filter((l) => l.status === 'pending' && l.leaveType === t).reduce((a, l) => a + l.days, 0);
+  const next = await leaveBalances(employeeId, balances.year.end);
+  const hasNextYearBookings = [next.holiday, next.sick].some((b) => b.used > 0 || b.pending > 0);
   const signed = new Set(acks.filter((a) => a.status === 'confirmed').map((a) => a.payslipId));
   const postedSlips = ((slipsRes.data ?? []) as Row[]).filter((r) => {
     const run = r.payroll_runs as { status: string } | Array<{ status: string }> | null;
@@ -540,8 +552,10 @@ export async function portalSummary(employeeId: string) {
     },
     leave: {
       onProbation: balances.onProbation,
-      holiday: { ...balances.holiday, pending: pendingDaysOf('holiday') },
-      sick: { ...balances.sick, pending: pendingDaysOf('sick') },
+      year: balances.year,
+      holiday: balances.holiday,
+      sick: balances.sick,
+      nextYear: { year: next.year, holiday: next.holiday, sick: next.sick, hasBookings: hasNextYearBookings },
       unpaidTakenThisYear: leave.filter((l) => l.status === 'approved' && l.leaveType === 'unpaid' && l.startDate >= `${today.slice(0, 4)}-01-01`)
         .reduce((a, l) => a + l.days, 0),
     },

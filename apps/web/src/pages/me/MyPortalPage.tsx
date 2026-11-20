@@ -43,6 +43,13 @@ function countLeaveDays(start: string, end: string): number {
   return n;
 }
 
+/** Days of start..end that fall before and on/after the next leave year starts. */
+function splitByLeaveYear(start: string, end: string, nextYearStart: string): [number, number] {
+  const total = countLeaveDays(start, end);
+  const later = countLeaveDays(start > nextYearStart ? start : nextYearStart, end);
+  return [total - later, later];
+}
+
 function fmtDate(iso: string): string {
   const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-PH', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
@@ -92,9 +99,20 @@ function LeaveTab() {
   const [done, setDone] = useState<string | null>(null);
 
   const days = countLeaveDays(start, end);
-  const bal = leaveType === 'unpaid' ? null : summary?.leave[leaveType];
-  const available = bal ? bal.remaining - bal.pending : null;
-  const short = available != null && days > available;
+  const leave = summary?.leave;
+  const tooFar = !!leave && end >= leave.nextYear.year.end;
+  const shares = leave && leaveType !== 'unpaid'
+    ? (() => {
+        const [thisYearDays, nextYearDays] = splitByLeaveYear(start, end, leave.nextYear.year.start);
+        return [
+          { label: leave.year.label, days: thisYearDays, bal: leave[leaveType] },
+          { label: leave.nextYear.year.label, days: nextYearDays, bal: leave.nextYear[leaveType] },
+        ]
+          .filter((s) => s.days > 0)
+          .map((s) => ({ ...s, available: s.bal.remaining - s.bal.pending }));
+      })()
+    : [];
+  const short = shares.some((s) => s.days > s.available);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -125,11 +143,16 @@ function LeaveTab() {
             <input type="date" value={end} min={start} onChange={(e) => setEnd(e.target.value)} className={inputCls} />
           </div>
         </div>
-        <div className={`rounded-lg px-3 py-2 text-sm ${short ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-700'}`}>
+        <div className={`rounded-lg px-3 py-2 text-sm ${short || tooFar ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-700'}`}>
           {days} day{days === 1 ? '' : 's'}
-          {available != null && <> · {Math.max(0, available)} available</>}
+          {shares.map((s) => (
+            <span key={s.label}> · {Math.max(0, s.available)} available in {s.label}</span>
+          ))}
           {leaveType === 'unpaid' && <> · not paid</>}
           {short && <div className="mt-1 text-xs">Not enough balance. You can apply for unpaid leave instead.</div>}
+          {tooFar && leave && (
+            <div className="mt-1 text-xs">Leave can only be booked up to the end of the {leave.nextYear.year.label} leave year.</div>
+          )}
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600">Reason (optional)</label>
@@ -139,7 +162,7 @@ function LeaveTab() {
         {done && <p className="text-sm text-green-700">{done}</p>}
         <button
           type="submit"
-          disabled={days === 0 || short || create.isPending}
+          disabled={days === 0 || short || tooFar || create.isPending}
           className="w-full rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
         >
           {create.isPending ? 'Sending...' : 'Send request'}
@@ -407,8 +430,15 @@ export default function MyPortalPage() {
   ];
 
   const fullName = summary?.employee.fullName ?? '';
-  const leaveHint = (b: { entitlement: number; used: number; pending: number }) =>
-    `${b.used} used of ${b.entitlement}${b.pending ? ` · ${b.pending} pending` : ''}`;
+  const leaveHint = (type: 'holiday' | 'sick') => {
+    if (!summary) return '';
+    const b = summary.leave[type];
+    const hint = `${summary.leave.year.label}: ${b.used} used of ${b.entitlement}${b.pending ? ` · ${b.pending} pending` : ''}`;
+    const next = summary.leave.nextYear;
+    if (!next.hasBookings) return hint;
+    const n = next[type];
+    return `${hint} · ${next.year.label}: ${Math.max(0, n.remaining - n.pending)} of ${n.entitlement} left`;
+  };
 
   return (
     <div>
@@ -464,13 +494,13 @@ export default function MyPortalPage() {
               <Card
                 label="Holiday leave left"
                 value={`${Math.max(0, summary.leave.holiday.remaining)} days`}
-                hint={leaveHint(summary.leave.holiday)}
+                hint={leaveHint('holiday')}
                 onClick={() => setTab('leave')}
               />
               <Card
                 label="Sick leave left"
                 value={`${Math.max(0, summary.leave.sick.remaining)} days`}
-                hint={leaveHint(summary.leave.sick)}
+                hint={leaveHint('sick')}
                 onClick={() => setTab('leave')}
               />
               <Card

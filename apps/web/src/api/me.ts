@@ -26,10 +26,23 @@ export interface LeaveBalance {
   pending: number;
 }
 
+export interface LeaveYear {
+  start: string;
+  end: string;
+  label: string;
+}
+
 export interface PortalSummary {
   employee: { id: string; fullName: string; role: string | null; startDate: string | null; probationEndDate: string | null; rateType: string | null };
   workUpdates: { expected: boolean; thisWeekStart: string; thisWeekSent: boolean };
-  leave: { onProbation: boolean; holiday: LeaveBalance; sick: LeaveBalance; unpaidTakenThisYear: number };
+  leave: {
+    onProbation: boolean;
+    year: LeaveYear;
+    holiday: LeaveBalance;
+    sick: LeaveBalance;
+    nextYear: { year: LeaveYear; holiday: LeaveBalance; sick: LeaveBalance; hasBookings: boolean };
+    unpaidTakenThisYear: number;
+  };
   advances: {
     outstanding: number;
     schedules: Array<{ id: string; grantedDate: string | null; paydayType: string; remaining: number }>;
