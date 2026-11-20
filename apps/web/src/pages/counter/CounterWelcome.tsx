@@ -40,14 +40,12 @@ export interface CounterBrand {
 export function CounterWelcome({ onStart, brand }: { onStart: () => void; brand?: CounterBrand }) {
   const animate = !useReducedMotion();
   const explorers = Math.floor(useLiveCustomerCount() / 25) * 25;
-  const showPawCard = !brand;
   const pawCardRef = useRef<HTMLElement>(null);
   const heroCtaRef = useRef<HTMLDivElement>(null);
   const [heroCtaVisible, setHeroCtaVisible] = useState(true);
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
-    if (!showPawCard) return;
     const cta = heroCtaRef.current;
     const observer = new IntersectionObserver(([entry]) => setHeroCtaVisible(!!entry?.isIntersecting));
     if (cta) observer.observe(cta);
@@ -58,9 +56,9 @@ export function CounterWelcome({ onStart, brand }: { onStart: () => void; brand?
       observer.disconnect();
       window.removeEventListener('scroll', onScroll);
     };
-  }, [showPawCard]);
+  }, []);
 
-  useIdleReset(showPawCard && scrolled, SCROLL_BACK_IDLE_MS, () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  useIdleReset(scrolled, SCROLL_BACK_IDLE_MS, () => window.scrollTo({ top: 0, behavior: 'smooth' }));
 
   const start = () => {
     window.scrollTo({ top: 0 });
@@ -78,7 +76,7 @@ export function CounterWelcome({ onStart, brand }: { onStart: () => void; brand?
   });
 
   const hero = (
-    <div className={showPawCard ? 'relative flex min-h-[calc(100svh-6rem)] flex-col overflow-hidden' : 'flex flex-1 flex-col'}>
+    <div className="relative flex min-h-[calc(100svh-6rem)] flex-col overflow-hidden">
       {CLOUDS.map((c, i) => (
         <motion.img
           key={i}
@@ -161,23 +159,19 @@ export function CounterWelcome({ onStart, brand }: { onStart: () => void; brand?
       />
       <img src={road} alt="" aria-hidden="true" className="pointer-events-none absolute bottom-0 left-0 z-[1] block w-full" />
 
-      {showPawCard && (
-        <motion.button
-          type="button"
-          onClick={() => pawCardRef.current?.scrollIntoView({ behavior: 'smooth' })}
-          style={{ x: '-50%' }}
-          className="absolute bottom-5 left-1/2 z-20 flex items-center gap-2 rounded-full border-2 border-charcoal-brand bg-white px-5 py-2.5 font-lato text-base font-bold text-teal-brand shadow-[3px_3px_0_#363737]"
-          animate={animate ? { y: [0, 6, 0] } : {}}
-          transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-        >
-          See Paw Card partner discounts
-          <ChevronDown className="h-5 w-5" />
-        </motion.button>
-      )}
+      <motion.button
+        type="button"
+        onClick={() => pawCardRef.current?.scrollIntoView({ behavior: 'smooth' })}
+        style={{ x: '-50%' }}
+        className="absolute bottom-5 left-1/2 z-20 flex items-center gap-2 rounded-full border-2 border-charcoal-brand bg-white px-5 py-2.5 font-lato text-base font-bold text-teal-brand shadow-[3px_3px_0_#363737]"
+        animate={animate ? { y: [0, 6, 0] } : {}}
+        transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+      >
+        See Paw Card partner discounts
+        <ChevronDown className="h-5 w-5" />
+      </motion.button>
     </div>
   );
-
-  if (!showPawCard) return hero;
 
   return (
     <div className="flex flex-1 flex-col">

@@ -32,6 +32,13 @@ vi.mock('../src/api/counter.js', () => ({
   holdCounterVehicle: mocks.hold,
   releaseCounterVehicle: mocks.release,
 }));
+vi.mock('../src/api/paw-card-establishments.js', () => ({
+  usePublicEstablishments: () => ({ data: [], isLoading: false, error: null }),
+}));
+globalThis.IntersectionObserver ??= class {
+  observe() {}
+  disconnect() {}
+} as unknown as typeof IntersectionObserver;
 vi.mock('../src/utils/vehicle-images.js', () => ({ useVehiclePublicId: () => null }));
 vi.mock('../src/hooks/useLiveCustomerCount.js', () => ({ useLiveCustomerCount: () => 6300 }));
 vi.mock('../src/components/common/WhatsAppNumberInput.js', () => ({
