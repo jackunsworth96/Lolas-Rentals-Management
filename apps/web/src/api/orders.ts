@@ -315,6 +315,18 @@ export function useChangeReturnTime() {
   });
 }
 
+export function useWriteOffBalance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, amount, reason }: { id: string; amount: number; reason: string }) =>
+      api.post<{ amount: number; balanceAfter: number }>(`/orders/${id}/write-off`, { amount, reason }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['cashup'] });
+    },
+  });
+}
+
 export interface OrderNote {
   id: string;
   kind: 'note' | 'return_change';

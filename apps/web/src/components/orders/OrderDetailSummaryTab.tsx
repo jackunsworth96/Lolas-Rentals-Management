@@ -17,7 +17,7 @@ import { useSignedWaiverDetails, useResendWaiverConfirmation } from '../../api/w
 import { useInspectionByOrder } from '../../api/inspections.js';
 import { useTransferByOrderId } from '../../api/transfers.js';
 import { isCancelled as isTransferCancelled, transferTotal } from '../transfers/transfer-state.js';
-import { useChangeReturnTime, useCollectPayment, useOrderNotes, useRefundOrder, useReturnTimeRecalcPreview, useSettleOrder, useSwapHelmet, useSwapVehicle, useUpdateDepositMethod } from '../../api/orders.js';
+import { useChangeReturnTime, useCollectPayment, useOrderNotes, useRefundOrder, useReturnTimeRecalcPreview, useWriteOffBalance, useSettleOrder, useSwapHelmet, useSwapVehicle, useUpdateDepositMethod } from '../../api/orders.js';
 import { StaffNotes } from './summary/StaffNotes.js';
 import { LogisticsCard } from './summary/LogisticsCard.js';
 import { MoneySummary } from './summary/MoneySummary.js';
@@ -130,7 +130,9 @@ export function OrderDetailSummaryTab({
   const [showHelmetHistory, setShowHelmetHistory] = useState(false);
 
   // ── Inline action panel: at most one form open at a time ──
-  const [activeAction, setActiveAction] = useState<'collect' | 'refund' | 'returnTime' | 'swap' | 'settle' | null>(null);
+  const [activeAction, setActiveAction] = useState<'collect' | 'refund' | 'writeOff' | 'returnTime' | 'swap' | 'settle' | null>(null);
+  const [writeOffAmount, setWriteOffAmount] = useState('');
+  const [writeOffReason, setWriteOffReason] = useState('');
   const [depositEditorOpen, setDepositEditorOpen] = useState(false);
   const toggleAction = (action: NonNullable<typeof activeAction>) =>
     setActiveAction((current) => (current === action ? null : action));
@@ -184,6 +186,8 @@ export function OrderDetailSummaryTab({
   const authUser = useAuthStore((s) => s.user);
   const canEditOrders = useAuthStore((s) => s.hasPermission('can_edit_orders'));
   const canAssignPartner = useAuthStore((s) => s.hasPermission('can_edit_settings'));
+  const canWriteOff = useAuthStore((s) => s.hasPermission('can_cancel_orders'));
+  const writeOffMut = useWriteOffBalance();
   const [assignPartnerOpen, setAssignPartnerOpen] = useState(false);
 
   const { data: inspectionOrderPayload, isLoading: inspectionOrderLoading, refetch: refetchInspection } =
@@ -698,6 +702,21 @@ export function OrderDetailSummaryTab({
         { id: 'collect', label: 'Collect payment', active: activeAction === 'collect', onSelect: () => toggleAction('collect') },
         { id: 'maya', label: 'Maya card link', onSelect: () => { setActiveAction(null); setShowMayaModal(true); } },
         { id: 'refund', label: 'Refund…', tone: 'danger', active: activeAction === 'refund', onSelect: () => toggleAction('refund') },
+        {
+          id: 'writeOff',
+          label: 'Write off balance…',
+          tone: 'danger',
+          hidden: !canAct || !canWriteOff || balance <= 0,
+          active: activeAction === 'writeOff',
+          onSelect: () => {
+            if (activeAction !== 'writeOff') {
+              setWriteOffAmount(String(balance));
+              setWriteOffReason('');
+              writeOffMut.reset();
+            }
+            toggleAction('writeOff');
+          },
+        },
       ],
     },
     {
@@ -1540,6 +1559,85 @@ export function OrderDetailSummaryTab({
                 </div>
               )}
               {swapVehicle.error && <p className="mt-2 text-sm text-red-600">{(swapVehicle.error as Error).message}</p>}
+            </section>
+            )}
+
+            {/* ─── WRITE OFF BALANCE ─── */}
+            {activeAction === 'writeOff' && (
+            <section className="-m-3 rounded-lg border border-red-200 bg-red-50 p-3">
+              <div className="mb-3 flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-red-600" aria-hidden />
+                <h3 className="font-medium text-red-900">Write off balance</h3>
+              </div>
+              <p className="mb-3 text-sm text-red-800/70">
+                For a negotiated deal or goodwill: lowers the order total so the customer owes less. No money moves, so
+                don&apos;t record a payment or refund for this amount. Balance due now: {formatCurrency(balance)}.
+              </p>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const amount = Number(writeOffAmount);
+                  if (!(amount > 0) || amount > balance || !writeOffReason.trim()) return;
+                  writeOffMut.mutate(
+                    { id: orderId, amount, reason: writeOffReason.trim() },
+                    {
+                      onSuccess: (data) => {
+                        setActiveAction(null);
+                        pushToast(`Wrote off ${formatCurrency(data.amount)}; balance due ${formatCurrency(data.balanceAfter)}`, 'success');
+                      },
+                    },
+                  );
+                }}
+                className="space-y-3"
+              >
+                <div className="flex flex-col sm:flex-row sm:flex-wrap items-end gap-4">
+                  <label className="block">
+                    <span className="text-sm text-gray-600">Amount</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      max={balance}
+                      value={writeOffAmount}
+                      onChange={(e) => setWriteOffAmount(e.target.value)}
+                      required
+                      className="mt-1 block w-full sm:w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-red-400 focus:outline-none focus:ring-1 focus:ring-red-400"
+                    />
+                  </label>
+                  <label className="block flex-1 min-w-[200px]">
+                    <span className="text-sm text-gray-600">Reason</span>
+                    <input
+                      type="text"
+                      value={writeOffReason}
+                      onChange={(e) => setWriteOffReason(e.target.value)}
+                      required
+                      maxLength={500}
+                      placeholder="e.g. Custom deal agreed by Jack, ₱3,385 total"
+                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-red-400 focus:outline-none focus:ring-1 focus:ring-red-400"
+                    />
+                  </label>
+                </div>
+                {Number(writeOffAmount) > balance && (
+                  <p className="text-sm text-red-600">That is more than the balance due ({formatCurrency(balance)}).</p>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={writeOffMut.isPending || !(Number(writeOffAmount) > 0) || Number(writeOffAmount) > balance || !writeOffReason.trim()}
+                    className="rounded-lg bg-red-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {writeOffMut.isPending ? 'Saving…' : `Write off ${formatCurrency(Number(writeOffAmount) || 0)}`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveAction(null)}
+                    className="rounded-lg border border-gray-300 px-4 py-1.5 text-sm text-gray-600 hover:bg-sand-brand"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                {writeOffMut.error && <p className="text-sm text-red-600">{(writeOffMut.error as Error).message}</p>}
+              </form>
             </section>
             )}
 

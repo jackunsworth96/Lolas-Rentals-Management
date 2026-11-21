@@ -974,6 +974,22 @@ router.post('/:id/swap-vehicle', requirePermission(Permission.EditOrders), valid
   } catch (err) { next(err); }
 });
 
+// Forgive part or all of the balance (negotiated deal, goodwill) without
+// recording a payment and a refund. No money moves.
+router.post('/:id/write-off', requirePermission(Permission.CancelOrders), validateBody(z.object({
+  amount: z.number().positive(),
+  reason: z.string().trim().min(1).max(500),
+})), async (req, res, next) => {
+  try {
+    const { writeOffBalance } = await import('../use-cases/orders/write-off-balance.js');
+    const { amount, reason } = req.body as { amount: number; reason: string };
+    const result = await writeOffBalance({
+      orderId: String(req.params.id), amount, reason, employeeId: req.user!.employeeId ?? null,
+    });
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
 router.post('/:id/refund', requirePermission(Permission.EditOrders), validateBody(z.object({
   amount: z.number().positive(),
   refundMethodId: z.string(),
