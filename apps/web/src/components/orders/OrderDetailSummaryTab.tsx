@@ -17,7 +17,7 @@ import { useSignedWaiverDetails, useResendWaiverConfirmation } from '../../api/w
 import { useInspectionByOrder } from '../../api/inspections.js';
 import { useTransferByOrderId } from '../../api/transfers.js';
 import { isCancelled as isTransferCancelled, transferTotal } from '../transfers/transfer-state.js';
-import { useChangeReturnTime, useCollectPayment, useOrderNotes, useRefundOrder, useSettleOrder, useSwapHelmet, useSwapVehicle, useUpdateDepositMethod } from '../../api/orders.js';
+import { useChangeReturnTime, useCollectPayment, useOrderNotes, useRefundOrder, useReturnTimeRecalcPreview, useSettleOrder, useSwapHelmet, useSwapVehicle, useUpdateDepositMethod } from '../../api/orders.js';
 import { StaffNotes } from './summary/StaffNotes.js';
 import { LogisticsCard } from './summary/LogisticsCard.js';
 import { MoneySummary } from './summary/MoneySummary.js';
@@ -140,6 +140,7 @@ export function OrderDetailSummaryTab({
   const setEditingReturnTime = (open: boolean) => setActiveAction(open ? 'returnTime' : null);
   const [newReturnLocal, setNewReturnLocal] = useState('');
   const [returnTimeReason, setReturnTimeReason] = useState('');
+  const [recalculateReturnTotal, setRecalculateReturnTotal] = useState(true);
 
   // ── Modal open/close ──
   const [extendOpen, setExtendOpen] = useState(false);
@@ -665,6 +666,14 @@ export function OrderDetailSummaryTab({
       return `That is past the ${totalRentalDays} paid days (latest ${formatDateTime(new Date(returnPaidUntilMs))}). Use Extend instead.`;
     return null;
   })();
+  const returnMovesEarlier =
+    editingReturnTime && !!returnDatetime && newReturnMs !== null && Number.isFinite(newReturnMs) &&
+    !returnTimeError && newReturnMs < new Date(returnDatetime).getTime();
+  const returnRecalcQuery = useReturnTimeRecalcPreview(
+    orderId,
+    returnMovesEarlier && newReturnMs !== null ? new Date(newReturnMs).toISOString() : null,
+  );
+  const returnRecalc = returnMovesEarlier && returnRecalcQuery.data?.eligible ? returnRecalcQuery.data : null;
   const formatManilaShort = (iso: string) =>
     new Date(iso).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
@@ -676,6 +685,7 @@ export function OrderDetailSummaryTab({
     setEditingReturnTime(true);
     setNewReturnLocal(isoToManilaDateTimeLocal(returnDatetime));
     setReturnTimeReason('');
+    setRecalculateReturnTotal(true);
     changeReturnTimeMut.reset();
   };
 
@@ -1102,7 +1112,8 @@ export function OrderDetailSummaryTab({
           <div className="rounded-lg border border-teal-200 bg-teal-50 p-4 space-y-3">
             <p className="text-sm font-medium text-teal-900">Change return time</p>
             <p className="text-xs text-teal-700">
-              Current: <span className="font-medium">{formatManilaShort(returnDatetime)}</span>. No price change. Need more days? Use Extend.
+              Current: <span className="font-medium">{formatManilaShort(returnDatetime)}</span>.
+              {returnRecalc ? ' The unpaid extension can be reduced below.' : ' No price change.'} Need more days? Use Extend.
             </p>
             <div className="flex flex-wrap items-end gap-3">
               <label className="block">
@@ -1127,17 +1138,51 @@ export function OrderDetailSummaryTab({
               </label>
             </div>
             {returnTimeError && <p className="text-sm text-amber-700">{returnTimeError}</p>}
+            {returnMovesEarlier && returnRecalcQuery.isFetching && !returnRecalcQuery.data && (
+              <p className="text-xs text-teal-700">Checking whether the total changes…</p>
+            )}
+            {returnRecalc && (
+              <label className="flex items-start gap-2 rounded-lg border border-teal-300 bg-white p-3">
+                <input
+                  type="checkbox"
+                  checked={recalculateReturnTotal}
+                  onChange={(e) => setRecalculateReturnTotal(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-teal-brand focus:ring-teal-brand"
+                />
+                <span className="space-y-1 text-sm text-teal-900">
+                  <span className="block font-medium">
+                    Recalculate total: customer owes {formatCurrency(returnRecalc.reduction)} less
+                  </span>
+                  <span className="block text-xs text-teal-700">
+                    {returnRecalc.oldDays} → {returnRecalc.newDays} billed days.
+                    {returnRecalc.rentalDelta > 0 && ` Rental −${formatCurrency(returnRecalc.rentalDelta)}.`}
+                    {returnRecalc.addonUpdates.map((a) => ` ${a.name} −${formatCurrency(a.oldTotal - a.newTotal)}.`).join('')}
+                    {returnRecalc.reduction < returnRecalc.rentalDelta + returnRecalc.addonDelta &&
+                      ` Capped at the unpaid extension (${formatCurrency(returnRecalc.pendingExtensionTotal)}).`}
+                  </span>
+                  <span className="block text-xs text-teal-700">
+                    New total {formatCurrency(returnRecalc.newFinalTotal)} · balance due {formatCurrency(returnRecalc.newBalanceDue)}
+                  </span>
+                </span>
+              </label>
+            )}
             <div className="flex gap-2">
               <button
                 type="button"
                 disabled={changeReturnTimeMut.isPending || !newReturnLocal || !!returnTimeError || newReturnMs === new Date(returnDatetime).getTime()}
                 onClick={() => {
+                  const recalculate = !!returnRecalc && recalculateReturnTotal;
                   changeReturnTimeMut.mutate(
-                    { id: orderId, newDropoffDatetime: manilaLocalToISO(newReturnLocal), reason: returnTimeReason.trim() || null },
+                    { id: orderId, newDropoffDatetime: manilaLocalToISO(newReturnLocal), reason: returnTimeReason.trim() || null, recalculate },
                     {
                       onSuccess: (data) => {
                         setEditingReturnTime(false);
-                        pushToast(`Return time changed to ${formatManilaShort(data.newDropoffDatetime)}`, 'success');
+                        pushToast(
+                          data.reduction > 0
+                            ? `Return time changed to ${formatManilaShort(data.newDropoffDatetime)}; total reduced by ${formatCurrency(data.reduction)}`
+                            : `Return time changed to ${formatManilaShort(data.newDropoffDatetime)}`,
+                          'success',
+                        );
                       },
                     },
                   );

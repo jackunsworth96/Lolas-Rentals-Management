@@ -269,16 +269,48 @@ export function useUpdateDropoffNote() {
 export interface ChangeReturnTimeResult {
   oldDropoffDatetime: string;
   newDropoffDatetime: string;
+  reduction: number;
+}
+
+export type ReturnTimeRecalcPreview =
+  | { eligible: false; reason: string }
+  | {
+      eligible: true;
+      orderItemId: string;
+      oldDays: number;
+      newDays: number;
+      rentalDelta: number;
+      addonDelta: number;
+      reduction: number;
+      pendingExtensionTotal: number;
+      newFinalTotal: number;
+      newBalanceDue: number;
+      addonUpdates: Array<{ id: string; name: string; oldTotal: number; newTotal: number }>;
+    };
+
+export function useReturnTimeRecalcPreview(id: string, newDropoffDatetime: string | null) {
+  return useQuery({
+    queryKey: ['orders', id, 'return-time-preview', newDropoffDatetime],
+    queryFn: () =>
+      api.get<ReturnTimeRecalcPreview>(
+        `/orders/${id}/return-time/preview?newDropoffDatetime=${encodeURIComponent(newDropoffDatetime ?? '')}`,
+      ),
+    enabled: !!id && !!newDropoffDatetime,
+    staleTime: 30_000,
+  });
 }
 
 export function useChangeReturnTime() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, newDropoffDatetime, reason }: { id: string; newDropoffDatetime: string; reason?: string | null }) =>
-      api.post<ChangeReturnTimeResult>(`/orders/${id}/return-time`, { newDropoffDatetime, reason }),
+    mutationFn: ({ id, newDropoffDatetime, reason, recalculate }: {
+      id: string; newDropoffDatetime: string; reason?: string | null; recalculate?: boolean;
+    }) =>
+      api.post<ChangeReturnTimeResult>(`/orders/${id}/return-time`, { newDropoffDatetime, reason, recalculate }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['orders'] });
       qc.invalidateQueries({ queryKey: ['fleet'] });
+      qc.invalidateQueries({ queryKey: ['cashup'] });
     },
   });
 }

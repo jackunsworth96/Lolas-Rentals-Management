@@ -297,65 +297,150 @@ router.patch('/:id/dropoff-note', requirePermission(Permission.EditOrders), vali
   } catch (err) { next(err); }
 });
 
-// Price-neutral reschedule of the return: earlier at any time after pickup, or
-// later within the days already paid. Past the paid days staff must Extend.
+function throwIfRpcFailed(data: unknown, error: { message: string } | null, fallback: string): void {
+  if (error) throw new Error(`${fallback}: ${error.message}`);
+  const outcome = data as { success?: boolean; error?: string } | null;
+  if (!outcome?.success) {
+    throw Object.assign(new Error(outcome?.error ?? fallback), { statusCode: 409 });
+  }
+}
+
+async function returnTimeDeps(req: Request): Promise<import('../use-cases/orders/change-return-time.js').ChangeReturnTimeDeps> {
+  const { priceExtensionRental } = await import('../use-cases/booking/price-extension-rental.js');
+  const { formatManilaDate } = await import('../utils/manila-date.js');
+  const appDeps = req.app.locals.deps;
+  return {
+    bookingPort: appDeps.bookingPort,
+    async priceExtension(input) {
+      const priced = await priceExtensionRental({ configRepo: appDeps.configRepo }, { ...input, locationId: 0 });
+      return priced.cost;
+    },
+    port: {
+      async loadOrder(orderId) {
+        const [
+          { data: order, error: orderErr },
+          { data: items, error: itemsErr },
+          { data: extPayments, error: payErr },
+          { data: addons, error: addonsErr },
+        ] = await Promise.all([
+          supabase.from('orders').select('id, status, final_total, balance_due').eq('id', orderId).maybeSingle(),
+          supabase.from('order_items')
+            .select('id, store_id, vehicle_id, pickup_datetime, dropoff_datetime, rental_days_count, original_dropoff_datetime, rental_rate')
+            .eq('order_id', orderId)
+            .not('pickup_datetime', 'is', null),
+          supabase.from('payments')
+            .select('id, amount, settlement_status')
+            .eq('order_id', orderId)
+            .eq('payment_type', 'extension'),
+          supabase.from('order_addons')
+            .select('id, addon_name, total_amount')
+            .eq('order_id', orderId)
+            .eq('addon_type', 'per_day'),
+        ]);
+        if (orderErr) throw new Error(orderErr.message);
+        if (itemsErr) throw new Error(itemsErr.message);
+        if (payErr) throw new Error(payErr.message);
+        if (addonsErr) throw new Error(addonsErr.message);
+        if (!order) return null;
+        return {
+          id: String(order.id),
+          status: String(order.status),
+          finalTotal: Number(order.final_total ?? 0),
+          balanceDue: Number(order.balance_due ?? 0),
+          items: (items ?? []).map((i: Record<string, unknown>) => ({
+            id: String(i.id),
+            storeId: String(i.store_id),
+            vehicleId: (i.vehicle_id as string | null) ?? null,
+            pickupDatetime: String(i.pickup_datetime),
+            dropoffDatetime: String(i.dropoff_datetime),
+            rentalDaysCount: Number(i.rental_days_count ?? 1),
+            originalDropoffDatetime: (i.original_dropoff_datetime as string | null) ?? null,
+            rentalRate: Number(i.rental_rate ?? 0),
+          })),
+          extensionPayments: (extPayments ?? []).map((p: Record<string, unknown>) => ({
+            id: String(p.id),
+            amount: Number(p.amount ?? 0),
+            pending: p.settlement_status === 'pending',
+          })),
+          perDayAddons: (addons ?? []).map((a: Record<string, unknown>) => ({
+            id: String(a.id),
+            name: String(a.addon_name ?? ''),
+            totalAmount: Number(a.total_amount ?? 0),
+          })),
+        };
+      },
+      async findVehicleModelId(vehicleId) {
+        const { data } = await supabase.from('fleet').select('model_id').eq('id', vehicleId).maybeSingle();
+        return (data as { model_id?: string | null } | null)?.model_id ?? null;
+      },
+      async apply(input) {
+        const { data, error } = await supabase.rpc('change_return_time_atomic', {
+          p_order_id: input.orderId,
+          p_new_dropoff: input.newDropoffDatetime,
+          p_note_id: input.noteId,
+          p_body: input.body,
+          p_meta: input.meta,
+          p_employee_id: input.employeeId,
+        });
+        throwIfRpcFailed(data, error, 'Failed to change return time');
+      },
+      async applyWithRecalc(input) {
+        const { data: order, error: orderErr } = await supabase
+          .from('orders').select('store_id').eq('id', input.orderId).maybeSingle();
+        if (orderErr) throw new Error(orderErr.message);
+        const accounts = order ? await resolveStoreAccounts(String((order as { store_id: string }).store_id)) : null;
+        const journalDate = formatManilaDate(new Date());
+        const { data, error } = await supabase.rpc('change_return_time_recalc_atomic', {
+          p_order_id: input.orderId,
+          p_order_item_id: input.orderItemId,
+          p_new_dropoff: input.newDropoffDatetime,
+          p_new_days: input.newDays,
+          p_addon_updates: input.addonUpdates.map((a) => ({ id: a.id, new_total: a.newTotal })),
+          p_reduction: input.reduction,
+          p_new_to_label: input.newToLabel,
+          p_receivable_acct: accounts?.receivableAccountId ?? null,
+          p_income_acct: accounts?.incomeAccountId ?? null,
+          p_journal_tx_id: crypto.randomUUID(),
+          p_journal_date: journalDate,
+          p_journal_period: journalDate.slice(0, 7),
+          p_description: `Extension reduced: order ${input.orderId} (return moved earlier, ${input.newDays} days)`,
+          p_note_id: input.noteId,
+          p_body: input.body,
+          p_meta: input.meta,
+          p_employee_id: input.employeeId,
+        });
+        throwIfRpcFailed(data, error, 'Failed to change return time');
+      },
+    },
+  };
+}
+
+// Shows whether moving the return earlier can shrink an unpaid extension, and by how much.
+router.get('/:id/return-time/preview', requirePermission(Permission.EditOrders), validateQuery(z.object({
+  newDropoffDatetime: z.string().min(1),
+})), async (req, res, next) => {
+  try {
+    const { previewReturnTimeRecalc } = await import('../use-cases/orders/change-return-time.js');
+    const { newDropoffDatetime } = req.query as { newDropoffDatetime: string };
+    const data = await previewReturnTimeRecalc(await returnTimeDeps(req), { orderId: String(req.params.id), newDropoffDatetime });
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// Reschedule the return: earlier at any time after pickup, or later within the
+// days already paid. Past the paid days staff must Extend. Price-neutral unless
+// `recalculate` is set, which shrinks an unpaid extension to the new return.
 router.post('/:id/return-time', requirePermission(Permission.EditOrders), validateBody(z.object({
   newDropoffDatetime: z.string().min(1),
   reason: z.string().max(500).nullable().optional(),
+  recalculate: z.boolean().optional(),
 })), async (req, res, next) => {
   try {
     const { changeReturnTime } = await import('../use-cases/orders/change-return-time.js');
-    const { newDropoffDatetime, reason } = req.body as { newDropoffDatetime: string; reason?: string | null };
+    const { newDropoffDatetime, reason, recalculate } = req.body as { newDropoffDatetime: string; reason?: string | null; recalculate?: boolean };
     const result = await changeReturnTime(
-      {
-        bookingPort: req.app.locals.deps.bookingPort,
-        port: {
-          async loadOrder(orderId) {
-            const [{ data: order, error: orderErr }, { data: items, error: itemsErr }] = await Promise.all([
-              supabase.from('orders').select('id, status').eq('id', orderId).maybeSingle(),
-              supabase.from('order_items')
-                .select('id, store_id, vehicle_id, pickup_datetime, dropoff_datetime, rental_days_count')
-                .eq('order_id', orderId)
-                .not('pickup_datetime', 'is', null),
-            ]);
-            if (orderErr) throw new Error(orderErr.message);
-            if (itemsErr) throw new Error(itemsErr.message);
-            if (!order) return null;
-            return {
-              id: String(order.id),
-              status: String(order.status),
-              items: (items ?? []).map((i: Record<string, unknown>) => ({
-                id: String(i.id),
-                storeId: String(i.store_id),
-                vehicleId: (i.vehicle_id as string | null) ?? null,
-                pickupDatetime: String(i.pickup_datetime),
-                dropoffDatetime: String(i.dropoff_datetime),
-                rentalDaysCount: Number(i.rental_days_count ?? 1),
-              })),
-            };
-          },
-          async findVehicleModelId(vehicleId) {
-            const { data } = await supabase.from('fleet').select('model_id').eq('id', vehicleId).maybeSingle();
-            return (data as { model_id?: string | null } | null)?.model_id ?? null;
-          },
-          async apply(input) {
-            const { data, error } = await supabase.rpc('change_return_time_atomic', {
-              p_order_id: input.orderId,
-              p_new_dropoff: input.newDropoffDatetime,
-              p_note_id: input.noteId,
-              p_body: input.body,
-              p_meta: input.meta,
-              p_employee_id: input.employeeId,
-            });
-            if (error) throw new Error(`Failed to change return time: ${error.message}`);
-            const outcome = data as { success?: boolean; error?: string } | null;
-            if (!outcome?.success) {
-              throw Object.assign(new Error(outcome?.error ?? 'Failed to change return time'), { statusCode: 409 });
-            }
-          },
-        },
-      },
-      { orderId: String(req.params.id), newDropoffDatetime, reason, employeeId: req.user!.employeeId ?? null },
+      await returnTimeDeps(req),
+      { orderId: String(req.params.id), newDropoffDatetime, reason, recalculate, employeeId: req.user!.employeeId ?? null },
     );
     res.json({ success: true, data: result });
   } catch (err) { next(err); }

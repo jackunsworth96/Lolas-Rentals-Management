@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { computeQuote } from '../use-cases/booking/compute-quote.js';
+import { priceExtensionRental } from '../use-cases/booking/price-extension-rental.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
 import { resolveStoreAccounts } from '../adapters/supabase/maintenance-expense-rpc.js';
 import { resolvePaymentAccount, resolveRoutedAccounts } from '../lib/deposit-envelope.js';
@@ -369,44 +370,24 @@ export async function resolveExtensionForActive(args: ExtensionInputs): Promise<
     const locId = storeLoc ? Number(storeLoc.id) : (locRows[0] ? Number(locRows[0].id) : 1);
 
     const extDays = extDayCount(currentDropoff.getTime(), newDropoff.getTime());
-    const storedDailyRate = Number(item.rental_rate ?? 0);
     let extensionCost = 0;
     let effectiveDailyRate = 0;
-
-    if (modelId) {
-      let quote: Awaited<ReturnType<typeof computeQuote>>;
-      try {
-        quote = await computeQuote({ configRepo: deps.configRepo as never }, {
-          storeId, vehicleModelId: modelId,
-          pickupDatetime: item.dropoff_datetime as string, dropoffDatetime: newDropoffDatetime,
-          pickupLocationId: locId, dropoffLocationId: locId,
-        });
-      } catch (quoteErr) {
-        const msg = quoteErr instanceof Error ? quoteErr.message : String(quoteErr);
-        console.error('[extend-active] computeQuote failed:', msg, { storeId, modelId, extDays, dropoff: item.dropoff_datetime, newDropoff: newDropoffDatetime });
-        return { kind: 'error', reason: `Unable to calculate extension cost (${msg}). Please contact us on WhatsApp.` };
-      }
-
-      let dailyRate: number;
-      if (overrideDailyRate !== undefined) {
-        dailyRate = overrideDailyRate;
-      } else {
-        const computedExtDailyRate = extDays > 0 ? quote.rentalSubtotal / extDays : quote.rentalSubtotal;
-        // Extension daily rate = bracket rate for the extension days, capped so the
-        // customer is never charged more per day than their original rate, but if the
-        // extension-days bracket is cheaper (unlocked by volume) the customer keeps it.
-        dailyRate = storedDailyRate > 0 ? Math.min(computedExtDailyRate, storedDailyRate) : computedExtDailyRate;
-      }
-      effectiveDailyRate = dailyRate;
-      extensionCost = Math.round(dailyRate * extDays * 100) / 100;
-    } else if (overrideDailyRate !== undefined) {
-      effectiveDailyRate = overrideDailyRate;
-      extensionCost = Math.round(overrideDailyRate * extDays * 100) / 100;
-    } else if (storedDailyRate > 0) {
-      // Model ID unavailable — fall back to the stored original daily rate so the
-      // extension is still charged correctly when fleet/model data is missing.
-      effectiveDailyRate = storedDailyRate;
-      extensionCost = Math.round(storedDailyRate * extDays * 100) / 100;
+    try {
+      const priced = await priceExtensionRental({ configRepo: deps.configRepo as never }, {
+        storeId,
+        modelId: modelId || null,
+        fromIso: item.dropoff_datetime as string,
+        toIso: newDropoffDatetime,
+        storedDailyRate: Number(item.rental_rate ?? 0),
+        locationId: locId,
+        overrideDailyRate,
+      });
+      extensionCost = priced.cost;
+      effectiveDailyRate = priced.dailyRate;
+    } catch (quoteErr) {
+      const msg = quoteErr instanceof Error ? quoteErr.message : String(quoteErr);
+      console.error('[extend-active] computeQuote failed:', msg, { storeId, modelId, extDays, dropoff: item.dropoff_datetime, newDropoff: newDropoffDatetime });
+      return { kind: 'error', reason: `Unable to calculate extension cost (${msg}). Please contact us on WhatsApp.` };
     }
 
     const pickup = new Date(item.pickup_datetime as string);
