@@ -24,7 +24,9 @@ export default function CompletedPage() {
     data: EnrichedOrder[] | undefined;
     isLoading: boolean;
   };
-  const [selectedOrder, setSelectedOrder] = useState<EnrichedOrder | null>(null);
+  const [clickedOrder, setSelectedOrder] = useState<EnrichedOrder | null>(null);
+  // Read the refetched list so edits inside the modal show without reopening it.
+  const selectedOrder = clickedOrder ? (orders?.find((o) => o.id === clickedOrder.id) ?? clickedOrder) : null;
   const [search, setSearch] = useState('');
 
   const filtered = useMemo(() => {

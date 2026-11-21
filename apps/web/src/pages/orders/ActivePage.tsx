@@ -56,7 +56,10 @@ export default function ActivePage() {
     isLoading: boolean;
     refetch: () => void;
   };
-  const [selectedOrder, setSelectedOrder] = useState<EnrichedOrder | null>(null);
+  const [clickedOrder, setSelectedOrder] = useState<EnrichedOrder | null>(null);
+  // Read the refetched list so edits inside the modal show without reopening it;
+  // fall back to the clicked row once the order leaves the list (e.g. settled).
+  const selectedOrder = clickedOrder ? (orders?.find((o) => o.id === clickedOrder.id) ?? clickedOrder) : null;
   const [inspectionOrderId, setInspectionOrderId] = useState<string | null>(null);
   const [inspectionOrderRef, setInspectionOrderRef] = useState('');
   const [inspectionVehicleId, setInspectionVehicleId] = useState<string | null>(null);
