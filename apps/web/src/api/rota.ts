@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './client.js';
 
-export type RotaKind = 'working' | 'day_off' | 'holiday' | 'sick' | 'unpaid_leave' | 'out_of_office' | 'leave';
+export type RotaKind = 'working' | 'day_off' | 'holiday' | 'sick' | 'unpaid_leave' | 'out_of_office' | 'leave' | 'not_started';
 export type RotaMode = 'rostered' | 'self_managed' | 'excluded';
 export type RotaCellSource = 'default' | 'pick' | 'assigned' | 'manual' | 'leave';
 export type RotaWeekStatus = 'draft' | 'published' | 'locked';
@@ -127,7 +127,7 @@ export interface RotaPersonConfig {
 export interface RotaCellEdit {
   employeeId: string;
   date: string;
-  kind: Exclude<RotaKind, 'leave' | 'holiday' | 'sick' | 'unpaid_leave'> | null;
+  kind: Exclude<RotaKind, 'leave' | 'holiday' | 'sick' | 'unpaid_leave' | 'not_started'> | null;
   startTime?: string;
   endTime?: string;
   note?: string;
@@ -224,6 +224,11 @@ export function useUpdateRotaSettings() {
       qc.invalidateQueries({ queryKey: ['me', 'rota'] });
     },
   });
+}
+
+/** Someone who hasn't started yet isn't taking the day off. */
+export function isOffCell(cell: RotaCell | undefined): boolean {
+  return cell?.kind !== 'working' && cell?.kind !== 'not_started';
 }
 
 // ── Date helpers (Manila) ───────────────────────────────────────────────────

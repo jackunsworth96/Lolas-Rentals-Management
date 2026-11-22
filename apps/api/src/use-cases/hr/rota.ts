@@ -34,8 +34,8 @@ const LEAVE_REQUEST_KINDS: Record<string, RotaKind> = { holiday: 'holiday', sick
 const MAX_WEEKS_AHEAD = 4;
 
 export type RotaCellSource = 'default' | 'pick' | 'assigned' | 'manual' | 'leave';
-/** Other people's leave type is hidden in the staff team view. */
-export type RotaViewKind = RotaKind | 'leave';
+/** Other people's leave type is hidden in the staff team view; not_started covers days before a start date. */
+export type RotaViewKind = RotaKind | 'leave' | 'not_started';
 
 export interface RotaSettings {
   storeId: string;
@@ -208,6 +208,8 @@ interface Person {
   targetDaysPerWeek: number;
   telegramId: string | null;
   isStaff: boolean;
+  /** Blank for long-serving staff whose start date isn't known; treated as always employed. */
+  startDate: string | null;
 }
 
 /** Owners and developers are left out unless asked for: they can approve the rota but are never on it. */
@@ -221,7 +223,7 @@ async function loadPeople(storeId: string, { includeNonStaff = false } = {}): Pr
   const ids = [...new Set([...(home ?? []).map((r) => String(r.id)), ...(links ?? []).map((r) => String(r.employee_id))])];
   if (ids.length === 0) return [];
 
-  let empQuery = sb().from('employees').select('id, full_name, role, status, rate_type, telegram_user_id, person_type').in('id', ids).eq('status', 'Active');
+  let empQuery = sb().from('employees').select('id, full_name, role, status, rate_type, telegram_user_id, person_type, start_date').in('id', ids).eq('status', 'Active');
   if (!includeNonStaff) empQuery = empQuery.eq('person_type', 'staff');
   const [{ data: emps, error: eErr }, { data: patterns, error: pErr }] = await Promise.all([
     empQuery,
@@ -245,6 +247,7 @@ async function loadPeople(storeId: string, { includeNonStaff = false } = {}): Pr
       targetDaysPerWeek: Number(p?.target_days_per_week ?? 6),
       telegramId: s(e.telegram_user_id),
       isStaff: (e.person_type ?? 'staff') === 'staff',
+      startDate: s(e.start_date)?.slice(0, 10) ?? null,
     };
   });
   const order: Record<RotaMode, number> = { rostered: 0, self_managed: 1, excluded: 2 };
@@ -374,7 +377,7 @@ async function loadWeekState(storeId: string, weekStart: string): Promise<WeekSt
   const dates = rotaWeekDates(weekStart);
   const end = dates[6];
   const [settings, allPeople, week] = await Promise.all([loadRotaSettings(storeId), loadPeople(storeId), loadWeekRow(storeId, weekStart)]);
-  const people = allPeople.filter((p) => p.mode !== 'excluded');
+  const people = allPeople.filter((p) => p.mode !== 'excluded' && (!p.startDate || p.startDate <= end));
   const ids = people.map((p) => p.employeeId);
 
   const [assignRes, pickRes, overrideRes, holidayRes, dutyRes, leave, ninePm] = await Promise.all([
@@ -403,7 +406,9 @@ async function loadWeekState(storeId: string, weekStart: string): Promise<WeekSt
       const a = assignments.get(key);
       const pick = livePicks.get(key);
       let cell: RotaCellView;
-      if (leaveKind) {
+      if (p.startDate && date < p.startDate) {
+        cell = { ...base, kind: 'not_started', source: 'default' };
+      } else if (leaveKind) {
         cell = { ...base, kind: leaveKind, source: 'leave' };
       } else if (a) {
         const kind = a.kind as RotaKind;
@@ -452,7 +457,7 @@ function evaluate(state: WeekState): { cover: RotaDayCover[]; issues: RotaIssue[
     people: state.people,
     cellKind: (id, date) => {
       const k = state.cells.get(`${id}|${date}`)?.kind ?? null;
-      return k === 'leave' ? 'holiday' : k;
+      return k === 'leave' ? 'holiday' : k === 'not_started' ? null : k;
     },
     minStaff: state.settings.minStaff,
     emergencyMinStaff: state.settings.emergencyMinStaff,
@@ -619,7 +624,12 @@ async function dm(employeeIds: string[], text: string): Promise<void> {
 function describeCell(c: RotaCellView | undefined): string {
   if (!c?.kind) return 'nothing planned';
   if (c.kind === 'working') return `working ${c.startTime}–${c.endTime}`;
-  return { day_off: 'day off', holiday: 'holiday', sick: 'sick', unpaid_leave: 'unpaid leave', out_of_office: 'out of office', leave: 'leave' }[c.kind];
+  return { day_off: 'day off', holiday: 'holiday', sick: 'sick', unpaid_leave: 'unpaid leave', out_of_office: 'out of office', leave: 'leave', not_started: 'not started yet' }[c.kind];
+}
+
+/** Someone who hasn't started yet isn't taking the day off. */
+function isOff(c: RotaCellView | undefined): boolean {
+  return c?.kind !== 'working' && c?.kind !== 'not_started';
 }
 
 // ── Staff: day-off picks ────────────────────────────────────────────────────
@@ -639,7 +649,9 @@ export async function saveMyDayOffPicks(employeeId: string, input: SaveDayOffPic
   if (wanted.length > maxPicks) throw new DomainError(`You can pick ${maxPicks} day${maxPicks === 1 ? '' : 's'} off this week`);
   for (const d of wanted) {
     if (!state.dates.includes(d)) throw new DomainError('Pick days inside the selected week');
-    if (state.cells.get(`${employeeId}|${d}`)?.source === 'leave') throw new DomainError(`You’re already on leave on ${dayLabel(d)}`);
+    const cell = state.cells.get(`${employeeId}|${d}`);
+    if (cell?.kind === 'not_started') throw new DomainError(`You haven’t started yet on ${dayLabel(d)}`);
+    if (cell?.source === 'leave') throw new DomainError(`You’re already on leave on ${dayLabel(d)}`);
   }
 
   const mine = state.picks.filter((p) => p.employee_id === employeeId && (p.status === 'pending' || p.status === 'approved'));
@@ -650,11 +662,11 @@ export async function saveMyDayOffPicks(employeeId: string, input: SaveDayOffPic
 
   const rows = toAdd.map((date) => {
     const othersOff = state.people.filter((p) => p.employeeId !== employeeId && p.mode === 'rostered'
-      && state.cells.get(`${p.employeeId}|${date}`)?.kind !== 'working').length;
+      && isOff(state.cells.get(`${p.employeeId}|${date}`))).length;
     const isClash = othersOff >= state.settings.maxOffPerDay;
     if (isClash && !note && !isApprover) {
       const who = state.people.filter((p) => p.employeeId !== employeeId && p.mode === 'rostered'
-        && state.cells.get(`${p.employeeId}|${date}`)?.kind !== 'working').map((p) => p.name.split(' ')[0]).join(', ');
+        && isOff(state.cells.get(`${p.employeeId}|${date}`))).map((p) => p.name.split(' ')[0]).join(', ');
       throw new DomainError(`${dayLabel(date)} is already taken by ${who}. Add a reason if you still want to ask for it.`);
     }
     return {
@@ -771,6 +783,7 @@ export async function setRotaCells(storeId: string, viewer: RotaViewer, input: S
     if (!person) throw new DomainError('That person isn’t on the rota');
     if (!state.dates.includes(c.date)) throw new DomainError('Edit days inside the selected week');
     const current = state.cells.get(`${c.employeeId}|${c.date}`);
+    if (current?.kind === 'not_started') throw new DomainError(`${person.name} hasn’t started yet on ${dayLabel(c.date)}`);
     if (current?.source === 'leave') throw new DomainError(`${person.name} is on leave on ${dayLabel(c.date)}; change the leave request instead`);
     if (c.kind && !EDITABLE_KINDS.has(c.kind)) throw new DomainError('Leave and sick days are recorded through leave requests and timesheets');
 
@@ -856,7 +869,7 @@ export async function publishRotaWeek(storeId: string, viewer: RotaViewer, weekS
 
   const now = new Date().toISOString();
   const rows = [...state.cells.values()]
-    .filter((c) => c.kind && c.source !== 'leave')
+    .filter((c) => c.kind && c.kind !== 'not_started' && c.source !== 'leave')
     .map((c) => ({
       store_id: storeId,
       week_start: weekStart,

@@ -98,4 +98,25 @@ describe('evaluateRotaWeek', () => {
     expect(cover[0].working).toBe(2);
     expect(issues).toEqual([]);
   });
+
+  it('does not count days before a start date as off or missed', () => {
+    const offDays: Record<string, Record<string, RotaKind>> = {
+      nitz: { [week[0]]: 'day_off' },
+      reland: { [week[1]]: 'day_off' },
+      ronnie: { [week[2]]: 'day_off' },
+    };
+    const people = [...three, person('jef')];
+    const { cover, issues } = evaluateRotaWeek({
+      dates: week,
+      people,
+      cellKind: (id, d) => (id === 'jef' && d < week[3] ? null : offDays[id]?.[d] ?? 'working'),
+      minStaff: 2,
+      emergencyMinStaff: 1,
+      maxOffPerDay: 1,
+      emergencyDates: new Set(),
+    });
+    expect(cover[0]).toMatchObject({ working: 2, off: 1 });
+    expect(cover[3]).toMatchObject({ working: 4, off: 0 });
+    expect(issues).toEqual([]);
+  });
 });

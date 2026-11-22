@@ -13,7 +13,7 @@ export interface RotaRulesInput {
   /** The 7 dates of the week, Monday first. */
   dates: string[];
   people: RotaPerson[];
-  /** Resolved kind for every cell; null when nothing is planned (self-managed staff). */
+  /** Resolved kind for every cell; null when nothing is planned (self-managed staff, or before a start date). */
   cellKind: (employeeId: string, date: string) => RotaKind | null;
   minStaff: number;
   emergencyMinStaff: number;
@@ -97,7 +97,8 @@ export function evaluateRotaWeek(input: RotaRulesInput): { cover: RotaDayCover[]
     const kinds = input.dates.map((d) => input.cellKind(p.employeeId, d));
     const workingDays = kinds.filter((k) => k === 'working').length;
     const leaveDays = kinds.filter((k) => k != null && LEAVE_KINDS.has(k)).length;
-    const expected = Math.max(0, p.targetDaysPerWeek - leaveDays);
+    const employedDays = kinds.filter((k) => k != null).length;
+    const expected = Math.max(0, Math.min(p.targetDaysPerWeek, employedDays) - leaveDays);
 
     if (workingDays === input.dates.length) {
       issues.push({ level: 'warning', code: 'no_day_off', employeeId: p.employeeId, message: `${p.name} has no day off this week (a worked rest day is paid at the Rest Day rate)` });

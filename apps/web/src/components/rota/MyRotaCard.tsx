@@ -9,6 +9,7 @@ import {
   dayLabel,
   dayNum,
   dayShort,
+  isOffCell,
   manilaToday,
   to12h,
   weekLabel,
@@ -45,9 +46,10 @@ function DayOffPicker({ week, meId }: { week: RotaWeek; meId: string }) {
 
   const cells = new Map(week.cells.map((c) => [`${c.employeeId}|${c.date}`, c]));
   const takenBy = (date: string) => week.people
-    .filter((p) => p.employeeId !== meId && p.mode === 'rostered' && cells.get(`${p.employeeId}|${date}`)?.kind !== 'working')
+    .filter((p) => p.employeeId !== meId && p.mode === 'rostered' && isOffCell(cells.get(`${p.employeeId}|${date}`)))
     .map((p) => p.name.split(' ')[0]);
   const myLeave = (date: string) => cells.get(`${meId}|${date}`)?.source === 'leave';
+  const notStarted = (date: string) => cells.get(`${meId}|${date}`)?.kind === 'not_started';
   const clash = selected.some((d) => !myLive.some((p) => p.date === d) && takenBy(d).length >= week.settings.maxOffPerDay);
   const declined = week.picks.filter((p) => p.employeeId === meId && p.status === 'declined');
   const dirty = [...selected].sort().join(',') !== serverPicks;
@@ -75,16 +77,17 @@ function DayOffPicker({ week, meId }: { week: RotaWeek; meId: string }) {
           const mine = selected.includes(d);
           const status = myLive.find((p) => p.date === d)?.status;
           const leave = myLeave(d);
+          const before = notStarted(d);
           const full = others.length >= week.settings.maxOffPerDay;
           return (
             <button
               key={d}
               type="button"
-              disabled={leave}
+              disabled={leave || before}
               onClick={() => toggle(d)}
               className={`flex min-h-[84px] flex-col items-center justify-between rounded-xl border px-1 py-2 text-center transition ${
                 mine ? 'border-teal-600 bg-teal-600 text-white shadow-sm'
-                : leave ? 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400'
+                : leave || before ? 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400'
                 : full ? 'border-gray-200 bg-gray-50 text-gray-500 hover:border-amber-300'
                 : 'border-gray-200 bg-white text-gray-800 hover:border-teal-400'
               }`}
@@ -92,7 +95,8 @@ function DayOffPicker({ week, meId }: { week: RotaWeek; meId: string }) {
               <span className="text-[11px] font-semibold uppercase tracking-wide opacity-80">{dayShort(d)}</span>
               <span className="text-lg font-bold leading-none">{dayNum(d)}</span>
               <span className="text-[10px] leading-tight">
-                {leave ? 'On leave'
+                {before ? 'Not started'
+                  : leave ? 'On leave'
                   : mine ? (status === 'approved' ? 'Approved' : status === 'pending' ? 'Pending' : 'Selected')
                   : others.length ? `Taken · ${others.join(', ')}` : 'Free'}
               </span>

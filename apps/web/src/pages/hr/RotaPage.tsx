@@ -14,6 +14,7 @@ import {
   useUpdateRotaSettings,
   addDays,
   dayLabel,
+  isOffCell,
   manilaToday,
   weekLabel,
   weekStartOf,
@@ -73,7 +74,7 @@ function PickRow({ week, pick }: { week: RotaWeek; pick: RotaPick }) {
   const cells = new Map(week.cells.map((c) => [`${c.employeeId}|${c.date}`, c]));
   const moveOptions = week.dates.filter((d) => d !== pick.date && cells.get(`${pick.employeeId}|${d}`)?.kind === 'working');
   const othersOff = week.people.filter((p) => p.employeeId !== pick.employeeId && p.mode === 'rostered'
-    && cells.get(`${p.employeeId}|${pick.date}`)?.kind !== 'working').map((p) => p.name.split(' ')[0]);
+    && isOffCell(cells.get(`${p.employeeId}|${pick.date}`))).map((p) => p.name.split(' ')[0]);
 
   return (
     <div className="rounded-lg border border-gray-200 p-3">
@@ -120,7 +121,7 @@ function PickRow({ week, pick }: { week: RotaWeek; pick: RotaPick }) {
 function NeedsDayOffRow({ week, person }: { week: RotaWeek; person: RotaPerson }) {
   const setCells = useSetRotaCells();
   const cells = new Map(week.cells.map((c) => [`${c.employeeId}|${c.date}`, c]));
-  const offCount = (d: string) => week.people.filter((p) => p.mode === 'rostered' && cells.get(`${p.employeeId}|${d}`)?.kind !== 'working').length;
+  const offCount = (d: string) => week.people.filter((p) => p.mode === 'rostered' && isOffCell(cells.get(`${p.employeeId}|${d}`))).length;
   const options = week.dates.filter((d) => cells.get(`${person.employeeId}|${d}`)?.kind === 'working');
   const suggested = options.find((d) => offCount(d) < week.settings.maxOffPerDay) ?? options[0] ?? '';
   const [date, setDate] = useState(suggested);

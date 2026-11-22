@@ -22,10 +22,11 @@ export default function PartnerUtilizationPage() {
   const [customTo, setCustomTo] = useState('');
 
   const today = manilaToday();
+  // The API's `to` is exclusive (midnight at the start of that day), so send the day after the last day shown.
   const { from, to } = useMemo(() => {
-    if (period === 'custom') return { from: customFrom, to: customTo };
+    if (period === 'custom') return { from: customFrom, to: customTo && addDaysToDateStr(customTo, 1) };
     const days = PERIOD_DAYS[period];
-    return { from: addDaysToDateStr(today, -days), to: today };
+    return { from: addDaysToDateStr(today, 1 - days), to: addDaysToDateStr(today, 1) };
   }, [period, customFrom, customTo, today]);
 
   const { data, isLoading, error } = usePartnerUtilization(from, to);
@@ -86,7 +87,7 @@ export default function PartnerUtilizationPage() {
       ) : !data ? null : (
         <>
           <p className="mb-4 text-sm text-gray-500">
-            Period: {data.from} to {data.to}
+            Period: {data.from} to {addDaysToDateStr(data.to, -1)}
           </p>
           <div className="overflow-x-auto rounded-lg border border-gray-200">
             <table className="min-w-full divide-y divide-gray-200">

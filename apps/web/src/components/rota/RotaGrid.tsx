@@ -58,6 +58,12 @@ export function RotaChip({ cell, compact = false, highlight = false, ninePm = fa
           <span className="flex items-center justify-between text-[13px] font-medium">Out of office<MapPin className="h-3.5 w-3.5 text-gray-400" aria-hidden /></span>
         </div>
       );
+    case 'not_started':
+      return (
+        <div className={`${base} border-dashed border-gray-200 bg-white items-center text-center`}>
+          <span className="text-[13px] font-medium text-gray-400">Not started</span>
+        </div>
+      );
   }
 }
 
@@ -173,7 +179,7 @@ export function RotaGrid({
             {week.dates.map((d) => {
               const key = `${p.employeeId}|${d}`;
               const cell = cells.get(key);
-              const clickable = !!onCellClick && !!cell && cell.source !== 'leave';
+              const clickable = !!onCellClick && !!cell && cell.source !== 'leave' && cell.kind !== 'not_started';
               return (
                 <div key={d} className={`border-l border-gray-100 p-1 ${d === today ? 'bg-teal-50/40' : ''}`}>
                   {clickable ? (
