@@ -16,7 +16,7 @@ export function BookingLeadTimeNotice({ nowMs = Date.now() }: { nowMs?: number }
   const earliest = earliestBookableLabel(nowMs);
   return (
     <p className="text-xs font-semibold leading-relaxed text-amber-800">
-      We need at least 15 minutes&apos; notice, but it&apos;s likely we can get to you sooner than that
+      We need at least 20 minutes&apos; notice, but it&apos;s likely we can get to you sooner than that
       {' '}— go ahead and book for {earliest} or later and we&apos;ll aim to be there by then.
       Need us there ASAP?{' '}
       <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="underline">

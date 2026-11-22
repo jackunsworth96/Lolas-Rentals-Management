@@ -18,7 +18,7 @@ vi.mock('../src/lib/demand-misses.js', () => ({
 
 const { publicBookingRoutes } = await import('../src/routes/public-booking.js');
 
-// Far enough in the future to always satisfy the 15-minute booking lead-time rule,
+// Far enough in the future to always satisfy the 20-minute booking lead-time rule,
 // regardless of when this test suite is actually executed.
 const pickupDatetime = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 const dropoffDatetime = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString();

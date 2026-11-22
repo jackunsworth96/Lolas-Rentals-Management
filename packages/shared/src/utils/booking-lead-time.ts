@@ -1,5 +1,5 @@
-/** Minimum notice before a customer or partner pickup. Enforced at 15 minutes. */
-export const MIN_BOOKING_LEAD_MS = 15 * 60 * 1000;
+/** Minimum notice before a customer or partner pickup. Enforced at 20 minutes. */
+export const MIN_BOOKING_LEAD_MS = 20 * 60 * 1000;
 
 export function manilaCalendarDate(nowMs = Date.now()): string {
   return new Date(nowMs).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
@@ -17,13 +17,13 @@ export function earliestBookableLabel(nowMs = Date.now()): string {
 
 export function bookingLeadTimeMessage(nowMs = Date.now()): string {
   return (
-    `We need at least 15 minutes' notice, but it's likely we can get to you sooner than that — ` +
+    `We need at least 20 minutes' notice, but it's likely we can get to you sooner than that — ` +
     `go ahead and book for ${earliestBookableLabel(nowMs)} or later and we'll aim to be there by then. ` +
     `Need us there ASAP? Send us a message so we can make you a priority.`
   );
 }
 
-/** True when pickup is a valid instant at least 15 minutes after nowMs. */
+/** True when pickup is a valid instant at least 20 minutes after nowMs. */
 export function hasBookingLeadTime(pickupDatetime: string, nowMs = Date.now()): boolean {
   const pickup = new Date(pickupDatetime);
   return !Number.isNaN(pickup.getTime()) && pickup.getTime() - nowMs >= MIN_BOOKING_LEAD_MS;

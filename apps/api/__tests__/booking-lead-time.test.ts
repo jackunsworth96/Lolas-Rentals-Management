@@ -7,16 +7,21 @@ describe('public booking lead time', () => {
   it('rejects the 3:45 slot when the request arrives at 3:42', () => {
     const pickup = '2026-10-16T15:45:00+08:00';
     expect(hasBookingLeadTime(pickup, receivedAt)).toBe(false);
-    expect(() => assertBookingLeadTime(pickup, receivedAt)).toThrow(/15 minutes/);
+    expect(() => assertBookingLeadTime(pickup, receivedAt)).toThrow(/20 minutes/);
   });
 
-  it('accepts a pickup exactly 15 minutes away', () => {
+  it('rejects a pickup only 15 minutes away', () => {
     const now = new Date('2026-10-16T15:30:00+08:00').getTime();
+    expect(hasBookingLeadTime('2026-10-16T15:45:00+08:00', now)).toBe(false);
+  });
+
+  it('accepts a pickup exactly 20 minutes away', () => {
+    const now = new Date('2026-10-16T15:25:00+08:00').getTime();
     expect(hasBookingLeadTime('2026-10-16T15:45:00+08:00', now)).toBe(true);
     expect(() => assertBookingLeadTime('2026-10-16T15:45:00+08:00', now)).not.toThrow();
   });
 
-  it('accepts the next slot once 15 minutes have cleared', () => {
+  it('accepts the next slot once 20 minutes have cleared', () => {
     expect(hasBookingLeadTime('2026-10-16T16:15:00+08:00', receivedAt)).toBe(true);
   });
 

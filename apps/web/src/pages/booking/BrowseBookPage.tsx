@@ -874,13 +874,21 @@ export default function BrowseBookPage() {
     [pickupDate, pickupTime, dropoffDate],
   );
 
-  const rentalDays = useMemo(() => {
+  const calendarDays = useMemo(() => {
     if (!pickupDate || !dropoffDate) return 0;
     const diff = Math.round(
       (new Date(dropoffDate).getTime() - new Date(pickupDate).getTime()) / 86400000,
     );
     return Math.max(0, diff);
   }, [pickupDate, dropoffDate]);
+
+  const rentalDays = useMemo(() => {
+    if (!pickupDate || !dropoffDate || !pickupTime || !dropoffTime) return calendarDays;
+    const ms =
+      new Date(`${dropoffDate}T${dropoffTime}:00+08:00`).getTime() -
+      new Date(`${pickupDate}T${pickupTime}:00+08:00`).getTime();
+    return ms > 0 ? Math.ceil(ms / 86400000) : 0;
+  }, [pickupDate, dropoffDate, pickupTime, dropoffTime, calendarDays]);
 
   function validateDates(pDate: string, pTime: string, dDate: string, dTime: string): boolean {
     if (!pDate || !dDate || !pTime || !dTime) { setDateError(''); return true; }
@@ -1315,6 +1323,11 @@ export default function BrowseBookPage() {
                             {isEstimate ? 'from ' : ''}<PesoSign />{formatPhpNumber(rentalDays * dailyRate)}
                           </span>
                         </p>
+                        {rentalDays > calendarDays && (
+                          <p className="mt-1 font-lato text-xs text-charcoal-brand/60">
+                            Rentals are charged per 24 hours — returning after {ALL_TIME_SLOTS.find((s) => s.value === pickupTime)?.label ?? pickupTime} adds an extra day.
+                          </p>
+                        )}
                       </div>
                     );
                   })()}
