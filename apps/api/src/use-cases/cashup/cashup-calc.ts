@@ -96,6 +96,7 @@ export interface RawJournal {
   referenceId: string | null;
   accountId: string | null;
   accountName: string | null;
+  accountType?: string | null;
   date: string | null;
   createdAt: string | null;
 }
@@ -185,6 +186,13 @@ export function isTillAccountName(accountName: string | null | undefined): boole
     && !lower.includes('advance') && !lower.includes('envelope') && !lower.includes('charity');
 }
 
+/** Money paid out somewhere other than the till (GCash, bank, safe), shown for information. */
+function isNonTillMoneyAccount(j: RawJournal): boolean {
+  if (String(j.accountType ?? '').toLowerCase() !== 'asset' || isTillAccountName(j.accountName)) return false;
+  const lower = (j.accountName ?? '').toLowerCase();
+  return !lower.includes('advance') && !lower.includes('envelope') && !lower.includes('charity') && !lower.includes('receivable');
+}
+
 function methodLabel(rawMethodId: string): string {
   const cat = paymentMethodCategory(rawMethodId);
   if (cat === 'cash') return 'Cash';
@@ -271,6 +279,8 @@ export interface CashupDayResult {
     crossMethodDepositReturns: CrossMethodDepositRow[];
     /** Positive = cash paid out of the till. */
     payrollCash: Array<{ id: string; description: string | null; amount: number; referenceId: string | null; createdAt: string | null }>;
+    /** Positive = paid out of GCash, bank or the safe. Information only. */
+    payrollNonCash: Array<{ id: string; description: string | null; amount: number; accountName: string | null; referenceId: string | null; createdAt: string | null }>;
     tipsCash: Array<{ id: string; description: string | null; amount: number; referenceId: string | null; createdAt: string | null }>;
   };
   charityDonations: Array<{ id: string; description: string | null; amount: number; orderId: string | null; createdAt: string | null }>;
@@ -307,6 +317,7 @@ export interface CashupDayResult {
     crossMethodTillPayoutTotal: number;
     crossMethodEnvelopeToTillTotal: number;
     payrollCashTotal: number;
+    payrollNonCashTotal: number;
     tipsCashTotal: number;
   };
   cashLedger: CashLedgerItem[];
@@ -722,10 +733,21 @@ export function computeCashupDay(raw: CashupRawData): CashupDayResult {
   // ── Payroll paid from the till, cash tips kept in the till ──
   const payrollCash: CashupDayResult['transactions']['payrollCash'] = [];
   let payrollCashTotal = 0;
+  const payrollNonCash: CashupDayResult['transactions']['payrollNonCash'] = [];
+  let payrollNonCashTotal = 0;
   for (const j of raw.payrollEntries ?? []) {
-    if (!isTillAccountName(j.accountName)) continue;
     const amount = round2(j.debit - j.credit);
     if (amount === 0) continue;
+    if (!isTillAccountName(j.accountName)) {
+      if (isNonTillMoneyAccount(j)) {
+        payrollNonCash.push({
+          id: j.id, description: j.description, amount: -amount, accountName: j.accountName,
+          referenceId: j.referenceId, createdAt: j.createdAt,
+        });
+        payrollNonCashTotal += -amount;
+      }
+      continue;
+    }
     payrollCash.push({ id: j.id, description: j.description, amount: -amount, referenceId: j.referenceId, createdAt: j.createdAt });
     payrollCashTotal += -amount;
     pushLedger({
@@ -797,6 +819,7 @@ export function computeCashupDay(raw: CashupRawData): CashupDayResult {
       depositApplied,
       crossMethodDepositReturns,
       payrollCash,
+      payrollNonCash,
       tipsCash,
     },
     charityDonations,
@@ -833,6 +856,7 @@ export function computeCashupDay(raw: CashupRawData): CashupDayResult {
       crossMethodTillPayoutTotal,
       crossMethodEnvelopeToTillTotal,
       payrollCashTotal: round2(payrollCashTotal),
+      payrollNonCashTotal: round2(payrollNonCashTotal),
       tipsCashTotal: round2(tipsCashTotal),
     },
     cashLedger: ledger,

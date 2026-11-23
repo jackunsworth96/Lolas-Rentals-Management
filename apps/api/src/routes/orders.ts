@@ -9,7 +9,7 @@ import { sendTelegramAlert, sendTelegramAlertPaidOrdersStaggered, getTelegramCha
 import { escapeHtml } from '../services/email.js';
 import { deriveTransportService } from '../lib/transport-service.js';
 import { loadEnrichedOrdersFallback } from '../lib/enriched-orders-fallback.js';
-import { depositHoldingAccount, resolveRoutedAccounts } from '../lib/deposit-envelope.js';
+import { depositHoldingAccount, resolveDepositLiabilityAccount, resolveRoutedAccounts } from '../lib/deposit-envelope.js';
 import { resolveStoreAccounts } from '../adapters/supabase/maintenance-expense-rpc.js';
 import type { SettleOrderInput } from '../use-cases/orders/settle-order.js';
 import {
@@ -271,15 +271,17 @@ router.patch('/:id/deposit-method', requirePermission(Permission.EditOrders), va
       throw Object.assign(new Error(`Select a ${selectedGcash ? 'GCash' : 'cash'} account for this deposit`), { statusCode: 400 });
     }
 
-    const holdingAccountId = depositHoldingAccount(
-      accountId,
-      selectedGcash ? 'gcash' : 'cash',
-      await resolveRoutedAccounts(String(order.store_id)),
-    );
+    const [routed, liabilityAccountId] = await Promise.all([
+      resolveRoutedAccounts(String(order.store_id)),
+      resolveDepositLiabilityAccount(String(order.store_id)),
+    ]);
+    const holdingAccountId = depositHoldingAccount(accountId, selectedGcash ? 'gcash' : 'cash', routed);
     const { data, error } = await supabase.rpc('correct_order_deposit_method', {
       p_order_id: req.params.id,
       p_payment_method_id: paymentMethodId,
       p_account_id: holdingAccountId,
+      p_liability_account_id: liabilityAccountId,
+      p_created_by: req.user!.employeeId ?? null,
     });
     if (error) throw new Error(`Failed to update deposit method: ${error.message}`);
     res.json({ success: true, data: { paymentMethodId, updatedPayments: Number(data ?? 0) } });

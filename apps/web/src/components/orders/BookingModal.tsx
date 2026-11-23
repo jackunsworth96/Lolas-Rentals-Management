@@ -802,7 +802,7 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     };
   }
 
-  const depositValid = waiveDeposit || (Number(securityDeposit) > 0);
+  const depositValid = waiveDeposit || (Number(securityDeposit) > 0 && Boolean(depositMethodId));
 
   const transferAmountMissing =
     !!rawOrder.transfer_type &&
@@ -900,7 +900,9 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
         : transferAmountMissing
           ? 'Transfer amount is missing — set it before activating.'
           : !depositValid
-            ? 'Enter a security deposit or tick Waive deposit.'
+            ? Number(securityDeposit) > 0
+              ? 'Choose the deposit payment method.'
+              : 'Enter a security deposit or tick Waive deposit.'
             : null;
   const footerNotice = step === 'summary' ? activationBlocker : nextBlocker;
 

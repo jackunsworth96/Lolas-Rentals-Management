@@ -76,6 +76,24 @@ describe('method classification', () => {
 });
 
 describe('computeCashupDay', () => {
+  it('lists contributions paid by GCash as not in the till, without moving the till', () => {
+    const desc = 'SSS contributions 2026-11';
+    const day = computeCashupDay(
+      raw({
+        payrollEntries: [
+          journal({ id: 'p1', accountName: 'SSS Contributions Payable', accountType: 'Liability', debit: 7630, description: desc }),
+          journal({ id: 'p2', accountName: 'Gcash', accountType: 'Asset', credit: 7630, description: desc }),
+          journal({ id: 'p3', accountName: 'Cash Advance', accountType: 'Asset', credit: 500 }),
+          journal({ id: 'p4', accountName: 'Cash on Hand', accountType: 'Asset', credit: 1000 }),
+        ],
+      }),
+    );
+    expect(day.transactions.payrollNonCash.map((r) => [r.id, r.amount, r.accountName])).toEqual([['p2', 7630, 'Gcash']]);
+    expect(day.totals.payrollNonCashTotal).toBe(7630);
+    expect(day.totals.payrollCashTotal).toBe(1000);
+    expect(ledgerNet(day.cashLedger, 'till')).toBe(-1000);
+  });
+
   it('keeps GCash misc sales and GCash transfer bookings out of the till', () => {
     const day = computeCashupDay(
       raw({

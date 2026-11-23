@@ -232,6 +232,8 @@ export interface CashupSummary {
     depositReturns: DepositReturnRow[];
     depositApplied: DepositAppliedRow[];
     crossMethodDepositReturns: CrossMethodDepositRow[];
+    /** Payroll and SSS/PhilHealth/Pag-IBIG paid from GCash, bank or the safe. Older servers omit it. */
+    payrollNonCash?: Array<{ id: string; description: string | null; amount: number; accountName: string | null; referenceId: string | null; createdAt: string | null }>;
   };
   charityDonations: CharityDonationRow[];
   totals: {

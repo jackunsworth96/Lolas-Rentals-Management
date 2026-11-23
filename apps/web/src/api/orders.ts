@@ -239,6 +239,7 @@ export function useUpdateDepositMethod() {
         current ? { ...current, depositMethodId: paymentMethodId } : current,
       );
       qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['cashup'] });
     },
   });
 }

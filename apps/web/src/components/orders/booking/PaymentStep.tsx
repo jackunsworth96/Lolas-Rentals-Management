@@ -200,7 +200,9 @@ export function PaymentStep(props: PaymentStepProps) {
             />
           </label>
           <label className="block">
-            <span className="text-sm text-gray-600">Deposit payment method</span>
+            <span className="text-sm text-gray-600">
+              Deposit payment method {!waiveDeposit && <span className="text-red-500">*</span>}
+            </span>
             <select
               value={depositMethodId}
               onChange={(e) => onDepositMethodChange(e.target.value)}

@@ -241,10 +241,12 @@ export async function processRawOrder(
     !!input.depositLiabilityAccountId;
   // The order row would still show the deposit as held, while cash-up and the
   // ledger never see it, so refuse rather than activate without it.
-  if (input.securityDeposit > 0 && input.depositMethodId && !willCreateDepositPayment) {
-    const missing = depositAccountId
-      ? 'no deposit liability account was found'
-      : `no account is routed for payment method "${input.depositMethodId}"`;
+  if (input.securityDeposit > 0 && !willCreateDepositPayment) {
+    const missing = !input.depositMethodId
+      ? 'choose how the deposit was paid'
+      : depositAccountId
+        ? 'no deposit liability account was found'
+        : `no account is routed for payment method "${input.depositMethodId}"`;
     throw new Error(`Cannot record the security deposit: ${missing}. The order was not activated.`);
   }
   const depositAmount = input.securityDeposit;

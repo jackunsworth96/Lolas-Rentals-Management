@@ -42,7 +42,8 @@ function joinOne<T>(v: T | T[] | null | undefined): T | null {
 }
 
 function toJournal(j: Row): RawJournal {
-  const acct = joinOne(j.chart_of_accounts as { name: string } | { name: string }[] | null);
+  type Acct = { name: string; account_type?: string | null };
+  const acct = joinOne(j.chart_of_accounts as Acct | Acct[] | null);
   return {
     id: String(j.id),
     description: str(j.description),
@@ -51,6 +52,7 @@ function toJournal(j: Row): RawJournal {
     referenceId: str(j.reference_id),
     accountId: str(j.account_id),
     accountName: acct?.name ?? null,
+    accountType: acct?.account_type ?? null,
     date: str(j.date),
     createdAt: str(j.created_at),
   };
@@ -80,7 +82,7 @@ function toPayment(p: Row): RawPayment {
 const PAYMENT_SELECT =
   'id, payment_type, amount, payment_method_id, transaction_date, settlement_ref, settlement_status, customer_id, order_id, created_at, customers!customer_id(name), orders!order_id(woo_order_id, booking_token)';
 const JOURNAL_SELECT =
-  'id, description, debit, credit, date, created_at, reference_id, account_id, chart_of_accounts!account_id(name)';
+  'id, description, debit, credit, date, created_at, reference_id, account_id, chart_of_accounts!account_id(name, account_type)';
 
 /** Loads every row the cash-up needs for one store and date range. */
 export async function fetchCashupRaw(sb: SupabaseClient, range: FetchRange): Promise<CashupRawData> {

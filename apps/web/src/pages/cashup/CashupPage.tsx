@@ -684,6 +684,12 @@ function CashupDay({
       subtitle: [e.category, e.paidFromName, formatTime(e.createdAt)].filter(Boolean).join(' · '),
       amount: e.amount,
     }));
+  const nonCashPayroll: ListRow[] = (tx.payrollNonCash ?? []).map((p) => ({
+    id: p.id,
+    title: p.description ?? 'Payroll',
+    subtitle: [p.accountName, formatTime(p.createdAt)].filter(Boolean).join(' · '),
+    amount: p.amount,
+  }));
   const nonCash = {
     card: filter([...txRows(tx.cardSales), ...miscRows(summary.transactions.miscSales.card)]),
     gcash: filter([...txRows(tx.gcashSales), ...miscRows(summary.transactions.miscSales.gcash)]),
@@ -691,6 +697,7 @@ function CashupDay({
     deposits: filter(nonCashDeposits),
     refunds: filter(nonCashRefunds),
     expenses: filter(nonCashExpenses),
+    payroll: filter(nonCashPayroll),
     pending: filter(txRows(tx.pendingExtensions)),
     discounts: filter(
       tx.discounts.map((d) => ({
@@ -916,6 +923,7 @@ function CashupDay({
             <RowsSection title="Deposits held (non-cash)" accent="cyan" rows={nonCash.deposits} total={sumRows(nonCash.deposits)} hideWhenEmpty forceExpanded={searching} />
             <RowsSection title="Refunds (non-cash)" accent="orange" rows={nonCash.refunds} total={sumRows(nonCash.refunds)} totalSign="-" hideWhenEmpty forceExpanded={searching} />
             <RowsSection title="Expenses (non-cash)" accent="red" rows={nonCash.expenses} total={sumRows(nonCash.expenses)} totalSign="-" hideWhenEmpty forceExpanded={searching} />
+            <RowsSection title="Payroll & contributions (not from till)" accent="red" rows={nonCash.payroll} total={sumRows(nonCash.payroll)} totalSign="-" hideWhenEmpty forceExpanded={searching} />
             <RowsSection title="Unpaid extensions" accent="amber" rows={nonCash.pending} total={sumRows(nonCash.pending)} hideWhenEmpty forceExpanded={searching} />
             <RowsSection title="Discounts given" accent="gray" rows={nonCash.discounts} total={sumRows(nonCash.discounts)} hideWhenEmpty forceExpanded={searching} />
             <RowsSection title="Charity donations" accent="green" rows={nonCash.charity} total={sumRows(nonCash.charity)} hideWhenEmpty forceExpanded={searching} />
