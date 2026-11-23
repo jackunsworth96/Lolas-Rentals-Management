@@ -23,6 +23,21 @@ export type SubmitTimesheetRequest = z.infer<typeof SubmitTimesheetRequestSchema
 
 export const ApproveTimesheetsRequestSchema = z.object({
   timesheetIds: z.array(z.string()).min(1),
+  /** Rows with rota warnings that the approver has checked. */
+  acknowledgedIds: z.array(z.string()).optional(),
+});
+
+/** Checks entries against the rota before they are submitted. */
+export const RotaCheckRequestSchema = z.object({
+  entries: z.array(z.object({
+    employeeId: z.string(),
+    date: z.string(),
+    name: z.string().nullable().optional(),
+    dayType: z.string(),
+    timeIn: z.string().nullable(),
+    timeOut: z.string().nullable(),
+    ninePmReturnsCount: z.number().int().nonnegative(),
+  })).max(100),
 });
 
 export type ApproveTimesheetsRequest = z.infer<typeof ApproveTimesheetsRequestSchema>;
@@ -82,6 +97,12 @@ export const EditTimesheetRequestSchema = z.object({
 });
 
 export type EditTimesheetRequest = z.infer<typeof EditTimesheetRequestSchema>;
+
+export const DeleteTimesheetRequestSchema = z.object({
+  reason: z.string().trim().min(3, 'Say why the timesheet is being deleted').max(300),
+});
+
+export type DeleteTimesheetRequest = z.infer<typeof DeleteTimesheetRequestSchema>;
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
 

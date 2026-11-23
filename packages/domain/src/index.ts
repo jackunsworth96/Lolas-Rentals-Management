@@ -23,6 +23,7 @@ export * from './services/payroll-journal.js';
 export * from './services/leave-entitlement.js';
 export * from './services/expense-guards.js';
 export * from './services/rota-rules.js';
+export * from './services/rota-timesheets.js';
 
 // Errors
 export * from './errors/domain-error.js';

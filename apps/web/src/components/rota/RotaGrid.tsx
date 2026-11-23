@@ -1,5 +1,5 @@
-import { Clock, Sun, Plane, Thermometer, MapPin, Moon } from 'lucide-react';
-import type { RotaCell, RotaDayCover, RotaNinePmDay, RotaPerson, RotaWeek } from '../../api/rota.js';
+import { CheckCircle2, Clock, Sun, Plane, Thermometer, MapPin, Moon } from 'lucide-react';
+import type { RotaCell, RotaDayCover, RotaNinePmDay, RotaPerson, RotaTimesheet, RotaWeek } from '../../api/rota.js';
 import { dayNum, dayShort, manilaToday, to12h } from '../../api/rota.js';
 
 const HATCH = 'bg-[repeating-linear-gradient(135deg,#f9fafb_0,#f9fafb_6px,#eef0f2_6px,#eef0f2_8px)]';
@@ -130,6 +130,32 @@ function CoverPill({ c, onClick }: { c: RotaDayCover; onClick?: () => void }) {
   );
 }
 
+const TS_STATUS: Record<RotaTimesheet['payrollStatus'], [string, string]> = {
+  Pending: ['text-amber-700', 'Sent'],
+  Approved: ['text-blue-700', 'Approved'],
+  Paid: ['text-green-700', 'Paid'],
+};
+
+/** Hours worked and timesheet progress under a past day's chip. */
+function TimesheetLine({ cell, ts }: { cell: RotaCell | undefined; ts: RotaTimesheet | undefined }) {
+  const a = cell?.actual;
+  const differs = !!a?.startTime && (a.startTime !== cell?.startTime || a.endTime !== cell?.endTime);
+  if (!ts && !a) return null;
+  return (
+    <div className="mt-0.5 flex items-center gap-1 px-1 text-[10px] leading-tight">
+      {differs && <span className="truncate font-medium text-amber-700" title="Hours worked differ from the plan">{to12h(a!.startTime)}–{to12h(a!.endTime)}</span>}
+      {a && a.ninePmReturns > 0 && <span className="text-indigo-700">{a.ninePmReturns}×9pm</span>}
+      {ts ? (
+        <span className={`ml-auto flex items-center gap-0.5 font-semibold ${TS_STATUS[ts.payrollStatus][0]}`}>
+          <CheckCircle2 className="h-3 w-3" aria-hidden />{TS_STATUS[ts.payrollStatus][1]}
+        </span>
+      ) : (
+        <span className="ml-auto font-semibold text-teal-700">Not sent</span>
+      )}
+    </div>
+  );
+}
+
 export function RotaGrid({
   week,
   meId,
@@ -138,6 +164,7 @@ export function RotaGrid({
   onCoverClick,
   onNinePmClick,
   highlightKeys,
+  showTimesheetStatus = false,
 }: {
   week: RotaWeek;
   meId?: string;
@@ -146,9 +173,11 @@ export function RotaGrid({
   onCoverClick?: (date: string) => void;
   onNinePmClick?: (date: string) => void;
   highlightKeys?: ReadonlySet<string>;
+  showTimesheetStatus?: boolean;
 }) {
   const today = manilaToday();
   const cells = new Map(week.cells.map((c) => [`${c.employeeId}|${c.date}`, c]));
+  const timesheets = new Map((week.timesheets ?? []).map((t) => [`${t.employeeId}|${t.date}`, t]));
   const holidays = new Map(week.holidays.map((h) => [h.date, h.name]));
   const cover = new Map(week.cover.map((c) => [c.date, c]));
   const ninePm = new Map(week.ninePm.map((n) => [n.date, n]));
@@ -189,6 +218,7 @@ export function RotaGrid({
                   ) : (
                     <RotaChip cell={cell} compact={compact} highlight={highlightKeys?.has(key)} ninePm={ninePm.get(d)?.assigneeId === p.employeeId} />
                   )}
+                  {showTimesheetStatus && d <= today && <TimesheetLine cell={cell} ts={timesheets.get(key)} />}
                 </div>
               );
             })}

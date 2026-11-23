@@ -6,6 +6,11 @@ import {
   useSubmitTimesheet,
   useApproveTimesheets,
   useCheckDuplicates,
+  useDeleteTimesheet,
+  useRotaCheck,
+  fetchTimesheetPrefill,
+  needsRotaCheck,
+  type RotaFlag,
   type TimesheetRow,
   type EmployeeRow,
 } from '../../api/hr.js';
@@ -13,6 +18,7 @@ import { useDayTypes, useStores } from '../../api/config.js';
 import { useUIStore } from '../../stores/ui-store.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 import { Badge } from '../../components/common/Badge.js';
+import { Modal } from '../../components/common/Modal.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { EditTimesheetModal } from '../../components/hr/EditTimesheetModal.js';
 import { Permission } from '@lolas/shared';
@@ -67,6 +73,27 @@ interface EntryRow {
   timeOut: string;
   ninePmReturns: number;
   notes: string;
+  /** Set when loaded from the rota with a different day type (e.g. Rest Day). */
+  dayType?: string;
+}
+
+function RotaFlagBadge({ t }: { t: TimesheetRow }) {
+  const flags = t.rotaFlags ?? [];
+  if (flags.length === 0) return null;
+  const title = flags.map((f) => f.message).join('\n');
+  if (needsRotaCheck(t)) return <span title={title}><Badge color="amber">Check</Badge></span>;
+  if (flags.some((f) => f.level === 'warning')) return <span title={`Checked\n${title}`}><Badge color="gray">Checked</Badge></span>;
+  return <span title={title} className="text-xs text-gray-400">Info</span>;
+}
+
+function FlagList({ flags }: { flags: RotaFlag[] }) {
+  const warnings = flags.filter((f) => f.level === 'warning');
+  if (warnings.length === 0) return null;
+  return (
+    <ul className="mt-1 space-y-0.5">
+      {warnings.map((f) => <li key={f.code} className="text-xs text-amber-700">{f.message}</li>)}
+    </ul>
+  );
 }
 
 const LEAVE_DAY_TYPES = ['Holiday', 'Sick'];
@@ -118,12 +145,70 @@ export default function TimesheetsPage() {
   // ── Edit modal state ──
   const [editingTimesheet, setEditingTimesheet] = useState<TimesheetRow | null>(null);
 
+  // ── Delete and rota-check state ──
+  const deleteMutation = useDeleteTimesheet();
+  const [deleting, setDeleting] = useState<TimesheetRow | null>(null);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [acknowledgedIds, setAcknowledgedIds] = useState<Set<string>>(new Set());
+  const [ackPrompt, setAckPrompt] = useState<{ rows: TimesheetRow[]; selectIds: string[] } | null>(null);
+  const [loadingRota, setLoadingRota] = useState(false);
+
   // Duplicate detection
   const selectedEmployeeIds = useMemo(() => entryRows.map((r) => r.employeeId), [entryRows]);
   const { data: duplicates = [] } = useCheckDuplicates(storeId, entryDate, selectedEmployeeIds);
   const duplicateSet = useMemo(() => new Set((duplicates ?? []).map((d) => d.employeeId)), [duplicates]);
 
   const isLeaveDayType = LEAVE_DAY_TYPES.includes(entryDayType);
+
+  const rotaCheckEntries = useMemo(() => entryRows.map((r) => {
+    const dayType = r.dayType ?? entryDayType;
+    const leave = LEAVE_DAY_TYPES.includes(dayType);
+    return {
+      employeeId: r.employeeId,
+      date: entryDate,
+      name: r.employeeName,
+      dayType,
+      timeIn: leave ? null : r.timeIn || null,
+      timeOut: leave ? null : r.timeOut || null,
+      ninePmReturnsCount: r.ninePmReturns,
+    };
+  }), [entryRows, entryDate, entryDayType]);
+  const { data: rotaCheck = [] } = useRotaCheck(rotaCheckEntries);
+  const entryFlags = useMemo(() => new Map(rotaCheck.map((c) => [c.employeeId, c.flags])), [rotaCheck]);
+
+  async function loadFromRota() {
+    setErrorMsg('');
+    setLoadingRota(true);
+    try {
+      const lines = await fetchTimesheetPrefill(entryDate, storeId);
+      if (lines.length === 0) {
+        setErrorMsg('Nobody on the rota left to add for this date.');
+        return;
+      }
+      setEntryRows((prev) => {
+        const next = [...prev];
+        for (const l of lines) {
+          if (next.some((r) => r.employeeId === l.employeeId)) continue;
+          const emp = activeEmployees.find((e) => e.id === l.employeeId);
+          next.push({
+            employeeId: l.employeeId,
+            employeeName: l.name,
+            workedAtStoreId: emp?.storeId ?? (storeId !== 'all' ? storeId : ''),
+            timeIn: l.row.timeIn ?? '',
+            timeOut: l.row.timeOut ?? '',
+            ninePmReturns: l.row.ninePmReturnsCount,
+            notes: l.row.dailyNotes ?? '',
+            dayType: l.row.dayType !== entryDayType ? l.row.dayType : undefined,
+          });
+        }
+        return next;
+      });
+    } catch (err) {
+      setErrorMsg((err as Error).message);
+    } finally {
+      setLoadingRota(false);
+    }
+  }
 
   function addEmployee(empId: string) {
     if (!empId || entryRows.some((r) => r.employeeId === empId)) return;
@@ -176,14 +261,15 @@ export default function TimesheetsPage() {
     setErrorMsg('');
 
     const entries = entryRows.map((r) => {
-      const hours = isLeaveDayType ? { regular: 8, overtime: 0 } : calcHours(r.timeIn, r.timeOut);
+      const dayType = r.dayType ?? entryDayType;
+      const leave = LEAVE_DAY_TYPES.includes(dayType);
       return {
         date: entryDate,
         employeeId: r.employeeId,
         name: r.employeeName,
-        dayType: entryDayType,
-        timeIn: isLeaveDayType ? null : (r.timeIn || null),
-        timeOut: isLeaveDayType ? null : (r.timeOut || null),
+        dayType,
+        timeIn: leave ? null : (r.timeIn || null),
+        timeOut: leave ? null : (r.timeOut || null),
         ninePmReturnsCount: r.ninePmReturns,
         dailyNotes: r.notes || null,
         silInflation: 0,
@@ -211,13 +297,33 @@ export default function TimesheetsPage() {
     [timesheets],
   );
 
-  function toggleSelect(id: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  /** Selecting a row that doesn't match the rota asks for confirmation first. */
+  function selectRows(rows: TimesheetRow[]) {
+    const unchecked = rows.filter((t) => needsRotaCheck(t) && !acknowledgedIds.has(t.id));
+    if (unchecked.length > 0) {
+      setAckPrompt({ rows: unchecked, selectIds: rows.map((t) => t.id) });
+      return;
+    }
+    setSelectedIds((prev) => new Set([...prev, ...rows.map((t) => t.id)]));
+  }
+
+  function confirmAck() {
+    if (!ackPrompt) return;
+    setAcknowledgedIds((prev) => new Set([...prev, ...ackPrompt.rows.map((t) => t.id)]));
+    setSelectedIds((prev) => new Set([...prev, ...ackPrompt.selectIds]));
+    setAckPrompt(null);
+  }
+
+  function toggleSelect(t: TimesheetRow) {
+    if (selectedIds.has(t.id)) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(t.id);
+        return next;
+      });
+      return;
+    }
+    selectRows([t]);
   }
 
   function toggleSelectAll() {
@@ -226,27 +332,59 @@ export default function TimesheetsPage() {
     if (allSelected) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(pending.map((t) => t.id)));
+      selectRows(pending);
     }
   }
 
+  const flaggedSelected = useMemo(
+    () => (timesheets ?? []).filter((t) => selectedIds.has(t.id) && needsRotaCheck(t)).length,
+    [timesheets, selectedIds],
+  );
+
   function handleApprove() {
     if (selectedIds.size === 0) return;
+    const count = selectedIds.size;
     approveMutation.mutate(
-      { timesheetIds: [...selectedIds] },
+      { timesheetIds: [...selectedIds], acknowledgedIds: [...selectedIds].filter((id) => acknowledgedIds.has(id)) },
       {
         onSuccess: () => {
           setSelectedIds(new Set());
-          setSuccessMsg(`${selectedIds.size} timesheet(s) approved.`);
+          setAcknowledgedIds(new Set());
+          setSuccessMsg(`${count} timesheet(s) approved.`);
           setTimeout(() => setSuccessMsg(''), 3000);
+        },
+        onError: (err: Error) => setErrorMsg(err.message),
+      },
+    );
+  }
+
+  function handleDelete() {
+    if (!deleting) return;
+    deleteMutation.mutate(
+      { id: deleting.id, reason: deleteReason.trim() },
+      {
+        onSuccess: () => {
+          setSelectedIds((prev) => {
+            const next = new Set(prev);
+            next.delete(deleting.id);
+            return next;
+          });
+          setSuccessMsg(`Timesheet for ${deleting.name ?? 'employee'} on ${deleting.date} deleted.`);
+          setTimeout(() => setSuccessMsg(''), 3000);
+          setDeleting(null);
+          setDeleteReason('');
         },
       },
     );
   }
 
+  const flaggedCount = useMemo(() => (timesheets ?? []).filter(needsRotaCheck).length, [timesheets]);
+
   const filteredTimesheets = useMemo(() => {
     let list = timesheets ?? [];
-    if (statusFilter !== 'all') {
+    if (statusFilter === 'Flagged') {
+      list = list.filter(needsRotaCheck);
+    } else if (statusFilter !== 'all') {
       list = list.filter((t) => t.payrollStatus === statusFilter);
     }
     return [...list].sort((a, b) => b.date.localeCompare(a.date));
@@ -397,6 +535,14 @@ export default function TimesheetsPage() {
                     Add all ({availableForEntry.length})
                   </button>
                 )}
+                <button
+                  onClick={loadFromRota}
+                  disabled={loadingRota}
+                  className="rounded-lg border border-teal-300 bg-teal-50 px-3 py-2 text-sm text-teal-700 hover:bg-teal-100 disabled:opacity-50"
+                  title="Add everyone the rota has working on this date, with hours worked if entered on the rota"
+                >
+                  {loadingRota ? 'Loading…' : 'Load from rota'}
+                </button>
               </div>
 
               {/* Entry rows */}
@@ -428,7 +574,18 @@ export default function TimesheetsPage() {
                         <tr key={row.employeeId} className={`border-b border-gray-100 ${isDuplicate ? 'bg-red-50' : ''}`}>
                           <td className="px-3 py-2">
                             <span className="font-medium text-gray-900">{row.employeeName}</span>
+                            {row.dayType && (
+                              <button
+                                type="button"
+                                onClick={() => updateRow(idx, { dayType: undefined })}
+                                title={`From the rota. Click to use ${entryDayType} instead.`}
+                                className="ml-2 rounded bg-teal-100 px-1.5 py-0.5 text-[11px] font-semibold text-teal-800"
+                              >
+                                {row.dayType}
+                              </button>
+                            )}
                             {isDuplicate && <span className="ml-2 text-xs text-red-600 font-medium">Duplicate entry exists</span>}
+                            <FlagList flags={entryFlags.get(row.employeeId) ?? []} />
                           </td>
                           <td className="px-3 py-2">
                             <select
@@ -462,6 +619,8 @@ export default function TimesheetsPage() {
                           <td className="px-3 py-2">
                             {isDuplicate ? (
                               <Badge color="red">Duplicate</Badge>
+                            ) : (entryFlags.get(row.employeeId) ?? []).some((f) => f.level === 'warning') ? (
+                              <Badge color="amber">Check</Badge>
                             ) : (
                               <Badge color="gray">Ready</Badge>
                             )}
@@ -505,7 +664,7 @@ export default function TimesheetsPage() {
               <div className="flex items-center gap-4">
                 <h2 className="font-medium text-gray-900">Timesheets</h2>
                 <div className="flex rounded-lg border border-gray-300 overflow-hidden text-sm">
-                  {['all', 'Pending', 'Approved', 'Paid'].map((s) => (
+                  {['all', 'Pending', 'Approved', 'Paid', 'Flagged'].map((s) => (
                     <button
                       key={s}
                       onClick={() => setStatusFilter(s)}
@@ -514,8 +673,9 @@ export default function TimesheetsPage() {
                           ? 'bg-blue-600 text-white'
                           : 'bg-white text-gray-700 hover:bg-gray-50'
                       } ${s !== 'all' ? 'border-l border-gray-300' : ''}`}
+                      title={s === 'Flagged' ? 'Rows that don’t match the rota and haven’t been checked' : undefined}
                     >
-                      {s === 'all' ? 'All' : s}
+                      {s === 'all' ? 'All' : s === 'Flagged' ? `Flagged (${flaggedCount})` : s}
                     </button>
                   ))}
                 </div>
@@ -527,7 +687,9 @@ export default function TimesheetsPage() {
                   disabled={approveMutation.isPending}
                   className="rounded-lg bg-green-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
                 >
-                  {approveMutation.isPending ? 'Approving...' : `Approve ${selectedIds.size} Selected`}
+                  {approveMutation.isPending
+                    ? 'Approving...'
+                    : `Approve ${selectedIds.size} Selected${flaggedSelected > 0 ? ` (${flaggedSelected} checked against rota)` : ''}`}
                 </button>
               )}
             </div>
@@ -559,7 +721,8 @@ export default function TimesheetsPage() {
                     <th className="px-3 py-2 font-medium text-gray-600 text-right">9PM</th>
                     <th className="px-3 py-2 font-medium text-gray-600">Notes</th>
                     <th className="px-3 py-2 font-medium text-gray-600">Status</th>
-                    {canEdit && <th className="px-3 py-2 w-10" />}
+                    <th className="px-3 py-2 font-medium text-gray-600">Rota</th>
+                    {canEdit && <th className="px-3 py-2 w-16" />}
                   </tr>
                 </thead>
                 <tbody>
@@ -570,7 +733,7 @@ export default function TimesheetsPage() {
                           <input
                             type="checkbox"
                             checked={selectedIds.has(t.id)}
-                            onChange={() => toggleSelect(t.id)}
+                            onChange={() => toggleSelect(t)}
                             className="h-4 w-4 rounded border-gray-300 text-blue-600"
                           />
                         ) : <span className="w-4" />}
@@ -588,8 +751,20 @@ export default function TimesheetsPage() {
                       <td className="px-3 py-2">
                         <Badge color={STATUS_COLORS[t.payrollStatus] ?? 'gray'}>{t.payrollStatus}</Badge>
                       </td>
+                      <td className="px-3 py-2"><RotaFlagBadge t={t} /></td>
                       {canEdit && (
-                        <td className="px-3 py-2">
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          {t.payrollStatus === 'Pending' && (
+                            <button
+                              onClick={() => { setDeleting(t); setDeleteReason(''); deleteMutation.reset(); }}
+                              className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-red-600 transition"
+                              title="Delete timesheet"
+                            >
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          )}
                           {t.payrollStatus !== 'Paid' && (
                             <button
                               onClick={() => setEditingTimesheet(t)}
@@ -619,6 +794,78 @@ export default function TimesheetsPage() {
         stores={storeList}
         dayTypes={dayTypeList}
       />
+
+      <Modal
+        open={deleting !== null}
+        onClose={() => setDeleting(null)}
+        title="Delete timesheet?"
+        size="sm"
+        footer={
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setDeleting(null)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Cancel</button>
+            <button
+              onClick={handleDelete}
+              disabled={deleteReason.trim().length < 3 || deleteMutation.isPending}
+              className="rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            >
+              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+            </button>
+          </div>
+        }
+      >
+        {deleting && (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-700">
+              <strong>{deleting.name ?? deleting.employeeId}</strong> · {deleting.date} · {deleting.dayType}
+              {deleting.timeIn ? ` · ${formatTime24(deleting.timeIn)}–${formatTime24(deleting.timeOut)}` : ''}
+              {deleting.ninePmReturnsCount > 0 ? ` · ${deleting.ninePmReturnsCount} × 9pm` : ''}
+            </p>
+            <label className="block text-sm text-gray-600">
+              Reason (kept in the audit log)
+              <input
+                value={deleteReason}
+                onChange={(e) => setDeleteReason(e.target.value)}
+                maxLength={300}
+                placeholder="e.g. Entered for the wrong date"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+            </label>
+            {deleteMutation.error && <p className="text-sm text-red-600">{(deleteMutation.error as Error).message}</p>}
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={ackPrompt !== null}
+        onClose={() => setAckPrompt(null)}
+        title="Check against the rota"
+        size="md"
+        footer={
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setAckPrompt(null)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Cancel</button>
+            <button onClick={confirmAck} className="rounded-lg bg-amber-500 px-3 py-2 text-sm font-medium text-white hover:bg-amber-600">
+              I&apos;ve checked {ackPrompt && ackPrompt.rows.length > 1 ? 'these' : 'this'}
+            </button>
+          </div>
+        }
+      >
+        {ackPrompt && (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-700">
+              {ackPrompt.rows.length === 1 ? 'This timesheet doesn’t' : `${ackPrompt.rows.length} timesheets don’t`} match the rota.
+              Confirm the hours are right before approving. Your name is recorded against {ackPrompt.rows.length === 1 ? 'it' : 'them'}.
+            </p>
+            <ul className="max-h-72 space-y-2 overflow-y-auto">
+              {ackPrompt.rows.map((t) => (
+                <li key={t.id} className="rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2">
+                  <p className="text-sm font-medium text-gray-900">{t.name ?? t.employeeId} · {t.date}</p>
+                  <FlagList flags={t.rotaFlags} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

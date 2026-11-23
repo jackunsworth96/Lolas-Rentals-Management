@@ -6,6 +6,7 @@ import {
   Permission,
   SubmitTimesheetRequestSchema,
   ApproveTimesheetsRequestSchema,
+  RotaCheckRequestSchema,
   SubmitLeaveRequestSchema,
   TimesheetQuerySchema,
   CreateEmployeeRequestSchema,
@@ -13,6 +14,7 @@ import {
   GrantCashAdvanceRequestSchema,
   CashAdvanceQuerySchema,
   EditTimesheetRequestSchema,
+  DeleteTimesheetRequestSchema,
   ReviewRequestSchema,
   ApproveAdvanceRequestSchema,
   ResolvePayslipDisputeSchema,
@@ -73,7 +75,44 @@ router.get('/timesheets', requirePermission(Permission.ViewTimesheets), validate
       storeId: t.storeId,
       dayFraction: t.dayFraction,
     }));
-    res.json({ success: true, data });
+    // The list still loads if the rota check fails; rows just show no flags.
+    let status = new Map<string, { flags: unknown[]; acknowledgedAt: string | null }>();
+    try {
+      const { rotaStatusFor } = await import('../use-cases/hr/rota-checks.js');
+      status = await rotaStatusFor(data);
+    } catch (err) {
+      console.error('Rota check for timesheets failed:', err);
+    }
+    res.json({
+      success: true,
+      data: data.map((t) => ({ ...t, rotaFlags: status.get(t.id)?.flags ?? [], acknowledgedAt: status.get(t.id)?.acknowledgedAt ?? null })),
+    });
+  } catch (err) { next(err); }
+});
+
+router.post('/timesheets/rota-check', requirePermission(Permission.SubmitTimesheets), validateBody(RotaCheckRequestSchema), async (req, res, next) => {
+  try {
+    const { rotaFlagsFor } = await import('../use-cases/hr/rota-checks.js');
+    const entries = req.body.entries as Array<{ employeeId: string; date: string; name?: string | null; dayType: string; timeIn: string | null; timeOut: string | null; ninePmReturnsCount: number }>;
+    const flags = await rotaFlagsFor(entries.map((e) => ({ ...e, name: e.name ?? null })));
+    res.json({ success: true, data: entries.map((e, i) => ({ employeeId: e.employeeId, date: e.date, flags: flags[i] })) });
+  } catch (err) { next(err); }
+});
+
+router.get('/timesheets/prefill', requirePermission(Permission.SubmitTimesheets), validateQuery(z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  storeId: z.string().optional(),
+})), async (req, res, next) => {
+  try {
+    const { date, storeId } = req.query as { date: string; storeId?: string };
+    const { prefillTimesheetsFromRota } = await import('../use-cases/hr/rota-timesheets.js');
+    let rotaStore = storeId && storeId !== 'all' ? storeId : null;
+    if (!rotaStore) {
+      if (!req.user?.employeeId) throw Object.assign(new Error('Pick a store to load the rota'), { statusCode: 400 });
+      const { storeForEmployee } = await import('../use-cases/hr/rota.js');
+      rotaStore = await storeForEmployee(req.user.employeeId);
+    }
+    res.json({ success: true, data: await prefillTimesheetsFromRota(rotaStore, date) });
   } catch (err) { next(err); }
 });
 
@@ -111,9 +150,21 @@ router.post('/timesheets', requirePermission(Permission.SubmitTimesheets), valid
 router.post('/timesheets/approve', requirePermission(Permission.ApproveTimesheets), validateBody(ApproveTimesheetsRequestSchema), async (req, res, next) => {
   try {
     const { approveTimesheets } = await import('../use-cases/hr/approve-timesheets.js');
-    const result = await approveTimesheets(req.body, { timesheets: req.app.locals.deps.timesheetRepo });
+    const { unacknowledgedFlaggedIds, acknowledgeTimesheets } = await import('../use-cases/hr/rota-checks.js');
+    const result = await approveTimesheets(req.body, {
+      timesheets: req.app.locals.deps.timesheetRepo,
+      unacknowledgedFlagged: unacknowledgedFlaggedIds,
+      acknowledge: (ids) => acknowledgeTimesheets(ids, req.user!.userId),
+    });
     res.json({ success: true, data: result });
-  } catch (err) { next(err); }
+  } catch (err: unknown) {
+    const e = err as { statusCode?: number; code?: string; message?: string; timesheetIds?: string[] };
+    if (e.code === 'ROTA_CHECK_REQUIRED') {
+      res.status(409).json({ success: false, error: { code: e.code, message: e.message, details: { timesheetIds: e.timesheetIds } } });
+      return;
+    }
+    next(err);
+  }
 });
 
 router.patch('/timesheets/:id', requirePermission(Permission.EditTimesheets), validateBody(EditTimesheetRequestSchema), async (req, res, next) => {
@@ -134,6 +185,21 @@ router.patch('/timesheets/:id', requirePermission(Permission.EditTimesheets), va
     }
     if (e.statusCode === 409) {
       res.status(409).json({ success: false, error: { code: e.code, message: e.message } });
+      return;
+    }
+    next(err);
+  }
+});
+
+router.delete('/timesheets/:id', requirePermission(Permission.EditTimesheets), validateBody(DeleteTimesheetRequestSchema), async (req, res, next) => {
+  try {
+    const { deleteTimesheet } = await import('../use-cases/hr/delete-timesheet.js');
+    const result = await deleteTimesheet(String(req.params.id), req.body.reason, req.user!.userId);
+    res.json({ success: true, data: result });
+  } catch (err: unknown) {
+    const e = err as { statusCode?: number; code?: string; message?: string };
+    if (e.statusCode === 404 || e.statusCode === 409) {
+      res.status(e.statusCode).json({ success: false, error: { code: e.code, message: e.message } });
       return;
     }
     next(err);

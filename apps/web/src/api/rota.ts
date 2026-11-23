@@ -39,6 +39,26 @@ export interface RotaCell {
   note: string | null;
   source: RotaCellSource;
   pendingPickId: string | null;
+  actual: RotaActual | null;
+}
+
+export interface RotaActual {
+  startTime: string | null;
+  endTime: string | null;
+  ninePmReturns: number;
+  note: string | null;
+}
+
+export interface RotaTimesheet {
+  id: string;
+  employeeId: string;
+  date: string;
+  dayType: string;
+  timeIn: string | null;
+  timeOut: string | null;
+  ninePmReturnsCount: number;
+  dailyNotes: string | null;
+  payrollStatus: 'Pending' | 'Approved' | 'Paid';
 }
 
 export interface RotaPick {
@@ -110,6 +130,7 @@ export interface RotaWeek {
   cover: RotaDayCover[];
   issues: RotaIssue[];
   log: RotaLogEntry[];
+  timesheets: RotaTimesheet[];
 }
 
 export interface RotaPersonConfig {
@@ -175,6 +196,54 @@ function useWeekMutation<TBody>(fn: (body: TBody) => Promise<RotaWeek>) {
 
 export function useSetRotaCells() {
   return useWeekMutation((body: { weekStart: string; cells: RotaCellEdit[]; reason?: string }) => api.put<RotaWeek>('/hr/rota/cells', body));
+}
+
+export interface RotaActualEdit {
+  weekStart: string;
+  employeeId: string;
+  date: string;
+  startTime: string | null;
+  endTime: string | null;
+  ninePmReturns: number;
+  note?: string;
+}
+
+export function useSetRotaActuals() {
+  return useWeekMutation((body: RotaActualEdit) => api.put<RotaWeek>('/hr/rota/actuals', body));
+}
+
+export interface TimesheetPreviewLine {
+  employeeId: string;
+  name: string;
+  date: string;
+  action: 'create' | 'update' | 'skip';
+  reason: string | null;
+  row: { dayType: string; timeIn: string | null; timeOut: string | null; ninePmReturnsCount: number; dailyNotes: string | null } | null;
+  existingId: string | null;
+  existingStatus: 'Pending' | 'Approved' | 'Paid' | null;
+}
+
+export function useTimesheetPreview(weekStart: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['rota', 'timesheet-preview', weekStart],
+    queryFn: () => api.get<TimesheetPreviewLine[]>(`/hr/rota/timesheet-preview?weekStart=${weekStart}`),
+    enabled: enabled && !!weekStart,
+    staleTime: 0,
+  });
+}
+
+export function useSendToTimesheets() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { weekStart: string; dates?: string[] }) =>
+      api.post<{ created: number; updated: number; skipped: number; week: RotaWeek }>('/hr/rota/send-to-timesheets', body),
+    onSuccess: (data) => {
+      qc.setQueryData(['rota', 'week', data.week.weekStart], data.week);
+      qc.invalidateQueries({ queryKey: ['rota', 'timesheet-preview'] });
+      qc.invalidateQueries({ queryKey: ['timesheets'] });
+      qc.invalidateQueries({ queryKey: ['expenses'] });
+    },
+  });
 }
 
 export type PickDecision =

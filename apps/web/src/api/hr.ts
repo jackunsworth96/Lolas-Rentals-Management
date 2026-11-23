@@ -17,6 +17,20 @@ export interface TimesheetRow {
   silInflation: number;
   storeId: string;
   dayFraction: number;
+  rotaFlags: RotaFlag[];
+  /** When someone confirmed the row despite its rota flags. */
+  acknowledgedAt: string | null;
+}
+
+export interface RotaFlag {
+  code: 'not_on_rota' | 'rostered_off' | 'hours_differ' | 'nine_pm_mismatch' | 'rota_not_published';
+  level: 'warning' | 'info';
+  message: string;
+}
+
+/** A flagged row needs checking until someone acknowledges it. */
+export function needsRotaCheck(t: Pick<TimesheetRow, 'rotaFlags' | 'acknowledgedAt'>): boolean {
+  return !t.acknowledgedAt && (t.rotaFlags ?? []).some((f) => f.level === 'warning');
 }
 
 export interface EmployeeRow {
@@ -104,9 +118,46 @@ export function useSubmitTimesheet() {
 export function useApproveTimesheets() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { timesheetIds: string[] }) => api.post('/hr/timesheets/approve', body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['timesheets'] }),
+    mutationFn: (body: { timesheetIds: string[]; acknowledgedIds?: string[] }) => api.post('/hr/timesheets/approve', body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['timesheets'] });
+      qc.invalidateQueries({ queryKey: ['rota'] });
+    },
   });
+}
+
+export interface RotaCheckEntry {
+  employeeId: string;
+  date: string;
+  name: string | null;
+  dayType: string;
+  timeIn: string | null;
+  timeOut: string | null;
+  ninePmReturnsCount: number;
+}
+
+export function useRotaCheck(entries: RotaCheckEntry[]) {
+  const key = JSON.stringify(entries);
+  return useQuery<Array<{ employeeId: string; date: string; flags: RotaFlag[] }>>({
+    queryKey: ['timesheets-rota-check', key],
+    queryFn: () => api.post('/hr/timesheets/rota-check', { entries }),
+    enabled: entries.length > 0,
+    staleTime: 30_000,
+  });
+}
+
+export interface TimesheetPrefillLine {
+  employeeId: string;
+  name: string;
+  date: string;
+  action: 'create' | 'update';
+  row: { dayType: string; timeIn: string | null; timeOut: string | null; ninePmReturnsCount: number; dailyNotes: string | null };
+}
+
+export function fetchTimesheetPrefill(date: string, storeId: string): Promise<TimesheetPrefillLine[]> {
+  const params = new URLSearchParams({ date });
+  if (storeId && storeId !== 'all') params.set('storeId', storeId);
+  return api.get(`/hr/timesheets/prefill?${params.toString()}`);
 }
 
 export interface EditTimesheetPayload {
@@ -129,6 +180,20 @@ export function useEditTimesheet() {
       api.patch<{ id: string; ninePmPayouts: NinePmPayoutSummary }>(`/hr/timesheets/${id}`, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['timesheets'] });
+      qc.invalidateQueries({ queryKey: ['expenses'] });
+      qc.invalidateQueries({ queryKey: ['cashup'] });
+    },
+  });
+}
+
+export function useDeleteTimesheet() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      api.delete<{ id: string }>(`/hr/timesheets/${id}`, { reason }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['timesheets'] });
+      qc.invalidateQueries({ queryKey: ['rota'] });
       qc.invalidateQueries({ queryKey: ['expenses'] });
       qc.invalidateQueries({ queryKey: ['cashup'] });
     },

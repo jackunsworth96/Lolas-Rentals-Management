@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, CalendarDays, Check, ChevronLeft, ChevronRight, History, Send, Settings2, ShieldAlert, X } from 'lucide-react';
+import { AlertTriangle, CalendarDays, Check, ChevronLeft, ChevronRight, FileClock, History, Send, Settings2, ShieldAlert, X } from 'lucide-react';
 import { useAuthStore } from '../../stores/auth-store.js';
 import { Modal } from '../../components/common/Modal.js';
 import { RotaGrid } from '../../components/rota/RotaGrid.js';
-import { CellEditor, CoverOverrideModal, NinePmModal, btn, btnGhost, btnPrimary, inputCls } from '../../components/rota/RotaEditors.js';
+import { CellEditor, CoverOverrideModal, NinePmModal, SendToTimesheetsModal, btn, btnGhost, btnPrimary, inputCls } from '../../components/rota/RotaEditors.js';
 import {
   useRotaWeek,
   useSetRotaCells,
@@ -39,7 +39,33 @@ const ACTION_LABEL: Record<string, string> = {
   pattern_changed: 'changed a work pattern',
   duty_set: 'assigned 9pm returns',
   duty_removed: 'removed 9pm returns',
+  actual_set: 'recorded hours worked',
+  actual_cleared: 'cleared hours worked',
+  sent_to_timesheets: 'sent the week to timesheets',
 };
+
+function TimesheetFooter({ week, onSend }: { week: RotaWeek; onSend: () => void }) {
+  const today = manilaToday();
+  const pastDates = week.dates.filter((d) => d <= today);
+  if (pastDates.length === 0) return null;
+  const past = new Set(pastDates);
+  const entered = week.cells.filter((c) => past.has(c.date) && c.actual).length;
+  const sent = week.timesheets.filter((t) => past.has(t.date));
+  const approved = sent.filter((t) => t.payrollStatus !== 'Pending').length;
+  return (
+    <div className="flex flex-wrap items-center gap-3 border-t border-gray-200 bg-slate-50 px-4 py-2.5">
+      <FileClock className="h-4 w-4 text-gray-500" />
+      <p className="text-sm text-gray-700">
+        <span className="font-semibold">Timesheets:</span> {pastDates.length} day{pastDates.length === 1 ? '' : 's'} up to today
+        {' · '}{entered} card{entered === 1 ? '' : 's'} with hours entered
+        {' · '}{sent.length} on timesheets{approved > 0 ? ` (${approved} approved)` : ''}
+      </p>
+      <button type="button" onClick={onSend} className={`${btnPrimary} ml-auto flex items-center gap-1.5`}>
+        <Send className="h-4 w-4" />Send to timesheets
+      </button>
+    </div>
+  );
+}
 
 function StatusBadge({ week }: { week: RotaWeek }) {
   const map = {
@@ -263,6 +289,7 @@ export default function RotaPage() {
   const [ninePmDate, setNinePmDate] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [confirmPublish, setConfirmPublish] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
 
   const pending = useMemo(() => (week?.picks ?? []).filter((p) => p.status === 'pending'), [week]);
   const needsDayOff = useMemo(() => (week?.people ?? []).filter((p) => p.mode === 'rostered' && p.workingDays >= 7), [week]);
@@ -323,6 +350,7 @@ export default function RotaPage() {
                 onCoverClick={editable ? setCoverDate : undefined}
                 onNinePmClick={editable ? setNinePmDate : undefined}
                 highlightKeys={issueKeys}
+                showTimesheetStatus={week.canApprove}
               />
               <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-gray-100 px-4 py-2 text-[11px] text-gray-500">
                 <span><span className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-teal-200" />Working</span>
@@ -332,8 +360,9 @@ export default function RotaPage() {
                 <span><span className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-red-200" />Sick</span>
                 <span><span className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-slate-300" />Unpaid</span>
                 <span><span className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-indigo-600" />9pm returns</span>
-                {editable && <span className="ml-auto">Click a day to change it · click a 9pm badge to assign · click the cover count for emergencies</span>}
+                {editable && <span className="ml-auto">Click a day to change it or record hours worked · click a 9pm badge to assign · click the cover count for emergencies</span>}
               </div>
+              {editable && <TimesheetFooter week={week} onSend={() => setSendOpen(true)} />}
             </div>
 
             <div className="space-y-4">
@@ -380,6 +409,7 @@ export default function RotaPage() {
           {coverDate && <CoverOverrideModal key={coverDate} week={week} date={coverDate} onClose={() => setCoverDate(null)} />}
           {ninePmDate && <NinePmModal key={ninePmDate} week={week} date={ninePmDate} onClose={() => setNinePmDate(null)} />}
           {settingsOpen && <SettingsModal week={week} open onClose={() => setSettingsOpen(false)} />}
+          {sendOpen && <SendToTimesheetsModal week={week} onClose={() => setSendOpen(false)} />}
           <Modal
             open={confirmPublish}
             onClose={() => setConfirmPublish(false)}

@@ -45,6 +45,31 @@ export const SetRotaCellsSchema = z.object({
 });
 export type SetRotaCellsRequest = z.infer<typeof SetRotaCellsSchema>;
 
+/** Hours actually worked on a past day; cleared when both times are null, 9pm is 0 and there's no note. */
+export const SetRotaActualsSchema = z.object({
+  weekStart: isoDate,
+  employeeId: z.string().min(1),
+  date: isoDate,
+  startTime: hhmm.nullable(),
+  endTime: hhmm.nullable(),
+  ninePmReturns: z.number().int().min(0).max(50),
+  note: z.string().trim().max(200).optional(),
+}).refine((a) => (a.startTime == null) === (a.endTime == null), {
+  message: 'Enter both time in and time out',
+  path: ['endTime'],
+}).refine((a) => !a.startTime || a.startTime !== a.endTime, {
+  message: 'Time out must be different from time in',
+  path: ['endTime'],
+});
+export type SetRotaActualsRequest = z.infer<typeof SetRotaActualsSchema>;
+
+export const SendRotaToTimesheetsSchema = z.object({
+  weekStart: isoDate,
+  /** Limit to these days; defaults to every day of the week up to today. */
+  dates: z.array(isoDate).max(7).optional(),
+});
+export type SendRotaToTimesheetsRequest = z.infer<typeof SendRotaToTimesheetsSchema>;
+
 export const SetCoverOverrideSchema = z.object({
   date: isoDate,
   /** null removes the emergency override. */

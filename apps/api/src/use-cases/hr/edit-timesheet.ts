@@ -10,6 +10,7 @@ export async function editTimesheet(
   id: string,
   body: EditTimesheetRequest,
   amendedBy: string,
+  opts: { onlyPending?: boolean } = {},
 ): Promise<EditTimesheetResult> {
   const sb = getSupabaseClient();
 
@@ -32,6 +33,9 @@ export async function editTimesheet(
     );
     throw err;
   }
+  if (opts.onlyPending && existing.payroll_status !== 'Pending') {
+    throw Object.assign(new Error(`Timesheet is already ${String(existing.payroll_status).toLowerCase()}`), { statusCode: 409, code: 'NOT_EDITABLE' });
+  }
 
   const updates = {
     day_type: body.dayType,
@@ -43,6 +47,9 @@ export async function editTimesheet(
     daily_notes: body.dailyNotes,
     store_id: body.storeId,
     ...(body.dayFraction !== undefined ? { day_fraction: body.dayFraction } : {}),
+    // A changed row has to be checked against the rota again.
+    acknowledged_by: null,
+    acknowledged_at: null,
   };
 
   const { error: updateErr } = await sb

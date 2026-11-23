@@ -5,6 +5,7 @@ import {
   rotaWeekStart,
   type RotaDayCover,
   type RotaIssue,
+  type RotaActualHours,
   type RotaKind,
   type RotaMode,
 } from '@lolas/domain';
@@ -12,6 +13,7 @@ import type {
   DecideDayOffPickRequest,
   SaveDayOffPicksRequest,
   SetCoverOverrideRequest,
+  SetRotaActualsRequest,
   SetRotaCellsRequest,
   SetRotaDutyRequest,
   UpdateRotaSettingsRequest,
@@ -69,6 +71,21 @@ export interface RotaCellView {
   note: string | null;
   source: RotaCellSource;
   pendingPickId: string | null;
+  /** Hours actually worked, entered on the rota before sending to timesheets. */
+  actual: RotaActualHours | null;
+}
+
+/** The timesheet row for a rota cell, if one exists. Manager view only. */
+export interface RotaTimesheetView {
+  id: string;
+  employeeId: string;
+  date: string;
+  dayType: string;
+  timeIn: string | null;
+  timeOut: string | null;
+  ninePmReturnsCount: number;
+  dailyNotes: string | null;
+  payrollStatus: 'Pending' | 'Approved' | 'Paid';
 }
 
 export interface RotaPickView {
@@ -130,6 +147,7 @@ export interface RotaWeekView {
   cover: RotaDayCover[];
   issues: RotaIssue[];
   log: RotaLogEntry[];
+  timesheets: RotaTimesheetView[];
 }
 
 export interface RotaViewer {
@@ -144,12 +162,12 @@ function minutes(t: string): number {
   return h * 60 + m;
 }
 
-function dayLabel(date: string): string {
+export function dayLabel(date: string): string {
   const [y, m, d] = date.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
 }
 
-function weekLabel(weekStart: string): string {
+export function weekLabel(weekStart: string): string {
   return `${dayLabel(weekStart)} – ${dayLabel(addDaysToDateStr(weekStart, 6))}`;
 }
 
@@ -195,11 +213,11 @@ function canApprove(settings: RotaSettings, viewer: RotaViewer): boolean {
   return settings.approverIds.length > 0 ? settings.approverIds.includes(viewer.employeeId) : viewer.hasManagePermission;
 }
 
-function assertApprover(settings: RotaSettings, viewer: RotaViewer): void {
+export function assertApprover(settings: RotaSettings, viewer: RotaViewer): void {
   if (!canApprove(settings, viewer)) throw new DomainError('Only the rota approvers can change the rota');
 }
 
-interface Person {
+export interface Person {
   employeeId: string;
   name: string;
   role: string | null;
@@ -213,7 +231,7 @@ interface Person {
 }
 
 /** Owners and developers are left out unless asked for: they can approve the rota but are never on it. */
-async function loadPeople(storeId: string, { includeNonStaff = false } = {}): Promise<Person[]> {
+export async function loadPeople(storeId: string, { includeNonStaff = false } = {}): Promise<Person[]> {
   const [{ data: home, error: hErr }, { data: links, error: lErr }] = await Promise.all([
     sb().from('employees').select('id').eq('store_id', storeId).eq('status', 'Active'),
     sb().from('employee_stores').select('employee_id').eq('store_id', storeId),
@@ -355,7 +373,7 @@ export async function ninePmDutyFor(storeId: string, date: string): Promise<stri
 
 // ── Week view ───────────────────────────────────────────────────────────────
 
-interface WeekState {
+export interface WeekState {
   storeId: string;
   weekStart: string;
   dates: string[];
@@ -370,9 +388,11 @@ interface WeekState {
   ninePm: Map<string, NinePmBooking[]>;
   /** date → employee on 9pm returns */
   ninePmDuty: Map<string, string>;
+  /** employeeId|date → timesheet row */
+  timesheets: Map<string, RotaTimesheetView>;
 }
 
-async function loadWeekState(storeId: string, weekStart: string): Promise<WeekState> {
+export async function loadWeekState(storeId: string, weekStart: string): Promise<WeekState> {
   assertWeekStart(weekStart);
   const dates = rotaWeekDates(weekStart);
   const end = dates[6];
@@ -380,16 +400,20 @@ async function loadWeekState(storeId: string, weekStart: string): Promise<WeekSt
   const people = allPeople.filter((p) => p.mode !== 'excluded' && (!p.startDate || p.startDate <= end));
   const ids = people.map((p) => p.employeeId);
 
-  const [assignRes, pickRes, overrideRes, holidayRes, dutyRes, leave, ninePm] = await Promise.all([
+  const [assignRes, pickRes, overrideRes, holidayRes, dutyRes, tsRes, leave, ninePm] = await Promise.all([
     sb().from('rota_assignments').select('*').eq('store_id', storeId).eq('week_start', weekStart),
     sb().from('rota_day_off_picks').select('*').eq('store_id', storeId).eq('week_start', weekStart).order('submitted_at'),
     sb().from('rota_cover_overrides').select('*').eq('store_id', storeId).gte('date', weekStart).lte('date', end),
     sb().from('public_holidays').select('holiday_date, name, store_id').gte('holiday_date', weekStart).lte('holiday_date', end),
     sb().from('rota_duties').select('date, employee_id').eq('store_id', storeId).eq('duty', 'nine_pm_return').gte('date', weekStart).lte('date', end),
+    ids.length > 0
+      ? sb().from('timesheets').select('id, employee_id, date, day_type, time_in, time_out, nine_pm_returns_count, daily_notes, payroll_status')
+        .in('employee_id', ids).gte('date', weekStart).lte('date', end)
+      : Promise.resolve({ data: [], error: null }),
     loadLeave(ids, weekStart, end),
     loadNinePmReturns(storeId, weekStart, end),
   ]);
-  for (const r of [assignRes, pickRes, overrideRes, holidayRes, dutyRes]) {
+  for (const r of [assignRes, pickRes, overrideRes, holidayRes, dutyRes, tsRes]) {
     if (r.error) throw new Error(`Failed to load rota: ${r.error.message}`);
   }
   const assignments = new Map(((assignRes.data ?? []) as Row[]).map((a) => [`${a.employee_id}|${a.date}`, a]));
@@ -401,7 +425,7 @@ async function loadWeekState(storeId: string, weekStart: string): Promise<WeekSt
   for (const p of people) {
     for (const date of dates) {
       const key = `${p.employeeId}|${date}`;
-      const base = { employeeId: p.employeeId, date, startTime: null, endTime: null, isCustomTime: false, note: null, pendingPickId: null };
+      const base = { employeeId: p.employeeId, date, startTime: null, endTime: null, isCustomTime: false, note: null, pendingPickId: null, actual: null };
       const leaveKind = leave.get(key);
       const a = assignments.get(key);
       const pick = livePicks.get(key);
@@ -422,6 +446,7 @@ async function loadWeekState(storeId: string, weekStart: string): Promise<WeekSt
           isCustomTime: kind === 'working' && (start !== settings.defaultStart || endT !== settings.defaultEnd),
           note: s(a.note),
           source: a.source as RotaCellSource,
+          actual: actualFrom(a),
         };
       } else if (pick) {
         cell = { ...base, kind: 'day_off', source: 'pick', note: s(pick.note), pendingPickId: pick.status === 'pending' ? String(pick.id) : null };
@@ -448,6 +473,26 @@ async function loadWeekState(storeId: string, weekStart: string): Promise<WeekSt
     holidays: ((holidayRes.data ?? []) as Row[]).filter((h) => h.store_id == null || h.store_id === storeId),
     ninePm,
     ninePmDuty: new Map(((dutyRes.data ?? []) as Row[]).map((d) => [String(d.date), String(d.employee_id)])),
+    timesheets: new Map(((tsRes.data ?? []) as Row[]).map((t) => [`${t.employee_id}|${t.date}`, timesheetView(t)])),
+  };
+}
+
+function actualFrom(a: Row): RotaActualHours | null {
+  if (a.actual_start == null && a.actual_end == null && a.actual_nine_pm == null && a.actual_note == null) return null;
+  return { startTime: hm(a.actual_start), endTime: hm(a.actual_end), ninePmReturns: Number(a.actual_nine_pm ?? 0), note: s(a.actual_note) };
+}
+
+function timesheetView(t: Row): RotaTimesheetView {
+  return {
+    id: String(t.id),
+    employeeId: String(t.employee_id),
+    date: String(t.date),
+    dayType: String(t.day_type),
+    timeIn: hm(t.time_in),
+    timeOut: hm(t.time_out),
+    ninePmReturnsCount: Number(t.nine_pm_returns_count ?? 0),
+    dailyNotes: s(t.daily_notes),
+    payrollStatus: t.payroll_status as RotaTimesheetView['payrollStatus'],
   };
 }
 
@@ -511,7 +556,7 @@ async function toView(state: WeekState, viewer: RotaViewer, audience: 'manager' 
   const cells = [...state.cells.values()].map((c) => {
     if (audience === 'staff' && c.employeeId !== viewer.employeeId) {
       const hidden = c.kind === 'holiday' || c.kind === 'sick' || c.kind === 'unpaid_leave';
-      return { ...c, kind: hidden ? 'leave' as const : c.kind, note: c.source === 'pick' ? null : c.note };
+      return { ...c, kind: hidden ? 'leave' as const : c.kind, note: c.source === 'pick' ? null : c.note, actual: null };
     }
     return c;
   });
@@ -589,6 +634,7 @@ async function toView(state: WeekState, viewer: RotaViewer, audience: 'manager' 
       detail: (l.detail ?? {}) as Record<string, unknown>,
       createdAt: String(l.created_at),
     })),
+    timesheets: audience === 'manager' ? [...state.timesheets.values()] : [],
   };
 }
 
@@ -598,7 +644,7 @@ export async function getRotaWeek(storeId: string, weekStart: string, viewer: Ro
 
 // ── Side effects ────────────────────────────────────────────────────────────
 
-async function audit(storeId: string, weekStart: string, actorId: string | null, action: string, extra: { employeeId?: string; date?: string; detail?: Record<string, unknown> } = {}): Promise<void> {
+export async function audit(storeId: string, weekStart: string, actorId: string | null, action: string, extra: { employeeId?: string; date?: string; detail?: Record<string, unknown> } = {}): Promise<void> {
   const { error } = await sb().from('rota_audit_log').insert({
     store_id: storeId,
     week_start: weekStart,
@@ -793,6 +839,7 @@ export async function setRotaCells(storeId: string, viewer: RotaViewer, input: S
       kind = approvedPick ? 'day_off' : person.mode === 'rostered' ? 'working' : 'out_of_office';
     }
     if (kind == null) {
+      if (current?.actual) throw new DomainError(`Clear the hours worked on ${dayLabel(c.date)} before resetting the day`);
       deletes.push({ employeeId: c.employeeId, date: c.date });
     } else {
       const working = kind === 'working';
@@ -838,6 +885,58 @@ export async function setRotaCells(storeId: string, viewer: RotaViewer, input: S
       void dm([employeeId], `🔄 <b>Your rota changed</b> (${escapeHtml(weekLabel(state.weekStart))})\n${escapeHtml(lines.join('\n'))}\nReason: ${escapeHtml(reason ?? '')}`);
     }
   }
+  return getRotaWeek(storeId, state.weekStart, viewer, 'manager');
+}
+
+/** Records the hours someone actually worked. Timesheets are only written when the week is sent. */
+export async function setRotaActuals(storeId: string, viewer: RotaViewer, input: SetRotaActualsRequest): Promise<RotaWeekView> {
+  const state = await loadWeekState(storeId, input.weekStart);
+  assertApprover(state.settings, viewer);
+  if (state.status === 'locked') throw new DomainError('This week is locked because payroll has run');
+  if (!state.dates.includes(input.date)) throw new DomainError('Record hours for days inside the selected week');
+  if (input.date > formatManilaDate()) throw new DomainError('You can only record hours for today or earlier');
+  const person = state.people.find((p) => p.employeeId === input.employeeId);
+  if (!person) throw new DomainError('That person isn’t on the rota');
+  const key = `${input.employeeId}|${input.date}`;
+  const cell = state.cells.get(key);
+  if (!cell?.kind || cell.kind === 'not_started') throw new DomainError(`${person.name} hasn’t started yet on ${dayLabel(input.date)}`);
+  if (cell.source === 'leave') throw new DomainError(`${person.name} is on leave on ${dayLabel(input.date)}`);
+  const ts = state.timesheets.get(key);
+  if (ts && ts.payrollStatus !== 'Pending') {
+    throw new DomainError(`The timesheet for ${dayLabel(input.date)} is already ${ts.payrollStatus.toLowerCase()}. Change it on the Timesheets page.`);
+  }
+
+  const note = input.note?.trim() || null;
+  const clearing = input.startTime == null && input.ninePmReturns === 0 && !note;
+  if (clearing && !cell.actual) return toView(state, viewer, 'manager');
+  const actual = clearing
+    ? { actual_start: null, actual_end: null, actual_nine_pm: null, actual_note: null }
+    : { actual_start: input.startTime, actual_end: input.endTime, actual_nine_pm: input.ninePmReturns, actual_note: note };
+
+  // Derived cells have no row yet, so write the plan out alongside the hours.
+  const { error } = await sb().from('rota_assignments').upsert({
+    store_id: storeId,
+    week_start: state.weekStart,
+    employee_id: input.employeeId,
+    date: input.date,
+    kind: cell.kind,
+    start_time: cell.startTime,
+    end_time: cell.endTime,
+    note: cell.note,
+    source: cell.source,
+    updated_by: viewer.employeeId,
+    updated_at: new Date().toISOString(),
+    ...actual,
+    actual_by: viewer.employeeId,
+    actual_at: new Date().toISOString(),
+  }, { onConflict: 'employee_id,date' });
+  if (error) throw new Error(`Failed to save hours: ${error.message}`);
+
+  await audit(storeId, state.weekStart, viewer.employeeId, clearing ? 'actual_cleared' : 'actual_set', {
+    employeeId: input.employeeId,
+    date: input.date,
+    detail: clearing ? {} : { after: input.startTime ? `${input.startTime}–${input.endTime}` : 'no times', ninePm: input.ninePmReturns },
+  });
   return getRotaWeek(storeId, state.weekStart, viewer, 'manager');
 }
 

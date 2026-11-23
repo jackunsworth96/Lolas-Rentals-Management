@@ -6,7 +6,9 @@ import {
   Permission,
   DecideDayOffPickSchema,
   PublishRotaSchema,
+  SendRotaToTimesheetsSchema,
   SetCoverOverrideSchema,
+  SetRotaActualsSchema,
   SetRotaCellsSchema,
   SetRotaDutySchema,
   UpdateRotaSettingsSchema,
@@ -45,6 +47,28 @@ router.put('/cells', validateBody(SetRotaCellsSchema), async (req, res, next) =>
   try {
     const { setRotaCells } = await import('../use-cases/hr/rota.js');
     res.json({ success: true, data: await setRotaCells(await storeOf(req), viewer(req), req.body) });
+  } catch (err) { next(err); }
+});
+
+router.put('/actuals', validateBody(SetRotaActualsSchema), async (req, res, next) => {
+  try {
+    const { setRotaActuals } = await import('../use-cases/hr/rota.js');
+    res.json({ success: true, data: await setRotaActuals(await storeOf(req), viewer(req), req.body) });
+  } catch (err) { next(err); }
+});
+
+router.get('/timesheet-preview', async (req, res, next) => {
+  try {
+    const { previewRotaTimesheets } = await import('../use-cases/hr/rota-timesheets.js');
+    res.json({ success: true, data: await previewRotaTimesheets(await storeOf(req), viewer(req), weekParam(req.query.weekStart)) });
+  } catch (err) { next(err); }
+});
+
+router.post('/send-to-timesheets', requirePermission(Permission.SubmitTimesheets), validateBody(SendRotaToTimesheetsSchema), async (req, res, next) => {
+  try {
+    const { sendRotaToTimesheets } = await import('../use-cases/hr/rota-timesheets.js');
+    const result = await sendRotaToTimesheets(await storeOf(req), viewer(req), req.user!.userId, req.body, { timesheets: req.app.locals.deps.timesheetRepo });
+    res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });
 
