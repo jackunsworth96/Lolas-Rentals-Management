@@ -18,6 +18,7 @@ import {
   canGrantAdvances,
   countDuplicates,
   isManager,
+  isSafeMethod,
   linkedRecord,
   loadCategory,
   resolvePaidFrom,
@@ -169,6 +170,7 @@ export async function updateExpense(
     if (!isManager(actor)) check.errors.push('Only a manager can change the account an expense books to.');
     else await assertOverrideAccount(existing.storeId, input.accountOverride.accountId);
   }
+  if (isSafeMethod(input.paymentMethodId) && !isManager(actor)) check.errors.push('Only a manager can pay from the Safe.');
   if (check.errors.length) throw new EntryRejectedError(check.errors);
   const pending = check.confirmations.filter(
     (c) => !(c.code === 'duplicate' && input.confirmDuplicate) && !(c.code === 'over_limit' && input.confirmOverLimit),

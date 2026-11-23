@@ -22,6 +22,7 @@ import {
   countDuplicates,
   isCardMethod,
   isManager,
+  isSafeMethod,
   loadCategory,
   loadEmployee,
   resolvePaidFrom,
@@ -98,6 +99,9 @@ export async function createExpense(
   }
   if (input.status === 'paid' && input.paymentMethodId && isCardMethod(input.paymentMethodId)) {
     check.errors.push('Card routes to customer card takings, so it can’t pay an expense. Choose cash, GCash or a bank account.');
+  }
+  if (input.status === 'paid' && isSafeMethod(input.paymentMethodId) && !isManager(actor)) {
+    check.errors.push('Only a manager can pay from the Safe.');
   }
   if (check.errors.length) throw new EntryRejectedError(check.errors);
 

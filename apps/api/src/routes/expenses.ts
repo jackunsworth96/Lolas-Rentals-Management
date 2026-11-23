@@ -254,7 +254,8 @@ router.post(
         throw new EntryRejectedError(['An expense without an account can’t be paid. Edit it first.']);
       }
 
-      const { resolvePaidFrom } = await import('../use-cases/expenses/expense-context.js');
+      const { assertCanPayFrom, resolvePaidFrom } = await import('../use-cases/expenses/expense-context.js');
+      assertCanPayFrom(paymentMethodId, actorOf(req));
       const resolvedAccountId = await resolvePaidFrom(storeId, paymentMethodId);
 
       const now = new Date();

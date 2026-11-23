@@ -1,4 +1,16 @@
+import { SAFE_PAYMENT_METHOD_ID } from '@lolas/shared';
 import { ApiError } from '../../api/client.js';
+
+/** Must match the server's Safe lookup: an active Asset named "safe", the store's own before company-wide. */
+export function findSafeAccountId(
+  accounts: Array<{ id: string; name: string; accountType: string; storeId: string | null }>,
+  storeId: string,
+): string | null {
+  const safes = accounts.filter((a) => a.accountType === 'Asset' && a.name.toLowerCase().includes('safe'));
+  return (safes.find((a) => a.storeId === storeId) ?? safes.find((a) => a.storeId === 'company' || a.storeId == null))?.id ?? null;
+}
+
+export const SAFE_METHOD_OPTION = { id: SAFE_PAYMENT_METHOD_ID, name: 'Safe' };
 
 export const inputCls =
   'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:bg-gray-50 disabled:text-gray-500';

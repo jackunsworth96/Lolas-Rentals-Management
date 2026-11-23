@@ -15,7 +15,7 @@ import { formatCurrency } from '../../utils/currency.js';
 import { manilaToday } from '../../utils/date.js';
 import { ExpenseTypePicker } from './ExpenseTypePicker.js';
 import { StaffPayoutFields } from './StaffPayoutFields.js';
-import { confirmationsOf, errorReasons, inputCls, labelCls, rememberType } from './expense-ui.js';
+import { SAFE_METHOD_OPTION, confirmationsOf, errorReasons, inputCls, labelCls, rememberType } from './expense-ui.js';
 
 export interface AccountOption {
   id: string;
@@ -33,6 +33,8 @@ interface Props {
   paymentMethods: Array<{ id: string; name: string }>;
   vehicles: Array<{ id: string; label: string }>;
   isManager: boolean;
+  /** Set only for managers; offers "Safe" as a way to pay. */
+  safeAccountId: string | null;
   canGrantAdvances: boolean;
   defaultDate: string;
   editing: EnrichedExpense | null;
@@ -51,7 +53,7 @@ function useDebounced<T>(value: T, ms: number): T {
 }
 
 export function ExpenseFormModal(props: Props) {
-  const { open, onClose, storeId, catalog, accounts, paymentMethods, vehicles, isManager, canGrantAdvances, defaultDate, editing } = props;
+  const { open, onClose, storeId, catalog, accounts, paymentMethods, vehicles, isManager, safeAccountId, canGrantAdvances, defaultDate, editing } = props;
   const createMut = useCreateExpense();
   const updateMut = useUpdateExpense();
   const routing = usePaymentRouting();
@@ -142,8 +144,12 @@ export function ExpenseFormModal(props: Props) {
   const overrideOptions = storeAccounts.filter((a) => ['Expense', 'Equity', 'Liability'].includes(a.accountType));
   const booksTo = overrideOpen && overrideAccountId ? overrideAccountId : category?.accountId ?? editing?.accountId ?? null;
 
-  const methodOptions = paymentMethods.filter((m) => !isCard(m.id));
-  const paysFrom = paymentMethodId ? routing.resolveReceivedIntoForStore(storeId, paymentMethodId) : null;
+  const methodOptions = [...paymentMethods.filter((m) => !isCard(m.id)), ...(safeAccountId ? [SAFE_METHOD_OPTION] : [])];
+  const paysFrom = !paymentMethodId
+    ? null
+    : paymentMethodId === SAFE_METHOD_OPTION.id
+      ? safeAccountId
+      : routing.resolveReceivedIntoForStore(storeId, paymentMethodId);
 
   const showVehicle = kind === 'standard' && (category?.requiresVehicle || category?.groupName === 'Vehicles' || !!editing?.vehicleId);
   const noteTooShort = !!category?.requiresNote && description.trim().length < NOTE_MIN;

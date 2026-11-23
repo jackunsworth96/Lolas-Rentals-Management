@@ -5,7 +5,7 @@ import {
   EntryRejectedError,
   round2,
 } from '@lolas/domain';
-import { Permission } from '@lolas/shared';
+import { Permission, SAFE_PAYMENT_METHOD_ID } from '@lolas/shared';
 import { getSupabaseClient } from '../../adapters/supabase/client.js';
 
 type Row = Record<string, unknown>;
@@ -50,11 +50,35 @@ export async function loadCategory(
 
 export const isCardMethod = (id: string) => ['card', 'creditcard', 'debitcard'].includes(id.toLowerCase().replace(/[\s_-]/g, ''));
 
+export const isSafeMethod = (id: string | null | undefined) => id === SAFE_PAYMENT_METHOD_ID;
+
+export function assertCanPayFrom(paymentMethodId: string | null | undefined, actor: ExpenseActor): void {
+  if (isSafeMethod(paymentMethodId) && !isManager(actor)) {
+    throw new EntryRejectedError(['Only a manager can pay from the Safe.']);
+  }
+}
+
+/** The store's Safe: the active Asset account named "safe", for the store or company-wide. */
+export async function resolveSafeAccount(storeId: string): Promise<string> {
+  const { data, error } = await getSupabaseClient()
+    .from('chart_of_accounts')
+    .select('id, name, store_id')
+    .eq('account_type', 'Asset')
+    .eq('is_active', true)
+    .ilike('name', '%safe%');
+  if (error) throw new Error(`Failed to load the Safe account: ${error.message}`);
+  const rows = (data ?? []) as Row[];
+  const safe = rows.find((r) => r.store_id === storeId) ?? rows.find((r) => r.store_id === 'company' || r.store_id == null);
+  if (!safe) throw new EntryRejectedError(['There is no Safe account set up for this store. Ask a manager to add it under Settings.']);
+  return String(safe.id);
+}
+
 /** The account a payment method pays out of at this store, from payment routing. */
 export async function resolvePaidFrom(storeId: string, paymentMethodId: string): Promise<string> {
   if (isCardMethod(paymentMethodId)) {
     throw new EntryRejectedError(['Card routes to customer card takings, so it can’t pay an expense. Choose cash, GCash or a bank account.']);
   }
+  if (isSafeMethod(paymentMethodId)) return resolveSafeAccount(storeId);
   const { data, error } = await getSupabaseClient()
     .from('payment_routing_rules')
     .select('received_into_account_id')

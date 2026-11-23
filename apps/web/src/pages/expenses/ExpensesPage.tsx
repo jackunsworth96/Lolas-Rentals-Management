@@ -16,7 +16,7 @@ import { ExpenseFormModal, type AccountOption } from '../../components/expenses/
 import { ExpenseList } from '../../components/expenses/ExpenseList.js';
 import { DailySummary } from '../../components/expenses/DailySummary.js';
 import { PayUnpaidModal } from '../../components/expenses/PayUnpaidModal.js';
-import { errorReasons, formatDateLabel, formatShortDate, inputCls, shiftDate } from '../../components/expenses/expense-ui.js';
+import { errorReasons, findSafeAccountId, formatDateLabel, formatShortDate, inputCls, shiftDate } from '../../components/expenses/expense-ui.js';
 import { formatCurrency } from '../../utils/currency.js';
 
 type View = 'day' | 'week' | 'month';
@@ -100,6 +100,7 @@ export default function ExpensesPage() {
     [fleet, storeId],
   );
   const accountName = (id: string | null) => accounts.find((a) => a.id === id)?.name ?? id ?? '—';
+  const safeAccountId = isManager ? findSafeAccountId(accounts, storeId) : null;
 
   const staffOptions = useMemo(() => {
     const m = new Map<string, string>();
@@ -307,6 +308,7 @@ export default function ExpensesPage() {
           paymentMethods={paymentMethods}
           vehicles={vehicles}
           isManager={isManager}
+          safeAccountId={safeAccountId}
           canGrantAdvances={canGrantAdvances}
           defaultDate={view === 'day' ? date : today}
           editing={editing}
@@ -335,6 +337,7 @@ export default function ExpensesPage() {
         storeId={storeId}
         expenses={selectedRows}
         paymentMethods={paymentMethods}
+        safeAccountId={safeAccountId}
         accountName={accountName}
       />
     </div>

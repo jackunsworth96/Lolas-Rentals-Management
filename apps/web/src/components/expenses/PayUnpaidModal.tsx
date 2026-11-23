@@ -4,7 +4,7 @@ import { Button } from '../common/Button.js';
 import { usePayExpenses, type EnrichedExpense } from '../../api/expenses.js';
 import { usePaymentRouting } from '../../hooks/use-payment-routing.js';
 import { formatCurrency } from '../../utils/currency.js';
-import { errorReasons, inputCls, labelCls } from './expense-ui.js';
+import { SAFE_METHOD_OPTION, errorReasons, inputCls, labelCls } from './expense-ui.js';
 
 interface Props {
   open: boolean;
@@ -13,17 +13,24 @@ interface Props {
   storeId: string;
   expenses: EnrichedExpense[];
   paymentMethods: Array<{ id: string; name: string }>;
+  /** Set only for managers; offers "Safe" as a way to pay. */
+  safeAccountId: string | null;
   accountName: (id: string | null) => string;
 }
 
 const isCard = (id: string) => ['card', 'creditcard', 'debitcard'].includes(id.toLowerCase().replace(/[\s_-]/g, ''));
 
-export function PayUnpaidModal({ open, onClose, onPaid, storeId, expenses, paymentMethods, accountName }: Props) {
+export function PayUnpaidModal({ open, onClose, onPaid, storeId, expenses, paymentMethods, safeAccountId, accountName }: Props) {
   const payMut = usePayExpenses();
   const routing = usePaymentRouting();
   const [methodId, setMethodId] = useState('');
   const total = expenses.reduce((s, e) => s + e.amount, 0);
-  const paysFrom = methodId ? routing.resolveReceivedIntoForStore(storeId, methodId) : null;
+  const methodOptions = [...paymentMethods.filter((m) => !isCard(m.id)), ...(safeAccountId ? [SAFE_METHOD_OPTION] : [])];
+  const paysFrom = !methodId
+    ? null
+    : methodId === SAFE_METHOD_OPTION.id
+      ? safeAccountId
+      : routing.resolveReceivedIntoForStore(storeId, methodId);
 
   function pay() {
     payMut.mutate(
@@ -65,7 +72,7 @@ export function PayUnpaidModal({ open, onClose, onPaid, storeId, expenses, payme
           <label htmlFor="pay-method" className={labelCls}>Paid with</label>
           <select id="pay-method" value={methodId} onChange={(e) => setMethodId(e.target.value)} className={inputCls}>
             <option value="">Choose payment method</option>
-            {paymentMethods.filter((m) => !isCard(m.id)).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            {methodOptions.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
           {methodId && (
             <p className={`mt-1 text-xs ${paysFrom ? 'text-gray-500' : 'text-red-600'}`}>
