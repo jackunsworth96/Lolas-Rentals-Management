@@ -80,6 +80,38 @@ describe('changeReturnTime', () => {
     expect(apply).not.toHaveBeenCalled();
   });
 
+  it('allows a courtesy late return a few hours past the paid days at no charge', async () => {
+    const { deps, apply, checkAvailability } = setup();
+    const result = await changeReturnTime(deps, {
+      orderId: 'order-1', newDropoffDatetime: '2026-11-12T06:45:00.000Z', reason: 'Late ferry', courtesy: true, employeeId: 'emp-1',
+    });
+
+    expect(result.reduction).toBe(0);
+    expect(checkAvailability).toHaveBeenCalled();
+    expect(apply).toHaveBeenCalledWith(expect.objectContaining({
+      meta: expect.objectContaining({ courtesy: true, courtesyHours: 4, reason: 'Late ferry' }),
+    }));
+    expect(apply.mock.calls[0][0].body).toContain('courtesy: 4h past paid days, no charge');
+  });
+
+  it('requires a reason for a courtesy late return', async () => {
+    const { deps, apply } = setup();
+    await expect(
+      changeReturnTime(deps, { orderId: 'order-1', newDropoffDatetime: '2026-11-12T06:45:00.000Z', courtesy: true, employeeId: null }),
+    ).rejects.toThrow(/reason is required/);
+    expect(apply).not.toHaveBeenCalled();
+  });
+
+  it('rejects a courtesy late return beyond the courtesy limit', async () => {
+    const { deps, apply } = setup();
+    await expect(
+      changeReturnTime(deps, {
+        orderId: 'order-1', newDropoffDatetime: '2026-11-12T16:00:00.000Z', reason: 'x', courtesy: true, employeeId: null,
+      }),
+    ).rejects.toThrow(/at most 12 hours/);
+    expect(apply).not.toHaveBeenCalled();
+  });
+
   it('rejects a later return when the vehicle is booked by someone else', async () => {
     const { deps, apply } = setup(baseOrder(), 0);
     await expect(

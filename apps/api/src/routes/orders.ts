@@ -430,19 +430,23 @@ router.get('/:id/return-time/preview', requirePermission(Permission.EditOrders),
 });
 
 // Reschedule the return: earlier at any time after pickup, or later within the
-// days already paid. Past the paid days staff must Extend. Price-neutral unless
-// `recalculate` is set, which shrinks an unpaid extension to the new return.
+// days already paid. Past the paid days staff must Extend, unless `courtesy` is
+// set, which allows a free late return of a few hours (reason required).
+// Price-neutral unless `recalculate` is set, which shrinks an unpaid extension.
 router.post('/:id/return-time', requirePermission(Permission.EditOrders), validateBody(z.object({
   newDropoffDatetime: z.string().min(1),
   reason: z.string().max(500).nullable().optional(),
   recalculate: z.boolean().optional(),
+  courtesy: z.boolean().optional(),
 })), async (req, res, next) => {
   try {
     const { changeReturnTime } = await import('../use-cases/orders/change-return-time.js');
-    const { newDropoffDatetime, reason, recalculate } = req.body as { newDropoffDatetime: string; reason?: string | null; recalculate?: boolean };
+    const { newDropoffDatetime, reason, recalculate, courtesy } = req.body as {
+      newDropoffDatetime: string; reason?: string | null; recalculate?: boolean; courtesy?: boolean;
+    };
     const result = await changeReturnTime(
       await returnTimeDeps(req),
-      { orderId: String(req.params.id), newDropoffDatetime, reason, recalculate, employeeId: req.user!.employeeId ?? null },
+      { orderId: String(req.params.id), newDropoffDatetime, reason, recalculate, courtesy, employeeId: req.user!.employeeId ?? null },
     );
     res.json({ success: true, data: result });
   } catch (err) { next(err); }

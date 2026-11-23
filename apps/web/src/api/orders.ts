@@ -304,10 +304,10 @@ export function useReturnTimeRecalcPreview(id: string, newDropoffDatetime: strin
 export function useChangeReturnTime() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, newDropoffDatetime, reason, recalculate }: {
-      id: string; newDropoffDatetime: string; reason?: string | null; recalculate?: boolean;
+    mutationFn: ({ id, newDropoffDatetime, reason, recalculate, courtesy }: {
+      id: string; newDropoffDatetime: string; reason?: string | null; recalculate?: boolean; courtesy?: boolean;
     }) =>
-      api.post<ChangeReturnTimeResult>(`/orders/${id}/return-time`, { newDropoffDatetime, reason, recalculate }),
+      api.post<ChangeReturnTimeResult>(`/orders/${id}/return-time`, { newDropoffDatetime, reason, recalculate, courtesy }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['orders'] });
       qc.invalidateQueries({ queryKey: ['fleet'] });

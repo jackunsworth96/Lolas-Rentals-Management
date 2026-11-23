@@ -5,6 +5,8 @@ import { extensionDayCount } from '../booking/price-extension-rental.js';
 import { formatManilaDate } from '../../utils/manila-date.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** How far past the paid days a free courtesy late return may go; beyond this staff must Extend. */
+export const COURTESY_LATE_RETURN_MAX_HOURS = 12;
 
 export interface ReturnTimeOrderItem {
   id: string;
@@ -92,6 +94,8 @@ export interface ChangeReturnTimeInput {
   reason?: string | null;
   employeeId: string | null;
   recalculate?: boolean;
+  /** Allow a free return past the paid days, up to COURTESY_LATE_RETURN_MAX_HOURS. Requires a reason. */
+  courtesy?: boolean;
 }
 
 export type ReturnTimeRecalcPreview =
@@ -242,17 +246,29 @@ export async function changeReturnTime(deps: ChangeReturnTimeDeps, input: Change
   const items = order.items.filter((i) => i.pickupDatetime && i.dropoffDatetime);
   if (items.length === 0) throw badRequest('Order has no rental items', 409);
 
+  const reason = input.reason?.trim() || null;
+  let courtesyHours = 0;
   for (const item of items) {
     if (newDropoff.getTime() <= new Date(item.pickupDatetime).getTime()) {
       throw badRequest('Return time must be after pickup');
     }
     const paidUntil = new Date(item.pickupDatetime).getTime() + item.rentalDaysCount * DAY_MS;
-    if (newDropoff.getTime() > paidUntil) {
+    const overMs = newDropoff.getTime() - paidUntil;
+    if (overMs <= 0) continue;
+    const paidDays = `${item.rentalDaysCount} paid day${item.rentalDaysCount === 1 ? '' : 's'}`;
+    const latest = formatManila(new Date(paidUntil).toISOString());
+    if (!input.courtesy) {
+      throw badRequest(`New return time is beyond the ${paidDays} (latest ${latest}). Use Extend instead.`);
+    }
+    if (overMs > COURTESY_LATE_RETURN_MAX_HOURS * 60 * 60 * 1000) {
       throw badRequest(
-        `New return time is beyond the ${item.rentalDaysCount} paid day${item.rentalDaysCount === 1 ? '' : 's'} (latest ${formatManila(new Date(paidUntil).toISOString())}). Use Extend instead.`,
+        `A courtesy late return can be at most ${COURTESY_LATE_RETURN_MAX_HOURS} hours past the ${paidDays} (latest ${formatManila(new Date(paidUntil + COURTESY_LATE_RETURN_MAX_HOURS * 60 * 60 * 1000).toISOString())}). Use Extend instead.`,
       );
     }
+    courtesyHours = Math.max(courtesyHours, Math.round((overMs / (60 * 60 * 1000)) * 100) / 100);
   }
+  if (courtesyHours > 0 && !reason) throw badRequest('A reason is required for a courtesy late return');
+  if (courtesyHours > 0 && input.recalculate) throw badRequest('A courtesy late return cannot recalculate the total');
 
   for (const item of items) {
     if (newDropoff.getTime() <= new Date(item.dropoffDatetime).getTime() || !item.vehicleId) continue;
@@ -277,9 +293,14 @@ export async function changeReturnTime(deps: ChangeReturnTimeDeps, input: Change
   const oldDropoffIso = items
     .map((i) => new Date(i.dropoffDatetime).toISOString())
     .reduce((latest, d) => (d > latest ? d : latest));
-  const reason = input.reason?.trim() || null;
-  const body = `Return time changed from ${formatManila(oldDropoffIso)} to ${formatManila(newDropoffIso)}${reason ? `. Reason: ${reason}` : ''}`;
-  const meta = { oldDropoffDatetime: oldDropoffIso, newDropoffDatetime: newDropoffIso, reason };
+  const courtesyNote = courtesyHours > 0 ? ` (courtesy: ${courtesyHours}h past paid days, no charge)` : '';
+  const body = `Return time changed from ${formatManila(oldDropoffIso)} to ${formatManila(newDropoffIso)}${courtesyNote}${reason ? `. Reason: ${reason}` : ''}`;
+  const meta = {
+    oldDropoffDatetime: oldDropoffIso,
+    newDropoffDatetime: newDropoffIso,
+    reason,
+    ...(courtesyHours > 0 ? { courtesy: true, courtesyHours } : {}),
+  };
 
   if (input.recalculate) {
     if (!deps.port.applyWithRecalc) throw badRequest('Recalculation is not available', 501);

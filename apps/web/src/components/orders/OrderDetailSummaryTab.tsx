@@ -43,6 +43,8 @@ function waiverFetchApiBase(): string {
 }
 
 const RETURN_CHARGE_FROM_DEPOSIT = '__deposit__';
+/** Must match COURTESY_LATE_RETURN_MAX_HOURS in the API's change-return-time use case. */
+const COURTESY_LATE_RETURN_MAX_HOURS = 12;
 
 function moneyAmount(val: unknown): number {
   if (val == null) return 0;
@@ -143,6 +145,7 @@ export function OrderDetailSummaryTab({
   const [newReturnLocal, setNewReturnLocal] = useState('');
   const [returnTimeReason, setReturnTimeReason] = useState('');
   const [recalculateReturnTotal, setRecalculateReturnTotal] = useState(true);
+  const [courtesyLateReturn, setCourtesyLateReturn] = useState(false);
 
   // ── Modal open/close ──
   const [extendOpen, setExtendOpen] = useState(false);
@@ -663,13 +666,17 @@ export function OrderDetailSummaryTab({
   const originalReturnDatetime = (firstReturnChange?.meta?.oldDropoffDatetime as string | undefined) ?? null;
   const returnPaidUntilMs = pickupMs !== null && totalRentalDays ? pickupMs + totalRentalDays * 86_400_000 : null;
   const newReturnMs = newReturnLocal ? new Date(manilaLocalToISO(newReturnLocal)).getTime() : null;
+  const returnPastPaidMs =
+    returnPaidUntilMs !== null && newReturnMs !== null && Number.isFinite(newReturnMs) ? newReturnMs - returnPaidUntilMs : 0;
+  const returnNeedsCourtesy = returnPastPaidMs > 0 && returnPastPaidMs <= COURTESY_LATE_RETURN_MAX_HOURS * 3_600_000;
   const returnTimeError = (() => {
     if (newReturnMs === null || !Number.isFinite(newReturnMs)) return null;
     if (pickupMs !== null && newReturnMs <= pickupMs) return 'Return must be after pickup.';
-    if (returnPaidUntilMs !== null && newReturnMs > returnPaidUntilMs)
-      return `That is past the ${totalRentalDays} paid days (latest ${formatDateTime(new Date(returnPaidUntilMs))}). Use Extend instead.`;
+    if (returnPaidUntilMs !== null && returnPastPaidMs > 0 && !returnNeedsCourtesy)
+      return `That is more than ${COURTESY_LATE_RETURN_MAX_HOURS} hours past the ${totalRentalDays} paid days (latest ${formatDateTime(new Date(returnPaidUntilMs))}). Use Extend instead.`;
     return null;
   })();
+  const courtesyBlocksSave = returnNeedsCourtesy && (!courtesyLateReturn || !returnTimeReason.trim());
   const returnMovesEarlier =
     editingReturnTime && !!returnDatetime && newReturnMs !== null && Number.isFinite(newReturnMs) &&
     !returnTimeError && newReturnMs < new Date(returnDatetime).getTime();
@@ -690,6 +697,7 @@ export function OrderDetailSummaryTab({
     setNewReturnLocal(isoToManilaDateTimeLocal(returnDatetime));
     setReturnTimeReason('');
     setRecalculateReturnTotal(true);
+    setCourtesyLateReturn(false);
     changeReturnTimeMut.reset();
   };
 
@@ -1132,7 +1140,7 @@ export function OrderDetailSummaryTab({
             <p className="text-sm font-medium text-teal-900">Change return time</p>
             <p className="text-xs text-teal-700">
               Current: <span className="font-medium">{formatManilaShort(returnDatetime)}</span>.
-              {returnRecalc ? ' The unpaid extension can be reduced below.' : ' No price change.'} Need more days? Use Extend.
+              {returnRecalc ? ' The unpaid extension can be reduced below.' : ' No price change.'} A few hours late can be allowed as a free courtesy (up to {COURTESY_LATE_RETURN_MAX_HOURS}h past the paid days). Need more days? Use Extend.
             </p>
             <div className="flex flex-wrap items-end gap-3">
               <label className="block">
@@ -1145,7 +1153,7 @@ export function OrderDetailSummaryTab({
                 />
               </label>
               <label className="block flex-1 min-w-[160px]">
-                <span className="text-xs font-medium text-teal-800">Reason (optional)</span>
+                <span className="text-xs font-medium text-teal-800">Reason {returnNeedsCourtesy ? '(required)' : '(optional)'}</span>
                 <input
                   type="text"
                   value={returnTimeReason}
@@ -1157,6 +1165,24 @@ export function OrderDetailSummaryTab({
               </label>
             </div>
             {returnTimeError && <p className="text-sm text-amber-700">{returnTimeError}</p>}
+            {returnNeedsCourtesy && returnPaidUntilMs !== null && (
+              <label className="flex items-start gap-2 rounded-lg border border-amber-300 bg-white p-3">
+                <input
+                  type="checkbox"
+                  checked={courtesyLateReturn}
+                  onChange={(e) => setCourtesyLateReturn(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-teal-brand focus:ring-teal-brand"
+                />
+                <span className="space-y-1 text-sm text-amber-900">
+                  <span className="block font-medium">
+                    Courtesy late return: {Math.round((returnPastPaidMs / 3_600_000) * 10) / 10}h past the paid days, no extra charge
+                  </span>
+                  <span className="block text-xs text-amber-800">
+                    Paid days end {formatDateTime(new Date(returnPaidUntilMs))}. Add a reason; it is logged in the order notes.
+                  </span>
+                </span>
+              </label>
+            )}
             {returnMovesEarlier && returnRecalcQuery.isFetching && !returnRecalcQuery.data && (
               <p className="text-xs text-teal-700">Checking whether the total changes…</p>
             )}
@@ -1188,11 +1214,17 @@ export function OrderDetailSummaryTab({
             <div className="flex gap-2">
               <button
                 type="button"
-                disabled={changeReturnTimeMut.isPending || !newReturnLocal || !!returnTimeError || newReturnMs === new Date(returnDatetime).getTime()}
+                disabled={changeReturnTimeMut.isPending || !newReturnLocal || !!returnTimeError || courtesyBlocksSave || newReturnMs === new Date(returnDatetime).getTime()}
                 onClick={() => {
                   const recalculate = !!returnRecalc && recalculateReturnTotal;
                   changeReturnTimeMut.mutate(
-                    { id: orderId, newDropoffDatetime: manilaLocalToISO(newReturnLocal), reason: returnTimeReason.trim() || null, recalculate },
+                    {
+                      id: orderId,
+                      newDropoffDatetime: manilaLocalToISO(newReturnLocal),
+                      reason: returnTimeReason.trim() || null,
+                      recalculate,
+                      courtesy: returnNeedsCourtesy && courtesyLateReturn,
+                    },
                     {
                       onSuccess: (data) => {
                         setEditingReturnTime(false);
