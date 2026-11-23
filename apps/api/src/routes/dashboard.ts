@@ -193,6 +193,7 @@ interface StoreMetrics {
   revenueTrend: RevenueTrendRow[] | null;
   revenueThisMonth: RevenueTrendRow[] | null;
   tomorrowAvailable: number;
+  tomorrowFreeingUp: string[];
   bookingSourceSplit: {
     directWeb: number;
     walkIn: number;
@@ -227,6 +228,7 @@ function emptyMetrics(financial: boolean): StoreMetrics {
     revenueTrend: financial ? [] : null,
     revenueThisMonth: financial ? [] : null,
     tomorrowAvailable: 0,
+    tomorrowFreeingUp: [],
     bookingSourceSplit: null,
     deviceSplit: null,
   };
@@ -362,7 +364,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
 
       sb
         .from('order_items')
-        .select('vehicle_id, orders!inner(store_id, status)')
+        .select('vehicle_id, dropoff_datetime, orders!inner(store_id, status)')
         .in('orders.status', ['active', 'confirmed'])
         .lt('pickup_datetime', `${tomorrowDate}T23:59:59+08:00`)
         .gt('dropoff_datetime', `${tomorrowDate}T00:00:00+08:00`)
@@ -755,13 +757,29 @@ router.get('/summary', authenticate, async (req, res, next) => {
       );
 
       const tomorrowBookedVehicleIds = new Set<string>();
+      const tomorrowLatestDropoff = new Map<string, string>();
       for (const item of (dataMap.get('tomorrowBookings') ?? [])) {
         const orderData = item.orders as unknown as { store_id: string; status: string } | null;
         if (!orderData) continue;
         if (sid && orderData.store_id !== sid) continue;
         const vid = item.vehicle_id as string | undefined;
-        if (vid) tomorrowBookedVehicleIds.add(vid);
+        if (!vid) continue;
+        tomorrowBookedVehicleIds.add(vid);
+        const dropoff = item.dropoff_datetime as string | null;
+        const existing = tomorrowLatestDropoff.get(vid);
+        if (dropoff && (!existing || dropoff > existing)) tomorrowLatestDropoff.set(vid, dropoff);
       }
+      const tomorrowFreeingUp: string[] = [];
+      for (const v of rentableFleet) {
+        const id = v.id as string;
+        if (ownerUseTomorrowIds.has(id) || unprocessedTomorrow.vehicleIds.has(id)) continue;
+        const dropoff = tomorrowLatestDropoff.get(id);
+        if (!dropoff) continue;
+        const dropoffMs = new Date(dropoff).getTime();
+        if (dropoffMs < tomorrowStartMs || dropoffMs > tomorrowEndMs) continue;
+        tomorrowFreeingUp.push(new Date(dropoffMs + 30 * 60 * 1000).toISOString());
+      }
+      tomorrowFreeingUp.sort();
       const tomorrowAvailable = availableAfterUnassignedHolds(
         freeUnitsByModel((id) =>
           tomorrowBookedVehicleIds.has(id) || ownerUseTomorrowIds.has(id) || unprocessedTomorrow.vehicleIds.has(id)),
@@ -988,6 +1006,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
         revenueTrend,
         revenueThisMonth,
         tomorrowAvailable,
+        tomorrowFreeingUp,
         bookingSourceSplit,
         deviceSplit,
       };

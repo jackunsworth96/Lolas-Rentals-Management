@@ -70,6 +70,7 @@ export interface StoreMetrics {
   revenueTrend: RevenueTrendRow[] | null;
   revenueThisMonth: RevenueTrendRow[] | null;
   tomorrowAvailable: number;
+  tomorrowFreeingUp: string[];
   bookingSourceSplit: {
     directWeb: number;
     walkIn: number;

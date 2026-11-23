@@ -65,6 +65,21 @@ function manilaHour(): number {
   return Number(new Date().toLocaleString('en-GB', { timeZone: 'Asia/Manila', hour: '2-digit', hour12: false }));
 }
 
+function manilaClock(iso: string): string {
+  return new Date(iso)
+    .toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit', hour12: true })
+    .replace(' ', '')
+    .toLowerCase();
+}
+
+export function freeingUpLabel(times: string[]): string | null {
+  if (times.length === 0) return null;
+  const first = manilaClock(times[0]!);
+  const firstCount = times.filter((t) => manilaClock(t) === first).length;
+  const later = times.length - firstCount;
+  return `+${firstCount} from ${first}${later > 0 ? `, ${later} more later` : ''}`;
+}
+
 const LONG_REPAIR_DAYS = 7;
 const MAX_NAMED_REPAIRS = 3;
 
@@ -206,7 +221,7 @@ export default function TodayTab({ storeId, selectedStoreId }: DashboardTabProps
           label="Available tomorrow"
           value={String(metrics?.tomorrowAvailable ?? 0)}
           icon={CalendarDays}
-          sub="tap for details"
+          sub={freeingUpLabel(metrics?.tomorrowFreeingUp ?? []) ?? 'tap for details'}
           onClick={() => setShowTomorrowAvailability(true)}
         />
         <KpiCard loading={loading} label="Fleet on rent" value={`${metrics?.fleetUtilisation ?? 0}%`} icon={GaugeIcon} sub="of rentable vehicles">

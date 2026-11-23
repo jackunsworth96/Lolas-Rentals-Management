@@ -37,6 +37,7 @@ const metrics = {
   revenueTrend: [],
   revenueThisMonth: [],
   tomorrowAvailable: 4,
+  tomorrowFreeingUp: ['2026-11-15T04:45:00.000Z', '2026-11-15T04:45:00.000Z', '2026-11-15T09:30:00.000Z'],
   bookingSourceSplit: { directWeb: 3, walkIn: 2, wooCommerce: 1, total: 6 },
   deviceSplit: { mobile: 4, desktop: 2, total: 6 },
 };
@@ -156,6 +157,7 @@ vi.mock('../src/components/orders/OrderDetailModal.js', () => ({
 }));
 
 const { default: DashboardPage } = await import('../src/pages/dashboard/DashboardPage.js');
+const { freeingUpLabel } = await import('../src/pages/dashboard/tabs/TodayTab.js');
 
 const OWNER = ['can_view_dashboard', 'can_view_lostopportunity', 'can_view_fleet'];
 
@@ -204,6 +206,17 @@ describe('dashboard tabs', () => {
     expect(screen.getByText('Click 02 in repair: Gearbox rebuild (9 days)')).toBeTruthy();
     // The NGO payout is paid when the owner sees fit, so it is not an "attention" item.
     expect(screen.queryByText(/NGO payout pending/)).toBeNull();
+  });
+
+  it('shows when units free up tomorrow under the Available tomorrow card', () => {
+    mocks.permissions = OWNER;
+    renderAt('/dashboard');
+    expect(screen.getByText('+2 from 12:45pm, 1 more later')).toBeTruthy();
+  });
+
+  it('describes tomorrow returns, falling back when there are none', () => {
+    expect(freeingUpLabel([])).toBeNull();
+    expect(freeingUpLabel(['2026-11-15T01:30:00.000Z'])).toBe('+1 from 9:30am');
   });
 
   it('opens the day\'s transactions from the Revenue today card', () => {
