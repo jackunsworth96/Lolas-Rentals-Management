@@ -11,7 +11,7 @@ import { getDashboardAvailabilityModel, type DashboardAvailabilityModel } from '
 import { availableAfterUnassignedHolds, unprocessedBookingHolds } from '../lib/dashboard-unprocessed-bookings.js';
 import { ownerUseNotEndedBy, ownerUseVehicleIdsOverlapping } from '../lib/owner-use-window.js';
 import { fetchAll, type PageQuery } from '../lib/fetch-all.js';
-import { fleetOnRentPercent } from '../lib/fleet-on-rent.js';
+import { fleetOnRentPercent, operatingFleetStatusKeys } from '../lib/fleet-on-rent.js';
 import { revenueAmount, revenuePaymentsOnly } from '../lib/revenue-payments.js';
 import { buildOverdueReturns } from '../lib/dashboard-overdue.js';
 import {
@@ -569,6 +569,9 @@ router.get('/summary', authenticate, async (req, res, next) => {
         .filter((s) => s.is_rentable === true)
         .map((s) => s.name as string),
     );
+    const operatingStatusKeys = operatingFleetStatusKeys(
+      fleetStatuses as Array<{ id: string; name: string; is_rentable: boolean }>,
+    );
 
     const fleetModels = dataMap.get('fleetModels') ?? [];
     const fleetModelMap = new Map<string, string>();
@@ -696,6 +699,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
       const rentableFleet = storeFleet.filter(
         (v) => rentableStatusIds.has(v.status as string) || rentableStatusNames.has(v.status as string),
       );
+      const operatingFleet = storeFleet.filter((v) => operatingStatusKeys.has(v.status as string));
       const storeActiveVehicleIds = new Set<string>();
       for (const item of ninepmCandidates) {
         const orderData = item.orders as unknown as { store_id: string; status: string } | null;
@@ -770,7 +774,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
         if (dropoff && (!existing || dropoff > existing)) tomorrowLatestDropoff.set(vid, dropoff);
       }
       const tomorrowFreeingUp: string[] = [];
-      for (const v of rentableFleet) {
+      for (const v of operatingFleet) {
         const id = v.id as string;
         if (ownerUseTomorrowIds.has(id) || unprocessedTomorrow.vehicleIds.has(id)) continue;
         const dropoff = tomorrowLatestDropoff.get(id);
@@ -1573,6 +1577,8 @@ router.get('/availability-detail', async (req, res, next) => {
 
     if (fleetRes.error) throw new Error(fleetRes.error.message);
     if (fleetStatusRes.error) throw new Error(fleetStatusRes.error.message);
+    if (orderItemsRes.error) throw new Error(orderItemsRes.error.message);
+    if (vehicleModelsRes.error) throw new Error(vehicleModelsRes.error.message);
     if (ownerUseRes.error) throw new Error(ownerUseRes.error.message);
     if (unprocessedRes.error) throw new Error(unprocessedRes.error.message);
 
@@ -1587,11 +1593,8 @@ router.get('/availability-detail', async (req, res, next) => {
       storeIdParam && storeIdParam !== 'all' ? storeIdParam : undefined,
     );
 
-    const rentableStatusIds = new Set(
-      fleetStatuses.filter((s) => s.is_rentable).map((s) => s.id as string),
-    );
-    const rentableStatusNames = new Set(
-      fleetStatuses.filter((s) => s.is_rentable).map((s) => s.name as string),
+    const operatingStatusKeys = operatingFleetStatusKeys(
+      fleetStatuses as Array<{ id: string; name: string; is_rentable: boolean }>,
     );
 
     const storeFleet =
@@ -1599,9 +1602,7 @@ router.get('/availability-detail', async (req, res, next) => {
         ? allFleet.filter((v) => v.store_id === storeIdParam)
         : allFleet;
 
-    const rentableFleet = storeFleet.filter(
-      (v) => rentableStatusIds.has(v.status as string) || rentableStatusNames.has(v.status as string),
-    );
+    const operatingFleet = storeFleet.filter((v) => operatingStatusKeys.has(v.status as string));
 
     const bookedVehicleIds = new Set<string>();
     const vehicleDropoffs = new Map<string, string>();
@@ -1635,16 +1636,17 @@ router.get('/availability-detail', async (req, res, next) => {
       units: Array<{ id: string; name: string; surfRack: boolean; isBooked: boolean; dropoff: string | null }>;
     }>();
 
-    for (const v of rentableFleet) {
+    for (const v of operatingFleet) {
       const rawModelId = v.model_id as string | null;
-      if (!rawModelId) continue;
-      const rawModelName = modelNameMap.get(rawModelId) ?? 'Unknown';
+      const rawModelName = (rawModelId ? modelNameMap.get(rawModelId) : null) ?? 'Unknown';
       const { modelId, modelName, isScooter } = getDashboardAvailabilityModel(rawModelName);
       if (!modelMap.has(modelId)) modelMap.set(modelId, { modelName, isScooter, units: [] });
+      const onRent = v.status === 'active' || v.status === 'Active';
       const isBooked =
         bookedVehicleIds.has(v.id as string)
         || ownerUseIds.has(v.id as string)
-        || unprocessedHolds.vehicleIds.has(v.id as string);
+        || unprocessedHolds.vehicleIds.has(v.id as string)
+        || (countingNow && onRent);
       modelMap.get(modelId)!.units.push({
         id: v.id as string,
         name: v.name as string,

@@ -70,6 +70,7 @@ export default function DashboardPage() {
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     void queryClient.invalidateQueries({ queryKey: ['analytics'] });
+    void queryClient.invalidateQueries({ queryKey: ['availability-detail'] });
   };
 
   const tabProps: DashboardTabProps = { storeId, selectedStoreId, storeName };

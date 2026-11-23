@@ -191,7 +191,7 @@ function ModelCard({
 }
 
 export function AvailabilityDetailModal({ open, onClose, storeId, date, onBookVehicle }: Props) {
-  const { data, isLoading } = useAvailabilityDetail(storeId, open, date);
+  const { data, isLoading, isError } = useAvailabilityDetail(storeId, open, date);
   // Turn-aways are only meaningful for a walk-in standing at the counter today,
   // and need a concrete store to attribute them to.
   const turnedAwayStoreId = !date && storeId && storeId !== 'all' ? storeId : null;
@@ -218,7 +218,11 @@ export function AvailabilityDetailModal({ open, onClose, storeId, date, onBookVe
         </div>
       )}
 
-      {!isLoading && data?.models.length === 0 && (
+      {!isLoading && isError && (
+        <p className="py-8 text-center text-sm text-red-600">Couldn&apos;t load fleet availability. Try Refresh.</p>
+      )}
+
+      {!isLoading && !isError && data?.models.length === 0 && (
         <p className="py-8 text-center text-sm text-gray-400">No fleet data available</p>
       )}
 
