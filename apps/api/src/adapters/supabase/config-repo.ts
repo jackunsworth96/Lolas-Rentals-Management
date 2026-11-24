@@ -224,7 +224,16 @@ export function createConfigRepo(): ConfigRepository {
     getTaskCategories: () => selectAllActive<TaskCategory>('task_categories'),
     getTransferRoutes: (storeId) => selectWhereActive<TransferRoute>('transfer_routes', 'store_id', storeId),
     getDayTypes: () => selectAll<DayType>('day_types'),
-    getChartOfAccounts: () => selectAllActive<Account>('chart_of_accounts'),
+    // Archived stores are read-only at the database level, so their accounts stay is_active; hide them here.
+    async getChartOfAccounts() {
+      const [accounts, archived] = await Promise.all([
+        selectAllActive<Account & { storeId?: string | null }>('chart_of_accounts'),
+        sb().from('stores').select('id').eq('is_active', false),
+      ]);
+      if (archived.error) throw new Error(`Failed to fetch stores: ${archived.error.message}`);
+      const archivedIds = new Set(((archived.data ?? []) as Array<{ id: string }>).map((s) => s.id));
+      return accounts.filter((a) => !a.storeId || !archivedIds.has(a.storeId));
+    },
     async getPawCardEstablishments() {
       const { data, error } = await sb()
         .from('paw_card_establishments')
