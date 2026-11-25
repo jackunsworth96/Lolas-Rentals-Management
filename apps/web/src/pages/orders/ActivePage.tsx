@@ -8,6 +8,7 @@ import { WhatsAppNumberText } from '../../components/common/WhatsAppNumberText.j
 import { OrderDetailModal } from '../../components/orders/OrderDetailModal.js';
 import { InspectionModal } from '../../components/orders/InspectionModal.js';
 import { formatCurrency } from '../../utils/currency.js';
+import { manilaToday, isoToManilaDateAndTime } from '../../utils/date.js';
 import { usePaymentMethods } from '../../api/config.js';
 import type { EnrichedOrder } from '../../types/api.js';
 import { TransportBadge } from '../../components/orders/TransportBadge.js';
@@ -16,14 +17,18 @@ type DateFilter = 'all' | 'today' | 'tomorrow';
 type PickupSort = 'none' | 'asc' | 'desc';
 
 function getDateStr(offset: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + offset);
+  const d = new Date(`${manilaToday()}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + offset);
   return d.toISOString().slice(0, 10);
+}
+
+function manilaDateOf(iso: string): string {
+  return isoToManilaDateAndTime(iso).date;
 }
 
 function returnDateColor(returnDatetime: string | null): 'red' | 'yellow' | 'gray' {
   if (!returnDatetime) return 'gray';
-  const retDate = returnDatetime.slice(0, 10);
+  const retDate = manilaDateOf(returnDatetime);
   const todayStr = getDateStr(0);
   if (retDate < todayStr) return 'red';
   if (retDate === todayStr) return 'yellow';
@@ -95,10 +100,10 @@ export default function ActivePage() {
 
     if (dateFilter === 'today') {
       const todayStr = getDateStr(0);
-      list = list.filter((o) => o.returnDatetime && o.returnDatetime.slice(0, 10) === todayStr);
+      list = list.filter((o) => o.returnDatetime && manilaDateOf(o.returnDatetime) === todayStr);
     } else if (dateFilter === 'tomorrow') {
       const tomorrowStr = getDateStr(1);
-      list = list.filter((o) => o.returnDatetime && o.returnDatetime.slice(0, 10) === tomorrowStr);
+      list = list.filter((o) => o.returnDatetime && manilaDateOf(o.returnDatetime) === tomorrowStr);
     }
 
     if (pickupSort !== 'none') {
