@@ -234,11 +234,11 @@ export function FleetPreviewSection() {
           Choose Your Ride
         </h2>
         <p
-          className="font-lato"
+          className="font-lato text-balance"
           style={{
             fontSize: 16,
             color: '#363737',
-            opacity: 0.65,
+            opacity: 0.8,
             maxWidth: 480,
             margin: '0 auto',
             lineHeight: 1.6,
@@ -308,12 +308,13 @@ export function FleetPreviewSection() {
                   )}
                   {/* Price badge */}
                   <div
-                    className="font-lato"
+                    className="font-lato tabular-nums"
                     style={{
-                      position: 'absolute', bottom: 10, right: 10,
-                      backgroundColor: 'rgba(255,255,255,0.95)',
-                      borderRadius: 9999, padding: '3px 10px',
-                      fontSize: 11, fontWeight: 700, color: '#00577C',
+                      position: 'absolute', bottom: 12, right: 12,
+                      backgroundColor: '#FFFFFF',
+                      border: '1px solid rgba(0,87,124,0.15)',
+                      borderRadius: 9999, padding: '5px 12px',
+                      fontSize: 13, fontWeight: 700, color: '#00577C',
                       boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
                     }}
                   >
@@ -326,47 +327,49 @@ export function FleetPreviewSection() {
                   <p className="font-lato" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#00577C', marginBottom: 2 }}>
                     {v.name}
                   </p>
-                  <h5
+                  <h3
                     className="font-headline font-bold"
-                    style={{ fontSize: 20, color: '#363737', marginBottom: 10 }}
+                    style={{ fontSize: 22, color: '#363737', marginBottom: 10, lineHeight: 1.25 }}
                   >
                     {v.subtitle}
-                  </h5>
+                  </h3>
                   <p
-                    className="font-lato"
-                    style={{ fontSize: 14, color: '#363737', opacity: 0.65, marginBottom: 20, lineHeight: 1.5, flex: 1 }}
+                    className="font-lato text-pretty"
+                    style={{ fontSize: 15, color: '#363737', opacity: 0.8, marginBottom: 20, lineHeight: 1.55, flex: 1 }}
                   >
                     {v.desc}
                   </p>
-                  <Link to="/book/reserve">
-                    <button
-                      style={{
-                        width: '100%',
-                        padding: '12px 0',
-                        backgroundColor: '#FCBC5A',
-                        color: '#363737',
-                        border: '2px solid #363737',
-                        borderRadius: 8,
-                        fontWeight: 800,
-                        fontSize: 14,
-                        letterSpacing: '0.05em',
-                        textTransform: 'uppercase',
-                        cursor: 'pointer',
-                        boxShadow: '3px 3px 0 #363737',
-                        transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-                        fontFamily: 'Lato, sans-serif',
-                      }}
-                      onMouseEnter={(e) => {
-                        (e.currentTarget as HTMLButtonElement).style.transform = 'translate(-2px, -2px)';
-                        (e.currentTarget as HTMLButtonElement).style.boxShadow = '5px 5px 0 #363737';
-                      }}
-                      onMouseLeave={(e) => {
-                        (e.currentTarget as HTMLButtonElement).style.transform = 'translate(0, 0)';
-                        (e.currentTarget as HTMLButtonElement).style.boxShadow = '3px 3px 0 #363737';
-                      }}
-                    >
-                      Book Your Ride
-                    </button>
+                  <Link
+                    to="/book/reserve"
+                    className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-brand"
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      padding: '12px 0',
+                      backgroundColor: '#FCBC5A',
+                      color: '#363737',
+                      border: '2px solid #363737',
+                      borderRadius: 8,
+                      fontWeight: 800,
+                      fontSize: 14,
+                      letterSpacing: '0.05em',
+                      textTransform: 'uppercase',
+                      textAlign: 'center',
+                      textDecoration: 'none',
+                      boxShadow: '3px 3px 0 #363737',
+                      transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                      fontFamily: 'Lato, sans-serif',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'translate(-2px, -2px)';
+                      e.currentTarget.style.boxShadow = '5px 5px 0 #363737';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'translate(0, 0)';
+                      e.currentTarget.style.boxShadow = '3px 3px 0 #363737';
+                    }}
+                  >
+                    Book Your Ride
                   </Link>
                 </div>
               </BorderGlow>

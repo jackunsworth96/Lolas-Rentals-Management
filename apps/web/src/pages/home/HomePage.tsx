@@ -422,20 +422,22 @@ function HeroSection() {
           <AnimatedHeading
             text="Siargao Scooter & TukTuk Rentals"
             tag="span"
-            className="block text-teal-brand"
+            className="block text-balance text-teal-brand"
             delay={20}
           />
+          {/* Gold on sand is ~1.4:1 — the charcoal offset is what makes this line legible */}
           <AnimatedHeading
             text="Without The Sketchy Experience"
             tag="span"
-            className="block italic font-extrabold text-gold-brand"
+            className="block text-balance italic font-extrabold text-gold-brand"
+            style={{ textShadow: '0.045em 0.045em 0 #363737' }}
             delay={20}
           />
         </h1>
 
         {/* Subheadline */}
         <motion.p
-          className="font-lato mx-auto max-w-[22rem] sm:max-w-[560px]"
+          className="font-lato mx-auto max-w-[22rem] text-balance sm:max-w-[560px]"
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: 'easeOut', delay: 0.5 }}
@@ -595,7 +597,7 @@ function HeroSection() {
             }}
           >
             Vehicles fill up fast in peak season
-            <span className="hidden sm:inline"> - </span>
+            <span className="hidden sm:inline"> – </span>
             <br className="sm:hidden" aria-hidden="true" />
             <span className="font-extrabold text-teal-brand">secure yours now</span>
           </motion.p>
@@ -839,13 +841,13 @@ export default function HomePage() {
               What&apos;s Included
             </p>
             <h2
-              className="font-headline font-bold"
+              className="font-headline font-bold text-balance"
               style={{
                 textAlign: 'center',
-                fontSize: 'clamp(28px, 4vw, 38px)',
+                fontSize: 'clamp(32px, 5vw, 42px)',
                 color: '#363737',
                 lineHeight: 1.2,
-                maxWidth: 540,
+                maxWidth: 680,
                 margin: '0 auto 56px',
               }}
             >
@@ -853,7 +855,7 @@ export default function HomePage() {
             </h2>
 
             <motion.div
-              className="grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5"
+              className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4"
               {...inclusionGridMotionProps}
             >
 
@@ -864,7 +866,7 @@ export default function HomePage() {
                 style={{ borderTop: '4px solid #00577C' }}
                 whileHover={inclusionCardHover}
               >
-                <span className="mb-5 inline-flex items-center gap-1.5 font-lato text-[10px] font-bold uppercase tracking-widest" style={{ color: '#00577C' }}>
+                <span className="mb-5 inline-flex items-center gap-1.5 font-lato text-[11px] font-bold uppercase tracking-widest" style={{ color: '#00577C' }}>
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" stroke="#00577C" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   Safety
                 </span>
@@ -883,7 +885,7 @@ export default function HomePage() {
                     </li>
                   ))}
                 </ul>
-                <p className="mt-5 font-lato text-xs leading-relaxed" style={{ color: '#363737', opacity: 0.55 }}>
+                <p className="mt-5 text-pretty font-lato text-[13px] leading-relaxed" style={{ color: '#363737', opacity: 0.8 }}>
                   You&apos;re protected before you even start the engine.
                 </p>
               </motion.div>
@@ -895,7 +897,7 @@ export default function HomePage() {
                 style={{ borderTop: '4px solid #FCBC5A' }}
                 whileHover={inclusionCardHover}
               >
-                <span className="mb-5 inline-flex items-center gap-1.5 font-lato text-[10px] font-bold uppercase tracking-widest" style={{ color: '#c8672a' }}>
+                <span className="mb-5 inline-flex items-center gap-1.5 font-lato text-[11px] font-bold uppercase tracking-widest" style={{ color: '#a64f25' }}>
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="4.5" stroke="#c8672a" strokeWidth="1.6"/><path d="M6 3.5v2.75l1.5 1" stroke="#c8672a" strokeWidth="1.5" strokeLinecap="round"/></svg>
                   Convenience
                 </span>
@@ -915,36 +917,8 @@ export default function HomePage() {
                     </li>
                   ))}
                 </ul>
-                <p className="mt-5 font-lato text-xs leading-relaxed" style={{ color: '#363737', opacity: 0.55 }}>
+                <p className="mt-5 text-pretty font-lato text-[13px] leading-relaxed" style={{ color: '#363737', opacity: 0.8 }}>
                   Everything pre-sorted so you can just go.
-                </p>
-              </motion.div>
-
-              {/* ── Backup — brand-500 #d68035 ── */}
-              <motion.div
-                {...(isMobile ? inclusionCardScrollUp : { variants: inclusionCardVariants })}
-                className="flex flex-col rounded-2xl bg-white p-6 shadow-sm transition-shadow duration-300 ease-out"
-                style={{ borderTop: '4px solid #d68035' }}
-                whileHover={inclusionCardHover}
-              >
-                <span className="mb-5 inline-flex items-center gap-1.5 font-lato text-[10px] font-bold uppercase tracking-widest" style={{ color: '#d68035' }}>
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1.5C4 1.5 2.5 3 2.5 5c0 2.5 3.5 5.5 3.5 5.5S9.5 7.5 9.5 5c0-2-1.5-3.5-3.5-3.5z" stroke="#d68035" strokeWidth="1.4" strokeLinejoin="round"/></svg>
-                  Backup
-                </span>
-                <ul className="flex-1 space-y-3">
-                  {[
-                    { icon: iconPeaceOfMind, label: 'Damage Cover' },
-                  ].map((item) => (
-                    <li key={item.label} className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: '#FDF1E4' }}>
-                        <img src={item.icon} alt="" className="mix-blend-multiply" style={{ width: 26, height: 26, objectFit: 'contain' }} />
-                      </div>
-                      <span className="font-lato text-sm font-medium" style={{ color: '#363737' }}>{item.label}</span>
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-5 font-lato text-xs leading-relaxed" style={{ color: '#363737', opacity: 0.55 }}>
-                  If something goes wrong, we&apos;re always reachable.
                 </p>
               </motion.div>
 
@@ -955,7 +929,7 @@ export default function HomePage() {
                 style={{ borderTop: '4px solid #363737' }}
                 whileHover={inclusionCardHover}
               >
-                <span className="mb-5 inline-flex items-center gap-1.5 font-lato text-[10px] font-bold uppercase tracking-widest" style={{ color: '#363737' }}>
+                <span className="mb-5 inline-flex items-center gap-1.5 font-lato text-[11px] font-bold uppercase tracking-widest" style={{ color: '#363737' }}>
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="2" cy="6" r="1.2" fill="#363737"/><circle cx="6" cy="6" r="1.2" fill="#363737"/><circle cx="10" cy="6" r="1.2" fill="#363737"/></svg>
                   And More
                 </span>
@@ -972,7 +946,7 @@ export default function HomePage() {
                     </li>
                   ))}
                 </ul>
-                <p className="mt-5 font-lato text-xs leading-relaxed" style={{ color: '#363737', opacity: 0.55 }}>
+                <p className="mt-5 text-pretty font-lato text-[13px] leading-relaxed" style={{ color: '#363737', opacity: 0.8 }}>
                   Little things that make a big difference.
                 </p>
               </motion.div>
@@ -984,16 +958,17 @@ export default function HomePage() {
                 style={{ borderTop: '4px dashed #c8672a' }}
                 whileHover={inclusionCardHover}
               >
-                <span className="mb-5 inline-flex items-center gap-1.5 font-lato text-[10px] font-bold uppercase tracking-widest" style={{ color: '#c8672a' }}>
+                <span className="mb-5 inline-flex items-center gap-1.5 font-lato text-[11px] font-bold uppercase tracking-widest" style={{ color: '#a64f25' }}>
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 2v8M2 6h8" stroke="#c8672a" strokeWidth="1.8" strokeLinecap="round"/></svg>
                   Add-ons
                 </span>
                 <ul className="flex-1 space-y-3">
                   {[
-                    { icon: iconSurfRack, label: 'Surf Rack' },
-                    { icon: iconBungee,   label: 'Bungee Cord' },
-                    { icon: iconDelivery, label: 'Delivery' },
-                    { icon: iconNinePm,   label: 'Late Return' },
+                    { icon: iconPeaceOfMind, label: 'Peace of Mind' },
+                    { icon: iconSurfRack,    label: 'Surf Rack' },
+                    { icon: iconBungee,      label: 'Bungee Cord' },
+                    { icon: iconDelivery,    label: 'Delivery' },
+                    { icon: iconNinePm,      label: 'Late Return' },
                   ].map((item) => (
                     <li key={item.label} className="flex items-center gap-3">
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: '#FCF0E8' }}>
@@ -1003,7 +978,7 @@ export default function HomePage() {
                     </li>
                   ))}
                 </ul>
-                <p className="mt-5 font-lato text-xs leading-relaxed" style={{ color: '#363737', opacity: 0.55 }}>
+                <p className="mt-5 text-pretty font-lato text-[13px] leading-relaxed" style={{ color: '#363737', opacity: 0.8 }}>
                   Add what you need at checkout.
                 </p>
               </motion.div>
@@ -1121,11 +1096,11 @@ export default function HomePage() {
               </div>
 
               {/* Body text */}
-              <p className="font-lato" style={{ fontSize: 16, color: '#363737', lineHeight: 1.7, marginBottom: 12, opacity: 0.8, maxWidth: 380 }}>
+              <p className="font-lato text-pretty" style={{ fontSize: 16, color: '#363737', lineHeight: 1.7, marginBottom: 12, opacity: 0.85, maxWidth: 380 }}>
                 Every rental directly funds spay, neuter and vaccination clinics
                 for Siargao&apos;s street animals through our Be Pawsitive partnership.
               </p>
-              <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.7, opacity: 0.65, marginBottom: 28, maxWidth: 380 }}>
+              <p className="font-lato text-pretty" style={{ fontSize: 15, color: '#363737', lineHeight: 1.7, opacity: 0.8, marginBottom: 28, maxWidth: 380 }}>
                 It costs just <PesoSign />800 to spay or neuter a stray. Every booking makes a difference.
               </p>
 
@@ -1170,8 +1145,7 @@ export default function HomePage() {
         <div
           style={{
             maxWidth: 1280,
-            margin: 'calc(48px * 1.7) auto 0',
-            padding: '0 5%',
+            margin: '80px auto 0',
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
             gap: 48,

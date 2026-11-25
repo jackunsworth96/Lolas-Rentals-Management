@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { usePublicReviews, type Review } from '../../api/reviews.js';
+import { useLiveCustomerCount } from '../../hooks/useLiveCustomerCount.js';
 import { BrandCard } from '../public/BrandCard.js';
 
 const FALLBACK_REVIEWS = [
@@ -53,20 +54,33 @@ const REVIEW_PREVIEW_CHARS = 120;
 function ReviewQuote({ text }: { text: string }) {
   const [expanded, setExpanded] = useState(false);
   const isLong = text.length > REVIEW_PREVIEW_CHARS;
-  const shown = !isLong || expanded ? text : `${text.slice(0, REVIEW_PREVIEW_CHARS)}...`;
+  const shown = !isLong || expanded ? text : `${text.slice(0, REVIEW_PREVIEW_CHARS).trimEnd()}…`;
 
   return (
     <div className="mb-6 flex-1">
-      <p className="font-lato text-sm italic leading-relaxed text-charcoal-brand">{shown}</p>
+      <p className="font-lato text-pretty text-[15px] italic leading-relaxed text-charcoal-brand">{shown}</p>
       {isLong && (
         <button
           type="button"
-          className="font-lato mt-1 cursor-pointer text-xs text-[#00577C] underline"
+          aria-expanded={expanded}
+          className="font-lato mt-2 cursor-pointer text-sm font-bold text-teal-brand underline underline-offset-2"
           onClick={() => setExpanded((e) => !e)}
         >
           {expanded ? 'Read less' : 'Read more'}
         </button>
       )}
+    </div>
+  );
+}
+
+function StarRow({ rating }: { rating: number }) {
+  return (
+    <div className="mb-4 flex gap-0.5" role="img" aria-label={`${rating} out of 5 stars`}>
+      {Array.from({ length: rating }).map((_, i) => (
+        <svg key={i} width={18} height={18} viewBox="0 0 24 24" fill="#FCBC5A" aria-hidden="true">
+          <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+        </svg>
+      ))}
     </div>
   );
 }
@@ -84,6 +98,7 @@ function mapApiToDisplay(r: Review, index: number): DisplayReview {
 
 export function ReviewsSection() {
   const { data, isLoading } = usePublicReviews();
+  const explorers = Math.floor(useLiveCustomerCount() / 100) * 100;
 
   const rows: DisplayReview[] = useMemo(() => {
     if (!isLoading && data && data.length > 0) {
@@ -105,10 +120,16 @@ export function ReviewsSection() {
     <section className="px-6 py-16">
       <div className="mx-auto max-w-7xl">
         <div className="mb-12 text-center">
-          <h3 className="mb-2 font-headline text-3xl font-black text-charcoal-brand">
-            Loved by 500+ Explorers
-          </h3>
-          <p className="font-lato italic text-charcoal-brand/60">
+          <p className="mb-3 font-lato text-[13px] font-bold uppercase tracking-[0.1em] text-teal-brand">
+            Reviews
+          </p>
+          <h2
+            className="mb-4 font-headline font-bold text-balance"
+            style={{ fontSize: 'clamp(32px, 5vw, 42px)', lineHeight: 1.2, color: '#363737' }}
+          >
+            Loved by <span className="tabular-nums">{explorers.toLocaleString()}+</span> Explorers
+          </h2>
+          <p className="mx-auto max-w-[480px] font-lato text-base text-balance text-charcoal-brand/80">
             From all corners of the world, for one shared cause.
           </p>
         </div>
@@ -127,21 +148,15 @@ export function ReviewsSection() {
               <div key={r.key} className={reviewCardSlotClassName}>
                 <BrandCard className="h-full">
                   <div className="flex h-full min-h-[220px] flex-col p-8">
-                    <div className="mb-4 flex gap-0.5">
-                      {Array.from({ length: r.starRating }).map((_, i) => (
-                        <span key={i} className="text-xl text-gold-brand">
-                          ⭐
-                        </span>
-                      ))}
-                    </div>
+                    <StarRow rating={r.starRating} />
                     <ReviewQuote text={r.text} />
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sand-brand text-sm font-black text-teal-brand">
+                      <div className="flex size-10 items-center justify-center rounded-full bg-sand-brand text-sm font-black text-teal-brand">
                         {r.initials}
                       </div>
                       <div>
-                        <h6 className="font-lato text-sm font-bold text-charcoal-brand">{r.name}</h6>
-                        <p className="font-lato text-[10px] font-black uppercase text-charcoal-brand/50">{r.role}</p>
+                        <p className="font-lato text-sm font-bold text-charcoal-brand">{r.name}</p>
+                        <p className="font-lato text-[11px] font-bold uppercase tracking-[0.05em] text-charcoal-brand/75">{r.role}</p>
                       </div>
                     </div>
                   </div>
