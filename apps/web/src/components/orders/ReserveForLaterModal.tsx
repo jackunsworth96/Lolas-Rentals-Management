@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { isValidWhatsAppE164 } from '@lolas/shared';
 import { Modal } from '../common/Modal.js';
+import { StoreClosedNotice } from '../booking/StoreClosedNotice.js';
 import { WhatsAppNumberInput } from '../common/WhatsAppNumberInput.js';
 import { normalizeApiBase } from '../../api/normalize-api-base.js';
 import { useCreateWalkInReserved } from '../../api/orders-raw.js';
@@ -449,6 +450,7 @@ export function ReserveForLaterModal({ open, onClose }: Props) {
               </select>
             </div>
           </div>
+          <StoreClosedNotice pickup={pickupDate} dropoff={dropoffDate} staff className="mt-2" />
           {!datesValid && pickupDatetime && dropoffDatetime && (
             <p className="mt-1 font-lato text-xs text-red-600">
               Drop-off must be after pick-up.

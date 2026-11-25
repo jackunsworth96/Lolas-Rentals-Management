@@ -2,7 +2,7 @@ import { createBookingAdapter } from '../adapters/supabase/booking-adapter.js';
 import { randomBytes } from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
-import { SubmitDirectBookingRequestSchema, type SubmitDirectBookingInput, assertBookingLeadTime, rebaseAddonLines } from '@lolas/shared';
+import { SubmitDirectBookingRequestSchema, type SubmitDirectBookingInput, assertBookingLeadTime, assertStoreOpenForBooking, rebaseAddonLines } from '@lolas/shared';
 import type { HoldRow } from '@lolas/domain';
 import { validateBody, validateQuery } from '../middleware/validate.js';
 import { authenticatePartner } from '../middleware/authenticate-partner.js';
@@ -66,8 +66,9 @@ const PartnerBookSchema = SubmitDirectBookingRequestSchema
     path: ['vehicles'],
   });
 
-function assertPartnerLeadTime(pickupDatetime: string): void {
+function assertPartnerBookingWindow(pickupDatetime: string, dropoffDatetime: string): void {
   assertBookingLeadTime(pickupDatetime);
+  assertStoreOpenForBooking(pickupDatetime, dropoffDatetime);
 }
 
 function partnerGroupRef(slug: string): string {
@@ -123,7 +124,7 @@ router.get('/me', async (req, res, next) => {
 router.get('/availability', validateQuery(AvailabilityQuerySchema), async (req, res, next) => {
   try {
     const { pickupDatetime, dropoffDatetime } = req.query as { pickupDatetime: string; dropoffDatetime: string };
-    assertPartnerLeadTime(pickupDatetime);
+    assertPartnerBookingWindow(pickupDatetime, dropoffDatetime);
     const data = await checkAvailability(
       { bookingPort: req.app.locals.deps.bookingPort },
       { storeId: req.partnerUser!.storeId, pickupDatetime, dropoffDatetime, partnerRef: req.partnerUser!.partnerSlug },
@@ -151,7 +152,7 @@ router.get('/quote', validateQuery(QuoteQuerySchema), async (req, res, next) => 
       addonIds?: number[];
     };
 
-    assertPartnerLeadTime(pickupDatetime);
+    assertPartnerBookingWindow(pickupDatetime, dropoffDatetime);
     const validAddonIds = await activeAddonIds(req.app.locals.deps.configRepo, partner.storeId, addonIds, dropoffDatetime);
     const quote = await computeQuote(
       { configRepo: req.app.locals.deps.configRepo },
@@ -220,7 +221,7 @@ router.post('/book', validateBody(PartnerBookSchema), async (req, res, next) => 
   try {
     const partner = req.partnerUser!;
     const { roomReference, requestKey, vehicles: requestedVehicles, ...body } = req.body as z.infer<typeof PartnerBookSchema>;
-    assertPartnerLeadTime(body.pickupDatetime);
+    assertPartnerBookingWindow(body.pickupDatetime, body.dropoffDatetime);
     const sessionToken = `partner-${randomBytes(24).toString('hex')}`;
     const vehicles = requestedVehicles && requestedVehicles.length > 0
       ? requestedVehicles

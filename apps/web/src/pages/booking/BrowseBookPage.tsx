@@ -1,6 +1,6 @@
 import type { AllocationSummary } from '../../components/booking/AllocationAvailability.js';
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { hasBookingLeadTime } from '@lolas/shared';
+import { hasBookingLeadTime, storeClosedDayName, storeClosedLabel, storeClosedMessage, storeClosedProblem } from '@lolas/shared';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client.js';
@@ -509,6 +509,7 @@ function BookingCalendar({
     return new Date().getMonth();
   });
   const [hoverDate, setHoverDate] = useState<string | null>(null);
+  const [closedNotice, setClosedNotice] = useState<string | null>(null);
 
   function prevMonth() {
     if (viewMonth === 0) { setViewYear((y) => y - 1); setViewMonth(11); }
@@ -521,6 +522,13 @@ function BookingCalendar({
 
   function handleDayClick(dateStr: string) {
     if (dateStr < today) return;
+    const closedName = storeClosedDayName(dateStr);
+    if (closedName) {
+      const kind = pickupDate && !dropoffDate && dateStr >= pickupDate ? 'return' : 'pickup';
+      setClosedNotice(storeClosedMessage(kind, closedName));
+      return;
+    }
+    setClosedNotice(null);
     if (!pickupDate || (pickupDate && dropoffDate)) {
       onReset(dateStr);
     } else {
@@ -546,6 +554,9 @@ function BookingCalendar({
   while (cells.length % 7 !== 0) cells.push({ dateStr: null, day: 0 });
 
   const effectiveHover = pickupDate && !dropoffDate ? hoverDate : null;
+  const closedDaysThisMonth = cells
+    .map((c) => (c.dateStr ? storeClosedDayName(c.dateStr) : null))
+    .filter((name): name is string => name !== null);
 
   const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const DAYS = ['Su','Mo','Tu','We','Th','Fr','Sa'];
@@ -589,6 +600,7 @@ function BookingCalendar({
           const inHover = !!(effectiveHover && cell.dateStr > pickupDate && cell.dateStr <= effectiveHover);
           const isToday = cell.dateStr === today;
           const isEndpoint = isPickup || isDropoff;
+          const closedName = isPast ? null : storeClosedDayName(cell.dateStr);
 
           return (
             <div
@@ -606,10 +618,14 @@ function BookingCalendar({
                 onClick={() => handleDayClick(cell.dateStr!)}
                 onMouseEnter={() => setHoverDate(cell.dateStr)}
                 onMouseLeave={() => setHoverDate(null)}
+                title={closedName ? storeClosedLabel(closedName) : undefined}
+                aria-label={closedName ? `${cell.day}, ${storeClosedLabel(closedName)}` : undefined}
                 className={[
                   'flex h-8 w-8 items-center justify-center rounded-full text-[13px] font-medium transition-colors',
                   isPast
                     ? 'cursor-not-allowed text-charcoal-brand/20'
+                    : closedName
+                    ? 'cursor-not-allowed bg-red-50 text-red-400 line-through'
                     : isEndpoint
                     ? 'bg-teal-brand font-bold text-white shadow-sm'
                     : isToday
@@ -643,6 +659,15 @@ function BookingCalendar({
           </p>
         )}
       </div>
+      {closedNotice ? (
+        <p role="alert" className="font-lato mt-2 rounded-xl bg-red-50 px-3 py-2 text-center text-[12px] font-medium text-red-700">
+          {closedNotice}
+        </p>
+      ) : closedDaysThisMonth.length > 0 ? (
+        <p className="font-lato mt-2 text-center text-[11px] text-charcoal-brand/50">
+          We're closed on {closedDaysThisMonth.join(' and ')}, so pickups and returns aren't available that day. You can still rent through it.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -779,6 +804,7 @@ export default function BrowseBookPage() {
     const dropoff = state.dropoffDatetime;
     if (!sid || !pickup || !dropoff || !hasBookingDatetimeWithTime(pickup) || !hasBookingDatetimeWithTime(dropoff)) return;
     if (!hasBookingLeadTime(pickup)) return;
+    if (storeClosedProblem(pickup, dropoff)) return;
     setSearching(true);
     setSearchParams({ storeId: sid, pickup, dropoff });
     await refetchAvailability();
@@ -871,6 +897,7 @@ export default function BrowseBookPage() {
   const nowMs = useBookingLeadClock();
   const availablePickupSlots = useMemo(() => getAvailablePickupSlots(pickupDate, nowMs), [pickupDate, nowMs]);
   const leadTimeOk = !pickupTime || hasBookingLeadTime(`${pickupDate}T${pickupTime}:00+08:00`, nowMs);
+  const closedProblem = storeClosedProblem(pickupDate || null, dropoffDate || null);
   const availableDropoffSlots = useMemo(
     () => getAvailableDropoffSlots(pickupDate, pickupTime, dropoffDate),
     [pickupDate, pickupTime, dropoffDate],
@@ -941,6 +968,7 @@ export default function BrowseBookPage() {
     hasBookingDatetimeWithTime(pickupDatetime) &&
     hasBookingDatetimeWithTime(dropoffDatetime) &&
     leadTimeOk &&
+    !closedProblem &&
     !dateError;
 
   const selectedModel = allModels?.find((m) => m.id === selectedModelId) ?? null;
@@ -988,7 +1016,8 @@ export default function BrowseBookPage() {
     if (hasBookingDatetimeWithTime(pickupDatetime) && !hasBookingLeadTime(pickupDatetime, nowMs)) {
       setSearchParams(null);
     }
-  }, [pickupDatetime, nowMs]);
+    if (storeClosedProblem(pickupDatetime || null, dropoffDatetime || null)) setSearchParams(null);
+  }, [pickupDatetime, dropoffDatetime, nowMs]);
 
   // Auto-search: fire handleSearch 500 ms after all required fields are complete
   const autoSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1311,6 +1340,12 @@ export default function BrowseBookPage() {
                     </div>
                   )}
 
+                  {closedProblem && (
+                    <p role="alert" className="font-lato mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                      {closedProblem}
+                    </p>
+                  )}
+
                   {/* Live running total — shown once dates are selected */}
                   {rentalDays > 0 && (() => {
                     const dailyRate = quotes[selectedModelId!]?.dailyRate ?? selectedModel?.minDailyRate ?? null;
@@ -1340,7 +1375,7 @@ export default function BrowseBookPage() {
                       <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-teal-brand border-t-transparent" />
                       <span className="font-lato text-sm font-semibold text-charcoal-brand/60">Checking availability…</span>
                     </div>
-                  ) : !canSearch ? (
+                  ) : !canSearch && !closedProblem ? (
                     <p className="font-lato text-center text-xs text-charcoal-brand/40">
                       Complete all fields above to see availability
                     </p>

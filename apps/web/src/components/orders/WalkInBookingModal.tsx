@@ -7,6 +7,7 @@ import { WhatsAppNumberInput } from '../common/WhatsAppNumberInput.js';
 import { normalizeApiBase } from '../../api/normalize-api-base.js';
 import { useCreateWalkInDirect, type WalkInDirectPayload } from '../../api/orders-raw.js';
 import { TipField } from './TipField.js';
+import { StoreClosedNotice } from '../booking/StoreClosedNotice.js';
 import { useLocations, useAddons } from '../../api/config.js';
 import { canPickVehicle, useAvailableVehicles, useReleaseCapacityHold, type AllocationConflictDetails } from '../../api/fleet.js';
 import { InactiveModelNotice } from '../fleet/InactiveModelNotice.js';
@@ -781,6 +782,7 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
                 </div>
               </div>
             </div>
+            <StoreClosedNotice pickup={pickupDate} dropoff={dropoffDate} staff className="mt-3" />
           </section>
 
           {/* ── Section 3: Vehicle ── */}

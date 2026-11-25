@@ -249,9 +249,9 @@ router.patch('/:id/deposit-method', requirePermission(Permission.EditOrders), va
 
     const methodIdKey = String(method?.id ?? '').toLowerCase().replace(/[\s_-]/g, '');
     const methodNameKey = String(method?.name ?? '').toLowerCase().replace(/[\s_-]/g, '');
-    const isCashOrGcash = [methodIdKey, methodNameKey].some((key) => key === 'cash' || key === 'gcash');
-    if (!method || !method.is_active || !method.is_deposit_eligible || !isCashOrGcash) {
-      throw Object.assign(new Error('Select Cash or GCash for the deposit'), { statusCode: 400 });
+    const methodKind = (['cash', 'gcash', 'wise'] as const).find((kind) => methodIdKey === kind || methodNameKey === kind);
+    if (!method || !method.is_active || !method.is_deposit_eligible || !methodKind) {
+      throw Object.assign(new Error('Select Cash, GCash or Wise for the deposit'), { statusCode: 400 });
     }
     if (
       !account ||
@@ -259,23 +259,23 @@ router.patch('/:id/deposit-method', requirePermission(Permission.EditOrders), va
       String(account.account_type).toLowerCase() !== 'asset' ||
       ![order.store_id, 'company'].includes(String(account.store_id))
     ) {
-      throw Object.assign(new Error('Select an active cash or GCash account for this store'), { statusCode: 400 });
+      throw Object.assign(new Error('Select an active cash, GCash or Wise account for this store'), { statusCode: 400 });
     }
 
     const accountKey = String(account.name).toLowerCase().replace(/[\s_-]/g, '');
-    const selectedGcash = methodIdKey === 'gcash' || methodNameKey === 'gcash';
-    const accountMatchesMethod = selectedGcash
-      ? accountKey.includes('gcash')
-      : accountKey.includes('cash') && !accountKey.includes('gcash');
+    const accountMatchesMethod = methodKind === 'cash'
+      ? accountKey.includes('cash') && !accountKey.includes('gcash')
+      : accountKey.includes(methodKind);
     if (!accountMatchesMethod) {
-      throw Object.assign(new Error(`Select a ${selectedGcash ? 'GCash' : 'cash'} account for this deposit`), { statusCode: 400 });
+      const label = { cash: 'cash', gcash: 'GCash', wise: 'Wise' }[methodKind];
+      throw Object.assign(new Error(`Select a ${label} account for this deposit`), { statusCode: 400 });
     }
 
     const [routed, liabilityAccountId] = await Promise.all([
       resolveRoutedAccounts(String(order.store_id)),
       resolveDepositLiabilityAccount(String(order.store_id)),
     ]);
-    const holdingAccountId = depositHoldingAccount(accountId, selectedGcash ? 'gcash' : 'cash', routed);
+    const holdingAccountId = depositHoldingAccount(accountId, methodKind, routed);
     const { data, error } = await supabase.rpc('correct_order_deposit_method', {
       p_order_id: req.params.id,
       p_payment_method_id: paymentMethodId,

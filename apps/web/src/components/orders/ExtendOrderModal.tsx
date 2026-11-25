@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Modal } from '../common/Modal.js';
+import { StoreClosedNotice } from '../booking/StoreClosedNotice.js';
 import { api } from '../../api/client.js';
 import { useAddons, useLocations } from '../../api/config.js';
 import { useOrderAddons, useOrderItems } from '../../api/orders.js';
@@ -552,6 +553,7 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
                 ))}
               </select>
             </div>
+            <StoreClosedNotice dropoff={newDate} staff className="mt-2" />
           </div>
 
           {/* ── Existing order add-ons (read-only display) ── */}

@@ -366,6 +366,7 @@ PICKUP SLOTS
 - Slots run every 30 minutes: 9:15, 9:45, 10:15, 10:45, 11:15, 11:45, 12:15, 12:45, 13:15, 13:45, 14:15, 14:45, 15:15, 15:45, 16:15, 16:45.
 - When a customer mentions a specific pickup time, always mirror it back explicitly — do not just confirm general availability.
 - Example: Customer says "do you have bikes for around 10am?" → "Yes, we have Honda Beats available — 10:15am works great. Book at lolasrentals.com and select your pickup time there."
+- The store is closed on 25 December (Christmas Day) and 1 January (New Year's Day) every year. No pickups or returns on those days. A rental can run through them, but it must start and end on another day.
 
 PAYMENT OPTIONS
 - Cash and GCash accepted in person.

@@ -5,6 +5,7 @@ import {
   hasBookingLeadTime,
   rebaseAddonLines,
   resolveSourceFromStore,
+  storeClosedProblem,
 } from '@lolas/shared';
 import { supabase } from '../../adapters/supabase/client.js';
 import { checkAvailability } from '../booking/check-availability.js';
@@ -134,7 +135,13 @@ export async function partnerKioskContext(
 
 /** Resolves the rental window: now for our counter, or a validated future slot for partner kiosks. */
 export function resolveWindow(ctx: CounterContext, days: number, pickupDatetime?: string | null, nowMs = Date.now()): CounterWindow {
-  if (ctx.mode === 'now') return counterWindow(days, nowMs);
+  const window = ctx.mode === 'now' ? counterWindow(days, nowMs) : scheduledWindow(days, pickupDatetime, nowMs);
+  const closed = storeClosedProblem(window.pickupDatetime, window.dropoffDatetime);
+  if (closed) throw new CounterError(closed, 422, 'STORE_CLOSED');
+  return window;
+}
+
+function scheduledWindow(days: number, pickupDatetime: string | null | undefined, nowMs: number): CounterWindow {
   const pickupMs = pickupDatetime ? Date.parse(pickupDatetime) : NaN;
   if (!Number.isFinite(pickupMs) || !isSlot(pickupMs)) {
     throw new CounterError('Please choose one of our pickup times.', 422);

@@ -1,7 +1,7 @@
 import { firstName } from '../lib/first-name.js';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { ExtendLookupRequestSchema, PublicExtendConfirmSchema, StaffExtendConfirmSchema, Permission } from '@lolas/shared';
+import { ExtendLookupRequestSchema, PublicExtendConfirmSchema, StaffExtendConfirmSchema, Permission, assertStoreOpenForBooking } from '@lolas/shared';
 import { validateBody } from '../middleware/validate.js';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
@@ -589,6 +589,7 @@ router.post('/confirm', extendConfirmLimiter, validateBody(PublicExtendConfirmSc
       newDropoffLocationId?: number;
       newDropoffLocationAddress?: string;
     };
+    assertStoreOpenForBooking(null, newDropoffDatetime);
     const trimmedEmail = email.trim().toLowerCase();
     const deps = req.app.locals.deps;
 

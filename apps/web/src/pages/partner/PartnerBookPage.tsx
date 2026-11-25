@@ -2,7 +2,8 @@ import { AllocationAvailability } from '../../components/booking/AllocationAvail
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Info, Plus, Trash2 } from 'lucide-react';
-import { computeAddonLineTotal } from '@lolas/shared';
+import { computeAddonLineTotal, storeClosedProblem } from '@lolas/shared';
+import { StoreClosedNotice } from '../../components/booking/StoreClosedNotice.js';
 import {
   fetchPublicAddons,
   fetchPublicLocations,
@@ -200,7 +201,7 @@ function VehicleQuoteLine({
     pickupLocationId,
     dropoffLocationId,
     addonIds,
-    enabled: hasLeadTime(pickupDatetime),
+    enabled: hasLeadTime(pickupDatetime) && !storeClosedProblem(pickupDatetime, dropoffDatetime),
   });
 
   useEffect(() => {
@@ -308,7 +309,8 @@ export default function PartnerBookPage() {
   const dropoffLocationId = form.dropoffLocationId || storeLocationId;
   const pickupDatetime = toManilaIso(form.pickupDate, form.pickupTime);
   const dropoffDatetime = toManilaIso(form.dropoffDate, form.dropoffTime);
-  const leadTimeOk = hasLeadTime(pickupDatetime);
+  const closedProblem = storeClosedProblem(pickupDatetime, dropoffDatetime);
+  const leadTimeOk = hasLeadTime(pickupDatetime) && !closedProblem;
   // Skip the availability check entirely once we already know client-side that
   // lead time isn't met — the backend rejects it too, and surfacing that as a
   // raw error here is redundant with the friendlier inline notice below, and
@@ -435,6 +437,10 @@ export default function PartnerBookPage() {
     e.preventDefault();
     setError('');
     setSuccess(null);
+    if (closedProblem) {
+      setError(closedProblem);
+      return;
+    }
     if (!leadTimeOk) {
       setError(`We need at least 20 minutes' notice — please choose ${earliestBookableLabel()} or later.`);
       return;
@@ -529,7 +535,7 @@ export default function PartnerBookPage() {
                 })}
               </select>
             </div>
-            {!leadTimeOk && (
+            {!leadTimeOk && !closedProblem && (
               <p className="mt-1 text-xs text-amber-700">
                 We need at least 20 minutes' notice, but it's likely we can get to you sooner than that
                 — go ahead and book for {earliestBookableLabel()} or later and we'll aim to be there by then.
@@ -550,6 +556,7 @@ export default function PartnerBookPage() {
               </select>
             </div>
           </div>
+          <StoreClosedNotice pickup={form.pickupDate} dropoff={form.dropoffDate} className="lg:col-span-2" />
           <div>
             <label className="mb-1 block text-xs font-semibold text-gray-500">Pickup location</label>
             <select value={pickupLocationId} onChange={(e) => {

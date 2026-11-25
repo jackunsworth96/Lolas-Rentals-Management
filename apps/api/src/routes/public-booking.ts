@@ -4,7 +4,7 @@ import { z } from 'zod';
 import rateLimit from 'express-rate-limit';
 import { sendEmail, bookingCancellationHtml, escapeHtml } from '../services/email.js';
 import { sendTelegramAlert, getTelegramChatId } from '../lib/telegram.js';
-import { SubmitDirectBookingRequestSchema, type SubmitDirectBookingInput, assertBookingLeadTime } from '@lolas/shared';
+import { SubmitDirectBookingRequestSchema, type SubmitDirectBookingInput, assertBookingLeadTime, assertStoreOpenForBooking } from '@lolas/shared';
 import { validateQuery, validateBody } from '../middleware/validate.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
 import { recordSoldOutSearch, visitorKeyFor } from '../lib/demand-misses.js';
@@ -165,6 +165,7 @@ router.get('/availability', validateQuery(AvailabilityQuerySchema), async (req, 
     };
 
     assertBookingLeadTime(pickupDatetime);
+    assertStoreOpenForBooking(pickupDatetime, dropoffDatetime);
 
     const partner = await lookupActivePartnerBySlug(req.query.partnerRef as string | undefined);
     const data = await checkAvailability(
@@ -233,6 +234,7 @@ router.get('/quote', validateQuery(QuoteQuerySchema), async (req, res, next) => 
       addonIds?: number[];
     };
 
+    assertStoreOpenForBooking(pickupDatetime, dropoffDatetime);
     const data = await computeQuote(
       { configRepo: req.app.locals.deps.configRepo },
       {
@@ -274,6 +276,7 @@ router.post('/hold', holdLimiter, validateBody(CreateHoldBodySchema), async (req
     };
 
     assertBookingLeadTime(pickupDatetime);
+    assertStoreOpenForBooking(pickupDatetime, dropoffDatetime);
 
     const partner = await lookupActivePartnerBySlug(req.body.partnerRef);
     const hold = await createHold(
@@ -641,6 +644,7 @@ router.post('/submit', submitLimiter, validateBody(SubmitDirectBookingRequestSch
     const deviceType = detectDeviceType(req.headers['user-agent']);
     const body = req.body as SubmitDirectBookingInput;
     assertBookingLeadTime(body.pickupDatetime);
+    assertStoreOpenForBooking(body.pickupDatetime, body.dropoffDatetime);
     const result: SubmitDirectBookingResult = await submitDirectBooking(
       {
         bookingPort: req.app.locals.deps.bookingPort,

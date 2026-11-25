@@ -1,7 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
-import { addonPriceLabel, addonUnitPrice, normalizeWhatsAppNumber } from '@lolas/shared';
+import {
+  addonPriceLabel,
+  addonUnitPrice,
+  normalizeWhatsAppNumber,
+  storeClosedDayName,
+  storeClosedMessage,
+  storeClosedProblem,
+} from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { createHold } from '../use-cases/booking/create-hold.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
@@ -699,6 +706,14 @@ async function previewRespondExtension(
       ok: false as const,
       status: 400,
       payload: { success: false, code: 'INVALID_DATE', message: 'New return date must be after the current return date.' },
+    };
+  }
+  const closedDay = storeClosedDayName(newDropoffDatetime);
+  if (closedDay) {
+    return {
+      ok: false as const,
+      status: 422,
+      payload: { success: false, code: 'STORE_CLOSED', message: storeClosedMessage('return', closedDay) },
     };
   }
   if (manilaDateKey(newDropoff) === manilaDateKey(currentDropoff)) {
@@ -1420,6 +1435,11 @@ router.post('/booking-handoff', async (req, res, next) => {
     const input = parsed.data;
     if (!isValidDateRange(input.pickupDatetime, input.dropoffDatetime)) {
       res.status(400).json({ error: 'dropoffDatetime must be after pickupDatetime' });
+      return;
+    }
+    const closedProblem = storeClosedProblem(input.pickupDatetime, input.dropoffDatetime);
+    if (closedProblem) {
+      res.status(422).json({ code: 'STORE_CLOSED', error: closedProblem, customer_message: closedProblem });
       return;
     }
 
@@ -2363,6 +2383,11 @@ router.get('/availability', async (req, res, next) => {
     }
     if (dropoff <= pickup) {
       res.status(400).json({ error: 'dropoffDatetime must be after pickupDatetime.' });
+      return;
+    }
+    const closedProblem = storeClosedProblem(pickupDatetime, dropoffDatetime);
+    if (closedProblem) {
+      res.status(422).json({ code: 'STORE_CLOSED', error: closedProblem, customer_message: closedProblem });
       return;
     }
 

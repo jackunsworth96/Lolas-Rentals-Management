@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { MIN_BOOKING_LEAD_MS, manilaCalendarDate } from '@lolas/shared';
+import { MIN_BOOKING_LEAD_MS, isStoreClosedDay, manilaCalendarDate, storeClosedDayName } from '@lolas/shared';
 import type { CollectionArea } from '../../api/counter.js';
 
 const DAYS_AHEAD = 14;
@@ -14,10 +14,15 @@ function addDays(date: string, n: number): string {
   return manilaCalendarDate(d.getTime());
 }
 
+function upcomingDates(nowMs: number): string[] {
+  const today = manilaCalendarDate(nowMs);
+  return Array.from({ length: DAYS_AHEAD }, (_, i) => addDays(today, i));
+}
+
 /** Bookable slots for the next two weeks, Manila time, at least the minimum notice from now. */
 export function upcomingSlots(nowMs = Date.now()): Array<{ date: string; slots: string[] }> {
-  const today = manilaCalendarDate(nowMs);
-  return Array.from({ length: DAYS_AHEAD }, (_, i) => addDays(today, i))
+  return upcomingDates(nowMs)
+    .filter((date) => !isStoreClosedDay(date))
     .map((date) => ({
       date,
       slots: SLOT_TIMES
@@ -50,6 +55,12 @@ export function CounterWhen({ value, onChange, deliverTo, areas, areaId, onArea,
   buttonClass: string;
 }) {
   const days = useMemo(() => upcomingSlots(), []);
+  const closedDays = useMemo(
+    () => upcomingDates(Date.now())
+      .map((d) => ({ label: dayLabel(d), name: storeClosedDayName(d) }))
+      .filter((d): d is { label: string; name: string } => d.name !== null),
+    [],
+  );
   const [date, setDate] = useState(() => (value ? manilaCalendarDate(Date.parse(value)) : days[0]?.date ?? null));
   const slots = days.find((d) => d.date === date)?.slots ?? [];
   const askArea = !!areas && areas.length > 0;
@@ -94,6 +105,12 @@ export function CounterWhen({ value, onChange, deliverTo, areas, areaId, onArea,
           </button>
         ))}
       </div>
+      {closedDays.length > 0 && (
+        <p className="mt-3 max-w-2xl rounded-xl bg-red-50 px-4 py-2 font-lato text-sm font-semibold text-red-700">
+          We&apos;re closed on {closedDays.map((d) => `${d.name} (${d.label})`).join(' and ')}, so we can&apos;t deliver or collect that day.
+          Your rental can run through it, but it can&apos;t start or end then.
+        </p>
+      )}
       <div className="mt-6 grid w-full max-w-2xl grid-cols-3 gap-3 sm:grid-cols-4">
         {slots.map((iso) => (
           <button

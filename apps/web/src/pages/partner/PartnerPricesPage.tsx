@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Info } from 'lucide-react';
+import { storeClosedProblem } from '@lolas/shared';
+import { StoreClosedNotice } from '../../components/booking/StoreClosedNotice.js';
 import {
   fetchPublicAddons,
   fetchPublicLocations,
@@ -131,7 +133,7 @@ export default function PartnerPricesPage() {
     dropoffDatetime: toManilaIso(dropoffDate, dropoffTime),
     pickupLocationId: defaultLocationId,
     dropoffLocationId: defaultLocationId,
-    enabled: !!modelId && !!defaultLocationId,
+    enabled: !!modelId && !!defaultLocationId && !storeClosedProblem(pickupDate, dropoffDate),
   });
 
   return (
@@ -155,7 +157,8 @@ export default function PartnerPricesPage() {
             </select>
           </div>
         </div>
-        {modelId && (
+        <StoreClosedNotice pickup={pickupDate} dropoff={dropoffDate} className="mt-3" />
+        {modelId && !storeClosedProblem(pickupDate, dropoffDate) && (
           <div className="mt-4 rounded-lg border border-teal-200 bg-teal-50 p-3 text-sm">
             {quote.isLoading ? (
               <p className="text-teal-700">Calculating final rate...</p>

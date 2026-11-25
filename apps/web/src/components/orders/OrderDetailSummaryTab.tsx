@@ -314,7 +314,7 @@ export function OrderDetailSummaryTab({
     () => activePaymentMethods.filter((method) => {
       const id = method.id.toLowerCase().replace(/[\s_-]/g, '');
       const name = method.name.toLowerCase().replace(/[\s_-]/g, '');
-      return id === 'cash' || id === 'gcash' || name === 'cash' || name === 'gcash';
+      return ['cash', 'gcash', 'wise'].some((kind) => id === kind || name === kind);
     }),
     [activePaymentMethods],
   );
@@ -330,10 +330,10 @@ export function OrderDetailSummaryTab({
   const effectiveDepositMethodAccountId = routedDepositMethodAccountId ?? depositMethodAccountId;
   const depositMethodAccountOptions = useMemo(() => {
     const methodKey = `${depositMethodDraftId} ${depositMethodDraft?.name ?? ''}`.toLowerCase().replace(/[\s_-]/g, '');
-    const wantsGcash = methodKey.includes('gcash');
+    const wanted = methodKey.includes('gcash') ? 'gcash' : methodKey.includes('wise') ? 'wise' : 'cash';
     return paymentAccountOptions.filter((account) => {
       const accountKey = String(account.name ?? '').toLowerCase().replace(/[\s_-]/g, '');
-      return wantsGcash ? accountKey.includes('gcash') : accountKey.includes('cash') && !accountKey.includes('gcash');
+      return wanted === 'cash' ? accountKey.includes('cash') && !accountKey.includes('gcash') : accountKey.includes(wanted);
     });
   }, [depositMethodDraftId, depositMethodDraft?.name, paymentAccountOptions]);
 

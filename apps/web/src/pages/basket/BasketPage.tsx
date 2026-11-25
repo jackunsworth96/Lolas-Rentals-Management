@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { bookingLeadTimeMessage, hasBookingLeadTime, manilaCalendarDate } from '@lolas/shared';
+import { bookingLeadTimeMessage, hasBookingLeadTime, manilaCalendarDate, storeClosedProblem } from '@lolas/shared';
+import { StoreClosedNotice } from '../../components/booking/StoreClosedNotice.js';
 import { api } from '../../api/client.js';
 import {
   getPartnerRef,
@@ -224,6 +225,11 @@ export default function BasketPage() {
     }
     if (!hasBookingLeadTime(pickup)) {
       setDateChangeError(bookingLeadTimeMessage());
+      return;
+    }
+    const closedProblem = storeClosedProblem(pickup, dropoff);
+    if (closedProblem) {
+      setDateChangeError(closedProblem);
       return;
     }
     setDateChangeLoading(true);
@@ -779,6 +785,11 @@ export default function BasketPage() {
       pushToast(bookingLeadTimeMessage(), 'error');
       return;
     }
+    const closedProblem = storeClosedProblem(pickupDatetime, dropoffDatetime);
+    if (closedProblem) {
+      pushToast(closedProblem, 'error');
+      return;
+    }
     if (!validate()) return;
     submittingRef.current = true;
     setSubmitting(true);
@@ -1183,6 +1194,8 @@ export default function BasketPage() {
                       )}
                     </div>
                   )}
+
+                  {!dateChangeError && <StoreClosedNotice pickup={newPickupDate} dropoff={newDropoffDate} />}
 
                   {/* Error */}
                   {dateChangeError && (

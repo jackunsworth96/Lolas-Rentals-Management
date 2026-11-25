@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { storeClosedProblem } from '@lolas/shared';
+import { StoreClosedNotice } from './StoreClosedNotice.js';
 import { useBookingStore } from '../../stores/bookingStore.js';
 import { api } from '../../api/client.js';
 import { hasBookingDatetimeWithTime } from '../../utils/booking-datetime.js';
@@ -188,6 +190,7 @@ export function SearchBar({ onSearch, searching, storeDisplayName }: SearchBarPr
     !!storeId &&
     hasBookingDatetimeWithTime(pickupDatetime) &&
     hasBookingDatetimeWithTime(dropoffDatetime) &&
+    !storeClosedProblem(pickupDate, dropoffDate) &&
     !dateError;
 
   const minPickupDate = todayStr();
@@ -265,6 +268,7 @@ export function SearchBar({ onSearch, searching, storeDisplayName }: SearchBarPr
           )}
         </div>
       </div>
+      <StoreClosedNotice pickup={pickupDate} dropoff={dropoffDate} className="mt-4" />
 
       {/* Location selectors + Search CTA */}
       {locations && locations.length > 0 && (

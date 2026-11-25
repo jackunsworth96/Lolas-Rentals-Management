@@ -1,3 +1,5 @@
+import { storeClosedDayName } from '@lolas/shared';
+
 interface TimeParts { date: string; hours12: number; minutes: number; ampm: 'AM' | 'PM' }
 
 function splitDatetime(dt: string): TimeParts {
@@ -47,6 +49,7 @@ interface DateTimeFieldProps {
 export function DateTimeField({ label, value, onChange, dateAriaLabel, warnOutsideHours = false }: DateTimeFieldProps) {
   const parts = splitDatetime(value);
   const update = (patch: Partial<TimeParts>) => onChange(combineFromParts({ ...parts, ...patch }));
+  const closedDayName = storeClosedDayName(parts.date);
 
   return (
     <div>
@@ -93,6 +96,11 @@ export function DateTimeField({ label, value, onChange, dateAriaLabel, warnOutsi
       {warnOutsideHours && parts.date && isOutsideBusinessHours(parts) && (
         <p className="mt-1 text-xs font-semibold text-amber-600">
           Outside business hours (9:15 AM – 4:45 PM). Confirm this is intentional.
+        </p>
+      )}
+      {closedDayName && (
+        <p className="mt-1 text-xs font-semibold text-amber-600">
+          Store closed on {closedDayName}. Customers can&apos;t book pickups or returns this day; confirm this is arranged.
         </p>
       )}
     </div>

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { isStoreClosedDay, storeClosedDayName, storeClosedLabel, storeClosedMessage } from '@lolas/shared';
 
 interface Props {
   currentDropoff: string;
@@ -44,6 +45,7 @@ export function ExtendCalendar({
   const dropoffDate = useMemo(() => new Date(currentDropoff), [currentDropoff]);
   const [viewYear, setViewYear] = useState(dropoffDate.getFullYear());
   const [viewMonth, setViewMonth] = useState(dropoffDate.getMonth());
+  const [closedNotice, setClosedNotice] = useState<string | null>(null);
 
   const daysInMonth = getDaysInMonth(viewYear, viewMonth);
   const firstDayOfWeek = new Date(viewYear, viewMonth, 1).getDay();
@@ -62,6 +64,12 @@ export function ExtendCalendar({
     const clicked = new Date(viewYear, viewMonth, day);
     if (!sameDay(clicked, dropoffDate) && clicked < dropoffDate) return;
     const iso = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const closedName = storeClosedDayName(iso);
+    if (closedName) {
+      setClosedNotice(storeClosedMessage('return', closedName));
+      return;
+    }
+    setClosedNotice(null);
     onSelectDate(iso);
     // When the current return day is selected, auto-advance the time to the first
     // slot that is strictly after the current return time (so the API won't reject it).
@@ -151,9 +159,13 @@ export function ExtendCalendar({
             const isDropoff = sameDay(cellDate, dropoffDate);
             const isSelected = selectedDateObj != null && sameDay(cellDate, selectedDateObj);
             const isPast = cellDate < dropoffDate && !isDropoff;
+            const cellIso = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const closedName = isPast || isDropoff ? null : storeClosedDayName(cellIso);
 
             let cls = 'aspect-square flex items-center justify-center rounded-xl text-sm font-bold transition-all duration-150 relative ';
-            if (isSelected) {
+            if (closedName) {
+              cls += 'bg-red-50 text-red-400 line-through cursor-not-allowed';
+            } else if (isSelected) {
               cls += 'bg-teal-brand text-white font-black shadow-sm cursor-pointer';
             } else if (isDropoff) {
               cls += 'bg-amber-400 text-white font-black cursor-pointer hover:bg-amber-300';
@@ -169,6 +181,8 @@ export function ExtendCalendar({
                 type="button"
                 onClick={() => handleDayClick(day)}
                 disabled={isPast}
+                title={closedName ? storeClosedLabel(closedName) : undefined}
+                aria-label={closedName ? `${day}, ${storeClosedLabel(closedName)}` : undefined}
                 className={cls}
               >
                 {day}
@@ -190,7 +204,18 @@ export function ExtendCalendar({
             <span className="h-3 w-3 rounded-sm bg-teal-brand" />
             New return
           </span>
+          {Array.from({ length: daysInMonth }).some((_, i) => isStoreClosedDay(`${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`)) && (
+            <span className="flex items-center gap-1.5 text-xs text-charcoal-brand/60">
+              <span className="h-3 w-3 rounded-sm bg-red-100" />
+              Store closed
+            </span>
+          )}
         </div>
+        {closedNotice && (
+          <p role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-center text-xs font-semibold text-red-700">
+            {closedNotice}
+          </p>
+        )}
       </div>
 
       {/* ── Return time grid ── */}

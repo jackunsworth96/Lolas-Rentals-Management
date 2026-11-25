@@ -4,6 +4,8 @@ import { Copy, Check, Tablet } from 'lucide-react';
 import { usePartnerAvailability, usePartnerMe, usePartnerReport } from '../../api/partner-portal.js';
 import { startPartnerKiosk } from '../../api/partner-kiosk.js';
 import { WHATSAPP_URL } from '../../config/contact.js';
+import { storeClosedProblem } from '@lolas/shared';
+import { StoreClosedNotice } from '../../components/booking/StoreClosedNotice.js';
 
 const SITE_URL = (import.meta.env.VITE_SITE_URL as string | undefined) ?? window.location.origin;
 const PARTNER_ROOT_DOMAIN = (import.meta.env.VITE_PARTNER_ROOT_DOMAIN as string | undefined) ?? 'lolasrentals.com';
@@ -177,8 +179,12 @@ export default function PartnerDashboardPage() {
   const [dropoffDate, setDropoffDate] = useState(() => addManilaDays(defaultPickup().date, 2));
   const [dropoffTime, setDropoffTime] = useState('16:45');
   const pickupIso = toManilaIso(pickupDate, pickupTime);
-  const leadTimeOk = hasLeadTime(pickupIso);
-  const availability = usePartnerAvailability(pickupIso, toManilaIso(dropoffDate, dropoffTime));
+  const closedProblem = storeClosedProblem(pickupDate, dropoffDate);
+  const leadTimeOk = hasLeadTime(pickupIso) && !closedProblem;
+  const availability = usePartnerAvailability(
+    leadTimeOk ? pickupIso : '',
+    leadTimeOk ? toManilaIso(dropoffDate, dropoffTime) : '',
+  );
   const report = usePartnerReport(currentMonth());
   const allModels = useMemo(() => availability.data ?? [], [availability.data]);
   const partnerSlug = me?.partner.slug ?? '';
@@ -278,7 +284,8 @@ export default function PartnerDashboardPage() {
             </div>
           </div>
         </div>
-        {!leadTimeOk && (
+        <StoreClosedNotice pickup={pickupDate} dropoff={dropoffDate} className="mt-3" />
+        {!leadTimeOk && !closedProblem && (
           <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
             We need at least 20 minutes' notice, but it's likely we can get to you sooner than that
             — go ahead and book for {earliestBookableLabel()} or later and we'll aim to be there by then.
