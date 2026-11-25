@@ -12,7 +12,7 @@ import iconFuel from '../../assets/Home/Fuel Icon.svg';
 import iconPawCard from '../../assets/Home/Paw Card Icon.svg';
 import iconCoat from '../../assets/Home/Coat Icon.svg';
 import iconFirstAid from '../../assets/Home/First Aid Icon.svg';
-import iconRepairKit from '../../assets/Home/Repair Kit Icon.svg';
+import iconNightGlasses from '../../assets/Home/Night Glasses Icon.svg';
 import iconPhoneMount from '../../assets/Home/Phone Mount Icon.svg';
 import iconCloth from '../../assets/Home/Cloth Icon.svg';
 import iconDryBag from '../../assets/Home/Dry Bag Icon.svg';
@@ -873,6 +873,7 @@ export default function HomePage() {
                     { icon: iconHelmet,     label: 'Helmet' },
                     { icon: iconFirstAid,   label: 'First Aid Kit' },
                     { icon: iconCrashGuard, label: 'Crash Armour' },
+                    { icon: iconNightGlasses, label: 'Night Glasses' },
                   ].map((item) => (
                     <li key={item.label} className="flex items-center gap-3">
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: '#E8F3F8' }}>
@@ -932,7 +933,6 @@ export default function HomePage() {
                 </span>
                 <ul className="flex-1 space-y-3">
                   {[
-                    { icon: iconRepairKit,   label: 'Puncture Kit' },
                     { icon: iconPeaceOfMind, label: 'Damage Cover' },
                   ].map((item) => (
                     <li key={item.label} className="flex items-center gap-3">

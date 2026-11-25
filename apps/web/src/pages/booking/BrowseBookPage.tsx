@@ -42,7 +42,7 @@ import iconFuel from '../../assets/Home/Fuel Icon.svg';
 import iconPawCard from '../../assets/Home/Paw Card Icon.svg';
 import iconCoat from '../../assets/Home/Coat Icon.svg';
 import iconFirstAid from '../../assets/Home/First Aid Icon.svg';
-import iconRepairKit from '../../assets/Home/Repair Kit Icon.svg';
+import iconNightGlasses from '../../assets/Home/Night Glasses Icon.svg';
 import iconPhoneMount from '../../assets/Home/Phone Mount Icon.svg';
 import iconCloth from '../../assets/Home/Cloth Icon.svg';
 import iconDryBag from '../../assets/Home/Dry Bag Icon.svg';
@@ -79,7 +79,7 @@ function useInclusionItems() {
     { icon: iconPawCard,     label: t('browse.items.pawCard') },
     { icon: iconCoat,        label: t('browse.items.rainCoat') },
     { icon: iconFirstAid,    label: t('browse.items.firstAid') },
-    { icon: iconRepairKit,   label: t('browse.items.repairKit') },
+    { icon: iconNightGlasses, label: t('browse.items.nightGlasses') },
     { icon: iconPhoneMount,  label: t('browse.items.phoneMount') },
     { icon: iconCloth,       label: t('browse.items.seatCloth') },
     { icon: iconDryBag,      label: t('browse.items.dryBag') },

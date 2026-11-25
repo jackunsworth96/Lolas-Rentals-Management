@@ -3,7 +3,7 @@ import iconFuel from '../assets/Home/Fuel Icon.svg';
 import iconPawCard from '../assets/Home/Paw Card Icon.svg';
 import iconCoat from '../assets/Home/Coat Icon.svg';
 import iconFirstAid from '../assets/Home/First Aid Icon.svg';
-import iconRepairKit from '../assets/Home/Repair Kit Icon.svg';
+import iconNightGlasses from '../assets/Home/Night Glasses Icon.svg';
 import iconCloth from '../assets/Home/Cloth Icon.svg';
 import iconPeaceOfMind from '../assets/Home/Peace of Mind.svg';
 import iconPhoneMount from '../assets/Home/Phone Mount Icon.svg';
@@ -19,7 +19,7 @@ export const BEAT_INCLUDED_ITEMS: IncludedRentalItem[] = [
   { icon: iconPawCard,    label: 'Paw Card' },
   { icon: iconCoat,       label: 'Rain Coat' },
   { icon: iconFirstAid,   label: 'First Aid' },
-  { icon: iconRepairKit,  label: 'Repair Kit' },
+  { icon: iconNightGlasses, label: 'Night Glasses' },
   { icon: iconPhoneMount, label: 'Phone Mount' },
   { icon: iconDryBag,     label: '5L Dry Bag' },
 ];
