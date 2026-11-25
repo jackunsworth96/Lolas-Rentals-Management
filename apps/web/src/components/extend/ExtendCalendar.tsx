@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
-import { isStoreClosedDay, storeClosedDayName, storeClosedLabel, storeClosedMessage } from '@lolas/shared';
+import { isStoreClosedDay, storeClosedDayName, storeClosedLabel } from '@lolas/shared';
+import { StoreClosedNotice } from '../booking/StoreClosedNotice.js';
 
 interface Props {
   currentDropoff: string;
@@ -45,7 +46,7 @@ export function ExtendCalendar({
   const dropoffDate = useMemo(() => new Date(currentDropoff), [currentDropoff]);
   const [viewYear, setViewYear] = useState(dropoffDate.getFullYear());
   const [viewMonth, setViewMonth] = useState(dropoffDate.getMonth());
-  const [closedNotice, setClosedNotice] = useState<string | null>(null);
+  const [closedHoliday, setClosedHoliday] = useState<string | null>(null);
 
   const daysInMonth = getDaysInMonth(viewYear, viewMonth);
   const firstDayOfWeek = new Date(viewYear, viewMonth, 1).getDay();
@@ -66,10 +67,10 @@ export function ExtendCalendar({
     const iso = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const closedName = storeClosedDayName(iso);
     if (closedName) {
-      setClosedNotice(storeClosedMessage('return', closedName));
+      setClosedHoliday(closedName);
       return;
     }
-    setClosedNotice(null);
+    setClosedHoliday(null);
     onSelectDate(iso);
     // When the current return day is selected, auto-advance the time to the first
     // slot that is strictly after the current return time (so the API won't reject it).
@@ -211,10 +212,8 @@ export function ExtendCalendar({
             </span>
           )}
         </div>
-        {closedNotice && (
-          <p role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-center text-xs font-semibold text-red-700">
-            {closedNotice}
-          </p>
+        {closedHoliday && (
+          <StoreClosedNotice holiday={closedHoliday} className="mt-3" />
         )}
       </div>
 

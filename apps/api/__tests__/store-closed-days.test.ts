@@ -27,8 +27,12 @@ describe('store closed days', () => {
   });
 
   it('rejects a pickup or return on a closed day with a clear reason', () => {
-    expect(storeClosedProblem('2026-12-25T10:15:00+08:00', '2026-12-27T10:15:00+08:00')).toMatch(/closed on Christmas Day.*collections/);
-    expect(storeClosedProblem('2026-12-29T10:15:00+08:00', '2027-01-01T10:15:00+08:00')).toMatch(/closed on New Year's Day.*returns/);
+    expect(storeClosedProblem('2026-12-25T10:15:00+08:00', '2026-12-27T10:15:00+08:00')).toMatch(
+      /closed on Christmas Day.*day before or after/i,
+    );
+    expect(storeClosedProblem('2026-12-29T10:15:00+08:00', '2027-01-01T10:15:00+08:00')).toMatch(
+      /closed on New Year's Day.*day before or after/i,
+    );
     expect(() => assertStoreOpenForBooking('2026-12-20T10:15:00+08:00', '2026-12-25T10:15:00+08:00'))
       .toThrow(/closed on Christmas Day/);
   });

@@ -1,6 +1,7 @@
 import type { AllocationSummary } from '../../components/booking/AllocationAvailability.js';
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { hasBookingLeadTime, storeClosedDayName, storeClosedLabel, storeClosedMessage, storeClosedProblem } from '@lolas/shared';
+import { hasBookingLeadTime, storeClosedDayFromError, storeClosedDayName, storeClosedLabel, storeClosedProblem } from '@lolas/shared';
+import { StoreClosedNotice } from '../../components/booking/StoreClosedNotice.js';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client.js';
@@ -509,7 +510,7 @@ function BookingCalendar({
     return new Date().getMonth();
   });
   const [hoverDate, setHoverDate] = useState<string | null>(null);
-  const [closedNotice, setClosedNotice] = useState<string | null>(null);
+  const [closedHoliday, setClosedHoliday] = useState<string | null>(null);
 
   function prevMonth() {
     if (viewMonth === 0) { setViewYear((y) => y - 1); setViewMonth(11); }
@@ -524,11 +525,10 @@ function BookingCalendar({
     if (dateStr < today) return;
     const closedName = storeClosedDayName(dateStr);
     if (closedName) {
-      const kind = pickupDate && !dropoffDate && dateStr >= pickupDate ? 'return' : 'pickup';
-      setClosedNotice(storeClosedMessage(kind, closedName));
+      setClosedHoliday(closedName);
       return;
     }
-    setClosedNotice(null);
+    setClosedHoliday(null);
     if (!pickupDate || (pickupDate && dropoffDate)) {
       onReset(dateStr);
     } else {
@@ -659,13 +659,11 @@ function BookingCalendar({
           </p>
         )}
       </div>
-      {closedNotice ? (
-        <p role="alert" className="font-lato mt-2 rounded-xl bg-red-50 px-3 py-2 text-center text-[12px] font-medium text-red-700">
-          {closedNotice}
-        </p>
+      {closedHoliday ? (
+        <StoreClosedNotice holiday={closedHoliday} className="mt-2" />
       ) : closedDaysThisMonth.length > 0 ? (
         <p className="font-lato mt-2 text-center text-[11px] text-charcoal-brand/50">
-          We're closed on {closedDaysThisMonth.join(' and ')}, so pickups and returns aren't available that day. You can still rent through it.
+          We're closed on {closedDaysThisMonth.join(' and ')}. Please pick up or return the day before or after — you can still rent through the closed day.
         </p>
       ) : null}
     </div>
@@ -785,6 +783,7 @@ export default function BrowseBookPage() {
   const {
     data: availableModels,
     isFetching: availFetching,
+    error: availabilityError,
     refetch: refetchAvailability,
   } = useQuery<AvailableModel[]>({
     queryKey: ['availability', searchParams, partnerRef],
@@ -898,6 +897,10 @@ export default function BrowseBookPage() {
   const availablePickupSlots = useMemo(() => getAvailablePickupSlots(pickupDate, nowMs), [pickupDate, nowMs]);
   const leadTimeOk = !pickupTime || hasBookingLeadTime(`${pickupDate}T${pickupTime}:00+08:00`, nowMs);
   const closedProblem = storeClosedProblem(pickupDate || null, dropoffDate || null);
+  const closedHolidayName =
+    storeClosedDayName(pickupDate) ||
+    storeClosedDayName(dropoffDate) ||
+    storeClosedDayFromError(availabilityError);
   const availableDropoffSlots = useMemo(
     () => getAvailableDropoffSlots(pickupDate, pickupTime, dropoffDate),
     [pickupDate, pickupTime, dropoffDate],
@@ -1340,12 +1343,6 @@ export default function BrowseBookPage() {
                     </div>
                   )}
 
-                  {closedProblem && (
-                    <p role="alert" className="font-lato mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
-                      {closedProblem}
-                    </p>
-                  )}
-
                   {/* Live running total — shown once dates are selected */}
                   {rentalDays > 0 && (() => {
                     const dailyRate = quotes[selectedModelId!]?.dailyRate ?? selectedModel?.minDailyRate ?? null;
@@ -1389,9 +1386,15 @@ export default function BrowseBookPage() {
                 </div>
 
                 {/* Availability result for selected model */}
-                {isSearched && !isLoading && (
+                {(closedHolidayName || (isSearched && !isLoading)) && (
                   <div>
-                    {selectedAvailModel != null ? (
+                    {closedHolidayName ? (
+                      <StoreClosedNotice
+                        pickup={pickupDate}
+                        dropoff={dropoffDate}
+                        holiday={closedHolidayName}
+                      />
+                    ) : selectedAvailModel != null ? (
                       <>
                       <VehicleCard
                         modelId={selectedModelId!}

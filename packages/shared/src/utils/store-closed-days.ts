@@ -24,9 +24,37 @@ export function isStoreClosedDay(dateOrDatetime: string | null | undefined): boo
   return storeClosedDayName(dateOrDatetime) !== null;
 }
 
-export function storeClosedMessage(kind: 'pickup' | 'return', closedDayName: string): string {
-  const action = kind === 'pickup' ? 'collections' : 'returns';
-  return `Our store is closed on ${closedDayName} (25 December and 1 January every year), so ${action} can't be booked that day. Please choose another date.`;
+const CLOSED_DAY_WHEN: Record<string, string> = {
+  'Christmas Day': '25 December',
+  "New Year's Day": '1 January',
+};
+
+export function storeClosedCopy(closedDayName: string): { title: string; body: string } {
+  const when = CLOSED_DAY_WHEN[closedDayName] ?? closedDayName;
+  return {
+    title: `We're closed on ${closedDayName}`,
+    body: `Pickups and returns aren't possible on ${when}. Please arrange yours for the day before or after. Thank you for understanding.`,
+  };
+}
+
+export function storeClosedMessage(_kind: 'pickup' | 'return', closedDayName: string): string {
+  const { title, body } = storeClosedCopy(closedDayName);
+  return `${title}. ${body}`;
+}
+
+/** True when an API/UI error is the Christmas / New Year's Day closure, not a sold-out fleet. */
+export function isStoreClosedError(err: unknown): boolean {
+  if (storeClosedDayFromError(err) !== null) return true;
+  return Boolean(
+    err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === 'STORE_CLOSED',
+  );
+}
+
+export function storeClosedDayFromError(err: unknown): string | null {
+  const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+  if (/christmas day/i.test(msg)) return 'Christmas Day';
+  if (/new year's day/i.test(msg)) return "New Year's Day";
+  return null;
 }
 
 /** Short label for date pickers: "Closed – Christmas Day". */

@@ -108,7 +108,7 @@ export function CounterWhen({ value, onChange, deliverTo, areas, areaId, onArea,
       {closedDays.length > 0 && (
         <p className="mt-3 max-w-2xl rounded-xl bg-red-50 px-4 py-2 font-lato text-sm font-semibold text-red-700">
           We&apos;re closed on {closedDays.map((d) => `${d.name} (${d.label})`).join(' and ')}, so we can&apos;t deliver or collect that day.
-          Your rental can run through it, but it can&apos;t start or end then.
+          Please arrange pickup or return for the day before or after. Thank you for understanding.
         </p>
       )}
       <div className="mt-6 grid w-full max-w-2xl grid-cols-3 gap-3 sm:grid-cols-4">

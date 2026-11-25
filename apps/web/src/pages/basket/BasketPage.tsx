@@ -1195,12 +1195,11 @@ export default function BasketPage() {
                     </div>
                   )}
 
-                  {!dateChangeError && <StoreClosedNotice pickup={newPickupDate} dropoff={newDropoffDate} />}
-
-                  {/* Error */}
-                  {dateChangeError && (
+                  {storeClosedProblem(newPickupDate, newDropoffDate) ? (
+                    <StoreClosedNotice pickup={newPickupDate} dropoff={newDropoffDate} />
+                  ) : dateChangeError ? (
                     <p className="font-lato text-xs font-medium text-red-600">{dateChangeError}</p>
-                  )}
+                  ) : null}
 
                   {/* Actions */}
                   <div className="flex gap-2 pt-1">

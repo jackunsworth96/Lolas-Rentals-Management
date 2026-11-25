@@ -75,9 +75,10 @@ export function errorHandler(
 
   const statusCode = (err as Error & { statusCode?: number }).statusCode;
   if (typeof statusCode === 'number' && statusCode >= 400 && statusCode < 600) {
+    const code = (err as Error & { code?: string }).code;
     res.status(statusCode).json({
       success: false,
-      error: { code: 'REQUEST_FAILED', message: err.message },
+      error: { code: typeof code === 'string' && code.length > 0 ? code : 'REQUEST_FAILED', message: err.message },
     });
     return;
   }

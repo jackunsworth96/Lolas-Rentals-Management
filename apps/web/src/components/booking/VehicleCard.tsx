@@ -6,7 +6,7 @@ import { useBookingStore } from '../../stores/bookingStore.js';
 import { useVehiclePublicId } from '../../utils/vehicle-images.js';
 import { CloudinaryImage } from '../ui/CloudinaryImage.js';
 import { formatPhpNumber } from '../../utils/currency.js';
-import { bookingLeadTimeMessage, hasBookingLeadTime } from '@lolas/shared';
+import { bookingLeadTimeMessage, hasBookingLeadTime, isStoreClosedError } from '@lolas/shared';
 import { hasBookingDatetimeWithTime } from '../../utils/booking-datetime.js';
 import { BrandCard } from '../public/BrandCard.js';
 import { PesoSign } from '../ui/PesoSign.js';
@@ -170,7 +170,9 @@ export function VehicleCard({
       navigate('/book/basket');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to hold vehicle';
-      if (msg.toLowerCase().includes('available') || msg.includes('409')) {
+      if (isStoreClosedError(err)) {
+        onToast(msg, 'error');
+      } else if (msg.toLowerCase().includes('available') || msg.includes('409')) {
         onToast('Sorry, this vehicle was just taken. Please try another.', 'error');
       } else {
         onToast(msg, 'error');
