@@ -162,6 +162,8 @@ interface AddonRow {
   addon_type: string;
   price_per_day: number;
   price_one_time: number;
+  price_percentage: number | null;
+  minimum_amount: number | null;
 }
 
 async function fetchLiveAddons(): Promise<string> {
@@ -173,7 +175,7 @@ async function fetchLiveAddons(): Promise<string> {
   const sb = getSupabaseClient();
   const { data, error } = await sb
     .from('addons')
-    .select('name, addon_type, price_per_day, price_one_time')
+    .select('name, addon_type, price_per_day, price_one_time, price_percentage, minimum_amount')
     .eq('is_active', true)
     .or(`store_id.eq.${STORE_ID},store_id.is.null`)
     .order('name');
@@ -183,7 +185,9 @@ async function fetchLiveAddons(): Promise<string> {
   const rows = (data ?? []) as AddonRow[];
   const lines = rows.map((a) => {
     const price =
-      a.addon_type === 'per_day'
+      a.addon_type === 'percentage'
+        ? `${Number(a.price_percentage ?? 0)}% of the vehicle rental fee${Number(a.minimum_amount ?? 0) > 0 ? ` (minimum ₱${Math.round(Number(a.minimum_amount)).toLocaleString()})` : ''}`
+        : a.addon_type === 'per_day'
         ? `₱${Math.round(Number(a.price_per_day)).toLocaleString()}/day`
         : `₱${Math.round(Number(a.price_one_time)).toLocaleString()} one-time (flat fee for the entire rental)`;
     return `- ${a.name}: ${price}`;

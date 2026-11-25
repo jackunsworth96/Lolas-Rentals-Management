@@ -1,5 +1,6 @@
 import type { ConfigRepository, ModelPricing, Location, Addon } from '@lolas/domain';
 import type { QuoteBreakdown, QuoteAddonLine } from '@lolas/shared';
+import { addonUnitPrice, computeAddonLineTotal } from '@lolas/shared';
 
 export interface ComputeQuoteInput {
   storeId: string;
@@ -112,16 +113,15 @@ export async function computeQuote(
     }
 
     for (const addon of selected) {
-      const unitPrice =
-        addon.addonType === 'per_day' ? Number(addon.pricePerDay) : Number(addon.priceOneTime);
-      const total =
-        addon.addonType === 'per_day' ? unitPrice * rentalDays : unitPrice;
+      const unitPrice = addonUnitPrice(addon);
+      const total = computeAddonLineTotal(addon, { rentalDays, rentalFee: rentalSubtotal });
 
       addonLines.push({
         id: Number(addon.id),
         name: addon.name,
         type: addon.addonType,
         unitPrice,
+        ...(addon.addonType === 'percentage' ? { minimumAmount: Number(addon.minimumAmount ?? 0) } : {}),
         total,
       });
       addonsTotal += total;

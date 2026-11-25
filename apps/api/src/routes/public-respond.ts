@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
-import { normalizeWhatsAppNumber } from '@lolas/shared';
+import { addonPriceLabel, addonUnitPrice, normalizeWhatsAppNumber } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { createHold } from '../use-cases/booking/create-hold.js';
 import { checkAvailability } from '../use-cases/booking/check-availability.js';
@@ -67,8 +67,12 @@ interface VehicleEntry {
 interface AddonEntry {
   id: number;
   name: string;
+  /** Daily rate, one-off price, or the percentage of the rental for 'percentage' add-ons. */
   price: number;
-  price_type: 'per_day' | 'one_time';
+  price_type: 'per_day' | 'one_time' | 'percentage';
+  /** Only on 'percentage' add-ons, e.g. "10% of rental (min ₱300)". */
+  minimum_amount?: number;
+  price_label?: string;
 }
 
 interface RespondAddonEntry extends AddonEntry {
@@ -148,17 +152,21 @@ interface PricingRow {
 interface AddonRow {
   id: number;
   name: string;
-  addon_type: 'per_day' | 'one_time';
+  addon_type: 'per_day' | 'one_time' | 'percentage';
   price_per_day: number;
   price_one_time: number;
+  price_percentage: number | null;
+  minimum_amount: number | null;
 }
 
 interface ConfigAddonLike {
   id: number | string;
   name: string;
-  addonType: 'per_day' | 'one_time';
+  addonType: 'per_day' | 'one_time' | 'percentage';
   pricePerDay: number;
   priceOneTime: number;
+  pricePercentage?: number;
+  minimumAmount?: number;
   applicableModelIds?: string[] | null;
   isActive?: boolean;
 }
@@ -1046,7 +1054,7 @@ router.get('/fleet', async (_req, res, next) => {
 
       sb
         .from('addons')
-        .select('id, name, addon_type, price_per_day, price_one_time')
+        .select('id, name, addon_type, price_per_day, price_one_time, price_percentage, minimum_amount')
         .eq('is_active', true)
         .or(`store_id.eq.${STORE_ID},store_id.is.null`)
         .order('name'),
@@ -1140,12 +1148,24 @@ router.get('/fleet', async (_req, res, next) => {
     // Exclude the peace-of-mind addon — it is already surfaced per vehicle above.
     const addons: AddonEntry[] = addonRows
       .filter((a) => !a.name.toLowerCase().includes('peace'))
-      .map((a) => ({
-        id:         Number(a.id),
-        name:       a.name,
-        price:      a.addon_type === 'per_day' ? Number(a.price_per_day) : Number(a.price_one_time),
-        price_type: a.addon_type,
-      }));
+      .map((a) => {
+        const pricing = {
+          addonType: a.addon_type,
+          pricePerDay: a.price_per_day,
+          priceOneTime: a.price_one_time,
+          pricePercentage: a.price_percentage,
+          minimumAmount: a.minimum_amount,
+        };
+        return {
+          id:          Number(a.id),
+          name:        a.name,
+          price:       addonUnitPrice(pricing),
+          price_type:  a.addon_type,
+          ...(a.addon_type === 'percentage'
+            ? { minimum_amount: Number(a.minimum_amount ?? 0), price_label: addonPriceLabel(pricing) }
+            : {}),
+        };
+      });
 
     // ── Assemble and cache ────────────────────────────────────────────────────
 
@@ -1204,8 +1224,11 @@ router.get('/addons', async (req, res, next) => {
           key,
           aliases,
           name: addon.name,
-          price: addon.addonType === 'per_day' ? Number(addon.pricePerDay) : Number(addon.priceOneTime),
+          price: addonUnitPrice(addon),
           price_type: addon.addonType,
+          ...(addon.addonType === 'percentage'
+            ? { minimum_amount: Number(addon.minimumAmount ?? 0), price_label: addonPriceLabel(addon) }
+            : {}),
           compatible_vehicle_model_id: resolvedVehicleModelId,
         };
       })

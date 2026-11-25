@@ -7,6 +7,7 @@ export * from './constants/swap-reason.js';
 export * from './utils/balance.js';
 export * from './utils/mileage.js';
 export * from './utils/booking-lead-time.js';
+export * from './utils/addon-pricing.js';
 export * from './utils/phone.js';
 export * from './utils/contract-template.js';
 export * from './types/api-types.js';

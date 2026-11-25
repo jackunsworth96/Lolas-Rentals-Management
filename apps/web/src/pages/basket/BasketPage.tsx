@@ -15,6 +15,7 @@ import { AddOnsSection, isNinePmReturnAddonName, isSurfRackAddon } from '../../c
 import { TransferSection } from '../../components/basket/TransferSection.js';
 import { RenterDetailsForm } from '../../components/basket/RenterDetailsForm.js';
 import { OrderSummaryPanel } from '../../components/basket/OrderSummaryPanel.js';
+import { addonBasketTotal } from '../../components/basket/addon-totals.js';
 import { OrderReviewSheet } from '../../components/basket/OrderReviewSheet.js';
 import { FadeUpSection } from '../../components/public/FadeUpSection.js';
 import { PageLayout } from '../../components/layout/PageLayout.js';
@@ -52,7 +53,7 @@ interface HydratedBookingSession {
   selectedAddons?: Array<{
     id: number;
     name: string;
-    type: 'per_day' | 'one_time';
+    type: 'per_day' | 'one_time' | 'percentage';
     unitPrice: number;
     total: number;
   }>;
@@ -118,11 +119,6 @@ function formatDate(iso: string): string {
     minute: '2-digit',
     hour12: true,
   });
-}
-
-function addonLineTotal(addon: Addon, rentalDaysCount: number): number {
-  if (addon.addonType === 'per_day') return addon.pricePerDay * rentalDaysCount;
-  return addon.priceOneTime;
 }
 
 export default function BasketPage() {
@@ -581,8 +577,8 @@ export default function BasketPage() {
     () =>
       addons
         .filter((a) => selectedAddonIds.has(Number(a.id)))
-        .map((a) => ({ name: a.name, total: addonLineTotal(a, rentalDays) * vehicleCount })),
-    [addons, selectedAddonIds, rentalDays, vehicleCount],
+        .map((a) => ({ name: a.name, total: addonBasketTotal(a, basket, rentalDays, partnerRentalDiscount) })),
+    [addons, selectedAddonIds, rentalDays, basket, partnerRentalDiscount],
   );
 
   const reviewSheetTransfer = useMemo(() => {
@@ -598,7 +594,7 @@ export default function BasketPage() {
     const vehicleSubtotal = basket.reduce((s, b) => s + b.dailyRate * rentalDays, 0);
     const addonsTotal = addons
       .filter((a) => selectedAddonIds.has(Number(a.id)))
-      .reduce((s, a) => s + addonLineTotal(a, rentalDays), 0) * basket.length;
+      .reduce((s, a) => s + addonBasketTotal(a, basket, rentalDays, partnerRentalDiscount), 0);
     const transferFee = transfer?.totalPrice ?? 0;
     const discountedVehicleSubtotal = Math.max(0, vehicleSubtotal - partnerRentalDiscount);
     const effPickup = partnerFreeDelivery ? 0 : pickupFee;
@@ -853,7 +849,7 @@ export default function BasketPage() {
       const submittedAddonIds = new Set(allAddonIds);
       const selAddons = addons.filter((a) => submittedAddonIds.has(Number(a.id)));
       const clientTotal = basket.reduce((s, b) => s + b.dailyRate * rentalDays, 0)
-        + selAddons.reduce((s, a) => s + (a.addonType === 'per_day' ? a.pricePerDay * rentalDays : a.priceOneTime), 0) * basket.length
+        + selAddons.reduce((s, a) => s + addonBasketTotal(a, basket, rentalDays, 0), 0)
         + (transfer?.totalPrice ?? 0)
         + pickupFee + dropoffFee;
       const baseTotal = serverTotal > 0 ? serverTotal : clientTotal;

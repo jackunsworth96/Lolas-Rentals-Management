@@ -17,7 +17,7 @@ import { useAddons, useLocations, useChartOfAccounts, useStorePricing, usePaymen
 import { useProcessRawOrder, useCollectPayment, useOrderRaw, type RawOrder, type ProcessRawOrderPayload } from '../../api/orders-raw.js';
 import { formatCurrency } from '../../utils/currency.js';
 import { usePaymentRouting } from '../../hooks/use-payment-routing.js';
-import { resolveStoreFromSource } from '@lolas/shared';
+import { addonUnitPrice, computeAddonLineTotal, resolveStoreFromSource } from '@lolas/shared';
 import { InspectionModal } from './InspectionModal.js';
 import { useSurfRackAvailability } from '../../api/surf-racks.js';
 import { isSurfRackAddon } from '../basket/AddOnsSection.js';
@@ -539,6 +539,11 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     return sum + v.rentalRate * days + v.pickupFee + v.dropoffFee - v.discount;
   }, 0);
 
+  const vehicleRentalFee = vehicles.reduce(
+    (sum, v) => sum + v.rentalRate * (v.rentalDaysCount || 1) - v.discount,
+    0,
+  );
+
   const addonSubtotal = selectedAddons
     .filter((a) => a.enabled)
     .reduce((sum, a) => sum + a.totalAmount, 0);
@@ -639,7 +644,14 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
     setSelectedAddons(
       (storeAddons ?? []).map((a) => {
         const adType = (a.addonType ?? a.type ?? 'one_time') as string;
-        const price = adType === 'per_day' ? Number(a.pricePerDay ?? a.price ?? 0) : Number(a.priceOneTime ?? a.price ?? 0);
+        const pricing = {
+          addonType: adType,
+          pricePerDay: (a.pricePerDay ?? a.price) as number | undefined,
+          priceOneTime: (a.priceOneTime ?? a.price) as number | undefined,
+          pricePercentage: a.pricePercentage as number | undefined,
+          minimumAmount: a.minimumAmount as number | undefined,
+        };
+        const price = addonUnitPrice(pricing);
         const addonNameLower = (a.name as string).trim().toLowerCase();
         const preSelected = directAddonIds
           ? directAddonIds.has(Number(a.id))
@@ -647,9 +659,10 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
         return {
           addonName: a.name as string,
           addonPrice: price,
-          addonType: adType as 'per_day' | 'one_time',
+          addonType: adType as 'per_day' | 'one_time' | 'percentage',
+          ...(adType === 'percentage' ? { minimumAmount: Number(pricing.minimumAmount ?? 0) } : {}),
           quantity: adType === 'per_day' ? totalDays : 1,
-          totalAmount: adType === 'per_day' ? price * totalDays : price,
+          totalAmount: computeAddonLineTotal(pricing, { rentalDays: totalDays, rentalFee: vehicleRentalFee }),
           mutualExclusivityGroup: (a.mutualExclusivityGroup as string) ?? null,
           enabled: preSelected,
         };
@@ -671,6 +684,17 @@ export function BookingModal({ open, onClose, rawOrder, onWalkInBooking }: Booki
         : a));
     });
   }, [addonDays]);
+
+  useEffect(() => {
+    setSelectedAddons((prev) => {
+      const priced = (a: AddonRow) => computeAddonLineTotal(
+        { addonType: 'percentage', pricePercentage: a.addonPrice, minimumAmount: a.minimumAmount },
+        { rentalDays: addonDays, rentalFee: vehicleRentalFee },
+      );
+      if (!prev.some((a) => a.addonType === 'percentage' && a.totalAmount !== priced(a))) return prev;
+      return prev.map((a) => (a.addonType === 'percentage' ? { ...a, totalAmount: priced(a) } : a));
+    });
+  }, [vehicleRentalFee, addonDays]);
 
   function toggleAddon(index: number) {
     setSelectedAddons((prev) => {

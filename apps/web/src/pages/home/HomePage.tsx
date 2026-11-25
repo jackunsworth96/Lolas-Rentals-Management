@@ -22,6 +22,7 @@ import iconSurfRack from '../../assets/Home/Surf Rack Icon.svg';
 import iconBungee from '../../assets/Home/Bungee Cord Icon.svg';
 import iconDelivery from '../../assets/Home/Delivery Collection Icon.svg';
 import iconNinePm from '../../assets/Home/9PM Return Icon.svg';
+import iconCancellationCover from '../../assets/Home/Cancellation Cover.svg';
 import { PawCardCallout } from '../../components/home/PawCardCallout.js';
 import { ReviewsSection } from '../../components/home/ReviewsSection.js';
 import Stack from '../../components/home/Stack.js';
@@ -965,6 +966,7 @@ export default function HomePage() {
                 <ul className="flex-1 space-y-3">
                   {[
                     { icon: iconPeaceOfMind, label: 'Peace of Mind' },
+                    { icon: iconCancellationCover, label: 'Cancellation Cover' },
                     { icon: iconSurfRack,    label: 'Surf Rack' },
                     { icon: iconBungee,      label: 'Bungee Cord' },
                     { icon: iconDelivery,    label: 'Delivery' },

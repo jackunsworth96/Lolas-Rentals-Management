@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { BasketItem } from '../../stores/bookingStore.js';
 import type { Addon, TransferDetails, PaymentMethodOption } from './basket-types.js';
+import { addonBasketTotal } from './addon-totals.js';
 import type { PublicPartnerBenefit } from '../../api/partners.js';
 import type { AppliedPartnerBenefit } from '../../utils/partnerDiscount.js';
 import { formatPhpNumber } from '../../utils/currency.js';
@@ -81,11 +82,6 @@ function PaymentMethodIcon({ id, name }: { id: string; name: string }) {
   return <Wallet {...props} />;
 }
 
-function addonCost(addon: Addon, days: number): number {
-  if (addon.addonType === 'per_day') return addon.pricePerDay * days;
-  return addon.priceOneTime;
-}
-
 function partnerHasFreeDeliveryOffer(benefit: PublicPartnerBenefit | null) {
   if (!benefit) return false;
   return Boolean(
@@ -135,17 +131,17 @@ export function OrderSummaryPanel({
 }: Props) {
   const vehicleSubtotal = basket.reduce((sum, b) => sum + b.dailyRate * rentalDays, 0);
 
+  // Apply partner benefit (if eligible) to rental subtotal + delivery fees
+  const applied = partnerBenefitApplied?.applied ?? false;
+  const rentalDiscount = applied ? (partnerBenefitApplied?.rentalDiscount ?? 0) : 0;
+
   const addonsTotal = addons
     .filter((a) => selectedAddonIds.has(Number(a.id)))
-    .reduce((sum, a) => sum + addonCost(a, rentalDays), 0) * vehicleCount;
+    .reduce((sum, a) => sum + addonBasketTotal(a, basket, rentalDays, rentalDiscount), 0);
 
   const transferFee = transfer?.totalPrice ?? 0;
 
   const deposit = basket.reduce((sum, b) => sum + (b.securityDeposit ?? 0), 0);
-
-  // Apply partner benefit (if eligible) to rental subtotal + delivery fees
-  const applied = partnerBenefitApplied?.applied ?? false;
-  const rentalDiscount = applied ? (partnerBenefitApplied?.rentalDiscount ?? 0) : 0;
   const freeDelivery = applied && (partnerBenefitApplied?.freeDelivery ?? false);
   const freeDeliveryOffer = partnerHasFreeDeliveryOffer(partnerBenefit);
   const freeDeliveryLocationLabel = formatFreeDeliveryLocations(partnerFreeDeliveryLocationNames);

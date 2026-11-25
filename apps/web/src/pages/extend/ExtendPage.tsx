@@ -28,7 +28,7 @@ import { phoneIcon } from '../../components/public/customerContactIcons.js';
 interface CurrentOrderAddon {
   addonName: string;
   addonPrice: number;
-  addonType: 'per_day' | 'one_time';
+  addonType: 'per_day' | 'one_time' | 'percentage';
   quantity: number;
   totalAmount: number;
 }

@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { BookingPort, ConfigRepository, TransferRepository, Transfer } from '@lolas/domain';
 import type { SubmitDirectBookingInput } from '@lolas/shared';
-import { resolveSourceFromStore } from '@lolas/shared';
+import { rebaseAddonLines, resolveSourceFromStore } from '@lolas/shared';
 import { computeQuote } from './compute-quote.js';
 import {
   sendEmail,
@@ -229,7 +229,7 @@ export async function submitDirectBooking(
       rentalSubtotalForCommission +
       effectivePickupFee +
       effectiveDropoffFee +
-      fullQuote.addonsTotal;
+      rebaseAddonLines(fullQuote.addons, rentalSubtotalForCommission).total;
   } catch {
     // Non-fatal: booking still proceeds even if quote computation fails
   }

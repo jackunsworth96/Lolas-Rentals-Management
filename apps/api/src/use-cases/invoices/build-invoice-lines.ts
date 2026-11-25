@@ -7,7 +7,7 @@ import type {
   InvoiceOrderSummary,
   InvoicePreview,
 } from '@lolas/shared';
-import { isDepositPayment } from '@lolas/shared';
+import { isDepositPayment, rebaseAddonLines } from '@lolas/shared';
 import { computeQuote } from '../booking/compute-quote.js';
 
 export interface BuildInvoiceLinesDeps {
@@ -49,7 +49,7 @@ type OrderAddonRow = {
   order_id: string;
   addon_name: string;
   addon_price: number | string;
-  addon_type: 'per_day' | 'one_time';
+  addon_type: 'per_day' | 'one_time' | 'percentage';
   quantity: number | null;
   total_amount: number | string;
 };
@@ -344,7 +344,7 @@ async function buildRawOrder(
     if (quote) {
       list.add('fee', 'Delivery', quote.pickupFee);
       list.add('fee', 'Collection', quote.dropoffFee);
-      for (const a of quote.addons) {
+      for (const a of rebaseAddonLines(quote.addons, rentalValue).lines) {
         list.add('addon', `${a.name}${a.type === 'per_day' ? ' (per day)' : ''}`, a.total);
       }
     }

@@ -3,7 +3,9 @@ export interface Addon {
   name: string;
   pricePerDay: number;
   priceOneTime: number;
-  addonType: 'per_day' | 'one_time';
+  pricePercentage?: number;
+  minimumAmount?: number;
+  addonType: 'per_day' | 'one_time' | 'percentage';
   storeId: string | null;
   mutualExclusivityGroup: string | null;
   isActive: boolean;

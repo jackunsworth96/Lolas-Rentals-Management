@@ -24,7 +24,9 @@ export interface VehicleRow {
 export interface AddonRow {
   addonName: string;
   addonPrice: number;
-  addonType: 'per_day' | 'one_time';
+  addonType: 'per_day' | 'one_time' | 'percentage';
+  /** Floor for 'percentage' add-ons; addonPrice holds the percentage. */
+  minimumAmount?: number;
   quantity: number;
   totalAmount: number;
   mutualExclusivityGroup: string | null;

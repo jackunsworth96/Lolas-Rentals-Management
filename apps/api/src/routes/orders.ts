@@ -746,7 +746,7 @@ router.post('/:id/activate', requirePermission(Permission.EditOrders), validateB
     orderId: z.string().optional(),
     addonName: z.string().min(1),
     addonPrice: z.number().min(0),
-    addonType: z.enum(['per_day', 'one_time']),
+    addonType: z.enum(['per_day', 'one_time', 'percentage']),
     quantity: z.number().min(1),
     totalAmount: z.number().min(0),
     mutualExclusivityGroup: z.string().nullable().optional(),
@@ -873,7 +873,7 @@ router.post('/:id/payment', requirePermission(Permission.EditOrders), validateBo
 
 router.post('/:id/modify-addons', requirePermission(Permission.EditOrders), validateBody(z.object({
   addons: z.array(z.object({
-    addonName: z.string(), addonPrice: z.number(), addonType: z.enum(['per_day', 'one_time']),
+    addonName: z.string(), addonPrice: z.number(), addonType: z.enum(['per_day', 'one_time', 'percentage']),
     quantity: z.number().int().positive(), totalAmount: z.number(),
   })).default([]),
   removedAddonIds: z.array(z.string()).default([]),

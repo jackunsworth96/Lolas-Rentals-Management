@@ -168,8 +168,11 @@ export type CreateHold = z.infer<typeof CreateHoldSchema>;
 export interface QuoteAddonLine {
   id: number;
   name: string;
-  type: 'per_day' | 'one_time';
+  type: 'per_day' | 'one_time' | 'percentage';
+  /** Daily rate, one-off price, or the percentage for 'percentage' lines. */
   unitPrice: number;
+  /** Floor applied to 'percentage' lines. */
+  minimumAmount?: number;
   total: number;
 }
 

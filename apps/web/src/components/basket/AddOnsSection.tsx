@@ -8,7 +8,18 @@ import peaceOfMindIcon from '../../assets/Basket/Peace of Mind.svg';
 import surfRackIcon from '../../assets/Basket/Surf Rack Icon.svg';
 import bungeeCordIcon from '../../assets/Basket/Bungee Cord Icon.svg';
 import ninePmReturnIcon from '../../assets/Basket/9PM Return Icon.svg';
+import cancellationCoverIcon from '../../assets/Home/Cancellation Cover.svg';
 import { PeaceOfMindModal } from './PeaceOfMindModal.js';
+
+export function isCancellationCoverAddonName(name: string): boolean {
+  return /cancel/i.test(name);
+}
+
+const CANCELLATION_COVER_IDEAL_FOR = [
+  "You're not sure of your plans yet",
+  "You've never ridden this vehicle before",
+  "You're travelling in rainy season, when flight cancellations are common",
+];
 
 /** Matches the Peace of Mind catalog add-on (name varies slightly by store). */
 export function isPeaceOfMindAddonName(name: string): boolean {
@@ -80,6 +91,7 @@ function iconForAddon(name: string): string {
 function basketAssetIconSrc(name: string): string | null {
   if (isNinePmReturnAddonName(name)) return ninePmReturnIcon;
   const lower = name.toLowerCase();
+  if (isCancellationCoverAddonName(name)) return cancellationCoverIcon;
   if (isPeaceOfMindAddonName(name)) return peaceOfMindIcon;
   if (lower.includes('surf')) return surfRackIcon;
   if (lower.includes('bungee') || lower.includes('bingee')) return bungeeCordIcon;
@@ -108,6 +120,10 @@ function renderAddonIcon(name: string): ReactNode {
 }
 
 function priceLabel(addon: Addon): string {
+  if (addon.addonType === 'percentage') {
+    const min = Number(addon.minimumAmount ?? 0);
+    return `${Number(addon.pricePercentage ?? 0)}% of rental${min > 0 ? ` (min ${formatCurrency(min)})` : ''}`;
+  }
   if (addon.addonType === 'per_day') {
     return addon.pricePerDay > 0 ? `${formatCurrency(addon.pricePerDay)}/day` : 'Free';
   }
@@ -153,6 +169,7 @@ export function AddOnsSection({
           const selected = selectedIds.has(id);
           const isNinePm = isNinePmReturnAddonName(addon.name);
           const isPeaceOfMind = isPeaceOfMindAddonName(addon.name);
+          const isCancellationCover = !isPeaceOfMind && isCancellationCoverAddonName(addon.name);
           const isSurfRack = isSurfRackAddon(addon);
           const surfRackSoldOut = isSurfRack && addon.inventory?.soldOut === true;
           const surfRackUntracked = isSurfRack && addon.inventory?.tracked !== true;
@@ -165,7 +182,7 @@ export function AddOnsSection({
                 aria-pressed={selected}
                 aria-disabled={rowDisabled || undefined}
                 className={`flex w-full gap-3 rounded-lg py-3 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-brand/40 ${
-                  isPeaceOfMind ? 'items-start' : 'items-center'
+                  isPeaceOfMind || isCancellationCover ? 'items-start' : 'items-center'
                 } ${
                   rowDisabled
                     ? 'cursor-not-allowed opacity-50'
@@ -215,22 +232,36 @@ export function AddOnsSection({
                       </span>
                       <span>Covers scratches, mirrors, flats, and theft</span>
                     </p>
+                  ) : isCancellationCover ? (
+                    <div className="mt-1 text-[12px] leading-snug text-charcoal-brand/60">
+                      <p>Cancel any time, before or during your rental, and get refunded for the days you don&apos;t use.</p>
+                      <p className="mt-1.5 font-medium text-charcoal-brand/70">Ideal if:</p>
+                      <ul className="mt-0.5 list-disc space-y-0.5 pl-4">
+                        {CANCELLATION_COVER_IDEAL_FOR.map((line) => (
+                          <li key={line}>{line}</li>
+                        ))}
+                      </ul>
+                    </div>
                   ) : (
                     <p className="text-[12px] text-charcoal-brand/50">
-                      {addon.addonType === 'per_day' ? 'Per day' : 'One-time charge'}
+                      {addon.addonType === 'per_day'
+                        ? 'Per day'
+                        : addon.addonType === 'percentage'
+                          ? 'Charged on your rental fee'
+                          : 'One-time charge'}
                     </p>
                   )}
                 </div>
 
                 {/* Price */}
-                <span className={`shrink-0 text-[14px] font-medium text-charcoal-brand/70 ${isPeaceOfMind ? 'mr-1 mt-0.5' : 'mr-3'}`}>
+                <span className={`shrink-0 text-[14px] font-medium text-charcoal-brand/70 ${isPeaceOfMind ? 'mr-1 mt-0.5' : isCancellationCover ? 'mr-3 mt-0.5' : 'mr-3'}`}>
                   {priceLabel(addon)}
                 </span>
 
                 {/* Custom toggle */}
                 <div
                   className={`relative h-[22px] w-[40px] shrink-0 rounded-full transition-colors ${
-                    isPeaceOfMind ? 'mt-0.5' : ''
+                    isPeaceOfMind || isCancellationCover ? 'mt-0.5' : ''
                   } ${
                     selected ? 'bg-teal-brand' : 'bg-charcoal-brand/15'
                   }`}

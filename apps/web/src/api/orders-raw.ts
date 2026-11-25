@@ -53,7 +53,7 @@ export interface ProcessRawOrderPayload {
   addons: Array<{
     addonName: string;
     addonPrice: number;
-    addonType: 'per_day' | 'one_time';
+    addonType: 'per_day' | 'one_time' | 'percentage';
     quantity: number;
     totalAmount: number;
     mutualExclusivityGroup?: string | null;

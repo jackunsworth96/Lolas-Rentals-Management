@@ -7,6 +7,8 @@ import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
 import {
+  addonUnitPrice,
+  computeAddonLineTotal,
   NullableWhatsAppNumberSchema,
   Permission,
   WhatsAppNumberSchema,
@@ -552,7 +554,7 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
     if (body.addonIds && body.addonIds.length > 0) {
       const { data: addonRows, error: addonErr } = await supabase
         .from('addons')
-        .select('id, name, addon_type, price_per_day, price_one_time')
+        .select('id, name, addon_type, price_per_day, price_one_time, price_percentage, minimum_amount')
         .in('id', body.addonIds)
         .eq('is_active', true);
       if (addonErr) throw new Error(`Addon lookup failed: ${addonErr.message}`);
@@ -560,10 +562,20 @@ router.post('/walk-in-direct', requirePermission(Permission.EditOrders), async (
       orderAddons = ((addonRows ?? []) as Array<{
         id: number; name: string; addon_type: string;
         price_per_day: number; price_one_time: number;
+        price_percentage: number | null; minimum_amount: number | null;
       }>).map((addon) => {
-        const isPerDay = addon.addon_type === 'per_day';
-        const price = isPerDay ? addon.price_per_day : addon.price_one_time;
-        const total = isPerDay ? price * rentalDaysCount : price;
+        const pricing = {
+          addonType: addon.addon_type,
+          pricePerDay: addon.price_per_day,
+          priceOneTime: addon.price_one_time,
+          pricePercentage: addon.price_percentage,
+          minimumAmount: addon.minimum_amount,
+        };
+        const price = addonUnitPrice(pricing);
+        const total = computeAddonLineTotal(pricing, {
+          rentalDays: rentalDaysCount,
+          rentalFee: effectiveRentalSubtotal,
+        });
         return {
           id: crypto.randomUUID(),
           order_id: orderId,
@@ -1100,7 +1112,7 @@ const addonSchema = z.object({
   orderId: z.string().optional(),
   addonName: z.string().min(1),
   addonPrice: z.number().min(0),
-  addonType: z.enum(['per_day', 'one_time']),
+  addonType: z.enum(['per_day', 'one_time', 'percentage']),
   quantity: z.number().min(1),
   totalAmount: z.number().min(0),
   mutualExclusivityGroup: z.string().nullable().optional(),

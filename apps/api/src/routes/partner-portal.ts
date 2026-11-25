@@ -2,7 +2,7 @@ import { createBookingAdapter } from '../adapters/supabase/booking-adapter.js';
 import { randomBytes } from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
-import { SubmitDirectBookingRequestSchema, type SubmitDirectBookingInput, assertBookingLeadTime } from '@lolas/shared';
+import { SubmitDirectBookingRequestSchema, type SubmitDirectBookingInput, assertBookingLeadTime, rebaseAddonLines } from '@lolas/shared';
 import type { HoldRow } from '@lolas/domain';
 import { validateBody, validateQuery } from '../middleware/validate.js';
 import { authenticatePartner } from '../middleware/authenticate-partner.js';
@@ -185,11 +185,14 @@ router.get('/quote', validateQuery(QuoteQuerySchema), async (req, res, next) => 
           rentalDiscount: 0,
           deliveryDiscount: 0,
         };
+    const rebased = rebaseAddonLines(quote.addons, benefit.rentalSubtotal);
 
     res.json({
       success: true,
       data: {
         ...quote,
+        addons: rebased.lines,
+        addonsTotal: rebased.total,
         originalRentalSubtotal: quote.rentalSubtotal,
         originalPickupFee: quote.pickupFee,
         originalDropoffFee: quote.dropoffFee,
@@ -199,7 +202,7 @@ router.get('/quote', validateQuery(QuoteQuerySchema), async (req, res, next) => 
         effectivePickupFee: benefit.pickupFee,
         effectiveDropoffFee: benefit.dropoffFee,
         grandTotal:
-          benefit.rentalSubtotal + benefit.pickupFee + benefit.dropoffFee + quote.addonsTotal,
+          benefit.rentalSubtotal + benefit.pickupFee + benefit.dropoffFee + rebased.total,
       },
     });
   } catch (err) { next(err); }

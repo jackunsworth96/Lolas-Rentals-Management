@@ -16,7 +16,11 @@ export interface Addon {
   name: string;
   pricePerDay: number;
   priceOneTime: number;
-  addonType: 'per_day' | 'one_time';
+  /** Percent of the rental fee, used when addonType is 'percentage'. */
+  pricePercentage?: number;
+  /** Floor for percentage add-ons. */
+  minimumAmount?: number;
+  addonType: 'per_day' | 'one_time' | 'percentage';
   storeId: string | null;
   mutualExclusivityGroup: string | null;
   isActive: boolean;

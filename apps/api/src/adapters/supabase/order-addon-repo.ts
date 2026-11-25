@@ -20,7 +20,7 @@ function toDomain(row: Record<string, unknown>): OrderAddonRecord {
     orderId: row.order_id as string,
     addonName: row.addon_name as string,
     addonPrice: row.addon_price as number,
-    addonType: row.addon_type as 'per_day' | 'one_time',
+    addonType: row.addon_type as 'per_day' | 'one_time' | 'percentage',
     quantity: row.quantity as number,
     totalAmount: row.total_amount as number,
     mutualExclusivityGroup: (row.mutual_exclusivity_group as string | null) ?? null,

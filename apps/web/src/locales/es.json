@@ -92,7 +92,8 @@
       "surfRack": "Portasurfboard",
       "bungeeCord": "Cuerda elástica",
       "deliveryCollection": "Entrega/Recogida",
-      "lateReturn": "Devolución tardía"
+      "lateReturn": "Devolución tardía",
+      "cancellationCover": "Cobertura de cancelación"
     }
   },
   "confirmation": {
@@ -473,7 +474,7 @@
     "sec2Item3": "Si las reparaciones superan las 3 horas durante el horario operativo, se considerará una compensación",
     "sec2Item4": "Los fallos reportados fuera del horario operativo se abordarán en las 3 horas siguientes a nuestra próxima hora de apertura",
     "sec3Title": "Cancelaciones",
-    "sec3Body": "Las reservas canceladas antes de que comience el período de alquiler no son reembolsables. Recomendamos contratar un seguro de viaje que cubra las cancelaciones de viaje y el alquiler de vehículos.",
+    "sec3Body": "Las reservas canceladas antes de que comience el período de alquiler no son reembolsables, salvo que hayas añadido la Cobertura de cancelación. Con la Cobertura de cancelación puedes cancelar en cualquier momento: antes de la recogida para un reembolso completo del alquiler, o durante el alquiler por los días no utilizados. La tarifa de la Cobertura de cancelación no es reembolsable.",
     "sec4Title": "Contáctanos",
     "sec4Body": "Si tienes alguna pregunta sobre esta política, ponte en contacto con nuestro equipo a través de",
     "sec4Whatsapp": "WhatsApp",

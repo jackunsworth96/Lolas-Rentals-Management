@@ -40,6 +40,10 @@ function money(value: number) {
 }
 
 function addonPrice(addon: PublicAddon) {
+  if (addon.addonType === 'percentage') {
+    const min = Number(addon.minimumAmount ?? 0);
+    return `${Number(addon.pricePercentage ?? 0)}% of rental${min > 0 ? ` (min ${money(min)})` : ''}`;
+  }
   return addon.addonType === 'per_day'
     ? `${money(addon.pricePerDay)}/day`
     : `${money(addon.priceOneTime)} one-time`;

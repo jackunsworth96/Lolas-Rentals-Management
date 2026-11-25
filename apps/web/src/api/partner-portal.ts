@@ -121,7 +121,9 @@ export interface PublicAddon {
   name: string;
   pricePerDay: number;
   priceOneTime: number;
-  addonType: 'per_day' | 'one_time';
+  pricePercentage?: number;
+  minimumAmount?: number;
+  addonType: 'per_day' | 'one_time' | 'percentage';
   mutualExclusivityGroup: string | null;
   isActive: boolean;
 }
@@ -138,7 +140,7 @@ export interface ModelPricingTier {
 export interface PartnerQuoteAddonLine {
   id: number;
   name: string;
-  type: 'per_day' | 'one_time';
+  type: 'per_day' | 'one_time' | 'percentage';
   unitPrice: number;
   total: number;
 }

@@ -55,7 +55,7 @@ type OrderAddonRow = {
   id: string;
   addonName: string;
   addonPrice: number;
-  addonType: 'per_day' | 'one_time';
+  addonType: 'per_day' | 'one_time' | 'percentage';
   quantity: number;
   totalAmount: number;
 };
@@ -573,7 +573,9 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
                           <span className="ml-2 text-xs text-green-700">+{formatCurrency(extraCost)} ({extensionDays} days)</span>
                         )}
                       </div>
-                      <span className="text-xs text-green-600">{isPerDay ? 'Per day' : 'One-time'}</span>
+                      <span className="text-xs text-green-600">
+                        {isPerDay ? 'Per day' : a.addonType === 'percentage' ? '% of rental' : 'One-time'}
+                      </span>
                     </div>
                   );
                 })}
@@ -588,6 +590,7 @@ export function ExtendOrderModal({ open, onClose, enrichedData }: Props) {
               <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                 {configAddons
                   .filter((ca) => !existingAddonNames.has(ca.name.toLowerCase()))
+                  .filter((ca) => (ca.addonType ?? ca.addon_type) !== 'percentage')
                   .map((ca) => {
                     const type = (ca.addonType ?? ca.addon_type ?? 'one_time') as string;
                     const isPerDay = type === 'per_day';

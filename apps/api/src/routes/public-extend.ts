@@ -191,6 +191,7 @@ router.get('/addons', async (req, res, next) => {
       .from('addons')
       .select('id, name, addon_type, price_one_time')
       .eq('is_active', true)
+      .neq('addon_type', 'percentage')
       .or(`store_id.eq.${storeId},store_id.is.null`);
     if (error) throw new Error(`Addon lookup failed: ${error.message}`);
     res.json({ success: true, data: data ?? [] });
@@ -393,7 +394,7 @@ router.post('/lookup', extendLookupLimiter, validateBody(ExtendLookupRequestSche
         const currentOrderAddons = ((orderAddons ?? []) as Array<Record<string, unknown>>).map((a) => ({
           addonName: a.addon_name as string,
           addonPrice: Number(a.addon_price ?? 0),
-          addonType: (a.addon_type as 'per_day' | 'one_time') ?? 'one_time',
+          addonType: (a.addon_type as 'per_day' | 'one_time' | 'percentage') ?? 'one_time',
           quantity: Number(a.quantity ?? 1),
           totalAmount: Number(a.total_amount ?? 0),
         }));

@@ -92,7 +92,8 @@
       "surfRack": "Surf Rack",
       "bungeeCord": "Bungee Cord",
       "deliveryCollection": "Delivery/Collection",
-      "lateReturn": "Late Return"
+      "lateReturn": "Late Return",
+      "cancellationCover": "Cancellation Cover"
     }
   },
   "confirmation": {
@@ -491,7 +492,7 @@
     "sec2Item3": "If repairs exceed 3 hours during operational hours, compensation will be considered",
     "sec2Item4": "Faults reported outside operational hours will be addressed within 3 hours of our next opening time",
     "sec3Title": "Cancellations",
-    "sec3Body": "Bookings cancelled before the rental period begins are non-refundable. We recommend purchasing travel insurance that covers trip cancellations and vehicle rental.",
+    "sec3Body": "Bookings cancelled before the rental period begins are non-refundable, unless you added Cancellation Cover. With Cancellation Cover you can cancel at any time: before pickup for a full refund of your rental, or during your rental for the days you have not used. The Cancellation Cover fee itself is non-refundable.",
     "sec4Title": "Contact Us",
     "sec4Body": "If you have any questions about this policy, please reach out to our team via",
     "sec4Whatsapp": "WhatsApp",

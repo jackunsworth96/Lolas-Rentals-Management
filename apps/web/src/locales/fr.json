@@ -92,7 +92,8 @@
       "surfRack": "Porte-surf",
       "bungeeCord": "Sandow",
       "deliveryCollection": "Livraison/Collecte",
-      "lateReturn": "Retour tardif"
+      "lateReturn": "Retour tardif",
+      "cancellationCover": "Garantie annulation"
     }
   },
   "confirmation": {
@@ -473,7 +474,7 @@
     "sec2Item3": "Si les réparations dépassent 3 heures pendant les heures d'exploitation, une compensation sera envisagée",
     "sec2Item4": "Les pannes signalées en dehors des heures d'exploitation seront traitées dans les 3 heures suivant notre prochaine heure d'ouverture",
     "sec3Title": "Annulations",
-    "sec3Body": "Les réservations annulées avant le début de la période de location ne sont pas remboursables. Nous recommandons de souscrire une assurance voyage couvrant les annulations et la location de véhicules.",
+    "sec3Body": "Les réservations annulées avant le début de la période de location ne sont pas remboursables, sauf si vous avez ajouté la Garantie annulation. Avec la Garantie annulation, vous pouvez annuler à tout moment : avant la prise en charge pour un remboursement complet de la location, ou pendant la location pour les jours non utilisés. Les frais de la Garantie annulation ne sont pas remboursables.",
     "sec4Title": "Nous contacter",
     "sec4Body": "Si vous avez des questions sur cette politique, veuillez contacter notre équipe via",
     "sec4Whatsapp": "WhatsApp",

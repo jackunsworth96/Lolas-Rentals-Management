@@ -2,6 +2,12 @@ import { useAddons, useSaveAddon, useDeleteAddon, useStores, useVehicleModels } 
 import { useUIStore } from '../../../stores/ui-store.js';
 import { ConfigSection, type FieldDef } from '../ConfigSection.js';
 
+const TYPE_LABELS: Record<string, string> = {
+  per_day: 'Per day',
+  one_time: 'One time',
+  percentage: '% of rental',
+};
+
 export function AddonsTab() {
   const storeId = useUIStore((s) => s.selectedStoreId) ?? '';
   const { data: stores } = useStores();
@@ -23,9 +29,18 @@ export function AddonsTab() {
 
   const columns = [
     { key: 'name', header: 'Name' },
-    { key: 'addonType', header: 'Type' },
+    { key: 'addonType', header: 'Type', render: (r: Record<string, unknown>) => TYPE_LABELS[String(r.addonType)] ?? String(r.addonType) },
     { key: 'pricePerDay', header: 'Price/day' },
     { key: 'priceOneTime', header: 'Price one-time' },
+    {
+      key: 'pricePercentage',
+      header: '% of rental',
+      render: (r: Record<string, unknown>) => {
+        if (r.addonType !== 'percentage') return '—';
+        const min = Number(r.minimumAmount ?? 0);
+        return `${Number(r.pricePercentage ?? 0)}%${min > 0 ? ` (min ₱${min.toLocaleString()})` : ''}`;
+      },
+    },
     { key: 'mutualExclusivityGroup', header: 'Exclusivity group' },
     {
       key: 'applicableModelIds',
@@ -47,9 +62,17 @@ export function AddonsTab() {
 
   const fields: FieldDef[] = [
     { key: 'name', label: 'Name', type: 'text', required: true },
-    { key: 'addonType', label: 'Type', type: 'select', options: [{ value: 'per_day', label: 'Per day' }, { value: 'one_time', label: 'One time' }], required: true },
+    {
+      key: 'addonType',
+      label: 'Type',
+      type: 'select',
+      options: Object.entries(TYPE_LABELS).map(([value, label]) => ({ value, label })),
+      required: true,
+    },
     { key: 'pricePerDay', label: 'Price per day', type: 'number' },
     { key: 'priceOneTime', label: 'Price one-time', type: 'number' },
+    { key: 'pricePercentage', label: '% of rental fee (for "% of rental" type)', type: 'number' },
+    { key: 'minimumAmount', label: 'Minimum charge ₱ (for "% of rental" type)', type: 'number' },
     { key: 'storeId', label: 'Store', type: 'select', options: storeOpts, default: storeId },
     { key: 'applicableModelIds', label: 'Applicable Vehicle Models (leave blank for all)', type: 'multiselect', options: modelOpts },
     { key: 'mutualExclusivityGroup', label: 'Mutual exclusivity group', type: 'text', placeholder: 'e.g. peace_of_mind' },

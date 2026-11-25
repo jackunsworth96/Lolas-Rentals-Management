@@ -92,7 +92,8 @@
       "surfRack": "Surfboard-Halter",
       "bungeeCord": "Gummiseil",
       "deliveryCollection": "Lieferung/Abholung",
-      "lateReturn": "Spätrückgabe"
+      "lateReturn": "Spätrückgabe",
+      "cancellationCover": "Stornoschutz"
     }
   },
   "confirmation": {
@@ -473,7 +474,7 @@
     "sec2Item3": "Wenn Reparaturen während der Betriebszeiten 3 Stunden überschreiten, wird eine Entschädigung erwogen",
     "sec2Item4": "Außerhalb der Betriebszeiten gemeldete Defekte werden innerhalb von 3 Stunden nach unserer nächsten Öffnungszeit behoben",
     "sec3Title": "Stornierungen",
-    "sec3Body": "Buchungen, die vor Beginn des Mietzeitraums storniert werden, sind nicht erstattungsfähig. Wir empfehlen den Abschluss einer Reiseversicherung, die Reisestornierungen und Fahrzeugmieten abdeckt.",
+    "sec3Body": "Buchungen, die vor Beginn des Mietzeitraums storniert werden, sind nicht erstattungsfähig, es sei denn, Sie haben den Stornoschutz hinzugefügt. Mit dem Stornoschutz können Sie jederzeit stornieren: vor der Abholung mit voller Erstattung der Miete oder während der Miete für die nicht genutzten Tage. Die Gebühr für den Stornoschutz ist nicht erstattungsfähig.",
     "sec4Title": "Kontakt",
     "sec4Body": "Wenn Sie Fragen zu dieser Richtlinie haben, kontaktieren Sie bitte unser Team über",
     "sec4Whatsapp": "WhatsApp",

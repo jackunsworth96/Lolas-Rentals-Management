@@ -467,7 +467,7 @@ router.get('/session/:sessionToken', async (req, res, next) => {
     let selectedAddons: Array<{
       id: number;
       name: string;
-      type: 'per_day' | 'one_time';
+      type: 'per_day' | 'one_time' | 'percentage';
       unitPrice: number;
       total: number;
     }> = [];

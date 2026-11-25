@@ -68,7 +68,7 @@ export function computeOrderItemOverlap(
 
 export interface AddonRow {
   order_id: string;
-  addon_type: 'per_day' | 'one_time';
+  addon_type: 'per_day' | 'one_time' | 'percentage';
   total_amount: number | null;
   added_at: string | null;
 }
@@ -105,7 +105,7 @@ export function attributeAddonRevenue<T extends AddonAttributionTarget>(
     const totalAmount = Number(addon.total_amount ?? 0);
     if (totalAmount === 0) continue;
 
-    if (addon.addon_type === 'one_time') {
+    if (addon.addon_type === 'one_time' || addon.addon_type === 'percentage') {
       // One-off charge — attribute it to whichever period it was actually added in.
       const addedAtMs = addon.added_at ? new Date(addon.added_at).getTime() : null;
       const inPeriod = addedAtMs != null

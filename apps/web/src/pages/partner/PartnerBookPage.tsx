@@ -2,6 +2,7 @@ import { AllocationAvailability } from '../../components/booking/AllocationAvail
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Info, Plus, Trash2 } from 'lucide-react';
+import { computeAddonLineTotal } from '@lolas/shared';
 import {
   fetchPublicAddons,
   fetchPublicLocations,
@@ -84,7 +85,11 @@ function money(value: number) {
   return `₱${Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: 0 })}`;
 }
 
-function addonPrice(addon: Pick<PublicAddon, 'addonType' | 'pricePerDay' | 'priceOneTime'>) {
+function addonPrice(addon: Pick<PublicAddon, 'addonType' | 'pricePerDay' | 'priceOneTime' | 'pricePercentage' | 'minimumAmount'>) {
+  if (addon.addonType === 'percentage') {
+    const min = Number(addon.minimumAmount ?? 0);
+    return `${Number(addon.pricePercentage ?? 0)}% of rental${min > 0 ? ` (min ${money(min)})` : ''}`;
+  }
   return addon.addonType === 'per_day'
     ? `${money(addon.pricePerDay)}/day`
     : `${money(addon.priceOneTime)} one-time`;
@@ -347,12 +352,19 @@ export default function PartnerBookPage() {
     return selectedAddonIdList.reduce((sum, id) => {
       const addon = addonById.get(id);
       if (!addon) return sum;
-      const unitTotal = addon.addonType === 'per_day'
-        ? Number(addon.pricePerDay ?? 0) * summaryRentalDays
-        : Number(addon.priceOneTime ?? 0);
+      if (addon.addonType === 'percentage') {
+        return sum + selectedQuotes.reduce(
+          (s, quote) => s + computeAddonLineTotal(addon, {
+            rentalDays: summaryRentalDays,
+            rentalFee: quote.effectiveRentalSubtotal,
+          }),
+          0,
+        );
+      }
+      const unitTotal = computeAddonLineTotal(addon, { rentalDays: summaryRentalDays, rentalFee: 0 });
       return sum + unitTotal * selectedVehicleCount;
     }, 0);
-  }, [addons.data, selectedAddonIdList, selectedVehicleCount, summaryRentalDays]);
+  }, [addons.data, selectedAddonIdList, selectedVehicleCount, summaryRentalDays, selectedQuotes]);
   const totals = selectedQuotes.reduce(
     (acc, quote, index) => {
       acc.rental += quote.effectiveRentalSubtotal;

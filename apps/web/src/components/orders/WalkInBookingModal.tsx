@@ -1,7 +1,7 @@
 import { fetchPublicPartnerBenefit, usePartners } from '../../api/partners.js';
 import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { isValidWhatsAppE164, whatsAppLinkDigits } from '@lolas/shared';
+import { computeAddonLineTotal, isValidWhatsAppE164, whatsAppLinkDigits } from '@lolas/shared';
 import { Modal } from '../common/Modal.js';
 import { WhatsAppNumberInput } from '../common/WhatsAppNumberInput.js';
 import { normalizeApiBase } from '../../api/normalize-api-base.js';
@@ -40,7 +40,9 @@ interface Addon {
   name: string;
   pricePerDay: number;
   priceOneTime: number;
-  addonType: 'per_day' | 'one_time';
+  pricePercentage?: number;
+  minimumAmount?: number;
+  addonType: 'per_day' | 'one_time' | 'percentage';
   applicableModelIds: string[] | null;
   mutualExclusivityGroup: string | null;
   isActive: boolean;
@@ -293,16 +295,6 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
     ? (availableVehicles.find((v) => v.id === selectedVehicleId)?.surfRack ?? null)
     : null;
 
-  const addonsTotalLocal = filteredAddons.reduce((sum, addon) => {
-    const qty = selectedAddonIds[String(addon.id)] ?? 0;
-    if (!qty) return sum;
-    const unitCost =
-      addon.addonType === 'per_day'
-        ? addon.pricePerDay * localRentalDays
-        : addon.priceOneTime;
-    return sum + unitCost * qty;
-  }, 0);
-
   const rentalSubtotalLocal = quote?.rentalSubtotal ?? 0;
   const partnerApplied = computePartnerBenefit(
     partnerBenefit ?? null,
@@ -314,6 +306,14 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
     dropoffLocationNum,
   );
   const rentalDiscountLocal = partnerApplied.applied ? partnerApplied.rentalDiscount : 0;
+  const addonUnitCost = (addon: Addon) => computeAddonLineTotal(addon, {
+    rentalDays: localRentalDays,
+    rentalFee: Math.max(0, rentalSubtotalLocal - rentalDiscountLocal),
+  });
+  const addonsTotalLocal = filteredAddons.reduce((sum, addon) => {
+    const qty = selectedAddonIds[String(addon.id)] ?? 0;
+    return qty ? sum + addonUnitCost(addon) * qty : sum;
+  }, 0);
   // Grand total = server rental base + locally-computed fees (so fees appear immediately)
   const grandTotalLocal =
     Math.max(0, rentalSubtotalLocal - rentalDiscountLocal) + pickupFeeLocal + dropoffFeeLocal + addonsTotalLocal;
@@ -928,8 +928,6 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
               <div className="space-y-2">
                 {filteredAddons.map((addon) => {
                   const qty = selectedAddonIds[String(addon.id)] ?? 0;
-                  const price = addon.addonType === 'per_day' ? addon.pricePerDay : addon.priceOneTime;
-                  const priceLabel = addon.addonType === 'per_day' ? '/day' : ' one-time';
                   const isRack = surfRackAddon?.id === addon.id;
                   // One bike per walk-in, so at most one rack; none when stock is exhausted.
                   const maxQty = isRack
@@ -939,7 +937,13 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
                     <div key={addon.id} className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
                       <div className="min-w-0 flex-1">
                         <p className="font-lato text-sm font-medium text-gray-800">{addon.name}</p>
-                        <p className="font-lato text-xs text-gray-500">{formatCurrency(price)}{priceLabel}</p>
+                        <p className="font-lato text-xs text-gray-500">
+                          {addon.addonType === 'per_day'
+                            ? `${formatCurrency(addon.pricePerDay)}/day`
+                            : addon.addonType === 'percentage'
+                              ? `${addon.pricePercentage ?? 0}% of rental = ${formatCurrency(addonUnitCost(addon))}`
+                              : `${formatCurrency(addon.priceOneTime)} one-time`}
+                        </p>
                         {isRack && (
                           <SurfRackAvailabilityNote
                             availability={rackAvailability}
@@ -1028,10 +1032,7 @@ export function WalkInBookingModal({ open, onClose, initialVehicleId }: Props) {
                     {filteredAddons.map((addon) => {
                       const qty = selectedAddonIds[String(addon.id)] ?? 0;
                       if (!qty) return null;
-                      const unitCost =
-                        addon.addonType === 'per_day'
-                          ? addon.pricePerDay * localRentalDays
-                          : addon.priceOneTime;
+                      const unitCost = addonUnitCost(addon);
                       return (
                         <div key={addon.id} className="flex justify-between">
                           <span className="font-lato text-sm text-gray-600">

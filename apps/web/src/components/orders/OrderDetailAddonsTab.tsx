@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { addonUnitPrice, computeAddonLineTotal } from '@lolas/shared';
 import { useModifyAddons } from '../../api/orders.js';
 import { useAddons, useChartOfAccounts, usePaymentMethods } from '../../api/config.js';
 import { useOrderSurfRackAllocations, useReleaseSurfRack } from '../../api/surf-racks.js';
@@ -15,6 +16,8 @@ type ConfigAddon = {
   price_per_day?: number;
   priceOneTime?: number;
   price_one_time?: number;
+  pricePercentage?: number;
+  minimumAmount?: number;
   addonType?: string;
   addon_type?: string;
   isActive?: boolean;
@@ -55,7 +58,7 @@ export function OrderDetailAddonsTab({ orderId, storeId, orderAddons, items, can
   const [addonPaymentMethodId, setAddonPaymentMethodId] = useState('');
   const [addonAccountId, setAddonAccountId] = useState('');
   const [addonSettlementRef, setAddonSettlementRef] = useState('');
-  const [pendingAddonAdds, setPendingAddonAdds] = useState<Array<{ addonName: string; addonPrice: number; addonType: 'per_day' | 'one_time'; quantity: number; totalAmount: number }>>([]);
+  const [pendingAddonAdds, setPendingAddonAdds] = useState<Array<{ addonName: string; addonPrice: number; addonType: 'per_day' | 'one_time' | 'percentage'; quantity: number; totalAmount: number }>>([]);
   const [pendingAddonRemoves, setPendingAddonRemoves] = useState<string[]>([]);
 
   const pmLookup = useMemo(
@@ -112,6 +115,26 @@ export function OrderDetailAddonsTab({ orderId, storeId, orderAddons, items, can
     return Math.max(...items.map((i) => i.rentalDaysCount ?? 1));
   }, [items]);
 
+  const rentalFee = useMemo(
+    () => items.reduce((s, i) => s + i.rentalRate * (i.rentalDaysCount ?? 1) - (i.discount ?? 0), 0),
+    [items],
+  );
+
+  const priceConfigAddon = (addon: ConfigAddon) => {
+    const pricing = {
+      addonType: (addon.addonType ?? addon.addon_type ?? 'one_time') as 'per_day' | 'one_time' | 'percentage',
+      pricePerDay: addon.pricePerDay ?? addon.price_per_day,
+      priceOneTime: addon.priceOneTime ?? addon.price_one_time,
+      pricePercentage: addon.pricePercentage,
+      minimumAmount: addon.minimumAmount,
+    };
+    return {
+      type: pricing.addonType,
+      price: addonUnitPrice(pricing),
+      total: computeAddonLineTotal(pricing, { rentalDays, rentalFee }),
+    };
+  };
+
   const activeOrderAddonNames = useMemo(
     () => new Set(orderAddons.map((a) => a.addonName.toLowerCase())),
     [orderAddons],
@@ -124,9 +147,7 @@ export function OrderDetailAddonsTab({ orderId, storeId, orderAddons, items, can
   const toggleAddon = (addon: ConfigAddon) => {
     const name = addon.name;
     const lowerName = name.toLowerCase();
-    const type = (addon.addonType ?? addon.addon_type ?? 'one_time') as 'per_day' | 'one_time';
-    const price = type === 'per_day' ? Number(addon.pricePerDay ?? addon.price_per_day ?? 0) : Number(addon.priceOneTime ?? addon.price_one_time ?? 0);
-    const total = type === 'per_day' ? price * rentalDays : price;
+    const { type, price, total } = priceConfigAddon(addon);
 
     if (activeOrderAddonNames.has(lowerName)) {
       const match = orderAddons.find((a) => a.addonName.toLowerCase() === lowerName);
@@ -196,8 +217,12 @@ export function OrderDetailAddonsTab({ orderId, storeId, orderAddons, items, can
                 return (
                   <tr key={a.id} className={`border-b hover:bg-sand-brand ${isMarkedForRemoval ? 'opacity-40 line-through' : ''}`}>
                     <td className="py-2 pr-4 font-medium">{a.addonName}</td>
-                    <td className="py-2 pr-4 capitalize">{a.addonType === 'per_day' ? 'Per day' : 'One-time'}</td>
-                    <td className="py-2 pr-4">{formatCurrency(a.addonPrice ?? 0)}</td>
+                    <td className="py-2 pr-4 capitalize">
+                      {a.addonType === 'per_day' ? 'Per day' : a.addonType === 'percentage' ? '% of rental' : 'One-time'}
+                    </td>
+                    <td className="py-2 pr-4">
+                      {a.addonType === 'percentage' ? `${a.addonPrice ?? 0}%` : formatCurrency(a.addonPrice ?? 0)}
+                    </td>
                     <td className="py-2 pr-4">{a.quantity ?? 1}</td>
                     <td className="py-2 pr-4">{formatCurrency(a.totalAmount ?? 0)}</td>
                     {canAct && (
@@ -275,9 +300,7 @@ export function OrderDetailAddonsTab({ orderId, storeId, orderAddons, items, can
             {configAddons
               .filter((ca) => ca.isActive !== false && ca.is_active !== false)
               .map((ca) => {
-                const type = (ca.addonType ?? ca.addon_type ?? 'one_time') as string;
-                const price = type === 'per_day' ? Number(ca.pricePerDay ?? ca.price_per_day ?? 0) : Number(ca.priceOneTime ?? ca.price_one_time ?? 0);
-                const total = type === 'per_day' ? price * rentalDays : price;
+                const { type, price, total } = priceConfigAddon(ca);
                 const isOnOrder = activeOrderAddonNames.has(ca.name.toLowerCase()) && !pendingAddonRemoves.some((id) => orderAddons.find((a) => a.id === id)?.addonName.toLowerCase() === ca.name.toLowerCase());
                 const isPendingAdd = pendingAddonAddNames.has(ca.name.toLowerCase());
 
@@ -297,7 +320,11 @@ export function OrderDetailAddonsTab({ orderId, storeId, orderAddons, items, can
                     <div>
                       <div className="font-medium">{ca.name}</div>
                       <div className="text-xs text-charcoal-brand/60">
-                        {type === 'per_day' ? `${formatCurrency(price)}/day × ${rentalDays} days` : formatCurrency(price)}
+                        {type === 'per_day'
+                          ? `${formatCurrency(price)}/day × ${rentalDays} days`
+                          : type === 'percentage'
+                            ? `${price}% of rental`
+                            : formatCurrency(price)}
                       </div>
                     </div>
                     <div className="text-right">

@@ -305,7 +305,9 @@ export function VehicleStep({
                   <span className="block text-xs text-gray-500">
                     {addon.addonType === 'per_day'
                       ? `${formatCurrency(addon.addonPrice)} / day × ${addon.quantity} ${addon.quantity === 1 ? 'day' : 'days'}`
-                      : `${formatCurrency(addon.addonPrice)} one-time`}
+                      : addon.addonType === 'percentage'
+                        ? `${addon.addonPrice}% of rental${addon.minimumAmount ? ` (min ${formatCurrency(addon.minimumAmount)})` : ''} = ${formatCurrency(addon.totalAmount)}`
+                        : `${formatCurrency(addon.addonPrice)} one-time`}
                     {addon.mutualExclusivityGroup && (
                       <Badge color="gray" className="ml-2">{addon.mutualExclusivityGroup}</Badge>
                     )}

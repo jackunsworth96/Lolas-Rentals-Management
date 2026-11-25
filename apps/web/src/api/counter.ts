@@ -45,7 +45,7 @@ export interface CounterAddon {
   id: number;
   name: string;
   kind: CounterAddonKind;
-  addonType: 'per_day' | 'one_time';
+  addonType: 'per_day' | 'one_time' | 'percentage';
   unitPrice: number;
   total: number;
   soldOut: boolean;

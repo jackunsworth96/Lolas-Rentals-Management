@@ -52,6 +52,7 @@ import iconSurfRack from '../../assets/Home/Surf Rack Icon.svg';
 import iconBungee from '../../assets/Home/Bungee Cord Icon.svg';
 import iconDelivery from '../../assets/Home/Delivery Collection Icon.svg';
 import iconNinePm from '../../assets/Home/9PM Return Icon.svg';
+import iconCancellationCover from '../../assets/Home/Cancellation Cover.svg';
 import tickIcon from '../../assets/Home/Tick Icon.svg';
 import pesoIcon from '../../assets/Home/Peso Icon.svg';
 
@@ -86,6 +87,7 @@ function useInclusionItems() {
     { icon: iconLesson,      label: t('browse.items.ridingLesson') },
     { icon: iconCrashGuard,  label: t('browse.items.crashArmour') },
     { icon: iconPeaceOfMind, label: t('browse.items.peaceOfMind'), isUpgrade: true },
+    { icon: iconCancellationCover, label: t('browse.items.cancellationCover'), isUpgrade: true },
     { icon: iconSurfRack,    label: t('browse.items.surfRack'),     isUpgrade: true },
     { icon: iconBungee,      label: t('browse.items.bungeeCord'),   isUpgrade: true },
     { icon: iconDelivery,    label: t('browse.items.deliveryCollection'), isUpgrade: true },

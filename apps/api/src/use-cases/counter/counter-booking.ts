@@ -1,5 +1,11 @@
 import type { Addon, AvailableModel, BookingPort, ConfigRepository, HoldRow, Location } from '@lolas/domain';
-import { hasBookingLeadTime, resolveSourceFromStore } from '@lolas/shared';
+import {
+  addonUnitPrice,
+  computeAddonLineTotal,
+  hasBookingLeadTime,
+  rebaseAddonLines,
+  resolveSourceFromStore,
+} from '@lolas/shared';
 import { supabase } from '../../adapters/supabase/client.js';
 import { checkAvailability } from '../booking/check-availability.js';
 import { computeQuote } from '../booking/compute-quote.js';
@@ -175,15 +181,16 @@ async function priceModel(
         dropoffLocationId,
       })
     : { rentalSubtotal: quote.rentalSubtotal, pickupFee: quote.pickupFee, dropoffFee: quote.dropoffFee, rentalDiscount: 0 };
+  const rebased = rebaseAddonLines(quote.addons, benefit.rentalSubtotal);
   return {
-    quote,
+    quote: { ...quote, addons: rebased.lines, addonsTotal: rebased.total },
     pickupLocationId,
     dropoffLocationId,
     rentalSubtotal: benefit.rentalSubtotal,
     rentalDiscount: benefit.rentalDiscount,
     pickupFee: benefit.pickupFee,
     dropoffFee: benefit.dropoffFee,
-    total: benefit.rentalSubtotal + benefit.pickupFee + benefit.dropoffFee + quote.addonsTotal,
+    total: benefit.rentalSubtotal + benefit.pickupFee + benefit.dropoffFee + rebased.total,
   };
 }
 
@@ -269,7 +276,7 @@ export interface CounterAddonOption {
   id: number;
   name: string;
   kind: CounterAddonKind;
-  addonType: 'per_day' | 'one_time';
+  addonType: 'per_day' | 'one_time' | 'percentage';
   unitPrice: number;
   total: number;
   soldOut: boolean;
@@ -306,6 +313,8 @@ export async function getCounterExtras(
   const picked = new Map<CounterAddonKind, Addon>();
   for (const addon of addons) {
     if (addon.isActive === false) continue;
+    // Counter rentals start straight away, so cover that ends at activation has nothing to protect.
+    if (addon.addonType === 'percentage') continue;
     if (addon.applicableModelIds && addon.applicableModelIds.length > 0 && !addon.applicableModelIds.includes(input.modelId)) continue;
     const kind = addonKind(addon);
     if (!kind || picked.has(kind)) continue;
@@ -327,14 +336,13 @@ export async function getCounterExtras(
   const options = KIND_ORDER.flatMap((kind) => {
     const addon = picked.get(kind);
     if (!addon) return [];
-    const unitPrice = addon.addonType === 'per_day' ? Number(addon.pricePerDay) : Number(addon.priceOneTime);
     return [{
       id: Number(addon.id),
       name: addon.name,
       kind,
       addonType: addon.addonType,
-      unitPrice,
-      total: addon.addonType === 'per_day' ? unitPrice * days : unitPrice,
+      unitPrice: addonUnitPrice(addon),
+      total: computeAddonLineTotal(addon, { rentalDays: days, rentalFee: 0 }),
       soldOut: kind === 'surf_rack' && rackSoldOut,
     }];
   });

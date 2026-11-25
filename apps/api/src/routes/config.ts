@@ -146,7 +146,8 @@ router.get('/addons', async (req, res, next) => {
 });
 const addonBodySchema = z.object({
   name: z.string().min(1), pricePerDay: z.number().nonnegative(), priceOneTime: z.number().nonnegative(),
-  addonType: z.enum(['per_day', 'one_time']), storeId: z.string().nullable().optional(),
+  pricePercentage: z.number().min(0).max(100).optional(), minimumAmount: z.number().nonnegative().optional(),
+  addonType: z.enum(['per_day', 'one_time', 'percentage']), storeId: z.string().nullable().optional(),
   mutualExclusivityGroup: z.string().nullable().optional(), isActive: z.boolean().optional(),
   applicableModelIds: z.array(z.string()).nullable().optional(),
   inventoryType: z.enum(['surf_rack']).nullable().optional(),
