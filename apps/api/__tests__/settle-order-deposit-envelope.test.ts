@@ -12,24 +12,33 @@ type Leg = { account_id: string; debit: number; credit: number; reference_type: 
 
 const cashAccounts = { tillAccountId: 'TILL', envelopeAccountId: 'ENVELOPE' };
 
-function setup(opts: { balanceDue: number; depositMethod?: string; deposits?: Array<{ method: string; amount: number }> }) {
+function setup(opts: {
+  balanceDue: number;
+  depositMethod?: string;
+  deposits?: Array<{ method: string; amount: number }>;
+  pendingExtensions?: number[];
+}) {
   const deposits = opts.deposits ?? [{ method: opts.depositMethod ?? 'Cash', amount: 1000 }];
+  const extensions = (opts.pendingExtensions ?? []).map((amount, i) => ({
+    id: `ext-${i}`, paymentType: 'extension', paymentMethodId: 'pending', settlementStatus: 'pending', amount,
+  }));
   mocks.from.mockReturnValue({
     select: () => ({ in: async (_col: string, ids: string[]) => ({ data: ids.map((id) => ({ id })), error: null }) }),
   });
   mocks.rpc.mockResolvedValue({ error: null });
   const order = {
     id: 'order-1', storeId: 'store-1', customerId: null,
-    securityDeposit: Money.php(1000), finalTotal: Money.php(3000),
+    securityDeposit: Money.php(1000), finalTotal: Money.php(opts.balanceDue),
     calculateBalanceDue: () => Money.php(opts.balanceDue),
   };
   return {
     orderRepo: { findById: vi.fn().mockResolvedValue(order) },
     orderItemRepo: { findByOrderId: vi.fn().mockResolvedValue([]) },
     paymentRepo: {
-      findByOrderId: vi.fn().mockResolvedValue(
-        deposits.map((d) => ({ paymentType: 'deposit', paymentMethodId: d.method, amount: d.amount })),
-      ),
+      findByOrderId: vi.fn().mockResolvedValue([
+        ...deposits.map((d) => ({ paymentType: 'deposit', paymentMethodId: d.method, amount: d.amount })),
+        ...extensions,
+      ]),
     },
   };
 }
@@ -59,6 +68,26 @@ describe('settleOrder deposit envelope postings', () => {
       ...baseInput, refundAccountId: 'GCASH', depositRefundMethodId: 'Gcash',
     });
     expect(postedLegs().find((l) => l.reference_type === 'refund' && l.credit > 0)).toMatchObject({ account_id: 'GCASH' });
+  });
+
+  it('refunds the whole deposit when the order is paid but an extension IOU is still pending', async () => {
+    const result = await settleOrder(setup({ balanceDue: 0, depositMethod: 'Cash', pendingExtensions: [2510] }) as never, {
+      ...baseInput, depositRefundMethodId: 'Cash',
+    });
+    expect(result).toMatchObject({ depositApplied: 0, depositRefund: 1000 });
+    const legs = postedLegs();
+    expect(legs.some((l) => l.reference_type === 'deposit_envelope_transfer')).toBe(false);
+    expect(legs.some((l) => l.account_id === 'TILL')).toBe(false);
+    expect(legs.find((l) => l.reference_type === 'refund' && l.credit > 0)).toMatchObject({ account_id: 'ENVELOPE', credit: 1000 });
+    expect(mocks.rpc.mock.calls[0][1].p_final_balance_due).toBe(0);
+  });
+
+  it('applies the deposit to an extension that is still owed', async () => {
+    const result = await settleOrder(setup({ balanceDue: 400, depositMethod: 'Cash', pendingExtensions: [400] }) as never, {
+      ...baseInput, depositRefundMethodId: 'Cash',
+    });
+    expect(result).toMatchObject({ depositApplied: 400, depositRefund: 600 });
+    expect(mocks.rpc.mock.calls[0][1].p_final_balance_due).toBe(0);
   });
 
   it('moves the applied part of a cash deposit from the envelope into the till', async () => {

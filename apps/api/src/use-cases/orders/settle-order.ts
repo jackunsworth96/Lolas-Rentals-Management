@@ -161,18 +161,13 @@ export async function settleOrder(
     throw new Error('Return-charge payment method and account are required');
   }
 
-  // Balance = rental/addon/extension charges not yet paid.
-  //   (a) final_total − rentalPaid         — works when migration 091 has bumped final_total
-  //   (b) pendingExtensionsTotal           — fallback if final_total is stale
-  // Use the greater so the calc is resilient either way.
+  // Balance = final_total − rentalPaid. Extensions are already in final_total,
+  // so a still-pending extension IOU must not be added again: after a partial
+  // payment plus a write-off it can outlive the debt it recorded.
   // A separately paid return charge bumps both the order total and the received
   // payments, leaving the balance unchanged. One taken from the deposit is added
   // to the balance so the deposit covers it.
-  const balanceFromFinalTotal = order.calculateBalanceDue(rentalPaid);
-  const rentalBalance =
-    balanceFromFinalTotal.toNumber() >= pendingExtensionsTotal.toNumber()
-      ? balanceFromFinalTotal
-      : pendingExtensionsTotal;
+  const rentalBalance = Money.php(Math.max(0, order.calculateBalanceDue(rentalPaid).toNumber()));
   const balanceBeforeDeposit = returnChargesFromDeposit
     ? rentalBalance.add(returnChargesDelta)
     : rentalBalance;
@@ -505,23 +500,22 @@ export async function settleOrder(
 
   // Compute the post-settlement balance locally so we can
   // stamp it on orders.balance_due inside the same RPC call.
-  // Include the final_payment + the deposit_applied + the
-  // absorbed pending extensions (all of which count toward the
-  // rental side of the ledger). Deposits paid pre-settlement are
-  // intentionally excluded because they're tracked separately.
+  // Include the final_payment + the deposit_applied (both count toward
+  // the rental side of the ledger). Absorbed extension IOUs are already in
+  // final_total and are paid by those, so they are not added again.
+  // Deposits paid pre-settlement are intentionally excluded because
+  // they're tracked separately.
   //
   // When a card surcharge is applied at settlement, orders.final_total
   // is bumped by the surcharge delta (inside the RPC). We must mirror
   // that bump locally so finalBalanceDue reflects the post-update
   // total — otherwise the balance would go negative by the surcharge.
-  const absorbedExtensionTotal = pendingExtensionsTotal;
   const surchargeDelta =
     input.isCardPayment && input.cardFeeSurchargeDelta && input.cardFeeSurchargeDelta > 0
       ? Money.php(input.cardFeeSurchargeDelta)
       : Money.zero();
   const paymentsAfter = rentalPaid
     .add(amountApplied)
-    .add(absorbedExtensionTotal)
     .add(returnChargePayment ? Money.php(returnChargePayment.amount) : Money.zero())
     .add(finalPayment ? Money.php(finalPayment.amount) : Money.zero());
   const adjustedFinalTotal = order.finalTotal.add(surchargeDelta).add(returnChargesDelta);
@@ -688,7 +682,7 @@ export async function settleOrder(
     finalPaymentCollected: finalPayment?.amount ?? 0,
     finalBalanceDue: finalBalanceDue.toNumber(),
     absorbedExtensionsCount: pendingExtensions.length,
-    absorbedExtensionsTotal: absorbedExtensionTotal.toNumber(),
+    absorbedExtensionsTotal: pendingExtensionsTotal.toNumber(),
     cardFeeSurchargeApplied: surchargeDelta.toNumber(),
     returnChargesApplied: returnChargesDelta.toNumber(),
   };
