@@ -277,7 +277,7 @@ export async function listCounterOptions(
   return { storeId: ctx.storeId, rentalDays: input.days, ...window, models: options };
 }
 
-export type CounterAddonKind = 'peace_of_mind' | 'surf_rack' | 'bungee';
+export type CounterAddonKind = 'peace_of_mind' | 'cancellation_cover' | 'surf_rack' | 'bungee';
 
 export interface CounterAddonOption {
   id: number;
@@ -298,12 +298,13 @@ export interface CollectionArea {
 function addonKind(addon: Addon): CounterAddonKind | null {
   const name = addon.name.toLowerCase();
   if (name.includes('peace') || name.includes('mind')) return 'peace_of_mind';
+  if (name.includes('cancel')) return 'cancellation_cover';
   if (addon.inventoryType === 'surf_rack' || /surf\s*rack/.test(name)) return 'surf_rack';
   if (name.includes('bungee') || name.includes('bingee')) return 'bungee';
   return null;
 }
 
-const KIND_ORDER: CounterAddonKind[] = ['peace_of_mind', 'surf_rack', 'bungee'];
+const KIND_ORDER: CounterAddonKind[] = ['peace_of_mind', 'cancellation_cover', 'surf_rack', 'bungee'];
 
 export async function getCounterExtras(
   deps: CounterDeps,
@@ -320,11 +321,10 @@ export async function getCounterExtras(
   const picked = new Map<CounterAddonKind, Addon>();
   for (const addon of addons) {
     if (addon.isActive === false) continue;
-    // Counter rentals start straight away, so cover that ends at activation has nothing to protect.
-    if (addon.addonType === 'percentage') continue;
     if (addon.applicableModelIds && addon.applicableModelIds.length > 0 && !addon.applicableModelIds.includes(input.modelId)) continue;
     const kind = addonKind(addon);
     if (!kind || picked.has(kind)) continue;
+    if (addon.addonType === 'percentage' && kind !== 'cancellation_cover') continue;
     if (kind === 'peace_of_mind' && addon.name.toLowerCase().includes('tuk') !== isTuktuk) continue;
     picked.set(kind, addon);
   }
@@ -340,6 +340,13 @@ export async function getCounterExtras(
     rackSoldOut = Boolean(racks?.tracked && racks.soldOut);
   }
 
+  let rentalFee = 0;
+  if ([...picked.values()].some((a) => a.addonType === 'percentage')) {
+    const priced = await priceModel(deps, ctx, input.modelId, input.window).catch(() => null);
+    if (!priced) picked.delete('cancellation_cover');
+    else rentalFee = priced.rentalSubtotal;
+  }
+
   const options = KIND_ORDER.flatMap((kind) => {
     const addon = picked.get(kind);
     if (!addon) return [];
@@ -349,7 +356,7 @@ export async function getCounterExtras(
       kind,
       addonType: addon.addonType,
       unitPrice: addonUnitPrice(addon),
-      total: computeAddonLineTotal(addon, { rentalDays: days, rentalFee: 0 }),
+      total: computeAddonLineTotal(addon, { rentalDays: days, rentalFee }),
       soldOut: kind === 'surf_rack' && rackSoldOut,
     }];
   });

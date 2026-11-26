@@ -39,7 +39,7 @@ export interface CounterOptions {
   models: CounterModel[];
 }
 
-export type CounterAddonKind = 'peace_of_mind' | 'surf_rack' | 'bungee';
+export type CounterAddonKind = 'peace_of_mind' | 'cancellation_cover' | 'surf_rack' | 'bungee';
 
 export interface CounterAddon {
   id: number;

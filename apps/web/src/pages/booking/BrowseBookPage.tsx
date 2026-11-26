@@ -424,11 +424,19 @@ function ReviewTestimonialCard() {
           &ldquo;
         </div>
 
-        {/* Review text — grows to fill available space */}
-        <p className="font-lato flex-1 text-[13px] italic leading-relaxed text-charcoal-brand/80">
-          {displayText}
-          {isTyping && <span className="font-bold not-italic text-teal-brand">|</span>}
-        </p>
+        {/* Every quote sits invisibly in the same grid cell so the card is always as tall as the
+            longest one; typing never changes the height, which would shift the page under a scrolling thumb. */}
+        <div className="grid flex-1 font-lato text-[13px] italic leading-relaxed text-charcoal-brand/80">
+          {displayQuotes.map((q) => (
+            <p key={q.text} className="invisible [grid-area:1/1]" aria-hidden="true">
+              {q.text}|
+            </p>
+          ))}
+          <p className="[grid-area:1/1]">
+            {displayText}
+            {isTyping && <span className="font-bold not-italic text-teal-brand">|</span>}
+          </p>
+        </div>
 
         {/* Footer: name + stars */}
         <div className="mt-5 border-t border-teal-brand/10 pt-4">

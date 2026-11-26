@@ -15,7 +15,7 @@ export function isCancellationCoverAddonName(name: string): boolean {
   return /cancel/i.test(name);
 }
 
-const CANCELLATION_COVER_IDEAL_FOR = [
+export const CANCELLATION_COVER_IDEAL_FOR = [
   "You're not sure of your plans yet",
   "You've never ridden this vehicle before",
   "You're travelling in rainy season, when flight cancellations are common",
@@ -130,6 +130,21 @@ function priceLabel(addon: Addon): string {
   return addon.priceOneTime > 0 ? `${formatCurrency(addon.priceOneTime)} one-time` : 'Included';
 }
 
+function isCancellationCoverAddon(addon: Addon): boolean {
+  return !isPeaceOfMindAddonName(addon.name) && isCancellationCoverAddonName(addon.name);
+}
+
+function placeCancellationAfterPeaceOfMind(list: Addon[]): Addon[] {
+  const cover = list.filter(isCancellationCoverAddon);
+  const rest = list.filter((a) => !isCancellationCoverAddon(a));
+  let lastPom = -1;
+  rest.forEach((a, i) => {
+    if (isPeaceOfMindAddonName(a.name)) lastPom = i;
+  });
+  if (cover.length === 0 || lastPom === -1) return list;
+  return [...rest.slice(0, lastPom + 1), ...cover, ...rest.slice(lastPom + 1)];
+}
+
 export function AddOnsSection({
   addons,
   loading,
@@ -153,8 +168,8 @@ export function AddOnsSection({
     );
   }
 
-  const standard = addons.filter(
-    (a) => !a.name.toLowerCase().includes('transfer'),
+  const standard = placeCancellationAfterPeaceOfMind(
+    addons.filter((a) => !a.name.toLowerCase().includes('transfer')),
   );
 
   if (standard.length === 0) return null;
@@ -169,7 +184,7 @@ export function AddOnsSection({
           const selected = selectedIds.has(id);
           const isNinePm = isNinePmReturnAddonName(addon.name);
           const isPeaceOfMind = isPeaceOfMindAddonName(addon.name);
-          const isCancellationCover = !isPeaceOfMind && isCancellationCoverAddonName(addon.name);
+          const isCancellationCover = isCancellationCoverAddon(addon);
           const isSurfRack = isSurfRackAddon(addon);
           const surfRackSoldOut = isSurfRack && addon.inventory?.soldOut === true;
           const surfRackUntracked = isSurfRack && addon.inventory?.tracked !== true;
@@ -186,7 +201,7 @@ export function AddOnsSection({
                 } ${
                   rowDisabled
                     ? 'cursor-not-allowed opacity-50'
-                    : isPeaceOfMind
+                    : isPeaceOfMind || isCancellationCover
                       ? '-mx-2 cursor-pointer bg-teal-brand/[0.06] px-2 hover:bg-teal-brand/10'
                       : 'cursor-pointer hover:bg-sand-brand/30'
                 }`}
@@ -227,14 +242,20 @@ export function AddOnsSection({
                   )}
                   {isPeaceOfMind ? (
                     <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] leading-snug text-charcoal-brand/60">
-                      <span className="rounded-full bg-teal-brand/10 px-2 py-0.5 text-[11px] font-medium text-teal-brand">
-                        Recommended
+                      <span className="rounded-full bg-gold-brand/30 px-2 py-0.5 text-[11px] font-medium text-charcoal-brand">
+                        ★ Customer favourite
                       </span>
                       <span>Covers scratches, mirrors, flats, and theft</span>
                     </p>
                   ) : isCancellationCover ? (
                     <div className="mt-1 text-[12px] leading-snug text-charcoal-brand/60">
-                      <p>Cancel any time, before or during your rental, and get refunded for the days you don&apos;t use.</p>
+                      <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                        <span className="rounded-full bg-teal-brand/10 px-2 py-0.5 text-[11px] font-medium text-teal-brand">
+                          Useful to have
+                        </span>
+                        <span className="font-medium text-charcoal-brand/70">{priceLabel(addon)}</span>
+                      </p>
+                      <p className="mt-1.5">Cancel any time, before or during your rental, and get refunded for the days you don&apos;t use.</p>
                       <p className="mt-1.5 font-medium text-charcoal-brand/70">Ideal if:</p>
                       <ul className="mt-0.5 list-disc space-y-0.5 pl-4">
                         {CANCELLATION_COVER_IDEAL_FOR.map((line) => (
@@ -254,14 +275,16 @@ export function AddOnsSection({
                 </div>
 
                 {/* Price */}
-                <span className={`shrink-0 text-[14px] font-medium text-charcoal-brand/70 ${isPeaceOfMind ? 'mr-1 mt-0.5' : isCancellationCover ? 'mr-3 mt-0.5' : 'mr-3'}`}>
-                  {priceLabel(addon)}
-                </span>
+                {!isCancellationCover && (
+                  <span className={`shrink-0 text-[14px] font-medium text-charcoal-brand/70 ${isPeaceOfMind ? 'mr-1 mt-0.5' : 'mr-3'}`}>
+                    {priceLabel(addon)}
+                  </span>
+                )}
 
                 {/* Custom toggle */}
                 <div
                   className={`relative h-[22px] w-[40px] shrink-0 rounded-full transition-colors ${
-                    isPeaceOfMind || isCancellationCover ? 'mt-0.5' : ''
+                    isPeaceOfMind ? 'mt-0.5' : isCancellationCover ? 'mr-1 mt-0.5' : ''
                   } ${
                     selected ? 'bg-teal-brand' : 'bg-charcoal-brand/15'
                   }`}

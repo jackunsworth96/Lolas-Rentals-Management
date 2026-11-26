@@ -65,6 +65,7 @@ const configRepo = {
     addon(7, 'Surf Rack', 'one_time', 250, { inventoryType: 'surf_rack' }),
     addon(4, 'Bungee Cord', 'one_time', 25),
     addon(9, '9PM Return', 'one_time', 100),
+    { ...addon(11, 'Cancellation Cover', 'one_time', 0), addonType: 'percentage', pricePercentage: 15, minimumAmount: 100 },
   ],
 };
 
@@ -146,11 +147,13 @@ describe('counter tablet', () => {
     expect(mocks.checkAvailability).toHaveBeenCalledWith(expect.objectContaining({ excludeSessionToken: SESSION }), expect.anything());
   });
 
-  it('offers Peace of Mind for the right vehicle type, surf rack, bungee and collection areas', async () => {
+  it('offers Peace of Mind for the right vehicle type, cancellation cover, surf rack, bungee and collection areas', async () => {
     const res = await request(app()).get('/counter/extras').query({ days: 2, modelId: 'beat' });
     expect(res.status).toBe(200);
     expect(res.body.data.addons).toEqual([
       expect.objectContaining({ id: 1, kind: 'peace_of_mind', unitPrice: 95, total: 190 }),
+      // 15% of the 2 × 500 rental
+      expect.objectContaining({ id: 11, kind: 'cancellation_cover', addonType: 'percentage', unitPrice: 15, total: 150 }),
       expect.objectContaining({ id: 7, kind: 'surf_rack', total: 250, soldOut: false }),
       expect.objectContaining({ id: 4, kind: 'bungee', total: 25 }),
     ]);
@@ -203,6 +206,16 @@ describe('counter tablet', () => {
       // 2 days × 500 + Peace of Mind 2 × 95 + bungee 25 + Santa Fe collection 200
       web_quote_raw: 1415,
       rental_value_raw: 1000,
+    }));
+  });
+
+  it('charges cancellation cover on the rental when booked at the counter', async () => {
+    const res = await request(app()).post('/counter/bookings').send({ ...booking, addonIds: [11] });
+    expect(res.status).toBe(201);
+    expect(mocks.insert).toHaveBeenCalledWith(expect.objectContaining({
+      addon_ids: [11],
+      // 2 days × 500 + 15% cancellation cover
+      web_quote_raw: 1150,
     }));
   });
 

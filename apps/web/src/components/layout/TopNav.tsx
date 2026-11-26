@@ -184,14 +184,15 @@ export default function TopNav({ items, rightSlot, partnerBenefit }: TopNavProps
           />
         </button>
 
-        {/* Location + Phone + Language — far right */}
+        {/* Location + Phone + Instagram — far right. Phones only keep Phone (and the cart) so the
+            group stays clear of the centred paw; Maps and Instagram are in the mobile footer. */}
         <div className="absolute right-3 top-1/2 z-10 flex -translate-y-1/2 items-center gap-1 md:right-5 md:gap-2">
           <a
             href={GOOGLE_MAPS_PLACE_URL}
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Find us on Google Maps"
-            className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-charcoal-brand/10"
+            className="hidden h-9 w-9 sm:flex items-center justify-center rounded-full transition-colors hover:bg-charcoal-brand/10"
           >
             <img src={locationIcon} alt="" className="h-5 w-5 object-contain" aria-hidden />
           </a>
@@ -207,7 +208,7 @@ export default function TopNav({ items, rightSlot, partnerBenefit }: TopNavProps
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Lola's Rentals on Instagram"
-            className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-charcoal-brand/10"
+            className="hidden h-9 w-9 sm:flex items-center justify-center rounded-full transition-colors hover:bg-charcoal-brand/10"
           >
             <img src={instaIcon} alt="" className="h-5 w-5 object-contain" aria-hidden />
           </a>
