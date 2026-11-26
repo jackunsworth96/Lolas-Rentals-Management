@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { CheckCircle2, Clock, Sun, Plane, Thermometer, MapPin, Moon } from 'lucide-react';
 import type { RotaCell, RotaDayCover, RotaNinePmDay, RotaPerson, RotaTimesheet, RotaWeek } from '../../api/rota.js';
 import { dayNum, dayShort, manilaToday, to12h } from '../../api/rota.js';
@@ -182,9 +183,77 @@ export function RotaGrid({
   const cover = new Map(week.cover.map((c) => [c.date, c]));
   const ninePm = new Map(week.ninePm.map((n) => [n.date, n]));
   const cols = 'grid grid-cols-[150px_repeat(7,minmax(92px,1fr))] sm:grid-cols-[180px_repeat(7,minmax(104px,1fr))]';
+  const [picked, setPicked] = useState<string | null>(null);
+  const day = picked && week.dates.includes(picked) ? picked : week.dates.includes(today) ? today : week.dates[0];
+
+  const dayCell = (p: RotaPerson, d: string) => {
+    const key = `${p.employeeId}|${d}`;
+    const cell = cells.get(key);
+    const clickable = !!onCellClick && !!cell && cell.source !== 'leave' && cell.kind !== 'not_started';
+    const chip = <RotaChip cell={cell} compact={compact} highlight={highlightKeys?.has(key)} ninePm={ninePm.get(d)?.assigneeId === p.employeeId} />;
+    return (
+      <>
+        {clickable ? (
+          <button type="button" onClick={() => onCellClick!(p, cell!)} className="flex w-full flex-1 rounded-lg transition hover:-translate-y-px hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500">
+            {chip}
+          </button>
+        ) : (
+          <div className="flex flex-1">{chip}</div>
+        )}
+        {showTimesheetStatus && d <= today && <TimesheetLine cell={cell} ts={timesheets.get(key)} />}
+      </>
+    );
+  };
 
   return (
-    <div className="overflow-x-auto">
+    <>
+    <div className="sm:hidden">
+      <div className="grid grid-cols-7 gap-1 border-b border-gray-200 bg-slate-50 p-1.5">
+        {week.dates.map((d) => {
+          const c = cover.get(d);
+          const n = ninePm.get(d);
+          const dot = c?.status === 'ok' ? 'bg-green-500' : c?.status === 'emergency' ? 'bg-amber-500' : c ? 'bg-red-500' : 'bg-transparent';
+          return (
+            <button
+              key={d}
+              type="button"
+              onClick={() => setPicked(d)}
+              aria-pressed={d === day}
+              className={`flex flex-col items-center rounded-lg py-1.5 ${d === day ? 'bg-teal-600 text-white' : d === today ? 'bg-teal-50 text-teal-800' : 'text-gray-700'}`}
+            >
+              <span className="text-[10px] font-semibold uppercase">{dayShort(d)}</span>
+              <span className="text-sm font-bold leading-tight">{dayNum(d)}</span>
+              <span className="mt-0.5 flex h-3 items-center gap-0.5">
+                <span className={`h-1.5 w-1.5 rounded-full ${dot}`} aria-hidden />
+                {n && n.count > 0 && <Moon className={`h-2.5 w-2.5 ${d === day ? 'text-white' : 'text-indigo-600'}`} aria-label="9pm returns" />}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="space-y-1.5 border-b border-gray-100 px-3 py-2">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-gray-900">{dayShort(day)} {dayNum(day)}</span>
+          {holidays.has(day) && <span className="truncate rounded bg-amber-100 px-1.5 text-[11px] font-medium text-amber-800">{holidays.get(day)}</span>}
+          {cover.get(day) && (
+            <div className="ml-auto w-24">
+              <CoverPill c={cover.get(day)!} onClick={onCoverClick ? () => onCoverClick(day) : undefined} />
+            </div>
+          )}
+        </div>
+        {ninePm.get(day) && <NinePmBadge day={ninePm.get(day)!} past={day < today} onClick={onNinePmClick ? () => onNinePmClick(day) : undefined} />}
+      </div>
+
+      {week.people.map((p) => (
+        <div key={p.employeeId} className={`grid grid-cols-[130px_minmax(0,1fr)] items-stretch gap-2 border-b border-gray-100 px-2 py-1.5 ${p.employeeId === meId ? 'bg-teal-50/30' : ''}`}>
+          <PersonCell p={p} isMe={p.employeeId === meId} />
+          <div className="flex flex-col">{dayCell(p, day)}</div>
+        </div>
+      ))}
+    </div>
+
+    <div className="hidden overflow-x-auto sm:block">
       <div className="min-w-[800px]">
         <div className={`${cols} border-b border-gray-200 bg-slate-50`}>
           <div className="sticky left-0 z-10 bg-slate-50" />
@@ -205,23 +274,11 @@ export function RotaGrid({
             <div className="sticky left-0 z-10 border-r border-gray-100 bg-white py-1.5 pl-2">
               <PersonCell p={p} isMe={p.employeeId === meId} />
             </div>
-            {week.dates.map((d) => {
-              const key = `${p.employeeId}|${d}`;
-              const cell = cells.get(key);
-              const clickable = !!onCellClick && !!cell && cell.source !== 'leave' && cell.kind !== 'not_started';
-              return (
-                <div key={d} className={`border-l border-gray-100 p-1 ${d === today ? 'bg-teal-50/40' : ''}`}>
-                  {clickable ? (
-                    <button type="button" onClick={() => onCellClick!(p, cell!)} className="block h-full w-full rounded-lg transition hover:-translate-y-px hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500">
-                      <RotaChip cell={cell} compact={compact} highlight={highlightKeys?.has(key)} ninePm={ninePm.get(d)?.assigneeId === p.employeeId} />
-                    </button>
-                  ) : (
-                    <RotaChip cell={cell} compact={compact} highlight={highlightKeys?.has(key)} ninePm={ninePm.get(d)?.assigneeId === p.employeeId} />
-                  )}
-                  {showTimesheetStatus && d <= today && <TimesheetLine cell={cell} ts={timesheets.get(key)} />}
-                </div>
-              );
-            })}
+            {week.dates.map((d) => (
+              <div key={d} className={`flex flex-col border-l border-gray-100 p-1 ${d === today ? 'bg-teal-50/40' : ''}`}>
+                {dayCell(p, d)}
+              </div>
+            ))}
           </div>
         ))}
 
@@ -237,5 +294,6 @@ export function RotaGrid({
         )}
       </div>
     </div>
+    </>
   );
 }

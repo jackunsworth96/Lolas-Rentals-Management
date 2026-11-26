@@ -218,11 +218,11 @@ export function MyRotaCard({ meId }: { meId: string }) {
 
         {week && me && !showPicker && !showTeam && (
           <>
-            <div className="-mx-1 overflow-x-auto px-1">
-              <div className="grid min-w-[560px] grid-cols-7 gap-1.5">
+            <div className="-mx-1 px-1 sm:overflow-x-auto">
+              <div className="grid grid-cols-1 gap-1.5 sm:min-w-[560px] sm:grid-cols-7">
                 {week.dates.map((d, i) => (
-                  <div key={d} className={`rounded-xl p-1 ${d === today ? 'bg-teal-50 ring-1 ring-teal-300' : ''}`}>
-                    <div className="mb-1 flex items-baseline justify-center gap-1">
+                  <div key={d} className={`flex items-center gap-2 rounded-xl p-1 sm:block ${d === today ? 'bg-teal-50 ring-1 ring-teal-300' : ''}`}>
+                    <div className="flex w-14 shrink-0 items-baseline gap-1 sm:mb-1 sm:w-auto sm:justify-center">
                       <span className="text-[11px] font-semibold uppercase text-gray-500">{dayShort(d)}</span>
                       <span className="text-sm font-bold text-gray-900">{dayNum(d)}</span>
                     </div>

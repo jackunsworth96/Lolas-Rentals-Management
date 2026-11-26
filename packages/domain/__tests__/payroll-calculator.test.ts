@@ -123,6 +123,14 @@ describe('calculatePayroll', () => {
     expect(r.netPay).toBe(1060);
   });
 
+  it('pays 9pm returns once per day, however many returns were handled', () => {
+    const r = calculatePayroll(input({
+      days: [day({ ninePmCount: 6 }), day({ date: '2026-11-21', ninePmCount: 1 }), day({ date: '2026-11-22' })],
+    }));
+    expect(r.ninePmCount).toBe(7);
+    expect(r.ninePmEarnings).toBe(200);
+  });
+
   it('rounds net pay up to the next whole peso when asked, as extra earnings', () => {
     const base = input({ isEndOfMonth: false, days: [day({ dailyRate: 792.31 })], tipsShare: 0 });
     expect(calculatePayroll(base).netPay).toBe(792.31);
@@ -214,7 +222,7 @@ describe('buildPayslipJournal', () => {
   });
 
   it('nets 9pm cash already paid out of the wages debit', () => {
-    const r = calculatePayroll(input({ days: [day({ ninePmCount: 2 })], ninePmPrepaid: 200 }));
+    const r = calculatePayroll(input({ days: [day({ ninePmCount: 2 })], ninePmPrepaid: 100 }));
     const legs = buildPayslipJournal(r, [{ accountId: 'TILL', amount: r.netPay, fee: 0, label: 'cash' }], accounts, 'P');
     expect(net(legs, 'WAGES')).toBe(500);
   });

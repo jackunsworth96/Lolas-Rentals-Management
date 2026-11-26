@@ -14,7 +14,9 @@ export interface PayrollDay {
   dailyRate: number;
   overtimeHours: number;
   overtimeHourlyRate: number;
+  /** 9pm returns handled that day. Kept for the record; pay is flat per day (see ninePmPayForDay). */
   ninePmCount: number;
+  /** Paid once for a day with any 9pm returns, however many there were. */
   ninePmRate: number;
   /** Holiday / rest-day premium on top of the day's pay, in percent (30 = +30%). */
   premiumPct: number;
@@ -85,6 +87,14 @@ export interface PayrollResult {
 
 const ZERO: StatutoryAmounts = { sss: 0, philhealth: 0, pagibig: 0 };
 
+/**
+ * 9pm returns pay a flat rate per day, not per return, so staff don't cherry
+ * pick nights with more returns.
+ */
+export function ninePmPayForDay(count: number, rate: number): number {
+  return count > 0 ? rate : 0;
+}
+
 export function calculatePayroll(input: PayrollInput): PayrollResult {
   for (const d of input.days) {
     if (d.dailyRate < 0 || d.overtimeHours < 0 || d.ninePmCount < 0) {
@@ -120,7 +130,7 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
     overtimeHours += d.overtimeHours;
     overtimePay += d.overtimeHours * d.overtimeHourlyRate;
     ninePmCount += d.ninePmCount;
-    ninePmEarnings += d.ninePmCount * d.ninePmRate;
+    ninePmEarnings += ninePmPayForDay(d.ninePmCount, d.ninePmRate);
     if (d.premiumPct > 0) {
       holidayDays += 1;
       holidayPremium += d.dailyRate * (d.premiumPct / 100);

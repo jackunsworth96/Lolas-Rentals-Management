@@ -6,6 +6,7 @@ import {
   allocateAdvanceDeduction,
   fixedSalaryForPeriod,
   leaveEntitlement,
+  ninePmPayForDay,
   round2,
   DomainError,
   type Employee,
@@ -406,7 +407,7 @@ export async function buildPayrollPreview(
         pay: round2(
           day.dailyRate * (1 + premiumPct / 100) +
           day.overtimeHours * day.overtimeHourlyRate +
-          day.ninePmCount * day.ninePmRate,
+          ninePmPayForDay(day.ninePmCount, day.ninePmRate),
         ),
       });
     }

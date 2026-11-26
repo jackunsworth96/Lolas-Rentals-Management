@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { getSupabaseClient } from '../../adapters/supabase/client.js';
 import { resolvePayrollLedger } from '../../adapters/supabase/config-repo.js';
-import { round2 } from '@lolas/domain';
+import { ninePmPayForDay, round2 } from '@lolas/domain';
 
 export interface NinePmPayoutResult {
   timesheetId: string;
@@ -45,7 +45,7 @@ export async function syncNinePmPayout(timesheetId: string, createdBy: string): 
   if (empRes.error || !empRes.data) throw new Error(`Employee ${ts.employee_id} not found`);
 
   const rate = Number(rateRes.data?.nine_pm_bonus_rate ?? empRes.data.nine_pm_bonus_rate ?? 0);
-  const amount = round2(count * rate);
+  const amount = round2(ninePmPayForDay(count, rate));
   const ledger = await resolvePayrollLedger(ts.store_id);
 
   const { error } = await sb.rpc('sync_nine_pm_payout', {
