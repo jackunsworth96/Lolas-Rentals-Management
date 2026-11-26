@@ -150,6 +150,7 @@ export default function PeaceOfMindPage() {
                   <NotCoveredRow>{t('peaceOfMind.notCoveredItems.structural')}</NotCoveredRow>
                   <NotCoveredRow>{t('peaceOfMind.notCoveredItems.loss')}</NotCoveredRow>
                   <NotCoveredRow>{t('peaceOfMind.notCoveredItems.personal')}</NotCoveredRow>
+                  <NotCoveredRow>{t('peaceOfMind.notCoveredItems.tuktukRollover')}</NotCoveredRow>
                 </div>
               </div>
             </AnimatedPanel>

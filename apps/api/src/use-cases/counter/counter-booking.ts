@@ -329,23 +329,22 @@ export async function getCounterExtras(
     picked.set(kind, addon);
   }
 
-  let rackSoldOut = false;
-  if (picked.has('surf_rack')) {
-    const racks = await getSurfRackAvailability(supabase, {
-      storeId: ctx.storeId,
-      ...input.window,
-      vehicleModelId: input.modelId,
-      excludeSessionToken: input.sessionToken ?? null,
-    }).catch(() => null);
-    rackSoldOut = Boolean(racks?.tracked && racks.soldOut);
-  }
-
-  let rentalFee = 0;
-  if ([...picked.values()].some((a) => a.addonType === 'percentage')) {
-    const priced = await priceModel(deps, ctx, input.modelId, input.window).catch(() => null);
-    if (!priced) picked.delete('cancellation_cover');
-    else rentalFee = priced.rentalSubtotal;
-  }
+  const [racks, priced] = await Promise.all([
+    picked.has('surf_rack')
+      ? getSurfRackAvailability(supabase, {
+          storeId: ctx.storeId,
+          ...input.window,
+          vehicleModelId: input.modelId,
+          excludeSessionToken: input.sessionToken ?? null,
+        }).catch(() => null)
+      : null,
+    picked.has('cancellation_cover')
+      ? priceModel(deps, ctx, input.modelId, input.window).catch(() => null)
+      : null,
+  ]);
+  const rackSoldOut = Boolean(racks?.tracked && racks.soldOut);
+  if (!priced) picked.delete('cancellation_cover');
+  const rentalFee = priced?.rentalSubtotal ?? 0;
 
   const options = KIND_ORDER.flatMap((kind) => {
     const addon = picked.get(kind);

@@ -241,16 +241,19 @@ export function AddOnsSection({
                     </button>
                   )}
                   {isPeaceOfMind ? (
-                    <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] leading-snug text-charcoal-brand/60">
-                      <span className="rounded-full bg-gold-brand/30 px-2 py-0.5 text-[11px] font-medium text-charcoal-brand">
-                        ★ Customer favourite
-                      </span>
-                      <span>Covers scratches, mirrors, flats, and theft</span>
-                    </p>
+                    <div className="mt-1 text-[12px] leading-snug text-charcoal-brand/60">
+                      <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                        <span className="whitespace-nowrap rounded-full bg-gold-brand/30 px-2 py-0.5 text-[11px] font-medium text-charcoal-brand">
+                          ★ Customer favourite
+                        </span>
+                        <span className="whitespace-nowrap font-medium text-charcoal-brand/70">{priceLabel(addon)}</span>
+                      </p>
+                      <p className="mt-1">Covers scratches, mirrors, flats, and theft</p>
+                    </div>
                   ) : isCancellationCover ? (
                     <div className="mt-1 text-[12px] leading-snug text-charcoal-brand/60">
                       <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-                        <span className="rounded-full bg-teal-brand/10 px-2 py-0.5 text-[11px] font-medium text-teal-brand">
+                        <span className="whitespace-nowrap rounded-full bg-teal-brand/10 px-2 py-0.5 text-[11px] font-medium text-teal-brand">
                           Useful to have
                         </span>
                         <span className="font-medium text-charcoal-brand/70">{priceLabel(addon)}</span>
@@ -275,8 +278,8 @@ export function AddOnsSection({
                 </div>
 
                 {/* Price */}
-                {!isCancellationCover && (
-                  <span className={`shrink-0 text-[14px] font-medium text-charcoal-brand/70 ${isPeaceOfMind ? 'mr-1 mt-0.5' : 'mr-3'}`}>
+                {!isCancellationCover && !isPeaceOfMind && (
+                  <span className="mr-3 shrink-0 text-[14px] font-medium text-charcoal-brand/70">
                     {priceLabel(addon)}
                   </span>
                 )}
@@ -284,7 +287,7 @@ export function AddOnsSection({
                 {/* Custom toggle */}
                 <div
                   className={`relative h-[22px] w-[40px] shrink-0 rounded-full transition-colors ${
-                    isPeaceOfMind ? 'mt-0.5' : isCancellationCover ? 'mr-1 mt-0.5' : ''
+                    isPeaceOfMind || isCancellationCover ? 'mr-1 mt-0.5' : ''
                   } ${
                     selected ? 'bg-teal-brand' : 'bg-charcoal-brand/15'
                   }`}

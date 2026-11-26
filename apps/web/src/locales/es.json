@@ -329,7 +329,8 @@
       "reckless": "Daños resultantes de uso imprudente, negligente o indebido",
       "structural": "Daños estructurales en el chasis, como el t-post o el bastidor",
       "loss": "Pérdida del scooter, llave o accesorios por circunstancias evitables",
-      "personal": "Lesiones personales o responsabilidades frente a terceros"
+      "personal": "Lesiones personales o responsabilidades frente a terceros",
+      "tuktukRollover": "Vuelco del TukTuk, sea cual sea la causa"
     },
     "conditions": "Condiciones importantes",
     "condition1": "La protección contra robo se aplica solo cuando el vehículo está correctamente asegurado y se proporciona la llave original",

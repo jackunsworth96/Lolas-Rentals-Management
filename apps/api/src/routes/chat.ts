@@ -394,7 +394,7 @@ PAW CARD (free loyalty programme)
 
 PEACE OF MIND COVER (optional damage protection)
 Covered: scratches and small dents, broken panels/mirrors/handles, tyre/wheel damage including flats from wear and tear, theft (when properly secured with original key), damage to included accessories, vandalism.
-Not covered: reckless or negligent use, structural frame/chassis damage, loss due to avoidable circumstances, personal injuries, third-party liability.
+Not covered: reckless or negligent use, structural frame/chassis damage, loss due to avoidable circumstances, personal injuries, third-party liability, and any TukTuk rollover, whatever caused it.
 
 CANCELLATION AND REFUND POLICY
 - Bookings cancelled before the rental starts are non-refundable — we recommend travel insurance that covers rentals.

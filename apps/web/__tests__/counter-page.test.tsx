@@ -23,12 +23,15 @@ vi.mock('../src/api/counter.js', () => ({
         { id: 1, name: 'Peace of Mind Cover (Scooter)', kind: 'peace_of_mind', addonType: 'per_day', unitPrice: 95, total: 190, soldOut: false },
         { id: 7, name: 'Surf Rack', kind: 'surf_rack', addonType: 'one_time', unitPrice: 250, total: 250, soldOut: false },
         { id: 4, name: 'Bungee Cord', kind: 'bungee', addonType: 'one_time', unitPrice: 25, total: 25, soldOut: false },
+        // A kind this build does not know yet (API deployed ahead of the web app) must not crash the kiosk.
+        { id: 99, name: 'Brand New Extra', kind: 'not_yet_known', addonType: 'one_time', unitPrice: 50, total: 50, soldOut: false },
       ],
       collectionAreas: [{ id: 2, name: 'General Luna', fee: 100 }, { id: 7, name: 'Santa Fe', fee: 200 }],
     },
     isLoading: false,
   }),
   useCreateCounterBooking: () => ({ mutateAsync: mocks.mutateAsync, isPending: false }),
+  usePrefetchCounterExtras: () => () => {},
   holdCounterVehicle: mocks.hold,
   releaseCounterVehicle: mocks.release,
 }));

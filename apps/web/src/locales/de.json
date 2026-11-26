@@ -329,7 +329,8 @@
       "reckless": "Schäden durch leichtfertigen, fahrlässigen oder unsachgemäßen Gebrauch",
       "structural": "Strukturschäden am Rahmen, wie dem T-Rohr oder Chassis",
       "loss": "Verlust des Scooters, Schlüssels oder Zubehörs durch vermeidbare Umstände",
-      "personal": "Personenschäden oder Haftpflicht gegenüber Dritten"
+      "personal": "Personenschäden oder Haftpflicht gegenüber Dritten",
+      "tuktukRollover": "Überschlag des TukTuks, unabhängig von der Ursache"
     },
     "conditions": "Wichtige Bedingungen",
     "condition1": "Diebstahlschutz gilt nur, wenn das Fahrzeug ordnungsgemäß gesichert ist und der Originalschlüssel übergeben wird",

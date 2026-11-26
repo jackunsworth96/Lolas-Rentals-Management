@@ -201,7 +201,7 @@ export function CounterExtras(props: CounterExtrasProps) {
       </div>
     );
   }
-  const addons = extras?.addons ?? [];
+  const addons = (extras?.addons ?? []).filter((a) => a.kind in LABELS);
   const pom = addons.find((a) => a.kind === 'peace_of_mind');
   const cancellation = addons.find((a) => a.kind === 'cancellation_cover');
   const others = addons.filter((a) => a.kind !== 'peace_of_mind' && a.kind !== 'cancellation_cover');

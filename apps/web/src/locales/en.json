@@ -329,7 +329,8 @@
       "reckless": "Damage resulting from reckless, negligent, or improper use",
       "structural": "Structural damage to the frame, such as the t-post or chassis",
       "loss": "Loss of the scooter, key, or accessories due to avoidable circumstances",
-      "personal": "Personal injuries or third-party liabilities"
+      "personal": "Personal injuries or third-party liabilities",
+      "tuktukRollover": "TukTuk rollovers, whatever caused the vehicle to roll"
     },
     "conditions": "Important conditions",
     "condition1": "Theft protection applies only when the vehicle is properly secured and the original key is provided",

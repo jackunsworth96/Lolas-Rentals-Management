@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './client.js';
 
 /** Where a kiosk sends its requests: our staff counter API or a partner kiosk API. */
@@ -101,10 +101,24 @@ export function useCounterOptions(counter: CounterApi, query: CounterWindowQuery
   });
 }
 
-export function useCounterExtras(counter: CounterApi, query: CounterWindowQuery & { modelId: string | null }, enabled: boolean) {
-  return useQuery({
+function counterExtrasQuery(counter: CounterApi, query: CounterWindowQuery & { modelId: string | null }) {
+  return {
     queryKey: [counter.key, 'extras', query.modelId, query.days, query.pickupDatetime ?? null, query.deliveryAreaId ?? null],
     queryFn: () => counter.get<CounterExtras>(`/extras?${queryString({ ...query })}`),
+  };
+}
+
+/** Starts loading a vehicle's extras early, e.g. while its hold is still being placed. */
+export function usePrefetchCounterExtras(counter: CounterApi) {
+  const queryClient = useQueryClient();
+  return (query: CounterWindowQuery & { modelId: string }) => {
+    void queryClient.prefetchQuery(counterExtrasQuery(counter, query));
+  };
+}
+
+export function useCounterExtras(counter: CounterApi, query: CounterWindowQuery & { modelId: string | null }, enabled: boolean) {
+  return useQuery({
+    ...counterExtrasQuery(counter, query),
     enabled: enabled && !!query.modelId,
   });
 }

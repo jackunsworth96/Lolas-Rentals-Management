@@ -10,6 +10,7 @@ import {
   useCounterExtras,
   useCounterOptions,
   useCreateCounterBooking,
+  usePrefetchCounterExtras,
   type CollectionArea,
   type CounterApi,
   type CounterModel,
@@ -170,6 +171,7 @@ export function CounterKiosk({ counter, mode, brand, homePath, onLogoHold, deliv
   const options = useCounterOptions(counter, query, step !== 'welcome' && step !== 'when' && windowReady);
   const extras = useCounterExtras(counter, { ...query, modelId: model?.modelId ?? null }, step === 'extras' || step === 'details');
   const createBooking = useCreateCounterBooking(counter);
+  const prefetchExtras = usePrefetchCounterExtras(counter);
 
   const releaseHold = () => {
     if (hold) void releaseCounterVehicle(counter, hold, sessionToken);
@@ -229,6 +231,7 @@ export function CounterKiosk({ counter, mode, brand, homePath, onLogoHold, deliv
   const chooseVehicle = async (m: CounterModel) => {
     setError('');
     setHolding(true);
+    prefetchExtras({ ...query, modelId: m.modelId });
     try {
       const { holdId } = await holdCounterVehicle(counter, { ...query, modelId: m.modelId, sessionToken });
       setHold(holdId);

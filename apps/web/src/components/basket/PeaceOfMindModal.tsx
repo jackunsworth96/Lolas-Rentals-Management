@@ -18,6 +18,7 @@ const NOT_COVERED_ITEMS = [
   'Structural damage to the frame, such as the t-post or chassis',
   'Loss of the scooter, key, or accessories due to avoidable circumstances',
   'Personal injuries or third-party liabilities',
+  'TukTuk rollovers, whatever caused the vehicle to roll',
 ] as const;
 
 export interface PeaceOfMindModalProps {
