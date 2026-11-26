@@ -9,6 +9,7 @@ import iconPeaceOfMind from '../assets/Home/Peace of Mind.svg';
 import iconPhoneMount from '../assets/Home/Phone Mount Icon.svg';
 import iconDryBag from '../assets/Home/Dry Bag Icon.svg';
 import iconLesson from '../assets/Home/Lesson Icon.svg';
+import iconCancellationCover from '../assets/Home/Cancellation Cover.svg';
 
 export type IncludedRentalItem = { icon: string; label: string };
 
@@ -50,6 +51,6 @@ export function getIncludedItemsForModel(modelName: string): IncludedRentalItem[
 
 /** Optional add-ons shown on the reserve page alongside the included set. */
 export const HOME_OPTIONAL_ADDON_ITEMS: IncludedRentalItem[] = [
-  { icon: iconPeaceOfMind, label: 'Damage Protection' },
-  { icon: iconDryBag,      label: '5L Dry Bag' },
+  { icon: iconPeaceOfMind,       label: 'Damage Protection' },
+  { icon: iconCancellationCover, label: 'Cancellation Cover' },
 ];

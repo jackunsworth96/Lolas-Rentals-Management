@@ -10,6 +10,17 @@ interface Props {
   className?: string;
 }
 
+function DesktopItem({ icon, label }: { icon: string; label: string }) {
+  return (
+    <div className="flex w-[4.25rem] flex-col items-center gap-1.5">
+      <img src={icon} alt="" className="h-8 w-8 object-contain" width={32} height={32} />
+      <span className="font-lato text-center text-[10px] font-semibold leading-tight text-charcoal-brand/85">
+        {label}
+      </span>
+    </div>
+  );
+}
+
 export function RentalIncludedIconsGrid({
   variant = 'card',
   showHeading,
@@ -24,10 +35,6 @@ export function RentalIncludedIconsGrid({
   const labelCls = `font-lato text-center font-semibold leading-tight text-charcoal-brand/85 ${
     isCompact ? 'text-[9px] sm:text-[10px]' : 'text-[10px]'
   }`;
-
-  const allItems = showOptionals
-    ? [...HOME_INCLUDED_RENTAL_ITEMS, ...HOME_OPTIONAL_ADDON_ITEMS]
-    : HOME_INCLUDED_RENTAL_ITEMS;
 
   if (showOptionals) {
     return (
@@ -63,15 +70,14 @@ export function RentalIncludedIconsGrid({
           </div>
         </div>
 
-        {/* Desktop: all 11 in one line */}
-        <div className="hidden sm:flex sm:flex-wrap sm:justify-center sm:gap-x-3 sm:gap-y-3">
-          {allItems.map(({ icon, label }) => (
-            <div key={label} className="flex w-[4.25rem] flex-col items-center gap-1.5">
-              <img src={icon} alt="" className="h-8 w-8 object-contain" width={32} height={32} />
-              <span className="font-lato text-center text-[10px] font-semibold leading-tight text-charcoal-brand/85">
-                {label}
-              </span>
-            </div>
+        {/* Desktop: one line, with a divider between included items and paid add-ons */}
+        <div className="hidden sm:flex sm:flex-wrap sm:items-start sm:justify-center sm:gap-x-3 sm:gap-y-3">
+          {HOME_INCLUDED_RENTAL_ITEMS.map(({ icon, label }) => (
+            <DesktopItem key={label} icon={icon} label={label} />
+          ))}
+          <div className="mx-1 self-stretch border-l border-teal-brand/20" aria-hidden="true" />
+          {HOME_OPTIONAL_ADDON_ITEMS.map(({ icon, label }) => (
+            <DesktopItem key={label} icon={icon} label={label} />
           ))}
         </div>
       </div>

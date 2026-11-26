@@ -66,8 +66,8 @@
   },
   "browse": {
     "vehiclesFillFast": "Les véhicules partent vite — réservez le vôtre maintenant",
-    "charityTagline": "Réservez maintenant — votre location finance la protection animale à Siargao · ₱{{amount}} donnés aux ONG locales 🐾",
-    "charityTaglineSimple": "Réservez maintenant — votre location finance la protection animale à Siargao",
+    "charityTagline": "Chaque location soutient les animaux et les communautés de Siargao · ₱{{amount}} donnés à des causes locales 🐾",
+    "charityTaglineSimple": "Chaque location soutient les animaux et les communautés de Siargao 🐾",
     "everyScooterRental": "Chaque location de scooter",
     "whatsIncluded": "Ce qui est inclus",
     "inclusionsSubtitle": "Nous sommes passionnés par la fonctionnalité, en veillant à ce que chaque location soit équipée des essentiels de l'île pour votre confort total.",

@@ -66,8 +66,8 @@
   },
   "browse": {
     "vehiclesFillFast": "Fahrzeuge sind schnell vergeben — jetzt sichern",
-    "charityTagline": "Jetzt buchen — Ihre Miete finanziert Tierschutz auf Siargao · ₱{{amount}} an lokale NGOs gespendet 🐾",
-    "charityTaglineSimple": "Jetzt buchen — Ihre Miete finanziert Tierschutz auf Siargao",
+    "charityTagline": "Jede Miete unterstützt Tiere und Gemeinden auf Siargao · ₱{{amount}} an lokale Projekte gespendet 🐾",
+    "charityTaglineSimple": "Jede Miete unterstützt Tiere und Gemeinden auf Siargao 🐾",
     "everyScooterRental": "Jede Scooter-Miete",
     "whatsIncluded": "Was ist inbegriffen",
     "inclusionsSubtitle": "Wir sind begeistert von Funktionalität und stellen sicher, dass jede Miete mit den notwendigen Insel-Essentials für maximalen Komfort ausgestattet ist.",
