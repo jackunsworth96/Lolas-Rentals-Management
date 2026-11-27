@@ -14,6 +14,7 @@ const router = Router();
 router.use(authenticate);
 
 const perm = requirePermission(Permission.ViewLostOpportunity);
+const edit = requirePermission(Permission.EditLostOpportunity);
 
 type Row = {
   id: number;
@@ -66,7 +67,7 @@ router.get('/', perm, validateQuery(LostOpportunityQuerySchema), async (req, res
   }
 });
 
-router.post('/', perm, validateBody(CreateLostOpportunitySchema), async (req, res, next) => {
+router.post('/', edit, validateBody(CreateLostOpportunitySchema), async (req, res, next) => {
   try {
     const b = req.body as {
       storeId: string;
@@ -103,7 +104,7 @@ router.post('/', perm, validateBody(CreateLostOpportunitySchema), async (req, re
   }
 });
 
-router.put('/:id', perm, validateBody(UpdateLostOpportunitySchema), async (req, res, next) => {
+router.put('/:id', edit, validateBody(UpdateLostOpportunitySchema), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) {
@@ -159,7 +160,7 @@ router.put('/:id', perm, validateBody(UpdateLostOpportunitySchema), async (req, 
   }
 });
 
-router.delete('/:id', perm, async (req, res, next) => {
+router.delete('/:id', edit, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const storeId = String(req.query.storeId ?? '');

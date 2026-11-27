@@ -14,6 +14,7 @@ const router = Router();
 router.use(authenticate);
 
 const perm = requirePermission(Permission.ViewMiscSales);
+const edit = requirePermission(Permission.ManageMerchandise);
 
 router.get('/', perm, validateQuery(MerchandiseQuerySchema), async (req, res, next) => {
   try {
@@ -33,7 +34,7 @@ router.get('/:sku', perm, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/', perm, validateBody(CreateMerchandiseItemSchema), async (req, res, next) => {
+router.post('/', edit, validateBody(CreateMerchandiseItemSchema), async (req, res, next) => {
   try {
     const repo = req.app.locals.deps.merchandiseRepo;
     const body = req.body as {
@@ -58,7 +59,7 @@ router.post('/', perm, validateBody(CreateMerchandiseItemSchema), async (req, re
   } catch (err) { next(err); }
 });
 
-router.put('/:sku', perm, validateBody(UpdateMerchandiseItemSchema), async (req, res, next) => {
+router.put('/:sku', edit, validateBody(UpdateMerchandiseItemSchema), async (req, res, next) => {
   try {
     const repo = req.app.locals.deps.merchandiseRepo;
     const existing = await repo.findBySku(req.params.sku);
@@ -92,7 +93,7 @@ router.put('/:sku', perm, validateBody(UpdateMerchandiseItemSchema), async (req,
   } catch (err) { next(err); }
 });
 
-router.post('/:sku/adjust-stock', perm, validateBody(AdjustStockSchema), async (req, res, next) => {
+router.post('/:sku/adjust-stock', edit, validateBody(AdjustStockSchema), async (req, res, next) => {
   try {
     const repo = req.app.locals.deps.merchandiseRepo;
     const { delta, reason: _reason } = req.body as { delta: number; reason: string };
@@ -101,7 +102,7 @@ router.post('/:sku/adjust-stock', perm, validateBody(AdjustStockSchema), async (
   } catch (err) { next(err); }
 });
 
-router.delete('/:sku', perm, async (req, res, next) => {
+router.delete('/:sku', edit, async (req, res, next) => {
   try {
     const repo = req.app.locals.deps.merchandiseRepo;
     await repo.delete(req.params.sku);

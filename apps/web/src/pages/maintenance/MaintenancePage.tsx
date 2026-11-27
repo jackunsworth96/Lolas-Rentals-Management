@@ -1,5 +1,7 @@
 import { useState, useMemo } from 'react';
+import { Permission } from '@lolas/shared';
 import { useUIStore } from '../../stores/ui-store.js';
+import { useAuthStore } from '../../stores/auth-store.js';
 import { useMaintenanceRecords } from '../../api/maintenance.js';
 import { Table } from '../../components/common/Table.js';
 import { Badge } from '../../components/common/Badge.js';
@@ -44,6 +46,7 @@ export default function MaintenancePage() {
   const [search, setSearch] = useState('');
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const canEdit = useAuthStore((s) => s.hasPermission(Permission.EditMaintenance));
 
   const { data: records, isLoading } = useMaintenanceRecords(storeId, statusFilter ? { status: statusFilter } : {});
   const list = (records ?? []) as MaintenanceRecordSummary[];
@@ -128,7 +131,7 @@ export default function MaintenancePage() {
             onChange={(e) => setStatusFilter(e.target.value)}
           />
         </div>
-        <Button onClick={() => setCreateOpen(true)}>+ New Maintenance</Button>
+        {canEdit && <Button onClick={() => setCreateOpen(true)}>+ New Maintenance</Button>}
       </div>
 
       <div className="mb-4">

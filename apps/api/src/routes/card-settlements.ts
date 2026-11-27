@@ -37,7 +37,7 @@ router.get('/balance', requirePermission(Permission.ViewCardSettlements), async 
   } catch (err) { next(err); }
 });
 
-router.post('/match', requirePermission(Permission.ViewCardSettlements), validateBody(z.object({
+router.post('/match', requirePermission(Permission.EditCardSettlements), validateBody(z.object({
   settlementIds: z.array(z.string()).min(1),
   settlementDate: z.string().min(1),
   bankReference: z.string().min(1),
@@ -59,7 +59,7 @@ router.post('/match', requirePermission(Permission.ViewCardSettlements), validat
   } catch (err) { next(err); }
 });
 
-router.post('/batch-edit', requirePermission(Permission.ViewCardSettlements), validateBody(z.object({
+router.post('/batch-edit', requirePermission(Permission.EditCardSettlements), validateBody(z.object({
   ids: z.array(z.string()).min(1),
   forecastedDate: z.string().optional(),
   settlementRef: z.string().optional(),
@@ -71,7 +71,7 @@ router.post('/batch-edit', requirePermission(Permission.ViewCardSettlements), va
   } catch (err) { next(err); }
 });
 
-router.post('/combine', requirePermission(Permission.ViewCardSettlements), validateBody(z.object({
+router.post('/combine', requirePermission(Permission.EditCardSettlements), validateBody(z.object({
   ids: z.array(z.string()).min(2),
   batchNo: z.string().min(1),
 })), async (req, res, next) => {

@@ -192,7 +192,7 @@ export default function FleetPage() {
     return { totalFleetCost, totalBookValue, totalMonthlyDep };
   }, [filtered]);
 
-  const canViewAccounts = hasPermission('can_view_accounts');
+  const canViewAccounts = hasPermission('can_view_fleet_financials');
 
   const columns = [
     { key: 'name', header: 'Vehicle' },
@@ -334,7 +334,7 @@ export default function FleetPage() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <h1 className="text-2xl font-bold text-gray-900">Fleet</h1>
-          {hasPermission('can_view_fleet_book_value') && (
+          {hasPermission('can_view_fleet_financials') && (
             <Link
               to="/fleet/utilization"
               className="text-sm text-blue-600 hover:underline"
@@ -411,7 +411,7 @@ export default function FleetPage() {
         />
       )}
 
-      {viewMode === 'list' && filtered.length > 0 && hasPermission('can_view_accounts') && (
+      {viewMode === 'list' && filtered.length > 0 && hasPermission('can_view_fleet_financials') && (
         <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Total Fleet Cost</p>

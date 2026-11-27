@@ -1,9 +1,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { Permission } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
+import { authenticate } from '../middleware/authenticate.js';
+import { requirePermission } from '../middleware/authorize.js';
 import { invalidatePublicArticlesCache } from './public-impact.js';
 
 const router = Router();
+
+router.use(authenticate, requirePermission(Permission.ManageImpact));
 
 function slugify(text: string): string {
   return text

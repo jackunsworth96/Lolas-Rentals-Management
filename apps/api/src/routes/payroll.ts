@@ -203,7 +203,7 @@ router.get('/allowance/:employeeId', async (req, res, next) => {
   try {
     const self = req.user!.employeeId === req.params.employeeId;
     if (!self && !req.user!.permissions.includes(Permission.ViewPayroll)) {
-      res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Missing required permissions: can_view_payroll' } });
+      requirePermission(Permission.ViewPayroll)(req, res, next);
       return;
     }
     const { getAllowanceLedger } = await import('../use-cases/payroll/vehicle-allowance.js');

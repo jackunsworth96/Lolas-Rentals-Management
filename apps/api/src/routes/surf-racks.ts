@@ -19,7 +19,7 @@ const AvailabilityQuery = z.object({
   excludeRawOrderId: z.string().optional(),
 });
 
-router.get('/availability', requirePermission(Permission.ViewOrders), validateQuery(AvailabilityQuery), async (req, res, next) => {
+router.get('/availability', requirePermission(Permission.ViewInbox), validateQuery(AvailabilityQuery), async (req, res, next) => {
   try {
     const q = req.query as z.infer<typeof AvailabilityQuery>;
     const data = await getSurfRackAvailability(getSupabaseClient(), {
@@ -72,7 +72,7 @@ const AllocationsQuery = z.object({
 });
 
 /** Active allocations for a store (ending in the future, not released), or every allocation for one order. */
-router.get('/allocations', requirePermission(Permission.ViewOrders), validateQuery(AllocationsQuery), async (req, res, next) => {
+router.get('/allocations', requirePermission(Permission.ViewInbox), validateQuery(AllocationsQuery), async (req, res, next) => {
   try {
     const { storeId, orderId } = req.query as z.infer<typeof AllocationsQuery>;
     if (!storeId && !orderId) {

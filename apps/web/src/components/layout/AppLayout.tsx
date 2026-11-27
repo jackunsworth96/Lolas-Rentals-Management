@@ -7,6 +7,7 @@ import { CommandPalette } from './CommandPalette.js';
 import { useUIStore } from '../../stores/ui-store.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 import { useTaskRealtime } from '../../hooks/useTaskRealtime.js';
+import { useAccessSync } from '../../hooks/useAccessSync.js';
 import { isArchivePath } from '../../utils/archive-mode.js';
 
 export function AppLayout() {
@@ -19,6 +20,7 @@ export function AppLayout() {
   const navigate = useNavigate();
 
   useTaskRealtime(employeeId);
+  useAccessSync(Boolean(employeeId));
 
   useEffect(() => {
     if (archiveMode && !isArchivePath(location.pathname)) navigate('/orders/completed', { replace: true });

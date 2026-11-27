@@ -399,7 +399,7 @@ This inserts six transfer routes plus the minimum chart of accounts (`AR-RENTAL-
 
 You will also need at minimum:
 - A `stores` row for `store-lolas` (and `store-bass` if testing both brands). Check `001_initial_schema.sql` for the column shape.
-- A `roles` row + `role_permissions` rows (use `ALL_PERMISSIONS` from `packages/shared/src/constants/permissions.ts`).
+- A `roles` row + `role_permissions` rows (use `ALL_PERMISSIONS` from `packages/shared/src/constants/permissions.ts`). The permissions overhaul migration seeds the `permissions` catalogue table, which `role_permissions` references.
 - An `employees` row (with `store_id = 'store-lolas'`).
 - A `users` row linked to that employee, with a `pin_hash` you can generate with the helper script:
 
@@ -458,7 +458,10 @@ The schema is too large to fully reproduce inline. The authoritative source is `
 #### Identity & access
 - `stores` — `id text PK`, `name`, `is_company boolean default false` (`'company'` row holds shared accounts), `default_float numeric`, `public_booking_token text` (used by `/book/transfer/:token` flow), `created_at`. RLS: read all, modify with `can_edit_accounts`.
 - `roles` — `id text PK`, `name`, `description`. Public read.
-- `role_permissions` — `role_id, permission` (composite PK). Public read.
+- `role_permissions` — `role_id, permission` (composite PK, FK to `permissions`). Public read.
+- `permissions` — the permission catalogue (`key`, `area`, `label`, `description`, `sensitive`, `deprecated`). Seeded by the overhaul migration.
+- `user_permission_overrides` — per-user `grant`/`revoke` with `reason`, `expires_at`, `created_by_employee_id`. Only the service role writes.
+- `access_audit_log` — append-only history of role, user and override changes (actor, before/after, reason).
 - `employees` — `id text PK`, `name`, `email`, `mobile`, `store_id` (legacy single-store; superseded by `employee_stores`), `role`, `pay_rate`, `rate_type` (`hourly`/`daily`/`monthly`), payment fields, `is_active`, `current_cash_advance` (legacy lump-sum, now superseded by `cash_advance_schedules`), `telegram_user_id` (mig 02 May 2026). RLS store-scoped read.
 - `employee_stores` (mig 087) — many-to-many join `employee_id, store_id`.
 - `users` — `id text PK`, `username text unique`, `pin_hash text` (bcrypt), `employee_id` (cascade delete via mig 135), `role_id`, `is_active`. RLS: only `can_edit_accounts`.
@@ -613,7 +616,7 @@ USING (store_id = ANY(public.user_store_ids())             -- INSERT/UPDATE/DELE
        AND public.has_permission('can_…'))
 ```
 
-Public-readable reference tables (`addons`, `locations`, `payment_methods`, `vehicle_models`, `vehicle_model_pricing`, `fleet_statuses`, `expense_categories`, `transfer_routes`, `day_types`, `roles`, `role_permissions`, `chart_of_accounts`) use `USING (true)` for SELECT and gate writes behind `can_edit_accounts` or `can_edit_settings`.
+Public-readable reference tables (`addons`, `locations`, `payment_methods`, `vehicle_models`, `vehicle_model_pricing`, `fleet_statuses`, `expense_categories`, `transfer_routes`, `day_types`, `roles`, `role_permissions`, `chart_of_accounts`) use `USING (true)` for SELECT and gate writes behind `can_edit_accounts` or `can_edit_settings` (a legacy key that `has_permission()` resolves to the split settings keys, see 12.2).
 
 Migrations that closed historic RLS gaps:
 - `058_rls_missing_tables.sql` — added RLS to the six tables that shipped without it.
@@ -760,14 +763,14 @@ Public (`/api/public/...`, no JWT, rate-limited):
 | PATCH | `/api/fleet/:id` | `can_edit_fleet` |
 | POST | `/api/fleet/purchase` | `can_edit_fleet` (records vehicle purchase + journal) |
 | POST | `/api/fleet/sale` | `can_edit_fleet` (records sale + book P&L) |
-| GET | `/api/fleet/utilization` | `can_view_fleet_book_value` |
+| GET | `/api/fleet/utilization` | `can_view_fleet_financials` |
 
 ### 7.9 Maintenance (`routes/maintenance.ts`)
 
 | Method | Path | Permission |
 |---|---|---|
 | GET | `/api/maintenance` | `can_view_maintenance` |
-| POST | `/api/maintenance` | `can_view_maintenance` (intentional — anyone with view can log; edit gating tightened in V10) |
+| POST | `/api/maintenance` | `can_edit_maintenance` |
 | PATCH | `/api/maintenance/:id` | `can_edit_maintenance` |
 | GET | `/api/maintenance/work-types` | any authenticated |
 
@@ -779,8 +782,8 @@ Mounted at `/api/inspections` outside the main router for clean photo upload han
 |---|---|---|
 | GET | `/api/inspections/items` | any authenticated |
 | GET | `/api/inspections/orders/:orderId/...` | `can_view_inbox` |
-| POST | `/api/inspections/orders/:orderId/pre` | `can_edit_orders` |
-| POST | `/api/inspections/orders/:orderId/post` | `can_edit_orders` |
+| POST | `/api/inspections/orders/:orderId/pre` | `can_perform_inspections` |
+| POST | `/api/inspections/orders/:orderId/post` | `can_perform_inspections` |
 
 ### 7.11 Cashup (`routes/cashup.ts`)
 
@@ -856,7 +859,7 @@ Mounted at `/api/inspections` outside the main router for clean photo upload han
 
 ### 7.18 Config / settings (`routes/config.ts`)
 
-Many endpoints for `addons`, `locations`, `payment_methods`, `vehicle_models`, `vehicle_model_pricing`, `roles`, `users`, `chart_of_accounts`, `payment_routing`, `transfer_routes`, `maintenance_work_types`, `expense_categories`, `recurring_bills`, `leave_config`, `day_types`. All gated behind `can_edit_settings` for writes, public reads for reference data.
+Many endpoints for `addons`, `locations`, `payment_methods`, `vehicle_models`, `vehicle_model_pricing`, `roles`, `users`, `chart_of_accounts`, `payment_routing`, `transfer_routes`, `maintenance_work_types`, `expense_categories`, `recurring_bills`, `leave_config`, `day_types`. Writes are gated by the matching settings key (`can_edit_settings_business` / `_operations` / `_fleet` / `_finance` / `_hr`); users and roles need `can_manage_access`. Role editing moved to `/api/access`. Public reads for reference data.
 
 ### 7.19 Dashboard / Analytics
 
@@ -942,7 +945,7 @@ Mounted under `/api/public/respond`, gated by `authenticateApiKey` (single stati
 
 Two finer-grained guards exist for niche backoffice pages:
 
-- `<RequireFleetBookValue>` → `/fleet/utilization`, `/fleet/asset-register` need `can_view_fleet_book_value`.
+- Every backoffice page is wrapped in `<RequirePermission path>`, which reads `ROUTE_PERMISSIONS` in `lib/route-permissions.ts` and shows a "no access" panel naming the missing permission. `/fleet/utilization` and `/fleet/asset-register` need `can_view_fleet_financials`.
 - `<RequireAccounts>` → asset register also needs `can_view_accounts`.
 
 ### 8.2 Pages
@@ -1348,58 +1351,103 @@ void (async () => {
 ### 12.1 Auth chain end-to-end
 
 1. **Login.** `POST /api/auth/login` accepts `{ username, pin }`. Username is matched case-insensitively against `users.username` (with `ILIKE` and the wildcards `%` `_` `\` `,` `(` `)` escaped — see `escapeForILikeExact`). PIN is verified against `pin_hash` (bcrypt, cost 10).
-2. **JWT issued.** Payload: `{ userId, username, employeeId, roleId, storeIds, permissions }`. `storeIds` is the union of `employee_stores.store_id` rows plus the legacy `employees.store_id` if the join is empty. `permissions` is the array of `role_permissions.permission` for the user's role.
+2. **JWT issued.** Payload: `{ userId, username, employeeId, roleId, storeIds, permissions }`. `storeIds` is the union of `employee_stores.store_id` rows plus the legacy `employees.store_id` if the join is empty. `permissions` is a snapshot for the client; the API re-resolves permissions on every request (see 12.2).
 3. **Token storage.** Web stores token + user in `useAuthStore` (Zustand persist → localStorage key `lolas-auth`).
 4. **Per-request auth.** `apps/web/src/api/client.ts` adds `Authorization: Bearer <token>` to every API call. The API's `authenticate` middleware (`apps/api/src/middleware/authenticate.ts`) verifies the token via `verifyToken` (HS256 with `JWT_SECRET`), attaches `req.user`, and calls `next()`.
-5. **Permission gate.** Routes that need permissions wrap with `requirePermission('can_xyz', ...)` (`middleware/authorize.ts`), which 403s if any are missing.
+5. **Permission gate.** Routes that need permissions wrap with `requirePermission('can_xyz', ...)` (all required) or `requireAnyPermission(...)` (any one) from `middleware/authorize.ts`, which 403 otherwise.
 6. **API-key auth (Lolo only).** `/api/public/respond/*` is gated by `authenticateApiKey` (`X-API-Key` header), checked with `crypto.timingSafeEqual`. Different mechanism, same goal.
 7. **Session expiry.** Tokens expire at 24h. There is no refresh — user re-logs in. Any 401 from a non-`/auth/login` endpoint triggers `useAuthStore.logout()` on the client.
 
 ### 12.2 Authorisation model
 
-Permissions are strings, defined in `packages/shared/src/constants/permissions.ts`:
+**Source of truth.** Permission keys live in `packages/shared/src/constants/permissions.ts` (`Permission`, `ALL_PERMISSIONS`). Every key is described in `permission-catalogue.ts` (`PERMISSION_CATALOGUE`: label, plain-English description, what it grants, `requires` dependencies, `sensitive` flag) and grouped into areas with cumulative No access / View / Edit / Manage levels (`PERMISSION_AREAS`). The role editor, docs and tests all read from the catalogue. Adding a key means: add it to `Permission`, add a catalogue entry and area level, seed it in a migration, and run the tests (`permission-catalogue.test.ts` fails on any key missing from the catalogue or migration, and on unknown `can_*` strings anywhere in `apps/api/src` or `apps/web/src`).
 
-| Permission constant | DB string | What it allows |
-|---|---|---|
-| `Permission.ViewInbox` | `can_view_inbox` | View `orders_raw` queue + active/completed orders + customer detail |
-| `Permission.ViewActive` | `can_view_active` | View active orders |
-| `Permission.ViewCompleted` | `can_view_completed` | View completed orders |
-| `Permission.EditOrders` | `can_edit_orders` | Process / activate / modify / settle / collect payments |
-| `Permission.CancelOrders` | `can_cancel_orders` | Cancel orders (in inbox or active) |
-| `Permission.ViewFleet` | `can_view_fleet` | View fleet list / Gantt |
-| `Permission.EditFleet` | `can_edit_fleet` | Edit fleet records, purchases, sales |
-| `Permission.ViewFleetBookValue` | `can_view_fleet_book_value` | Utilisation + asset register (financial) |
-| `Permission.ViewMaintenance` | `can_view_maintenance` | View maintenance + create entries |
-| `Permission.EditMaintenance` | `can_edit_maintenance` | Edit existing maintenance records |
-| `Permission.ViewTransfers` | `can_view_transfers` | View transfers list |
-| `Permission.EditTransfers` | `can_edit_transfers` | Create + edit + driver settlement |
-| `Permission.ViewCardSettlements` | `can_view_cardsettlements` | View + match card settlements |
-| `Permission.ViewExpenses` | `can_view_expenses` | View expenses |
-| `Permission.EditExpenses` | `can_edit_expenses` | Create + edit + delete + pay expenses |
-| `Permission.ViewTimesheets` | `can_view_timesheets` | View timesheets |
-| `Permission.SubmitTimesheets` | `can_submit_timesheets` | Submit own timesheet |
-| `Permission.EditTimesheets` | `can_edit_timesheets` | Edit submitted timesheets (mig 20260505023000) |
-| `Permission.ApproveTimesheets` | `can_approve_timesheets` | Approve timesheets for payroll |
-| `Permission.ViewPayroll` | `can_view_payroll` | View + run payroll |
-| `Permission.ViewAccounts` | `can_view_accounts` | View chart of accounts + journal |
-| `Permission.EditAccounts` | `can_edit_accounts` | Manual journal entries + COA edits + roles + users |
-| `Permission.ViewCashup` | `can_view_cashup` | View + reconcile cash-up |
-| `Permission.OverrideCashup` | `can_override_cashup` | Re-open locked reconciliations |
-| `Permission.ViewMiscSales` | `can_view_miscsales` | View misc sales |
-| `Permission.ViewLostOpportunity` | `can_view_lostopportunity` | View lost opportunity log |
-| `Permission.ViewTodo` | `can_view_todo` | View + comment on to-do tasks |
-| `Permission.ManageTodo` | `can_manage_todo` | Create + assign + delete to-do tasks |
-| `Permission.ManageEmployees` | `can_manage_employees` | Employee CRUD |
-| `Permission.EditSettings` | `can_edit_settings` | Settings (locations, addons, pricing, payment methods, etc.) |
-| `Permission.ViewDashboard` | `can_view_dashboard` | Owner KPI dashboard |
-| `Permission.ViewUIErrors` | `can_view_uierrors` | UI error log |
+**Effective permissions** = the role's `role_permissions` + active `user_permission_overrides` grants (with their dependencies) − active revokes (with whatever depends on them), computed by `resolveEffectivePermissions`. Overrides carry a reason and optional `expires_at`.
 
-Roles are configured in `/settings` (Roles & Users) and stored in `roles` + `role_permissions`. Typical roles in production:
+**Live enforcement.** `authenticate` does not trust the permissions inside the JWT. It loads them per request through `services/effective-permissions.ts` (`loadEffectiveAccess`), cached for 15 seconds and never past the next override expiry, and invalidated on every access write. A role change, exception or deactivation therefore takes effect within seconds. Each response carries `X-Permissions-Version`; when it differs from the web client's copy, the client calls `GET /api/auth/me` and updates the sidebar and route guards without a re-login. The web app also re-checks on focus and every 5 minutes (`useAccessSync`).
 
-- **Admin** — every permission.
-- **Manager** — most permissions excluding `can_edit_accounts`, `can_manage_employees`, `can_view_payroll`, `can_view_fleet_book_value`.
-- **Frontline staff** — `can_view_inbox`, `can_view_active`, `can_view_completed`, `can_edit_orders`, `can_view_fleet`, `can_view_transfers`, `can_view_cashup`, `can_view_maintenance`.
-- **Driver** — minimal; mostly receives Telegram messages, doesn't log in.
+**Admin API** (`routes/access-control.ts`, mounted at `/api/access`, all routes need `can_manage_access`): `GET/POST /roles`, `PUT/DELETE /roles/:id`, `GET /users`, `GET /users/:id`, `PUT /users/:id/overrides`, `GET /history`. Writes go through the atomic database functions `save_role_atomic`, `delete_role_atomic` and `save_user_overrides_atomic`, which write `access_audit_log` in the same transaction and use optimistic versions (`expectedVersion`, 409 `VERSION_CONFLICT`).
+
+**Guardrails**, enforced in the API (`lib/access-guards.ts`) and again in the database:
+
+- No escalation: you can only grant permissions you hold (403 `ESCALATION_BLOCKED`).
+- No self-lockout: you cannot remove your own `can_manage_access`, edit your own exceptions, or delete your own role (409 `SELF_LOCKOUT` / `SELF_EDIT_BLOCKED`).
+- There is always at least one active user who can manage access (409 `LAST_ACCESS_MANAGER`).
+- System roles and roles with users cannot be deleted (409 `ROLE_SYSTEM` / `ROLE_IN_USE`).
+- If the overhaul migration has not been applied, access endpoints return 503 `MIGRATION_PENDING` and the resolver falls back to `role_permissions` with the split backfill applied in memory, so nobody loses access.
+
+**Web gating.** `apps/web/src/lib/route-permissions.ts` (`ROUTE_PERMISSIONS`) maps every backoffice path to its rule. The router wraps each page in `<RequirePermission>` and the sidebar reads the same map, so a page is visible exactly when it opens (`route-permissions.test.ts`). Settings sections each have their own key (`settings-tabs.ts`).
+
+**Legacy keys.** `can_edit_settings` and `can_view_fleet_book_value` were split or renamed. `LEGACY_PERMISSION_ALIASES` maps them to their replacements, the overhaul migration backfills existing roles, and the database `has_permission()` honours them through `permission_aliases`, so RLS policies that still name the old keys keep working. `20261127060000_retire_legacy_permissions.sql` (apply only after the new API and web are live) removes the old keys from roles and the catalogue but keeps the aliases.
+
+All permissions:
+
+| Constant | Key | Area | Label |
+|---|---|---|---|
+| `Permission.ViewInbox` | `can_view_inbox` | Orders & bookings | View inbox and order details |
+| `Permission.ViewActive` | `can_view_active` | Orders & bookings | View active rentals |
+| `Permission.ViewCompleted` | `can_view_completed` | Orders & bookings | View completed orders |
+| `Permission.EditOrders` | `can_edit_orders` | Orders & bookings | Process and manage orders |
+| `Permission.PerformInspections` | `can_perform_inspections` | Orders & bookings | Run vehicle inspections |
+| `Permission.CancelOrders` | `can_cancel_orders` (sensitive) | Orders & bookings | Cancel and write off orders |
+| `Permission.ManageInvoices` | `can_manage_invoices` | Invoices | Manage invoices |
+| `Permission.ViewCustomers` | `can_view_customers` | Customers | View customers |
+| `Permission.EditCustomers` | `can_edit_customers` | Customers | Edit customers |
+| `Permission.ViewTransfers` | `can_view_transfers` | Transfers | View transfers |
+| `Permission.EditTransfers` | `can_edit_transfers` | Transfers | Manage transfers |
+| `Permission.ViewFleet` | `can_view_fleet` | Fleet | View fleet |
+| `Permission.EditFleet` | `can_edit_fleet` | Fleet | Manage vehicles |
+| `Permission.ViewFleetFinancials` | `can_view_fleet_financials` (sensitive) | Fleet | View fleet financials |
+| `Permission.ViewMaintenance` | `can_view_maintenance` | Maintenance | View maintenance |
+| `Permission.EditMaintenance` | `can_edit_maintenance` | Maintenance | Log and update maintenance |
+| `Permission.ViewCashup` | `can_view_cashup` | Cash up | Do the daily cash up |
+| `Permission.OverrideCashup` | `can_override_cashup` (sensitive) | Cash up | Override and reopen cash ups |
+| `Permission.ViewMiscSales` | `can_view_miscsales` | Misc sales & merchandise | View misc sales and merchandise |
+| `Permission.EditMiscSales` | `can_edit_miscsales` | Misc sales & merchandise | Record misc sales |
+| `Permission.ManageMerchandise` | `can_manage_merchandise` | Misc sales & merchandise | Manage merchandise stock |
+| `Permission.ViewCardSettlements` | `can_view_cardsettlements` | Card settlements | View card settlements |
+| `Permission.EditCardSettlements` | `can_edit_cardsettlements` | Card settlements | Match card settlements |
+| `Permission.ViewExpenses` | `can_view_expenses` | Expenses | View expenses |
+| `Permission.EditExpenses` | `can_edit_expenses` | Expenses | Record and pay expenses |
+| `Permission.ViewAccounts` | `can_view_accounts` (sensitive) | Accounts & budget | View accounts and budget |
+| `Permission.EditBudget` | `can_edit_budget` | Accounts & budget | Edit the budget |
+| `Permission.EditAccounts` | `can_edit_accounts` (sensitive) | Accounts & budget | Post to the accounts |
+| `Permission.ViewDashboard` | `can_view_dashboard` (sensitive) | Business performance | View business performance |
+| `Permission.ViewLostOpportunity` | `can_view_lostopportunity` | Lost opportunities | View lost opportunities |
+| `Permission.EditLostOpportunity` | `can_edit_lostopportunity` | Lost opportunities | Log lost opportunities |
+| `Permission.ViewTodo` | `can_view_todo` | Tasks | Work on tasks |
+| `Permission.ManageTodo` | `can_manage_todo` | Tasks | Manage tasks |
+| `Permission.ViewTimesheets` | `can_view_timesheets` | Timesheets | View timesheets |
+| `Permission.SubmitTimesheets` | `can_submit_timesheets` | Timesheets | Submit timesheets |
+| `Permission.ApproveTimesheets` | `can_approve_timesheets` | Timesheets | Approve timesheets |
+| `Permission.EditTimesheets` | `can_edit_timesheets` | Timesheets | Edit and delete timesheets |
+| `Permission.ManageRota` | `can_manage_rota` | Rota | Use the staff rota |
+| `Permission.ManageEmployees` | `can_manage_employees` (sensitive) | Employees | Manage employees |
+| `Permission.ViewPayroll` | `can_view_payroll` (sensitive) | Payroll | View payroll |
+| `Permission.RunPayroll` | `can_run_payroll` (sensitive) | Payroll | Run payroll |
+| `Permission.ApproveStaffRequests` | `can_approve_staff_requests` | Payroll | Approve staff requests |
+| `Permission.ManageContracts` | `can_manage_contracts` | Contracts | Manage business contracts |
+| `Permission.ManageStaffContracts` | `can_manage_staff_contracts` (sensitive) | Contracts | Manage staff contracts |
+| `Permission.ViewDirectory` | `can_view_directory` | Directory | View directory |
+| `Permission.EditDirectory` | `can_edit_directory` | Directory | Edit directory |
+| `Permission.ManagePartners` | `can_manage_partners` | Partners & impact | Manage partners |
+| `Permission.ManageImpact` | `can_manage_impact` | Partners & impact | Manage impact articles |
+| `Permission.EditSettingsBusiness` | `can_edit_settings_business` | Settings | Business settings |
+| `Permission.EditSettingsOperations` | `can_edit_settings_operations` | Settings | Operations settings |
+| `Permission.EditSettingsFleet` | `can_edit_settings_fleet` | Settings | Fleet settings |
+| `Permission.EditSettingsFinance` | `can_edit_settings_finance` (sensitive) | Settings | Finance settings |
+| `Permission.EditSettingsHr` | `can_edit_settings_hr` | Settings | HR settings |
+| `Permission.ManageAccess` | `can_manage_access` (sensitive) | Users & access | Manage users and access |
+| `Permission.ViewUIErrors` | `can_view_uierrors` | App issues & tools | Report app issues |
+| `Permission.ManageUIErrors` | `can_manage_uierrors` | App issues & tools | Resolve app issues |
+| `Permission.UseDevTools` | `can_use_dev_tools` (sensitive) | App issues & tools | Developer tools |
+| `Permission.UseCounter` | `can_use_counter` | Reception tablet | Reception tablet |
+
+Roles are managed in **Settings → Users & access** and stored in `roles` (with `description`, `is_system`, `permissions_version`) + `role_permissions`. Production roles: `role-admin` (every permission, system), `role-counter` (reception tablet locked to `/counter`, system), `store-manager`, `store-assistant`, `role-staff` and `role-developer`.
+
+**Rolling out the overhaul.** Run STEP 1 of `supabase/snippets/permissions-rollout-snapshot.sql`, apply `20261127050000_permissions_overhaul.sql`, and check STEP 2 returns no rows (nobody lost access). Deploy the API and web. Once the new release is live, apply `20261127060000_retire_legacy_permissions.sql` and run STEP 2 again. The API works before the migration too (see the fallback above), so the deploy and migration order is forgiving.
+
+**Rolling out the overhaul.** Run STEP 1 of `supabase/snippets/permissions-rollout-snapshot.sql`, apply `20261127050000_permissions_overhaul.sql`, and check STEP 2 returns no rows (nobody lost access). Deploy the API and web. Once the new release is live, apply `20261127060000_retire_legacy_permissions.sql` and run STEP 2 again. The API works before the migration too (see the fallback above), so the deploy and migration order is forgiving.
 
 ### 12.3 RLS as defence in depth
 
@@ -1407,7 +1455,7 @@ The API uses the service-role key, which bypasses RLS. RLS is the second line of
 
 ### 12.4 Other security controls
 
-- **Rate limiting.** `loginLimiter` (5/15min on `/auth`), `publicLimiter` (60/min on `/public`), `apiLimiter` (200/min default), plus per-route limiters (`holdLimiter` 20/10min, `cancelLimiter` 10/h, `bookingLimiter`, `lookupLimiter`, `enrollLimiter` 8/15min on partner enrollment, `waiverLimiter` 20/15min). Trust proxy is set so Render's `X-Forwarded-For` is honoured.
+- **Rate limiting.** `loginLimiter` (5/15min on `/auth/login`), `publicLimiter` (60/min on `/public`), `apiLimiter` (200/min default), plus per-route limiters (`holdLimiter` 20/10min, `cancelLimiter` 10/h, `bookingLimiter`, `lookupLimiter`, `enrollLimiter` 8/15min on partner enrollment, `waiverLimiter` 20/15min). Trust proxy is set so Render's `X-Forwarded-For` is honoured.
 - **CORS.** Allow-list built in `server.ts:buildCorsAllowedOrigins`. Requires `CORS_ORIGIN` (primary) and optional `ALLOWED_ORIGIN` (CSV). Localhost is auto-added in non-production.
 - **Helmet.** Default config (no custom CSP yet; pushed to post-launch — see V10 S-15).
 - **Input validation.** All POST/PATCH bodies use `validateBody(zodSchema)` from `middleware/validate.ts`. All query params use `validateQuery`. Errors are 400 with `VALIDATION_ERROR` code.
@@ -1420,7 +1468,7 @@ The API uses the service-role key, which bypasses RLS. RLS is the second line of
 
 - **JWT in localStorage.** `apps/web/src/stores/auth-store.ts:30–34` persists the JWT to localStorage. Any XSS on the SPA can exfiltrate it. The intended fix is httpOnly cookies + CSRF; not implemented yet. Risk is mitigated by SPA being React + sanitised by default, no `dangerouslySetInnerHTML` in our codebase.
 - **Order reference brute-force.** Order references are 4-hex (~65k space). Customer self-cancel and self-extend rely on order reference + email. The email check is the gate. Acceptable today; increase entropy in a future migration.
-- **No JWT revocation.** Tokens are valid for 24h regardless of password change / role change. No deny-list. If you rotate a user's permissions, they may keep elevated access until their JWT expires.
+- **No JWT revocation for PIN changes.** Permission, role and deactivation changes apply within seconds (permissions are re-resolved per request), but a token stays valid for 24h after a PIN change. No deny-list.
 - **Static respond.io API key.** Compromise = full read access to internal data via Lolo endpoints. Rotate periodically; support per-conversation auth in the future.
 - **CORS fallback.** `server.ts:79` falls back to `https://lolas-rentals-management-web.vercel.app` if `CORS_ORIGIN` is unset. In production this must be set explicitly to the live origin.
 - **No CSP.** Helmet is at defaults. Define a CSP once you've audited inline styles.

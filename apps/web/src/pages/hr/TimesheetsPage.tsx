@@ -106,6 +106,8 @@ export default function TimesheetsPage() {
   const globalStoreId = useUIStore((s) => s.selectedStoreId) ?? '';
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const canEdit = hasPermission(Permission.EditTimesheets);
+  const canSubmit = hasPermission(Permission.SubmitTimesheets);
+  const canApprove = hasPermission(Permission.ApproveTimesheets);
   const { data: stores = [] } = useStores();
   const storeList = stores as Array<{ id: string; name: string }>;
 
@@ -431,7 +433,7 @@ export default function TimesheetsPage() {
       ) : (
         <>
           {/* ── Entry Form ── */}
-          <div className="rounded-lg bg-white shadow-sm overflow-hidden">
+          {canSubmit && <div className="rounded-lg bg-white shadow-sm overflow-hidden">
             <div className="border-b border-gray-200 px-4 py-3">
               <h2 className="font-medium text-gray-900">Submit Timesheets</h2>
             </div>
@@ -656,7 +658,7 @@ export default function TimesheetsPage() {
                 </div>
               )}
             </div>
-          </div>
+          </div>}
 
           {/* ── Existing Timesheets Table ── */}
           <div className="rounded-lg bg-white shadow-sm overflow-hidden">
@@ -681,7 +683,7 @@ export default function TimesheetsPage() {
                 </div>
                 <span className="text-xs text-gray-400">{filteredTimesheets.length} record{filteredTimesheets.length !== 1 ? 's' : ''}</span>
               </div>
-              {selectedIds.size > 0 && (
+              {canApprove && selectedIds.size > 0 && (
                 <button
                   onClick={handleApprove}
                   disabled={approveMutation.isPending}
@@ -703,12 +705,12 @@ export default function TimesheetsPage() {
                 <thead>
                   <tr className="border-b border-gray-200 bg-gray-50 text-left">
                     <th className="px-3 py-2 w-8">
-                      <input
+                      {canApprove && <input
                         type="checkbox"
                         checked={filteredTimesheets.filter((t) => t.payrollStatus === 'Pending').length > 0 && filteredTimesheets.filter((t) => t.payrollStatus === 'Pending').every((t) => selectedIds.has(t.id))}
                         onChange={toggleSelectAll}
                         className="h-4 w-4 rounded border-gray-300 text-blue-600"
-                      />
+                      />}
                     </th>
                     <th className="px-3 py-2 font-medium text-gray-600">Date</th>
                     <th className="px-3 py-2 font-medium text-gray-600">Employee</th>
@@ -729,7 +731,7 @@ export default function TimesheetsPage() {
                   {filteredTimesheets.map((t) => (
                     <tr key={t.id} className="border-b border-gray-50 hover:bg-gray-50 transition">
                       <td className="px-3 py-2">
-                        {t.payrollStatus === 'Pending' ? (
+                        {canApprove && t.payrollStatus === 'Pending' ? (
                           <input
                             type="checkbox"
                             checked={selectedIds.has(t.id)}

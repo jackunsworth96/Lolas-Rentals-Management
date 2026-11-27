@@ -233,9 +233,6 @@ export interface ConfigRepository {
   saveWorkType(wt: WorkType): Promise<void>;
   deleteWorkType(id: number | string): Promise<void>;
   saveLeaveConfig(config: LeaveConfig): Promise<void>;
-  saveRole(role: Role): Promise<void>;
-  deleteRole(id: string): Promise<void>;
-  saveRolePermissions(roleId: string, permissions: string[]): Promise<void>;
   saveUser(user: AppUser): Promise<void>;
   deleteUser(id: string): Promise<void>;
   saveRepairCost(cost: Omit<RepairCostConfig, 'id'> & { id?: string }): Promise<void>;

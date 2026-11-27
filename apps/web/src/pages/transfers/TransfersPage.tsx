@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
+import { Permission } from '@lolas/shared';
 import { useUIStore } from '../../stores/ui-store.js';
+import { useAuthStore } from '../../stores/auth-store.js';
 import { useTransfers, notifyDriver, formatVanType, type TransferCollector, type TransferRow } from '../../api/transfers.js';
 import { useStores } from '../../api/config.js';
 import { useToast } from '../../hooks/useToast.js';
@@ -138,6 +140,7 @@ function SummaryCard({ label, value, sub, emphasis, onClick }: SummaryCardProps)
 export default function TransfersPage() {
   const storeId = useUIStore((s) => s.selectedStoreId) ?? '';
   const archiveMode = useUIStore((s) => s.archiveMode);
+  const canEdit = useAuthStore((s) => s.hasPermission(Permission.EditTransfers));
   const isMobile = useIsMobile();
   const { data: stores } = useStores();
   const storeName = (stores as Array<{ id: string; name: string }> | undefined)?.find((s) => s.id === storeId)?.name ?? "Lola's";
@@ -242,7 +245,7 @@ export default function TransfersPage() {
   }
 
   function renderActions(t: TransferRow) {
-    const action = archiveMode ? null : primaryAction(t, today);
+    const action = archiveMode || !canEdit ? null : primaryAction(t, today);
     return (
       <div className="flex items-center justify-end gap-1.5">
         {action && (
@@ -278,7 +281,7 @@ export default function TransfersPage() {
     }
     switch (activeTab) {
       case 'upcoming':
-        return archiveMode
+        return archiveMode || !canEdit
           ? <EmptyBox message="No upcoming transfers." />
           : <EmptyBox message="No upcoming transfers." actionLabel="Add transfer" onAction={() => setShowAdd(true)} />;
       case 'collect':
@@ -300,14 +303,14 @@ export default function TransfersPage() {
     return <div className="py-12 text-center text-gray-500">Select a store to view transfers.</div>;
   }
 
-  const showSelection = activeTab === 'settle' && !archiveMode;
+  const showSelection = activeTab === 'settle' && !archiveMode && canEdit;
   const colCount = showSelection ? 9 : 8;
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-gray-900">Transfers</h1>
-        {!archiveMode && (
+        {!archiveMode && canEdit && (
           <button
             type="button"
             onClick={() => setShowAdd(true)}

@@ -1,4 +1,4 @@
-import { useAuthStore } from '../stores/auth-store.js';
+import { useAuthStore, type AuthUser } from '../stores/auth-store.js';
 import { normalizeApiBase } from './normalize-api-base.js';
 import { useUIStore } from '../stores/ui-store.js';
 
@@ -73,11 +73,33 @@ async function request<T>(
     throw new Error(response.ok ? 'Invalid response' : `Request failed: ${response.status} ${response.statusText}`);
   }
 
+  const accessVersion = response.headers.get(PERMISSIONS_VERSION_HEADER);
+  if (accessVersion && path !== ME_PATH) noteAccessVersion(accessVersion);
+
   if (!response.ok || !json.success) {
     throw new ApiError(json.error?.message ?? 'Request failed', json.error?.code, json.error?.details);
   }
 
   return json.data as T;
+}
+
+const PERMISSIONS_VERSION_HEADER = 'X-Permissions-Version';
+const ME_PATH = '/auth/me';
+let accessRefresh: Promise<void> | null = null;
+
+/** Re-read the signed-in user's permissions so role changes apply without logging out. */
+export function refreshAccess(): Promise<void> {
+  if (!useAuthStore.getState().token) return Promise.resolve();
+  accessRefresh ??= request<{ user: AuthUser }>(ME_PATH)
+    .then(({ user }) => useAuthStore.getState().updateUser(user))
+    .catch(() => undefined)
+    .finally(() => { accessRefresh = null; });
+  return accessRefresh;
+}
+
+function noteAccessVersion(version: string): void {
+  const current = useAuthStore.getState().user?.permissionsVersion;
+  if (current !== version) void refreshAccess();
 }
 
 async function uploadRequest<T>(path: string, body: FormData): Promise<T> {

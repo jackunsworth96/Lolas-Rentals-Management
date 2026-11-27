@@ -152,9 +152,6 @@ export function useLeaveConfig(storeId: string | undefined) {
 export function useRoles() {
   return useQuery({ queryKey: ['config', 'roles'], queryFn: () => api.get('/config/roles') });
 }
-export function useRolePermissions(roleId: string) {
-  return useQuery({ queryKey: ['config', 'role-permissions', roleId], queryFn: () => api.get(`/config/roles/${roleId}/permissions`), enabled: !!roleId });
-}
 export function useUsers() {
   return useQuery({ queryKey: ['config', 'users'], queryFn: () => api.get('/config/users') });
 }
@@ -380,18 +377,6 @@ export function useSaveLeaveConfig() {
   return useMutation({
     mutationFn: (body: Record<string, unknown>) => api.put('/config/leave-config', body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['config', 'leave-config'] }),
-  });
-}
-
-export function useSaveRole() { return useSave('roles', ['roles']); }
-export function useDeleteRole() { return useDelete('roles', ['roles']); }
-
-export function useSaveRolePermissions() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ roleId, permissions }: { roleId: string; permissions: string[] }) =>
-      api.put(`/config/roles/${roleId}/permissions`, { permissions }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['config', 'role-permissions'] }),
   });
 }
 

@@ -45,29 +45,114 @@ Staff access the back office at the designated internal URL. Login requires a **
 
 ### 2.2 Roles & Permissions
 
-Access to features is controlled by roles. The key permission areas are:
+Each person has one **role** (for example Manager, Staff or Mechanic). The role decides what they can open and do. On top of that, a person can have **exceptions**: an extra permission given to just them, or a permission taken away from just them, each with a reason and an optional end date.
 
-| Permission | What it allows |
-|---|---|
-| `can_view_inbox` | View unprocessed bookings in the Inbox |
-| `can_view_active` | View active (live) orders |
-| `can_view_completed` | View settled/completed orders |
-| `can_edit_orders` | Process, activate, modify, and settle orders |
-| `can_cancel_orders` | Cancel orders in the inbox queue |
-| `can_view_fleet` | View the vehicle fleet |
-| `can_edit_fleet` | Edit fleet records, statuses, purchases, sales |
-| `can_view_fleet_book_value` | View fleet utilisation and financial book values |
-| `can_view_maintenance` | View maintenance jobs |
-| `can_edit_expenses` | Log and edit expense records |
-| `can_edit_transfers` | Manage transfer jobs |
-| `can_manage_employees` | Create and manage employee records |
-| `can_view_payroll` | Access payroll information |
-| `can_edit_settings` | Change system configuration (locations, add-ons, pricing, roles, users) |
-| `can_view_dashboard` | View the operations dashboard |
-| `can_manage_todo` | Manage to-do tasks |
-| `can_override_cashup` | Override cash-up entries |
+Roles and exceptions are managed in **Settings → Users & access**, which needs `can_manage_access`:
 
-Roles are assigned by an Admin via **Settings → Roles & Users**.
+- **Roles**: create, edit, duplicate and compare roles. Each area is set to *No access*, *View*, *Edit* or *Manage*. Turn on **Advanced** to tick individual permissions.
+- **People's access**: see exactly what one person can open and why (role or exception), and add or remove their exceptions.
+- **Access history**: every change to roles, logins and exceptions, with who made it and the reason. It cannot be edited.
+
+Safety rules the system enforces:
+
+- You can only give out permissions you hold yourself.
+- You cannot change your own exceptions, delete your own role, or remove your own `can_manage_access`.
+- There must always be at least one active person who can manage access.
+- Built-in roles and roles that still have people on them cannot be deleted.
+- Changes marked *sensitive* below need a reason.
+- Changes reach people's open sessions within a few seconds; no one needs to log out.
+
+All permissions, by area:
+
+**Operations**
+
+| Area | Permission | What it allows |
+|---|---|---|
+| Orders & bookings | `can_view_inbox` | View inbox and order details. See new bookings waiting to be processed and open any order to read its details. |
+| Orders & bookings | `can_view_active` | View active rentals. See rentals that are currently out with customers. |
+| Orders & bookings | `can_view_completed` | View completed orders. Browse finished and settled rentals. |
+| Orders & bookings | `can_edit_orders` | Process and manage orders. Run the day-to-day booking workflow from inbox to settlement. |
+| Orders & bookings | `can_perform_inspections` | Run vehicle inspections. Complete the pre-ride inspection with the customer and record the odometer. |
+| Orders & bookings | `can_cancel_orders` (sensitive) | Cancel and write off orders. Cancel bookings and write off unpaid balances. |
+| Invoices | `can_manage_invoices` | Manage invoices. Create, edit and send invoices linked to orders. |
+| Customers | `can_view_customers` | View customers. Search customers and see their booking history and documents. |
+| Customers | `can_edit_customers` | Edit customers. Update a customer's details, contact preferences and blacklist status. |
+| Transfers | `can_view_transfers` | View transfers. See airport and van transfer bookings. |
+| Transfers | `can_edit_transfers` | Manage transfers. Create, edit, assign and settle transfers. |
+| Tasks | `can_view_todo` | Work on tasks. See assigned tasks, comment on them and mark them done. |
+| Tasks | `can_manage_todo` | Manage tasks. Create, assign and verify tasks for the team. |
+
+**Fleet**
+
+| Area | Permission | What it allows |
+|---|---|---|
+| Fleet | `can_view_fleet` | View fleet. See vehicles, their status, availability and incidents. |
+| Fleet | `can_edit_fleet` | Manage vehicles. Add and edit vehicles and record what happens to them. |
+| Fleet | `can_view_fleet_financials` (sensitive) | View fleet financials. See what vehicles cost and what they are worth now. |
+| Maintenance | `can_view_maintenance` | View maintenance. See the maintenance log for every vehicle. |
+| Maintenance | `can_edit_maintenance` | Log and update maintenance. Record repairs, parts and labour, and close maintenance jobs. |
+
+**Finance**
+
+| Area | Permission | What it allows |
+|---|---|---|
+| Cash up | `can_view_cashup` | Do the daily cash up. Count the till and close the day. |
+| Cash up | `can_override_cashup` (sensitive) | Override and reopen cash ups. Correct a closed cash up and see every staff member’s totals. |
+| Misc sales & merchandise | `can_view_miscsales` | View misc sales and merchandise. See sales recorded outside of rentals and the merchandise stock list. |
+| Misc sales & merchandise | `can_edit_miscsales` | Record misc sales. Record, correct and delete misc sales. |
+| Misc sales & merchandise | `can_manage_merchandise` | Manage merchandise stock. Add merchandise items, change prices and adjust stock. |
+| Card settlements | `can_view_cardsettlements` | View card settlements. See card payments waiting to settle and those already settled. |
+| Card settlements | `can_edit_cardsettlements` | Match card settlements. Match, combine and correct card settlement batches. |
+| Expenses | `can_view_expenses` | View expenses. See expenses recorded for the store. |
+| Expenses | `can_edit_expenses` | Record and pay expenses. Log expenses, mark them paid and pay out staff allowances. |
+| Accounts & budget | `can_view_accounts` (sensitive) | View accounts and budget. See the ledger, account balances, vehicle owner statements and the budget. |
+| Accounts & budget | `can_edit_budget` | Edit the budget. Change budget lines for each period. |
+| Accounts & budget | `can_edit_accounts` (sensitive) | Post to the accounts. Make manual journals, transfers between accounts, reconciliations and owner payouts. |
+
+**People**
+
+| Area | Permission | What it allows |
+|---|---|---|
+| Timesheets | `can_view_timesheets` | View timesheets. See timesheets and cash advances for the team. |
+| Timesheets | `can_submit_timesheets` | Submit timesheets. Enter hours worked and submit leave. |
+| Timesheets | `can_approve_timesheets` | Approve timesheets. Approve or reject submitted timesheets. |
+| Timesheets | `can_edit_timesheets` | Edit and delete timesheets. Correct or remove timesheets after they are submitted. |
+| Rota | `can_manage_rota` | Use the staff rota. Open the rota and pick days off. Editing the rota also needs the person to be a rota approver. |
+| Employees | `can_manage_employees` (sensitive) | Manage employees. Add, edit and remove employee records, including pay rates and cash advances. |
+| Payroll | `can_view_payroll` (sensitive) | View payroll. See payroll runs, payslips and allowance balances. |
+| Payroll | `can_approve_staff_requests` | Approve staff requests. Approve leave and cash advance requests and resolve disputed payslips. |
+| Payroll | `can_run_payroll` (sensitive) | Run payroll. Post and void payroll runs, record remittances and adjust balances. |
+| Contracts | `can_manage_contracts` | Manage business contracts. Create and send contracts for customers, partners and suppliers. |
+| Contracts | `can_manage_staff_contracts` (sensitive) | Manage staff contracts. Create and send employment contracts. |
+
+**Business**
+
+| Area | Permission | What it allows |
+|---|---|---|
+| Business performance | `can_view_dashboard` (sensitive) | View business performance. See revenue, owner dashboards, analytics and marketing insights. |
+| Lost opportunities | `can_view_lostopportunity` | View lost opportunities. See customers who were turned away. |
+| Lost opportunities | `can_edit_lostopportunity` | Log lost opportunities. Record, edit and delete turned-away customers. |
+| Directory | `can_view_directory` | View directory. See the contacts directory. |
+| Directory | `can_edit_directory` | Edit directory. Add, edit and remove directory contacts. |
+| Partners & impact | `can_manage_partners` | Manage partners. Run the accommodation partner programme. |
+| Partners & impact | `can_manage_impact` | Manage impact articles. Write and publish articles on the public impact page. |
+
+**Administration**
+
+| Area | Permission | What it allows |
+|---|---|---|
+| Settings | `can_edit_settings_business` | Business settings. Stores, delivery locations, accommodation directory, reviews and Paw Card establishments. |
+| Settings | `can_edit_settings_operations` | Operations settings. Add-ons, transfer routes, pickup rules, inspection checklist and task categories. |
+| Settings | `can_edit_settings_fleet` | Fleet settings. Vehicle models and pricing, fleet statuses, maintenance parts and repair costs. |
+| Settings | `can_edit_settings_finance` (sensitive) | Finance settings. Payment methods, payment routing, chart of accounts, expense categories, invoices and fleet accounting. |
+| Settings | `can_edit_settings_hr` | HR settings. Day types and leave allowances. |
+| Users & access | `can_manage_access` (sensitive) | Manage users and access. Create logins, assign roles, change role permissions and give individual exceptions. |
+| App issues & tools | `can_view_uierrors` | Report app issues. Report problems and ideas about the backoffice and see what others have reported. |
+| App issues & tools | `can_manage_uierrors` | Resolve app issues. Mark reported issues as fixed. |
+| App issues & tools | `can_use_dev_tools` (sensitive) | Developer tools. Run maintenance scripts that reset or repair data. |
+| Reception tablet | `can_use_counter` | Reception tablet. Lets customers book a walk-in and sign the waiver themselves. An account with only this permission is locked to the counter screen. |
+
+Some permissions need others to work (for example, logging maintenance needs viewing maintenance). The editor adds these automatically and shows why.
 
 ### 2.3 Store Scope
 
@@ -510,7 +595,7 @@ The **Fleet Calendar** shows which vehicles are assigned to which dates. Use thi
 
 ### 13.3 Utilisation Dashboard
 
-Requires `can_view_fleet_book_value`. Shows financial utilisation metrics per vehicle.
+Requires `can_view_fleet_financials`. Shows financial utilisation metrics per vehicle.
 
 ### 13.4 Editing a Vehicle Record
 
@@ -672,7 +757,7 @@ If Telegram messages are not sending:
 
 ## 18. Settings & Configuration
 
-All settings changes require `can_edit_settings`. Navigate to **Settings** in the sidebar.
+Settings are split into sections, each with its own permission: Business (`can_edit_settings_business`), Operations (`can_edit_settings_operations`), Fleet (`can_edit_settings_fleet`), Finance (`can_edit_settings_finance`), HR (`can_edit_settings_hr`) and Users & access (`can_manage_access`). You only see the sections you have. Navigate to **Settings** in the sidebar.
 
 ### 18.1 Locations
 
@@ -702,10 +787,13 @@ Configure:
 - Surcharge percentage (e.g. card fee)
 - Whether it is eligible for taking deposits
 
-### 18.5 Roles & Users
+### 18.5 Users & access
 
-- Create and edit staff roles, assigning permission sets
+Needs `can_manage_access`. See section 2.2 for how roles, exceptions and access history work.
+
 - Create or deactivate user accounts and assign roles
+- Create, edit, duplicate and compare roles
+- Give one person an exception, with a reason and optional end date
 - Users can be linked to one or more stores
 
 ### 18.6 Stores

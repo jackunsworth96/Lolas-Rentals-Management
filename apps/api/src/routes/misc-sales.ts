@@ -15,6 +15,7 @@ const router = Router();
 router.use(authenticate);
 
 const perm = requirePermission(Permission.ViewMiscSales);
+const edit = requirePermission(Permission.EditMiscSales);
 
 router.get('/', perm, validateQuery(MiscSaleQuerySchema), async (req, res, next) => {
   try {
@@ -79,7 +80,7 @@ router.get('/', perm, validateQuery(MiscSaleQuerySchema), async (req, res, next)
   } catch (err) { next(err); }
 });
 
-router.post('/', perm, validateBody(RecordMiscSaleRequestSchema), async (req, res, next) => {
+router.post('/', edit, validateBody(RecordMiscSaleRequestSchema), async (req, res, next) => {
   try {
     const { recordSale } = await import('../use-cases/misc-sales/record-sale.js');
     const result = await recordSale(req.body, {
@@ -90,7 +91,7 @@ router.post('/', perm, validateBody(RecordMiscSaleRequestSchema), async (req, re
   } catch (err) { next(err); }
 });
 
-router.put('/:id', perm, validateBody(UpdateMiscSaleRequestSchema), async (req, res, next) => {
+router.put('/:id', edit, validateBody(UpdateMiscSaleRequestSchema), async (req, res, next) => {
   try {
     const { updateSale } = await import('../use-cases/misc-sales/update-sale.js');
     const result = await updateSale(
@@ -104,7 +105,7 @@ router.put('/:id', perm, validateBody(UpdateMiscSaleRequestSchema), async (req, 
   } catch (err) { next(err); }
 });
 
-router.delete('/:id', perm, async (req, res, next) => {
+router.delete('/:id', edit, async (req, res, next) => {
   try {
     const { deleteSale } = await import('../use-cases/misc-sales/delete-sale.js');
     await deleteSale(

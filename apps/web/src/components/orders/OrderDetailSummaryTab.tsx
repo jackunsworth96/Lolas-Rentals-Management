@@ -188,7 +188,7 @@ export function OrderDetailSummaryTab({
   const queryClient = useQueryClient();
   const authUser = useAuthStore((s) => s.user);
   const canEditOrders = useAuthStore((s) => s.hasPermission('can_edit_orders'));
-  const canAssignPartner = useAuthStore((s) => s.hasPermission('can_edit_settings'));
+  const canAssignPartner = useAuthStore((s) => s.hasPermission('can_manage_partners'));
   const canWriteOff = useAuthStore((s) => s.hasPermission('can_cancel_orders'));
   const writeOffMut = useWriteOffBalance();
   const [assignPartnerOpen, setAssignPartnerOpen] = useState(false);

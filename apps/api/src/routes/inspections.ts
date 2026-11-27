@@ -108,7 +108,7 @@ function parseOdometer(kmReading: string | undefined): number | null {
 
 router.get(
   '/items/all',
-  requirePermission(Permission.EditSettings),
+  requirePermission(Permission.EditSettingsOperations),
   async (req, res, next) => {
     try {
       const sb = getSupabaseClient();
@@ -124,7 +124,7 @@ router.get(
   },
 );
 
-router.get('/items', requirePermission(Permission.ViewOrders), async (req, res, next) => {
+router.get('/items', requirePermission(Permission.ViewInbox), async (req, res, next) => {
   try {
     const primaryStore = req.user?.storeIds?.[0];
     if (!primaryStore) {
@@ -157,7 +157,7 @@ router.get('/items', requirePermission(Permission.ViewOrders), async (req, res, 
   }
 });
 
-router.get('/order/:orderId', requirePermission(Permission.ViewOrders), async (req, res, next) => {
+router.get('/order/:orderId', requirePermission(Permission.ViewInbox), async (req, res, next) => {
   try {
     const orderId = req.params.orderId as string;
     const sb = getSupabaseClient();
@@ -181,7 +181,7 @@ router.get('/order/:orderId', requirePermission(Permission.ViewOrders), async (r
 
 router.get(
   '/vehicle-mileage',
-  requirePermission(Permission.EditOrders),
+  requirePermission(Permission.PerformInspections),
   validateQuery(z.object({ vehicleId: z.string().min(1) })),
   async (req, res, next) => {
     try {
@@ -218,7 +218,7 @@ router.get(
 
 router.post(
   '/',
-  requirePermission(Permission.EditOrders),
+  requirePermission(Permission.PerformInspections),
   validateBody(CreateInspectionBodySchema),
   async (req, res, next) => {
     const body = req.body as z.infer<typeof CreateInspectionBodySchema>;
@@ -560,7 +560,7 @@ router.post(
 
 router.post(
   '/items',
-  requirePermission(Permission.EditSettings),
+  requirePermission(Permission.EditSettingsOperations),
   validateBody(CreateInspectionItemBodySchema),
   async (req, res, next) => {
     try {
@@ -585,7 +585,7 @@ router.post(
 
 router.put(
   '/items/:id',
-  requirePermission(Permission.EditSettings),
+  requirePermission(Permission.EditSettingsOperations),
   validateBody(UpdateInspectionItemBodySchema),
   async (req, res, next) => {
     try {

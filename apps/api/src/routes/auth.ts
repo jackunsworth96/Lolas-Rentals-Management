@@ -6,6 +6,8 @@ import { generateToken, type TokenPayload } from '../adapters/auth/jwt.js';
 import { isInactiveEmployeeStatus } from '../auth/staff-login-access.js';
 import { supabase } from '../adapters/supabase/client.js';
 import { logSupabaseError } from '../lib/supabase-log.js';
+import { authenticate, PERMISSIONS_VERSION_HEADER } from '../middleware/authenticate.js';
+import { invalidateEffectiveAccess, loadEffectiveAccess } from '../services/effective-permissions.js';
 
 const router = Router();
 
@@ -74,12 +76,11 @@ router.post('/login', validateBody(LoginRequestSchema), async (req, res, next) =
       return;
     }
 
-    const { data: permissions, error: permErr } = await supabase
-      .from('role_permissions')
-      .select('permission')
-      .eq('role_id', user.role_id);
-    if (permErr) {
-      logSupabaseError('auth/login role_permissions', permErr);
+    invalidateEffectiveAccess(user.id);
+    const access = await loadEffectiveAccess(user.id);
+    if (access === 'unavailable' || !access) {
+      res.status(503).json({ success: false, error: { code: 'UNAVAILABLE', message: 'Unable to load account permissions' } });
+      return;
     }
 
     const assignedStoreIds = (employee?.employee_stores ?? []).map(
@@ -103,15 +104,39 @@ router.post('/login', validateBody(LoginRequestSchema), async (req, res, next) =
       userId: user.id,
       username: user.username,
       employeeId: user.employee_id,
-      roleId: user.role_id,
+      roleId: access.roleId,
       storeIds,
-      permissions: (permissions ?? []).map((p) => p.permission),
+      permissions: access.permissions,
       personType: (employee?.person_type as TokenPayload['personType']) ?? 'staff',
     };
 
     const token = generateToken(payload);
 
-    res.json({ success: true, data: { token, user: payload } });
+    res.json({ success: true, data: { token, user: { ...payload, permissionsVersion: access.version } } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** The signed-in user with their current permissions, so the app can pick up access changes without a re-login. */
+router.get('/me', authenticate, async (req, res, next) => {
+  try {
+    const user = req.user!;
+    res.json({
+      success: true,
+      data: {
+        user: {
+          userId: user.userId,
+          username: user.username,
+          employeeId: user.employeeId,
+          roleId: user.roleId,
+          storeIds: user.storeIds,
+          permissions: user.permissions,
+          personType: user.personType ?? 'staff',
+          permissionsVersion: String(res.getHeader(PERMISSIONS_VERSION_HEADER) ?? ''),
+        },
+      },
+    });
   } catch (err) {
     next(err);
   }

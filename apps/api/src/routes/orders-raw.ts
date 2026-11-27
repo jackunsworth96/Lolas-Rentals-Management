@@ -1578,7 +1578,7 @@ function sendAccessError(res: Response, access: 'not_found' | 'forbidden') {
 
 router.get(
   '/:id/assign-partner/preview',
-  requirePermission(Permission.EditSettings),
+  requirePermission(Permission.ManagePartners),
   validateQuery(assignPartnerSchema),
   async (req, res, next) => {
     try {
@@ -1599,7 +1599,7 @@ router.get(
 
 router.post(
   '/:id/assign-partner',
-  requirePermission(Permission.EditSettings),
+  requirePermission(Permission.ManagePartners),
   validateBody(assignPartnerSchema),
   async (req, res, next) => {
     try {

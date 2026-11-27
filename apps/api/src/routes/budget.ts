@@ -48,7 +48,7 @@ router.get(
 // ── POST /lines — upsert budget lines for a period ──
 router.post(
   '/lines',
-  requirePermission(Permission.ViewAccounts),
+  requirePermission(Permission.EditBudget),
   validateBody(UpsertBudgetLinesSchema),
   async (req, res, next) => {
     try {

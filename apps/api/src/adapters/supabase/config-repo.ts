@@ -105,6 +105,10 @@ async function softDelete(table: string, id: string | number): Promise<void> {
   if (error) throw new Error(`Failed to delete from ${table}: ${error.message}`);
 }
 
+function lastAccessManagerError(message: string): Error {
+  return Object.assign(new Error(message), { statusCode: 409, code: 'LAST_ACCESS_MANAGER' });
+}
+
 async function hardDelete(table: string, id: string | number): Promise<void> {
   const { error } = await sb().from(table).delete().eq('id', id);
   if (error) throw new Error(`Failed to delete from ${table}: ${error.message}`);
@@ -346,24 +350,6 @@ export function createConfigRepo(): ConfigRepository {
       const { error } = await sb().from('leave_config').upsert(row, { onConflict: 'store_id' });
       if (error) throw new Error(`Failed to save leave config: ${error.message}`);
     },
-    saveRole: (role) => upsertRow('roles', role),
-    deleteRole: (id) => hardDelete('roles', id),
-
-    async saveRolePermissions(roleId, permissions) {
-      const client = sb();
-      const { error: delError } = await client
-        .from('role_permissions')
-        .delete()
-        .eq('role_id', roleId);
-      if (delError) throw new Error(`Failed to clear role permissions: ${delError.message}`);
-
-      if (permissions.length > 0) {
-        const rows = permissions.map((p) => ({ role_id: roleId, permission: p }));
-        const { error: insError } = await client.from('role_permissions').insert(rows);
-        if (insError) throw new Error(`Failed to insert role permissions: ${insError.message}`);
-      }
-    },
-
     async saveUser(user) {
       const row = camelToSnake(user) as Record<string, unknown>;
       const hasPin = Boolean(row.pin_hash);
@@ -380,6 +366,7 @@ export function createConfigRepo(): ConfigRepository {
         ? await sb().from('users').upsert(clean, { onConflict: 'username' })
         : await sb().from('users').update(clean).eq('id', user.id);
       if (error) {
+        if (error.hint === 'LAST_ACCESS_MANAGER') throw lastAccessManagerError(error.message);
         const msg = error.message;
         if (msg.includes('foreign key') || msg.includes('violates foreign key'))
           throw new Error('Employee ID or Role not found. Use an existing Employee ID (e.g. emp-admin-1) and choose a Role from the list.');
@@ -389,7 +376,11 @@ export function createConfigRepo(): ConfigRepository {
       }
     },
 
-    deleteUser: (id) => softDelete('users', id),
+    async deleteUser(id) {
+      const { error } = await sb().from('users').update({ is_active: false }).eq('id', id);
+      if (error?.hint === 'LAST_ACCESS_MANAGER') throw lastAccessManagerError(error.message);
+      if (error) throw new Error(`Failed to delete from users: ${error.message}`);
+    },
 
     async saveRepairCost(cost: Omit<RepairCostConfig, 'id'> & { id?: string }) {
       const row = rowFromCamel({

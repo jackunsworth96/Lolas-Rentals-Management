@@ -7,7 +7,7 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { allocationReport } from '../lib/partner-allocation-report.js';
 
 const router = Router();
-router.use(authenticate);
+router.use(authenticate, requirePermission(Permission.ManagePartners));
 router.use('/:partnerId', async (req, res, next) => {
   try {
     if (!z.string().uuid().safeParse(req.params.partnerId).success) { res.status(400).json({ success: false, error: { message: 'Invalid partner ID' } }); return; }
@@ -41,7 +41,7 @@ router.get('/:partnerId', async (req, res, next) => {
     res.json({ success: true, data: { tiers: results[0].data, baselines: results[1].data, overrides: results[2].data, settings: results[3].data, models: results[4].data, shortfall: results[5].data } });
   } catch (err) { next(err); }
 });
-router.post('/:partnerId', requirePermission(Permission.EditSettings), async (req, res, next) => {
+router.post('/:partnerId', async (req, res, next) => {
   try {
     const parsed = actionSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ success: false, error: { message: parsed.error.message } }); return; }

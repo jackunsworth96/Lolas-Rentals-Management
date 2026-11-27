@@ -33,7 +33,7 @@ const TOP_COUNTRIES = 10;
 const TOP_QUESTIONS = 6;
 
 export default function MarketingTab({ storeId, selectedStoreId }: DashboardTabProps) {
-  const canManageAliases = useAuthStore((s) => s.hasPermission)('can_view_dashboard');
+  const canManageAliases = useAuthStore((s) => s.hasPermission)('can_edit_settings_business');
   const { data: summary, isLoading: summaryLoading } = useDashboardSummary(storeId);
   const { data: analytics, isLoading: analyticsLoading } = useAnalytics(storeId, 30);
   const { data: referralStats, isLoading: referralLoading } = useReferralStats(selectedStoreId || undefined);

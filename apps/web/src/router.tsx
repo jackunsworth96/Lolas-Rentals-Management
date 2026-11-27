@@ -5,6 +5,9 @@ import { AppLayout } from './components/layout/AppLayout.js';
 import { isCounterOnlyUser, useAuthStore } from './stores/auth-store.js';
 import { usePartnerAuthStore } from './stores/partner-auth-store.js';
 import { usePartnerKioskStore } from './api/partner-kiosk.js';
+import { Permission } from '@lolas/shared';
+import { RequirePermission } from './components/auth/RequirePermission.js';
+import type { BackofficePath } from './lib/route-permissions.js';
 
 const LoginPage = lazy(() => import('./pages/login/LoginPage.js'));
 const InboxPage = lazy(() => import('./pages/orders/InboxPage.js'));
@@ -91,45 +94,54 @@ function CounterRoute() {
   const token = useAuthStore((s) => s.token);
   const hasPermission = useAuthStore((s) => s.hasPermission);
   if (!token) return <Navigate to="/login" replace />;
-  if (!hasPermission('can_use_counter')) return <Navigate to="/dashboard" replace />;
+  if (!hasPermission(Permission.UseCounter)) return <Navigate to="/dashboard" replace />;
   return <CounterPage />;
 }
+
+const BACKOFFICE_ROUTES: ReadonlyArray<readonly [Exclude<BackofficePath, '/counter'>, React.ComponentType]> = [
+  ['/dashboard', DashboardPage],
+  ['/orders/inbox', InboxPage],
+  ['/orders/active', ActivePage],
+  ['/orders/completed', CompletedPage],
+  ['/invoices', InvoicesPage],
+  ['/fleet', FleetPage],
+  ['/fleet/utilization', UtilizationDashboard],
+  ['/fleet/asset-register', AssetRegisterPage],
+  ['/fleet/accidents', AccidentsPage],
+  ['/fleet/breakdowns', BreakdownsPage],
+  ['/maintenance', MaintenancePage],
+  ['/transfers', TransfersPage],
+  ['/accounts', AccountsPage],
+  ['/accounts/vehicle-owners', VehicleOwnerStatementPage],
+  ['/accounts/:id', AccountDetailPage],
+  ['/journal', ManualJournalPage],
+  ['/budget', BudgetPage],
+  ['/card-settlements', CardSettlementsPage],
+  ['/cashup', CashupPage],
+  ['/hr/employees', EmployeesPage],
+  ['/hr/timesheets', TimesheetsPage],
+  ['/hr/payroll', PayrollPage],
+  ['/hr/rota', RotaPage],
+  ['/me', MyPortalPage],
+  ['/expenses', ExpensesPage],
+  ['/todo', TodoPage],
+  ['/misc-sales', MiscSalesPage],
+  ['/merchandise', MerchandisePage],
+  ['/settings', SettingsPage],
+  ['/directory', DirectoryPage],
+  ['/customers', CustomersPage],
+  ['/partners', PartnersPage],
+  ['/partners/utilization', PartnerUtilizationPage],
+  ['/contracts', ContractsPage],
+  ['/analytics', AnalyticsPage],
+  ['/impact', ImpactAdminPage],
+];
 
 function ProtectedPartnerRoute({ children }: { children: React.ReactNode }) {
   const token = usePartnerAuthStore((s) => s.token);
   const kioskToken = usePartnerKioskStore((s) => s.token);
   if (kioskToken) return <Navigate to="/partner/kiosk" replace />;
   if (!token) return <Navigate to="/partner/login" replace />;
-  return <>{children}</>;
-}
-
-function RequireFleetBookValue({ children }: { children: React.ReactNode }) {
-  const hasPermission = useAuthStore((s) => s.hasPermission);
-  if (!hasPermission('can_view_fleet_book_value')) return <Navigate to="/fleet" replace />;
-  return <>{children}</>;
-}
-
-function RequireAccounts({ children }: { children: React.ReactNode }) {
-  const hasPermission = useAuthStore((s) => s.hasPermission);
-  if (!hasPermission('can_view_accounts')) return <Navigate to="/fleet" replace />;
-  return <>{children}</>;
-}
-
-function RequireInvoices({ children }: { children: React.ReactNode }) {
-  const hasPermission = useAuthStore((s) => s.hasPermission);
-  if (!hasPermission('can_manage_invoices')) return <Navigate to="/orders/inbox" replace />;
-  return <>{children}</>;
-}
-
-function RequireContracts({ children }: { children: React.ReactNode }) {
-  const hasPermission = useAuthStore((s) => s.hasPermission);
-  if (!hasPermission('can_manage_contracts') && !hasPermission('can_manage_staff_contracts')) return <Navigate to="/dashboard" replace />;
-  return <>{children}</>;
-}
-
-function RequireDirectory({ children }: { children: React.ReactNode }) {
-  const hasPermission = useAuthStore((s) => s.hasPermission);
-  if (!hasPermission('can_view_directory')) return <Navigate to="/fleet" replace />;
   return <>{children}</>;
 }
 
@@ -188,65 +200,15 @@ export function AppRouter() {
             <Route path="/partner/reports" element={<PartnerReportsPage />} />
           </Route>
 
-          {/* Backoffice routes — protected */}
+          {/* Backoffice routes — protected; page permissions come from lib/route-permissions.ts */}
           <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="orders/inbox" element={<InboxPage />} />
-            <Route path="orders/active" element={<ActivePage />} />
-            <Route path="orders/completed" element={<CompletedPage />} />
-            <Route path="invoices" element={<RequireInvoices><InvoicesPage /></RequireInvoices>} />
-            <Route path="fleet" element={<FleetPage />} />
-            <Route
-              path="fleet/utilization"
-              element={
-                <RequireFleetBookValue>
-                  <UtilizationDashboard />
-                </RequireFleetBookValue>
-              }
-            />
-            <Route
-              path="fleet/asset-register"
-              element={
-                <RequireAccounts>
-                  <AssetRegisterPage />
-                </RequireAccounts>
-              }
-            />
-            <Route path="fleet/accidents" element={<AccidentsPage />} />
-            <Route path="fleet/breakdowns" element={<BreakdownsPage />} />
-            <Route path="maintenance" element={<MaintenancePage />} />
-            <Route path="transfers" element={<TransfersPage />} />
-            <Route path="accounts" element={<AccountsPage />} />
-            <Route
-              path="accounts/vehicle-owners"
-              element={
-                <RequireAccounts>
-                  <VehicleOwnerStatementPage />
-                </RequireAccounts>
-              }
-            />
-            <Route path="accounts/:id" element={<AccountDetailPage />} />
-            <Route path="journal" element={<ManualJournalPage />} />
-            <Route path="budget" element={<BudgetPage />} />
-            <Route path="card-settlements" element={<CardSettlementsPage />} />
-            <Route path="cashup" element={<CashupPage />} />
-            <Route path="hr/employees" element={<EmployeesPage />} />
-            <Route path="hr/timesheets" element={<TimesheetsPage />} />
-            <Route path="hr/payroll" element={<PayrollPage />} />
-            <Route path="hr/rota" element={<RotaPage />} />
-            <Route path="me" element={<MyPortalPage />} />
-            <Route path="expenses" element={<ExpensesPage />} />
-            <Route path="todo" element={<TodoPage />} />
-            <Route path="misc-sales" element={<MiscSalesPage />} />
-            <Route path="merchandise" element={<MerchandisePage />} />
-            <Route path="settings" element={<SettingsPage />} />
-            <Route path="directory" element={<RequireDirectory><DirectoryPage /></RequireDirectory>} />
-            <Route path="customers" element={<CustomersPage />} />
-            <Route path="partners" element={<PartnersPage />} />
-            <Route path="partners/utilization" element={<PartnerUtilizationPage />} />
-            <Route path="contracts" element={<RequireContracts><ContractsPage /></RequireContracts>} />
-            <Route path="analytics" element={<AnalyticsPage />} />
-            <Route path="impact" element={<ImpactAdminPage />} />
+            {BACKOFFICE_ROUTES.map(([path, Page]) => (
+              <Route
+                key={path}
+                path={path.slice(1)}
+                element={<RequirePermission path={path}><Page /></RequirePermission>}
+              />
+            ))}
           </Route>
           <Route path="*" element={<NotFoundPage />} />
         </Routes>

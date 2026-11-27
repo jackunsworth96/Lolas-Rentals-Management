@@ -90,7 +90,7 @@ export default function TodayTab({ storeId, selectedStoreId }: DashboardTabProps
   const { data, isLoading, error } = useDashboardSummary(storeId);
   const { data: insights, isLoading: insightsLoading } = useDashboardInsights(storeId);
   const { data: protection = [] } = usePartnerProtection(storeId ?? 'all', hasPermission('can_view_fleet'));
-  const { data: referralStats } = useReferralStats(selectedStoreId || undefined);
+  const { data: referralStats } = useReferralStats(selectedStoreId || undefined, canViewFinancial);
 
   const tomorrow = manilaToday(1);
   const [showAvailability, setShowAvailability] = useState(false);

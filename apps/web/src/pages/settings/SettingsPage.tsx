@@ -1,8 +1,11 @@
 import { useSearchParams } from 'react-router-dom';
-import { SETTINGS_SECTIONS, SETTINGS_TABS, type SettingsTabKey } from './settings-tabs.js';
+import { visibleSettingsSections, type SettingsTabKey } from './settings-tabs.js';
+import { useAuthStore } from '../../stores/auth-store.js';
 import { StoresTab } from '../../components/settings/tabs/StoresTab.js';
 import { UsersTab } from '../../components/settings/tabs/UsersTab.js';
-import { RolesTab } from '../../components/settings/tabs/RolesTab.js';
+import { RolesTab } from '../../components/settings/access/RolesTab.js';
+import { PeopleAccessTab } from '../../components/settings/access/PeopleAccessTab.js';
+import { AccessHistoryTab } from '../../components/settings/access/AccessHistoryTab.js';
 import { AddonsTab } from '../../components/settings/tabs/AddonsTab.js';
 import { LocationsTab } from '../../components/settings/tabs/LocationsTab.js';
 import { PaymentMethodsTab } from '../../components/settings/tabs/PaymentMethodsTab.js';
@@ -29,6 +32,8 @@ const TAB_COMPONENT: Record<SettingsTabKey, React.FC> = {
   stores: StoresTab,
   users: UsersTab,
   roles: RolesTab,
+  people: PeopleAccessTab,
+  'access-history': AccessHistoryTab,
   addons: AddonsTab,
   locations: LocationsTab,
   'accommodation-directory': AccommodationDirectoryTab,
@@ -52,13 +57,19 @@ const TAB_COMPONENT: Record<SettingsTabKey, React.FC> = {
   'leave-config': LeaveConfigTab,
 };
 
+const EMPTY: string[] = [];
+
 export default function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const perms = useAuthStore((s) => s.user?.permissions ?? EMPTY);
+  const sections = visibleSettingsSections(perms);
+  const tabs = sections.flatMap((s) => s.tabs as ReadonlyArray<{ key: SettingsTabKey; label: string }>);
   const requested = searchParams.get('tab');
-  const activeTab: SettingsTabKey =
-    SETTINGS_TABS.find((t) => t.key === requested)?.key ?? 'stores';
-  const ActiveComponent = TAB_COMPONENT[activeTab];
+  const activeTab = tabs.find((t) => t.key === requested)?.key ?? tabs[0]?.key;
   const setActiveTab = (key: SettingsTabKey) => setSearchParams({ tab: key });
+
+  if (!activeTab) return null;
+  const ActiveComponent = TAB_COMPONENT[activeTab];
 
   return (
     <div className="flex flex-col gap-4 md:flex-row md:gap-6">
@@ -70,7 +81,7 @@ export default function SettingsPage() {
           aria-label="Settings section"
           className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-800"
         >
-          {SETTINGS_SECTIONS.map((section) => (
+          {sections.map((section) => (
             <optgroup key={section.label} label={section.label}>
               {section.tabs.map((tab) => (
                 <option key={tab.key} value={tab.key}>
@@ -83,7 +94,7 @@ export default function SettingsPage() {
       </div>
       <nav className="hidden w-56 shrink-0 md:block">
         <h1 className="mb-4 text-2xl font-bold text-gray-900">Settings</h1>
-        {SETTINGS_SECTIONS.map((section) => (
+        {sections.map((section) => (
           <div key={section.label} className="mb-3">
             <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
               {section.label}

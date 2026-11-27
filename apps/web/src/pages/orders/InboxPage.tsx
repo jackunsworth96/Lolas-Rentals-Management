@@ -132,7 +132,7 @@ export default function InboxPage() {
 
   const canEditOrders = useAuthStore((s) => s.hasPermission('can_edit_orders'));
   const canViewFleet = useAuthStore((s) => s.hasPermission('can_view_fleet'));
-  const canAssignPartner = useAuthStore((s) => s.hasPermission('can_edit_settings'));
+  const canAssignPartner = useAuthStore((s) => s.hasPermission('can_manage_partners'));
   const canAssignPartnerTo = (r: RawOrder) => canAssignPartner && !r.partner_ref && r.status === 'unprocessed';
   const selectedStoreId = useUIStore((s) => s.selectedStoreId) ?? '';
   const { data: partners } = usePartners();

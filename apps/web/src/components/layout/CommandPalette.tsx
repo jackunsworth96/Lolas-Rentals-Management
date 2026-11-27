@@ -5,7 +5,7 @@ import { useUIStore } from '../../stores/ui-store.js';
 import { useAuthStore } from '../../stores/auth-store.js';
 import { usePins } from '../../stores/nav-prefs-store.js';
 import { isArchivePath } from '../../utils/archive-mode.js';
-import { SETTINGS_SECTIONS } from '../../pages/settings/settings-tabs.js';
+import { visibleSettingsSections } from '../../pages/settings/settings-tabs.js';
 import { MAX_PINS, NAV_GROUPS, SETTINGS_ITEM, hasNavPermission, navPermissions, type NavItem } from './nav-config.js';
 
 interface Entry {
@@ -65,7 +65,7 @@ export function CommandPalette() {
         })),
     );
     if (!archiveMode && hasNavPermission(SETTINGS_ITEM.perm, perms)) {
-      for (const section of SETTINGS_SECTIONS) {
+      for (const section of visibleSettingsSections(perms)) {
         for (const tab of section.tabs) {
           list.push({
             key: `settings-${tab.key}`,

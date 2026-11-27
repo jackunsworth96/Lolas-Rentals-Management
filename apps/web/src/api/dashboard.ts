@@ -370,11 +370,12 @@ export interface ReferralStats {
   unmatchedRawNames: string[];
 }
 
-export function useReferralStats(storeId?: string) {
+export function useReferralStats(storeId?: string, enabled = true) {
   const params = storeId && storeId !== 'all' ? `?storeId=${encodeURIComponent(storeId)}` : '';
   return useQuery<ReferralStats>({
     queryKey: ['dashboard', 'referral-stats', storeId],
     queryFn: () => api.get<ReferralStats>(`/dashboard/referral-stats${params}`),
+    enabled,
     staleTime: 5 * 60_000,
   });
 }

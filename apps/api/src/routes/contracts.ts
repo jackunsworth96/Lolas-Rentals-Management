@@ -1,4 +1,4 @@
-import { Router, type Request, type Response, type NextFunction } from 'express';
+import { Router, type Request } from 'express';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   ContractCounterpartyTypeSchema,
@@ -26,8 +26,10 @@ import {
   type SendContractRequest,
   type UpdateContractRequest,
   type UpdateContractTemplateRequest,
+  Permission,
 } from '@lolas/shared';
 import { authenticate } from '../middleware/authenticate.js';
+import { requireAnyPermission } from '../middleware/authorize.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { sendEmail } from '../services/email.js';
@@ -59,10 +61,7 @@ const router = Router();
 router.use(authenticate);
 
 /** Anyone who can manage at least one contract category may use the module. */
-router.use((req: Request, res: Response, next: NextFunction) => {
-  if (allowedCategories(req.user?.permissions ?? []).length > 0) { next(); return; }
-  res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Missing required permissions: can_manage_contracts' } });
-});
+router.use(requireAnyPermission(Permission.ManageContracts, Permission.ManageStaffContracts));
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

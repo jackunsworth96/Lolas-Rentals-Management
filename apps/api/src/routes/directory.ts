@@ -7,7 +7,7 @@ import { getSupabaseClient } from '../adapters/supabase/client.js';
 
 const router = Router();
 router.use(authenticate);
-const edit = requirePermission(Permission.EditSettings);
+const edit = requirePermission(Permission.EditDirectory);
 
 // ── GET / — list contacts with optional search ──
 router.get('/', requirePermission(Permission.ViewDirectory), async (req, res, next) => {

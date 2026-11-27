@@ -1,6 +1,7 @@
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { authenticate } from '../middleware/authenticate.js';
+import { requirePermission } from '../middleware/authorize.js';
 import { validateBody } from '../middleware/validate.js';
 import { Permission, resolveStoreFromSource } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
@@ -1465,7 +1466,7 @@ async function queryCharityImpact(sb: ReturnType<typeof getSupabaseClient>) {
 }
 
 // ── GET /charity-donations (authenticated) ────────────────────────────────────
-router.get('/charity-donations', async (req, res, next) => {
+router.get('/charity-donations', requirePermission(Permission.ViewDashboard), async (req, res, next) => {
   try {
     const sb = getSupabaseClient();
     // Only processed orders: a web booking's donation is not received until staff
@@ -1951,7 +1952,7 @@ router.get('/chat-summary', async (req, res, next) => {
 
 // ── GET /partner-summary — partner attribution stats for dashboard ─────────────
 // Returns current-month commissionable bookings per partner, for the store filter.
-router.get('/partner-summary', async (req, res, next) => {
+router.get('/partner-summary', requirePermission(Permission.ViewDashboard), async (req, res, next) => {
   try {
     const storeIdParam = req.query.storeId as string | undefined;
     const storeFilter = storeIdParam && storeIdParam !== 'all' ? storeIdParam : undefined;
@@ -2027,7 +2028,7 @@ const REFERRAL_LABELS: Record<string, string> = {
   other: 'Other',
 };
 
-router.get('/referral-stats', async (req, res, next) => {
+router.get('/referral-stats', requirePermission(Permission.ViewDashboard), async (req, res, next) => {
   try {
     const sb = getSupabaseClient();
     const storeFilter = typeof req.query.storeId === 'string' && req.query.storeId ? req.query.storeId : null;
@@ -2120,12 +2121,8 @@ router.get('/accommodation-aliases', async (req, res, next) => {
   }
 });
 
-router.post('/accommodation-aliases', async (req, res, next) => {
+router.post('/accommodation-aliases', requirePermission(Permission.EditSettingsBusiness), async (req, res, next) => {
   try {
-    if (!req.user?.permissions?.includes(Permission.EditSettings)) {
-      res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Requires can_edit_settings' } });
-      return;
-    }
     const rawName = typeof req.body.rawName === 'string' ? req.body.rawName.trim() : '';
     const canonicalName = typeof req.body.canonicalName === 'string' ? req.body.canonicalName.trim() : '';
     if (!rawName || !canonicalName) {
@@ -2145,12 +2142,8 @@ router.post('/accommodation-aliases', async (req, res, next) => {
   }
 });
 
-router.delete('/accommodation-aliases/:id', async (req, res, next) => {
+router.delete('/accommodation-aliases/:id', requirePermission(Permission.EditSettingsBusiness), async (req, res, next) => {
   try {
-    if (!req.user?.permissions?.includes(Permission.EditSettings)) {
-      res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Requires can_edit_settings' } });
-      return;
-    }
     const { id } = req.params;
     const sb = getSupabaseClient();
     const { error } = await sb.from('accommodation_aliases').delete().eq('id', id);

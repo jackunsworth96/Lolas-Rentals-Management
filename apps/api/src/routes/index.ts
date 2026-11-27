@@ -15,6 +15,7 @@ import { expenseRoutes } from './expenses.js';
 import { todoRoutes } from './todo.js';
 import { maintenanceRoutes } from './maintenance.js';
 import { configRoutes } from './config.js';
+import { accessControlRoutes } from './access-control.js';
 import { pawCardRoutes } from './paw-card.js';
 import { miscSalesRoutes } from './misc-sales.js';
 import { merchandiseRoutes } from './merchandise.js';
@@ -58,7 +59,7 @@ import { requireOperationalStore } from '../middleware/operational-store.js';
 
 const routes = Router();
 
-routes.use('/auth', loginLimiter);
+routes.use('/auth/login', loginLimiter);
 routes.use('/public', publicLimiter);
 routes.use(apiLimiter);
 routes.use(requireOperationalStore);
@@ -80,6 +81,7 @@ routes.use('/expenses', expenseRoutes);
 routes.use('/todo', todoRoutes);
 routes.use('/maintenance', maintenanceRoutes);
 routes.use('/config', configRoutes);
+routes.use('/access', accessControlRoutes);
 routes.use('/paw-card', pawCardRoutes);
 routes.use('/misc-sales', miscSalesRoutes);
 routes.use('/directory', directoryRoutes);

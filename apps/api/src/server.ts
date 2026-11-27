@@ -113,6 +113,7 @@ app.use(
       callback(null, false);
     },
     credentials: true,
+    exposedHeaders: ['X-Permissions-Version'],
   }),
 );
 // Raw body for Maya webhook signature verification — must precede express.json().

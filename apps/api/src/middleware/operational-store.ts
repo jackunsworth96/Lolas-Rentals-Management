@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { verifyToken } from '../adapters/auth/jwt.js';
 import { Permission } from '@lolas/shared';
+import { loadEffectiveAccess } from '../services/effective-permissions.js';
 
 const STORE_KEYS = new Set(['storeId', 'store_id', 'locationId', 'location_id']);
 
@@ -53,7 +54,9 @@ export async function requireOperationalStore(req: Request, res: Response, next:
       if (req.method === 'GET') {
         const header = req.headers.authorization;
         const token = header?.startsWith('Bearer ') ? verifyToken(header.slice(7)) : null;
-        if (!token?.permissions.includes(Permission.EditSettings)) {
+        const access = token ? await loadEffectiveAccess(token.userId) : null;
+        const allowed = access && access !== 'unavailable' && access.permissions.includes(Permission.EditSettingsBusiness);
+        if (!allowed) {
           res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Archived stores require settings access' } });
           return;
         }

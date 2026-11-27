@@ -1,11 +1,13 @@
 import { Router, type Request } from 'express';
 import { authenticate } from '../middleware/authenticate.js';
+import { requirePermission } from '../middleware/authorize.js';
 import { Permission } from '@lolas/shared';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { fetchAll } from '../lib/fetch-all.js';
 
 const router = Router();
 router.use(authenticate);
+router.use(requirePermission(Permission.ViewDashboard));
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 const LIVE_ORDER_STATUSES = ['active', 'confirmed', 'completed'];

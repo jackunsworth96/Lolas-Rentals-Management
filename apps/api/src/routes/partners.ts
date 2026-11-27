@@ -365,7 +365,7 @@ router.get('/public/:slug', publicLookupLimiter, async (req, res, next) => {
 
 router.use(authenticate);
 
-const edit = requirePermission(Permission.EditSettings);
+const edit = requirePermission(Permission.ManagePartners);
 
 const PartnerBodySchema = z.object({
   name: z.string().min(1).max(200),
@@ -426,7 +426,7 @@ const UtilizationSummaryQuery = z.object({
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'to must be YYYY-MM-DD'),
 });
 
-router.get('/utilization-summary', async (req, res, next) => {
+router.get('/utilization-summary', edit, async (req, res, next) => {
   try {
     const parsed = UtilizationSummaryQuery.safeParse(req.query);
     if (!parsed.success) {
@@ -447,7 +447,7 @@ router.get('/utilization-summary', async (req, res, next) => {
 });
 
 // ── GET /commissions-due — consolidated monthly payout ledger ───────────────
-router.get('/commissions-due', async (req, res, next) => {
+router.get('/commissions-due', edit, async (req, res, next) => {
   try {
     const { storeId, month } = req.query as { storeId?: string; month?: string };
     const reportMonth = month ?? new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }).slice(0, 7);
@@ -503,7 +503,7 @@ router.post('/upload-logo', edit, (req, res, next) => {
 });
 
 // ── GET /:id/enrollment-details — Step 2 details for a partner ───────────────
-router.get('/:id/enrollment-details', async (req, res, next) => {
+router.get('/:id/enrollment-details', edit, async (req, res, next) => {
   try {
     const sb = getSupabaseClient();
     const { data, error } = await sb
@@ -737,10 +737,10 @@ router.delete('/:id', edit, async (req, res, next) => {
 });
 
 // ── GET /:id/stats — attribution stats for a single partner ──────────────────
-router.get('/:id/stats', async (req, res, next) => {
+router.get('/:id/stats', edit, async (req, res, next) => {
   try {
     const { month } = req.query as { month?: string };
-    const data = await getPartnerCommissionStats(req.params.id, month);
+    const data = await getPartnerCommissionStats(String(req.params.id), month);
     res.json({ success: true, data });
   } catch (err) { next(err); }
 });
@@ -846,7 +846,7 @@ const PartnerUserBodySchema = z.object({
   is_active: z.boolean().optional(),
 });
 
-router.get('/:id/portal-users', async (req, res, next) => {
+router.get('/:id/portal-users', edit, async (req, res, next) => {
   try {
     const sb = getSupabaseClient();
     const { data, error } = await sb
@@ -934,7 +934,7 @@ const VehicleTermBodySchema = z.object({
 });
 
 // ── GET /:id/vehicle-terms — list overrides for a partner ────────────────────
-router.get('/:id/vehicle-terms', async (req, res, next) => {
+router.get('/:id/vehicle-terms', edit, async (req, res, next) => {
   try {
     const sb = getSupabaseClient();
     const { data, error } = await sb

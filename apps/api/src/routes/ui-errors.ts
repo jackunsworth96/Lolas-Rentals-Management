@@ -15,6 +15,7 @@ const router = Router();
 router.use(authenticate);
 
 const perm = requirePermission(Permission.ViewUIErrors);
+const edit = requirePermission(Permission.ManageUIErrors);
 
 type Row = {
   id: string;
@@ -116,7 +117,7 @@ router.post('/', perm, validateBody(CreateUiErrorRequestSchema), async (req: Req
   }
 });
 
-router.put('/:id', perm, validateBody(UpdateUiErrorRequestSchema), async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:id', edit, validateBody(UpdateUiErrorRequestSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const body = req.body as { fixed: boolean };
     const sb = getSupabaseClient();

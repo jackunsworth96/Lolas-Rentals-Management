@@ -24,14 +24,14 @@ type CustomerMessageJobName = keyof typeof CUSTOMER_MESSAGE_JOBS;
  * POST /api/dev-tools/reset
  *
  * Wipes all test booking data and resets fleet statuses by calling
- * the reset_test_data() RPC. Requires the EditSettings (can_edit_settings)
+ * the reset_test_data() RPC. Requires the UseDevTools (can_use_dev_tools)
  * permission — admin-only.
  *
  * Returns a JSON summary of rows deleted per table.
  */
 router.post(
   '/reset',
-  requirePermission(Permission.EditSettings),
+  requirePermission(Permission.UseDevTools),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const supabase = getSupabaseClient();
@@ -63,11 +63,11 @@ router.post(
  *
  * Body: { "customerName": "TEST NAME" }
  *
- * Requires the EditSettings (can_edit_settings) permission — admin-only.
+ * Requires the UseDevTools (can_use_dev_tools) permission — admin-only.
  */
 router.post(
   '/reset-customer',
-  requirePermission(Permission.EditSettings),
+  requirePermission(Permission.UseDevTools),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { customerName } = req.body as { customerName?: string };
@@ -114,11 +114,11 @@ router.post(
  * Body: { "email": "jackunsworth96@gmail.com" }
  *       (email is optional — omitting it still cleans up TEST-named customers)
  *
- * Requires the EditSettings (can_edit_settings) permission — admin-only.
+ * Requires the UseDevTools (can_use_dev_tools) permission — admin-only.
  */
 router.post(
   '/reset-by-email',
-  requirePermission(Permission.EditSettings),
+  requirePermission(Permission.UseDevTools),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { email } = req.body as { email?: string };
@@ -155,7 +155,7 @@ router.post(
  */
 router.post(
   '/run-customer-message-job',
-  requirePermission(Permission.EditSettings),
+  requirePermission(Permission.UseDevTools),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (process.env.NODE_ENV === 'production') {

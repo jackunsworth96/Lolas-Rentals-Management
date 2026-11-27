@@ -4,9 +4,17 @@ import multer from 'multer';
 import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
-import { Permission, SaveExpenseCategorySchema, type SaveExpenseCategoryRequest } from '@lolas/shared';
+import {
+  Permission,
+  SaveExpenseCategorySchema,
+  expandLegacyPermissions,
+  isPermissionKey,
+  type SaveExpenseCategoryRequest,
+} from '@lolas/shared';
 import { z } from 'zod';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
+import { accessError, assertNoEscalation } from '../lib/access-guards.js';
+import { invalidateEffectiveAccess } from '../services/effective-permissions.js';
 import {
   canAccessExpenseCategoryStore,
   resolveExpenseCategoryStoreId,
@@ -90,10 +98,15 @@ async function uploadSiteImage(file: Express.Multer.File, folder: string): Promi
 
 router.use(authenticate);
 
-const edit = requirePermission(Permission.EditSettings);
+const editBusiness = requirePermission(Permission.EditSettingsBusiness);
+const editOperations = requirePermission(Permission.EditSettingsOperations);
+const editFleet = requirePermission(Permission.EditSettingsFleet);
+const editFinance = requirePermission(Permission.EditSettingsFinance);
+const editHr = requirePermission(Permission.EditSettingsHr);
+const manageAccess = requirePermission(Permission.ManageAccess);
 
 // ── Stores ──
-// No EditSettings required — all authenticated users need the stores list (e.g. StoreFilter dropdown).
+// No permission required — all authenticated users need the stores list (e.g. StoreFilter dropdown).
 router.get('/stores', async (req, res, next) => {
   try {
     const scope = String(req.query.scope ?? 'active');
@@ -101,14 +114,14 @@ router.get('/stores', async (req, res, next) => {
       res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid store scope' } });
       return;
     }
-    if (scope !== 'active' && !req.user?.permissions.includes(Permission.EditSettings)) {
+    if (scope !== 'active' && !req.user?.permissions.includes(Permission.EditSettingsBusiness)) {
       res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Archived stores require settings access' } });
       return;
     }
     res.json({ success: true, data: await req.app.locals.deps.configRepo.getStores(scope as 'active' | 'archived' | 'all') });
   } catch (e) { next(e); }
 });
-router.post('/stores', edit, validateBody(z.object({
+router.post('/stores', editBusiness, validateBody(z.object({
   id: z.string().min(1), name: z.string().min(1), location: z.string().nullable().optional(),
   isActive: z.boolean().optional(), publicBookingEnabled: z.boolean().optional(),
   defaultFloatAmount: z.number().nonnegative().optional(),
@@ -121,7 +134,7 @@ router.post('/stores', edit, validateBody(z.object({
     res.json({ success: true });
   } catch (e) { next(e); }
 });
-router.put('/stores/:id', edit, validateBody(z.object({
+router.put('/stores/:id', editBusiness, validateBody(z.object({
   name: z.string().min(1), location: z.string().nullable().optional(),
   isActive: z.boolean().optional(), publicBookingEnabled: z.boolean().optional(),
   defaultFloatAmount: z.number().nonnegative().optional(),
@@ -129,14 +142,14 @@ router.put('/stores/:id', edit, validateBody(z.object({
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveStore({ id: req.params.id, ...req.body }); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.post('/stores/:id/regenerate-token', edit, async (req, res, next) => {
+router.post('/stores/:id/regenerate-token', editBusiness, async (req, res, next) => {
   try {
     const newToken = randomBytes(16).toString('hex');
     await req.app.locals.deps.configRepo.saveStore({ id: req.params.id, bookingToken: newToken });
     res.json({ success: true, data: { bookingToken: newToken } });
   } catch (e) { next(e); }
 });
-router.delete('/stores/:id', edit, async (req, res, next) => {
+router.delete('/stores/:id', editBusiness, async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.deleteStore(req.params.id); res.json({ success: true }); } catch (e) { next(e); }
 });
 
@@ -152,13 +165,13 @@ const addonBodySchema = z.object({
   applicableModelIds: z.array(z.string()).nullable().optional(),
   inventoryType: z.enum(['surf_rack']).nullable().optional(),
 });
-router.post('/addons', edit, validateBody(addonBodySchema), async (req, res, next) => {
+router.post('/addons', editOperations, validateBody(addonBodySchema), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveAddon(req.body); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.put('/addons/:id', edit, validateBody(addonBodySchema), async (req, res, next) => {
+router.put('/addons/:id', editOperations, validateBody(addonBodySchema), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveAddon({ id: Number(req.params.id), ...req.body }); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.delete('/addons/:id', edit, async (req, res, next) => {
+router.delete('/addons/:id', editOperations, async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.deleteAddon(Number(req.params.id)); res.json({ success: true }); } catch (e) { next(e); }
 });
 
@@ -166,19 +179,19 @@ router.delete('/addons/:id', edit, async (req, res, next) => {
 router.get('/locations', async (req, res, next) => {
   try { res.json({ success: true, data: await req.app.locals.deps.configRepo.getLocations(req.query.storeId as string) }); } catch (e) { next(e); }
 });
-router.post('/locations', edit, validateBody(z.object({
+router.post('/locations', editBusiness, validateBody(z.object({
   name: z.string().min(1), deliveryCost: z.number().nonnegative(), collectionCost: z.number().nonnegative(),
   locationType: z.string().nullable().optional(), storeId: z.string().nullable().optional(), isActive: z.boolean().optional(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveLocation(req.body); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.put('/locations/:id', edit, validateBody(z.object({
+router.put('/locations/:id', editBusiness, validateBody(z.object({
   name: z.string().min(1), deliveryCost: z.number().nonnegative(), collectionCost: z.number().nonnegative(),
   locationType: z.string().nullable().optional(), storeId: z.string().nullable().optional(), isActive: z.boolean().optional(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveLocation({ id: Number(req.params.id), ...req.body }); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.delete('/locations/:id', edit, async (req, res, next) => {
+router.delete('/locations/:id', editBusiness, async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.deleteLocation(Number(req.params.id)); res.json({ success: true }); } catch (e) { next(e); }
 });
 
@@ -220,7 +233,7 @@ router.get('/accommodation-directory', async (_req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.post('/accommodation-directory', edit, validateBody(accommodationDirectoryBody), async (req, res, next) => {
+router.post('/accommodation-directory', editBusiness, validateBody(accommodationDirectoryBody), async (req, res, next) => {
   try {
     const { error } = await getSupabaseClient()
       .from('accommodation_directory')
@@ -230,7 +243,7 @@ router.post('/accommodation-directory', edit, validateBody(accommodationDirector
   } catch (e) { next(e); }
 });
 
-router.put('/accommodation-directory/:id', edit, validateBody(accommodationDirectoryBody), async (req, res, next) => {
+router.put('/accommodation-directory/:id', editBusiness, validateBody(accommodationDirectoryBody), async (req, res, next) => {
   try {
     const { error } = await getSupabaseClient()
       .from('accommodation_directory')
@@ -241,7 +254,7 @@ router.put('/accommodation-directory/:id', edit, validateBody(accommodationDirec
   } catch (e) { next(e); }
 });
 
-router.delete('/accommodation-directory/:id', edit, async (req, res, next) => {
+router.delete('/accommodation-directory/:id', editBusiness, async (req, res, next) => {
   try {
     const { error } = await getSupabaseClient()
       .from('accommodation_directory')
@@ -256,17 +269,17 @@ router.delete('/accommodation-directory/:id', edit, async (req, res, next) => {
 router.get('/payment-methods', async (req, res, next) => {
   try { res.json({ success: true, data: await req.app.locals.deps.configRepo.getPaymentMethods() }); } catch (e) { next(e); }
 });
-router.post('/payment-methods', edit, validateBody(z.object({
+router.post('/payment-methods', editFinance, validateBody(z.object({
   id: z.string().min(1), name: z.string().min(1), isDepositEligible: z.boolean().optional(), isActive: z.boolean().optional(), surchargePercent: z.number().min(0).max(100).optional(), showOnCustomerWebsite: z.boolean().optional(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.savePaymentMethod(req.body); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.put('/payment-methods/:id', edit, validateBody(z.object({
+router.put('/payment-methods/:id', editFinance, validateBody(z.object({
   name: z.string().min(1), isDepositEligible: z.boolean().optional(), isActive: z.boolean().optional(), surchargePercent: z.number().min(0).max(100).optional(), showOnCustomerWebsite: z.boolean().optional(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.savePaymentMethod({ id: req.params.id, ...req.body }); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.delete('/payment-methods/:id', edit, async (req, res, next) => {
+router.delete('/payment-methods/:id', editFinance, async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.deletePaymentMethod(req.params.id); res.json({ success: true }); } catch (e) { next(e); }
 });
 
@@ -282,21 +295,21 @@ router.get('/vehicle-models', async (req, res, next) => {
     res.json({ success: true, data });
   } catch (e) { next(e); }
 });
-router.post('/vehicle-models', edit, validateBody(z.object({
+router.post('/vehicle-models', editFleet, validateBody(z.object({
   id: z.string().min(1), name: z.string().min(1), isActive: z.boolean().optional(),
   securityDeposit: z.number().nonnegative().optional(),
   showOnCustomerWebsite: z.boolean().optional(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveVehicleModel(req.body); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.put('/vehicle-models/:id', edit, validateBody(z.object({
+router.put('/vehicle-models/:id', editFleet, validateBody(z.object({
   name: z.string().min(1), isActive: z.boolean().optional(),
   securityDeposit: z.number().nonnegative().optional(),
   showOnCustomerWebsite: z.boolean().optional(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveVehicleModel({ id: req.params.id, ...req.body }); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.delete('/vehicle-models/:id', edit, async (req, res, next) => {
+router.delete('/vehicle-models/:id', editFleet, async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.deleteVehicleModel(req.params.id); res.json({ success: true }); } catch (e) { next(e); }
 });
 
@@ -322,7 +335,7 @@ router.get('/vehicle-models/:id/images', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.post('/vehicle-models/:id/images', edit, async (req, res, next) => {
+router.post('/vehicle-models/:id/images', editFleet, async (req, res, next) => {
   const file = await receiveSiteImage(req, res);
   if (!file) return;
   try {
@@ -354,7 +367,7 @@ router.post('/vehicle-models/:id/images', edit, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.put('/vehicle-models/:id/images/order', edit, validateBody(z.object({
+router.put('/vehicle-models/:id/images/order', editFleet, validateBody(z.object({
   ids: z.array(z.string().uuid()).min(1),
 })), async (req, res, next) => {
   try {
@@ -372,7 +385,7 @@ router.put('/vehicle-models/:id/images/order', edit, validateBody(z.object({
   } catch (e) { next(e); }
 });
 
-router.delete('/vehicle-model-images/:imageId', edit, async (req, res, next) => {
+router.delete('/vehicle-model-images/:imageId', editFleet, async (req, res, next) => {
   try {
     const sb = getSupabaseClient();
     const { data, error } = await sb
@@ -390,7 +403,7 @@ router.delete('/vehicle-model-images/:imageId', edit, async (req, res, next) => 
 // ── General image upload (e.g. paw card partner logos) ──
 const IMAGE_UPLOAD_FOLDERS = new Set(['paw-card']);
 
-router.post('/images/upload', edit, async (req, res, next) => {
+router.post('/images/upload', editBusiness, async (req, res, next) => {
   const folder = String(req.query.folder ?? '');
   if (!IMAGE_UPLOAD_FOLDERS.has(folder)) {
     res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Unknown upload folder' } });
@@ -417,17 +430,17 @@ router.get('/model-pricing', async (req, res, next) => {
     res.json({ success: true, data: await req.app.locals.deps.configRepo.getModelPricing(modelId, storeId) });
   } catch (e) { next(e); }
 });
-router.post('/model-pricing', edit, validateBody(z.object({
+router.post('/model-pricing', editFleet, validateBody(z.object({
   modelId: z.string(), storeId: z.string(), minDays: z.number().int(), maxDays: z.number().int(), dailyRate: z.number().nonnegative(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveModelPricing(req.body); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.put('/model-pricing/:id', edit, validateBody(z.object({
+router.put('/model-pricing/:id', editFleet, validateBody(z.object({
   modelId: z.string(), storeId: z.string(), minDays: z.number().int(), maxDays: z.number().int(), dailyRate: z.number().nonnegative(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveModelPricing({ id: Number(req.params.id), ...req.body }); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.delete('/model-pricing/:id', edit, async (req, res, next) => {
+router.delete('/model-pricing/:id', editFleet, async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.deleteModelPricing(Number(req.params.id)); res.json({ success: true }); } catch (e) { next(e); }
 });
 
@@ -435,17 +448,17 @@ router.delete('/model-pricing/:id', edit, async (req, res, next) => {
 router.get('/fleet-statuses', async (req, res, next) => {
   try { res.json({ success: true, data: await req.app.locals.deps.configRepo.getFleetStatuses() }); } catch (e) { next(e); }
 });
-router.post('/fleet-statuses', edit, validateBody(z.object({
+router.post('/fleet-statuses', editFleet, validateBody(z.object({
   id: z.string().min(1), name: z.string().min(1), isRentable: z.boolean().optional(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveFleetStatus(req.body); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.put('/fleet-statuses/:id', edit, validateBody(z.object({
+router.put('/fleet-statuses/:id', editFleet, validateBody(z.object({
   name: z.string().min(1), isRentable: z.boolean().optional(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveFleetStatus({ id: req.params.id, ...req.body }); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.delete('/fleet-statuses/:id', edit, async (req, res, next) => {
+router.delete('/fleet-statuses/:id', editFleet, async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.deleteFleetStatus(req.params.id); res.json({ success: true }); } catch (e) { next(e); }
 });
 
@@ -491,21 +504,21 @@ async function assertCatalogAccount(body: SaveExpenseCategoryRequest): Promise<v
   }
 }
 
-router.post('/expense-categories', edit, validateBody(SaveExpenseCategorySchema), async (req, res, next) => {
+router.post('/expense-categories', editFinance, validateBody(SaveExpenseCategorySchema), async (req, res, next) => {
   try {
     await assertCatalogAccount(req.body);
     await req.app.locals.deps.configRepo.saveExpenseCategory(req.body);
     res.json({ success: true });
   } catch (e) { next(e); }
 });
-router.put('/expense-categories/:id', edit, validateBody(SaveExpenseCategorySchema), async (req, res, next) => {
+router.put('/expense-categories/:id', editFinance, validateBody(SaveExpenseCategorySchema), async (req, res, next) => {
   try {
     await assertCatalogAccount(req.body);
     await req.app.locals.deps.configRepo.saveExpenseCategory({ id: Number(req.params.id), ...req.body });
     res.json({ success: true });
   } catch (e) { next(e); }
 });
-router.delete('/expense-categories/:id', edit, async (req, res, next) => {
+router.delete('/expense-categories/:id', editFinance, async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.deleteExpenseCategory(Number(req.params.id)); res.json({ success: true }); } catch (e) { next(e); }
 });
 
@@ -513,17 +526,17 @@ router.delete('/expense-categories/:id', edit, async (req, res, next) => {
 router.get('/task-categories', async (req, res, next) => {
   try { res.json({ success: true, data: await req.app.locals.deps.configRepo.getTaskCategories() }); } catch (e) { next(e); }
 });
-router.post('/task-categories', edit, validateBody(z.object({
+router.post('/task-categories', editOperations, validateBody(z.object({
   name: z.string().min(1), colour: z.string().optional().transform(v => v || '#6B7280'), isActive: z.boolean().optional(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveTaskCategory(req.body); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.put('/task-categories/:id', edit, validateBody(z.object({
+router.put('/task-categories/:id', editOperations, validateBody(z.object({
   name: z.string().min(1), colour: z.string().min(1).optional(), isActive: z.boolean().optional(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveTaskCategory({ id: Number(req.params.id), ...req.body }); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.delete('/task-categories/:id', edit, async (req, res, next) => {
+router.delete('/task-categories/:id', editOperations, async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.deleteTaskCategory(Number(req.params.id)); res.json({ success: true }); } catch (e) { next(e); }
 });
 
@@ -531,7 +544,7 @@ router.delete('/task-categories/:id', edit, async (req, res, next) => {
 router.get('/transfer-routes', async (req, res, next) => {
   try { res.json({ success: true, data: await req.app.locals.deps.configRepo.getTransferRoutes(req.query.storeId as string) }); } catch (e) { next(e); }
 });
-router.post('/transfer-routes', edit, validateBody(z.object({
+router.post('/transfer-routes', editOperations, validateBody(z.object({
   route: z.string().min(1), vanType: z.string().nullable().optional(), price: z.number().nonnegative(),
   storeId: z.string().nullable().optional(), isActive: z.boolean().optional(),
   pricingType: z.enum(['fixed', 'per_head']).optional().default('fixed'),
@@ -539,7 +552,7 @@ router.post('/transfer-routes', edit, validateBody(z.object({
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveTransferRoute(req.body); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.put('/transfer-routes/:id', edit, validateBody(z.object({
+router.put('/transfer-routes/:id', editOperations, validateBody(z.object({
   route: z.string().min(1), vanType: z.string().nullable().optional(), price: z.number().nonnegative(),
   storeId: z.string().nullable().optional(), isActive: z.boolean().optional(),
   pricingType: z.enum(['fixed', 'per_head']).optional().default('fixed'),
@@ -547,7 +560,7 @@ router.put('/transfer-routes/:id', edit, validateBody(z.object({
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveTransferRoute({ id: Number(req.params.id), ...req.body }); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.delete('/transfer-routes/:id', edit, async (req, res, next) => {
+router.delete('/transfer-routes/:id', editOperations, async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.deleteTransferRoute(Number(req.params.id)); res.json({ success: true }); } catch (e) { next(e); }
 });
 
@@ -555,12 +568,12 @@ router.delete('/transfer-routes/:id', edit, async (req, res, next) => {
 router.get('/day-types', async (req, res, next) => {
   try { res.json({ success: true, data: await req.app.locals.deps.configRepo.getDayTypes() }); } catch (e) { next(e); }
 });
-router.post('/day-types', edit, validateBody(z.object({
+router.post('/day-types', editHr, validateBody(z.object({
   id: z.string().min(1), name: z.string().min(1),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveDayType(req.body); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.delete('/day-types/:id', edit, async (req, res, next) => {
+router.delete('/day-types/:id', editHr, async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.deleteDayType(req.params.id); res.json({ success: true }); } catch (e) { next(e); }
 });
 
@@ -568,19 +581,19 @@ router.delete('/day-types/:id', edit, async (req, res, next) => {
 router.get('/chart-of-accounts', async (req, res, next) => {
   try { res.json({ success: true, data: await req.app.locals.deps.configRepo.getChartOfAccounts() }); } catch (e) { next(e); }
 });
-router.post('/chart-of-accounts', edit, validateBody(z.object({
+router.post('/chart-of-accounts', editFinance, validateBody(z.object({
   id: z.string().min(1), name: z.string().min(1), accountType: z.string().min(1),
   storeId: z.string().nullable().optional(), isActive: z.boolean().optional(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveAccount(req.body); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.put('/chart-of-accounts/:id', edit, validateBody(z.object({
+router.put('/chart-of-accounts/:id', editFinance, validateBody(z.object({
   name: z.string().min(1), accountType: z.string().min(1),
   storeId: z.string().nullable().optional(), isActive: z.boolean().optional(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveAccount({ id: req.params.id, ...req.body }); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.delete('/chart-of-accounts/:id', edit, async (req, res, next) => {
+router.delete('/chart-of-accounts/:id', editFinance, async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.deleteAccount(req.params.id); res.json({ success: true }); } catch (e) { next(e); }
 });
 
@@ -588,7 +601,7 @@ router.delete('/chart-of-accounts/:id', edit, async (req, res, next) => {
 router.get('/paw-card-establishments', async (req, res, next) => {
   try { res.json({ success: true, data: await req.app.locals.deps.configRepo.getPawCardEstablishments() }); } catch (e) { next(e); }
 });
-router.post('/paw-card-establishments', edit, validateBody(z.object({
+router.post('/paw-card-establishments', editBusiness, validateBody(z.object({
   id: z.number().int().positive().optional(),
   name: z.string().min(1),
   isActive: z.boolean().optional(),
@@ -610,7 +623,7 @@ router.post('/paw-card-establishments', edit, validateBody(z.object({
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveEstablishment(req.body); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.put('/paw-card-establishments/:id', edit, validateBody(z.object({
+router.put('/paw-card-establishments/:id', editBusiness, validateBody(z.object({
   name: z.string().min(1),
   isActive: z.boolean().optional(),
   category: z.enum(['Food & Drink', 'Activities', 'Services', 'Shopping']).default('Food & Drink'),
@@ -631,7 +644,7 @@ router.put('/paw-card-establishments/:id', edit, validateBody(z.object({
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveEstablishment({ id: Number(req.params.id), ...req.body }); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.delete('/paw-card-establishments/:id', edit, async (req, res, next) => {
+router.delete('/paw-card-establishments/:id', editBusiness, async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.deleteEstablishment(Number(req.params.id)); res.json({ success: true }); } catch (e) { next(e); }
 });
 
@@ -639,17 +652,17 @@ router.delete('/paw-card-establishments/:id', edit, async (req, res, next) => {
 router.get('/maintenance-work-types', async (req, res, next) => {
   try { res.json({ success: true, data: await req.app.locals.deps.configRepo.getMaintenanceWorkTypes() }); } catch (e) { next(e); }
 });
-router.post('/maintenance-work-types', edit, validateBody(z.object({
+router.post('/maintenance-work-types', editFleet, validateBody(z.object({
   name: z.string().min(1), isActive: z.boolean().optional(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveWorkType(req.body); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.put('/maintenance-work-types/:id', edit, validateBody(z.object({
+router.put('/maintenance-work-types/:id', editFleet, validateBody(z.object({
   name: z.string().min(1), isActive: z.boolean().optional(),
 })), async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.saveWorkType({ id: Number(req.params.id), ...req.body }); res.json({ success: true }); } catch (e) { next(e); }
 });
-router.delete('/maintenance-work-types/:id', edit, async (req, res, next) => {
+router.delete('/maintenance-work-types/:id', editFleet, async (req, res, next) => {
   try { await req.app.locals.deps.configRepo.deleteWorkType(Number(req.params.id)); res.json({ success: true }); } catch (e) { next(e); }
 });
 
@@ -667,7 +680,7 @@ router.get('/repair-costs', async (req, res, next) => {
     res.json({ success: true, data });
   } catch (e) { next(e); }
 });
-router.post('/repair-costs', edit, validateBody(repairCostBodySchema), async (req, res, next) => {
+router.post('/repair-costs', editFleet, validateBody(repairCostBodySchema), async (req, res, next) => {
   try {
     const { vehicleType, item, costPhp, sortOrder } = req.body as z.infer<typeof repairCostBodySchema>;
     await req.app.locals.deps.configRepo.saveRepairCost({
@@ -679,7 +692,7 @@ router.post('/repair-costs', edit, validateBody(repairCostBodySchema), async (re
     res.json({ success: true });
   } catch (e) { next(e); }
 });
-router.put('/repair-costs/:id', edit, validateBody(repairCostBodySchema), async (req, res, next) => {
+router.put('/repair-costs/:id', editFleet, validateBody(repairCostBodySchema), async (req, res, next) => {
   try {
     const { vehicleType, item, costPhp, sortOrder } = req.body as z.infer<typeof repairCostBodySchema>;
     await req.app.locals.deps.configRepo.saveRepairCost({
@@ -692,7 +705,7 @@ router.put('/repair-costs/:id', edit, validateBody(repairCostBodySchema), async 
     res.json({ success: true });
   } catch (e) { next(e); }
 });
-router.delete('/repair-costs/:id', edit, async (req, res, next) => {
+router.delete('/repair-costs/:id', editFleet, async (req, res, next) => {
   try {
     await req.app.locals.deps.configRepo.deleteRepairCost(req.params.id);
     res.json({ success: true });
@@ -707,7 +720,7 @@ router.get('/leave-config', validateQuery(z.object({ storeId: z.string().min(1) 
     res.json({ success: true, data });
   } catch (e) { next(e); }
 });
-router.put('/leave-config', edit, validateBody(z.object({
+router.put('/leave-config', editHr, validateBody(z.object({
   storeId: z.string(), resetMonth: z.number().int().min(1).max(12), resetDay: z.number().int().min(1).max(31),
   defaultHolidayAllowance: z.number().int().nonnegative(), defaultSickAllowance: z.number().int().nonnegative(),
   probationAccrualHoliday: z.number().nonnegative().max(31).optional(),
@@ -719,24 +732,9 @@ router.put('/leave-config', edit, validateBody(z.object({
 });
 
 // ── Roles ──
-router.get('/roles', async (req, res, next) => {
+// Role editing lives in /access (versioned, audited, guarded). This list feeds the user form.
+router.get('/roles', manageAccess, async (req, res, next) => {
   try { res.json({ success: true, data: await req.app.locals.deps.configRepo.getRoles() }); } catch (e) { next(e); }
-});
-router.get('/roles/:id/permissions', async (req, res, next) => {
-  try { res.json({ success: true, data: await req.app.locals.deps.configRepo.getRolePermissions(req.params.id) }); } catch (e) { next(e); }
-});
-router.post('/roles', edit, validateBody(z.object({
-  id: z.string().min(1), name: z.string().min(1),
-})), async (req, res, next) => {
-  try { await req.app.locals.deps.configRepo.saveRole(req.body); res.json({ success: true }); } catch (e) { next(e); }
-});
-router.delete('/roles/:id', edit, async (req, res, next) => {
-  try { await req.app.locals.deps.configRepo.deleteRole(req.params.id); res.json({ success: true }); } catch (e) { next(e); }
-});
-router.put('/roles/:id/permissions', edit, validateBody(z.object({
-  permissions: z.array(z.string()),
-})), async (req, res, next) => {
-  try { await req.app.locals.deps.configRepo.saveRolePermissions(req.params.id, req.body.permissions); res.json({ success: true }); } catch (e) { next(e); }
 });
 
 // ── Employees (lightweight list for user-creation dropdown) ──
@@ -761,20 +759,49 @@ router.get('/employees', async (req, res, next) => {
 });
 
 // ── Users ──
-router.get('/users', edit, async (req, res, next) => {
+
+/**
+ * Nobody can put someone in a role with more access than they have, change
+ * their own role, or deactivate themselves.
+ */
+async function guardUserChange(
+  req: Request,
+  target: { id?: string; username?: string; roleId?: string; isActive?: boolean },
+): Promise<void> {
+  const sb = getSupabaseClient();
+  let query = sb.from('users').select('id, role_id');
+  query = target.id ? query.eq('id', target.id) : query.ilike('username', String(target.username ?? ''));
+  const { data: current, error } = await query.maybeSingle();
+  if (error) throw new Error(`Failed to load user: ${error.message}`);
+
+  const isSelf = current?.id === req.user!.userId;
+  const roleChanging = target.roleId !== undefined && target.roleId !== current?.role_id;
+  if (isSelf && (roleChanging || target.isActive === false)) {
+    throw accessError(403, 'SELF_EDIT_BLOCKED', 'You cannot change your own role or deactivate yourself. Ask another manager.');
+  }
+  if (roleChanging && target.roleId) {
+    const { data: perms, error: permErr } = await sb.from('role_permissions').select('permission').eq('role_id', target.roleId);
+    if (permErr) throw new Error(`Failed to load role permissions: ${permErr.message}`);
+    assertNoEscalation(req, expandLegacyPermissions((perms ?? []).map((p) => String(p.permission))).filter(isPermissionKey));
+  }
+}
+
+router.get('/users', manageAccess, async (req, res, next) => {
   try { res.json({ success: true, data: await req.app.locals.deps.configRepo.getUsers() }); } catch (e) { next(e); }
 });
-router.post('/users', edit, validateBody(z.object({
+router.post('/users', manageAccess, validateBody(z.object({
   username: z.string().min(1), pin: z.string().min(1), employeeId: z.string().min(1), roleId: z.string().min(1), isActive: z.boolean().optional(),
 })), async (req, res, next) => {
   try {
+    await guardUserChange(req, { username: req.body.username, roleId: req.body.roleId, isActive: req.body.isActive });
     const { saveUser } = await import('../use-cases/settings/save-user.js');
     const result = await saveUser({ configRepo: req.app.locals.deps.configRepo }, { ...req.body, isActive: req.body.isActive ?? true });
+    invalidateEffectiveAccess();
     const { pinHash: _, ...safeUser } = result;
     res.json({ success: true, data: safeUser });
   } catch (e) { next(e); }
 });
-router.post('/users/access-account', edit, validateBody(z.object({
+router.post('/users/access-account', manageAccess, validateBody(z.object({
   fullName: z.string().trim().min(1),
   personType: z.enum(['owner', 'developer', 'counter']),
   username: z.string().trim().min(1),
@@ -783,6 +810,7 @@ router.post('/users/access-account', edit, validateBody(z.object({
   storeId: z.string().min(1).optional(),
 })), async (req, res, next) => {
   try {
+    await guardUserChange(req, { username: req.body.username, roleId: req.body.roleId });
     const { createAccessAccount } = await import('../use-cases/settings/create-access-account.js');
     const { user } = await createAccessAccount(
       { configRepo: req.app.locals.deps.configRepo, employeeRepo: req.app.locals.deps.employeeRepo },
@@ -792,22 +820,30 @@ router.post('/users/access-account', edit, validateBody(z.object({
     res.status(201).json({ success: true, data: safeUser });
   } catch (e) { next(e); }
 });
-router.put('/users/:id', edit, validateBody(z.object({
+router.put('/users/:id', manageAccess, validateBody(z.object({
   username: z.string().min(1), pin: z.string().optional(), employeeId: z.string().min(1), roleId: z.string().min(1), isActive: z.boolean().optional(),
 })), async (req, res, next) => {
   try {
+    const isActive = req.body.isActive ?? true;
+    await guardUserChange(req, { id: String(req.params.id), roleId: req.body.roleId, isActive });
     const { saveUser } = await import('../use-cases/settings/save-user.js');
-    const result = await saveUser({ configRepo: req.app.locals.deps.configRepo }, { id: req.params.id, ...req.body, isActive: req.body.isActive ?? true });
+    const result = await saveUser({ configRepo: req.app.locals.deps.configRepo }, { id: req.params.id, ...req.body, isActive });
+    invalidateEffectiveAccess(String(req.params.id));
     const { pinHash: _, ...safeUser } = result;
     res.json({ success: true, data: safeUser });
   } catch (e) { next(e); }
 });
-router.delete('/users/:id', edit, async (req, res, next) => {
-  try { await req.app.locals.deps.configRepo.deleteUser(req.params.id); res.json({ success: true }); } catch (e) { next(e); }
+router.delete('/users/:id', manageAccess, async (req, res, next) => {
+  try {
+    await guardUserChange(req, { id: String(req.params.id), isActive: false });
+    await req.app.locals.deps.configRepo.deleteUser(req.params.id);
+    invalidateEffectiveAccess(String(req.params.id));
+    res.json({ success: true });
+  } catch (e) { next(e); }
 });
 
 // ── Payment Routing Rules ──
-// GET is readable by anyone who can record expenses — only PUT requires full settings access.
+// GET is readable by anyone who can record expenses — only PUT requires finance settings access.
 router.get('/payment-routing', requirePermission(Permission.EditExpenses), async (req, res, next) => {
   try {
     const routingRepo = req.app.locals.deps.paymentRoutingRepo;
@@ -830,7 +866,7 @@ router.get('/payment-routing', requirePermission(Permission.EditExpenses), async
   } catch (e) { next(e); }
 });
 
-router.put('/payment-routing', edit, validateBody(z.object({
+router.put('/payment-routing', editFinance, validateBody(z.object({
   rules: z.array(z.object({
     storeId: z.string().min(1),
     paymentMethodId: z.string().min(1),
@@ -911,7 +947,7 @@ router.get('/reviews', async (req, res, next) => {
   }
 });
 
-router.post('/reviews', edit, validateBody(reviewBodySchema), async (req, res, next) => {
+router.post('/reviews', editBusiness, validateBody(reviewBodySchema), async (req, res, next) => {
   try {
     const body = req.body as z.infer<typeof reviewBodySchema>;
     const sb = getSupabaseClient();
@@ -935,7 +971,7 @@ router.post('/reviews', edit, validateBody(reviewBodySchema), async (req, res, n
   }
 });
 
-router.put('/reviews/:id', edit, validateBody(reviewBodySchema), async (req, res, next) => {
+router.put('/reviews/:id', editBusiness, validateBody(reviewBodySchema), async (req, res, next) => {
   try {
     const body = req.body as z.infer<typeof reviewBodySchema>;
     const sb = getSupabaseClient();
@@ -960,7 +996,7 @@ router.put('/reviews/:id', edit, validateBody(reviewBodySchema), async (req, res
   }
 });
 
-router.delete('/reviews/:id', edit, async (req, res, next) => {
+router.delete('/reviews/:id', editBusiness, async (req, res, next) => {
   try {
     const sb = getSupabaseClient();
     const { error } = await sb.from('reviews').delete().eq('id', Number(req.params.id));
@@ -972,7 +1008,7 @@ router.delete('/reviews/:id', edit, async (req, res, next) => {
 });
 
 // ── Transfer Pickup Rules (read-only) ──
-// Returns all active pickup rules. No EditSettings permission required —
+// Returns all active pickup rules. No permission required —
 // any authenticated user can view rules (they are needed by the settings panel).
 router.get('/transfer-pickup-rules', async (req, res, next) => {
   try {
@@ -1012,7 +1048,7 @@ router.get('/fleet-accounting-config', async (req, res, next) => {
   }
 });
 
-router.put('/fleet-accounting-config/:storeId', edit, validateBody(z.object({
+router.put('/fleet-accounting-config/:storeId', editFinance, validateBody(z.object({
   fixedAssetAccountId: z.string().nullable().optional(),
   accDepreciationAccountId: z.string().nullable().optional(),
   depreciationExpenseAccountId: z.string().nullable().optional(),

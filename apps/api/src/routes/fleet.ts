@@ -142,6 +142,34 @@ function vehicleToFullDto(v: ReturnType<typeof vehicleToDto> & Record<string, un
   };
 }
 
+const FLEET_FINANCIAL_FIELDS = [
+  'purchasePrice',
+  'purchaseDate',
+  'usefulLifeMonths',
+  'salvageValue',
+  'accumulatedDepreciation',
+  'bookValue',
+  'totalBikeCost',
+  'setUpCosts',
+  'soldPrice',
+  'profitLoss',
+] as const;
+
+function canViewFleetFinancials(req: { user?: { permissions: string[] } }): boolean {
+  const perms = req.user?.permissions ?? [];
+  return perms.includes(Permission.ViewFleetFinancials);
+}
+
+/** Removes cost, depreciation and sale figures for users who may only see operational fleet data. */
+function redactFleetFinancials<T extends Record<string, unknown>>(dto: T, allowed: boolean): T {
+  if (allowed) return dto;
+  const out: Record<string, unknown> = { ...dto };
+  for (const field of FLEET_FINANCIAL_FIELDS) {
+    if (field in out) out[field] = null;
+  }
+  return out as T;
+}
+
 router.get('/', requirePermission(Permission.ViewFleet), validateQuery(z.object({ storeId: z.string().optional() })), async (req, res, next) => {
   try {
     const storeId = req.query.storeId as string | undefined;
@@ -197,7 +225,8 @@ router.get('/', requirePermission(Permission.ViewFleet), validateQuery(z.object(
         });
       }
     }
-    res.json({ success: true, data: dtos });
+    const showFinancials = canViewFleetFinancials(req);
+    res.json({ success: true, data: dtos.map((dto) => redactFleetFinancials(dto, showFinancials)) });
   } catch (err) { next(err); }
 });
 
@@ -378,7 +407,7 @@ router.post('/partner-protection/release', requirePermission(Permission.EditFlee
   } catch (err) { next(err); }
 });
 
-router.get('/utilization', requirePermission(Permission.ViewFleet), validateQuery(z.object({
+router.get('/utilization', requirePermission(Permission.ViewFleet, Permission.ViewFleetFinancials), validateQuery(z.object({
   from: z.string().optional(),
   to: z.string().optional(),
   period: z.enum(['7d', '30d', '90d', 'lifetime']).optional(),
@@ -913,7 +942,7 @@ router.get('/:id', requirePermission(Permission.ViewFleet), async (req, res, nex
       soldPrice: vehicle.soldPrice,
       profitLoss: vehicle.profitLoss,
     });
-    res.json({ success: true, data: dto });
+    res.json({ success: true, data: redactFleetFinancials(dto, canViewFleetFinancials(req)) });
   } catch (err) { next(err); }
 });
 

@@ -467,7 +467,7 @@ waiverRouter.post('/:orderReference/upload-licence', (req, res, next) => {
 waiverRouter.get(
   '/signed-details/:orderReference',
   authenticate,
-  requirePermission(Permission.ViewOrders),
+  requirePermission(Permission.ViewInbox),
   async (req, res, next) => {
     try {
       const orderReference = routeParamString(req.params.orderReference);

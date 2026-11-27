@@ -31,7 +31,7 @@ const monorepoRoot = resolve(__dirname, '../../..');
 
 import { createClient } from '@supabase/supabase-js';
 import bcrypt from 'bcrypt';
-import { ALL_PERMISSIONS } from '@lolas/shared';
+import { ALL_PERMISSIONS, expandLegacyPermissions } from '@lolas/shared';
 
 const SALT_ROUNDS = 12;
 
@@ -109,7 +109,7 @@ async function main() {
   }
 
   const uniqueAdminPermissions = Array.from(new Set(ALL_PERMISSIONS));
-  const uniqueStaffPermissions = Array.from(new Set(STAFF_PERMISSIONS));
+  const uniqueStaffPermissions = expandLegacyPermissions(STAFF_PERMISSIONS, { splitBackfill: true });
   const adminPerms = uniqueAdminPermissions.map((p) => ({ role_id: ROLE_ADMIN_ID, permission: p }));
   const staffPerms = uniqueStaffPermissions.map((p) => ({ role_id: ROLE_STAFF_ID, permission: p }));
 

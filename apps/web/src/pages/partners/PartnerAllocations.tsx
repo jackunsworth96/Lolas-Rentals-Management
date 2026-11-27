@@ -20,7 +20,7 @@ const inputClass = 'rounded border border-gray-300 px-2 py-1.5 text-sm w-full';
 const buttonClass = 'rounded bg-teal-700 px-3 py-2 text-sm text-white disabled:opacity-50';
 export function PartnerAllocations({ partnerId }: { partnerId: string }) {
   const client = useQueryClient();
-  const canEdit = useAuthStore((s) => s.hasPermission('can_edit_settings'));
+  const canEdit = useAuthStore((s) => s.hasPermission('can_manage_partners'));
   const [vehicleType, setVehicleType] = useState('bike');
   const [month, setMonth] = useState(today().slice(0, 7));
   const [tiers, setTiers] = useState<Tier[] | null>(null);

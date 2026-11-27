@@ -1,6 +1,6 @@
-import { Router, type Request } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { authenticate } from '../middleware/authenticate.js';
-import { requirePermission } from '../middleware/authorize.js';
+import { hasPermission, requirePermission } from '../middleware/authorize.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
 import { calculateBalanceDue, Permission, SWAP_REASON_CATEGORIES } from '@lolas/shared';
 import { z } from 'zod';
@@ -36,12 +36,31 @@ const StoreQuerySchema = z.object({
   status: z.string().optional(),
 });
 
+/**
+ * Completed orders are only listed for people who can view the completed page.
+ * Returns the statuses to query (null = all), or sends a 403 and returns false.
+ */
+function visibleStatuses(req: Request, res: Response, status: string | undefined): { statuses: string[] | null; hideCompleted: boolean } | false {
+  const requested = status ? status.split(',').map((s) => s.trim()).filter(Boolean) : null;
+  if (hasPermission(req, Permission.ViewCompleted)) return { statuses: requested, hideCompleted: false };
+  if (requested && requested.every((s) => s === 'completed')) {
+    requirePermission(Permission.ViewCompleted)(req, res, () => undefined);
+    return false;
+  }
+  return { statuses: requested?.filter((s) => s !== 'completed') ?? null, hideCompleted: true };
+}
+
 router.get('/', requirePermission(Permission.ViewInbox), validateQuery(StoreQuerySchema), async (req, res, next) => {
   try {
     const { storeId, status } = req.query as { storeId: string; status?: string };
+    const visible = visibleStatuses(req, res, status);
+    if (!visible) return;
     const { orderRepo } = req.app.locals.deps;
-    const orders = await orderRepo.findByStore(storeId, { status });
-    res.json({ success: true, data: orders });
+    const orders = await orderRepo.findByStore(storeId, { status: visible.statuses?.join(',') || undefined });
+    res.json({
+      success: true,
+      data: visible.hideCompleted ? orders.filter((o: { status: string }) => o.status !== 'completed') : orders,
+    });
   } catch (err) { next(err); }
 });
 
@@ -50,7 +69,9 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
     const { storeId, status } = req.query as { storeId: string; status?: string };
     const sb = supabase;
 
-    const statuses = status ? status.split(',').map((s) => s.trim()).filter(Boolean) : null;
+    const visible = visibleStatuses(req, res, status);
+    if (!visible) return;
+    const statuses = visible.statuses;
 
     type EnrichedOrderItem = {
       id: string;
@@ -109,7 +130,8 @@ router.get('/enriched', requirePermission(Permission.ViewInbox), validateQuery(S
     if (error && !missingRpc) throw new Error(`enriched orders query failed: ${error.message}`);
     const rows = missingRpc ? await loadEnrichedOrdersFallback(sb, storeId, statuses) : rpcRows;
 
-    const orderRows = (rows ?? []) as EnrichedOrderRow[];
+    const orderRows = ((rows ?? []) as EnrichedOrderRow[])
+      .filter((o) => !visible.hideCompleted || o.status !== 'completed');
 
     // Load location names as well as IDs. Older activated partner bookings lost
     // their location IDs while keeping the names and zero (waived) fees.
@@ -1023,7 +1045,7 @@ router.post('/:id/refund', requirePermission(Permission.EditOrders), validateBod
 // was ever captured. Only fillable when the order has no partner yet — this
 // never reassigns/overwrites an existing attribution.
 
-router.get('/:id/assign-partner/preview', requirePermission(Permission.EditSettings), validateQuery(z.object({
+router.get('/:id/assign-partner/preview', requirePermission(Permission.ManagePartners), validateQuery(z.object({
   partnerSlug: z.string().min(1).max(80),
 })), async (req, res, next) => {
   try {
@@ -1036,7 +1058,7 @@ router.get('/:id/assign-partner/preview', requirePermission(Permission.EditSetti
   } catch (err) { next(err); }
 });
 
-router.post('/:id/assign-partner', requirePermission(Permission.EditSettings), validateBody(z.object({
+router.post('/:id/assign-partner', requirePermission(Permission.ManagePartners), validateBody(z.object({
   partnerSlug: z.string().min(1).max(80),
   refund: z.object({
     refundMethodId: z.string().min(1),

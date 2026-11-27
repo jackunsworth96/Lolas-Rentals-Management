@@ -212,7 +212,7 @@ router.get('/settings', perm, async (_req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.put('/settings', requirePermission(Permission.EditSettings), validateBody(UpdateInvoiceSettingsRequestSchema), async (req, res, next) => {
+router.put('/settings', requirePermission(Permission.EditSettingsFinance), validateBody(UpdateInvoiceSettingsRequestSchema), async (req, res, next) => {
   try {
     const b = req.body as UpdateInvoiceSettingsRequest;
     const { data, error } = await getSupabaseClient()

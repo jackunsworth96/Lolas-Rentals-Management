@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { OptionalWhatsAppNumberSchema } from '@lolas/shared';
+import { OptionalWhatsAppNumberSchema, Permission } from '@lolas/shared';
 import { authenticate } from '../middleware/authenticate.js';
+import { requireAnyPermission, requirePermission } from '../middleware/authorize.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
 import { getSupabaseClient } from '../adapters/supabase/client.js';
 import { freshWaiverLicenceUrl, waiverDocumentsStorage } from '../lib/waiver-licence-url.js';
@@ -9,6 +10,11 @@ import { sendEmail, escapeHtml, INTERNAL_FROM_EMAIL } from '../services/email.js
 
 const router = Router();
 router.use(authenticate);
+
+const viewCustomers = requirePermission(Permission.ViewCustomers);
+const editCustomers = requirePermission(Permission.EditCustomers);
+/** Order screens update contact details and create customers during check-in. */
+const editCustomerDetails = requireAnyPermission(Permission.EditCustomers, Permission.EditOrders);
 
 function toCustomerDto(row: Record<string, unknown>) {
   return {
@@ -45,7 +51,7 @@ const ReviewOptOutBodySchema = z.object({
 });
 
 // GET /customers?storeId=&q=
-router.get('/', validateQuery(ListQuerySchema), async (req, res, next) => {
+router.get('/', viewCustomers, validateQuery(ListQuerySchema), async (req, res, next) => {
   try {
     const { storeId, q = '', blacklisted, needsWhatsAppFix } = req.query as {
       storeId: string;
@@ -99,7 +105,7 @@ router.get('/', validateQuery(ListQuerySchema), async (req, res, next) => {
 });
 
 // GET /customers/:id
-router.get('/:id', async (req, res, next) => {
+router.get('/:id', viewCustomers, async (req, res, next) => {
   try {
     const { id } = req.params;
     const sb = getSupabaseClient();
@@ -189,7 +195,7 @@ router.get('/:id', async (req, res, next) => {
 // Cascades email/mobile/name changes to orders_raw, paw_card_entries and
 // transfers so that automations and Paw Card login continue working after
 // a contact-detail correction.
-router.patch('/:id', validateBody(PatchBodySchema), async (req, res, next) => {
+router.patch('/:id', editCustomerDetails, validateBody(PatchBodySchema), async (req, res, next) => {
   try {
     const { id } = req.params;
     const customerRepo = req.app.locals.deps.customerRepo;
@@ -256,7 +262,7 @@ router.patch('/:id', validateBody(PatchBodySchema), async (req, res, next) => {
   }
 });
 
-router.patch('/:id/review-message-opt-out', validateBody(ReviewOptOutBodySchema), async (req, res, next) => {
+router.patch('/:id/review-message-opt-out', editCustomers, validateBody(ReviewOptOutBodySchema), async (req, res, next) => {
   try {
     const { id } = req.params;
     const { whatsappReviewOptOut } = req.body as z.infer<typeof ReviewOptOutBodySchema>;
@@ -291,7 +297,7 @@ const LookupOrCreateBodySchema = z.object({
   storeId: z.string().min(1),
 });
 
-router.post('/lookup-or-create', validateBody(LookupOrCreateBodySchema), async (req, res, next) => {
+router.post('/lookup-or-create', editCustomerDetails, validateBody(LookupOrCreateBodySchema), async (req, res, next) => {
   try {
     const { email, name, mobile, storeId } = req.body as z.infer<typeof LookupOrCreateBodySchema>;
     const sb = getSupabaseClient();
@@ -335,7 +341,7 @@ router.post('/lookup-or-create', validateBody(LookupOrCreateBodySchema), async (
 
 // GET /customers/:id/documents — full document timeline: all waivers and inspections
 // for this customer, covering both new (customer_id) and legacy (via order) linking.
-router.get('/:id/documents', async (req, res, next) => {
+router.get('/:id/documents', viewCustomers, async (req, res, next) => {
   try {
     const { id } = req.params;
     const sb = getSupabaseClient();
@@ -468,7 +474,7 @@ const EmailDocBodySchema = z.object({
   recipientEmail: z.string().email().optional(),
 });
 
-router.post('/:id/documents/email', validateBody(EmailDocBodySchema), async (req, res, next) => {
+router.post('/:id/documents/email', editCustomers, validateBody(EmailDocBodySchema), async (req, res, next) => {
   try {
     const { id } = req.params;
     const { type, documentId, recipientEmail } = req.body as z.infer<typeof EmailDocBodySchema>;
@@ -640,7 +646,7 @@ router.post('/:id/documents/email', validateBody(EmailDocBodySchema), async (req
 
 // GET /customers/:id/pending-checkin — returns waivers and inspections captured
 // for this customer before a booking was linked (order_reference / order_id is null).
-router.get('/:id/pending-checkin', async (req, res, next) => {
+router.get('/:id/pending-checkin', requireAnyPermission(Permission.ViewCustomers, Permission.ViewInbox), async (req, res, next) => {
   try {
     const { id } = req.params;
     const sb = getSupabaseClient();

@@ -9,7 +9,7 @@ export interface PageTab {
 
 export const FLEET_TABS: PageTab[] = [
   { label: 'Vehicles', to: '/fleet' },
-  { label: 'Asset Register', to: '/fleet/asset-register', perm: 'can_view_accounts' },
+  { label: 'Asset Register', to: '/fleet/asset-register', perm: 'can_view_fleet_financials' },
 ];
 
 export const INCIDENT_TABS: PageTab[] = [
