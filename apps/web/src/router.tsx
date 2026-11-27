@@ -120,6 +120,12 @@ export function AppRouter() {
           <Route path="/book/extend" element={<ExtendPage />} />
           <Route path="/book/extend/pay" element={<ExtensionPaymentPage />} />
           <Route path="/book/payment-return/:reference" element={<StaffPaymentReturnPage />} />
+          <Route path="/book/deposit-hold-return" element={
+            <main className="mx-auto max-w-lg space-y-3 px-6 py-12">
+              <h1 className="text-xl font-semibold">Security deposit authorization</h1>
+              <p>Contact Lola's Rentals to confirm the status of your card hold.</p>
+            </main>
+          } />
           <Route path="/book/paw-card" element={<Navigate to="/paw-card/partners" replace />} />
           <Route path="/paw-card/partners" element={<PawCardPartnersPage />} />
           <Route path="/book/transfers" element={<TransferBookingPage />} />

@@ -78,6 +78,7 @@ describe('Phase 3 refund provider-call boundary', () => {
     'Xendit receiving account routing is not configured',
     'Original rental income account is missing or ambiguous',
     'Deposit refund accounts are missing or unavailable',
+    'Resolve the Xendit deposit hold before requesting a deposit refund',
     'Refund exceeds unallocated held deposit after pending refunds and charges',
   ])('never calls Xendit when reservation rejects: %s', async (message) => {
     const db = fixture(message);
@@ -168,6 +169,33 @@ describe('Phase 3 refund dashboard verification', () => {
     }, res);
 
     expect(res.status).toHaveBeenCalledWith(400);
+    expect(mocks.client).not.toHaveBeenCalled();
+  });
+});
+
+describe('manual-capture session safety', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubEnv('XENDIT_CALLBACK_TOKEN', 'test-callback-token');
+    vi.stubEnv('XENDIT_BUSINESS_ID', 'business-1');
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('does not post an authorization as a captured payment', async () => {
+    const res = response();
+    await webhookHandler()({
+      headers: { 'x-callback-token': 'test-callback-token' },
+      body: {
+        event: 'payment_session.completed', business_id: 'business-1', created: '2026-01-01T00:00:00.000Z',
+        data: {
+          payment_session_id: 'ps-1', reference_id: 'XEN1', payment_id: 'py-1',
+          session_type: 'PAY', mode: 'PAYMENT_LINK', currency: 'PHP', amount: 1000,
+          status: 'COMPLETED', capture_method: 'MANUAL',
+        },
+      },
+    }, res);
+
+    expect(res.status).toHaveBeenCalledWith(503);
     expect(mocks.client).not.toHaveBeenCalled();
   });
 });

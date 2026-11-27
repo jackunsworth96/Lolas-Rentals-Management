@@ -10,6 +10,7 @@ import { ExtendOrderModal } from './ExtendOrderModal.js';
 import { InspectionModal } from './InspectionModal.js';
 import { XenditPaymentModal } from './XenditPaymentModal.js';
 import { StaffPaymentLink } from './StaffPaymentLink.js';
+import { DepositCardHold, useDepositCardHold } from './DepositCardHold.js';
 import { WaiverViewModal } from './WaiverViewModal.js';
 import { useSignedWaiverDetails, useResendWaiverConfirmation } from '../../api/waivers.js';
 import { useInspectionByOrder } from '../../api/inspections.js';
@@ -507,6 +508,7 @@ export function OrderDetailSummaryTab({
     ? pmLookup.get(collectedDepositMethodId)?.name ?? collectedDepositMethodId
     : null;
   const depositDue = Math.max(0, securityDeposit - depositCollected);
+  const depositHold = useDepositCardHold(orderId, canAct && canEditOrders);
   useEffect(() => {
     if (depositRefundDefaultApplied.current || depositHeld <= 0 || !collectedDepositMethodId) return;
     if (!refundPaymentMethods.some((method) => method.id === collectedDepositMethodId)) return;
@@ -592,6 +594,7 @@ export function OrderDetailSummaryTab({
 
   const handleSettle = (e: React.FormEvent) => {
     e.preventDefault();
+    if (depositHold.blocked) return;
     if (!settlementDate || !settleDepositAccountId || !settleReceivableAccountId) return;
 
     const returnChargesAmount = Math.max(0, Number(returnCharges) || 0);
@@ -1249,7 +1252,8 @@ export function OrderDetailSummaryTab({
               </form>
             </section>
 
-            {depositDue > 0 && (
+            <DepositCardHold state={depositHold} due={depositDue} />
+            {depositDue > 0 && !depositHold.blocked && (
               <section className="border-t border-gray-200 pt-5">
                 <h3 className="mb-1 font-medium text-gray-900">Collect Security Deposit</h3>
                 <p className="mb-3 text-sm text-gray-600">{formatCurrency(depositDue)} due at pickup. Record only money actually received.</p>
@@ -1466,7 +1470,9 @@ export function OrderDetailSummaryTab({
             <section ref={settleRef as React.RefObject<HTMLElement>}>
               <h3 className="mb-3 font-medium text-gray-900">Settle Order</h3>
 
-              {(() => {
+              {depositHold.blocked ? <p className="text-sm text-amber-800">
+                Resolve the card hold before settling this order.
+              </p> : (() => {
                 const returnChargesAmount = Math.max(0, Number(returnCharges) || 0);
 
                 // Refunds (Issue Refund payments) represent a price reduction, not
