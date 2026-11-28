@@ -501,6 +501,23 @@ body {
   line-height: 1;
 }
 
+/* Donation total shares a row with the Paw Card cards, so the figure stays inside the column.
+   Font size is set on the wrapper too: the peso SVG sizes from that cap-height, and must match the digits.
+   The mark does not fill its viewBox, so 1.15cap brings the drawn glyph in line with the numerals. */
+.home-impact-meter,
+.home-impact-meter .count-up-text {
+  font-size: clamp(32px, 2.5vw, 46px);
+}
+
+.home-impact-meter .be-pawsitive-meter-peso {
+  height: 0.88em;
+}
+@supports (height: 1cap) {
+  .home-impact-meter .be-pawsitive-meter-peso {
+    height: 1.15cap;
+  }
+}
+
 /* Peso SVG beside CountUp — size to digit cap-height, not full em-square (SVG was overpowering numerals). */
 .be-pawsitive-meter-peso {
   width: auto;

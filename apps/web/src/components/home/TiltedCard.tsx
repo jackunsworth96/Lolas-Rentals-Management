@@ -64,6 +64,7 @@ export default function TiltedCard({
         transition={{ duration: 0.5, ease: 'easeOut' }}
         style={{
           position: 'relative',
+          height: '100%',
           borderRadius: '14px',
           backgroundColor: '#FFFFFF',
           boxShadow: TILE_SHADOW_IDLE,
@@ -98,11 +99,12 @@ export default function TiltedCard({
         setHovered(false);
         handleMouseLeave();
       }}
-      style={{ perspective: '800px' }}
+      style={{ perspective: '800px', height: '100%' }}
     >
       <motion.div
         style={{
           position: 'relative',
+          height: '100%',
           rotateX,
           rotateY,
           scale,

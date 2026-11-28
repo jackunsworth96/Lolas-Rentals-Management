@@ -7,7 +7,7 @@ export function PawCardCallout() {
       style={{
         backgroundColor: '#00577C',
         borderRadius: 20,
-        padding: '48px 40px 40px',
+        padding: '32px 28px 28px',
         position: 'relative',
         overflow: 'hidden',
         isolation: 'isolate',
@@ -46,7 +46,7 @@ export function PawCardCallout() {
         <h3
           className="font-headline font-black"
           style={{
-            fontSize: 'clamp(32px, 4vw, 48px)',
+            fontSize: 'clamp(28px, 2.4vw, 40px)',
             lineHeight: 1.15,
             color: '#FFFFFF',
             marginBottom: 20,

@@ -25,31 +25,18 @@ import iconNinePm from '../../assets/Home/9PM Return Icon.svg';
 import iconCancellationCover from '../../assets/Home/Cancellation Cover.svg';
 import { PawCardCallout } from '../../components/home/PawCardCallout.js';
 import { ReviewsSection } from '../../components/home/ReviewsSection.js';
-import Stack from '../../components/home/Stack.js';
 import CountUp from '../../components/home/CountUp.js';
-import BePawsitiveMeter from '../../components/home/BePawsitiveMeter.js';
+import { NgoImpactMeter } from '../../components/home/BePawsitiveMeter.js';
 import Stepper, { Step } from '../../components/home/Stepper.js';
-import stepIcon1 from '../../assets/Step_1_How_Paw_Card_Works_-_Paw_Card_Icon.svg';
-import stepIcon2 from '../../assets/Step_2_How_Paw_Card_Works_-_Store_Icon.svg';
-import stepIcon3 from '../../assets/Step_3_How_Paw_Card_Works_Calculator_Icon.svg';
-import stepIcon4 from '../../assets/Step_4_How_Paw_Card_Works_-_Lola_Cartoon_Icon.svg';
-import bepawsitiveLogo from '../../assets/Be Pawsitive (blue).svg';
+import stepIcon1 from '../../assets/How_Paw_Card_Works_-_Paw_Card_Icon.png';
+import stepIcon2 from '../../assets/How_Paw_Card_Works_-_Store_Icon.png';
+import stepIcon3 from '../../assets/How_Paw_Card_Works_-_Savings_Icon.png';
+import stepIcon4 from '../../assets/How_Paw_Card_Works_-_Lola_Cartoon_Icon.png';
 import pawDivider from '../../assets/Paw Divider.svg';
 import pesoSignMark from '../../assets/Peso Sign.svg';
-import lolasLogo from '../../assets/Lolas Original Logo.svg';
-import { CloudinaryImage } from '../../components/ui/CloudinaryImage.js';
 import { PesoSign } from '../../components/ui/PesoSign.js';
 import { usePartnerRefCapture } from '../../hooks/usePartnerRefCapture.js';
 import { useLiveCustomerCount, CUSTOMER_COUNT_FLOOR } from '../../hooks/useLiveCustomerCount.js';
-
-const BE_PAW_PUBLIC_IDS = [
-  '1_q903kw', '2_ppjkhm', '3_hgnjpm', '4_fpx4je', '5_ittwb7', '6_klj8zq',
-  '7_rcpxhw', '8_d5zxti', '9_q80ncx', '10_vhulyr', '11_ymbnen', '12_xlgwhy',
-  '13_gugu92', '14_svkea8', '15_ussejg', '16_i5tjci', '17_jyquip', '18_cxkofj',
-  '19_k8a2dm', '20_vzajao', '21_qr7rd7', '22_amab1z', '23_dvvjgq', '24_fd47tv',
-  '25_acqfde', '26_pamvyd', '27_p9c1yg', '28_dm49i6', '29_b15s72', '30_smef1w',
-  '31_vzjory', '32_k4iacn',
-];
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -791,7 +778,7 @@ export default function HomePage() {
                     <span className="font-bold"> in perks</span>
                   </span>
                 }
-                body="Every booking comes loaded with inclusions — helmet, rain gear, first aid kit and more. Plus our Paw Card unlocks exclusive discounts at 70+ island establishments."
+                body="Every booking comes loaded with inclusions — helmet, rain gear, first aid kit and more. Plus our Paw Card unlocks exclusive discounts at 80+ island establishments."
               />
               <TiltedCard
                 icon={iconPeaceOfMind}
@@ -803,15 +790,14 @@ export default function HomePage() {
                 title="Rooted in Community"
                 body={
                   <>
-                    Every rental directly funds spay, neuter and vaccination clinics for Siargao&apos;s street animals
-                    through our{' '}
+                    Every rental supports local programmes on Siargao — community work and animal welfare. You can see exactly{' '}
                     <Link
-                      to="/book/bepawsitive"
+                      to="/book/impact"
                       className="font-semibold text-[#00577C] underline decoration-[#00577C]/35 underline-offset-2 transition-colors hover:text-teal-brand hover:decoration-teal-brand/50"
                     >
-                      Be Pawsitive
-                    </Link>{' '}
-                    partnership. We&apos;re not just a rental — we&apos;re part of the island.
+                      where it goes
+                    </Link>
+                    .
                   </>
                 }
               />
@@ -1002,161 +988,70 @@ export default function HomePage() {
         <SectionDivider variant="bold" flip />
       </div>
 
-      <section style={{ backgroundColor: HOME_SAND, padding: '64px 5%' }}>
-        <div style={{ maxWidth: 1280, margin: '0 auto' }}>
-
-          {/* ── Full-width logo lockup (stacked × under Lola on narrow screens) ── */}
-          <div className="mb-12 flex flex-col items-center justify-center gap-1 lg:flex-row lg:gap-5">
-            <div className="flex flex-col items-center gap-1">
-              <img src={lolasLogo} alt="Lola's Rentals" style={{ height: 68, width: 'auto' }} />
-              <span
-                className="leading-none lg:hidden"
-                style={{ fontSize: 26, fontWeight: 800, color: '#363737', opacity: 0.4, fontFamily: 'Lato, sans-serif' }}
-              >
-                ×
-              </span>
-            </div>
-            <span
-              className="hidden leading-none lg:inline"
-              style={{ fontSize: 26, fontWeight: 800, color: '#363737', opacity: 0.4, fontFamily: 'Lato, sans-serif' }}
-            >
-              ×
-            </span>
-            <img src={bepawsitiveLogo} alt="Be Pawsitive" style={{ height: 76, width: 'auto' }} />
-          </div>
-
-          {/* ── Two-column: photos | counter + text ── */}
+      <section style={{ backgroundColor: HOME_SAND, padding: '48px 5%' }}>
+        <div
+          className="mx-auto grid w-full max-w-[1280px] grid-cols-1 items-stretch gap-6 xl:grid-cols-3"
+        >
           <div
-            className="isolate"
+            className="flex h-full flex-col items-center justify-center text-center"
             style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-              gap: 64,
-              alignItems: 'center',
-              marginBottom: 48,
+              backgroundColor: '#ffffff',
+              borderRadius: 20,
+              padding: '32px 28px',
+              border: '1px solid rgba(54,55,55,0.08)',
             }}
           >
-            {/* LEFT — Stack card gallery, centred */}
-            <div
-              className="relative z-0 max-lg:mb-4"
-              style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}
+            <p
+              className="font-lato"
+              style={{
+                fontSize: 13,
+                textTransform: 'uppercase',
+                letterSpacing: '0.1em',
+                color: '#00577C',
+                marginBottom: 12,
+                fontWeight: 700,
+              }}
             >
-              <div style={{ width: 340, height: 460 }}>
-                <Stack
-                  randomRotation={true}
-                  sensitivity={200}
-                  sendToBackOnClick={true}
-                  cards={BE_PAW_PUBLIC_IDS.map((id, i) => (
-                    <CloudinaryImage
-                      key={i}
-                      publicId={id}
-                      alt={`Be Pawsitive animal ${i + 1}`}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
-                  ))}
-                  autoplay={true}
-                  autoplayDelay={2500}
-                  pauseOnHover={true}
-                  showDots={false}
-                  showHint={true}
-                />
-              </div>
+              Total raised for local NGOs
+            </p>
+            <div className="home-impact-meter count-up-text inline-flex flex-wrap items-baseline justify-center gap-x-[0.28em]">
+              <img
+                src={pesoSignMark}
+                alt=""
+                className="be-pawsitive-meter-peso"
+                aria-hidden
+              />
+              <NgoImpactMeter />
             </div>
-
-            {/* RIGHT — Counter + divider + text + CTA (z-index keeps caption above stack overflow on narrow layouts) */}
-            <div
-              className="relative z-10"
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}
+            <p className="font-lato" style={{ fontSize: 14, color: '#363737', opacity: 0.65, marginTop: 10 }}>
+              Since October 2022
+            </p>
+            <div style={{ margin: '16px 0 20px', width: '100%', display: 'flex', justifyContent: 'center' }}>
+              <img src={pawDivider} alt="" style={{ width: '100%', maxWidth: 200, height: 'auto', opacity: 0.5 }} />
+            </div>
+            <Link
+              to="/book/impact"
+              className="inline-block transition-transform duration-150 hover:-translate-x-0.5 hover:-translate-y-0.5"
+              style={{
+                padding: '12px 22px',
+                backgroundColor: '#FCBC5A',
+                color: '#363737',
+                border: '2px solid #363737',
+                borderRadius: 8,
+                fontWeight: 800,
+                fontSize: 13,
+                letterSpacing: '0.05em',
+                textTransform: 'uppercase',
+                textDecoration: 'none',
+                boxShadow: '4px 4px 0 #363737',
+                fontFamily: 'Lato, sans-serif',
+              }}
             >
-              {/* Counter */}
-              <div className="w-full max-w-[min(100%,380px)]" style={{ marginBottom: 4 }}>
-                <div className="count-up-text inline-flex flex-wrap items-baseline justify-center gap-x-[0.28em]">
-                  <img
-                    src={pesoSignMark}
-                    alt=""
-                    className="be-pawsitive-meter-peso"
-                    aria-hidden
-                  />
-                  <BePawsitiveMeter />
-                </div>
-                <p
-                  className="font-lato relative z-[2] mx-auto mt-2 block w-full max-w-[min(100%,360px)] px-2 text-[13px] leading-snug"
-                  style={{
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.1em',
-                    color: '#00577C',
-                    fontWeight: 700,
-                  }}
-                >
-                  Total Donated Since Oct 2022
-                </p>
-              </div>
-
-              {/* Paw divider */}
-              <div style={{ margin: '20px 0', width: '100%', display: 'flex', justifyContent: 'center' }}>
-                <img src={pawDivider} alt="" style={{ width: '100%', maxWidth: 320, height: 'auto', opacity: 0.5 }} />
-              </div>
-
-              {/* Body text */}
-              <p className="font-lato text-pretty" style={{ fontSize: 16, color: '#363737', lineHeight: 1.7, marginBottom: 12, opacity: 0.85, maxWidth: 380 }}>
-                Every rental directly funds spay, neuter and vaccination clinics
-                for Siargao&apos;s street animals through our Be Pawsitive partnership.
-              </p>
-              <p className="font-lato text-pretty" style={{ fontSize: 15, color: '#363737', lineHeight: 1.7, opacity: 0.8, marginBottom: 28, maxWidth: 380 }}>
-                It costs just <PesoSign />800 to spay or neuter a stray. Every booking makes a difference.
-              </p>
-
-              {/* CTA */}
-              <a
-                href="https://www.facebook.com/bepawsitiveph"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: 'inline-block',
-                  padding: '14px 36px',
-                  backgroundColor: '#FCBC5A',
-                  color: '#363737',
-                  border: '2px solid #363737',
-                  borderRadius: 8,
-                  fontWeight: 800,
-                  fontSize: 14,
-                  letterSpacing: '0.05em',
-                  textTransform: 'uppercase',
-                  textDecoration: 'none',
-                  boxShadow: '4px 4px 0 #363737',
-                  fontFamily: 'Lato, sans-serif',
-                  transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLAnchorElement).style.transform = 'translate(-2px, -2px)';
-                  (e.currentTarget as HTMLAnchorElement).style.boxShadow = '6px 6px 0 #363737';
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLAnchorElement).style.transform = 'translate(0, 0)';
-                  (e.currentTarget as HTMLAnchorElement).style.boxShadow = '4px 4px 0 #363737';
-                }}
-              >
-                Learn About Be Pawsitive
-              </a>
-            </div>
+              See where it goes
+            </Link>
           </div>
 
-        </div>
-
-        {/* PawCardCallout (left) | Stepper (right) */}
-        <div
-          style={{
-            maxWidth: 1280,
-            margin: '80px auto 0',
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-            gap: 48,
-            alignItems: 'stretch',
-            gridAutoRows: '1fr',
-          }}
-        >
-          {/* LEFT — PawCardCallout */}
-          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0 }}>
             <PawCardCallout />
           </div>
 
@@ -1166,9 +1061,10 @@ export default function HomePage() {
               display: 'flex',
               flexDirection: 'column',
               height: '100%',
+              minWidth: 0,
               backgroundColor: '#ffffff',
               borderRadius: 20,
-              padding: '32px 40px 24px',
+              padding: '28px 28px 20px',
               boxShadow: 'none',
               border: '1px solid rgba(54,55,55,0.08)',
             }}
@@ -1244,7 +1140,7 @@ export default function HomePage() {
               >
               <Step>
                 <div style={{ textAlign: 'center', padding: '8px 0' }}>
-                  <img src={stepIcon1} alt="Paw Card" style={{ width: 80, height: 80, margin: '0 auto 16px', display: 'block', objectFit: 'contain', mixBlendMode: 'multiply' }} />
+                  <img src={stepIcon1} alt="Paw Card" style={{ width: 104, height: 104, margin: '0 auto 16px', display: 'block', objectFit: 'contain' }} />
                   <h4 className="font-headline font-bold" style={{ fontSize: 20, color: '#00577C', marginBottom: 8 }}>
                     Get Your Paw Card
                   </h4>
@@ -1256,37 +1152,37 @@ export default function HomePage() {
               </Step>
               <Step>
                 <div style={{ textAlign: 'center', padding: '8px 0' }}>
-                  <img src={stepIcon2} alt="Partner Stores" style={{ width: 80, height: 80, margin: '0 auto 16px', display: 'block', objectFit: 'contain', mixBlendMode: 'multiply' }} />
+                  <img src={stepIcon2} alt="Partner Stores" style={{ width: 104, height: 104, margin: '0 auto 16px', display: 'block', objectFit: 'contain' }} />
                   <h4 className="font-headline font-bold" style={{ fontSize: 20, color: '#00577C', marginBottom: 8 }}>
                     Use It Island-Wide
                   </h4>
                   <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.6, opacity: 0.8 }}>
-                    Show your Paw Card at 70+ partner establishments across Siargao
+                    Show your Paw Card at 80+ partner establishments across Siargao
                     to unlock exclusive discounts on food, surf, stays and more.
                   </p>
                 </div>
               </Step>
               <Step>
                 <div style={{ textAlign: 'center', padding: '8px 0' }}>
-                  <img src={stepIcon3} alt="Savings" style={{ width: 80, height: 80, margin: '0 auto 16px', display: 'block', objectFit: 'contain', mixBlendMode: 'multiply' }} />
+                  <img src={stepIcon3} alt="Savings" style={{ width: 104, height: 104, margin: '0 auto 16px', display: 'block', objectFit: 'contain' }} />
                   <h4 className="font-headline font-bold" style={{ fontSize: 20, color: '#00577C', marginBottom: 8 }}>
                     Save on Every Visit
                   </h4>
                   <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.6, opacity: 0.8 }}>
                     Every peso you save is matched by Lola&apos;s Rentals as a donation
-                    to Be Pawsitive — up to <PesoSign />100,000 per year.
+                    to local NGO partners — up to <PesoSign />100,000 per year.
                   </p>
                 </div>
               </Step>
               <Step>
                 <div style={{ textAlign: 'center', padding: '8px 0' }}>
-                  <img src={stepIcon4} alt="Lola" style={{ width: 80, height: 80, margin: '0 auto 16px', display: 'block', objectFit: 'contain', mixBlendMode: 'multiply' }} />
+                  <img src={stepIcon4} alt="Lola" style={{ width: 104, height: 104, margin: '0 auto 16px', display: 'block', objectFit: 'contain' }} />
                   <h4 className="font-headline font-bold" style={{ fontSize: 20, color: '#00577C', marginBottom: 8 }}>
                     Make a Difference
                   </h4>
                   <p className="font-lato" style={{ fontSize: 15, color: '#363737', lineHeight: 1.6, opacity: 0.8 }}>
-                    Your savings directly fund spay, neuter and vaccination clinics
-                    for Siargao&apos;s street animals. Together we&apos;re building a kinder island.
+                    Your savings support local programmes on Siargao — community work
+                    and animal welfare. Together we&apos;re building a kinder island.
                   </p>
                 </div>
               </Step>
