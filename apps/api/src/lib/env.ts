@@ -17,6 +17,7 @@ export const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(3001),
   XENDIT_ENABLED: z.enum(['true', 'false']).default('false'),
+  XENDIT_DEPOSIT_HOLDS_ENABLED: z.enum(['true', 'false']).default('false'),
   XENDIT_SECRET_KEY: optionalTrimmedString,
   XENDIT_CALLBACK_TOKEN: optionalTrimmedString,
   XENDIT_BUSINESS_ID: optionalTrimmedString,

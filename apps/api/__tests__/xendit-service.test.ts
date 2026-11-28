@@ -3,13 +3,17 @@ import {
   cancelXenditPaymentSession,
   createXenditReturnState,
   getXenditPaymentSession,
+  getXenditHoldSession,
   getXenditPaymentRequest,
+  getXenditCardPayment,
+  requestXenditHoldAction,
   createXenditPaymentSession,
   isXenditDashboardTestWebhook,
   isXenditDashboardRefundTestWebhook,
   parseXenditWebhookPayload,
   verifyXenditCallbackToken,
   verifyXenditReturnState,
+  XenditSessionNotActiveError,
 } from '../src/services/xendit.js';
 
 const originalEnv = { ...process.env };
@@ -133,13 +137,21 @@ describe('Xendit service', () => {
   });
 
   it('rejects cancellation failures without including credentials in the error', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({
       error_code: 'INVALID_SESSION_STATUS',
       message: 'Session is not active',
     }), { status: 422, headers: { 'Content-Type': 'application/json' } })));
 
     await expect(cancelXenditPaymentSession('ps-test-1')).rejects
       .toThrow('Xendit session cancellation failed (INVALID_SESSION_STATUS): Session is not active');
+    await expect(cancelXenditPaymentSession('ps-test-1')).rejects.toBeInstanceOf(XenditSessionNotActiveError);
+  });
+
+  it('does not treat a provider failure as definitive cancellation rejection', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      error_code: 'INVALID_SESSION_STATUS',
+    }), { status: 500 })));
+    await expect(cancelXenditPaymentSession('ps-test-1')).rejects.not.toBeInstanceOf(XenditSessionNotActiveError);
   });
 
   it('loads provider session status for cancellation diagnostics', async () => {
@@ -147,6 +159,51 @@ describe('Xendit service', () => {
       status: 200, headers: { 'Content-Type': 'application/json' },
     })));
     await expect(getXenditPaymentSession('ps-test-1')).resolves.toEqual({ status: 'COMPLETED' });
+  });
+
+  it('loads a verified hold session with its payment identifiers', async () => {
+    const session = {
+      status: 'COMPLETED', reference_id: 'XH123', payment_session_id: 'ps-hold',
+      business_id: 'biz-1', amount: 1000, currency: 'PHP', capture_method: 'MANUAL',
+      payment_id: 'py-1', payment_request_id: 'pr-1',
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(session))));
+    await expect(getXenditHoldSession('ps-hold')).resolves.toEqual(session);
+  });
+
+  it('creates only a card channel session for manual capture', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      payment_session_id: 'ps-hold', reference_id: 'XH123', status: 'ACTIVE',
+      payment_link_url: 'https://checkout.xendit.test/hold', expires_at: '2026-08-05T12:00:00.000Z',
+    })));
+    vi.stubGlobal('fetch', fetchMock);
+    await createXenditPaymentSession({
+      referenceId: 'XH123', amountPHP: 600, description: 'Card hold', manualCapture: true,
+      successReturnUrl: 'https://example.test/return', cancelReturnUrl: 'https://example.test/return', items: [],
+    });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
+      capture_method: 'MANUAL', allowed_payment_channels: ['CARDS'], amount: 600, currency: 'PHP',
+    });
+  });
+
+  it('uses Payments v3 for capture, void and verified status', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        payment_id: 'py-1', payment_request_id: 'pr-1', business_id: 'biz-1', currency: 'PHP',
+        request_amount: 1000, capture_method: 'MANUAL', channel_code: 'CARDS', status: 'CANCELED',
+      })));
+    vi.stubGlobal('fetch', fetchMock);
+    await requestXenditHoldAction('py-1', 250);
+    await requestXenditHoldAction('py-1');
+    await expect(getXenditCardPayment('py-1')).resolves.toMatchObject({ status: 'CANCELED' });
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      'https://api.xendit.test/v3/payments/py-1/capture', 'https://api.xendit.test/v3/payments/py-1/cancel',
+      'https://api.xendit.test/v3/payments/py-1',
+    ]);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ capture_amount: 250 });
+    expect(fetchMock.mock.calls[1][1]).not.toHaveProperty('body');
   });
 
   it('loads the verified payment-request channel without exposing credentials', async () => {

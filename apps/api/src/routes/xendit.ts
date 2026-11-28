@@ -9,6 +9,7 @@ import { authenticate } from '../middleware/authenticate.js';
 import { requirePermission } from '../middleware/authorize.js';
 import { escapeIlike, orderReferenceLookupVariants } from './public-extend-helpers.js';
 import { escapeHtml, sendEmailChecked, transferBookingConfirmationHtml } from '../services/email.js';
+import { handleXenditHoldWebhook, staffXenditDepositHoldRouter } from './xendit-deposit-holds.js';
 import {
   createXenditPaymentSession,
   createXenditRefund,
@@ -28,6 +29,7 @@ import {
 
 const publicXenditRouter = Router();
 const staffXenditRouter = Router();
+staffXenditRouter.use(staffXenditDepositHoldRouter);
 
 const publicSessionSchema = z.object({
   paymentMethodId: z.string().min(1),
@@ -2099,6 +2101,8 @@ publicXenditRouter.post(
         return;
       }
 
+      if (await handleXenditHoldWebhook(req.body, res)) return;
+
       const payload = parseXenditWebhookPayload(req.body);
       const expectedBusinessId = process.env.XENDIT_BUSINESS_ID?.trim();
       if (!expectedBusinessId) {
@@ -2106,6 +2110,12 @@ publicXenditRouter.post(
       }
       if (!secureEqual(payload.business_id, expectedBusinessId)) {
         res.status(401).json({ success: false, error: { code: 'INVALID_BUSINESS_ID', message: 'Invalid Xendit business id' } });
+        return;
+      }
+
+      if (payload.event === 'payment_session.completed' && payload.data.capture_method === 'MANUAL') {
+        logger.error({ referenceId: payload.data.reference_id }, 'Manual-capture webhook does not match a deposit hold');
+        res.status(503).json({ success: false, error: { code: 'AUTHORIZATION_UNSUPPORTED', message: 'Manual-capture sessions require reconciliation' } });
         return;
       }
 

@@ -6,6 +6,7 @@ The integration uses Xendit Payment Sessions with hosted checkout. All credentia
 
 ```dotenv
 XENDIT_ENABLED=false
+XENDIT_DEPOSIT_HOLDS_ENABLED=false
 XENDIT_SECRET_KEY=xnd_development_...
 XENDIT_CALLBACK_TOKEN=...
 XENDIT_BUSINESS_ID=...
@@ -16,6 +17,36 @@ WEB_URL=https://staging.example.com
 ```
 
 `WEB_URL` must use HTTPS when Xendit is enabled. Leave `XENDIT_ALLOWED_PAYMENT_CHANNELS` empty to show every channel enabled on the Xendit account.
+
+## Deposit card holds (staging only)
+
+1. Back up staging and pause staff deposit collection, cancellation, and settlement. Confirm Phase 4 and `scripts/manual/apply-deposit-settlement-guard.sql` are installed. Verify each test store's active Xendit receiving account and security-deposit liability with `SELECT * FROM public.resolve_xendit_deposit_accounts('store-lolas');`
+2. Apply and rerun `scripts/manual/apply-xendit-deposit-holds.sql` in the staging SQL Editor. Inspect the function privileges below. Deploy the matching API and web builds with `XENDIT_DEPOSIT_HOLDS_ENABLED=false`.
+3. In Xendit **Test Mode**, use the existing `https://<api-host>/api/public/payments/xendit/webhook` for Payment Session Completed/Expired and Payments API `payment.authorization`, `payment.capture`, `payment.expiry`, and `payment.failure`. Keep refund webhooks configured. Verify event delivery with the same test business ID and callback token.
+4. Set `XENDIT_DEPOSIT_HOLDS_ENABLED=true` on the staging API only. The API also requires `XENDIT_ENABLED=true` and a development key for creating or capturing a hold. In **Active Orders > order > Summary > Card hold**, generate and share the link from a test active order with an outstanding deposit. Use a Xendit test card.
+5. Before capture, confirm the hold says **Funds reserved** and neither Cash Up nor the payment or journal ledger records a receipt. Verify a second hold, manual deposit, charged deposit link, and settlement are rejected while the hold is unresolved. Confirm other orders and ordinary rental checkout still work.
+6. Use separate orders for full capture, partial capture, release, unused checkout expiry, and authorization expiry. Only Admin can capture, and a reason is required. Verify one captured deposit receipt, one asset debit, and one liability credit. Replay the webhook, race two actions, and check totals stay unchanged. Verify releases and expiry create no entries and unblock deposit collection. Confirm partial capture leaves only the uncaptured deposit balance due. Retest the existing Xendit refund on a captured deposit.
+7. For a timeout with a stored session ID, use **Verify with Xendit**, not another capture or release. Without a session ID, give Xendit Support the `XH...` hold reference. A same-store Admin with `EditOrders` can use **Resolve missing checkout** to attach the ID Xendit identifies, or record written Xendit confirmation that it never created a session for that reference. Enter the support case ID and reason for a no-session closure. The app records the Admin's attestation; it cannot independently verify the support case. Never close based only on time elapsed, a `404`, or an empty search. Resend the original event after resolving any provider or accounting mismatch.
+8. Test both missing-checkout recovery choices with Xendit test credentials before rollout. After a verified attachment, confirm **Verify with Xendit** still works if the first payment read fails. Replay a decline from an earlier attempt after a successful capture; the order must remain unblocked. Replay a verified capture after a recorded conflict; confirm there is still only one receipt and journal pair.
+9. If the API stops after reserving a hold, **Resolve missing checkout** becomes available after two minutes when no provider IDs were saved. The order stays blocked until recovery verifies a session or records written Xendit confirmation. If a customer authorizes while staff cancel the checkout, the app can switch to voiding the authorization only after Xendit definitively rejects checkout cancellation. Use **Finish release** if Xendit has not yet confirmed the new payment status. If the void itself times out, use **Verify with Xendit**; do not submit another void.
+
+To verify privileges after installation:
+
+```sql
+SELECT p.oid::regprocedure AS rpc,
+       has_function_privilege('service_role', p.oid, 'EXECUTE') AS service_role_execute,
+       has_function_privilege('authenticated', p.oid, 'EXECUTE') AS authenticated_execute,
+       has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_execute
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'public' AND p.proname IN (
+  'create_xendit_deposit_hold', 'reserve_xendit_deposit_hold_action',
+  'reserve_xendit_deposit_hold_release_void', 'recover_xendit_deposit_hold', 'observe_xendit_deposit_hold'
+);
+```
+
+Expect five rows: `true` for service role, `false` for both client roles. Xendit [distinguishes checkout and authorization](https://docs.xendit.co/docs/authorization-and-capture-flow-manual-capture); the current payment contract does not supply a verified per-hold expiry. Do not infer one from the checkout link or the published default window. Unknown or insufficient coverage cannot satisfy a real deposit requirement.
+
+To pause the test, turn the flag off. Leave the installer, API, and callback enabled so outstanding holds can be released or verified using the same test credentials. Do not roll back to an API that cannot process hold callbacks while outcomes are outstanding. Keep live holds disabled until Xendit confirms account support, fees, partial capture, and a documented authorization-expiry source.
 
 ## Staging sequence
 

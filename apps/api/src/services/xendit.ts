@@ -68,6 +68,7 @@ export interface CreateXenditSessionParams {
   cancelReturnUrl: string;
   items: XenditSessionItem[];
   allowedPaymentChannels?: string[];
+  manualCapture?: boolean;
 }
 
 export interface XenditSessionResult {
@@ -75,6 +76,9 @@ export interface XenditSessionResult {
   checkoutUrl: string;
   expiresAt: string;
 }
+
+export class XenditSessionValidationError extends Error {}
+export class XenditSessionNotActiveError extends Error {}
 
 type ReturnStatePayload = { sessionId: string; expiresAt: string };
 
@@ -123,7 +127,7 @@ export async function createXenditPaymentSession(
     ?.split(',')
     .map((value) => value.trim())
     .filter(Boolean);
-  const allowedChannels = params.allowedPaymentChannels ?? configuredChannels;
+  const allowedChannels = params.manualCapture ? ['CARDS'] : params.allowedPaymentChannels ?? configuredChannels;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
@@ -139,7 +143,7 @@ export async function createXenditPaymentSession(
         reference_id: params.referenceId,
         session_type: 'PAY',
         mode: 'PAYMENT_LINK',
-        capture_method: 'AUTOMATIC',
+        capture_method: params.manualCapture ? 'MANUAL' : 'AUTOMATIC',
         allow_save_payment_method: 'DISABLED',
         amount: params.amountPHP,
         currency: 'PHP',
@@ -168,7 +172,12 @@ export async function createXenditPaymentSession(
     if (!response.ok) {
       const errorBody = body as { error_code?: string; message?: string } | null;
       const code = errorBody?.error_code ? ` (${errorBody.error_code})` : '';
-      throw new Error(`Xendit API error${code}: ${errorBody?.message ?? response.statusText}`);
+      const message = `Xendit API error${code}: ${errorBody?.message ?? response.statusText}`;
+      if (params.manualCapture && response.status === 400
+        && ['API_VALIDATION_ERROR', 'INVALID_PAYMENT_CHANNEL', 'INVALID_AMOUNT'].includes(errorBody?.error_code ?? '')) {
+        throw new XenditSessionValidationError(message);
+      }
+      throw new Error(message);
     }
 
     const parsed = XenditSessionResponseSchema.parse(body);
@@ -210,14 +219,40 @@ export async function cancelXenditPaymentSession(paymentSessionId: string): Prom
     if (!response.ok) {
       const errorBody = body as { error_code?: string; message?: string } | null;
       const code = errorBody?.error_code ? ` (${errorBody.error_code})` : '';
-      throw new Error(`Xendit session cancellation failed${code}: ${errorBody?.message ?? response.statusText}`);
+      const message = `Xendit session cancellation failed${code}: ${errorBody?.message ?? response.statusText}`;
+      if (response.status === 422 && errorBody?.error_code === 'INVALID_SESSION_STATUS') {
+        throw new XenditSessionNotActiveError(message);
+      }
+      throw new Error(message);
     }
   } finally {
     clearTimeout(timeout);
   }
 }
 
-export async function getXenditPaymentSession(paymentSessionId: string): Promise<{ status: 'ACTIVE' | 'COMPLETED' | 'EXPIRED' | 'CANCELED' }> {
+const XenditSessionStatusSchema = z.object({ status: z.enum(['ACTIVE', 'COMPLETED', 'EXPIRED', 'CANCELED']) });
+
+export async function getXenditPaymentSession(paymentSessionId: string) {
+  return XenditSessionStatusSchema.parse(await fetchXenditSession(paymentSessionId));
+}
+
+export async function getXenditHoldSession(paymentSessionId: string) {
+  return XenditSessionStatusSchema.extend({
+    payment_session_id: z.string(),
+    reference_id: z.string(),
+    business_id: z.string(),
+    amount: z.number(),
+    currency: z.string(),
+    capture_method: z.string().optional(),
+    payment_id: z.string().nullish(),
+    payment_request_id: z.string().nullish(),
+    latest_payment_request_id: z.string().nullish(),
+    payment_link_url: z.string().url().nullish(),
+    expires_at: z.string().datetime({ offset: true }).nullish(),
+  }).parse(await fetchXenditSession(paymentSessionId));
+}
+
+async function fetchXenditSession(paymentSessionId: string): Promise<unknown> {
   const secretKey = process.env.XENDIT_SECRET_KEY?.trim();
   if (!secretKey) throw new Error('XENDIT_SECRET_KEY environment variable is not set');
   const baseUrl = (process.env.XENDIT_BASE_URL ?? 'https://api.xendit.co').replace(/\/+$/, '');
@@ -230,11 +265,52 @@ export async function getXenditPaymentSession(paymentSessionId: string): Promise
     });
     const body = await response.json().catch(() => null) as unknown;
     if (!response.ok) throw new Error(`Xendit session lookup failed: ${response.statusText}`);
-    const parsed = z.object({ status: z.enum(['ACTIVE', 'COMPLETED', 'EXPIRED', 'CANCELED']) }).parse(body);
-    return parsed;
+    return body;
   } finally {
     clearTimeout(timeout);
   }
+}
+
+const XenditCardPaymentSchema = z.object({
+  payment_id: z.string().min(1),
+  payment_request_id: z.string().min(1),
+  business_id: z.string().min(1),
+  currency: z.string(),
+  request_amount: z.number(),
+  capture_method: z.string(),
+  channel_code: z.string(),
+  status: z.string(),
+  captures: z.array(z.object({
+    capture_id: z.string().min(1),
+    capture_amount: z.number().positive(),
+    capture_timestamp: z.string().datetime({ offset: true }),
+  })).nullish(),
+});
+
+export async function getXenditCardPayment(paymentId: string) {
+  return XenditCardPaymentSchema.parse(await xenditCardPaymentRequest(paymentId));
+}
+
+export async function requestXenditHoldAction(paymentId: string, captureAmount?: number) {
+  await xenditCardPaymentRequest(paymentId, captureAmount === undefined ? 'cancel' : 'capture', captureAmount);
+}
+
+async function xenditCardPaymentRequest(paymentId: string, action?: 'capture' | 'cancel', amount?: number) {
+  const secretKey = process.env.XENDIT_SECRET_KEY?.trim();
+  if (!secretKey) throw new Error('XENDIT_SECRET_KEY environment variable is not set');
+  const baseUrl = (process.env.XENDIT_BASE_URL ?? 'https://api.xendit.co').replace(/\/+$/, '');
+  const response = await fetch(`${baseUrl}/v3/payments/${encodeURIComponent(paymentId)}${action ? '/' + action : ''}`, {
+    method: action ? 'POST' : 'GET',
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${secretKey}:`).toString('base64')}`,
+      'api-version': '2024-11-11',
+      ...(amount === undefined ? {} : { 'Content-Type': 'application/json' }),
+    },
+    ...(amount === undefined ? {} : { body: JSON.stringify({ capture_amount: amount }) }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) throw new Error(`Xendit card payment request failed: HTTP ${response.status}`);
+  if (!action) return response.json() as Promise<unknown>;
 }
 
 export async function getXenditPaymentRequest(paymentRequestId: string): Promise<{
@@ -243,6 +319,8 @@ export async function getXenditPaymentRequest(paymentRequestId: string): Promise
   channelCode: string | null;
   currency: string;
   amount: number;
+  latestPaymentId?: string | null;
+  status?: string;
 }> {
   const secretKey = process.env.XENDIT_SECRET_KEY?.trim();
   if (!secretKey) throw new Error('XENDIT_SECRET_KEY environment variable is not set');
@@ -265,6 +343,8 @@ export async function getXenditPaymentRequest(paymentRequestId: string): Promise
       channel_code: z.string().nullable().optional(),
       currency: z.string(),
       request_amount: z.number(),
+      latest_payment_id: z.string().nullish(),
+      status: z.string().optional(),
     }).parse(body);
     if (parsed.payment_request_id !== paymentRequestId) throw new Error('Xendit returned a mismatched payment request');
     return {
@@ -273,6 +353,8 @@ export async function getXenditPaymentRequest(paymentRequestId: string): Promise
       channelCode: parsed.channel_code ?? null,
       currency: parsed.currency,
       amount: parsed.request_amount,
+      ...(parsed.latest_payment_id === undefined ? {} : { latestPaymentId: parsed.latest_payment_id }),
+      ...(parsed.status === undefined ? {} : { status: parsed.status }),
     };
   } finally {
     clearTimeout(timeout);
